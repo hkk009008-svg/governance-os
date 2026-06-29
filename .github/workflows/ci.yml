@@ -1,0 +1,255 @@
+# Landed per the 2026-05-24 handoff. Three independent verification jobs run
+# in parallel; all must pass for the workflow to succeed. A fourth manual-only
+# threeway signer job can emit ci_result after those jobs pass during go-live.
+# Mirrors the three local checks documented in ARCHITECTURE.md §15 +
+# OPERATIONS.md §7. Concurrency cancels older runs on the same branch (saves
+# minutes on rapid pushes).
+#
+# 2026-06-10 (STRATEGIC_REVIEW-2026-06-10 P0-1 / NF-1): the pytest job was
+# 0-for-<ref> since landing — bare `pytest` cannot import root modules
+# at collection time. The fix lives in pyproject.toml
+# ([tool.pytest.ini_options] pythonpath = ["."]), not in this file. Action
+# majors bumped to Node-24 runtimes ahead of GitHub's 2026-06-16 forcing.
+#
+# Scope intentionally NOT included (per the 2026-05-24 Session 1 brief):
+#   - Linting (ruff, eslint)
+#   - Deployment workflows
+#   - Auto-publish, releases, changelogs
+#   - Code coverage reporting
+#   - Matrix builds
+#
+# Baseline: the CURRENT suite count lives in ARCHITECTURE.md §16 (single
+# source — these comments stopped tracking it after drifting twice in one
+# day). Properties that hold: the live ubuntu runner shows a handful more
+# skips than local macOS (environment-conditional self-skips; same total
+# collected). First-green acceptance evidence: run <ref>
+# (2026-06-10, <ref> passed + <ref> skipped) and the intentional-red proof on
+# PR #12 run <ref>.
+#   - tsc --noEmit: silent exit
+#   - §15 smoke: OK
+#
+# Security review (per .claude security_reminder_hook):
+#   - No untrusted-input interpolation in `run:` blocks. The manual
+#     threeway integration SHA is passed through an env var, validated as
+#     a 40-char lowercase hex SHA, then shell-quoted before signing.
+#   - Only `${{ github.workflow }}` + `${{ github.ref }}` in `concurrency:`
+#     group key, which is the canonical GitHub pattern; ref is not used in
+#     any shell command.
+#   - No reference to github.event.*, github.head_ref, or commit messages.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      integration_sha:
+        description: Exact CAS-merged integration commit SHA to test and sign
+        required: true
+        type: string
+      integration_ref:
+        description: Fetchable branch, tag, or ref whose HEAD is integration_sha
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: ARCHITECTURE.md §15 smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.integration_ref || github.sha }}
+
+      - name: Verify threeway integration checkout
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          INTEGRATION_SHA: ${{ inputs.integration_sha }}
+        run: |
+          case "$INTEGRATION_SHA" in
+            *[!0-9a-f]*|'')
+              echo "integration_sha must be a lowercase 40-hex Git SHA" >&2
+              exit 1
+              ;;
+          esac
+          test "${#INTEGRATION_SHA}" -eq 40
+          test "$(git rev-parse HEAD)" = "$INTEGRATION_SHA"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      # TODO(<PROJECT>): add any domain-specific model-weight or asset cache steps here
+      # (e.g. a domain-graph subsystem that lazy-downloads weights on first use;
+      # cache them across runs so first run is slow but subsequent runs are fast).
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run §15 singleton + ctx-plumbing invariants
+        # Single source of truth: scripts/ci_smoke.py.
+        # If invariants change, update that script + ARCHITECTURE.md §15's
+        # prose list together — no other file inlines the smoke block.
+        run: python scripts/ci_smoke.py
+
+  pytest-unit:
+    name: pytest tests/unit/
+    runs-on: ubuntu-latest
+    # Offline invariant restored (was 15→40 while some tests made real network calls and
+    # pushed the suite to longer runtimes). Those tests were mocking the wrong boundary;
+    # they now stub the one the code actually crosses (e.g. external-API clients /
+    # safe_download / urllib.urlopen / domain-specific research helpers).
+    # Verified fully offline: <ref> passed in ~2 min with ZERO outbound socket attempts.
+    # Restored to 15 — ample margin over the runtime (most of which is the
+    # real-subprocess test_threeway_* git-CAS concurrency tests, not network).
+    timeout-minutes: 15
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      # The unit suite asserts keys-PRESENT behavior: certain modules construct
+      # API clients at __init__ (hard error keyless), and some branches flip
+      # behavior on key presence. Local runs get real keys from .env; CI gets
+      # inert placeholders so the suite exercises the same configuration.
+      # No test calls the network (offline suite, ~2 min).
+      # Hermeticity refactor (lazy/injectable clients) is a named follow-up
+      # per the adversarial review of docs/STRATEGIC_REVIEW-2026-06-10.md Session 1.
+      OPENAI_API_KEY: ci-dummy-not-a-real-key
+      GEMINI_API_KEY: ci-dummy-not-a-real-key
+      ANTHROPIC_API_KEY: ci-dummy-not-a-real-key
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.integration_ref || github.sha }}
+
+      - name: Verify threeway integration checkout
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          INTEGRATION_SHA: ${{ inputs.integration_sha }}
+        run: |
+          case "$INTEGRATION_SHA" in
+            *[!0-9a-f]*|'')
+              echo "integration_sha must be a lowercase 40-hex Git SHA" >&2
+              exit 1
+              ;;
+          esac
+          test "${#INTEGRATION_SHA}" -eq 40
+          test "$(git rev-parse HEAD)" = "$INTEGRATION_SHA"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      # TODO(<PROJECT>): add any domain-specific model-weight or asset cache steps here
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pytest tests/unit/
+        # tests/integration/ requires real cloud credentials and must NOT run
+        # in CI. Current count: ARCHITECTURE.md §16 (single source). The
+        # live runner shows a few more skips than local — environment-
+        # conditional self-skips, same total collected.
+        # If your PR changes this count, the diff or the brief explains why.
+        # Root-module importability comes from [tool.pytest.ini_options]
+        # pythonpath in pyproject.toml — bare `pytest` here relies on it.
+        run: pytest tests/unit/ --tb=short -q --cov=. --cov-report=xml --cov-report=term
+
+      - name: Run executable Wave 1 pin gate
+        # ADR-027: the wave gate executes inventory selectors via pytest --runxfail.
+        # A red result here is an honest gate failure, not a status-column failure.
+        run: |
+          python -m pytest tests/unit/test_auto_approve_nangate_xfail.py --runxfail -q
+          python scripts/wave_gate_check.py 1
+
+      - name: Run no-ceremony detector
+        run: python scripts/check_no_ceremony.py
+
+  tsc:
+    name: TypeScript --noEmit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.integration_ref || github.sha }}
+
+      - name: Verify threeway integration checkout
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          INTEGRATION_SHA: ${{ inputs.integration_sha }}
+        run: |
+          case "$INTEGRATION_SHA" in
+            *[!0-9a-f]*|'')
+              echo "integration_sha must be a lowercase 40-hex Git SHA" >&2
+              exit 1
+              ;;
+          esac
+          test "${#INTEGRATION_SHA}" -eq 40
+          test "$(git rev-parse HEAD)" = "$INTEGRATION_SHA"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install npm deps
+        working-directory: web
+        run: npm ci
+
+      - name: TypeScript noEmit check
+        working-directory: web
+        run: npx tsc --noEmit
+
+  threeway-ci-result:
+    name: Emit threeway ci_result
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [smoke, pytest-unit, tsc]
+    if: github.event_name == 'workflow_dispatch' && vars.THREEWAY_BUS_LIVE == 'true' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      INTEGRATION_SHA: ${{ inputs.integration_sha }}
+    steps:
+      # Signing runs from trusted main after the integration SHA has passed all
+      # test jobs above. The ci private key never runs candidate-controlled code.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install signing dependencies
+        run: pip install -r requirements.txt
+
+      - name: Emit signed ci_result for tested integration SHA
+        env:
+          THREEWAY_KEYSTORE: ${{ runner.temp }}/threeway_keys
+          CI_PRIVATE_KEY: ${{ secrets.THREEWAY_CI_KEY }}
+        run: |
+          case "$INTEGRATION_SHA" in
+            *[!0-9a-f]*|'')
+              echo "integration_sha must be a lowercase 40-hex Git SHA" >&2
+              exit 1
+              ;;
+          esac
+          test "${#INTEGRATION_SHA}" -eq 40
+          mkdir -p "$THREEWAY_KEYSTORE"
+          printf '%s\n' "$CI_PRIVATE_KEY" > "$THREEWAY_KEYSTORE/ci.ed25519"
+          python scripts/sign_ci_result.py --integration-sha "$INTEGRATION_SHA" --result PASS --remote origin

@@ -1,4 +1,4 @@
-# PROGRAM MANUAL — <PROJECT>
+# PROGRAM MANUAL — Governance OS
 
 **Canonical expression of the user-principal's intent for this program.**
 This file defines *what we build* and *how the user wants it operated to full capability*.

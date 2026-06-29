@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — <PROJECT_NAME>
+# ARCHITECTURE.md — Governance OS
 
 > **Truth lives here; CLAUDE.md is the process layer.**
 > All load-bearing facts about this codebase — file:line references, module

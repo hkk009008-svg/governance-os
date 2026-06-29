@@ -1,4 +1,4 @@
-# OPERATIONS.md — <PROJECT_NAME>
+# OPERATIONS.md — Governance OS
 
 > Run, configure, and troubleshoot the program.
 > For *what* the program does and *why* it is shaped this way, see

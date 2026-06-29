@@ -1,0 +1,87 @@
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# =============================================================================
+# macOS
+# =============================================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# =============================================================================
+# Editor / IDE
+# =============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# =============================================================================
+# Governance OS — coordination runtime state
+# These paths hold ephemeral session state that must not be committed.
+# The !.gitkeep rules ensure scaffolding directories persist in the repo.
+# =============================================================================
+
+# Seat read-cursors (seen/<seat>.txt = scalar seq) are TRACKED, not ignored:
+# cursor advances are part of the durable record (the check_coordination
+# "standalone_cursor_commit" advisory exists because they get committed).
+# Seeded at 0 for the default roster; adjust it in scripts/protocol_mailbox.py
+# (SEATS / RECEIVING_SEATS).
+
+# Outgoing mailbox messages (runtime-generated; committed selectively per protocol)
+coordination/mailbox/sent/*
+!coordination/mailbox/sent/.gitkeep
+
+# Heartbeat presence files (volatile; regenerated each session)
+coordination/presence/*-heartbeat.ts
+
+# Cross-cutting edit locks (released on commit; never persistent)
+coordination/locks/*
+!coordination/locks/.gitkeep
+
+# Threeway ref-bus event blobs (written via git-update-ref; not filesystem files in prod,
+# but guarded here for any local event staging directories)
+coordination/threeway/events/*
+!coordination/threeway/events/.gitkeep
+
+# =============================================================================
+# Session / harness state
+# =============================================================================
+
+# Per-seat git index files (created by D-a launcher; never committed)
+.git/index-codex-*
+
+# Hook sync markers (regenerated each hook run)
+.claude/hooks/.last-index-sync-*
+.codex/hooks/.last-index-sync-*
+
+# State snapshot (gitignored by convention; local only)
+STATE.md
+
+# =============================================================================
+# Secrets / keys
+# =============================================================================
+
+# Local .env overrides (the .env.example is committed; the live .env is not)
+.env
+.env.local
+.env.*.local

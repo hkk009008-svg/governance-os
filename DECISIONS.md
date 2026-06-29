@@ -1,6 +1,6 @@
 # DECISIONS — Architecture Decision Record Log
 
-This file is the append-only ADR log for <PROJECT>. Each entry records an
+This file is the append-only ADR log for Governance OS. Each entry records an
 architectural or governance decision at the moment it was made, together with
 the context that made it necessary and the consequences (positive and negative)
 accepted at that time. **Append-only — never edit prior entries.** If a
@@ -35,12 +35,12 @@ and explains what changed and why; leave the original entry exactly as written.
 **Status:** Accepted
 
 **Context:**
-As <PROJECT> grows, uncoordinated parallel edits and unverified claims have
+As Governance OS grows, uncoordinated parallel edits and unverified claims have
 caused repeated integration failures. A lightweight governance model is needed
 that enforces independent verification without slowing routine work.
 
 **Decision:**
-<PROJECT> operates with a 4-seat model (two director seats, two operator seats
+Governance OS operates with a 4-seat model (two director seats, two operator seats
 per pair). Director seats author briefs and make strategy calls; operator seats
 independently verify every commit before it is considered landed. No commit is
 treated as complete until the responsible operator seat issues a GO report.

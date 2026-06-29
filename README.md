@@ -1,4 +1,4 @@
-# <PROJECT_NAME>
+# Governance OS
 
 > <fill-in: one-sentence description of what the program does and for whom>
 
