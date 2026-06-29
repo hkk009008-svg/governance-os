@@ -6,34 +6,34 @@ and per-session invocation count. Updated manually at session-close by operator
 
 ## Rule registry
 
-| # | Rule | Codified | Race that triggered |
-|---|---|---|---|
-| 1 | Role partition (director-only / operator-only / shared) | `ad6cb4f` | Session 6 shared-module pre-locate race |
-| 2 | Signaling narration (announce shared-task intent in chat) | `ad6cb4f` | Same race |
-| 3 | Git tiebreaker (first commit to land wins) | `ad6cb4f` | Hypothetical; documented preemptively |
-| 4 | State-asserting writes precondition (`git log -5` before Write) | `ea97d0a` | Stale handoff doc race (`843c102` pre-write) |
-| 5 | Race-acknowledging commit body (name what shifted during work) | `ea97d0a` | Same |
-| 6 | Counter-bump fold-and-surface (during concurrent ops) | `ea97d0a` | Standalone `chore(baseline)` pollution risk |
-| 7 | Pre-commit re-verify (state changes between Write and commit) | `416d610` | `a6e3ff1` mid-handoff race (Monitor.tsx shipped during operator handoff Write; operator caught in race-ack body of `1541a69`) |
-| 8 | Mailbox authority (sent events bind equal to user-relayed signals) | `416d610` | User-as-relay bottleneck observed across cycles 1-3 — every inter-session signal had to route through user, eating throughput |
-| 9 | Operator-side reviewer is independent, not duplicate (second-opinion convention) | `d61bdc8` | Substance imbalance ~30:1 (director:operator) across cycles 3-4 + structural blind-spot risk in single-context reviewer pass; user surfaced + operator drafted v4 |
-| 10 | Joint-team mode (two seats of one team; co-agent mode) | `d66690f` | User surfaced "director codifies rules that bind themselves" + asymmetry-as-hierarchy concerns; v5 reframes role partition as specialization, not hierarchy |
-| 11 | Codification bias check (per-rule beneficiary flagging + non-beneficiary veto) | `d66690f` | User surfaced "director-only memory writes" + "codification meta-bias" concerns; R11 makes future codification per-rule auditable |
-| 12 | Brief-level grep-the-writes discipline (codifier MUST grep production writes before naming a symbol in a brief) | `8ab0bbb` | Lane V #6 F1 N=1 (vestigial `performance_take_id` field; production writes `approved_performance_take_id`; closed `6c1171a`) + Lane V #8 spec-reviewer prompt preventive N=2 (0 divergences). N=2 threshold per director's Lane V #6 REPLY at `2026-05-25T18-44-52Z`. Codification per v5.1 proposal `b583305` + operator REPLY explicit consent `9f032db` |
-| 13 | Symmetric-endpoint audit discipline (codifier MUST audit existing endpoints on shared state when adding new endpoint with same fence/flag/state) | `8ab0bbb` | Lane V #8 I1 CRITICAL N=1 (iterate endpoint missing the gate-bypass `/screening/approve` + `/assemble/re-assemble` had; closed `9e9b008`) + Val#1 V1 N=2 (`/screening/approve` missing precondition `/assemble/screen` had; closed `d10b849`). Codification per v5.1 proposal `b583305` + operator REPLY explicit consent `9f032db` |
-| 14 | Operator-driven Lane B template + selection criteria (5-stage flow + 5 selection criteria distinguishing operator-driven-eligible from director-driven-default work) | `61cac6d` | B-005 N=1 (cycle-11, `c296105`; 10 sites in `domain/project_manager.py`; 142 prod LoC; Lane V #11 ✅ READY TO SHIP) + B-006-broad-A N=2 (cycle-12, `5b68776`; 6 sites across 4 files; 82 prod LoC; Lane V #12 ✅ READY TO SHIP). Criteria-exclusion validation: B-006-broad-B (cycle-12, `a0493dc`; 243 prod LoC; correctly director-driven). Codification per v5.2 proposal `f5fb58d` + operator REPLY explicit consent + 2 substantive refinements (R-Q1-1 LoC boundary ≤150 prod; R-Q4-1 default fallback (a) defer) folded at ship `dea6401` |
-| 15 | Cross-seat fix-on-received-findings convention (one seat closes the other seat's Lane V finding via standalone `fix:` commit; bidirectionally symmetric; 3-option disposition shape + commit-body convention + audit-trail discipline) | `24c145a` | `442e154` N=1 (cycle-12; director closes operator's Lane V #12 I1; IMPORTANT-advisory ValidationError-swallow at broad-A helper caller sites; option 2 chosen because option 1 fold-into-broad-B-brief foreclosed by parallel-execution timing; intra-cycle close ~minutes) + `336403d` N=2 (cycle-13 entry; director closes operator's Lane V #13 M-3; MINOR-DEFER thread-swallow observability hardening via `logger.error` + `exc_info=True`; option 2 chosen for DEFER-categorized finding; cross-cycle close ~half day with explicit DEFER ACK). Codification per v5.3 proposal `dc7df5d` + director REPLY `3a0e433` explicit consent + 1 substantive refinement (R-Q2-1 CRITICAL "never (a) fold" → "preferred (b); (a) with explicit-justification") + 5 silent-accepts folded at ship |
-| 16 | User-direction without owner-spec (complementary-parallel work; second-to-ship owes a convergence event ≤30min) | `7773502` | cycle-16 Shape-A races (dispatch-claim + synthesis-doc + brief-scaffold) + advisory-convergence instance (five-for-five mechanism convergence; pre-commit variant `fd3dc33`). Full text in CLAUDE.md Rule #16 |
-| 17 | Workflow-assisted analysis lanes (`/workflows` = read-analysis multiplier, NOT implementation engine; 5 guardrails) | `52658eb` | forward-looking (feature unavailable in runtime at codification; guardrails ratified ahead of activation; first dogfood at v5.6). Full text in CLAUDE.md Rule #17 |
-| 18 | Doc-maintenance as a verifier-scoped dispatch pattern (librarian wielding `check_doc_claims.py`; mechanical slice owned directly, claim-edits senior-reviewed) | `4eecb72` | doc-drift recurring cost (GitNexus phantom ADR-016 + Lane V #24 wrong-fix-rec + proposal's own stale F1-citation — 3 live exhibits). ADR-019. Full text in CLAUDE.md Rule #18 |
-| 19 | Live-presence-over-inferred-idle (presence files; liveness=freshness not commit-recency; bind via artifacts not chat; `current_task`-rot guard) | `cec6d72` | user-reported 2026-05-30 mutual-offline/unaware failure; operator corroborated RC1–RC5 in one session (inferred director offline; narration inert; STATE.md director=4-vs-1; cursor lag; ref-race ×2). v5.7 proposal `e353479` + operator REPLY `ab9925d` CONSENT + user Q4=D-a |
-| 20 | Shared-state-accuracy (awareness gate recomputes unread `to:`-filtered + content-ts; STATE.md is a cache; per-event acks) | `cec6d72` | same session: RC3 (STATE.md count both-directions + mtime → director=4-vs-1) + RC4 (cursor lag). M2 fix validated old=3/new=1 (DRAFT §1). Codification per v5.7 + operator REPLY `ab9925d` |
-| 21 | Verdict-ahead-of-report (when peer seat is blocked, give verdict first, report later) | `7e9f4ac` | `6f3b809` verdict-first unblocked billed pod session |
-| 22 | Flag-before-burn (require review before running fee-spending scripts) | `7e9f4ac` | Unreviewed train script carried F1 fee-respend defect (`3a589da` guard) |
-| 23 | Lane ownership and cross-lane ADRs (a seat does substantive work only in its lane; cross-cutting ADRs need both directors' sign-off) | `b29f8dc` | Scaling 2-seat to 4-seat team model; resolving lane overlap and architecture conflicts |
-| 24 | Live-seat/coordinator mailbox-first (always check mail before protocol decisions or state-asserting writes; surface unread, then read relevant mailbox bodies before idle/routing/verdict decisions; cursor consumption is intentional; coordinator remains unpinned/read-only) | `_Codex protocol hardening ship_` | User direct instruction "always read mail"; strengthened on 2026-06-16 after user said "alway check mail codify it"; director initially left coordinator GO/routing mail unread until prompted |
-| 25 | Codex seat-index HEAD-drift guard (inspect active seat index after mailbox consume; repair stale index and re-stage only intended cursor) | `_Codex protocol hardening ship_` | Consuming coordinator route mail after `e6205050` briefly staged a bogus deletion for the newly introduced coordinator event in `index-codex-director` |
-| 26 | Protocol-learning persistence (capacity/efficiency observations become durable memory and, when general, protocol docs/rules) | `_Codex protocol hardening ship_` | User direct instruction to preserve observations that increase protocol efficacy/efficiency |
+| # | Rule | Codified | Race that triggered | Enforcement |
+|---|---|---|---|---|
+| 1 | Role partition (director-only / operator-only / shared) | `ad6cb4f` | Session 6 shared-module pre-locate race | SOFT |
+| 2 | Signaling narration (announce shared-task intent in chat) | `ad6cb4f` | Same race | SOFT |
+| 3 | Git tiebreaker (first commit to land wins) | `ad6cb4f` | Hypothetical; documented preemptively | SOFT |
+| 4 | State-asserting writes precondition (`git log -5` before Write) | `ea97d0a` | Stale handoff doc race (`843c102` pre-write) | SOFT |
+| 5 | Race-acknowledging commit body (name what shifted during work) | `ea97d0a` | Same | SOFT |
+| 6 | Counter-bump fold-and-surface (during concurrent ops) | `ea97d0a` | Standalone `chore(baseline)` pollution risk | SOFT |
+| 7 | Pre-commit re-verify (state changes between Write and commit) | `416d610` | `a6e3ff1` mid-handoff race (Monitor.tsx shipped during operator handoff Write; operator caught in race-ack body of `1541a69`) | SOFT |
+| 8 | Mailbox authority (sent events bind equal to user-relayed signals) | `416d610` | User-as-relay bottleneck observed across cycles 1-3 — every inter-session signal had to route through user, eating throughput | HARD (partial) — `scripts/check_coordination.py` enforces mailbox filename/cursor/envelope conventions; behavioral authority rule is SOFT |
+| 9 | Operator-side reviewer is independent, not duplicate (second-opinion convention) | `d61bdc8` | Substance imbalance ~30:1 (director:operator) across cycles 3-4 + structural blind-spot risk in single-context reviewer pass; user surfaced + operator drafted v4 | SOFT |
+| 10 | Joint-team mode (two seats of one team; co-agent mode) | `d66690f` | User surfaced "director codifies rules that bind themselves" + asymmetry-as-hierarchy concerns; v5 reframes role partition as specialization, not hierarchy | SOFT |
+| 11 | Codification bias check (per-rule beneficiary flagging + non-beneficiary veto) | `d66690f` | User surfaced "director-only memory writes" + "codification meta-bias" concerns; R11 makes future codification per-rule auditable | SOFT |
+| 12 | Brief-level grep-the-writes discipline (codifier MUST grep production writes before naming a symbol in a brief) | `8ab0bbb` | Lane V #6 F1 N=1 (vestigial `performance_take_id` field; production writes `approved_performance_take_id`; closed `6c1171a`) + Lane V #8 spec-reviewer prompt preventive N=2 (0 divergences). N=2 threshold per director's Lane V #6 REPLY at `2026-05-25T18-44-52Z`. Codification per v5.1 proposal `b583305` + operator REPLY explicit consent `9f032db` | SOFT |
+| 13 | Symmetric-endpoint audit discipline (codifier MUST audit existing endpoints on shared state when adding new endpoint with same fence/flag/state) | `8ab0bbb` | Lane V #8 I1 CRITICAL N=1 (iterate endpoint missing the gate-bypass `/screening/approve` + `/assemble/re-assemble` had; closed `9e9b008`) + Val#1 V1 N=2 (`/screening/approve` missing precondition `/assemble/screen` had; closed `d10b849`). Codification per v5.1 proposal `b583305` + operator REPLY explicit consent `9f032db` | SOFT |
+| 14 | Operator-driven Lane B template + selection criteria (5-stage flow + 5 selection criteria distinguishing operator-driven-eligible from director-driven-default work) | `61cac6d` | B-005 N=1 (cycle-11, `c296105`; 10 sites in `domain/project_manager.py`; 142 prod LoC; Lane V #11 ✅ READY TO SHIP) + B-006-broad-A N=2 (cycle-12, `5b68776`; 6 sites across 4 files; 82 prod LoC; Lane V #12 ✅ READY TO SHIP). Criteria-exclusion validation: B-006-broad-B (cycle-12, `a0493dc`; 243 prod LoC; correctly director-driven). Codification per v5.2 proposal `f5fb58d` + operator REPLY explicit consent + 2 substantive refinements (R-Q1-1 LoC boundary ≤150 prod; R-Q4-1 default fallback (a) defer) folded at ship `dea6401` | SOFT |
+| 15 | Cross-seat fix-on-received-findings convention (one seat closes the other seat's Lane V finding via standalone `fix:` commit; bidirectionally symmetric; 3-option disposition shape + commit-body convention + audit-trail discipline) | `24c145a` | `442e154` N=1 (cycle-12; director closes operator's Lane V #12 I1; IMPORTANT-advisory ValidationError-swallow at broad-A helper caller sites; option 2 chosen because option 1 fold-into-broad-B-brief foreclosed by parallel-execution timing; intra-cycle close ~minutes) + `336403d` N=2 (cycle-13 entry; director closes operator's Lane V #13 M-3; MINOR-DEFER thread-swallow observability hardening via `logger.error` + `exc_info=True`; option 2 chosen for DEFER-categorized finding; cross-cycle close ~half day with explicit DEFER ACK). Codification per v5.3 proposal `dc7df5d` + director REPLY `3a0e433` explicit consent + 1 substantive refinement (R-Q2-1 CRITICAL "never (a) fold" → "preferred (b); (a) with explicit-justification") + 5 silent-accepts folded at ship | SOFT |
+| 16 | User-direction without owner-spec (complementary-parallel work; second-to-ship owes a convergence event ≤30min) | `7773502` | cycle-16 Shape-A races (dispatch-claim + synthesis-doc + brief-scaffold) + advisory-convergence instance (five-for-five mechanism convergence; pre-commit variant `fd3dc33`). Full text in CLAUDE.md Rule #16 | SOFT |
+| 17 | Workflow-assisted analysis lanes (`/workflows` = read-analysis multiplier, NOT implementation engine; 5 guardrails) | `52658eb` | forward-looking (feature unavailable in runtime at codification; guardrails ratified ahead of activation; first dogfood at v5.6). Full text in CLAUDE.md Rule #17 | SOFT |
+| 18 | Doc-maintenance as a verifier-scoped dispatch pattern (librarian wielding `check_doc_claims.py`; mechanical slice owned directly, claim-edits senior-reviewed) | `4eecb72` | doc-drift recurring cost (GitNexus phantom ADR-016 + Lane V #24 wrong-fix-rec + proposal's own stale F1-citation — 3 live exhibits). ADR-019. Full text in CLAUDE.md Rule #18 | HARD (partial) — `scripts/check_doc_claims.py` enforces doc-anchor/commit-SHA drift in ARCHITECTURE.md; dispatch-pattern discipline is SOFT |
+| 19 | Live-presence-over-inferred-idle (presence files; liveness=freshness not commit-recency; bind via artifacts not chat; `current_task`-rot guard) | `cec6d72` | user-reported 2026-05-30 mutual-offline/unaware failure; operator corroborated RC1–RC5 in one session (inferred director offline; narration inert; STATE.md director=4-vs-1; cursor lag; ref-race ×2). v5.7 proposal `e353479` + operator REPLY `ab9925d` CONSENT + user Q4=D-a | HARD (partial) — `scripts/check_coordination.py` enforces cursor file existence and parsability; presence-file freshness discipline is SOFT |
+| 20 | Shared-state-accuracy (awareness gate recomputes unread `to:`-filtered + content-ts; STATE.md is a cache; per-event acks) | `cec6d72` | same session: RC3 (STATE.md count both-directions + mtime → director=4-vs-1) + RC4 (cursor lag). M2 fix validated old=3/new=1 (DRAFT §1). Codification per v5.7 + operator REPLY `ab9925d` | HARD (partial) — `scripts/check_coordination.py` enforces cursor/envelope consistency; per-event-ack discipline and STATE.md freshness are SOFT |
+| 21 | Verdict-ahead-of-report (when peer seat is blocked, give verdict first, report later) | `7e9f4ac` | `6f3b809` verdict-first unblocked billed pod session | SOFT |
+| 22 | Flag-before-burn (require review before running fee-spending scripts) | `7e9f4ac` | Unreviewed train script carried F1 fee-respend defect (`3a589da` guard) | SOFT |
+| 23 | Lane ownership and cross-lane ADRs (a seat does substantive work only in its lane; cross-cutting ADRs need both directors' sign-off) | `b29f8dc` | Scaling 2-seat to 4-seat team model; resolving lane overlap and architecture conflicts | SOFT |
+| 24 | Live-seat/coordinator mailbox-first (always check mail before protocol decisions or state-asserting writes; surface unread, then read relevant mailbox bodies before idle/routing/verdict decisions; cursor consumption is intentional; coordinator remains unpinned/read-only) | `_Codex protocol hardening ship_` | User direct instruction "always read mail"; strengthened on 2026-06-16 after user said "alway check mail codify it"; director initially left coordinator GO/routing mail unread until prompted | SOFT |
+| 25 | Codex seat-index HEAD-drift guard (inspect active seat index after mailbox consume; repair stale index and re-stage only intended cursor) | `_Codex protocol hardening ship_` | Consuming coordinator route mail after `e6205050` briefly staged a bogus deletion for the newly introduced coordinator event in `index-codex-director` | SOFT |
+| 26 | Protocol-learning persistence (capacity/efficiency observations become durable memory and, when general, protocol docs/rules) | `_Codex protocol hardening ship_` | User direct instruction to preserve observations that increase protocol efficacy/efficiency | SOFT |
 
 > Historical note: Rules #7 + #8 originally shipped with the placeholder
 > `_Protocol Bundle v2 ship_` in the "Codified" column because the rules-log
@@ -71,6 +71,7 @@ Empirical basis: S13's `feat(types)` + `feat(web)` commits were
 correctly coalesced into one Lane V dispatch covering
 `029dbf9..2fb44d1`; the cross-system review caught F1 CRITICAL that
 isolation review of either commit alone would have missed.
+Enforcement: SOFT
 
 **CC-2 — Spec-reviewer hallucination mitigation.** General-purpose
 spec reviewer observed (2/2 dispatches) to make confident
@@ -84,6 +85,7 @@ before inclusion in the report. If hallucinations persist after
 CC-2 codification (≥1 more in cycle-7+ Lane V dispatches), v4.2
 should consider operator's CC-2 options 2 (third lightweight
 verifier subagent) or 3 (different subagent type for spec review).
+Enforcement: SOFT
 
 v4.1 ship SHA: `509db7c` (filled post-ship by operator per chicken-and-egg
 pattern; mirrors `3e57ddf` v2 / `d8f2407` v3 / `d90036b` v4).
@@ -690,6 +692,7 @@ re-snapshotted from `<PROJECT>` workflow templates; max-tier graph documented).
 **Beneficiary (per Rule #11): `both` seats + user** — verdicts grounded in
 documented subsystem semantics rather than recall, on both authoring and reviewing
 sides.
+Enforcement: SOFT
 
 ### Rules #21 + #22 + R-MEASURE + dispatch git-hygiene + SessionStart sweep (2026-06-12, operator ship, user-directed)
 
@@ -700,20 +703,25 @@ items surfaced by the 2026-06-11/12 sessions; plan
 - **Rule #21 verdict-ahead-of-report** — basis: `6f3b809` verdict-first
   unblocked a billed GPU compute pod session; report `3a13156` followed; nothing
   reversed. Beneficiary (Rule #11): both + user (billed-clock waste removed).
+  Enforcement: SOFT
 - **Rule #22 flag-before-burn** — basis: reviewed sweep ran clean;
   unreviewed script carried the F1 fee-respend defect (`3a589da`
   guard). Beneficiary: both + user (fee protection).
+  Enforcement: SOFT
 - **R-MEASURE** — basis: <ref> verdict numbers were REPL-only
   (operator Lane V <ref>, disposed `b91c6c9`; a domain metric scorer queued
   wave-2 is the instance). Beneficiary: both + user
   (reproducible records).
+  Enforcement: SOFT
 - **Dispatch git-hygiene (templates + CLAUDE/AGENTS clause)** — basis:
   index-operator corruption 2026-06-12 ("unable to read <blob>") during a
   31-agent workflow; per-invocation `env -u GIT_INDEX_FILE` (subagent shell
   state does not persist). Beneficiary: both (either seat's index).
+  Enforcement: SOFT
 - **SessionStart sweep registration** — closes the v5.9 post-last-hook-fire
   window (strike #2, 866 paths). Local registration documented in
   OPERATIONS.md. Beneficiary: both.
+  Enforcement: SOFT
 
 All five invocable from codification; invocation counts start at the next
 session table.
@@ -730,6 +738,7 @@ session table.
   Consent: principal-directed (capacity audit, 2026-06-13). Does NOT relax
   production-code verification — Lane V / Rule #9 per-commit checks unchanged.
   Note: this is the corpus's first depth-CAP rule; it reduces protocol work.
+  Enforcement: SOFT
 
 ## 2026-06-14 addendum — Rule #23 async-split (Lever #7, capacity audit `wf_6be2ee18-f4b`)
 
@@ -743,6 +752,7 @@ session table.
   basis: a Tier A co-sign caught a domain-specific regression the brief's caller-grep missed; a scope-awareness ACK was Tier B
   and round-tripped in <10min. Body in four-seat-extension.md §6. Beneficiary: both
   (unblocks cross-pair throughput without weakening scope-determining review).
+  Enforcement: SOFT
 
 ## 2026-06-16 addendum — Codex live-protocol state rules (user-directed)
 
@@ -762,45 +772,57 @@ hardening pass.
   coordinator handoff/routing turns where unread counts changed during the
   session; the user explicitly corrected the process to "always read mail" and
   later to "alway check mail codify it".
+  Enforcement: SOFT
 - **R-CODEX-CONSOLIDATE** — cross-seat coordinator routing should be one
   consolidated `coordinator-to-all` task-board event naming every seat's task,
   unread/cursor context, lock/push/spend status, allowed write set, and expected
   output. Basis: `e6205050 coord(route): notify wave2 seat tasks`, which avoided
   four divergent seat-specific task messages.
+  Enforcement: SOFT
 - **R-CODEX-RECEIPT** — after a consolidated task-board event, verify receipt
   with `seat_status.py <seat> --wave <N>` for each live seat; receipt proves
   mailbox/cursor state, not completion of assigned work. Basis: the post-route
   refresh showed a split board (`director=0`, `operator=3`, `director2=1`,
   `operator2=1`) after `e6205050`.
+  Enforcement: SOFT
 - **R-CODEX-INDEX** — ordinary git/pytest commands run with
   `env -u GIT_INDEX_FILE`; coordinator-only docs/mailbox/log commits in a dirty
   shared index use a scoped temporary index and staged-scope inspection. Basis:
   the PreToolUse hook blocked a command containing `git read-tree HEAD` and
   `git status --short` while `GIT_INDEX_FILE` was set.
+  Enforcement: SOFT
 - **R-CODEX-SEATINDEX** — for live-seat cursor-only consumes after `HEAD` moved,
   refresh the seat-local index to `HEAD` and verify the staged scope is only
   `M coordination/mailbox/seen/<seat>.txt`. If there is intentional staged work,
   reconcile deliberately instead of blindly resetting. Basis: stale seat-local
   indexes produced bogus deletion scope after newer mailbox files landed.
+  Enforcement: SOFT
 - **R-CODEX-NOLOCK** — when push, pod spend, paid API spend, or lock-claim side
   effects are not user-authorized, route eligible no-lock work first or stop for
   authorization. Basis: Wave 2 task-board routing selected the no-lock checkpoint
   cluster while HTTP and `auto_approve.py` rows remained push/lock-gated.
+  Enforcement: SOFT
 - **R-CODEX-HANDOFF** — a bare `handoff` request means a narrow state-transfer
   artifact from live evidence, not invented implementation, verification,
   inventory churn, or mailbox noise. Basis: repeated Content repo handoff turns
   where stale snapshots and broad staging were the primary risk.
+  Enforcement: SOFT
 - **R-CODEX-LEARN** — when a live protocol observation would improve capacity,
   efficacy, or efficiency, preserve it as durable memory if the user has
   authorized memory updates; if broadly reusable, codify it in the relevant
   protocol docs/skills with evidence. Basis: user-principal explicitly asked to
   keep such observations in memory and then to turn those rules into codified
   state.
+  Enforcement: SOFT
 
 - **R-HOT-TREE** — Never trust a refs snapshot older than your last step. The HEAD can move multiple times during a single burst of work. Always execute `git log --oneline -3` and check the latest mailbox events right before writing your commit or making a gate decision. Basis: Session-12 (ADR-027) where the shared tree HEAD moved 12x under the coordinator, leading to potential stale contexts.
+  Enforcement: SOFT
 - **R-WIP-POLLUTION** — Do NOT run auto-fix scripts (like `check_doc_claims.py --fix`) mid-burst over a peer's uncommitted WIP. The lane owner is strictly responsible for fixing anchors upon touch. Always use `env -u GIT_INDEX_FILE` and strict pathspecs when staging commits. Basis: Session-12 (ADR-027) where transient peer WIP almost triggered an accidental overwrite of the architecture doc.
+  Enforcement: SOFT
 - **R-GATE-EVIDENCE** — Do not cite `wave_gate_check` output alone as `R-EVIDENCE`. The gate script reads the inventory string, it does not execute tests. To claim correctness, the coordinator MUST cite the underlying executed regression pins or the operator's formal GO event. Basis: Session-12 (ADR-027) critique where the wave gate was incorrectly treated as a correctness proof.
+  Enforcement: HARD — `scripts/check_go_schema.py` verifies that GO verification-report events carry verdict + evidence command/output + SHA, and fails GO reports whose only evidence is `wave_gate_check` output with no pytest/runxfail pin re-execution.
 - **R-VERIFY-THEN-PUSH** — Never push pre-GO. Pushing unverified fixes risks NITS arriving directly on the remote origin, fracturing the verification history. Always wait for the operator's verification GO before executing the push. Basis: Session-12 where a `web_research` fix pushed pre-GO (per user override) came back as NITS on origin, realizing the exact risk verify-then-push prevents.
+  Enforcement: SOFT
 
 ## Retirement criteria
 
