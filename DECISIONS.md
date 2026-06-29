@@ -108,3 +108,48 @@ wired into smoke/CI in task A-WIRE.
 - Adopters must bump the `*Last verified:*` stamp on every substantive ARCHITECTURE.md
   edit — a small but non-zero friction increase for truthful updates.
 - Verify-then-push machine-checkability remains deferred (see ADR-005 / task A7).
+
+---
+
+## ADR-004: Python runtime floor
+
+**Status:** Accepted
+
+**Context:**
+`pyproject.toml` pinned `requires-python = ">=3.13"`, a steep adoption bar for a
+governance-OS bundle that uses only stdlib plus two third-party dependencies. All
+three wave-1 scouting audits flagged the floor as unnecessarily restrictive. An
+exhaustive grep of all first-party `*.py` files was required before lowering.
+
+**Decision:**
+Lower `requires-python` from `">=3.13"` to `">=3.11"`. Grep across every
+`scripts/*.py`, `threeway/*.py`, and `tests/**/*.py` file confirmed zero usage of
+3.12-/3.13-only features: `itertools.batched`, `typing.override`/`@override`,
+PEP 695 type-alias (`type X = ...`) or generic (`def f[T]`, `class C[T]`) syntax,
+`typing.ReadOnly`, `typing.TypeIs`, `warnings.deprecated`, and
+`sys.version_info >= (3, 12/13)` guards all returned empty results. `tomllib` (the
+sole stdlib import that could have blocked lowering) has been available since 3.11.
+
+Grep evidence (task A5, 2026-06-30):
+
+```
+$ grep -rn 'itertools\.batched' --include='*.py' .               → (no output)
+$ grep -rn 'typing\.override\|@override' --include='*.py' .      → (no output)
+$ grep -rn '^type [A-Z]' --include='*.py' .                      → (no output)
+$ grep -rn 'def [a-zA-Z_]*\[' --include='*.py' .                 → (no output)
+$ grep -rn 'class [A-Z][a-zA-Z_]*\[' --include='*.py' .          → (no output)
+$ grep -rn 'except\*\|ExceptionGroup' --include='*.py' .         → (no output)
+$ grep -rn 'typing\.ReadOnly\|typing\.TypeIs\|warnings\.deprecated' --include='*.py' . → (no output)
+$ grep -rn 'sys\.version_info.*3.*1[23]' --include='*.py' .      → (no output)
+```
+
+All commands excluded `.venv/` and `__pycache__`. CI smoke (`scripts/ci_smoke.py`)
+exits 0 after the change.
+
+**Consequences:**
+- Adoption floor drops from Python 3.13 (released Oct 2024) to 3.11 (Oct 2022),
+  widening the compatible install base significantly.
+- No functional change to the code; the 3.13 CI runner in `.github/workflows/ci.yml`
+  is unchanged (matrix builds are out of scope for this task).
+- If a future change genuinely requires a 3.12/3.13-only feature, a new ADR
+  superseding this one should raise the floor back and document the specific feature.

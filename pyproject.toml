@@ -2,7 +2,7 @@
 name = "governance-os"
 version = "0.1.0"
 description = "Four-seat governance OS: coordination protocol, threeway ref-bus, and CI harness"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
