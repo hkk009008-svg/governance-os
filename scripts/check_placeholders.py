@@ -13,6 +13,7 @@ Usage:  .venv/bin/python scripts/check_placeholders.py   # exit 0 clean, 1 on an
 from __future__ import annotations
 
 import pathlib
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -22,6 +23,9 @@ ALLOWLIST_FILE = ROOT / "scripts" / "placeholder_allowlist.txt"
 
 # Canonical placeholder tokens (from TRANSFER-MANIFEST.md "## Placeholder convention").
 # Built via concatenation so this file itself does not self-trip the scan.
+# Note: TODO(_P+"PROJECT"+_S) intentionally overlaps _P+"PROJECT"+_S — a line
+# containing the former yields two violation entries (one for each token).
+# This is benign and documented in the test suite (test_all_tokens_detected).
 _P = "<"
 _S = ">"
 TOKENS: list[str] = [
@@ -36,8 +40,11 @@ TOKENS: list[str] = [
     _P + "ref" + _S,
 ]
 
-# Directories to skip entirely (build/runtime cruft + VCS).
-SKIP_DIRS: frozenset[str] = frozenset({".git", ".venv", "__pycache__", ".pytest_cache"})
+# Fallback-only: directories to skip when git ls-files is unavailable.
+# .superpowers is included so gitignored scratch does not cause false positives.
+SKIP_DIRS: frozenset[str] = frozenset(
+    {".git", ".venv", "__pycache__", ".pytest_cache", ".superpowers"}
+)
 
 
 def _load_allowlist(allowlist_file: pathlib.Path) -> frozenset[str]:
@@ -52,13 +59,45 @@ def _load_allowlist(allowlist_file: pathlib.Path) -> frozenset[str]:
     return frozenset(paths)
 
 
-def _is_text(path: pathlib.Path) -> bool:
-    """Heuristic: try to read the file as UTF-8; if it fails, treat as binary."""
+def _enumerate_files(root: pathlib.Path) -> list[pathlib.Path]:
+    """Return the list of files to scan.
+
+    Preferred strategy: ``git ls-files --cached --others --exclude-standard``
+    run from *root*.  This enumerates tracked files plus untracked-but-NOT-ignored
+    files, honouring ``.gitignore`` / ``.git/info/exclude`` automatically.
+    Ignored scratch directories (``.superpowers/``, etc.) are therefore excluded
+    without a hardcoded denylist.
+
+    Fallback (when *root* is not a git checkout): filesystem walk skipping
+    SKIP_DIRS.  The fallback also skips ``.superpowers/`` explicitly.
+    """
     try:
-        path.read_text(encoding="utf-8", errors="strict")
-        return True
-    except (UnicodeDecodeError, PermissionError):
-        return False
+        result = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            cwd=str(root),
+            capture_output=True,
+            check=True,
+        )
+        raw = result.stdout
+        paths = []
+        for rel in raw.split(b"\x00"):
+            if not rel:
+                continue
+            p = root / rel.decode("utf-8", errors="replace")
+            if p.is_file():
+                paths.append(p)
+        return sorted(paths)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # Fallback: filesystem walk (not a git repo, or git not available).
+        files = []
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            parts = path.relative_to(root).parts
+            if any(p in SKIP_DIRS for p in parts):
+                continue
+            files.append(path)
+        return files
 
 
 def run(root: pathlib.Path = ROOT,
@@ -73,23 +112,21 @@ def run(root: pathlib.Path = ROOT,
     allowed = _load_allowlist(allowlist_file)
 
     violations: list[str] = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file():
-            continue
-        # Skip excluded directories.
-        parts = path.relative_to(root).parts
-        if any(p in SKIP_DIRS for p in parts):
-            continue
+    for path in _enumerate_files(root):
         rel = path.relative_to(root).as_posix()
         if rel in allowed:
             continue
-        if not _is_text(path):
-            continue
+        # Read bytes once; skip binary files; decode for line scanning.
         try:
-            text_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            raw_bytes = path.read_bytes()
         except PermissionError:
             continue
-        for lineno, line in enumerate(text_lines, 1):
+        try:
+            text = raw_bytes.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            # Not valid UTF-8 text — treat as binary and skip.
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
             for token in TOKENS:
                 if token in line:
                     violations.append(f"{rel}:{lineno}: {token}")

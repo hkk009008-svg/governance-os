@@ -5,6 +5,10 @@ Hermetic: uses tmp_path to build isolated file trees; does NOT depend on live re
 from __future__ import annotations
 
 import pathlib
+import shutil
+import subprocess
+
+import pytest
 
 import check_placeholders as cp
 
@@ -122,6 +126,74 @@ def test_comment_lines_in_allowlist_ignored(tmp_path: pathlib.Path):
     violations = cp.run(root=tmp_path, allowlist_file=allowlist)
     assert any("notes.md" in v for v in violations)
 
+
+# ---------------------------------------------------------------------------
+# Gitignored-scratch test (hermetic, requires git in PATH)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not available in PATH")
+def test_gitignored_scratch_excluded(tmp_path: pathlib.Path):
+    """Files in a gitignored directory must NOT trigger violations (git-aware enumeration).
+
+    Setup:
+    - git init tmp_path
+    - .gitignore ignoring scratch/
+    - scratch/x.md contains a token  → scan must PASS
+    - tracked/bad.md contains a token → scan must FAIL
+    """
+    # Initialise a bare git repo in tmp_path.
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    # Configure minimal identity so git doesn't complain.
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.name", "Test"],
+        check=True, capture_output=True,
+    )
+
+    # Create .gitignore that ignores scratch/.
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text("scratch/\n")
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "add", "--", ".gitignore"],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-m", "init"],
+        check=True, capture_output=True,
+    )
+
+    # Put a token in ignored scratch — scan must PASS.
+    scratch_file = tmp_path / "scratch" / "x.md"
+    _write(scratch_file, f"ignored token: {TOKEN_PROJECT}\n")
+
+    allowlist = tmp_path / "allowlist.txt"
+    allowlist.write_text("")
+
+    violations_clean = cp.run(root=tmp_path, allowlist_file=allowlist)
+    assert violations_clean == [], (
+        f"Expected no violations (scratch is gitignored), got: {violations_clean}"
+    )
+
+    # Now add a token in a tracked non-allowlisted file — scan must FAIL.
+    tracked_file = tmp_path / "tracked" / "bad.md"
+    _write(tracked_file, f"token here: {TOKEN_PROJECT}\n")
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "add", "--", "tracked/bad.md"],
+        check=True, capture_output=True,
+    )
+
+    violations_fail = cp.run(root=tmp_path, allowlist_file=allowlist)
+    assert any("tracked/bad.md" in v for v in violations_fail), (
+        f"Expected violation in tracked/bad.md, got: {violations_fail}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Live-repo regression (deterministic now that enumeration is git-aware)
+# ---------------------------------------------------------------------------
 
 def test_main_returns_zero_on_live_repo():
     """main() must return 0 on the actual repo (all current tokens are allowlisted)."""
