@@ -6,6 +6,19 @@
 # Single source of truth for the smoke invariants: scripts/ci_smoke.py — if the
 # invariants change, update that script + ARCHITECTURE.md §15 together.
 #
+# Gates run by `python scripts/ci_smoke.py` (smoke job):
+#   - Doc-anchor drift (check_doc_claims on ARCHITECTURE.md; hard-fail local, warn CI)
+#   - Coordination-state (check_coordination; FATAL hard-fails local, warns CI)
+#   - Anti-ceremony (check_no_ceremony; hard-fail local + CI — ADR-028)
+#   - Reviewer-result schema (consume_reviewer_result smoke_check — ADR-032)
+#   - Adoption-placeholder (check_placeholders; hard-fail local + CI — ADR-002)
+#   - GO evidence validator (check_go_schema; hard-fail local + CI)
+#   - ARCHITECTURE Last-verified (check_arch_freshness; inert unless ARCHITECTURE.md
+#     changed vs merge-base; fetch-depth: 0 already set for merge-base resolution)
+#
+# Tests run by `pytest tests/unit` (pytest-unit job):
+#   - Unit tests for all governance gate scripts (including A1/A2/A3 gates above)
+#
 # Scope intentionally NOT included (per the 2026-05-24 Session 1 brief):
 #   - Linting (ruff, eslint)        - Deployment / release / changelog workflows
 #   - Code coverage reporting       - Matrix builds

@@ -22,6 +22,10 @@ Two halves run in sequence:
     - Anti-ceremony gate: check_no_ceremony (hard-fail local + CI — ADR-028).
     - Reviewer-result schema validation: consume_reviewer_result smoke_check
       (schema-validation only; never re-runs pytest — ADR-032).
+    - Adoption-placeholder gate: check_placeholders (hard-fail local + CI — ADR-002).
+    - GO verification-report evidence validator: check_go_schema (hard-fail local + CI).
+    - ARCHITECTURE Last-verified gate: check_arch_freshness (inert unless
+      ARCHITECTURE.md changed vs merge-base; hard-fail when it fires).
 
 Usage:
     .venv/bin/python scripts/ci_smoke.py    # local
@@ -208,6 +212,87 @@ def main() -> int:
     _consume_exit = _crr.smoke_check(_repo_root)
     if _consume_exit:
         return _consume_exit
+
+    # ADR-002: adoption-placeholder gate (check_placeholders). Hard-fail local + CI.
+    # Calls run() directly — NOT main() — to avoid mis-parsing ci_smoke's own argv.
+    import check_placeholders as _cp
+
+    _ph_violations = _cp.run(_repo_root)
+    if _ph_violations:
+        _ph_n = len(_ph_violations)
+        print(
+            f"\nPLACEHOLDER CHECK — FAIL: {_ph_n} violation(s): "
+            f"placeholder token(s) found outside allowlist\n"
+        )
+        for _v in _ph_violations:
+            print(f"  ! {_v}")
+        print(
+            "\nTo fix: either fill in the placeholder or add the file path to "
+            "scripts/placeholder_allowlist.txt."
+        )
+        return 1
+
+    # GO verification-report evidence validator (check_go_schema). Hard-fail local + CI.
+    # Calls _scan_dir() + go_report_violations() directly — NOT main().
+    import check_go_schema as _cgs
+
+    _go_named = _cgs._scan_dir(_cgs.DEFAULT_MAILBOX)
+    _go_violations = _cgs.go_report_violations(_go_named)
+    if _go_violations:
+        _go_total = sum(1 for _, body in _go_named if _cgs._VERDICT_GO_RE.search(body))
+        print(
+            f"\nGO-SCHEMA CHECK — FAIL: {len(_go_violations)} violation(s) "
+            f"in {_go_total} GO report(s)\n"
+        )
+        for _v in _go_violations:
+            print(f"  ! {_v}")
+        return 1
+
+    # ARCHITECTURE Last-verified gate (check_arch_freshness). Inert unless
+    # ARCHITECTURE.md changed vs merge-base; self-degrades if git/base unavailable.
+    # Calls the underlying pure function directly — NOT main().
+    import check_arch_freshness as _caf
+
+    _af_base = _caf._resolve_base()
+    if _af_base is None:
+        print(
+            "ARCH-FRESHNESS CHECK — git unavailable or no base ref found; "
+            "skipping (exit 0)."
+        )
+    elif not _caf._arch_in_changeset(_af_base):
+        print(
+            "ARCH-FRESHNESS CHECK — ARCHITECTURE.md not in changeset; "
+            "gate inert (exit 0)."
+        )
+    else:
+        _af_old = _caf._show_at_base(_af_base)
+        if _af_old is None:
+            print(
+                "ARCH-FRESHNESS CHECK — ARCHITECTURE.md is a new file at this base; "
+                "gate inert (exit 0)."
+            )
+        elif not _caf.ARCH_FILE.exists():
+            print(
+                "ARCH-FRESHNESS CHECK — ARCHITECTURE.md absent in working tree; "
+                "gate inert (exit 0)."
+            )
+        else:
+            _af_new = _caf.ARCH_FILE.read_text(encoding="utf-8", errors="replace")
+            if _caf.arch_freshness_violation(_af_old, _af_new):
+                print(
+                    "ARCH-FRESHNESS CHECK — FAIL\n"
+                    "\n"
+                    "  ARCHITECTURE.md body changed but no *Last verified:* stamp was bumped.\n"
+                    "\n"
+                    "  Remedy: update the *Last verified: <YYYY-MM-DD> @ <git-sha>* line(s)\n"
+                    "  (header ~line 9 and footer ~last line) to today's date and your\n"
+                    "  commit SHA before pushing.\n"
+                )
+                return 1
+            else:
+                print(
+                    "ARCH-FRESHNESS CHECK — PASS (stamp bump detected or body unchanged)."
+                )
 
     print("OK")
     return 0
