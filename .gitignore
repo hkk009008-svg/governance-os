@@ -91,3 +91,6 @@ STATE.md
 
 # Subagent-driven-development scratch ledger (skill-owned, never committed)
 .superpowers/
+
+# Codex hook runtime state (written on every codex run; never committed)
+.codex/hooks/.last-state-head
