@@ -1,0 +1,189 @@
+"""Unit tests for scripts/check_arch_freshness.py — Last-verified stamp gate.
+
+Tests the pure `arch_freshness_violation(old_text, new_text) -> bool` helper.
+No git fixture needed — the function is hermetic over string inputs.
+
+Cases from brief:
+  (a) body changed, stamp line(s) unchanged → violation True (would fail CI)
+  (b) body changed AND a *Last verified:* line bumped → False (passes)
+  (c) only the stamp changed, body identical → False (no false positive)
+  (d) nothing changed → False
+"""
+from __future__ import annotations
+
+import check_arch_freshness as caf
+
+
+# ---------------------------------------------------------------------------
+# Shared fixture text
+# ---------------------------------------------------------------------------
+
+_BASE = """\
+# ARCHITECTURE.md — Governance OS
+
+*Last verified: <date> @ <sha>*
+
+---
+
+## §1 Purpose
+
+A multi-agent governance operating system.
+
+---
+
+## §2 Topology
+
+Six subsystems interconnect here.
+
+*Last verified: <YYYY-MM-DD> @ <git-sha>*
+"""
+
+_BODY_CHANGED = """\
+# ARCHITECTURE.md — Governance OS
+
+*Last verified: <date> @ <sha>*
+
+---
+
+## §1 Purpose
+
+A multi-agent governance operating system — updated description.
+
+---
+
+## §2 Topology
+
+Six subsystems interconnect here.
+
+*Last verified: <YYYY-MM-DD> @ <git-sha>*
+"""
+
+_BODY_CHANGED_STAMP_BUMPED = """\
+# ARCHITECTURE.md — Governance OS
+
+*Last verified: 2026-06-30 @ abc1234*
+
+---
+
+## §1 Purpose
+
+A multi-agent governance operating system — updated description.
+
+---
+
+## §2 Topology
+
+Six subsystems interconnect here.
+
+*Last verified: 2026-06-30 @ abc1234*
+"""
+
+_ONLY_STAMP_CHANGED = """\
+# ARCHITECTURE.md — Governance OS
+
+*Last verified: 2026-06-30 @ abc1234*
+
+---
+
+## §1 Purpose
+
+A multi-agent governance operating system.
+
+---
+
+## §2 Topology
+
+Six subsystems interconnect here.
+
+*Last verified: 2026-06-30 @ abc1234*
+"""
+
+
+# ---------------------------------------------------------------------------
+# (a) body changed, stamp unchanged → violation
+# ---------------------------------------------------------------------------
+
+def test_body_changed_stamp_unchanged_is_violation():
+    """Body changed but both stamp lines identical → violation (True)."""
+    result = caf.arch_freshness_violation(_BASE, _BODY_CHANGED)
+    assert result is True, (
+        "Expected violation when body changed but stamp unchanged"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (b) body changed AND stamp bumped → no violation
+# ---------------------------------------------------------------------------
+
+def test_body_changed_stamp_bumped_is_clean():
+    """Body changed AND stamp bumped → passes (False)."""
+    result = caf.arch_freshness_violation(_BASE, _BODY_CHANGED_STAMP_BUMPED)
+    assert result is False, (
+        "Expected no violation when body changed and stamp was also bumped"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (c) only stamp changed, body identical → no violation (no false positive)
+# ---------------------------------------------------------------------------
+
+def test_only_stamp_changed_no_false_positive():
+    """Only the stamp line(s) changed, body identical → no violation (False)."""
+    result = caf.arch_freshness_violation(_BASE, _ONLY_STAMP_CHANGED)
+    assert result is False, (
+        "Expected no false positive when only the stamp changed"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (d) nothing changed → no violation
+# ---------------------------------------------------------------------------
+
+def test_nothing_changed_is_clean():
+    """Identical old and new text → no violation (False)."""
+    result = caf.arch_freshness_violation(_BASE, _BASE)
+    assert result is False, (
+        "Expected no violation when nothing changed"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+def test_single_stamp_line_bumped():
+    """Works correctly when only one stamp line is present."""
+    old = "# Arch\n\n*Last verified: <date> @ <sha>*\n\nSome body text.\n"
+    new_bumped = "# Arch\n\n*Last verified: 2026-06-30 @ abc1234*\n\nSome body text.\n"
+    assert caf.arch_freshness_violation(old, new_bumped) is False
+
+
+def test_single_stamp_not_bumped_body_changed():
+    """Single stamp line not bumped, body changed → violation."""
+    old = "# Arch\n\n*Last verified: <date> @ <sha>*\n\nOriginal body.\n"
+    new_not_bumped = "# Arch\n\n*Last verified: <date> @ <sha>*\n\nChanged body.\n"
+    assert caf.arch_freshness_violation(old, new_not_bumped) is True
+
+
+def test_empty_texts_no_violation():
+    """Two empty texts → no violation."""
+    assert caf.arch_freshness_violation("", "") is False
+
+
+def test_no_stamp_lines_body_changed_is_violation():
+    """If neither old nor new have stamp lines but body changed → violation.
+
+    Both stamp sequences are empty (equal), body differs → True.
+    This is the correct behaviour: absence of a stamp is not a bump.
+    """
+    old = "# Arch\n\nOriginal text.\n"
+    new = "# Arch\n\nChanged text.\n"
+    assert caf.arch_freshness_violation(old, new) is True
+
+
+def test_partial_stamp_bump_counts():
+    """Bumping even one stamp line counts as a stamp change → no violation."""
+    old = "# Arch\n\n*Last verified: <date> @ <sha>*\n\nBody.\n\n*Last verified: <YYYY-MM-DD> @ <git-sha>*\n"
+    new = "# Arch\n\n*Last verified: 2026-06-30 @ abc1234*\n\nBody changed.\n\n*Last verified: <YYYY-MM-DD> @ <git-sha>*\n"
+    # One stamp bumped, other unchanged — stamp list differs → no violation
+    assert caf.arch_freshness_violation(old, new) is False

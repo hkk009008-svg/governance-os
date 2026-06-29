@@ -80,3 +80,31 @@ wired into CI smoke in task A-WIRE.
 - Filling a skeleton now requires a mechanical step: remove its path from the
   allowlist, confirm the scan is still clean, then commit.
 - An empty allowlist + clean scan is a machine-checkable definition of "fully bound."
+
+---
+
+## ADR-003: Make GO-evidence and ARCHITECTURE-freshness machine-checkable
+
+**Status:** Accepted
+
+**Context:**
+High-value soft rules (GO reports must carry real evidence; ARCHITECTURE facts must
+be re-verified when changed) were prose-only, enforced by the same class of agent
+they govern ("the enforcer is the enforced"). Agents could issue a GO citing only
+`wave_gate_check` (which reads an inventory string, not a test execution) or edit
+`ARCHITECTURE.md` without bumping its `*Last verified:*` stamp — leaving stale
+provenance on the truth layer — with no mechanical backstop.
+
+**Decision:**
+Promote them to fail-closed scripts: `scripts/check_go_schema.py` (task A2 — a GO
+verification-report must carry verdict + command/output + SHA; a GO citing only
+`wave_gate_check` fails) and `scripts/check_arch_freshness.py` (task A3 — editing
+`ARCHITECTURE.md` without bumping its `*Last verified:*` stamp fails). Both are
+wired into smoke/CI in task A-WIRE.
+
+**Consequences:**
+- GO reports and ARCHITECTURE edits now have teeth in CI; ceremony-only evidence
+  is blocked at the gate rather than caught (if at all) in post-hoc review.
+- Adopters must bump the `*Last verified:*` stamp on every substantive ARCHITECTURE.md
+  edit — a small but non-zero friction increase for truthful updates.
+- Verify-then-push machine-checkability remains deferred (see ADR-005 / task A7).
