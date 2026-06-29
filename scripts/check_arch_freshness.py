@@ -32,33 +32,48 @@ ARCH_FILE = ROOT / "ARCHITECTURE.md"
 
 _STAMP_RE = re.compile(r"^\*Last verified:[^\n]*$", re.MULTILINE)
 
+# A VALID stamp payload: a real `YYYY-MM-DD @ <7-40 hex sha>`. The skeleton
+# placeholders (`<date> @ <sha>`, `<YYYY-MM-DD> @ <git-sha>`) do NOT match — only a
+# real binding edit supplies a real stamp. Searched within a `*Last verified:` line.
+_VALID_STAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}\s*@\s*[0-9a-f]{7,40}")
+
 
 # ---------------------------------------------------------------------------
 # Pure function — testable without git
 # ---------------------------------------------------------------------------
 
 def arch_freshness_violation(old_text: str, new_text: str) -> bool:
-    """Return True iff the body changed but the Last-verified stamp(s) did not.
+    """Return True iff the body changed but no NEW, VALID Last-verified stamp exists.
 
     "body changed" = the two texts differ after stripping all `*Last verified:`
-    lines.  "stamp bumped" = the set/sequence of `*Last verified:` lines differs.
+    lines.  A real bump = a `*Last verified:` line PRESENT IN ``new_text`` that (a)
+    matches the valid `YYYY-MM-DD @ <7-40 hex sha>` shape AND (b) is not byte-identical
+    to a stamp line already present in ``old_text``. Merely *changing* the stamp text
+    (to `TODO`, blank, or junk) is NOT a valid bump — it proves the line changed, not
+    that the provenance is real.
 
     Cases:
-        body changed AND stamp unchanged → True (violation)
-        body changed AND stamp changed   → False (correct bump)
-        only stamp changed, body same    → False (no false positive)
-        nothing changed                  → False
+        body changed AND no new valid stamp        → True (violation)
+        body changed AND a new valid date@sha stamp → False (correct bump)
+        body changed AND stamp bumped to junk/blank → True (violation; the new hole)
+        only stamp changed, body same              → False (no false positive)
+        nothing changed                            → False
     """
-    old_stamps = _STAMP_RE.findall(old_text)
-    new_stamps = _STAMP_RE.findall(new_text)
-
     old_body = _STAMP_RE.sub("", old_text)
     new_body = _STAMP_RE.sub("", new_text)
-
     body_changed = old_body != new_body
-    stamp_changed = old_stamps != new_stamps
+    if not body_changed:
+        return False
 
-    return body_changed and not stamp_changed
+    old_stamps = set(_STAMP_RE.findall(old_text))
+    new_stamps = _STAMP_RE.findall(new_text)
+
+    # A real bump: at least one stamp line in `new` is valid AND new (not already in old).
+    has_new_valid_stamp = any(
+        _VALID_STAMP_RE.search(s) and s not in old_stamps for s in new_stamps
+    )
+
+    return not has_new_valid_stamp
 
 
 # ---------------------------------------------------------------------------

@@ -97,8 +97,9 @@ provenance on the truth layer — with no mechanical backstop.
 
 **Decision:**
 Promote them to fail-closed scripts: `scripts/check_go_schema.py` (task A2 — a GO
-verification-report must carry verdict + command/output + SHA; a GO citing only
-`wave_gate_check` fails) and `scripts/check_arch_freshness.py` (task A3 — editing
+verification-report must carry verdict + command/output + a commit SHA (or a `logs/`
+artifact ref); a GO citing only `wave_gate_check` fails) and
+`scripts/check_arch_freshness.py` (task A3 — editing
 `ARCHITECTURE.md` without bumping its `*Last verified:*` stamp fails). Both are
 wired into smoke/CI in task A-WIRE.
 

@@ -253,6 +253,84 @@ $ .venv/bin/pytest tests/pins/ --runxfail -q
 
 
 # ---------------------------------------------------------------------------
+# False-PASS pin (F2): the bare prose word "pytest" must NOT satisfy the
+# wave_gate sub-rule — only a real execution signal does.
+# ---------------------------------------------------------------------------
+
+_GO_WAVE_GATE_PROSE_PYTEST = """\
+# Operator → Director: Lane V verification report — commit `cafe123`
+
+VERDICT: GO
+
+## Evidence
+$ python scripts/wave_gate_check.py
+→ GATE MET — all rows verified
+
+Note: I did not run pytest this round; the wave gate is green.
+
+## Findings
+"""
+
+
+def test_go_wave_gate_with_prose_pytest_word_is_a_violation():
+    """The bare word 'pytest' in prose must NOT defeat the wave_gate sub-rule (F2 pin)."""
+    viol = cgs.go_report_violations([("wave-gate-prose-pytest.md", _GO_WAVE_GATE_PROSE_PYTEST)])
+    wave_viol = [v for v in viol if "wave_gate_check" in v]
+    assert wave_viol, (
+        f"Bare prose 'pytest' should not satisfy the sub-rule; expected a "
+        f"wave_gate violation, got: {viol}"
+    )
+
+
+def test_go_wave_gate_with_pytest_result_marker_passes():
+    """A real pytest RESULT marker (`12 passed`) satisfies the sub-rule (no over-fix)."""
+    body = """\
+# Operator → Director: Lane V verification report — commit `cafe123`
+
+VERDICT: GO
+
+## Evidence
+$ python scripts/wave_gate_check.py
+→ GATE MET — all rows verified
+
+$ .venv/bin/pytest tests/ -q
+→ 12 passed in 1.2s
+
+## Findings
+"""
+    viol = cgs.go_report_violations([("wave-gate-result-marker.md", body)])
+    wave_viol = [v for v in viol if "wave_gate_check" in v]
+    assert wave_viol == [], f"A real pytest result marker should pass; got: {wave_viol}"
+
+
+# ---------------------------------------------------------------------------
+# False-PASS pins (F3): off-form VERDICT tokens must be gated, not fail-open.
+# Before the fix, `VERDICT: GO (pending)` / `**VERDICT: GO**` matched no regex →
+# treated as not-a-GO → skipped ALL evidence checks (silent fail-open).
+# ---------------------------------------------------------------------------
+
+def test_go_pending_suffix_is_gated():
+    """`VERDICT: GO (pending)` with no evidence is a GO and must produce violations (F3 pin)."""
+    body = "VERDICT: GO (pending)\n\n(no Evidence section, no SHA)\n"
+    viol = cgs.go_report_violations([("go-pending.md", body)])
+    assert viol, f"Suffixed GO must be gated (not fail-open); got: {viol}"
+
+
+def test_go_bold_decorated_is_gated():
+    """`**VERDICT: GO**` with no evidence is a GO and must produce violations (F3 pin)."""
+    body = "**VERDICT: GO**\n\n(no Evidence section, no SHA)\n"
+    viol = cgs.go_report_violations([("go-bold.md", body)])
+    assert viol, f"Decorated GO must be gated (not fail-open); got: {viol}"
+
+
+def test_verdict_gonzo_is_not_gated():
+    """`VERDICT: GONZO` must NOT be treated as a GO (the \\bGO\\b boundary rejects it)."""
+    body = "VERDICT: GONZO\n\n(no evidence — should not be gated)\n"
+    viol = cgs.go_report_violations([("gonzo.md", body)])
+    assert viol == [], f"GONZO must not be gated as a GO; got: {viol}"
+
+
+# ---------------------------------------------------------------------------
 # NITS and FAIL verdicts are NOT gated
 # ---------------------------------------------------------------------------
 

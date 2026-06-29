@@ -9,8 +9,8 @@
 # Gates run by `python scripts/ci_smoke.py` (smoke job):
 #   - Doc-anchor drift (check_doc_claims on ARCHITECTURE.md; hard-fail local, warn CI)
 #   - Coordination-state (check_coordination; FATAL hard-fails local, warns CI)
-#   - Anti-ceremony (check_no_ceremony; hard-fail local + CI — ADR-028)
-#   - Reviewer-result schema (consume_reviewer_result smoke_check — ADR-032)
+#   - Anti-ceremony (check_no_ceremony; hard-fail local + CI)
+#   - Reviewer-result schema (consume_reviewer_result smoke_check)
 #   - Adoption-placeholder (check_placeholders; hard-fail local + CI — ADR-002)
 #   - GO evidence validator (check_go_schema; hard-fail local + CI)
 #   - ARCHITECTURE Last-verified (check_arch_freshness; inert unless ARCHITECTURE.md

@@ -260,7 +260,7 @@ linking scheme inside an implementer.
 
 **Action:**
 1. Check whether a commit↔GO convention exists (read `coordination/mailbox/kinds.txt`
-   + a real `verification-report`). 
+   + a real `verification-report`).
 2. If it does → implement `scripts/check_verify_then_push.py` as a pre-push hook:
    given the commits to be pushed, if any touch production paths and no
    matching-SHA GO event exists, block. Ship a test.

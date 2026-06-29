@@ -182,8 +182,50 @@ def test_no_stamp_lines_body_changed_is_violation():
 
 
 def test_partial_stamp_bump_counts():
-    """Bumping even one stamp line counts as a stamp change → no violation."""
+    """Bumping even one stamp line to a VALID date@sha counts → no violation."""
     old = "# Arch\n\n*Last verified: <date> @ <sha>*\n\nBody.\n\n*Last verified: <YYYY-MM-DD> @ <git-sha>*\n"
     new = "# Arch\n\n*Last verified: 2026-06-30 @ abc1234*\n\nBody changed.\n\n*Last verified: <YYYY-MM-DD> @ <git-sha>*\n"
-    # One stamp bumped, other unchanged — stamp list differs → no violation
+    # One stamp bumped to a valid date@sha, other unchanged → no violation
     assert caf.arch_freshness_violation(old, new) is False
+
+
+# ---------------------------------------------------------------------------
+# False-PASS pins (F1): a junk/blank/TODO stamp "bump" must NOT satisfy the gate.
+# Before the fix, any *change* to the stamp line passed; now the new stamp must
+# match a real `YYYY-MM-DD @ <7-40 hex sha>` shape.
+# ---------------------------------------------------------------------------
+
+def test_body_changed_stamp_bumped_to_TODO_is_violation():
+    """Bumping the stamp to `TODO` while changing the body → violation (False-PASS pin)."""
+    old = "# Arch\n\n*Last verified: <date> @ <sha>*\n\nOriginal body.\n"
+    new = "# Arch\n\n*Last verified: TODO*\n\nChanged body.\n"
+    assert caf.arch_freshness_violation(old, new) is True
+
+
+def test_body_changed_stamp_blanked_is_violation():
+    """Blanking the stamp payload (`@ `) while changing the body → violation (pin)."""
+    old = "# Arch\n\n*Last verified: <date> @ <sha>*\n\nOriginal body.\n"
+    new = "# Arch\n\n*Last verified: @ *\n\nChanged body.\n"
+    assert caf.arch_freshness_violation(old, new) is True
+
+
+def test_body_changed_stamp_junk_is_violation():
+    """Bumping the stamp to arbitrary junk while changing the body → violation (pin)."""
+    old = "# Arch\n\n*Last verified: <date> @ <sha>*\n\nOriginal body.\n"
+    new = "# Arch\n\n*Last verified: junk*\n\nChanged body.\n"
+    assert caf.arch_freshness_violation(old, new) is True
+
+
+def test_body_changed_real_date_at_sha_is_clean():
+    """A real `YYYY-MM-DD @ <sha>` bump with a body change → no violation (must pass)."""
+    old = "# Arch\n\n*Last verified: <date> @ <sha>*\n\nOriginal body.\n"
+    new = "# Arch\n\n*Last verified: 2026-06-30 @ 7bfde17*\n\nChanged body.\n"
+    assert caf.arch_freshness_violation(old, new) is False
+
+
+def test_skeleton_placeholder_is_not_a_valid_stamp():
+    """The skeleton `<date> @ <sha>` / `<YYYY-MM-DD> @ <git-sha>` placeholders do NOT
+    count as a valid stamp — a body change with only a placeholder is still a violation."""
+    old = "# Arch\n\n*Last verified: 2026-01-01 @ deadbee*\n\nOriginal body.\n"
+    new = "# Arch\n\n*Last verified: <YYYY-MM-DD> @ <git-sha>*\n\nChanged body.\n"
+    assert caf.arch_freshness_violation(old, new) is True

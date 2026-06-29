@@ -41,8 +41,12 @@ DEFAULT_MAILBOX = ROOT / "coordination" / "mailbox" / "sent"
 
 # --- Patterns (v6.0 verification-report-format.md) --------------------------
 
-# VERDICT token in the body.
-_VERDICT_GO_RE = re.compile(r"^\s*VERDICT:\s*GO\s*$", re.MULTILINE)
+# VERDICT token in the body. Broadened to gate decorated/suffixed GO lines
+# (`**VERDICT: GO**`, `VERDICT: GO (pending)`) so an off-form GO cannot silently
+# fail-open past all evidence checks. The `\bGO\b` word boundary still EXCLUDES
+# `VERDICT: NITS`, `VERDICT: FAIL`, and `VERDICT: GONZO` (GONZO is rejected because
+# the boundary requires a non-word char after `GO`).
+_VERDICT_GO_RE = re.compile(r"^\s*\**\s*VERDICT:\s*GO\b", re.MULTILINE)
 
 # ## Evidence section (must be present).
 _EVIDENCE_SECTION_RE = re.compile(r"^##\s+Evidence\b", re.MULTILINE)
@@ -60,9 +64,18 @@ _SHA_H1_RE = re.compile(r"commit\s+`[0-9a-f]{7,40}`", re.IGNORECASE)
 # Fallback: any `logs/` artifact reference anywhere in the body.
 _LOGS_REF_RE = re.compile(r"\blogs/\S+")
 
-# Sub-rule: wave_gate_check cited in evidence but no pytest/--runxfail output.
+# Sub-rule: wave_gate_check cited in evidence but no REAL pytest execution signal.
+# The bare prose word "pytest" (e.g. "I did not run pytest") must NOT count — only a
+# genuine execution marker does: a `--runxfail` token inside a `$ ` command line, OR a
+# pytest RESULT marker (`\d+ passed/failed/xpassed/xfailed/error`).
 _WAVE_GATE_RE = re.compile(r"\bwave_gate_check\b")
-_PYTEST_EVIDENCE_RE = re.compile(r"--runxfail|\bpytest\b")
+_PYTEST_CMD_RUNXFAIL_RE = re.compile(r"^\s*\$\s+.*--runxfail\b", re.MULTILINE)
+_PYTEST_RESULT_RE = re.compile(r"\b\d+\s+(passed|failed|xpassed|xfailed|error)\b")
+
+
+def _has_real_pytest_evidence(text: str) -> bool:
+    """True iff `text` contains a real pytest execution signal (not the bare word)."""
+    return bool(_PYTEST_CMD_RUNXFAIL_RE.search(text) or _PYTEST_RESULT_RE.search(text))
 
 
 def _extract_evidence_block(body: str) -> str:
@@ -108,8 +121,9 @@ def go_report_violations(
             if not _OUT_LINE_RE.search(evidence_block):
                 missing.append("missing `→ <result>` output line in ## Evidence")
 
-            # Sub-rule R-GATE-EVIDENCE: wave_gate_check without pytest/--runxfail is ceremony.
-            if _WAVE_GATE_RE.search(evidence_block) and not _PYTEST_EVIDENCE_RE.search(evidence_block):
+            # Sub-rule R-GATE-EVIDENCE: wave_gate_check without REAL pytest execution
+            # evidence is ceremony. The bare prose word "pytest" does not count.
+            if _WAVE_GATE_RE.search(evidence_block) and not _has_real_pytest_evidence(evidence_block):
                 missing.append(
                     "`wave_gate_check` cited in Evidence but no pytest/--runxfail output — "
                     "wave_gate_check reads an inventory string, not a test execution; "
