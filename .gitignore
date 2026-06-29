@@ -85,3 +85,6 @@ STATE.md
 .env
 .env.local
 .env.*.local
+
+# pytest
+.pytest_cache/

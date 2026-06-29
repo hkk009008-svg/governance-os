@@ -6,6 +6,9 @@ requires-python = ">=3.13"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Root packages (threeway/) and the scripts/ modules are importable by bare name
+# in tests (mirrors how ci_smoke.py runs: scripts/ on sys.path[0] + repo root).
+pythonpath = [".", "scripts"]
 markers = [
     # Used by the create-regression-pin discipline (R-VERIFY-TIER):
     # pin a confirmed defect so CI re-verifies it, not the next agent session.

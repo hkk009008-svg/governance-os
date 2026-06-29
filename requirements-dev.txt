@@ -1,0 +1,4 @@
+# Dev / CI dependencies: the governance runtime deps plus the test runner.
+# CI installs this; production installs requirements-governance.txt only.
+-r requirements-governance.txt
+pytest>=8.0

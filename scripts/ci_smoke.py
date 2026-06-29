@@ -45,13 +45,49 @@ if _REPO_ROOT not in sys.path:
 
 
 def _project_smoke() -> int:
-    """Project-specific runtime smoke invariants (stub).
+    """Project-runtime smoke: the governance OS's own load-bearing invariants.
 
-    Replace this function body with runtime checks appropriate to the new
-    project: verify that key imports succeed, singletons are stable, and
-    critical settings plumb through correctly.
+    This repo's product IS the governance OS, so the runtime smoke asserts the
+    OS's own code imports cleanly and its core singletons/vocabularies are stable:
+      - the signed-bus package + its RFC-8785 canonicalizer import and round-trip,
+      - the load-bearing kind set is a subset of the full kind vocabulary,
+      - the seat roster (single source of truth) has the expected shape and the
+        markdown mailbox kind registry parses from coordination/mailbox/kinds.txt.
     """
-    # TODO(<PROJECT>): add this project runtime smoke invariants here (imports succeed, singletons stable, settings plumb through).
+    failures: list[str] = []
+
+    # 1. Signed-bus package imports cleanly + canonicalizer is key-order-stable.
+    try:
+        import threeway
+        from threeway.canon import canonicalize
+        from threeway import envelope, keys, reducer, gate  # noqa: F401 — import-cleanliness
+        if canonicalize({"b": 1, "a": 2}) != canonicalize({"a": 2, "b": 1}):
+            failures.append("canonicalize is not key-order-stable (RFC-8785 broken)")
+        if not (threeway.LOAD_BEARING_KINDS <= threeway.THREEWAY_KINDS):
+            failures.append("LOAD_BEARING_KINDS is not a subset of THREEWAY_KINDS")
+        if "merge_completed" not in threeway.LOAD_BEARING_KINDS:
+            failures.append("merge_completed missing from LOAD_BEARING_KINDS")
+    except Exception as e:  # surface the real import/runtime error
+        failures.append(f"threeway import/canon failed: {e!r}")
+
+    # 2. Seat roster (single source of truth) + mailbox kind registry are stable.
+    try:
+        import protocol_mailbox as _pm
+        if not set(_pm.SEATS) >= {"director", "director2", "operator", "operator2"}:
+            failures.append(f"SEATS roster missing expected members: {_pm.SEATS!r}")
+        if not set(_pm.RECEIVING_SEATS) >= set(_pm.SEATS):
+            failures.append("RECEIVING_SEATS does not contain every SEAT")
+        if not _pm.KNOWN_KINDS:
+            failures.append("KNOWN_KINDS empty — coordination/mailbox/kinds.txt did not parse")
+    except Exception as e:
+        failures.append(f"protocol_mailbox roster failed: {e!r}")
+
+    if failures:
+        print("PROJECT SMOKE — governance-OS runtime invariants")
+        for _f in failures:
+            print(f"  ✗ {_f}")
+        return 1
+    print("PROJECT SMOKE — governance-OS runtime invariants ... OK")
     return 0
 
 
