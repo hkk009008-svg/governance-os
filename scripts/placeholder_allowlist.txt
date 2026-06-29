@@ -1,0 +1,61 @@
+# Adoption-placeholder allowlist (ADR-002)
+#
+# Files listed here MAY retain placeholder tokens (adoption markers, fill-in slots, etc.).
+# These are skeleton/transfer docs that intentionally contain adoption markers.
+#
+# ADOPTION WORKFLOW:
+#   - When you fill a skeleton, REMOVE its path from this file.
+#   - When this file is empty and `scripts/check_placeholders.py` is clean,
+#     the repo is fully bound — no skeleton placeholders remain.
+#
+# Baseline generated empirically on 2026-06-30 by running:
+#   .venv/bin/python scripts/check_placeholders.py
+# (every path that currently contains ≥1 token was added here)
+
+# Transfer / setup docs (skeleton content for adopters)
+TRANSFER-MANIFEST.md
+TRANSFER-SETUP.md
+DECISIONS.md
+
+# Governance OS doc skeletons (fill these as the new program takes shape)
+README.md
+ARCHITECTURE.md
+OPERATIONS.md
+
+# CLAUDE/AGENTS harness docs (contain placeholder load-trigger references)
+CLAUDE.md
+AGENTS.md
+
+# Protocol docs (contain placeholder examples for directors/operators to fill)
+docs/PROGRAM-MANUAL.md
+docs/PROTOCOL-RULES-LOG.md
+docs/protocol/claude/core.md
+docs/protocol/claude/director-operator.md
+docs/protocol/claude/four-seat-extension.md
+docs/protocol/agents/core.md
+docs/protocol/agents/director-operator.md
+docs/protocol/protocol-assembly-map.md
+
+# Skill definition files (contain placeholder examples for skill authors)
+.claude/skills/seat-director/SKILL.md
+.claude/skills/seat-director/r-brief-template.md
+.claude/skills/four-seat-protocol/SKILL.md
+.claude/skills/create-regression-pin/SKILL.md
+.claude/agents/money-gate-reviewer.md
+.agents/skills/seat-director/SKILL.md
+.agents/skills/seat-director/r-brief-template.md
+.agents/skills/create-regression-pin/SKILL.md
+
+# Session/coordination artifacts
+docs/HANDOFF-governance-hardening-2026-06-30.md
+coordination/bin/claim-lock
+coordination/presence/README.md
+coordination/workflows/discovery-bughunt.js
+
+# Scripts with placeholder action-item markers
+scripts/wave_gate_check.py
+threeway/gitcas.py
+threeway/loop.py
+
+# Gate infrastructure (self-references in scanner/test source — expected)
+tests/unit/test_check_placeholders.py

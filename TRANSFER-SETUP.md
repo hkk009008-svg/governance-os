@@ -107,8 +107,15 @@ smoke work without it.
 ```bash
 .venv/bin/python scripts/ci_smoke.py        # OK, exit 0
 .venv/bin/python scripts/check_coordination.py   # no FATALs
-grep -rIl '<PROJECT>' . --exclude-dir=.git  # should be empty once step 4 is done
+.venv/bin/python scripts/check_placeholders.py   # exit 0 when all skeletons are filled
 ```
+
+**Adoption workflow for placeholders:** Filling a skeleton means removing its path
+from `scripts/placeholder_allowlist.txt`. Run `scripts/check_placeholders.py` after
+each removal to confirm the file no longer contains unresolved tokens. When the
+allowlist is empty and the scan is clean, the repo is **fully bound** — no skeleton
+placeholders remain. (The gate is enforced by CI; a non-empty allowlist with clean
+scan simply means the corresponding skeletons are still unfilled.)
 
 When `ci_smoke.py` is green **and** `_project_smoke()` asserts something real about
 your code, the OS is live: every session starts under the guard hooks, the seat

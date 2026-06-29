@@ -54,3 +54,29 @@ treated as complete until the responsible operator seat issues a GO report.
 ---
 
 <!-- Append new ADR entries below this line. Do not edit entries above. -->
+
+## ADR-002: Gate adoption placeholders in CI (fail-closed allowlist)
+
+**Status:** Accepted
+
+**Context:**
+The governance OS ships as a transfer bundle with skeleton docs that deliberately
+contain adoption-placeholder tokens (`<PROJECT>`, `<fill-in>`, etc.). These
+placeholders can be read by agents as if they were real doctrine, and a half-bound
+repo (some skeletons filled, some not) currently passes the green smoke check —
+there is no gate that catches un-replaced placeholders.
+
+**Decision:**
+Add an allowlist-based fail-closed placeholder scan (`scripts/check_placeholders.py`
++ `scripts/placeholder_allowlist.txt`). The script fails (exit 1) when any
+placeholder token appears in a non-allowlisted file. The initial baseline allowlist
+is generated empirically from the live repo (every file currently containing a token
+is allowlisted). As adopters fill skeletons, they remove paths from the allowlist;
+an empty allowlist with a clean scan is the definition of "fully bound." The gate is
+wired into CI smoke in task A-WIRE.
+
+**Consequences:**
+- A half-bound repo will fail CI rather than silently passing green.
+- Filling a skeleton now requires a mechanical step: remove its path from the
+  allowlist, confirm the scan is still clean, then commit.
+- An empty allowlist + clean scan is a machine-checkable definition of "fully bound."
