@@ -88,3 +88,6 @@ STATE.md
 
 # pytest
 .pytest_cache/
+
+# Subagent-driven-development scratch ledger (skill-owned, never committed)
+.superpowers/
