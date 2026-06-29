@@ -65,8 +65,8 @@ Keep the manual true as the code evolves (same staleness discipline as `ARCHITEC
 | The CLAUDE/AGENTS operative-split map | [docs/protocol/migration-map-claudemd-split.md](docs/protocol/migration-map-claudemd-split.md) |
 | Current leadership critique + forward direction | [docs/STRATEGIC_REVIEW-2026-06-10.md](docs/STRATEGIC_REVIEW-2026-06-10.md) |
 | Test-coverage gaps + prioritized test proposal | [docs/TEST-COVERAGE-ANALYSIS-2026-06-14.md](docs/TEST-COVERAGE-ANALYSIS-2026-06-14.md) |
-| Execute a roadmap session (operator manual, why + how + acceptance) | [docs/HANDOFF-roadmap-2026-05-24.md](docs/HANDOFF-roadmap-2026-05-24.md) |
-| Past handoffs (historical) | [docs/archive/](docs/archive/) |
+| Execute a governance-hardening session (operator manual, why + how + acceptance) | [docs/HANDOFF-governance-hardening-2026-06-30.md](docs/HANDOFF-governance-hardening-2026-06-30.md) |
+| See the common daily loop (director brief → operator verify → push) | [RUNBOOK-DAILY.md](RUNBOOK-DAILY.md) |
 
 Don't duplicate ARCHITECTURE.md content in this file. Record load-bearing subsystem
 facts in `ARCHITECTURE.md`; for decisions (with rationale), append to `DECISIONS.md`
