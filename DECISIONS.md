@@ -153,3 +153,31 @@ exits 0 after the change.
   is unchanged (matrix builds are out of scope for this task).
 - If a future change genuinely requires a 3.12/3.13-only feature, a new ADR
   superseding this one should raise the floor back and document the specific feature.
+
+---
+
+## ADR-005: commit↔GO linking convention (pre-push gate deferred)
+
+**Status:** Accepted
+
+**Context:**
+R-VERIFY-THEN-PUSH ("no push before an operator GO") is prose-only. Making it a
+fail-closed gate needs a reliable commit↔GO link.
+
+**Decision:**
+DOCUMENT the existing convention (a `verification-report` GO references the reviewed
+commit SHA — via the grandfathered `related-commits:` field or the v6.0 H1
+``commit `<sha>` ``). DEFER building the pre-push gate
+(`scripts/check_verify_then_push.py`) to a future session, because: (a) the link is
+semi-structured (v6.0 SHA-in-prose vs grandfathered YAML field) so a blocking gate
+risks false-blocks; (b) the mailbox is empty (nothing to gate yet); (c) a pre-push
+hook is per-clone + policy-setting in the current single-operator deployment. Decided
+by the user-principal on 2026-06-30.
+
+**Consequences:**
+- R-VERIFY-THEN-PUSH stays SOFT (agent-discipline) for now; the next session can build
+  the gate once GO events exist and the link is normalized.
+- The proposed gate shape: given the commits being pushed, if any touch production
+  paths and no matching-SHA GO `verification-report` exists, block.
+- No false-block risk introduced today; the gate can be made fail-closed in a later
+  session with real GO events to validate against.
