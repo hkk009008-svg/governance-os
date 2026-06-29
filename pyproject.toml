@@ -1,0 +1,19 @@
+[project]
+name = "governance-os"
+version = "0.1.0"
+description = "Four-seat governance OS: coordination protocol, threeway ref-bus, and CI harness"
+requires-python = ">=3.13"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    # Used by the create-regression-pin discipline (R-VERIFY-TIER):
+    # pin a confirmed defect so CI re-verifies it, not the next agent session.
+    "xfail: marks tests expected to fail (strict=True means an unexpected pass is a CI failure)",
+]
+
+filterwarnings = [
+    # Surface all warnings during test runs so silent degradations are caught early
+    "error",
+    "ignore::DeprecationWarning:_pytest",
+]

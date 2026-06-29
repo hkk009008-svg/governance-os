@@ -1,0 +1,21 @@
+# Governance OS deps only — append your project deps below.
+#
+# Scan basis: grep of scripts/*.py and threeway/*.py for non-stdlib imports.
+# Command run: grep -rh '^import |^from ' scripts/ threeway/ | awk '{print $1}' | sort -u
+# Stdlib exclusions: argparse, ast, collections, copy, dataclasses, datetime,
+#   fnmatch, glob, hashlib, importlib, json, logging, math, os, pathlib,
+#   random, re, secrets, shlex, shutil, signal, subprocess, sys, tempfile,
+#   time, tomllib (stdlib since Python 3.11), typing, urllib, __future__
+# Local-module exclusions: threeway, scripts/*, protocol_mailbox, status,
+#   bus_unread, wave_gate_check, mailbox_monitor, codex_protocol_model,
+#   protocol_capacity
+#
+# Result: two third-party packages found.
+
+# Ed25519 signing/verification for the threeway ref-bus envelope (threeway/envelope.py,
+# threeway/keys.py, threeway/gate.py, threeway/refstore.py, threeway/store.py)
+cryptography>=42.0
+
+# RFC 8785 JSON Canonicalization Scheme — used in threeway/canon.py to produce
+# a deterministic byte representation for envelope signing
+rfc8785>=0.1.2
