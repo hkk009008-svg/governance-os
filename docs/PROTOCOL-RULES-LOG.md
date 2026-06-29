@@ -738,7 +738,7 @@ session table.
   Consent: principal-directed (capacity audit, 2026-06-13). Does NOT relax
   production-code verification — Lane V / Rule #9 per-commit checks unchanged.
   Note: this is the corpus's first depth-CAP rule; it reduces protocol work.
-  Enforcement: SOFT
+  Enforcement: HARD (partial) — `scripts/check_no_ceremony.py` R1 (`rule_xfail_strictness`, lines 61-96) hard-gates the `strict=True`+`reason=` requirement on xfail pins (R-VERIFY-TIER part B); the depth-cap discipline (no 3rd verification pass without a new question) remains SOFT.
 
 ## 2026-06-14 addendum — Rule #23 async-split (Lever #7, capacity audit `wf_6be2ee18-f4b`)
 
