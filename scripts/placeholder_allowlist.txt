@@ -59,7 +59,3 @@ threeway/loop.py
 
 # Gate infrastructure (self-references in scanner/test source — expected)
 tests/unit/test_check_placeholders.py
-# check_arch_freshness.py uses a CLI metavar token in its --base arg docstring
-# (lines 11, 13) as a placeholder for a git ref argument — not an adoption
-# placeholder. Added by A-WIRE because A3 landed after the A1 baseline scan.
-scripts/check_arch_freshness.py

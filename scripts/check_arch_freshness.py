@@ -8,9 +8,9 @@ Editing facts without bumping the stamp leaves stale provenance on the truth lay
 The gate is INERT unless ARCHITECTURE.md is actually in the changeset — the
 unbound bundle's placeholder stamp never triggers a spurious failure.
 
-Usage:  .venv/bin/python scripts/check_arch_freshness.py [--base <ref>]
+Usage:  .venv/bin/python scripts/check_arch_freshness.py [--base REF]
 
-        --base <ref>   Git ref to diff against (default: merge-base of HEAD and
+        --base REF     Git ref to diff against (default: merge-base of HEAD and
                        origin/main or main; falls back gracefully if git is
                        unavailable or the file is absent at BASE).
 
@@ -117,7 +117,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Gate: block ARCHITECTURE.md edits without a Last-verified bump."
     )
-    parser.add_argument("--base", default=None, help="Git ref to diff against.")
+    parser.add_argument("--base", default=None, metavar="REF", help="Git ref to diff against.")
     args = parser.parse_args()
 
     # Resolve base ref.

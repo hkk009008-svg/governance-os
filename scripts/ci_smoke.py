@@ -231,6 +231,7 @@ def main() -> int:
             "scripts/placeholder_allowlist.txt."
         )
         return 1
+    print("PLACEHOLDER CHECK — PASS (no unallowlisted tokens).")
 
     # GO verification-report evidence validator (check_go_schema). Hard-fail local + CI.
     # Calls _scan_dir() + go_report_violations() directly — NOT main().
@@ -247,6 +248,8 @@ def main() -> int:
         for _v in _go_violations:
             print(f"  ! {_v}")
         return 1
+    _go_total = sum(1 for _, body in _go_named if _cgs._VERDICT_GO_RE.search(body))
+    print(f"GO-SCHEMA CHECK — PASS ({_go_total} GO report(s) validated; zero violations).")
 
     # ARCHITECTURE Last-verified gate (check_arch_freshness). Inert unless
     # ARCHITECTURE.md changed vs merge-base; self-degrades if git/base unavailable.
