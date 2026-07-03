@@ -16,7 +16,7 @@ and structural element was preserved verbatim.
 
 ---
 
-## What's included (164 files, incl. this manifest + the setup guide)
+## What's included (186 tracked files, incl. this manifest + the setup guide — verify: `git ls-files | wc -l`)
 
 ### Tier 1 · Harness config
 | Path | What it is |
@@ -39,14 +39,15 @@ and structural element was preserved verbatim.
 | `docs/protocol/codex/continuation.md` | Codex continuation adapter |
 | `docs/protocol/threeway/*` | Signed-bus control-plane doctrine + onboarding + adoption guides |
 | `docs/protocol/{program-manual-guide,migration-map-claudemd-split,protocol-assembly-map,advisory-candidates}.md` | Meta-protocol guides |
-| `docs/templates/{claude,agents}/*` | Implementer + reviewer subagent prompt bodies |
+| `docs/templates/{claude,agents}/*` | Subagent prompt bodies — `claude/`: implementer + reviewer; `agents/`: implementer only (an agent-agnostic reviewer has not been authored) |
 | `docs/PROTOCOL-RULES-LOG.md` | Rule provenance log (codified SHAs, empirical basis, beneficiary/consent) |
+| `RUNBOOK-DAILY.md` | The common daily loop (director brief → operator verify → push) |
 
 ### Tier 3 · Skills & agents (reusable subset)
 `four-seat-protocol`, `seat-coordinator`, `seat-director`, `seat-operator`,
-`wave-gate`, `create-regression-pin`, `antigravity-harness` — under both
-`.claude/skills/` and `.agents/skills/`. The two cinema skills
-(`ai-video-gen`, `comfyui-mastery`) were **excluded**.
+`wave-gate`, `create-regression-pin` — under both `.claude/skills/` and
+`.agents/skills/`; `antigravity-harness` — under `.agents/skills/` only. The two
+cinema skills (`ai-video-gen`, `comfyui-mastery`) were **excluded**.
 
 ### Tier 4 · Coordination tooling + control plane
 | Path | What it is |
@@ -58,7 +59,8 @@ and structural element was preserved verbatim.
 | `coordination/threeway/keys/README.md` | Trust-root layout (public keys; regenerate per deployment) |
 | `coordination/workflows/discovery-bughunt.js` | A reusable discovery-bughunt coordination workflow |
 | `threeway/*.py` (20 modules) | The Ed25519-signed event-bus control plane (envelope, canon, gate, reducer, refstore, keys, …) |
-| `scripts/*.py` + `*.sh` (33) | Governance scripts: `ci_smoke`, `check_{coordination,doc_claims,no_ceremony}`, `wave_gate_check`, the `*_emit`/`consume_bus`/`run_merge_gate` bus tools, `draft_handoff`, `protocol_*`, etc. |
+| `scripts/*.py` + `*.sh` (36) + `placeholder_allowlist.txt` | Governance scripts: `ci_smoke`, `check_{coordination,doc_claims,no_ceremony}`, the three fail-closed adoption gates `check_{placeholders,go_schema,arch_freshness}` (+ their allowlist), `wave_gate_check`, the `*_emit`/`consume_bus`/`run_merge_gate` bus tools, `draft_handoff`, `protocol_*`, etc. |
+| `tests/` (15 files: `conftest.py` + 14 unit modules) | The pytest regression suite — gate scripts, threeway control plane (canon/envelope/keys/reducer), mailbox protocol, activation scripts |
 
 ---
 
@@ -74,8 +76,9 @@ and structural element was preserved verbatim.
   presence files, capacity packets, the signed-bus event blobs.
 - **Domain scripts** — all `scripts/_*` measurement/probe scripts, `setup_runpod.sh`,
   `run_max_harness.py`, the cinema-measurement tooling.
-- **Build/env** — `node_modules/`, `.venv/`, `logs/`, `projects/`, `data/`,
-  `__pycache__/`, secrets (`.env`, `client_secrets.json`, `token.pickle`).
+- **Build/env & session runtime state** — `node_modules/`, `.venv/`,
+  `.superpowers/` (gitignored skill-runtime scratch), `logs/`, `projects/`,
+  `data/`, `__pycache__/`, secrets (`.env`, `client_secrets.json`, `token.pickle`).
 
 ---
 
@@ -90,7 +93,14 @@ invariant half became a `_project_smoke()` stub; the portable governance-gate ha
 intact. Five truth/intent skeletons (`ARCHITECTURE.md`, `docs/PROGRAM-MANUAL.md`,
 `OPERATIONS.md`, `DECISIONS.md`, `README.md`) were authored fresh.
 
-**Verified (commands + results):**
+*Re-baselined 2026-07-03:* the counts below are the generation-time (B2) record.
+Since then, governance-hardening Track A grew the bundle 164 → **186** tracked
+files (the `tests/` suite, the `check_{placeholders,go_schema,arch_freshness}`
+gates + `placeholder_allowlist.txt`, `RUNBOOK-DAILY.md`), and `_project_smoke()`
+is **no longer a stub** — it asserts the governance OS's own runtime invariants
+(filled in commit `0708c59`; see `scripts/ci_smoke.py`).
+
+**Verified at generation time (commands + results):**
 - Zero residual cinema tokens — `grep -rIlE '<35-token cinema regex>' .` → **0 / 162 files**.
 - Python compiles — `ast.parse` over all `.py` → **53 / 53 OK, 0 failures**.
 - Shell valid — `bash -n` over hooks + `bin/` → **0 failures**.

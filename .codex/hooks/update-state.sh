@@ -57,7 +57,8 @@ find .git/index.lock -mmin +5 -exec rm -f {} \; 2>/dev/null || true
 # `.codex/presence-seat.<session-id>`.
 # Best-effort: called with `|| true` — a presence hiccup must never abort
 # the hook under `set -e` before the STATE.md regen below.
-# Tests: tests/unit/test_presence_heartbeat_split.py (awk-slices this fn).
+# Tests: origin repo pinned this via tests/unit/test_presence_heartbeat_split.py
+# (awk-sliced this fn); that test was not carried into the bundle — re-pin on adoption.
 _stamp_presence() {
   local seat="${CODEX_SEAT:-}"
   if [ -z "$seat" ] && [ -n "${CODEX_SESSION_ID:-}" ]; then
@@ -125,7 +126,8 @@ _sync_seat_index() {
 # D-a, else the default) — exactly the index a polluting child inherits.
 # Deliberately NOT gated on GIT_INDEX_FILE, and runs BEFORE the skip-perf
 # gate: pollution arrives WITHOUT a HEAD move.
-# Tests: tests/unit/test_skip_worktree_clear.py (awk-slices this function).
+# Tests: origin repo pinned this via tests/unit/test_skip_worktree_clear.py
+# (awk-sliced this function); that test was not carried into the bundle — re-pin on adoption.
 _clear_skip_worktree() {
   local -a _flagged=()
   local _e

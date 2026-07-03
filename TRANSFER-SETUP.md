@@ -8,20 +8,34 @@ out of the box; these steps make it *yours*.
 
 ## 1. Copy into the new repo root
 
+Copy the **tracked files only**. The bundle's working tree also holds untracked
+runtime state (`.venv/`, `.superpowers/` skill scratch, `logs/`, session
+artifacts) that must NOT travel — so drive the copy from `git ls-files`, not a
+blind `cp -R`:
+
 ```bash
-cp -R transfer/. /path/to/new-repo/    # note the trailing /. — copies dotfiles too
+cd /path/to/this-bundle-repo
+mkdir -p /path/to/new-repo
+git ls-files -z | tar --null -T - -cf - | tar -xf - -C /path/to/new-repo
 cd /path/to/new-repo
 git init   # if not already a repo
 ```
+
+**Non-empty target — clobber hazards.** Files land at the repo root, so a target
+that already has a `README.md`, `.gitignore`, `CLAUDE.md`, `AGENTS.md`, or
+`pyproject.toml` gets them **overwritten** by the bundle's versions. For a
+non-empty target, extract to a staging directory first, diff, and merge those
+by hand — in particular make sure the merged `.gitignore` still ignores
+`.venv/` and `.superpowers/` (the bundle's does; yours may not).
 
 The layout already mirrors a repo root: `.claude/`, `.codex/`, `.agents/`,
 `.github/`, `coordination/`, `docs/`, `scripts/`, `threeway/`, and the root
 `CLAUDE.md` / `AGENTS.md` / `ARCHITECTURE.md` / … land where the doctrine expects them.
 
-## 2. Install the governance deps (Python ≥ 3.13)
+## 2. Install the governance deps (Python ≥ 3.11)
 
 ```bash
-python3 -m venv .venv
+python3 -m venv .venv    # any Python >= 3.11 (floor per DECISIONS.md ADR-004)
 .venv/bin/pip install -r requirements-governance.txt   # cryptography + rfc8785
 # then append your own project deps to requirements / pyproject
 ```
@@ -109,6 +123,13 @@ smoke work without it.
 .venv/bin/python scripts/check_coordination.py   # no FATALs
 .venv/bin/python scripts/check_placeholders.py   # exit 0 when all skeletons are filled
 ```
+
+**Non-empty target: re-baseline the allowlist first.** The scanner walks every
+tracked file, so a merged repo's own pre-existing files can trip it when they
+happen to contain a literal token (`<PROJECT>`, `<ref>`, `<fill-in>`, …). On the
+first run in a non-empty target, add any such pre-existing paths to
+`scripts/placeholder_allowlist.txt` — they are your baseline, not unfilled
+skeletons — then re-run `scripts/check_placeholders.py` until the scan is clean.
 
 **Adoption workflow for placeholders:** Filling a skeleton means removing its path
 from `scripts/placeholder_allowlist.txt`. Run `scripts/check_placeholders.py` after

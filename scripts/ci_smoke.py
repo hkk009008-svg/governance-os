@@ -4,9 +4,12 @@
 Two halves run in sequence:
 
   HALF A — Project runtime smoke (_project_smoke):
-    A stub that returns 0. The new project's authors replace this with
-    runtime invariants appropriate to their stack (imports succeed, singletons
-    are stable, settings plumb through). See _project_smoke() below.
+    This repo's product IS the governance OS, so the runtime smoke asserts the
+    OS's own load-bearing invariants: the signed-bus package imports cleanly,
+    the RFC-8785 canonicalizer is key-order-stable, the load-bearing kind set
+    is a subset of the full vocabulary, and the seat roster + mailbox kind
+    registry parse. Projects seeded from the transfer bundle replace the body
+    with invariants for their own stack. See _project_smoke() below.
 
   HALF B — Governance gates (always active):
     These are fully portable and run unchanged in any project seeded from this
@@ -15,7 +18,6 @@ Two halves run in sequence:
     - Doc-anchor drift gate: check_doc_claims on ARCHITECTURE.md
       (hard-fail locally; warn in CI).
     - PROGRAM-MANUAL anchor-drift WARN (advisory; never a hard-fail).
-    - Manifest drift WARN (docs/pipeline_status.toml; never a hard-fail).
     - Commit-SHA ref drift WARN (git-backed; never a hard-fail).
     - Coordination-state gate: check_coordination (FATAL hard-fails locally,
       warns in CI; ADVISORY warns everywhere).
@@ -147,19 +149,6 @@ def main() -> int:
             print(f"  [{_d.kind}] {_d.target_file}:{_d.target_line} — {_d.message}")
         if _mn > 5:
             print(f"  ... and {_mn - 5} more")
-
-    # Manifest drift WARN (never a hard-fail — manifest is not auto-fixable).
-    _manifest_drifts = _cdc.check_manifest(
-        _repo_root / "docs" / "pipeline_status.toml", _repo_root
-    )
-    if _manifest_drifts:
-        _mn = len(_manifest_drifts)
-        print(
-            f"WARNING: {_mn} stale manifest claim(s) in docs/pipeline_status.toml"
-            f" (edit the manifest):"
-        )
-        for _md in _manifest_drifts:
-            print(f"  {_md.message}")
 
     # Commit-SHA ref drift WARN (git-backed; never a hard-fail — shallow clones
     # skip reachability, and SHA drift is not auto-fixable).

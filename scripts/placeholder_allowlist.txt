@@ -47,6 +47,11 @@ docs/protocol/protocol-assembly-map.md
 .agents/skills/create-regression-pin/SKILL.md
 
 # Session/coordination artifacts
+# NOTE: the HANDOFF below is Pipeline session state (a past hardening session's
+# operator manual), not transfer-bundle content. It is allowlisted only because
+# it quotes placeholder tokens verbatim — its presence here is NOT an unfilled
+# adoption skeleton, and adopters copying the bundle should drop both the file
+# and this entry.
 docs/HANDOFF-governance-hardening-2026-06-30.md
 coordination/bin/claim-lock
 coordination/presence/README.md

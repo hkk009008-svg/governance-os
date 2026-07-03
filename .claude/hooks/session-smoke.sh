@@ -18,7 +18,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 PY="$ROOT/.venv/bin/python"
 if [ ! -x "$PY" ]; then
   echo "⚠️  §15 smoke SKIPPED — project venv missing at .venv/bin/python."
-  echo "    Bootstrap with: /opt/homebrew/bin/python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+  echo "    Bootstrap with: python3 -m venv .venv && .venv/bin/pip install -r requirements-governance.txt   # any Python >= 3.11 (ADR-004)"
   exit 0
 fi
 

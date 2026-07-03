@@ -182,3 +182,51 @@ by the user-principal on 2026-06-30.
   paths and no matching-SHA GO `verification-report` exists, block.
 - No false-block risk introduced today; the gate can be made fail-closed in a later
   session with real GO events to validate against.
+
+---
+
+## ADR-006: Origin-repo ADR numbers are provenance citations, resolved here
+
+**Status:** Accepted
+
+**Context:**
+Code and docs imported with the transfer bundle cite ADR numbers from the origin
+repo's DECISIONS.md (239 KB, deliberately excluded per TRANSFER-MANIFEST.md):
+`ADR-027/028/032` in `scripts/{ci_smoke,check_no_ceremony,consume_reviewer_result,
+wave_gate_check,pin_reconciler,continuation_readiness}.py`, `docs/templates/claude/
+reviewer.md`, `AGENTS.md`, and `.github/workflows/ci.yml`; the `ADR-034..064`
+signed-bus series in `docs/protocol/threeway/` and `tests/unit/test_reducer.py`.
+This log holds only ADR-001..005, so those citations dangle. Rewriting every site
+would churn dozens of imported files; renumbering is forbidden (append-only log).
+
+**Decision:**
+Keep the imported citations as **origin-repo provenance markers** and resolve them
+here. What the cited numbers decided in the origin repo:
+
+- **ADR-027** — the remediation-inventory `status` column is display-only;
+  "verified" must be backed by executed strict-xfail regression pins (run with
+  `--runxfail`); `wave_gate_check.py` reads inventory strings and is never
+  correctness evidence by itself.
+- **ADR-028** — anti-ceremony: appearance-of-verification-without-substance is
+  forbidden and mechanically detected; `scripts/check_no_ceremony.py` is the
+  enforcement arm and hard-fails smoke/CI.
+- **ADR-032** — the machine-readable `reviewer-result/1` schema
+  (`docs/templates/claude/reviewer.md`) plus its consumer
+  (`scripts/consume_reviewer_result.py`); severity map critical→CRITICAL,
+  important→MAJOR, minor→MEDIUM; a GO must cite an executed pin run.
+- **ADR-034..064** — the threeway signed-bus hardening series: mailbox→bus
+  migration (034), forgery hardening (036/037/038), TOTAL fail-closed gate +
+  authority-aware reducer (039/040/041), pair-namespaced candidate ids (042),
+  legacy projection/divergence (044/045), and related decisions cited across
+  `docs/protocol/threeway/`.
+
+New local decisions continue sequentially from this entry (ADR-007, …). Origin
+numbers ≥ 027 are never reused for local decisions and never renumbered.
+
+**Consequences:**
+- Every dangling `ADR-0NN` (NN ≥ 27) citation in imported code/docs now resolves
+  to this entry without editing the imported files.
+- Local numbering stays permanently discontinuous with origin citations; this
+  entry is the signpost that numbers ≥ 027 mean "origin repo."
+- If an origin rule is materially changed in this repo, write a new local ADR
+  that names the origin number it supersedes.
