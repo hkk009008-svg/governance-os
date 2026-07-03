@@ -36,10 +36,16 @@ def summarize(store) -> dict:
         elif ev.kind == "brief_superseded":
             briefs.pop(ev.brief_id, None)
         elif ev.kind == "candidate":
-            candidates.setdefault(ev.candidate_id, {
-                "integration_sha": ev.payload.get("integration_sha"),
-                "signer": ev.signer, "attestations": 0,
-                "release_requested": False, "release_order": False})
+            if ev.candidate_id in candidates:
+                candidates[ev.candidate_id].update({
+                    "integration_sha": ev.payload.get("integration_sha"),
+                    "signer": ev.signer
+                })
+            else:
+                candidates[ev.candidate_id] = {
+                    "integration_sha": ev.payload.get("integration_sha"),
+                    "signer": ev.signer, "attestations": 0,
+                    "release_requested": False, "release_order": False}
         elif ev.kind == "attestation":
             if ev.candidate_id in candidates:
                 candidates[ev.candidate_id]["attestations"] += 1
