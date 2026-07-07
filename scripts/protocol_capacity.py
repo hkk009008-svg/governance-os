@@ -879,7 +879,7 @@ def _forbidden_side_effects(body: str) -> list[str]:
     }
     subagent_terms = {
         "subagent operator GO": r"\boperator\s+go\b|\bissue\s+(?:operator\s+)?go\b",
-        "subagent mailbox event": r"\bmailbox\b|\bsend-event\b|\bmailbox events?\b",
+        "subagent mailbox event": r"\bsend(?:s|ing)?-event\b|\bsend(?:s|ing)?\s+mailbox\s+events?\b|\bmailbox\s+events?\b",
         "subagent cursor consume": r"\bconsume-events?\b|\bconsume\b.*\bcursors?\b|\bcursors?\b.*\bconsume\b",
         "subagent coordinator route": r"\bcoordinator\s+routes?\b|\bcreate\b.*\broutes?\b|\broutes?\b.*\bcreate\b",
         "subagent push": r"\bpush\b|\bforce-push\b",
@@ -889,6 +889,13 @@ def _forbidden_side_effects(body: str) -> list[str]:
         "subagent spend": r"\bspend\b|\bpaid api\b|\bpaid-api\b|\bcost\b",
     }
     auth = r"\b(authorizes?|authorized|allows?|grants?)\b"
+    delegation = (
+        r"\b("
+        r"authorizes?|authorized|allows?|grants?|may|can|will|shall|should|must|"
+        r"dispatch(?:es|ed|ing)?|delegate(?:s|d|ing)?|assign(?:s|ed|ing)?|"
+        r"spawn(?:s|ed|ing)?|instruct(?:s|ed|ing)?|direct(?:s|ed|ing)?"
+        r")\b"
+    )
     subagent = r"\bsub-?agents?\b"
     found: list[str] = []
     for line in body.splitlines():
@@ -904,7 +911,30 @@ def _forbidden_side_effects(body: str) -> list[str]:
             for label, pattern in subagent_terms.items():
                 if re.search(pattern, lowered) and label not in found:
                     found.append(label)
+        elif (
+            re.search(subagent, lowered)
+            and re.search(delegation, lowered)
+            and not _is_negative_subagent_boundary(normalized)
+        ):
+            for label, pattern in subagent_terms.items():
+                if re.search(pattern, lowered) and label not in found:
+                    found.append(label)
     return found
+
+
+def _is_negative_subagent_boundary(line: str) -> bool:
+    if re.search(r"\bno\s+sub-?agents?\b", line):
+        return True
+    return bool(
+        re.search(
+            r"\bsub-?agents?\b.*\b("
+            r"do\s+not|does\s+not|must\s+not|may\s+not|should\s+not|"
+            r"can\s+not|cannot|can't|will\s+not|shall\s+not|"
+            r"not\s+allowed\s+to|unable\s+to|never"
+            r")\b",
+            line,
+        )
+    )
 
 
 def _exception_matches_issue(exception: ProtocolException, issue: dict[str, Any]) -> bool:

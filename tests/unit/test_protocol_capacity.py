@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import protocol_capacity
 
 
@@ -98,3 +100,67 @@ def test_route_validation_rejects_subagent_authority_leakage(tmp_path: Path):
     messages = "\n".join(issue["message"] for issue in result.blocking_issues)
     assert "subagent" in messages
     assert "operator GO" in messages or "consume" in messages
+
+
+@pytest.mark.parametrize(
+    ("directive", "expected_labels"),
+    (
+        (
+            "Subagent will issue operator GO and consume-events for operator.",
+            ("subagent operator GO", "subagent cursor consume"),
+        ),
+        (
+            "Subagents may send mailbox events and create coordinator routes.",
+            ("subagent mailbox event", "subagent coordinator route"),
+        ),
+        (
+            "Dispatch a subagent to claim locks and push after tests pass.",
+            ("subagent lock claim", "subagent push"),
+        ),
+    ),
+)
+def test_route_validation_rejects_delegated_subagent_side_effect_directives(
+    tmp_path: Path,
+    directive: str,
+    expected_labels: tuple[str, ...],
+):
+    _write_packet(tmp_path, _packet())
+    route = _write_route(
+        tmp_path,
+        "2026-07-07T18-20-00Z-coordinator-to-all-coordination.md",
+        "Task-board: cycle-a\n\n"
+        "- coord-test-route\n\n"
+        f"{directive}\n\n"
+        "Join condition: coordinator closes.\n\n"
+        "## Exact Next Trigger\n\n"
+        "Operator sends a verification-report.\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    messages = "\n".join(issue["message"] for issue in result.route_issues)
+    assert "forbidden side effect authorization" in messages
+    for label in expected_labels:
+        assert label in messages
+
+
+def test_route_validation_allows_explicit_subagent_negative_boundaries(tmp_path: Path):
+    _write_packet(tmp_path, _packet())
+    route = _write_route(
+        tmp_path,
+        "2026-07-07T18-25-00Z-coordinator-to-all-coordination.md",
+        "Task-board: cycle-a\n\n"
+        "- coord-test-route\n\n"
+        "No subagents may issue operator GO.\n"
+        "Subagents do not consume cursors.\n\n"
+        "Join condition: coordinator closes.\n\n"
+        "## Exact Next Trigger\n\n"
+        "Operator sends a verification-report.\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not any(
+        "forbidden side effect authorization" in issue["message"]
+        for issue in result.route_issues
+    )

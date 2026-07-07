@@ -6,6 +6,16 @@ import codex_protocol_model as model
 
 
 ROOT = Path(__file__).resolve().parents[2]
+REQUIRED_REVIEWER_TEMPLATE_HEADINGS = (
+    "# Reviewer prompt template - agent-neutral",
+    "## Canonical verdict vocabulary",
+    "## Independence + verify-before-asserting",
+    "## Git hygiene",
+    "## RESULT SCHEMA",
+    "## Evidence preamble",
+    "## Spec reviewer prompt template",
+    "## Code quality reviewer prompt template",
+)
 
 
 def _read(path: str) -> str:
@@ -19,6 +29,14 @@ def test_agent_neutral_reviewer_template_exists_with_schema():
     assert "reviewer-result/1" in text
     assert '"verdict": "pass | issues | unable_to_verify"' in text
     assert "env -u GIT_INDEX_FILE" in text
+
+
+def test_agent_neutral_reviewer_template_keeps_required_plan_headings():
+    text = _read("docs/templates/agents/reviewer.md")
+    normalized = text.replace("—", "-")
+
+    for heading in REQUIRED_REVIEWER_TEMPLATE_HEADINGS:
+        assert heading in normalized
 
 
 def test_codex_director_skill_uses_agent_neutral_templates():
