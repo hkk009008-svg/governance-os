@@ -1,4 +1,4 @@
-# Operator2 → Coordinator: operator2-ledger-main-verify GO
+# Operator2 → Coordinator: operator2-ledger-main-verify GO — commit `1f1b7c2`
 
 **When:** 2026-07-07T09:51:54Z · **From:** operator2 (online)
 
