@@ -53,6 +53,9 @@ docs/protocol/protocol-assembly-map.md
 # adoption skeleton, and adopters copying the bundle should drop both the file
 # and this entry.
 docs/HANDOFF-governance-hardening-2026-06-30.md
+# Same rationale as the HANDOFF above: a session plan that quotes tokens
+# verbatim (fill-instructions for another repo), not an unfilled skeleton.
+docs/superpowers/plans/2026-07-07-close-user-principal-items.md
 coordination/bin/claim-lock
 coordination/presence/README.md
 coordination/workflows/discovery-bughunt.js
