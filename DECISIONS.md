@@ -294,3 +294,65 @@ Decided by the user-principal on 2026-07-07.
 - Remaining binding debt is tracked in evidence-ledger's own allowlist (4 real
   entries + 1 intentional test fixture) — closed by a follow-on task in that
   repo, under that repo's doctrine.
+
+## ADR-009: Activate 4-seat concurrent operation in Pipeline; lane definitions
+
+**Status:** Accepted
+
+**Context:**
+The 4-seat machinery (mailbox, seat skills, per-seat index guard, presence
+hooks) ships live in this repo but the per-clone env was never wired (.env
+absent, update-state hook unregistered — verified 2026-07-07). The
+user-principal chose to activate it HERE; the bound product repo
+(evidence-ledger) deliberately runs a 2-seat model per its own ADR-001, which
+stands.
+
+**Decision:**
+4-seat concurrent operation is active for governance-OS work in this repo.
+Lanes (PRINCIPAL-CONFIRMED 2026-07-07 via plan approval):
+
+| Pair | Director | Operator | Lane |
+|---|---|---|---|
+| A | `director` | `operator` | **Coordination layer** — coordination/ (mailbox, presence, locks, workflows), scripts/protocol_mailbox.py, scripts/check_coordination.py, the update-state hooks (.claude/.codex twins). Integrity concerns: cursor/event schema, presence freshness, lock discipline. |
+| B | `director2` | `operator2` | **Verification & signing layer** — threeway/, .github/workflows/ci.yml, the gate scripts (ci_smoke, check_placeholders, check_go_schema, check_arch_freshness, wave_gate_check, check_no_ceremony, check_doc_claims), seat skills + dispatch templates. Main orchestrator path: scripts/ci_smoke.py. |
+
+Shared seam (.claude/settings.json, guard-git-index.sh) is Rule #23 co-sign
+territory. The generic lane placeholders in
+docs/protocol/claude/four-seat-extension.md:28-29 stay untouched — they are
+adopter fill-ins (ADR-002); THIS table is the operative lane record for the
+Pipeline deployment.
+
+**Consequences:**
+- Launch procedure: coordination/README.md "Per-seat launch" (per-terminal
+  CLAUDE_SEAT + GIT_INDEX_FILE exports; indexes pre-seeded 2026-07-07).
+- STATE.md auto-maintenance is now active via the registered PostToolUse hook.
+- Physically opening the four terminals remains a user action; nothing in the
+  repo can spawn peer seats.
+
+## ADR-010: Deferral register — push gate, threeway bus, Antigravity regime
+
+**Status:** Accepted
+
+**Context:**
+Three subsystems sit deferred with their triggers scattered across the
+handoff, ADR-005, and protocol docs. The user-principal reviewed all three on
+2026-07-07.
+
+**Decision:**
+(1) **Pre-push gate** (ADR-005) stays deferred — re-affirmed by the
+user-principal on 2026-07-07 despite 4-seat activation (ADR-009). Revisit
+trigger: the first push contention incident between concurrent seats, or any
+push that lands without a matching operator GO. (2) **Threeway signed bus**
+stays dormant. Trigger: a second human principal or second machine exists
+(user-declared). Activation then needs: keys bootstrap + committed .pub files,
+GitHub repo variable THREEWAY_BUS_LIVE=true and Actions secret
+THREEWAY_CI_KEY (.github/workflows/ci.yml:146,168-171 — owner-only), and the
+user-confirmed authority-flip cutover. (3) **Antigravity regime** undecided by
+design. Trigger: first intended Antigravity use on this repo; the seat-vs-
+seatless choice and cross-provider verification routing are reserved to the
+user (docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md:92-147).
+
+**Consequences:**
+- Every deferral now has one authoritative home with an owner (user-principal)
+  and a concrete trigger; agents cite this entry instead of re-deriving.
+- No keys, secrets, or GitHub settings change until a trigger fires.
