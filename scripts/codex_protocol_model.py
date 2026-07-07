@@ -313,10 +313,43 @@ LIVE_LOOP_STEPS = (
     "Push remains user-gated; locks, paid spend, and pod spend require explicit consent.",
 )
 
+LEDGER_CLI_BRIDGE = {
+    "doc_path": "docs/protocol/codex/ledger-cli-adoption.md",
+    "pipeline_kernel": "/Users/hyungkoookkim/Pipeline",
+    "target_repo": "/Users/hyungkoookkim/evidence-ledger",
+    "kernel_rules": (
+        "Pipeline remains the Codex four-seat governance kernel.",
+        "Evidence-ledger remains the product repo and owns product-local truth.",
+        "Start as readiness bridge unless the prompt names a live seat or coordinator.",
+        "A named seat may work on ledger only inside the explicit route.",
+        "Coordinator may reconcile ledger work from durable evidence but may not author behavior-changing product fixes.",
+    ),
+    "cross_repo_git_rules": (
+        "Prefix every ordinary cross-repo git and pytest command with env -u GIT_INDEX_FILE.",
+        "Read evidence-ledger CLAUDE.md and AGENTS.md before product edits.",
+        "Record both Pipeline and evidence-ledger heads in cross-repo handoffs.",
+        "Do not copy the whole Pipeline protocol tree into evidence-ledger.",
+    ),
+}
+
+CODEX_VERIFICATION_COMMANDS = (
+    "env -u GIT_INDEX_FILE .venv/bin/python -m pytest "
+    "tests/unit/test_imports_smoke.py "
+    "tests/unit/test_protocol_mailbox.py "
+    "tests/unit/test_status.py "
+    "tests/unit/test_ceremony_gates.py "
+    "tests/unit/test_codex_ledger_bridge.py -q",
+    "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py",
+)
+
 CODEX_SURFACES = (
     ("AGENTS.md", "root durable repo rules"),
     ("docs/protocol/protocol-assembly-map.md", "folder-intent assembly map"),
     ("docs/protocol/codex/continuation.md", "model-backed Codex workflow"),
+    (
+        LEDGER_CLI_BRIDGE["doc_path"],
+        "ledger CLI adoption bridge for evidence-ledger target work",
+    ),
     (".agents/skills/four-seat-protocol/SKILL.md", "runtime checklist"),
     (".codex/agents/*.toml", "spawned role instructions"),
     (".codex/hooks.json", "session/tool guardrails"),
@@ -468,6 +501,33 @@ def render_seat_subagent_development() -> str:
         "coordinator route, push, lock, pod spend, or paid API spend from a "
         "subagent alone"
     )
+    return "\n".join(lines)
+
+
+def render_ledger_cli_bridge() -> str:
+    """Return the Codex bridge contract for evidence-ledger target work."""
+    def _render_rule(rule: str) -> str:
+        if rule.startswith("Coordinator may reconcile"):
+            return rule[:1].lower() + rule[1:]
+        return rule
+
+    lines = [
+        "Ledger CLI Bridge:",
+        f"- Pipeline kernel: `{LEDGER_CLI_BRIDGE['pipeline_kernel']}`",
+        f"- Target repo: `{LEDGER_CLI_BRIDGE['target_repo']}`",
+        f"- Bridge doc: `{LEDGER_CLI_BRIDGE['doc_path']}`",
+        "- Runtime:",
+    ]
+    lines.extend(f"  - {_render_rule(rule)}" for rule in LEDGER_CLI_BRIDGE["kernel_rules"])
+    lines.append("- Cross-repo hygiene:")
+    lines.extend(f"  - {rule}" for rule in LEDGER_CLI_BRIDGE["cross_repo_git_rules"])
+    return "\n".join(lines)
+
+
+def render_codex_verification_commands() -> str:
+    """Return current Codex protocol verification commands."""
+    lines = ["Codex verification commands:"]
+    lines.extend(f"- `{command}`" for command in CODEX_VERIFICATION_COMMANDS)
     return "\n".join(lines)
 
 
@@ -768,6 +828,8 @@ def render_surface_summary() -> str:
         "Demoted optional concepts: " + ", ".join(demoted_names),
         "Pair Operating Contract: director -> operator is the fast path; mailbox artifact, not chat",
         "Seat Subagent Development: seats retain authority; subagents own bounded work",
+        "Ledger CLI Bridge: Pipeline kernel -> evidence-ledger target via "
+        + LEDGER_CLI_BRIDGE["doc_path"],
         "agent extension namespace: .codex/agents/agentNN.toml guardrail extensions",
         "runtime env contract: "
         + ", ".join(name for name, _, _ in RUNTIME_ENV_VARIABLES),
@@ -795,6 +857,12 @@ def main() -> int:
     print()
     print("## Seat Subagent Development")
     print(render_seat_subagent_development())
+    print()
+    print("## Ledger CLI Bridge")
+    print(render_ledger_cli_bridge())
+    print()
+    print("## Codex Verification Commands")
+    print(render_codex_verification_commands())
     print()
     print("## Protocol Assembly Map")
     print(render_protocol_assembly_map())
