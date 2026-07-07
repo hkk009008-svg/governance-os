@@ -68,11 +68,10 @@ Relevant mailbox events now present:
 - `coordination/mailbox/sent/2026-07-07T17-16-27Z-operator2-to-all-verification-report.md`
   is committed in `a38c6ef` and reports isolation FAIL from the state it saw.
 - `coordination/mailbox/sent/2026-07-07T17-22-00Z-director-to-all-status.md`
-  is peer-seat staged state at this handoff, not operator-owned. It reports
-  the Stage 0 mechanical outcome: PR #9 merged, reconcile branch
+  is now committed in `02e1b4b coord(director): record ledger runway mechanical outcome`.
+  It reports the Stage 0 mechanical outcome: PR #9 merged, reconcile branch
   `codex/ledger-stage0-reconcile-2026-07-08` created at commit `2eaed9d`, PR
-  #11 opened, and PR #11 CI in progress. Preserve it; do not stage/unstage or
-  commit it from the operator handoff.
+  #11 opened, and PR #11 CI in progress.
 
 Important moving-state note: after the operator2 report was read, the
 evidence-ledger reconcile worktree was rechecked and now appears clean:
@@ -96,13 +95,9 @@ Phase 2 implementation base:
 Known peer-seat WIP to preserve:
 
 - Staged:
-  `coordination/mailbox/sent/2026-07-07T17-22-00Z-director-to-all-status.md`
-- Unstaged:
-  `coordination/capacity/packets/2026-07-08-ledger-runway-director-stage0.json`
+  `docs/HANDOFF-operator2-2026-07-08-ledger-runway-isolation-refresh.md`
 - Untracked:
   `docs/HANDOFF-director2-2026-07-07-ledger-runway-stage0.md`
-- Untracked:
-  `docs/HANDOFF-operator2-2026-07-08-ledger-runway-isolation-refresh.md`
 
 This operator handoff should be committed with an explicit pathspec only.
 
@@ -112,12 +107,13 @@ Do not start Phase 2 from normal evidence-ledger `main`.
 
 Next lawful operator action:
 
-1. Wait for the director mechanical outcome artifact to be committed or
-   otherwise confirmed as current durable state:
-   `coordination/mailbox/sent/2026-07-07T17-22-00Z-director-to-all-status.md`.
-2. Then, when the user says `continue as operator on ledger` or coordinator
-   routes the verification, rerun the Pipeline guard/status bundle, reread the
-   current route and mailbox bodies, verify PR #11 / commit `2eaed9d` plus the
+1. Treat the committed director mechanical outcome as the current verification
+   trigger:
+   `coordination/mailbox/sent/2026-07-07T17-22-00Z-director-to-all-status.md`
+   in `02e1b4b`.
+2. When the user says `continue as operator on ledger` or coordinator routes
+   the verification, rerun the Pipeline guard/status bundle, reread the current
+   route and mailbox bodies, verify PR #11 / commit `2eaed9d` plus the
    still-divergent normal `main` checkout, and issue exactly one fresh
    GO/NITS/FAIL report.
 
