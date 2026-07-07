@@ -19,8 +19,11 @@ for the full discipline (Rules 1–20).
   timestamp (e.g., `2026-05-24T13:42:00Z`).
 - `bin/send-event <from> <to> <kind> <subject…>` (body on stdin) — writes a
   convention-conforming event + envelope, appends an automatic
-  `Cursor at send:` line read from the sender's seen file, and STAGES the file
-  (explicit pathspec; never commits).
+  `Cursor at send:` line read from the sender's seen file, and stages the file
+  when the active git index is writable (explicit pathspec; never commits). If
+  staging is blocked by an index lock or sandbox boundary, the event remains on
+  disk and the command reports `not staged`; commit it later with an explicit
+  pathspec.
 - `bin/consume-events <role> [--to <ts>]` — advances `seen/<role>.txt` to the
   newest event addressed to the role (or the explicit target), refusing
   regressions and nonexistent targets, and STAGES the cursor file. **Cursor

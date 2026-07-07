@@ -79,6 +79,50 @@ def test_send_event_force_stages_ignored_mailbox_event(tmp_path: Path, repo_root
 
 
 @pytest.mark.parametrize(
+    "from_seat",
+    ["director", "director2", "operator", "operator2", "coordinator", "coordinator2"],
+)
+def test_send_event_keeps_mailbox_event_when_git_index_is_locked_for_every_sender(
+    tmp_path: Path, repo_root: Path, from_seat: str
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    mailbox = repo / "coordination" / "mailbox"
+    (mailbox / "sent").mkdir(parents=True)
+    (mailbox / "seen").mkdir()
+    (mailbox / "kinds.txt").write_text("status\n", encoding="utf-8")
+    (mailbox / "seen" / f"{from_seat}.txt").write_text("0\n", encoding="utf-8")
+    (mailbox / "sent" / ".gitkeep").write_text("", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "seed")
+
+    index_lock = repo / ".git" / "index.lock"
+    index_lock.write_text("locked\n", encoding="utf-8")
+    try:
+        result = _run(
+            [
+                repo_root / "coordination" / "bin" / "send-event",
+                from_seat,
+                "all",
+                "status",
+                "index locked mailbox event",
+            ],
+            repo,
+            input_text="body\n",
+        )
+    finally:
+        index_lock.unlink()
+
+    assert result.returncode == 0, result.stderr
+    assert "not staged" in result.stdout
+    sent_files = sorted((mailbox / "sent").glob(f"*-{from_seat}-to-all-status.md"))
+    assert len(sent_files) == 1
+    assert "index locked mailbox event" in sent_files[0].read_text(encoding="utf-8")
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+
+@pytest.mark.parametrize(
     ("hook_path", "marker_dir"),
     [
         (".claude/hooks/update-state.sh", ".claude/hooks"),

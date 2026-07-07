@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # send-event — write a protocol-v6.0 mailbox event with a correct filename +
-# envelope, and stage it (explicit pathspec; never commits).
+# envelope, and stage it when the git index is writable (explicit pathspec;
+# never commits).
 #
 #   usage: send-event <from> <to> <kind> <subject...>   (body on stdin)
 #
@@ -64,8 +65,8 @@ trap cleanup_tmp EXIT
 
 mv "$TMP" "$F"
 if ! git -C "$ROOT" add -f -- "$REL"; then
-  rm -f "$F"
-  echo "send-event: git add failed; removed $REL" >&2
-  exit 1
+  echo "send-event: git add failed; kept $REL (not staged; commit with explicit pathspec)" >&2
+  echo "created $REL (not staged; git add failed)"
+  exit 0
 fi
 echo "created $REL (staged; commit with explicit pathspec)"
