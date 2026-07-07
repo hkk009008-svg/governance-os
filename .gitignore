@@ -94,3 +94,6 @@ STATE.md
 
 # Codex hook runtime state (written on every codex run; never committed)
 .codex/hooks/.last-state-head
+
+# Claude hook runtime state (written by .claude/hooks/update-state.sh; never committed)
+.claude/hooks/.last-state-head
