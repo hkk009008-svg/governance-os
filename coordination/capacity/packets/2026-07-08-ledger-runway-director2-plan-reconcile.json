@@ -22,11 +22,12 @@
     "Do not silently decide business semantics."
   ],
   "done_evidence": [
-    "coordination/mailbox/sent/2026-07-07T16-49-15Z-director2-to-coordinator-coordination.md"
+    "coordination/mailbox/sent/2026-07-07T16-49-15Z-director2-to-coordinator-coordination.md",
+    "coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md records owner rulings for Task 0.4 items 1-a, 2-b, 3-b, 4-a, 5-a, 6-a, and 7-a."
   ],
-  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T16-49-15Z-director2-to-coordinator-coordination.md",
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "ready",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
