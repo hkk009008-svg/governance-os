@@ -52,6 +52,15 @@ HANDOFF_REQUIRED_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+_END_TRIGGER_HEADING_RE = re.compile(
+    r"(?im)^(?:#{1,6}\s*)?Exact Next Trigger\s*:?\s*$"
+)
+_MARKDOWN_HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S")
+_CURSOR_AT_SEND_RE = re.compile(r"(?im)^Cursor at send:\s*\d+\s*$")
+_WEAK_TRIGGER_RE = re.compile(
+    r"^(?:none|n/a|not applicable|to be decided|no trigger|same as above)$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -792,10 +801,18 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
 
     issues: list[dict[str, Any]] = []
     name = path.name
+    route_posix = path.as_posix()
+    if not (
+        route_posix.startswith("coordination/mailbox/sent/")
+        or "/coordination/mailbox/sent/" in route_posix
+    ):
+        issues.append(_issue("G7", f"{name}: route path must be under coordination/mailbox/sent/"))
     if "-coordinator-to-all-" not in name:
         issues.append(_issue("G7", f"{name}: route must be coordinator-to-all"))
     if "task-board" not in body.lower():
         issues.append(_issue("G7", f"{name}: route is missing task-board marker"))
+    if not _has_terminal_next_trigger(body):
+        issues.append(_issue("G7", f"{name}: route must end with Exact Next Trigger"))
 
     expected_ids = {packet.id for packet in report.packets}
     if not expected_ids:
@@ -825,15 +842,54 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
     return issues
 
 
+def _has_terminal_next_trigger(text: str) -> bool:
+    matches = list(_END_TRIGGER_HEADING_RE.finditer(text))
+    if not matches:
+        return False
+    trigger = matches[-1]
+    later_headings = [
+        match for match in _MARKDOWN_HEADING_RE.finditer(text)
+        if match.start() > trigger.start()
+    ]
+    if later_headings:
+        return False
+    tail_lines = text[trigger.end():].splitlines()
+    content_lines = []
+    for line in tail_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _CURSOR_AT_SEND_RE.fullmatch(stripped):
+            continue
+        content_lines.append(stripped.lstrip("-* ").strip())
+    if not content_lines:
+        return False
+    return not all(_WEAK_TRIGGER_RE.fullmatch(line) for line in content_lines)
+
+
 def _forbidden_side_effects(body: str) -> list[str]:
     terms = {
         "push": r"\bpush\b|\bforce-push\b",
         "lock claim": r"\block claim\b|\block-claim\b|\bclaim lock\b",
+        "lock release": r"\block release\b|\block-release\b|\brelease lock\b",
         "paid API spend": r"\bpaid api spend\b|\bpaid-api spend\b",
         "pod spend": r"\bpod spend\b",
+        "pod start": r"\bstart pods?\b|\bstart a pod\b",
         "production generation": r"\bproduction generation\b",
     }
+    subagent_terms = {
+        "subagent operator GO": r"\boperator\s+go\b|\bissue\s+(?:operator\s+)?go\b",
+        "subagent mailbox event": r"\bmailbox\b|\bsend-event\b|\bmailbox events?\b",
+        "subagent cursor consume": r"\bconsume-events?\b|\bconsume\b.*\bcursors?\b|\bcursors?\b.*\bconsume\b",
+        "subagent coordinator route": r"\bcoordinator\s+routes?\b|\bcreate\b.*\broutes?\b|\broutes?\b.*\bcreate\b",
+        "subagent push": r"\bpush\b|\bforce-push\b",
+        "subagent lock claim": r"\block claim\b|\block-claim\b|\bclaim(?:s|ing)? locks?\b|\bclaim locks?\b",
+        "subagent lock release": r"\block release\b|\block-release\b|\brelease(?:s|ing)? locks?\b|\brelease locks?\b",
+        "subagent pod start": r"\bstart(?:s|ing)? pods?\b|\bpods?\b.*\bstart\b",
+        "subagent spend": r"\bspend\b|\bpaid api\b|\bpaid-api\b|\bcost\b",
+    }
     auth = r"\b(authorizes?|authorized|allows?|grants?)\b"
+    subagent = r"\bsub-?agents?\b"
     found: list[str] = []
     for line in body.splitlines():
         lowered = line.lower()
@@ -843,6 +899,10 @@ def _forbidden_side_effects(body: str) -> list[str]:
         for label, pattern in terms.items():
             if re.search(auth, lowered) and re.search(pattern, lowered):
                 if label not in found:
+                    found.append(label)
+        if re.search(auth, lowered) and re.search(subagent, lowered):
+            for label, pattern in subagent_terms.items():
+                if re.search(pattern, lowered) and label not in found:
                     found.append(label)
     return found
 

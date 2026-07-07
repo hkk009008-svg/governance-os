@@ -126,3 +126,24 @@ def test_event_just_before_colon_form_trigger_adoption_is_exempt(tmp_path: Path)
     )
 
     assert not [issue for issue in issues if issue.kind == "missing_end_trigger"]
+
+
+def test_future_event_with_placeholder_trigger_is_fatal(tmp_path: Path):
+    coord = _seed_coordination(tmp_path)
+    _write_event(
+        coord,
+        "2026-07-07T18-05-00Z-director-to-all-status.md",
+        "# Director -> All: status\n\n"
+        "**When:** 2026-07-07T18:05:00Z · **From:** director\n\n"
+        "## Exact Next Trigger\n\n"
+        "none\n",
+    )
+
+    issues = cc.run(
+        coord,
+        since="2026-06-11",
+        now="2026-07-07T18:06:00Z",
+        docs_root=tmp_path / "docs",
+    )
+
+    assert [issue for issue in issues if issue.kind == "missing_end_trigger"]

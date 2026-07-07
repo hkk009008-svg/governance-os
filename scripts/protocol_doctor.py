@@ -66,6 +66,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", default=str(ROOT))
     parser.add_argument("--wave", type=int, required=True)
     parser.add_argument("--route", default=None)
+    parser.add_argument(
+        "--final-claim",
+        action="store_true",
+        help="require capacity packets for final protocol claims",
+    )
     args = parser.parse_args(argv)
 
     root = Path(args.root)
@@ -74,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         [py, "scripts/check_coordination.py"],
         [py, "scripts/protocol_capacity_board.py", "--wave", str(args.wave)],
     ]
-    if args.route:
+    if args.route or args.final_claim:
         commands.append(
             [
                 py,
@@ -84,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
                 "--require-packets",
             ]
         )
+    if args.route:
         commands.append(
             [
                 py,

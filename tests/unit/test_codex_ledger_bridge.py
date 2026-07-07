@@ -24,6 +24,7 @@ CURRENT_PROTOCOL_TESTS = (
     "tests/unit/test_status.py",
     "tests/unit/test_coordination_tooling.py",
     "tests/unit/test_ceremony_gates.py",
+    "tests/unit/test_protocol_capacity.py",
     "tests/unit/test_codex_ledger_bridge.py",
 )
 REQUIRED_LEDGER_DOC_PHRASES = (
@@ -126,6 +127,43 @@ def test_protocol_doctor_derives_verification_commands_from_model():
         assert selector in flattened
     for selector in STALE_SELECTORS:
         assert selector not in flattened
+
+
+def test_protocol_doctor_final_claim_requires_packets_without_duplicate_route_gate(monkeypatch):
+    commands: list[list[str]] = []
+
+    def fake_run_command(cmd, cwd, timeout=120):
+        commands.append(cmd)
+        return doctor.CommandResult(cmd, 0, "", "")
+
+    monkeypatch.setattr(doctor, "run_command", fake_run_command)
+
+    assert doctor.main(["--wave", "2", "--final-claim"]) == 0
+    final_claim_commands = [
+        command
+        for command in commands
+        if "scripts/protocol_capacity_board.py" in command and "--require-packets" in command
+    ]
+    assert len(final_claim_commands) == 1
+    assert "--validate-route" not in final_claim_commands[0]
+
+    commands.clear()
+
+    assert doctor.main(
+        [
+            "--wave",
+            "2",
+            "--route",
+            "coordination/mailbox/sent/route.md",
+            "--final-claim",
+        ]
+    ) == 0
+    route_require_commands = [
+        command
+        for command in commands
+        if "scripts/protocol_capacity_board.py" in command and "--require-packets" in command
+    ]
+    assert len(route_require_commands) == 1
 
 
 def test_ledger_bridge_doc_exists_and_names_required_boundaries():

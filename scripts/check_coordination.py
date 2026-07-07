@@ -81,6 +81,10 @@ _END_TRIGGER_HEADING_RE = re.compile(
 )
 _MARKDOWN_HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S")
 _CURSOR_AT_SEND_RE = re.compile(r"(?im)^Cursor at send:\s*\d+\s*$")
+_WEAK_TRIGGER_RE = re.compile(
+    r"^(?:none|n/a|not applicable|to be decided|no trigger|same as above)$",
+    re.IGNORECASE,
+)
 
 _ALL_SEAT_HANDOFF_RE = re.compile(r"^#{1,3}\s+All[- ]Seat Handoff\b", re.I | re.M)
 _PENDING_LIVE_SEAT_MARKERS = (
@@ -219,8 +223,10 @@ def _has_terminal_next_trigger(text: str) -> bool:
             continue
         if _CURSOR_AT_SEND_RE.fullmatch(stripped):
             continue
-        content_lines.append(stripped)
-    return bool(content_lines)
+        content_lines.append(stripped.lstrip("-* ").strip())
+    if not content_lines:
+        return False
+    return not all(_WEAK_TRIGGER_RE.fullmatch(line) for line in content_lines)
 
 
 def _check_end_triggers(
