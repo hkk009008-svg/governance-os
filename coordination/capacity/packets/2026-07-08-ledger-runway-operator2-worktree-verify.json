@@ -16,16 +16,18 @@
   "lock_keys": [],
   "dependencies": [],
   "acceptance": [
-    "Independently verify implementation must not start on evidence-ledger main without owner-approved isolation.",
-    "Check current checkout isolation: evidence-ledger is a normal main checkout, and .worktrees is not ignored.",
-    "Report whether a worktree/branch setup question is required before Phase 2 implementation.",
+    "Wait for the director mechanical Stage 0 outcome event, then independently verify the named Phase 2 start worktree/branch is clean and isolated.",
+    "Verify implementation must not start on evidence-ledger main or on a conflicted reconcile worktree.",
+    "Check that the dedicated start boundary has no unmerged paths, a clean status, a clear branch/base, and an ignored local worktree root.",
     "Issue a Pipeline mailbox verification-report GO/NITS/FAIL for isolation readiness."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-07T17-16-27Z-operator2-to-all-verification-report.md returned FAIL because the dedicated reconcile worktree still has UU OPERATIONS.md and the main checkout remains 4 ahead / 6 behind origin/main."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T17-16-27Z-operator2-to-all-verification-report.md",
   "next_recipient": "coordinator",
-  "status": "ready",
-  "verify_request": "coordinator task-board route for ledger-runway-stage0-2026-07-08",
+  "status": "blocked",
+  "verify_request": "coordination/mailbox/sent/2026-07-07T17-18-59Z-coordinator-to-all-coordination.md",
   "target_commit": null,
   "commit_range": null,
   "scope_files": [

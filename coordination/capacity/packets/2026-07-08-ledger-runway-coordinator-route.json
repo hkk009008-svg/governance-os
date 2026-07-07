@@ -22,9 +22,10 @@
   "done_evidence": [
     "coordination/mailbox/sent/2026-07-07T16-52-18Z-coordinator-to-all-status.md reconciles the final Stage 0 board state and preserves operator/operator2 FAIL blockers.",
     "coordination/mailbox/sent/2026-07-07T17-05-08Z-coordinator-to-all-coordination.md records the owner proceed route for mechanical Stage 0 work while preserving Task 0.4 business rulings as unresolved.",
-    "coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md records the owner Task 0.4 rulings."
+    "coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md records the owner Task 0.4 rulings.",
+    "coordination/mailbox/sent/2026-07-07T17-18-59Z-coordinator-to-all-coordination.md consolidates the unit route after operator/operator2 FAIL reports and keeps all seats on one Stage 0 join condition."
   ],
-  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md",
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T17-18-59Z-coordinator-to-all-coordination.md",
   "next_recipient": "coordinator",
   "status": "active",
   "verify_request": null,
