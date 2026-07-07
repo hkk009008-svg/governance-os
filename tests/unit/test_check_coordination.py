@@ -84,3 +84,45 @@ def test_historical_live_seat_event_before_trigger_adoption_is_exempt(tmp_path: 
     )
 
     assert not [issue for issue in issues if issue.kind == "missing_end_trigger"]
+
+
+def test_same_hour_event_after_colon_form_trigger_adoption_is_fatal(tmp_path: Path):
+    coord = _seed_coordination(tmp_path)
+    name = "2026-07-07T17-59-00Z-director-to-all-status.md"
+    _write_event(
+        coord,
+        name,
+        "# Director -> All: status\n\n"
+        "**When:** 2026-07-07T17:59:00Z · **From:** director\n\n"
+        "Body without the required terminal trigger.\n",
+    )
+
+    issues = cc._check_end_triggers(
+        coord,
+        [name],
+        trigger_since="2026-07-07T17:58:38Z",
+    )
+
+    fatal = [issue for issue in issues if issue.kind == "missing_end_trigger"]
+    assert fatal
+    assert fatal[0].severity == "FATAL"
+
+
+def test_event_just_before_colon_form_trigger_adoption_is_exempt(tmp_path: Path):
+    coord = _seed_coordination(tmp_path)
+    name = "2026-07-07T17-58-37Z-director-to-all-status.md"
+    _write_event(
+        coord,
+        name,
+        "# Director -> All: old status\n\n"
+        "**When:** 2026-07-07T17:58:37Z · **From:** director\n\n"
+        "Historical body without the new trigger section.\n",
+    )
+
+    issues = cc._check_end_triggers(
+        coord,
+        [name],
+        trigger_since="2026-07-07T17:58:38Z",
+    )
+
+    assert not [issue for issue in issues if issue.kind == "missing_end_trigger"]

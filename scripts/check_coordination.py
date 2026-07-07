@@ -75,7 +75,7 @@ _CURSOR_RE = re.compile(
 _SEEN_ONLY_RE = re.compile(r"^coordination/mailbox/seen/[^/]+\.txt$")
 
 _WHEN_RE = re.compile(r"\*\*When:\*\*\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)")
-END_TRIGGER_ADOPTION_TS = "2026-07-07T17-58-38Z"
+END_TRIGGER_ADOPTION_TS = "2026-07-07T17:58:38Z"
 _END_TRIGGER_HEADING_RE = re.compile(
     r"(?im)^(?:#{1,6}\s*)?Exact Next Trigger\s*:?\s*$"
 )
@@ -108,7 +108,8 @@ class CoordIssue:
     path: str
     kind: str        # cursor_missing | cursor_unparseable | cursor_future |
                      # cursor_orphan | bad_filename | self_addressed |
-                     # missing_when | when_mismatch | unknown_kind | unread
+                     # missing_when | when_mismatch | unknown_kind |
+                     # missing_end_trigger | unread
     severity: str    # FATAL | ADVISORY | INFO
     message: str
 
@@ -229,9 +230,10 @@ def _check_end_triggers(
 ) -> list[CoordIssue]:
     issues: list[CoordIssue] = []
     sent = coord_root / "mailbox" / "sent"
+    trigger_since_iso = _colon(trigger_since)
     for name in names:
         m = _EVENT_NAME_RE.match(name)
-        if not m or m.group("ts") < trigger_since:
+        if not m or _colon(m.group("ts")) < trigger_since_iso:
             continue
         rel = f"mailbox/sent/{name}"
         text = (sent / name).read_text(errors="replace")
