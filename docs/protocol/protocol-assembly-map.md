@@ -47,7 +47,7 @@ flowchart TD
 | Plans and specs | `docs/superpowers/plans/`, `docs/superpowers/specs/` | Wave plans, stub-contract specs | Larger design and execution artifacts need durable but bounded homes. |
 | Executable checks | `scripts/` | `wave_gate_check.py`, `ci_smoke.py` | Gate and readiness truth should be runnable, not only asserted in prose. |
 | Committed evidence | `logs/` | `product-oracle-wave2.json`, `discovery-*.json` | Measurement and discovery outputs support R-MEASURE/R-EVIDENCE claims. |
-| Protocol tool tests | `tests/unit/` | `test_protocol_mailbox.py`, `test_codex_ledger_bridge.py` | Tool contracts should be enforced by tests so prose drift is caught. |
+| Protocol tool tests | `tests/unit/` | `test_protocol_mailbox.py`, `test_coordination_tooling.py`, `test_codex_ledger_bridge.py` | Tool contracts should be enforced by tests so prose drift is caught. |
 
 ## Placement Rule
 

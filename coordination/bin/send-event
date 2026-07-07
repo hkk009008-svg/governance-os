@@ -63,7 +63,7 @@ trap cleanup_tmp EXIT
 } > "$TMP"
 
 mv "$TMP" "$F"
-if ! git -C "$ROOT" add -- "$REL"; then
+if ! git -C "$ROOT" add -f -- "$REL"; then
   rm -f "$F"
   echo "send-event: git add failed; removed $REL" >&2
   exit 1

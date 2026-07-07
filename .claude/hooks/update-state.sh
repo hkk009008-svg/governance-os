@@ -85,14 +85,16 @@ _stamp_presence || true
 #   B. HEAD == marker, index diverged       -> deliberate `git add` since sync — NEVER touch
 #   C1. HEAD != marker, index == marker tree -> pure peer-commit staleness -> read-tree; marker=HEAD
 #   C2. HEAD != marker, index != marker tree -> mixed (staged work + peer commit) -> leave for manual read-tree -m
-#   D. no marker baseline                    -> converge only via A; never guess
-# Safety: read-tree fires ONLY in C1, where the index byte-equals a tree
-# containing no user work — the staged-WIP-loss class is excluded by construction.
-# Known residual (Lane V M-1): in C2/D the index stays stale by design, so
+#   D1. no marker, index tree in HEAD history -> seeded clean index -> read-tree; marker=HEAD
+#   D2. no marker, index tree not in history  -> unknown staged work -> leave for manual read-tree -m
+# Safety: read-tree fires ONLY in C1/D1, where the index byte-equals a
+# committed tree containing no user work — the staged-WIP-loss class is
+# excluded by construction.
+# Known residual (Lane V M-1): in C2/D2 the index stays stale by design, so
 # STATE.md's working-tree field below still shows the phantom storm until
 # the seat resolves manually (read-tree -m) or converges via A.
 _sync_seat_index() {
-  local head="$1" mark last
+  local head="$1" mark last index_tree
   [ -n "${GIT_INDEX_FILE:-}" ] || return 0
   [ -f "$GIT_INDEX_FILE" ] || return 0
   mark=".claude/hooks/.last-index-sync-$(basename "$GIT_INDEX_FILE")"
@@ -102,6 +104,11 @@ _sync_seat_index() {
   # would otherwise leave an empty marker (self-healing via A, but avoidable).
   if git diff-index --cached --quiet "$head" 2>/dev/null; then
     printf '%s\n' "$head" > "${mark}.tmp" && mv -f "${mark}.tmp" "$mark"
+  elif [ -z "$last" ]; then
+    index_tree=$(git write-tree 2>/dev/null || echo "")
+    if [ -n "$index_tree" ] && git log --format=%T "$head" 2>/dev/null | grep -Fxq "$index_tree"; then
+      git read-tree "$head" && printf '%s\n' "$head" > "${mark}.tmp" && mv -f "${mark}.tmp" "$mark"
+    fi
   elif [ -n "$last" ] \
        && git rev-parse -q --verify "${last}^{commit}" >/dev/null 2>&1 \
        && git diff-index --cached --quiet "$last" 2>/dev/null; then
