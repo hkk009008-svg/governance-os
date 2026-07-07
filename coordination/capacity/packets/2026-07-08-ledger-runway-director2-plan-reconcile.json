@@ -23,11 +23,12 @@
   ],
   "done_evidence": [
     "coordination/mailbox/sent/2026-07-07T16-49-15Z-director2-to-coordinator-coordination.md",
-    "coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md records owner rulings for Task 0.4 items 1-a, 2-b, 3-b, 4-a, 5-a, 6-a, and 7-a."
+    "coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md records owner rulings for Task 0.4 items 1-a, 2-b, 3-b, 4-a, 5-a, 6-a, and 7-a.",
+    "coordination/mailbox/sent/2026-07-07T17-15-05Z-director2-to-coordinator-coordination.md records the Phase 2 brief deltas implied by the Task 0.4 rulings without editing evidence-ledger product code or divergent ledger docs."
   ],
-  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md",
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T17-15-05Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "blocked",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
