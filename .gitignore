@@ -92,6 +92,9 @@ STATE.md
 # Subagent-driven-development scratch ledger (skill-owned, never committed)
 .superpowers/
 
+# Project-local git worktrees (created for isolated implementation runs)
+.worktrees/
+
 # Codex hook runtime state (written on every codex run; never committed)
 .codex/hooks/.last-state-head
 .codex/hooks/.skip-worktree-cleared.log
