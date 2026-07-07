@@ -70,4 +70,4 @@ Architecture detail: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## License
 
-<fill-in: license name and link>
+MIT — see [LICENSE](LICENSE).

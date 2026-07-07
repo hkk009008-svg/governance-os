@@ -230,3 +230,25 @@ numbers ≥ 027 are never reused for local decisions and never renumbered.
   entry is the signpost that numbers ≥ 027 mean "origin repo."
 - If an origin rule is materially changed in this repo, write a new local ADR
   that names the origin number it supersedes.
+
+---
+
+## ADR-007: License the public transfer bundle under MIT
+
+**Status:** Accepted
+
+**Context:**
+The repo is PUBLIC on GitHub (`hkk009008-svg/governance-os`; verified via
+`$ gh repo view --json visibility → PUBLIC`) but carried no LICENSE file —
+legally "all rights reserved", contradicting its stated purpose as a transfer
+bundle adopters copy into their own repos (TRANSFER-SETUP.md §1).
+
+**Decision:**
+License the repository under the MIT License (LICENSE at repo root; README §License
+filled). Decided by the user-principal on 2026-07-07.
+
+**Consequences:**
+- Adopters can lawfully copy, modify, and embed the bundle.
+- No patent grant (Apache-2.0 was declined as heavier than needed).
+- README.md remains on the placeholder allowlist — its other skeleton sections
+  are deliberate adopter fill-ins per ADR-002.
