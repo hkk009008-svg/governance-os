@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 import codex_protocol_model as model
+import protocol_doctor as doctor
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,8 +40,11 @@ def test_ledger_bridge_contract_declares_kernel_target_and_hygiene():
     assert "/Users/hyungkoookkim/evidence-ledger" in rendered
     assert "readiness bridge" in rendered
     assert "named seat" in rendered
-    assert "coordinator may reconcile" in rendered
     assert "env -u GIT_INDEX_FILE" in rendered
+    for rule in bridge["kernel_rules"]:
+        assert f"  - {rule}" in rendered
+    for rule in bridge["cross_repo_git_rules"]:
+        assert f"  - {rule}" in rendered
 
 
 def test_codex_surfaces_include_ledger_bridge_doc():
@@ -58,9 +63,18 @@ def test_model_verification_commands_are_current():
         assert selector not in rendered
 
 
-def test_protocol_doctor_uses_current_test_selectors():
-    text = _read("scripts/protocol_doctor.py")
+def test_protocol_doctor_derives_verification_commands_from_model():
+    expected_pytest = shlex.split(model.CODEX_VERIFICATION_COMMANDS[0])[3:]
+    expected_smoke = shlex.split(model.CODEX_VERIFICATION_COMMANDS[1])[3:]
+    commands = doctor.verification_commands("/tmp/python")
+
+    assert commands == [
+        ["/tmp/python", *expected_pytest[1:]],
+        ["/tmp/python", *expected_smoke[1:]],
+    ]
+
+    flattened = " ".join(part for command in commands for part in command)
     for selector in CURRENT_PROTOCOL_TESTS:
-        assert selector in text
+        assert selector in flattened
     for selector in STALE_SELECTORS:
-        assert selector not in text
+        assert selector not in flattened

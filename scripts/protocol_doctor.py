@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 import subprocess
 import sys
+import codex_protocol_model as protocol_model
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,6 +47,20 @@ def _python() -> str:
     return sys.executable
 
 
+def _materialize_model_command(command: str, python_executable: str) -> list[str]:
+    tokens = shlex.split(command)
+    if tokens[:3] == ["env", "-u", "GIT_INDEX_FILE"]:
+        tokens = tokens[3:]
+    return [python_executable, *tokens[1:]]
+
+
+def verification_commands(python_executable: str) -> list[list[str]]:
+    return [
+        _materialize_model_command(command, python_executable)
+        for command in protocol_model.CODEX_VERIFICATION_COMMANDS
+    ]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run strict read-only protocol checks.")
     parser.add_argument("--root", default=str(ROOT))
@@ -78,22 +94,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.route,
             ]
         )
-    commands.extend(
-        [
-            [
-                py,
-                "-m",
-                "pytest",
-                "tests/unit/test_imports_smoke.py",
-                "tests/unit/test_protocol_mailbox.py",
-                "tests/unit/test_status.py",
-                "tests/unit/test_ceremony_gates.py",
-                "tests/unit/test_codex_ledger_bridge.py",
-                "-q",
-            ],
-            [py, "scripts/ci_smoke.py"],
-        ]
-    )
+    commands.extend(verification_commands(py))
 
     for cmd in commands:
         result = run_command(cmd, root)

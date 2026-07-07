@@ -506,11 +506,6 @@ def render_seat_subagent_development() -> str:
 
 def render_ledger_cli_bridge() -> str:
     """Return the Codex bridge contract for evidence-ledger target work."""
-    def _render_rule(rule: str) -> str:
-        if rule.startswith("Coordinator may reconcile"):
-            return rule[:1].lower() + rule[1:]
-        return rule
-
     lines = [
         "Ledger CLI Bridge:",
         f"- Pipeline kernel: `{LEDGER_CLI_BRIDGE['pipeline_kernel']}`",
@@ -518,7 +513,7 @@ def render_ledger_cli_bridge() -> str:
         f"- Bridge doc: `{LEDGER_CLI_BRIDGE['doc_path']}`",
         "- Runtime:",
     ]
-    lines.extend(f"  - {_render_rule(rule)}" for rule in LEDGER_CLI_BRIDGE["kernel_rules"])
+    lines.extend(f"  - {rule}" for rule in LEDGER_CLI_BRIDGE["kernel_rules"])
     lines.append("- Cross-repo hygiene:")
     lines.extend(f"  - {rule}" for rule in LEDGER_CLI_BRIDGE["cross_repo_git_rules"])
     return "\n".join(lines)
