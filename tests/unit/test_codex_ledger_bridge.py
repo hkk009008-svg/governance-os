@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import shlex
 from pathlib import Path
 
 import codex_protocol_model as model
+import continuation_readiness
 import protocol_doctor as doctor
 
 
@@ -136,3 +139,13 @@ def test_readiness_and_coordinator_prompts_keep_mutation_boundaries():
     coordinator = _read(".codex/agents/protocol-coordinator.toml")
     assert "A readiness bridge must not mutate evidence-ledger." in readiness
     assert "Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes." in coordinator
+
+
+def test_readiness_render_codex_surfaces_ledger_bridge():
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        continuation_readiness.render_codex(ROOT)
+
+    rendered = buffer.getvalue()
+    assert "Ledger CLI Bridge:" in rendered
+    assert "docs/protocol/codex/ledger-cli-adoption.md" in rendered

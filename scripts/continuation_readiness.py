@@ -17,6 +17,7 @@ from pathlib import Path
 from codex_protocol_model import (
     DURABLE_STATE_ARTIFACTS,
     MODEL_SOURCE,
+    render_ledger_cli_bridge,
     render_agent_extension_summary,
     render_runtime_env_contract,
     render_seat_subagent_development,
@@ -158,6 +159,7 @@ def render_codex(root: Path) -> None:
     agents = sorted(p.name for p in agents_dir.glob("*.toml")) if agents_dir.exists() else []
 
     print(_trim(render_surface_summary(), lines=8))
+    print(render_ledger_cli_bridge())
     print("durable state: " + ", ".join(DURABLE_STATE_ARTIFACTS))
     print(render_agent_extension_summary(agents))
     print(render_seat_subagent_development())
