@@ -356,3 +356,31 @@ user (docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md:92-147).
 - Every deferral now has one authoritative home with an owner (user-principal)
   and a concrete trigger; agents cite this entry instead of re-deriving.
 - No keys, secrets, or GitHub settings change until a trigger fires.
+
+## ADR-011: Advisory review of thin-evidence Rules #17–#20 — all kept fully active
+
+**Status:** Accepted
+
+**Context:**
+docs/protocol/advisory-candidates.md parks four thin-evidence rules for a
+user-principal review. The review ran 2026-07-07 with fresh read-only
+evidence: Rule #17's trigger had already fired and been discharged
+(2026-06-09 v5.6 retro, ~18 documented workflow runs, "net-positive and
+retained as-is" — docs/protocol/claude/director-operator.md:1160-1209) while
+the parking list was never updated; Rules #18/#19/#20 remain at their
+codification N-counts (0/1/1) with triggers unfired (Rule #19's related
+Candidate #9 incident is explicitly not counted toward its N=2 per
+docs/PROTOCOL-RULES-LOG.md:576-580).
+
+**Decision:**
+User-principal verdicts, 2026-07-07: Rule #17 — keep fully active and DELIST
+from the advisory-candidates list (graduated; no longer thin-evidence).
+Rules #18, #19, #20 — keep fully active, stay listed, revisit triggers
+unchanged. No rule body or HARD/SOFT tag changes.
+
+**Consequences:**
+- The stale parking-list entry for Rule #17 is corrected; the list again
+  matches the rule bodies it indexes.
+- Rules #19/#20 get their first real field exposure now that 4-seat
+  operation is active (ADR-009); a recurrence would meet their N=2 triggers.
+- No enforcement surface changed — this is a record-keeping decision.
