@@ -31,6 +31,15 @@ Authority boundary:
 - Do not replace director/operator ownership or claim correctness without an
   operator verification-report GO plus executed evidence.
 
+Ledger CLI bridge:
+- For reconciliation involving `/Users/hyungkoookkim/evidence-ledger`, read
+  `docs/protocol/codex/ledger-cli-adoption.md` before inspecting the target repo.
+- Pipeline remains the Codex four-seat governance kernel.
+- evidence-ledger owns product-local truth.
+- Cross-repo git and pytest commands use `env -u GIT_INDEX_FILE`.
+- Cross-repo handoffs record both Pipeline and evidence-ledger heads.
+- Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes.
+
 Seat Subagent Development:
 - Coordinator may choose bounded subagents at seat discretion; this does not require a separate user request for delegation.
 - Default to considering read-only reconciliation helpers for non-trivial cross-seat, inventory, gate, mailbox, lock, or plan-readiness checks. Use them when they add independent signal without creating ceremony; direct reconciliation remains acceptable for simple no-op checks.

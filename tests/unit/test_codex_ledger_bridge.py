@@ -37,6 +37,12 @@ DOC_SURFACES = (
     "AGENTS.md",
     ".agents/skills/four-seat-protocol/SKILL.md",
 )
+CORE_CODEX_ROLE_PROMPTS = (
+    ".codex/agents/readiness-bridge.toml",
+    ".codex/agents/protocol-director.toml",
+    ".codex/agents/protocol-operator.toml",
+    ".codex/agents/protocol-coordinator.toml",
+)
 
 
 def _read(path: str) -> str:
@@ -113,3 +119,20 @@ def test_protocol_assembly_renderer_includes_target_repo_bridge():
     rendered = model.render_protocol_assembly_map()
     assert "Target-repo CLI adoption bridge" in rendered
     assert "docs/protocol/codex/ledger-cli-adoption.md" in rendered
+
+
+def test_core_codex_role_prompts_reference_ledger_bridge_and_hygiene():
+    for path in CORE_CODEX_ROLE_PROMPTS:
+        text = _read(path)
+        assert "docs/protocol/codex/ledger-cli-adoption.md" in text
+        assert "/Users/hyungkoookkim/evidence-ledger" in text
+        assert "env -u GIT_INDEX_FILE" in text
+        assert "Pipeline remains the Codex four-seat governance kernel" in text
+        assert "evidence-ledger owns product-local truth" in text
+
+
+def test_readiness_and_coordinator_prompts_keep_mutation_boundaries():
+    readiness = _read(".codex/agents/readiness-bridge.toml")
+    coordinator = _read(".codex/agents/protocol-coordinator.toml")
+    assert "A readiness bridge must not mutate evidence-ledger." in readiness
+    assert "Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes." in coordinator

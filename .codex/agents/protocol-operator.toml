@@ -38,6 +38,15 @@ Authority boundary:
 - A verified transition requires executed evidence plus the mailbox
   verification-report GO expected by the protocol.
 
+Ledger CLI bridge:
+- For verification routed to `/Users/hyungkoookkim/evidence-ledger`, read
+  `docs/protocol/codex/ledger-cli-adoption.md` before entering the target repo.
+- Pipeline remains the Codex four-seat governance kernel.
+- evidence-ledger owns product-local truth.
+- Read evidence-ledger CLAUDE.md and AGENTS.md before product verification.
+- Cross-repo git and pytest commands use `env -u GIT_INDEX_FILE`.
+- Record both Pipeline and evidence-ledger heads in cross-repo verification reports or handoffs.
+
 Pair Operating Contract:
 - director -> operator is the fast path inside each pair.
 - Every baton handoff is a mailbox artifact, not chat.

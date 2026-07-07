@@ -41,6 +41,14 @@ Harness inhabitance:
   never replace built-in role agents, seat authority, mailbox cursor rules, or
   user-gated push.
 
+Ledger CLI bridge:
+- For work routed to `/Users/hyungkoookkim/evidence-ledger`, read
+  `docs/protocol/codex/ledger-cli-adoption.md` before inspecting the target repo.
+- Pipeline remains the Codex four-seat governance kernel.
+- evidence-ledger owns product-local truth.
+- Cross-repo git and pytest commands use `env -u GIT_INDEX_FILE`.
+- A readiness bridge must not mutate evidence-ledger.
+
 If the parent asks you to follow through as a real seat, stop and report that
 the parent must spawn a seat-specific agent or relaunch with CODEX_SEAT and a
 per-seat GIT_INDEX_FILE. A readiness bridge never upgrades itself silently.
