@@ -3,7 +3,7 @@
 Created: 2026-07-07T17:20:15Z  
 Seat: `director2`  
 Authority used: live-seat route  
-Pipeline HEAD at final refresh: `02e1b4b coord(director): record ledger runway mechanical outcome`  
+Pipeline HEAD at final read-only refresh before this correction: `432cde1 docs(handoff): refresh director2 ledger trigger`  
 Active route: `coordination/mailbox/sent/2026-07-07T17-18-59Z-coordinator-to-all-coordination.md`  
 Task-board: `ledger-runway-stage0-2026-07-08`
 
@@ -49,6 +49,10 @@ mechanical outcome`, which tracks
 and updates the director packet with PR #9 merge evidence plus PR #11 /
 reconcile commit `2eaed9d0181f3d3e13b7a206059f29cb5d942da3`.
 
+Subsequent handoff commits landed for the verifying seats:
+`96fe4c2 docs(handoff): refresh operator ledger trigger` and
+`0694938 docs(handoff): record ledger runway seat handoffs`.
+
 ## Verification And Blocking Reports
 
 Committed verifier reports after the director2 planning update:
@@ -80,28 +84,26 @@ The normal evidence-ledger `main` checkout is still not the Phase 2 base:
 ## Pipeline Checks Run
 
 - `env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director2 --wave 2`
-  -> PASS; active route `coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md`.
+  -> PASS; active route `coordination/mailbox/sent/2026-07-07T17-18-59Z-coordinator-to-all-coordination.md`.
 - `env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py director2 --wave 2`
-  -> Pipeline HEAD `02e1b4b` and unread `0 / ref-bus`. Wave 2 remained UNMET only because `docs/REMEDIATION-INVENTORY.md` is absent.
+  -> Pipeline HEAD `432cde1`, branch `main`, ahead `27`, behind `0`, and unread `0 / ref-bus`. Wave 2 remained UNMET only because `docs/REMEDIATION-INVENTORY.md` is absent.
 - `env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2`
   -> valid, no blocking issues.
-- `env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 --validate-route coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md`
+- `env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 --validate-route coordination/mailbox/sent/2026-07-07T17-18-59Z-coordinator-to-all-coordination.md`
   -> route valid, no blocking issues.
 - `env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py`
-  -> OK; known stale-SHA warnings unchanged.
+  -> OK; known 215 stale-SHA warnings unchanged.
 
 ## Known Concurrent WIP To Preserve
 
-At final handoff refresh time, the Pipeline working tree had peer-seat handoff
-WIP that must be preserved:
-
-- Modified, unstaged: `docs/HANDOFF-operator-2026-07-07-ledger-stage0.md`.
-- Staged: `docs/HANDOFF-operator2-2026-07-08-ledger-runway-isolation-refresh.md`.
+At final handoff correction refresh,
+`env -u GIT_INDEX_FILE git status --short --untracked-files=all` returned no
+entries before this correction edit. There is no remaining peer WIP to preserve.
 
 The director mechanical status and packet update are already committed in
-`02e1b4b`. The remaining operator/operator2 handoff files are not owned by
-director2; do not stage, overwrite, amend, or revert them from a director2
-continuation.
+`02e1b4b`. Operator/operator2 handoff updates are already committed in
+`96fe4c2` and `0694938`; do not amend, overwrite, or revert them from a
+director2 continuation.
 
 The committed `17:18:59Z` coordinator route still cites `UU OPERATIONS.md`, but
 fresh target git evidence during this handoff shows the reconcile worktree clean
