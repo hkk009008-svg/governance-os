@@ -252,3 +252,45 @@ filled). Decided by the user-principal on 2026-07-07.
 - No patent grant (Apache-2.0 was declined as heavier than needed).
 - README.md remains on the placeholder allowlist — its other skeleton sections
   are deliberate adopter fill-ins per ADR-002.
+
+---
+
+## ADR-008: Binding target designated — evidence-ledger (bind already executed there); Pipeline stays the generic bundle
+
+**Status:** Accepted
+
+**Context:**
+The 2026-06-30 handoff blocked Track B ("fill the truth docs, real
+`_project_smoke()`") behind a HARD NO-GO until a concrete target repo existed.
+On 2026-07-07 the user-principal designated `hkk009008-svg/evidence-ledger`
+(private) as the bound target — and inspection showed the bind was already
+executed there on 2026-07-03 as that repo's ADR-001 "Option B partial bind"
+(commit `fee5207` on its `phase1-foundation`, merged to its main @ `a5fb526`;
+verified via `$ git log --oneline origin/phase1-foundation` in that repo).
+Its ARCHITECTURE.md/OPERATIONS.md were filled 2026-07-04; its placeholder
+allowlist is down to 5 entries (verified via `$ git show
+origin/phase1-foundation:scripts/placeholder_allowlist.txt | grep -cv '^#'
+→ 5`).
+
+**Decision:**
+(1) evidence-ledger is the bound deployment of this governance OS; Track B
+lives there and is largely complete under its own ADR log. (2) Pipeline
+remains the generic transfer bundle: its skeleton placeholders and
+`TODO(<PROJECT>)` sites stay deliberately unfilled per ADR-002 — they are
+adopter fill-ins, not debt. (3) Items resolved by evidence-ledger's ADR-001
+baked defaults are closed without further action here: PROGRAM-MANUAL content
+(their intent doc = the approved design spec + docs/MANUAL.md),
+money-gate-reviewer (no AI-spend lane in their Phase 1; revisit at their
+Phase-2 AI-spend lane), threeway/seat machinery (deliberately skipped there).
+Decided by the user-principal on 2026-07-07.
+
+**Consequences:**
+- The handoff's "Track B BLOCKED / HARD NO-GO" claims are stale → fixed by the
+  dated addendum in docs/HANDOFF-governance-hardening-2026-06-30.md (same
+  change as this entry, per the staleness rule).
+- Pipeline's `docs/PROGRAM-MANUAL.md` skeleton stays allowlisted by design; an
+  adopter-facing manual for the governance OS itself remains possible future
+  work if the user requests it.
+- Remaining binding debt is tracked in evidence-ledger's own allowlist (4 real
+  entries + 1 intentional test fixture) — closed by a follow-on task in that
+  repo, under that repo's doctrine.

@@ -275,6 +275,10 @@ linking scheme inside an implementer.
 
 ## §5 Track B — deferred (DO NOT ATTEMPT THIS SESSION)
 
+> **2026-07-07 update:** the unblock trigger has FIRED — see the dated addendum
+> at the end of this file. The table and HARD NO-GO below are preserved as
+> written for the historical record.
+
 | Item | Why blocked |
 |---|---|
 | Fill `ARCHITECTURE.md` (topology, module map, smoke invariants, Last-verified) | No domain code to describe truthfully. |
@@ -358,3 +362,18 @@ commit body.
 global-acceptance output, the new HARD/SOFT map summary (how many rules flipped to
 HARD), and any `test-infeasible`/surfaced-decision notes (A7). End with the exact next
 trigger (most likely: "bind to target repo → unblock Track B").
+
+---
+
+## Addendum 2026-07-07 — Track B unblocked and relocated
+
+The user-principal designated `hkk009008-svg/evidence-ledger` as the bound
+target repo (Pipeline ADR-008). Inspection showed the bind was already
+executed there on 2026-07-03 (that repo's ADR-001 "Option B partial bind",
+commit `fee5207`, merged to its main @ `a5fb526`) with the truth docs filled
+2026-07-04. Track B items therefore live in that repo and are largely
+complete; Pipeline remains the generic transfer bundle per ADR-002/ADR-008.
+The §5 HARD NO-GO is satisfied — a bound target exists; the co-evolution
+contract (§N-smoke ↔ `_project_smoke()`) now applies in the bound repo. The
+"next trigger" recorded at the wrap (bind to target repo → unblock Track B)
+is consumed.
