@@ -42,6 +42,9 @@ Ledger CLI bridge:
 - For work routed to `/Users/hyungkoookkim/evidence-ledger`, read
   `docs/protocol/codex/ledger-cli-adoption.md` before entering the target repo.
 - Pipeline remains the Codex four-seat governance kernel.
+- Do not start ledger work from `/Users/hyungkoookkim/Content`.
+- Start from `cd /Users/hyungkoookkim/Pipeline`.
+- Run `env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2` before entering evidence-ledger.
 - evidence-ledger owns product-local truth.
 - Read evidence-ledger CLAUDE.md and AGENTS.md before product edits.
 - Cross-repo git and pytest commands use `env -u GIT_INDEX_FILE`.

@@ -23,6 +23,10 @@ For work routed to `/Users/hyungkoookkim/evidence-ledger`, use
 Pipeline remains the Codex four-seat governance kernel; evidence-ledger owns
 product-local truth. Cross-repo git and pytest commands use
 `env -u GIT_INDEX_FILE` so Pipeline seat indexes do not leak into ledger work.
+Do not start ledger work from `/Users/hyungkoookkim/Content`. Start from
+`/Users/hyungkoookkim/Pipeline` and run
+`env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`
+before target-repo inspection.
 
 ## Runtime modes
 

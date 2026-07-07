@@ -315,11 +315,16 @@ LIVE_LOOP_STEPS = (
 
 LEDGER_CLI_BRIDGE = {
     "doc_path": "docs/protocol/codex/ledger-cli-adoption.md",
+    "guard_script": "scripts/ledger_start_guard.py",
     "pipeline_kernel": "/Users/hyungkoookkim/Pipeline",
+    "forbidden_kernel": "/Users/hyungkoookkim/Content",
     "target_repo": "/Users/hyungkoookkim/evidence-ledger",
+    "guard_start_command": "scripts/ledger_start_guard.py --seat <seat> --wave 2",
     "kernel_rules": (
         "Pipeline remains the Codex four-seat governance kernel.",
         "Evidence-ledger remains the product repo and owns product-local truth.",
+        "Do not start ledger work from /Users/hyungkoookkim/Content.",
+        "Run scripts/ledger_start_guard.py --seat <seat> --wave 2 before entering evidence-ledger.",
         "Start as readiness bridge unless the prompt names a live seat or coordinator.",
         "A named seat may work on ledger only inside the explicit route.",
         "Coordinator may reconcile ledger work from durable evidence but may not author behavior-changing product fixes.",
@@ -350,6 +355,10 @@ CODEX_SURFACES = (
     (
         LEDGER_CLI_BRIDGE["doc_path"],
         "ledger CLI adoption bridge for evidence-ledger target work",
+    ),
+    (
+        LEDGER_CLI_BRIDGE["guard_script"],
+        "ledger seat start guard that enforces Pipeline kernel before target repo work",
     ),
     (".agents/skills/four-seat-protocol/SKILL.md", "runtime checklist"),
     (".codex/agents/*.toml", "spawned role instructions"),
@@ -516,12 +525,36 @@ def render_ledger_cli_bridge() -> str:
         "Ledger CLI Bridge:",
         f"- Pipeline kernel: `{LEDGER_CLI_BRIDGE['pipeline_kernel']}`",
         f"- Target repo: `{LEDGER_CLI_BRIDGE['target_repo']}`",
+        f"- Forbidden kernel: `{LEDGER_CLI_BRIDGE['forbidden_kernel']}`",
         f"- Bridge doc: `{LEDGER_CLI_BRIDGE['doc_path']}`",
+        f"- Start guard: `{LEDGER_CLI_BRIDGE['guard_start_command']}`",
         "- Runtime:",
     ]
     lines.extend(f"  - {rule}" for rule in LEDGER_CLI_BRIDGE["kernel_rules"])
     lines.append("- Cross-repo hygiene:")
     lines.extend(f"  - {rule}" for rule in LEDGER_CLI_BRIDGE["cross_repo_git_rules"])
+    return "\n".join(lines)
+
+
+def render_ledger_start_guard() -> str:
+    """Return the concrete Pipeline-first start commands for ledger-routed seats."""
+    guard = LEDGER_CLI_BRIDGE["guard_script"]
+    kernel = LEDGER_CLI_BRIDGE["pipeline_kernel"]
+    forbidden = LEDGER_CLI_BRIDGE["forbidden_kernel"]
+    seats = ("coordinator", "director", "director2", "operator", "operator2")
+    lines = [
+        "Ledger Start Guard:",
+        f"- Always start ledger-routed Codex seats from `cd {kernel}`.",
+        f"- Do not start from `{forbidden}`.",
+        "- Run the guard before entering evidence-ledger:",
+        f"  - env -u GIT_INDEX_FILE .venv/bin/python {LEDGER_CLI_BRIDGE['guard_start_command']}",
+        "- Seat starts:",
+    ]
+    lines.extend(
+        "  - "
+        f"{seat}: env -u GIT_INDEX_FILE .venv/bin/python {guard} --seat {seat} --wave 2"
+        for seat in seats
+    )
     return "\n".join(lines)
 
 
@@ -861,6 +894,9 @@ def main() -> int:
     print()
     print("## Ledger CLI Bridge")
     print(render_ledger_cli_bridge())
+    print()
+    print("## Ledger Start Guard")
+    print(render_ledger_start_guard())
     print()
     print("## Codex Verification Commands")
     print(render_codex_verification_commands())

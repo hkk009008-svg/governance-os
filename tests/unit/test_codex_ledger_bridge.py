@@ -29,6 +29,8 @@ CURRENT_PROTOCOL_TESTS = (
 REQUIRED_LEDGER_DOC_PHRASES = (
     "Pipeline remains the Codex four-seat governance kernel.",
     "/Users/hyungkoookkim/evidence-ledger",
+    "Do not start ledger work from `/Users/hyungkoookkim/Content`.",
+    "scripts/ledger_start_guard.py --seat <seat> --wave 2",
     "env -u GIT_INDEX_FILE",
     "Read evidence-ledger CLAUDE.md and AGENTS.md before product edits.",
     "Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes.",
@@ -58,11 +60,15 @@ def test_ledger_bridge_contract_declares_kernel_target_and_hygiene():
     assert bridge["doc_path"] == "docs/protocol/codex/ledger-cli-adoption.md"
     assert bridge["pipeline_kernel"] == "/Users/hyungkoookkim/Pipeline"
     assert bridge["target_repo"] == "/Users/hyungkoookkim/evidence-ledger"
+    assert bridge["forbidden_kernel"] == "/Users/hyungkoookkim/Content"
+    assert bridge["guard_script"] == "scripts/ledger_start_guard.py"
     assert "env -u GIT_INDEX_FILE" in "\n".join(bridge["cross_repo_git_rules"])
 
     rendered = model.render_ledger_cli_bridge()
     assert "/Users/hyungkoookkim/Pipeline" in rendered
     assert "/Users/hyungkoookkim/evidence-ledger" in rendered
+    assert "/Users/hyungkoookkim/Content" in rendered
+    assert "scripts/ledger_start_guard.py --seat <seat> --wave 2" in rendered
     assert "readiness bridge" in rendered
     assert "named seat" in rendered
     assert "env -u GIT_INDEX_FILE" in rendered
@@ -77,6 +83,23 @@ def test_codex_surfaces_include_ledger_bridge_doc():
         "docs/protocol/codex/ledger-cli-adoption.md",
         "ledger CLI adoption bridge for evidence-ledger target work",
     ) in model.CODEX_SURFACES
+    assert (
+        "scripts/ledger_start_guard.py",
+        "ledger seat start guard that enforces Pipeline kernel before target repo work",
+    ) in model.CODEX_SURFACES
+
+
+def test_ledger_start_guard_renderer_names_all_seat_first_commands():
+    rendered = model.render_ledger_start_guard()
+
+    assert "Ledger Start Guard:" in rendered
+    assert "cd /Users/hyungkoookkim/Pipeline" in rendered
+    assert "Do not start from `/Users/hyungkoookkim/Content`" in rendered
+    for seat in ("coordinator", "director", "director2", "operator", "operator2"):
+        assert (
+            "env -u GIT_INDEX_FILE .venv/bin/python "
+            f"scripts/ledger_start_guard.py --seat {seat} --wave 2"
+        ) in rendered
 
 
 def test_model_verification_commands_are_current():
@@ -129,6 +152,9 @@ def test_core_codex_role_prompts_reference_ledger_bridge_and_hygiene():
     for path in CORE_CODEX_ROLE_PROMPTS:
         text = _read(path)
         assert "docs/protocol/codex/ledger-cli-adoption.md" in text
+        assert "scripts/ledger_start_guard.py --seat" in text
+        assert "cd /Users/hyungkoookkim/Pipeline" in text
+        assert "Do not start ledger work from `/Users/hyungkoookkim/Content`." in text
         assert "/Users/hyungkoookkim/evidence-ledger" in text
         assert "env -u GIT_INDEX_FILE" in text
         assert "Pipeline remains the Codex four-seat governance kernel" in text
@@ -150,3 +176,52 @@ def test_readiness_render_codex_surfaces_ledger_bridge():
     rendered = buffer.getvalue()
     assert "Ledger CLI Bridge:" in rendered
     assert "docs/protocol/codex/ledger-cli-adoption.md" in rendered
+    assert "Ledger Start Guard:" in rendered
+    assert "scripts/ledger_start_guard.py --seat <seat> --wave 2" in rendered
+
+
+def test_ledger_start_guard_cli_rejects_content_kernel():
+    import ledger_start_guard
+
+    result = ledger_start_guard.build_guard(
+        seat="operator2",
+        root=Path("/Users/hyungkoookkim/Content"),
+        kernel=Path("/Users/hyungkoookkim/Pipeline"),
+    )
+
+    assert not result.ok
+    assert "Refusing `/Users/hyungkoookkim/Content`" in "\n".join(result.errors)
+
+
+def test_ledger_start_guard_cli_prints_route_and_first_commands(tmp_path, capsys):
+    import ledger_start_guard
+
+    sent = tmp_path / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True)
+    route = sent / "2026-07-07T09-36-23Z-coordinator-to-all-coordination.md"
+    route.write_text(
+        "# Coordinator -> All: ledger alignment task-board\n\n"
+        "Task-board: ledger-t14-align-2026-07-07\n"
+        "Target repo: /Users/hyungkoookkim/evidence-ledger\n",
+        encoding="utf-8",
+    )
+
+    rc = ledger_start_guard.main(
+        [
+            "--root",
+            str(tmp_path),
+            "--kernel",
+            str(tmp_path),
+            "--seat",
+            "operator2",
+            "--wave",
+            "2",
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Ledger seat start guard: PASS" in out
+    assert "Active route: coordination/mailbox/sent/2026-07-07T09-36-23Z-coordinator-to-all-coordination.md" in out
+    assert "env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py operator2 --wave 2" in out
+    assert "env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger status --short --branch" in out

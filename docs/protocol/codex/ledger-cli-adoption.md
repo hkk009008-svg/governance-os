@@ -12,6 +12,11 @@ Use this bridge only when the user or parent prompt routes work to
 
 Canonical path: `docs/protocol/codex/ledger-cli-adoption.md`.
 
+Do not start ledger work from `/Users/hyungkoookkim/Content`.
+Ledger-routed Codex seats start from `/Users/hyungkoookkim/Pipeline`, then run
+`env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`
+before entering evidence-ledger.
+
 ## Authority Boundary
 
 - Readiness bridge: may inspect and report. It must not mutate evidence-ledger.
@@ -22,6 +27,13 @@ Canonical path: `docs/protocol/codex/ledger-cli-adoption.md`.
   GO, route, lock, push, or spend authority.
 
 ## Start From Pipeline
+
+First command for every live ledger seat:
+
+```bash
+cd /Users/hyungkoookkim/Pipeline
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2
+```
 
 Readiness bridge:
 

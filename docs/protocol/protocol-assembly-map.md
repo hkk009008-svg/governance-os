@@ -35,6 +35,7 @@ flowchart TD
 | Universal protocol policy | `docs/protocol/agents/` | `docs/protocol/agents/director-operator.md` | Rules shared by Claude, Codex, and other agents should not live in a Codex-only surface. |
 | Codex protocol mapping | `docs/protocol/codex/continuation.md` | Capacity-max workflow, Codex launch pattern | Codex mechanics translate the universal rules into Codex-native tools, hooks, and role agents. |
 | Target-repo CLI adoption bridge | `docs/protocol/codex/ledger-cli-adoption.md` | Evidence-ledger CLI bridge | Target-repo adoption is Codex-specific mechanics and should not duplicate universal protocol policy. |
+| Target-repo start guard | `scripts/ledger_start_guard.py` | Enforced Pipeline-first ledger seat startup | Executable proof belongs in scripts, then docs/skills/prompts link to it. |
 | Start-session router | `AGENTS.md` | Codex start-session inhabitance block | The root file should route agents before task-specific docs are loaded. |
 | Live seat checklists | `.agents/skills/` | `.agents/skills/seat-operator/SKILL.md` | Seat actions are reusable runtime instructions with clear trigger rules. |
 | Spawnable Codex roles | `.codex/agents/*.toml` | `.codex/agents/protocol-operator.toml` | Role prompts are executable agent modules and should stay near Codex agent configuration. |
@@ -57,6 +58,7 @@ Use this quick routing check before adding or moving protocol material:
 Universal rule?             -> docs/protocol/agents/
 Codex-only rule?            -> docs/protocol/codex/
 Target-repo Codex bridge?   -> docs/protocol/codex/ledger-cli-adoption.md
+Target-repo start guard?    -> scripts/ledger_start_guard.py
 Seat action checklist?      -> .agents/skills/
 Spawnable role prompt?      -> .codex/agents/
 Lifecycle/index guardrail?  -> .codex/hooks*

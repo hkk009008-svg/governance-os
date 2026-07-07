@@ -215,6 +215,8 @@ When the parent prompt routes Codex work to `/Users/hyungkoookkim/evidence-ledge
 
 - Pipeline remains the Codex four-seat governance kernel.
 - Evidence-ledger owns product-local truth.
+- Do not start ledger work from `/Users/hyungkoookkim/Content`.
+- Start from Pipeline and run `env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2` before entering evidence-ledger.
 - Cross-repo git and pytest commands use `env -u GIT_INDEX_FILE`.
 - Read evidence-ledger CLAUDE.md and AGENTS.md before product edits.
 - Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes.

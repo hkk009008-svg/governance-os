@@ -64,6 +64,12 @@ board:
 and
 `env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md`.
 
+Ledger-routed Codex seats start from `/Users/hyungkoookkim/Pipeline`, not
+`/Users/hyungkoookkim/Content`. Before any seat enters
+`/Users/hyungkoookkim/evidence-ledger`, run
+`env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`
+from Pipeline and read the active coordinator route it reports.
+
 **Antigravity specifically:** Antigravity ("agy", the Gemini-based agentic IDE)
 reads this file as its agent-agnostic source of truth and translates the
 principles into its own mechanisms. In the **three-way cross-provider protocol**
