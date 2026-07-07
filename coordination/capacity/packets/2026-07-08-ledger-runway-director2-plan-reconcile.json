@@ -26,7 +26,7 @@
   ],
   "handoff_artifact": "coordination/mailbox/sent/2026-07-07T16-49-15Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "complete",
+  "status": "blocked",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
