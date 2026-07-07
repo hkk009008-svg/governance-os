@@ -13,9 +13,14 @@ re-derive it from here.
 | `0432a02` | completes the chip: both `.skip-worktree-cleared.log` twins (written by `update-state.sh:141`/`:142` in both hook dirs) | `git check-ignore -v` on all 4 runtime files → `.gitignore:96-97,100-101`; `ci_smoke.py` → OK |
 | (this handoff's commit) | core.md sharp-edge: deliberate seat-index maintenance under `guard-git-index.sh` + this doc | — |
 
-Push decision is the user-principal's (A7 push-gate deferred, ADR-005);
-operator post-commit verify optional at chore tier — proportionality per
-Lane V discipline.
+Push decision is the user-principal's (A7 push-gate deferred, ADR-005).
+The operator seat sanity-verified `c2e16d5`+`0432a02` (chore tier, no Lane V —
+its findings event carries the check-ignore + smoke evidence).
+
+**AMENDED at wrap:** an operator session landed `45477ff` + `ba6af6a`
+(coordination events) between this seat's commits and this handoff — main is
+now **ahead 5**, not 2. See "Operator events" below; the original "no mailbox
+events pending" claim was falsified mid-wrap and is retracted.
 
 ## Seat hygiene done (not commit-visible)
 
@@ -53,11 +58,31 @@ LANDED (carrier seat, take 4; PR #8 route). Ledger remaining queue (owner +
 carrier): checkpoint-2 reconciliation readout → agency checklist sign-off →
 real agency load → cross-source readout → T16 Step 6.
 
+## Operator events (Rule #8 — read them; they bind receiving seats)
+
+`coordination/mailbox/sent/2026-07-07T04-33-03Z-operator-to-all-findings.md`
++ `…04-43-45Z-operator-to-all-wrap.md`. Two fleet defects on record:
+
+1. **`_sync_seat_index` cold-start wedge** — a freshly seeded seat index with
+   no `.last-index-sync-*` marker can never self-sync (both hook branches skip
+   it). Runtime-repaired 13:26–13:29 this session. **Source fix ASSIGNED to
+   the director lane: the seeding step must write the marker alongside the
+   index.** Note: this seat's read-tree rebuilds (above) did not touch markers;
+   pre-existing markers mean hook branch B keeps those seats syncing — the
+   wedge bites only marker-less fresh seeds.
+2. **`send-event` is broken fleet-wide** — `coordination/bin/send-event` does a
+   plain `git add` but `.gitignore:51` ignores `sent/*`; every emit fails and
+   self-deletes (sent/ empty since 06-30). Fix ownership open: `add -f` in the
+   script vs a documented force-add path. Manual emit recipe is in the
+   findings event.
+
 ## Resume protocol (next Pipeline session)
 
 1. R-START as usual (smoke ran green throughout this session).
 2. Decide/execute the push of the commits above (with the user).
-3. No mailbox events pending (`coordination/mailbox/sent/` empty at wrap).
+3. **Director-lane queue:** the `_sync_seat_index` seeding-marker source fix
+   (assigned above); decide/land the `send-event` fix (production coordination
+   tooling — Lane V applies, unlike this session's chores).
 4. If starting ledger work from a Pipeline seat: read the two memories named
    above FIRST, and check the ledger `progress.md` tail for an active seat
    before touching anything shared.
