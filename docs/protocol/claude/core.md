@@ -183,6 +183,17 @@ Reference this section from a handoff; don't restate it.*
 - **Subagent git uses `env -u GIT_INDEX_FILE`** (subagent shell state does not
   persist); main-seat commits go through the per-seat index directly — do NOT apply
   `env -u` there.
+- **Deliberate seat-index maintenance under the guard hook.** `guard-git-index.sh`
+  blocks any Bash command that sets `GIT_INDEX_FILE=` without an `env -u` prefix —
+  including intentional seat-index ops. Compliant routes: rebuild a stale seat index
+  with `env -u GIT_INDEX_FILE git read-tree --index-output=.git/index-<seat> HEAD`
+  (never sets the var); read-only inspection via
+  `env -u GIT_INDEX_FILE sh -c 'GIT_INDEX_FILE=… git diff --cached --stat HEAD'`.
+  Seat indexes go stale whenever commits land via another index (seeded blobs then
+  show as phantom `MM`) — verify staleness (`git ls-files -s` blob vs `git ls-tree
+  <commit>`) before rebuilding. The exported var also FOLLOWS `cd` into other repos
+  (2026-07-07: made ~/evidence-ledger look object-corrupt) — cross-repo git always
+  gets the `env -u` prefix.
 - **A domain-graph subsystem re-run with identical inputs may return a cached result
   instead of new output** (false-fail, not a real error). Cache-bust by varying a
   seed / output-name / request parameter before concluding the subsystem is broken.
