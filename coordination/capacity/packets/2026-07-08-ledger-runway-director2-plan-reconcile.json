@@ -1,0 +1,35 @@
+{
+  "id": "director2-ledger-runway-plan-reconcile",
+  "wave": 2,
+  "cycle": "ledger-runway-stage0-2026-07-08",
+  "owner": "director2",
+  "packet_type": "director-brief",
+  "row_ids": [
+    "ledger-runway-plan-reconcile"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/specs/2026-07-02-evidence-ledger-design.md",
+    "/Users/hyungkoookkim/evidence-ledger/docs/MANUAL.md",
+    "/Users/hyungkoookkim/evidence-ledger/DECISIONS.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Reconcile Task 0.3 PR #10 against live GitHub state: PR #10 is MERGED, not OPEN+CONFLICTING.",
+    "Prepare the batched Task 0.4 owner adjudication question set from plan items (a) through (g).",
+    "Flag which Phase 2 tasks remain blocked by owner rulings and which can start after Stage 0.",
+    "Do not silently decide business semantics."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/evidence-ledger/docs/MANUAL.md"
+  ]
+}

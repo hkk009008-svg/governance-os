@@ -1,0 +1,35 @@
+{
+  "id": "operator-ledger-runway-stage0-verify",
+  "wave": 2,
+  "cycle": "ledger-runway-stage0-2026-07-08",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "ledger-runway-stage0-current-state"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/evidence-ledger/.superpowers/sdd/progress.md",
+    "/Users/hyungkoookkim/evidence-ledger/coordination/presence/",
+    "/Users/hyungkoookkim/evidence-ledger/coordination/locks/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Independently verify evidence-ledger R-START state: ci_smoke OK, main ahead of origin/main by four commits, no active non-tombstone writer presence, no locks.",
+    "Verify Stage 0 gate facts without editing product code.",
+    "Issue a Pipeline mailbox verification-report GO/NITS/FAIL for Stage 0 readiness.",
+    "Do not push, merge, claim locks, consume coordinator mail, or start Phase 2 implementation."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": "coordinator task-board route for ledger-runway-stage0-2026-07-08",
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/evidence-ledger/.superpowers/sdd/progress.md"
+  ]
+}

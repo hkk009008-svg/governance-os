@@ -24,10 +24,13 @@
     "Check R-DATA: no data files, workbooks, or Config.plist are tracked.",
     "Issue a verification-report GO, NITS, or FAIL before any ledger publication decision."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "GO: coordination/mailbox/sent/2026-07-07T09-51-54Z-operator2-to-coordinator-verification-report.md",
+    "coordination/mailbox/sent/2026-07-07T09-51-54Z-operator2-to-coordinator-verification-report.md"
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T09-51-54Z-operator2-to-coordinator-verification-report.md",
   "next_recipient": "director",
-  "status": "active",
+  "status": "done",
   "verify_request": "coordinator task-board route for ledger-t14-align-2026-07-07",
   "target_commit": "1f1b7c2",
   "commit_range": "b614df2..1f1b7c2",

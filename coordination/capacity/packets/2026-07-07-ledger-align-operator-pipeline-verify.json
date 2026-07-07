@@ -22,10 +22,13 @@
     "Issue a verification-report GO, NITS, or FAIL before any Pipeline publication decision.",
     "Include tests and diff-scope evidence in the report."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "GO: coordination/mailbox/sent/2026-07-07T09-52-13Z-operator-to-all-verification-report.md",
+    "coordination/mailbox/sent/2026-07-07T09-52-13Z-operator-to-all-verification-report.md"
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T09-52-13Z-operator-to-all-verification-report.md",
   "next_recipient": "director",
-  "status": "active",
+  "status": "done",
   "verify_request": "coordination/mailbox/sent/2026-07-07T09-09-04Z-director-to-operator-verify-request.md",
   "target_commit": "c82508a",
   "commit_range": null,

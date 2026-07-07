@@ -1,0 +1,35 @@
+{
+  "id": "operator2-ledger-runway-worktree-verify",
+  "wave": 2,
+  "cycle": "ledger-runway-stage0-2026-07-08",
+  "owner": "operator2",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "ledger-runway-isolation-policy"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/evidence-ledger/.gitignore",
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/evidence-ledger/AGENTS.md",
+    "/Users/hyungkoookkim/evidence-ledger/CLAUDE.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Independently verify implementation must not start on evidence-ledger main without owner-approved isolation.",
+    "Check current checkout isolation: evidence-ledger is a normal main checkout, and .worktrees is not ignored.",
+    "Report whether a worktree/branch setup question is required before Phase 2 implementation.",
+    "Issue a Pipeline mailbox verification-report GO/NITS/FAIL for isolation readiness."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": "coordinator task-board route for ledger-runway-stage0-2026-07-08",
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "/Users/hyungkoookkim/evidence-ledger/.gitignore",
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md"
+  ]
+}

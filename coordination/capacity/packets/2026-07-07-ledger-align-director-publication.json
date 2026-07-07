@@ -24,10 +24,12 @@
     "Frame the owner decision: accept non-interactive T16 evidence or require visual simulator acceptance.",
     "Do not publish; publication requires a later explicit user instruction after verification."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-07T09-51-34Z-director-to-coordinator-status.md"
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T09-51-34Z-director-to-coordinator-status.md",
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "done",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
