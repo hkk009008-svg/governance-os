@@ -75,6 +75,12 @@ _CURSOR_RE = re.compile(
 _SEEN_ONLY_RE = re.compile(r"^coordination/mailbox/seen/[^/]+\.txt$")
 
 _WHEN_RE = re.compile(r"\*\*When:\*\*\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)")
+END_TRIGGER_ADOPTION_TS = "2026-07-07T17-58-38Z"
+_END_TRIGGER_HEADING_RE = re.compile(
+    r"(?im)^(?:#{1,6}\s*)?Exact Next Trigger\s*:?\s*$"
+)
+_MARKDOWN_HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S")
+_CURSOR_AT_SEND_RE = re.compile(r"(?im)^Cursor at send:\s*\d+\s*$")
 
 _ALL_SEAT_HANDOFF_RE = re.compile(r"^#{1,3}\s+All[- ]Seat Handoff\b", re.I | re.M)
 _PENDING_LIVE_SEAT_MARKERS = (
@@ -193,6 +199,52 @@ def _check_events(coord_root: Path, since: str,
     return issues
 
 
+def _has_terminal_next_trigger(text: str) -> bool:
+    matches = list(_END_TRIGGER_HEADING_RE.finditer(text))
+    if not matches:
+        return False
+    trigger = matches[-1]
+    later_headings = [
+        match for match in _MARKDOWN_HEADING_RE.finditer(text)
+        if match.start() > trigger.start()
+    ]
+    if later_headings:
+        return False
+    tail_lines = text[trigger.end():].splitlines()
+    content_lines = []
+    for line in tail_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _CURSOR_AT_SEND_RE.fullmatch(stripped):
+            continue
+        content_lines.append(stripped)
+    return bool(content_lines)
+
+
+def _check_end_triggers(
+    coord_root: Path,
+    names: list[str],
+    trigger_since: str = END_TRIGGER_ADOPTION_TS,
+) -> list[CoordIssue]:
+    issues: list[CoordIssue] = []
+    sent = coord_root / "mailbox" / "sent"
+    for name in names:
+        m = _EVENT_NAME_RE.match(name)
+        if not m or m.group("ts") < trigger_since:
+            continue
+        rel = f"mailbox/sent/{name}"
+        text = (sent / name).read_text(errors="replace")
+        if not _has_terminal_next_trigger(text):
+            issues.append(CoordIssue(
+                rel,
+                "missing_end_trigger",
+                "FATAL",
+                "live-seat/coordinator event must end with Exact Next Trigger",
+            ))
+    return issues
+
+
 def _unread_report(coord_root: Path, names: list[str],
                    repo_root: Path | None = None) -> list[CoordIssue]:
     issues: list[CoordIssue] = []
@@ -293,6 +345,7 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
     issues: list[CoordIssue] = []
     issues += _check_cursors(coord_root, now, names)
     issues += _check_events(coord_root, since, names)
+    issues += _check_end_triggers(coord_root, names)
     # The bus lives at the git repo root; coord_root is <repo>/coordination, so its
     # parent is the repo root unless an explicit git_root is given (ADR-062).
     bus_repo_root = Path(git_root) if git_root else coord_root.parent

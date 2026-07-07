@@ -273,6 +273,7 @@ PLANNING_RELAY_RULES = (
 PAIR_OPERATING_RULES = (
     "director -> operator is the fast path inside each pair: director scopes and sends the smallest sufficient artifact; operator verifies only that artifact or landed commit.",
     "Every baton handoff is a mailbox artifact, not chat: brief, verify-request, verification-report, or handoff with commit/range, paths, tests, exclusions, and exact next trigger.",
+    "Every live-seat/coordinator turn ends with an `Exact Next Trigger` section naming the next lawful prompt, seat event, standby condition, or blocker.",
     "Director sends one verify-request per implementation or brief once scope is stable; include commit/range, brief path, evidence commands, known excluded workspace state, and expected verdict.",
     "Operator waits for a fresh verify-request or shipping commit; no duplicate Lane V for docs-only, status-only, or handoff-only commits, and no speculative verification when phase is ambiguous.",
     "No receipt/status churn: send mail only when it changes ownership, preserves evidence, requests verification, returns GO/NITS/FAIL, or blocks on user-gated side effects.",
@@ -310,6 +311,7 @@ LIVE_LOOP_STEPS = (
     "Before any active coordinator task-board route, run `scripts/protocol_capacity_board.py --wave <wave>` and validate the draft with `scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md`; fix named gate failures before committing the route.",
     "Send one coordinator-to-all route if needed, then verify receipt seat-by-seat.",
     "When a full coordinator/live-seat cycle reaches a real completion boundary and assigned tasks are complete, write a durable handoff before transplant or context switch, including fresh git/mailbox/gate/smoke state and the exact next trigger.",
+    "Before ending any live-seat/coordinator turn, output `Exact Next Trigger` as the final section in the mailbox artifact and user-facing final response.",
     "Push remains user-gated; locks, paid spend, and pod spend require explicit consent.",
 )
 

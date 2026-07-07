@@ -81,6 +81,16 @@ gate's result by relaxing the gate.
   JSON snapshots go in that bundle's `packets/` subfolder. Do not move live
   packets out of `coordination/capacity/packets/`.
 
+## Pair Operating Contract
+
+- Every baton handoff is a mailbox artifact, not chat: brief, verify-request,
+  verification-report, or handoff with commit/range, paths, tests, exclusions,
+  and exact next trigger.
+- Every live-seat/coordinator turn ends with an `Exact Next Trigger` section
+  naming the next lawful prompt, seat event, standby condition, or blocker; make
+  it the final user-facing section as well as the terminal mailbox/handoff
+  section.
+
 ## No-op fast path
 
 If the latest coordinator reconciliation already covers the newest durable

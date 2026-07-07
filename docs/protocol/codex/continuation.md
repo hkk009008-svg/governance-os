@@ -106,7 +106,7 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave> 
 Closed-cycle coordinator-join packets are also hard-gated: standby, idle,
 closeout, transfer, or transplant evidence must cite a durable
 `docs/HANDOFF-*.md` artifact instead of ending on a chat-only or generic
-`next trigger`.
+`Exact Next Trigger`.
 
 Use `<wave>` when the active wave is not 2:
 
@@ -148,6 +148,10 @@ evidence, not row-correctness proof.
 - Every baton handoff is a mailbox artifact, not chat: brief, verify-request,
   verification-report, or handoff with commit/range, paths, tests, exclusions,
   and exact next trigger.
+- Every live-seat/coordinator turn ends with an `Exact Next Trigger` section
+  naming the next lawful prompt, seat event, standby condition, or blocker; make
+  it the final user-facing section as well as the terminal mailbox/handoff
+  section.
 - Director sends one verify-request per implementation or brief once scope is
   stable; include commit/range, brief path, evidence commands, known excluded
   workspace state, and expected verdict.

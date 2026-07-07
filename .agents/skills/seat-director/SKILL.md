@@ -67,6 +67,10 @@ The brief gates the fix: the co-signer reads it, the implementer obeys it. Autho
 - Every baton handoff is a mailbox artifact, not chat: brief, verify-request,
   verification-report, or handoff with commit/range, paths, tests, exclusions,
   and exact next trigger.
+- Every live-seat/coordinator turn ends with an `Exact Next Trigger` section
+  naming the next lawful prompt, seat event, standby condition, or blocker; make
+  it the final user-facing section as well as the terminal mailbox/handoff
+  section.
 - Director sends one verify-request per implementation or brief once scope is
   stable; include commit/range, brief path, evidence commands, known excluded
   workspace state, and expected verdict.
