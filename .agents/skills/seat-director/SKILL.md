@@ -9,7 +9,7 @@ description: "Use when operating as a per-pair DIRECTOR seat (Pair-A <domain-A> 
 
 The per-pair director owns the **strategic layer within its lane**: writes R-BRIEFs, sets priority, decides implementation mode, claims locks, and Tier-A co-signs the other lane. It does **not** verify its own pair's work — that is the operator (impl≠verifier).
 
-**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (authority, locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/claude/director-operator.md` (Rules #7–#23, R-BRIEF, #12, #13, R-PID); spec §6a/§6c; `docs/templates/claude/implementer.md`; `docs/protocol/claude/orchestration.md` (R-ORCH). **R-SKILL:** before authoring/judging domain-specific subsystem code or configurations load the appropriate `<domain-skill>`; before pipeline-level design work load the pipeline `<domain-skill>`.
+**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (authority, locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/claude/director-operator.md` (Rules #7–#23, R-BRIEF, #12, #13, R-PID); spec §6a/§6c; `docs/templates/agents/implementer.md`; `docs/protocol/agents/orchestration.md` (R-ORCH). **R-SKILL:** before authoring/judging domain-specific subsystem code or configurations load the appropriate `<domain-skill>`; before pipeline-level design work load the pipeline `<domain-skill>`.
 <!-- TODO(<PROJECT>): add this project domain-skill triggers -->
 
 ## Session-start orientation (do this first)
@@ -55,7 +55,7 @@ The brief gates the fix: the co-signer reads it, the implementer obeys it. Autho
 ## Implement directly vs orchestrate — and name the right reviewer
 
 - **Small / tightly-coupled** → implement directly (you author; your operator verifies).
-- **≥5 independent sub-tasks OR ≥800 LOC** → **orchestrate** (R-ORCH): one fresh implementer per task, **sequential on shared files**, reviewers after — never two implementers in parallel on shared files (`docs/protocol/claude/orchestration.md`). Dispatch with the `docs/templates/claude/implementer.md` body incl. its **Git-hygiene block** (`env -u GIT_INDEX_FILE`) + items 4–5.
+- **≥5 independent sub-tasks OR ≥800 LOC** → **orchestrate** (R-ORCH): one fresh implementer per task, **sequential on shared files**, reviewers after — never two implementers in parallel on shared files (`docs/protocol/agents/orchestration.md`). Dispatch with the `docs/templates/agents/implementer.md` body incl. its **Git-hygiene block** (`env -u GIT_INDEX_FILE`) + items 4–5.
 - **Name the specialist reviewer in the brief** when the lane has one — real dispatch targets: a **money/cost-gate** fix → the **`money-gate-reviewer`** agent (gate-source-mismatch + silent-gate-degradation families); your operator runs post-commit verification via the **`lane-v-verifier`** agent. You do NOT verify your own pair's fix.
 <!-- TODO(<PROJECT>): add domain-specialist reviewer targets here (e.g. a domain-graph reviewer agent for <domain-skill> content) -->
 
@@ -98,6 +98,7 @@ Subagents are part of the director's normal toolbelt, but the director remains
 the owner of the brief, dispatch shape, synthesis, and verify-request.
 Live director seats may choose bounded subagents at seat discretion; this does not require a separate user request for delegation.
 Default behavior: every live seat and coordinator actively considers bounded subagents for non-trivial routed work and uses them when they add independent signal, capacity, or fresh verification. Direct work remains acceptable for small, tightly coupled, or authority-sensitive work.
+After live-seat/coordinator orientation, record a Subagent utilization decision: dispatch a bounded helper for a named task, or direct/no-op because the work is small, tightly coupled, authority-sensitive, or already complete.
 
 - Use bounded exploration subagents for Rule #12 grep-the-writes evidence,
   Rule #13 sibling audits, call-graph checks, and design alternatives. Pull

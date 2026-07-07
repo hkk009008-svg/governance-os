@@ -97,6 +97,7 @@ Subagents are part of Lane V, not a replacement for it. Use them to widen
 independent review while keeping the operator as the accountable verifier.
 Live operator seats may choose bounded subagents at seat discretion; this does not require a separate user request for delegation.
 Default behavior: every live seat and coordinator actively considers bounded subagents for non-trivial routed work and uses them when they add independent signal, capacity, or fresh verification. Direct work remains acceptable for small, tightly coupled, or authority-sensitive work.
+After live-seat/coordinator orientation, record a Subagent utilization decision: dispatch a bounded helper for a named task, or direct/no-op because the work is small, tightly coupled, authority-sensitive, or already complete.
 
 - Spawn read-only `lane-v-verifier` for ordinary landed diffs when a cold
   context pass helps; spawn `money-gate-reviewer` for spend, budget, cost-key,
