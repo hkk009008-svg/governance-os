@@ -20,11 +20,12 @@
     "Do not edit evidence-ledger product files as coordinator."
   ],
   "done_evidence": [
-    "coordination/mailbox/sent/2026-07-07T16-52-18Z-coordinator-to-all-status.md reconciles the final Stage 0 board state and preserves operator/operator2 FAIL blockers."
+    "coordination/mailbox/sent/2026-07-07T16-52-18Z-coordinator-to-all-status.md reconciles the final Stage 0 board state and preserves operator/operator2 FAIL blockers.",
+    "coordination/mailbox/sent/2026-07-07T17-05-08Z-coordinator-to-all-coordination.md records the owner proceed route for mechanical Stage 0 work while preserving Task 0.4 business rulings as unresolved."
   ],
-  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T16-52-18Z-coordinator-to-all-status.md",
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T17-05-08Z-coordinator-to-all-coordination.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "active",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
