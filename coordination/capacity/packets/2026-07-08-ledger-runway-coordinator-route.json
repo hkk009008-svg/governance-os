@@ -19,10 +19,12 @@
     "Send one coordinator-to-all task-board event naming every packet id.",
     "Do not edit evidence-ledger product files as coordinator."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-07T16-52-18Z-coordinator-to-all-status.md reconciles the final Stage 0 board state and preserves operator/operator2 FAIL blockers."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-07T16-52-18Z-coordinator-to-all-status.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "blocked",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
