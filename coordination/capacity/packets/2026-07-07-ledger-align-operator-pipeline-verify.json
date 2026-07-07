@@ -1,0 +1,38 @@
+{
+  "id": "operator-pipeline-tooling-verify",
+  "wave": 2,
+  "cycle": "ledger-t14-align-2026-07-07",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "pipeline-protocol-tooling-fix"
+  ],
+  "allowed_paths": [
+    "coordination/bin/send-event",
+    ".claude/hooks/update-state.sh",
+    ".codex/hooks/update-state.sh",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_codex_ledger_bridge.py",
+    "scripts/ci_smoke.py"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Verify commit c82508a against the existing director verify-request.",
+    "Issue a verification-report GO, NITS, or FAIL before any Pipeline publication decision.",
+    "Include tests and diff-scope evidence in the report."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "director",
+  "status": "active",
+  "verify_request": "coordination/mailbox/sent/2026-07-07T09-09-04Z-director-to-operator-verify-request.md",
+  "target_commit": "c82508a",
+  "commit_range": null,
+  "scope_files": [
+    "coordination/bin/send-event",
+    ".claude/hooks/update-state.sh",
+    ".codex/hooks/update-state.sh",
+    "tests/unit/test_coordination_tooling.py"
+  ]
+}
