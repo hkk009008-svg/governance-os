@@ -156,6 +156,7 @@ Keep the manual true as the code evolves (same staleness discipline as `ARCHITEC
 | Full process detail (core / orchestration / director-operator / failure-modes) | [docs/protocol/agents/](docs/protocol/agents/) |
 | Place protocol artifacts in the right folder | [docs/protocol/protocol-assembly-map.md](docs/protocol/protocol-assembly-map.md) |
 | Continue the four-seat process from Codex | [docs/protocol/codex/continuation.md](docs/protocol/codex/continuation.md) |
+| Work on evidence-ledger from Codex CLI as a four-seat unit | [docs/protocol/codex/ledger-cli-adoption.md](docs/protocol/codex/ledger-cli-adoption.md) |
 | Run Codex/Claude/Antigravity as one unified system on the cross-provider protocol | [docs/protocol/threeway/](docs/protocol/threeway/) |
 | Sub-task / implementer prompt body | [docs/templates/agents/](docs/templates/agents/) |
 | Rule provenance (codified SHAs, empirical basis, beneficiary/consent) | [docs/PROTOCOL-RULES-LOG.md](docs/PROTOCOL-RULES-LOG.md) |

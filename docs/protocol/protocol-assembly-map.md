@@ -34,6 +34,7 @@ flowchart TD
 |---|---|---|---|
 | Universal protocol policy | `docs/protocol/agents/` | `docs/protocol/agents/director-operator.md` | Rules shared by Claude, Codex, and other agents should not live in a Codex-only surface. |
 | Codex protocol mapping | `docs/protocol/codex/continuation.md` | Capacity-max workflow, Codex launch pattern | Codex mechanics translate the universal rules into Codex-native tools, hooks, and role agents. |
+| Target-repo CLI adoption bridge | `docs/protocol/codex/ledger-cli-adoption.md` | Evidence-ledger CLI bridge | Target-repo adoption is Codex-specific mechanics and should not duplicate universal protocol policy. |
 | Start-session router | `AGENTS.md` | Codex start-session inhabitance block | The root file should route agents before task-specific docs are loaded. |
 | Live seat checklists | `.agents/skills/` | `.agents/skills/seat-operator/SKILL.md` | Seat actions are reusable runtime instructions with clear trigger rules. |
 | Spawnable Codex roles | `.codex/agents/*.toml` | `.codex/agents/protocol-operator.toml` | Role prompts are executable agent modules and should stay near Codex agent configuration. |
@@ -46,7 +47,7 @@ flowchart TD
 | Plans and specs | `docs/superpowers/plans/`, `docs/superpowers/specs/` | Wave plans, stub-contract specs | Larger design and execution artifacts need durable but bounded homes. |
 | Executable checks | `scripts/` | `wave_gate_check.py`, `ci_smoke.py` | Gate and readiness truth should be runnable, not only asserted in prose. |
 | Committed evidence | `logs/` | `product-oracle-wave2.json`, `discovery-*.json` | Measurement and discovery outputs support R-MEASURE/R-EVIDENCE claims. |
-| Protocol tool tests | `tests/unit/` | `test_coordination_bin.py`, `test_codex_protocol_model.py` | Tool contracts should be enforced by tests so prose drift is caught. |
+| Protocol tool tests | `tests/unit/` | `test_protocol_mailbox.py`, `test_codex_ledger_bridge.py` | Tool contracts should be enforced by tests so prose drift is caught. |
 
 ## Placement Rule
 
@@ -55,6 +56,7 @@ Use this quick routing check before adding or moving protocol material:
 ```text
 Universal rule?             -> docs/protocol/agents/
 Codex-only rule?            -> docs/protocol/codex/
+Target-repo Codex bridge?   -> docs/protocol/codex/ledger-cli-adoption.md
 Seat action checklist?      -> .agents/skills/
 Spawnable role prompt?      -> .codex/agents/
 Lifecycle/index guardrail?  -> .codex/hooks*

@@ -209,10 +209,21 @@ Default behavior: every live seat and coordinator actively considers bounded sub
 - Do not run parallel implementation subagents on shared files or behind the
   same push-gated lock.
 
+## Ledger CLI bridge
+
+When the parent prompt routes Codex work to `/Users/hyungkoookkim/evidence-ledger`, read `docs/protocol/codex/ledger-cli-adoption.md` before entering the target repo.
+
+- Pipeline remains the Codex four-seat governance kernel.
+- Evidence-ledger owns product-local truth.
+- Cross-repo git and pytest commands use `env -u GIT_INDEX_FILE`.
+- Read evidence-ledger CLAUDE.md and AGENTS.md before product edits.
+- Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes.
+
 ## Related files
 
 - Kernel: `scripts/codex_protocol_model.py`
 - Codex adapter: `docs/protocol/codex/continuation.md`
+- Ledger CLI bridge: `docs/protocol/codex/ledger-cli-adoption.md`
 - Seat status: `.agents/skills/four-seat-protocol/scripts/seat_status.py`
 - Root process layer: `AGENTS.md`
 - Folder intent: `docs/protocol/protocol-assembly-map.md`

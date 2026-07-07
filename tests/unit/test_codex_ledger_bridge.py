@@ -22,6 +22,21 @@ CURRENT_PROTOCOL_TESTS = (
     "tests/unit/test_ceremony_gates.py",
     "tests/unit/test_codex_ledger_bridge.py",
 )
+REQUIRED_LEDGER_DOC_PHRASES = (
+    "Pipeline remains the Codex four-seat governance kernel.",
+    "/Users/hyungkoookkim/evidence-ledger",
+    "env -u GIT_INDEX_FILE",
+    "Read evidence-ledger CLAUDE.md and AGENTS.md before product edits.",
+    "Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes.",
+    "Cross-repo handoffs record both repo heads.",
+)
+DOC_SURFACES = (
+    "docs/protocol/codex/ledger-cli-adoption.md",
+    "docs/protocol/codex/continuation.md",
+    "docs/protocol/protocol-assembly-map.md",
+    "AGENTS.md",
+    ".agents/skills/four-seat-protocol/SKILL.md",
+)
 
 
 def _read(path: str) -> str:
@@ -78,3 +93,23 @@ def test_protocol_doctor_derives_verification_commands_from_model():
         assert selector in flattened
     for selector in STALE_SELECTORS:
         assert selector not in flattened
+
+
+def test_ledger_bridge_doc_exists_and_names_required_boundaries():
+    text = _read("docs/protocol/codex/ledger-cli-adoption.md")
+    for phrase in REQUIRED_LEDGER_DOC_PHRASES:
+        assert phrase in text
+
+
+def test_doc_surfaces_route_to_ledger_bridge_without_stale_selectors():
+    for path in DOC_SURFACES:
+        text = _read(path)
+        assert "docs/protocol/codex/ledger-cli-adoption.md" in text
+        for selector in STALE_SELECTORS:
+            assert selector not in text
+
+
+def test_protocol_assembly_renderer_includes_target_repo_bridge():
+    rendered = model.render_protocol_assembly_map()
+    assert "Target-repo CLI adoption bridge" in rendered
+    assert "docs/protocol/codex/ledger-cli-adoption.md" in rendered

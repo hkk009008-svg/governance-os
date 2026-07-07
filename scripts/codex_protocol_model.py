@@ -369,6 +369,11 @@ PROTOCOL_ASSEMBLY_PORTIONS = (
         "Codex-specific mechanics map the universal rules onto Codex-native surfaces.",
     ),
     (
+        "Target-repo CLI adoption bridge",
+        LEDGER_CLI_BRIDGE["doc_path"],
+        "Target-repo adoption is Codex-specific mechanics and should not duplicate universal protocol policy.",
+    ),
+    (
         "Live seat checklists",
         ".agents/skills/",
         "Seat procedures are reusable runtime instructions, not durable mailbox state.",

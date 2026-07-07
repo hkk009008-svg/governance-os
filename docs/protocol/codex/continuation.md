@@ -16,6 +16,14 @@ For folder ownership, use `docs/protocol/protocol-assembly-map.md`. For full
 agent-neutral governance, use `docs/protocol/agents/`. This file only maps the
 kernel onto Codex commands and runtime choices.
 
+## Ledger CLI Adoption Bridge
+
+For work routed to `/Users/hyungkoookkim/evidence-ledger`, use
+`docs/protocol/codex/ledger-cli-adoption.md` before entering the target repo.
+Pipeline remains the Codex four-seat governance kernel; evidence-ledger owns
+product-local truth. Cross-repo git and pytest commands use
+`env -u GIT_INDEX_FILE` so Pipeline seat indexes do not leak into ledger work.
+
 ## Runtime modes
 
 - Readiness bridge: default mode. Report current durable state and blockers.
@@ -210,10 +218,9 @@ Default behavior: every live seat and coordinator actively considers bounded sub
 Run the narrow command that proves the current claim:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_protocol_artifacts.py -q
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_protocol_model.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_imports_smoke.py tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_ceremony_gates.py tests/unit/test_codex_ledger_bridge.py -q
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-.venv/bin/python scripts/wave_gate_check.py <wave>
+.venv/bin/python scripts/wave_gate_check.py 2
 ```
 
 For a commit or handoff, also inspect scope:
