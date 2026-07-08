@@ -1,158 +1,89 @@
-# OPERATIONS.md — Governance OS
+# OPERATIONS.md - Governance OS
 
-> Run, configure, and troubleshoot the program.
-> For *what* the program does and *why* it is shaped this way, see
-> [ARCHITECTURE.md](ARCHITECTURE.md) and [DECISIONS.md](DECISIONS.md).
+Pipeline is the governance kernel. It runs the shared coordination protocol,
+not the private product application. `evidence-ledger` is the bound product
+target for ledger-routed work; Pipeline owns the seat mechanics, mailbox
+state, capacity board, protocol smoke checks, and cross-provider adoption docs.
 
----
+For what the kernel is and where its verified facts live, see
+[ARCHITECTURE.md](ARCHITECTURE.md). ARCHITECTURE.md records verified
+governance-kernel truth.
 
-## §1 Prerequisites
+## 1. Prerequisites
 
-<!-- List OS, runtime version, system packages, and any one-time setup steps
-     required before the program can run. -->
+- Python virtual environment at `.venv/`.
+- Git checkout at `/Users/hyungkoookkim/Pipeline`.
+- Use `env -u GIT_INDEX_FILE` for normal git, pytest, and Python commands.
+- Do not route ledger work through `/Users/hyungkoookkim/Content`.
 
-- OS: <fill-in: e.g., macOS 13+ / Ubuntu 22.04+>
-- Runtime: <fill-in: e.g., Python 3.11+>
-- System packages: <fill-in: e.g., ffmpeg, git>
-
----
-
-## §2 Installation
-
-<!-- Step-by-step commands to go from a clean clone to a runnable state.
-     Every command here must be copy-pasteable and verified against HEAD. -->
+## 2. Basic Health Checks
 
 ```bash
-# 1. Clone and enter the repo
-git clone <fill-in: repo URL>
-cd <fill-in: repo dir>
-
-# 2. Create and activate a virtual environment
-<fill-in: e.g., python -m venv .venv && source .venv/bin/activate>
-
-# 3. Install dependencies
-<fill-in: e.g., pip install -r requirements.txt>
-
-# 4. Copy and edit config
-<fill-in: e.g., cp config.example.yaml config.yaml && $EDITOR config.yaml>
+cd /Users/hyungkoookkim/Pipeline
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py
+env -u GIT_INDEX_FILE git status --short --branch
 ```
 
----
+Expected:
+- `scripts/ci_smoke.py` exits `0`.
+- Any stale commit-SHA warning is explicitly labeled as not-clean baseline debt.
+- `git status --short --branch` shows only changes you intentionally made.
 
-## §3 Running the Program
+## 3. Live Seat Startup
 
-<!-- Show the canonical invocation(s) for the most common use cases.
-     Label each with the scenario it covers. -->
+For a live Codex seat, run the Pipeline guard first, then seat status:
 
 ```bash
-# Standard run
-<fill-in: e.g., python main.py --config config.yaml>
-
-# Dry-run / preview mode (no side effects)
-<fill-in: command>
-
-# Verbose / debug output
-<fill-in: command>
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director --wave 2
+env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py director --wave 2
 ```
 
----
+Replace `director` with `director2`, `operator`, `operator2`, or `coordinator`
+only when the user or parent prompt names that seat. Read the active route body
+reported by the guard before entering any target repo.
 
-## §4 Configuration Reference
-
-<!-- Describe every config key the operator is expected to set.
-     Flag which keys are required vs optional and what the safe defaults are. -->
-
-Config file: `<fill-in: path>`
-
-| Key | Required | Default | Description |
-|-----|----------|---------|-------------|
-| `<fill-in>` | yes/no | `<fill-in>` | <fill-in: what it controls> |
-| `<fill-in>` | yes/no | `<fill-in>` | <fill-in> |
-
-**Environment variable overrides:**
-
-| Var | Overrides key | Notes |
-|-----|--------------|-------|
-| `<fill-in>` | `<fill-in>` | <fill-in> |
-
----
-
-## §5 Running Tests
-
-<!-- Canonical commands for the full test suite, a single test, and CI mode. -->
+## 4. Coordination Checks
 
 ```bash
-# Full suite
-<fill-in: e.g., env -u GIT_INDEX_FILE .venv/bin/python -m pytest>
-
-# Single test file
-<fill-in: e.g., pytest tests/test_foo.py -v>
-
-# CI smoke check (fast structural invariants)
-<fill-in: e.g., python scripts/ci_smoke.py>
+env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2
+env -u GIT_INDEX_FILE .venv/bin/python scripts/check_coordination.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/mailbox_monitor.py --once
 ```
 
----
+`mailbox_monitor.py` is read-only. Unknown coordinator broadcast receipt means
+receipt is unproved, not delivered.
 
-## §6 Common Workflows
+## 5. Ledger-Routed Target Work
 
-<!-- Brief recipes for the tasks operators perform most often.
-     Each recipe: title, 2-5 commands, expected output. -->
-
-### <fill-in: e.g., "Add a new X">
+When a route points at `/Users/hyungkoookkim/evidence-ledger`, stay in Pipeline
+until the guard and active route say which base or worktree is lawful. Inspect
+target state with explicit `git -C` commands:
 
 ```bash
-<fill-in: commands>
+env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger status --short --branch
+env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger log --oneline -5
 ```
 
-Expected: <fill-in: what success looks like>
+If the route names an isolated worktree, inspect that worktree before the normal
+target checkout. The normal checkout may be stale.
 
-### <fill-in: e.g., "Rotate credentials">
+## 6. Side-Effect Boundaries
 
-```bash
-<fill-in: commands>
-```
+The following require explicit user authorization or a valid routed executor:
+- push or force-push;
+- cursor consumption;
+- lock action;
+- paid API spend;
+- pod spend;
+- target checkout refresh;
+- product-target edits outside the active route.
 
-Expected: <fill-in>
+## 7. Troubleshooting
 
----
-
-## §7 Troubleshooting
-
-<!-- Map symptoms to causes and fixes. Prioritize failures that have actually
-     occurred in production or that are non-obvious from the error message. -->
-
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| `<fill-in: error message>` | <fill-in: cause> | <fill-in: fix> |
-| <fill-in> | <fill-in> | <fill-in> |
-
----
-
-## §8 Logs & Observability
-
-<!-- Where do logs go? What log levels mean. How to find a specific run's output. -->
-
-- Log location: `<fill-in: path or stdout>`
-- Log format: <fill-in: e.g., JSON structured / plain text>
-- Key log markers: `<fill-in: e.g., "GATE MET" = pipeline stage passed>`
-
----
-
-## §9 Upgrading & Migrations
-
-<!-- Steps to take when upgrading the program or its dependencies.
-     Note any schema migrations, config key renames, or breaking changes. -->
-
-<fill-in: e.g., "When upgrading from vX to vY, run: python scripts/migrate.py">
-
----
-
-## §10 Security Notes
-
-<!-- Credentials, secrets, and access controls that an operator must understand.
-     Never store actual secrets here — point to where they live and how to rotate. -->
-
-- Secrets stored in: <fill-in: e.g., `.env` (gitignored) / secrets manager>
-- Rotation procedure: <fill-in>
-- Least-privilege principle: <fill-in: what access the program needs and why>
+| Symptom | Likely cause | Response |
+|---|---|---|
+| Smoke exits OK with SHA warnings | Baselined stale commit-SHA references remain | Do not claim clean SHA provenance; run `scripts/check_doc_claims.py --sha-refs` for the full report. |
+| Guard reports a route but target checkout looks stale | Active work is in a route worktree or base | Read the route body and inspect the named worktree before using normal target checkout. |
+| Mailbox monitor shows unknown receipt | Cursor or ref-bus state cannot prove receipt | Treat delivery as unproved until a seat-specific status or mailbox body proves it. |
+| Capacity board reports active packets | A route is open | Work only inside the packet scope and send the next required mailbox artifact. |

@@ -150,20 +150,39 @@ def main() -> int:
         if _mn > 5:
             print(f"  ... and {_mn - 5} more")
 
-    # Commit-SHA ref drift WARN (git-backed; never a hard-fail — shallow clones
-    # skip reachability, and SHA drift is not auto-fixable).
+    # Commit-SHA ref drift baseline. Known debt stays warning-only but is
+    # explicitly labeled not-clean; any count/digest change is new drift.
     _sha_drifts = _cdc.check_sha_refs(_cdc.SHA_DEFAULT_DOCS, _repo_root)
     if _sha_drifts:
-        _sn = len(_sha_drifts)
+        _sha_status = _cdc.classify_sha_ref_baseline(_sha_drifts, _repo_root)
+        if not _sha_status.matches_baseline:
+            print("SHA-REF BASELINE CHECK — FAIL")
+            print(_sha_status.warning_line)
+            print(
+                "Run: .venv/bin/python scripts/check_doc_claims.py --sha-refs "
+                "and update the reviewed baseline only after a bounded cleanup "
+                "or explicit owner decision."
+            )
+            for _sd in _sha_drifts[:20]:
+                print(
+                    f"  [{_sd.kind}] {Path(_sd.doc_path).name}:{_sd.doc_line}"
+                    f" (sha: {_sd.symbol}) — {_sd.message}"
+                )
+            if len(_sha_drifts) > 20:
+                print(f"  ... and {len(_sha_drifts) - 20} more")
+            return 1
+        print(f"WARNING: {_sha_status.warning_line}")
         print(
-            f"WARNING: {_sn} stale commit-SHA ref(s) in docs"
-            f" (run .venv/bin/python scripts/check_doc_claims.py --sha-refs):"
+            "Run: .venv/bin/python scripts/check_doc_claims.py --sha-refs "
+            "for the full baselined drift report."
         )
-        for _sd in _sha_drifts:
+        for _sd in _sha_drifts[:5]:
             print(
                 f"  [{_sd.kind}] {Path(_sd.doc_path).name}:{_sd.doc_line}"
                 f" (sha: {_sd.symbol}) — {_sd.message}"
             )
+        if len(_sha_drifts) > 5:
+            print(f"  ... and {len(_sha_drifts) - 5} more baselined warning(s)")
 
     # Coordination-state gate (protocol v6.0, check_coordination).
     # FATAL (broken cursor / filename-convention violation) hard-fails locally,

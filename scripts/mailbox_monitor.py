@@ -242,6 +242,17 @@ def collect_monitor_state(
             alerts.append(
                 "coordinator broadcast has unconsumed seats: " + ", ".join(pending)
             )
+        unknown = [
+            seat
+            for seat, seat_state in seats.items()
+            if seat_state["broadcast_receipt"] == "unknown"
+        ]
+        if unknown:
+            alerts.append(
+                "coordinator broadcast receipt is unproved for seats: "
+                + ", ".join(unknown)
+                + " (unknown means unproved, not delivered)"
+            )
     heartbeat_attention = [
         f"{seat}={seat_state['heartbeat']['state']}"
         for seat, seat_state in seats.items()
@@ -282,6 +293,8 @@ def render_snapshot(state: dict) -> str:
         f"consumed={summary['consumed']} unread={summary['unread']} "
         f"unknown={summary['unknown']}"
     )
+    if summary["unknown"]:
+        lines.append("receipt note: receipt unknown means unproved, not delivered")
     lines.append("")
     lines.append("SEATS")
     for seat in SEATS:

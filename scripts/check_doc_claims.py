@@ -14,6 +14,7 @@ main(argv=None)  -> int   (exit 0=clean, 1=drift, >1=error)
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 import subprocess
 import sys
@@ -1492,6 +1493,23 @@ SHA_DEFAULT_DOCS = [
     "docs/protocol/agents/director-operator.md",
 ]
 
+# Current checked baseline for known stale SHA references. ci_smoke treats this
+# as "not clean, but no worse than the reviewed debt"; any count or digest
+# change becomes a hard new-drift signal.
+SHA_REF_BASELINE_COUNT = 215
+SHA_REF_BASELINE_DIGEST = "d908e1d8a4c911a9175fd57698c06ec8e0a0f2ce83602831adb197d8d541cf7c"
+
+
+@dataclass(frozen=True)
+class ShaRefBaselineStatus:
+    count: int
+    digest: str
+    expected_count: int
+    expected_digest: str
+    matches_baseline: bool
+    new_or_changed_count: int
+    warning_line: str
+
 # A backtick token's contents that look like a git short/long SHA (lowercase hex,
 # 7-40 chars).  All real citations are 7-char; the wider bound is future-proofing.
 _SHA_TOKEN_RE = re.compile(r'^[0-9a-f]{7,40}$')
@@ -1719,6 +1737,67 @@ def check_sha_refs(doc_paths: list[str], repo_root: Path) -> list[Drift]:
             message=message,
         ))
     return drifts
+
+
+def _sha_ref_drift_key(drift: Drift, repo_root: Path) -> str:
+    """Return a stable key for a SHA-ref drift relative to *repo_root*."""
+    doc_path = Path(drift.doc_path)
+    try:
+        doc_rel = doc_path.resolve(strict=False).relative_to(
+            repo_root.resolve(strict=False)
+        ).as_posix()
+    except ValueError:
+        doc_rel = doc_path.as_posix()
+    return (
+        f"{doc_rel}:{drift.doc_line}:"
+        f"{drift.kind}:{drift.symbol or ''}:{drift.message}"
+    )
+
+
+def sha_ref_drift_digest(drifts: list[Drift], repo_root: Path) -> str:
+    """Digest the current SHA-ref drift set for baseline/new-drift gating."""
+    payload = "\n".join(
+        sorted(_sha_ref_drift_key(drift, repo_root) for drift in drifts)
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def classify_sha_ref_baseline(
+    drifts: list[Drift],
+    repo_root: Path,
+    *,
+    expected_count: int = SHA_REF_BASELINE_COUNT,
+    expected_digest: str = SHA_REF_BASELINE_DIGEST,
+) -> ShaRefBaselineStatus:
+    """Classify whether SHA-ref drift is the reviewed baseline or new/changed."""
+    count = len(drifts)
+    digest = sha_ref_drift_digest(drifts, repo_root)
+    matches = count == expected_count and digest == expected_digest
+    if matches:
+        new_or_changed = 0
+        detail = (
+            f"{count} baselined stale commit-SHA ref(s); "
+            "no new/changed SHA-ref drift relative to baseline"
+        )
+    else:
+        new_or_changed = max(
+            count - expected_count,
+            1 if count != expected_count or digest != expected_digest else 0,
+        )
+        detail = (
+            f"SHA-ref baseline changed: current count={count}, "
+            f"expected count={expected_count}, current digest={digest[:12]}, "
+            f"expected digest={expected_digest[:12]}"
+        )
+    return ShaRefBaselineStatus(
+        count=count,
+        digest=digest,
+        expected_count=expected_count,
+        expected_digest=expected_digest,
+        matches_baseline=matches,
+        new_or_changed_count=new_or_changed,
+        warning_line=f"SHA provenance is NOT CLEAN: {detail}.",
+    )
 
 
 # ---------------------------------------------------------------------------

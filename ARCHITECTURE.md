@@ -1,167 +1,118 @@
-# ARCHITECTURE.md — Governance OS
+# ARCHITECTURE.md - Governance OS
 
-> **Truth lives here; CLAUDE.md is the process layer.**
-> All load-bearing facts about this codebase — file:line references, module
-> responsibilities, invariants — are recorded in this file. When CLAUDE.md and
-> this file disagree about a fact, this file wins. Fix staleness in the same
-> commit that exposes it.
+> Truth lives here. AGENTS.md and CLAUDE.md are process layers; this file is
+> the verified truth layer for the Pipeline governance kernel. When process
+> prose and this file disagree about Pipeline facts, this file wins and the
+> stale prose must be fixed in the same change.
 
-*Last verified: <date> @ <sha>*
+*Last verified: 2026-07-08 @ 06d4987*
 
----
+## 1. Purpose
 
-## §1 Purpose
+Pipeline is the governance kernel for multi-seat AI coding work. It provides
+durable mailbox routing, live seat status, route capacity packets, protocol
+verification gates, and Codex bridge mechanics. It is intentionally separate
+from the private product repository: evidence-ledger is the bound product
+target, while Pipeline owns the coordination harness around that target.
 
-<!-- One-paragraph statement of what the program does and what problem it solves. -->
-<fill-in: one-paragraph summary of <PROJECT>'s purpose>
+ARCHITECTURE.md records verified governance-kernel truth. Product behavior
+truth for evidence-ledger belongs in evidence-ledger's own docs and tests.
 
----
+## 2. Topology
 
-## §2 Topology
+Primary control flow:
 
-<!-- Describe the top-level component graph: entry points, major subsystems, and
-     how data/control flows between them. Use a brief ASCII or bullet graph.
-     Every component named here must have a §N section below. -->
-<fill-in: component graph or bullet list — e.g., entry-point → subsystem-A → subsystem-B>
+```text
+user or parent prompt
+  -> Pipeline seat startup guard
+  -> seat status and mailbox route body
+  -> capacity packet scope
+  -> implementation or verification command
+  -> mailbox verify-request / verification-report
+  -> coordinator closeout or reroute
+```
 
-**Entry point(s):**
-- `<fill-in: path/to/main.py>` — <fill-in: one-line role>
+Key directories:
 
-**Key directories:**
 | Path | Role |
-|------|------|
-| `<fill-in>` | <fill-in> |
-| `<fill-in>` | <fill-in> |
-| `<fill-in>` | <fill-in> |
+|---|---|
+| `scripts/` | Executable governance tooling: smoke, doc checks, mailbox monitoring, route validation, capacity board, Codex model rendering. |
+| `coordination/` | Durable protocol state: mailbox events, seen cursors, presence, capacity packets, and shell mailbox tools. |
+| `.agents/skills/` | Codex-readable repo skills for four-seat operation and seat-specific authority. |
+| `.codex/agents/` | Codex role prompts and runtime harness configuration. |
+| `docs/protocol/` | Pull-on-demand protocol docs, provider adoption guides, and assembly maps. |
+| `threeway/` | Signed-bus and merge-gate substrate used by cross-provider protocol tooling. |
 
----
-
-## §3 Module Map
-
-<!-- List every load-bearing module with its file path and the ONE function/class
-     that is its public contract. Format: `symbol (file:line)` — this exact
-     pattern is what scripts/ci_smoke.py's _project_smoke() gate checks. -->
+## 3. Module Map
 
 | Symbol | File:line | Role |
-|--------|-----------|------|
-| `<fill-in: ClassName>` | `<fill-in: path/to/file.py:N>` | <fill-in: one-line role> |
-| `<fill-in: function_name>` | `<fill-in: path/to/file.py:N>` | <fill-in: one-line role> |
+|---|---|---|
+| `_project_smoke` | `scripts/ci_smoke.py:53` | Verifies governance-OS runtime invariants before governance gates run. |
+| `main` | `scripts/ci_smoke.py:100` | Runs the full smoke gate sequence. |
+| `run` | `scripts/check_coordination.py:346` | Validates mailbox event filenames, cursors, kinds, and coordination hygiene. |
+| `run` | `scripts/check_placeholders.py:103` | Scans for adoption-placeholder tokens outside the allowlist. |
+| `check_sha_refs` | `scripts/check_doc_claims.py:1703` | Reports stale or mismatched commit-SHA citations. |
+| `classify_sha_ref_baseline` | `scripts/check_doc_claims.py:1765` | Classifies SHA-reference drift as reviewed baseline or new/changed drift. |
+| `collect_monitor_state` | `scripts/mailbox_monitor.py:175` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
+| `build_guard` | `scripts/ledger_start_guard.py:133` | Enforces Pipeline-first startup for ledger-routed Codex seats. |
+| `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:409` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:682` | Renders guard guidance into readiness output. |
 
----
+## 4. Runtime Invariants
 
-## §4 Subsystem — <fill-in: SubsystemA>
+- Pipeline remains the Codex four-seat governance kernel.
+- evidence-ledger is the bound product target for current ledger-routed work.
+- Durable shared state beats chat memory: git commits, mailbox bodies, capacity
+  packets, cursor state, and verification reports are authoritative.
+- Live seats start with `scripts/ledger_start_guard.py --seat <seat> --wave 2`
+  from Pipeline before entering evidence-ledger.
+- Ordinary git and pytest commands use `env -u GIT_INDEX_FILE`.
+- Pushes, lock actions, cursor consumption, pod spend, paid API spend, target
+  checkout refresh, and product-generation side effects require explicit
+  authorization or a valid routed executor.
 
-<!-- One section per top-level subsystem. State the invariant the subsystem owns,
-     its public interface, and any sharp edges a caller must know. -->
+## 5. Mailbox And Capacity State
 
-**Invariant:** <fill-in: what must always be true about this subsystem>
+Mailbox events live under `coordination/mailbox/sent/`; read cursors live under
+`coordination/mailbox/seen/`. The receiving roster comes from
+`scripts/protocol_mailbox.py:11` and `scripts/protocol_mailbox.py:17`.
 
-**Public interface:**
-- `<fill-in: symbol> (<file:line>)` — <fill-in: one-line description>
+Capacity packets live under `coordination/capacity/packets/`. A coordinator
+route is valid only when `scripts/protocol_capacity_board.py --wave <wave>` and
+the route-validation form both accept the packet set.
 
-**Sharp edges / known traps:**
-- <fill-in: e.g., "Not thread-safe; callers must hold X lock">
+Unknown coordinator broadcast receipt is not delivery proof. It is an unproved
+receipt state surfaced by `scripts/mailbox_monitor.py`.
 
----
+## 6. Verification Gates
 
-## §5 Subsystem — <fill-in: SubsystemB>
+Primary local commands:
 
-**Invariant:** <fill-in>
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/check_coordination.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2
+env -u GIT_INDEX_FILE .venv/bin/python scripts/check_doc_claims.py --sha-refs
+```
 
-**Public interface:**
-- `<fill-in: symbol> (<file:line>)` — <fill-in>
+`scripts/ci_smoke.py` may exit OK while warning about baselined stale
+commit-SHA references. That warning means SHA provenance is not clean. A changed
+SHA-ref drift set is a hard failure.
 
-**Sharp edges / known traps:**
-- <fill-in>
+## 7. Target-Repo Boundary
 
----
+Pipeline can route, verify, and record evidence for evidence-ledger work, but it
+does not own evidence-ledger product truth. Before product edits, read the
+target repo's local instructions and work only inside the active route. If a
+route names an isolated worktree or base, that worktree/base takes precedence
+over the normal evidence-ledger checkout.
 
-## §6 Data Model
+## 8. Known Sharp Edges
 
-<!-- Describe the primary data structures / schemas / DB tables that flow through
-     the program. Note the canonical write site for each field — type declarations
-     are NOT write evidence (per Rule #12). -->
-
-**Primary schema / struct: `<fill-in>`**
-- `<field>` — written at `<file:line>`; <fill-in: semantics>
-- `<field>` — written at `<file:line>`; <fill-in: semantics>
-
----
-
-## §7 Configuration
-
-<!-- Where does config live? What are the must-know keys? What breaks silently
-     if a key is absent or wrong? -->
-
-Config file(s): `<fill-in: path>`
-
-| Key | Default | Effect if wrong |
-|-----|---------|-----------------|
-| `<fill-in>` | `<fill-in>` | <fill-in> |
-
----
-
-## §8 External Dependencies
-
-<!-- List third-party services, APIs, or binaries the program requires at runtime.
-     Note the version pin or minimum version and what breaks if missing. -->
-
-| Dependency | Version | Required for |
-|------------|---------|--------------|
-| `<fill-in>` | `<fill-in>` | <fill-in> |
-
----
-
-## §9 Error Handling & Failure Modes
-
-<!-- Document the failure modes that are non-obvious or have caused bugs.
-     For each: what triggers it, what the symptom is, and the fix or mitigation. -->
-
-| Failure mode | Trigger | Symptom | Mitigation |
-|--------------|---------|---------|------------|
-| <fill-in> | <fill-in> | <fill-in> | <fill-in> |
-
----
-
-## §10 Performance & Scaling Notes
-
-<!-- Record any measured (not estimated) throughput limits, memory ceilings, or
-     O(N) cliffs. Label estimates explicitly. All numbers must be backed by a
-     committed script per R-MEASURE. -->
-
-- <fill-in: "X operation is O(N) in Y; measured limit = Z at commit <sha>">
-
----
-
-## §11 Decision Log (ADR index)
-
-<!-- Point to DECISIONS.md for the full ADR log; list only the ADRs that directly
-     constrain code in this file (so a reader knows which ADRs are load-bearing). -->
-
-Full ADR log: [DECISIONS.md](DECISIONS.md)
-
-Load-bearing ADRs for this codebase:
-- **ADR-001** — <fill-in: one-line summary; constraint it imposes>
-
----
-
-## §N Smoke Invariants
-
-<!-- This section is the contract for scripts/ci_smoke.py's _project_smoke()
-     function. List each invariant as a checkable assertion: symbol present at
-     file:line, import succeeds, config key exists, etc.
-     The smoke script MUST verify every claim listed here and fail fast if any
-     assertion breaks. -->
-
-The following invariants are checked by `scripts/ci_smoke.py` → `_project_smoke()`:
-
-1. `<fill-in: symbol> (<file:line>)` exists and is importable.
-2. `<fill-in: config key>` is present in `<fill-in: config path>`.
-3. <fill-in: any other fast-checkable structural invariant>
-
-**Adding a new invariant:** add it here AND add the matching assertion in
-`_project_smoke()` in the same commit. Never let this list drift from the script.
-
----
-
-*Last verified: <YYYY-MM-DD> @ <git-sha>*
+- The normal evidence-ledger checkout can be stale relative to routed worktrees.
+- A mailbox receipt split with `unknown` seats proves only that receipt is
+  unproved.
+- Existing SHA-reference debt is baselined, not fixed.
+- Some protocol docs still contain adopter-facing placeholder examples by
+  design; root user-facing truth docs do not.

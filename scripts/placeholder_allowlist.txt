@@ -17,17 +17,11 @@ TRANSFER-MANIFEST.md
 TRANSFER-SETUP.md
 DECISIONS.md
 
-# Governance OS doc skeletons (fill these as the new program takes shape)
-README.md
-ARCHITECTURE.md
-OPERATIONS.md
-
 # CLAUDE/AGENTS harness docs (contain placeholder load-trigger references)
 CLAUDE.md
 AGENTS.md
 
 # Protocol docs (contain placeholder examples for directors/operators to fill)
-docs/PROGRAM-MANUAL.md
 docs/PROTOCOL-RULES-LOG.md
 docs/protocol/claude/core.md
 docs/protocol/claude/director-operator.md

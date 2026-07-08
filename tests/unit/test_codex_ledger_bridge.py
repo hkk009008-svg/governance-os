@@ -264,3 +264,43 @@ def test_ledger_start_guard_cli_prints_route_and_first_commands(tmp_path, capsys
     assert "Active route: coordination/mailbox/sent/2026-07-07T09-36-23Z-coordinator-to-all-coordination.md" in out
     assert "env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py operator2 --wave 2" in out
     assert "env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger status --short --branch" in out
+
+
+def test_ledger_start_guard_surfaces_route_base_and_worktree_before_normal_checkout(tmp_path, capsys):
+    import ledger_start_guard
+
+    sent = tmp_path / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True)
+    route = sent / "2026-07-08T14-39-41Z-coordinator-to-all-coordination.md"
+    route.write_text(
+        "# Coordinator -> All: ledger implementation route\n\n"
+        "Task-board: ledger-phase2-task23\n"
+        "Target repo: /Users/hyungkoookkim/evidence-ledger\n"
+        "Route base: `origin/main @ abc1234`\n"
+        "Route worktree: `/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-task23`\n",
+        encoding="utf-8",
+    )
+
+    rc = ledger_start_guard.main(
+        [
+            "--root",
+            str(tmp_path),
+            "--kernel",
+            str(tmp_path),
+            "--seat",
+            "director",
+            "--wave",
+            "2",
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "route base: origin/main @ abc1234" in out
+    assert "route worktree: /Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-task23" in out
+    assert (
+        "env -u GIT_INDEX_FILE git -C "
+        "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-task23 "
+        "status --short --branch"
+    ) in out
+    assert "normal target checkout may be stale; do not start product work there unless the route names it" in out

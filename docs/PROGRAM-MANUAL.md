@@ -1,125 +1,107 @@
-# PROGRAM MANUAL — Governance OS
+# PROGRAM MANUAL - Governance OS
 
-**Canonical expression of the user-principal's intent for this program.**
-This file defines *what we build* and *how the user wants it operated to full capability*.
-All seats read this early and keep it true as the code evolves (same staleness discipline
-as ARCHITECTURE.md). When this file and the code disagree, fix this file in the same
-commit that exposes the staleness.
+**Canonical expression of the user-principal's intent for Pipeline.**
 
----
+Pipeline is the governance kernel. Its job is to make multi-seat AI coding work
+durable, verifiable, and bounded by explicit authority. It does this with
+mailbox events, capacity packets, live seat status, smoke gates, Codex/Claude
+protocol skills, and route-specific verification artifacts.
 
-## §1 — What We Build
+evidence-ledger is the bound product target for current ledger-routed work.
+Pipeline should help seats work on that target only through explicit routes; it
+must not blur product truth into governance-kernel truth.
 
-<!-- TODO: Replace this placeholder with a 2–4 sentence statement of the program's
-     core purpose. Answer: what does this system do, for whom, and why does it
-     matter? Be concrete about the end-to-end output a user receives. -->
+## 1. What We Build
 
-<PROJECT> turns [INPUT] into [OUTPUT]. The user provides [X]; the program
-produces [Y] with [quality bar / SLA / distinguishing characteristic].
+We build an executable governance OS for AI-assisted software work. The system
+turns user intent and seat-specific prompts into durable artifacts: route
+mailbox events, scoped implementation packets, verify-requests,
+verification-reports, handoffs, and gate evidence.
 
----
+The output the user receives is not just prose. It is a repository state that
+can be audited by git, tests, mailbox bodies, and route validators.
 
-## §2 — Product Goals and Non-Goals
+## 2. Product Goals And Non-Goals
 
-<!-- TODO: List 3–6 bullet goals (what the program must do well) and 2–4
-     explicit non-goals (what it deliberately does NOT do). Non-goals are
-     as important as goals — they prevent scope creep and keep the
-     architecture honest. -->
+Goals:
+- Keep Pipeline as the authoritative governance kernel for Codex seat startup.
+- Make every active route explicit, bounded, and verifiable.
+- Preserve user-gated side-effect boundaries for push, locks, cursor consume,
+  spend, pods, checkout refresh, and product generation.
+- Prefer executable proof over status theater.
+- Keep product-specific truth in the target product repo.
 
-**Goals**
-- [Goal 1]
-- [Goal 2]
-- [Goal 3]
+Non-goals:
+- Pipeline is not the private evidence-ledger application.
+- Pipeline does not silently publish, push, refresh target checkouts, or spend
+  money.
+- Coordinator artifacts do not replace operator GO/NITS/FAIL verification.
+- Warning-only smoke output does not prove clean provenance.
 
-**Non-goals**
-- [Non-goal 1]
-- [Non-goal 2]
+## 3. How The Machine Interconnects
 
----
+User or parent prompts assign a mode: readiness bridge, live seat, coordinator,
+or bounded subagent. Pipeline startup tools then read durable state before any
+protocol decision. `ledger_start_guard.py` enforces the Pipeline-first boundary
+for ledger-routed work. `seat_status.py` reports HEAD, mailbox unread state,
+peer heartbeats, and wave gate state.
 
-## §3 — How the Machine Interconnects (Component Map)
+Mailbox events in `coordination/mailbox/sent/` bind recipients. Capacity
+packets in `coordination/capacity/packets/` define active scope. Smoke,
+coordination, capacity, and doc-claim tools provide executable evidence. The
+director/operator pair closes a work loop only when implementation evidence is
+followed by an operator verification-report.
 
-<!-- TODO: Describe the top-level components, their responsibilities, and
-     how data flows between them. One paragraph per major component is
-     sufficient. Link to ARCHITECTURE.md for file:line-level truth.
-     Keep this at the "why does this component exist" level, not the
-     "what line does this function appear on" level. -->
+## 4. Operational Contract
 
-**[Component A]** — [responsibility]; receives [input] from [source]; emits
-[output] to [sink].
+Required inputs:
+- A user or parent prompt naming the mode or seat.
+- A current Pipeline checkout.
+- The active route body when capacity packets are open.
 
-**[Component B]** — [responsibility]; [how it fits].
+Successful run output:
+- For implementation: a scoped commit plus one verify-request to the operator.
+- For verification: a GO/NITS/FAIL verification-report with command evidence.
+- For coordination: a route, closeout, or no-op artifact that changes real
+  ownership or preserves evidence.
 
-**[Component C]** — [responsibility]; [how it fits].
+Known failure modes:
+- Stale route prose is trusted over newer mailbox/git evidence. Fix by
+  rereading current route bodies, seat status, recent commits, and later
+  reports before acting.
+- Unknown broadcast receipt is treated as delivery. Fix by treating unknown as
+  unproved until seat-specific evidence exists.
+- Normal target checkout is treated as the route base. Fix by following the
+  active route's named base or worktree first.
+- Smoke warning output is summarized as clean. Fix by saying SHA provenance is
+  not clean until the stale references are cleaned or the baseline changes by
+  owner decision.
 
-Data flow summary: [INPUT] → [A] → [B] → [C] → [OUTPUT].
+## 5. Capability-Maximization Playbook
 
----
+Use the smallest sufficient route. A good route names the owner, packet, allowed
+paths, evidence commands, forbidden side effects, next recipient, and exact next
+trigger.
 
-## §4 — Operational Contract (Inputs, Outputs, Failure Modes)
+Use subagents when they add independent signal or capacity, but keep seat
+authority in the live seat. Subagents do not consume cursors, issue GO, route
+coordinator work, push, claim locks, spend, or start pods.
 
-<!-- TODO: Define the contract the program exposes to its operators.
-     What inputs are required vs optional? What does a successful run
-     produce? What are the known failure modes and expected remediation
-     paths? This section anchors the "full capability" discussion in §5. -->
+Use tests and scripts as the evidence layer. New behavior belongs behind a
+focused regression test before implementation. Gate numbers belong in committed
+script output or route evidence, not ad-hoc memory.
 
-**Required inputs:** [list]
+## 6. Operating Guidance For Seats
 
-**Optional inputs / tunables:** [list]
+Director seats scope and implement only inside their route. They send one
+verify-request once the implementation commit is ready.
 
-**Success output:** [description of what a good run produces]
+Operator seats verify the named diff or commit independently and return
+GO/NITS/FAIL. They do not duplicate verification for docs-only or status-only
+artifacts unless a fresh verify-request names that scope.
 
-**Known failure modes:**
-- [Failure mode 1] — [detection signal] — [remediation]
-- [Failure mode 2] — [detection signal] — [remediation]
+Coordinator reconciles route, lock, mailbox, capacity, and closeout state.
+Coordinator must not author behavior-changing product fixes.
 
----
-
-## §5 — Capability-Maximization Playbook
-
-<!-- TODO: This is the most important section for seat operation. List the
-     concrete levers an operator can pull to get the highest-quality /
-     highest-throughput output from the program. For each lever: what it
-     is, when to use it, and what tradeoff it introduces.
-     Surface tradeoffs; never silently make the call for the user-principal. -->
-
-The user-principal wants this program operated to its **full capability**.
-When a decision trades against that, surface it rather than silently resolving it.
-
-**Lever 1 — [Name]**
-[What it does. When to use it. Tradeoff.]
-
-**Lever 2 — [Name]**
-[What it does. When to use it. Tradeoff.]
-
-**Lever 3 — [Name]**
-[What it does. When to use it. Tradeoff.]
-
-<!-- Add levers as the program matures. -->
-
----
-
-## §6 — Operating Guidance for Seats
-
-<!-- TODO: Practical guidance for director and operator seats running this
-     program. Cover: how to start a run, how to monitor progress, how to
-     interpret gate verdicts, how to resume after an interruption, and
-     any standing directives the user-principal has issued that are
-     program-specific (not in CLAUDE.md). -->
-
-**Starting a run:** [steps]
-
-**Monitoring progress:** [where to look, what signals to watch]
-
-**Gate verdicts:** [how to interpret GO / NITS / FAIL in this program's context]
-
-**Resuming after interruption:** [state to check, files to inspect]
-
-**Standing directives (program-specific):**
-- [Directive 1]
-- [Directive 2]
-
----
-
-*Last verified: [YYYY-MM-DD] by [seat/author]. Update this line whenever a section
-is re-checked against the running code.*
+Every live-seat/coordinator turn ends with an Exact Next Trigger that names the
+next lawful prompt, seat event, standby condition, or blocker.

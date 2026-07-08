@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +20,22 @@ class GuardResult:
     ok: bool
     lines: tuple[str, ...]
     errors: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RouteGuidance:
+    base: str | None = None
+    worktree: str | None = None
+
+
+_ROUTE_BASE_RE = re.compile(
+    r"^\s*(?:Route base|Target base|Base commit):\s*`?(?P<value>[^`\n]+)`?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_ROUTE_WORKTREE_RE = re.compile(
+    r"^\s*(?:Route worktree|Target worktree|Worktree):\s*`?(?P<value>[^`\n]+)`?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def _display(path: Path) -> str:
@@ -53,6 +70,20 @@ def find_latest_ledger_route(root: Path) -> Path | None:
     return None
 
 
+def route_guidance(route: Path) -> RouteGuidance:
+    """Extract optional route base/worktree hints from a coordinator route."""
+    try:
+        body = route.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return RouteGuidance()
+    base_match = _ROUTE_BASE_RE.search(body)
+    worktree_match = _ROUTE_WORKTREE_RE.search(body)
+    return RouteGuidance(
+        base=base_match.group("value").strip() if base_match else None,
+        worktree=worktree_match.group("value").strip() if worktree_match else None,
+    )
+
+
 def _seat_status_command(seat: str, wave: int) -> str:
     return (
         "env -u GIT_INDEX_FILE .venv/bin/python "
@@ -63,6 +94,7 @@ def _seat_status_command(seat: str, wave: int) -> str:
 def first_commands(seat: str, wave: int, kernel: Path, route: Path) -> tuple[str, ...]:
     """Return the ordered commands/instructions a ledger-routed seat must start with."""
     route_ref = _safe_relative(route, kernel)
+    guidance = route_guidance(route)
     commands = [
         f"cd {_display(kernel)}",
         (
@@ -74,11 +106,23 @@ def first_commands(seat: str, wave: int, kernel: Path, route: Path) -> tuple[str
         "env -u GIT_INDEX_FILE git status --short",
         f"read Pipeline route body: {route_ref}",
         "read docs/protocol/codex/ledger-cli-adoption.md before entering evidence-ledger",
-        (
-            "env -u GIT_INDEX_FILE git -C "
-            f"{_display(TARGET_REPO)} status --short --branch"
-        ),
     ]
+    if guidance.base:
+        commands.append(f"route base: {guidance.base}")
+    if guidance.worktree:
+        commands.append(f"route worktree: {guidance.worktree}")
+        commands.append(
+            "env -u GIT_INDEX_FILE git -C "
+            f"{guidance.worktree} status --short --branch"
+        )
+    commands.append(
+        "normal target checkout may be stale; do not start product work there "
+        "unless the route names it"
+    )
+    commands.append(
+        "env -u GIT_INDEX_FILE git -C "
+        f"{_display(TARGET_REPO)} status --short --branch"
+    )
     if seat == "coordinator":
         commands.append(
             "coordinator may reconcile ledger evidence only; no evidence-ledger product fixes"

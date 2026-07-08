@@ -1,73 +1,63 @@
 # Governance OS
 
-> <fill-in: one-sentence description of what the program does and for whom>
+Pipeline is the governance kernel for a multi-seat AI coding protocol. It
+coordinates director, operator, director2, operator2, and coordinator work with
+mailbox artifacts, capacity packets, smoke gates, and Codex/Claude/Antigravity
+adoption docs.
 
----
+This repository is not the private product application. `evidence-ledger` is
+the bound product target for the current ledger-routed work, while Pipeline
+keeps the shared protocol machinery honest and executable.
 
-## What this is
-
-<!-- 2-4 sentences: the problem this solves, who it is for, and the key outcome
-     it produces. No implementation detail here — that lives in ARCHITECTURE.md. -->
-
-<fill-in: problem statement and value proposition for <PROJECT>>
-
----
-
-## Quick start
+## Quick Start
 
 ```bash
-# 1. Clone
-git clone <fill-in: repo URL>
-cd <fill-in: repo dir>
-
-# 2. Install
-<fill-in: e.g., python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt>
-
-# 3. Configure
-<fill-in: e.g., cp config.example.yaml config.yaml  # then edit with your values>
-
-# 4. Run
-<fill-in: e.g., python main.py --config config.yaml>
+cd /Users/hyungkoookkim/Pipeline
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py
 ```
 
-Full setup detail: [OPERATIONS.md](OPERATIONS.md)
+For ledger-routed live seats, start from Pipeline and use the guard:
 
----
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director --wave 2
+env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py director --wave 2
+```
 
-## How it works (one paragraph)
+## How It Works
 
-<!-- High-level narrative only. A new contributor should finish this paragraph
-     knowing what the major components are and roughly how they connect.
-     Exact file:line facts belong in ARCHITECTURE.md, not here. -->
+ARCHITECTURE.md records verified governance-kernel truth. The load-bearing
+runtime is a set of committed Python and shell tools under `scripts/`,
+`coordination/`, `threeway/`, `.agents/`, and `.codex/`. Seats exchange durable
+mailbox events in `coordination/mailbox/sent/`; capacity packets under
+`coordination/capacity/packets/` define active routed work; smoke and protocol
+doctor commands prove that the kernel is still internally consistent.
 
-<fill-in: e.g., "The program receives X, passes it through Y, and produces Z.
-The <SubsystemA> handles ...; the <SubsystemB> handles ...">
+## Doc Map
 
-Architecture detail: [ARCHITECTURE.md](ARCHITECTURE.md)
+| Need | Read |
+|---|---|
+| Verified code and topology facts | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Operating commands and troubleshooting | [OPERATIONS.md](OPERATIONS.md) |
+| User-principal intent for this kernel | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
+| Decision history | [DECISIONS.md](DECISIONS.md) |
+| Codex ledger bridge | [docs/protocol/codex/ledger-cli-adoption.md](docs/protocol/codex/ledger-cli-adoption.md) |
+| Protocol assembly map | [docs/protocol/protocol-assembly-map.md](docs/protocol/protocol-assembly-map.md) |
 
----
+## Verification
 
-## Doc map
+Use `env -u GIT_INDEX_FILE` for ordinary git and Python commands so seat-local
+indexes do not leak into shared checks.
 
-| I need to | Read |
-|-----------|------|
-| Get running quickly | this file |
-| Understand the code (verified truth) | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Run, configure, troubleshoot | [OPERATIONS.md](OPERATIONS.md) |
-| Understand why decisions were made | [DECISIONS.md](DECISIONS.md) |
-| Operate the program for full capability | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit -q
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2
+```
 
----
-
-## Contributing
-
-<!-- One-paragraph norm: how to open a PR, what tests must pass, any seat/role
-     discipline the project uses (link to docs/protocol/ if applicable). -->
-
-<fill-in: contributing norms — e.g., branch naming, required CI checks, review process>
-
----
+Smoke may warn about baselined stale commit-SHA references. That means SHA
+provenance is not clean; it does not mean the warning has been fixed.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
