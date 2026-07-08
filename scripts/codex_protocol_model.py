@@ -148,6 +148,29 @@ AGENT_EXTENSION_RULES = (
     "extensions never override seat authority, mailbox cursor rules, or user-gated push",
 )
 
+AGENT_EXTENSION_ROUTING_CONTRACT = (
+    (
+        "agent01",
+        "capacity manager companion",
+        "explicit coordinator/cycle capacity-max planning",
+    ),
+    (
+        "agent02",
+        "explicit-mode bounded worker",
+        "a parent names a concrete mode and allowed write set",
+    ),
+    (
+        "agent03",
+        "general senior repo worker",
+        "ordinary repo coding or documentation work with protocol awareness",
+    ),
+    (
+        "agent04",
+        "read-only protocol auditor/router",
+        "read-only protocol diagnosis and route recommendation",
+    ),
+)
+
 RUNTIME_ENV_VARIABLES = (
     (
         "CODEX_AGENT_MODE",
@@ -748,6 +771,19 @@ def render_agent_extension_summary(agent_names: list[str] | tuple[str, ...] = ()
     return "\n".join(lines)
 
 
+def render_agent_extension_routing_contract() -> str:
+    """Return the routing contract for optional agentNN guardrail extensions."""
+    lines = ["Agent Extension Routing Contract:"]
+    for agent, purpose, route_when in AGENT_EXTENSION_ROUTING_CONTRACT:
+        lines.append(f"- `{agent}`: {purpose}; use for {route_when}.")
+    lines.append(
+        "extension output is evidence for the parent, "
+        "not a mailbox event, cursor advance, operator GO, coordinator route, "
+        "lock action, push, or spend authorization"
+    )
+    return "\n".join(lines)
+
+
 def _mode_from_role(role: str) -> str:
     """Infer a runtime mode from an explicit role when CODEX_AGENT_MODE is unset."""
     if role in SEATS:
@@ -988,6 +1024,7 @@ def render_start_session_inhabitance(agent_names: list[str] | tuple[str, ...] = 
     lines.extend(f"{index}. {step}" for index, step in enumerate(START_SESSION_STEPS, start=1))
     lines.append("core agent modules: " + ", ".join(CORE_AGENT_MODULES))
     lines.append(render_agent_extension_summary(agent_names))
+    lines.append(render_agent_extension_routing_contract())
     return "\n".join(lines)
 
 
