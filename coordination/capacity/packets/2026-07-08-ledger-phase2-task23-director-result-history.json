@@ -32,13 +32,17 @@
     "Send exactly one Pipeline verify-request to operator with commit/range, changed files, tests, exclusions, and exact next trigger.",
     "No push before operator GO."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "bdc7f6b8aef74eddeb35993f18d7bef48fd2a58f feat(db): add result_history audit view.",
+    "coordination/mailbox/sent/2026-07-08T14-26-55Z-director-to-operator-verify-request.md issued the Task 2.3 verify-request for 36f5506..bdc7f6b.",
+    "Director evidence cited RED result_history failures before migration, focused result_history GREEN, full db/tests GREEN, scripts/db_test.sh GREEN, evidence-ledger ci_smoke OK, git diff --check clean, and a clean target worktree."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-08T14-26-55Z-director-to-operator-verify-request.md",
   "next_recipient": "operator",
-  "status": "active",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-08T14-26-55Z-director-to-operator-verify-request.md",
+  "target_commit": "bdc7f6b",
+  "commit_range": "36f5506..bdc7f6b",
   "scope_files": [
     "/Users/hyungkoookkim/evidence-ledger/supabase/migrations/20260708000300_result_history_view.sql",
     "/Users/hyungkoookkim/evidence-ledger/db/tests/test_result_history.py",

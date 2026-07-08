@@ -19,13 +19,16 @@
     "Do not create a duplicate success artifact when operator verification and coordinator closeout cover the state.",
     "If contradiction is found, report only the contradiction with command evidence."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "Observer-standby closed without duplicate success mail; live mailbox state contained no operator2 contradiction, missing-evidence report, changed-boundary report, or explicit coordinator request for Task 2.3.",
+    "Coordinator closeout covers observer accounting after operator GO in coordination/mailbox/sent/2026-07-08T14-34-24Z-operator-to-all-verification-report.md."
+  ],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-08-ledger-phase2-task23-closeout.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "target_commit": "bdc7f6b",
+  "commit_range": "36f5506..bdc7f6b",
   "scope_files": [
     "coordination/mailbox/sent/"
   ]
