@@ -32,13 +32,21 @@
     "Send exactly one Pipeline verify-request to operator with commit/range, changed files, tests, exclusions, and exact next trigger.",
     "No push before operator GO."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "07e407730a98e763e35aa527ed5a09f1d00d7199 feat(db): complete Phase-2 go-forward validations.",
+    "6692131b61e74e80cb926ba40f159a0106c19a60 fix(db): keep import target validation warn-only.",
+    "36f5506 docs: sync task22 architecture verification facts.",
+    "coordination/mailbox/sent/2026-07-08T13-15-02Z-director-to-operator-verify-request.md issued the first operator verify-request for e446218..07e4077.",
+    "coordination/mailbox/sent/2026-07-08T13-33-00Z-director-to-operator-verify-request.md issued the FAIL nit-fix reverify for 07e4077..6692131 and e446218..6692131.",
+    "coordination/mailbox/sent/2026-07-08T13-44-53Z-director-to-operator-verify-request.md issued the docs-only NITS reverify for 6692131..36f5506 and e446218..36f5506.",
+    "Final director evidence cited 78 passed db tests, 124 passed import tests, 49 passed unit tests, check_doc_claims OK, ci_smoke OK, diff --check clean, no real-data/config path changes, and a clean target worktree."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-08T13-44-53Z-director-to-operator-verify-request.md",
   "next_recipient": "operator",
-  "status": "ready",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-08T13-44-53Z-director-to-operator-verify-request.md",
+  "target_commit": "36f5506",
+  "commit_range": "e446218..36f5506",
   "scope_files": [
     "/Users/hyungkoookkim/evidence-ledger/supabase/migrations/20260708000200_entry_validations.sql",
     "/Users/hyungkoookkim/evidence-ledger/db/tests/test_rpcs.py",
