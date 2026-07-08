@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 import codex_protocol_model as model
 
 
@@ -194,13 +192,6 @@ def test_side_effect_executor_token_contract_is_model_backed_and_documented():
             assert phrase in text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "protocol-unit-coherence-side-effect-token: compact role surfaces must "
-        "carry the full executor-token contract"
-    ),
-)
 def test_side_effect_executor_token_detailed_contract_is_surface_synced():
     rendered = model.render_side_effect_executor_contract()
     detailed_phrases = (

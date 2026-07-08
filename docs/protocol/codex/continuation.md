@@ -160,11 +160,15 @@ Side-Effect Executor Token:
   `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`,
   `observer_seats`, `final_closeout_owner`, and `non_goals`.
 - generic user approval is unit consent, not executor election.
+- shared user-gated side effects need exactly one named executor before mutation unless the user directly names the executing seat in the same prompt.
+- side effects covered: remote-ref update, force update, lock action, paid-service spend, pod action, production generation, target-repo checkout refresh, cursor consume, and route mutation.
 - observer seats default to observer mode: read live state only, do not repeat
   the side effect, and report only contradiction, missing required evidence,
   changed safety boundary, or explicit coordinator request.
 - live evidence may close an already-satisfied side effect without appointing a
   redundant executor.
+- multiple same-target side-effect success claims need a common side_effect_id; otherwise route validation fails.
+- report only contradiction, missing required evidence, changed safety boundary, or explicit coordinator request.
 
 The coordinator may route and reconcile but does not author behavior-changing
 production fixes. A verified inventory transition still needs an operator

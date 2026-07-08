@@ -241,13 +241,6 @@ def test_route_validation_rejects_duplicate_side_effect_success_claims_without_c
     assert "origin/main" in messages
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "protocol-unit-coherence-side-effect-token: modal side-effect wording "
-        "must require an executor token"
-    ),
-)
 @pytest.mark.parametrize(
     "directive",
     (
@@ -278,13 +271,6 @@ def test_route_validation_requires_token_for_modal_side_effect_language(
     assert "missing side-effect executor token" in messages
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "protocol-unit-coherence-side-effect-token: executor token must name "
-        "exactly one executor"
-    ),
-)
 def test_route_validation_rejects_multi_executor_token(tmp_path: Path):
     _write_packet(tmp_path, _packet())
     route = _write_route(
@@ -316,13 +302,6 @@ def test_route_validation_rejects_multi_executor_token(tmp_path: Path):
     assert "executor" in messages
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "protocol-unit-coherence-side-effect-token: executor token must match "
-        "the routed side-effect target"
-    ),
-)
 def test_route_validation_rejects_token_for_different_side_effect_target(
     tmp_path: Path,
 ):

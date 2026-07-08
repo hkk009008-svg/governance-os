@@ -141,8 +141,12 @@ authorized.
 Side-Effect Executor Token:
 - Required fields: `side_effect_id`, `executor`, `target`, `allowed_command_class`, `preflight`, `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`, `observer_seats`, `final_closeout_owner`, and `non_goals`.
 - generic user approval is unit consent, not executor election.
+- shared user-gated side effects need exactly one named executor before mutation unless the user directly names the executing seat in the same prompt.
+- side effects covered: remote-ref update, force update, lock action, paid-service spend, pod action, production generation, target-repo checkout refresh, cursor consume, and route mutation.
 - observer seats default to observer mode.
 - live evidence may close an already-satisfied side effect.
+- multiple same-target side-effect success claims need a common side_effect_id; otherwise route validation fails.
+- report only contradiction, missing required evidence, changed safety boundary, or explicit coordinator request.
 
 Ordinary git and pytest commands use `env -u GIT_INDEX_FILE`. If the shared
 index is dirty and a coordinator-only commit is required, use a scoped

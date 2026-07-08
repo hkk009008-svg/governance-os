@@ -104,7 +104,7 @@ REQUIRED_SIDE_EFFECT_TOKEN_FIELDS = (
 SHARED_SIDE_EFFECT_PATTERNS = {
     "remote-ref update/push": r"\bremote-ref update\b|\bgit push\b|\bpush(?:es)?\b",
     "force update": r"\bforce update\b|\bforce-push\b|\bforce push\b",
-    "lock action": r"\block action\b|\block claim\b|\block-claim\b|\bclaim locks?\b|\block release\b|\block-release\b|\brelease locks?\b",
+    "lock action": r"\block action\b|\block claim\b|\block-claim\b|\bclaims? locks?\b|\block release\b|\block-release\b|\brelease locks?\b",
     "paid-service spend": r"\bpaid-service spend\b|\bpaid api spend\b|\bpaid-api spend\b|\bpaid service\b",
     "pod action": r"\bpod action\b|\bpod spend\b|\bstart pods?\b|\bstart a pod\b",
     "production generation": r"\bproduction generation\b",
@@ -114,7 +114,8 @@ SHARED_SIDE_EFFECT_PATTERNS = {
 }
 SIDE_EFFECT_DIRECTIVE_RE = re.compile(
     r"\b(authorizes?|authorized|allows?|grants?|executes?|execute|runs?|run|"
-    r"performs?|perform|mutates?|mutate)\b",
+    r"performs?|perform|mutates?|mutate|may|can|will|shall|should|must|"
+    r"push(?:es)?|claim(?:s|ing)?)\b",
     re.IGNORECASE,
 )
 SIDE_EFFECT_SUCCESS_RE = re.compile(r"\bside-effect success claim\s*:\s*(?P<body>.+)$", re.IGNORECASE)
@@ -999,8 +1000,16 @@ def _side_effect_executor_issues(body: str) -> list[dict[str, Any]]:
                     + ", ".join(missing),
                 )
             )
+        if token.get("executor") and len(_executor_seats(token["executor"])) != 1:
+            issues.append(
+                _issue(
+                    "G7",
+                    "side-effect executor token must name exactly one executor",
+                )
+            )
 
-    side_effect_labels = _shared_side_effect_directives(body)
+    side_effect_requests = _shared_side_effect_requests(body)
+    side_effect_labels = sorted({request["label"] for request in side_effect_requests})
     complete_tokens = [
         token
         for token in tokens
@@ -1014,7 +1023,48 @@ def _side_effect_executor_issues(body: str) -> list[dict[str, Any]]:
                 + ", ".join(side_effect_labels),
             )
         )
+    elif side_effect_requests:
+        uncovered = [
+            request
+            for request in side_effect_requests
+            if not any(_token_covers_side_effect(token, request) for token in complete_tokens)
+        ]
+        if uncovered:
+            labels = ", ".join(
+                sorted(
+                    {
+                        request["label"]
+                        + (f" target={request['target']}" if request["target"] else "")
+                        for request in uncovered
+                    }
+                )
+            )
+            issues.append(
+                _issue(
+                    "G7",
+                    "side-effect executor token target/command mismatch for "
+                    + labels,
+                )
+            )
     return issues
+
+
+def _executor_seats(value: str) -> list[str]:
+    return re.findall(
+        r"\b(?:coordinator2|coordinator|director2|director|operator2|operator)\b",
+        value.lower(),
+    )
+
+
+def _token_covers_side_effect(token: dict[str, str], request: dict[str, str]) -> bool:
+    label = request["label"]
+    token_text = f"{token.get('allowed_command_class', '')} {token.get('target', '')}".lower()
+    if not re.search(SHARED_SIDE_EFFECT_PATTERNS[label], token_text):
+        return False
+    target = request.get("target", "")
+    if target and target not in token.get("target", "").lower():
+        return False
+    return True
 
 
 def _side_effect_executor_tokens(body: str) -> list[dict[str, str]]:
@@ -1049,7 +1099,12 @@ def _side_effect_executor_tokens(body: str) -> list[dict[str, str]]:
 
 
 def _shared_side_effect_directives(body: str) -> list[str]:
-    labels: list[str] = []
+    return sorted({request["label"] for request in _shared_side_effect_requests(body)})
+
+
+def _shared_side_effect_requests(body: str) -> list[dict[str, str]]:
+    requests: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for line in body.splitlines():
         lowered = line.lower()
         normalized = lowered.strip().lstrip("-* ").strip()
@@ -1060,9 +1115,32 @@ def _shared_side_effect_directives(body: str) -> list[str]:
         if not SIDE_EFFECT_DIRECTIVE_RE.search(lowered):
             continue
         for label, pattern in SHARED_SIDE_EFFECT_PATTERNS.items():
-            if re.search(pattern, lowered) and label not in labels:
-                labels.append(label)
-    return labels
+            if not re.search(pattern, lowered):
+                continue
+            target = _side_effect_target(label, lowered)
+            key = (label, target)
+            if key not in seen:
+                seen.add(key)
+                requests.append({"label": label, "target": target})
+    return requests
+
+
+def _side_effect_target(label: str, line: str) -> str:
+    if label == "remote-ref update/push":
+        match = re.search(r"\b(?:push(?:es)?|git push)\s+([^\s,.;)]+)", line)
+        if match:
+            return match.group(1).strip("`'\"").lower()
+        match = re.search(r"\b(?:origin|refs/heads)/[^\s,.;)]+", line)
+        if match:
+            return match.group(0).strip("`'\"").lower()
+    if label == "lock action":
+        match = re.search(r"\b[^\s,.;)]*locks/[^\s,.;)]+", line)
+        if match:
+            return match.group(0).strip("`'\"").lower()
+        match = re.search(r"\b[^\s,.;)]+\.lock\b", line)
+        if match:
+            return match.group(0).strip("`'\"").lower()
+    return ""
 
 
 def _is_negative_side_effect_boundary(line: str) -> bool:

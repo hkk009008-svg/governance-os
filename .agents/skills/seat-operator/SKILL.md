@@ -139,8 +139,12 @@ Delete the lock **in the SAME commit as the verification-report GO**. ⚠ `coord
 - **Secondary sweep before closing a verdict:** after the primary rule, always check (a) role-partition, (b) lock implications, (c) recovery-path authorization, (d) signal-type correctness — an agent that nails the primary rule tends to skip these.
 - **Side-Effect Executor Token:** required fields are `side_effect_id`, `executor`, `target`, `allowed_command_class`, `preflight`, `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`, `observer_seats`, `final_closeout_owner`, and `non_goals`.
 - generic user approval is unit consent, not executor election.
+- shared user-gated side effects need exactly one named executor before mutation unless the user directly names the executing seat in the same prompt.
+- side effects covered: remote-ref update, force update, lock action, paid-service spend, pod action, production generation, target-repo checkout refresh, cursor consume, and route mutation.
 - observer seats default to observer mode.
 - live evidence may close an already-satisfied side effect.
+- multiple same-target side-effect success claims need a common side_effect_id; otherwise route validation fails.
+- report only contradiction, missing required evidence, changed safety boundary, or explicit coordinator request.
 
 ## Rationalizations — STOP
 
