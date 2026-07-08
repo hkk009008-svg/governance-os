@@ -24,49 +24,49 @@ No SQL, DB tests, Swift, import code, real-data path, publication decision, push
 ## Evidence
 
 $ cd /Users/hyungkoookkim/Pipeline && env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py operator --wave 2
--> Pipeline HEAD `80c7173`; director ONLINE last 1m at `80c7173`; operator unread `0 / ref-bus`; Wave 2 gate MET after `dff0678` seeded the inventory scaffold.
+→ Pipeline HEAD `80c7173`; director ONLINE last 1m at `80c7173`; operator unread `0 / ref-bus`; Wave 2 gate MET after `dff0678` seeded the inventory scaffold.
 
 $ cd /Users/hyungkoookkim/Pipeline && sed -n '1,260p' coordination/mailbox/sent/2026-07-08T00-56-52Z-director-to-operator-verify-request.md
--> verify-request read; requested operator recheck of evidence-ledger range `35dc478..e446218` only.
+→ verify-request read; requested operator recheck of evidence-ledger range `35dc478..e446218` only.
 
 $ env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task21-2026-07-08 status --short --branch
--> `## codex/ledger-phase2-task21-pipeline-2026-07-08...origin/main [ahead 2]`; no dirty paths.
+→ `## codex/ledger-phase2-task21-pipeline-2026-07-08...origin/main [ahead 2]`; no dirty paths.
 
 $ env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task21-2026-07-08 log --oneline -5
--> `e446218 docs: fix Task 2.1 truth stamps`; `35dc478 feat(db): ADR-007 Phase-2 client write path`; `d3e87e6 Merge pull request #11...`.
+→ `e446218 docs: fix Task 2.1 truth stamps`; `35dc478 feat(db): ADR-007 Phase-2 client write path`; `d3e87e6 Merge pull request #11...`.
 
 $ env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task21-2026-07-08 diff --name-status 35dc478..e446218
--> `M ARCHITECTURE.md`; `M docs/MANUAL.md`.
+→ `M ARCHITECTURE.md`; `M docs/MANUAL.md`.
 
 $ env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task21-2026-07-08 diff --stat 35dc478..e446218
--> `ARCHITECTURE.md | 11 ++++++-----`; `docs/MANUAL.md | 2 +-`; `2 files changed, 7 insertions(+), 6 deletions(-)`.
+→ `ARCHITECTURE.md | 11 ++++++-----`; `docs/MANUAL.md | 2 +-`; `2 files changed, 7 insertions(+), 6 deletions(-)`.
 
 $ env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task21-2026-07-08 diff 35dc478..e446218 -- ARCHITECTURE.md docs/MANUAL.md
--> `ARCHITECTURE.md` stamps changed from `0aff135` to `35dc478`; §4.1 invariant changed to no direct table-write grants plus two auth-stamped entry RPCs; §4.3 invariant changed to current SELECT-only call sites with future writes through server-stamped entry RPCs; `docs/MANUAL.md` stamp changed from `0aff135` to `35dc478`.
+→ `ARCHITECTURE.md` stamps changed from `0aff135` to `35dc478`; §4.1 invariant changed to no direct table-write grants plus two auth-stamped entry RPCs; §4.3 invariant changed to current SELECT-only call sites with future writes through server-stamped entry RPCs; `docs/MANUAL.md` stamp changed from `0aff135` to `35dc478`.
 
 $ nl -ba ARCHITECTURE.md | sed -n '107,116p'
--> lines 111-114 now state the client role has no direct table-write grants and may mutate only through the two auth-stamped entry RPCs.
+→ lines 111-114 now state the client role has no direct table-write grants and may mutate only through the two auth-stamped entry RPCs.
 
 $ nl -ba ARCHITECTURE.md | sed -n '170,178p'
--> lines 175-176 now state the app can authenticate and SELECT today with zero mutation call sites; future app writes must use the two server-stamped entry RPCs and direct table writes remain denied.
+→ lines 175-176 now state the app can authenticate and SELECT today with zero mutation call sites; future app writes must use the two server-stamped entry RPCs and direct table writes remain denied.
 
 $ tail -8 ARCHITECTURE.md && tail -8 docs/MANUAL.md
--> all Last-verified stamps now point at `2026-07-08 @ 35dc478`.
+→ all Last-verified stamps now point at `2026-07-08 @ 35dc478`.
 
 $ env -u GIT_INDEX_FILE /Users/hyungkoookkim/evidence-ledger/.venv/bin/python scripts/check_doc_claims.py ARCHITECTURE.md docs/MANUAL.md DECISIONS.md
--> `All anchors checked - no drift.`
+→ `All anchors checked - no drift.`
 
 $ env -u GIT_INDEX_FILE /Users/hyungkoookkim/evidence-ledger/.venv/bin/python scripts/ci_smoke.py
--> `PROJECT SMOKE - evidence-ledger runtime invariants ... OK`; ceremony checks PASS; placeholder check PASS; arch-freshness PASS; final `OK`.
+→ `PROJECT SMOKE - evidence-ledger runtime invariants ... OK`; ceremony checks PASS; placeholder check PASS; arch-freshness PASS; final `OK`.
 
 $ env -u GIT_INDEX_FILE git diff --check 35dc478..e446218
--> no output.
+→ no output.
 
 $ rg -n "0aff135|client role can read|write nothing|nothing else" ARCHITECTURE.md docs/MANUAL.md DECISIONS.md docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md
--> exit 1, no matches.
+→ exit 1, no matches.
 
 $ grep -rnE '\.(insert|update|delete|upsert|rpc)\(' ios/
--> exit 1, no matches.
+→ exit 1, no matches.
 
 ## Findings
 
