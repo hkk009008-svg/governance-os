@@ -3,7 +3,7 @@
 **Truth lives in `ARCHITECTURE.md` at the repo root.** This file (CLAUDE.md)
 is the *process layer* — the impact-analysis method, multi-task orchestration, session
 discipline. `ARCHITECTURE.md` is the *truth layer* — verified facts about the
-pipeline, with file:line references and a §15 smoke test. When they disagree
+pipeline, with file:line references and a project smoke test. When they disagree
 about facts, `ARCHITECTURE.md` wins.
 
 Both files drift from the actual code between sessions. Before doing any
@@ -31,8 +31,8 @@ Scope: both
 Trigger: start of every session, before non-trivial work.
 Action: (1) Run the project smoke block — `.venv/bin/python scripts/ci_smoke.py`; if it
 fails, the doc is stale OR the working tree is broken — fix one before proceeding.
-(2) Skim `ARCHITECTURE.md` §2 topology; spot-check `ls <PROJECT>/ <PROJECT>/phases/`
-and `wc -l <entrypoint>.py` (the main orchestrator modules). (3) `git log --oneline -20`; if a commit touched a module
+(2) Skim `ARCHITECTURE.md` §2 topology; spot-check the governance-OS smoke
+invariants implemented in `scripts/ci_smoke.py` `_project_smoke()`. (3) `git log --oneline -20`; if a commit touched a module
 documented in `ARCHITECTURE.md` since its `*Last verified:*` footer, re-read that
 section against the code. (4) If you find a stale claim, fix `ARCHITECTURE.md` first,
 in the same commit (or a `docs:` prep commit right before) the task lands.
@@ -164,15 +164,15 @@ Details: docs/protocol/claude/director-operator.md (Rule #13).
 
 ## R-SKILL — project-skill load triggers
 Scope: both
-<!-- TODO(<PROJECT>): add this project domain-skill triggers -->
 Trigger: about to author, modify, review, or debug domain-specific subsystem code or
 configurations (e.g. a domain-graph subsystem, config schemas, external-API client
 integrations) — or top-level pipeline design work (routing, API selection, identity/
 continuity systems, any domain-specific processing chain).
-Action: invoke the matching project skill BEFORE writing or judging the code —
-`<domain-skill>` for domain-graph work, `<domain-skill>` for pipeline-level
-work. When a skill prior shapes a verdict, name it in the work product.
-Details: .claude/skills/<domain-skill>/SKILL.md.
+Action: invoke the matching project or repo skill BEFORE writing or judging the
+code. In Pipeline, use `.agents/skills/*/SKILL.md` for protocol/seat work and
+the active route's target-repo instructions before evidence-ledger product
+edits. When a skill prior shapes a verdict, name it in the work product.
+Details: repo and target instructions named by the active route.
 
 ## Rule #12 — grep-the-writes
 Scope: both

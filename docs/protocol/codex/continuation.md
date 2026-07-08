@@ -93,8 +93,9 @@ before target-repo inspection.
 - Coordinator: only when explicitly asked to reconcile, route, gate, or operate
   cross-seat state. The coordinator is unpinned and never consumes a
   coordinator cursor.
-- Subagent: bounded by the parent prompt. Subagents do not inherit live-seat or
-  coordinator authority unless the prompt explicitly grants it.
+- Subagent: bounded by the parent prompt. Subagents never inherit live-seat or
+  coordinator authority. The parent seat may assign bounded work, but the seat
+  keeps mailbox, cursor, GO/NITS/FAIL, route, lock, push, and spend authority.
 
 ## Live-Seat Behavior Sources
 
@@ -308,7 +309,7 @@ After live-seat/coordinator orientation, record a Subagent utilization decision:
 Run the narrow command that proves the current claim:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_imports_smoke.py tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_coordination_tooling.py tests/unit/test_ceremony_gates.py tests/unit/test_codex_ledger_bridge.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_imports_smoke.py tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_coordination_tooling.py tests/unit/test_ceremony_gates.py tests/unit/test_protocol_capacity.py tests/unit/test_protocol_doc_integrity.py tests/unit/test_protocol_prompt_sync.py tests/unit/test_codex_ledger_bridge.py -q
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
 .venv/bin/python scripts/wave_gate_check.py 2
 ```

@@ -2,10 +2,9 @@
 
 **This is the canonical topology diagram.** It merges the accuracy of the Codex-drawn
 flowchart with the visual styling of the Antigravity-drawn one, and corrects the errors found
-in both (see *What this corrects* below). The **normative truth** is the spec
-([`docs/superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md`](../../superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md))
-and the `threeway/` package — consult them for any detail; when this diagram and they disagree,
-they win.
+in both (see *What this corrects* below). The **normative truth** is the current
+threeway doctrine/adoption status and the `threeway/` package — consult them for
+any detail; when this diagram and they disagree, they win.
 
 > **Status:** this depicts the target protected-main topology. The `threeway/` package — signed bus,
 > reducer, gate, RefEventStore, cutover substrate, and T2/T3 machinery — is built and hardened. The

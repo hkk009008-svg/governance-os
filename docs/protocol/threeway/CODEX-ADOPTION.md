@@ -7,10 +7,9 @@
 > (`36c72878` / ADR-052), and the realignment rules (read the package before emitting events; status is
 > an artifact; the cutover is a gated one-way door).
 
-**Read first:** [`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md) (the shared rules) and
-the spec
-[`docs/superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md`](../../superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md)
-(the truth-source for Layer 1). **Codex's own root contract is [`AGENTS.md`](../../../AGENTS.md);** its
+**Read first:** [`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md)
+(the shared rules), this adoption status file, and the `threeway/` package for
+Layer-1 mechanics. **Codex's own root contract is [`AGENTS.md`](../../../AGENTS.md);** its
 executable harness model is [`scripts/codex_protocol_model.py`](../../../scripts/codex_protocol_model.py)
 and its mechanics adapter is [`docs/protocol/codex/continuation.md`](../codex/continuation.md). When
 this manual disagrees with those, **they win — fix this file in the same change.**
@@ -125,11 +124,12 @@ Slice-2.5 design spec §D2, audited). So adoption is the deployment path, in ord
    (ADR-034/044/045): `threeway/legacy_projector.py` (shadow projection), `threeway/divergence.py`,
    `threeway/cursor_backfill.py` (ISO→scalar `seq`, atomic manifest per ADR-047), and
    `threeway/cutover.py` (single authority-flip). The residual is therefore NOT seat-list edits but the
-   **LIVE signed-bus integrator wiring + the cursor-backfill EXECUTION** — i.e. running the single
-   authority-flip cutover (`threeway/cutover.py`), which has NOT been executed and is **gated on explicit
-   user confirmation** (DECISIONS.md ADR-045). **Method: shadow read-only projection →
-   single-writer cutover (no dual-write window).** The legacy mailbox stays authoritative until
-   cutover.
+   **LIVE signed-bus integrator wiring + the cursor-backfill EXECUTION** — i.e. running or verifying the single
+   authority-flip cutover (`threeway/cutover.py`) in the current environment. The local oracle is
+   `git for-each-ref refs/threeway/`; when it returns no refs, the legacy mailbox remains authoritative
+   for local work. If remote signed-bus status matters, verify `git ls-remote origin 'refs/threeway/*'`
+   before claiming remote bus authority. **Method: shadow read-only projection →
+   single-writer cutover (no dual-write window).**
 3. **Enable the inert CI `ci_result` signer at go-live.** `.github/workflows/ci.yml` now has a
    manual `workflow_dispatch` path that runs the smoke/unit/tsc jobs against a fetchable
    `integration_ref` and asserts the checked-out `HEAD` equals the explicit `integration_sha`.

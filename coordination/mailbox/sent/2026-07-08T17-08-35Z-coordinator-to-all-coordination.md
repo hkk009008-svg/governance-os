@@ -7,6 +7,10 @@ Task-board: `ledger-phase2-task24-2026-07-08`
 Route base: `bdc7f6b8aef74eddeb35993f18d7bef48fd2a58f`
 Route worktree: `/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08`
 
+Worktree-name note: the route reuses the isolated Task 2.3 worktree name; the
+task-board, route base, and target commit/range define the active Task 2.4
+scope.
+
 ## Outcome
 
 This addendum supersedes the Pair B observer-standby portion of

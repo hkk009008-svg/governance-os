@@ -23,7 +23,8 @@ ANY work:
        * Claude      -> CLAUDE.md + docs/protocol/claude/
    - docs/protocol/threeway/ARCHITECTURE-DIAGRAM.md        (canonical topology)
    - AGENTS.md                                             (agent-agnostic principle root)
-   - for any normative detail: docs/superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md
+   - for any normative detail: docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md,
+     docs/protocol/threeway/CODEX-ADOPTION.md, and the `threeway/` package
 
    These live under `docs/protocol/threeway/` on `main`. If your checkout predates them, run
    `git fetch origin && git checkout origin/main -- docs/protocol/threeway`.

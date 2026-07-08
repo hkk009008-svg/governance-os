@@ -1,10 +1,7 @@
-# Director-operator protocol — Claude Code (relocated)
+# Director-Operator Protocol - Claude Code
 
-> Relocated verbatim from `CLAUDE.md` as part of the operative/provenance
-> split (see `docs/protocol/migration-map-claudemd-split.md`). Loaded **on trigger**,
-> not at session start. Two-tree strategy: this is the `claude` copy. During
-> the add-first window the root file still holds this content; it will be stubbed once
-> this destination is confirmed.
+> Claude Code detail document loaded **on trigger**, not at session start.
+> Root routers keep short stubs; this file holds the current expanded rule body.
 
 ---
 

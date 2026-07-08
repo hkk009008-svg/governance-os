@@ -173,6 +173,100 @@ def test_active_cycle_allows_pair_b_planning_and_preflight_packets(tmp_path: Pat
     assert "Pair B must perform bounded planning or preflight" not in messages
 
 
+def test_active_cycle_coverage_counts_completed_actor_packets(tmp_path: Path):
+    _write_capacity_split_cycle(tmp_path)
+    _write_packet(
+        tmp_path,
+        _packet(
+            packet_id="operator-capacity-split-chunk-a",
+            owner="operator",
+            packet_type="operator-verification",
+            status="done",
+            cycle="capacity-split-cycle",
+        )
+        | {
+            "done_evidence": ["Operator verification-report GO."],
+            "handoff_artifact": "coordination/mailbox/sent/operator-go.md",
+            "verify_request": "coordination/mailbox/sent/operator-verify-request.md",
+            "target_commit": "abc1234",
+            "commit_range": "base..abc1234",
+        },
+    )
+
+    report = protocol_capacity.collect_capacity_report(tmp_path, 2)
+
+    messages = "\n".join(issue["message"] for issue in report.blocking_issues)
+    assert "operator has 0 current packets" not in messages
+    operator_row = next(row for row in report.actor_rows if row["owner"] == "operator")
+    assert operator_row["packet_ids"] == ["operator-capacity-split-chunk-a"]
+    assert operator_row["statuses"] == ["done"]
+
+
+def test_active_cycle_coverage_prefers_done_replacement_over_idle_observer(
+    tmp_path: Path,
+):
+    for packet in [
+        _packet(
+            packet_id="coord-join",
+            owner="coordinator",
+            packet_type="coordinator-join",
+            status="active",
+            cycle="cycle-replaced-observers",
+        ),
+        _packet(
+            packet_id="director-done",
+            owner="director",
+            packet_type="director-brief",
+            status="done",
+            cycle="cycle-replaced-observers",
+        ),
+        _packet(
+            packet_id="operator-done",
+            owner="operator",
+            packet_type="operator-doc-sync",
+            status="done",
+            cycle="cycle-replaced-observers",
+        ),
+        _packet(
+            packet_id="director2-observer",
+            owner="director2",
+            packet_type="idle",
+            status="done",
+            cycle="cycle-replaced-observers",
+        ),
+        _packet(
+            packet_id="director2-planning",
+            owner="director2",
+            packet_type="director-brief",
+            status="done",
+            cycle="cycle-replaced-observers",
+        ),
+        _packet(
+            packet_id="operator2-observer",
+            owner="operator2",
+            packet_type="idle",
+            status="done",
+            cycle="cycle-replaced-observers",
+        ),
+        _packet(
+            packet_id="operator2-preflight",
+            owner="operator2",
+            packet_type="operator-doc-sync",
+            status="done",
+            cycle="cycle-replaced-observers",
+        ),
+    ]:
+        _write_packet(tmp_path, packet)
+
+    report = protocol_capacity.collect_capacity_report(tmp_path, 2)
+
+    messages = "\n".join(issue["message"] for issue in report.blocking_issues)
+    assert "current/done packets" not in messages
+    rows = {row["owner"]: row for row in report.actor_rows}
+    assert rows["director2"]["packet_ids"] == ["director2-planning"]
+    assert rows["operator2"]["packet_ids"] == ["operator2-preflight"]
+
+
 def test_route_validation_requires_capacity_split_decision(tmp_path: Path):
     _write_capacity_split_cycle(tmp_path)
     route = _write_route(

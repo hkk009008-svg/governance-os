@@ -102,7 +102,7 @@ session, manual diff review, `git grep` for verification, etc.).
 is the *process layer* — agent-agnostic principles (multi-task
 orchestration, session discipline) shared by all AI coding tools.
 `ARCHITECTURE.md` is the *truth layer* — verified facts about the project,
-with file:line references and a §15 smoke test. When they disagree about
+with file:line references and a project smoke test. When they disagree about
 facts, `ARCHITECTURE.md` wins.
 
 Both files drift from the actual code between sessions. Before doing any
@@ -130,9 +130,10 @@ you know the task*. Everything task-specific lives in linked docs, pulled on dem
 ## R-START — session-start checklist
 Scope: both
 Trigger: start of every session, before non-trivial work.
-Action: (1) Run the §15 smoke block in `ARCHITECTURE.md` (`scripts/ci_smoke.py`); if
+Action: (1) Run the project smoke block (`scripts/ci_smoke.py`); if
 it fails, the doc is stale OR the working tree is broken — fix one before proceeding.
-(2) Skim `ARCHITECTURE.md` §2 topology; spot-check <project smoke invariants — implemented in scripts/ci_smoke.py _project_smoke()>. (3) `git log --oneline -20`; if a commit touched a module
+(2) Skim `ARCHITECTURE.md` §2 topology; spot-check the governance-OS smoke
+invariants implemented in `scripts/ci_smoke.py` `_project_smoke()`. (3) `git log --oneline -20`; if a commit touched a module
 documented in `ARCHITECTURE.md` since its `*Last verified:*` footer, re-read that
 section against the code. (4) If you find a stale claim, fix `ARCHITECTURE.md` first,
 in the same commit (or a `docs:` prep commit right before) the task lands.
@@ -268,10 +269,11 @@ Details: docs/protocol/agents/director-operator.md (Rule #13).
 
 ## R-SKILL — project-skill load triggers
 Scope: both
-<!-- TODO(<PROJECT>): add this project domain-skill triggers -->
 Trigger: about to author, modify, review, or debug domain-specific graph/pipeline code or an external-API client for a major project subsystem.
 Action: invoke the matching project skill BEFORE writing or judging the code. When a skill prior shapes a verdict, name it in the work product.
-Details: .agents/skills/<domain-skill>/SKILL.md.
+Details: use the relevant `.agents/skills/*/SKILL.md`; for ledger-routed
+target work, load `docs/protocol/codex/ledger-cli-adoption.md` and the target
+repo's local instructions before product edits.
 
 ## Rule #12 — grep-the-writes
 Scope: both

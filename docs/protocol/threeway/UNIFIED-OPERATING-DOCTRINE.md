@@ -1,9 +1,8 @@
 # Unified Operating Doctrine — Claude · Codex · Antigravity
 
-**Status:** Active reference. **Truth-source pointers:** the cross-provider protocol itself
-is specified in
-[`docs/superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md`](../../superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md);
-the agent-agnostic principle root is [`AGENTS.md`](../../../AGENTS.md); Claude tool mechanics are in
+**Status:** Active reference. **Truth-source pointers:** current cross-provider
+status is maintained in [`CODEX-ADOPTION.md`](CODEX-ADOPTION.md), this doctrine,
+and the `threeway/` package; the agent-agnostic principle root is [`AGENTS.md`](../../../AGENTS.md); Claude tool mechanics are in
 [`CLAUDE.md`](../../../CLAUDE.md); Codex mechanics are in
 [`docs/protocol/codex/continuation.md`](../codex/continuation.md). **When this doc and any of
 those disagree on a fact, they win and this doc is stale — fix it in the same change.**
@@ -109,14 +108,15 @@ attestations, `ci` signs `ci_result` (`predicate.py:152-161`).
   coordination.** T1/T2/T3 principal-safe CLIs now emit signed facts locally and are proved against
   `refs/threeway/test-main`; free-form mailbox artifacts still carry human handoffs and verify
   requests. Verified via `env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_t2_t3_emitters_e2e.py -q` -> 6 passed in 41.34s.
-- **Slice 2.5 (legacy-bus migration substrate) is BUILT + hardened, and CUT OVER (2026-06-22).** The
+- **Slice 2.5 (legacy-bus migration substrate) is BUILT + hardened, but local authority is not assumed.** The
   substrate — `legacy_projector.py`, `divergence.py`, `cursor_backfill.py`, `cutover.py` — is built and
-  test-green (356 passed)
-  ([plan](../../superpowers/plans/2026-06-20-cross-provider-seat-topology-slice2.5-legacy-bus-migration.md)).
-  The single authority-flip **cutover WAS executed** under explicit user confirmation (DECISIONS.md
-  ADR-045): `refs/threeway/events` now holds the 768 migrated `event_sent` carriers + 6 backfilled seat
-  cursors, pushed to `origin` (oracle: `git for-each-ref refs/threeway/`). Cutover substrate was hardened
-  in ADR-044/045 (atomic `_teardown`, dedup drop fixes, pre-cursor-try strand gap closed); the two
+  test-covered; current adoption status is tracked in
+  [`docs/protocol/threeway/CODEX-ADOPTION.md`](CODEX-ADOPTION.md).
+  The local oracle is `git for-each-ref refs/threeway/`. If it returns no
+  refs, the legacy mailbox remains authoritative for local work. Remote bus
+  authority must be verified with `git ls-remote origin 'refs/threeway/*'`
+  before relying on it. Cutover substrate was hardened in ADR-044/045
+  (atomic `_teardown`, dedup drop fixes, pre-cursor-try strand gap closed); the two
   formerly-dormant cutover gaps (total-order congruence ADR-050; seen-filename→seat-key ADR-051, plus its
   read-only `divergence` sibling ADR-054) are now CLOSED + verified.
 - **Slice 3 (tiered T2/T3 co-sign machinery and principal-safe emitters) is BUILT + enforcing.** `co_sign_satisfied`
@@ -127,10 +127,11 @@ attestations, `ci` signs `ci_result` (`predicate.py:152-161`).
   emit `co_sign`, `re_verify`, `human_approval`, `attestation_revoked`, and `brief_superseded` through
   principal-safe CLI paths. Verified via
   `env -u GIT_INDEX_FILE .venv/bin/python scripts/threeway_mechanism_ledger.py --check` -> exit 0.
-- **Keys ARE provisioned and the bus is CUT OVER** — the former hard blocker is CLEARED.
+- **Keys and bus authority must be verified in the current checkout before use.**
   `threeway.keys_bootstrap.SEATS` now provisions the 11 signing seats, including `chief-gemini` and
-  `chief-chatgpt`; private `*.ed25519` keys live only in the keystore; `THREEWAY_CI_KEY` is set and
-  `THREEWAY_BUS_LIVE=true`. The REMAINING blocker for protected `main`: deployment-verifiable
+  `chief-chatgpt`; private `*.ed25519` keys live only in the keystore. Do not
+  infer `THREEWAY_CI_KEY`, `THREEWAY_BUS_LIVE`, or signed-bus authority from
+  this prose; verify the live environment and refs first. The REMAINING blocker for protected `main`: deployment-verifiable
   branch-protection/ref-ACL controls and the protected merge-gate runner. Local `refs/heads/main`
   attempts fail closed. Verified via
   `env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_run_merge_gate_protected_main.py -q` -> 2 passed in 0.03s.

@@ -1,10 +1,7 @@
-# Failure modes — agent-agnostic (relocated)
+# Failure Modes - Agent-Agnostic
 
-> Relocated verbatim from `AGENTS.md` as part of the operative/provenance
-> split (see `docs/protocol/migration-map-claudemd-split.md`). Loaded **on trigger**,
-> not at session start. Two-tree strategy: this is the `agents` copy. During
-> the add-first window the root file still holds this content; it will be stubbed once
-> this destination is confirmed.
+> Agent-agnostic detail document loaded **on trigger**, not at session start.
+> Root routers keep short stubs; this file holds the current expanded rule body.
 
 ---
 
@@ -81,4 +78,3 @@ prevents acting on bad input.
 already know to be true, do a quick targeted verification (single read,
 single grep) before acting on the claim. A 5-second check prevents a
 wrong fix that itself needs reverting.
-

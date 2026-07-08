@@ -1,11 +1,7 @@
-# Core protocol — Claude Code (relocated)
+# Core Protocol - Claude Code
 
-> Relocated verbatim from `CLAUDE.md` as part of the operative/provenance
-> split (see `docs/protocol/migration-map-claudemd-split.md`). Loaded **on trigger**,
-> not at session start. Two-tree strategy: this is the `claude` copy. Sections
-> that live elsewhere (prompt templates → `docs/templates/...`, failure-modes →
-> `.../failure-modes.md`) are intentionally not included here. During the add-first
-> window the root file still holds this content; it will be stubbed once confirmed.
+> Claude Code detail document loaded **on trigger**, not at session start.
+> Root routers keep short stubs; this file holds the current expanded rule body.
 
 ---
 
@@ -47,7 +43,7 @@ Codified 2026-05-24 after a director-level inventory error: STRATEGIC_REVIEW
 and HANDOFF both claimed "only one unit test file" when there were 24. The
 director wrote those docs from session memory of one scoped pytest run + an
 anchored mental model, without ever running `ls tests/unit/`. Root cause:
-session memory trusted over filesystem. See [DECISIONS.md ADR-013](DECISIONS.md).
+session memory trusted over filesystem. See [DECISIONS.md ADR-013](../../../DECISIONS.md).
 
 The class of error is fully preventable. These three rules close it.
 
@@ -198,4 +194,3 @@ Reference this section from a handoff; don't restate it.*
   instead of new output** (false-fail, not a real error). Cache-bust by varying a
   seed / output-name / request parameter before concluding the subsystem is broken.
   <!-- TODO(<PROJECT>): replace this placeholder with the specific caching behaviour of your domain-graph subsystem -->
-

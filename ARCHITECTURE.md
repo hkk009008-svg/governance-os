@@ -57,7 +57,7 @@ Key directories:
 | `build_guard` | `scripts/ledger_start_guard.py:133` | Enforces Pipeline-first startup for ledger-routed Codex seats. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:419` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:699` | Renders guard guidance into readiness output. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:700` | Renders guard guidance into readiness output. |
 
 ## 4. Runtime Invariants
 

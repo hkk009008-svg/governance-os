@@ -1497,7 +1497,7 @@ SHA_DEFAULT_DOCS = [
 # as "not clean, but no worse than the reviewed debt"; any count or digest
 # change becomes a hard new-drift signal.
 SHA_REF_BASELINE_COUNT = 215
-SHA_REF_BASELINE_DIGEST = "d908e1d8a4c911a9175fd57698c06ec8e0a0f2ce83602831adb197d8d541cf7c"
+SHA_REF_BASELINE_DIGEST = "688ed36bc5091d7a16c065af30da9296f5ed7961ecd63640907ffd64e471b4b2"
 
 
 @dataclass(frozen=True)

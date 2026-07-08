@@ -59,8 +59,8 @@ cinema skills (`ai-video-gen`, `comfyui-mastery`) were **excluded**.
 | `coordination/threeway/keys/README.md` | Trust-root layout (public keys; regenerate per deployment) |
 | `coordination/workflows/discovery-bughunt.js` | A reusable discovery-bughunt coordination workflow |
 | `threeway/*.py` (20 modules) | The Ed25519-signed event-bus control plane (envelope, canon, gate, reducer, refstore, keys, …) |
-| `scripts/*.py` + `*.sh` (36) + `placeholder_allowlist.txt` | Governance scripts: `ci_smoke`, `check_{coordination,doc_claims,no_ceremony}`, the three fail-closed adoption gates `check_{placeholders,go_schema,arch_freshness}` (+ their allowlist), `wave_gate_check`, the `*_emit`/`consume_bus`/`run_merge_gate` bus tools, `draft_handoff`, `protocol_*`, etc. |
-| `tests/` (15 files: `conftest.py` + 14 unit modules) | The pytest regression suite — gate scripts, threeway control plane (canon/envelope/keys/reducer), mailbox protocol, activation scripts |
+| `scripts/*.py` + `*.sh` (37 files) + `placeholder_allowlist.txt` | Governance scripts: `ci_smoke`, `check_{coordination,doc_claims,no_ceremony}`, the three fail-closed adoption gates `check_{placeholders,go_schema,arch_freshness}` (+ their allowlist), `wave_gate_check`, the `*_emit`/`consume_bus`/`run_merge_gate` bus tools, `draft_handoff`, `protocol_*`, etc. |
+| `tests/` (`conftest.py` + 22 unit modules) | The pytest regression suite — gate scripts, threeway control plane (canon/envelope/keys/reducer), mailbox protocol, activation scripts, and protocol doc-integrity checks |
 
 ---
 

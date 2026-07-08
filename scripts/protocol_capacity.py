@@ -231,10 +231,15 @@ class CapacityReport:
     @property
     def actor_rows(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
+        active_cycles = {
+            packet.cycle for packet in self.packets if packet.is_active_wip
+        }
         for owner in SEAT_ORDER:
             current = [
                 packet for packet in self.packets if packet.owner == owner and packet.is_current
             ]
+            if not current and active_cycles:
+                current = _fallback_done_packets(list(self.packets), active_cycles, owner)
             rows.append(
                 {
                     "owner": owner,
@@ -565,22 +570,42 @@ def _validate_packets(packets: list[Packet], root: Path) -> list[dict[str, Any]]
 
 def _validate_coverage(packets: list[Packet]) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    cycles = sorted({packet.cycle for packet in packets if packet.is_current})
+    cycles = sorted({packet.cycle for packet in packets if packet.is_active_wip})
     for cycle in cycles:
         current = [packet for packet in packets if packet.cycle == cycle and packet.is_current]
         if not any(packet.is_active_wip for packet in current):
             continue
         for owner in SEAT_ORDER:
-            owned = [packet for packet in current if packet.owner == owner]
+            owned = [
+                packet
+                for packet in packets
+                if packet.cycle == cycle and packet.owner == owner and packet.is_current
+            ]
+            if not owned:
+                owned = _fallback_done_packets(packets, {cycle}, owner)
             if len(owned) != 1:
                 issues.append(
                     _issue(
                         "G1",
-                        f"cycle {cycle}: {owner} has {len(owned)} current packets",
+                        f"cycle {cycle}: {owner} has {len(owned)} current/done packets",
                         packet_ids=[packet.id for packet in owned],
                     )
                 )
     return issues
+
+
+def _fallback_done_packets(
+    packets: list[Packet], cycles: set[str], owner: str
+) -> list[Packet]:
+    done = [
+        packet
+        for packet in packets
+        if packet.owner == owner
+        and packet.cycle in cycles
+        and packet.status in {"done", "excepted"}
+    ]
+    non_idle = [packet for packet in done if packet.packet_type != "idle"]
+    return non_idle or done
 
 
 def _validate_wip_limit(packets: list[Packet]) -> list[dict[str, Any]]:

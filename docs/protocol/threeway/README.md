@@ -12,31 +12,32 @@ unified system on top of the cross-provider three-way protocol.
 | [`ARCHITECTURE-DIAGRAM.md`](ARCHITECTURE-DIAGRAM.md) | The canonical topology diagram (mermaid) — legend + the six load-bearing reads + what it corrects vs the draft diagrams. |
 
 **Truth sources (these win over the manuals on any factual disagreement):**
-- Protocol spec: [`docs/superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md`](../../superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md)
-- Slice-2.5 migration plan: [`docs/superpowers/plans/2026-06-20-cross-provider-seat-topology-slice2.5-legacy-bus-migration.md`](../../superpowers/plans/2026-06-20-cross-provider-seat-topology-slice2.5-legacy-bus-migration.md)
+- Current Codex adoption status: [`docs/protocol/threeway/CODEX-ADOPTION.md`](CODEX-ADOPTION.md)
+- Current unified doctrine: [`docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md)
 - The package: [`threeway/`](../../../threeway/)
-- Verified-truth + decisions: [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) §13A · [`DECISIONS.md`](../../../DECISIONS.md) (ADR-034..064)
+- Verified-truth + decisions: [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) · [`DECISIONS.md`](../../../DECISIONS.md) (ADR-034..064)
 - Principle root: [`AGENTS.md`](../../../AGENTS.md) · Claude mechanics: [`CLAUDE.md`](../../../CLAUDE.md) · Codex mechanics: [`docs/protocol/codex/continuation.md`](../codex/continuation.md)
 
-**Status (verify before relying — `git for-each-ref refs/threeway/` is the live oracle):** the
-`threeway/` package — Slice 1+2 (signed bus, effective-state reducer, gate, RefEventStore), Slice 2.5
-(legacy-bus migration substrate), and Slice 3 (tiered T2/T3 co-sign machinery) — is BUILT, hardened,
-and test-green, and **the bus has been CUT OVER (2026-06-22) and is LIVE**: `refs/threeway/events`
-holds the **768** migrated legacy-mailbox events as `event_sent` carriers + **6** backfilled seat
-cursors, pushed to `origin` (`git ls-remote origin 'refs/threeway/*'`). The retained
-`coordination/mailbox/sent/` is now read-only rollback.
+**Status (verify before relying — `git for-each-ref refs/threeway/` is the local
+oracle):** the `threeway/` package — signed bus, effective-state reducer, gate,
+RefEventStore, migration substrate, and tiered T2/T3 co-sign machinery — is built
+and test-covered. In this checkout, the local oracle currently returns no
+`refs/threeway/*`; therefore the legacy mailbox remains authoritative for local
+work. If remote signed-bus status matters, verify it directly with
+`git ls-remote origin 'refs/threeway/*'` before claiming remote bus authority.
 
 What IS and is NOT live (be precise — this is bus + local CLI mechanism, not a deployed strategic loop):
-- **LIVE — bus infrastructure.** 768-event signed bus + 6 cursors on `origin`; the `.pub` trust root
-  committed (`d2a50f98`); the `THREEWAY_CI_KEY` secret set and the `THREEWAY_BUS_LIVE=true` repo
-  variable flipped, so the manual `workflow_dispatch` ci-result signer job is armed; the merge-gate
-  runner (`scripts/run_merge_gate.py`) runs clean against the live bus (0 candidates → no-op).
-- **LIVE — local principal-safe emitters for signed facts.** T1/T2/T3 and revocation/supersession facts
+- **BUILT — bus infrastructure and local mechanisms.** Signed-bus code,
+  reducer, gate, RefEventStore, migration helpers, and merge-gate tooling are
+  present in the repo and covered by tests.
+- **LIVE LOCALLY AS TOOLS — principal-safe emitters for signed facts.** T1/T2/T3 and revocation/supersession facts
   are emitted through `scripts/overseer_emit.py`, `scripts/seat_emit.py`, and `scripts/chief_emit.py`;
   `docs/protocol/threeway/MECHANISM-LEDGER.md` covers every `LOAD_BEARING_KINDS` member. Verified via
   `env -u GIT_INDEX_FILE .venv/bin/python scripts/threeway_mechanism_ledger.py --check` -> exit 0.
-- **NOT live — deployed protected-main strategic loop.** The free-form mailbox remains the human
-  coordination channel. The local signed-bus path is proved on `refs/threeway/test-main`, but deployed
+- **NOT live locally — signed-bus authority for this checkout.** The free-form
+  mailbox remains the human coordination channel and the local authority source
+  until `refs/threeway/*` exists locally or remote refs are explicitly verified.
+- **NOT live — deployed protected-main strategic loop.** The local signed-bus path is proved on `refs/threeway/test-main`, but deployed
   protected `refs/heads/main` promotion still requires verifiable branch-protection/ref-ACL controls and
   a protected merge-gate runner. Verified via
   `env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_run_merge_gate_protected_main.py -q` -> 2 passed in 0.03s.
@@ -44,7 +45,7 @@ What IS and is NOT live (be precise — this is bus + local CLI mechanism, not a
 Activation tooling: `scripts/sign_ci_result.py`, `scripts/run_merge_gate.py`, `scripts/agy_observer.py`,
 `scripts/execute_threeway_cutover.sh`, `scripts/seat_emit.py`, `scripts/chief_emit.py`,
 `scripts/overseer_emit.py`, `scripts/threeway_mechanism_ledger.py`, and the `.github/workflows/ci.yml`
-`threeway-ci-result` job (fetchable `integration_ref` + exact tested `integration_sha`). The single
-authority-flip cutover was executed under explicit user confirmation (DECISIONS.md ADR-045). Adoption of
-the live protected-main loop = deploying the protected merge-gate controls, not flipping a switch. See
+`threeway-ci-result` job (fetchable `integration_ref` + exact tested `integration_sha`). Adoption of
+the live protected-main loop requires first verifying the chosen signed-bus authority and then deploying
+the protected merge-gate controls. See
 `UNIFIED-OPERATING-DOCTRINE.md` §I.5.

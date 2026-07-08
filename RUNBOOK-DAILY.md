@@ -34,11 +34,11 @@ director brief  →  operator verify  →  GO / NITS / FAIL  →  push
 
 | Trigger | See |
 |---|---|
-| Uncertainty about any Rule #7–#23 | `docs/protocol/claude/director-operator.md` |
-| Cross-cutting change needs a co-sign (Tier A/B?) | `docs/protocol/claude/four-seat-extension.md` §6 |
-| Acquiring / releasing a cross-cutting lock | `docs/protocol/claude/four-seat-extension.md` §5 |
-| Wave gate, wave sequence, or inventory audit | `docs/protocol/claude/four-seat-extension.md` §7–§9 |
-| Emergency / escalation / rollback | `docs/protocol/claude/failure-modes.md` |
-| Git sharp edges (phantom index, pathspec, env flags) | `docs/protocol/claude/core.md` §"Git-tooling sharp edges" |
-| Measurement behind a GO/NO-GO verdict | `docs/protocol/claude/core.md` (R-MEASURE) |
-| Coordinator seat spawn criteria | `docs/protocol/claude/four-seat-extension.md` §10 |
+| Uncertainty about any Rule #7–#23 | `docs/protocol/agents/director-operator.md` |
+| Cross-cutting change needs a co-sign (Tier A/B?) | `docs/protocol/agents/four-seat-extension.md` + `docs/protocol/codex/continuation.md` |
+| Acquiring / releasing a cross-cutting lock | `docs/protocol/agents/four-seat-extension.md` |
+| Wave gate, wave sequence, or inventory audit | `.agents/skills/seat-coordinator/SKILL.md` + `docs/protocol/codex/continuation.md` |
+| Emergency / escalation / rollback | `docs/protocol/agents/failure-modes.md` |
+| Git sharp edges (phantom index, pathspec, env flags) | `docs/protocol/agents/core.md` |
+| Measurement behind a GO/NO-GO verdict | `docs/protocol/agents/core.md` (R-MEASURE) |
+| Coordinator seat spawn criteria | `.agents/skills/seat-coordinator/SKILL.md` |

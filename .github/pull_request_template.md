@@ -2,18 +2,17 @@
 <!-- 1-3 sentences. What changed and why, in operator-friendly language. -->
 
 ## Why
-<!-- Motivation. If this maps to a strategic-review P-priority, link the section. -->
+<!-- Motivation. Link the governing issue, route, ADR, or handoff if applicable. -->
 
 ## Test plan
-- [ ] `ARCHITECTURE.md §15` smoke passes locally
-- [ ] `.venv/bin/python -m pytest tests/unit/ -q` clean (baseline 2026-05-24: **478 pass / 3 skip / 0 fail**)
-- [ ] `cd web && npx tsc --noEmit` silent
+- [ ] `.venv/bin/python scripts/ci_smoke.py` passes locally
+- [ ] `.venv/bin/python -m pytest tests/unit/ -q` clean (current governance baseline: **234 passed / 0 failed**)
 - [ ] CI (`.github/workflows/ci.yml`) is green on this PR
-- [ ] ARCHITECTURE.md updated if a documented subsystem (entry, orchestrator, phases, gates, identity, video routing, audio, LLM, frontend) was touched
+- [ ] ARCHITECTURE.md updated if a documented governance or protocol subsystem was touched
 - [ ] [DECISIONS.md](../DECISIONS.md) appended (new ADR) if this is an architectural decision
 
-## Strategic-review P-priority (if applicable)
-See [docs/STRATEGIC_REVIEW-2026-05-24.md](../docs/STRATEGIC_REVIEW-2026-05-24.md).
+## Priority / Route (if applicable)
+Name the governing mailbox route, handoff, ADR, or task-board packet.
 
 - [ ] **P0** — Ship-blocking risk (test coverage, CI, cost-tracking)
 - [ ] **P1** — Quality risk (observability, orchestrator size, schema validation, frontend resilience)
@@ -36,5 +35,4 @@ $ <command>
 ```
 
 ## Out of scope
-<!-- Anything noticed but deliberately not addressed. Goes to "Findings" if
-escalating in the strategic review next cycle. -->
+<!-- Anything noticed but deliberately not addressed. -->

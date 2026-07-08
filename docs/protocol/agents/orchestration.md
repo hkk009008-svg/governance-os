@@ -1,11 +1,7 @@
-# Orchestration — agent-agnostic (relocated)
+# Orchestration - Agent-Agnostic
 
-> Relocated verbatim from `AGENTS.md` as part of the operative/provenance
-> split (see `docs/protocol/migration-map-claudemd-split.md`). Loaded **on trigger**,
-> not at session start. Two-tree strategy: this is the `agents` copy. Sections
-> that live elsewhere (prompt templates → `docs/templates/...`, failure-modes →
-> `.../failure-modes.md`) are intentionally not included here. During the add-first
-> window the root file still holds this content; it will be stubbed once confirmed.
+> Agent-agnostic detail document loaded **on trigger**, not at session start.
+> Root routers keep short stubs; this file holds the current expanded rule body.
 
 ---
 
@@ -181,4 +177,3 @@ When your tool summarizes/truncates older messages (compaction), watch for:
   overhead hurts here.
 - **Tasks needing constant operator feedback** — interactive sessions
   fit better.
-

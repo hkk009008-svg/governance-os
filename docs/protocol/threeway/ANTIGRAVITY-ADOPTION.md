@@ -8,9 +8,9 @@
 > realignment rules (read the package; label RAW-vs-verified; status is an artifact; never declare "live"
 > without the oracle).
 
-**Read first:** [`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md) (the shared rules) and
-the spec
-[`docs/superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md`](../../superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md).
+**Read first:** [`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md)
+(the shared rules), [`CODEX-ADOPTION.md`](CODEX-ADOPTION.md) for current
+signed-bus status, and the `threeway/` package for mechanics.
 The agent-agnostic root contract is [`AGENTS.md`](../../../AGENTS.md) — **Antigravity should read it as
 its source of truth and translate its principles into Antigravity's own mechanisms** (AGENTS.md says
 exactly this for non-Claude agents).

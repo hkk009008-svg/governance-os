@@ -25,6 +25,7 @@ CURRENT_PROTOCOL_TESTS = (
     "tests/unit/test_coordination_tooling.py",
     "tests/unit/test_ceremony_gates.py",
     "tests/unit/test_protocol_capacity.py",
+    "tests/unit/test_protocol_doc_integrity.py",
     "tests/unit/test_protocol_prompt_sync.py",
     "tests/unit/test_codex_ledger_bridge.py",
 )

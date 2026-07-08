@@ -2,7 +2,7 @@
 
 Inter-session coordination scaffold for the director-operator four-seat agent
 protocol. See [CLAUDE.md](../CLAUDE.md) / [AGENTS.md](../AGENTS.md) `# Director-Operator Concurrent Operation`
-for the full discipline (Rules 1–20).
+for the full discipline (Rules #7–#23).
 
 ## Layout
 
@@ -12,10 +12,10 @@ for the full discipline (Rules 1–20).
   filename (linted). Pre-v6.0 events used YAML frontmatter (`from`, `to`,
   `kind`, …) and are grandfathered. Written directly by sender (Tier-1
   auto-send; no approval gate) — preferably via `bin/send-event`.
-- `mailbox/seen/director.txt`, `mailbox/seen/operator.txt` — Per-role
-  consumed-up-to timestamp; the SINGLE cursor truth (v6.0 — do not restate the
-  cursor in commit messages or event prose; the 2026-06-10 three-way divergence
-  is why). Advanced via `bin/consume-events`; content is a single UTC ISO-8601
+- `mailbox/seen/<seat>.txt` — Per-seat consumed-up-to timestamp for concrete
+  live seats and receiving seats. Pair seats advance their own cursor via
+  `bin/consume-events`; coordinator is unpinned and reads all-scope mail
+  without consuming a coordinator cursor. Content is a single UTC ISO-8601
   timestamp (e.g., `2026-05-24T13:42:00Z`).
 - `bin/send-event <from> <to> <kind> <subject…>` (body on stdin) — writes a
   convention-conforming event + envelope, appends an automatic
@@ -74,14 +74,13 @@ read-only: it reports unread counts, latest unread events, coordinator broadcast
 receipt splits, and heartbeat freshness, but it never consumes cursors, sends
 mailbox events, claims live-seat authority, or proves assigned work complete.
 
-For a real seat resume, use the seat-specific orientation command instead:
+For a real pair-seat resume, use the seat-specific orientation command instead:
 `python .agents/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2`,
-then surface the unread count per Rule #8. Every seat — including coordinator and
-coordinator2 (Slice 2.5: now first-class receiving seats with their own seen
-cursor) — consumes and reads unread events with
-`coordination/bin/consume-events <seat>` by default before deciding the seat is
+then surface the unread count per Rule #8. Pair seats consume and read unread
+events with `coordination/bin/consume-events <seat>` before deciding the seat is
 idle, routed, blocked, or ready to verify, unless the user explicitly asks for a
-read-only/no-consume check.
+read-only/no-consume check. Coordinator is unpinned: read relevant coordinator
+mailbox bodies and all-scope state, but do not run `consume-events coordinator`.
 
 ## Codex transplant
 
@@ -99,7 +98,7 @@ Codex-native continuation details live in
 For a CLI live-seat Codex launch:
 
 ```bash
-cd /Users/hyungkoookkim/Content
+cd /Users/hyungkoookkim/Pipeline
 export CODEX_SEAT=<director|director2|operator|operator2>
 CODEX_GIT_DIR="$(env -u GIT_INDEX_FILE git rev-parse --absolute-git-dir)"
 export GIT_INDEX_FILE="$CODEX_GIT_DIR/index-codex-$CODEX_SEAT"
@@ -277,7 +276,7 @@ under the top-level `hooks` key:
       "hooks": [
         {
           "type": "command",
-          "command": "bash /absolute/path/to/Content/.claude/hooks/update-state.sh"
+          "command": "bash /absolute/path/to/Pipeline/.claude/hooks/update-state.sh"
         }
       ]
     }
@@ -301,14 +300,14 @@ own `GIT_INDEX_FILE` + role marker:
 
 ```bash
 # director session (run in the shared tree, BEFORE launching `claude`)
-cd /Users/hyungkoookkim/Content
+cd /Users/hyungkoookkim/Pipeline
 export CLAUDE_SEAT=director
 export GIT_INDEX_FILE="$(git rev-parse --absolute-git-dir)/index-director"
 [ -f "$GIT_INDEX_FILE" ] || git read-tree HEAD   # seed a fresh per-seat index from HEAD
 claude
 
 # operator session (separate terminal, same tree)
-cd /Users/hyungkoookkim/Content
+cd /Users/hyungkoookkim/Pipeline
 export CLAUDE_SEAT=operator
 export GIT_INDEX_FILE="$(git rev-parse --absolute-git-dir)/index-operator"
 [ -f "$GIT_INDEX_FILE" ] || git read-tree HEAD
@@ -316,14 +315,14 @@ claude
 
 # --- Pair B (4-seat protocol; see docs/protocol/claude/four-seat-extension.md) ---
 # director2 session (separate terminal, SAME tree)
-cd /Users/hyungkoookkim/Content
+cd /Users/hyungkoookkim/Pipeline
 export CLAUDE_SEAT=director2
 export GIT_INDEX_FILE="$(git rev-parse --absolute-git-dir)/index-director2"
 [ -f "$GIT_INDEX_FILE" ] || git read-tree HEAD
 claude
 
 # operator2 session (separate terminal, SAME tree)
-cd /Users/hyungkoookkim/Content
+cd /Users/hyungkoookkim/Pipeline
 export CLAUDE_SEAT=operator2
 export GIT_INDEX_FILE="$(git rev-parse --absolute-git-dir)/index-operator2"
 [ -f "$GIT_INDEX_FILE" ] || git read-tree HEAD

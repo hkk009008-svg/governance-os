@@ -1,11 +1,7 @@
-# Orchestration — Claude Code (relocated)
+# Orchestration - Claude Code
 
-> Relocated verbatim from `CLAUDE.md` as part of the operative/provenance
-> split (see `docs/protocol/migration-map-claudemd-split.md`). Loaded **on trigger**,
-> not at session start. Two-tree strategy: this is the `claude` copy. Sections
-> that live elsewhere (prompt templates → `docs/templates/...`, failure-modes →
-> `.../failure-modes.md`) are intentionally not included here. During the add-first
-> window the root file still holds this content; it will be stubbed once confirmed.
+> Claude Code detail document loaded **on trigger**, not at session start.
+> Root routers keep short stubs; this file holds the current expanded rule body.
 
 ---
 
@@ -208,4 +204,3 @@ suite. A red baseline masks new red.
   here.
 - **Tasks with constant operator feedback** — interactive sessions in main
   context fit better.
-
