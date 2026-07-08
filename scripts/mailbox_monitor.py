@@ -12,12 +12,12 @@ import argparse
 import copy
 import json
 import re
+import check_coordination
+import protocol_capacity
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-
-
 import protocol_mailbox
 import bus_unread  # de-degrade: real ref-bus unread for migrated (scalar) cursors
 
@@ -31,7 +31,6 @@ _EVENT_RE = re.compile(
     r"-to-(?P<to>director|director2|operator|operator2|coordinator|coordinator2|all)-"
     r"(?P<kind>[a-z0-9-]+)\.md$"
 )
-
 
 def _parse_iso(ts: str) -> datetime | None:
     # A scalar `seq` cursor (post Slice-2.5 backfill) is NOT an ISO wall-clock:
@@ -172,11 +171,13 @@ def _latest_coordinator_broadcast(events: list[dict]) -> dict | None:
     return {"filename": latest["filename"], "ts": latest["ts"], "kind": latest["kind"]}
 
 
+
 def collect_monitor_state(
     repo_root: Path | str,
     *,
     now: str | None = None,
     stale_min: int = 15,
+    wave: int | None = None,
 ) -> dict:
     """Collect a read-only mailbox/presence snapshot."""
     root = Path(repo_root)
@@ -225,6 +226,13 @@ def collect_monitor_state(
             receipt_summary["unknown"] += 1
 
     alerts = []
+    notes = []
+    downgrade_noise = _should_downgrade_closed_cycle_noise(
+        root,
+        seats,
+        generated_at=generated_at,
+        wave=wave,
+    )
     unread_seats = [
         f"{seat}={seat_state['unread_count']}"
         for seat, seat_state in seats.items()
@@ -248,7 +256,8 @@ def collect_monitor_state(
             if seat_state["broadcast_receipt"] == "unknown"
         ]
         if unknown:
-            alerts.append(
+            target = notes if downgrade_noise else alerts
+            target.append(
                 "coordinator broadcast receipt is unproved for seats: "
                 + ", ".join(unknown)
                 + " (unknown means unproved, not delivered)"
@@ -259,7 +268,8 @@ def collect_monitor_state(
         if seat_state["heartbeat"]["state"] not in ("ONLINE", "n/a")
     ]
     if heartbeat_attention:
-        alerts.append("heartbeat attention: " + ", ".join(heartbeat_attention))
+        target = notes if downgrade_noise else alerts
+        target.append("heartbeat attention: " + ", ".join(heartbeat_attention))
 
     return {
         "generated_at": generated_at,
@@ -268,6 +278,7 @@ def collect_monitor_state(
         "receipt_summary": receipt_summary,
         "seats": seats,
         "alerts": alerts,
+        "notes": notes,
     }
 
 
@@ -316,7 +327,49 @@ def render_snapshot(state: dict) -> str:
     else:
         lines.append("ALERTS")
         lines.append("- none")
+    lines.append("NOTES")
+    if state.get("notes"):
+        lines.extend(f"- {note}" for note in state["notes"])
+    else:
+        lines.append("- none")
     return "\n".join(lines) + "\n"
+
+
+def _capacity_board_is_closed_without_blockers(root: Path, wave: int) -> bool:
+    report = protocol_capacity.collect_capacity_report(root, wave)
+    return report.packet_state == "closed" and not report.blocking_issues
+
+
+def _coordination_check_passes(root: Path, now: str) -> bool:
+    issues = check_coordination.run(
+        root / "coordination",
+        now=now,
+        docs_root=root / "docs",
+    )
+    return not any(issue.severity == "FATAL" for issue in issues)
+
+
+def _all_unread_counts_are_zero(seats: dict[str, dict]) -> bool:
+    return all(
+        isinstance(seat_state["unread_count"], int) and seat_state["unread_count"] == 0
+        for seat_state in seats.values()
+    )
+
+
+def _should_downgrade_closed_cycle_noise(
+    root: Path,
+    seats: dict[str, dict],
+    *,
+    generated_at: str,
+    wave: int | None,
+) -> bool:
+    if wave is None:
+        return False
+    if not _all_unread_counts_are_zero(seats):
+        return False
+    return _capacity_board_is_closed_without_blockers(
+        root, wave
+    ) and _coordination_check_passes(root, generated_at)
 
 
 def _fingerprint(state: dict) -> dict:
@@ -350,6 +403,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--watch", action="store_true", help="poll and print changes")
     parser.add_argument("--interval", type=float, default=5.0, help="watch poll seconds")
     parser.add_argument("--stale-min", type=int, default=15, help="heartbeat stale minutes")
+    parser.add_argument("--wave", type=int, default=None, help="evaluate closed-cycle noise for this wave")
     parser.add_argument("--iterations", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--now", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -357,7 +411,12 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root)
     if not args.watch:
         _emit(
-            collect_monitor_state(root, now=args.now, stale_min=args.stale_min),
+            collect_monitor_state(
+                root,
+                now=args.now,
+                stale_min=args.stale_min,
+                wave=args.wave,
+            ),
             args.json,
         )
         return 0
@@ -365,7 +424,12 @@ def main(argv: list[str] | None = None) -> int:
     last = None
     iterations = 0
     while True:
-        state = collect_monitor_state(root, now=args.now, stale_min=args.stale_min)
+        state = collect_monitor_state(
+            root,
+            now=args.now,
+            stale_min=args.stale_min,
+            wave=args.wave,
+        )
         current = _fingerprint(state)
         if current != last:
             _emit(state, args.json)

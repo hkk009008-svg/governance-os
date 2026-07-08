@@ -127,3 +127,49 @@ def test_mailbox_monitor_alerts_when_latest_broadcast_receipt_is_unknown(
     assert state["receipt_summary"]["unknown"] == len(mailbox_monitor.SEATS)
     assert any("coordinator broadcast receipt is unproved" in alert for alert in state["alerts"])
     assert "receipt unknown means unproved, not delivered" in rendered
+
+
+def test_mailbox_monitor_downgrades_closed_cycle_receipt_and_heartbeat_noise(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr(mailbox_monitor.bus_unread, "bus_unread_events", lambda root, seat: [])
+    _write(
+        tmp_path
+        / "coordination/mailbox/sent/2026-07-08T00-00-00Z-coordinator-to-all-coordination.md",
+        "# route\n",
+    )
+    for seat in mailbox_monitor.SEATS:
+        _write(tmp_path / "coordination/mailbox/seen" / f"{seat}.txt", "0\n")
+    for seat in ("director", "director2", "operator", "operator2"):
+        _write(
+            tmp_path / "coordination/presence" / f"{seat}-heartbeat.ts",
+            "2026-07-08T00:00:00Z abc1234\n",
+        )
+
+    monkeypatch.setattr(
+        mailbox_monitor,
+        "_capacity_board_is_closed_without_blockers",
+        lambda root, wave: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        mailbox_monitor,
+        "_coordination_check_passes",
+        lambda root, now: True,
+        raising=False,
+    )
+
+    state = mailbox_monitor.collect_monitor_state(
+        tmp_path,
+        now="2026-07-08T01:00:00Z",
+        stale_min=15,
+        wave=2,
+    )
+    rendered = mailbox_monitor.render_snapshot(state)
+
+    assert state["alerts"] == []
+    assert any(
+        "coordinator broadcast receipt is unproved" in note for note in state["notes"]
+    )
+    assert any("heartbeat attention:" in note for note in state["notes"])
+    assert "ALERTS\n- none\nNOTES\n" in rendered
