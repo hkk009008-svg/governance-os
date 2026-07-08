@@ -166,6 +166,43 @@ def test_subagent_utilization_decision_is_rendered_and_documented():
         assert "direct/no-op because" in text
 
 
+def test_agent_extension_routing_contract_is_model_backed():
+    expected_contract = (
+        (
+            "agent01",
+            "capacity manager companion",
+            "explicit coordinator/cycle capacity-max planning",
+        ),
+        (
+            "agent02",
+            "explicit-mode bounded worker",
+            "a parent names a concrete mode and allowed write set",
+        ),
+        (
+            "agent03",
+            "general senior repo worker",
+            "ordinary repo coding or documentation work with protocol awareness",
+        ),
+        (
+            "agent04",
+            "read-only protocol auditor/router",
+            "read-only protocol diagnosis and route recommendation",
+        ),
+    )
+
+    assert model.AGENT_EXTENSION_ROUTING_CONTRACT == expected_contract
+
+    rendered = model.render_agent_extension_routing_contract()
+    assert "Agent Extension Routing Contract:" in rendered
+    for agent, purpose, route_when in expected_contract:
+        assert agent in rendered
+        assert purpose in rendered
+        assert route_when in rendered
+
+    assert "extension output is evidence for the parent" in rendered
+    assert "not a mailbox event, cursor advance, operator GO, coordinator route, lock action, push, or spend authorization" in rendered
+
+
 def test_capacity_split_default_is_model_backed_and_surface_synced():
     rendered = model.render_capacity_split_default()
 
