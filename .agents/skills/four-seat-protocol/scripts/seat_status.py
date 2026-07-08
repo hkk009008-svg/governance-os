@@ -10,7 +10,9 @@ commits, or advances a cursor (that distinction matters: the real
 `consume-events` stages the cursor file; an orientation check must not).
 
     .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py <seat> [opts]
+    .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py --all [opts]
       <seat>            director | director2 | operator | operator2 | coordinator | coordinator2
+      --all             render a shared all-seat status view
       --wave N          also report `scripts/wave_gate_check.py N`
       --commits N       recent commits to show (default 12)
       --stale-min M     heartbeat older than M minutes => STALE (default 15)
@@ -35,6 +37,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import bus_unread  # de-degrade: real ref-bus unread for migrated (scalar) cursors
+import latest_handoff
 import protocol_mailbox
 from codex_protocol_model import CENTRAL_INVARIANT, MODEL_SOURCE
 
@@ -117,6 +120,12 @@ def git_log(root: str, n: int):
 
 def mailbox(root: str, seat: str):
     section(f"mailbox — unread for '{seat}' (live recompute, read-only)")
+    for line in mailbox_lines(root, seat):
+        print(line)
+
+
+def mailbox_lines(root: str, seat: str) -> list[str]:
+    lines: list[str] = []
     seen = os.path.join(root, "coordination", "mailbox", "seen", f"{seat}.txt")
     sent = os.path.join(root, "coordination", "mailbox", "sent")
     cursor_dt = None
@@ -131,21 +140,23 @@ def mailbox(root: str, seat: str):
             # "count everything" branch is never reached. None => a VISIBLE "(unavailable)"
             # sentinel, never a silent 0 (silent-gate-degradation). Mirrors scripts/status.py
             # collect_mailbox; the LIVE cursor is the ref (store.cursor_seq), not this scalar.
-            print(f"cursor: {cursor_raw}")
+            lines.append(f"cursor: {cursor_raw}")
             n = bus_unread.bus_unread_count(root, seat)
             if n is None:
-                print("UNREAD: (unavailable: ref-bus)")
+                lines.append("UNREAD: (unavailable: ref-bus)")
             else:
-                print(f"UNREAD: {n} / ref-bus")
+                lines.append(f"UNREAD: {n} / ref-bus")
                 if n:
-                    print("→ Rule #8: surface this count in your FIRST user-facing turn; "
-                          "consume via scripts/consume_bus.py " + seat)
-            return
+                    lines.append(
+                        "→ Rule #8: surface this count in your FIRST user-facing turn; "
+                        "consume via scripts/consume_bus.py " + seat
+                    )
+            return lines
         cursor_dt = _parse_cursor_ts(cursor_raw)
-    print(f"cursor: {cursor_raw}")
+    lines.append(f"cursor: {cursor_raw}")
     if not os.path.isdir(sent):
-        print("no sent/ dir — 0 unread")
-        return
+        lines.append("no sent/ dir — 0 unread")
+        return lines
     addressed = sorted(
         f
         for f in os.listdir(sent)
@@ -159,14 +170,17 @@ def mailbox(root: str, seat: str):
             continue
         if cursor_dt is None or ts > cursor_dt:
             unread.append(f)
-    print(f"UNREAD: {len(unread)}")
+    lines.append(f"UNREAD: {len(unread)}")
     for f in unread[-12:]:  # newest tail, cap the print
-        print(f"  • {f}")
+        lines.append(f"  • {f}")
     if len(unread) > 12:
-        print(f"  … and {len(unread) - 12} older")
+        lines.append(f"  … and {len(unread) - 12} older")
     if unread:
-        print("→ Rule #8: surface this count in your FIRST user-facing turn; "
-              "consume via coordination/bin/consume-events " + seat)
+        lines.append(
+            "→ Rule #8: surface this count in your FIRST user-facing turn; "
+            "consume via coordination/bin/consume-events " + seat
+        )
+    return lines
 
 
 def heartbeats(root: str, me: str, stale_min: int):
@@ -209,6 +223,66 @@ def wave_gate(root: str, wave: str):
     print(f"→ exit {code} ({'MET' if code == 0 else 'UNMET'})")
 
 
+def capacity_board(root: str, wave: str):
+    section(f"capacity board — wave {wave}")
+    py = os.path.join(root, ".venv", "bin", "python")
+    py = py if os.path.exists(py) else sys.executable
+    code, out, err = run(
+        [py, "scripts/protocol_capacity_board.py", "--wave", str(wave)],
+        cwd=root,
+    )
+    if out:
+        print(out)
+    if err:
+        print(err)
+    print(f"→ exit {code} ({'valid' if code == 0 else 'blocking issues'})")
+
+
+def all_mailboxes(root: str):
+    section("mailboxes — all seats (live recompute, read-only)")
+    for seat in SEATS:
+        print(seat)
+        for line in mailbox_lines(root, seat):
+            print(f"  {line}")
+
+
+def all_heartbeats(root: str, stale_min: int):
+    section(f"heartbeats — pair seats (STALE > {stale_min}m)")
+    now = datetime.now(timezone.utc)
+    pres = os.path.join(root, "coordination", "presence")
+    for seat in protocol_mailbox.SEATS:
+        hb = os.path.join(pres, f"{seat}-heartbeat.ts")
+        if not os.path.exists(hb):
+            print(f"  {seat:10s} (no heartbeat file)")
+            continue
+        with open(hb) as fh:
+            raw = fh.readline().strip()
+        ts_str = raw.split()[0] if raw else ""
+        sha = raw.split()[1] if len(raw.split()) > 1 else "?"
+        ts = _parse_cursor_ts(ts_str)
+        if ts is None:
+            print(f"  {seat:10s} (unparseable: {raw!r})")
+            continue
+        age = (now - ts).total_seconds()
+        flag = "ONLINE" if age <= stale_min * 60 else "STALE"
+        print(
+            f"  {seat:10s} {flag:6s} last {_fmt_age(age)} ago @ {ts_str} ({sha})"
+        )
+
+
+def latest_handoffs(root: str):
+    section("latest handoffs")
+    root_path = Path(root)
+    for seat in SEATS:
+        selection = latest_handoff.find_latest_handoff(root_path, seat)
+        if selection.path is None:
+            print(f"{seat}: (missing; expected {selection.pattern})")
+        else:
+            print(f"{seat}: {selection.path.relative_to(root_path)}")
+        for warning in selection.warnings:
+            print(f"  {warning}")
+
+
 def smoke(root: str):
     section("§15 smoke (scripts/ci_smoke.py)")
     py = os.path.join(root, ".venv", "bin", "python")
@@ -219,16 +293,7 @@ def smoke(root: str):
     print(f"→ exit {code} ({'clean' if code == 0 else 'FAILED — stop, fix first'})")
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description="One-shot seat session-start status.")
-    ap.add_argument("seat", choices=SEATS)
-    ap.add_argument("--wave", default=None)
-    ap.add_argument("--commits", type=int, default=12)
-    ap.add_argument("--stale-min", type=int, default=15)
-    ap.add_argument("--smoke", action="store_true")
-    args = ap.parse_args(argv)
-
-    root = repo_root()
+def render_single_status(root: str, args) -> None:
     print(f"SEAT STATUS — {args.seat}   (read-only; nothing staged/committed)")
     print(f"repo: {root}")
     git_head(root)
@@ -244,6 +309,45 @@ def main(argv=None):
         print("smoke NOT run (--smoke to include). R-START still requires a "
               "clean ci_smoke before non-trivial work.")
         print(f"harness model: {MODEL_SOURCE}; {CENTRAL_INVARIANT}.")
+
+
+def render_all_status(root: str, args) -> None:
+    print("SEAT STATUS — all seats   (read-only; nothing staged/committed)")
+    print(f"repo: {root}")
+    git_head(root)
+    git_log(root, args.commits)
+    all_mailboxes(root)
+    all_heartbeats(root, args.stale_min)
+    latest_handoffs(root)
+    if args.wave is not None:
+        wave_gate(root, args.wave)
+        capacity_board(root, args.wave)
+    if args.smoke:
+        smoke(root)
+    else:
+        section("reminders")
+        print("smoke NOT run (--smoke to include). R-START still requires a "
+              "clean ci_smoke before non-trivial work.")
+        print(f"harness model: {MODEL_SOURCE}; {CENTRAL_INVARIANT}.")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="One-shot seat session-start status.")
+    ap.add_argument("seat", nargs="?", choices=SEATS)
+    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--wave", default=None)
+    ap.add_argument("--commits", type=int, default=12)
+    ap.add_argument("--stale-min", type=int, default=15)
+    ap.add_argument("--smoke", action="store_true")
+    args = ap.parse_args(argv)
+    if args.all == (args.seat is not None):
+        ap.error("choose exactly one of <seat> or --all")
+
+    root = repo_root()
+    if args.all:
+        render_all_status(root, args)
+    else:
+        render_single_status(root, args)
     return 0
 
 
