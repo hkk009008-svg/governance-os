@@ -1,0 +1,42 @@
+{
+  "id": "coord-governance-hardening-bridge-join",
+  "wave": 2,
+  "cycle": "governance-hardening-bridge-findings-2026-07-08",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "governance-root-truth-docs",
+    "governance-sha-ref-drift",
+    "governance-mailbox-receipt-unknown",
+    "governance-startup-guard-route-base"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-governance-hardening-bridge-impl",
+    "director2-governance-hardening-bridge-observer",
+    "operator-governance-hardening-bridge-lanev",
+    "operator2-governance-hardening-bridge-observer"
+  ],
+  "acceptance": [
+    "Wait for director implementation and operator verification-report GO/NITS/FAIL before closing this governance-hardening cycle.",
+    "Confirm director2/operator2 observer packets are either standby with no contradiction or have reported only contradiction, missing evidence, changed safety boundary, or explicit coordinator-request output.",
+    "Close with one coordinator synthesis artifact or handoff that cites capacity board, route validation, smoke, implementation commit/range, and operator verdict.",
+    "Do not edit product-target code as coordinator."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-08-governance-hardening-bridge-coordinator-join.json",
+    "coordination/mailbox/sent/2026-07-08T14-39-41Z-coordinator-to-all-coordination.md"
+  ]
+}

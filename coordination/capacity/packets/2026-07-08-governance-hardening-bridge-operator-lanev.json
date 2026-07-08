@@ -1,0 +1,53 @@
+{
+  "id": "operator-governance-hardening-bridge-lanev",
+  "wave": 2,
+  "cycle": "governance-hardening-bridge-findings-2026-07-08",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "governance-root-truth-docs",
+    "governance-sha-ref-drift",
+    "governance-mailbox-receipt-unknown",
+    "governance-startup-guard-route-base"
+  ],
+  "allowed_paths": [
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "README.md",
+    "OPERATIONS.md",
+    "docs/PROGRAM-MANUAL.md",
+    "docs/protocol/",
+    "scripts/ci_smoke.py",
+    "scripts/check_doc_claims.py",
+    "scripts/mailbox_monitor.py",
+    "scripts/ledger_start_guard.py",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-governance-hardening-bridge-impl"
+  ],
+  "acceptance": [
+    "Remain blocked until director sends a governance-hardening verify-request with commit/range and evidence.",
+    "Independently verify the named diff against the four bridge findings, focused tests, smoke, coordination checks, capacity board validity, and no out-of-scope side effects.",
+    "Treat warning-only ci_smoke output as insufficient for a clean SHA provenance claim unless the diff adds an explicit baseline/new-drift policy.",
+    "Issue exactly one Pipeline mailbox verification-report with GO, NITS, or FAIL.",
+    "Do not edit production files, push, consume coordinator mail, claim locks, spend paid API budget, or start pods."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "scripts/ci_smoke.py",
+    "scripts/check_doc_claims.py",
+    "scripts/mailbox_monitor.py",
+    "scripts/ledger_start_guard.py",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ]
+}

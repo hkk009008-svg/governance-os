@@ -1,0 +1,35 @@
+{
+  "id": "director2-governance-hardening-bridge-observer",
+  "wave": 2,
+  "cycle": "governance-hardening-bridge-findings-2026-07-08",
+  "owner": "director2",
+  "packet_type": "idle",
+  "row_ids": [
+    "governance-root-truth-docs",
+    "governance-sha-ref-drift",
+    "governance-mailbox-receipt-unknown",
+    "governance-startup-guard-route-base"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-governance-hardening-bridge-impl"
+  ],
+  "acceptance": [
+    "Stand down as observer unless coordinator explicitly asks for director2 review or live evidence contradicts this route.",
+    "Do not duplicate director implementation work.",
+    "If contradiction is found, report only the contradiction with command evidence."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/"
+  ]
+}
