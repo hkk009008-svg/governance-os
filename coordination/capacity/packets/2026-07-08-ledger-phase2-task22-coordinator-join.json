@@ -1,0 +1,39 @@
+{
+  "id": "coord-ledger-phase2-task22-join",
+  "wave": 2,
+  "cycle": "ledger-phase2-task22-2026-07-08",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "phase2-task2.2-entry-validations"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-task22-validations",
+    "director2-ledger-phase2-task22-observer",
+    "operator-ledger-phase2-task22-lanev",
+    "operator2-ledger-phase2-task22-observer"
+  ],
+  "acceptance": [
+    "Wait for director implementation and operator verification-report GO/NITS/FAIL before closing Phase 2 Task 2.2.",
+    "Confirm director2/operator2 observer packets are either standby with no contradiction or have reported only contradiction, missing evidence, changed safety boundary, or explicit coordinator-request output.",
+    "Close with one coordinator synthesis artifact or handoff that cites capacity board, route validation, smoke, implementation commit/range, and operator verdict.",
+    "Do not edit evidence-ledger product files as coordinator."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-08-ledger-phase2-task22-coordinator-join.json",
+    "coordination/mailbox/sent/"
+  ]
+}
