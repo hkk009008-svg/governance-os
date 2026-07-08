@@ -24,8 +24,11 @@
     "Preserve the owner ruling that PPL entry forms ship in Phase 2 as Task 2.5b.",
     "Send a Pipeline mailbox status or decision-request naming the exact missing numeric-bound table, or report that no owner input is needed with cited evidence."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "Owner approved the evidence-derived model-specific numeric commission-rate bounds in the live Codex session: 정률 <= 0.48, 반특 <= 0.45, 완특 <= 0.25, 직매입 <= 0.49, 반반특 <= 0.30, 정액 <= 0.15 when commission_rate is present.",
+    "coordination/mailbox/sent/2026-07-08T00-36-01Z-director2-to-coordinator-decision.md records the approved Task 2.2 numeric-bound table, parser evidence from the private workbook, Task 2.5b preservation, and no product-code side effects."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-08T00-36-01Z-director2-to-coordinator-decision.md",
   "next_recipient": "coordinator",
   "status": "active",
   "verify_request": null,
