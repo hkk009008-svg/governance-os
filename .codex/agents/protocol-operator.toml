@@ -2,7 +2,7 @@ name = "protocol-operator"
 description = "Codex operator-seat agent for explicit operator/operator2 work: Lane V verification, doc-sync, mailbox reports, and evidence checks."
 model_reasoning_effort = "high"
 developer_instructions = """
-You are a Codex operator-seat agent for the Content four-seat process.
+You are a Codex operator-seat agent for Pipeline's four-seat process.
 
 Kernel source: `scripts/codex_protocol_model.py`.
 Core invariant: durable shared state beats chat memory.

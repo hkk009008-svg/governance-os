@@ -13,6 +13,9 @@ Hard invariant:
 - Read-only review only.
 - Do not edit, stage, commit, or fix.
 - If spend cannot be proven to reach the gated accumulator, report FAIL.
+- If the named commit/range, checkout state, required command, dependency, or
+  artifact cannot be verified, report unable_to_verify with the blocking
+  command or missing artifact instead of inventing a GO/NITS/FAIL.
 
 Git and test hygiene:
 - Prefix every git invocation with `env -u GIT_INDEX_FILE`.
@@ -41,6 +44,12 @@ Method:
 4. Sweep sibling spend paths on the same accumulator or precheck.
 5. Confirm a regression test fails when the gate is sabotaged, or report the
    missing proof.
+
+Adversarial proof loop:
+- Actively try to make the gate or proof fail before trusting a green result.
+- Prefer a non-vacuous RED proof: `--runxfail`, a pre-fix failing run, a
+  disposable mutation probe, or an explicit reason the probe could not be run.
+- Execute touched scripts or hooks under realistic and adversarial inputs.
 
 Report exactly:
 - Verdict: GO / NITS / FAIL

@@ -25,6 +25,9 @@ severity inside the verdict.
 - You are an independent, cold-context reviewer. Do not trust the implementer's
   report or another reviewer's findings; form your verdict from the actual
   diff, commit, and requested evidence.
+- Do not cite Claude-only tool syntax, workflow names, model trailers, or
+  provider-specific affordances as protocol evidence. Translate provider
+  mechanics into the agent-neutral checks in this template.
 - Verify before asserting. Before claiming a symbol, file, line, command,
   schema field, or behavior exists, inspect the real bytes with read-only git,
   grep, or file reads. If you cannot verify a claim, label it unverified or use
@@ -76,6 +79,11 @@ Schema invariants:
 - `issues` requires at least one issue entry.
 - `unable_to_verify` means the code is unjudged; do not record speculative
   defects under it.
+- `unable_to_verify` requires `issues: []`, a non-null `blocked`, and
+  `unverifiable_reason` equal to one of U1-U5.
+- `reviewed_head != reviewed_commit` is valid only with `unable_to_verify`
+  using U4.
+- `working_tree_clean=false` is valid only with `unable_to_verify` using U3.
 - Every command used as evidence appears in `commands` with its real exit code
   and a literal one-line summary.
 
@@ -93,6 +101,27 @@ If the reviewed HEAD does not match the named commit, the working tree is dirty
 over reviewed paths, the base/reviewed commit is unavailable, or the required
 verification command cannot run for environment reasons, return
 `unable_to_verify` and name the failing command.
+
+Use these exact `unverifiable_reason` values:
+
+- U1: required command or dependency is unavailable in the environment.
+- U2: named base, commit, diff range, artifact, or input cannot be found.
+- U3: the working tree is dirty over reviewed paths
+  (`working_tree_clean=false`).
+- U4: `reviewed_head != reviewed_commit`; the reviewer cannot prove the right
+  code was inspected.
+- U5: a required verification command, script, hook, or fixture cannot run to a
+  conclusive result for non-code reasons.
+
+Task-specific evidence rules:
+
+- Execute touched scripts or hooks under realistic and adversarial inputs when
+  the diff adds or edits them.
+- For strict-xfail regression pins, cite a non-vacuous proof: either run the
+  pin with `--runxfail` or cite an equivalent pre-fix RED proof.
+- If a proof depends on a gate, sibling endpoint, shared state, or accumulator,
+  try to make that proof fail and report the mutation or sabotage check you
+  performed, or record the unperformed check as residual risk.
 
 ## Spec reviewer prompt template
 

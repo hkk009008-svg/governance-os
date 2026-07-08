@@ -16,6 +16,25 @@ For folder ownership, use `docs/protocol/protocol-assembly-map.md`. For full
 agent-neutral governance, use `docs/protocol/agents/`. This file only maps the
 kernel onto Codex commands and runtime choices.
 
+## Claude Function Harmonization:
+
+- core stance: adapt Claude functions to Codex-native primitives; do not transplant Claude-only mechanics.
+- AskUserQuestion discipline: ask only for cross-cutting, policy, or
+  hard-to-reverse choices; use repo convention and durable state for ordinary
+  file, naming, and routing choices.
+- background work discipline: let long verification run in an exec session
+  while independent read-only context gathering continues, then read the result
+  before claiming status.
+- dispatch-template minimalism: give subagents only the relevant rule IDs,
+  allowed paths, evidence checks, side-effect limits, and env-u git hygiene
+  instead of inherited doctrine.
+- reviewer evidence rigor: reviewers use `pass | issues | unable_to_verify`,
+  U1-U5 unverifiable reasons, reviewed-head checks, clean-tree checks, and
+  command evidence.
+- adversarial verification: verification agents actively try to make the gate
+  or proof fail with non-vacuous RED, `--runxfail`, sibling, and
+  touched-script/hook checks.
+
 ## Ledger CLI Adoption Bridge
 
 For work routed to `/Users/hyungkoookkim/evidence-ledger`, use

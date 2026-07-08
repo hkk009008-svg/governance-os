@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """consume_reviewer_result.py — the instrument that consumes a `reviewer-result/1` block.
 
-ADR-032 shipped a machine-readable reviewer-result schema (docs/templates/claude/reviewer.md)
+ADR-032 shipped a machine-readable reviewer-result schema (docs/templates/agents/reviewer.md)
 but DEFERRED its consumer: an unconsumed schema is itself ceremony (ADR-028). This is that
 consumer. Given a verification-report event (a `coordination/mailbox/sent/*verification-report*.md`
 file, or stdin), it:

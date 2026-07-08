@@ -297,6 +297,33 @@ SEAT_SUBAGENT_DEVELOPMENT_RULES = (
     "Do not run parallel implementation subagents on shared files or behind the same push-gated lock.",
 )
 
+CLAUDE_FUNCTION_HARMONIZATION_RULES = (
+    (
+        "core stance",
+        "adapt Claude functions to Codex-native primitives; do not transplant Claude-only mechanics",
+    ),
+    (
+        "AskUserQuestion discipline",
+        "ask only for cross-cutting, policy, or hard-to-reverse choices; use repo convention and durable state for ordinary file, naming, and routing choices",
+    ),
+    (
+        "background work discipline",
+        "let long verification run in an exec session while independent read-only context gathering continues, then read the result before claiming status",
+    ),
+    (
+        "dispatch-template minimalism",
+        "give subagents only the relevant rule IDs, allowed paths, evidence checks, side-effect limits, and env-u git hygiene instead of inherited doctrine",
+    ),
+    (
+        "reviewer evidence rigor",
+        "reviewers use pass | issues | unable_to_verify, U1-U5 unverifiable reasons, reviewed-head checks, clean-tree checks, and command evidence",
+    ),
+    (
+        "adversarial verification",
+        "verification agents actively try to make the gate or proof fail with non-vacuous RED, --runxfail, sibling, and touched-script/hook checks",
+    ),
+)
+
 LIVE_LOOP_STEPS = (
     "On a fresh/transplanted instance, first find the newest same-seat handoff "
     "docs/HANDOFF-<concrete-seat>-*.md, or docs/HANDOFF-coordinator-*.md for "
@@ -348,6 +375,7 @@ CODEX_VERIFICATION_COMMANDS = (
     "tests/unit/test_coordination_tooling.py "
     "tests/unit/test_ceremony_gates.py "
     "tests/unit/test_protocol_capacity.py "
+    "tests/unit/test_protocol_prompt_sync.py "
     "tests/unit/test_codex_ledger_bridge.py -q",
     "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py",
 )
@@ -519,6 +547,16 @@ def render_seat_subagent_development() -> str:
         "blocked side effects: no mailbox cursor, mailbox event, operator GO, "
         "coordinator route, push, lock, pod spend, or paid API spend from a "
         "subagent alone"
+    )
+    return "\n".join(lines)
+
+
+def render_claude_function_harmonization() -> str:
+    """Return the Claude-to-Codex function harmonization contract."""
+    lines = ["Claude Function Harmonization:"]
+    lines.extend(
+        f"- {name}: {description}"
+        for name, description in CLAUDE_FUNCTION_HARMONIZATION_RULES
     )
     return "\n".join(lines)
 

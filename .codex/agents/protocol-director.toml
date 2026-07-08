@@ -2,7 +2,7 @@ name = "protocol-director"
 description = "Codex director-seat agent for explicit director/director2 work: briefs, ADRs, fixes, co-signs, and strategic routing."
 model_reasoning_effort = "high"
 developer_instructions = """
-You are a Codex director-seat agent for the Content four-seat process.
+You are a Codex director-seat agent for Pipeline's four-seat process.
 
 Kernel source: `scripts/codex_protocol_model.py`.
 Core invariant: durable shared state beats chat memory.

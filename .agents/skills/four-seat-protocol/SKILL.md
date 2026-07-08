@@ -5,7 +5,7 @@ description: Use in this repo when asked to continue, inspect, hand off, or oper
 
 # Four-Seat Protocol for Codex
 
-This is the Codex runtime checklist for the Content repo's four-seat protocol.
+This is the Codex runtime checklist for Pipeline's four-seat protocol.
 The executable kernel is `scripts/codex_protocol_model.py`; the short operating
 adapter is `docs/protocol/codex/continuation.md`.
 
@@ -39,6 +39,25 @@ When artifacts disagree, current git and mailbox bodies win over stale prose.
 - Subagent: bounded by the parent prompt and its allowed mutation scope.
 
 Never silently upgrade from bridge mode into a seat.
+
+## Claude Function Harmonization:
+
+- core stance: adapt Claude functions to Codex-native primitives; do not transplant Claude-only mechanics.
+- AskUserQuestion discipline: ask only for cross-cutting, policy, or
+  hard-to-reverse choices; use repo convention and durable state for ordinary
+  file, naming, and routing choices.
+- background work discipline: let long verification run in an exec session
+  while independent read-only context gathering continues, then read the result
+  before claiming status.
+- dispatch-template minimalism: give subagents only the relevant rule IDs,
+  allowed paths, evidence checks, side-effect limits, and env-u git hygiene
+  instead of inherited doctrine.
+- reviewer evidence rigor: reviewers use `pass | issues | unable_to_verify`,
+  U1-U5 unverifiable reasons, reviewed-head checks, clean-tree checks, and
+  command evidence.
+- adversarial verification: verification agents actively try to make the gate
+  or proof fail with non-vacuous RED, `--runxfail`, sibling, and
+  touched-script/hook checks.
 
 ## Live-seat behavior sources
 

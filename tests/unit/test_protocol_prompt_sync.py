@@ -43,12 +43,78 @@ def test_codex_director_skill_uses_agent_neutral_templates():
     for path in (
         ".agents/skills/seat-director/SKILL.md",
         ".agents/skills/seat-director/r-brief-template.md",
+        ".agents/skills/seat-operator/SKILL.md",
     ):
         text = _read(path)
-        assert "docs/templates/agents/implementer.md" in text
+        assert "docs/templates/agents/" in text
         assert "docs/protocol/agents/orchestration.md" in text
         assert "docs/templates/claude/implementer.md" not in text
+        assert "docs/templates/claude/reviewer.md" not in text
         assert "docs/protocol/claude/orchestration.md" not in text
+
+
+def test_claude_function_harmonization_is_model_backed_and_documented():
+    rendered = model.render_claude_function_harmonization()
+
+    required_phrases = (
+        "Claude Function Harmonization:",
+        "adapt Claude functions to Codex-native primitives",
+        "do not transplant Claude-only mechanics",
+        "AskUserQuestion discipline",
+        "background work discipline",
+        "dispatch-template minimalism",
+        "reviewer evidence rigor",
+        "adversarial verification",
+    )
+    for phrase in required_phrases:
+        assert phrase in rendered
+
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+    ):
+        text = _read(path)
+        for phrase in required_phrases:
+            assert phrase in text
+
+
+def test_reviewer_template_adopts_claude_evidence_rigor_without_claude_mechanics():
+    text = _read("docs/templates/agents/reviewer.md")
+
+    for reason in ("U1", "U2", "U3", "U4", "U5"):
+        assert reason in text
+    assert "reviewed_head != reviewed_commit" in text
+    assert "working_tree_clean=false" in text
+    assert "--runxfail" in text
+    assert "Execute touched scripts or hooks" in text
+    assert "Do not cite Claude-only tool syntax" in text
+
+
+def test_codex_specialist_agents_require_adversarial_proof_loop():
+    for path in (
+        ".codex/agents/lane-v-verifier.toml",
+        ".codex/agents/money-gate-reviewer.toml",
+    ):
+        text = _read(path)
+        assert "Adversarial proof loop" in text
+        assert "try to make the gate or proof fail" in text
+        assert "unable_to_verify" in text
+
+
+def test_codex_facing_prompts_name_pipeline_not_content():
+    paths = [
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        *sorted(
+            str(path.relative_to(ROOT))
+            for path in (ROOT / ".codex" / "agents").glob("*.toml")
+        ),
+    ]
+
+    for path in paths:
+        text = _read(path)
+        assert "Content four-seat process" not in text
+        assert "Content repo's four-seat protocol" not in text
+        assert "Content repo" not in text
 
 
 def test_subagent_utilization_decision_is_rendered_and_documented():

@@ -3,7 +3,7 @@ description = "Read-only Codex continuation agent for this repo's four-seat proc
 sandbox_mode = "read-only"
 model_reasoning_effort = "medium"
 developer_instructions = """
-You are a Codex readiness bridge for the Content four-seat process.
+You are a Codex readiness bridge for Pipeline's four-seat process.
 
 Codex harness invariant:
 - durable shared state beats chat memory; report from mailbox bodies, committed
