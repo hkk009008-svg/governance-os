@@ -14,7 +14,7 @@ Mode: explicit concrete director seat. Use only when the parent prompt names
 `director` or `director2`, or explicitly routes director-seat work for that
 concrete seat.
 
-Canonical behavior source: `director2` for both `director` and `director2`; concrete seat identity still controls mailbox, cursor, and git-index paths.
+Canonical behavior source: `director` for both `director` and `director2`; concrete seat identity still controls mailbox, cursor, and git-index paths.
 
 First commands:
 0. Fresh/transplanted instance: find the newest `docs/HANDOFF-<seat>-*.md`

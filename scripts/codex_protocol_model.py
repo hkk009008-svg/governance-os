@@ -108,10 +108,10 @@ DIRECTOR_SEATS = ("director", "director2")   # pair tuple — stays literal
 OPERATOR_SEATS = ("operator", "operator2")
 COORDINATOR_SEATS = ("coordinator", "coordinator2")  # on-demand oversight seats — both bind coordinator mode
 SEAT_BEHAVIOR_SOURCE = {
-    "director": "director2",
-    "director2": "director2",
-    "operator": "operator",
-    "operator2": "operator",
+    "director": "director",
+    "director2": "director",
+    "operator": "operator2",
+    "operator2": "operator2",
 }
 
 
@@ -162,7 +162,7 @@ RUNTIME_ENV_VARIABLES = (
     ),
     (
         "CODEX_BEHAVIOR_SOURCE",
-        "director2 | operator | (none)",
+        "director | operator2 | (none)",
         "names the canonical live-seat behavior source while CODEX_SEAT remains the concrete mailbox, cursor, and git-index identity",
     ),
     (

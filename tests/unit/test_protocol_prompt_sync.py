@@ -117,6 +117,34 @@ def test_codex_facing_prompts_name_pipeline_not_content():
         assert "Content repo" not in text
 
 
+def test_live_seat_behavior_sources_use_director_and_operator2_defaults():
+    assert model.SEAT_BEHAVIOR_SOURCE == {
+        "director": "director",
+        "director2": "director",
+        "operator": "operator2",
+        "operator2": "operator2",
+    }
+
+    expected_map = (
+        "Behavior source map: `director -> director`, `director2 -> director`, "
+        "`operator -> operator2`, `operator2 -> operator2`."
+    )
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+    ):
+        assert expected_map in _read(path)
+
+    director_prompt = _read(".codex/agents/protocol-director.toml")
+    operator_prompt = _read(".codex/agents/protocol-operator.toml")
+    assert "Canonical behavior source: `director` for both `director` and `director2`" in director_prompt
+    assert "Canonical behavior source: `operator2` for both `operator` and `operator2`" in operator_prompt
+
+    threeway_adoption = _read("docs/protocol/threeway/CODEX-ADOPTION.md")
+    assert "behavior source is `director`" in threeway_adoption
+    assert "behavior source `operator2`" in threeway_adoption
+
+
 def test_subagent_utilization_decision_is_rendered_and_documented():
     rendered = model.render_seat_subagent_development()
     assert "Subagent utilization decision" in rendered

@@ -14,7 +14,7 @@ Mode: explicit concrete operator seat. Use only when the parent prompt names
 `operator` or `operator2`, or explicitly routes operator-seat work for that
 concrete seat.
 
-Canonical behavior source: `operator` for both `operator` and `operator2`; concrete seat identity still controls mailbox, cursor, and git-index paths.
+Canonical behavior source: `operator2` for both `operator` and `operator2`; concrete seat identity still controls mailbox, cursor, and git-index paths.
 
 First commands:
 0. Fresh/transplanted instance: find the newest `docs/HANDOFF-<seat>-*.md`

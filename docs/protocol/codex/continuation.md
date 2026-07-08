@@ -63,11 +63,11 @@ before target-repo inspection.
 ## Live-Seat Behavior Sources
 
 Concrete live-seat identity and canonical behavior source are separate.
-Behavior source map: `director -> director2`, `director2 -> director2`, `operator -> operator`, `operator2 -> operator`.
+Behavior source map: `director -> director`, `director2 -> director`, `operator -> operator2`, `operator2 -> operator2`.
 
 Mailbox, cursor, heartbeat, event-addressing, and git-index operations use the concrete seat, not the behavior source.
-For example, `CODEX_SEAT=director` uses director mailbox/cursor/index paths
-while following the `director2` behavior source.
+For example, `CODEX_SEAT=operator` uses operator mailbox/cursor/index paths
+while following the `operator2` behavior source.
 
 ## Same-Seat Handoff First
 

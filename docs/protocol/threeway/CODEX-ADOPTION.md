@@ -58,8 +58,8 @@ From the spec §4 / [`threeway/loop.py:43-52`](../../../threeway/loop.py):
 
 | Threeway seat | Codex role | Pair | Maps to the Codex harness as… |
 |---|---|---|---|
-| `director` | **builder** (own branch) | A | a Codex `live-seat` (`CODEX_SEAT=director`) — its behavior source is already `director2` per `SEAT_BEHAVIOR_SOURCE` |
-| `operator2` | **primary verifier** (read-only repo) | B | a Codex `live-seat` (`CODEX_SEAT=operator2`) — behavior source `operator`; pair with the `lane-v-verifier` role agent |
+| `director` | **builder** (own branch) | A | a Codex `live-seat` (`CODEX_SEAT=director`) — its behavior source is `director` per `SEAT_BEHAVIOR_SOURCE` |
+| `operator2` | **primary verifier** (read-only repo) | B | a Codex `live-seat` (`CODEX_SEAT=operator2`) — behavior source `operator2`; pair with the `lane-v-verifier` role agent |
 | `coordinator2` | **executing integrator** (staging refs only) | B | `CODEX_SEAT=coordinator2` binds **coordinator mode** today — a compatibility alias, unpinned (`scripts/codex_protocol_model.py:104,155-156`); `seat_status.py` + `protocol_mailbox.RECEIVING_SEATS` accept it. The LIVE signed-bus **integrator role** (staging refs → main) is the target-state — see §4 (gated on cutover + merge-gate runner) |
 
 Codex's builder (`director`) is verified by Claude's `operator`; Codex's verifier (`operator2`)
