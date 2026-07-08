@@ -203,6 +203,66 @@ def test_agent_extension_routing_contract_is_model_backed():
     assert "not a mailbox event, cursor advance, operator GO, coordinator route, lock action, push, or spend authorization" in rendered
 
 
+def test_agentnn_extensions_have_distinct_routing_prompts():
+    expected = {
+        "agent01": (
+            "capacity manager companion",
+            "explicit coordinator/cycle capacity-max planning",
+            "build all-seat awareness",
+        ),
+        "agent02": (
+            "explicit-mode bounded worker",
+            "a parent names a concrete mode and allowed write set",
+            "bounded protocol edits, handoffs, mailbox/cursor maintenance, or Codex agent/config edits",
+        ),
+        "agent03": (
+            "general senior repo worker",
+            "ordinary repo coding or documentation work with protocol awareness",
+            "defaults to readiness-bridge posture when no live role is named",
+        ),
+        "agent04": (
+            "read-only protocol auditor/router",
+            "read-only protocol diagnosis and route recommendation",
+            "diagnose stale indexes, mailbox drift, routing gaps, gate/readiness evidence, and authority mismatches",
+        ),
+    }
+
+    assert dict(
+        (agent, (purpose, route_when))
+        for agent, purpose, route_when in model.AGENT_EXTENSION_ROUTING_CONTRACT
+    ) == {
+        agent: values[:2]
+        for agent, values in expected.items()
+    }
+
+    for agent, phrases in expected.items():
+        text = _compact(_read(f".codex/agents/{agent}.toml"))
+        for phrase in phrases:
+            assert phrase in text
+
+
+def test_agentnn_extensions_keep_no_seat_authority_boundary():
+    required_phrases = (
+        "extension, not a protocol seat",
+        "cannot consume cursors, send mailbox events, issue GO, create coordinator routes, claim locks, push, start pods, or spend paid API budget",
+        "authority work routes to `protocol-director`, `protocol-operator`, or `protocol-coordinator`",
+        "extension output is evidence for the parent",
+    )
+
+    for agent in ("agent01", "agent02", "agent03", "agent04"):
+        text = _compact(_read(f".codex/agents/{agent}.toml"))
+        for phrase in required_phrases:
+            assert phrase in text
+
+
+def test_agent04_uses_artifact_neutral_capacity_language():
+    text = _read(".codex/agents/agent04.toml")
+
+    assert "target proof artifacts" in text
+    assert "product-oracle status" not in text
+    assert "co-sign/product-oracle review" not in text
+
+
 def test_capacity_split_default_is_model_backed_and_surface_synced():
     rendered = model.render_capacity_split_default()
 
