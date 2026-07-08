@@ -259,6 +259,7 @@ def test_agent04_uses_artifact_neutral_capacity_language():
     text = _read(".codex/agents/agent04.toml")
 
     assert "target proof artifacts" in text
+    assert "co-sign or target-proof review" in text
     assert "product-oracle status" not in text
     assert "co-sign/product-oracle review" not in text
 
