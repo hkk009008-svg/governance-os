@@ -56,8 +56,8 @@ Key directories:
 | `collect_monitor_state` | `scripts/mailbox_monitor.py:175` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
 | `build_guard` | `scripts/ledger_start_guard.py:133` | Enforces Pipeline-first startup for ledger-routed Codex seats. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
-| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:420` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:701` | Renders guard guidance into readiness output. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:443` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:724` | Renders guard guidance into readiness output. |
 
 ## 4. Runtime Invariants
 
