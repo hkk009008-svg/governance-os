@@ -19,6 +19,7 @@ import protocol_mailbox  # noqa: E402
 # from "mandatory coverage actor"). Coordinator-first ordering is load-bearing for the
 # owner-iteration at :166/:504/:521. Root-derived (D1) for the 4 pair seats.
 SEAT_ORDER = ("coordinator", *protocol_mailbox.SEATS)
+PAIR_B_SEATS = ("director2", "operator2")
 # VALID_OWNERS = the acceptance whitelist for a packet's owner / next_recipient
 # (:381/:393). It DOES include coordinator2 and equals the protocol_mailbox root, so a
 # coordinator2-owned or -addressed packet is accepted WITHOUT being forced into the
@@ -553,6 +554,7 @@ def _validate_packets(packets: list[Packet], root: Path) -> list[dict[str, Any]]
     issues: list[dict[str, Any]] = []
     issues.extend(_validate_coverage(packets))
     issues.extend(_validate_wip_limit(packets))
+    issues.extend(_validate_pair_b_capacity_split_default(packets))
     issues.extend(_validate_path_and_lock_isolation(packets))
     issues.extend(_validate_dependencies(packets))
     issues.extend(_validate_director_done_boundary(packets))
@@ -599,8 +601,32 @@ def _validate_wip_limit(packets: list[Packet]) -> list[dict[str, Any]]:
                         packet_ids=[packet.id for packet in active],
                         row_ids=_merged(active, "row_ids"),
                         paths=_merged(active, "allowed_paths"),
-                    )
                 )
+            )
+    return issues
+
+
+def _validate_pair_b_capacity_split_default(packets: list[Packet]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for cycle in _active_cycles(packets):
+        current = [
+            packet for packet in packets if packet.cycle == cycle and packet.is_current
+        ]
+        idle_pair_b = [
+            packet
+            for packet in current
+            if packet.owner in PAIR_B_SEATS and packet.packet_type == "idle"
+        ]
+        if idle_pair_b:
+            issues.append(
+                _issue(
+                    "G10",
+                    f"cycle {cycle}: Pair B must perform bounded planning or preflight instead of idle observer standby",
+                    packet_ids=[packet.id for packet in idle_pair_b],
+                    row_ids=_merged(idle_pair_b, "row_ids"),
+                    paths=_merged(idle_pair_b, "allowed_paths"),
+                )
+            )
     return issues
 
 
@@ -900,7 +926,79 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
         )
     issues.extend(_side_effect_executor_issues(body))
     issues.extend(_side_effect_success_claim_issues(body))
+    issues.extend(_capacity_split_route_issues(body, report))
     return issues
+
+
+def _capacity_split_route_issues(body: str, report: CapacityReport) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for cycle in _active_cycles(list(report.packets)):
+        current = [
+            packet
+            for packet in report.packets
+            if packet.cycle == cycle and packet.is_current
+        ]
+        if not any(packet.owner in protocol_mailbox.SEATS for packet in current):
+            continue
+        body_lower = body.lower()
+        if "capacity split default" not in body_lower:
+            issues.append(
+                _issue(
+                    "G10",
+                    f"cycle {cycle}: missing Capacity Split Default decision",
+                    packet_ids=[packet.id for packet in current],
+                    row_ids=_merged(current, "row_ids"),
+                )
+            )
+            continue
+
+        director2_impl = any(
+            packet.owner == "director2"
+            and packet.packet_type == "director-implementation"
+            and packet.is_current
+            for packet in current
+        )
+        if director2_impl:
+            missing = [
+                phrase
+                for phrase in ("dual-pair routing", "chunk a", "chunk b")
+                if phrase not in body_lower
+            ]
+            if missing:
+                issues.append(
+                    _issue(
+                        "G10",
+                        f"cycle {cycle}: dual-pair route missing " + ", ".join(missing),
+                        packet_ids=[packet.id for packet in current],
+                        row_ids=_merged(current, "row_ids"),
+                    )
+                )
+        else:
+            missing = [
+                phrase
+                for phrase in ("single-pair fast path", "bounded planning or preflight")
+                if phrase not in body_lower
+            ]
+            if missing:
+                issues.append(
+                    _issue(
+                        "G10",
+                        f"cycle {cycle}: single-pair route missing " + ", ".join(missing),
+                        packet_ids=[packet.id for packet in current],
+                        row_ids=_merged(current, "row_ids"),
+                    )
+                )
+    return issues
+
+
+def _active_cycles(packets: list[Packet]) -> list[str]:
+    return sorted(
+        {
+            packet.cycle
+            for packet in packets
+            if packet.is_active_wip
+        }
+    )
 
 
 def _has_terminal_next_trigger(text: str) -> bool:

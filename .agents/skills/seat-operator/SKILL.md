@@ -100,6 +100,16 @@ The operator's hardest discipline is *not* verifying everything. Firing Lane V o
   coordinator closes; gate scripts never substitute for operator
   verification-report GO.
 
+## Capacity Split Default:
+
+- single-pair fast path remains the default for narrow or shared-file work.
+- divisible or preplanned larger work defaults to dual-pair routing.
+- Coordinator promotion question: can this route produce two independently reviewable deliverables?
+- If yes: director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.
+- If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.
+- The two active chunks must name disjoint write sets, explicit interfaces, focused tests, forbidden side effects, and separate verify-request/verification-report loops.
+- coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.
+
 ## impl≠verifier is about NON-AUTHORSHIP, not seat identity
 
 - You verify because you **did not author** the fix — not merely because you are "the operator." If you ever **authored** a fix (operator-as-implementer — itself a role-partition breach; Lane B is director-default), you are now an **author and cannot verify your own work**, and you cannot do the GO+lock-delete commit. Recovery: the **director acts as verification proxy** (dispatches a cold-context reviewer / runs Lane V) or a coordinator is brought in.

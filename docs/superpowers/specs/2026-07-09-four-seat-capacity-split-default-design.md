@@ -49,12 +49,19 @@ route, join condition, conflict handling, and final closeout evidence.
 ## Acceptance
 
 - The executable Codex model exposes a capacity split default renderer.
+- The capacity board rejects active Pair B `idle` observer packets; Pair B must
+  have planning, preflight, implementation, or verification work.
+- Active coordinator routes must include the Capacity Split Default decision and
+  the correct single-pair or dual-pair details.
 - Codex continuation docs and coordinator/four-seat skills include the default.
-- Coordinator-facing Codex agent prompts include the default.
+- Coordinator, director, and operator-facing Codex agent prompts include the
+  default.
 - AGENTS.md records the agent-agnostic rule.
 - A prompt-sync regression fails if these surfaces drift.
 - Readiness output includes the default so fresh sessions see it during
   orientation.
+- The active Task 2.4 route has a newer addendum that moves director2/operator2
+  from observer-standby to bounded planning/preflight.
 
 ## Non-Goals
 

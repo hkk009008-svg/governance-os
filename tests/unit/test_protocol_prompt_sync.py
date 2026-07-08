@@ -187,7 +187,11 @@ def test_capacity_split_default_is_model_backed_and_surface_synced():
         "AGENTS.md",
         "docs/protocol/codex/continuation.md",
         ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
         ".agents/skills/seat-coordinator/SKILL.md",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-operator.toml",
         ".codex/agents/protocol-coordinator.toml",
         ".codex/agents/agent01.toml",
     ):

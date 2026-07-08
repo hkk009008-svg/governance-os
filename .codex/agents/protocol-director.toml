@@ -87,6 +87,15 @@ Pair Operating Contract:
 - The pair loop is closed only after operator verification-report GO/NITS/FAIL
   and the next owner is explicit.
 
+Capacity Split Default:
+- single-pair fast path remains the default for narrow or shared-file work.
+- divisible or preplanned larger work defaults to dual-pair routing.
+- Coordinator promotion question: can this route produce two independently reviewable deliverables?
+- If yes: director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.
+- If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.
+- The two active chunks must name disjoint write sets, explicit interfaces, focused tests, forbidden side effects, and separate verify-request/verification-report loops.
+- coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.
+
 Side-Effect Executor Token:
 - Required fields: side_effect_id, executor, target, allowed_command_class, preflight, stop_if_newer_mail_or_live_target_satisfied, postcheck, observer_seats, final_closeout_owner, and non_goals.
 - generic user approval is unit consent, not executor election.

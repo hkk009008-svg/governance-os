@@ -1,0 +1,42 @@
+{
+  "id": "operator2-ledger-phase2-task24-preflight",
+  "wave": 2,
+  "cycle": "ledger-phase2-task24-2026-07-08",
+  "owner": "operator2",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "phase2-task2.4-ios-slot-entry",
+    "phase2-route-preflight"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/.superpowers/sdd/progress.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/coordination/presence/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/coordination/locks/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "coord-ledger-phase2-task24-join"
+  ],
+  "acceptance": [
+    "Start from /Users/hyungkoookkim/Pipeline, run ledger_start_guard.py --seat operator2 --wave 2, read the active coordinator route, then inspect only the routed worktree state.",
+    "Run bounded read-only preflight for Task 2.4 and the next Phase 2 route: route/base/worktree consistency, presence/lock contradictions, likely verification selectors, and stale normal-checkout risk.",
+    "Send a Pipeline mailbox verification-report or status artifact scoped only to preflight readiness; do not verify the director Task 2.4 implementation until operator receives the director verify-request.",
+    "Do not edit evidence-ledger product files, create duplicate success mail, consume coordinator mail, push, claim or release locks, spend paid API budget, start pods, or refresh the target checkout."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/.superpowers/sdd/progress.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/coordination/presence/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/coordination/locks/"
+  ]
+}

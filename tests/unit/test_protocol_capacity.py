@@ -40,7 +40,7 @@ def _packet(
 
 def _write_packet(root: Path, packet: dict) -> None:
     packet_dir = root / "coordination" / "capacity" / "packets"
-    packet_dir.mkdir(parents=True)
+    packet_dir.mkdir(parents=True, exist_ok=True)
     (packet_dir / f"{packet['id']}.json").write_text(
         json.dumps(packet, indent=2),
         encoding="utf-8",
@@ -55,12 +55,205 @@ def _write_route(root: Path, name: str, body: str) -> Path:
     return path
 
 
+def _write_capacity_split_cycle(
+    root: Path,
+    *,
+    director2_type: str = "director-brief",
+    operator2_type: str = "operator-verification",
+    director2_status: str = "blocked",
+    operator2_status: str = "blocked",
+) -> None:
+    packets = [
+        _packet(
+            packet_id="coord-capacity-split-route",
+            owner="coordinator",
+            packet_type="coordinator-route",
+            status="active",
+            cycle="capacity-split-cycle",
+        ),
+        _packet(
+            packet_id="director-capacity-split-chunk-a",
+            owner="director",
+            packet_type="director-implementation",
+            status="active",
+            cycle="capacity-split-cycle",
+        )
+        | {
+            "allowed_paths": ["src/chunk-a/"],
+            "scope_files": ["src/chunk-a/"],
+        },
+        _packet(
+            packet_id="operator-capacity-split-chunk-a",
+            owner="operator",
+            packet_type="operator-verification",
+            status="blocked",
+            cycle="capacity-split-cycle",
+        ),
+        _packet(
+            packet_id="director2-capacity-split-work",
+            owner="director2",
+            packet_type=director2_type,
+            status=director2_status,
+            cycle="capacity-split-cycle",
+        )
+        | {
+            "allowed_paths": ["docs/next-brief/"],
+            "acceptance": ["Prepare bounded planning for the next brief."],
+            "scope_files": ["docs/next-brief/"],
+        },
+        _packet(
+            packet_id="operator2-capacity-split-work",
+            owner="operator2",
+            packet_type=operator2_type,
+            status=operator2_status,
+            cycle="capacity-split-cycle",
+        )
+        | {
+            "allowed_paths": ["logs/preflight/"],
+            "acceptance": ["Run bounded preflight selector discovery."],
+            "scope_files": ["logs/preflight/"],
+        },
+    ]
+    for packet in packets:
+        _write_packet(root, packet)
+
+
+def _capacity_split_route_body(extra: str = "") -> str:
+    packet_ids = (
+        "coord-capacity-split-route\n"
+        "- director-capacity-split-chunk-a\n"
+        "- operator-capacity-split-chunk-a\n"
+        "- director2-capacity-split-work\n"
+        "- operator2-capacity-split-work"
+    )
+    return (
+        "Task-board: capacity-split-cycle\n\n"
+        f"- {packet_ids}\n\n"
+        f"{extra}\n\n"
+        "Join condition: coordinator closes after both pair lanes are accounted for.\n\n"
+        "## Exact Next Trigger\n\n"
+        "Director continues Chunk A; Pair B follows the capacity split decision.\n"
+    )
+
+
 def test_require_packets_flags_empty_final_claim(tmp_path: Path):
     report = protocol_capacity.collect_capacity_report(tmp_path, 2)
 
     required = protocol_capacity.require_packets(report)
 
     assert [issue["gate"] for issue in required.blocking_issues] == ["G9"]
+
+
+def test_active_cycle_rejects_pair_b_idle_observer_packets(tmp_path: Path):
+    _write_capacity_split_cycle(
+        tmp_path,
+        director2_type="idle",
+        operator2_type="idle",
+    )
+
+    report = protocol_capacity.collect_capacity_report(tmp_path, 2)
+
+    messages = "\n".join(issue["message"] for issue in report.blocking_issues)
+    assert "Pair B must perform bounded planning or preflight" in messages
+    packet_ids = {
+        packet_id
+        for issue in report.blocking_issues
+        for packet_id in issue["packet_ids"]
+    }
+    assert "director2-capacity-split-work" in packet_ids
+    assert "operator2-capacity-split-work" in packet_ids
+
+
+def test_active_cycle_allows_pair_b_planning_and_preflight_packets(tmp_path: Path):
+    _write_capacity_split_cycle(tmp_path)
+
+    report = protocol_capacity.collect_capacity_report(tmp_path, 2)
+
+    messages = "\n".join(issue["message"] for issue in report.blocking_issues)
+    assert "Pair B must perform bounded planning or preflight" not in messages
+
+
+def test_route_validation_requires_capacity_split_decision(tmp_path: Path):
+    _write_capacity_split_cycle(tmp_path)
+    route = _write_route(
+        tmp_path,
+        "2026-07-09T00-00-00Z-coordinator-to-all-coordination.md",
+        _capacity_split_route_body(),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    messages = "\n".join(issue["message"] for issue in result.route_issues)
+    assert "missing Capacity Split Default decision" in messages
+
+
+def test_route_validation_allows_single_pair_with_pair_b_preflight_decision(
+    tmp_path: Path,
+):
+    _write_capacity_split_cycle(tmp_path)
+    route = _write_route(
+        tmp_path,
+        "2026-07-09T00-05-00Z-coordinator-to-all-coordination.md",
+        _capacity_split_route_body(
+            "## Capacity Split Default\n\n"
+            "- single-pair fast path remains the default for narrow or shared-file work.\n"
+            "- If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.\n"
+            "- coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.\n"
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+
+
+def test_route_validation_requires_chunk_labels_for_dual_pair_route(
+    tmp_path: Path,
+):
+    _write_capacity_split_cycle(
+        tmp_path,
+        director2_type="director-implementation",
+        director2_status="active",
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-09T00-10-00Z-coordinator-to-all-coordination.md",
+        _capacity_split_route_body(
+            "## Capacity Split Default\n\n"
+            "- divisible or preplanned larger work defaults to dual-pair routing.\n"
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    messages = "\n".join(issue["message"] for issue in result.route_issues)
+    assert "dual-pair route missing" in messages
+    assert "chunk b" in messages
+
+
+def test_route_validation_allows_dual_pair_route_with_chunk_labels(
+    tmp_path: Path,
+):
+    _write_capacity_split_cycle(
+        tmp_path,
+        director2_type="director-implementation",
+        director2_status="active",
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-09T00-15-00Z-coordinator-to-all-coordination.md",
+        _capacity_split_route_body(
+            "## Capacity Split Default\n\n"
+            "- divisible or preplanned larger work defaults to dual-pair routing.\n"
+            "- Chunk A: director owns src/chunk-a/ and operator verifies Chunk A.\n"
+            "- Chunk B: director2 owns docs/next-brief/ and operator2 verifies Chunk B.\n"
+            "- The two active chunks must name disjoint write sets, explicit interfaces, focused tests, forbidden side effects, and separate verify-request/verification-report loops.\n"
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
 
 
 def test_route_validation_rejects_route_outside_mailbox_sent(tmp_path: Path):

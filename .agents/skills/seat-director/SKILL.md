@@ -118,6 +118,16 @@ The brief gates the fix: the co-signer reads it, the implementer obeys it. Autho
   coordinator closes; gate scripts never substitute for operator
   verification-report GO.
 
+## Capacity Split Default:
+
+- single-pair fast path remains the default for narrow or shared-file work.
+- divisible or preplanned larger work defaults to dual-pair routing.
+- Coordinator promotion question: can this route produce two independently reviewable deliverables?
+- If yes: director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.
+- If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.
+- The two active chunks must name disjoint write sets, explicit interfaces, focused tests, forbidden side effects, and separate verify-request/verification-report loops.
+- coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.
+
 ## Seat Subagent Development
 
 Core rule: seats retain authority; subagents own bounded work.
