@@ -1,0 +1,32 @@
+{
+  "id": "director2-ledger-phase2-task23-observer",
+  "wave": 2,
+  "cycle": "ledger-phase2-task23-2026-07-08",
+  "owner": "director2",
+  "packet_type": "idle",
+  "row_ids": [
+    "phase2-task2.3-result-history"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-task23-result-history"
+  ],
+  "acceptance": [
+    "Stand down as observer unless coordinator explicitly asks for director2 review or live evidence contradicts the Task 2.3 route.",
+    "Do not edit evidence-ledger product files or duplicate director implementation work.",
+    "If contradiction is found, report only the contradiction with command evidence."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/"
+  ]
+}

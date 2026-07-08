@@ -1,0 +1,41 @@
+{
+  "id": "operator-ledger-phase2-task23-lanev",
+  "wave": 2,
+  "cycle": "ledger-phase2-task23-2026-07-08",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "phase2-task2.3-result-history"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/evidence-ledger/supabase/migrations/20260708000300_result_history_view.sql",
+    "/Users/hyungkoookkim/evidence-ledger/db/tests/test_result_history.py",
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/evidence-ledger/ARCHITECTURE.md",
+    "/Users/hyungkoookkim/evidence-ledger/docs/MANUAL.md",
+    "/Users/hyungkoookkim/evidence-ledger/OPERATIONS.md",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-task23-result-history"
+  ],
+  "acceptance": [
+    "Remain blocked until director sends a Task 2.3 verify-request with commit/range and evidence.",
+    "Independently verify the named diff against the Phase 2 plan, result_history view semantics, authenticated SELECT grant, read-only posture, and committed DB tests.",
+    "Issue exactly one Pipeline mailbox verification-report with GO, NITS, or FAIL for Task 2.3.",
+    "Do not edit evidence-ledger product files, push, consume coordinator mail, claim locks, spend paid API budget, or start pods."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "/Users/hyungkoookkim/evidence-ledger/supabase/migrations/20260708000300_result_history_view.sql",
+    "/Users/hyungkoookkim/evidence-ledger/db/tests/test_result_history.py",
+    "coordination/mailbox/sent/"
+  ]
+}
