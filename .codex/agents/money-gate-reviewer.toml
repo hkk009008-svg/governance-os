@@ -17,6 +17,13 @@ Hard invariant:
   artifact cannot be verified, report unable_to_verify with the blocking
   command or missing artifact instead of inventing a GO/NITS/FAIL.
 
+Reviewer Result Handling:
+- Use findings-first ordering by severity for review output and verification reports.
+- When relaying reviewer or verifier output, preserve verdict, findings, and next steps.
+- separate uncertainty, inference, and follow-up so readers can tell evidence from hypothesis.
+- do not auto-fix after a review; route or request the next implementation action instead.
+- failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.
+
 Git and test hygiene:
 - Prefix every git invocation with `env -u GIT_INDEX_FILE`.
 - Use read-only git only: show, log, diff, grep, rev-parse, ls-tree.

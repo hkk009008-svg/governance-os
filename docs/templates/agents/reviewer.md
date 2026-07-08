@@ -20,6 +20,14 @@ token everywhere: `pass | issues | unable_to_verify`.
 Severity is a separate axis: `critical | important | minor`. Do not encode a
 severity inside the verdict.
 
+## Reviewer Result Handling
+
+- Use findings-first ordering by severity for review output and verification reports.
+- When relaying reviewer or verifier output, preserve verdict, findings, and next steps.
+- separate uncertainty, inference, and follow-up so readers can tell evidence from hypothesis.
+- do not auto-fix after a review; route or request the next implementation action instead.
+- failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.
+
 ## Independence + verify-before-asserting
 
 - You are an independent, cold-context reviewer. Do not trust the implementer's

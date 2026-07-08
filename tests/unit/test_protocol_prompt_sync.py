@@ -280,3 +280,104 @@ def test_pattern_doc_uniformity_transplant_is_surface_synced():
         text = _compact(_read(path))
         for phrase in required_phrases:
             assert phrase in text
+
+
+def test_emergency_and_disagreement_contracts_are_model_backed_and_synced():
+    emergency_rendered = model.render_emergency_handling_contract()
+    disagreement_rendered = model.render_disagreement_handling_contract()
+
+    emergency_phrases = (
+        "Production-affecting OR user-data-integrity issue",
+        "Security-critical",
+        "Active bleed-rate",
+        "External time-pressure",
+        "first-noticer claims initial response",
+        "stop-the-bleed first",
+        "acting under v5 §E temporary authority",
+        "coordinator no-production-code boundary remains in force",
+        "post-incident note",
+    )
+    disagreement_phrases = (
+        "States the disagreement explicitly",
+        "project-data-grounded evidence",
+        "counter-refinement",
+        "defer to v(N+1)",
+        "acceptance criterion",
+        "silent-accept is the receiver's own acceptance",
+        "2-cycle escalation limit",
+    )
+
+    for phrase in emergency_phrases:
+        assert phrase in emergency_rendered
+    for phrase in disagreement_phrases:
+        assert phrase in disagreement_rendered
+
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-operator.toml",
+        ".codex/agents/protocol-coordinator.toml",
+    ):
+        text = _compact(_read(path))
+        for phrase in (*emergency_phrases, *disagreement_phrases):
+            assert phrase in text
+
+
+def test_blocked_wave_and_acting_coordinator_contract_is_model_backed_and_synced():
+    rendered = model.render_blocked_wave_acting_coordinator_contract()
+    required_phrases = (
+        "wave-gate evidence before asserting blocked",
+        "immediate pod-off when a director gate-request is unserviced",
+        "one consolidated mailbox event naming blocker, owner, and SLA",
+        "escalate to user with the acting-coordinator path",
+        "pre-brief skeleton only",
+        "no gate-relaxing or suppressive pins",
+        "verified only from operator GO",
+    )
+
+    for phrase in required_phrases:
+        assert phrase in rendered
+
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".codex/agents/protocol-coordinator.toml",
+    ):
+        text = _compact(_read(path))
+        for phrase in required_phrases:
+            assert phrase in text
+
+
+def test_reviewer_result_handling_contract_is_model_backed_and_synced():
+    rendered = model.render_reviewer_result_handling_contract()
+    required_phrases = (
+        "findings-first ordering by severity",
+        "preserve verdict, findings, and next steps",
+        "separate uncertainty, inference, and follow-up",
+        "do not auto-fix after a review",
+        "failed, incomplete, or unable_to_verify runs are not permission to invent substitute output",
+    )
+
+    for phrase in required_phrases:
+        assert phrase in rendered
+
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-operator.toml",
+        ".codex/agents/lane-v-verifier.toml",
+        ".codex/agents/money-gate-reviewer.toml",
+        "docs/templates/agents/reviewer.md",
+        "docs/templates/agents/implementer.md",
+    ):
+        text = _compact(_read(path))
+        for phrase in required_phrases:
+            assert phrase in text

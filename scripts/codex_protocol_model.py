@@ -351,6 +351,42 @@ CLAUDE_FUNCTION_HARMONIZATION_RULES = (
     ),
 )
 
+EMERGENCY_HANDLING_RULES = (
+    "Scope: emergency is exactly one of four categories: Production-affecting OR user-data-integrity issue; Security-critical; Active bleed-rate; External time-pressure.",
+    "Events outside those four categories use normal role partition and proposal cycles, even when they feel urgent.",
+    "first-noticer claims initial response with a dispatch-claim mailbox event carrying urgency: emergency.",
+    "Triage discipline: stop-the-bleed first; use the smallest mitigation before root-cause analysis.",
+    "Cross-seat temporary authority applies only during transplant or context exhaustion, and the commit body must include acting under v5 §E temporary authority.",
+    "coordinator no-production-code boundary remains in force during emergency routing and reconciliation.",
+    "Within one session of resolution, write a post-incident note in docs/INCIDENT-LOG.md and review protocol gaps.",
+)
+
+DISAGREEMENT_HANDLING_RULES = (
+    "States the disagreement explicitly in the next-cycle revision.",
+    "Provides project-data-grounded evidence for the disputed item.",
+    "Chooses exactly one resolution path: counter-refinement, defer to v(N+1), or acceptance criterion.",
+    "silent-accept is the receiver's own acceptance, not permission inferred from peer silence.",
+    "Re-REPLY is allowed for a live objection, but the 2-cycle escalation limit sends persistent disagreement to the user-principal.",
+)
+
+BLOCKED_WAVE_ACTING_COORDINATOR_RULES = (
+    "Require wave-gate evidence before asserting blocked.",
+    "Trigger immediate pod-off when a director gate-request is unserviced.",
+    "Send one consolidated mailbox event naming blocker, owner, and SLA.",
+    "If the owning coordinator is absent, escalate to user with the acting-coordinator path.",
+    "Use a pre-brief skeleton only until the blocked owner or user direction confirms scope.",
+    "Use no gate-relaxing or suppressive pins to make a blocked wave look green.",
+    "A blocked-wave transition is verified only from operator GO, not route prose or a gate script alone.",
+)
+
+REVIEWER_RESULT_HANDLING_RULES = (
+    "Use findings-first ordering by severity for review output and verification reports.",
+    "When relaying reviewer or verifier output, preserve verdict, findings, and next steps.",
+    "separate uncertainty, inference, and follow-up so readers can tell evidence from hypothesis.",
+    "do not auto-fix after a review; route or request the next implementation action instead.",
+    "failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.",
+)
+
 LIVE_LOOP_STEPS = (
     "On a fresh/transplanted instance, first find the newest same-seat handoff "
     "docs/HANDOFF-<concrete-seat>-*.md, or docs/HANDOFF-coordinator-*.md for "
@@ -595,6 +631,34 @@ def render_claude_function_harmonization() -> str:
         f"- {name}: {description}"
         for name, description in CLAUDE_FUNCTION_HARMONIZATION_RULES
     )
+    return "\n".join(lines)
+
+
+def render_emergency_handling_contract() -> str:
+    """Return the Codex emergency handling contract."""
+    lines = ["Emergency Handling:"]
+    lines.extend(f"- {rule}" for rule in EMERGENCY_HANDLING_RULES)
+    return "\n".join(lines)
+
+
+def render_disagreement_handling_contract() -> str:
+    """Return the Codex disagreement handling contract."""
+    lines = ["Disagreement Handling:"]
+    lines.extend(f"- {rule}" for rule in DISAGREEMENT_HANDLING_RULES)
+    return "\n".join(lines)
+
+
+def render_blocked_wave_acting_coordinator_contract() -> str:
+    """Return the Codex blocked-wave and acting-coordinator contract."""
+    lines = ["Blocked-Wave and Acting-Coordinator Handling:"]
+    lines.extend(f"- {rule}" for rule in BLOCKED_WAVE_ACTING_COORDINATOR_RULES)
+    return "\n".join(lines)
+
+
+def render_reviewer_result_handling_contract() -> str:
+    """Return the reviewer/verifier result-handling contract."""
+    lines = ["Reviewer Result Handling:"]
+    lines.extend(f"- {rule}" for rule in REVIEWER_RESULT_HANDLING_RULES)
     return "\n".join(lines)
 
 

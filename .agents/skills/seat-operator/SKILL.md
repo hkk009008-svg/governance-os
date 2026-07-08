@@ -11,6 +11,32 @@ The per-pair operator is the **independent post-commit verifier** for everything
 
 **REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/claude/director-operator.md` (Rule #9 cold-context, Lane V/D/S, phase taxonomy, Rules #14/#15/#21); `docs/protocol/agents/orchestration.md`; spec §6a/§6c (impl≠verifier, lock-release-on-GO) + §6b (FAIL-cap); `docs/templates/agents/reviewer.md`.
 
+## Emergency Handling
+
+- Emergency scope is exactly four categories: Production-affecting OR user-data-integrity issue, Security-critical, Active bleed-rate, and External time-pressure.
+- Events outside those four categories use normal role partition and proposal cycles, even when they feel urgent.
+- The first-noticer claims initial response with a `dispatch-claim` mailbox event carrying `urgency: emergency`.
+- Triage discipline is stop-the-bleed first: use the smallest mitigation before root-cause analysis.
+- Cross-seat temporary authority applies only during transplant or context exhaustion, and the commit body must include `acting under v5 §E temporary authority`.
+- The coordinator no-production-code boundary remains in force during emergency routing and reconciliation.
+- Within one session of resolution, write a post-incident note in `docs/INCIDENT-LOG.md` and review protocol gaps.
+
+## Disagreement Handling
+
+- States the disagreement explicitly in the next-cycle revision.
+- Provides project-data-grounded evidence for the disputed item.
+- Chooses exactly one resolution path: counter-refinement, defer to v(N+1), or acceptance criterion.
+- silent-accept is the receiver's own acceptance, not permission inferred from peer silence.
+- Re-REPLY is allowed for a live objection, but the 2-cycle escalation limit sends persistent disagreement to the user-principal.
+
+## Reviewer Result Handling
+
+- Use findings-first ordering by severity for review output and verification reports.
+- When relaying reviewer or verifier output, preserve verdict, findings, and next steps.
+- separate uncertainty, inference, and follow-up so readers can tell evidence from hypothesis.
+- do not auto-fix after a review; route or request the next implementation action instead.
+- failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.
+
 ## Session-start orientation (do this first)
 
 On a fresh/transplanted operator instance, first locate the newest

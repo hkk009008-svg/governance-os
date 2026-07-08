@@ -80,6 +80,14 @@ If you have questions about:
 - Pin selectors run — the exact pytest node-ids / `xfail-pin` column values you executed (so an independent reviewer can re-run them with `--runxfail` + a one-fact mutation non-vacuity check)
 - Commit SHA — capture from `git log` AFTER post-commit hook activity settles, not from `git commit` stdout. If the project has a post-commit hook that amends another file (e.g., a state snapshot), the SHA from stdout may be stale by one.
 - Self-review findings
+
+## Reviewer Result Handling
+
+- Use findings-first ordering by severity for review output and verification reports.
+- When relaying reviewer or verifier output, preserve verdict, findings, and next steps.
+- separate uncertainty, inference, and follow-up so readers can tell evidence from hypothesis.
+- do not auto-fix after a review; route or request the next implementation action instead.
+- failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.
 ```
 
 A **bad** implementer prompt is "implement task A1" — the fresh instance

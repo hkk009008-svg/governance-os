@@ -16,6 +16,34 @@ route, handoff, no-op, or status only when it changes routing/enforcement,
 preserves real transfer state, or cites executable evidence; never manufacture
 green-looking coordinator activity from receipts or prose alone.
 
+## Emergency Handling
+
+- Emergency scope is exactly four categories: Production-affecting OR user-data-integrity issue, Security-critical, Active bleed-rate, and External time-pressure.
+- Events outside those four categories use normal role partition and proposal cycles, even when they feel urgent.
+- The first-noticer claims initial response with a `dispatch-claim` mailbox event carrying `urgency: emergency`.
+- Triage discipline is stop-the-bleed first: use the smallest mitigation before root-cause analysis.
+- Cross-seat temporary authority applies only during transplant or context exhaustion, and the commit body must include `acting under v5 §E temporary authority`.
+- The coordinator no-production-code boundary remains in force during emergency routing and reconciliation.
+- Within one session of resolution, write a post-incident note in `docs/INCIDENT-LOG.md` and review protocol gaps.
+
+## Disagreement Handling
+
+- States the disagreement explicitly in the next-cycle revision.
+- Provides project-data-grounded evidence for the disputed item.
+- Chooses exactly one resolution path: counter-refinement, defer to v(N+1), or acceptance criterion.
+- silent-accept is the receiver's own acceptance, not permission inferred from peer silence.
+- Re-REPLY is allowed for a live objection, but the 2-cycle escalation limit sends persistent disagreement to the user-principal.
+
+## Blocked-Wave And Acting-Coordinator Handling
+
+- Require wave-gate evidence before asserting blocked.
+- Trigger immediate pod-off when a director gate-request is unserviced.
+- Send one consolidated mailbox event naming blocker, owner, and SLA.
+- If the owning coordinator is absent, escalate to user with the acting-coordinator path.
+- Use a pre-brief skeleton only until the blocked owner or user direction confirms scope.
+- Use no gate-relaxing or suppressive pins to make a blocked wave look green.
+- A blocked-wave transition is verified only from operator GO, not route prose or a gate script alone.
+
 ## First commands
 
 On a fresh/transplanted coordinator instance, first locate the newest
