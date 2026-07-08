@@ -1,0 +1,36 @@
+{
+  "id": "coord-unit-coherence-side-effect-token-join",
+  "wave": 2,
+  "cycle": "unit-coherence-side-effect-token-2026-07-08",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "protocol-unit-coherence-side-effect-token"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-unit-coherence-side-effect-token-impl",
+    "operator-unit-coherence-side-effect-token-verification"
+  ],
+  "acceptance": [
+    "Wait for director implementation and operator verification-report GO/NITS/FAIL before closing the cycle.",
+    "Close with one coordinator synthesis artifact or handoff that cites capacity board, smoke, route validation, implementation commit/range, and operator verdict.",
+    "Do not edit protocol implementation files as coordinator."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-08-unit-coherence-coordinator-join.json",
+    "coordination/mailbox/sent/2026-07-08T01-58-03Z-coordinator-to-all-coordination.md"
+  ]
+}

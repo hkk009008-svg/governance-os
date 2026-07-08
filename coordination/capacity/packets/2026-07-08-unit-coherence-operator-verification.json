@@ -1,0 +1,43 @@
+{
+  "id": "operator-unit-coherence-side-effect-token-verification",
+  "wave": 2,
+  "cycle": "unit-coherence-side-effect-token-2026-07-08",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "protocol-unit-coherence-side-effect-token"
+  ],
+  "allowed_paths": [
+    "scripts/codex_protocol_model.py",
+    "docs/protocol/codex/continuation.md",
+    ".agents/skills/",
+    ".codex/agents/",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-unit-coherence-side-effect-token-impl"
+  ],
+  "acceptance": [
+    "Remain blocked until director sends a verify-request for the unit-coherence implementation commit or range.",
+    "Independently verify the diff against all four proposal artifacts and this coordinator route.",
+    "Issue one verification-report with GO, NITS, or FAIL and executed evidence.",
+    "Do not edit implementation files or repeat director work."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "scripts/codex_protocol_model.py",
+    "docs/protocol/codex/continuation.md",
+    ".agents/skills/",
+    ".codex/agents/",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ]
+}

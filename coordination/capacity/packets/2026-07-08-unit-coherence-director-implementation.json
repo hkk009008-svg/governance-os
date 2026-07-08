@@ -1,0 +1,52 @@
+{
+  "id": "director-unit-coherence-side-effect-token-impl",
+  "wave": 2,
+  "cycle": "unit-coherence-side-effect-token-2026-07-08",
+  "owner": "director",
+  "packet_type": "director-implementation",
+  "row_ids": [
+    "protocol-unit-coherence-side-effect-token"
+  ],
+  "allowed_paths": [
+    "scripts/codex_protocol_model.py",
+    "docs/protocol/codex/continuation.md",
+    ".agents/skills/four-seat-protocol/SKILL.md",
+    ".agents/skills/seat-director/SKILL.md",
+    ".agents/skills/seat-operator/SKILL.md",
+    ".agents/skills/seat-coordinator/SKILL.md",
+    ".codex/agents/protocol-director.toml",
+    ".codex/agents/protocol-operator.toml",
+    ".codex/agents/protocol-coordinator.toml",
+    "tests/unit/test_protocol_capacity.py",
+    "tests/unit/test_check_coordination.py",
+    "tests/unit/test_protocol_prompt_sync.py"
+  ],
+  "lock_keys": [
+    "pipeline:protocol-unit-coherence-side-effect-token"
+  ],
+  "dependencies": [
+    "coord-ledger-phase2-task21-join"
+  ],
+  "acceptance": [
+    "Codify the unified Side-Effect Executor Token and observer-mode contract from the four seat proposals.",
+    "Preserve the existing lane-only director-to-operator verification loop when no user-gated shared side effect is present.",
+    "Add executable tests for missing executor token, duplicate same-target side-effect claims without a common token, observer contradiction allowance, and live-evidence closeout without redundant execution.",
+    "Update the Codex continuation adapter, live-seat skills, coordinator skill, and compact role prompts in the same change as the model/test updates.",
+    "Use explicit pathspecs and env -u GIT_INDEX_FILE for ordinary git and pytest commands.",
+    "Send exactly one verify-request to operator with commit/range, changed files, tests, exclusions, and exact next trigger."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "operator",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "scripts/codex_protocol_model.py",
+    "docs/protocol/codex/continuation.md",
+    ".agents/skills/",
+    ".codex/agents/",
+    "tests/unit/"
+  ]
+}
