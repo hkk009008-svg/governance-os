@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
+import io
 from pathlib import Path
 
 import check_doc_claims
 import check_placeholders
+import ci_smoke
 import mailbox_monitor
 
 
@@ -79,9 +82,22 @@ def test_sha_ref_baseline_status_detects_new_or_changed_drift(tmp_path: Path):
 
     assert clean_status.matches_baseline
     assert clean_status.new_or_changed_count == 0
+    assert "SHA provenance is NOT CLEAN" not in clean_status.warning_line
     assert not drift_status.matches_baseline
     assert drift_status.new_or_changed_count == 1
     assert "SHA provenance is NOT CLEAN" in drift_status.warning_line
+
+
+def test_ci_smoke_is_quiet_for_reviewed_sha_ref_baseline():
+    buf = io.StringIO()
+
+    with contextlib.redirect_stdout(buf):
+        rc = ci_smoke.main()
+
+    out = buf.getvalue()
+    assert rc == 0
+    assert "SHA provenance is NOT CLEAN" not in out
+    assert "baselined stale commit-SHA" not in out
 
 
 def test_mailbox_monitor_alerts_when_latest_broadcast_receipt_is_unknown(

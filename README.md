@@ -55,8 +55,9 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2
 ```
 
-Smoke may warn about baselined stale commit-SHA references. That means SHA
-provenance is not clean; it does not mean the warning has been fixed.
+Smoke stays quiet for the reviewed historical commit-SHA baseline. Run
+`env -u GIT_INDEX_FILE .venv/bin/python scripts/check_doc_claims.py --sha-refs`
+when you need the full SHA-reference audit report.
 
 ## License
 

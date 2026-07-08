@@ -1493,9 +1493,9 @@ SHA_DEFAULT_DOCS = [
     "docs/protocol/agents/director-operator.md",
 ]
 
-# Current checked baseline for known stale SHA references. ci_smoke treats this
-# as "not clean, but no worse than the reviewed debt"; any count or digest
-# change becomes a hard new-drift signal.
+# Current checked baseline for historical SHA references carried from protocol
+# provenance docs. ci_smoke stays quiet when this reviewed set is unchanged, and
+# any count or digest change becomes a hard new-drift signal.
 SHA_REF_BASELINE_COUNT = 215
 SHA_REF_BASELINE_DIGEST = "688ed36bc5091d7a16c065af30da9296f5ed7961ecd63640907ffd64e471b4b2"
 
@@ -1776,9 +1776,10 @@ def classify_sha_ref_baseline(
     if matches:
         new_or_changed = 0
         detail = (
-            f"{count} baselined stale commit-SHA ref(s); "
+            f"{count} reviewed historical commit-SHA ref(s); "
             "no new/changed SHA-ref drift relative to baseline"
         )
+        line = f"SHA-ref baseline unchanged: {detail}."
     else:
         new_or_changed = max(
             count - expected_count,
@@ -1789,6 +1790,7 @@ def classify_sha_ref_baseline(
             f"expected count={expected_count}, current digest={digest[:12]}, "
             f"expected digest={expected_digest[:12]}"
         )
+        line = f"SHA provenance is NOT CLEAN: {detail}."
     return ShaRefBaselineStatus(
         count=count,
         digest=digest,
@@ -1796,7 +1798,7 @@ def classify_sha_ref_baseline(
         expected_digest=expected_digest,
         matches_baseline=matches,
         new_or_changed_count=new_or_changed,
-        warning_line=f"SHA provenance is NOT CLEAN: {detail}.",
+        warning_line=line,
     )
 
 

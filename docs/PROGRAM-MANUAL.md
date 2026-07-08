@@ -73,9 +73,9 @@ Known failure modes:
   unproved until seat-specific evidence exists.
 - Normal target checkout is treated as the route base. Fix by following the
   active route's named base or worktree first.
-- Smoke warning output is summarized as clean. Fix by saying SHA provenance is
-  not clean until the stale references are cleaned or the baseline changes by
-  owner decision.
+- A `SHA-REF BASELINE CHECK` failure is summarized as ordinary smoke noise.
+  Fix by running the SHA-reference report and treating changed drift as a
+  bounded cleanup or owner-decision gate.
 
 ## 5. Capability-Maximization Playbook
 

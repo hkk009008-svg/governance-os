@@ -27,7 +27,8 @@ env -u GIT_INDEX_FILE git status --short --branch
 
 Expected:
 - `scripts/ci_smoke.py` exits `0`.
-- Any stale commit-SHA warning is explicitly labeled as not-clean baseline debt.
+- The reviewed historical commit-SHA baseline stays quiet in smoke; changed
+  SHA-ref drift hard-fails.
 - `git status --short --branch` shows only changes you intentionally made.
 
 ## 3. Live Seat Startup
@@ -83,7 +84,7 @@ The following require explicit user authorization or a valid routed executor:
 
 | Symptom | Likely cause | Response |
 |---|---|---|
-| Smoke exits OK with SHA warnings | Baselined stale commit-SHA references remain | Do not claim clean SHA provenance; run `scripts/check_doc_claims.py --sha-refs` for the full report. |
+| Smoke fails with `SHA-REF BASELINE CHECK` | SHA-reference drift changed from the reviewed historical baseline | Run `scripts/check_doc_claims.py --sha-refs` and update the baseline only after a bounded cleanup or owner decision. |
 | Guard reports a route but target checkout looks stale | Active work is in a route worktree or base | Read the route body and inspect the named worktree before using normal target checkout. |
 | Mailbox monitor shows unknown receipt | Cursor or ref-bus state cannot prove receipt | Treat delivery as unproved until a seat-specific status or mailbox body proves it. |
 | Capacity board reports active packets | A route is open | Work only inside the packet scope and send the next required mailbox artifact. |

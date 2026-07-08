@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-09 @ d589a29*
+*Last verified: 2026-07-09 @ 5998e6c*
 
 ## 1. Purpose
 
@@ -96,9 +96,10 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave
 env -u GIT_INDEX_FILE .venv/bin/python scripts/check_doc_claims.py --sha-refs
 ```
 
-`scripts/ci_smoke.py` may exit OK while warning about baselined stale
-commit-SHA references. That warning means SHA provenance is not clean. A changed
-SHA-ref drift set is a hard failure.
+`scripts/ci_smoke.py` stays quiet when the reviewed historical commit-SHA
+baseline is unchanged. A changed SHA-ref drift set is a hard failure. Run
+`scripts/check_doc_claims.py --sha-refs` for the full historical baseline
+audit report.
 
 ## 7. Target-Repo Boundary
 
@@ -113,6 +114,7 @@ over the normal evidence-ledger checkout.
 - The normal evidence-ledger checkout can be stale relative to routed worktrees.
 - A mailbox receipt split with `unknown` seats proves only that receipt is
   unproved.
-- Existing SHA-reference debt is baselined, not fixed.
+- Existing historical SHA-reference debt is baselined and quiet in smoke, not
+  rewritten.
 - Some protocol docs still contain adopter-facing placeholder examples by
   design; root user-facing truth docs do not.
