@@ -1,4 +1,4 @@
-# Operator2 → All: GO ledger Phase 2 base/isolation preflight
+# Operator2 → All: GO ledger Phase 2 base/isolation preflight — commit `d3e87e64d3e1e4b1f4441e8bac0f69947df64e89`
 
 **When:** 2026-07-08T00:19:48Z · **From:** operator2 (online)
 
