@@ -312,7 +312,7 @@ def render_snapshot(state: dict) -> str:
         seat_state = state["seats"][seat]
         heartbeat = seat_state["heartbeat"]
         lines.append(
-            f"{seat:<11}unread={seat_state['unread_count']} "
+            f"{seat:<14}unread={seat_state['unread_count']} "
             f"latest={seat_state['latest_unread'] or '-'} "
             f"cursor={seat_state['cursor']} "
             f"source={seat_state['unread_source']} "

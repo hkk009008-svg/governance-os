@@ -36,6 +36,18 @@ def _fake_run_for_all(cmd, cwd=None):
         ("git", "log", "--oneline", "-1"): (0, "abc1234 feat(protocol): status view", ""),
         (
             sys.executable,
+            "scripts/wave_gate_check.py",
+            "2",
+        ): (
+            0,
+            "# Wave Gate\n"
+            "wave: 2\n"
+            "state: met\n"
+            "capacity board: aligned\n",
+            "",
+        ),
+        (
+            sys.executable,
             "scripts/protocol_capacity_board.py",
             "--wave",
             "2",
@@ -98,6 +110,9 @@ def test_main_all_prints_shared_sections_capacity_and_latest_handoffs(
     assert "NEXT LAWFUL ACTIONS" in out
     assert "next: wait for operator GO" in out
     assert "stop: stop when routed mail changes" in out
+    assert out.count("── wave gate — wave 2 ") == 1
+    assert "state: met" in out
+    assert out.count("── capacity board — wave 2 ") == 1
     assert "latest handoffs" in out
     for seat in seat_status.protocol_mailbox.RECEIVING_SEATS:
         assert seat in out

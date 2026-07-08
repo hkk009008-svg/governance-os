@@ -320,6 +320,7 @@ def render_all_status(root: str, args) -> None:
     all_heartbeats(root, args.stale_min)
     latest_handoffs(root)
     if args.wave is not None:
+        wave_gate(root, args.wave)
         capacity_board(root, args.wave)
     if args.smoke:
         smoke(root)

@@ -189,6 +189,7 @@ def test_mailbox_monitor_alerts_when_latest_broadcast_receipt_is_unknown(
     assert state["receipt_summary"]["unknown"] == len(mailbox_monitor.SEATS)
     assert any("coordinator broadcast receipt is unproved" in alert for alert in state["alerts"])
     assert "receipt unknown means unproved, not delivered" in rendered
+    assert "coordinator   unread=" in rendered
 
 
 def test_mailbox_monitor_downgrades_closed_cycle_receipt_and_heartbeat_noise(
