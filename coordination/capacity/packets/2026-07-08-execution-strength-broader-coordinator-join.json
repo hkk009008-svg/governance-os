@@ -1,0 +1,37 @@
+{
+  "id": "coord-execution-strength-broader-join",
+  "wave": 2,
+  "cycle": "execution-strength-broader-original-2026-07-08",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "protocol-execution-strength-broader-original"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-execution-strength-broader-impl",
+    "operator-execution-strength-broader-verification"
+  ],
+  "acceptance": [
+    "Wait for director implementation and operator verification-report GO/NITS/FAIL before closing the broader execution-strength cycle.",
+    "Close with one coordinator synthesis artifact or handoff that cites capacity board, smoke, route validation, implementation commit/range, and operator verdict.",
+    "Do not edit protocol implementation files as coordinator."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-08-execution-strength-broader-coordinator-join.json",
+    "coordination/mailbox/sent/2026-07-08T03-54-08Z-coordinator-to-all-coordination.md",
+    "docs/HANDOFF-coordinator-2026-07-08-execution-strength-broader-route.md"
+  ]
+}

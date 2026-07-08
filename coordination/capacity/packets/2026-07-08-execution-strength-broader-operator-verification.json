@@ -1,0 +1,45 @@
+{
+  "id": "operator-execution-strength-broader-verification",
+  "wave": 2,
+  "cycle": "execution-strength-broader-original-2026-07-08",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "protocol-execution-strength-broader-original"
+  ],
+  "allowed_paths": [
+    "scripts/codex_protocol_model.py",
+    "docs/protocol/codex/continuation.md",
+    ".agents/skills/",
+    ".codex/agents/",
+    "docs/templates/agents/",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-execution-strength-broader-impl"
+  ],
+  "acceptance": [
+    "Remain blocked until director sends a verify-request for the broader execution-strength implementation commit or range.",
+    "Independently verify the diff against this coordinator route and the current protocol source surfaces.",
+    "Issue one verification-report with GO, NITS, or FAIL and executed evidence.",
+    "Do not edit implementation files or repeat director work."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "scripts/codex_protocol_model.py",
+    "docs/protocol/codex/continuation.md",
+    ".agents/skills/",
+    ".codex/agents/",
+    "docs/templates/agents/",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "id": "director-execution-strength-broader-impl",
+  "wave": 2,
+  "cycle": "execution-strength-broader-original-2026-07-08",
+  "owner": "director",
+  "packet_type": "director-implementation",
+  "row_ids": [
+    "protocol-execution-strength-broader-original"
+  ],
+  "allowed_paths": [
+    "scripts/codex_protocol_model.py",
+    "docs/protocol/codex/continuation.md",
+    ".agents/skills/four-seat-protocol/SKILL.md",
+    ".agents/skills/seat-director/SKILL.md",
+    ".agents/skills/seat-operator/SKILL.md",
+    ".agents/skills/seat-coordinator/SKILL.md",
+    ".codex/agents/protocol-director.toml",
+    ".codex/agents/protocol-operator.toml",
+    ".codex/agents/protocol-coordinator.toml",
+    ".codex/agents/lane-v-verifier.toml",
+    ".codex/agents/money-gate-reviewer.toml",
+    "docs/templates/agents/reviewer.md",
+    "docs/templates/agents/implementer.md",
+    "tests/unit/test_protocol_prompt_sync.py"
+  ],
+  "lock_keys": [
+    "pipeline:protocol-execution-strength-broader-original"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Codify emergency and disagreement handling into Codex-native runtime surfaces from the existing agent and Claude protocol sources.",
+    "Codify the blocked-wave and acting-coordinator escalation path into Codex-native coordinator surfaces without relaxing coordinator no-production-fix authority.",
+    "Strengthen Codex result-handling discipline so review/verifier outputs preserve verdict, findings, next steps, uncertainty, and failed-run boundaries.",
+    "Add or update executable prompt-sync tests that pin the selected surfaces and fail before implementation.",
+    "Send exactly one verify-request to operator with commit/range, changed files, tests, exclusions, and exact next trigger."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "operator",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "scripts/codex_protocol_model.py",
+    "docs/protocol/codex/continuation.md",
+    ".agents/skills/",
+    ".codex/agents/",
+    "docs/templates/agents/",
+    "tests/unit/test_protocol_prompt_sync.py"
+  ]
+}
