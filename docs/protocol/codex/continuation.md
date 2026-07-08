@@ -154,6 +154,18 @@ API spend, and pod spend require explicit user consent. Use
 `env -u GIT_INDEX_FILE` for ordinary git and pytest commands unless you are
 deliberately maintaining a seat-local or scoped temporary index.
 
+Side-Effect Executor Token:
+- Required fields: `side_effect_id`, `executor`, `target`,
+  `allowed_command_class`, `preflight`,
+  `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`,
+  `observer_seats`, `final_closeout_owner`, and `non_goals`.
+- generic user approval is unit consent, not executor election.
+- observer seats default to observer mode: read live state only, do not repeat
+  the side effect, and report only contradiction, missing required evidence,
+  changed safety boundary, or explicit coordinator request.
+- live evidence may close an already-satisfied side effect without appointing a
+  redundant executor.
+
 The coordinator may route and reconcile but does not author behavior-changing
 production fixes. A verified inventory transition still needs an operator
 `verification-report` GO plus executed evidence; a gate script is process

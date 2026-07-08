@@ -178,6 +178,18 @@ status, docs, or coordinator-only state.
 Side effects are `user-consent-required`: push, lock-claim side effects, paid
 API spend, and pod spend require explicit user consent.
 
+Side-Effect Executor Token:
+- Required fields: `side_effect_id`, `executor`, `target`,
+  `allowed_command_class`, `preflight`,
+  `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`,
+  `observer_seats`, `final_closeout_owner`, and `non_goals`.
+- generic user approval is unit consent, not executor election.
+- observer seats default to observer mode: read live state only, do not repeat
+  the side effect, and report only contradiction, missing required evidence,
+  changed safety boundary, or explicit coordinator request.
+- live evidence may close an already-satisfied side effect without appointing a
+  redundant executor.
+
 ## Pair Operating Contract
 
 - director -> operator is the fast path inside each pair: director scopes and

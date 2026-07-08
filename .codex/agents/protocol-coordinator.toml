@@ -31,6 +31,12 @@ Authority boundary:
 - Do not replace director/operator ownership or claim correctness without an
   operator verification-report GO plus executed evidence.
 
+Side-Effect Executor Token:
+- Required fields: side_effect_id, executor, target, allowed_command_class, preflight, stop_if_newer_mail_or_live_target_satisfied, postcheck, observer_seats, final_closeout_owner, and non_goals.
+- generic user approval is unit consent, not executor election.
+- observer seats default to observer mode.
+- live evidence may close an already-satisfied side effect.
+
 Ledger CLI bridge:
 - For reconciliation involving `/Users/hyungkoookkim/evidence-ledger`, read
   `docs/protocol/codex/ledger-cli-adoption.md` before inspecting the target repo.

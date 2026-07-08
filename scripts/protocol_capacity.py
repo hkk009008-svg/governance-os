@@ -61,6 +61,63 @@ _WEAK_TRIGGER_RE = re.compile(
     r"^(?:none|n/a|not applicable|to be decided|no trigger|same as above)$",
     re.IGNORECASE,
 )
+SIDE_EFFECT_TOKEN_HEADING_RE = re.compile(
+    r"(?im)^(?:#{1,6}\s*)?Side-Effect Executor Token\s*:?\s*$"
+)
+SIDE_EFFECT_TOKEN_FIELD_ALIASES = {
+    "side_effect_id": "side_effect_id",
+    "side effect id": "side_effect_id",
+    "executor": "executor",
+    "executor seat": "executor",
+    "target": "target",
+    "target repo": "target",
+    "target resource": "target",
+    "allowed_command_class": "allowed_command_class",
+    "allowed command class": "allowed_command_class",
+    "allowed command": "allowed_command_class",
+    "preflight": "preflight",
+    "stop_if_newer_mail_or_live_target_satisfied": "stop_if_newer_mail_or_live_target_satisfied",
+    "stop if newer mail or live target satisfied": "stop_if_newer_mail_or_live_target_satisfied",
+    "stop-if-newer-mail-or-live-target-satisfied": "stop_if_newer_mail_or_live_target_satisfied",
+    "postcheck": "postcheck",
+    "post check": "postcheck",
+    "observer_seats": "observer_seats",
+    "observer seats": "observer_seats",
+    "final_closeout_owner": "final_closeout_owner",
+    "final closeout owner": "final_closeout_owner",
+    "non_goals": "non_goals",
+    "non goals": "non_goals",
+    "non-goals": "non_goals",
+}
+REQUIRED_SIDE_EFFECT_TOKEN_FIELDS = (
+    "side_effect_id",
+    "executor",
+    "target",
+    "allowed_command_class",
+    "preflight",
+    "stop_if_newer_mail_or_live_target_satisfied",
+    "postcheck",
+    "observer_seats",
+    "final_closeout_owner",
+    "non_goals",
+)
+SHARED_SIDE_EFFECT_PATTERNS = {
+    "remote-ref update/push": r"\bremote-ref update\b|\bgit push\b|\bpush(?:es)?\b",
+    "force update": r"\bforce update\b|\bforce-push\b|\bforce push\b",
+    "lock action": r"\block action\b|\block claim\b|\block-claim\b|\bclaim locks?\b|\block release\b|\block-release\b|\brelease locks?\b",
+    "paid-service spend": r"\bpaid-service spend\b|\bpaid api spend\b|\bpaid-api spend\b|\bpaid service\b",
+    "pod action": r"\bpod action\b|\bpod spend\b|\bstart pods?\b|\bstart a pod\b",
+    "production generation": r"\bproduction generation\b",
+    "target-repo checkout refresh": r"\btarget-repo checkout refresh\b|\bcheckout refresh\b|\bgit fetch\b|\bgit pull\b",
+    "cursor consume": r"\bcursor consume\b|\bconsume-events?\b",
+    "route mutation": r"\broute mutation\b|\bsend-event\b|\bwrite(?:s)?\s+(?:a\s+)?route\b|\bcreate(?:s)?\s+(?:a\s+)?route\b",
+}
+SIDE_EFFECT_DIRECTIVE_RE = re.compile(
+    r"\b(authorizes?|authorized|allows?|grants?|executes?|execute|runs?|run|"
+    r"performs?|perform|mutates?|mutate)\b",
+    re.IGNORECASE,
+)
+SIDE_EFFECT_SUCCESS_RE = re.compile(r"\bside-effect success claim\s*:\s*(?P<body>.+)$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -832,13 +889,16 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
         issues.append(_issue("G7", f"{name}: missing join condition"))
 
     forbidden = _forbidden_side_effects(body)
-    if forbidden:
+    subagent_forbidden = [label for label in forbidden if label.startswith("subagent ")]
+    if subagent_forbidden:
         issues.append(
             _issue(
                 "G7",
-                "forbidden side effect authorization: " + ", ".join(forbidden),
+                "forbidden side effect authorization: " + ", ".join(subagent_forbidden),
             )
         )
+    issues.extend(_side_effect_executor_issues(body))
+    issues.extend(_side_effect_success_claim_issues(body))
     return issues
 
 
@@ -920,6 +980,153 @@ def _forbidden_side_effects(body: str) -> list[str]:
                 if re.search(pattern, lowered) and label not in found:
                     found.append(label)
     return found
+
+
+def _side_effect_executor_issues(body: str) -> list[dict[str, Any]]:
+    tokens = _side_effect_executor_tokens(body)
+    issues: list[dict[str, Any]] = []
+    for token in tokens:
+        missing = [
+            field
+            for field in REQUIRED_SIDE_EFFECT_TOKEN_FIELDS
+            if not token.get(field)
+        ]
+        if missing:
+            issues.append(
+                _issue(
+                    "G7",
+                    "incomplete side-effect executor token missing: "
+                    + ", ".join(missing),
+                )
+            )
+
+    side_effect_labels = _shared_side_effect_directives(body)
+    complete_tokens = [
+        token
+        for token in tokens
+        if all(token.get(field) for field in REQUIRED_SIDE_EFFECT_TOKEN_FIELDS)
+    ]
+    if side_effect_labels and not complete_tokens:
+        issues.append(
+            _issue(
+                "G7",
+                "missing side-effect executor token for shared side effect authorization: "
+                + ", ".join(side_effect_labels),
+            )
+        )
+    return issues
+
+
+def _side_effect_executor_tokens(body: str) -> list[dict[str, str]]:
+    lines = body.splitlines()
+    tokens: list[dict[str, str]] = []
+    index = 0
+    while index < len(lines):
+        if not SIDE_EFFECT_TOKEN_HEADING_RE.match(lines[index]):
+            index += 1
+            continue
+        token: dict[str, str] = {}
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            stripped = line.strip()
+            if SIDE_EFFECT_TOKEN_HEADING_RE.match(line):
+                break
+            if stripped and _MARKDOWN_HEADING_RE.match(line):
+                break
+            field_match = re.match(
+                r"^\s*(?:[-*]\s*)?([^:]+?)\s*:\s*(.+?)\s*$",
+                line,
+            )
+            if field_match:
+                raw_key = field_match.group(1).strip().lower().replace("-", " ")
+                normalized = SIDE_EFFECT_TOKEN_FIELD_ALIASES.get(raw_key)
+                if normalized:
+                    token[normalized] = field_match.group(2).strip()
+            index += 1
+        tokens.append(token)
+    return tokens
+
+
+def _shared_side_effect_directives(body: str) -> list[str]:
+    labels: list[str] = []
+    for line in body.splitlines():
+        lowered = line.lower()
+        normalized = lowered.strip().lstrip("-* ").strip()
+        if normalized.startswith("no "):
+            continue
+        if _is_negative_side_effect_boundary(normalized):
+            continue
+        if not SIDE_EFFECT_DIRECTIVE_RE.search(lowered):
+            continue
+        for label, pattern in SHARED_SIDE_EFFECT_PATTERNS.items():
+            if re.search(pattern, lowered) and label not in labels:
+                labels.append(label)
+    return labels
+
+
+def _is_negative_side_effect_boundary(line: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(do\s+not|does\s+not|must\s+not|may\s+not|should\s+not|"
+            r"can\s+not|cannot|can't|will\s+not|shall\s+not|"
+            r"not\s+allowed\s+to|unable\s+to|never|non[-_ ]goals?)\b",
+            line,
+        )
+    )
+
+
+def _side_effect_success_claim_issues(body: str) -> list[dict[str, Any]]:
+    claims = _side_effect_success_claims(body)
+    grouped: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for claim in claims:
+        key = (claim.get("action", ""), claim.get("target", ""))
+        if not key[0] or not key[1]:
+            continue
+        grouped.setdefault(key, []).append(claim)
+
+    issues: list[dict[str, Any]] = []
+    for (action, target), group in sorted(grouped.items()):
+        if len(group) < 2:
+            continue
+        token_ids = {claim.get("side_effect_id", "") for claim in group}
+        if len(token_ids) == 1 and "" not in token_ids:
+            continue
+        issues.append(
+            _issue(
+                "G7",
+                "multiple side-effect success claims for "
+                f"{action} target={target} without common side_effect_id",
+            )
+        )
+    return issues
+
+
+def _side_effect_success_claims(body: str) -> list[dict[str, str]]:
+    claims: list[dict[str, str]] = []
+    for line in body.splitlines():
+        match = SIDE_EFFECT_SUCCESS_RE.search(line)
+        if not match:
+            continue
+        claim_body = match.group("body").strip()
+        target = _claim_value(claim_body, "target")
+        token_id = _claim_value(claim_body, "side_effect_id")
+        action = claim_body.split("target=", 1)[0].strip().strip(",;")
+        if token_id:
+            action = action.split("side_effect_id=", 1)[0].strip().strip(",;")
+        claims.append(
+            {
+                "action": re.sub(r"\s+", " ", action.lower()),
+                "target": target.lower(),
+                "side_effect_id": token_id,
+            }
+        )
+    return claims
+
+
+def _claim_value(text: str, key: str) -> str:
+    match = re.search(rf"\b{re.escape(key)}=([^\s,;]+)", text, re.IGNORECASE)
+    return match.group(1).strip() if match else ""
 
 
 def _is_negative_subagent_boundary(line: str) -> bool:

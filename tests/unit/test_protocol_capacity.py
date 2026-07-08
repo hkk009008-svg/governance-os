@@ -164,3 +164,78 @@ def test_route_validation_allows_explicit_subagent_negative_boundaries(tmp_path:
         "forbidden side effect authorization" in issue["message"]
         for issue in result.route_issues
     )
+
+
+def test_route_validation_rejects_shared_side_effect_without_executor_token(
+    tmp_path: Path,
+):
+    _write_packet(tmp_path, _packet())
+    route = _write_route(
+        tmp_path,
+        "2026-07-08T02-10-00Z-coordinator-to-all-coordination.md",
+        "Task-board: cycle-a\n\n"
+        "- coord-test-route\n\n"
+        "This route authorizes director to push origin/main after green tests.\n\n"
+        "Join condition: coordinator closes after postcheck.\n\n"
+        "## Exact Next Trigger\n\n"
+        "Director executes the routed side effect.\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    messages = "\n".join(issue["message"] for issue in result.route_issues)
+    assert "missing side-effect executor token" in messages
+    assert "push" in messages
+
+
+def test_route_validation_allows_complete_side_effect_executor_token(tmp_path: Path):
+    _write_packet(tmp_path, _packet())
+    route = _write_route(
+        tmp_path,
+        "2026-07-08T02-15-00Z-coordinator-to-all-coordination.md",
+        "Task-board: cycle-a\n\n"
+        "- coord-test-route\n\n"
+        "## Side-Effect Executor Token\n\n"
+        "- side_effect_id: publish-main-2026-07-08\n"
+        "- executor: director\n"
+        "- target: origin/main\n"
+        "- allowed_command_class: git push\n"
+        "- preflight: git status plus divergence check\n"
+        "- stop_if_newer_mail_or_live_target_satisfied: re-read mailbox and ls-remote\n"
+        "- postcheck: git ls-remote origin refs/heads/main\n"
+        "- observer_seats: director2, operator, operator2\n"
+        "- final_closeout_owner: coordinator\n"
+        "- non_goals: no force-push and no lock claim\n\n"
+        "Join condition: coordinator closes after postcheck evidence.\n\n"
+        "## Exact Next Trigger\n\n"
+        "Director executes the token or stops on failed preflight.\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.route_issues == ()
+
+
+def test_route_validation_rejects_duplicate_side_effect_success_claims_without_common_token(
+    tmp_path: Path,
+):
+    _write_packet(tmp_path, _packet())
+    route = _write_route(
+        tmp_path,
+        "2026-07-08T02-20-00Z-coordinator-to-all-coordination.md",
+        "Task-board: cycle-a\n\n"
+        "- coord-test-route\n\n"
+        "Side-effect success claim: remote-ref update target=origin/main actor=director\n"
+        "Side-effect success claim: remote-ref update target=origin/main actor=operator\n\n"
+        "Join condition: coordinator closes after reconciling claims.\n\n"
+        "## Exact Next Trigger\n\n"
+        "Coordinator reconciles the duplicated success claims.\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    messages = "\n".join(issue["message"] for issue in result.route_issues)
+    assert "multiple side-effect success claims" in messages
+    assert "origin/main" in messages

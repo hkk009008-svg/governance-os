@@ -44,6 +44,10 @@ ACTIVE_KERNEL_INVARIANTS = (
         "push, lock-claim side effects, paid API spend, and pod spend require explicit user consent",
     ),
     (
+        "side-effect executor token",
+        "generic user approval is unit consent, not executor election; shared side effects need one named executor token or live-evidence closeout",
+    ),
+    (
         "coordinator no production fixes",
         "coordinator may route and reconcile but not author behavior-changing production fixes",
     ),
@@ -297,6 +301,29 @@ SEAT_SUBAGENT_DEVELOPMENT_RULES = (
     "Do not run parallel implementation subagents on shared files or behind the same push-gated lock.",
 )
 
+SIDE_EFFECT_EXECUTOR_TOKEN_FIELDS = (
+    "side_effect_id",
+    "executor",
+    "target",
+    "allowed_command_class",
+    "preflight",
+    "stop_if_newer_mail_or_live_target_satisfied",
+    "postcheck",
+    "observer_seats",
+    "final_closeout_owner",
+    "non_goals",
+)
+
+SIDE_EFFECT_EXECUTOR_RULES = (
+    "generic user approval is unit consent, not executor election",
+    "shared user-gated side effects need exactly one named executor before mutation unless the user directly names the executing seat in the same prompt",
+    "side effects covered: remote-ref update, force update, lock action, paid-service spend, pod action, production generation, target-repo checkout refresh, cursor consume, and route mutation",
+    "observer seats default to observer mode: read live state only, do not repeat the side effect, and report only contradiction, missing required evidence, changed safety boundary, or explicit coordinator request",
+    "live evidence may close an already-satisfied side effect without appointing a redundant executor",
+    "multiple same-target side-effect success claims need a common side_effect_id; otherwise route validation fails",
+    "lane-only implementation, verify-request, and GO/NITS/FAIL flows remain valid when no shared user-gated side effect is present",
+)
+
 CLAUDE_FUNCTION_HARMONIZATION_RULES = (
     (
         "core stance",
@@ -548,6 +575,16 @@ def render_seat_subagent_development() -> str:
         "coordinator route, push, lock, pod spend, or paid API spend from a "
         "subagent alone"
     )
+    return "\n".join(lines)
+
+
+def render_side_effect_executor_contract() -> str:
+    """Return the single-executor contract for shared user-gated side effects."""
+    lines = [
+        "Side-Effect Executor Token:",
+        "required fields: " + ", ".join(SIDE_EFFECT_EXECUTOR_TOKEN_FIELDS),
+    ]
+    lines.extend(f"- {rule}" for rule in SIDE_EFFECT_EXECUTOR_RULES)
     return "\n".join(lines)
 
 
@@ -904,6 +941,7 @@ def render_surface_summary() -> str:
         "Demoted optional concepts: " + ", ".join(demoted_names),
         "Pair Operating Contract: director -> operator is the fast path; mailbox artifact, not chat",
         "Seat Subagent Development: seats retain authority; subagents own bounded work",
+        "Side-Effect Executor Token: generic user approval is unit consent, not executor election",
         "Ledger CLI Bridge: Pipeline kernel -> evidence-ledger target via "
         + LEDGER_CLI_BRIDGE["doc_path"],
         "agent extension namespace: .codex/agents/agentNN.toml guardrail extensions",

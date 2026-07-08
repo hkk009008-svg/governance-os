@@ -138,6 +138,12 @@ API spend, and pod spend require explicit user consent. Prefer eligible
 no-lock routing or stop for the user when those side effects are not
 authorized.
 
+Side-Effect Executor Token:
+- Required fields: `side_effect_id`, `executor`, `target`, `allowed_command_class`, `preflight`, `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`, `observer_seats`, `final_closeout_owner`, and `non_goals`.
+- generic user approval is unit consent, not executor election.
+- observer seats default to observer mode.
+- live evidence may close an already-satisfied side effect.
+
 Ordinary git and pytest commands use `env -u GIT_INDEX_FILE`. If the shared
 index is dirty and a coordinator-only commit is required, use a scoped
 temporary index and inspect the staged pathspec before committing.

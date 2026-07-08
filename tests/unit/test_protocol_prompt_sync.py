@@ -160,3 +160,33 @@ def test_subagent_utilization_decision_is_rendered_and_documented():
         text = _read(path)
         assert "Subagent utilization decision" in text
         assert "direct/no-op because" in text
+
+
+def test_side_effect_executor_token_contract_is_model_backed_and_documented():
+    rendered = model.render_side_effect_executor_contract()
+
+    required_phrases = (
+        "Side-Effect Executor Token:",
+        "side_effect_id",
+        "allowed_command_class",
+        "stop_if_newer_mail_or_live_target_satisfied",
+        "observer seats default to observer mode",
+        "generic user approval is unit consent, not executor election",
+        "live evidence may close an already-satisfied side effect",
+    )
+    for phrase in required_phrases:
+        assert phrase in rendered
+
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-operator.toml",
+        ".codex/agents/protocol-coordinator.toml",
+    ):
+        text = _read(path)
+        for phrase in required_phrases:
+            assert phrase in text

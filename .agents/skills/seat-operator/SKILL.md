@@ -137,6 +137,10 @@ Delete the lock **in the SAME commit as the verification-report GO**. ⚠ `coord
 - **Rule #7** before any state-asserting commit (`git log -5` + read newer mailbox events); **explicit pathspec** (`-m` before `--`); subagents use `env -u GIT_INDEX_FILE`.
 - **Flag-before-burn (Rule #22):** before running a paid script, get non-author review first (`docs/protocol/claude/director-operator.md §Rule #22`).
 - **Secondary sweep before closing a verdict:** after the primary rule, always check (a) role-partition, (b) lock implications, (c) recovery-path authorization, (d) signal-type correctness — an agent that nails the primary rule tends to skip these.
+- **Side-Effect Executor Token:** required fields are `side_effect_id`, `executor`, `target`, `allowed_command_class`, `preflight`, `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`, `observer_seats`, `final_closeout_owner`, and `non_goals`.
+- generic user approval is unit consent, not executor election.
+- observer seats default to observer mode.
+- live evidence may close an already-satisfied side effect.
 
 ## Rationalizations — STOP
 

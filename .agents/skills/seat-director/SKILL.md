@@ -141,6 +141,10 @@ The loser **abandons** — `claim-lock` exit 1 means you never had a valid claim
 - **Rule #8 (mailbox surface):** at session-start AND every mid-session restart of substantive work.
 - **Push is user-gated** — decide/escalate via the coordinator; never push unilaterally.
 - **Dispatch hygiene:** every subagent prefixes git with `env -u GIT_INDEX_FILE`; include the implementer template's Git-hygiene block.
+- **Side-Effect Executor Token:** required fields are `side_effect_id`, `executor`, `target`, `allowed_command_class`, `preflight`, `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`, `observer_seats`, `final_closeout_owner`, and `non_goals`.
+- generic user approval is unit consent, not executor election.
+- observer seats default to observer mode.
+- live evidence may close an already-satisfied side effect.
 
 ## Rationalizations — STOP
 
