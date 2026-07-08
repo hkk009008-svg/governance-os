@@ -3,7 +3,7 @@
   "wave": 2,
   "cycle": "ledger-phase2-task24-2026-07-08",
   "owner": "operator2",
-  "packet_type": "operator-doc-sync",
+  "packet_type": "operator-preflight",
   "row_ids": [
     "phase2-task2.4-ios-slot-entry",
     "phase2-route-preflight"

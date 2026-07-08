@@ -177,6 +177,7 @@ def test_capacity_split_default_is_model_backed_and_surface_synced():
         "director owns Chunk A and operator verifies Chunk A",
         "director2 owns Chunk B and operator2 verifies Chunk B",
         "Pair B performs bounded planning or preflight instead of idle standby",
+        "Pair B preflight packets use `director-preflight` and `operator-preflight` packet types",
         "coordinator owns convergence",
     )
 
@@ -254,6 +255,20 @@ def test_side_effect_executor_token_detailed_contract_is_surface_synced():
         text = _read(path)
         for phrase in detailed_phrases:
             assert phrase in text
+
+
+def test_optional_codex_agent_selection_matrix_exists():
+    text = _read(".codex/agents/README.md")
+
+    for phrase in (
+        "Optional Agent Selection Matrix",
+        "agent01",
+        "agent02",
+        "agent03",
+        "agent04",
+        "These agents do not replace protocol-director, protocol-operator, or protocol-coordinator.",
+    ):
+        assert phrase in text
 
 
 def test_rule_12_pattern_reference_transplant_is_surface_synced():

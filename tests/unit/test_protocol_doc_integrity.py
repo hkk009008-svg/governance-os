@@ -87,6 +87,14 @@ def test_task24_capacity_packets_reflect_operator_go_and_pair_b_preflight():
     operator_packet = json.loads(
         _read("coordination/capacity/packets/2026-07-08-ledger-phase2-task24-operator-lanev.json")
     )
+    director2_packet = json.loads(
+        _read(
+            "coordination/capacity/packets/2026-07-08-ledger-phase2-task24-director2-planning-preflight.json"
+        )
+    )
+    operator2_packet = json.loads(
+        _read("coordination/capacity/packets/2026-07-08-ledger-phase2-task24-operator2-preflight.json")
+    )
     coordinator_packet = json.loads(
         _read("coordination/capacity/packets/2026-07-08-ledger-phase2-task24-coordinator-join.json")
     )
@@ -101,7 +109,23 @@ def test_task24_capacity_packets_reflect_operator_go_and_pair_b_preflight():
     )
     assert any("VERDICT: GO" in item for item in operator_packet["done_evidence"])
 
+    assert director2_packet["packet_type"] == "director-preflight"
+    assert operator2_packet["packet_type"] == "operator-preflight"
     assert "director2-ledger-phase2-task24-planning-preflight" in coordinator_packet["dependencies"]
     assert "operator2-ledger-phase2-task24-preflight" in coordinator_packet["dependencies"]
     assert "director2-ledger-phase2-task24-observer" not in coordinator_packet["dependencies"]
     assert "operator2-ledger-phase2-task24-observer" not in coordinator_packet["dependencies"]
+
+
+def test_operator_phase_taxonomy_uses_current_codex_triggers():
+    for path in (
+        ".agents/skills/seat-operator/SKILL.md",
+        "docs/protocol/agents/director-operator.md",
+        "docs/protocol/claude/director-operator.md",
+    ):
+        text = _read(path)
+        compact = _compact(text)
+
+        assert "operator waits for a fresh verify-request or shipping commit" in compact.lower()
+        assert "in-chat \"Dispatching X\" narration" not in text
+        assert "implicit git-log poll" not in text

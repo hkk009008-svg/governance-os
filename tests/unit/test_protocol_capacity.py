@@ -58,8 +58,8 @@ def _write_route(root: Path, name: str, body: str) -> Path:
 def _write_capacity_split_cycle(
     root: Path,
     *,
-    director2_type: str = "director-brief",
-    operator2_type: str = "operator-verification",
+    director2_type: str = "director-preflight",
+    operator2_type: str = "operator-preflight",
     director2_status: str = "blocked",
     operator2_status: str = "blocked",
 ) -> None:
@@ -171,6 +171,65 @@ def test_active_cycle_allows_pair_b_planning_and_preflight_packets(tmp_path: Pat
 
     messages = "\n".join(issue["message"] for issue in report.blocking_issues)
     assert "Pair B must perform bounded planning or preflight" not in messages
+    assert "invalid packet_type" not in messages
+
+
+def test_capacity_board_renders_next_lawful_action_per_actor(tmp_path: Path):
+    _write_capacity_split_cycle(tmp_path)
+
+    report = protocol_capacity.collect_capacity_report(tmp_path, 2)
+    rendered = protocol_capacity.render_capacity_board(report)
+
+    assert "NEXT LAWFUL ACTIONS" in rendered
+    assert "director2" in rendered
+    assert "startup: env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director2 --wave 2" in rendered
+    assert "packet: director2-capacity-split-work (director-preflight, blocked)" in rendered
+    assert "deps: -" in rendered
+    assert "stop: report bounded planning/preflight evidence to coordinator; no production fix or GO" in rendered
+
+
+def test_active_implementation_path_isolation_rejects_parent_child_overlap(
+    tmp_path: Path,
+):
+    _write_capacity_split_cycle(
+        tmp_path,
+        director2_type="director-implementation",
+        director2_status="active",
+    )
+    _write_packet(
+        tmp_path,
+        _packet(
+            packet_id="director-capacity-split-chunk-a",
+            owner="director",
+            packet_type="director-implementation",
+            status="active",
+            cycle="capacity-split-cycle",
+        )
+        | {
+            "allowed_paths": ["src/"],
+            "scope_files": ["src/"],
+        },
+    )
+    _write_packet(
+        tmp_path,
+        _packet(
+            packet_id="director2-capacity-split-work",
+            owner="director2",
+            packet_type="director-implementation",
+            status="active",
+            cycle="capacity-split-cycle",
+        )
+        | {
+            "allowed_paths": ["src/chunk-b/"],
+            "scope_files": ["src/chunk-b/"],
+        },
+    )
+
+    report = protocol_capacity.collect_capacity_report(tmp_path, 2)
+
+    messages = "\n".join(issue["message"] for issue in report.blocking_issues)
+    assert "director-capacity-split-chunk-a and director2-capacity-split-work overlap" in messages
+    assert "src/ <-> src/chunk-b/" in messages
 
 
 def test_active_cycle_coverage_counts_completed_actor_packets(tmp_path: Path):
@@ -200,6 +259,40 @@ def test_active_cycle_coverage_counts_completed_actor_packets(tmp_path: Path):
     operator_row = next(row for row in report.actor_rows if row["owner"] == "operator")
     assert operator_row["packet_ids"] == ["operator-capacity-split-chunk-a"]
     assert operator_row["statuses"] == ["done"]
+
+
+def test_closed_capacity_cycle_reports_closed_packet_state(tmp_path: Path):
+    _write_capacity_split_cycle(
+        tmp_path,
+        director2_status="done",
+        operator2_status="done",
+    )
+    for packet_id in (
+        "coord-capacity-split-route",
+        "director-capacity-split-chunk-a",
+        "operator-capacity-split-chunk-a",
+    ):
+        packet = _packet(
+            packet_id=packet_id,
+            status="done",
+            cycle="capacity-split-cycle",
+        )
+        if packet_id.startswith("director-"):
+            packet["owner"] = "director"
+            packet["packet_type"] = "director-implementation"
+            packet["done_evidence"] = ["Director sent verify-request."]
+        elif packet_id.startswith("operator-"):
+            packet["owner"] = "operator"
+            packet["packet_type"] = "operator-verification"
+            packet["done_evidence"] = ["Operator verification-report GO."]
+            packet["verify_request"] = "coordination/mailbox/sent/verify-request.md"
+            packet["target_commit"] = "abc1234"
+        _write_packet(tmp_path, packet)
+
+    report = protocol_capacity.collect_capacity_report(tmp_path, 2)
+
+    assert report.packet_state == "closed"
+    assert "packet state: closed" in protocol_capacity.render_capacity_board(report)
 
 
 def test_active_cycle_coverage_prefers_done_replacement_over_idle_observer(

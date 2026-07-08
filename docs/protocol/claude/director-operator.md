@@ -1611,32 +1611,23 @@ The handoff doc is how the next instance of either role learns:
 - What's open and which role owns each open item
 - Any new precedents that emerged
 
-## Phase taxonomy (Protocol Bundle v4)
+## Operator trigger taxonomy
 
-Director's loop has 5 observable phases. Operator's action per phase
-is specified below. Detection is hybrid: explicit `*-request` mailbox
-events for director-initiated transitions; implicit git-log poll for
-post-commit phase; 10-minute idle heuristic from last director
-commit.
+Operator waits for a fresh verify-request or shipping commit. The current rule
+is artifact-first: chat narration is not a protocol trigger, docs/status/handoff
+commits do not create duplicate Lane V, and ambiguous work defaults to standby
+or bounded preflight evidence.
 
-| Director phase | Detection signal | Operator action | Phase exit signal |
-|---|---|---|---|
-| **Pre-dispatch** | `scout-request` mailbox event OR director's in-chat "Dispatching X" narration | **Lane S** (v5+): read-only survey; send `scout-report`. v4: ignore. | Director's subagent commit lands |
-| **Subagent active** | Dispatch-claim event seen; WT has uncommitted changes director-attributed | **Silent.** No `.py` writes. | Director's commit lands |
-| **Post-commit (feat / refactor / fix)** | New commit by director (Author: `hkk009008-svg`), type matches | **Lane V**: dispatch spec + code-quality reviewer subagents in parallel; send `verification-report` | Director's reviewer-fix commit OR new feat OR 10-min idle |
-| **Post-commit (subsystem touch)** | New commit by director, touches `<PROJECT>/` / `domain/` / `<entrypoint>.py` (main orchestrator modules) | **Lane D**: update ARCHITECTURE.md / OPERATIONS.md (README carved out); commit `docs(arch-sync)`; send `doc-sync-notice` | Commit landed |
-| **Post-commit (chore / docs / test / style)** | New commit by director, type matches | **Ignore.** No Lane V / D action. | Next commit |
-| **Idle (no signal N min)** | No phase signal for N=10 minutes after last director commit | Standby OR work on pre-listed operator-claimable backlog | New commit OR direct user instruction |
+| Trigger | Operator action | Stop condition |
+|---|---|---|
+| Fresh verify-request naming a commit/range, scope, expected verdict, and evidence commands | Lane V on exactly the named artifact | Send mailbox `verification-report` GO/NITS/FAIL |
+| Shipping `feat`/`fix`/`refactor` commit with no verify-request yet, after current mailbox/git state proves the director lane is no longer in-flight | Lane V only for that shipping diff | Send `verification-report` and cite why the target is shipping |
+| Cross-cutting shipping diff | Lane V plus lock/co-sign/scope checks | GO only if the diff matches the co-signed scope |
+| Docs/status/handoff-only commit | No Lane V; doc-sync only when routed | Standby or send the routed doc-sync artifact |
+| No fresh verify-request or shipping commit | Standby or bounded preflight evidence | No receipt/status churn |
 
-**Fallback when STATE.md is stale (per Rule #8 §F):** if phase
-detection via STATE.md disagrees with filesystem (e.g., `git log -5`
-shows a commit STATE.md doesn't reflect), trust the filesystem.
-Phase determination is filesystem-authoritative.
-
-**Default to inaction.** If operator can't confidently identify the
-phase (ambiguous commit type, unclear scope, partial WT state),
-treat as Idle and stand by. Better to miss a Lane V dispatch than
-to dispatch on the wrong phase.
+If the trigger is ambiguous, do not speculate. Refresh mailbox and git, then
+stand by unless a fresh artifact creates ownership.
 
 ## Adjacent-useful work when you can't claim the loop
 

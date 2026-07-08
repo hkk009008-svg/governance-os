@@ -3,7 +3,7 @@
   "wave": 2,
   "cycle": "ledger-phase2-task24-2026-07-08",
   "owner": "director2",
-  "packet_type": "director-brief",
+  "packet_type": "director-preflight",
   "row_ids": [
     "phase2-task2.4-ios-slot-entry",
     "phase2-next-brief-preflight"

@@ -340,8 +340,10 @@ empirical basis, beneficiary/consent) is in docs/PROTOCOL-RULES-LOG.md.
   deliverables: director owns Chunk A and operator verifies Chunk A; director2
   owns Chunk B and operator2 verifies Chunk B. If not divisible, one pair
   implements while Pair B performs bounded planning or preflight instead of idle
-  standby. coordinator owns convergence: capacity packets, one consolidated
-  route, join condition, conflict handling, and final closeout evidence.
+  standby. Pair B preflight packets use `director-preflight` and
+  `operator-preflight` packet types. coordinator owns convergence: capacity
+  packets, one consolidated route, join condition, conflict handling, and final
+  closeout evidence.
 
 - **Rule #23 co-sign is TIERED** (Lever #7, audit `wf_6be2ee18-f4b`; body in
   `docs/protocol/agents/director-operator.md`). Classifier: *would the

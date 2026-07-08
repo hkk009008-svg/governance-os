@@ -29,8 +29,10 @@ PACKET_TYPES = {
     "director-implementation",
     "director-brief",
     "director-cosign",
+    "director-preflight",
     "operator-verification",
     "operator-doc-sync",
+    "operator-preflight",
     "coordinator-route",
     "coordinator-reconcile",
     "coordinator-join",
@@ -226,7 +228,13 @@ class CapacityReport:
 
     @property
     def packet_state(self) -> str:
-        return "active" if self.packets else "inactive-no-packets"
+        if not self.packets:
+            return "inactive-no-packets"
+        if any(packet.is_active_wip for packet in self.packets):
+            return "active"
+        if any(packet.status == "blocked" for packet in self.packets):
+            return "blocked"
+        return "closed"
 
     @property
     def actor_rows(self) -> list[dict[str, Any]]:
@@ -235,11 +243,7 @@ class CapacityReport:
             packet.cycle for packet in self.packets if packet.is_active_wip
         }
         for owner in SEAT_ORDER:
-            current = [
-                packet for packet in self.packets if packet.owner == owner and packet.is_current
-            ]
-            if not current and active_cycles:
-                current = _fallback_done_packets(list(self.packets), active_cycles, owner)
+            current = _selected_actor_packets(list(self.packets), active_cycles, owner)
             rows.append(
                 {
                     "owner": owner,
@@ -248,6 +252,18 @@ class CapacityReport:
                     "packet_types": [packet.packet_type for packet in current],
                 }
             )
+        return rows
+
+    @property
+    def actor_actions(self) -> list[dict[str, Any]]:
+        active_cycles = {
+            packet.cycle for packet in self.packets if packet.is_active_wip
+        }
+        rows: list[dict[str, Any]] = []
+        for owner in SEAT_ORDER:
+            packets = _selected_actor_packets(list(self.packets), active_cycles, owner)
+            packet = packets[0] if packets else None
+            rows.append(_actor_action(owner, self.wave, packet))
         return rows
 
     def to_dict(self) -> dict[str, Any]:
@@ -259,6 +275,7 @@ class CapacityReport:
             "packets": [packet.to_dict() for packet in self.packets],
             "exceptions": [exception.to_dict() for exception in self.exceptions],
             "actor_rows": self.actor_rows,
+            "actor_actions": self.actor_actions,
             "issues": list(self.issues),
             "blocking_issues": self.blocking_issues,
             "valid": not self.blocking_issues,
@@ -350,6 +367,19 @@ def render_capacity_board(report: CapacityReport) -> str:
         packet_ids = ", ".join(row["packet_ids"]) if row["packet_ids"] else "-"
         statuses = ", ".join(row["statuses"]) if row["statuses"] else "-"
         lines.append(f"{row['owner']:<11} packets={packet_ids} status={statuses}")
+
+    lines.extend(["", "NEXT LAWFUL ACTIONS"])
+    for row in report.actor_actions:
+        lines.extend(
+            [
+                row["owner"],
+                f"  startup: {row['startup']}",
+                f"  packet: {row['packet']}",
+                f"  deps: {row['dependencies']}",
+                f"  next: {row['next_action']}",
+                f"  stop: {row['stop_condition']}",
+            ]
+        )
 
     lines.append("")
     if report.blocking_issues:
@@ -608,6 +638,101 @@ def _fallback_done_packets(
     return non_idle or done
 
 
+def _selected_actor_packets(
+    packets: list[Packet], active_cycles: set[str], owner: str
+) -> list[Packet]:
+    current = [
+        packet for packet in packets if packet.owner == owner and packet.is_current
+    ]
+    if not current and active_cycles:
+        current = _fallback_done_packets(packets, active_cycles, owner)
+    return current
+
+
+def _actor_action(owner: str, wave: int, packet: Packet | None) -> dict[str, Any]:
+    startup = (
+        "env -u GIT_INDEX_FILE .venv/bin/python "
+        f"scripts/ledger_start_guard.py --seat {owner} --wave {wave}"
+    )
+    if packet is None:
+        return {
+            "owner": owner,
+            "startup": startup,
+            "packet": "-",
+            "dependencies": "-",
+            "next_action": "standby until a fresh coordinator route, verify-request, or user prompt assigns work",
+            "stop_condition": "do not send receipt/status mail unless ownership, evidence, or blockers change",
+        }
+
+    dependencies = ", ".join(packet.dependencies) if packet.dependencies else "-"
+    next_action, stop_condition = _packet_action_text(owner, packet)
+    return {
+        "owner": owner,
+        "startup": startup,
+        "packet": f"{packet.id} ({packet.packet_type}, {packet.status})",
+        "dependencies": dependencies,
+        "next_action": next_action,
+        "stop_condition": stop_condition,
+    }
+
+
+def _packet_action_text(owner: str, packet: Packet) -> tuple[str, str]:
+    if packet.status in {"done", "excepted"}:
+        return (
+            "no duplicate work; preserve evidence if contradicted by newer durable state",
+            "standby unless new mail/user route changes ownership",
+        )
+    if packet.status == "blocked":
+        return (
+            "wait on named dependency or report the concrete blocker",
+            _blocked_stop_condition(owner, packet),
+        )
+    if owner == "coordinator" or packet.packet_type.startswith("coordinator-"):
+        return (
+            "reconcile capacity/mailbox/gate state; route or close only from durable evidence",
+            "one consolidated route/no-op/handoff with Exact Next Trigger; no production fix",
+        )
+    if packet.packet_type == "director-implementation":
+        return (
+            "implement the named scope inside allowed paths",
+            "send one verify-request to operator with commit/range, tests, and exclusions",
+        )
+    if packet.packet_type in {"director-brief", "director-cosign", "director-preflight"}:
+        return (
+            "prepare the bounded brief/co-sign/preflight artifact for the named recipient",
+            "report bounded planning/preflight evidence to coordinator; no production fix or GO",
+        )
+    if packet.packet_type == "operator-verification":
+        return (
+            "verify only the named verify-request or shipping commit/range",
+            "send verification-report GO/NITS/FAIL; do not author production fixes by default",
+        )
+    if packet.packet_type in {"operator-doc-sync", "operator-preflight"}:
+        return (
+            "run the bounded read-only sync/preflight checks for the packet scope",
+            "report bounded preflight findings; do not duplicate Lane V or issue production GO",
+        )
+    if packet.packet_type == "idle":
+        return (
+            "standby only when the capacity split gate has no lawful preflight/planning work",
+            "no receipt/status churn",
+        )
+    return (
+        "execute the packet acceptance criteria inside the allowed scope",
+        "preserve evidence and stop at the packet's named next recipient",
+    )
+
+
+def _blocked_stop_condition(owner: str, packet: Packet) -> str:
+    if packet.packet_type in {"director-brief", "director-cosign", "director-preflight"}:
+        return "report bounded planning/preflight evidence to coordinator; no production fix or GO"
+    if packet.packet_type in {"operator-verification", "operator-doc-sync", "operator-preflight"}:
+        return "wait for verify-request/dependency or report FAIL/NITS with evidence"
+    if owner == "coordinator":
+        return "route blocker or no-op with exact next trigger; no production fix"
+    return "preserve blocker evidence and await the named dependency"
+
+
 def _validate_wip_limit(packets: list[Packet]) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     cycles = sorted({packet.cycle for packet in packets})
@@ -664,13 +789,25 @@ def _validate_path_and_lock_isolation(packets: list[Packet]) -> list[dict[str, A
         for right in active_impl[idx + 1 :]:
             if left.id == right.id:
                 continue
-            shared_paths = sorted(set(left.allowed_paths) & set(right.allowed_paths))
+            shared_path_pairs = _overlapping_path_pairs(
+                left.allowed_paths,
+                right.allowed_paths,
+            )
+            shared_paths = sorted(
+                {path for pair in shared_path_pairs for path in pair}
+            )
             shared_locks = sorted(set(left.lock_keys) & set(right.lock_keys))
             if not shared_paths and not shared_locks:
                 continue
             detail = []
-            if shared_paths:
-                detail.append("paths=" + ", ".join(shared_paths))
+            if shared_path_pairs:
+                detail.append(
+                    "paths="
+                    + ", ".join(
+                        f"{left_path} <-> {right_path}"
+                        for left_path, right_path in shared_path_pairs
+                    )
+                )
             if shared_locks:
                 detail.append("locks=" + ", ".join(shared_locks))
             issues.append(
@@ -684,6 +821,39 @@ def _validate_path_and_lock_isolation(packets: list[Packet]) -> list[dict[str, A
                 )
             )
     return issues
+
+
+def _overlapping_path_pairs(
+    left_paths: tuple[str, ...],
+    right_paths: tuple[str, ...],
+) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    for left in left_paths:
+        for right in right_paths:
+            if _paths_overlap(left, right):
+                pairs.append((left, right))
+    return pairs
+
+
+def _paths_overlap(left: str, right: str) -> bool:
+    left_parts = _path_parts(left)
+    right_parts = _path_parts(right)
+    if not left_parts or not right_parts:
+        return False
+    return (
+        left_parts == right_parts[: len(left_parts)]
+        or right_parts == left_parts[: len(right_parts)]
+    )
+
+
+def _path_parts(path: str) -> tuple[str, ...]:
+    cleaned = path.replace("\\", "/").strip()
+    while cleaned.startswith("./"):
+        cleaned = cleaned[2:]
+    cleaned = cleaned.strip("/")
+    if not cleaned or cleaned == ".":
+        return ()
+    return tuple(part for part in cleaned.split("/") if part and part != ".")
 
 
 def _validate_dependencies(packets: list[Packet]) -> list[dict[str, Any]]:

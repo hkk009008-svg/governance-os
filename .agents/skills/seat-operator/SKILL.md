@@ -1,6 +1,6 @@
 ---
 name: "seat-operator"
-description: "Use when operating as a per-pair OPERATOR seat (Pair-A or Pair-B) in this repo's 4-seat program-hardening campaign \u2014 independently verifying a director/implementer commit (Lane V), issuing a verification-report GO/NITS/FAIL, releasing a cross-cutting lock on GO, re-verifying a NITS nit-fix diff, confirming a CRITICAL cross-cutting diff matches the co-signed brief scope, mutation-testing a guard, or deciding whether a peer's new commit even warrants a verification pass (phase detection)."
+description: "Use when operating as a per-pair OPERATOR seat (Pair-A or Pair-B) in this repo's 4-seat program-hardening campaign \u2014 independently verifying a director/implementer commit (Lane V), issuing a verification-report GO/NITS/FAIL, releasing a cross-cutting lock on GO, re-verifying a NITS nit-fix diff, confirming a CRITICAL cross-cutting diff matches the co-signed brief scope, mutation-testing a guard, or deciding whether a fresh verify-request or shipping commit warrants a verification pass."
 ---
 
 # Seat: Operator
@@ -9,7 +9,7 @@ description: "Use when operating as a per-pair OPERATOR seat (Pair-A or Pair-B) 
 
 The per-pair operator is the **independent post-commit verifier** for everything the director (or a dispatched implementer) ships. Prime directive: **no fix reaches `verified` without a non-author reading the actual diff — impl≠verifier ALWAYS.** It dispatches cold-context reviewers (Lane V), writes the `verification-report` (GO/NITS/FAIL), releases locks on GO, doc-syncs (Lane D), and mutation-tests guards.
 
-**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/claude/director-operator.md` (Rule #9 cold-context, Lane V/D/S, phase taxonomy, Rules #14/#15/#21); `docs/protocol/agents/orchestration.md`; spec §6a/§6c (impl≠verifier, lock-release-on-GO) + §6b (FAIL-cap); `docs/templates/agents/reviewer.md`.
+**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/agents/director-operator.md` (Rule #9 cold-context, Lane V/D/S, current operator triggers, Rules #14/#15/#21); `docs/protocol/agents/orchestration.md`; spec §6a/§6c (impl≠verifier, lock-release-on-GO) + §6b (FAIL-cap); `docs/templates/agents/reviewer.md`.
 
 ## Emergency Handling
 
@@ -53,20 +53,23 @@ python .agents/skills/four-seat-protocol/scripts/seat_status.py operator --wave 
 
 It is strictly read-only — it never stages or advances a cursor (that's `consume-events`' job). It computes unread the same way `consume-events` does, so the count is trustworthy. **Rule #8:** if it reports unread > 0, surface that count in your FIRST user-facing turn, then `coordination/bin/consume-events operator`. The count is the *live* recompute — never trust `STATE.md`'s cached number (Rule #20).
 
-## Phase detection — when a new commit warrants a pass (and when silence is correct)
+## Operator triggers — when a verification pass is lawful
 
-The operator's hardest discipline is *not* verifying everything. Firing Lane V on a `docs` commit wastes a cold-context pass; missing it on a `fix` breaches guarantee #3. Read the director's **observable phase** from the commit type + mailbox signals and act accordingly:
+The operator's hardest discipline is *not* verifying everything. Operator waits
+for a fresh verify-request or shipping commit; no duplicate Lane V for
+docs-only, status-only, or handoff-only commits.
 
-| Director phase | Signal | Operator action |
-|---|---|---|
-| Pre-dispatch (writing the brief) | `dispatch-claim` event, no commit | Lane S (scout/prep) or silent — nothing exists to verify yet |
-| Subagent active (implementer running) | `dispatch-claim`, still no commit | **SILENT. No `.py` writes** — don't collide with the in-flight fix |
-| Post-commit `feat`/`refactor`/`fix` | new commit of that type | **Lane V** — this is the core job |
-| Post-commit touch of a cross-cutting module | commit touches a cross-cutting module (see `four-seat-protocol` skill for the project's list) | Lane V **plus** confirm the lock was held + the diff matches the co-signed scope |
-| Post-commit `chore`/`docs`/`test`/`style` | commit of that type | Lane D (doc-sync if warranted) or ignore — **not** Lane V |
-| Idle (no signal ~10 min) | quiet | Adjacent useful work (mutation-test prep, NITS bounce) — not invented verification |
+| Trigger | Operator action |
+|---|---|
+| Fresh verify-request naming a commit/range, scope, expected verdict, and evidence commands | Lane V on exactly that artifact; send `verification-report` GO/NITS/FAIL |
+| Shipping `feat`/`fix`/`refactor` commit with no verify-request yet, and current mailbox/git state proves the director lane is no longer in-flight | Lane V only after refreshing mailbox and `git log`; cite why the commit is shipping |
+| Cross-cutting shipping diff | Lane V plus lock/co-sign/scope checks before any GO |
+| Docs/status/handoff-only commit | No Lane V; perform doc-sync only if explicitly routed |
+| No fresh verify-request or shipping commit | Standby or bounded preflight evidence; do not invent verification |
 
-**When the phase is ambiguous, default to inaction** — a speculative Lane V on a non-shipping commit burns tokens and signal. (Full taxonomy + exit signals: `docs/protocol/claude/director-operator.md` "Phase taxonomy".)
+When the trigger is ambiguous, default to inaction or idle evidence. Chat
+narration is not a trigger; binding signals are mailbox artifacts and current
+git state.
 
 ## Pair Operating Contract
 
@@ -108,6 +111,7 @@ The operator's hardest discipline is *not* verifying everything. Firing Lane V o
 - If yes: director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.
 - If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.
 - The two active chunks must name disjoint write sets, explicit interfaces, focused tests, forbidden side effects, and separate verify-request/verification-report loops.
+- Pair B preflight packets use `director-preflight` and `operator-preflight` packet types.
 - coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.
 
 ## impl≠verifier is about NON-AUTHORSHIP, not seat identity

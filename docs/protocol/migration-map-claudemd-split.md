@@ -113,7 +113,7 @@ Columns:
 | CLAUDE.md | `## Emergency handling protocol (v5)` L1985–2039 | `docs/protocol/claude/director-operator.md` | `pointer` | `Production-affecting OR user-data-integrity issue` | ✓ (added; root copy retained) |
 | CLAUDE.md | `## Git is the tiebreaker` L2040–2050 | `docs/protocol/claude/director-operator.md` | `pointer` | `first commit to land wins` | ✓ (added; root copy retained) |
 | CLAUDE.md | `## When the other party is offline` L2051–2062 | `docs/protocol/claude/director-operator.md` | `pointer` | `takes the full loop unilaterally` | ✓ (added; root copy retained) |
-| CLAUDE.md | `## Phase taxonomy (Protocol Bundle v4)` L2063–2089 | `docs/protocol/claude/director-operator.md` | `pointer` | `Detection is hybrid: explicit` | ✓ (added; root copy retained) |
+| CLAUDE.md | `## Operator trigger taxonomy` L2063–2089 | `docs/protocol/claude/director-operator.md` | `pointer` | `Operator waits for a fresh verify-request or shipping commit` | ✓ (added; root copy retained) |
 | CLAUDE.md | `## Adjacent-useful work when you can't claim the loop` L2090–2111 | `docs/protocol/claude/director-operator.md` | `pointer` | `Standby OR work on pre-listed operator-claimable backlog` | ✓ (added; root copy retained) |
 
 ### CLAUDE.md — Rule provenance fragments
@@ -189,7 +189,7 @@ embedded inside each Rule #N section body. They relocate to
 | AGENTS.md | `## Emergency handling protocol (v5)` L1596–1618 | `docs/protocol/agents/director-operator.md` | `pointer` | `Production-affecting OR user-data-integrity issue` | ✓ (added; root copy retained) |
 | AGENTS.md | `## Git is the tiebreaker` L1619–1628 | `docs/protocol/agents/director-operator.md` | `pointer` | `The other's subagent output is discarded` | ✓ (added; root copy retained) |
 | AGENTS.md | `## When the other party is offline` L1629–1634 | `docs/protocol/agents/director-operator.md` | `pointer` | `takes the full loop unilaterally` | ✓ (added; root copy retained) |
-| AGENTS.md | `## Phase taxonomy (Protocol Bundle v4)` L1635–1661 | `docs/protocol/agents/director-operator.md` | `pointer` | `Standby OR work on pre-listed operator-claimable backlog` | ✓ (added; root copy retained) |
+| AGENTS.md | `## Operator trigger taxonomy` L1635–1661 | `docs/protocol/agents/director-operator.md` | `pointer` | `Operator waits for a fresh verify-request or shipping commit` | ✓ (added; root copy retained) |
 | AGENTS.md | `## Adjacent-useful work when you can't claim the loop` L1662–1673 | `docs/protocol/agents/director-operator.md` | `pointer` | `nor dispatch a duplicate reviewer` | ✓ (added; root copy retained) |
 | AGENTS.md | `# Coordinating with CLAUDE.md` L1674–1698 | STAYS in AGENTS.md router | `STAYS (AGENTS router)` | `sibling documents. They share` | ✗ (not yet relocated) |
 

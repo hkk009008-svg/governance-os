@@ -134,6 +134,7 @@ the no-op with the commands you ran.
 - If yes: director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.
 - If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.
 - The two active chunks must name disjoint write sets, explicit interfaces, focused tests, forbidden side effects, and separate verify-request/verification-report loops.
+- Pair B preflight packets use `director-preflight` and `operator-preflight` packet types.
 - coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.
 
 ## Seat Subagent Development
