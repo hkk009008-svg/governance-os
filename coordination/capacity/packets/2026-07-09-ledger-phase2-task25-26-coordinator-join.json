@@ -1,0 +1,41 @@
+{
+  "id": "coord-ledger-phase2-task25-26-join",
+  "wave": 2,
+  "cycle": "ledger-phase2-task25-26-preintegration-2026-07-09",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "phase2-task2.5a-result-entry-preintegration",
+    "phase2-task2.6a-audit-history-preintegration"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-task25a-result-entry",
+    "operator-ledger-phase2-task25a-lanev",
+    "director2-ledger-phase2-task26a-history-component",
+    "operator2-ledger-phase2-task26a-lanev"
+  ],
+  "acceptance": [
+    "Keep this cycle open until both pre-integration chunks have director/director2 implementation artifacts and operator/operator2 GO/NITS/FAIL reports.",
+    "Do not close the cycle until the capacity board and route validation pass for coordination/mailbox/sent/2026-07-08T22-07-13Z-coordinator-to-all-coordination.md.",
+    "Before any later user-visible integration, route a separate coordinator-owned join for BroadcastDetailView.swift rather than letting either implementation chunk touch it.",
+    "Close with one coordinator synthesis artifact or handoff that cites capacity board, route validation, smoke, implementation commits/ranges, and both verifier verdicts.",
+    "Do not edit evidence-ledger product files as coordinator."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-09-ledger-phase2-task25-26-coordinator-join.json",
+    "coordination/mailbox/sent/2026-07-08T22-07-13Z-coordinator-to-all-coordination.md"
+  ]
+}
