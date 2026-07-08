@@ -31,19 +31,24 @@
     "Send a Pipeline mailbox outcome with commit/range, verification evidence, and a verify-request for operator Lane V.",
     "No push before operator GO."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
-  "next_recipient": "operator",
-  "status": "active",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": "d3e87e64d3e1e4b1f4441e8bac0f69947df64e89..HEAD",
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-08T00-36-02Z-director-to-operator-verify-request.md issued the initial Task 2.1 verify-request for implementation commit 35dc478.",
+    "coordination/mailbox/sent/2026-07-08T00-56-52Z-director-to-operator-verify-request.md issued the narrow nit-fix verify-request for 35dc478..e446218.",
+    "coordination/mailbox/sent/2026-07-08T01-10-28Z-director-to-coordinator-status.md reports Task 2.1 implementation-complete and operator-verified GO at evidence-ledger commit e446218."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-08T01-10-28Z-director-to-coordinator-status.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-08T00-56-52Z-director-to-operator-verify-request.md",
+  "target_commit": "e446218",
+  "commit_range": "d3e87e64d3e1e4b1f4441e8bac0f69947df64e89..e446218",
   "scope_files": [
     "/Users/hyungkoookkim/evidence-ledger/supabase/migrations/20260708000100_entry_write_path.sql",
     "/Users/hyungkoookkim/evidence-ledger/db/tests/test_entry_write_path.py",
     "/Users/hyungkoookkim/evidence-ledger/db/tests/test_rls_grants.py",
     "/Users/hyungkoookkim/evidence-ledger/docs/PROGRAM-MANUAL.md",
     "/Users/hyungkoookkim/evidence-ledger/ARCHITECTURE.md",
-    "/Users/hyungkoookkim/evidence-ledger/DECISIONS.md"
+    "/Users/hyungkoookkim/evidence-ledger/DECISIONS.md",
+    "coordination/mailbox/sent/2026-07-08T01-10-28Z-director-to-coordinator-status.md"
   ]
 }

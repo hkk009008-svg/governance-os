@@ -30,7 +30,7 @@
   ],
   "handoff_artifact": "coordination/mailbox/sent/2026-07-08T00-36-01Z-director2-to-coordinator-decision.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": null,
   "target_commit": "d3e87e64d3e1e4b1f4441e8bac0f69947df64e89",
   "commit_range": null,
