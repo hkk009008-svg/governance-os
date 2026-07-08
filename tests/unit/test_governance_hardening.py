@@ -3,11 +3,13 @@ from __future__ import annotations
 import contextlib
 import io
 from pathlib import Path
+from types import SimpleNamespace
 
 import check_doc_claims
 import check_placeholders
 import ci_smoke
 import mailbox_monitor
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +24,66 @@ ROOT_TRUTH_DOCS = (
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def _make_unread_event(seat: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        candidate_id=None,
+        brief_id=None,
+        seq=1,
+        kind="coordination",
+        sender="coordinator",
+        recipient=seat,
+    )
+
+
+def _collect_closed_cycle_snapshot(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    unread_events_by_seat: dict[str, list[object]] | None = None,
+    capacity_board_closed: bool = True,
+    coordination_passes: bool = True,
+) -> tuple[dict, str]:
+    unread_events_by_seat = unread_events_by_seat or {}
+
+    def fake_unread_events(root, seat):
+        return unread_events_by_seat.get(seat, [])
+
+    monkeypatch.setattr(mailbox_monitor.bus_unread, "bus_unread_events", fake_unread_events)
+    _write(
+        tmp_path
+        / "coordination/mailbox/sent/2026-07-08T00-00-00Z-coordinator-to-all-coordination.md",
+        "# route\n",
+    )
+    for seat in mailbox_monitor.SEATS:
+        _write(tmp_path / "coordination/mailbox/seen" / f"{seat}.txt", "0\n")
+    for seat in ("director", "director2", "operator", "operator2"):
+        _write(
+            tmp_path / "coordination/presence" / f"{seat}-heartbeat.ts",
+            "2026-07-08T00:00:00Z abc1234\n",
+        )
+
+    monkeypatch.setattr(
+        mailbox_monitor,
+        "_capacity_board_is_closed_without_blockers",
+        lambda root, wave: capacity_board_closed,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        mailbox_monitor,
+        "_coordination_check_passes",
+        lambda root, now: coordination_passes,
+        raising=False,
+    )
+
+    state = mailbox_monitor.collect_monitor_state(
+        tmp_path,
+        now="2026-07-08T01:00:00Z",
+        stale_min=15,
+        wave=2,
+    )
+    return state, mailbox_monitor.render_snapshot(state)
 
 
 def test_root_truth_docs_are_bound_not_placeholder_allowlisted():
@@ -132,40 +194,7 @@ def test_mailbox_monitor_alerts_when_latest_broadcast_receipt_is_unknown(
 def test_mailbox_monitor_downgrades_closed_cycle_receipt_and_heartbeat_noise(
     tmp_path: Path, monkeypatch
 ):
-    monkeypatch.setattr(mailbox_monitor.bus_unread, "bus_unread_events", lambda root, seat: [])
-    _write(
-        tmp_path
-        / "coordination/mailbox/sent/2026-07-08T00-00-00Z-coordinator-to-all-coordination.md",
-        "# route\n",
-    )
-    for seat in mailbox_monitor.SEATS:
-        _write(tmp_path / "coordination/mailbox/seen" / f"{seat}.txt", "0\n")
-    for seat in ("director", "director2", "operator", "operator2"):
-        _write(
-            tmp_path / "coordination/presence" / f"{seat}-heartbeat.ts",
-            "2026-07-08T00:00:00Z abc1234\n",
-        )
-
-    monkeypatch.setattr(
-        mailbox_monitor,
-        "_capacity_board_is_closed_without_blockers",
-        lambda root, wave: True,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        mailbox_monitor,
-        "_coordination_check_passes",
-        lambda root, now: True,
-        raising=False,
-    )
-
-    state = mailbox_monitor.collect_monitor_state(
-        tmp_path,
-        now="2026-07-08T01:00:00Z",
-        stale_min=15,
-        wave=2,
-    )
-    rendered = mailbox_monitor.render_snapshot(state)
+    state, rendered = _collect_closed_cycle_snapshot(tmp_path, monkeypatch)
 
     assert state["alerts"] == []
     assert any(
@@ -173,3 +202,38 @@ def test_mailbox_monitor_downgrades_closed_cycle_receipt_and_heartbeat_noise(
     )
     assert any("heartbeat attention:" in note for note in state["notes"])
     assert "ALERTS\n- none\nNOTES\n" in rendered
+
+
+@pytest.mark.parametrize(
+    "case_name, unread_events_by_seat, capacity_board_closed, coordination_passes",
+    [
+        (
+            "unread remains an alert",
+            {"director": [_make_unread_event("director")]},
+            True,
+            True,
+        ),
+        ("open_or_blocked_board remains an alert", {}, False, True),
+        ("coordination_failure remains an alert", {}, True, False),
+    ],
+)
+def test_mailbox_monitor_keeps_noise_alerts_when_unread_or_blocked_or_coordination_fails(
+    tmp_path: Path,
+    monkeypatch,
+    case_name: str,
+    unread_events_by_seat: dict[str, list[object]],
+    capacity_board_closed: bool,
+    coordination_passes: bool,
+):
+    state, rendered = _collect_closed_cycle_snapshot(
+        tmp_path,
+        monkeypatch,
+        unread_events_by_seat=unread_events_by_seat,
+        capacity_board_closed=capacity_board_closed,
+        coordination_passes=coordination_passes,
+    )
+
+    assert state["notes"] == []
+    assert any("coordinator broadcast receipt is unproved" in alert for alert in state["alerts"]), case_name
+    assert any("heartbeat attention:" in alert for alert in state["alerts"]), case_name
+    assert "NOTES\n- none\n" in rendered
