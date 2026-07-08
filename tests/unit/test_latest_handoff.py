@@ -59,3 +59,18 @@ def test_main_prints_selected_path_and_warnings(tmp_path: Path, capsys: pytest.C
     assert rc == 0
     assert out.out.strip() == str(selected)
     assert "HANDOFF-2026-07-09-coordinator-session.md" in out.err
+
+
+def test_main_reports_missing_handoff_as_orientation_state(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    docs = tmp_path / "docs"
+    _write_handoff(docs / "HANDOFF-2026-07-07-director-session.md", mtime=200)
+
+    rc = latest_handoff.main(["director", "--root", str(tmp_path)])
+    out = capsys.readouterr()
+
+    assert rc == 0
+    assert "no canonical handoff found for director" in out.err
+    assert "HANDOFF-2026-07-07-director-session.md" in out.err
+    assert out.out == ""

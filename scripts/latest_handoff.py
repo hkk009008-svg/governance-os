@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
             f"(expected {selection.pattern})",
             file=__import__("sys").stderr,
         )
-        return 1
+        return 0
     print(selection.path)
     return 0
 
