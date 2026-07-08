@@ -239,3 +239,118 @@ def test_route_validation_rejects_duplicate_side_effect_success_claims_without_c
     messages = "\n".join(issue["message"] for issue in result.route_issues)
     assert "multiple side-effect success claims" in messages
     assert "origin/main" in messages
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "protocol-unit-coherence-side-effect-token: modal side-effect wording "
+        "must require an executor token"
+    ),
+)
+@pytest.mark.parametrize(
+    "directive",
+    (
+        "Director may push origin/main after green tests.",
+        "Director pushes origin/main after green tests.",
+        "Director claims lock coordination/locks/foo.lock before work.",
+    ),
+)
+def test_route_validation_requires_token_for_modal_side_effect_language(
+    tmp_path: Path,
+    directive: str,
+):
+    _write_packet(tmp_path, _packet())
+    route = _write_route(
+        tmp_path,
+        "2026-07-08T02-30-00Z-coordinator-to-all-coordination.md",
+        "Task-board: cycle-a\n\n"
+        "- coord-test-route\n\n"
+        f"{directive}\n\n"
+        "Join condition: coordinator closes after postcheck.\n\n"
+        "## Exact Next Trigger\n\n"
+        "Director executes the routed side effect.\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    messages = "\n".join(issue["message"] for issue in result.route_issues)
+    assert "missing side-effect executor token" in messages
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "protocol-unit-coherence-side-effect-token: executor token must name "
+        "exactly one executor"
+    ),
+)
+def test_route_validation_rejects_multi_executor_token(tmp_path: Path):
+    _write_packet(tmp_path, _packet())
+    route = _write_route(
+        tmp_path,
+        "2026-07-08T02-35-00Z-coordinator-to-all-coordination.md",
+        "Task-board: cycle-a\n\n"
+        "- coord-test-route\n\n"
+        "## Side-Effect Executor Token\n\n"
+        "- side_effect_id: publish-main-2026-07-08\n"
+        "- executor: director, operator\n"
+        "- target: origin/main\n"
+        "- allowed_command_class: git push\n"
+        "- preflight: git status plus divergence check\n"
+        "- stop_if_newer_mail_or_live_target_satisfied: re-read mailbox and ls-remote\n"
+        "- postcheck: git ls-remote origin refs/heads/main\n"
+        "- observer_seats: director2, operator2\n"
+        "- final_closeout_owner: coordinator\n"
+        "- non_goals: no force-push\n\n"
+        "This route authorizes director to push origin/main after green tests.\n\n"
+        "Join condition: coordinator closes after postcheck evidence.\n\n"
+        "## Exact Next Trigger\n\n"
+        "Director executes the token or stops on failed preflight.\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    messages = "\n".join(issue["message"] for issue in result.route_issues)
+    assert "side-effect executor token" in messages
+    assert "executor" in messages
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "protocol-unit-coherence-side-effect-token: executor token must match "
+        "the routed side-effect target"
+    ),
+)
+def test_route_validation_rejects_token_for_different_side_effect_target(
+    tmp_path: Path,
+):
+    _write_packet(tmp_path, _packet())
+    route = _write_route(
+        tmp_path,
+        "2026-07-08T02-40-00Z-coordinator-to-all-coordination.md",
+        "Task-board: cycle-a\n\n"
+        "- coord-test-route\n\n"
+        "## Side-Effect Executor Token\n\n"
+        "- side_effect_id: lock-only-2026-07-08\n"
+        "- executor: director\n"
+        "- target: coordination/locks/foo.lock\n"
+        "- allowed_command_class: lock claim\n"
+        "- preflight: check mailbox\n"
+        "- stop_if_newer_mail_or_live_target_satisfied: re-read mailbox\n"
+        "- postcheck: lock exists\n"
+        "- observer_seats: operator\n"
+        "- final_closeout_owner: coordinator\n"
+        "- non_goals: no push\n\n"
+        "This route authorizes director to push origin/main after green tests.\n\n"
+        "Join condition: coordinator closes after postcheck evidence.\n\n"
+        "## Exact Next Trigger\n\n"
+        "Director executes the token or stops on failed preflight.\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    messages = "\n".join(issue["message"] for issue in result.route_issues)
+    assert "side-effect executor token" in messages
+    assert "target" in messages

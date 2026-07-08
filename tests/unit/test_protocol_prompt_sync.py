@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import codex_protocol_model as model
 
 
@@ -189,4 +191,37 @@ def test_side_effect_executor_token_contract_is_model_backed_and_documented():
     ):
         text = _read(path)
         for phrase in required_phrases:
+            assert phrase in text
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "protocol-unit-coherence-side-effect-token: compact role surfaces must "
+        "carry the full executor-token contract"
+    ),
+)
+def test_side_effect_executor_token_detailed_contract_is_surface_synced():
+    rendered = model.render_side_effect_executor_contract()
+    detailed_phrases = (
+        "shared user-gated side effects need exactly one named executor",
+        "side effects covered: remote-ref update",
+        "multiple same-target side-effect success claims need a common side_effect_id",
+        "report only contradiction, missing required evidence, changed safety boundary, or explicit coordinator request",
+    )
+    for phrase in detailed_phrases:
+        assert phrase in rendered
+
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-operator.toml",
+        ".codex/agents/protocol-coordinator.toml",
+    ):
+        text = _read(path)
+        for phrase in detailed_phrases:
             assert phrase in text
