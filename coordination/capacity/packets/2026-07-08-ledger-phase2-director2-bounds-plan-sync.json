@@ -1,0 +1,38 @@
+{
+  "id": "director2-ledger-phase2-bounds-plan-sync",
+  "wave": 2,
+  "cycle": "ledger-phase2-task21-2026-07-08",
+  "owner": "director2",
+  "packet_type": "director-brief",
+  "row_ids": [
+    "phase2-task2.2-numeric-bounds",
+    "phase2-task2.5b-ppl-entry-forms"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/evidence-ledger/.superpowers/sdd/progress.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "coord-ledger-phase2-task21-route"
+  ],
+  "acceptance": [
+    "Read the Phase 2 plan plus Task 0.4 owner ruling events before briefing any next task.",
+    "Do not edit evidence-ledger product code in this packet.",
+    "Prepare the smallest next owner-gate or director brief needed to unblock Task 2.2 numeric commission-rate bounds, preserving the owner ruling that all commission models need model-specific numeric bounds.",
+    "Preserve the owner ruling that PPL entry forms ship in Phase 2 as Task 2.5b.",
+    "Send a Pipeline mailbox status or decision-request naming the exact missing numeric-bound table, or report that no owner input is needed with cited evidence."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": "d3e87e64d3e1e4b1f4441e8bac0f69947df64e89",
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/evidence-ledger/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md"
+  ]
+}

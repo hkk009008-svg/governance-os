@@ -1,0 +1,39 @@
+{
+  "id": "operator-ledger-phase2-task21-lanev",
+  "wave": 2,
+  "cycle": "ledger-phase2-task21-2026-07-08",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "phase2-task2.1-client-write-path"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/evidence-ledger/supabase/migrations/",
+    "/Users/hyungkoookkim/evidence-ledger/db/tests/",
+    "/Users/hyungkoookkim/evidence-ledger/docs/PROGRAM-MANUAL.md",
+    "/Users/hyungkoookkim/evidence-ledger/ARCHITECTURE.md",
+    "/Users/hyungkoookkim/evidence-ledger/DECISIONS.md",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-task21-write-path"
+  ],
+  "acceptance": [
+    "Remain blocked until director sends a Task 2.1 outcome with commit/range and verify-request.",
+    "After the director outcome, independently verify the named diff against the Phase 2 plan, ADR-007 write-path constraints, R-START truth docs, and committed DB tests.",
+    "Issue exactly one Pipeline mailbox verification-report with GO, NITS, or FAIL for Task 2.1.",
+    "No push, lock release, coordinator-mail consumption, paid API spend, pod spend, or evidence-ledger product edits."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "director",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "/Users/hyungkoookkim/evidence-ledger/supabase/migrations/",
+    "/Users/hyungkoookkim/evidence-ledger/db/tests/"
+  ]
+}
