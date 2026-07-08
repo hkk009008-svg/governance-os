@@ -166,6 +166,36 @@ def test_subagent_utilization_decision_is_rendered_and_documented():
         assert "direct/no-op because" in text
 
 
+def test_capacity_split_default_is_model_backed_and_surface_synced():
+    rendered = model.render_capacity_split_default()
+
+    required_phrases = (
+        "Capacity Split Default:",
+        "single-pair fast path remains the default for narrow or shared-file work",
+        "divisible or preplanned larger work defaults to dual-pair routing",
+        "two independently reviewable deliverables",
+        "director owns Chunk A and operator verifies Chunk A",
+        "director2 owns Chunk B and operator2 verifies Chunk B",
+        "Pair B performs bounded planning or preflight instead of idle standby",
+        "coordinator owns convergence",
+    )
+
+    for phrase in required_phrases:
+        assert phrase in rendered
+
+    for path in (
+        "AGENTS.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".codex/agents/protocol-coordinator.toml",
+        ".codex/agents/agent01.toml",
+    ):
+        text = _compact(_read(path))
+        for phrase in required_phrases:
+            assert phrase in text
+
+
 def test_side_effect_executor_token_contract_is_model_backed_and_documented():
     rendered = model.render_side_effect_executor_contract()
 

@@ -332,6 +332,15 @@ empirical basis, beneficiary/consent) is in docs/PROTOCOL-RULES-LOG.md.
   after git/mailbox refresh; close the loop with an operator verification-report
   GO/NITS/FAIL and an exact next trigger.
 
+- **Capacity Split Default:** single-pair fast path remains the default for
+  narrow or shared-file work. divisible or preplanned larger work defaults to
+  dual-pair routing when the coordinator can name two independently reviewable
+  deliverables: director owns Chunk A and operator verifies Chunk A; director2
+  owns Chunk B and operator2 verifies Chunk B. If not divisible, one pair
+  implements while Pair B performs bounded planning or preflight instead of idle
+  standby. coordinator owns convergence: capacity packets, one consolidated
+  route, join condition, conflict handling, and final closeout evidence.
+
 - **Rule #23 co-sign is TIERED** (Lever #7, audit `wf_6be2ee18-f4b`; body in
   `docs/protocol/agents/director-operator.md`). Classifier: *would the
   co-signer's verification change which files/sites the implementation touches?*

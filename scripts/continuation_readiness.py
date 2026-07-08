@@ -20,6 +20,7 @@ from codex_protocol_model import (
     render_ledger_cli_bridge,
     render_ledger_start_guard,
     render_agent_extension_summary,
+    render_capacity_split_default,
     render_runtime_env_contract,
     render_seat_subagent_development,
     render_start_session_inhabitance,
@@ -164,6 +165,7 @@ def render_codex(root: Path) -> None:
     print(render_ledger_start_guard())
     print("durable state: " + ", ".join(DURABLE_STATE_ARTIFACTS))
     print(render_agent_extension_summary(agents))
+    print(render_capacity_split_default())
     print(render_seat_subagent_development())
     print(render_start_session_inhabitance(agents))
     print(render_runtime_env_contract(os.environ))

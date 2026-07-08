@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-08 @ f3656d0*
+*Last verified: 2026-07-09 @ d589a29*
 
 ## 1. Purpose
 
@@ -56,8 +56,8 @@ Key directories:
 | `collect_monitor_state` | `scripts/mailbox_monitor.py:175` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
 | `build_guard` | `scripts/ledger_start_guard.py:133` | Enforces Pipeline-first startup for ledger-routed Codex seats. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
-| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:409` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:682` | Renders guard guidance into readiness output. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:419` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:699` | Renders guard guidance into readiness output. |
 
 ## 4. Runtime Invariants
 

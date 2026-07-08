@@ -286,6 +286,16 @@ PAIR_OPERATING_RULES = (
     "Effectiveness means a closed loop: director artifact -> operator verification-report GO/NITS/FAIL -> director consumes the report or coordinator closes; gate scripts never substitute for operator verification-report GO.",
 )
 
+CAPACITY_SPLIT_DEFAULT_RULES = (
+    "single-pair fast path remains the default for narrow or shared-file work.",
+    "divisible or preplanned larger work defaults to dual-pair routing.",
+    "Coordinator promotion question: can this route produce two independently reviewable deliverables?",
+    "If yes: director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.",
+    "If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.",
+    "The two active chunks must name disjoint write sets, explicit interfaces, focused tests, forbidden side effects, and separate verify-request/verification-report loops.",
+    "coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.",
+)
+
 SEAT_SUBAGENT_DEVELOPMENT_RULES = (
     "Core rule: seats retain authority; subagents own bounded work.",
     "Live seats and coordinator may choose bounded subagents at seat discretion; this does not require a separate user request for delegation.",
@@ -599,6 +609,13 @@ def render_pair_operating_contract() -> str:
     """Return the efficient director/operator pair contract as Markdown."""
     lines = ["Pair Operating Contract:"]
     lines.extend(f"- {rule}" for rule in PAIR_OPERATING_RULES)
+    return "\n".join(lines)
+
+
+def render_capacity_split_default() -> str:
+    """Return the default promotion rule for one-pair versus two-pair routes."""
+    lines = ["Capacity Split Default:"]
+    lines.extend(f"- {rule}" for rule in CAPACITY_SPLIT_DEFAULT_RULES)
     return "\n".join(lines)
 
 
@@ -1004,6 +1021,7 @@ def render_surface_summary() -> str:
         + ", ".join(name for name, _ in ACTIVE_KERNEL_INVARIANTS),
         "Demoted optional concepts: " + ", ".join(demoted_names),
         "Pair Operating Contract: director -> operator is the fast path; mailbox artifact, not chat",
+        "Capacity Split Default: divisible or preplanned larger work defaults to dual-pair routing",
         "Seat Subagent Development: seats retain authority; subagents own bounded work",
         "Side-Effect Executor Token: generic user approval is unit consent, not executor election",
         "Ledger CLI Bridge: Pipeline kernel -> evidence-ledger target via "
@@ -1032,6 +1050,9 @@ def main() -> int:
     print()
     print("## Pair Operating Contract")
     print(render_pair_operating_contract())
+    print()
+    print("## Capacity Split Default")
+    print(render_capacity_split_default())
     print()
     print("## Seat Subagent Development")
     print(render_seat_subagent_development())
