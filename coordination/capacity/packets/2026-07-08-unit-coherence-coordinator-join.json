@@ -22,15 +22,25 @@
     "Close with one coordinator synthesis artifact or handoff that cites capacity board, smoke, route validation, implementation commit/range, and operator verdict.",
     "Do not edit protocol implementation files as coordinator."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "operator GO evidence: coordination/mailbox/sent/2026-07-08T03-07-45Z-operator-to-all-verification-report.md issued GO for commit 8759a89 and range 02efcef..8759a89.",
+    "capacity board evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 -> valid: true; BLOCKING ISSUES - none.",
+    "route validation evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 --validate-route coordination/mailbox/sent/2026-07-08T01-58-03Z-coordinator-to-all-coordination.md -> route valid: true; BLOCKING ISSUES - none.",
+    "protocol doctor evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave 2 --route coordination/mailbox/sent/2026-07-08T01-58-03Z-coordinator-to-all-coordination.md -> PROTOCOL DOCTOR: PASS.",
+    "smoke OK evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py -> OK with pre-existing 215 stale commit-SHA warnings.",
+    "handoff artifact: docs/HANDOFF-coordinator-2026-07-08-unit-coherence-side-effect-token-closeout.md",
+    "next trigger: user routes the next execution-strength transplant cycle, or asks coordinator to open a fresh capacity route for candidates 1-3."
+  ],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-08-unit-coherence-side-effect-token-closeout.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "target_commit": "8759a89",
+  "commit_range": "02efcef..8759a89",
   "scope_files": [
     "coordination/capacity/packets/2026-07-08-unit-coherence-coordinator-join.json",
-    "coordination/mailbox/sent/2026-07-08T01-58-03Z-coordinator-to-all-coordination.md"
+    "coordination/mailbox/sent/2026-07-08T01-58-03Z-coordinator-to-all-coordination.md",
+    "coordination/mailbox/sent/2026-07-08T03-24-28Z-coordinator-to-all-coordination.md",
+    "docs/HANDOFF-coordinator-2026-07-08-unit-coherence-side-effect-token-closeout.md"
   ]
 }
