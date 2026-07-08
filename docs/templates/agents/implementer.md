@@ -50,8 +50,9 @@ Per `AGENTS.md` (or `CLAUDE.md` if you're Claude Code):
 1. Run impact analysis before editing existing symbols (grep callers + Read call sites)
 2. Run scope check after edits — confirm only expected files changed
 3. <task-specific gotcha>
-4. **Brief-pattern reference adherence.** When the brief says "mirror pattern X at file:line" or "use the existing _foo_-style endpoint," verify the FULL shape of X — signature, route path, scope parameters, error handling, lock guards — not just the called function. Brief-pattern references are implicit specs; silent deviations cascade. If the named helper doesn't exist or the wording is ambiguous, report the divergence in your status BEFORE implementing. (Broader codifier-side discipline: see Rule #12 — brief-level grep-the-writes — in `docs/PROTOCOL-RULES-LOG.md`.)
+4. **Brief-pattern reference adherence.** When the brief says "mirror pattern X at file:line" or "use the existing _foo_-style endpoint," verify the FULL shape of X — signature, route path, scope parameters, error handling, lock guards — not just the called function. Brief-pattern references are implicit specs; silent deviations cascade; brief-pattern references are runtime claims when they cite canonical sites: verify the named symbol exists at the cited SHA and verify the cited SHA exhibits the named sub-pattern. If the named helper doesn't exist or the wording is ambiguous, report the divergence in your status BEFORE implementing. (Broader codifier-side discipline: see Rule #12 — brief-level grep-the-writes — in `docs/PROTOCOL-RULES-LOG.md`.)
 5. **Scoping check on new endpoints.** When adding/touching an HTTP endpoint operating on a tenant- or project-scoped resource, verify the route takes the scoping ID explicitly. Do NOT scan to find a matching resource by leaf ID alone — IDs can collide across tenants/projects depending on the ID-generation scheme. Inspect at least one similar existing endpoint in the same file to confirm the route shape and scoping. (Broader codifier-side discipline: see Rule #13 — symmetric-endpoint audit — in `docs/PROTOCOL-RULES-LOG.md`.)
+6. **Pattern-doc uniformity pass.** When a brief cites a migration or pattern doc and says cumulative production sites cross 20 with per-site detail drift, include the requested pattern-doc uniformity pass or report why the doc class is exempt before editing.
 
 ## Verification
 
@@ -109,6 +110,11 @@ trim the template, do NOT trim these:
   comparison: design-time check is ~1 grep; post-commit verification
   catch cost ~200k+ tokens + the fix commit's developer-time. Front-load
   is cheap.
+- **Pattern-doc uniformity pass** — when a canonical migration/pattern doc
+  accumulates enough sites to drift, the implementer must not only apply
+  the current site change; it must also carry the documented uniformity
+  pass if the brief says cumulative production sites cross 20 and per-site
+  detail drift is present.
 - **Commit SHA capture** — observed failure mode: implementer-reported
   SHAs sometimes 1 commit stale because a post-commit hook amends a
   state-snapshot file, changing HEAD after `git commit` returns. Capturing

@@ -415,6 +415,15 @@ write-site proves it does exist at runtime.
 - Function call: `grep -rn "<func_name>("`; verify production paths,
   not test-only. Async/background paths count as production.
 
+**Canonical pattern references:** brief-pattern references are runtime
+claims when they cite canonical sites. If a brief, dispatch-claim, or
+implementer prompt says "mirror pattern X at file:line" or cites a
+canonical site SHA, verify the named symbol exists at the cited SHA and
+verify the cited SHA exhibits the named sub-pattern (for example V1
+strict, V2 wrap, Base, or Mixed-shape). A reference that names a helper
+that does not exist at the cited SHA is a divergence to report before
+dispatch, not a stylistic mismatch to discover in Lane V.
+
 **Two-layer-defense with v4.1 CC-2.** Rule #12 catches at brief-write
 time (upstream); CC-2 catches at Lane V time (downstream). Both
 layers operate; post-codification Lane V catches of symbol-divergence
@@ -455,11 +464,15 @@ a progress-queues map); persistent flag on project record
    symmetric fold or follow-up.
 4. Ask: *do existing endpoints have defenses the new one should
    mirror?* If yes, include OR document why exempt.
+5. audit-completeness is not audit-disposition. Enumeration only proves
+   "I looked"; the brief or commit must state the disposition for each
+   sibling as mirror / defer / document / exempt.
 
 **Verification in brief/commit body:** one-liner listing audited
 endpoints (e.g., "Audited `/resource/process`, `/resource/approve`
-for `output_path` precondition; mirroring."). Fold the
-symmetric fix OR explicitly defer with rationale.
+for `output_path` precondition; mirroring."). Fold the symmetric fix
+OR explicitly defer with rationale, and state the disposition for each
+sibling so the audit is both complete and dispositioned.
 
 **Composition with Rule #9.** Internal-review's design-intent context
 creates blind spot for symmetric cases; Lane V cold-context catches
@@ -517,6 +530,14 @@ direction override — rare; reserved for rule-gap signals.
 symbols (Rule #12); identify canonical pattern + site SHA; classify
 per-site variant; Rule #13 audit; verify 5 criteria. Operator-internal;
 no mailbox event. ~10-15min.
+
+**Pattern-doc uniformity pass trigger.** When an operator-driven slice
+depends on a migration or pattern doc and cumulative production sites
+cross 20 while per-site detail drift is visible across prior pass
+windows, the next Lane A docs slice or Lane B brief includes a
+pattern-doc uniformity pass. The dispatch-claim carries the site-count
+grep and the drift summary; the implementer brief either performs the
+uniformity pass or states why the doc class is exempt.
 
 **Stage 2: Dispatch-claim mailbox event.** Cite scope + canonical
 pattern + canonical site SHA + per-site variant table + Rule #12 grep

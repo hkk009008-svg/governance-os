@@ -251,8 +251,11 @@ Scope: both
 Trigger: a brief says "mirror pattern X at file:line" or "use the existing _foo_-style endpoint".
 Action: verify the FULL shape of X (signature, route path, scope params, error
 handling, lock guards) before implementing — brief-pattern references are implicit
-specs. If the named helper doesn't exist or the wording is ambiguous, report the
-divergence BEFORE implementing.
+specs. If the reference names a canonical site/SHA, brief-pattern references are
+runtime claims when they cite canonical sites: verify the named symbol exists at
+the cited SHA and verify the cited SHA exhibits the named sub-pattern. If the
+named helper doesn't exist or the wording is ambiguous, report the divergence
+BEFORE implementing.
 Details: docs/protocol/agents/director-operator.md (composes with Rule #12).
 
 ## R-PID — pid-scope endpoint check
@@ -275,6 +278,8 @@ Scope: both
 Trigger: a brief names a schema field / dict key / mutator / write-path as a target of new code.
 Action: grep the production WRITE site (not just the type declaration) to prove the
 symbol is populated at runtime — type-declaration is not write-evidence. Cite the grep.
+For canonical pattern references, verify the named symbol exists at the cited
+SHA and verify the cited SHA exhibits the named sub-pattern.
 Details: docs/protocol/agents/director-operator.md (Rule #12).
 
 ## Rule #13 — symmetric-endpoint audit
@@ -283,7 +288,9 @@ Trigger: adding/modifying an endpoint that bypasses a fence, gates on a persiste
 flag, or touches shared state other endpoints touch.
 Action: audit ALL sibling endpoints on the same fence/flag/state for parallel checks
 the new one should mirror — and for checks the existing ones may be missing; fold the
-fix or document the exemption.
+fix or document the exemption. audit-completeness is not audit-disposition:
+enumerating siblings is incomplete until you state the disposition for each
+sibling as mirror / defer / document / exempt.
 Details: docs/protocol/agents/director-operator.md (Rule #13).
 
 # Director–Operator concurrent operation (minimal model)

@@ -263,6 +263,11 @@ registry table above → candidate row removed from this section.
   codifier MUST not only enumerate sibling endpoints (completeness) but
   ALSO state the disposition for each (mirror / defer / document /
   exempt). Cleanly separates "did you look?" from "what did you decide?"
+- **Execution-strength transplant (2026-07-08):** Without changing the
+  N=1 count or promoting this row to a new registry rule, the existing
+  Rule #13 surfaces now carry the operational wording:
+  audit-completeness is not audit-disposition; state the disposition for
+  each sibling as mirror / defer / document / exempt.
 - **N=2 emergence criteria:** A second Lane V (or director-driven audit)
   where the audit enumeration is complete but disposition is missing or
   ambiguous, AND the missed disposition cascades to a real finding (not
@@ -290,6 +295,12 @@ registry table above → candidate row removed from this section.
   operator-driven Lane A docs slice MUST include a uniformity pass."
   Or alternatively, fold uniformity passes into Lane B implementer
   briefs automatically (cycle-12 broad-B precedent).
+- **Execution-strength transplant (2026-07-08):** Without changing the
+  1.5 count or promoting this row to a new registry rule, the Rule #14
+  and implementer-template surfaces now include the pattern-doc uniformity pass
+  trigger: when cumulative production sites cross 20 and per-site detail drift
+  is visible, the next Lane A docs slice or Lane B brief must carry the
+  uniformity pass or document an exemption.
 - **N=2 emergence criteria:** A FUTURE migration-pattern doc (e.g., a
   new P2-X migration doc in cycle-14+) exhibits the same partial-close
   → drift → full-enumeration-pass pattern. The emergence would
@@ -317,6 +328,12 @@ registry table above → candidate row removed from this section.
   cited SHA exhibits the named sub-pattern (V1 strict vs. V2 wrap vs.
   Base vs. Mixed-shape). Closes the brief-vs-source divergence at the
   reference layer, not just at the write-site layer.
+- **Execution-strength transplant (2026-07-08):** Without changing the
+  N=1 count or promoting this row to a new registry rule, the existing
+  Rule #12 surfaces now carry the operational wording: brief-pattern
+  references are runtime claims when they cite canonical sites; verify
+  the named symbol exists at the cited SHA and verify the cited SHA
+  exhibits the named sub-pattern.
 - **N=2 emergence criteria:** A second brief-vs-source divergence at
   the canonical-site reference layer (operator OR director-authored
   brief cites a function/SHA combination that doesn't exhibit the

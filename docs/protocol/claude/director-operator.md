@@ -457,6 +457,15 @@ exist at runtime.
   verify they're production paths and not test-only. Async/background
   paths (worker threads, deferred queues) count as production.
 
+**Canonical pattern references:** brief-pattern references are runtime
+claims when they cite canonical sites. If a brief, dispatch-claim, or
+implementer prompt says "mirror pattern X at file:line" or cites a
+canonical site SHA, verify the named symbol exists at the cited SHA and
+verify the cited SHA exhibits the named sub-pattern (for example V1
+strict, V2 wrap, Base, or Mixed-shape). A reference that names a helper
+that does not exist at the cited SHA is a divergence to report before
+dispatch, not a stylistic mismatch to discover in Lane V.
+
 **What "verified" looks like in a brief or dispatch prompt:** the
 brief includes the grep command's output (or a one-line excerpt +
 file:line ref) under the named symbol. Without it, the symbol is a
@@ -514,14 +523,18 @@ checks the existing endpoints may be missing.
 4. For the new endpoint, ask: *"Are there existing endpoints whose
    defenses I should be mirroring?"* If yes, include them in the new
    endpoint OR document why the new endpoint is genuinely exempt.
+5. audit-completeness is not audit-disposition. Enumeration only proves
+   "I looked"; the brief or commit must state the disposition for each
+   sibling as mirror / defer / document / exempt.
 
 **What "verified" looks like in a brief or commit body:** the brief
 includes a one-liner listing the existing endpoints checked (e.g.,
 "Audited `/resource/process`, `/resource/re-process`,
 `/resource/approve` for parallel precondition checks; mirroring
-`output_path` existence guard from `/resource/process`."). The
-commit body either folds the symmetric fix OR explicitly defers it
-with rationale.
+`output_path` existence guard from `/resource/process`."). The commit
+body either folds the symmetric fix OR explicitly defers it with
+rationale, and state the disposition for each sibling so the audit is
+both complete and dispositioned.
 
 **Why this matters:** internal-review with full design-intent context
 creates a structural blind spot — the reviewer's attention is on the
@@ -627,6 +640,14 @@ Operator conducts a read-only survey of the proposed scope:
 - Classify per-site variant fit (per pattern doc's variant taxonomy).
 - Rule #13 audit: verify no sibling-site partial-coverage risk.
 - Verify the 5 selection criteria are met.
+
+**Pattern-doc uniformity pass trigger.** When an operator-driven slice
+depends on a migration or pattern doc and cumulative production sites
+cross 20 while per-site detail drift is visible across prior pass
+windows, the next Lane A docs slice or Lane B brief includes a
+pattern-doc uniformity pass. The dispatch-claim carries the site-count
+grep and the drift summary; the implementer brief either performs the
+uniformity pass or states why the doc class is exempt.
 
 Pre-scope is operator-internal; no mailbox event. Typical wall-clock:
 ~10-15min depending on scope size.

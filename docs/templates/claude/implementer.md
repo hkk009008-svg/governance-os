@@ -39,8 +39,9 @@ Per `/Users/.../CLAUDE.md`:
 1. Before editing an existing symbol, `grep -rn 'symbolName' --include='*.py' .` to find callers/importers and Read the call sites; report blast radius to the user.
 2. After edits, run `git diff --stat` to confirm scope matches intent.
 3. <task-specific gotcha>
-4. **Brief-pattern reference adherence.** When the brief says "mirror pattern X at file:line" or "use the existing _foo_-style endpoint," verify the FULL shape of X — signature, route path, scope parameters, error handling, lock guards — not just the called function. Brief-pattern references are implicit specs; silent deviations cascade. If the named helper doesn't exist (e.g., brief says `_mutate_shot` but the actual pattern uses `mutate_project`) or the wording is ambiguous, report the divergence in your status BEFORE implementing. (Broader codifier-side discipline: see Rule #12 — brief-level grep-the-writes — in `docs/PROTOCOL-RULES-LOG.md`.)
+4. **Brief-pattern reference adherence.** When the brief says "mirror pattern X at file:line" or "use the existing _foo_-style endpoint," verify the FULL shape of X — signature, route path, scope parameters, error handling, lock guards — not just the called function. Brief-pattern references are implicit specs; silent deviations cascade; brief-pattern references are runtime claims when they cite canonical sites: verify the named symbol exists at the cited SHA and verify the cited SHA exhibits the named sub-pattern. If the named helper doesn't exist (e.g., brief says `_mutate_shot` but the actual pattern uses `mutate_project`) or the wording is ambiguous, report the divergence in your status BEFORE implementing. (Broader codifier-side discipline: see Rule #12 — brief-level grep-the-writes — in `docs/PROTOCOL-RULES-LOG.md`.)
 5. **pid-scope check on new endpoints.** When adding/touching an HTTP endpoint operating on a project-scoped resource (shots, scenes, locations, characters), verify the route takes `<pid>` explicitly. Do NOT scan via `list_projects()` to find a matching resource — IDs can collide across projects (e.g., `shot_id` follows `shot_{scene}_{i}` and matches across projects with matching scene/index layouts). Inspect at least one similar existing endpoint in the same file (e.g., `api_update_shot_prompt`) to confirm the route shape and scoping. (Broader codifier-side discipline: see Rule #13 — symmetric-endpoint audit — in `docs/PROTOCOL-RULES-LOG.md`.)
+6. **Pattern-doc uniformity pass.** When a brief cites a migration or pattern doc and says cumulative production sites cross 20 with per-site detail drift, include the requested pattern-doc uniformity pass or report why the doc class is exempt before editing.
 
 ## Verification
 
@@ -120,3 +121,8 @@ template, do NOT trim these:
   B-003 Option E** — hook no longer amends; STATE.md is gitignored;
   `git commit` stdout's SHA is now authoritative again. Guidance kept
   for the audit trail but the stale-by-one failure mode no longer exists.
+- **Pattern-doc uniformity pass** — when a canonical migration/pattern doc
+  accumulates enough sites to drift, the implementer must not only apply
+  the current site change; it must also carry the documented uniformity
+  pass if the brief says cumulative production sites cross 20 and per-site
+  detail drift is present.

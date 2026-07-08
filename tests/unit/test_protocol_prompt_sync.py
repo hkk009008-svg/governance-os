@@ -22,6 +22,10 @@ def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
+def _compact(text: str) -> str:
+    return " ".join(text.split())
+
+
 def test_agent_neutral_reviewer_template_exists_with_schema():
     text = _read("docs/templates/agents/reviewer.md")
 
@@ -215,4 +219,64 @@ def test_side_effect_executor_token_detailed_contract_is_surface_synced():
     ):
         text = _read(path)
         for phrase in detailed_phrases:
+            assert phrase in text
+
+
+def test_rule_12_pattern_reference_transplant_is_surface_synced():
+    required_phrases = (
+        "brief-pattern references are runtime claims when they cite canonical sites",
+        "verify the named symbol exists at the cited SHA",
+        "verify the cited SHA exhibits the named sub-pattern",
+    )
+
+    for path in (
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/protocol/agents/director-operator.md",
+        "docs/protocol/claude/director-operator.md",
+        ".agents/skills/seat-director/SKILL.md",
+        "docs/templates/agents/implementer.md",
+        "docs/templates/claude/implementer.md",
+    ):
+        text = _compact(_read(path))
+        for phrase in required_phrases:
+            assert phrase in text
+
+
+def test_rule_13_disposition_transplant_is_surface_synced():
+    required_phrases = (
+        "audit-completeness is not audit-disposition",
+        "mirror / defer / document / exempt",
+        "state the disposition for each sibling",
+    )
+
+    for path in (
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/protocol/agents/director-operator.md",
+        "docs/protocol/claude/director-operator.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-director/r-brief-template.md",
+    ):
+        text = _compact(_read(path))
+        for phrase in required_phrases:
+            assert phrase in text
+
+
+def test_pattern_doc_uniformity_transplant_is_surface_synced():
+    required_phrases = (
+        "pattern-doc uniformity pass",
+        "cumulative production sites cross 20",
+        "per-site detail drift",
+    )
+
+    for path in (
+        "docs/protocol/agents/director-operator.md",
+        "docs/protocol/claude/director-operator.md",
+        "docs/templates/agents/implementer.md",
+        "docs/templates/claude/implementer.md",
+        "docs/PROTOCOL-RULES-LOG.md",
+    ):
+        text = _compact(_read(path))
+        for phrase in required_phrases:
             assert phrase in text

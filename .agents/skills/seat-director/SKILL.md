@@ -49,7 +49,8 @@ A "ready to commit" fix on a cross-cutting module (`auto_approve.py`/`<PROJECT>/
 The brief gates the fix: the co-signer reads it, the implementer obeys it. Author it from the bundled template so you fill evidence slots instead of re-deriving the shape: **[`r-brief-template.md`](r-brief-template.md)**. The bar that makes it dispatch-ready:
 
 - **Rule #12 — grep-the-writes:** when the brief names a field/dict-key/mutator/write-path as a target, paste the **production WRITE-site grep output** under it. Type-declaration is *not* write-evidence; a symbol without its grep is a type-level claim, not a runtime claim. Mixed-shape symbols (typed attr AND raw-dict) → grep BOTH surfaces.
-- **Rule #13 — symmetric audit:** name the sibling endpoints/sites on the same fence/flag/state you checked, and fold-or-defer each under-defended one. The brief carries the one-liner.
+- **Rule #12 pattern references:** brief-pattern references are runtime claims when they cite canonical sites; verify the named symbol exists at the cited SHA and verify the cited SHA exhibits the named sub-pattern before dispatch.
+- **Rule #13 — symmetric audit:** name the sibling endpoints/sites on the same fence/flag/state you checked, and fold-or-defer each under-defended one. audit-completeness is not audit-disposition: state the disposition for each sibling as mirror / defer / document / exempt. The brief carries the one-liner.
 - **Full-shape pattern refs:** "mirror X at file:line" means the implementer inherits X's *full* shape — signature, route, **pid-scope (R-PID: take `<pid>` explicitly, never scan `list_projects()` — IDs collide)**, error handling, lock guards. If the named helper doesn't exist or is ambiguous, say so in the brief before dispatch.
 
 ## Implement directly vs orchestrate — and name the right reviewer
@@ -158,7 +159,9 @@ The loser **abandons** — `claim-lock` exit 1 means you never had a valid claim
 | "I'm the implementer, async-OK lets me self-commit." | §6c forbids it for CRITICAL cross-cutting. Co-sign first. |
 | "I'll dispatch now; the co-sign can arrive before I *commit*." | Wrong timing. The gate is before DISPATCH — dispatching scope-blind IS the violation. |
 | "The brief names the symbol; the type says it exists." | Type-declaration ≠ write-evidence. Grep the write site (Rule #12) or label it a type-level claim. |
+| "The brief cites a canonical site; the pattern name is enough." | No: verify the named symbol exists at the cited SHA and verify the cited SHA exhibits the named sub-pattern. |
 | "New guard added; the brief is done." | Did you audit the siblings on the same fence (Rule #13)? An un-audited sibling is the next defect. |
+| "I listed siblings, so the audit is complete." | audit-completeness is not audit-disposition; state the disposition for each sibling as mirror / defer / document / exempt. |
 | "I'll commit, the brief can follow." | The R-BRIEF precedes implementation — it is what the co-signer reads. |
 | "I verified the fix myself, it's fine." | impl≠verifier — your operator verifies, not you. |
 | "Lock-claim sequence is the whole corrected protocol." | §6b is the primitive; the full §6c chain (brief, co-sign, verify) still applies. |
@@ -170,6 +173,7 @@ The loser **abandons** — `claim-lock` exit 1 means you never had a valid claim
 - Claiming a lock for a lane-only module (domain subsystem files, processing-chain files, etc.) → over-lock; locks are only for the four cross-cutting modules.
 - About to dispatch/commit a CRITICAL cross-cutting fix with no Tier-A report in the mailbox → §6c.
 - Brief names a write-target with no grep output under it → Rule #12 hole.
+- Brief-pattern reference has no proof the symbol exists at the cited SHA or no proof the cited SHA exhibits the named sub-pattern → Rule #12 reference hole.
 - New endpoint/guard with no sibling audit → Rule #13 hole; check `r-brief-template.md`.
 - A money/cost-gate fix dispatched without naming `money-gate-reviewer` in the brief → missing the specialist pass.
 - Writing domain-specific subsystem or pipeline code without loading the matching `<domain-skill>` → R-SKILL.
