@@ -25,13 +25,18 @@
     "Issue one verification-report with GO, NITS, or FAIL and executed evidence.",
     "Do not edit implementation files or repeat director work."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
-  "next_recipient": "coordinator",
-  "status": "blocked",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "done_evidence": [
+    "604c570 operator(verify): FAIL side-effect executor token",
+    "coordination/mailbox/sent/2026-07-08T02-24-17Z-operator-to-all-verification-report.md issued FAIL for 02efcef..48ca2a8.",
+    "env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_capacity.py::test_route_validation_requires_token_for_modal_side_effect_language tests/unit/test_protocol_capacity.py::test_route_validation_rejects_multi_executor_token tests/unit/test_protocol_capacity.py::test_route_validation_rejects_token_for_different_side_effect_target tests/unit/test_protocol_prompt_sync.py::test_side_effect_executor_token_detailed_contract_is_surface_synced --runxfail -q -> 6 failed.",
+    "env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_imports_smoke.py tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_coordination_tooling.py tests/unit/test_ceremony_gates.py tests/unit/test_protocol_capacity.py tests/unit/test_protocol_prompt_sync.py tests/unit/test_codex_ledger_bridge.py -q -> 75 passed, 6 xfailed."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-08T02-24-17Z-operator-to-all-verification-report.md",
+  "next_recipient": "director",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-08T02-13-31Z-director-to-operator-verify-request.md",
+  "target_commit": "48ca2a8",
+  "commit_range": "02efcef..48ca2a8",
   "scope_files": [
     "scripts/codex_protocol_model.py",
     "docs/protocol/codex/continuation.md",
