@@ -32,13 +32,16 @@
     "Send exactly one Pipeline verify-request to operator with commit/range, changed files, tests, exclusions, and exact next trigger.",
     "No publication, force-push, lock action, paid API spend, pod spend, production generation, target checkout refresh, normal checkout refresh, real-data/config edit, coordinator-mail consume, or BroadcastDetailView.swift edit."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "initial verify-request: coordination/mailbox/sent/2026-07-09T02-45-50Z-director-to-operator-verify-request.md reports Task 2.5A implementation commit 7503311, range c1b5f3e..7503311, six allowed files, smoke/build/syntax/diff evidence, and known DB/simulator boundaries.",
+    "fix verify-request: coordination/mailbox/sent/2026-07-09T03-14-44Z-director-to-operator-verify-request.md reports narrow fix commit 0ffcffa, fix range 7503311..0ffcffa, prior fixed Task 2.5A range c1b5f3e..0ffcffa, and load-bearing snake_case RPC-param evidence."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-09T03-14-44Z-director-to-operator-verify-request.md",
   "next_recipient": "operator",
-  "status": "ready",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-09T03-14-44Z-director-to-operator-verify-request.md",
+  "target_commit": "0ffcffa",
+  "commit_range": "c1b5f3e..0ffcffa",
   "scope_files": [
     "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Entry/ResultEntryView.swift",
     "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Services/EntryAPI.swift",

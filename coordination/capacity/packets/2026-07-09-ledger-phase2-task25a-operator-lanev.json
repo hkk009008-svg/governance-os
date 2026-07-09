@@ -27,13 +27,16 @@
     "Issue exactly one Pipeline mailbox verification-report with GO, NITS, or FAIL for Task 2.5A.",
     "Do not edit evidence-ledger product files, verify Task 2.6A, push, consume coordinator mail, claim locks, spend paid API budget, or start pods."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "initial verification-report: coordination/mailbox/sent/2026-07-09T02-56-43Z-operator-to-all-verification-report.md reports VERDICT: FAIL for range c1b5f3e..7503311, blocking on ResultEntryPayload camelCase RPC params.",
+    "fix verification-report: coordination/mailbox/sent/2026-07-09T03-22-34Z-operator-to-all-verification-report.md reports VERDICT: GO for fix commit 0ffcffa and range 7503311..0ffcffa, with Pipeline smoke OK, evidence-ledger smoke OK, diff checks, source-level PostgREST encoder audit, Swift GREEN runtime encoding probe, build-for-testing success, and simulator execution boundary recorded."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-09T03-22-34Z-operator-to-all-verification-report.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-09T03-14-44Z-director-to-operator-verify-request.md",
+  "target_commit": "0ffcffa",
+  "commit_range": "7503311..0ffcffa",
   "scope_files": [
     "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Entry/ResultEntryView.swift",
     "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Services/EntryAPI.swift",
