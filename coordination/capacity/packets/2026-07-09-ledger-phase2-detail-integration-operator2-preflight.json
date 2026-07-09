@@ -1,0 +1,39 @@
+{
+  "id": "operator2-ledger-phase2-detail-integration-preflight",
+  "wave": 2,
+  "cycle": "ledger-phase2-detail-integration-2026-07-09",
+  "owner": "operator2",
+  "packet_type": "operator-preflight",
+  "row_ids": [
+    "phase2-task2.5-2.6-detail-integration",
+    "phase2-task2.6-manual-status"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Broadcasts/BroadcastDetailView.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Services/EntryAPI.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Services/ResultHistoryAPI.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/coordination/presence/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start from /Users/hyungkoookkim/Pipeline, run ledger_start_guard.py --seat operator2 --wave 2, read this coordinator route, then inspect only the routed worktree state.",
+    "Run bounded read-only preflight for route/base/worktree cleanliness, normal-checkout staleness, likely verification selectors, absence of real-data/config changes, and whether the existing EntryAPI/ResultHistoryAPI methods can support the detail integration without extra write-surface edits.",
+    "Send a Pipeline mailbox verification-report or status artifact scoped only to preflight readiness; do not verify Director implementation until Operator receives the Director verify-request.",
+    "Do not edit evidence-ledger product files, create duplicate success mail, consume coordinator mail, take user-gated side effects, or refresh the target checkout."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Broadcasts/BroadcastDetailView.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md"
+  ]
+}
