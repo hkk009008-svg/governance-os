@@ -23,10 +23,12 @@
     "Report only contradiction, missing required evidence, changed safety boundary, or a concise GO-for-route status to coordinator; do not duplicate Director implementation work.",
     "Do not edit evidence-ledger product files, issue Operator GO, consume coordinator mail, take user-gated side effects, or create duplicate success mail."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-09T03-39-57Z-director2-to-coordinator-coordination.md reports director2's bounded detail-integration preflight: no contradiction, missing required evidence, or changed safety boundary; route write set remains sufficient for BroadcastDetailView.swift plus docs/MANUAL.md."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-09T03-39-57Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "done",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
