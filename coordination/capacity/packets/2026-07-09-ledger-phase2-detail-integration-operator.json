@@ -28,10 +28,10 @@
   "done_evidence": [],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
-  "status": "blocked",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "active",
+  "verify_request": "coordination/mailbox/sent/2026-07-09T03-47-28Z-director-to-operator-verify-request.md",
+  "target_commit": "9d93bca",
+  "commit_range": "0ffcffa..9d93bca",
   "scope_files": [
     "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Broadcasts/BroadcastDetailView.swift",
     "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md"
