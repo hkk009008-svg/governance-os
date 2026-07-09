@@ -25,10 +25,12 @@
     "Issue exactly one Pipeline mailbox verification-report with GO, NITS, or FAIL for this integration lane.",
     "Do not edit evidence-ledger product files, verify unrelated ranges, consume coordinator mail, take user-gated side effects, or create duplicate success mail."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "verification-report: coordination/mailbox/sent/2026-07-09T04-23-08Z-operator-to-all-verification-report.md reports VERDICT: GO for evidence-ledger commit 9d93bca and range 0ffcffa..9d93bca, with scope limited to BroadcastDetailView.swift, docs/MANUAL.md, and focused tests; build-for-testing succeeded; simulator and target-smoke environment boundaries are recorded."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-09T04-23-08Z-operator-to-all-verification-report.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": "coordination/mailbox/sent/2026-07-09T03-47-28Z-director-to-operator-verify-request.md",
   "target_commit": "9d93bca",
   "commit_range": "0ffcffa..9d93bca",

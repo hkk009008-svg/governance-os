@@ -26,13 +26,15 @@
     "Close with one coordinator synthesis artifact or handoff that cites capacity board, route validation, smoke, implementation commit/range, Operator verdict, and Pair B preflight disposition.",
     "Do not edit evidence-ledger product files as coordinator."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "closeout: coordination/mailbox/sent/2026-07-09T05-40-25Z-coordinator-to-all-coordination.md closes the detail-integration cycle after Director commit 9d93bca, Operator GO for 0ffcffa..9d93bca, Director2 preflight GO-for-route, Operator2 preflight GO, capacity board evidence, route validation, smoke OK evidence, protocol doctor evidence, and next trigger to owner-gated Phase 2 Task 2.7 acceptance-run routing."
+  ],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-09-ledger-phase2-detail-integration-closeout.md",
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "target_commit": "9d93bca",
+  "commit_range": "0ffcffa..9d93bca",
   "scope_files": [
     "coordination/capacity/packets/2026-07-09-ledger-phase2-detail-integration-coordinator-join.json",
     "coordination/mailbox/sent/2026-07-09T03-33-31Z-coordinator-to-all-coordination.md"
