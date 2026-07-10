@@ -819,6 +819,117 @@ a specification-review issue.
 
 ---
 
+### Task 2T: Make A Failed Canonical Scan Fail Visible Additively
+
+**Owner:** Pair A director implementation as exactly one child of the
+reviewed-but-spec-failed Task2S commit
+`8cc4beed2c6c5836f915113ccd5104c3f039c8de`; Pair A operator performs one
+final cumulative Lane V only after fresh specification and quality reviews
+pass.
+
+**Files:**
+- Modify: `scripts/protocol_effectiveness_report.py`
+- Modify: `tests/unit/test_protocol_effectiveness_report.py`
+
+No mailbox parser, cursor file, compatibility module, or architecture claim
+changes in this slice. Preserve route base `78b48ed`, accepted Task 1
+`e43acc2`, failed candidate `205f077`, reviewed-but-spec-failed children
+`92d1fbc`, `ef76fd1`, and `8cc4bee` as immutable provenance. Do not amend,
+reset, rebase, squash, rewrite, or create another routed child after the one
+Task2T child.
+
+**Interfaces:**
+- `collect_report()` retains a distinct `global_scan_error: str | None` from
+  the single canonical `scan_mailbox_events()` call. A completed scan with
+  invalid individual envelopes remains available and uses its valid events;
+  only an exception from the complete scan sets the global error.
+- When `global_scan_error` is present, every pair and all-scope reader receives
+  `MailboxUnreadObservation("unavailable", None, (), global_scan_error)`.
+  Valid cursor text remains separately rendered as cursor evidence, but no
+  reader may emit numeric zero or `all-scope-unpinned` success from an
+  unavailable scan.
+- The same exception still contributes exactly one invalid-scan record and no
+  second mailbox scan occurs.
+
+- [ ] **Step 1: Write the causal global-scan regression and honest control**
+
+Add exactly this selector:
+
+`tests/unit/test_protocol_effectiveness_report.py::test_collect_report_marks_every_reader_unavailable_when_canonical_scan_fails`
+
+The honest control uses valid cursors, one valid `to-all` event, and one
+malformed individual envelope. A successfully completed scan must retain
+`invalid_mailbox_event_count == 1`, pair unread counts of one, and coordinator
+`all-scope-unpinned` observations. The regression then injects one global
+scanner exception and proves the hook ran exactly once, the invalid scan stays
+visible, and all six observations are typed unavailable with `count is None`,
+empty event names, and preserved error detail. JSON and summary rendering must
+contain neither numeric-zero nor all-scope success for that failed scan.
+
+- [ ] **Step 2: Prove the selector RED at `8cc4bee`**
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_effectiveness_report.py::test_collect_report_marks_every_reader_unavailable_when_canonical_scan_fails -q
+```
+
+Expected: the global-exception branch reports pair `count=0` and coordinator
+`all-scope-unpinned`, while the completed-scan control passes. A missing node,
+bad fixture, or failure of the completed-scan control is not causal RED.
+
+- [ ] **Step 3: Retain scan availability explicitly**
+
+Keep the implementation local to `collect_report()`:
+
+```python
+global_scan_error: str | None = None
+try:
+    parsed_events, scanned_invalid_events = protocol_mailbox.scan_mailbox_events(root)
+except (OSError, ValueError, protocol_authority.AuthorityConfigError) as exc:
+    parsed_events = []
+    global_scan_error = f"canonical mailbox scan unavailable: {exc}"
+    scanned_invalid_events = [(sent, global_scan_error)]
+
+# Inside the one unread-observation loop:
+if global_scan_error is not None:
+    observation = MailboxUnreadObservation(
+        "unavailable", None, (), global_scan_error,
+    )
+else:
+    observation = mailbox_cursor_unread(seat, cursor, parsed_events, repo_root=root)
+```
+
+Do not encode the scan error as a fabricated cursor error, do not infer global
+failure from ordinary per-envelope invalid entries, and do not add a fallback
+scan.
+
+- [ ] **Step 4: Prove GREEN, non-vacuity, all eighteen selectors, and focus**
+
+Run the exact node from Step 2 to GREEN. Then ignore only the retained global
+error when constructing observations; only this new selector must RED. Restore
+the branch and rerun GREEN. Run all seventeen prior named selectors plus this
+new selector; the current parameterization yields twenty pytest cases. Run the
+full Task-2 focused suite, smoke, the real effectiveness renderer, and
+`git diff --check` over the two changed paths.
+
+- [ ] **Step 5: Commit one immutable fail-visible child and review it**
+
+Confirm the exact topology is
+`78b48ed -> e43acc2 -> 205f077 -> 92d1fbc -> ef76fd1 -> 8cc4bee -> <fail-visible-child>`
+and the final child's sole parent is `8cc4bee`. Commit only the two named files:
+
+```bash
+env -u GIT_INDEX_FILE git commit -m "fix(protocol): fail visible on mailbox scan errors"
+```
+
+Run fresh specification review over `8cc4bee..<fail-visible-child>`. Only after
+it passes, run fresh code-quality review. Director then sends one Operator
+verify-request for `78b48ed..<fail-visible-child>` covering all six cumulative
+implementation/provenance commits, all eighteen selectors/flips, exact paths,
+provenance, and exclusions. Do not dispatch Operator or add another child after
+a specification-review issue.
+
+---
+
 ### Task 3A: Add The Typed Runtime Identity And Authorization Foundation
 
 **Owner:** Pair B director2 implementation in a separate worktree after Task 2; Pair B operator2 verification.
@@ -2023,11 +2134,20 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): authorize interactive mutati
 - Modify: `scripts/overseer_emit.py`
 - Modify: `scripts/sign_ci_result.py`
 - Modify: `scripts/run_merge_gate.py`
+- Modify: `scripts/run_merge_gate.sh`
+- Create: `scripts/run_proof_acquirer.py`
+- Create: `scripts/verify_proof_acquirer_macos.py`
 - Modify: `threeway/gate.py`
 - Modify: `threeway/gitcas.py`
+- Create: `threeway/proof_acquisition.py`
 - Modify: `threeway/refstore.py`
+- Create: `coordination/threeway/proof-runtime/com.pipeline.proof-acquirer.plist`
 - Create: `tests/unit/test_service_principals.py`
+- Create: `tests/unit/test_proof_acquisition.py`
+- Modify: `tests/unit/test_threeway_activation_scripts.py`
 - Modify: `tests/unit/test_codex_ledger_bridge.py`
+- Create: `tests/integration/test_proof_acquisition_macos.py`
+- Create from the privileged verifier: `logs/proof-acquisition-isolation-pipeline-local-authority-2026-07-10.json`
 
 **Interfaces:**
 - Produces frozen
@@ -2142,24 +2262,44 @@ class ProtectedProofRuntimeAttestation:
     deployment_id: str
     manifest_identity: AttestedPathIdentity
     manifest_sha256: str
+    gate_account: Literal["_pipeline_merge_gate"]
     gate_uid: int
+    proof_account: Literal["_pipeline_proof"]
+    proof_uid: int
     deployment_root: AttestedPathIdentity
     authority_manifest: AttestedProofFile
     registry_keys: tuple[AttestedProofFile, ...]
     bus_id: Literal["prod"]
+    event_store_endpoint: str
+    event_ref: Literal["refs/threeway/events"]
     gate_seat: Literal["merge-gate"]
     policy_digest: str
     git: AttestedProofFile
     git_exec_helpers: tuple[AttestedProofFile, ...]
     transport_helpers: tuple[AttestedProofFile, ...]
     tls_ca_bundle: AttestedProofFile
+    proof_launchd_plist: AttestedProofFile
+    proof_python: AttestedProofFile
+    proof_service: AttestedProofFile
+    proof_source_commit: str
+    proof_source_bundle_sha256: str
+    proof_source_plist_sha256: str
+    proof_socket_parent: AttestedPathIdentity
+    proof_socket_path: Path
     allowed_protocols: tuple[Literal["https"], ...]
 
 
 @dataclass(frozen=True, slots=True)
 class _ProtectedProofRuntime:
     attestation: ProtectedProofRuntimeAttestation
-    tmpdir_identity: AttestedPathIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class _ProofAcquisitionSession:
+    socket_fd: int
+    peer_uid: int
+    session_id: str
+    acquired_state: "_AcquiredEventState"
 
 
 @dataclass(frozen=True, slots=True)
@@ -2314,6 +2454,17 @@ def _resolve_canonical_gate_authority(
 ) -> _CanonicalGateAuthority: ...
 
 
+def _connect_proof_acquirer(
+    runtime: _ProtectedProofRuntime,
+) -> _ProofAcquisitionSession: ...
+
+
+def _revalidate_proof_acquisition(
+    runtime: _ProtectedProofRuntime,
+    session: _ProofAcquisitionSession,
+) -> _AcquiredEventState: ...
+
+
 def _run_proof_git(
     runtime: _ProtectedProofRuntime,
     gitdir_fd: int,
@@ -2412,84 +2563,138 @@ registry, bus ID, gate seat, or `Policy`; both resolve those values from the
 zero-argument protected runtime before store/candidate access.
 `apply_gate_evaluation()` likewise reloads that runtime and canonical authority
 instead of accepting any of those choices. It treats every public field as an
-untrusted claim: before any key/object/ref probe it requires the freshly
-resolved authority digest to equal the binding, reacquires the canonical event
-state, reruns the gate for the bound candidate/target under that exact policy,
-and requires exact equality with the supplied binding and MERGEABLE outcome.
-Token/appointment revalidation also uses the attested deployment root from that
-runtime, never a caller root.
-Both independently issued authorizations remain bound to that exact
-`MergeGateBinding`, so swapping authorizations between two same-target
-evaluations still denies. An alternate key registry, bus ID, gate seat, or
-permissive policy is therefore not expressible at the public boundary and a
-protected-manifest mismatch fails closed. Frozen/slot/init restrictions are not
-treated as opacity.
+untrusted claim. Before loading the runtime or touching a key, object, ref, or
+filesystem authority path, it recursively requires exact concrete dataclass/
+enum types and canonical primitive/container shapes for the evaluation and both
+authorizations, using `object.__getattribute__` on exact slot classes, and
+serializes inert primitives without invoking attacker-dispatched `__eq__`. A
+subclass, hostile scalar, extra/missing field, or forged nested binding denies
+at that first boundary. Only then does apply reload the runtime, resolve the
+canonical authority, require its fresh digest to match the validated claimed
+primitive, reacquire the canonical event state, and rerun the gate for the
+validated candidate/target under the exact policy. It compares fresh canonical
+primitives, compares the fresh exact `str` outcome directly to literal
+`MERGEABLE`, and uses only the fresh binding downstream. An authorization whose
+validated primitives differ from that fresh binding denies before token, key,
+object, or ref access. Token/appointment revalidation also uses the attested
+deployment root from that runtime, never a caller root. Swapping authorizations
+between two same-target evaluations still denies. An alternate key registry,
+bus ID, gate seat, or permissive policy is therefore not expressible at the
+public boundary and a protected-manifest mismatch fails closed.
+Frozen/slot/init restrictions and generated dataclass equality are not treated
+as opacity or validation.
 
-For both local and remote stores the private context resolves the canonical
-event ref, copies only that ref into a disposable bare proof repository, records
-the actual fetched tip and tree OIDs, traverses that tree for the canonical
-ordered event bytes, and computes SHA-256 over length-prefixed bytes plus the
-complete `EventStoreTarget`, tip OID, and tree OID. It retains one open
-`_ProofRepositoryHandle`; private `_run_proof_git()` forks and enters that held
-directory with `fchdir()` before `execve()` of attested Git, which receives
-`--git-dir=.` rather than a re-resolved proof pathname. Immediately before each reduction it independently resolves
-the retained proof ref, re-traverses the actual Git object graph, and
-constant-time compares target, tip, tree, ordered bytes, and digest before
-parsing fresh event values. Thus a self-consistent digest over a caller-chosen
-subset cannot claim provenance from a real tip. The context revokes and closes
-all private state when it exits. Remote capture never fetches into the input
-repository or calls the production remote store's syncing reader.
+For both local and remote stores the private context opens one authenticated
+session to the distinct proof-acquisition service. That service resolves the
+canonical event ref, copies only that ref into a disposable bare repository
+owned by `proof_uid`, records the actual fetched tip and tree OIDs, traverses
+that tree for the canonical ordered event bytes, and computes SHA-256 over
+length-prefixed bytes plus the complete `EventStoreTarget`, tip OID, and tree
+OID. The gate process receives only a versioned length-framed canonical
+response; it never receives the proof path, repository descriptor, Git argv, or
+writable capability. The service retains `_ProofRepositoryHandle` for the one
+session. Immediately before each reduction the gate requests revalidation over
+that same session; the service independently resolves the retained proof ref,
+re-traverses the actual Git object graph, and returns a fresh canonical frame.
+The gate validates exact frame types/lengths and constant-time compares target,
+tip, tree, ordered bytes, and digest before parsing fresh event values. Thus a
+self-consistent digest over a caller-chosen subset cannot claim provenance from
+a real tip. The context sends one close frame and revokes the socket/session;
+the service closes and removes all private state. Remote capture never fetches
+into the input repository or calls the production remote store's syncing
+reader.
 
 Proof creation and traversal do not reuse the general `threeway.gitcas._run()`
 or helpers that collapse missing/wrong-type objects to `None` or `[]`.
 `run_merge_gate.py` exposes no `--proof-git-executable`, helper-directory,
-manifest, exec-path, transport, or proof-repository option. Before store
-construction, key access, or candidate input, `_load_protected_proof_runtime()`
-opens exactly `/private/etc/pipeline/proof-runtime-v1.json` by walking from `/`
+manifest, exec-path, transport, proof-repository, registry, bus, gate-seat, or
+policy option. `scripts/run_merge_gate.sh` supplies none of those flags.
+`poll_once()` likewise accepts no registry, bus, gate-seat, or policy keyword;
+the existing activation-script caller is migrated rather than retained through
+a compatibility parameter. Before store construction, key access, or candidate
+input, `_load_protected_proof_runtime()` opens exactly
+`/private/etc/pipeline/proof-runtime-v1.json` by walking from `/`
 component-by-component with no-follow descriptors. Production exposes no
-override; tests replace only the private zero-argument loader. The manifest
-requires a nonzero exclusive `gate_uid`, and loading fails unless
-`getuid() == geteuid() == gate_uid`. It resolves the UID's complete group set
-and uses Darwin's native extended-ACL API plus mode/owner checks; any direct,
-group, or ACL grant of write, append, delete/delete-child, write-attributes,
-write-extended-attributes, write-owner, or equivalent tree-changing authority
-on the manifest, an ancestor, or any attested file fails closed. Root or a
-distinct deployment identity owns those paths; the gate UID cannot chmod,
-replace, chown, or retarget them.
+override; tests replace only the private zero-argument loader.
+
+The manifest requires distinct nonzero `gate_uid` and `proof_uid` values. The
+gate loader fails unless `getuid() == geteuid() == gate_uid`; the proof service
+loader fails unless both IDs equal `proof_uid`. `pwd.getpwuid()` must map them
+exactly to `_pipeline_merge_gate` and `_pipeline_proof`; both accounts use
+`/var/empty` and `/usr/bin/false`, and the launchd plist's `UserName` is exactly
+`_pipeline_proof`. Both loaders resolve their UID's complete group set and use
+Darwin's native extended-ACL API plus mode/owner checks. Any direct, group, or
+ACL grant of write, append,
+delete/delete-child, write-attributes, write-extended-attributes, write-owner,
+or equivalent tree-changing authority on the manifest, an ancestor, or any
+attested file fails closed. Root or a distinct deployment identity owns those
+paths; neither runtime UID can chmod, replace, chown, or retarget them.
 
 The attestation binds its own digest; the protected deployment root and
 committed `coordination/authority.toml`; every exact public key in
 `coordination/threeway/keys`; literal bus `prod`; literal seat `merge-gate`;
-the in-code `default_policy()` digest; HTTPS-only proof acquisition; a private
-gate-owned `0700` temporary root; the exact regular Git and deployed
-`git-remote-http[s]`/required exec-helper files; and one regular TLS CA bundle.
+the canonical HTTPS event-store endpoint and literal
+`refs/threeway/events`; the in-code `default_policy()` digest; HTTPS-only proof
+acquisition; the
+root-owned `/Library/LaunchDaemons/com.pipeline.proof-acquirer.plist`; exact
+deployed Python interpreter and proof-service script; a fixed proof-owned Unix
+socket parent and socket path; a private proof-owned `0700` temporary root; the
+exact regular Git and deployed `git-remote-http[s]`/required exec-helper files;
+and one regular TLS CA bundle.
+The protected runtime attestation binds the source commit plus committed
+service-bundle/plist digests and requires the deployed plist to be
+byte-identical to
+`coordination/threeway/proof-runtime/com.pipeline.proof-acquirer.plist` at that
+commit. This does not add fields to `coordination/authority.toml`; that
+separately attested authority manifest keeps its current channel decisions.
 `_resolve_canonical_gate_authority(runtime)` accepts no caller path, bus, seat,
 registry, or policy. It requires signed-facts authority `live`, the canonical
 events ref, exact individual key identities/digests, and an exact policy-digest
 match, then length-prefix hashes all of them into `authority_digest`.
 
-Each executable, public key, authority/CA file, and manifest is validated
-individually by absolute lexical path, SHA-256, device, inode, owner,
-regular/executable-as-applicable mode, native ACL disposition, and protected
-non-writable parent chain. Binding only its directory is invalid. The proof
-Gitdir is created descriptor-relative beneath the bound private temporary root
-and manually prepared without `config`, `config.worktree`, or `commondir`; the
-same exclusive gate UID owns its acquisition lifetime, and no user/candidate
-process shares that UID. Before and after every command the parent rechecks the
-manifest and every required authority/executable/helper/CA file, the held
-Gitdir descriptor identity/type, exact top-level redirect absence, and
-forbidden proof metadata.
+Each executable, public key, authority/CA file, runtime/launchd manifest, and
+service file is validated individually by absolute lexical path, SHA-256,
+device, inode, owner, regular/executable-as-applicable mode, native ACL
+disposition, and protected non-writable parent chain. Binding only its directory
+is invalid. The system-domain launchd job is `KeepAlive`, names the locked
+non-login proof account through `UserName`, and starts the attested interpreter
+and service. It is deliberately not socket-activated: the proof process itself
+binds and listens on the fixed Unix stream socket so `getpeereid()` reports the
+proof UID to the connecting gate rather than launchd's listener credentials.
+The socket parent is proof-owned, group-searchable but not group-writable by the
+gate, and the socket is connectable only by the exact gate group. The service
+accepts only a peer whose effective UID is `gate_uid`; the client accepts only a
+listener whose effective UID is `proof_uid`. Unknown frame versions, extra
+fields, oversized lengths, caller URL/ref/registry/bus/policy/helper values,
+wrong peer credentials, and reconnect/session replay fail closed. The service
+derives its endpoint/ref only from its independently loaded protected runtime;
+the trusted public store description must match that canonical target but
+cannot select it.
 
-`_run_proof_git(runtime, gitdir_fd, argv)` is private in `threeway/gate.py`.
-It creates pipes, forks, and in the child calls `fchdir(gitdir_fd)` followed
-immediately by `execve()` of the attested absolute Git with `--git-dir=.`; the
-parent captures bytes/status, waits, and rechecks the held descriptor and
-lexical disposition. No external/native/setuid launcher, second UID, lexical
-`--git-dir=<path>`, or `preexec_fn` is assumed. Missing `fork`, `fchdir`, or
-`execve`, child launch failure, signal exit, or nonzero status fails closed. A
-proof-path rename after the last parent-side check therefore cannot redirect
-Git, and replacing an attested helper file inside an unchanged directory fails
-its file digest/identity check.
+The proof Gitdir is created descriptor-relative beneath the proof service's
+private root and manually prepared without `config`, `config.worktree`, or
+`commondir`. Only `proof_uid` owns the acquisition lifetime; the gate UID and
+all candidate/user processes receive neither path nor descriptor and have no
+mode/group/ACL authority to create, replace, chmod, or delete its entries.
+Before and after every command the service reopens and rechecks the runtime
+manifest, launchd plist, service/interpreter, Git executable, every required
+exec/transport helper, every registry key, authority manifest, CA file, the
+held Gitdir descriptor identity/type, exact top-level redirect absence, and
+forbidden proof metadata. A post-load/pre-command barrier is part of the test
+contract; a drifted file rejects before launch, and post-command drift discards
+all output before parsing or reduction.
+
+`_run_proof_git(runtime, gitdir_fd, argv)` is private to the proof service in
+`threeway/proof_acquisition.py`. It creates pipes, forks, and in the child calls
+`fchdir(gitdir_fd)` followed immediately by `execve()` of the attested absolute
+Git with `--git-dir=.`; the parent captures bytes/status, waits, and rechecks the
+held descriptor and lexical disposition. No lexical `--git-dir=<path>`,
+`preexec_fn`, or caller command reaches the service. Missing `fork`, `fchdir`,
+or `execve`, child launch failure, signal exit, or nonzero status fails closed.
+A proof-path rename after the last service-side check therefore cannot redirect
+Git, replacing any attested file after successful runtime load is caught at the
+command barrier, and the separate proof UID prevents a gate-UID process from
+changing repository contents during the child lifetime.
 
 The runner invokes the attested Git with the attested exact `--exec-path`,
 `--no-replace-objects --no-lazy-fetch --literal-pathspecs`, explicit
@@ -2562,14 +2767,18 @@ or any ref transaction.
   `target == "refs/heads/main"` additionally requires a successful
   `ProtectedRunnerCredential.attest_target()` result.
   `apply_gate_evaluation()` accepts no free candidate or target arguments and
-  treats its public evaluation as untrusted. Before object writes, key load, or
-  CAS it reloads the zero-argument protected runtime, resolves the exact
-  attested registry/bus/seat/default-policy authority, requires its digest to
-  match the binding, reacquires the canonical event state without mutating the
-  input store, reruns evaluation for the bound candidate/target, and requires
-  exact equality with the supplied binding plus a MERGEABLE outcome with
-  non-null SHAs. Both authorizations' `merge_binding` must equal that same
-  freshly reproduced binding; operations are exactly `update-target-ref` and
+  treats its public evaluation as untrusted. Before loading the runtime or
+  touching a key, object, ref, or authority path it recursively validates exact
+  concrete types and primitive shapes and serializes inert canonical primitives
+  without invoking supplied equality. Only then does it reload the zero-
+  argument protected runtime, resolve the exact attested registry/bus/seat/
+  default-policy authority, require its digest to match the validated claimed
+  primitive, reacquire canonical event state without mutating the input store,
+  and rerun evaluation for the validated candidate/target. The fresh exact-
+  string outcome must be literal `MERGEABLE` with non-null SHAs. Both
+  authorizations' validated primitives must match that freshly reproduced
+  binding; only the fresh binding flows onward. Operations are exactly
+  `update-target-ref` and
   `emit-merge-completed`; and their effect targets equal the binding target ref
   and normalized event target. It also requires the target old SHA to match.
   Immediately before materialization it revalidates each token from the stored
@@ -2641,6 +2850,7 @@ are mandatory:
 - `test_bound_proof_helper_file_replacement_fails_closed`
 - `test_proof_repository_local_config_redirect_fails_closed`
 - `test_proof_repository_recheck_exec_race_uses_bound_descriptor`
+- `test_gate_uid_writer_cannot_mutate_proof_service_gitdir`
 - `test_poll_once_captures_once_for_two_candidates`
 - `test_each_candidate_reduction_reparses_fresh_events`
 - `test_public_merge_gate_evaluation_is_consistent_and_non_authorizing`
@@ -2683,38 +2893,68 @@ directory at the same pathname with an attacker bare repository before
 traversal and requires identity refusal. Adding a proof-repository alternate,
 graft, or shallow marker likewise fails closed.
 
-The next seven selectors close the focused Task-3E review gaps without
+The next eight selectors close the focused Task-3E/3F review gaps without
 reopening the two-ref CAS questions. The caller-runtime selector proves the
-public evaluator and CLI expose no Git/helper/manifest/proof-runtime argument,
-then attempts a stable malicious absolute Git while the honest control loads
-the canonical deployment attestation. The same selector parameterizes
-`gate_uid == 0`, mismatched real/effective UID, mode/group membership, and one
-Darwin extended-ACL tree-changing grant; every variant refuses before store,
-key, candidate, or temporary-repository access. The helper selector replaces
-only one attested endpoint-required `git-remote-http[s]`, exec-helper, public
-key, authority manifest, or TLS CA file inside an unchanged directory and
-requires file-digest/identity refusal. The local-metadata selector independently
-adds only `config` with `core.sshCommand`, only `config` with
-`url.<base>.insteadOf`, only `config.worktree`, only `commondir`, and only
+public evaluator, `poll_once()`, CLI parser, and shell wrapper expose no
+Git/helper/manifest/proof-runtime/registry/bus/gate-seat/policy argument. It
+passes each prohibited CLI flag and requires `argparse` rejection, migrates the
+activation-script caller instead of preserving compatibility keywords, and
+attempts a stable malicious absolute Git while the honest control loads the
+canonical deployment attestation. The same selector parameterizes either UID
+as zero, equal gate/proof UIDs, mismatched real/effective UID, mode/group
+membership, and one Darwin extended-ACL tree-changing grant; every variant
+refuses before store, key, candidate, service connection, or repository access.
+
+The bound-file selector first completes runtime loading, pauses at the exact
+pre-command barrier, and then replaces one primary Git executable,
+`git-remote-http[s]`/exec helper, registry key, authority manifest, runtime
+manifest, launchd plist, deployed service/interpreter, or TLS CA file inside an
+unchanged directory. Every case refuses before command launch; removing only
+the corresponding lifetime recheck makes this selector RED. The local-metadata
+selector independently adds only `config` with `core.sshCommand`, only `config`
+with `url.<base>.insteadOf`, only `config.worktree`, only `commondir`, and only
 `objects/info/http-alternates`; every case must fail before fetch/traversal
-while the exact no-metadata Gitdir passes. The descriptor-race selector renames the proof
-repository after the final parent-side recheck but before child exec and proves
-Git either uses the held original directory or refuses; it never traverses the
-replacement. The capture-count selector drives two candidates and asserts one
-context entry plus the same acquired-state identity for discovery and both
-evaluations. The reparse selector mutates the first reduction's parsed payload
-and proves the second receives a distinct fresh event list with the honest
-verdict. The public-contract selector requires direct evaluation and stable
-non-mutating `poll_once()` to return the same public binding/outcome/reason
-shape, then constructs a forged public MERGEABLE result and proves apply's
-fresh protected-runtime/authority resolution and reacquisition/reduction rejects
-it before key/object/ref probes. It also tries an alternate registry, bus ID,
-gate seat, and permissive `Policy`; those values are absent from both public
-signatures, and changing one protected authority field changes or invalidates
-`gate_authority_digest`. Removing that full re-evaluation, accepting a caller
-authority choice, or accepting authorizations whose `merge_binding` differs
-from the freshly reproduced binding makes only that selector RED. Each selector
-has an honest one-fact control and a named mutation that makes only it RED.
+while the exact no-metadata Gitdir passes. The descriptor-race selector renames
+the service-owned proof repository after the final service-side recheck but
+before child exec and proves Git either uses the held original directory or
+refuses; it never traverses the replacement.
+
+The gate-writer selector is a privileged macOS deployment integration, not a
+mock unit proof. It installs/uses distinct locked gate/proof accounts and the
+root-protected LaunchDaemon, deliberately reveals the service Gitdir pathname
+at the post-check barrier to a process running as `gate_uid`, and proves its
+create, replace, chmod, and delete attempts all fail while the service returns
+the unchanged canonical graph. The negative deployment keeps both manifest
+UIDs, account resolution, peer checks, and service process identities distinct
+and changes only the prepared Gitdir owner/mode/ACL so `gate_uid` can mutate it.
+It must prove the service and writer both reach the post-check barrier, the
+injected metadata write succeeds, and the selector becomes RED for the intended
+graph-integrity reason rather than an earlier loader denial. Ordinary
+unprivileged CI cannot create the second UID or
+bootstrap the system LaunchDaemon, so this OS boundary is explicitly
+`test-infeasible` there. Unit mocks may cover frame and fail-closed logic but
+must never satisfy this selector or authorize Task-3 GO. The committed
+`scripts/verify_proof_acquirer_macos.py` emits the deployment evidence consumed
+by the integration node.
+
+The capture-count selector drives two candidates and asserts one service
+session/context entry plus the same acquired-state identity for discovery and
+both evaluations. The reparse selector mutates the first reduction's parsed
+payload and proves the second receives a distinct fresh event list with the
+honest verdict. The public-contract selector requires direct evaluation and
+stable non-mutating `poll_once()` to return the same public
+binding/outcome/reason shape, then constructs hostile subclasses at the
+evaluation, binding, nested scalar, outcome, and authorization levels. It
+asserts attacker `__eq__` is never invoked and proves apply's fresh
+protected-runtime/authority resolution and reacquisition/reduction rejects each
+object before key/object/ref probes. It also tries an alternate registry, bus
+ID, gate seat, and permissive `Policy`; those values are absent from both
+public signatures, and changing one protected authority field changes or
+invalidates `gate_authority_digest`. Removing full re-evaluation, exact
+recursive type/shape validation, canonical primitive comparison, fresh-binding
+downstream use, or accepting authorizations whose `merge_binding` differs from
+the freshly reproduced binding makes only this selector RED. Each selector has
+an honest one-fact control and a named mutation that makes only it RED.
 
 Record refs, object names/OIDs, index, worktree, key bytes, and event bytes
 before/after a MERGEABLE evaluation and require exact equality. The current
@@ -2749,12 +2989,17 @@ refuses an absent, wrong-target, or failed opaque credential attestation.
 - [ ] **Step 2: Run tests to prove RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_service_principals.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_codex_ledger_bridge.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_service_principals.py tests/unit/test_proof_acquisition.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Expected: missing principal resolver, deployment-attested private proof
-runtime, descriptor-anchored proof launch, and current entry points lacking the
-typed operation check.
+runtime/service, descriptor-anchored proof launch, prohibited authority CLI
+inputs, and current entry points lacking the typed operation check. The
+privileged selector
+`tests/integration/test_proof_acquisition_macos.py::test_gate_uid_writer_cannot_mutate_proof_service_gitdir`
+is `test-infeasible` in the ordinary checkout because it requires installed
+distinct UIDs and a system LaunchDaemon. It is not skipped-and-green; it runs
+only in the protected deployment and must be present before Task-3 GO.
 
 - [ ] **Step 3: Implement service-principal authorization**
 
@@ -2772,25 +3017,34 @@ public immutable `MergeGateEvaluation(binding, outcome, reason)` comparison
 record, and treat it as untrusted on apply. Freshly reacquire/reduce before any
 mutation probe, resolve registry/bus/seat/default policy only from the freshly
 loaded protected runtime, require its authority digest, and require both
-authorizations to retain the exact reproduced `merge_binding`. Public
-evaluation/apply signatures accept none of those authority choices.
+authorizations to retain the exact reproduced `merge_binding`. Validate every
+untrusted object recursively to exact concrete types and canonical primitive
+shapes, never invoke supplied equality, compare the fresh exact-string outcome
+to literal `MERGEABLE`, and use only the fresh binding for mutation. Public
+evaluation/apply/poll signatures and the CLI accept none of those authority
+choices; remove the existing registry/bus arguments from the Python caller,
+parser, shell wrapper, and activation-script test.
 
 Load the proof runtime only from the canonical protected-runner deployment
 attestation before store/key/candidate access. Expose no CLI or public API path
-for Git, helpers, manifest, transport, or proof repository. Bind and recheck the
-manifest, deployment root, authority manifest, each registry key, TLS CA file,
-Git, and each regular deployed HTTPS exec/transport helper by exact file digest/
-identity/owner/mode, native ACL/mode parent chain, and an exclusive nonzero gate
-UID whose real/effective UID matches and cannot alter the deployment tree.
-Prepare the proof Gitdir without config/config.worktree/commondir or alternate/
-http-alternate redirect files; execute every replacement-disabled proof command
-through private fork/fchdir/execve with `--git-dir=.`, `--no-write-fetch-head`
-for fetch, and the exact attested exec-path, helper set, CA file, HTTPS protocol
-policy, argv, and environment built from an empty mapping with only a bound
-private TMPDIR. Fail closed on any caller runner, helper-file
-replacement, forbidden local metadata, recheck/exec path race, ambient
-redirect, replacement, graft, shallow marker, missing/wrong-type object, or
-attestation/repository/executable/helper rebound.
+for Git, helpers, manifest, transport, proof repository, registry, bus, gate
+seat, or policy. Bind and recheck the manifest, deployment root, authority
+manifest, each registry key, TLS CA file, Git, each regular deployed HTTPS
+exec/transport helper, launchd plist, deployed service/interpreter, and socket
+parent by exact file digest/identity/owner/mode, native ACL/mode parent chain,
+and distinct nonzero gate/proof UIDs. The root-protected system LaunchDaemon
+runs the locked proof account continuously; the service itself binds/listens so
+mutual peer-UID checks are meaningful. The service alone prepares the
+proof-owned Gitdir without config/config.worktree/commondir or alternate/
+http-alternate redirect files and executes every replacement-disabled proof
+command through private fork/fchdir/execve with `--git-dir=.`,
+`--no-write-fetch-head` for fetch, and the exact attested exec-path, helper set,
+CA file, HTTPS protocol policy, argv, and environment built from an empty
+mapping with only a bound private TMPDIR. Fail closed on a wrong peer, malformed
+frame, caller runner/authority value, post-load bound-file replacement,
+gate-UID repository mutation, forbidden local metadata, recheck/exec path race,
+ambient redirect, replacement, graft, shallow marker, missing/wrong-type
+object, or attestation/repository/executable/helper rebound.
 
 Pass the immutable comparison binding through evaluation and both authorized
 mutations without reconstructing it from free arguments; independently
@@ -2799,13 +3053,14 @@ push endpoint for each remote authority, acquire from and publish directly to
 it, and refuse zero/multiple or mismatched endpoints.
 Prepare both local ref updates before combined closure import; use one atomic
 two-ref publication remotely. All service emitters bind explicit local versus
-remote targets. Add the new suite to the model-derived doctor gate in the same
-commit.
+remote targets. Add the unprivileged unit suite to the model-derived doctor gate
+in the same commit. The privileged macOS isolation selector is a separate
+deployment gate: a mock, skip, or ordinary local doctor pass cannot satisfy it.
 
 - [ ] **Step 4: Prove GREEN and non-vacuity**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_service_principals.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_codex_ledger_bridge.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_service_principals.py tests/unit/test_proof_acquisition.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Swap `ci` to `merge-gate` in one allowed-operation fixture and confirm the
@@ -2817,19 +3072,37 @@ then remove exactly one of the public-input prohibition, proof-ref reread,
 mutable-event reparse, one-capture boundary, replacement-ref rejection,
 deployment-attestation load, exact executable/helper-file identity, local-
 config seal, descriptor-anchored launch, public-output boundary,
-CLI/environment replacement suppression, or ambient redirect scrub and require
-its named selector to RED. Run each
+CLI/environment replacement suppression, hostile-type rejection, proof-service
+peer/frame check, or ambient redirect scrub and require its named selector to
+RED. Run each
 local/remote positive apply control first, then inject
 only its named race or domain/capability mismatch and require the corresponding
 denial selector to RED if the event expected-old update, remote event
 lease/refspec, prepare-before-import boundary, or no-fallback guard is removed.
 Restore and rerun GREEN.
 
+In the protected macOS deployment, with the separately user-authorized
+installation already complete, run:
+
+```bash
+env -u GIT_INDEX_FILE PIPELINE_PROOF_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/test_proof_acquisition_macos.py::test_gate_uid_writer_cannot_mutate_proof_service_gitdir -q
+```
+
+Expected: the distinct-UID control passes; changing only the deployment so the
+gate owns the Gitdir makes the selector RED. Preserve the verifier's committed
+`logs/proof-acquisition-isolation-pipeline-local-authority-2026-07-10.json`
+evidence path in the Task-3 handoff. Without this run, report the exact
+`test-infeasible` deployment precondition and do not request Task-3 GO.
+
 - [ ] **Step 5: Review and commit Task 3D**
 
 ```bash
 env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind service principals"
 ```
+
+The implementation commit may exist before protected deployment, but the
+Director must not send a verification request claiming complete Task-3 closure
+until the privileged isolation selector has run and its evidence is durable.
 
 ---
 

@@ -33,13 +33,16 @@
     "Expected implementation scope is scripts/protocol_mailbox.py, scripts/protocol_effectiveness_report.py, tests/unit/test_protocol_mailbox.py, and tests/unit/test_protocol_effectiveness_report.py, plus ARCHITECTURE.md only on real drift. The other listed Task2R paths are compatibility-test ceilings, not invitations to widen behavior.",
     "Keep signed-facts authority shadow. No key/ref/secret creation, authority flip, remote activation/publication, cursor consume, lock, target-checkout refresh, push, spend, pod, production generation, or changes outside the listed paths are authorized."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
-  "next_recipient": "operator",
-  "status": "active",
+  "done_evidence": [
+    "Commit 8cc4beed2c6c5836f915113ccd5104c3f039c8de is the sole direct child of reviewed-but-spec-failed commit ef76fd11ea61e27778d0cedf65c1a608cf826354 and preserves the accepted earlier topology.",
+    "coordination/mailbox/sent/2026-07-10T15-41-08Z-director-to-coordinator-coordination.md records BLOCKED / FRESH SPECIFICATION REVIEW ISSUES for one source-confirmed global-scan fail-visible gap. Verification not needed because specification review blocked before quality review, verify-request, and Lane V; a normal regression is test-feasible but another commit was unauthorized under the exhausted Task2S route."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T15-41-08Z-director-to-coordinator-coordination.md",
+  "next_recipient": "coordinator",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "target_commit": "8cc4beed2c6c5836f915113ccd5104c3f039c8de",
+  "commit_range": "ef76fd11ea61e27778d0cedf65c1a608cf826354..8cc4beed2c6c5836f915113ccd5104c3f039c8de",
   "scope_files": [
     "scripts/protocol_mailbox.py",
     "scripts/protocol_effectiveness_report.py",

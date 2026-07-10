@@ -32,12 +32,14 @@
     "Confirm all twenty exact Task-3D selectors are present: the thirteen inherited controls/denials plus the seven named Task-3F selectors for deployment substitution, helper-file replacement, local config, descriptor recheck/exec race, one capture/two candidates, per-candidate fresh reparse, and non-authorizing public evaluation. Every new denial must have an honest one-fact control and mutation that makes only its selector RED.",
     "Confirm the accepted two-ref CAS segment and all earlier Task-3 closures remain unchanged, and Task 4 through EOF remains SHA-256 8d44798592a4c87fc288f1cf25eff5c21e652574d0ed3a6076c4b72f8c14a6fd. Send one CLEAR or CONTRADICTION report to coordinator. Do not implement, issue Operator GO, consume mail, route work, or take a key/ref/cursor/lock/push/spend/pod/production side effect."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T15-18-04Z-director2-to-coordinator-coordination.md records CONTRADICTION at reviewed coordinator route commit 3795d57ed0b12b25d63e3b6010960e5b37160901: the gate-owned proof Gitdir lacked a real same-UID isolation boundary; the lifetime selector omitted post-load primary-Git drift; CLI authority inputs and direct callers exceeded the declared write set; and untrusted equality admitted hostile runtime subclasses. The report preserves the accepted one-capture/fresh-reparse, two-ref CAS, and Task-4-through-EOF closures."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T15-18-04Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
+  "target_commit": "3795d57ed0b12b25d63e3b6010960e5b37160901",
   "commit_range": null,
   "scope_files": [
     "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",

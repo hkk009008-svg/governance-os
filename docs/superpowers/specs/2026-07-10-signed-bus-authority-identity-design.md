@@ -313,50 +313,81 @@ caller-provided acquisition/authority capability.
 `poll_once()` enters one private lexical acquisition context exactly once, and
 candidate discovery plus every candidate evaluation consume the same acquired
 state identity. Both local and remote acquisition resolve the canonical event
-ref and copy only that ref into an isolated temporary bare proof repository
-retained for the evaluation lifetime. The proof path/ref and protected runtime
-never appear on a public argument or return object. The private state retains
-only immutable ordered JSON bytes and binding metadata; discovery discards its
-temporary parsed events, and every candidate reduction reparses a distinct
-fresh event list from the bytes. A two-candidate run therefore has one capture
-and two independent reductions even if the first reduction mutates its parsed
-payload.
+ref through one private session with a distinct proof-acquisition service. The
+service copies only that ref into an isolated temporary bare repository owned
+by a proof UID different from the gate UID and retained for the evaluation
+lifetime. The gate receives only strict versioned length-framed canonical bytes
+and binding metadata; the proof path/ref, repository descriptor, Git command,
+and protected runtime never appear on a public argument, return object, or IPC
+field. Discovery discards its temporary parsed events, and every candidate
+reduction asks the same service session to revalidate the retained graph before
+reparsing a distinct fresh event list. A two-candidate run therefore has one
+capture/service session and two independent reductions even if the first
+reduction mutates its parsed payload.
 
 The proof runtime comes only from the protected-runner deployment trust root,
 not CLI arguments, environment values, the candidate, the input repository, or
 the event store. Before store construction, key access, candidate input, or
 proof-repository creation, the runner loads exactly
 `/private/etc/pipeline/proof-runtime-v1.json` by walking from `/` component-by-component
-with no-follow opens. The manifest, every ancestor, the Git executable, and
-every supported exec/transport helper are owned by root or a deployment
-identity distinct from the exclusive unprivileged gate UID; none grants that
-UID write, chmod, ownership, group, or ACL authority. The attestation binds its
-own digest; a nonzero exclusive gate UID whose real and effective UID match;
-the protected deployment root and committed authority manifest; every exact
+with no-follow opens. The attestation requires distinct nonzero gate and proof
+UIDs; each runtime's real/effective UID must match its role. It binds the
+protected deployment root and committed authority manifest; every exact
 registry public key; literal bus `prod`; literal gate seat `merge-gate`; the
-in-code default-policy digest; HTTPS-only remote proof acquisition; a private
-gate-owned `0700` temporary root; the exact regular Git and deployed HTTPS
-exec/transport helpers; and one regular TLS CA file. Each file is bound by
-absolute lexical path, file digest, device, inode, owner,
-regular/executable-as-applicable mode, native Darwin ACL disposition, and
-protected parent chain. The loader resolves the gate UID's complete group set
-and rejects any mode/group/ACL grant of write, append, delete/delete-child,
-write-attributes, write-extended-attributes, write-owner, or equivalent
-tree-changing authority on an attested file or ancestor. Directory identity
-alone is insufficient. `run_merge_gate.py` exposes no Git, exec-path, helper-
-directory, manifest, transport, authority, policy, or proof-repository
-override.
+canonical HTTPS event-store endpoint and literal `refs/threeway/events`; the
+in-code default-policy digest; HTTPS-only remote proof acquisition; the
+root-owned system LaunchDaemon plist; exact deployed proof interpreter/service;
+the fixed proof-owned Unix-socket parent/path; a private proof-owned `0700`
+temporary root; the exact regular Git and deployed HTTPS exec/transport
+helpers; and one regular TLS CA file. Each file is bound by absolute lexical
+path, file digest, device, inode, owner, regular/executable-as-applicable mode,
+native Darwin ACL disposition, and protected parent chain. Both loaders resolve
+their UID's complete group set and reject any mode/group/ACL grant of write,
+append, delete/delete-child, write-attributes, write-extended-attributes,
+write-owner, or equivalent tree-changing authority on an attested file or
+ancestor. Directory identity alone is insufficient.
+The protected runtime attestation binds the source commit plus committed
+service-bundle/plist digests and requires the deployed plist to be
+byte-identical to
+`coordination/threeway/proof-runtime/com.pipeline.proof-acquirer.plist` at that
+commit. `coordination/authority.toml` remains the separately attested channel-
+decision manifest and gains no proof-service schema in this slice.
 
-Every proof command uses the private `_run_proof_git()` boundary in
-`threeway/gate.py`. The parent retains an open descriptor for the manually
-prepared bare repository; a forked child calls `fchdir(held_gitdir_fd)` and then
-`execve()` on the attested absolute Git with `--git-dir=.`. No external launcher
-or second UID is assumed, and lack of `fork`/`fchdir`/`execve` fails closed. The
-exclusive gate UID is not shared with user/candidate processes. The proof
-Gitdir contains no `config`, `config.worktree`, `commondir`,
+The locked non-login proof account is launched by the root-protected
+system-domain job. Account resolution must bind the gate/proof UIDs exactly to
+`_pipeline_merge_gate`/`_pipeline_proof`, both with `/var/empty` and
+`/usr/bin/false`, and the plist `UserName` is `_pipeline_proof`. The service
+itself binds/listens on the fixed Unix stream
+socket; launchd socket activation is not used. That makes mutual effective-peer
+UID checks meaningful: the service accepts only `gate_uid`, and the client
+accepts only `proof_uid`. The proof-owned socket parent grants the gate search/
+connect but no create, replace, or chmod authority. The service accepts no
+caller URL, ref, registry, bus, gate-seat, policy, helper, or Git command. It
+derives the endpoint/ref only from its independently loaded protected runtime;
+the trusted public store description must match but cannot select them. The
+service never returns a path or writable descriptor. Unknown frame versions/
+fields, oversized lengths, wrong peers, reconnect, or session replay fail
+closed.
+`run_merge_gate.py`, `poll_once()`, and `run_merge_gate.sh` expose no Git,
+exec-path, helper-directory, manifest, transport, registry, bus, gate-seat,
+policy, or proof-repository override; existing parser, shell, and direct-test
+callers are migrated rather than retained through compatibility inputs.
+
+Every proof command uses the service-private `_run_proof_git()` boundary in
+`threeway/proof_acquisition.py`. The proof service retains an open descriptor
+for the manually prepared bare repository; a forked child calls
+`fchdir(held_gitdir_fd)` and then `execve()` on the attested absolute Git with
+`--git-dir=.`. Lack of `fork`/`fchdir`/`execve` fails closed. The proof Gitdir is
+owned only by `proof_uid`; gate/user/candidate processes receive neither path
+nor descriptor and have no filesystem authority to mutate it. It contains no
+`config`, `config.worktree`, `commondir`,
 `objects/info/alternates`, `objects/info/http-alternates`, include,
 replacement, graft, or shallow redirect state; their absence and the held
-directory identity/type are checked before and after every child. Fetch uses
+directory identity/type are checked before and after every child. After
+successful runtime load and immediately before every command, the service
+reopens and rechecks the runtime manifest, launchd plist, deployed service/
+interpreter, primary Git executable, every helper, registry key, authority
+manifest, and CA file. Post-command drift discards all output. Fetch uses
 `--no-write-fetch-head`, the attested Git exec-path and `git-remote-http[s]`,
 explicit HTTPS-only protocol allowlisting, the attested CA file, and a child
 environment built from an empty map. Only the exact helper `PATH`, C locale,
@@ -367,9 +398,9 @@ also receives explicit SSL verification/CA, empty proxy/CA-directory, and
 disabled-redirect settings. SSH, custom helpers, and other remote protocols
 fail closed until a later route names and attests their full executable/shell
 TCB.
-A caller-selected stable Git, an executable replaced inside an unchanged
-directory, a local-config/`commondir` redirect, or a proof-path rename between
-validation and exec cannot establish provenance.
+A caller-selected stable Git, post-load replacement of any bound file, a
+gate-UID local-metadata writer, a local-config/`commondir` redirect, or a
+proof-path rename between validation and exec cannot establish provenance.
 
 Validation independently resolves the retained proof ref and re-reads its
 actual tip, tree, and ordered event bytes before each reduction. A digest over
@@ -387,18 +418,24 @@ unchanged. That binding is data, not mutation authority: it exposes no proof
 repository/ref, event bytes, protected runtime, executable/helper handle,
 private quarantine path, or callable/live store. `init=False` or frozen/slot
 syntax is not treated as opacity. Direct evaluation and `poll_once()` return the
-same binding/outcome/reason shape. Before any key/object/ref probe, public apply
-reloads the zero-argument protected runtime, derives the registry, bus, seat,
-and default policy only from its attested deployment/authority/key material,
-requires that fresh authority digest to match the binding, reacquires the
-canonical state, reruns the gate for the bound candidate/target, requires exact
-binding/outcome equality, and requires both operation authorizations to carry
-that exact freshly reproduced binding. Token and appointment revalidation uses
-the attested deployment root, never a caller root. Public evaluation/apply
-accept no authority choices. A forged public MERGEABLE result, alternate registry/bus/
-seat/permissive policy, or authorization swapped between evaluations is
-therefore non-authorizing without changing the accepted atomic two-ref
-mechanics.
+same binding/outcome/reason shape. Before loading the protected runtime or
+touching any key/object/ref/filesystem authority path, public apply recursively
+requires exact concrete types and canonical nested scalar/container shapes for
+the evaluation and both authorizations, then serializes inert primitives without
+attacker equality. Only those validated candidate/target/authority primitives
+may drive the next phase. Apply then reloads the zero-argument protected
+runtime, derives the registry, bus, seat, and default policy only from its
+attested deployment/authority/key material, requires the fresh authority digest
+to match the validated claimed primitive, reacquires canonical state, and
+reruns the gate. It compares fresh canonical primitives, compares the fresh
+exact-string outcome directly with literal `MERGEABLE`, and requires both
+operation authorizations to match the canonical freshly reproduced binding.
+Only that fresh binding flows into mutation. Token and appointment revalidation
+uses the attested deployment root, never a caller root. Public evaluation/apply
+accept no authority choices. A hostile dataclass or scalar subclass, forged
+public MERGEABLE result, alternate registry/bus/seat/permissive policy, or
+authorization swapped between evaluations is therefore non-authorizing without
+changing the accepted atomic two-ref mechanics.
 
 Every merge authorization records that same binding and exact effect target.
 Application accepts no free candidate, target, or snapshot arguments. It
@@ -636,13 +673,18 @@ Antigravity decisions remain independently unchanged.
   route/GO pairing, invalid metrics, event counts, or unread observations.
 - Every seat/mode/role mismatch is rejected before mutation or GO authority.
 - Merge-gate proof acquisition loads only a non-caller-substitutable deployment
-  attestation; exact Git/HTTPS-helper files, the no-config Gitdir, and the
+  attestation; a distinct locked proof UID owns the service-private no-config
+  Gitdir, while exact Git/HTTPS-helper/key/authority/CA/service files and the
   descriptor-anchored fork/fchdir/execve boundary remain bound through every
   command.
+- A privileged macOS integration proves a deliberately informed gate-UID writer
+  cannot create, replace, chmod, or delete inside the proof-owned Gitdir; this
+  boundary is test-infeasible in ordinary unprivileged CI and no mock or skip
+  may close it.
 - One `poll_once()` capture serves discovery and all candidates, each reduction
   reparses fresh, and public evaluation exposes only immutable non-capability
-  comparison data whose exact binding/outcome is independently reproduced
-  before apply.
+  comparison data whose recursively exact canonical binding/outcome is
+  independently reproduced without attacker equality before apply.
 - Every signed-fact or remote publication mutation passes the cumulative
   runtime-and-token gate, and every supported subagent role remains narrow.
 - Public keys are committed and private keys are absent from git and logs.
