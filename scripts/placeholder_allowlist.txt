@@ -22,8 +22,9 @@ DECISIONS.md
 AGENTS.md
 
 # Protocol docs (contain placeholder examples for directors/operators to fill)
+# (docs/protocol/claude/core.md was bound on 2026-07-11 per ADR-012 and removed;
+#  four-seat-extension.md's lane slots stay unbound BY DESIGN per ADR-009)
 docs/PROTOCOL-RULES-LOG.md
-docs/protocol/claude/core.md
 docs/protocol/claude/director-operator.md
 docs/protocol/claude/four-seat-extension.md
 docs/protocol/agents/core.md
@@ -34,7 +35,7 @@ docs/protocol/protocol-assembly-map.md
 # (.claude/skills/seat-director/*, .claude/skills/four-seat-protocol/SKILL.md were
 #  bound to Pipeline on 2026-07-10 and removed per the adoption workflow above)
 .claude/skills/create-regression-pin/SKILL.md
-.claude/agents/money-gate-reviewer.md
+# (.claude/agents/money-gate-reviewer.md was bound on 2026-07-11 per ADR-012)
 .agents/skills/seat-director/SKILL.md
 .agents/skills/seat-director/r-brief-template.md
 .agents/skills/create-regression-pin/SKILL.md

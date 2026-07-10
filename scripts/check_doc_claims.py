@@ -1500,7 +1500,7 @@ SHA_DEFAULT_DOCS = [
 # citation line numbers in docs/protocol/claude/director-operator.md; the
 # citation SET is unchanged (count held at 215, zero SHAs added/removed).
 SHA_REF_BASELINE_COUNT = 215
-SHA_REF_BASELINE_DIGEST = "bd47348a59f76ccb2595f3a23f1549c409e1f513e79b829c61df127e0b2a3f44"
+SHA_REF_BASELINE_DIGEST = "86407c282a7ba11afbe1c234a04c5024238c61adee811068b9ce6c087a9c74f3"
 
 
 @dataclass(frozen=True)

@@ -384,3 +384,35 @@ unchanged. No rule body or HARD/SOFT tag changes.
 - Rules #19/#20 get their first real field exposure now that 4-seat
   operation is active (ADR-009); a recurrence would meet their N=2 triggers.
 - No enforcement surface changed — this is a record-keeping decision.
+
+## ADR-012: Claude-tree Tier-2 reconciliation — §E push subordinated to the side-effect gate; origin-provenance banners
+
+**Status:** Accepted (user-principal: "tier2 proceed", 2026-07-11)
+
+**Context:**
+A 7-agent verification audit of the Claude-side adaptation (`9ba5387`,
+`27ae0c3`) left Tier-2 items needing principal judgment: the §E emergency text
+in docs/protocol/claude/director-operator.md still allowed "commit + push if
+needed"; the claude-tree rule bodies cite origin-project SHAs/ADRs/modules as
+empirical bases; four-seat-extension.md's lane slots carried a contradictory
+origin "FINAL (2026-06-13)" badge alongside ADR-009's 2026-07-07 lane record.
+
+**Decision:**
+1. Emergency §E never overrides the side-effect gate: mitigation COMMITS are
+   allowed under temporary authority, but push remains user-gated in ALL cases
+   (aligns with the three-way non-negotiable and R-VERIFY-THEN-PUSH).
+2. The claude-tree rule bodies carry a provenance banner: origin-project
+   empirical bases stay verbatim (SHA-ref baseline frozen); Pipeline-live
+   specifics are governed by docs/protocol/claude/continuation.md.
+3. ADR-009 remains the operative lane record; four-seat-extension.md's lane
+   slots stay unbound per ADR-009's own instruction, now with explicit
+   pointers to ADR-009 at each lane mention.
+4. Product-knowledge placeholders are bound from documented side-effect/spend
+   classes (money-gate-reviewer phase list) or generalized to their lesson
+   class (core.md caching false-fail) rather than left as dead TODOs.
+
+**Consequences:**
+- .claude/agents/money-gate-reviewer.md and docs/protocol/claude/core.md
+  become placeholder-clean and leave the ADR-002 allowlist.
+- The SHA-ref baseline digest refreshes (line shifts only; the citation set
+  and count are unchanged).

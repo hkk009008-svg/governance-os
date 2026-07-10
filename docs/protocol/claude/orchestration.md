@@ -2,6 +2,12 @@
 
 > Claude Code detail document loaded **on trigger**, not at session start.
 > Root routers keep short stubs; this file holds the current expanded rule body.
+> **Provenance (Pipeline deployment):** empirical bases, commit SHAs, ADR
+> numbers, and named modules cited in the rule bodies below are origin-project
+> history carried by the transfer bundle (ADR-002) — they ground each rule's
+> rationale, not Pipeline file claims. Pipeline-live specifics are governed by
+> `docs/protocol/claude/continuation.md`; Pipeline decisions live in
+> `DECISIONS.md` (operative lanes: ADR-009).
 
 ---
 

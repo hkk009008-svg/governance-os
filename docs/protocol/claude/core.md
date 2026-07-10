@@ -2,6 +2,12 @@
 
 > Claude Code detail document loaded **on trigger**, not at session start.
 > Root routers keep short stubs; this file holds the current expanded rule body.
+> **Provenance (Pipeline deployment):** empirical bases, commit SHAs, ADR
+> numbers, and named modules cited in the rule bodies below are origin-project
+> history carried by the transfer bundle (ADR-002) — they ground each rule's
+> rationale, not Pipeline file claims. Pipeline-live specifics are governed by
+> `docs/protocol/claude/continuation.md`; Pipeline decisions live in
+> `DECISIONS.md` (operative lanes: ADR-009).
 
 ---
 
@@ -193,7 +199,8 @@ Reference this section from a handoff; don't restate it.*
   <commit>`) before rebuilding. The exported var also FOLLOWS `cd` into other repos
   (2026-07-07: made ~/evidence-ledger look object-corrupt) — cross-repo git always
   gets the `env -u` prefix.
-- **A domain-graph subsystem re-run with identical inputs may return a cached result
-  instead of new output** (false-fail, not a real error). Cache-bust by varying a
-  seed / output-name / request parameter before concluding the subsystem is broken.
-  <!-- TODO(<PROJECT>): replace this placeholder with the specific caching behaviour of your domain-graph subsystem -->
+- **A result-caching subsystem re-run with identical inputs may return a cached
+  result instead of new output** (false-fail, not a real error). Cache-bust by
+  varying a seed / output-name / request parameter before concluding the
+  subsystem is broken. (Origin-project lesson — no Pipeline governance-kernel
+  instance recorded yet; keep the class in mind for any cached gate/tool output.)

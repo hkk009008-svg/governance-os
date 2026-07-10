@@ -2,6 +2,12 @@
 
 > Claude Code detail document loaded **on trigger**, not at session start.
 > Root routers keep short stubs; this file holds the current expanded rule body.
+> **Provenance (Pipeline deployment):** empirical bases, commit SHAs, ADR
+> numbers, and named modules cited in the rule bodies below are origin-project
+> history carried by the transfer bundle (ADR-002) — they ground each rule's
+> rationale, not Pipeline file claims. Pipeline-live specifics are governed by
+> `docs/protocol/claude/continuation.md`; Pipeline decisions live in
+> `DECISIONS.md` (operative lanes: ADR-009).
 
 ---
 
@@ -57,8 +63,10 @@ of running both is roughly zero.
 **Strategic-seat-default** (director-seat unless explicitly handed off):
 
 - Strategic direction — what session ships next, scope reframes
-- Brief authoring and revision (`docs/HANDOFF-roadmap-*.md`)
-- Post-roadmap reassessment against `docs/STRATEGIC_REVIEW-*.md`
+- Brief authoring and revision (origin glob `docs/HANDOFF-roadmap-*.md`;
+  Pipeline carries briefs as mailbox R-BRIEF artifacts + `docs/HANDOFF-<seat>-*.md`)
+- Post-roadmap reassessment (origin glob `docs/STRATEGIC_REVIEW-*.md`; no
+  Pipeline analog yet)
 - Push-to-origin decisions
 - ADR authoring (`DECISIONS.md`)
 - Codifying new precedents into discipline rules (this file / `AGENTS.md`)
@@ -77,8 +85,9 @@ of running both is roughly zero.
 
 - Trust-but-verify reads after each commit (`git show --stat`, brief
   test run)
-- Updating the operator transplant handoff
-  (`docs/HANDOFF-operator-transplant-*.md`)
+- Updating the operator transplant handoff (origin glob
+  `docs/HANDOFF-operator-transplant-*.md`; live convention is
+  `docs/HANDOFF-<seat>-*.md`)
 - **Lane V — Post-commit independent verification** (Protocol Bundle
   v4). On any director commit of type `feat` / `refactor` / `fix`,
   operator dispatches spec + code-quality reviewer subagents in
@@ -1263,7 +1272,8 @@ structure from the artifacts, ephemeral was always sufficient (learned cheaply).
 
 **Scope = the Guard-1 boundary = the carve-out boundary (one line).** The role OWNS
 (writes directly) only the **mechanical / verifier-confirmed** slice: anchor
-`--fix`, formatting, cross-reference repair, `docs/pipeline_status.toml` updates,
+`--fix`, formatting, cross-reference repair, `docs/pipeline_status.toml` updates
+(manifest not yet created in this repo — `scripts/status.py` degrades gracefully),
 memory pruning per the one-line-hook discipline, sweeping the claim types the
 verifier covers. The role does NOT autonomously edit **prose / claims** in
 truth-files (ARCHITECTURE.md, CLAUDE.md, ADRs, memory): any **claim-changing edit**
@@ -1584,7 +1594,9 @@ the proposal cycle.
    normally-authoritative seat is in transplant or context-exhausted,
    the other seat has TEMPORARY authority on emergency response.
    The temporary seat:
-   - Acts on emergency (commit + push if needed for stop-the-bleed)
+   - Acts on emergency (commit the mitigation; push stays user-gated in ALL
+     cases — side-effect gate — so surface the push request to the user
+     immediately, per ADR-012)
    - Explicitly notes "acting under v5 §E temporary authority" in
      commit body
    - Defers all non-emergency decisions until normal seat returns

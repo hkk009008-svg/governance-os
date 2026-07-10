@@ -31,7 +31,10 @@ Spend silently fails to count when it is:
   bridge);
 - **reset on resume** (resume-$0);
 - keyed by the **wrong cost key**;
-- spent in a **phase the precheck doesn't gate** (<!-- TODO(<PROJECT>): enumerate project-specific phases that a precheck could miss, e.g. a background fan-out phase -->).
+- spent in a **phase the precheck doesn't gate** (e.g. pod start/run/stop
+  lifecycles, paid-API retry or fan-out loops, production-generation batches —
+  the side-effect classes in docs/protocol/claude/continuation.md name the
+  covered spend surfaces; any phase that spends AFTER the precheck ran).
 
 For the diff under review, prove every new/changed spend reaches the *same*
 accumulator the gate reads — grep the production WRITE site (Rule #12), not the
