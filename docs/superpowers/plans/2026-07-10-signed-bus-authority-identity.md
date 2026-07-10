@@ -572,22 +572,50 @@ EXPECTED_BY_RUNTIME_IDENTITY = {
     ("coordinator", "coordinator"): COORDINATOR_EXPECTED,
     ("coordinator", "coordinator2"): COORDINATOR_EXPECTED,
 }
+ALL_RUNTIME_MODES = (
+    "readiness-bridge", "live-seat", "coordinator", "subagent",
+)
+ALL_CONCRETE_SEATS = (
+    None, "director", "director2", "operator", "operator2",
+    "coordinator", "coordinator2",
+)
+ALL_OPERATION_VALUES = frozenset({
+    "orient", "repository-mutate", "mail-send", "route-mutate",
+    "human-cursor-consume", "lock-mutate", "signed-cursor-consume",
+    "signed-fact-emit", "operator-verdict", "remote-publish",
+    "trust-root-bootstrap", "authority-cutover",
+})
+
+
+def test_runtime_operation_enum_is_exact():
+    assert {operation.value for operation in RuntimeOperation} == ALL_OPERATION_VALUES
 
 
 @pytest.mark.parametrize(
-    ("mode", "seat", "operation"),
+    ("mode", "seat"),
     [
-        (mode, seat, operation)
-        for mode, seat in EXPECTED_BY_RUNTIME_IDENTITY
-        for operation in RuntimeOperation
+        (mode, seat)
+        for mode in ALL_RUNTIME_MODES
+        for seat in ALL_CONCRETE_SEATS
     ],
 )
-def test_default_mode_seat_operation_matrix_is_exact(mode, seat, operation):
+def test_complete_mode_seat_operation_matrix_is_exact(mode, seat):
     identity = _identity_for_mode_and_seat(mode, seat)
-    expected = EXPECTED_BY_RUNTIME_IDENTITY[(mode, seat)]
-    assert model.operation_is_allowed(identity, operation) is (
-        operation.value in expected
-    )
+    expected = EXPECTED_BY_RUNTIME_IDENTITY.get((mode, seat))
+    if expected is None:
+        assert identity.identity_valid is False
+        assert identity.validation_errors
+        for value in ALL_OPERATION_VALUES:
+            assert model.operation_is_allowed(
+                identity, RuntimeOperation(value)
+            ) is False
+        return
+
+    assert identity.identity_valid is True
+    for value in ALL_OPERATION_VALUES:
+        assert model.operation_is_allowed(
+            identity, RuntimeOperation(value)
+        ) is (value in expected)
 
 
 def test_token_only_operations_have_no_default_actor():
@@ -603,9 +631,12 @@ def test_token_only_operations_have_no_default_actor():
 
 Hook integration coverage belongs to Task 3B so this foundation commit remains
 independently reviewable.
-The matrix expectations above are hard-coded in the test module independently
-from production defaults; tests must not import the production matrix to build
-their expected table.
+The modes, seats, operation values, and matrix expectations above are
+hard-coded in the test module independently from production defaults; tests
+must not import production enums or matrices to discover their cases. The
+cross-product proves that every unlisted topology is invalid and has no
+operation capability, while the enum-equality assertion makes addition or
+deletion of an operation an explicit test change.
 
 - [ ] **Step 2: Run tests to prove RED**
 
@@ -700,6 +731,13 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): reject mixed runtime identit
 - Hooks locate the primary checkout through the absolute git common directory
   and use that checkout's `.venv/bin/python`. Missing validation machinery is
   fatal for mutation gates.
+- `guard-git-index.sh` is also the path-aware route-write gate for Bash, Edit,
+  Write, and `apply_patch`. A literal intended target matching
+  `coordination/mailbox/sent/*-coordinator-to-all-coordination.md` or
+  `coordination/mailbox/sent/*-coordinator2-to-all-coordination.md` requires
+  `RuntimeOperation.ROUTE_MUTATE` before the tool runs. Non-route mailbox
+  paths remain under `MAIL_SEND`; ambiguous or dynamically hidden route paths
+  fail closed rather than bypass the route gate.
 
 - [ ] **Step 1: Write session-binding and zero-mutation regressions**
 
@@ -709,6 +747,14 @@ legacy-marker-only refusal, and isolated-worktree execution without a local
 `.venv`. Snapshot the index lock, heartbeat, seat index, skip-worktree log,
 state marker, and `STATE.md` before invalid-hook cases and assert byte-for-byte
 identity afterward.
+
+Add path-aware route cases for each registered mutation tool: a bound
+coordinator may pass the runtime route-capability gate for the exact route
+pattern, while director, director2, operator, operator2, readiness, and
+subagent identities fail before any route file, temporary file, index entry,
+or hook-owned state changes. The positive case proves runtime eligibility
+only; user consent, one target-bound route token, route validation, and commit
+scope remain separate mandatory gates.
 
 - [ ] **Step 2: Run tests to prove RED**
 
@@ -742,6 +788,13 @@ again before stale-lock deletion or any heartbeat, index, skip-worktree,
 marker, or `STATE.md` mutation. Marker fallback is removed.
 `session-smoke.sh` remains explicitly diagnostic and fail-open; it is never
 used as an authority gate.
+
+For the exact coordinator-route path patterns above, the PreToolUse guard calls
+`authorize_operation(..., RuntimeOperation.ROUTE_MUTATE,
+expected_actor=identity.concrete_seat)` before allowing the tool. A generic
+valid identity check is insufficient. Literal Bash route targets are
+classified before execution; unclassifiable dynamic route writes are refused
+with a stable error code.
 
 - [ ] **Step 5: Prove GREEN and non-vacuity**
 
@@ -777,6 +830,12 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind runtime identity before
 **Interfaces:**
 - Each command calls `authorize_operation()` before its first file, index, ref,
   or lock mutation.
+- `coordination/bin/send-event` requires `MAIL_SEND` for every event. When and
+  only when the validated bound sender is `coordinator` or `coordinator2`, the
+  target is `all`, and the kind is `coordination`, it additionally requires
+  `ROUTE_MUTATE` before reading stdin or creating a temporary file. Direct
+  Edit/Write/`apply_patch` route creation remains covered by Task 3B's
+  path-aware PreToolUse gate.
 - Positional actor must equal the validated bound actor and never establishes
   identity.
 - GO/NITS/FAIL emission requires an operator-family concrete seat with
@@ -789,6 +848,13 @@ Cover mail send, human cursor consume, lock claim/release, signed-fact cursor
 consume, signed-fact emission, and GO/NITS/FAIL. For every denial, assert zero
 mailbox, cursor, lock, ref, and index mutation. Include readiness, subagent,
 coordinator-consume, director-verdict, and positional/bound-actor mismatch.
+
+For route mutation, add a coordinator-positive fixture plus pair-seat,
+readiness, and subagent denials for both `send-event` and the path-aware hook.
+The negative cases snapshot the sent-mail directory, temporary-file namespace,
+index, and hook-owned state and prove zero mutation. A non-route coordinator
+status event proves that ordinary `MAIL_SEND` is not accidentally promoted to
+`ROUTE_MUTATE`.
 
 - [ ] **Step 2: Run tests to prove RED**
 
@@ -808,6 +874,9 @@ Use exact operation tokens `mail-send`, `human-cursor-consume`,
 redefine or modify that enum. Validate before reading stdin into a durable artifact,
 creating temporary files, staging, committing, pushing, or updating refs.
 Existing side-effect token and user-consent checks remain additional gates.
+`send-event` performs the route classification described above and requires
+both `MAIL_SEND` and `ROUTE_MUTATE`; it never treats the positional `FROM`
+value as proof of coordinator identity.
 
 - [ ] **Step 4: Prove GREEN and non-vacuity**
 
