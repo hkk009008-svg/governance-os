@@ -34,6 +34,15 @@
 - Trust-root bootstrap/public-key commit and authoritative-ref cutover are
   separate target-bound executor-token actions. Task 6A cannot mutate refs or
   authority; Tasks 6B and 6C cannot generate or replace keys.
+- Task 2 corrective topology preserves the failed candidate as immutable
+  review provenance: `78b48ed -> e43acc2 -> 205f077 -> <corrective-child>`.
+  Do not amend, reset, rebase, or rewrite any of those three existing commits.
+- The corrective child commits
+  `human_mailbox.cursor_envelope_schema = "typed-v1"` with the typed generator.
+  Numeric mail remains legacy only when the unique marker-introduction commit
+  is not an ancestor of its unique introducing commit and current bytes equal
+  the introducing blob; post-marker or
+  uncommitted numeric mail fails closed.
 
 ## File And Interface Map
 
@@ -45,6 +54,7 @@
 | `scripts/status.py` | Human-mailbox unread collection independent of signed-bus state |
 | `scripts/check_coordination.py` | Fail-closed human-mailbox cursor and event validation |
 | `scripts/mailbox_monitor.py` | Read-only human-mailbox and signed-fact observability |
+| `scripts/protocol_effectiveness_report.py` | Effectiveness metrics derived from canonical human-mailbox policy |
 | `scripts/bus_unread.py` | Signed-fact unread with explicit authority checks |
 | `scripts/consume_bus.py` | Signed-fact cursor consumption only |
 | `coordination/bin/send-event` | Human-mailbox sender with unpinned coordinator envelope handling |
@@ -56,9 +66,11 @@
 | `scripts/protocol_executor_token.py` | Single typed executable side-effect token parser and verifier |
 | `scripts/codex_session_binding.py` | Versioned, non-rebindable local session identity binding |
 | `.codex/hooks/update-state.sh` | Mutation-time identity validation before presence writes |
+| `.claude/hooks/update-state.sh` | Claude mirror using the same canonical mailbox-state helper |
 | `.agents/skills/four-seat-protocol/scripts/seat_status.py` | Channel-labeled seat orientation |
 | `coordination/threeway/activation/pipeline-local-authority-2026-07-10.toml` | Secret-free activation intent, deterministic importer, exact expected ref OIDs, and resume boundary |
 | `threeway/cutover.py` | Ref-bus projection, cursor initialization, teardown, and ready-to-flip result |
+| `threeway/gate.py` | Split non-mutating merge evaluation from token-gated ref/fact mutation |
 | `threeway/keys_bootstrap.py` | Idempotent, complete-roster key provisioning without re-key |
 | `scripts/execute_threeway_cutover.sh` | Double-gated activation driver and preflight |
 | `.github/workflows/ci.yml` | Trusted manual CI signer, inert until remote activation |
@@ -223,15 +235,21 @@ env -u GIT_INDEX_FILE git commit -m "feat(protocol): add explicit channel author
 **Owner:** Pair A director implementation; Pair A operator verification.
 
 **Files:**
+- Append: `DECISIONS.md`
+- Modify: `coordination/authority.toml`
+- Modify: `scripts/protocol_authority.py`
 - Modify: `scripts/protocol_mailbox.py`
 - Modify: `scripts/status.py`
 - Modify: `scripts/check_coordination.py`
 - Modify: `scripts/mailbox_monitor.py`
+- Modify: `scripts/protocol_effectiveness_report.py`
 - Modify: `scripts/bus_unread.py`
 - Modify: `scripts/consume_bus.py`
 - Modify: `scripts/check_go_schema.py`
 - Modify: `coordination/bin/send-event`
 - Modify: `coordination/bin/consume-events`
+- Modify: `.codex/hooks/update-state.sh`
+- Modify: `.claude/hooks/update-state.sh`
 - Modify: `.agents/skills/four-seat-protocol/scripts/seat_status.py`
 - Modify: `.claude/skills/four-seat-protocol/scripts/seat_status.py`
 - Modify: `scripts/draft_handoff.py`
@@ -246,6 +264,9 @@ env -u GIT_INDEX_FILE git commit -m "feat(protocol): add explicit channel author
 - Modify: `tests/unit/test_check_go_schema.py`
 - Create: `tests/unit/test_draft_handoff.py`
 - Modify: `tests/unit/test_protocol_capacity.py`
+- Modify: `tests/unit/test_protocol_authority.py`
+- Create: `tests/unit/test_protocol_effectiveness_report.py`
+- Modify only if changed symbols make a current claim stale: `ARCHITECTURE.md`
 - Modify: `coordination/mailbox/seen/director.txt`
 - Modify: `coordination/mailbox/seen/director2.txt`
 - Modify: `coordination/mailbox/seen/operator.txt`
@@ -257,8 +278,40 @@ env -u GIT_INDEX_FILE git commit -m "feat(protocol): add explicit channel author
 - Produces `ADDRESSABLE_IDENTITIES`, `HUMAN_MAILBOX_CURSOR_OWNERS`, `HUMAN_MAILBOX_RECEIPT_IDENTITIES`, `HUMAN_MAILBOX_ALL_SCOPE_READERS`, and `SIGNED_FACT_CURSOR_IDENTITIES`.
 - Keeps `RECEIVING_SEATS` as a deprecated compatibility alias for addressability only; no cursor or receipt code may consume that alias.
 - Produces `UNINITIALIZED_CURSOR = "UNINITIALIZED"`.
-- Produces `count_human_unread(cursor: str, event_filenames: Iterable[str], seat: str) -> int`.
+- Produces `count_human_unread(cursor: str, events:
+  Sequence[MailboxEventEnvelope], seat: str) -> int`; no caller may count raw
+  filenames or bypass `parse_mailbox_event()`.
 - `bus_unread_events()` consults `protocol_authority`; shadow/live missing refs return `None`, not `[]`.
+- Extends `HumanMailboxAuthority` with
+  `cursor_envelope_schema: Literal["typed-v1"]`. A committed numeric envelope
+  is legacy only when there is exactly one HEAD-ancestor marker-introduction
+  commit, exactly one HEAD-ancestor event-introduction commit, the marker commit
+  is not an ancestor of the event commit, and current bytes equal the
+  introducing blob. Zero or multiple candidates fail closed.
+- Fixes `SIGNED_FACT_EVENTS_REF = "refs/threeway/events"` and
+  `SIGNED_FACT_CURSOR_NAMESPACE = "refs/threeway/cursors/"` in
+  `protocol_authority`; `load_authority()` rejects any other manifest values.
+- Produces frozen `MailboxEventEnvelope(timestamp, sender, target, kind, path,
+  cursor_envelope)` and
+  `parse_mailbox_event(root: Path, path: Path, *, manifest: AuthorityManifest)
+  -> MailboxEventEnvelope`.
+- The parser validates a real UTC calendar timestamp, exact sender/target
+  rosters, registered kind, no self-address, H1/`When`/`From` agreement, one
+  terminal cursor line, and provenance-sensitive envelope before the event may
+  affect a count or mutation.
+- Produces `read_human_cursor(path: Path) -> str`, which accepts exactly one
+  newline-terminated ISO or `UNINITIALIZED` line and rejects trailing content,
+  and `advance_human_cursor(root: Path, seat: str, *, target: str | None)
+  -> CursorAdvanceResult`.
+- `advance_human_cursor()` opens and exclusively locks the stable
+  `coordination/mailbox/seen/` directory descriptor, rereads under lock,
+  selects only parsed addressed events, refuses regression, fsyncs a
+  same-directory temporary file, atomically replaces the cursor, fsyncs the
+  directory, and returns before the Bash wrapper stages the explicit path.
+- `scripts/status.py` exposes one machine-readable mailbox snapshot used by
+  both `update-state.sh` mirrors. Pair identities render addressed counts;
+  coordinator aliases render `all-scope-unpinned`; missing/corrupt live state
+  renders unavailable and never zero.
 
 - [ ] **Step 1: Replace roster tests with semantic-policy tests**
 
@@ -294,17 +347,92 @@ Add integration tests that:
   a cursor, while pair seats remain addressed and watermarked;
 - treat ISO, `UNINITIALIZED`, and `all-scope-unpinned` cursor envelopes as
   terminal footer metadata rather than substantive Exact Next Trigger text.
+- accept numeric events whose introducing commit does not descend from the
+  `typed-v1` marker-introduction commit, including parallel pre-integration
+  mail; reject marker-descendant numeric events, uncommitted numeric events
+  while the marker is active, and any renamed, backdated, or byte-modified
+  legacy event;
+- prove `send-event` emits no numeric envelope after `typed-v1` deployment;
+- make `protocol_effectiveness_report.mailbox_cursor_unread()` equal canonical
+  unread for ISO, `UNINITIALIZED`, invalid, missing, and coordinator-alias
+  cases;
+- make both `update-state.sh` mirrors equal canonical pair/all-scope output and
+  expose missing/corrupt state as unavailable;
+- race two consumers from the same old cursor and prove the final cursor is the
+  newer target; inject interruption before replace and prove prior bytes remain;
+- reject unknown sender, target, kind, self-addressing, malformed calendar,
+  H1/header mismatch, trailing cursor data, and invalid envelope before
+  implicit or `--to` consumption changes cursor/index state;
+- make checker severity FATAL for every event that mutation rejects;
+- reject syntactically valid noncanonical event ref and cursor namespace
+  values, and require `consume_bus.py` to load the validated manifest before
+  constructing `RefEventStore`;
+- render missing `sent/` as unavailable through checker, status, monitor,
+  draft-handoff, effectiveness, and both seat-status mirrors;
+- recognize `coordinator` and `coordinator2` on observational monitor,
+  draft-handoff, and effectiveness surfaces. Keep canonical route discovery in
+  `ledger_start_guard.py` and `protocol_capacity.py` explicitly exempt and
+  unchanged.
+
+Use these exact per-finding selectors. Run each node alone for causal RED,
+implement the minimum correction, rerun the same node to GREEN, apply the named
+one-fact flip, require that node to RED again, restore, and rerun GREEN:
+
+| Finding | Exact pytest node | Initial RED | One-fact flip |
+|---|---|---|---|
+| 1 | `tests/unit/test_check_coordination.py::test_numeric_envelope_uses_introducing_commit_typed_marker` | lawful parallel pre-integration numeric mail is rejected or marker-ancestor numeric mail passes | change the fixture DAG so the marker-introduction commit is no longer an ancestor of the event-introduction commit |
+| 2 | `tests/unit/test_protocol_authority.py::test_adr_013_binds_live_transition_to_task6c_only` | ADR-012 still grants broad Task 6 transition | change expected transition from `6C` to `6B` |
+| 3 | `tests/unit/test_protocol_effectiveness_report.py::test_mailbox_cursor_unread_matches_canonical_policy` | canonical unread `1` becomes effectiveness `0` | restore lexical `UNINITIALIZED` comparison |
+| 4 | `tests/unit/test_coordination_tooling.py::test_update_state_mirrors_use_canonical_mailbox_snapshot` | one or both hooks render false-zero state | bypass the shared snapshot in one mirror |
+| 5 | `tests/unit/test_coordination_tooling.py::test_concurrent_consume_is_monotonic_and_atomic` | interleaving regresses or interruption truncates the cursor | remove the `seen/` directory lock around reread/replace |
+| 6 | `tests/unit/test_protocol_mailbox.py::test_invalid_event_schema_never_advances_cursor` | an invalid sender/target/kind/self-address/envelope advances | admit one unknown kind in the parser fixture |
+| 7 | `tests/unit/test_protocol_authority.py::test_noncanonical_signed_refs_fail_closed` | a valid alternative ref splits read/consume state | allow one alternative cursor namespace |
+| 8 | `tests/unit/test_seat_status_all.py::test_seat_status_mirrors_fail_visible_on_corrupt_or_missing_mailbox` | trailing cursor data or missing `sent/` renders zero | read only the first cursor line in one mirror |
+| 9 | `tests/unit/test_draft_handoff.py::test_observational_coordinator_aliases_are_symmetric` | `coordinator2` is omitted from one observational surface | remove `coordinator2` from the typed coordinator roster |
+
+For every row the runnable shape is:
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest <exact-node-from-table> -q
+```
 
 - [ ] **Step 2: Run the focused tests to prove RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_check_coordination.py tests/unit/test_coordination_tooling.py tests/unit/test_governance_hardening.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_seat_status_all.py tests/unit/test_draft_handoff.py tests/unit/test_protocol_capacity.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_authority.py tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_check_coordination.py tests/unit/test_coordination_tooling.py tests/unit/test_governance_hardening.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_seat_status_all.py tests/unit/test_check_go_schema.py tests/unit/test_draft_handoff.py tests/unit/test_protocol_capacity.py tests/unit/test_protocol_effectiveness_report.py -q
 ```
 
-Expected: failures show coordinators still own cursor files, scalar cursors still
-select ref-bus unread, and absent refs still produce zero.
+Expected: failures show the fixed timestamp cutoff rejects lawful current
+history; effectiveness/hooks/seat mirrors disagree with canonical unread;
+consume can regress or truncate; invalid filenames can advance a cursor;
+noncanonical manifest refs split readers/writers; coordinators still own cursor
+files; scalar cursors still select ref-bus unread; and absent state produces
+zero.
 
-- [ ] **Step 3: Add semantic mailbox constants**
+- [ ] **Step 3: Append the corrective ADR and deploy the typed marker**
+
+Append `ADR-013: Narrow signed-facts activation to Task 6C` without editing
+ADR-012. State that Task 6A trust-root provisioning and Task 6B manifest
+measurement remain `shadow`; only a separately authorized Task 6C performs the
+local ref/authority transition. Update `coordination/authority.toml`'s decision
+pointer to ADR-013 and add exactly:
+
+```toml
+cursor_envelope_schema = "typed-v1"
+```
+
+This marker is deployed in the same corrective child as the typed generator.
+Find exactly one marker-introduction commit on HEAD ancestry: its tree contains
+the exact `typed-v1` field and none of its parents does. Find exactly one event-
+introduction commit on HEAD ancestry and require current bytes to equal its
+blob. The numeric event is legacy only when the marker-introduction commit is
+not an ancestor of the event-introduction commit. This admits parallel main
+mail created before candidate integration, but a later deletion/restoration of
+the marker cannot make post-marker mail legacy. Zero/multiple candidates and
+uncommitted numeric events with the current marker active reject. Timestamp
+comparison alone never grants legacy status.
+
+- [ ] **Step 4: Add semantic mailbox constants and the canonical parser**
 
 Replace the conflated roster with:
 
@@ -322,7 +450,14 @@ RECIPIENTS = (*ADDRESSABLE_IDENTITIES, "all")
 UNINITIALIZED_CURSOR = "UNINITIALIZED"
 ```
 
-- [ ] **Step 4: Make human unread independent of signed refs**
+Add the frozen event/cursor types and functions named in the Interfaces block.
+Load the kind registry once per scan. Validate the entire event and cursor file,
+not the first line or a filename substring. `check_coordination.py` and
+`check_go_schema.py` replace the wall-clock cutoff with the unique marker/event
+introduction ancestry-and-byte rule; mutation-invalid events are FATAL checker
+input.
+
+- [ ] **Step 5: Make every human unread reader use the canonical policy**
 
 `count_human_unread()` must treat `UNINITIALIZED` as older than every valid
 event, ISO timestamps as strict watermarks, and all other cursor values as a
@@ -342,7 +477,13 @@ all human-mailbox events with the `all-scope-unpinned` marker. In
 trigger detection; keep legacy numeric footer compatibility for historical
 artifacts.
 
-- [ ] **Step 5: Restrict mutation tools**
+Replace the independent cursor logic in
+`scripts/protocol_effectiveness_report.py` and both `update-state.sh` mirrors
+with the shared machine-readable status helper. Apply coordinator-alias parity
+to effectiveness, monitor, and draft handoff. A missing mailbox directory or
+invalid full cursor file is unavailable/invalid on every surface.
+
+- [ ] **Step 6: Restrict mutation tools and serialize cursor advance**
 
 Change `coordination/bin/consume-events` to accept only the four pair seats.
 Teach it that `UNINITIALIZED` has no lower watermark: an intentional consume
@@ -359,16 +500,32 @@ Cursor at send: all-scope-unpinned
 Change the GO-schema cursor-envelope regex to accept an ISO or
 `UNINITIALIZED` pair-seat cursor, or this exact coordinator marker.
 
-- [ ] **Step 6: Migrate current human cursor files honestly**
+`send-event` validates the full sender cursor and emits only the typed form.
+`consume-events` delegates event selection and compare-and-replace to
+`advance_human_cursor()` before staging. The helper holds an exclusive lock on
+the stable `coordination/mailbox/seen/` directory descriptor across the reread,
+monotonic comparison, temporary-file fsync, atomic replace, and directory
+fsync. No lock file is created or deleted, and no filename-only grep may select
+a mutation target.
+
+- [ ] **Step 7: Reject configurable signed refs at the authority boundary**
+
+Require the two exact constants from the Interfaces block in
+`load_authority()`. `bus_unread.py` and `consume_bus.py` both load the same
+manifest before constructing a store. Because alternatives are rejected,
+`RefEventStore._cursor_ref()` remains unchanged and the broader cutover sibling
+audit is explicitly out of this bounded Task 2 correction.
+
+- [ ] **Step 8: Migrate current human cursor files honestly**
 
 Because no committed cursor-backfill manifest can reconstruct the prior ISO
 watermarks, set the four pair files to exactly `UNINITIALIZED\n` and delete the
 two coordinator files. Do not invent consumed timestamps.
 
-- [ ] **Step 7: Prove GREEN and non-vacuity**
+- [ ] **Step 9: Prove GREEN and per-finding non-vacuity**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_check_coordination.py tests/unit/test_coordination_tooling.py tests/unit/test_governance_hardening.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_seat_status_all.py tests/unit/test_check_go_schema.py tests/unit/test_draft_handoff.py tests/unit/test_protocol_capacity.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_authority.py tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_check_coordination.py tests/unit/test_coordination_tooling.py tests/unit/test_governance_hardening.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_seat_status_all.py tests/unit/test_check_go_schema.py tests/unit/test_draft_handoff.py tests/unit/test_protocol_capacity.py tests/unit/test_protocol_effectiveness_report.py -q
 ```
 
 Change only one coordinator to a cursor owner in the test fixture and confirm
@@ -378,13 +535,31 @@ foreign-seat event disappears, and flip a footer-only trigger to one
 substantive sentence and confirm terminal-trigger detection changes from false
 to true. Restore both fixtures and rerun GREEN.
 
-- [ ] **Step 8: Review and commit Task 2**
+Then independently flip each corrective guard: treat one post-marker numeric
+event as legacy; bypass canonical unread in effectiveness; make one hook treat
+`UNINITIALIZED` lexically; remove the cursor lock; admit one invalid kind;
+permit one noncanonical ref; truncate a cursor read to the first line; and
+remove `coordinator2` from observational discovery. Each named selector must
+fail for its own reason before restoration and the final GREEN run.
 
-Stage only the paths listed above, inspect the cached diff, and commit:
+- [ ] **Step 10: Review and commit the additive Task 2 correction**
+
+Start from the clean failed candidate `205f077a23291496ea4b84c8de1f8acdfa2bd040`.
+Confirm its sole parent is accepted Task 1
+`e43acc245e2492883ca04b0d835268708ad0995d`. Do not amend, reset, rebase, or
+rewrite either commit. Stage only the paths listed above, inspect the cached
+diff, and create exactly one corrective child:
 
 ```bash
-env -u GIT_INDEX_FILE git commit -m "fix(protocol): separate mailbox and signed-fact cursors"
+env -u GIT_INDEX_FILE git commit -m "fix(protocol): close mailbox authority verification gaps"
 ```
+
+Dispatch fresh Task-2 specification and code-quality reviewers over the actual
+`205f077..<corrective-child>` diff. After both pass, send one verify-request
+for the cumulative three-commit range
+`78b48ed493899dd126de2d1764cbdbf022111dfd..<corrective-child>` and cite the
+accepted Task-1 artifacts, failed-candidate provenance, corrective reviews,
+all nine RED/GREEN/non-vacuity selectors, changed paths, and exclusions.
 
 ---
 
@@ -404,7 +579,7 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): separate mailbox and signed-
 **Interfaces:**
 - Produces `RuntimeIdentityError(ValueError)`.
 - Produces `SessionBindingView(Protocol)` with read-only `session_id`,
-  `mode`, `concrete_seat`, and `role_family` attributes. Task 3B's concrete
+  `mode`, `concrete_seat`, `role_family`, and `agent_role` attributes. Task 3B's concrete
   `SessionBinding` implements this protocol without requiring Task 3A to import
   a later module.
 - Produces the complete interactive `RuntimeOperation` enum in Task 3A:
@@ -432,10 +607,14 @@ DEFAULT_RUNTIME_OPERATIONS = {
     "readiness-bridge": frozenset({
         RuntimeOperation.ORIENT,
     }),
-    "subagent": frozenset({
+    "protocol-director-subagent": frozenset({
         RuntimeOperation.ORIENT,
         RuntimeOperation.REPOSITORY_MUTATE,
     }),
+    "protocol-coordinator-subagent": frozenset({RuntimeOperation.ORIENT}),
+    "protocol-operator-subagent": frozenset({RuntimeOperation.ORIENT}),
+    "lane-v-verifier-subagent": frozenset({RuntimeOperation.ORIENT}),
+    "money-gate-reviewer-subagent": frozenset({RuntimeOperation.ORIENT}),
     "director": frozenset({
         RuntimeOperation.ORIENT,
         RuntimeOperation.REPOSITORY_MUTATE,
@@ -465,42 +644,59 @@ DEFAULT_RUNTIME_OPERATIONS = {
         RuntimeOperation.SIGNED_FACT_EMIT,
     }),
 }
-TOKEN_ONLY_RUNTIME_OPERATIONS = frozenset({
+TOKEN_APPOINTABLE_RUNTIME_OPERATIONS = frozenset({
     RuntimeOperation.REMOTE_PUBLISH,
     RuntimeOperation.TRUST_ROOT_BOOTSTRAP,
     RuntimeOperation.AUTHORITY_CUTOVER,
 })
-TOKEN_REQUIRED_INTERACTIVE_OPERATIONS = frozenset({
+TOKEN_REQUIRED_RUNTIME_OPERATIONS = frozenset({
     RuntimeOperation.ROUTE_MUTATE,
     RuntimeOperation.LOCK_MUTATE,
     RuntimeOperation.HUMAN_CURSOR_CONSUME,
     RuntimeOperation.SIGNED_CURSOR_CONSUME,
+    RuntimeOperation.SIGNED_FACT_EMIT,
+    RuntimeOperation.REMOTE_PUBLISH,
+    RuntimeOperation.TRUST_ROOT_BOOTSTRAP,
+    RuntimeOperation.AUTHORITY_CUTOVER,
 })
 
+TOKEN_APPOINTABLE_RUNTIME_ACTOR_CLASSES = {
+    RuntimeOperation.REMOTE_PUBLISH: frozenset({"director", "operator", "coordinator"}),
+    RuntimeOperation.TRUST_ROOT_BOOTSTRAP: frozenset({"director", "coordinator"}),
+    RuntimeOperation.AUTHORITY_CUTOVER: frozenset({"director", "coordinator"}),
+}
+
 RUNTIME_ACTOR_CLASS_BY_IDENTITY = {
-    ("readiness-bridge", None): "readiness-bridge",
-    ("subagent", None): "subagent",
-    ("live-seat", "director"): "director",
-    ("live-seat", "director2"): "director",
-    ("live-seat", "operator"): "operator",
-    ("live-seat", "operator2"): "operator",
-    ("coordinator", "coordinator"): "coordinator",
-    ("coordinator", "coordinator2"): "coordinator",
+    ("readiness-bridge", None, None): "readiness-bridge",
+    ("subagent", None, "protocol-director"): "protocol-director-subagent",
+    ("subagent", None, "protocol-coordinator"): "protocol-coordinator-subagent",
+    ("subagent", None, "protocol-operator"): "protocol-operator-subagent",
+    ("subagent", None, "lane-v-verifier"): "lane-v-verifier-subagent",
+    ("subagent", None, "money-gate-reviewer"): "money-gate-reviewer-subagent",
+    ("live-seat", "director", None): "director",
+    ("live-seat", "director2", None): "director",
+    ("live-seat", "operator", None): "operator",
+    ("live-seat", "operator2", None): "operator",
+    ("coordinator", "coordinator", None): "coordinator",
+    ("coordinator", "coordinator2", None): "coordinator",
 }
 ```
 
 `REPOSITORY_MUTATE` never widens the identity's path-limited mutation scope.
-The `(mode, concrete_seat)` map above is exhaustive: every tuple not listed is
+The `(mode, concrete_seat, agent_role)` map above is exhaustive: every tuple not listed is
 invalid and receives no operation defaults. The two pair directors share the
 director operation set, the two pair operators share the operator operation
 set, and both coordinator spellings share the coordinator set without gaining
 a human-mailbox cursor. The readiness and subagent modes never carry a
 concrete seat.
-Token-only operations belong to no default set and become eligible only when a
-complete target-bound token names the same concrete executor, the user has
-authorized the action, and all operation-specific gates pass. Readiness,
-subagent, and mechanical principals can never receive token-only interactive
-operations.
+Appointable operations belong to no default set. A token never creates static
+eligibility: the cumulative authorizer first requires a valid live-seat or
+coordinator identity named in `TOKEN_APPOINTABLE_RUNTIME_ACTOR_CLASSES`,
+then verifies the complete target-bound token and every operation-specific
+gate. Readiness, subagent, and mechanical principals cannot receive
+appointable interactive operations. Every operation in
+`TOKEN_REQUIRED_RUNTIME_OPERATIONS`, including signed-fact emit and remote
+publish, fails when either identity eligibility or token authority is absent.
 
 - Produces immutable `SideEffectExecutorToken` in
   `scripts/protocol_executor_token.py` and these single-source entry points:
@@ -538,8 +734,72 @@ field presence or runtime-operation eligibility as execution authority.
 `scripts/protocol_capacity.py` imports this parser for route validation and
 deletes its parallel token parser.
 
+- Produces one cumulative authorization result and entry point:
+
+```python
+@dataclass(frozen=True)
+class AuthorizedRuntimeSideEffect:
+    identity: RuntimeIdentity
+    operations: frozenset[RuntimeOperation]
+    executor_token: SideEffectExecutorToken
+
+
+def authorize_side_effect_operations(
+    root: Path,
+    environ: Mapping[str, str],
+    *,
+    session_binding: SessionBindingView,
+    operations: AbstractSet[RuntimeOperation],
+    expected_actor: str,
+    token_path: Path,
+    side_effect_id: str,
+    target: str,
+    command_class: str,
+    expected_head: str,
+    current_appointment_path: Path,
+    newer_appointment_paths: Sequence[Path],
+    target_satisfied: bool,
+    failed_preflight: Sequence[str],
+    triggered_stop_predicates: Sequence[str],
+) -> AuthorizedRuntimeSideEffect: ...
+```
+
+It resolves identity, validates the mandatory binding and actor, requires a
+nonempty set consisting only of token-required operations, checks static
+eligibility and publication eligibility, and validates the one committed token
+before returning either component. Token-required mutation entry points must
+not call bare `operation_is_allowed()` or `authorize_operation()`. Token-exempt
+ordinary `MAIL_SEND` and `OPERATOR_VERDICT` continue to use
+`authorize_operation()` and remain identity/authority gated.
+
+Freeze the exhaustive command-class map:
+
+```python
+OPERATIONS_BY_COMMAND_CLASS = {
+    "route-mutation": frozenset({RuntimeOperation.ROUTE_MUTATE}),
+    "lock-mutation": frozenset({RuntimeOperation.LOCK_MUTATE}),
+    "human-cursor-consume": frozenset({RuntimeOperation.HUMAN_CURSOR_CONSUME}),
+    "signed-cursor-local": frozenset({RuntimeOperation.SIGNED_CURSOR_CONSUME}),
+    "signed-cursor-remote": frozenset({
+        RuntimeOperation.SIGNED_CURSOR_CONSUME,
+        RuntimeOperation.REMOTE_PUBLISH,
+    }),
+    "signed-fact-emit-local": frozenset({RuntimeOperation.SIGNED_FACT_EMIT}),
+    "signed-fact-emit-remote": frozenset({
+        RuntimeOperation.SIGNED_FACT_EMIT,
+        RuntimeOperation.REMOTE_PUBLISH,
+    }),
+    "trust-root-bootstrap": frozenset({RuntimeOperation.TRUST_ROOT_BOOTSTRAP}),
+    "authority-cutover": frozenset({RuntimeOperation.AUTHORITY_CUTOVER}),
+}
+```
+
+The requested set must equal, not merely overlap or be a subset of, the frozen
+bundle for `command_class`. Unknown classes, empty sets, extra operations, and
+partial remote bundles fail before token or mutation callbacks.
+
 - Produces immutable `RuntimeIdentity` with fields `mode`, `concrete_seat`,
-  `behavior_source`, `capability_scope`, `mutation_scope`, `mailbox_policy`,
+  `agent_role`, `behavior_source`, `capability_scope`, `mutation_scope`, `mailbox_policy`,
   `git_policy`, `verification_policy`, `routing_authority`,
   `publication_eligibility`, `identity_valid`, and `validation_errors`.
 - Produces a derived `role_family` property. Pair mappings are
@@ -551,8 +811,153 @@ deletes its parallel token parser.
 - Keeps `infer_runtime_env()` as the compatibility renderer; it calls the resolver and adds `CODEX_IDENTITY_VALID` and `CODEX_IDENTITY_ERRORS`.
 - Produces CLI validation: `scripts/codex_protocol_model.py --validate-runtime-env` exits `0` only for a valid identity.
 - Adds `tests/unit/test_codex_protocol_model.py` to
-  `CODEX_VERIFICATION_COMMANDS` and updates
-  `tests/unit/test_codex_ledger_bridge.py` so `protocol_doctor.py` executes it.
+  `CODEX_VERIFICATION_COMMANDS` together with
+  `tests/unit/test_protocol_executor_token.py`, and updates
+  `tests/unit/test_codex_ledger_bridge.py` so `protocol_doctor.py` executes both.
+
+- Pins supported subagent defaults exactly:
+
+| `agent_role` | Default operations | Mutation | Verification | Route/publish |
+|---|---|---|---|---|
+| `protocol-director` | `orient,repository-mutate` | parent-named paths only | no GO | none |
+| `protocol-coordinator` | `orient` | none | evidence only | none |
+| `protocol-operator` | `orient` | none | read-only review, no GO | none |
+| `lane-v-verifier` | `orient` | none | read-only review, no GO | none |
+| `money-gate-reviewer` | `orient` | none | read-only review, no GO | none |
+
+```python
+POLICY_TOKEN_VOCABULARY_BY_FIELD = {
+    "capability_scope": frozenset({
+        "read-only", "seat-local", "capacity-max", "orient", "parent-task",
+    }),
+    "mutation_scope": frozenset({
+        "none", "seat-owned", "coordination-only", "parent-named-paths",
+    }),
+    "mailbox_policy": frozenset({
+        "read-only", "no-send", "no-consume", "seat-read",
+        "consume-intentional", "all-scope-read",
+    }),
+    "git_policy": frozenset({
+        "env-u-git-index", "read-only", "per-seat-index-for-cursor-status",
+        "temp-index", "parent-named-paths",
+    }),
+    "verification_policy": frozenset({
+        "report-evidence-only", "request-operator-go",
+        "independent-go-nits-fail", "reconcile-operator-go-only",
+        "advisory", "evidence-only", "read-only-review", "no-go",
+    }),
+    "routing_authority": frozenset({
+        "none", "report-only", "seat-owned", "all-scope-reconcile",
+    }),
+}
+
+DEFAULT_POLICY_TOKENS_BY_ACTOR = {
+    "readiness-bridge": {
+        "capability_scope": frozenset({"read-only"}),
+        "mutation_scope": frozenset({"none"}),
+        "mailbox_policy": frozenset({"read-only", "no-send", "no-consume"}),
+        "git_policy": frozenset({"env-u-git-index", "read-only"}),
+        "verification_policy": frozenset({"report-evidence-only", "no-go"}),
+        "routing_authority": frozenset({"report-only"}),
+    },
+    "director": {
+        "capability_scope": frozenset({"seat-local"}),
+        "mutation_scope": frozenset({"seat-owned"}),
+        "mailbox_policy": frozenset({"seat-read", "consume-intentional"}),
+        "git_policy": frozenset({
+            "env-u-git-index", "per-seat-index-for-cursor-status",
+        }),
+        "verification_policy": frozenset({"request-operator-go", "no-go"}),
+        "routing_authority": frozenset({"seat-owned"}),
+    },
+    "operator": {
+        "capability_scope": frozenset({"seat-local"}),
+        "mutation_scope": frozenset({"seat-owned"}),
+        "mailbox_policy": frozenset({"seat-read", "consume-intentional"}),
+        "git_policy": frozenset({
+            "env-u-git-index", "per-seat-index-for-cursor-status",
+        }),
+        "verification_policy": frozenset({"independent-go-nits-fail"}),
+        "routing_authority": frozenset({"seat-owned"}),
+    },
+    "coordinator": {
+        "capability_scope": frozenset({"capacity-max"}),
+        "mutation_scope": frozenset({"coordination-only"}),
+        "mailbox_policy": frozenset({"all-scope-read", "no-consume"}),
+        "git_policy": frozenset({"env-u-git-index", "temp-index"}),
+        "verification_policy": frozenset({
+            "reconcile-operator-go-only", "no-go",
+        }),
+        "routing_authority": frozenset({"all-scope-reconcile"}),
+    },
+    "protocol-director-subagent": {
+        "capability_scope": frozenset({"orient", "parent-task"}),
+        "mutation_scope": frozenset({"parent-named-paths"}),
+        "mailbox_policy": frozenset({"read-only", "no-send", "no-consume"}),
+        "git_policy": frozenset({"env-u-git-index", "parent-named-paths"}),
+        "verification_policy": frozenset({"advisory", "no-go"}),
+        "routing_authority": frozenset({"none"}),
+    },
+    "protocol-coordinator-subagent": {
+        "capability_scope": frozenset({"orient", "parent-task"}),
+        "mutation_scope": frozenset({"none"}),
+        "mailbox_policy": frozenset({"read-only", "no-send", "no-consume"}),
+        "git_policy": frozenset({"env-u-git-index", "read-only"}),
+        "verification_policy": frozenset({"evidence-only", "no-go"}),
+        "routing_authority": frozenset({"none"}),
+    },
+    "protocol-operator-subagent": {
+        "capability_scope": frozenset({"orient", "parent-task"}),
+        "mutation_scope": frozenset({"none"}),
+        "mailbox_policy": frozenset({"read-only", "no-send", "no-consume"}),
+        "git_policy": frozenset({"env-u-git-index", "read-only"}),
+        "verification_policy": frozenset({"read-only-review", "no-go"}),
+        "routing_authority": frozenset({"none"}),
+    },
+    "lane-v-verifier-subagent": {
+        "capability_scope": frozenset({"orient", "parent-task"}),
+        "mutation_scope": frozenset({"none"}),
+        "mailbox_policy": frozenset({"read-only", "no-send", "no-consume"}),
+        "git_policy": frozenset({"env-u-git-index", "read-only"}),
+        "verification_policy": frozenset({"read-only-review", "no-go"}),
+        "routing_authority": frozenset({"none"}),
+    },
+    "money-gate-reviewer-subagent": {
+        "capability_scope": frozenset({"orient", "parent-task"}),
+        "mutation_scope": frozenset({"none"}),
+        "mailbox_policy": frozenset({"read-only", "no-send", "no-consume"}),
+        "git_policy": frozenset({"env-u-git-index", "read-only"}),
+        "verification_policy": frozenset({"read-only-review", "no-go"}),
+        "routing_authority": frozenset({"none"}),
+    },
+}
+
+DEFAULT_PUBLICATION_ELIGIBILITY_BY_ACTOR = {
+    "readiness-bridge": False,
+    "protocol-director-subagent": False,
+    "protocol-coordinator-subagent": False,
+    "protocol-operator-subagent": False,
+    "lane-v-verifier-subagent": False,
+    "money-gate-reviewer-subagent": False,
+    "director": True,
+    "operator": True,
+    "coordinator": True,
+}
+```
+
+All six policy fields are `frozenset[str]` for every runtime actor. Environment
+overrides are comma-delimited token sets, so a singleton legacy spelling is
+still represented as a one-element `frozenset`; no actor receives a scalar
+policy value.
+
+Unknown or generic subagent roles fail closed. Every policy override is a
+comma-separated set of unique lowercase ASCII tokens with no whitespace,
+empty item, duplicate, or unknown token. Absent means the literal role default;
+a present value must be a subset. Rendering is sorted and deterministic.
+The environment serialization is `token,token` in sorted order; the empty
+string is invalid rather than an empty set. Tests hard-code independent copies
+of every vocabulary, default map, and publication boolean instead of importing
+these production constants.
 
 - [ ] **Step 1: Write the identity matrix regressions**
 
@@ -575,7 +980,7 @@ def test_mixed_or_incomplete_identity_is_invalid(env):
 def test_operator_identity_has_go_authority_only_with_operator_seat():
     identity = model.resolve_runtime_identity({"CODEX_SEAT": "operator"})
     assert identity.identity_valid is True
-    assert identity.verification_policy == "independent-go-nits-fail"
+    assert identity.verification_policy == frozenset({"independent-go-nits-fail"})
 
 
 @pytest.mark.parametrize(("seat", "role_family"), [
@@ -612,14 +1017,18 @@ COORDINATOR_EXPECTED = frozenset({
     "lock-mutate", "signed-cursor-consume", "signed-fact-emit",
 })
 EXPECTED_BY_RUNTIME_IDENTITY = {
-    ("readiness-bridge", None): frozenset({"orient"}),
-    ("subagent", None): frozenset({"orient", "repository-mutate"}),
-    ("live-seat", "director"): DIRECTOR_EXPECTED,
-    ("live-seat", "director2"): DIRECTOR_EXPECTED,
-    ("live-seat", "operator"): OPERATOR_EXPECTED,
-    ("live-seat", "operator2"): OPERATOR_EXPECTED,
-    ("coordinator", "coordinator"): COORDINATOR_EXPECTED,
-    ("coordinator", "coordinator2"): COORDINATOR_EXPECTED,
+    ("readiness-bridge", None, None): frozenset({"orient"}),
+    ("subagent", None, "protocol-director"): frozenset({"orient", "repository-mutate"}),
+    ("subagent", None, "protocol-coordinator"): frozenset({"orient"}),
+    ("subagent", None, "protocol-operator"): frozenset({"orient"}),
+    ("subagent", None, "lane-v-verifier"): frozenset({"orient"}),
+    ("subagent", None, "money-gate-reviewer"): frozenset({"orient"}),
+    ("live-seat", "director", None): DIRECTOR_EXPECTED,
+    ("live-seat", "director2", None): DIRECTOR_EXPECTED,
+    ("live-seat", "operator", None): OPERATOR_EXPECTED,
+    ("live-seat", "operator2", None): OPERATOR_EXPECTED,
+    ("coordinator", "coordinator", None): COORDINATOR_EXPECTED,
+    ("coordinator", "coordinator2", None): COORDINATOR_EXPECTED,
 }
 ALL_RUNTIME_MODES = (
     "readiness-bridge", "live-seat", "coordinator", "subagent",
@@ -627,6 +1036,10 @@ ALL_RUNTIME_MODES = (
 ALL_CONCRETE_SEATS = (
     None, "director", "director2", "operator", "operator2",
     "coordinator", "coordinator2",
+)
+ALL_AGENT_ROLES = (
+    None, "protocol-director", "protocol-coordinator", "protocol-operator",
+    "lane-v-verifier", "money-gate-reviewer", "unknown-role",
 )
 ALL_OPERATION_VALUES = frozenset({
     "orient", "repository-mutate", "mail-send", "route-mutate",
@@ -641,16 +1054,17 @@ def test_runtime_operation_enum_is_exact():
 
 
 @pytest.mark.parametrize(
-    ("mode", "seat"),
+    ("mode", "seat", "agent_role"),
     [
-        (mode, seat)
+        (mode, seat, agent_role)
         for mode in ALL_RUNTIME_MODES
         for seat in ALL_CONCRETE_SEATS
+        for agent_role in ALL_AGENT_ROLES
     ],
 )
-def test_complete_mode_seat_operation_matrix_is_exact(mode, seat):
-    identity = _identity_for_mode_and_seat(mode, seat)
-    expected = EXPECTED_BY_RUNTIME_IDENTITY.get((mode, seat))
+def test_complete_mode_seat_role_operation_matrix_is_exact(mode, seat, agent_role):
+    identity = _identity_for_mode_seat_and_role(mode, seat, agent_role)
+    expected = EXPECTED_BY_RUNTIME_IDENTITY.get((mode, seat, agent_role))
     if expected is None:
         assert identity.identity_valid is False
         assert identity.validation_errors
@@ -667,15 +1081,21 @@ def test_complete_mode_seat_operation_matrix_is_exact(mode, seat):
         ) is (value in expected)
 
 
-def test_token_only_operations_have_no_default_actor():
-    for mode, seat in EXPECTED_BY_RUNTIME_IDENTITY:
-        identity = _identity_for_mode_and_seat(mode, seat)
-        for operation in (
-            RuntimeOperation.REMOTE_PUBLISH,
-            RuntimeOperation.TRUST_ROOT_BOOTSTRAP,
-            RuntimeOperation.AUTHORITY_CUTOVER,
-        ):
-            assert model.operation_is_allowed(identity, operation) is False
+EXPECTED_APPOINTABLE_ACTOR_CLASSES = {
+    "remote-publish": frozenset({"director", "operator", "coordinator"}),
+    "trust-root-bootstrap": frozenset({"director", "coordinator"}),
+    "authority-cutover": frozenset({"director", "coordinator"}),
+}
+
+
+def test_token_never_creates_static_eligibility():
+    for (mode, seat, agent_role), expected in EXPECTED_BY_RUNTIME_IDENTITY.items():
+        identity = _identity_for_mode_seat_and_role(mode, seat, agent_role)
+        for operation_value, actor_classes in EXPECTED_APPOINTABLE_ACTOR_CLASSES.items():
+            operation = RuntimeOperation(operation_value)
+            actor_class = model.actor_class(identity)
+            is_appointable = actor_class in actor_classes
+            assert model.operation_is_statically_eligible(identity, operation) is is_appointable
 ```
 
 In `tests/unit/test_protocol_executor_token.py`, hard-code complete token
@@ -685,6 +1105,15 @@ appointments, satisfied target, failed preflight, and each triggered stop
 predicate. Every rejection occurs before a supplied mutation callback can run.
 `tests/unit/test_protocol_capacity.py` proves route validation and the runtime
 verifier parse identical fields and reject the same malformed token.
+
+Add cumulative cases where valid identity/no token, invalid identity/valid
+token, and wrong-actor token all fail before a mutation callback, while both
+valid gates succeed. Hard-code the actor x operation x supported-subagent-role
+matrix plus every policy's default/narrow/empty/unknown/widen/duplicate/conflict
+cases. Assert the doctor command contains both identity and executor-token
+suites. One-fact flips remove `SIGNED_FACT_EMIT` from token-required
+operations, grant repository mutation to one read-only role, and change the
+token HEAD; each must fail independently.
 
 Hook integration coverage belongs to Task 3B so this foundation commit remains
 independently reviewable.
@@ -721,6 +1150,10 @@ only narrow from eligible to ineligible. Runtime eligibility never substitutes
 for user consent, executor election, operator GO, or a target-bound
 side-effect token.
 
+Resolve and preserve the exact supported `agent_role` for subagent mode. Apply
+the literal role defaults and serialization grammar above; generic/unknown
+subagents and any role reinterpreted as a concrete seat are invalid.
+
 Emit errors in this deterministic order: unknown values; topology mismatch;
 role-family mismatch; behavior-source mismatch; missing or conflicting session
 binding; unknown policy tokens; widening override; positional-actor mismatch;
@@ -731,7 +1164,7 @@ mutation hooks treat any invalid object as fatal.
 
 - [ ] **Step 4: Add strict and operation-aware entry points**
 
-`require_runtime_identity()` and `authorize_operation()` must preserve the
+`require_runtime_identity()` and bare eligibility checks must preserve the
 resolver's ordered errors and add only actor/operation errors after the
 identity checks. CLI success is quiet. CLI failure writes stable error codes to
 stderr without dumping the environment and exits nonzero.
@@ -743,8 +1176,15 @@ Appointment freshness is determined from durable mailbox order, not caller
 prose. `failed_preflight` and `triggered_stop_predicates` must both be empty;
 the verifier does not attempt to reinterpret free-form safety text.
 
-Update `CODEX_VERIFICATION_COMMANDS` in the same commit so the new identity
-suite is part of the model-derived doctor gate.
+Implement `authorize_side_effect_operations()` as the only token-required
+mutation-facing composition point. It validates the whole requested operation bundle and the
+one token before returning. A command-class bundle mismatch, partial operation
+set, absent publication eligibility, or either gate failing returns no identity
+or token object to the caller.
+
+Update `CODEX_VERIFICATION_COMMANDS` in the same commit so the identity and
+executor-token suites are both part of the model-derived doctor gate, with
+hard-coded ledger-bridge assertions.
 
 - [ ] **Step 5: Prove GREEN and non-vacuity**
 
@@ -772,6 +1212,7 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): reject mixed runtime identit
 **Owner:** Pair B director2 implementation after Task 3A GO; Pair B operator2 verification.
 
 **Files:**
+- Modify: `scripts/codex_protocol_model.py`
 - Create: `scripts/codex_session_binding.py`
 - Modify: `scripts/continuation_readiness.py`
 - Modify: `scripts/seat_banner.py`
@@ -785,10 +1226,11 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): reject mixed runtime identit
 - Create: `tests/unit/test_codex_session_binding.py`
 - Modify: `tests/unit/test_coordination_tooling.py`
 - Modify: `tests/unit/test_protocol_prompt_sync.py`
+- Modify: `tests/unit/test_codex_ledger_bridge.py`
 
 **Interfaces:**
-- Produces frozen `SessionBinding(schema_version, session_id, mode, concrete_seat, role_family, created_head)`.
-- Produces `bind_session(root: Path, *, session_id: str, mode: str, concrete_seat: str | None, role_family: str | None) -> SessionBinding` and `load_session_binding(root: Path, session_id: str) -> SessionBinding`.
+- Produces frozen `SessionBinding(schema_version, session_id, mode, concrete_seat, role_family, agent_role, created_head)`.
+- Produces `bind_session(root: Path, *, session_id: str, mode: str, concrete_seat: str | None, role_family: str | None, agent_role: str | None) -> SessionBinding` and `load_session_binding(root: Path, session_id: str) -> SessionBinding`.
 - Accepts only ASCII session IDs matching
   `\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z` and stores ignored local bindings
   beneath the primary checkout's `.codex/session-bindings/`.
@@ -817,9 +1259,14 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): reject mixed runtime identit
   fail closed rather than bypass the route gate.
 - A route-shaped tool call also requires `CODEX_EXECUTOR_TOKEN_PATH` and
   `CODEX_SIDE_EFFECT_ID` from the bound session. The guard calls
-  `require_side_effect_executor_token()` with the actual executor, normalized
-  route target, route-mutation command class, current HEAD/appointment, and
-  freshly evaluated preflight/stop results before allowing the tool.
+  `authorize_side_effect_operations(...,
+  operations={RuntimeOperation.ROUTE_MUTATE},
+  command_class="route-mutation", ...)` with the actual executor, normalized
+  route target, current HEAD/appointment, and freshly evaluated preflight/stop
+  results before allowing the tool.
+- Every supported subagent role round-trips exactly through the binding. A
+  changed role at the same session ID is a conflicting rebind; a generic or
+  unknown subagent role is invalid.
 
 - [ ] **Step 1: Write session-binding and zero-mutation regressions**
 
@@ -847,10 +1294,14 @@ scope remain separate mandatory gates. Add absent/wrong/uncommitted/stale
 `CODEX_EXECUTOR_TOKEN_PATH` and wrong/newer `CODEX_SIDE_EFFECT_ID` cases; each
 must fail before the tool reads route content or mutates any snapshot.
 
+Add one binding round-trip and one conflicting-rebind case for each supported
+subagent role. Assert `CODEX_VERIFICATION_COMMANDS` and the ledger bridge both
+register `test_codex_session_binding.py`.
+
 - [ ] **Step 2: Run tests to prove RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_session_binding.py tests/unit/test_coordination_tooling.py tests/unit/test_protocol_prompt_sync.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_session_binding.py tests/unit/test_coordination_tooling.py tests/unit/test_protocol_prompt_sync.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Expected: missing binding module/CLI and current hook mutations before identity
@@ -863,6 +1314,8 @@ Expose:
 ```bash
 scripts/codex_session_binding.py bind --session-id "$CODEX_SESSION_ID" \
   --mode live-seat --seat director --role-family director
+scripts/codex_session_binding.py bind --session-id "$CODEX_SESSION_ID" \
+  --mode subagent --agent-role protocol-director
 scripts/codex_session_binding.py validate --session-id "$CODEX_SESSION_ID"
 ```
 
@@ -882,17 +1335,20 @@ marker, or `STATE.md` mutation. Marker fallback is removed.
 used as an authority gate.
 
 For the exact coordinator-route path patterns above, the PreToolUse guard calls
-`authorize_operation(..., RuntimeOperation.ROUTE_MUTATE,
-expected_actor=identity.concrete_seat)` before allowing the tool. A generic
-valid identity check is insufficient. It then requires the Task-3A executor
-token using the session's explicit path/ID. Literal Bash route targets are
+`authorize_side_effect_operations(..., operations={RuntimeOperation.ROUTE_MUTATE},
+expected_actor=identity.concrete_seat, ...)` before allowing the tool. Separate
+identity-only and token-only checks are forbidden. It uses the session's
+explicit token path/ID. Literal Bash route targets are
 classified before execution; unclassifiable dynamic route writes are refused
 with a stable error code.
+
+Register `tests/unit/test_codex_session_binding.py` in the model-derived doctor
+selector in this commit and pin it in `test_codex_ledger_bridge.py`.
 
 - [ ] **Step 5: Prove GREEN and non-vacuity**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_session_binding.py tests/unit/test_coordination_tooling.py tests/unit/test_protocol_prompt_sync.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_session_binding.py tests/unit/test_coordination_tooling.py tests/unit/test_protocol_prompt_sync.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Flip one bound director session to operator in the fixture and confirm the
@@ -913,6 +1369,7 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind runtime identity before
 **Owner:** Pair B director2 implementation after Task 3B GO; Pair B operator2 verification.
 
 **Files:**
+- Modify: `scripts/codex_protocol_model.py`
 - Modify: `coordination/bin/send-event`
 - Modify: `coordination/bin/consume-events`
 - Modify: `coordination/bin/claim-lock`
@@ -921,27 +1378,44 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind runtime identity before
 - Modify: `scripts/seat_emit.py`
 - Create: `tests/unit/test_runtime_operation_guards.py`
 - Modify: `tests/unit/test_coordination_tooling.py`
+- Modify: `tests/unit/test_codex_ledger_bridge.py`
 
 **Interfaces:**
-- Each command calls `authorize_operation()` before its first file, index, ref,
-  or lock mutation.
-- Route-shaped `send-event`, `claim-lock`, `release-lock`, `consume-events`,
-  and `scripts/consume_bus.py` require explicit `--executor-token PATH` and
+- Each token-required mutating command calls
+  `authorize_side_effect_operations()` before its first input read, object
+  construction, key load, file, index, ref, or lock mutation. Ordinary
+  `MAIL_SEND` and `OPERATOR_VERDICT` call `authorize_operation()` and remain
+  token-exempt but identity/authority gated.
+- Route `send-event`, `claim-lock`, `release-lock`, `consume-events`,
+  `scripts/consume_bus.py`, and `scripts/seat_emit.py` require explicit
+  `--executor-token PATH` and
   `--side-effect-id ID` arguments. Each calls the Task-3A
-  `require_side_effect_executor_token()` with its actual executor, normalized
-  target, command class, current HEAD/appointment, target state, and freshly
-  evaluated preflight/stop results.
+  cumulative authorizer with its actual executor, exact target, frozen command
+  bundle, current HEAD/appointment, target state, and freshly evaluated
+  preflight/stop results.
 - `coordination/bin/send-event` requires `MAIL_SEND` for every event. When and
   only when the validated bound sender is `coordinator` or `coordinator2`, the
   target is `all`, and the kind is `coordination`, it additionally requires
   `ROUTE_MUTATE` before reading stdin or creating a temporary file. Direct
   Edit/Write/`apply_patch` route creation remains covered by Task 3B's
   path-aware PreToolUse gate.
+  Thus a route send completes both checks before input: bare
+  `authorize_operation(..., MAIL_SEND)` and cumulative
+  `authorize_side_effect_operations(..., {ROUTE_MUTATE},
+  command_class="route-mutation", ...)`.
 - Positional actor must equal the validated bound actor and never establishes
   identity.
 - GO/NITS/FAIL emission requires an operator-family concrete seat with
   verification authority. Director, coordinator, readiness, and subagent
   identities cannot acquire verdict authority.
+- `scripts/seat_emit.py` changes `--remote` from default `origin` to no remote.
+  Local emit requests `{SIGNED_FACT_EMIT}` against the exact local events ref;
+  opt-in remote emit requests `{SIGNED_FACT_EMIT, REMOTE_PUBLISH}` against the
+  exact remote/ref. Authorization precedes event building, key loading,
+  Git-object creation, fetch, append, or push.
+- `scripts/consume_bus.py` uses `{SIGNED_CURSOR_CONSUME}` locally and adds
+  `REMOTE_PUBLISH` for an explicit remote/ref target. A partial operation
+  bundle is invalid.
 
 - [ ] **Step 1: Write actor/operation mismatch regressions**
 
@@ -949,6 +1423,11 @@ Cover mail send, human cursor consume, lock claim/release, signed-fact cursor
 consume, signed-fact emission, and GO/NITS/FAIL. For every denial, assert zero
 mailbox, cursor, lock, ref, and index mutation. Include readiness, subagent,
 coordinator-consume, director-verdict, and positional/bound-actor mismatch.
+
+Cover local signed emit, remote signed emit, and remote signed-cursor advance.
+Wrong remote/ref/HEAD, absent/stale/superseded token, valid identity/no token,
+and valid token/invalid identity must all leave key-read, Git-object, fetch,
+push, ref, cursor, and index probes untouched.
 
 For route mutation, add a coordinator-positive fixture plus pair-seat,
 readiness, and subagent denials for both `send-event` and the path-aware hook.
@@ -967,7 +1446,7 @@ stores, and signed refs; every denial must leave all snapshots identical.
 - [ ] **Step 2: Run tests to prove RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_runtime_operation_guards.py tests/unit/test_protocol_executor_token.py tests/unit/test_coordination_tooling.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_runtime_operation_guards.py tests/unit/test_protocol_executor_token.py tests/unit/test_coordination_tooling.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Expected: current commands mutate from positional identity without a bound
@@ -987,16 +1466,21 @@ neither substitutes for user consent or operation-specific preflight.
 both `MAIL_SEND` and `ROUTE_MUTATE`; it never treats the positional `FROM`
 value as proof of coordinator identity.
 
+Apply the frozen local/remote operation bundles to `seat_emit.py` and
+`consume_bus.py`. Register `tests/unit/test_runtime_operation_guards.py` in
+`CODEX_VERIFICATION_COMMANDS` and hard-code the addition in the ledger bridge.
+
 - [ ] **Step 4: Prove GREEN and non-vacuity**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_runtime_operation_guards.py tests/unit/test_protocol_executor_token.py tests/unit/test_coordination_tooling.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_runtime_operation_guards.py tests/unit/test_protocol_executor_token.py tests/unit/test_coordination_tooling.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Change one expected actor to match the bound actor and confirm the mismatch
 assertion fails. Then replace a valid token's expected HEAD with a sibling SHA
 and confirm the command refuses before its stdin-read probe. Restore both and
-rerun GREEN.
+rerun GREEN. Separately remove `REMOTE_PUBLISH` from the remote bundle and
+substitute a sibling remote/ref; the remote-push probe must remain uncalled.
 
 - [ ] **Step 5: Review and commit Task 3C**
 
@@ -1011,17 +1495,43 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): authorize interactive mutati
 **Owner:** Pair B director2 implementation after Task 3C GO; Pair B operator2 verification.
 
 **Files:**
+- Modify: `scripts/codex_protocol_model.py`
 - Create: `scripts/protocol_principal.py`
 - Modify: `scripts/chief_emit.py`
 - Modify: `scripts/overseer_emit.py`
 - Modify: `scripts/sign_ci_result.py`
 - Modify: `scripts/run_merge_gate.py`
+- Modify: `threeway/gate.py`
 - Create: `tests/unit/test_service_principals.py`
 - Modify: `tests/unit/test_codex_ledger_bridge.py`
 
 **Interfaces:**
 - Produces frozen
-  `MechanicalPrincipal(principal_id, allowed_operations, signer_identity, executor_token_required, identity_valid, validation_errors)`.
+  `MechanicalPrincipal(principal_id, allowed_operations,
+  signer_by_operation, token_required_operations,
+  credential_required_targets, execution_context, identity_valid,
+  validation_errors)`.
+- Produces a closed execution-context contract:
+
+```python
+class MechanicalExecutionContext(str, Enum):
+    CONTROL_PLANE = "control-plane"
+    CI_RUNNER = "ci-runner"
+    PROTECTED_RUNNER = "protected-runner"
+    CANDIDATE = "candidate"
+
+MECHANICAL_EXECUTION_CONTEXTS_BY_PRINCIPAL = {
+    "overseer": frozenset({MechanicalExecutionContext.CONTROL_PLANE}),
+    "chief-gemini": frozenset({MechanicalExecutionContext.CONTROL_PLANE}),
+    "chief-chatgpt": frozenset({MechanicalExecutionContext.CONTROL_PLANE}),
+    "ci": frozenset({MechanicalExecutionContext.CI_RUNNER}),
+    "merge-gate": frozenset({MechanicalExecutionContext.PROTECTED_RUNNER}),
+}
+```
+
+`CANDIDATE` is deliberately absent from every allowed set. Unknown strings,
+the candidate context, and every known-but-wrong principal/context pairing
+return an invalid principal before key, credential, ref, fact, or token access.
 - Exact operation map:
 
 ```python
@@ -1030,25 +1540,162 @@ SERVICE_OPERATIONS = {
     "chief-gemini": frozenset({"emit-chief-fact"}),
     "chief-chatgpt": frozenset({"emit-chief-fact"}),
     "ci": frozenset({"sign-ci-result"}),
-    "merge-gate": frozenset({"evaluate-merge-gate", "update-protected-main"}),
+    "merge-gate": frozenset({
+        "evaluate-merge-gate", "update-target-ref", "emit-merge-completed",
+    }),
+}
+
+SERVICE_SIGNERS = {
+    ("overseer", "emit-overseer-fact"): "overseer",
+    ("chief-gemini", "emit-chief-fact"): "chief-gemini",
+    ("chief-chatgpt", "emit-chief-fact"): "chief-chatgpt",
+    ("ci", "sign-ci-result"): "ci",
+    ("merge-gate", "update-target-ref"): "merge-gate",
+    ("merge-gate", "emit-merge-completed"): "merge-gate",
+}
+
+TOKEN_REQUIRED_SERVICE_OPERATIONS = frozenset(SERVICE_SIGNERS)
+CREDENTIAL_REQUIRED_TARGETS = frozenset({"refs/heads/main"})
+SERVICE_OPERATION_BY_COMMAND_CLASS = {
+    "overseer-fact-emit": ("overseer", "emit-overseer-fact"),
+    "chief-gemini-fact-emit": ("chief-gemini", "emit-chief-fact"),
+    "chief-chatgpt-fact-emit": ("chief-chatgpt", "emit-chief-fact"),
+    "ci-result-sign": ("ci", "sign-ci-result"),
+    "merge-gate-target-ref-update": ("merge-gate", "update-target-ref"),
+    "merge-gate-completion-emit": ("merge-gate", "emit-merge-completed"),
 }
 ```
+
+The resolver materializes each principal's `signer_by_operation` as an
+immutable `Mapping[str, str]`, `token_required_operations` as a
+`frozenset[str]`, and `credential_required_targets` as a `frozenset[str]`.
+Pure `evaluate-merge-gate` has no signer and is absent from the token set.
+For token-required operations, `command_class` must map exactly to the same
+principal/operation pair in `SERVICE_OPERATION_BY_COMMAND_CLASS`; the exact
+local or remote ref remains part of the token target.
 
 - Mechanical principals never synthesize `CODEX_SEAT` or interactive seat
   authority. Protected-main update additionally requires the exact
   target-bound executor token and protected runner credential.
+- Produces exact entry points:
+
+```python
+@dataclass(frozen=True)
+class AuthorizedPrincipalOperation:
+    principal: MechanicalPrincipal
+    operation: str
+    target: str
+    executor_token: SideEffectExecutorToken | None
+    protected_credential_attested: bool
+
+
+class ProtectedRunnerCredential(Protocol):
+    def attest_target(self, target: str) -> bool: ...
+
+
+def resolve_mechanical_principal(
+    *, principal_id: str, signer_identity: str | None,
+    execution_context: MechanicalExecutionContext | str,
+) -> MechanicalPrincipal: ...
+
+
+def authorize_principal_operation(
+    root: Path,
+    principal: MechanicalPrincipal,
+    *,
+    operation: str,
+    target: str,
+    token_path: Path | None = None,
+    side_effect_id: str | None = None,
+    command_class: str | None = None,
+    expected_head: str | None = None,
+    current_appointment_path: Path | None = None,
+    newer_appointment_paths: Sequence[Path] = (),
+    target_satisfied: bool = False,
+    failed_preflight: Sequence[str] = (),
+    triggered_stop_predicates: Sequence[str] = (),
+    protected_runner_credential: ProtectedRunnerCredential | None = None,
+) -> AuthorizedPrincipalOperation: ...
+
+
+@dataclass(frozen=True)
+class MergeGateEvaluation:
+    outcome: Literal["REJECTED", "PENDING", "MERGEABLE", "COMPLETED"]
+    reason: str
+    expected_old_sha: str | None
+    proposed_merge_sha: str | None
+
+
+def evaluate_gate_read_only(
+    candidate_id: str,
+    store: EventStore,
+    repo: Path,
+    registry_dir: Path,
+    bus_id: str,
+    main_ref: str,
+    *,
+    gate_seat: str = "merge-gate",
+    policy: Policy | None = None,
+) -> MergeGateEvaluation: ...
+
+
+def apply_gate_evaluation(
+    candidate_id: str,
+    evaluation: MergeGateEvaluation,
+    store: EventStore,
+    repo: Path,
+    main_ref: str,
+    *,
+    target_ref_authorization: AuthorizedPrincipalOperation,
+    completion_fact_authorization: AuthorizedPrincipalOperation,
+) -> GateResult: ...
+```
+
+- `authorize_principal_operation()` passes the complete token fields above to
+  `require_side_effect_executor_token()` for every token-required operation;
+  incomplete context refuses. It carries an opaque credential attestation,
+  never raw credential bytes.
+- Overseer, both chiefs, and CI use the exact signer map and require a token
+  before local or remote fact mutation. Merge-gate pure evaluation is a new
+  non-mutating path with no signer or token. It uses an isolated temporary Git
+  object directory and leaves the repository object store, refs, index,
+  worktree, keys, and event store unchanged. Any target-ref update or
+  `merge_completed` emission requires signer `merge-gate` plus a token;
+  `target == "refs/heads/main"` additionally requires a successful
+  `ProtectedRunnerCredential.attest_target()` result.
+  `apply_gate_evaluation()` accepts only a `MERGEABLE` result whose expected
+  old SHA still matches, plus exact `update-target-ref` and
+  `emit-merge-completed` authorizations for the same candidate/target. It
+  performs CAS only after both authorizations and loads the merge-gate key only
+  after the completion-fact authorization.
+  Current mutating `run_gate()` cannot serve as the pure evaluator.
+- Candidate execution context is invalid before key, credential, ref, or fact
+  access. Runner isolation and absence of service keys/credentials remain the
+  security boundary; the context field is an additional fail-closed check.
 
 - [ ] **Step 1: Write service-principal regressions**
 
 Cover every principal/operation pair, unknown principals, cross-principal
-operation attempts, signer mismatch, candidate-environment denial, missing
+operation attempts, signer mismatch, every principal/context cross-product,
+candidate and unknown-context denial, missing
 executor token for protected-main update, and zero fact/ref/main mutation on
 denial.
+
+Cover the signer map, token-required set, credential-required target set, local and
+remote fact targets, pure evaluation no-mutation, every target-ref update,
+`merge_completed`, and doctor registration. Route the pure-evaluation fixture
+through current mutating `run_gate()` as a RED proving it is not yet safe.
+Reject mismatched candidate/target authorizations, a non-MERGEABLE evaluation,
+or a changed expected-old SHA before CAS or key load.
+For each token-required operation, vary command class, expected HEAD,
+appointment, newer appointment, satisfied target, failed preflight, and stop
+predicate. A non-main target needs no protected credential; `refs/heads/main`
+refuses an absent, wrong-target, or failed opaque credential attestation.
 
 - [ ] **Step 2: Run tests to prove RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_service_principals.py tests/unit/test_codex_ledger_bridge.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_service_principals.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Expected: missing principal resolver and current entry points lacking the
@@ -1058,18 +1705,23 @@ typed operation check.
 
 Bind each entry point to the exact map above. `ci` may sign only a
 `ci_result`; chiefs and overseer may emit only their own fact classes;
-`merge-gate` may evaluate without publication credentials but cannot update
-protected main without the separate token and credential. Add the new suite to
-the model-derived doctor gate in the same commit.
+split `evaluate_gate_read_only()` from current target-ref and completion-fact
+mutation. No target ref or fact changes without the exact merge-gate signer and
+token, and target `refs/heads/main` also requires the credential attestation.
+All service emitters
+bind explicit local versus remote targets. Add the new suite to the
+model-derived doctor gate in the same commit.
 
 - [ ] **Step 4: Prove GREEN and non-vacuity**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_service_principals.py tests/unit/test_codex_ledger_bridge.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_service_principals.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Swap `ci` to `merge-gate` in one allowed-operation fixture and confirm the
-assertion fails. Restore and rerun GREEN.
+assertion fails. Then mark one emitter token-free and route pure evaluation
+through current mutating `run_gate()`; both selectors must fail. Restore and
+rerun GREEN.
 
 - [ ] **Step 5: Review and commit Task 3D**
 

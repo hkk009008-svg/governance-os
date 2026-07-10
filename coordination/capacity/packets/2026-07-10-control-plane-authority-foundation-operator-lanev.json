@@ -21,13 +21,15 @@
     "Confirm ADR-012 exists under the exact manifest anchor before the manifest cites it, initial signed-facts authority remains shadow, and no signing keys, refs/threeway refs, secrets, remote publication, locks, cursor consume, or unlisted files changed.",
     "Emit exactly one verification-report GO, NITS, or FAIL bound to the implementation range; do not author production fixes or self-repair the Director diff."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T07-23-26Z-operator-to-all-verification-report.md records FAIL for 78b48ed493899dd126de2d1764cbdbf022111dfd..205f077a23291496ea4b84c8de1f8acdfa2bd040 with nine binding findings."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T07-23-26Z-operator-to-all-verification-report.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-10T06-57-10Z-director-to-operator-verify-request.md",
+  "target_commit": "205f077a23291496ea4b84c8de1f8acdfa2bd040",
+  "commit_range": "78b48ed493899dd126de2d1764cbdbf022111dfd..205f077a23291496ea4b84c8de1f8acdfa2bd040",
   "scope_files": [
     "DECISIONS.md",
     "coordination/authority.toml",

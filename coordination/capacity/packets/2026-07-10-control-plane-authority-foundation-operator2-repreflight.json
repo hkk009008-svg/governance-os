@@ -30,18 +30,21 @@
     "coordination/mailbox/sent/"
   ],
   "lock_keys": [],
-  "dependencies": [],
-  "acceptance": [
-    "Start from Pipeline, run the operator2 Wave-2 guard and seat status, read the revised route, then perform one focused read-only repreflight of revised Tasks 4-6C; do not repeat the already-closed environment inventory question.",
-    "Return CLEAR only if verified-exact resume is fully pinned: committed secret-free activation manifest, exact token-bound HEAD and manifest digest, deterministic non-authoritative importer binding, two-process scratch-derived exact expected-post OIDs for all seven managed refs with unchanged live refs, complete live match with zero ref rewrites, partial/extra/substitution/mismatch/already-live refusal, exact pre-run snapshot rollback before live only, and one identical signed-cursor roster across initialize/snapshot/rollback/postcheck.",
-    "Confirm Task 5 binds the exact 11-principal production roster, legal empty/empty and complete/complete states only, explicit off-repo keystore loading and symlink-safe containment, atomic full-roster generation, byte/mtime-preserving no-op, and private-key absence.",
-    "Confirm Tasks 6A, 6B, and 6C are separate review gates: trust-root generation/public-key commit; secret-free measured manifest commit; then a distinct user-authorized ref/authority flip. Immediately before live, require the full tracked/index, token/appointment, manifest, shadow-preimage/non-marker, registry, trust-root, source/projection/importer/roster, expected-ref, GO, and stop-predicate race matrix plus cooperative no-follow authority-marker compare-and-swap. No current route may authorize keys, refs, authority mutation, cutover, or remote activation.",
-    "Send one concise coordination report to coordinator with CLEAR or BLOCKED and citations; do not edit code/docs, generate keys, create refs, execute cutover, issue production GO, consume coordinator mail, route work, or take another user-gated side effect."
+  "dependencies": [
+    "director-control-plane-authority-foundation-task2-replacement",
+    "director2-control-plane-authority-foundation-identity-rerepreflight"
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "acceptance": [
+    "Hold the durable CLEAR at 2026-07-10T04-24-26Z without repeating Tasks 4-6C. Reopen only if the corrective coordinator route changes those task bodies or their activation-safety contract; Task-2 canonical-ref rejection and Task-3 authorization repairs do not by themselves reopen this preflight.",
+    "Remain blocked/observer-only while the replacement Task-2 and Task-3 re-repreflight dependencies are open. Send no receipt or duplicate report.",
+    "At coordinator closeout, reuse the attached CLEAR if Tasks 4-6C remain byte-for-byte and semantically unchanged. If a later diff changes those task bodies or their activation contract, stop and await one new focused route before any repeat pass."
+  ],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T04-24-26Z-operator2-to-coordinator-coordination.md records CLEAR for Tasks 4-6C at reviewed Pipeline HEAD e9ad5bee34aa14fea556901780490f720bbcc4d6; reuse remains valid only while those tasks and their activation contract are semantically unchanged."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T04-24-26Z-operator2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "blocked",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

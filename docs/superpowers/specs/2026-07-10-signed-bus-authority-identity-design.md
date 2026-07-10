@@ -18,8 +18,13 @@ synthesizing mixed seat authority.
 - No event class is dual-written.
 - Coordinators remain all-scope and unpinned for the human mailbox.
 - Signed-fact cursor identities are independent from human-mailbox cursors.
+- The signed-fact event ref and cursor namespace are fixed protocol constants:
+  `refs/threeway/events` and `refs/threeway/cursors/`. The manifest records
+  them but cannot reconfigure them.
 - All private signing keys remain outside git and outside candidate-executing
   environments.
+- Task 6C is the sole signed-facts `shadow` to `live` transition. Tasks 6A and
+  6B provision and measure inputs while authority remains `shadow`.
 - Local cutover uses verified-exact resume. While signed-fact authority remains
   `shadow`, a repeated invocation may only verify a complete managed-ref set
   that exactly matches the committed, independently scratch-derived expected-
@@ -53,6 +58,7 @@ schema_version = 1
 backend = "legacy-files"
 authority = "live"
 read_scope = "addressed-pairs-all-scope-coordinators"
+cursor_envelope_schema = "typed-v1"
 
 [signed_facts]
 backend = "signed-ref-bus"
@@ -61,7 +67,7 @@ events_ref = "refs/threeway/events"
 cursor_namespace = "refs/threeway/cursors/"
 
 [decision]
-adr = "DECISIONS.md#signed-bus-activation"
+adr = "DECISIONS.md#adr-013-narrow-signed-facts-activation-to-task-6c"
 activated_by = "user-principal"
 ```
 
@@ -76,6 +82,9 @@ checked against the declared state; neither chooses the state.
   keys, and valid signed-fact cursor refs.
 - A missing required signed ref is `authority unavailable`, not zero unread.
 - Unknown manifest values or versions fail startup and mutation commands.
+- `signed_facts.events_ref` must equal `refs/threeway/events` and
+  `signed_facts.cursor_namespace` must equal `refs/threeway/cursors/`; a
+  syntactically valid alternative is still invalid configuration.
 - Status output names the channel and authority state beside every count.
 
 ## Human Mailbox Policy
@@ -105,6 +114,47 @@ Both `coordination/bin/consume-events` and `scripts/consume_bus.py` reject
 coordinator aliases for human-mailbox consumption. Signed-fact consumption uses
 the signed-fact identity policy and ref cursor namespace, not the mailbox roster.
 
+### Historical Envelope Provenance
+
+Task 2 replaces the failed wall-clock cutoff with immutable Git-introduction
+provenance. `human_mailbox.cursor_envelope_schema = "typed-v1"` is committed in
+the corrective child that deploys the typed generator. Validation identifies
+the unique marker-introduction commit: the one HEAD-ancestor whose tree first
+contains the exact field while none of its parents does. Zero or multiple
+candidates fail closed. A committed numeric envelope is legacy only when its
+own unique introducing commit is a HEAD-ancestor, the marker-introduction
+commit is not an ancestor of that event-introduction commit, and current event
+bytes equal the introducing blob. Numeric mail introduced after the marker,
+uncommitted numeric mail while the marker is active, a backdated addition, a
+renamed event, or byte-modified legacy mail fails closed. This permits lawful
+numeric mail whose introducing commit does not descend from the marker-
+introduction commit, including parallel pre-integration mail, without granting
+a wall-clock bypass.
+
+`scripts/protocol_mailbox.py` owns one strict event parser used by send,
+consume, status, checkers, monitors, draft handoffs, and hook state rendering.
+The parser validates the full filename, sender, target, registered kind,
+self-addressing prohibition, H1/`When`/`From` agreement, terminal envelope, and
+legacy provenance before an event can affect a cursor or count. A missing
+`sent/` directory, malformed full cursor file, unknown identity/kind, or
+trailing cursor content is unavailable/invalid, never zero unread.
+
+Human cursor advance is one synchronized compare-and-replace operation. It
+opens and exclusively locks the stable `coordination/mailbox/seen/` directory
+descriptor for the complete operation, rereads and fully validates the cursor
+under lock, selects only strictly parsed addressed events, refuses regression,
+writes and fsyncs a same-directory temporary file, atomically replaces the
+cursor, fsyncs the directory, and only then permits explicit-path staging.
+Concurrent or interrupted consumers cannot regress or truncate the cursor.
+
+Every derived human-unread surface calls the same policy: status, both
+seat-status mirrors, `protocol_effectiveness_report.py`, both `update-state.sh`
+mirrors, mailbox monitor, and draft handoff. Coordinators and coordinator2 are
+all-scope aliases on every observational surface, with no cursor file.
+`ledger_start_guard.py` and `protocol_capacity.py` remain intentionally
+canonical-`coordinator` route-authority surfaces; observational alias parity
+does not silently widen route ownership.
+
 ## Runtime Identity Model
 
 Introduce a typed `RuntimeIdentity` resolved from a concrete seat and validated
@@ -113,6 +163,7 @@ before authority defaults are rendered:
 ```text
 mode
 concrete_seat
+agent_role
 behavior_source
 capability_scope
 mutation_scope
@@ -131,6 +182,8 @@ validation_errors
 - A coordinator mode requires a coordinator alias and never gains production
   implementation or operator GO authority.
 - A readiness bridge or subagent cannot carry a concrete seat.
+- Subagent mode requires exactly one supported spawned `agent_role`; that role
+  survives session binding and selects its frozen narrow-only defaults.
 - An explicit role must agree with the seat-derived role family.
 - An explicit mode must agree with the seat-derived mode.
 - Unknown seats, roles, modes, or policies are invalid.
@@ -147,7 +200,10 @@ concrete seat's durable identity.
 Runtime-operation eligibility is necessary but never sufficient for a
 user-gated side effect. `ROUTE_MUTATE`, `LOCK_MUTATE`,
 `HUMAN_CURSOR_CONSUME`, and `SIGNED_CURSOR_CONSUME` require both a valid
-runtime identity and a current executable side-effect token. The one parser
+runtime identity and a current executable side-effect token. Signed-fact emit
+also always requires a token; an emitter configured with a remote additionally
+requires remote-publication authorization before any local or remote ref
+change. The one parser
 and verifier is `scripts/protocol_executor_token.py`; route validation, the
 PreToolUse guard, interactive commands, and cutover all consume that module
 instead of maintaining parallel Markdown parsers.
@@ -160,6 +216,47 @@ preflight results, stop predicates, and already-satisfied target state. An
 absent, duplicate, uncommitted, stale, superseded, wrong-target, wrong-executor,
 wrong-command, wrong-HEAD, failed-preflight, triggered-stop, or already-
 satisfied token fails closed with no mutation.
+
+One cumulative runtime entry point resolves identity, verifies actor-operation
+eligibility, and, for token-required or token-appointed operations, verifies
+the exact executor token before returning authorization. Token-required
+mutation callers may not call a bare eligibility predicate. `REMOTE_PUBLISH`,
+`TRUST_ROOT_BOOTSTRAP`, and `AUTHORITY_CUTOVER` have no default actor; a current
+route may appoint a valid director-family or coordinator identity for trust
+root/cutover, and may also appoint an operator for that operator's own remote
+signed-fact publication, while preserving an independent verifier. A readiness
+bridge, subagent, or mechanical principal is never appointable.
+
+The cumulative entry point binds frozen command bundles. Local signed-fact emit
+requires `signed-fact-emit`; remote emit requires both `signed-fact-emit` and
+`remote-publish`. Local signed-cursor advance requires
+`signed-cursor-consume`; remote advance additionally requires
+`remote-publish`. Remote use is explicit and target-bound, never a CLI default.
+Authorization completes before event construction, key access, Git-object
+creation, fetch, append, push, or cursor mutation.
+
+Supported spawned roles retain separate frozen narrow-only defaults.
+`protocol-director` may mutate only parent-named paths; `protocol-operator`,
+`protocol-coordinator`, `lane-v-verifier`, and `money-gate-reviewer` are
+read-only advisory helpers. None may send or consume mail, route, issue GO,
+publish, or inherit the parent seat. Every capability, mutation, mailbox, git,
+verification, routing, and publication policy has a literal token vocabulary;
+unknown, empty, widening, or conflicting overrides fail closed.
+
+Mechanical principals use operation-specific maps rather than one token
+boolean. The principal resolver binds an exact signer identity and an exact set
+of allowed operations; a separate set names which of those operations requires
+an executor token. Execution context is a closed enum: overseer and chief
+principals run only in `control-plane`, CI only in `ci-runner`, and merge-gate
+only in `protected-runner`; `candidate` and every unknown context are invalid.
+Candidate environments cannot sign or mutate. In
+particular, merge-gate evaluation is token-free on the protected runner, while
+every target-ref update requires its exact token and `refs/heads/main`
+additionally requires an opaque protected-runner credential attestation.
+The current merge-gate path mutates refs and emits `merge_completed`, so it is
+not the token-free evaluator. Task 3D separates a mechanically non-mutating
+evaluation path; every ref update or completion-fact emission retains exact
+merge-gate signer and token requirements.
 
 ## Signed-Bus Activation Sequence
 
@@ -355,9 +452,20 @@ Antigravity decisions remain independently unchanged.
 - The manifest declares both channels and signed-fact authority as live.
 - Missing live signed refs are visible failures.
 - Human mailbox unread is correct with signed refs present or absent.
+- Legacy numeric envelopes are accepted only when the unique `typed-v1`
+  marker-introduction commit is not an ancestor of the event-introduction
+  commit and the event bytes remain unchanged; a
+  post-marker, backdated, uncommitted, renamed, or modified numeric event is
+  rejected.
 - Coordinators cannot consume the human mailbox.
 - Signed-fact coordinators may use only signed-fact cursor APIs.
+- Non-canonical signed event/cursor refs are rejected at manifest load.
+- Concurrent human cursor consumers cannot regress or truncate a cursor.
+- Both state hooks, both seat-status mirrors, effectiveness reporting, monitor,
+  and draft handoff agree with canonical pair/all-scope unread semantics.
 - Every seat/mode/role mismatch is rejected before mutation or GO authority.
+- Every signed-fact or remote publication mutation passes the cumulative
+  runtime-and-token gate, and every supported subagent role remains narrow.
 - Public keys are committed and private keys are absent from git and logs.
 - Shadow projection has zero unexplained divergence.
 - The authority flip has one executor and one durable postcheck.
