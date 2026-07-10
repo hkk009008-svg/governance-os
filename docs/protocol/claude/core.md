@@ -21,12 +21,13 @@ don't let a wrong claim survive your session.
 
 Concrete protocol at session start (≤2 minutes):
 
-1. Run the project smoke block in `ARCHITECTURE.md` (<project smoke invariants — implemented in scripts/ci_smoke.py _project_smoke()>). If it fails, the doc is
+1. Run the project smoke block — `.venv/bin/python scripts/ci_smoke.py` (the
+   governance-OS invariants live in its `_project_smoke()`). If it fails, the doc is
    stale OR the working tree is broken — fix one or the other before
    proceeding with the user's task.
 2. Skim `ARCHITECTURE.md` §2 component topology. Spot-check:
-   - `ls <PROJECT>/ <PROJECT>/phases/` (adapt to this project's package layout)
-   - `wc -l <entrypoint>.py` (the main orchestrator modules)
+   - `ls scripts/ coordination/ threeway/` (the governance-kernel code surface)
+   - `ls coordination/capacity/packets/` (the live route's packets)
 3. `git log --oneline -20` — if any commit touched a module documented in
    `ARCHITECTURE.md` since it was last edited (the `*Last verified: ...*`
    timestamp at the file footer), re-read that section against the new code.
@@ -109,7 +110,9 @@ Qualitative directional claims = use your judgment but flag uncertainty.
 
 The discipline that prevents UNDER-verification (R-EVIDENCE, Rule #9) has no companion
 that prevents OVER-verification. A doc-only paragraph about an undisputed, deferred
-defect drew ~25–31 adversarial agent-runs across four independent passes (<ref>), producing
+defect drew ~25–31 adversarial agent-runs across four independent passes
+(wf_73f95c8c / wf_e09bded6 / wf_5d39bbe3 / wf_ed13f2b4 — see the
+R-VERIFY-TIER addendum in docs/PROTOCOL-RULES-LOG.md), producing
 zero fix code. Past the second independent confirmation, more passes on the same question
 add cost, not confidence.
 
@@ -136,8 +139,8 @@ weaken any single pass.
 
 Beyond the impact-analysis checks above:
 
-- One commit per logical slice. Run the project smoke block in `ARCHITECTURE.md` (<project smoke invariants — implemented in scripts/ci_smoke.py _project_smoke()>)
-  before declaring a slice done.
+- One commit per logical slice. Run the project smoke block
+  (`.venv/bin/python scripts/ci_smoke.py`) before declaring a slice done.
 - Don't combine concerns. A bug fix isn't a refactor isn't a feature.
 - If your change touches a documented subsystem, update the relevant
   section in `ARCHITECTURE.md` in the same PR.

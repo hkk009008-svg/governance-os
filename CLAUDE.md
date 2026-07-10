@@ -97,7 +97,7 @@ only that path — re-run at the wider scope before making a wider claim. If you
 cannot run the verifying command, label the claim **unverified** rather than
 asserting it. Never apply director-voice authority over an unverified factual claim.
 Evidence: the command + its output, in the doc/commit body (cite or don't claim).
-Details: docs/protocol/claude/core.md (<ref>; the 24-vs-1 origin story).
+Details: docs/protocol/claude/core.md (R-EVIDENCE; the 24-vs-1 origin story).
 
 # Measurement-as-artifact (R-MEASURE)
 Scope: both

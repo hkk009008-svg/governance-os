@@ -116,7 +116,7 @@ This is how to catch the plan being wrong without blocking on a re-spec.
 - **Commit message convention:** `<type>(<scope>): <subject>` plus a
   short body explaining the *why* if non-obvious. End with the
   `Co-Authored-By:` trailer Claude Code injects by default (whatever the
-  active model is — `Claude Opus 4.8 (1M context)` at present).
+  active model's trailer is).
 
 ## Context hygiene (the long-session rule)
 

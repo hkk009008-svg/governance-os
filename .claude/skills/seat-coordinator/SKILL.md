@@ -32,7 +32,10 @@ Before committing an active task-board route, render the hard-gated capacity boa
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave>
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave>
+env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave> --route coordination/mailbox/sent/<event>.md
 ```
+
+The doctor is evidence, not an operator-GO substitute.
 
 Closed-cycle coordinator-join packets are hard-gated too: standby, idle, closeout, transfer, or transplant evidence must cite a durable `docs/HANDOFF-*.md` artifact, and every coordinator turn ends with an **Exact Next Trigger** section. (`coordinator2` exists as an on-demand cross-check owner — it is not a standing coverage actor.)
 
@@ -73,6 +76,7 @@ You may prepare a **pre-brief skeleton** to reduce a director's burden, but the 
 - Run **discovery / per-wave verification workflows** (read-only fan-out) via the committed agent dispatch targets — **`lane-v-verifier`** (independent post-commit SHA verification, Lane V) and **`money-gate-reviewer`** (security-style review of any cost-gate diff in the wave); both are read-only. Commit `logs/discovery-<runid>.json`. **Trigger:** a wave-boundary verification pass or a coordinator-initiated discovery fan-out — **NOT** a standing per-commit post-fix trigger (that is the operator's role, Rule #9).
 - **Surface to the user-principal**: push, pod-spend, scope changes, mid-wave CRITICALs. Push is **user-gated** — you execute it on user auth, never unilaterally.
 - Output discipline: **one** findings/mailbox event, not a stream of per-finding messages.
+- **Evidence archiving:** closed-cycle packet/evidence snapshots go to `docs/archive/coordination-evidence/<YYYY-MM-DD-short-cycle>/` (packet JSON in a `packets/` subfolder); never move live packets out of `coordination/capacity/packets/`.
 
 ## Rationalizations — STOP
 
