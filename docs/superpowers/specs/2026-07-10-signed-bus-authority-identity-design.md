@@ -22,7 +22,8 @@ synthesizing mixed seat authority.
   environments.
 - Local cutover uses verified-exact resume. While signed-fact authority remains
   `shadow`, a repeated invocation may only verify a complete managed-ref set
-  that exactly matches the committed activation manifest, perform no ref
+  that exactly matches the committed, independently scratch-derived expected-
+  post OID map, perform no ref
   rewrite, and finish the durable `shadow` to `live` marker. Partial, extra,
   mismatched, changed-HEAD, or already-`live` state fails closed.
 
@@ -116,6 +117,7 @@ behavior_source
 capability_scope
 mutation_scope
 mailbox_policy
+git_policy
 verification_policy
 routing_authority
 publication_eligibility
@@ -141,6 +143,23 @@ validation_errors
 Behavior-source reuse remains supported: `director2` uses director behavior and
 both operators use operator behavior. Behavior-source reuse never changes the
 concrete seat's durable identity.
+
+Runtime-operation eligibility is necessary but never sufficient for a
+user-gated side effect. `ROUTE_MUTATE`, `LOCK_MUTATE`,
+`HUMAN_CURSOR_CONSUME`, and `SIGNED_CURSOR_CONSUME` require both a valid
+runtime identity and a current executable side-effect token. The one parser
+and verifier is `scripts/protocol_executor_token.py`; route validation, the
+PreToolUse guard, interactive commands, and cutover all consume that module
+instead of maintaining parallel Markdown parsers.
+
+Before stdin is read into an artifact, a temporary file is created, or any
+file, index, lock, cursor, or ref is changed, the caller supplies a committed
+token source path and exact side-effect ID. The verifier binds the concrete
+executor, normalized target, command class, expected HEAD, current appointment,
+preflight results, stop predicates, and already-satisfied target state. An
+absent, duplicate, uncommitted, stale, superseded, wrong-target, wrong-executor,
+wrong-command, wrong-HEAD, failed-preflight, triggered-stop, or already-
+satisfied token fails closed with no mutation.
 
 ## Signed-Bus Activation Sequence
 
@@ -201,18 +220,52 @@ The cutover is bound to a committed, secret-free activation manifest under
 `coordination/threeway/activation/<activation_id>.toml`. The manifest pins the
 trusted code and trust-root commits, structured-source
 and projection digests, nonzero projected head, signing and signed-cursor
-rosters, managed-ref set, exact pre-run ref map, and rollback boundary. Both
+rosters, Git object format, ordered managed-ref table, exact pre-run ref map,
+independently measured expected post-cutover OID for every managed ref, and
+rollback boundary. Both
 preflight and mutation require the same activation-manifest path, coordinator
 executor-token artifact, and side-effect ID. The executor token pins the exact
 HEAD containing the manifest plus its digest; the manifest never contains a
 self-referential commit or tree hash.
 
+Legacy carrier signatures use one explicitly non-authoritative importer:
+`migration-importer:legacy:v1`. Its Ed25519 seed is derived from the public,
+domain-separated context
+`Pipeline/threeway/legacy-import/v1/pipeline-local-authority-2026-07-10`.
+The exact derivation is
+`SHA256(UTF8("threeway/non-authoritative-legacy-importer/v1") || 0x00 ||
+UTF8(key_context))`, whose 32 output bytes are passed to
+`Ed25519PrivateKey.from_private_bytes()`.
+The manifest records the derivation profile, context, and derived public key.
+This importer is outside the trusted 11-principal signing roster and cannot
+authorize any load-bearing fact.
+
+The committed R-MEASURE builder creates the projected events ref and six cursor
+refs only in fresh scratch Git repositories with the manifest's object format,
+fixed Git identity/timestamps, deterministic importer, and exact structured
+source. It records the seven resulting OIDs in the manifest and proves the live
+`refs/threeway/*` snapshot is unchanged. Two fresh processes must produce the
+same map. The live cutover derives the same importer key; it never generates an
+ephemeral importer.
+
 Verified-exact resume exists only for the crash window after the complete
 managed-ref set is durable but before the committed authority marker is
-`live`. A resume revalidates every manifest field and ref OID without writing
-refs, then permits only the remaining authority-marker step. Any partial,
-extra, or mismatched ref state is a hard refusal. Once the authority marker is
-`live`, recovery requires a new user-authorized action.
+`live`. A resume compares the complete live seven-ref map against the committed
+scratch-derived expected-post map without writing refs, then permits only the
+remaining authority-marker step. Any partial, extra, substituted, or mismatched
+ref state is a hard refusal. Once the authority marker is `live`, recovery
+requires a new user-authorized action.
+
+Immediately before the marker transition, the driver revalidates every mutable
+input: clean tracked tree and index, token-bound HEAD/current appointment,
+activation-manifest bytes and digest, exact `shadow` authority preimage and all
+non-marker bytes, public-registry digest and pair correspondence, trusted-code
+and trust-root commits, structured source and projection, importer binding,
+both rosters, all seven expected ref OIDs, GO artifacts, and every stop
+predicate. The marker writer uses a no-follow sibling lock, compares the exact
+preimage while locked, changes only `shadow` to `live`, fsyncs a same-directory
+temporary file, atomically replaces the file, and fsyncs the directory. All
+sanctioned authority-marker writers use this cooperative compare-and-swap path.
 
 After the flip:
 
@@ -240,6 +293,13 @@ fact produces ABORT/REWORK and no main mutation.
 ## Side-Effect Executors
 
 The coordinator creates complete executor tokens before each shared mutation.
+`scripts/protocol_executor_token.py` is the single typed loader and executable
+verifier. Runtime identity, user consent, executor election, token validation,
+and operation-specific safety checks are cumulative gates; no one gate implies
+another. Interactive route, lock, and cursor commands require explicit
+`--executor-token`/`--side-effect-id` inputs, while direct tool route writes
+receive the same committed path/ID through the bound session environment.
+
 At minimum, activation needs distinct target-bound tokens for:
 
 1. public-key trust-root commit;

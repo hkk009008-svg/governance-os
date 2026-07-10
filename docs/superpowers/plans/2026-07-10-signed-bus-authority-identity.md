@@ -20,13 +20,15 @@
 - Signed control and promotion facts use only `refs/threeway/*` after cutover. Never dual-write one fact class.
 - Coordinators are all-scope and unpinned for the human mailbox; they never consume a human-mailbox cursor.
 - Private `*.ed25519` files never enter the repository, staging area, command output, logs, or candidate-executing environments.
-- No authoritative-ref creation, key upload, repository-variable mutation, Actions-secret mutation, runner deployment, or remote publication occurs without a complete target-bound side-effect executor token.
+- No route, lock, human/signed cursor, authoritative-ref, key, repository-variable,
+  Actions-secret, runner, or remote-publication mutation occurs without both
+  runtime eligibility and a current executable target-bound side-effect token.
 - No push occurs before operator GO for the exact target commit.
 - Closed historical artifacts remain readable; do not rewrite mailbox history.
 - Every regression proves RED, GREEN, and a one-fact non-vacuity flip.
 - Local cutover uses verified-exact resume only: while authority is `shadow`,
   a complete managed-ref set may be verified against the exact committed
-  activation manifest without ref rewrites before completing the `live`
+  scratch-derived expected-post OID map in the activation manifest without ref rewrites before completing the `live`
   marker. Partial, extra, mismatched, changed-HEAD, or already-`live` state
   fails closed.
 - Trust-root bootstrap/public-key commit and authoritative-ref cutover are
@@ -51,10 +53,11 @@
 | `scripts/draft_handoff.py` | Pair-addressed or coordinator all-scope human-mailbox handoff context |
 | `scripts/protocol_capacity.py` | Route and terminal-trigger validation with typed cursor envelopes |
 | `scripts/codex_protocol_model.py` | Typed runtime identity and narrow-only override policy |
+| `scripts/protocol_executor_token.py` | Single typed executable side-effect token parser and verifier |
 | `scripts/codex_session_binding.py` | Versioned, non-rebindable local session identity binding |
 | `.codex/hooks/update-state.sh` | Mutation-time identity validation before presence writes |
 | `.agents/skills/four-seat-protocol/scripts/seat_status.py` | Channel-labeled seat orientation |
-| `coordination/threeway/activation/pipeline-local-authority-2026-07-10.toml` | Secret-free activation intent, measurement, ref snapshot, and resume boundary |
+| `coordination/threeway/activation/pipeline-local-authority-2026-07-10.toml` | Secret-free activation intent, deterministic importer, exact expected ref OIDs, and resume boundary |
 | `threeway/cutover.py` | Ref-bus projection, cursor initialization, teardown, and ready-to-flip result |
 | `threeway/keys_bootstrap.py` | Idempotent, complete-roster key provisioning without re-key |
 | `scripts/execute_threeway_cutover.sh` | Double-gated activation driver and preflight |
@@ -391,7 +394,11 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): separate mailbox and signed-
 
 **Files:**
 - Modify: `scripts/codex_protocol_model.py`
+- Create: `scripts/protocol_executor_token.py`
+- Modify: `scripts/protocol_capacity.py`
 - Create: `tests/unit/test_codex_protocol_model.py`
+- Create: `tests/unit/test_protocol_executor_token.py`
+- Modify: `tests/unit/test_protocol_capacity.py`
 - Modify: `tests/unit/test_codex_ledger_bridge.py`
 
 **Interfaces:**
@@ -463,6 +470,12 @@ TOKEN_ONLY_RUNTIME_OPERATIONS = frozenset({
     RuntimeOperation.TRUST_ROOT_BOOTSTRAP,
     RuntimeOperation.AUTHORITY_CUTOVER,
 })
+TOKEN_REQUIRED_INTERACTIVE_OPERATIONS = frozenset({
+    RuntimeOperation.ROUTE_MUTATE,
+    RuntimeOperation.LOCK_MUTATE,
+    RuntimeOperation.HUMAN_CURSOR_CONSUME,
+    RuntimeOperation.SIGNED_CURSOR_CONSUME,
+})
 
 RUNTIME_ACTOR_CLASS_BY_IDENTITY = {
     ("readiness-bridge", None): "readiness-bridge",
@@ -488,6 +501,42 @@ complete target-bound token names the same concrete executor, the user has
 authorized the action, and all operation-specific gates pass. Readiness,
 subagent, and mechanical principals can never receive token-only interactive
 operations.
+
+- Produces immutable `SideEffectExecutorToken` in
+  `scripts/protocol_executor_token.py` and these single-source entry points:
+
+```python
+def load_side_effect_executor_token(
+    root: Path, *, token_path: Path, side_effect_id: str
+) -> SideEffectExecutorToken: ...
+
+def require_side_effect_executor_token(
+    root: Path,
+    *,
+    token_path: Path,
+    side_effect_id: str,
+    executor: str,
+    target: str,
+    command_class: str,
+    expected_head: str,
+    current_appointment_path: Path,
+    newer_appointment_paths: Sequence[Path],
+    target_satisfied: bool,
+    failed_preflight: Sequence[str],
+    triggered_stop_predicates: Sequence[str],
+) -> SideEffectExecutorToken: ...
+```
+
+The frozen token records source path, ID, executor, normalized target, command
+class, expected HEAD, preflight, stop predicates, postcheck, observer seats,
+closeout owner, and non-goals. The loader requires a no-follow, committed
+coordinator appointment under `coordination/mailbox/sent/` and selects exactly
+one complete ID. The executable verifier rejects unknown/duplicate,
+uncommitted, wrong executor/target/class/HEAD, non-current, superseded,
+already-satisfied, failed-preflight, or triggered-stop state. It never treats
+field presence or runtime-operation eligibility as execution authority.
+`scripts/protocol_capacity.py` imports this parser for route validation and
+deletes its parallel token parser.
 
 - Produces immutable `RuntimeIdentity` with fields `mode`, `concrete_seat`,
   `behavior_source`, `capability_scope`, `mutation_scope`, `mailbox_policy`,
@@ -629,6 +678,14 @@ def test_token_only_operations_have_no_default_actor():
             assert model.operation_is_allowed(identity, operation) is False
 ```
 
+In `tests/unit/test_protocol_executor_token.py`, hard-code complete token
+fixtures and cover absent/unreadable/symlinked/uncommitted paths, duplicate or
+wrong IDs, missing fields, wrong executor/target/class/HEAD, stale and newer
+appointments, satisfied target, failed preflight, and each triggered stop
+predicate. Every rejection occurs before a supplied mutation callback can run.
+`tests/unit/test_protocol_capacity.py` proves route validation and the runtime
+verifier parse identical fields and reject the same malformed token.
+
 Hook integration coverage belongs to Task 3B so this foundation commit remains
 independently reviewable.
 The modes, seats, operation values, and matrix expectations above are
@@ -641,12 +698,13 @@ deletion of an operation an explicit test change.
 - [ ] **Step 2: Run tests to prove RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_protocol_model.py tests/unit/test_codex_ledger_bridge.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_protocol_model.py tests/unit/test_protocol_executor_token.py tests/unit/test_protocol_capacity.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Expected: import/attribute failures for `RuntimeIdentity`,
-`SessionBindingView`, `RuntimeOperation`, and the resolver. Hook failures are
-not expected from this selector and belong to Task 3B.
+`SessionBindingView`, `RuntimeOperation`, the resolver, and the typed token
+module. Hook failures are not expected from this selector and belong to Task
+3B.
 
 - [ ] **Step 3: Implement `RuntimeIdentity` and strict resolution**
 
@@ -678,21 +736,30 @@ resolver's ordered errors and add only actor/operation errors after the
 identity checks. CLI success is quiet. CLI failure writes stable error codes to
 stderr without dumping the environment and exits nonzero.
 
+Implement the generic token module and move capacity validation onto it in the
+same commit. Token paths are resolved beneath the primary checkout, opened
+without following symlinks, and must be present in the exact committed HEAD.
+Appointment freshness is determined from durable mailbox order, not caller
+prose. `failed_preflight` and `triggered_stop_predicates` must both be empty;
+the verifier does not attempt to reinterpret free-form safety text.
+
 Update `CODEX_VERIFICATION_COMMANDS` in the same commit so the new identity
 suite is part of the model-derived doctor gate.
 
 - [ ] **Step 5: Prove GREEN and non-vacuity**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_protocol_model.py tests/unit/test_codex_ledger_bridge.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_protocol_model.py tests/unit/test_protocol_executor_token.py tests/unit/test_protocol_capacity.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
 Change the mismatched `director2/operator2` fixture to
 `director2/director` and confirm the invalid assertion fails, restore it, and
 rerun GREEN. Separately widen one readiness capability token and confirm the
-narrowing test fails.
+narrowing test fails. Then change one expected token HEAD and confirm the
+executable verifier refuses before its mutation callback; restore and rerun
+GREEN.
 
-- [ ] **Step 6: Review and commit Task 3**
+- [ ] **Step 6: Review and commit Task 3A**
 
 ```bash
 env -u GIT_INDEX_FILE git commit -m "fix(protocol): reject mixed runtime identity"
@@ -722,11 +789,21 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): reject mixed runtime identit
 **Interfaces:**
 - Produces frozen `SessionBinding(schema_version, session_id, mode, concrete_seat, role_family, created_head)`.
 - Produces `bind_session(root: Path, *, session_id: str, mode: str, concrete_seat: str | None, role_family: str | None) -> SessionBinding` and `load_session_binding(root: Path, session_id: str) -> SessionBinding`.
-- Stores ignored local bindings at
-  `.codex/session-bindings/{session_id}.json` using create-once,
-  same-directory temporary-file plus atomic rename semantics.
+- Accepts only ASCII session IDs matching
+  `\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z` and stores ignored local bindings
+  beneath the primary checkout's `.codex/session-bindings/`.
+- Resolves the primary root and every binding component with directory-relative,
+  no-follow operations. It rejects traversal, absolute paths, Unicode
+  lookalikes, overlong IDs, symlinked parents/base/final paths, and non-regular
+  existing files.
+- Publishes fully written and fsynced same-directory temporary content through
+  an atomic hard-link/no-replace operation (or an equivalent no-replace
+  primitive), then fsyncs the directory. Plain rename/`os.replace()` is
+  forbidden because it can overwrite a racing binding.
 - A binding cannot be silently rebound. Ambient environment and binding must
-  agree; a binding corroborates identity but a legacy
+  agree. A racing or pre-existing identical binding is idempotent after a
+  no-follow reread; a conflicting winner fails. A binding corroborates
+  identity but a legacy
   `presence-seat.{session_id}` marker never establishes it.
 - Hooks locate the primary checkout through the absolute git common directory
   and use that checkout's `.venv/bin/python`. Missing validation machinery is
@@ -738,6 +815,11 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): reject mixed runtime identit
   `RuntimeOperation.ROUTE_MUTATE` before the tool runs. Non-route mailbox
   paths remain under `MAIL_SEND`; ambiguous or dynamically hidden route paths
   fail closed rather than bypass the route gate.
+- A route-shaped tool call also requires `CODEX_EXECUTOR_TOKEN_PATH` and
+  `CODEX_SIDE_EFFECT_ID` from the bound session. The guard calls
+  `require_side_effect_executor_token()` with the actual executor, normalized
+  route target, route-mutation command class, current HEAD/appointment, and
+  freshly evaluated preflight/stop results before allowing the tool.
 
 - [ ] **Step 1: Write session-binding and zero-mutation regressions**
 
@@ -748,13 +830,22 @@ legacy-marker-only refusal, and isolated-worktree execution without a local
 state marker, and `STATE.md` before invalid-hook cases and assert byte-for-byte
 identity afterward.
 
+Add strict path/concurrency cases for empty, traversal, absolute, separator,
+Unicode, and overlong IDs; symlinked binding directory/final file; non-regular
+destinations; two processes racing identical bindings; and two processes
+racing conflicting bindings. Assert exactly one complete regular file is
+published, the identical loser succeeds idempotently, the conflicting loser
+fails, and no path outside the binding directory changes.
+
 Add path-aware route cases for each registered mutation tool: a bound
 coordinator may pass the runtime route-capability gate for the exact route
 pattern, while director, director2, operator, operator2, readiness, and
 subagent identities fail before any route file, temporary file, index entry,
 or hook-owned state changes. The positive case proves runtime eligibility
 only; user consent, one target-bound route token, route validation, and commit
-scope remain separate mandatory gates.
+scope remain separate mandatory gates. Add absent/wrong/uncommitted/stale
+`CODEX_EXECUTOR_TOKEN_PATH` and wrong/newer `CODEX_SIDE_EFFECT_ID` cases; each
+must fail before the tool reads route content or mutates any snapshot.
 
 - [ ] **Step 2: Run tests to prove RED**
 
@@ -776,7 +867,8 @@ scripts/codex_session_binding.py validate --session-id "$CODEX_SESSION_ID"
 ```
 
 The bind command validates through Task 3A before writing. It refuses a
-different binding at the same path and never reads a legacy presence marker.
+different binding at the same path, uses the no-follow/no-replace publication
+contract above, and never reads a legacy presence marker.
 Update the startup docs and environment example with exact live-seat,
 coordinator, readiness, and subagent invocations.
 
@@ -792,7 +884,8 @@ used as an authority gate.
 For the exact coordinator-route path patterns above, the PreToolUse guard calls
 `authorize_operation(..., RuntimeOperation.ROUTE_MUTATE,
 expected_actor=identity.concrete_seat)` before allowing the tool. A generic
-valid identity check is insufficient. Literal Bash route targets are
+valid identity check is insufficient. It then requires the Task-3A executor
+token using the session's explicit path/ID. Literal Bash route targets are
 classified before execution; unclassifiable dynamic route writes are refused
 with a stable error code.
 
@@ -803,7 +896,9 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_session_b
 ```
 
 Flip one bound director session to operator in the fixture and confirm the
-environment/binding test fails. Restore and rerun GREEN.
+environment/binding test fails. Then remove the route token path from a valid
+coordinator fixture and confirm the hook refuses before reading the patch.
+Restore both and rerun GREEN.
 
 - [ ] **Step 6: Review and commit Task 3B**
 
@@ -830,6 +925,12 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind runtime identity before
 **Interfaces:**
 - Each command calls `authorize_operation()` before its first file, index, ref,
   or lock mutation.
+- Route-shaped `send-event`, `claim-lock`, `release-lock`, `consume-events`,
+  and `scripts/consume_bus.py` require explicit `--executor-token PATH` and
+  `--side-effect-id ID` arguments. Each calls the Task-3A
+  `require_side_effect_executor_token()` with its actual executor, normalized
+  target, command class, current HEAD/appointment, target state, and freshly
+  evaluated preflight/stop results.
 - `coordination/bin/send-event` requires `MAIL_SEND` for every event. When and
   only when the validated bound sender is `coordinator` or `coordinator2`, the
   target is `all`, and the kind is `coordination`, it additionally requires
@@ -856,10 +957,17 @@ index, and hook-owned state and prove zero mutation. A non-route coordinator
 status event proves that ordinary `MAIL_SEND` is not accidentally promoted to
 `ROUTE_MUTATE`.
 
+For route, lock claim/release, human cursor consume, and signed cursor consume,
+parameterize absent/unreadable/uncommitted token paths, wrong or duplicate IDs,
+wrong executor/target/class/HEAD, stale/current/newer appointment, already-
+satisfied target, failed preflight, and every triggered stop predicate. Snapshot
+stdin-read probes, temporary namespaces, mailbox, index, locks, both cursor
+stores, and signed refs; every denial must leave all snapshots identical.
+
 - [ ] **Step 2: Run tests to prove RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_runtime_operation_guards.py tests/unit/test_coordination_tooling.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_runtime_operation_guards.py tests/unit/test_protocol_executor_token.py tests/unit/test_coordination_tooling.py -q
 ```
 
 Expected: current commands mutate from positional identity without a bound
@@ -873,7 +981,8 @@ Use exact operation tokens `mail-send`, `human-cursor-consume`,
 `operator-verdict` from the Task-3A `RuntimeOperation` enum; Task 3C does not
 redefine or modify that enum. Validate before reading stdin into a durable artifact,
 creating temporary files, staging, committing, pushing, or updating refs.
-Existing side-effect token and user-consent checks remain additional gates.
+Runtime authorization is followed by the executable Task-3A token check;
+neither substitutes for user consent or operation-specific preflight.
 `send-event` performs the route classification described above and requires
 both `MAIL_SEND` and `ROUTE_MUTATE`; it never treats the positional `FROM`
 value as proof of coordinator identity.
@@ -881,11 +990,13 @@ value as proof of coordinator identity.
 - [ ] **Step 4: Prove GREEN and non-vacuity**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_runtime_operation_guards.py tests/unit/test_coordination_tooling.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_runtime_operation_guards.py tests/unit/test_protocol_executor_token.py tests/unit/test_coordination_tooling.py -q
 ```
 
 Change one expected actor to match the bound actor and confirm the mismatch
-assertion fails. Restore and rerun GREEN.
+assertion fails. Then replace a valid token's expected HEAD with a sibling SHA
+and confirm the command refuses before its stdin-read probe. Restore both and
+rerun GREEN.
 
 - [ ] **Step 5: Review and commit Task 3C**
 
@@ -976,6 +1087,7 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind service principals"
 - Create: `threeway/activation.py`
 - Modify: `threeway/cutover.py`
 - Modify: `threeway/cursor_backfill.py`
+- Modify: `threeway/legacy_projector.py`
 - Create: `scripts/build_threeway_activation_manifest.py`
 - Modify: `scripts/execute_threeway_cutover.sh`
 - Modify: `scripts/protocol_capacity.py`
@@ -995,15 +1107,36 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind service principals"
   resume policy, trusted-code/trust-root commits, authority
   before/after states, structured-source and projection digests, nonzero
   projected head, signing roster, public-registry digest, signed-cursor roster,
-  managed-ref set, exact pre-run ref map, and rollback boundary.
+  Git object format, deterministic non-authoritative importer binding, ordered
+  managed-ref records with object type/exact pre-run OID/exact expected-post
+  OID, exact shadow-authority preimage/non-marker/expected-live digests, and
+  rollback boundary.
 - `CutoverResult` includes `projected_head: int`,
   `signed_cursor_identities: tuple[str, ...]`,
   `human_mailbox_unchanged: bool`, `ready_to_flip: bool`, and
   `verified_exact_resume: bool`.
-- Promotes `load_side_effect_executor_token(path: Path, side_effect_id: str)`
-  from `scripts/protocol_capacity.py` as the one token parser used by route
-  validation and the cutover driver. The executor token, not the manifest,
-  binds the exact HEAD that contains the manifest and its digest.
+- Consumes Task 3A's `scripts.protocol_executor_token` from route validation
+  and the cutover driver; Task 4 must not redefine or wrap a second Markdown
+  token parser. The executor token, not the manifest, binds the exact HEAD that
+  contains the manifest and its digest.
+- Replaces the ephemeral importer with principal
+  `migration-importer:legacy:v1` and deterministic Ed25519 seed derivation from
+  the public domain-separated context
+  `Pipeline/threeway/legacy-import/v1/pipeline-local-authority-2026-07-10`.
+  Derive the 32-byte seed exactly as
+  `SHA256(UTF8("threeway/non-authoritative-legacy-importer/v1") || 0x00 ||
+  UTF8(key_context))` and load it with
+  `Ed25519PrivateKey.from_private_bytes()`.
+  The manifest records the derivation profile, context, and public key. This
+  importer is outside the trusted signing roster and can sign only non-
+  load-bearing `event_sent` carriers.
+- Produces in `threeway/activation.py`
+  `compare_and_swap_authority_marker(path: Path, *, expected_bytes: bytes,
+  expected_state: ChannelAuthority = ChannelAuthority.SHADOW,
+  new_state: ChannelAuthority = ChannelAuthority.LIVE) -> None` using no-follow
+  access, an exclusive sibling lock, exact reread under lock, a one-field
+  transformation, fsynced same-directory temporary output, atomic replacement,
+  and directory fsync. Every sanctioned marker writer uses this helper.
 - `scripts/execute_threeway_cutover.sh --preflight` performs no writes and exits nonzero on partial key registries, dirty tracked files, pre-existing unexplained refs, or non-shadow authority.
 - All driver modes require `--activation-manifest`, `--executor-token`, and
   `--side-effect-id`. `--yes` is the sole mode permitted to mutate managed refs
@@ -1012,9 +1145,13 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind service principals"
   authority, keys, cursors, the activation manifest, the index, or staging. `--yes` and
   `--postcheck` require `--evidence-file`; `--preflight` accepts no evidence
   output path and writes nothing. Mutation mode
-  revalidates token-bound HEAD, manifest digest, managed refs, GO artifacts,
-  concrete executor, and newer appointment immediately before atomically
-  changing the authority marker.
+  revalidates the clean tracked tree/index, token-bound HEAD and current
+  appointment, exact manifest bytes/digest, exact shadow-authority preimage and
+  non-marker bytes, public-registry digest and pair correspondence,
+  trusted-code/trust-root commits, source/projection/importer/roster bindings,
+  exact managed refs, GO artifacts/reviewed SHAs, concrete executor, and every
+  stop predicate immediately before the cooperative compare-and-swap marker
+  change.
 
 - [ ] **Step 1: Write cutover regressions**
 
@@ -1036,11 +1173,22 @@ same bytes after success and injected failure. Add cases for:
 - wrong or ambiguous side-effect ID, executor, target, action class, expected
   HEAD, manifest digest, GO artifact, reviewed SHA, or newer appointment
   refused before writes;
+- two fresh subprocesses and scratch repositories with the same source,
+  object format, and importer context produce byte-identical expected-post OID
+  maps; a one-byte context change changes the expected events OID;
+- the measurement builder snapshots live `refs/threeway/*` before and after
+  scratch projection and proves byte-for-byte identity;
+- substituting each one of the seven expected-post OIDs independently causes
+  verified-exact resume to refuse without a ref rewrite;
 - parameterized mid-cutover race injection after fresh managed-ref creation or
   verified-exact-resume verification, but before the `live` marker, for each of:
-  HEAD change, activation-manifest digest change, one managed-ref OID change,
-  and a newer executor appointment. Every injection must leave authority
-  `shadow`. Fresh-cutover failures restore the exact pre-run ref snapshot,
+  tracked-tree change, staged-index change, HEAD change, newer appointment,
+  activation-manifest byte/digest change, shadow-authority non-marker change,
+  authority state change, public-registry digest/pair change, trusted-code or
+  trust-root change, structured-source or projection change, importer binding
+  change, signing/cursor-roster change, one managed-ref OID change, GO artifact
+  or reviewed-SHA change, and triggered stop predicate. Every injection must
+  leave authority `shadow`. Fresh-cutover failures restore the exact pre-run ref snapshot,
   deleting only refs absent before the attempt; exact-resume failures leave
   every matching pre-existing ref OID unchanged and perform no ref rewrite.
   Removing the single injected change must let the same fixture reach `live`;
@@ -1070,15 +1218,19 @@ sentinels.
 
 `scripts/build_threeway_activation_manifest.py` is the committed R-MEASURE
 instrument. It computes the structured-source cutoff/digest, projection digest,
-nonzero projected head, public-registry digest, rosters, managed refs, and
-pre-run ref map; it writes the secret-free TOML plus a citable log under
+nonzero projected head, public-registry digest, rosters, importer binding,
+authority preimage/live digests, and ordered managed refs. In two fresh scratch
+repositories it derives the exact events commit OID plus all six cursor blob
+OIDs without creating or updating a live ref. It snapshots live refs before
+and after and writes the secret-free TOML plus a citable log under
 `logs/threeway-activation-pipeline-local-authority-2026-07-10/`. Ad-hoc
 numbers are forbidden.
 
 `load_activation_manifest()` rejects unknown versions/fields, duplicate or
 unordered rosters, a zero projected head, ref names outside the declared events
 ref/cursor namespace, a managed-ref set that differs from events plus the
-cursor roster, and any digest or HEAD mismatch.
+cursor roster, wrong object types or object-format lengths, duplicate/missing
+pre/post OIDs, scratch-process disagreement, and any digest or HEAD mismatch.
 
 The token loader selects exactly one complete standard token by side-effect ID
 and additionally requires the activation-manifest path and digest, expected
@@ -1095,7 +1247,8 @@ working tree has no tracked changes
 public-key registry is either empty or complete for the exact signing roster
 private keystore is outside the repository
 refs/threeway/events and signed cursor refs are all absent for a fresh cutover,
-or all present with exact manifest OIDs for verified-exact resume
+or all present with exact independently measured expected-post manifest OIDs
+for verified-exact resume
 focused tests and operator GO are named in the executor token before --yes
 ```
 
@@ -1113,7 +1266,8 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_cutove
 
 Change one expected signed cursor from the projected head to `0`; confirm the
 test fails. Then change one exact-resume ref OID and confirm resume refuses.
-Restore both and rerun GREEN. Disable one mid-cutover race injection and
+Change one importer-context byte and confirm the expected events OID and
+manifest validation change. Restore all three and rerun GREEN. Disable one mid-cutover race injection and
 confirm the same fixture reaches `live`; restore the injection and confirm the
 driver fails closed with the mode-specific ref disposition above.
 
@@ -1350,8 +1504,12 @@ side effects. Operator2 returns GO/NITS/FAIL. Task 6B cannot start before GO.
 - It records exact trusted-code and Task-6A trust-root commits,
   structured-source cutoff/digest, projection digest, nonzero projected head,
   authority before/after states, exact signing and signed-cursor rosters,
-  public-registry digest, events/cursor namespace, managed-ref set, exact
-  pre-run ref OID map, and rollback boundary.
+  public-registry digest, Git object format, the pinned non-authoritative
+  importer principal/derivation/context/public key, events/cursor namespace,
+  exact authority shadow-preimage/non-marker/expected-live digests, and an
+  ordered managed-ref table. Every managed-ref record names object type,
+  exact pre-run OID or `ABSENT`, and the independently scratch-derived exact
+  expected-post OID. It also records the rollback boundary.
 - It contains no self-referential HEAD. The later Task-6C executor token binds
   the exact Task-6B commit plus the manifest digest.
 
@@ -1361,12 +1519,19 @@ side effects. Operator2 returns GO/NITS/FAIL. Task 6B cannot start before GO.
 env -u GIT_INDEX_FILE .venv/bin/python scripts/build_threeway_activation_manifest.py \
   --activation-id pipeline-local-authority-2026-07-10 \
   --trust-root-commit "$(env -u GIT_INDEX_FILE git rev-parse HEAD)" \
+  --importer-principal migration-importer:legacy:v1 \
+  --importer-key-context Pipeline/threeway/legacy-import/v1/pipeline-local-authority-2026-07-10 \
+  --scratch-runs 2 \
   --output coordination/threeway/activation/pipeline-local-authority-2026-07-10.toml \
   --evidence-dir logs/threeway-activation-pipeline-local-authority-2026-07-10
 ```
 
 The tool, not ad-hoc shell or REPL code, produces every digest/count and the
-citable measurement log.
+citable measurement log. It creates both projections in fresh temporary Git
+repositories with the live repository's object format and fixed Git metadata,
+requires byte-identical seven-ref OID maps across separate subprocesses, and
+proves the live ref snapshot is unchanged. The deterministic importer is not a
+secret and is never accepted for a load-bearing event.
 
 - [ ] **Step 2: Validate the generated manifest without mutation**
 
@@ -1376,9 +1541,10 @@ env -u GIT_INDEX_FILE .venv/bin/python -m threeway.activation validate \
   --repo .
 ```
 
-Validation must report the fresh-cutover state and leave refs, keys, authority,
-cursors, index, and staging unchanged. Executor-token validation belongs to
-Task 6C after the manifest commit and digest exist.
+Validation must report the fresh-cutover state, independently rebuild the
+expected-post map in a new scratch process, and leave live refs, keys,
+authority, cursors, index, and staging unchanged. Executor-token validation
+belongs to Task 6C after the manifest commit and digest exist.
 
 - [ ] **Step 3: Commit the manifest and measurement**
 
@@ -1393,9 +1559,11 @@ env -u GIT_INDEX_FILE git commit -m "chore(threeway): freeze local activation ma
 - [ ] **Step 4: Send one manifest verify-request**
 
 Operator verifies the exact commit, manifest schema/digests/rosters/ref map,
-measurement provenance, Task-6A trust-root binding, preflight non-mutation, and
-`shadow` authority. Task 6C waits for GO and a new user-authorized executor
-token binding this exact commit and manifest digest.
+two-process measurement provenance, deterministic importer separation from the
+trusted roster, exact expected-post OIDs, unchanged live refs, Task-6A
+trust-root binding, preflight non-mutation, and `shadow` authority. Task 6C
+waits for GO and a new user-authorized executor token binding this exact commit
+and manifest digest.
 
 ---
 
@@ -1426,7 +1594,9 @@ checkouts, deploy runners, or update protected main.
 The authorizing route exports its concrete mailbox path as
 `TASK6C_TOKEN_ROUTE`. The executor refuses to run unless that variable is
 nonempty, names a committed coordinator-to-all route, and contains the exact
-side-effect ID below.
+side-effect ID below. The driver calls Task 3A's
+`require_side_effect_executor_token()`; field presence or route validation
+alone is insufficient.
 
 - [ ] **Step 1: Re-run exact live preflight**
 
@@ -1444,7 +1614,8 @@ env -u GIT_INDEX_FILE scripts/execute_threeway_cutover.sh \
 
 Expected: exact token-bound HEAD and manifest digest, `shadow` authority,
 complete trust root, GO artifacts, off-repo keystore, and either all managed
-refs absent or the complete exact manifest-matched ref set. No state changes.
+refs absent or the complete exact expected-post manifest ref set. No state
+changes.
 
 - [ ] **Step 2: Execute fresh cutover or verified-exact resume**
 
@@ -1458,12 +1629,24 @@ env -u GIT_INDEX_FILE scripts/execute_threeway_cutover.sh \
 ```
 
 Fresh mode creates the exact managed-ref set. Verified-exact resume verifies
-every existing OID and performs no ref rewrite. Partial, extra, mismatched,
+every existing OID against the independently scratch-derived expected-post map
+and performs no ref rewrite. Partial, extra, substituted, mismatched,
 changed-HEAD/digest, or already-`live` state refuses. After fresh creation or
-exact-resume verification, the driver repeats the token/HEAD/digest/ref/newer-
-appointment checks and atomically changes only
-`signed_facts.authority = "live"`. It writes secret-free command inputs,
+exact-resume verification, the driver rechecks the clean tracked tree and
+index; token-bound HEAD/current appointment; exact manifest bytes/digest;
+shadow-authority preimage, state, and non-marker bytes; public registry and
+pair correspondence; trusted-code/trust-root commits; source, projection,
+importer, and roster bindings; every expected ref; GO/reviewed-SHA evidence;
+and all stop predicates. It then uses
+`compare_and_swap_authority_marker()` to change only
+`signed_facts.authority = "live"` under the no-follow cooperative lock. It writes secret-free command inputs,
 mode, ref OIDs, validation results, and marker result to `cutover.txt`.
+
+Inject a change to each revalidated input after ref readiness/exact-resume
+verification and before the locked preimage comparison. Every case refuses the
+marker. Fresh mode restores the exact pre-run ref map; exact-resume mode leaves
+all pre-existing matching refs untouched. Removing each one-fact injection
+must let the same fixture reach `live`.
 
 - [ ] **Step 3: Revalidate the driver-finalized live state**
 

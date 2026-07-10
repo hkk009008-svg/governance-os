@@ -174,10 +174,12 @@ Perform one focused read-only sufficiency pass over revised Tasks 3A-3D. The
 new question is whether the revised task boundaries completely implement the
 already-approved global before-mutation/verdict guarantee. Confirm role-family
 matching, the frozen typed interface, deterministic errors, set-based
-narrowing, non-rebindable session binding, primary-worktree interpreter,
-PreToolUse and hook-self zero-mutation coverage, every interactive mutator and
-verdict entry point, exact mechanical/service-principal mapping, canonical
-doctor-gate inclusion, disjoint reviewable commits, and non-vacuity selectors.
+narrowing, the single executable token parser/verifier, strict path-safe and
+atomic-no-replace session binding, primary-worktree interpreter, token-gated
+PreToolUse and hook-self zero-mutation coverage, route/lock/human-cursor/signed-
+cursor absent-wrong-stale-token denials, every interactive mutator and verdict
+entry point, exact mechanical/service-principal mapping, canonical doctor-gate
+inclusion, disjoint reviewable commits, and non-vacuity selectors.
 Return one CLEAR or CONTRADICTION report to coordinator; do not implement.
 
 ## Operator2 — Tasks 4-6C Repreflight
@@ -187,10 +189,13 @@ Operator2 owns
 
 Perform one focused read-only safety pass over revised Tasks 4-6C. Confirm the
 verified-exact resume matrix, committed secret-free activation manifest,
-token-bound exact HEAD/manifest digest, complete managed-ref match with zero
-resume rewrites, exact pre-run rollback before `live` only, identical
-signed-cursor rosters, exact 11-principal key state machine, explicit off-repo
-keystore containment, and the three separate later gates:
+token-bound exact HEAD/manifest digest, deterministic non-authoritative importer,
+two-process scratch-derived exact expected-post OID map, complete managed-ref
+match with zero resume rewrites, exact pre-run rollback before `live` only,
+identical signed-cursor rosters, exact 11-principal key state machine, explicit
+off-repo keystore containment, full pre-marker trust/input race matrix,
+cooperative authority-marker compare-and-swap, and the three separate later
+gates:
 
 1. Task 6A trust-root generation/public-key commit;
 2. Task 6B measured activation-manifest commit;
@@ -203,14 +208,22 @@ create refs, execute cutover, or implement.
 
 - side_effect_id: `control-plane-authority-plan-reroute-2026-07-10`
 - executor: `coordinator`
+- expected_head: phase-selected predecessor; current final-review phase requires `e457478`
+- current_appointment: this committed coordinator-to-all route and no newer same-target appointment
 - target: local Pipeline-main route mutation limited to this route file, the revised design/plan, five existing control-plane capacity packets, and two new repreflight capacity packets
 - allowed_command_class: coordinator-owned route mutation through `apply_patch` plus `env -u GIT_INDEX_FILE git add` and the initial strict-pathspec local `git commit` together with bounded review-fix commits sharing this `side_effect_id`
-- preflight: user explicitly continued as coordinator and selected verified-exact resume; HEAD is `99a8b5b813e526e8ff04a3836af8073e5c9c9081`; Pipeline main and the routed worktree are clean; routed worktree HEAD is `e43acc245e2492883ca04b0d835268708ad0995d`; the three cited blocker reports are newest; this route path is absent
-- stop_if_newer_mail_or_live_target_satisfied: stop before commit if newer coordinator mail supersedes this revision, Pipeline HEAD changes, unrelated worktree changes appear, the routed worktree leaves `e43acc245e2492883ca04b0d835268708ad0995d`, another route already satisfies all three blockers, or any edited path falls outside the named target
-- postcheck: capacity board valid; this route valid; protocol doctor passes against this route; smoke OK; git diff/cached scope contains only the named design, plan, capacity packets, and route; committed HEAD contains this exact route
+- preflight: arm exactly one phase at a time. Initial phase required user-selected verified-exact resume, predecessor `99a8b5b813e526e8ff04a3836af8073e5c9c9081`, absent route, clean Pipeline/routed worktree, routed HEAD `e43acc245e2492883ca04b0d835268708ad0995d`, and the three newest blocker reports. Review-fix phase requires the exact predecessor from the transition ledger, this route present/current with the same executor/target/ID, one named unresolved independent-review finding, all prior postchecks valid, clean named scope, unchanged routed HEAD, and no newer appointment or satisfying route. The current final-review phase is freshly anchored at `e457478` and limited to the named final-review findings.
+- review_fix_transition_ledger: initial `99a8b5b` → `34426e0`; review-fix-1 `34426e0` → `b894f5b`; review-fix-2 `b894f5b` → `582e258`; review-fix-3 `582e258` → `e457478`; final-review-fix predecessor `e457478` → exactly one direct child, pending this finding-directed commit
+- stop_if_newer_mail_or_live_target_satisfied: within an armed phase, stop before commit if HEAD differs from the selected predecessor, newer coordinator mail/appointment supersedes the phase, another route satisfies the findings, unrelated worktree state changes, the routed worktree leaves `e43acc245e2492883ca04b0d835268708ad0995d`, prior postchecks no longer hold, or any edit exceeds the named target/finding. A successful direct-child fix transitions to awaiting independent review and is not itself a stop violation; any further fix requires a freshly armed phase at that reviewed predecessor.
+- postcheck: for every phase, the new commit is the selected predecessor's direct child; capacity board valid; this route valid; protocol doctor passes against this route; smoke OK; git diff/cached scope contains only the named design, plan, capacity packets, and route; committed HEAD contains this exact route; final-review phase also requires a regenerated full-range package and fresh whole-range verdict
 - observer_seats: `director`, `director2`, `operator`, `operator2`, `coordinator2`
 - final_closeout_owner: `coordinator`
 - non_goals: production-code edit, routed-worktree edit, implementation, Operator GO, key/secret generation, signed-ref mutation, authority flip, cursor consume, lock action, remote-ref update/push, force update, target-checkout refresh, paid-service spend, pod action, production generation, remote signer/runner deployment, merge, rebase, or protected-main update
+
+The transition ledger preserves the executed four-commit audit history; it does
+not retroactively manufacture executable authorization. The current change is
+the fresh `e457478`-anchored final-review phase under the user's explicit live
+coordinator instruction. Do not amend or squash any prior commit.
 
 Subagent utilization decision: three bounded read-only helpers synthesized the
 independent Task-2, Task-3, and Tasks-4/5 plan-readiness questions. Their output
@@ -251,4 +264,4 @@ causes bounded rerouting instead of closeout.
 and `continue as operator2` run the two focused repreflights now. `operator`
 waits for the fresh Director verify-request.
 
-Cursor at send: 0
+Cursor at send: all-scope-unpinned
