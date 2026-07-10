@@ -81,6 +81,13 @@ checked against the declared state; neither chooses the state.
 - `signed_facts.authority=live` requires the event ref, required signer public
   keys, and valid signed-fact cursor refs.
 - A missing required signed ref is `authority unavailable`, not zero unread.
+- Each signed-fact reader requires the selected identity's exact cursor ref in
+  both `shadow` observation and `live` operation; the live runtime validator
+  requires all six cursor refs. Low-level absent-as-zero cursor decoding remains
+  only a bootstrap/cutover seam and is never a reader availability decision.
+- `human_mailbox.read_scope` is the exact literal
+  `addressed-pairs-all-scope-coordinators`; a different nonempty value is still
+  invalid configuration.
 - Unknown manifest values or versions fail startup and mutation commands.
 - `signed_facts.events_ref` must equal `refs/threeway/events` and
   `signed_facts.cursor_namespace` must equal `refs/threeway/cursors/`; a
@@ -147,6 +154,12 @@ mail while the marker is active, a backdated addition, a renamed event, or
 byte-modified legacy mail fails closed. This permits lawful numeric mail whose
 introducing commit does not descend from the marker-introduction commit,
 including parallel pre-integration mail, without granting a wall-clock bypass.
+One exact `HEAD^{commit}` OID is captured before provenance reads and binds the
+HEAD blob plus both marker/event `--full-history` walks. A simplified-history
+walk cannot hide parallel identical introductions. Git command failure is
+distinct from a legitimate root commit or absent parent path, and failure to
+read a parent blob known to be present rejects instead of satisfying a vacuous
+`all(...)` predicate.
 
 `scripts/protocol_mailbox.py` owns one strict event parser used by send,
 consume, status, checkers, monitors, draft handoffs, and hook state rendering.
@@ -157,14 +170,18 @@ can affect a cursor or count. Its frozen canonical envelope carries the exact
 immutable bytes and decoded text validated by that parse. A missing `sent/`
 directory, malformed full cursor file, unknown identity/kind, trailing cursor
 content, or snapshot-acquisition failure is unavailable/invalid, never zero
-unread.
+unread. Numeric legacy changes only the allowed cursor-value representation; it
+does not bypass the unique `When`/`From` header or terminal-cursor requirements.
 
 Human cursor advance is one synchronized compare-and-replace operation. It
 opens and exclusively locks the stable `coordination/mailbox/seen/` directory
 descriptor for the complete operation, rereads and fully validates the cursor
 under lock, selects only strictly parsed addressed events, refuses regression,
-writes and fsyncs a same-directory temporary file, atomically replaces the
-cursor, fsyncs the directory, and only then permits explicit-path staging.
+writes and fsyncs a temporary file created relative to that descriptor,
+atomically replaces the descriptor-relative cursor, cleans residue relative to
+the same descriptor, fsyncs the locked directory, and only then permits
+explicit-path staging. No post-lock reread, temporary-file creation, replace,
+or cleanup resolves the `seen/` pathname again.
 Concurrent or interrupted consumers cannot regress or truncate the cursor.
 
 Every derived human-unread surface calls the same policy: status, both
@@ -363,7 +380,13 @@ system-domain job. Account resolution must bind the gate/proof UIDs exactly to
 itself binds/listens on the fixed Unix stream
 socket; launchd socket activation is not used. That makes mutual effective-peer
 UID checks meaningful: the service accepts only `gate_uid`, and the client
-accepts only `proof_uid`. The proof-owned socket and acquisition parents grant
+accepts only `proof_uid`. One private non-injectable real-kernel helper owns
+both checks. On Darwin it calls libc `getpeereid()` directly through `ctypes`
+with explicit types and errno failure; on Linux it requires the exact
+`SO_PEERCRED` `struct ucred` response. Other platforms, malformed credential
+records, and syscall failure deny. No socketpair, inherited listener, mock,
+injected backend, skip, fallback, or `LOCAL_PEERCRED` substitute proves this
+boundary. The proof-owned socket and acquisition parents grant
 the exact gate group search/connect as applicable but no read, create, replace,
 delete, or chmod authority. The service accepts no
 caller URL, ref, registry, bus, gate-seat, policy, helper, or Git command. It
@@ -407,9 +430,16 @@ gate or exposing it in production. Preserving its `0700` mode, empty ACL, both
 UIDs, groups, and every ancestor then lets at least one entry mutation or
 `chmod(Gitdir)` succeed. The selector REDs at the denied-write assertion even
 if the later service postcheck also fails closed; it does not require the proof
-child to complete after the owner flip. If service-side drift evidence is also
-recorded, root restores only the same held directory's owner to `proof_uid` as
-cleanup before releasing the service. It contains no
+child to complete after the owner flip. The root-owned verifier records an
+initial baseline GREEN, invokes the same unparameterized node in a named owner-
+flip stage whose exact denied-write assertion must RED, and uses an outer
+`finally` on every success/failure/timeout path. That `finally` terminates any
+remaining process group, rechecks the same FD's device/inode, restores owner
+and mode through the held object, and restores or destroys all mutated
+disposable state before service release. Only recorded cleanup permits a fresh-
+fixture final baseline GREEN. A generic nonzero, wrong assertion, earlier
+refusal, missing cleanup, or missing final GREEN is failure. The named stages
+are one selector's evidence, not extra selectors or xfails. It contains no
 `config`, `config.worktree`, `commondir`,
 `objects/info/alternates`, `objects/info/http-alternates`, include,
 replacement, graft, or shallow redirect state; their absence and the held
@@ -691,17 +721,26 @@ Antigravity decisions remain independently unchanged.
 
 - The manifest declares both channels and signed-fact authority as live.
 - Missing live signed refs are visible failures.
+- A missing selected signed-fact cursor ref makes unread/consume unavailable in
+  shadow or live mode, and live runtime validation requires all six cursor
+  refs; no reader turns absence into scalar zero.
+- Unknown `human_mailbox.read_scope` values fail closed.
 - Human mailbox unread is correct with signed refs present or absent.
 - Legacy numeric envelopes are accepted only when the unique `typed-v1`
   marker-introduction commit is not an ancestor of the event-introduction
   commit and one no-follow, descriptor-bound body snapshot matches the exact
-  lexical `HEAD:<path>` and introducing blob; a post-marker, backdated,
+  lexical `HEAD:<path>` and introducing blob. One pinned HEAD OID and full-
+  history marker/event walks reject duplicate introductions, graph movement,
+  parent-query failure, and present-parent blob failure; numeric legacy still
+  requires one exact header and a terminal cursor. A post-marker, backdated,
   uncommitted, renamed, modified, transiently rebound, or substituted numeric
   event is rejected.
 - Coordinators cannot consume the human mailbox.
 - Signed-fact coordinators may use only signed-fact cursor APIs.
 - Non-canonical signed event/cursor refs are rejected at manifest load.
-- Concurrent human cursor consumers cannot regress or truncate a cursor.
+- Concurrent human cursor consumers cannot regress or truncate a cursor, and a
+  pathname replacement after the directory lock cannot redirect any cursor IO
+  away from the locked descriptor.
 - Both state hooks, both seat-status mirrors, effectiveness reporting, monitor,
   and draft handoff agree with canonical pair/all-scope unread semantics.
 - One effectiveness report consumes one validated immutable mailbox body scan;
@@ -718,8 +757,12 @@ Antigravity decisions remain independently unchanged.
   no-drift controls, deterministic barriers, and launch/parse/reduction counts;
   post-command drift discards captured output.
 - A real service-created/bound/listening Unix-stream control, with no socketpair,
-  inherited listener, launchd activation, or mocked credentials, causally proves
-  both reciprocal connected-socket peer UID checks. Both request and response
+  inherited listener, launchd activation, mocked credentials, skip, or fallback,
+  causally proves both reciprocal connected-socket peer UID checks through
+  direct-libc `getpeereid()` on Darwin and exact `SO_PEERCRED` on Linux. The
+  current Ubuntu unit job and model-derived doctor command run the Linux backend;
+  protected macOS evidence records the Darwin backend and both endpoint UIDs
+  before Task-3 GO. Both request and response
   matrices cover version, phase/type, canonical encoding/duplicate keys, exact
   fields, pre-body length, forbidden request authority keys, connection-bound
   session ID, and consumed sequence. Old-session bytes on a new connection and
@@ -737,10 +780,12 @@ Antigravity decisions remain independently unchanged.
   precheck; the FD is never passed to the gate. An injected entry mutation or
   `chmod(Gitdir)` then succeeds and REDs the denied-write assertion independently
   of later service rejection; proof-child completion is not required under the
-  flipped owner, kernel `ctime` is recorded as a consequence, and any
-  service-side observation restores only that owner as root cleanup before release. This
-  boundary is test-infeasible in ordinary unprivileged CI and no mock or skip
-  may close it.
+  flipped owner and kernel `ctime` is recorded as a consequence. The root-owned
+  supervisor must record initial baseline GREEN, exact owner-flip assertion RED,
+  unconditional identity-matched owner/mode/disposable-state cleanup in an
+  outer `finally`, and fresh-fixture final baseline GREEN; any missing stage or
+  generic failure rejects. This boundary is test-infeasible in ordinary
+  unprivileged CI and no mock or skip may close it.
 - One `poll_once()` capture serves discovery and all candidates, each reduction
   reparses fresh, and public evaluation exposes only immutable non-capability
   comparison data whose recursively exact canonical binding/outcome is

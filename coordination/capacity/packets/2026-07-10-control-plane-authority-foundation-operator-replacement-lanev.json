@@ -22,13 +22,15 @@
     "Confirm ADR-013 is append-only and narrows the live transition to Task 6C; signed-facts authority remains shadow; Tasks 4-6C are otherwise unchanged; and no private key, ref, authority, cursor, lock, push, checkout, spend, pod, production-generation, or unlisted path side effect occurred.",
     "Emit exactly one verification-report GO, NITS, or FAIL bound to the cumulative range. Do not repair the Director diff."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T18-33-55Z-operator-to-all-verification-report.md records FAIL for 78b48ed493899dd126de2d1764cbdbf022111dfd..6983673db60bff0d21548a90ab1db2fcbbfa377a with seven binding findings after all eighteen named selectors, focused/full suites, smoke, provenance, and one-fact flips passed."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T18-33-55Z-operator-to-all-verification-report.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-10T18-06-06Z-director-to-operator-verify-request.md",
+  "target_commit": "6983673db60bff0d21548a90ab1db2fcbbfa377a",
+  "commit_range": "78b48ed493899dd126de2d1764cbdbf022111dfd..6983673db60bff0d21548a90ab1db2fcbbfa377a",
   "scope_files": [
     "DECISIONS.md",
     "coordination/authority.toml",

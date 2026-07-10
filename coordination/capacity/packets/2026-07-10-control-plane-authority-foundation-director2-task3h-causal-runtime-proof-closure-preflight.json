@@ -41,12 +41,14 @@
     "Confirm all twenty-two exact Task-3D selectors are present: the prior twenty-one plus test_proof_service_rejects_wrong_peers_malformed_frames_and_session_replay. The privileged Gitdir selector remains test-infeasible in ordinary unprivileged CI and no mock, skip, local doctor pass, or unprivileged peer/frame control may satisfy it or authorize Task-3 GO.",
     "Confirm the accepted Task-3A-through-3C and two-ref CAS segments remain unchanged, and Task 4 through EOF remains SHA-256 8d44798592a4c87fc288f1cf25eff5c21e652574d0ed3a6076c4b72f8c14a6fd. Send one CLEAR or CONTRADICTION report to coordinator. Do not implement, install accounts/LaunchDaemon, issue Operator GO, consume mail, route work, or take a key/ref/cursor/lock/push/spend/pod/production side effect."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T18-19-09Z-director2-to-coordinator-coordination.md records the focused Task3H CONTRADICTION at reviewed coordinator commit fc1f8363252622dfa2a67b9e15a01c1b6de10bb2: the privileged selector lacked an executable baseline/negative/unconditional-cleanup/final-GREEN sequence, and literal Darwin getpeereid had no real-kernel Linux CI/doctor contract. The report preserves the corrected filesystem topology, full two-phase bound-file matrix, twenty-two selector names, and immutable Task-3/Task-4 segments."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T18-19-09Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
+  "target_commit": "fc1f8363252622dfa2a67b9e15a01c1b6de10bb2",
   "commit_range": null,
   "scope_files": [
     "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",

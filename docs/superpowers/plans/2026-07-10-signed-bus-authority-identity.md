@@ -930,6 +930,194 @@ a specification-review issue.
 
 ---
 
+### Task 2U: Close The Cumulative Fail-Closed Gaps Additively
+
+**Owner:** Pair A director implementation as exactly one child of the
+Operator-failed Task2T commit
+`6983673db60bff0d21548a90ab1db2fcbbfa377a`; Pair A operator performs a fresh
+cumulative Lane V only after both fresh reviews pass.
+
+Task2T's one-child route is exhausted. This explicitly routed Task2U successor
+is the only authorized child of `6983673`; it does not amend, replace, squash,
+or rewrite any prior commit.
+
+**Files:**
+- Modify: `scripts/bus_unread.py`
+- Modify: `scripts/consume_bus.py`
+- Modify: `scripts/protocol_authority.py`
+- Modify: `scripts/protocol_mailbox.py`
+- Modify: `tests/unit/test_threeway_activation_scripts.py`
+- Modify: `tests/unit/test_protocol_authority.py`
+- Modify: `tests/unit/test_protocol_mailbox.py`
+- Modify: `tests/unit/test_coordination_tooling.py`
+- Modify: `ARCHITECTURE.md`
+
+These nine paths are already present in the cumulative forty-one-path
+`78b48ed..6983673` range. Do not modify `threeway/refstore.py`,
+`coordination/authority.toml`, any cursor file, a status/checker/monitor mirror,
+cutover/backfill code, or a tenth path. `RefEventStore._read_cursor()` retains
+its low-level absent-as-zero bootstrap contract; live/shadow readers fail
+closed before they use that seam.
+
+**Interfaces:**
+- `scripts/protocol_authority.py` owns the canonical six signed-fact cursor
+  identities and one exact-ref availability helper. The helper distinguishes
+  present refs, absent refs, and ref-inspection failure for
+  `manifest.signed_facts.cursor_namespace + seat`. `protocol_mailbox.py`
+  re-exports the same immutable identity tuple rather than defining a divergent
+  roster.
+- `bus_unread_events()` requires the selected seat's cursor ref before
+  `cursor_seq()` and returns `None` when it is absent or uninspectable.
+  `consume_bus.main()` performs the same check before reading or advancing and
+  returns nonzero without output or mutation. `validate_authority_runtime()`
+  requires all six exact cursor refs when signed-fact authority is `live`.
+- `human_mailbox.read_scope` is exactly
+  `addressed-pairs-all-scope-coordinators`; any other string is invalid even
+  when nonempty.
+- Human cursor publication rereads the cursor, creates/writes/fsyncs its
+  temporary file, replaces the cursor, removes cleanup residue, and fsyncs
+  only through the already locked `seen/` directory descriptor. No operation
+  after `LOCK_EX` resolves `seen/` or the cursor by pathname.
+- Numeric provenance captures one exact `HEAD^{commit}` OID, uses it for the
+  HEAD blob and both marker/event history queries, and requests
+  `rev-list --full-history <pinned-head> -- <path>`. Git query failure is a
+  typed failure distinct from a legitimate root commit or an absent parent
+  path. A present parent whose blob cannot be read is failure, not absence.
+- Numeric legacy status relaxes only the cursor value representation. The same
+  unique `When/From` header and terminal `Cursor at send` validation applies to
+  legacy and typed envelopes.
+
+Before writing tests or production code, the Director brief records fresh Rule
+#12 grep-the-writes evidence with these commands against the routed worktree:
+
+```bash
+rg -n 'read_scope\s*=|read_scope' coordination/authority.toml scripts/protocol_authority.py
+rg -n 'advance_cursor\(' scripts threeway
+rg -n 'advance_human_cursor|os\.(open|write|replace|unlink)|git .*add|mailbox/seen' coordination/bin/consume-events scripts/protocol_mailbox.py
+rg -n 'seen|write_text|write_bytes|replace|cursor' threeway/cursor_backfill.py
+```
+
+The brief cites the committed `read_scope` source; `RefEventStore.advance_cursor`
+and its `consume_bus.py`/`cutover.py` callers; `advance_human_cursor()` and the
+`consume-events` staging wrapper; and Task-4 cursor-backfill rewrite/restore
+sites. It then states each sibling disposition from this plan. The evidence does
+not authorize edits outside the nine-path Task2U scope.
+
+- [ ] **Step 1: Write the seven causal regressions and honest controls**
+
+Add exactly these named selectors; keep their subcases inside the named
+function so Task2U adds seven selector names and seven pytest cases:
+
+| Finding | Exact pytest node | Honest control | One-fact flip after GREEN |
+|---|---|---|---|
+| 18 | `tests/unit/test_threeway_activation_scripts.py::test_signed_fact_readers_require_present_cursor_refs` | an explicit cursor ref containing scalar zero lets both readers observe the real event state; all six live refs satisfy runtime validation | bypass only the per-seat exact cursor-ref guard, or omit the all-six live validation; unread returns events, consume succeeds, or runtime validation reports available |
+| 19 | `tests/unit/test_coordination_tooling.py::test_advance_human_cursor_binds_all_io_to_locked_seen_directory` | an unchanged locked directory advances atomically | after `LOCK_EX`, rename `seen/` and create an unlocked replacement; restoring only pathname reread/temp/replace lets the replacement advance |
+| 20 | `tests/unit/test_protocol_mailbox.py::test_numeric_legacy_full_history_rejects_duplicate_marker_and_event_introductions` | one marker introduction and one event introduction pass | remove `--full-history` from only the marker or event history query; the matching parallel duplicate is hidden and accepted |
+| 21 | `tests/unit/test_protocol_mailbox.py::test_numeric_legacy_rejects_parent_query_and_parent_blob_failures` | a real root yields an empty parent tuple and a genuinely absent parent path remains absent | collapse only a failed parent query to `()` or only a failed present-parent blob read to absence; vacuous `all(...)` admits the candidate |
+| 22 | `tests/unit/test_protocol_mailbox.py::test_numeric_legacy_requires_unique_header_and_terminal_cursor` | a lawful pre-marker numeric envelope with one exact header and terminal cursor passes | restore only the numeric-legacy validation bypass; a duplicate header or substantive trailing content parses |
+| 23 | `tests/unit/test_protocol_authority.py::test_unknown_human_mailbox_read_scope_fails_closed` | the canonical literal loads | accept any nonempty `read_scope`; an arbitrary value loads |
+| 24 | `tests/unit/test_protocol_mailbox.py::test_numeric_legacy_pins_one_head_commit_for_all_provenance_reads` | static HEAD and its lawful legacy event pass | use floating `HEAD` for any blob/marker/event query; one injected ref move combines different graph snapshots |
+
+Every negative must prove its hook, rename, duplicate history, failed query, or
+ref move occurred. A missing node, setup failure, earlier parser rejection, or
+unreached mutation is not causal RED.
+
+- [ ] **Step 2: Prove all seven selectors RED at `6983673`**
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_threeway_activation_scripts.py::test_signed_fact_readers_require_present_cursor_refs \
+  tests/unit/test_coordination_tooling.py::test_advance_human_cursor_binds_all_io_to_locked_seen_directory \
+  tests/unit/test_protocol_mailbox.py::test_numeric_legacy_full_history_rejects_duplicate_marker_and_event_introductions \
+  tests/unit/test_protocol_mailbox.py::test_numeric_legacy_rejects_parent_query_and_parent_blob_failures \
+  tests/unit/test_protocol_mailbox.py::test_numeric_legacy_requires_unique_header_and_terminal_cursor \
+  tests/unit/test_protocol_authority.py::test_unknown_human_mailbox_read_scope_fails_closed \
+  tests/unit/test_protocol_mailbox.py::test_numeric_legacy_pins_one_head_commit_for_all_provenance_reads -q
+```
+
+Expected: seven failures at the intended post-fix assertions while every honest
+control passes. Do not proceed from a collection, fixture, Git setup, or
+unrelated validation failure.
+
+- [ ] **Step 3: Bind signed-reader availability and manifest policy**
+
+Add one protocol-authority helper for exact cursor-ref inspection and reuse it
+from both signed readers. The helper accepts the already validated manifest and
+an explicit identity tuple, uses the manifest's canonical cursor namespace,
+and reports absence separately from inspection failure. It must not create a
+ref or call `advance_cursor()`. Make `validate_authority_runtime()` call it for
+all six identities only when signed-fact authority is `live`; make the shadow
+reader/consumer call it for the selected seat before `RefEventStore.cursor_seq()`.
+Validate `read_scope` with the same exact-literal pattern used for event and
+cursor refs.
+
+- [ ] **Step 4: Bind human cursor mutation to the locked descriptor**
+
+Keep the `seen/` descriptor open and locked for the complete transaction. Read
+`<seat>.txt` with `os.open(..., dir_fd=directory_fd)` plus no-follow and regular-
+file checks; create a collision-resistant same-directory temporary name with
+`O_CREAT|O_EXCL` relative to that descriptor; write/fsync it; call
+`os.replace(temp_name, cursor_name, src_dir_fd=directory_fd,
+dst_dir_fd=directory_fd)`; clean up with `os.unlink(..., dir_fd=directory_fd)`;
+then fsync and unlock the same descriptor. A replaced pathname may remain
+untouched, but it can never receive the cursor mutation protected by the old
+directory's lock.
+
+- [ ] **Step 5: Pin one full-history provenance graph and keep envelope checks universal**
+
+Capture one exact commit OID before the first provenance blob read. Pass it to
+both full-history walks and every HEAD-relative blob lookup. Return explicit
+query results so command failure, a legitimate root's empty parent list, and an
+absent path are three different states; if a parent path is present, a failed
+blob read rejects the whole candidate. Use universal header-count, header-
+agreement, and terminal-cursor checks before the numeric/typed cursor-value
+branch. Numeric legacy may bypass only the typed cursor-value domain after its
+pinned provenance succeeds.
+
+- [ ] **Step 6: Prove GREEN, every flip, all twenty-five selectors, and focus**
+
+Run the seven-node command from Step 2 to GREEN. Apply each one-fact flip in the
+table separately, require only its matching selector to RED for the intended
+reason, restore, and rerun that exact selector GREEN before the next flip.
+Then run the prior eighteen selector names plus the seven Task2U names. The
+combined suite must report twenty-five unique selector names and twenty-seven
+pytest cases. Run the complete thirteen-file Task-2 focus, the full unit suite,
+smoke, both mailbox shell syntax checks, the real effectiveness renderer,
+`scripts/check_doc_claims.py ARCHITECTURE.md`, and cumulative
+`git diff --check`.
+
+- [ ] **Step 7: Reverify architecture, commit one child, and review both scopes**
+
+Reverify `ARCHITECTURE.md` Section 5 against the corrected locked-descriptor,
+signed-ref-availability, and numeric-provenance behavior, update its stale
+`92d1fbc` verification stamp/anchors, and change no unrelated architecture
+claim. Inspect mainline `2d29a3287defa1169e06c85dbd62dc9fe23571f5`
+changes to `ARCHITECTURE.md` and `tests/unit/test_coordination_tooling.py` before
+review; the isolated child keeps its exact parent, while review and eventual
+integration preserve those newer behaviors. Confirm the exact topology is:
+
+```text
+78b48ed -> e43acc2 -> 205f077 -> 92d1fbc -> ef76fd1 -> 8cc4bee -> 6983673 -> <task2u-child>
+```
+
+Commit exactly the nine named paths:
+
+```bash
+env -u GIT_INDEX_FILE git commit -m "fix(protocol): close cumulative fail-closed gaps"
+```
+
+Run fresh specification review first and fresh code-quality review second. Each
+review inspects both `6983673..<task2u-child>` and cumulative
+`78b48ed..<task2u-child>`. If either review finds an issue or a tenth path is
+needed, stop with one bounded Director report; do not add a second child.
+Only after both pass, send one fresh Operator verify-request naming all seven
+cumulative commits, forty-one unique paths, twenty-five selectors/twenty-seven
+cases, every flip, prior FAIL provenance, exact exclusions, and the immutable
+child. Signed-facts authority remains shadow. No cursor/ref/authority/lock/push,
+checkout refresh, spend, pod, generation, merge, or publication is authorized.
+
+---
+
 ### Task 3A: Add The Typed Runtime Identity And Authorization Foundation
 
 **Owner:** Pair B director2 implementation in a separate worktree after Task 2; Pair B operator2 verification.
@@ -2670,8 +2858,9 @@ disposition, and protected non-writable parent chain. Binding only its directory
 is invalid. The system-domain launchd job is `KeepAlive`, names the locked
 non-login proof account through `UserName`, and starts the attested interpreter
 and service. It is deliberately not socket-activated: the proof process itself
-binds and listens on the fixed Unix stream socket so `getpeereid()` reports the
-proof UID to the connecting gate rather than launchd's listener credentials.
+binds and listens on the fixed Unix stream socket so the platform's real-kernel
+peer-credential query reports the proof UID to the connecting gate rather than
+launchd's listener credentials.
 The socket parent is proof-owned, group-searchable but not group-writable by the
 gate, and the socket is connectable only by the exact gate group. The service
 accepts only a peer whose effective UID is `gate_uid`; the client accepts only a
@@ -2962,58 +3151,74 @@ refuses; it never traverses the replacement.
 
 The gate-writer selector is a privileged macOS deployment integration, not a
 mock unit proof. It installs/uses distinct locked gate/proof accounts and the
-root-protected LaunchDaemon, deliberately reveals the service Gitdir pathname
-at the post-check barrier to a process running as `gate_uid`, and proves its
-create, atomic-replace, and unlink attempts inside the Gitdir plus `chmod()` of
-the Gitdir itself all fail while the service returns the unchanged canonical
-graph. The create target starts absent; the unlink and replace targets exist;
-and the replace source exists in a gate-owned writable staging directory on the
-same `st_dev`. Source/targets have clear ACLs and immutable flags, the mount is
-writable, and the gate writer first succeeds at equivalent real syscalls in a
-same-device gate-owned scratch directory. `access()` is not proof. The intended
-control denials are `EACCES` for entry operations and `EPERM` for
-`chmod(Gitdir)`; `ENOENT`, `ENOTDIR`, `EXDEV`, `EROFS`, a missing barrier, or a
-global sandbox denial cannot satisfy the selector. Before the flip, the writer
-must also successfully `lstat()` that direct-child Gitdir through the unchanged
-parent. The control and negative share the same
-gate-searchable/non-writable `0710` acquisition root, exact group memberships,
-`0700` Gitdir mode, empty ACL, manifest UIDs, account resolution, peer checks,
-and service identities. The root verifier independently opens and retains a
+root-protected LaunchDaemon. The root-owned
+`scripts/verify_proof_acquirer_macos.py` supervisor invokes the unchanged exact
+node `tests/integration/test_proof_acquisition_macos.py::test_gate_uid_writer_cannot_mutate_proof_service_gitdir`
+without parameterized node IDs in three recorded invocations. First,
+`PIPELINE_PROOF_TEST_STAGE=baseline` must GREEN: the gate can `lstat()` the
+direct-child Gitdir, succeeds at equivalent create/replace/unlink and
+`chmod()` syscalls in same-device gate-owned scratch state, receives exact
+`EACCES` entry denials and `EPERM` `chmod(Gitdir)` denial against the proof-owned
+Gitdir, and the service returns the unchanged graph. The create target starts
+absent; unlink/replace targets exist; the replace source is same-device,
+gate-owned, and writable; source and targets have clear ACLs/immutable flags;
+and the mount is writable. `access()`, `ENOENT`, `ENOTDIR`, `EXDEV`, `EROFS`, a
+missing barrier, or global sandbox denial is not proof.
+
+Second, `PIPELINE_PROOF_TEST_STAGE=owner-flip-negative` reaches the same
+service/writer barrier. The supervisor, outside the pytest child, retains the
 test-only `harness_gitdir_fd`, proves its `fstat()` device/inode equals the
-service-attested Gitdir, and never gives that descriptor to the gate. After the
-service passes its pre-command owner/identity check, the verifier changes the
-sole controlled authority fact with `fchown(harness_gitdir_fd, gate_uid, -1)`.
-The resulting `ctime` advance is recorded as a kernel consequence, not a second
-injected input. The test must RED
-immediately at its denied-write assertion when any one injected entry mutation
-or `chmod(Gitdir)` succeeds; a later service postcheck may also fail closed but
-cannot be the negative's cause, and the negative does not require the proof
-child to complete after ownership changes. If the harness also records a
-service-side drift result, root first restores that same harness-held directory
-owner to `proof_uid` as cleanup before releasing the service. It must prove
-unchanged-parent traversal, service/writer barrier reachability, and no earlier
-loader or ancestor-search denial. Ordinary
-unprivileged CI cannot create the second UID or
-bootstrap the system LaunchDaemon, so this OS boundary is explicitly
-`test-infeasible` there. Unit mocks may cover frame and fail-closed logic but
-must never satisfy this selector or authorize Task-3 GO. The committed
-`scripts/verify_proof_acquirer_macos.py` emits the deployment evidence consumed
-by the integration node.
+service-attested Gitdir, and never gives it to the gate. After the service's
+pre-command owner/identity check, the supervisor changes only the directory
+owner with `fchown(harness_gitdir_fd, gate_uid, -1)`. Mode, ACL, groups, UIDs,
+memberships, parent topology, peer checks, and service identities remain
+unchanged; the resulting `ctime` advance is recorded as a kernel consequence.
+The gate must successfully create the formerly absent target and the unchanged
+selector must RED at that exact denied-write assertion. A collection error,
+timeout, earlier loader or ancestor-search denial, wrong assertion, generic
+nonzero, or later service postcheck is not the expected RED, and the proof child
+need not complete after ownership changes.
+
+An outer root-owned `finally` is unconditional on success, assertion, timeout,
+or service-side observation. It terminates the process group if necessary,
+rechecks the held FD's device/inode, restores the owner through that same FD,
+restores mode if changed, and restores or destroys every mutated disposable
+entry before service release. Only after recorded cleanup completes does the
+supervisor create a fresh fixture and invoke the same node again with
+`PIPELINE_PROOF_TEST_STAGE=baseline`; that final invocation must GREEN. The
+committed JSON records initial baseline GREEN, exact negative assertion RED and
+mutation reachability, cleanup completion, and final GREEN separately, and the
+supervisor exits zero only when every stage satisfies the contract. These modes
+remain invocations of one selector, not new selectors or xfails. Ordinary
+unprivileged CI cannot create the second UID or bootstrap the LaunchDaemon, so
+this OS boundary remains `test-infeasible` there; no mock or skip authorizes
+Task-3 GO.
 
 The peer/frame/session selector launches the real proof-service entry point with
 a test protected runtime naming only a temporary socket path. The service
 itself creates, binds, listens on, and accepts an `AF_UNIX`/`SOCK_STREAM`
 socket; a socketpair, inherited or pre-bound listener, launchd socket
-activation, or mocked `getpeereid()` result is forbidden. The service checks
-the accepted client socket and the client checks the connected listener socket
-with real `getpeereid()` before frame processing. Its honest unprivileged
+activation, mocked credential, injected backend, skip, or fallback is
+forbidden. `threeway/proof_acquisition.py` owns one private non-injectable
+fail-closed helper with a closed platform set. On Darwin it calls libc
+`getpeereid(fd, uid_t *, gid_t *)` directly through
+`ctypes.CDLL(None, use_errno=True)` with explicit argument/result types and
+raises from `errno`; `LOCAL_PEERCRED` is not a substitute. On Linux it calls
+`getsockopt(SOL_SOCKET, SO_PEERCRED)`, requires the exact native
+`struct ucred` length, and extracts PID/UID/GID. Every other platform denies.
+
+The service's accepted client socket and the client's connected listener
+socket both call that helper before frame processing. The honest unprivileged
 control completes one acquire/revalidate/close session with the actual test UID
-as both expected peers; this code-path control does not replace the distinct-
-UID privileged selector.
-Change only the service's expected client UID to a different UID, then only the
-client's expected listener UID to a different UID; each case must reach its
-respective real `getpeereid()` comparison and deny, and becomes RED when only
-that comparison is removed.
+as both expected peers and asserts backend `darwin-getpeereid` or
+`linux-so-peercred` as appropriate; this does not replace the distinct-UID
+privileged selector. Change only the service's expected client UID to a
+different UID, then only the client's expected listener UID to a different UID;
+each case must reach its respective real-kernel comparison and deny, and becomes
+RED when only that comparison is removed. Ubuntu's existing full unit job runs
+this selector without skip, while the protected macOS evidence additionally
+records backend `darwin-getpeereid` and both real endpoint UIDs before Task-3
+GO.
 
 After peer authentication the service issues a fresh connection-bound
 `session_id`; no caller selects or resumes it. Every later request and response
@@ -3148,9 +3353,15 @@ push endpoint for each remote authority, acquire from and publish directly to
 it, and refuse zero/multiple or mismatched endpoints.
 Prepare both local ref updates before combined closure import; use one atomic
 two-ref publication remotely. All service emitters bind explicit local versus
-remote targets. Add the unprivileged unit suite to the model-derived doctor gate
-in the same commit. The privileged macOS isolation selector is a separate
-deployment gate: a mock, skip, or ordinary local doctor pass cannot satisfy it.
+remote targets. Add `tests/unit/test_proof_acquisition.py` to both
+`CODEX_VERIFICATION_COMMANDS` in `scripts/codex_protocol_model.py` and
+`CURRENT_PROTOCOL_TESTS` in `tests/unit/test_codex_ledger_bridge.py` in the same
+commit, preserving the newer mainline ceremony-reduction changes from
+`2d29a3287defa1169e06c85dbd62dc9fe23571f5`. The existing Ubuntu `pytest tests/unit` job then runs the real Linux
+peer-credential backend, and the model-derived doctor command runs the same
+selector without a skip. The privileged macOS isolation selector remains a
+separate deployment gate: a Linux pass, mock, skip, or ordinary local doctor
+pass cannot satisfy it.
 
 - [ ] **Step 4: Prove GREEN and non-vacuity**
 
@@ -3174,9 +3385,11 @@ the before-launch case, while removal of only its post-command recheck must RED
 only the after-child/before-parse case and otherwise expose captured output.
 Restore that guard and rerun the exact phase/file node GREEN before the next
 mutation; after the complete matrix, rerun the full selector GREEN.
-Run the real self-listening peer/frame/session control, then independently
-remove only the service accepted-socket peer-UID check, client connected-socket
-peer-UID check, request or response version/type/canonical/exact-field check,
+Run the real self-listening peer/frame/session control through
+`linux-so-peercred` on Linux and `darwin-getpeereid` on Darwin with no skip,
+mock, or fallback, then independently remove only the service accepted-socket
+peer-UID check, client connected-socket peer-UID check, request or response
+version/type/canonical/exact-field check,
 pre-body length bound, connection-to-session binding, or consumed-sequence
 check; the corresponding parameter case must RED with connection/frame/session
 reachability and no proof/Git operation. Generic-extra and caller-authority
@@ -3193,24 +3406,20 @@ In the protected macOS deployment, with the separately user-authorized
 installation already complete, run:
 
 ```bash
-env -u GIT_INDEX_FILE PIPELINE_PROOF_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/test_proof_acquisition_macos.py::test_gate_uid_writer_cannot_mutate_proof_service_gitdir -q
+env -u GIT_INDEX_FILE PIPELINE_PROOF_INTEGRATION=1 .venv/bin/python scripts/verify_proof_acquirer_macos.py --evidence logs/proof-acquisition-isolation-pipeline-local-authority-2026-07-10.json
 ```
 
-Expected: the distinct-UID control passes under the shared traversable-parent
-topology and the gate writer can `lstat()` the direct-child Gitdir. After the
-same-device scratch/target preconditions and intended `EACCES`/`EPERM` control
-denials pass, the root verifier `fstat()`-matches its independent test-only
-`harness_gitdir_fd` to the service-attested directory. After the service's
-pre-command owner/identity check, changing only that directory's owner from
-`proof_uid` to `gate_uid` via `fchown(harness_gitdir_fd, ...)` makes an injected entry
-mutation or `chmod(Gitdir)` succeed and REDs the selector at the denied-write
-assertion, independently of the service's later fail-closed postcheck and
-without requiring the proof child to complete under the changed owner. Any
-optional service observation restores the same held directory owner to
-`proof_uid` as root cleanup before release. Preserve the verifier's committed
-`logs/proof-acquisition-isolation-pipeline-local-authority-2026-07-10.json`
-evidence path in the Task-3 handoff. Without this run, report the exact
-`test-infeasible` deployment precondition and do not request Task-3 GO.
+Expected: the supervisor runs the unchanged exact integration selector in this
+order: initial `baseline` GREEN; `owner-flip-negative` with the formerly absent
+create succeeding and the exact denied-write assertion RED; unconditional
+root-owned identity-matched owner/mode/disposable-state cleanup; and a fresh-
+fixture final `baseline` GREEN. The evidence file records those four outcomes,
+backend `darwin-getpeereid`, both real endpoint UIDs, exact preconditions and
+errnos, mutation reachability, and cleanup completion separately. A generic
+nonzero, timeout, wrong assertion, earlier refusal, or missing final GREEN makes
+the supervisor fail. Preserve the committed evidence path in the Task-3
+handoff. Without this run, report the exact `test-infeasible` deployment
+precondition and do not request Task-3 GO.
 
 - [ ] **Step 5: Review and commit Task 3D**
 

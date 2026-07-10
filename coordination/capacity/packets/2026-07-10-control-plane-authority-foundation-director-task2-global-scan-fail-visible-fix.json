@@ -25,13 +25,17 @@
     "Obtain fresh specification review of 8cc4bee..<fail-visible-child>; only after it passes obtain fresh code-quality review. Then send one Operator verify-request for 78b48ed493899dd126de2d1764cbdbf022111dfd..<fail-visible-child>, citing all six cumulative implementation/provenance commits, all eighteen selectors/flips, exact changed paths, provenance, and exclusions.",
     "Keep signed-facts authority shadow. No key/ref/secret creation, authority flip, remote activation/publication, cursor consume, lock, target-checkout refresh, push, spend, pod, production generation, or changes outside the listed paths are authorized."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "Commit 6983673db60bff0d21548a90ab1db2fcbbfa377a is the sole direct child of reviewed-but-spec-failed commit 8cc4beed2c6c5836f915113ccd5104c3f039c8de and changes exactly the two Task2T paths.",
+    "coordination/mailbox/sent/2026-07-10T18-06-06Z-director-to-operator-verify-request.md records the fresh specification/quality passes and exact six-commit cumulative Lane-V request for 78b48ed493899dd126de2d1764cbdbf022111dfd..6983673db60bff0d21548a90ab1db2fcbbfa377a.",
+    "coordination/mailbox/sent/2026-07-10T18-33-55Z-operator-to-all-verification-report.md records FAIL with seven binding cumulative fail-closed findings; 6983673 remains immutable failed-verification provenance rather than accepted Task-2 closure."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T18-06-06Z-director-to-operator-verify-request.md",
   "next_recipient": "operator",
-  "status": "active",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-10T18-06-06Z-director-to-operator-verify-request.md",
+  "target_commit": "6983673db60bff0d21548a90ab1db2fcbbfa377a",
+  "commit_range": "78b48ed493899dd126de2d1764cbdbf022111dfd..6983673db60bff0d21548a90ab1db2fcbbfa377a",
   "scope_files": [
     "scripts/protocol_effectiveness_report.py",
     "tests/unit/test_protocol_effectiveness_report.py"
