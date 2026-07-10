@@ -569,6 +569,7 @@ all nine RED/GREEN/non-vacuity selectors, changed paths, and exclusions.
 
 **Files:**
 - Modify: `scripts/codex_protocol_model.py`
+- Modify: `.env.example`
 - Create: `scripts/protocol_executor_token.py`
 - Modify: `scripts/protocol_capacity.py`
 - Create: `tests/unit/test_codex_protocol_model.py`
@@ -598,7 +599,39 @@ class RuntimeOperation(str, Enum):
     REMOTE_PUBLISH = "remote-publish"
     TRUST_ROOT_BOOTSTRAP = "trust-root-bootstrap"
     AUTHORITY_CUTOVER = "authority-cutover"
+
+
+class RuntimeCommandClass(str, Enum):
+    ROUTE_MUTATION = "route-mutation"
+    LOCK_MUTATION_LOCAL = "lock-mutation-local"
+    LOCK_CLAIM_REMOTE = "lock-claim-remote"
+    LOCK_RELEASE_REMOTE = "lock-release-remote"
+    HUMAN_CURSOR_CONSUME = "human-cursor-consume"
+    SIGNED_CURSOR_LOCAL = "signed-cursor-local"
+    SIGNED_CURSOR_FROM_REMOTE = "signed-cursor-from-remote"
+    SIGNED_FACT_EMIT_LOCAL = "signed-fact-emit-local"
+    SIGNED_FACT_EMIT_REMOTE = "signed-fact-emit-remote"
+    TRUST_ROOT_BOOTSTRAP = "trust-root-bootstrap"
+    AUTHORITY_CUTOVER = "authority-cutover"
+
+
+class ServiceCommandClass(str, Enum):
+    OVERSEER_FACT_EMIT = "overseer-fact-emit"
+    CHIEF_GEMINI_FACT_EMIT = "chief-gemini-fact-emit"
+    CHIEF_CHATGPT_FACT_EMIT = "chief-chatgpt-fact-emit"
+    CI_RESULT_SIGN = "ci-result-sign"
+    MERGE_GATE_TARGET_REF_UPDATE = "merge-gate-target-ref-update"
+    MERGE_GATE_COMPLETION_EMIT = "merge-gate-completion-emit"
 ```
+
+`RuntimeOperation` is defined in `scripts/codex_protocol_model.py`.
+`RuntimeCommandClass` and `ServiceCommandClass` are defined with
+`SignedFactPublicationBinding` in `scripts/protocol_executor_token.py`.
+The model re-exports the runtime enum, while `scripts/protocol_principal.py`
+imports the service enum directly; the token module never imports either
+consumer, avoiding a circular dependency. The token parser's command-class
+field is the closed union `RuntimeCommandClass | ServiceCommandClass`; each
+authorizer accepts only its own typed half.
 
 - Pins the complete default actor-operation matrix:
 
@@ -660,10 +693,22 @@ TOKEN_REQUIRED_RUNTIME_OPERATIONS = frozenset({
     RuntimeOperation.AUTHORITY_CUTOVER,
 })
 
-TOKEN_APPOINTABLE_RUNTIME_ACTOR_CLASSES = {
-    RuntimeOperation.REMOTE_PUBLISH: frozenset({"director", "operator", "coordinator"}),
-    RuntimeOperation.TRUST_ROOT_BOOTSTRAP: frozenset({"director", "coordinator"}),
-    RuntimeOperation.AUTHORITY_CUTOVER: frozenset({"director", "coordinator"}),
+TOKEN_APPOINTABLE_RUNTIME_ACTOR_CLASSES_BY_COMMAND_CLASS = {
+    RuntimeCommandClass.LOCK_CLAIM_REMOTE: frozenset({"director", "coordinator"}),
+    RuntimeCommandClass.LOCK_RELEASE_REMOTE: frozenset({"director", "coordinator"}),
+    RuntimeCommandClass.SIGNED_FACT_EMIT_REMOTE: frozenset({
+        "director", "operator", "coordinator",
+    }),
+    RuntimeCommandClass.TRUST_ROOT_BOOTSTRAP: frozenset({"director", "coordinator"}),
+    RuntimeCommandClass.AUTHORITY_CUTOVER: frozenset({"director", "coordinator"}),
+}
+
+OPERATOR_REMOTE_FACT_KINDS = frozenset({
+    "attestation", "co_sign", "re_verify", "attestation_revoked",
+})
+INDEPENDENT_VERIFIER_BY_OPERATOR = {
+    "operator": "operator2",
+    "operator2": "operator",
 }
 
 RUNTIME_ACTOR_CLASS_BY_IDENTITY = {
@@ -691,15 +736,98 @@ a human-mailbox cursor. The readiness and subagent modes never carry a
 concrete seat.
 Appointable operations belong to no default set. A token never creates static
 eligibility: the cumulative authorizer first requires a valid live-seat or
-coordinator identity named in `TOKEN_APPOINTABLE_RUNTIME_ACTOR_CLASSES`,
-then verifies the complete target-bound token and every operation-specific
-gate. Readiness, subagent, and mechanical principals cannot receive
-appointable interactive operations. Every operation in
+coordinator identity named for the exact command class in
+`TOKEN_APPOINTABLE_RUNTIME_ACTOR_CLASSES_BY_COMMAND_CLASS`, then verifies the
+complete target-bound token and every operation-specific gate. Readiness,
+subagent, and mechanical principals cannot receive appointable interactive
+operations. Operators are absent from remote-lock classes; no remote signed-
+cursor publication class exists because cursor writes remain local even when
+events are read from a remote authority. An operator's only remote-publication
+class is its own signed-fact emission under the binding below. Every operation in
 `TOKEN_REQUIRED_RUNTIME_OPERATIONS`, including signed-fact emit and remote
 publish, fails when either identity eligibility or token authority is absent.
 
 - Produces immutable `SideEffectExecutorToken` in
   `scripts/protocol_executor_token.py` and these single-source entry points:
+
+```python
+@dataclass(frozen=True, slots=True)
+class SignedFactPublicationBinding:
+    fact_kind: str
+    signer_seat: str
+    candidate_id: str
+    independent_verifier: str
+    verification_report_path: Path
+```
+
+The token stores `signed_fact: SignedFactPublicationBinding | None`. Remote
+signed-fact publication requires an exact binding in both the committed token
+and caller input; remote locks remain bound by command class and normalized
+target. Every remote signed-fact signer must equal the validated concrete seat
+and token executor, and the fact kind must be in that seat's static fact-
+authority table. The verifier must be a distinct concrete operator seat, and
+`verification_report_path` must be a no-follow, HEAD-committed
+`coordination/mailbox/sent/*-verification-report.md` GO binding the same fact
+kind/signer, candidate, expected HEAD, and publication target. For an operator,
+the kind must be in `OPERATOR_REMOTE_FACT_KINDS`,
+`independent_verifier` must equal
+`INDEPENDENT_VERIFIER_BY_OPERATOR[concrete_seat]`, and the named committed GO
+report must come from that verifier and bind the same `candidate_id`,
+`expected_head`, and publication target. Any absent, same-seat, uncommitted, or
+mismatched field/report fails before token, event construction, key, object,
+fetch, append, ref, or push callbacks.
+
+The Markdown token fields are exactly `publication_fact_kind`,
+`publication_signer_seat`, `publication_candidate_id`,
+`independent_verifier`, and `verification_report_path`. They are all required
+for `SIGNED_FACT_EMIT_REMOTE` and all forbidden for every other command class;
+unknown, partial, or duplicate publication fields fail token parsing.
+
+The referenced GO report contains exactly one H2 section in this exact field
+order and spelling:
+
+```markdown
+## Signed-Fact Publication Authorization
+
+publication_fact_kind: attestation
+publication_signer_seat: operator
+publication_candidate_id: A:candidate-123
+publication_expected_head: 0123456789abcdef0123456789abcdef01234567
+publication_target: git-remote:origin#refs/threeway/events
+```
+
+```python
+@dataclass(frozen=True, slots=True)
+class SignedFactPublicationGO:
+    fact_kind: str
+    signer_seat: str
+    candidate_id: str
+    expected_head: str
+    target: str
+    verifier_seat: str
+    source_path: Path
+
+
+def load_signed_fact_publication_go(
+    root: Path, path: Path,
+) -> SignedFactPublicationGO: ...
+```
+
+The dataclass and loader live in `scripts/protocol_executor_token.py`. The
+loader opens a no-follow regular file present at exact HEAD under
+`coordination/mailbox/sent/`, validates it through the canonical mailbox parser
+as a `verification-report`, requires `VERDICT: GO`, and derives a concrete
+operator verifier from the canonical filename sender. The specialized report
+requires a full 40-character H1 commit SHA identical to
+`publication_expected_head`. The section has exactly five nonempty unquoted ASCII values: fact kind matches
+`[a-z][a-z0-9_]{0,63}`, signer is a concrete seat, candidate matches
+`[A-Za-z0-9][A-Za-z0-9._:-]{0,255}`, expected HEAD is 40 lowercase hex, and
+target equals the normalized token target. Missing, reordered, duplicate,
+unknown, extra, empty, whitespace-padded, non-ASCII, malformed, wrong-sender,
+non-GO, or uncommitted reports fail parsing. The cumulative token verifier then
+requires the returned verifier, fact kind, signer, candidate, expected HEAD,
+and normalized target to equal `SignedFactPublicationBinding`, the token, and
+the live caller inputs. Any mismatch fails before the token is returned.
 
 ```python
 def load_side_effect_executor_token(
@@ -713,19 +841,20 @@ def require_side_effect_executor_token(
     side_effect_id: str,
     executor: str,
     target: str,
-    command_class: str,
+    command_class: RuntimeCommandClass | ServiceCommandClass,
     expected_head: str,
     current_appointment_path: Path,
     newer_appointment_paths: Sequence[Path],
     target_satisfied: bool,
     failed_preflight: Sequence[str],
     triggered_stop_predicates: Sequence[str],
+    signed_fact: SignedFactPublicationBinding | None = None,
 ) -> SideEffectExecutorToken: ...
 ```
 
-The frozen token records source path, ID, executor, normalized target, command
-class, expected HEAD, preflight, stop predicates, postcheck, observer seats,
-closeout owner, and non-goals. The loader requires a no-follow, committed
+The frozen token records source path, ID, executor, normalized target, typed
+runtime-or-service command class, expected HEAD, preflight, stop predicates,
+postcheck, observer seats, closeout owner, and non-goals. The loader requires a no-follow, committed
 coordinator appointment under `coordination/mailbox/sent/` and selects exactly
 one complete ID. The executable verifier rejects unknown/duplicate,
 uncommitted, wrong executor/target/class/HEAD, non-current, superseded,
@@ -740,8 +869,10 @@ deletes its parallel token parser.
 @dataclass(frozen=True)
 class AuthorizedRuntimeSideEffect:
     identity: RuntimeIdentity
+    command_class: RuntimeCommandClass
     operations: frozenset[RuntimeOperation]
     executor_token: SideEffectExecutorToken
+    signed_fact: SignedFactPublicationBinding | None
 
 
 def authorize_side_effect_operations(
@@ -750,18 +881,24 @@ def authorize_side_effect_operations(
     *,
     session_binding: SessionBindingView,
     operations: AbstractSet[RuntimeOperation],
+    command_class: RuntimeCommandClass,
     expected_actor: str,
     token_path: Path,
     side_effect_id: str,
     target: str,
-    command_class: str,
     expected_head: str,
     current_appointment_path: Path,
     newer_appointment_paths: Sequence[Path],
     target_satisfied: bool,
     failed_preflight: Sequence[str],
     triggered_stop_predicates: Sequence[str],
+    signed_fact: SignedFactPublicationBinding | None = None,
 ) -> AuthorizedRuntimeSideEffect: ...
+
+
+def command_class_is_appointable(
+    identity: RuntimeIdentity, command_class: RuntimeCommandClass,
+) -> bool: ...
 ```
 
 It resolves identity, validates the mandatory binding and actor, requires a
@@ -776,21 +913,32 @@ Freeze the exhaustive command-class map:
 
 ```python
 OPERATIONS_BY_COMMAND_CLASS = {
-    "route-mutation": frozenset({RuntimeOperation.ROUTE_MUTATE}),
-    "lock-mutation": frozenset({RuntimeOperation.LOCK_MUTATE}),
-    "human-cursor-consume": frozenset({RuntimeOperation.HUMAN_CURSOR_CONSUME}),
-    "signed-cursor-local": frozenset({RuntimeOperation.SIGNED_CURSOR_CONSUME}),
-    "signed-cursor-remote": frozenset({
-        RuntimeOperation.SIGNED_CURSOR_CONSUME,
+    RuntimeCommandClass.ROUTE_MUTATION: frozenset({RuntimeOperation.ROUTE_MUTATE}),
+    RuntimeCommandClass.LOCK_MUTATION_LOCAL: frozenset({RuntimeOperation.LOCK_MUTATE}),
+    RuntimeCommandClass.LOCK_CLAIM_REMOTE: frozenset({
+        RuntimeOperation.LOCK_MUTATE,
         RuntimeOperation.REMOTE_PUBLISH,
     }),
-    "signed-fact-emit-local": frozenset({RuntimeOperation.SIGNED_FACT_EMIT}),
-    "signed-fact-emit-remote": frozenset({
+    RuntimeCommandClass.LOCK_RELEASE_REMOTE: frozenset({
+        RuntimeOperation.LOCK_MUTATE,
+        RuntimeOperation.REMOTE_PUBLISH,
+    }),
+    RuntimeCommandClass.HUMAN_CURSOR_CONSUME:
+        frozenset({RuntimeOperation.HUMAN_CURSOR_CONSUME}),
+    RuntimeCommandClass.SIGNED_CURSOR_LOCAL:
+        frozenset({RuntimeOperation.SIGNED_CURSOR_CONSUME}),
+    RuntimeCommandClass.SIGNED_CURSOR_FROM_REMOTE:
+        frozenset({RuntimeOperation.SIGNED_CURSOR_CONSUME}),
+    RuntimeCommandClass.SIGNED_FACT_EMIT_LOCAL:
+        frozenset({RuntimeOperation.SIGNED_FACT_EMIT}),
+    RuntimeCommandClass.SIGNED_FACT_EMIT_REMOTE: frozenset({
         RuntimeOperation.SIGNED_FACT_EMIT,
         RuntimeOperation.REMOTE_PUBLISH,
     }),
-    "trust-root-bootstrap": frozenset({RuntimeOperation.TRUST_ROOT_BOOTSTRAP}),
-    "authority-cutover": frozenset({RuntimeOperation.AUTHORITY_CUTOVER}),
+    RuntimeCommandClass.TRUST_ROOT_BOOTSTRAP:
+        frozenset({RuntimeOperation.TRUST_ROOT_BOOTSTRAP}),
+    RuntimeCommandClass.AUTHORITY_CUTOVER:
+        frozenset({RuntimeOperation.AUTHORITY_CUTOVER}),
 }
 ```
 
@@ -943,6 +1091,9 @@ DEFAULT_PUBLICATION_ELIGIBILITY_BY_ACTOR = {
     "operator": True,
     "coordinator": True,
 }
+
+PUBLICATION_POLICY_ENV = "CODEX_PUBLICATION_POLICY"
+PUBLICATION_POLICY_TOKENS = frozenset({"false", "true"})
 ```
 
 All six policy fields are `frozenset[str]` for every runtime actor. Environment
@@ -958,6 +1109,21 @@ The environment serialization is `token,token` in sorted order; the empty
 string is invalid rather than an empty set. Tests hard-code independent copies
 of every vocabulary, default map, and publication boolean instead of importing
 these production constants.
+
+Publication remains a Boolean internally and has one independent wire grammar.
+`CODEX_PUBLICATION_POLICY` absent means the resolved actor default. Its exact
+lowercase ASCII serialization is one token: `true` or `false`; no trimming or
+case-folding occurs. With a `true` default, explicit `true` is a valid no-op and
+`false` is valid narrowing. With a `false` default, explicit `false` is a valid
+no-op and `true` is invalid widening. `""` or any empty comma item is invalid-
+empty; a value outside the vocabulary is invalid-unknown; `true,true` or
+`false,false` is invalid-duplicate; and `true,false` or `false,true` is invalid-
+conflict. Validation order is empty, unknown/malformed, duplicate, conflict,
+then widening. Effective `false` defeats any otherwise-valid
+`REMOTE_PUBLISH` appointment before token, key, ref, fetch, or mutation
+callbacks. `infer_runtime_env()` renders only lowercase `true` or `false` and
+adds `CODEX_PUBLICATION_POLICY` to `RUNTIME_ENV_VARIABLES`; no eligibility-
+named alias exists.
 
 - [ ] **Step 1: Write the identity matrix regressions**
 
@@ -1081,21 +1247,74 @@ def test_complete_mode_seat_role_operation_matrix_is_exact(mode, seat, agent_rol
         ) is (value in expected)
 
 
-EXPECTED_APPOINTABLE_ACTOR_CLASSES = {
-    "remote-publish": frozenset({"director", "operator", "coordinator"}),
+ALL_COMMAND_CLASS_VALUES = frozenset({
+    "route-mutation", "lock-mutation-local", "lock-claim-remote",
+    "lock-release-remote", "human-cursor-consume", "signed-cursor-local",
+    "signed-cursor-from-remote", "signed-fact-emit-local",
+    "signed-fact-emit-remote", "trust-root-bootstrap", "authority-cutover",
+})
+ALL_SERVICE_COMMAND_CLASS_VALUES = frozenset({
+    "overseer-fact-emit", "chief-gemini-fact-emit",
+    "chief-chatgpt-fact-emit", "ci-result-sign",
+    "merge-gate-target-ref-update", "merge-gate-completion-emit",
+})
+EXPECTED_OPERATIONS_BY_COMMAND_CLASS = {
+    "route-mutation": frozenset({"route-mutate"}),
+    "lock-mutation-local": frozenset({"lock-mutate"}),
+    "lock-claim-remote": frozenset({"lock-mutate", "remote-publish"}),
+    "lock-release-remote": frozenset({"lock-mutate", "remote-publish"}),
+    "human-cursor-consume": frozenset({"human-cursor-consume"}),
+    "signed-cursor-local": frozenset({"signed-cursor-consume"}),
+    "signed-cursor-from-remote": frozenset({"signed-cursor-consume"}),
+    "signed-fact-emit-local": frozenset({"signed-fact-emit"}),
+    "signed-fact-emit-remote": frozenset({
+        "signed-fact-emit", "remote-publish",
+    }),
+    "trust-root-bootstrap": frozenset({"trust-root-bootstrap"}),
+    "authority-cutover": frozenset({"authority-cutover"}),
+}
+EXPECTED_APPOINTABLE_ACTORS_BY_COMMAND_CLASS = {
+    "lock-claim-remote": frozenset({"director", "coordinator"}),
+    "lock-release-remote": frozenset({"director", "coordinator"}),
+    "signed-fact-emit-remote": frozenset({
+        "director", "operator", "coordinator",
+    }),
     "trust-root-bootstrap": frozenset({"director", "coordinator"}),
     "authority-cutover": frozenset({"director", "coordinator"}),
 }
 
 
-def test_token_never_creates_static_eligibility():
-    for (mode, seat, agent_role), expected in EXPECTED_BY_RUNTIME_IDENTITY.items():
+def test_runtime_command_class_enum_and_bundles_are_exact():
+    assert {command.value for command in RuntimeCommandClass} == ALL_COMMAND_CLASS_VALUES
+    assert {
+        command.value: frozenset(operation.value for operation in operations)
+        for command, operations in model.OPERATIONS_BY_COMMAND_CLASS.items()
+    } == EXPECTED_OPERATIONS_BY_COMMAND_CLASS
+
+
+def test_service_command_class_enum_is_exact_and_disjoint():
+    assert {command.value for command in ServiceCommandClass} == (
+        ALL_SERVICE_COMMAND_CLASS_VALUES
+    )
+    assert ALL_COMMAND_CLASS_VALUES.isdisjoint(ALL_SERVICE_COMMAND_CLASS_VALUES)
+
+
+def test_appointability_is_command_scoped_and_never_token_created():
+    for mode, seat, agent_role in EXPECTED_BY_RUNTIME_IDENTITY:
         identity = _identity_for_mode_seat_and_role(mode, seat, agent_role)
-        for operation_value, actor_classes in EXPECTED_APPOINTABLE_ACTOR_CLASSES.items():
-            operation = RuntimeOperation(operation_value)
-            actor_class = model.actor_class(identity)
-            is_appointable = actor_class in actor_classes
-            assert model.operation_is_statically_eligible(identity, operation) is is_appointable
+        actor_class = model.actor_class(identity)
+        for command_value in ALL_COMMAND_CLASS_VALUES:
+            expected = actor_class in EXPECTED_APPOINTABLE_ACTORS_BY_COMMAND_CLASS.get(
+                command_value, frozenset()
+            )
+            assert model.command_class_is_appointable(
+                identity, RuntimeCommandClass(command_value)
+            ) is expected
+
+    operator = model.resolve_runtime_identity({"CODEX_SEAT": "operator"})
+    assert model.command_class_is_appointable(
+        operator, RuntimeCommandClass.SIGNED_CURSOR_FROM_REMOTE
+    ) is False
 ```
 
 In `tests/unit/test_protocol_executor_token.py`, hard-code complete token
@@ -1105,6 +1324,10 @@ appointments, satisfied target, failed preflight, and each triggered stop
 predicate. Every rejection occurs before a supplied mutation callback can run.
 `tests/unit/test_protocol_capacity.py` proves route validation and the runtime
 verifier parse identical fields and reject the same malformed token.
+Hard-code the signed-fact publication GO section independently and reject a
+missing/duplicate/unknown/reordered/extra/empty/non-ASCII field, invalid kind/
+seat/candidate/SHA/target, non-GO verdict, wrong canonical sender, uncommitted
+path, H1/publication SHA mismatch, and token/report mismatch before callbacks.
 
 Add cumulative cases where valid identity/no token, invalid identity/valid
 token, and wrong-actor token all fail before a mutation callback, while both
@@ -1113,7 +1336,18 @@ matrix plus every policy's default/narrow/empty/unknown/widen/duplicate/conflict
 cases. Assert the doctor command contains both identity and executor-token
 suites. One-fact flips remove `SIGNED_FACT_EMIT` from token-required
 operations, grant repository mutation to one read-only role, and change the
-token HEAD; each must fail independently.
+token HEAD; each must fail independently. Separately add
+`SIGNED_CURSOR_FROM_REMOTE` to the appointability map, remove
+`REMOTE_PUBLISH` from one remote-lock bundle, and change one runtime or service
+command enum value; the hard-coded command-class tests must independently RED
+before restoration.
+
+For publication specifically, independently hard-code every actor default and
+cover `{default=true,false} × {override absent,true,false}`; `""`, `","`,
+uppercase, whitespace, `0`, `1`, unknown, duplicate, and both conflict orders;
+deterministic lowercase rendering; and an unknown/generic actor with no
+fallback. An effective `false` plus an otherwise-valid remote-publication
+appointment must fail before all token and mutation probes.
 
 Hook integration coverage belongs to Task 3B so this foundation commit remains
 independently reviewable.
@@ -1131,9 +1365,9 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_protocol_
 ```
 
 Expected: import/attribute failures for `RuntimeIdentity`,
-`SessionBindingView`, `RuntimeOperation`, the resolver, and the typed token
-module. Hook failures are not expected from this selector and belong to Task
-3B.
+`SessionBindingView`, `RuntimeOperation`, `RuntimeCommandClass`, the resolver,
+publication-policy grammar, and the typed token module. Hook failures are not
+expected from this selector and belong to Task 3B.
 
 - [ ] **Step 3: Implement `RuntimeIdentity` and strict resolution**
 
@@ -1146,7 +1380,8 @@ Represent capability, mutation, mailbox, git, verification, and routing
 policies as immutable token sets. An override is valid only when its requested
 tokens are a subset of the resolved defaults; absent means no override, while
 present-but-empty and unknown tokens are invalid. Publication eligibility may
-only narrow from eligible to ineligible. Runtime eligibility never substitutes
+only narrow from eligible to ineligible under the exact Boolean wire grammar
+above. Runtime eligibility never substitutes
 for user consent, executor election, operator GO, or a target-bound
 side-effect token.
 
@@ -1261,7 +1496,8 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): reject mixed runtime identit
   `CODEX_SIDE_EFFECT_ID` from the bound session. The guard calls
   `authorize_side_effect_operations(...,
   operations={RuntimeOperation.ROUTE_MUTATE},
-  command_class="route-mutation", ...)` with the actual executor, normalized
+  command_class=RuntimeCommandClass.ROUTE_MUTATION, ...)` with the actual
+  executor, normalized
   route target, current HEAD/appointment, and freshly evaluated preflight/stop
   results before allowing the tool.
 - Every supported subagent role round-trips exactly through the binding. A
@@ -1393,6 +1629,13 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind runtime identity before
   cumulative authorizer with its actual executor, exact target, frozen command
   bundle, current HEAD/appointment, target state, and freshly evaluated
   preflight/stop results.
+- `claim-lock` uses `LOCK_CLAIM_REMOTE` and `release-lock` uses
+  `LOCK_RELEASE_REMOTE`, each requesting exactly
+  `{LOCK_MUTATE, REMOTE_PUBLISH}` against
+  `git-remote:<remote>#refs/heads/<branch>:coordination/locks/<lock-file>`.
+  Authorization completes before fetch, merge, lock-file write/removal, add,
+  commit, push, or reset. `LOCK_MUTATION_LOCAL` is reserved for an explicitly
+  local lock-file mutation; the ambiguous `lock-mutation` class does not exist.
 - `coordination/bin/send-event` requires `MAIL_SEND` for every event. When and
   only when the validated bound sender is `coordinator` or `coordinator2`, the
   target is `all`, and the kind is `coordination`, it additionally requires
@@ -1402,7 +1645,7 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind runtime identity before
   Thus a route send completes both checks before input: bare
   `authorize_operation(..., MAIL_SEND)` and cumulative
   `authorize_side_effect_operations(..., {ROUTE_MUTATE},
-  command_class="route-mutation", ...)`.
+  command_class=RuntimeCommandClass.ROUTE_MUTATION, ...)`.
 - Positional actor must equal the validated bound actor and never establishes
   identity.
 - GO/NITS/FAIL emission requires an operator-family concrete seat with
@@ -1411,11 +1654,17 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind runtime identity before
 - `scripts/seat_emit.py` changes `--remote` from default `origin` to no remote.
   Local emit requests `{SIGNED_FACT_EMIT}` against the exact local events ref;
   opt-in remote emit requests `{SIGNED_FACT_EMIT, REMOTE_PUBLISH}` against the
-  exact remote/ref. Authorization precedes event building, key loading,
-  Git-object creation, fetch, append, or push.
-- `scripts/consume_bus.py` uses `{SIGNED_CURSOR_CONSUME}` locally and adds
-  `REMOTE_PUBLISH` for an explicit remote/ref target. A partial operation
-  bundle is invalid.
+  exact remote/ref. An operator remote emit additionally supplies the exact
+  `SignedFactPublicationBinding`; its opposite-operator committed GO report
+  must bind fact signer/kind, candidate, expected HEAD, and publication target.
+  The returned binding drives construction and must match the built event.
+  Authorization precedes event building, key loading, Git-object creation,
+  fetch, append, or push.
+- `scripts/consume_bus.py` uses `{SIGNED_CURSOR_CONSUME}` for both local events
+  and `--remote` event-source reads. The latter uses
+  `SIGNED_CURSOR_FROM_REMOTE`, but cursor mutation remains local-only and never
+  requests `REMOTE_PUBLISH`. Any attempted `signed-cursor-remote` class is
+  unknown and fails before fetch or cursor mutation.
 
 - [ ] **Step 1: Write actor/operation mismatch regressions**
 
@@ -1424,10 +1673,24 @@ consume, signed-fact emission, and GO/NITS/FAIL. For every denial, assert zero
 mailbox, cursor, lock, ref, and index mutation. Include readiness, subagent,
 coordinator-consume, director-verdict, and positional/bound-actor mismatch.
 
-Cover local signed emit, remote signed emit, and remote signed-cursor advance.
+Cover local signed emit, remote signed emit, and local cursor advance while
+events are read from a remote authority.
 Wrong remote/ref/HEAD, absent/stale/superseded token, valid identity/no token,
 and valid token/invalid identity must all leave key-read, Git-object, fetch,
 push, ref, cursor, and index probes untouched.
+
+For both lock scripts, cover absent/stale/wrong-target/wrong-HEAD/wrong-class
+tokens, `{LOCK_MUTATE}` alone, and `{REMOTE_PUBLISH}` alone. Every denial proves
+zero fetch, merge, add/rm, commit, push, and reset calls and byte/OID-identical
+lock, HEAD, index, refs, and worktree. The exact two-operation bundle reaches
+the expected command path.
+
+For operator remote signed-fact publication, reject a remote cursor class,
+another seat's fact, a disallowed kind, a different candidate, same-seat or
+missing verifier, an uncommitted/wrong-verifier GO report, or a report bound to
+another HEAD/target. Each denial leaves event/ref/key/fetch/object/push probes
+untouched; the valid case uses the operator's own fact plus the opposite
+operator's committed GO.
 
 For route mutation, add a coordinator-positive fixture plus pair-seat,
 readiness, and subagent denials for both `send-event` and the path-aware hook.
@@ -1466,8 +1729,9 @@ neither substitutes for user consent or operation-specific preflight.
 both `MAIL_SEND` and `ROUTE_MUTATE`; it never treats the positional `FROM`
 value as proof of coordinator identity.
 
-Apply the frozen local/remote operation bundles to `seat_emit.py` and
-`consume_bus.py`. Register `tests/unit/test_runtime_operation_guards.py` in
+Apply the frozen local/remote operation bundles to both lock scripts,
+`seat_emit.py`, and `consume_bus.py`. Register
+`tests/unit/test_runtime_operation_guards.py` in
 `CODEX_VERIFICATION_COMMANDS` and hard-code the addition in the ledger bridge.
 
 - [ ] **Step 4: Prove GREEN and non-vacuity**
@@ -1479,8 +1743,10 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_runtime_operati
 Change one expected actor to match the bound actor and confirm the mismatch
 assertion fails. Then replace a valid token's expected HEAD with a sibling SHA
 and confirm the command refuses before its stdin-read probe. Restore both and
-rerun GREEN. Separately remove `REMOTE_PUBLISH` from the remote bundle and
-substitute a sibling remote/ref; the remote-push probe must remain uncalled.
+rerun GREEN. Separately remove `REMOTE_PUBLISH` from each remote-lock and
+remote-fact bundle, then independently flip operator fact signer, candidate,
+verifier, and command class; every affected node must RED before restoration
+and final GREEN.
 
 - [ ] **Step 5: Review and commit Task 3C**
 
@@ -1502,6 +1768,8 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): authorize interactive mutati
 - Modify: `scripts/sign_ci_result.py`
 - Modify: `scripts/run_merge_gate.py`
 - Modify: `threeway/gate.py`
+- Modify: `threeway/gitcas.py`
+- Modify: `threeway/refstore.py`
 - Create: `tests/unit/test_service_principals.py`
 - Modify: `tests/unit/test_codex_ledger_bridge.py`
 
@@ -1557,12 +1825,17 @@ SERVICE_SIGNERS = {
 TOKEN_REQUIRED_SERVICE_OPERATIONS = frozenset(SERVICE_SIGNERS)
 CREDENTIAL_REQUIRED_TARGETS = frozenset({"refs/heads/main"})
 SERVICE_OPERATION_BY_COMMAND_CLASS = {
-    "overseer-fact-emit": ("overseer", "emit-overseer-fact"),
-    "chief-gemini-fact-emit": ("chief-gemini", "emit-chief-fact"),
-    "chief-chatgpt-fact-emit": ("chief-chatgpt", "emit-chief-fact"),
-    "ci-result-sign": ("ci", "sign-ci-result"),
-    "merge-gate-target-ref-update": ("merge-gate", "update-target-ref"),
-    "merge-gate-completion-emit": ("merge-gate", "emit-merge-completed"),
+    ServiceCommandClass.OVERSEER_FACT_EMIT:
+        ("overseer", "emit-overseer-fact"),
+    ServiceCommandClass.CHIEF_GEMINI_FACT_EMIT:
+        ("chief-gemini", "emit-chief-fact"),
+    ServiceCommandClass.CHIEF_CHATGPT_FACT_EMIT:
+        ("chief-chatgpt", "emit-chief-fact"),
+    ServiceCommandClass.CI_RESULT_SIGN: ("ci", "sign-ci-result"),
+    ServiceCommandClass.MERGE_GATE_TARGET_REF_UPDATE:
+        ("merge-gate", "update-target-ref"),
+    ServiceCommandClass.MERGE_GATE_COMPLETION_EMIT:
+        ("merge-gate", "emit-merge-completed"),
 }
 ```
 
@@ -1580,12 +1853,82 @@ local or remote ref remains part of the token target.
 - Produces exact entry points:
 
 ```python
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
+class RepositoryIdentity:
+    common_git_dir: str
+    device: int
+    inode: int
+
+
+@dataclass(frozen=True, slots=True)
+class EventStoreTarget:
+    repository: RepositoryIdentity
+    remote: str | None
+    events_ref: str
+    normalized_target: str
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class EventSnapshot:
+    event_store: EventStoreTarget
+    tip_oid: str
+    event_json: tuple[bytes, ...]
+    digest: str
+
+    @classmethod
+    def create(
+        cls, event_store: EventStoreTarget, tip_oid: str,
+        event_json: Sequence[bytes],
+    ) -> EventSnapshot: ...
+
+
+@dataclass(frozen=True, slots=True)
+class MergeMaterialization:
+    base_sha: str
+    branch_sha: str
+    tree_oid: str
+    commit_oid: str
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class MergeGateBinding:
+    candidate_id: str
+    repository: RepositoryIdentity
+    target_ref: str
+    bus_id: str
+    event_store: EventStoreTarget
+    events_tip_oid: str
+    events_digest: str
+    materialization: MergeMaterialization | None
+    expected_old_sha: str | None
+    proposed_merge_sha: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MergeGateEvaluation:
+    binding: MergeGateBinding
+    outcome: Literal["REJECTED", "PENDING", "MERGEABLE", "COMPLETED"]
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class PrincipalTokenRevalidation:
+    token_path: Path
+    side_effect_id: str
+    command_class: ServiceCommandClass
+    expected_head: str
+    current_appointment_path: Path
+
+
+@dataclass(frozen=True, slots=True)
 class AuthorizedPrincipalOperation:
     principal: MechanicalPrincipal
     operation: str
-    target: str
+    effect_target: str
+    merge_binding: MergeGateBinding | None
     executor_token: SideEffectExecutorToken | None
+    token_revalidation: PrincipalTokenRevalidation | None
     protected_credential_attested: bool
 
 
@@ -1604,10 +1947,11 @@ def authorize_principal_operation(
     principal: MechanicalPrincipal,
     *,
     operation: str,
-    target: str,
+    effect_target: str,
+    merge_binding: MergeGateBinding | None = None,
     token_path: Path | None = None,
     side_effect_id: str | None = None,
-    command_class: str | None = None,
+    command_class: ServiceCommandClass | None = None,
     expected_head: str | None = None,
     current_appointment_path: Path | None = None,
     newer_appointment_paths: Sequence[Path] = (),
@@ -1618,38 +1962,80 @@ def authorize_principal_operation(
 ) -> AuthorizedPrincipalOperation: ...
 
 
-@dataclass(frozen=True)
-class MergeGateEvaluation:
-    outcome: Literal["REJECTED", "PENDING", "MERGEABLE", "COMPLETED"]
-    reason: str
-    expected_old_sha: str | None
-    proposed_merge_sha: str | None
+def resolve_repository_identity(repo: Path) -> RepositoryIdentity: ...
+
+
+def describe_event_store(store: RefEventStore) -> EventStoreTarget: ...
+
+
+def capture_event_snapshot(
+    store: RefEventStore, *, expected_tip_oid: str | None = None,
+) -> EventSnapshot: ...
+
+
+def validate_event_snapshot(snapshot: EventSnapshot) -> tuple[Event, ...]: ...
+
+
+def compute_merge_in_scratch(
+    repo: Path, base_sha: str, branch_sha: str, message: str,
+) -> MergeMaterialization | None: ...
+
+
+def materialize_and_cas_verified_merge(
+    repo: Path,
+    *,
+    target_ref: str,
+    expected_old_sha: str,
+    materialization: MergeMaterialization,
+) -> bool: ...
 
 
 def evaluate_gate_read_only(
+    *,
     candidate_id: str,
-    store: EventStore,
+    snapshot: EventSnapshot,
     repo: Path,
     registry_dir: Path,
     bus_id: str,
-    main_ref: str,
-    *,
+    target_ref: str,
     gate_seat: str = "merge-gate",
     policy: Policy | None = None,
 ) -> MergeGateEvaluation: ...
 
 
 def apply_gate_evaluation(
-    candidate_id: str,
+    root: Path,
     evaluation: MergeGateEvaluation,
-    store: EventStore,
+    store: RefEventStore,
     repo: Path,
-    main_ref: str,
     *,
     target_ref_authorization: AuthorizedPrincipalOperation,
     completion_fact_authorization: AuthorizedPrincipalOperation,
 ) -> GateResult: ...
 ```
+
+`EventSnapshot.event_json` contains immutable ordered bytes, not mutable
+`Event` objects. Direct construction is disabled. `EventSnapshot.create()`
+computes SHA-256 over length-prefixed event bytes plus the full
+`EventStoreTarget` and tip OID; `validate_event_snapshot()` recomputes and
+constant-time compares that digest before parsing fresh event values.
+`RefEventStore.snapshot_at(tip_oid)` reads
+only that already-present fixed commit and never calls `_sync()`. Local capture
+uses the exact current ref OID. Remote capture uses a disposable temporary bare
+repository/ref namespace, then calls `snapshot_at()` there; it never fetches
+into the input repository or calls the production remote store's public
+syncing readers. `capture_event_snapshot()` accepts the production
+`RefEventStore`, but reads only its immutable public descriptor; the remote
+runner's real `poll_once()` calls capture once and both
+`collect_candidate_ids()` and evaluation consume that snapshot, never a live
+store.
+
+`resolve_repository_identity()` resolves the no-follow real Git common
+directory and records its absolute path plus device/inode. `describe_event_store()`
+records that identity, exact remote (or local), canonical event ref, and
+normalized event target. Evaluation binds both descriptors. Apply recomputes
+them from its free `repo` and `store` objects and rejects any two-repository,
+two-remote, or two-ref replay before token, key, object, CAS, or append access.
 
 - `authorize_principal_operation()` passes the complete token fields above to
   `require_side_effect_executor_token()` for every token-required operation;
@@ -1657,17 +2043,50 @@ def apply_gate_evaluation(
   never raw credential bytes.
 - Overseer, both chiefs, and CI use the exact signer map and require a token
   before local or remote fact mutation. Merge-gate pure evaluation is a new
-  non-mutating path with no signer or token. It uses an isolated temporary Git
-  object directory and leaves the repository object store, refs, index,
-  worktree, keys, and event store unchanged. Any target-ref update or
+  non-mutating path with no signer or token. It parses fresh events from the
+  validated immutable snapshot and still performs signature/bus verification.
+  `MergeMaterialization`, `threeway.gitcas.compute_merge_in_scratch()`, and
+  `threeway.gitcas.materialize_and_cas_verified_merge()` are defined together
+  in `threeway/gitcas.py`. The scratch helper runs merge-tree and commit-tree in
+  a temporary primary object directory with the input repository object store
+  exposed as a read-only alternate, returning exact base/branch/tree/commit/
+  message materialization inputs. Evaluation records them and then
+  deletes the scratch directory. Evaluation
+  leaves repository objects, refs, index, worktree, keys, and event state byte/
+  OID-identical. Any target-ref update or
   `merge_completed` emission requires signer `merge-gate` plus a token;
   `target == "refs/heads/main"` additionally requires a successful
   `ProtectedRunnerCredential.attest_target()` result.
-  `apply_gate_evaluation()` accepts only a `MERGEABLE` result whose expected
-  old SHA still matches, plus exact `update-target-ref` and
-  `emit-merge-completed` authorizations for the same candidate/target. It
-  performs CAS only after both authorizations and loads the merge-gate key only
-  after the completion-fact authorization.
+  `apply_gate_evaluation()` accepts no free candidate or target arguments. It
+  requires a `MERGEABLE` result with non-null SHAs; both authorizations'
+  `merge_binding` exactly equal the evaluation binding; operations are exactly
+  `update-target-ref` and `emit-merge-completed`; and their effect targets equal
+  the binding's target ref and normalized event target respectively. It
+  recomputes the authoritative event tip without fetch/ref update and requires both that tip
+  and the target old SHA still match before object writes, key load, or CAS.
+  Immediately before materialization it revalidates each token from the stored
+  `PrincipalTokenRevalidation`: discovers newer appointments fresh, rechecks
+  supersession/current HEAD, recomputes target-satisfied and standardized stop/
+  preflight predicates, and returns no cached token on failure.
+  `threeway.gitcas.materialize_and_cas_verified_merge()` then recomputes in a
+  fresh quarantine object directory with the input objects as read-only
+  alternates. It compares the recomputed tree and commit OIDs to the complete
+  frozen materialization before opening an input-object writer. Missing inputs
+  or any mismatch deletes the quarantine and leaves input object names/OIDs,
+  refs, keys, and facts unchanged. On an exact match, the helper starts one
+  `git update-ref --stdin` transaction for the bound target and expected old
+  SHA, reaches `prepare` while the verified quarantine is visible as an
+  alternate, and stops without importing if preparation detects stale ref
+  state. Only after successful preparation does it generate the exact
+  `commit ^base ^branch` object-closure pack from quarantine, import that pack
+  through `git index-pack`, and commit the already-prepared ref transaction.
+  An import failure aborts the transaction. Thus every semantic denial,
+  materialization mismatch, and stale-ref path occurs before input-object
+  import; only the content-addressed closure already matched to the binding is
+  materialized. Apply loads the merge-gate key only after the completion-fact
+  authorization. A
+  second apply fails on expected-old mismatch; a changed event tip or newly
+  superseding appointment fails as stale evaluation/authority.
   Current mutating `run_gate()` cannot serve as the pure evaluator.
 - Candidate execution context is invalid before key, credential, ref, or fact
   access. Runner isolation and absence of service keys/credentials remain the
@@ -1685,8 +2104,26 @@ Cover the signer map, token-required set, credential-required target set, local 
 remote fact targets, pure evaluation no-mutation, every target-ref update,
 `merge_completed`, and doctor registration. Route the pure-evaluation fixture
 through current mutating `run_gate()` as a RED proving it is not yet safe.
-Reject mismatched candidate/target authorizations, a non-MERGEABLE evaluation,
-or a changed expected-old SHA before CAS or key load.
+Reject a candidate/target/repository/event-ref rebound, either authorization
+swapped between two evaluations, a non-MERGEABLE evaluation, changed event
+tip, second apply, newly superseding appointment, or a changed expected-old SHA
+before object writes, CAS, or key load. Exercise two repositories with matching
+commit OIDs and two event refs with matching tips; both replay attempts deny.
+Patch the production remote `RefEventStore._sync()` to fail and drive the real
+`poll_once()` acquisition/evaluation path; it must still capture through the
+scratch descriptor path and never call `_sync()`. Construct a snapshot through
+its factory, then independently flip bytes, target, ref, tip, and digest and
+require evaluator validation to deny. Snapshot refs, object names/OIDs, index,
+worktree, key bytes, and event bytes before/after a MERGEABLE evaluation and
+require exact equality. The current `run_gate()` fixture must change at least
+one target/object/event snapshot as the non-vacuity RED.
+Authorize both operations, then commit a superseding appointment before apply;
+fresh token revalidation must deny with byte/OID-identical repository, event
+store, key probes, and target. On the positive apply path, require deterministic
+materialization of the exact bound tree/commit before CAS; missing base/branch
+  or a flipped expected tree/commit denies with byte/OID-identical input object
+  names, no CAS, and no fact emission. Simulate a target-ref change immediately
+  before transaction `prepare`; it must reject before pack generation/import.
 For each token-required operation, vary command class, expected HEAD,
 appointment, newer appointment, satisfied target, failed preflight, and stop
 predicate. A non-main target needs no protected credential; `refs/heads/main`
@@ -1708,7 +2145,10 @@ Bind each entry point to the exact map above. `ci` may sign only a
 split `evaluate_gate_read_only()` from current target-ref and completion-fact
 mutation. No target ref or fact changes without the exact merge-gate signer and
 token, and target `refs/heads/main` also requires the credential attestation.
-All service emitters
+Capture remote events only through the disposable snapshot path, collect
+candidates from snapshot bytes, and pass the frozen `MergeGateBinding` through
+evaluation and both authorized mutations without reconstructing it from free
+arguments. All service emitters
 bind explicit local versus remote targets. Add the new suite to the
 model-derived doctor gate in the same commit.
 
@@ -1720,8 +2160,9 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_service_princip
 
 Swap `ci` to `merge-gate` in one allowed-operation fixture and confirm the
 assertion fails. Then mark one emitter token-free and route pure evaluation
-through current mutating `run_gate()`; both selectors must fail. Restore and
-rerun GREEN.
+through current mutating `run_gate()`; both selectors must fail. Independently
+flip candidate ID, target ref, event tip, and one authorization binding; each
+must RED before restoration. Restore and rerun GREEN.
 
 - [ ] **Step 5: Review and commit Task 3D**
 

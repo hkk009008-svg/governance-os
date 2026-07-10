@@ -32,11 +32,11 @@
   "lock_keys": [],
   "dependencies": [
     "director-control-plane-authority-foundation-task2-replacement",
-    "director2-control-plane-authority-foundation-identity-rerepreflight"
+    "director2-control-plane-authority-foundation-identity-interface-closure-preflight"
   ],
   "acceptance": [
     "Hold the durable CLEAR at 2026-07-10T04-24-26Z without repeating Tasks 4-6C. Reopen only if the corrective coordinator route changes those task bodies or their activation-safety contract; Task-2 canonical-ref rejection and Task-3 authorization repairs do not by themselves reopen this preflight.",
-    "Remain blocked/observer-only while the replacement Task-2 and Task-3 re-repreflight dependencies are open. Send no receipt or duplicate report.",
+    "Remain blocked/observer-only while the replacement Task-2 and Task-3 interface-closure preflight dependencies are open. Send no receipt or duplicate report.",
     "At coordinator closeout, reuse the attached CLEAR if Tasks 4-6C remain byte-for-byte and semantically unchanged. If a later diff changes those task bodies or their activation contract, stop and await one new focused route before any repeat pass."
   ],
   "done_evidence": [

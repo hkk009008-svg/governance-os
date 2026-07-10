@@ -7,7 +7,7 @@
   "row_ids": [
     "control-plane-authority-task1",
     "control-plane-authority-task2-replacement",
-    "control-plane-authority-task3-rerepreflight",
+    "control-plane-authority-task3-interface-closure-preflight",
     "control-plane-authority-task4-6-repreflight"
   ],
   "allowed_paths": [
@@ -21,13 +21,13 @@
   "dependencies": [
     "director-control-plane-authority-foundation-task2-replacement",
     "operator-control-plane-authority-foundation-replacement-lanev",
-    "director2-control-plane-authority-foundation-identity-rerepreflight",
+    "director2-control-plane-authority-foundation-identity-interface-closure-preflight",
     "operator2-control-plane-authority-foundation-activation-repreflight"
   ],
   "acceptance": [
     "Treat Task 1 e43acc245e2492883ca04b0d835268708ad0995d and failed Task-2 candidate 205f077a23291496ea4b84c8de1f8acdfa2bd040 as immutable provenance. Keep the cycle open until Director lands exactly one additive corrective child of 205f077, sends a fresh verify-request with fresh corrective spec/quality review, and Operator returns GO for the cumulative range 78b48ed493899dd126de2d1764cbdbf022111dfd through that child.",
-    "Require fresh Director2 CLEAR for revised Tasks 3A-3D. Preserve Operator2's 2026-07-10T04-24-26Z CLEAR without a third pass while Tasks 4-6C and their activation contract remain semantically unchanged; reopen only on a change to those surfaces.",
-    "Treat the original Task-2 Director/Operator packets and first/repreflight Task-3 packets as closed historical attempts with their verify-request, FAIL, blocker, and CONTRADICTION artifacts. Current join accounting uses the replacement Task-2 and Task-3 re-repreflight row IDs.",
+    "Require fresh Director2 CLEAR for revised Tasks 3A-3D from the interface-closure preflight that follows the 2026-07-10T09-45-35Z CONTRADICTION. Preserve Operator2's 2026-07-10T04-24-26Z CLEAR without another pass while Tasks 4-6C and their activation contract remain semantically unchanged; reopen only on a change to those surfaces.",
+    "Treat the original Task-2 Director/Operator packets and every earlier Task-3 preflight packet through identity-rerepreflight as closed historical attempts with their verify-request, FAIL, blocker, and CONTRADICTION artifacts. Current join accounting uses the replacement Task-2 and Task-3 interface-closure row IDs.",
     "Close only with capacity-board, route-validation, protocol-doctor, smoke, the exact three-commit cumulative implementation range, Operator GO, fresh Director2 CLEAR, preserved Operator2 CLEAR applicability, and provenance-clean routed state.",
     "The selected cutover policy is verified-exact resume. This route revises planning and preflight only; it grants no key generation, ref mutation, authority flip, cursor consume, lock, push, spend, pod, production generation, target-checkout refresh, remote signer activation, runner deployment, or protected-main update."
   ],
@@ -40,15 +40,11 @@
   "commit_range": null,
   "scope_files": [
     "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-coordinator-join.json",
-    "coordination/mailbox/sent/2026-07-10T08-58-02Z-coordinator-to-all-coordination.md",
+    "coordination/mailbox/sent/2026-07-10T10-26-39Z-coordinator-to-all-coordination.md",
     "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
     "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
-    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director-tasks1-2.json",
-    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director-task2-replacement.json",
-    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-operator-lanev.json",
-    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-operator-replacement-lanev.json",
-    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director2-repreflight.json",
     "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director2-rerepreflight.json",
+    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director2-interface-closure-preflight.json",
     "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-operator2-repreflight.json"
   ]
 }

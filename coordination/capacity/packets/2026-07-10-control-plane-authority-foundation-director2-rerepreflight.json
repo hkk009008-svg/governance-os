@@ -42,12 +42,14 @@
     "Confirm mechanical principals have exact per-operation signer/token/credential maps; pure merge-gate evaluation is mechanically non-mutating; every target-ref update and merge_completed emission is token-bound; and candidate contexts fail before key/ref/credential access.",
     "Confirm Tasks 3A-3D remain disjoint sequential commits with exact files, interfaces, RED/GREEN commands, and independent non-vacuity flips. Send one CLEAR or CONTRADICTION report to coordinator; do not implement, issue Operator GO, consume mail, route work, or take a user-gated side effect."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T09-45-35Z-director2-to-coordinator-coordination.md records CONTRADICTION for revised Tasks 3A-3D at reviewed Pipeline commit 13b40f01404204491819e570ce07455d743b7ac3: two remote-publication gaps, two merge-gate binding/snapshot gaps, and one publication-policy grammar gap."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T09-45-35Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
+  "target_commit": "13b40f01404204491819e570ce07455d743b7ac3",
   "commit_range": null,
   "scope_files": [
     "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",

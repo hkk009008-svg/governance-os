@@ -217,23 +217,46 @@ absent, duplicate, uncommitted, stale, superseded, wrong-target, wrong-executor,
 wrong-command, wrong-HEAD, failed-preflight, triggered-stop, or already-
 satisfied token fails closed with no mutation.
 
+The lock scripts are remote operations, not local lock-file helpers:
+`claim-lock` fetches/merges, commits, and pushes, while `release-lock` commits
+and pushes. Their frozen command bundles therefore require both `LOCK_MUTATE`
+and `REMOTE_PUBLISH`. A separate `lock-mutation-local` class covers an
+explicitly local lock-file mutation. Missing either remote-lock operation, a
+wrong command class, or an ineligible actor fails before fetch, merge, file,
+index, commit, reset, or push.
+
 One cumulative runtime entry point resolves identity, verifies actor-operation
-eligibility, and, for token-required or token-appointed operations, verifies
-the exact executor token before returning authorization. Token-required
-mutation callers may not call a bare eligibility predicate. `REMOTE_PUBLISH`,
-`TRUST_ROOT_BOOTSTRAP`, and `AUTHORITY_CUTOVER` have no default actor; a current
-route may appoint a valid director-family or coordinator identity for trust
-root/cutover, and may also appoint an operator for that operator's own remote
-signed-fact publication, while preserving an independent verifier. A readiness
-bridge, subagent, or mechanical principal is never appointable.
+and command-context eligibility, and, for token-required or token-appointed
+operations, verifies the exact executor token before returning authorization.
+Token-required mutation callers may not call a bare eligibility predicate.
+`REMOTE_PUBLISH`, `TRUST_ROOT_BOOTSTRAP`, and `AUTHORITY_CUTOVER` have no
+default actor. Remote appointability is frozen by command class: remote lock
+claim/release admit only director-family or coordinator identities, and remote
+signed-fact publication may additionally admit an operator only for a fact
+signed by that same concrete operator and bound to a committed GO from the
+other operator. The binding records fact kind, signer, candidate, independent
+verifier, and verification-report path in the committed executor token and the
+returned authorization. A readiness bridge, subagent, or mechanical principal
+is never appointable. Signed cursor advancement is local-only even when events
+are read from a remote authority, so no remote-cursor publisher is appointable.
 
 The cumulative entry point binds frozen command bundles. Local signed-fact emit
 requires `signed-fact-emit`; remote emit requires both `signed-fact-emit` and
 `remote-publish`. Local signed-cursor advance requires
-`signed-cursor-consume`; remote advance additionally requires
-`remote-publish`. Remote use is explicit and target-bound, never a CLI default.
+`signed-cursor-consume`; reading events from a remote authority still advances
+only the local cursor and never requests `remote-publish`. Remote signed-fact
+use is explicit and target-bound, never a CLI default.
 Authorization completes before event construction, key access, Git-object
 creation, fetch, append, push, or cursor mutation.
+
+Publication policy has one exact runtime wire format. The environment variable
+is `CODEX_PUBLICATION_POLICY`; its only serialized tokens are lowercase
+`true` and `false`, while the resolved identity stores a Boolean. Absent means
+the actor default, `false` may narrow a `true` default, and `true` may never
+widen a `false` default. Empty, whitespace/case variants, unknown, duplicate,
+or conflicting values fail closed in deterministic order. Effective `false`
+rejects a remote-publication request before token, key, ref, or mutation
+callbacks even when a route otherwise appoints the actor.
 
 Supported spawned roles retain separate frozen narrow-only defaults.
 `protocol-director` may mutate only parent-named paths; `protocol-operator`,
@@ -249,14 +272,36 @@ of allowed operations; a separate set names which of those operations requires
 an executor token. Execution context is a closed enum: overseer and chief
 principals run only in `control-plane`, CI only in `ci-runner`, and merge-gate
 only in `protected-runner`; `candidate` and every unknown context are invalid.
-Candidate environments cannot sign or mutate. In
-particular, merge-gate evaluation is token-free on the protected runner, while
-every target-ref update requires its exact token and `refs/heads/main`
-additionally requires an opaque protected-runner credential attestation.
-The current merge-gate path mutates refs and emits `merge_completed`, so it is
-not the token-free evaluator. Task 3D separates a mechanically non-mutating
-evaluation path; every ref update or completion-fact emission retains exact
-merge-gate signer and token requirements.
+Candidate environments cannot sign or mutate.
+
+Merge-gate evaluation consumes an immutable, exact-OID event snapshot rather
+than a live `EventStore`. A remote snapshot is captured in an isolated
+temporary bare repository/ref namespace; it never calls the production remote
+store's syncing reader against the input repository. The snapshot records the
+canonical event ref, source OID, ordered immutable event bytes, and their
+digest. Merge computation writes only to a temporary object directory backed
+by the input repository as a read-only alternate. Evaluation records the
+no-follow Git-common-directory identity, target ref, exact event-store remote/
+ref target, candidate ID, snapshot OID/digest, deterministic merge
+materialization inputs, expected old SHA, and proposed merge SHA in one frozen
+result and leaves the input repository, refs, index, worktree, keys, and event
+store byte/OID-identical.
+
+Every merge authorization records the same repository/candidate/store binding
+as well as its exact effect target. Application accepts no free candidate or
+target arguments: it recomputes repository and event-store identity, freshly
+revalidates both executor tokens and appointment freshness, and requires the
+current event OID and target old SHA to match before any input-object write,
+CAS, or key access. It then deterministically recomputes in a quarantine object
+directory and compares the complete bound materialization before opening an
+input-object writer. Only an exact match may prepare the bound expected-old ref
+transaction, import the exact verified object-closure pack, and commit that
+prepared CAS; missing/mismatched material or stale transaction preparation
+leaves input objects and refs unchanged. Every target-ref update and completion-fact emission retains exact
+merge-gate signer and token requirements; `refs/heads/main` additionally
+requires an opaque protected-runner credential attestation. The current merge-
+gate path mutates refs and emits `merge_completed`, so it is not the token-free
+evaluator.
 
 ## Signed-Bus Activation Sequence
 
