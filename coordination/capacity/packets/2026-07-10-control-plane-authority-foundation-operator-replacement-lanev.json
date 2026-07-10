@@ -6,19 +6,19 @@
   "packet_type": "operator-verification",
   "row_ids": [
     "control-plane-authority-task1",
-    "control-plane-authority-task2-spec-review-fix"
+    "control-plane-authority-task2-race-fix"
   ],
   "allowed_paths": [
     "coordination/mailbox/sent/"
   ],
   "lock_keys": [],
   "dependencies": [
-    "director-control-plane-authority-foundation-task2-spec-review-fix"
+    "director-control-plane-authority-foundation-task2-race-fix"
   ],
   "acceptance": [
-    "Remain blocked until a fresh Director verify-request names the exact cumulative range 78b48ed493899dd126de2d1764cbdbf022111dfd through the additive review-fix child of 92d1fbcd1bb76ccb377d6bca1631374569696626 and cites accepted Task-1, both spec-failed historical children, final implementer, fresh specification-review, and fresh code-quality-review artifacts.",
-    "Independently inspect all four cumulative implementation commits and every changed file. Confirm accepted Task 1 is unchanged; 205f077 and 92d1fbc remain immutable direct-child provenance; the review fix is exactly one direct child of 92d1fbc; and no amend/reset/rebase/squash/history rewrite occurred.",
-    "Reproduce all nine prior findings plus the six specification-review findings against the final state. Rerun every exact node in the plan's fifteen-row cumulative set, focused/full suites, smoke, doc claims, shell syntax, immutable HEAD-blob provenance at the exact unsymlinked lexical mailbox path, canonical effectiveness parsing and invalid visibility, typed unavailable/all-scope rendering, human/signed-fact roster separation, canonical coordinator draft discovery, coordinator-alias route-to-GO parity, concurrent/interrupted cursor tests, strict mutation denials, and every named one-fact non-vacuity flip.",
+    "Remain blocked until a fresh Director verify-request names the exact cumulative range 78b48ed493899dd126de2d1764cbdbf022111dfd through the one additive Task2S race-fix child of ef76fd11ea61e27778d0cedf65c1a608cf826354 and cites accepted Task-1, failed candidate 205f077, reviewed-but-spec-failed children 92d1fbc and ef76fd1, final implementer, fresh specification-review, and fresh code-quality-review artifacts.",
+    "Independently inspect all five cumulative implementation/provenance commits and every changed file. Confirm accepted Task 1 is unchanged; 205f077, 92d1fbc, and ef76fd1 remain immutable direct-child provenance; the race fix is exactly one direct child of ef76fd1; and no amend/reset/rebase/squash/history rewrite occurred.",
+    "Reproduce all nine prior findings, six Task2R findings, and two Task2S race findings against the final state. Rerun every exact node in the plan's seventeen-row cumulative set, focused/full suites, smoke, doc claims, shell syntax, descriptor-bound immutable HEAD-blob provenance at the exact lexical mailbox path, one validated body snapshot for every effectiveness output, typed unavailable/all-scope rendering, human/signed-fact roster separation, canonical coordinator draft discovery, coordinator-alias route-to-GO parity, concurrent/interrupted cursor tests, strict mutation denials, and every named one-fact non-vacuity flip.",
     "Confirm ADR-013 is append-only and narrows the live transition to Task 6C; signed-facts authority remains shadow; Tasks 4-6C are otherwise unchanged; and no private key, ref, authority, cursor, lock, push, checkout, spend, pod, production-generation, or unlisted path side effect occurred.",
     "Emit exactly one verification-report GO, NITS, or FAIL bound to the cumulative range. Do not repair the Director diff."
   ],

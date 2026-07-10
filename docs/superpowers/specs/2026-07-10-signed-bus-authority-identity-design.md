@@ -121,28 +121,43 @@ provenance. `human_mailbox.cursor_envelope_schema = "typed-v1"` is committed in
 the corrective child that deploys the typed generator. Validation identifies
 the unique marker-introduction commit: the one HEAD-ancestor whose tree first
 contains the exact field while none of its parents does. Zero or multiple
-candidates fail closed. A committed numeric envelope is legacy only when its
-own unique introducing commit is a HEAD-ancestor, the marker-introduction
-commit is not an ancestor of that event-introduction commit, and current event
-bytes equal both the introducing blob and the blob at the exact lexical
-`HEAD:<path>`. The repo-relative Git path is derived without dereferencing
-symlinks; every component below the repository root and the leaf itself must be
-an unsymlinked regular path. Deletion or modification at HEAD followed by an
-uncommitted byte restoration, or a leaf/parent symlink rebound, therefore
-remains invalid. Numeric mail introduced after the marker,
-uncommitted numeric mail while the marker is active, a backdated addition, a
-renamed event, or byte-modified legacy mail fails closed. This permits lawful
-numeric mail whose introducing commit does not descend from the marker-
-introduction commit, including parallel pre-integration mail, without granting
-a wall-clock bypass.
+candidates fail closed.
+
+Every event parse starts from one descriptor-bound immutable body snapshot.
+The snapshot helper derives the repo-relative path lexically without
+`resolve()`, opens every directory below the repository root relative to its
+held parent descriptor with no-follow/directory constraints, opens the leaf
+once with no-follow semantics, requires an `fstat()` regular file, and reads
+that descriptor exactly once. It captures device, inode, mode, and mutation
+metadata for the component chain and leaf, then rechecks the same lexical
+chain before returning. A missing or wrong-type component, symlink, parent or
+leaf rebound, transient rename-and-restore signal, decode failure, or identity
+drift fails closed. Parsing, legacy provenance, and downstream consumers use
+only the bytes and decoded text in that snapshot; the path retained in the
+envelope is diagnostic and is never reopened to recover body content.
+
+A committed numeric envelope is legacy only when its own unique introducing
+commit is a HEAD-ancestor, the marker-introduction commit is not an ancestor of
+that event-introduction commit, and the exact descriptor-bound bytes equal both
+the introducing blob and the blob at the exact lexical `HEAD:<path>`. Deletion
+or modification at HEAD followed by an uncommitted byte restoration, a
+leaf/parent symlink rebound, or a transient leaf/parent substitution therefore
+remains invalid. Numeric mail introduced after the marker, uncommitted numeric
+mail while the marker is active, a backdated addition, a renamed event, or
+byte-modified legacy mail fails closed. This permits lawful numeric mail whose
+introducing commit does not descend from the marker-introduction commit,
+including parallel pre-integration mail, without granting a wall-clock bypass.
 
 `scripts/protocol_mailbox.py` owns one strict event parser used by send,
 consume, status, checkers, monitors, draft handoffs, and hook state rendering.
 The parser validates the full filename, sender, target, registered kind,
 self-addressing prohibition, H1/`When`/`From` agreement, terminal envelope, and
-legacy provenance before an event can affect a cursor or count. A missing
-`sent/` directory, malformed full cursor file, unknown identity/kind, or
-trailing cursor content is unavailable/invalid, never zero unread.
+legacy provenance against the one descriptor-bound snapshot before an event
+can affect a cursor or count. Its frozen canonical envelope carries the exact
+immutable bytes and decoded text validated by that parse. A missing `sent/`
+directory, malformed full cursor file, unknown identity/kind, trailing cursor
+content, or snapshot-acquisition failure is unavailable/invalid, never zero
+unread.
 
 Human cursor advance is one synchronized compare-and-replace operation. It
 opens and exclusively locks the stable `coordination/mailbox/seen/` directory
@@ -156,11 +171,15 @@ Every derived human-unread surface calls the same policy: status, both
 seat-status mirrors, `protocol_effectiveness_report.py`, both `update-state.sh`
 mirrors, mailbox monitor, and draft handoff. Coordinators and coordinator2 are
 all-scope aliases on every observational surface, with no cursor file.
-Effectiveness accepts only canonical parsed envelopes, surfaces invalid scan
-state, and carries typed `count`, `unavailable`, and `all-scope-unpinned`
-observations through JSON and summary rendering without coercing either sentinel
-to zero. Continuation readiness uses the human-reader roster only for human
-mail and `SIGNED_FACT_CURSOR_IDENTITIES` only for signed-bus probes.
+Effectiveness obtains one full canonical scan per report and derives body
+classification, route/GO samples, invalid metrics, event counts, and unread
+observations from that same immutable scan. It never reopens an envelope path
+and never performs a second mailbox scan during the report. It surfaces invalid
+scan state and carries typed `count`, `unavailable`, and
+`all-scope-unpinned` observations through JSON and summary rendering without
+coercing either sentinel to zero. Continuation readiness uses the human-reader
+roster only for human mail and `SIGNED_FACT_CURSOR_IDENTITIES` only for
+signed-bus probes.
 Coordinator2 automatic drafts use the canonical `HANDOFF-coordinator-*` token,
 and both coordinator aliases participate symmetrically in route-to-GO samples.
 `ledger_start_guard.py` and `protocol_capacity.py` remain intentionally
@@ -286,46 +305,100 @@ principals run only in `control-plane`, CI only in `ci-runner`, and merge-gate
 only in `protected-runner`; `candidate` and every unknown context are invalid.
 Candidate environments cannot sign or mutate.
 
-Merge-gate evaluation owns event acquisition; no public function accepts or
-returns an `EventSnapshot`, event bytes, proof path/ref, or caller-provided
-acquisition capability. `evaluate_gate_read_only()` accepts the trusted event
-store, while the real runner's `poll_once()` enters the same private lexical
-acquisition context once so candidate discovery and every evaluation consume
-one captured tip. Both local and remote acquisition resolve the canonical event
+Merge-gate evaluation owns event acquisition. No public function accepts an
+`EventSnapshot`, event bytes, proof path/ref, Git executable/helper path, proof
+runtime, authority root, registry, bus ID, gate seat, policy, or other
+caller-provided acquisition/authority capability.
+`evaluate_gate_read_only()` accepts the trusted event store; the real runner's
+`poll_once()` enters one private lexical acquisition context exactly once, and
+candidate discovery plus every candidate evaluation consume the same acquired
+state identity. Both local and remote acquisition resolve the canonical event
 ref and copy only that ref into an isolated temporary bare proof repository
-retained for the evaluation lifetime. The proof path/ref never appears on a
-returned object. Before every proof command, the context rechecks the private
-repository's no-follow path/device/inode identity and rejects a rebound.
-The private acquired state retains only immutable ordered JSON bytes and their
-binding; candidate discovery discards its freshly parsed events, and each
-reduction reparses from those bytes so mutable `Event.payload` objects are never
-shared across the two phases.
+retained for the evaluation lifetime. The proof path/ref and protected runtime
+never appear on a public argument or return object. The private state retains
+only immutable ordered JSON bytes and binding metadata; discovery discards its
+temporary parsed events, and every candidate reduction reparses a distinct
+fresh event list from the bytes. A two-candidate run therefore has one capture
+and two independent reductions even if the first reduction mutates its parsed
+payload.
 
-Every proof-object command uses a dedicated runner with explicit
-`git --no-replace-objects --no-lazy-fetch --literal-pathspecs
---git-dir=<private-proof-repository>` arguments and an environment that inherits
-no ambient `GIT_*` values, then sets only the fixed proof settings named in the
-plan. The protected runner supplies an absolute Git executable before candidate
-input; its no-follow path/device/inode identity is rechecked for every command,
-and subprocess execution names that exact path rather than resolving it through
-ambient `PATH`. The same runner binds Git's absolute exec-path plus an exact
-ordered set of absolute, non-group/world-writable helper directories; each
-directory identity is rechecked, `--exec-path` is explicit, and child `PATH` is
-replaced with only that set. Remote transport/helpers therefore cannot resolve
-from caller-controlled `PATH`. Replacement refs, graft/shallow metadata, and
-untrusted alternates in the proof repository fail closed. Validation
-independently resolves the retained
-proof ref and re-reads its actual tip, tree, and ordered event bytes before
-reduction. A digest over caller-chosen bytes is not provenance: validation
-traverses the real Git object graph at the claimed tip with replacement objects
-disabled and compares the actual tree and ordered bytes. Adding one same-tip
-replacement ref or redirecting the ambient repository/object database cannot
-change which graph is trusted.
+The proof runtime comes only from the protected-runner deployment trust root,
+not CLI arguments, environment values, the candidate, the input repository, or
+the event store. Before store construction, key access, candidate input, or
+proof-repository creation, the runner loads exactly
+`/private/etc/pipeline/proof-runtime-v1.json` by walking from `/` component-by-component
+with no-follow opens. The manifest, every ancestor, the Git executable, and
+every supported exec/transport helper are owned by root or a deployment
+identity distinct from the exclusive unprivileged gate UID; none grants that
+UID write, chmod, ownership, group, or ACL authority. The attestation binds its
+own digest; a nonzero exclusive gate UID whose real and effective UID match;
+the protected deployment root and committed authority manifest; every exact
+registry public key; literal bus `prod`; literal gate seat `merge-gate`; the
+in-code default-policy digest; HTTPS-only remote proof acquisition; a private
+gate-owned `0700` temporary root; the exact regular Git and deployed HTTPS
+exec/transport helpers; and one regular TLS CA file. Each file is bound by
+absolute lexical path, file digest, device, inode, owner,
+regular/executable-as-applicable mode, native Darwin ACL disposition, and
+protected parent chain. The loader resolves the gate UID's complete group set
+and rejects any mode/group/ACL grant of write, append, delete/delete-child,
+write-attributes, write-extended-attributes, write-owner, or equivalent
+tree-changing authority on an attested file or ancestor. Directory identity
+alone is insufficient. `run_merge_gate.py` exposes no Git, exec-path, helper-
+directory, manifest, transport, authority, policy, or proof-repository
+override.
+
+Every proof command uses the private `_run_proof_git()` boundary in
+`threeway/gate.py`. The parent retains an open descriptor for the manually
+prepared bare repository; a forked child calls `fchdir(held_gitdir_fd)` and then
+`execve()` on the attested absolute Git with `--git-dir=.`. No external launcher
+or second UID is assumed, and lack of `fork`/`fchdir`/`execve` fails closed. The
+exclusive gate UID is not shared with user/candidate processes. The proof
+Gitdir contains no `config`, `config.worktree`, `commondir`,
+`objects/info/alternates`, `objects/info/http-alternates`, include,
+replacement, graft, or shallow redirect state; their absence and the held
+directory identity/type are checked before and after every child. Fetch uses
+`--no-write-fetch-head`, the attested Git exec-path and `git-remote-http[s]`,
+explicit HTTPS-only protocol allowlisting, the attested CA file, and a child
+environment built from an empty map. Only the exact helper `PATH`, C locale,
+descriptor-created private `TMPDIR`, replacement/config/prompt/protocol guards,
+and bound CA variables are present; no `HOME`, dynamic-loader, credential,
+proxy, alternate-CA, shell, `GIT_*`, or other caller value is inherited. Git
+also receives explicit SSL verification/CA, empty proxy/CA-directory, and
+disabled-redirect settings. SSH, custom helpers, and other remote protocols
+fail closed until a later route names and attests their full executable/shell
+TCB.
+A caller-selected stable Git, an executable replaced inside an unchanged
+directory, a local-config/`commondir` redirect, or a proof-path rename between
+validation and exec cannot establish provenance.
+
+Validation independently resolves the retained proof ref and re-reads its
+actual tip, tree, and ordered event bytes before each reduction. A digest over
+caller-chosen bytes is not provenance: validation traverses the real Git object
+graph at the claimed tip with replacement objects disabled and compares the
+actual tree and ordered bytes. Adding one same-tip replacement ref or
+redirecting any ambient repository, object database, config, executable, or
+helper cannot change which graph is trusted.
 Merge computation writes only to a quarantine object directory backed by the
 input repository as a read-only alternate. Evaluation records the no-follow
 Git-common-directory identity, co-located target/event authority, candidate,
 tip/digest, deterministic materialization, expected old SHA, and proposed merge
-SHA in one frozen result and leaves durable state unchanged.
+SHA in an immutable public comparison binding and leaves durable state
+unchanged. That binding is data, not mutation authority: it exposes no proof
+repository/ref, event bytes, protected runtime, executable/helper handle,
+private quarantine path, or callable/live store. `init=False` or frozen/slot
+syntax is not treated as opacity. Direct evaluation and `poll_once()` return the
+same binding/outcome/reason shape. Before any key/object/ref probe, public apply
+reloads the zero-argument protected runtime, derives the registry, bus, seat,
+and default policy only from its attested deployment/authority/key material,
+requires that fresh authority digest to match the binding, reacquires the
+canonical state, reruns the gate for the bound candidate/target, requires exact
+binding/outcome equality, and requires both operation authorizations to carry
+that exact freshly reproduced binding. Token and appointment revalidation uses
+the attested deployment root, never a caller root. Public evaluation/apply
+accept no authority choices. A forged public MERGEABLE result, alternate registry/bus/
+seat/permissive policy, or authorization swapped between evaluations is
+therefore non-authorizing without changing the accepted atomic two-ref
+mechanics.
 
 Every merge authorization records that same binding and exact effect target.
 Application accepts no free candidate, target, or snapshot arguments. It
@@ -548,16 +621,28 @@ Antigravity decisions remain independently unchanged.
 - Human mailbox unread is correct with signed refs present or absent.
 - Legacy numeric envelopes are accepted only when the unique `typed-v1`
   marker-introduction commit is not an ancestor of the event-introduction
-  commit and the event bytes remain unchanged; a
-  post-marker, backdated, uncommitted, renamed, or modified numeric event is
-  rejected.
+  commit and one no-follow, descriptor-bound body snapshot matches the exact
+  lexical `HEAD:<path>` and introducing blob; a post-marker, backdated,
+  uncommitted, renamed, modified, transiently rebound, or substituted numeric
+  event is rejected.
 - Coordinators cannot consume the human mailbox.
 - Signed-fact coordinators may use only signed-fact cursor APIs.
 - Non-canonical signed event/cursor refs are rejected at manifest load.
 - Concurrent human cursor consumers cannot regress or truncate a cursor.
 - Both state hooks, both seat-status mirrors, effectiveness reporting, monitor,
   and draft handoff agree with canonical pair/all-scope unread semantics.
+- One effectiveness report consumes one validated immutable mailbox body scan;
+  an atomic path replacement after validation cannot change classification,
+  route/GO pairing, invalid metrics, event counts, or unread observations.
 - Every seat/mode/role mismatch is rejected before mutation or GO authority.
+- Merge-gate proof acquisition loads only a non-caller-substitutable deployment
+  attestation; exact Git/HTTPS-helper files, the no-config Gitdir, and the
+  descriptor-anchored fork/fchdir/execve boundary remain bound through every
+  command.
+- One `poll_once()` capture serves discovery and all candidates, each reduction
+  reparses fresh, and public evaluation exposes only immutable non-capability
+  comparison data whose exact binding/outcome is independently reproduced
+  before apply.
 - Every signed-fact or remote publication mutation passes the cumulative
   runtime-and-token gate, and every supported subagent role remains narrow.
 - Public keys are committed and private keys are absent from git and logs.

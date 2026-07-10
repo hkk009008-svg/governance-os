@@ -32,13 +32,16 @@
     "Obtain fresh specification review of 92d1fbc..<review-fix-child>; only after it passes obtain fresh code-quality review. Then send one Operator verify-request for 78b48ed493899dd126de2d1764cbdbf022111dfd..<review-fix-child>, citing all four cumulative implementation commits, all fifteen selectors/flips, exact changed paths, provenance, and exclusions.",
     "Keep signed-facts authority shadow. No key/ref/secret creation, authority flip, remote activation/publication, cursor consume, lock, target-checkout refresh, push, spend, pod, production generation, or changes outside the listed paths are authorized."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
-  "next_recipient": "operator",
-  "status": "active",
+  "done_evidence": [
+    "Commit ef76fd11ea61e27778d0cedf65c1a608cf826354 is the sole direct child of reviewed-but-spec-failed commit 92d1fbcd1bb76ccb377d6bca1631374569696626 and preserves the accepted earlier topology.",
+    "coordination/mailbox/sent/2026-07-10T14-03-14Z-director-to-coordinator-coordination.md records BLOCKED / FRESH SPECIFICATION REVIEW ISSUES with two source-confirmed race gaps. Verification not needed because specification review blocked before quality review, verify-request, and Lane V."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T14-03-14Z-director-to-coordinator-coordination.md",
+  "next_recipient": "coordinator",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "target_commit": "ef76fd11ea61e27778d0cedf65c1a608cf826354",
+  "commit_range": "92d1fbcd1bb76ccb377d6bca1631374569696626..ef76fd11ea61e27778d0cedf65c1a608cf826354",
   "scope_files": [
     "scripts/protocol_mailbox.py",
     "scripts/protocol_effectiveness_report.py",
