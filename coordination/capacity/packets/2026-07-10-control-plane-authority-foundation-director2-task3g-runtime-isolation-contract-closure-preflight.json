@@ -42,12 +42,14 @@
     "Confirm all twenty-one exact Task-3D selectors are present: the prior twenty plus tests/integration/test_proof_acquisition_macos.py::test_gate_uid_writer_cannot_mutate_proof_service_gitdir. The privileged control deliberately reveals the proof Gitdir to a gate-UID writer and proves create/replace/chmod/delete denial and an unchanged graph; changing only proof ownership to the gate UID makes it RED. Ordinary unprivileged CI is explicitly test-infeasible for this OS boundary, and no mock, skip, or local doctor pass may satisfy it or authorize Task-3 GO.",
     "Confirm the accepted Task-3A-through-3C and two-ref CAS segments remain unchanged, and Task 4 through EOF remains SHA-256 8d44798592a4c87fc288f1cf25eff5c21e652574d0ed3a6076c4b72f8c14a6fd. Send one CLEAR or CONTRADICTION report to coordinator. Do not implement, install accounts/LaunchDaemon, issue Operator GO, consume mail, route work, or take a key/ref/cursor/lock/push/spend/pod/production side effect."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T17-35-49Z-director2-to-coordinator-coordination.md records the focused Task3G CONTRADICTION at reviewed coordinator commit f1e4219716fcf92d15060f75b4209d131ff947d6: the private 0700 ancestor made the privileged one-owner flip non-causal, reciprocal peer/frame/session guards lacked a named causal selector, and the bound-file matrix did not inject post-command/pre-parse drift."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T17-35-49Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
+  "target_commit": "f1e4219716fcf92d15060f75b4209d131ff947d6",
   "commit_range": null,
   "scope_files": [
     "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",

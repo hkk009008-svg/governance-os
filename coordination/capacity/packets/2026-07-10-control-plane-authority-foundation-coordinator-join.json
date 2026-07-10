@@ -7,7 +7,7 @@
   "row_ids": [
     "control-plane-authority-task1",
     "control-plane-authority-task2-global-scan-fail-visible-fix",
-    "control-plane-authority-task3g-runtime-isolation-contract-closure-preflight",
+    "control-plane-authority-task3h-causal-runtime-proof-closure-preflight",
     "control-plane-authority-task4-6-repreflight"
   ],
   "allowed_paths": [
@@ -21,14 +21,14 @@
   "dependencies": [
     "director-control-plane-authority-foundation-task2-global-scan-fail-visible-fix",
     "operator-control-plane-authority-foundation-replacement-lanev",
-    "director2-control-plane-authority-foundation-task3g-runtime-isolation-contract-closure-preflight",
+    "director2-control-plane-authority-foundation-task3h-causal-runtime-proof-closure-preflight",
     "operator2-control-plane-authority-foundation-activation-repreflight"
   ],
   "acceptance": [
-    "Treat Task 1 e43acc245e2492883ca04b0d835268708ad0995d, failed candidate 205f077a23291496ea4b84c8de1f8acdfa2bd040, and reviewed-but-spec-failed children 92d1fbcd1bb76ccb377d6bca1631374569696626, ef76fd11ea61e27778d0cedf65c1a608cf826354, and 8cc4beed2c6c5836f915113ccd5104c3f039c8de as immutable provenance. Keep the cycle open until Director lands exactly one additive Task2T fail-visible child of 8cc4bee, passes fresh specification and quality review, sends one cumulative verify-request, and Operator returns GO for 78b48ed493899dd126de2d1764cbdbf022111dfd..<fail-visible-child> covering six commits and eighteen selectors/flips.",
-    "Treat the 2026-07-10T15-18-04Z Task-3F CONTRADICTION as binding while preserving its confirmed one-capture/fresh-reparse and two-ref CAS closures. Require fresh Director2 CLEAR only for Task3G: a root-protected system LaunchDaemon runs a locked proof UID distinct from the gate UID, the service self-binds/listens and mutually authenticates peer UIDs, only the proof UID owns the no-config Gitdir, the gate receives no path/descriptor/authority capability, every bound Git/helper/key/authority/runtime/service/CA file is rechecked at a causal pre-command barrier, CLI and direct callers expose no registry/bus/gate-seat/policy choice, and untrusted public results use recursively exact canonical comparison without attacker equality or downstream supplied bindings. The distinct-UID writer boundary requires the named privileged macOS selector and is test-infeasible in ordinary unprivileged CI; no mock or skip closes it. Preserve the already-closed remote-lock, signed-fact, cursor, publication-grammar, local/remote two-ref transaction, capture, and reparse findings.",
+    "Treat Task 1 e43acc245e2492883ca04b0d835268708ad0995d, failed candidate 205f077a23291496ea4b84c8de1f8acdfa2bd040, reviewed-but-spec-failed children 92d1fbcd1bb76ccb377d6bca1631374569696626, ef76fd11ea61e27778d0cedf65c1a608cf826354, and 8cc4beed2c6c5836f915113ccd5104c3f039c8de, and the sole additive Task2T child 6983673db60bff0d21548a90ab1db2fcbbfa377a as immutable provenance. Keep the cycle open until Director's fresh specification and quality reviews pass, one cumulative verify-request names 78b48ed493899dd126de2d1764cbdbf022111dfd..6983673db60bff0d21548a90ab1db2fcbbfa377a covering six commits and eighteen selectors/flips, and Operator returns GO for that exact range.",
+    "Treat the 2026-07-10T17-35-49Z Task-3G CONTRADICTION as binding while preserving its confirmed CLI/direct-caller, exact public-result, one-capture/fresh-reparse, and two-ref CAS closures. Require fresh Director2 CLEAR only for Task3H: the proof-owned 0710 acquisition root gives the gate group search but no write authority; each proof-owned 0700 Gitdir is the sole boundary; the privileged negative changes only its owner to gate_uid and proves successful entry mutation before graph-integrity RED; one real self-listening selector causally covers both reciprocal peer UID checks plus strict frame and session rejection; and every bound file has independently causal pre-command and post-command/pre-parse drift cases with captured-output discard. The privileged writer boundary remains test-infeasible in ordinary unprivileged CI and no mock or skip closes it. Preserve the already-closed remote-lock, signed-fact, cursor, publication-grammar, activation, local/remote two-ref transaction, capture, reparse, CLI, and hostile-result findings.",
     "Preserve Operator2's 2026-07-10T04-24-26Z CLEAR without another pass while the Task-4-through-EOF SHA-256 remains 8d44798592a4c87fc288f1cf25eff5c21e652574d0ed3a6076c4b72f8c14a6fd and its activation contract is unchanged; reopen only on a change to those surfaces.",
-    "Join only when the Task2T Director packet is done with its one-child-of-8cc4bee topology, fresh reviews, and verify-request; Operator has returned cumulative GO for the six-commit range and all eighteen selectors/flips; the Task3G Director2 packet has returned CLEAR for all twenty-one Task-3D selectors and the privileged deployment boundary remains an explicit prerequisite rather than mock green; Operator2's prior CLEAR remains applicable; capacity-board, route-validation, protocol-doctor, smoke, and provenance checks pass; and no forbidden side effect occurred.",
+    "Join only when the Task2T Director packet is done at 6983673db60bff0d21548a90ab1db2fcbbfa377a with fresh reviews and verify-request; Operator has returned cumulative GO for the exact six-commit range and all eighteen selectors/flips; the Task3H Director2 packet has returned CLEAR for all twenty-two Task-3D selectors and the privileged deployment boundary remains an explicit prerequisite rather than mock green; Operator2's prior CLEAR remains applicable; capacity-board, route-validation, protocol-doctor, smoke, and provenance checks pass; and no forbidden side effect occurred.",
     "The selected cutover policy is verified-exact resume. This route revises planning and preflight only; it grants no key generation, ref mutation, authority flip, cursor consume, lock, push, spend, pod, production generation, target-checkout refresh, remote signer activation, runner deployment, or protected-main update."
   ],
   "done_evidence": [],
@@ -40,14 +40,11 @@
   "commit_range": null,
   "scope_files": [
     "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-coordinator-join.json",
-    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director-task2-race-fix.json",
-    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director-task2-global-scan-fail-visible-fix.json",
-    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director2-task3f-runner-capture-closure-preflight.json",
     "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director2-task3g-runtime-isolation-contract-closure-preflight.json",
-    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-operator-replacement-lanev.json",
+    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director2-task3h-causal-runtime-proof-closure-preflight.json",
     "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-operator2-repreflight.json",
     "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
     "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
-    "coordination/mailbox/sent/2026-07-10T16-41-01Z-coordinator-to-all-coordination.md"
+    "coordination/mailbox/sent/2026-07-10T17-46-21Z-coordinator-to-all-coordination.md"
   ]
 }
