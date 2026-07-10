@@ -3,10 +3,11 @@
 **Status:** TOOLING LANDED 2026-06-13 (user-authorized "proceed now") ·
 operator-authored per user directive ("scale 2→4 seats for speed"). The
 backward-compatible tooling cutover (§8) is **applied + verified** — `ci_smoke`
-green, regression test `tests/unit/test_four_seat_coordination.py` (6 cases:
-Pair-B + `all` lint clean, `count_unread` broadcast, bin round-trip). `director2`
-/`operator2` are LIVE (launched 2026-06-13T08:50Z; both heartbeating, indexes
-seeded). **Lanes FINAL** (PRINCIPAL-CONFIRMED 2026-06-13): Pair A = <domain-lane-A>,
+green; coverage lives in `tests/unit/test_check_coordination.py` +
+`tests/unit/test_coordination_tooling.py` (the originally cited
+test_four_seat_coordination.py was not transplanted). `director2`
+/`operator2` went LIVE at the 2026-06-13T08:50Z cutover (historical
+snapshot — read liveness from heartbeats, not this line). **Lanes FINAL** (PRINCIPAL-CONFIRMED 2026-06-13): Pair A = <domain-lane-A>,
 Pair B = <domain-lane-B> (§1 table + §6). Status:
 **ACCEPTED.**
 
@@ -64,9 +65,10 @@ claude
 - `_sync_seat_index()` / `_clear_skip_worktree()` key off `$GIT_INDEX_FILE` →
   `index-director2`/`index-operator2` are maintained automatically.
 
-The ONLY hook touch is **cosmetic**: the STATE.md unread report
-(`_unread_for director`/`operator`, lines 207–211) should list all four seats.
-Not load-bearing (each seat reads its own cursor via `consume-events`).
+The ONLY hook touch was **cosmetic** and has since landed: the STATE.md
+unread report lists all six seats (`.claude/hooks/update-state.sh`
+`_unread_for`, ref-bus-aware). Not load-bearing — each seat recomputes
+live via `seat_status.py`.
 
 ## 4. Mailbox addressing — point-to-point **+ a broadcast target**
 
@@ -75,7 +77,10 @@ pseudo-target **`all`** lets a seat announce to everyone (lane claims, "I'm
 online", cutover notices) without sending N copies. `all` is a valid `to` only —
 never a `from`, never a real cursor/seen file.
 
-**The seat vocabulary lives in FOUR code spots — they MUST change together:**
+**The seat vocabulary lives in FOUR code spots — they MUST change together**
+(2026-06-13 cutover record, kept as history: the LIVE registry is now
+`scripts/protocol_mailbox.py` `SEATS`/`RECEIVING_SEATS`/`KNOWN_KINDS` — six
+seats incl. `coordinator2` since Slice 2.5)**:**
 
 | File | What changes |
 |------|--------------|
@@ -88,6 +93,9 @@ never a `from`, never a real cursor/seen file.
 target that every real seat counts as addressed-to-it.)
 
 ## 5. Cursors
+
+(2026-06-13 cutover record — live cursors are now scalar-seq per Slice 2.5;
+see `docs/protocol/claude/continuation.md` for the current consume paths.)
 
 Create two new watermark files, seeded with a safe past timestamp so the linter's
 `cursor_missing` (FATAL) and `cursor_orphan` (ADVISORY) both pass for a seat with

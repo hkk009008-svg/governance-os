@@ -59,9 +59,9 @@ emoji (✅/⚠️/❌/⛔) is a human render only — never a second machine enc
   blockers. Do not consume cursors, send mailbox events, claim locks, push,
   spend, edit inventory, or author production changes.
 - **Live seat:** only when the user or parent prompt explicitly names
-  `director`, `director2`, `operator`, or `operator2`. Load the matching seat
-  skill (`seat-director` / `seat-operator`) and work inside that seat's
-  authority.
+  `director`, `director2`, `operator`, or `operator2` — or the session was
+  launched with `CLAUDE_SEAT` set to that seat. Load the matching seat skill
+  (`seat-director` / `seat-operator`) and work inside that seat's authority.
 - **Coordinator:** only when explicitly asked to reconcile, route, gate, or
   operate cross-seat state. Load `seat-coordinator`. The coordinator is
   unpinned and never consumes a coordinator cursor.
@@ -112,7 +112,14 @@ validation bundle, run the protocol doctor:
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave>
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave>
+env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave> --route coordination/mailbox/sent/<event>.md
 ```
+
+The doctor is evidence, not an operator-GO substitute. Optional read-only
+tools: `scripts/mailbox_monitor.py --once` (or `--watch --interval 5` as an
+awareness watchboard — it never consumes or claims a seat) and
+`scripts/draft_handoff.py <seat> --wave 2 --smoke --output` to scaffold a
+handoff — always refresh live state before finalizing one.
 
 ## Mailbox-first rule + cursor consumption
 
@@ -127,12 +134,26 @@ depends on the seat's cursor form:
   (stages `coordination/mailbox/seen/<seat>.txt`; never commits).
 - **Migrated scalar-seq cursor** (post-Slice-2.5; `consume-events` refuses it
   and says so) → `scripts/consume_bus.py <seat>`. Real unread for a migrated
-  seat comes from the ref-bus (`scripts/bus_unread.py` / `seat_status.py`),
-  NOT from `sent/` filename counts — the legacy count silently reports 0.
+  seat comes from the ref-bus (`scripts/bus_unread.py` — a library surfaced
+  via `seat_status.py`, not a CLI), NOT from `sent/` filename counts — the
+  legacy count silently reports 0.
+- **Race-safe bounded consume:** when consuming an already-read window while
+  peer seats may still send mail, prefer
+  `coordination/bin/consume-events <seat> --to <last-read-timestamp>` (legacy
+  cursors only) so a not-yet-read event never gets skipped.
+- **Receipt checks are coordination evidence only** — they never prove
+  assigned work is complete.
 
-Do not consume from orientation mode. Do not consume coordinator mail.
+Do not consume from orientation mode. Do not consume coordinator mail — a
+policy rule (the tools mechanically accept coordinator since Slice-2.5; the
+prohibition is doctrinal, not tool-enforced).
 
-## Shared guardrails (ADR-027 — Scope: both)
+## Shared guardrails (ADR-027)
+
+(Origin scopes per AGENTS.md: R-HOT-TREE and R-WIP-POLLUTION bind every seat;
+R-GATE-EVIDENCE originated coordinator-scoped and R-VERIFY-THEN-PUSH
+director/coordinator-scoped — treat all four as binding whenever you commit,
+cite a gate, or hold push authority.)
 
 - **R-HOT-TREE:** the shared tree moves under you. Immediately before any
   commit or gate decision, re-run `git log --oneline -3` and re-read the
@@ -253,6 +274,9 @@ Side-Effect Executor Token:
 - When both seats are active, do not edit the same files or rerun the same
   task; first commit to land wins and the other seat narrows or stands down
   after git/mailbox refresh.
+- At boundaries, stop with exact next trigger and durable handoff only when
+  context is transferring; avoid broad recaps when mailbox/gate state already
+  proves standby.
 - Effectiveness means a closed loop: director artifact -> operator
   verification-report GO/NITS/FAIL -> director consumes the report or
   coordinator closes; gate scripts never substitute for operator
@@ -334,8 +358,9 @@ Cross-repo git and pytest commands use `env -u GIT_INDEX_FILE` so Pipeline
 seat indexes do not leak into ledger work. Start from
 `/Users/hyungkoookkim/Pipeline` and run
 `env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`
-before target-repo inspection. Read evidence-ledger `CLAUDE.md` before product
-edits.
+before target-repo inspection (the guard accepts the five standing seats;
+`coordinator2`, being on-demand oversight, is not in its VALID_SEATS). Read
+evidence-ledger `CLAUDE.md` before product edits.
 
 ## Verification Commands
 

@@ -29,8 +29,8 @@
 #   STATE.md from current git state + mailbox cursors.
 # - STATE.md is gitignored; this hook never touches git history.
 #
-# This hook is configured via `.claude/settings.local.json`'s
-# PostToolUse: Bash|Write|Edit matcher.
+# This hook is configured via the tracked `.claude/settings.json`
+# PostToolUse: Bash|Write|Edit matcher (fleet-shared since 2026-07-10).
 
 set -euo pipefail
 export LC_ALL=C
@@ -55,7 +55,8 @@ cd "$(_repo_git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 # wins, else the per-session marker `.claude/presence-seat.<session-id>`.
 # Best-effort: called with `|| true` — a presence hiccup must never abort
 # the hook under `set -e` before the STATE.md regen below.
-# Tests: tests/unit/test_presence_heartbeat_split.py (awk-slices this fn).
+# Tests: origin-project test_presence_heartbeat_split.py (not transplanted);
+# tests/unit/test_coordination_tooling.py executes this hook end-to-end.
 _stamp_presence() {
   local seat="${CLAUDE_SEAT:-}"
   if [ -z "$seat" ] && [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
@@ -130,7 +131,7 @@ _sync_seat_index() {
 # D-a, else the default) — exactly the index a polluting child inherits.
 # Deliberately NOT gated on GIT_INDEX_FILE, and runs BEFORE the skip-perf
 # gate: pollution arrives WITHOUT a HEAD move.
-# Tests: tests/unit/test_skip_worktree_clear.py (awk-slices this function).
+# Tests: origin-project test_skip_worktree_clear.py (not transplanted).
 _clear_skip_worktree() {
   local -a _flagged=()
   local _e

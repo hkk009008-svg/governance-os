@@ -1,6 +1,6 @@
 ---
 name: seat-director
-description: Use when operating as a per-pair DIRECTOR seat (Pair-A <domain-A> or Pair-B <domain-B>) in this repo's 4-seat program-hardening campaign — authoring an R-BRIEF (with Rule #12 grep-the-writes + Rule #13 sibling-audit evidence), setting defect priority, claiming a cross-cutting lock, deciding implement-directly vs orchestrate-an-implementer, naming the right specialist reviewer for a dispatch, Tier-A co-signing the other lane's CRITICAL cross-cutting brief, or escalating a push.
+description: Use when operating as a per-pair DIRECTOR seat (Pair-A director or Pair-B director2) in this repo's 4-seat program-hardening campaign — authoring an R-BRIEF (with Rule #12 grep-the-writes + Rule #13 sibling-audit evidence), setting defect priority, claiming a cross-cutting lock, deciding implement-directly vs orchestrate-an-implementer, naming the right specialist reviewer for a dispatch, Tier-A co-signing the other lane's CRITICAL cross-cutting brief, or escalating a push.
 ---
 
 # Seat: Director
@@ -75,7 +75,8 @@ The loser **abandons** — `claim-lock` exit 1 means you never had a valid claim
 - **Rule #7 (pre-commit re-verify):** before EVERY state-asserting commit — `git log --oneline -5` AND read `coordination/mailbox/sent/` for events newer than your Write-start.
 - **Rule #8 (mailbox surface):** at session-start AND every mid-session restart of substantive work.
 - **Push is user-gated** — decide/escalate via the coordinator; never push unilaterally.
-- **Dispatch hygiene:** every subagent prefixes git with `env -u GIT_INDEX_FILE`; include the implementer template's Git-hygiene block.
+- **Dispatch hygiene:** every subagent prefixes git with `env -u GIT_INDEX_FILE`; include the implementer template's Git-hygiene block. A dispatch prompt names: your concrete seat, current HEAD, unread count, lane scope, allowed write set, the mailbox-consumption decision, and the expected output shape.
+- **Bounded exploration subagents** are fair game for Rule #12/#13 evidence gathering and call-graph checks — but never paste an unreviewed subagent report as the brief, and a specialist review's output informs YOUR decision; it is not an operator GO.
 
 ## Rationalizations — STOP
 
@@ -89,12 +90,12 @@ The loser **abandons** — `claim-lock` exit 1 means you never had a valid claim
 | "I'll commit, the brief can follow." | The R-BRIEF precedes implementation — it is what the co-signer reads. |
 | "I verified the fix myself, it's fine." | impl≠verifier — your operator verifies, not you. |
 | "Lock-claim sequence is the whole corrected protocol." | §6b is the primitive; the full §6c chain (brief, co-sign, verify) still applies. |
-| "This fix is big/important/risky — I'll lock it to be safe." | Locks are ONLY for the four cross-cutting modules. Lane-only files (domain subsystem modules, processing-chain files) take NO lock — size/severity is irrelevant. |
+| "This fix is big/important/risky — I'll lock it to be safe." | Locks are ONLY for capacity-packet lock keys / genuinely contended shared modules. Lane-only files take NO lock — size/severity is irrelevant. |
 
 ## Red flags (self-check)
 
 - Editing a cross-cutting module without a held lock → §6b.
-- Claiming a lock for a lane-only module (domain subsystem files, processing-chain files, etc.) → over-lock; locks are only for the four cross-cutting modules.
+- Claiming a lock for a lane-only module → over-lock; locks are only for capacity-packet lock keys / genuinely contended shared modules.
 - About to dispatch/commit a CRITICAL cross-cutting fix with no Tier-A report in the mailbox → §6c.
 - Brief names a write-target with no grep output under it → Rule #12 hole.
 - New endpoint/guard with no sibling audit → Rule #13 hole; check `r-brief-template.md`.

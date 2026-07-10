@@ -83,9 +83,10 @@ of running both is roughly zero.
   v4). On any director commit of type `feat` / `refactor` / `fix`,
   operator dispatches spec + code-quality reviewer subagents in
   parallel with director's reviewers (NOT sequential), then sends a
-  `verification-report` mailbox event with status (✅ clean / ⚠️ minor /
-  ❌ critical / ⛔ unable_to_verify) + file:line refs + disposition (`fold` /
-  `advisory` / `re-dispatch`). `unable_to_verify` means the Lane V run could not
+  `verification-report` mailbox event with status GO / NITS / FAIL (reviewer
+  enum `pass` / `issues` / `unable_to_verify` per
+  docs/templates/claude/reviewer.md; emoji renders are prose-only) +
+  file:line refs + disposition (`fold` / `advisory` / `re-dispatch`). `unable_to_verify` means the Lane V run could not
   reach a conclusion for env/provenance reasons (U1–U5 in the reviewer template);
   it is NOT a defect verdict — the consumer RE-DISPATCHES in a fixed env and does
   NOT mark the implementation failed.
@@ -276,7 +277,10 @@ messages is the codifying incident). The sanctioned writers are the
 scripts: `coordination/bin/send-event` (writes a conforming event +
 `Cursor at send:` line read from the seen file) and
 `coordination/bin/consume-events <role>` (advances + STAGES the seen
-file; refuses regressions). **Cursor folding:** the staged seen-file
+file; refuses regressions — and refuses a MIGRATED scalar-seq cursor
+outright, redirecting to `scripts/consume_bus.py <role>`; post-Slice-2.5
+all six seats are migrated and their unread truth is the signed ref-bus
+via `seat_status.py`, not `sent/` filename counts). **Cursor folding:** the staged seen-file
 rides the next substantive commit; standalone cursor-only commits are
 deprecated (idle-consume exempt). Hand-rolled events/cursor edits are
 the fallback when the scripts are unavailable, not the norm —
@@ -675,8 +679,9 @@ purpose, sonnet) with a cold-context prompt assembled from:
 - Report format requirements (Status / Sites migrated / Per-bucket
   distribution / Deviations / Files changed / Commit SHA / Self-review)
 
-Implementer dispatches Lane B; implementer commits + pushes; status
-report returns to operator's main context. Typical cost: ~70-130k
+Implementer dispatches Lane B; implementer commits — no push: push stays
+user-gated and follows the operator verification-report GO
+(R-VERIFY-THEN-PUSH); status report returns to operator's main context. Typical cost: ~70-130k
 subagent tokens; wall-clock ~10-15min.
 
 **Stage 4: Parallel Lane V dispatch (spec + code-quality reviewers).**
@@ -700,9 +705,9 @@ findings sets per Rule #9 §"Parallelism" structural independence.
 **Stage 5: Verification-report mailbox event.**
 Operator synthesizes both reviewers' findings into a structured
 `verification-report` event to director-seat:
-- Status (✅ READY TO SHIP / ⚠️ minor concerns / ❌ blocking / ⛔ unable_to_verify —
-  verification did not run to a conclusion; re-dispatch in a fixed env, do NOT treat
-  as a blocking defect)
+- Status (GO / NITS / FAIL / unable_to_verify — the last means verification
+  did not run to a conclusion; re-dispatch in a fixed env, do NOT treat it
+  as a blocking defect; emoji renders are prose-only)
 - Per-finding catalog with severity + source + description +
   disposition recommendation
 - Cumulative v4.1 telemetry update (dispatch count + tokens + findings
@@ -927,7 +932,8 @@ codifies working criteria for Rule #15 invocation:
   mailbox-archive inspection. N=2 instances ALREADY satisfy this
   (Lane V #12 + Lane V #13 reports at
   `coordination/mailbox/sent/2026-05-27T02-30-00Z` +
-  `2026-05-27T03-00-00Z`).
+  `2026-05-27T03-00-00Z` — origin-project artifacts, not in this repo's
+  mailbox).
 
 - **C3: Receiving seat's commit body cites disposition option choice.**
   Measurable per-commit via commit body grep. N=2 instances ALREADY
@@ -1359,8 +1365,9 @@ review, thinking) read as "offline." Rule #19 replaces inference with a signal.
    touches it. Both gitignored, per-clone. The split kills the pre-v6.0
    read-modify-write livelock (hook sed racing the seat's Write tool) and the
    stale-status class (hook-moved `updated:` under frozen prose — 2 recorded
-   misattribution incidents). Tests:
-   tests/unit/test_presence_heartbeat_split.py.
+   misattribution incidents). Tests: origin-project
+   test_presence_heartbeat_split.py (not transplanted; the hook itself is
+   executed end-to-end by tests/unit/test_coordination_tooling.py).
 2. **Liveness is read from heartbeat freshness; intent from the .md.**
    "Offline" = `<seat>-heartbeat.ts` stale > T (default 10 min). A seat
    mid-implementation with a fresh heartbeat is active, not idle. Transition
@@ -1432,7 +1439,11 @@ when the actionable count was 1.
    role's own sends) and compared file-mtime instead of the cursor's *content*
    timestamp. The tool encapsulates the correct `*-to-<me>-*` + content-timestamp
    comparison this rule specifies; SHOULD not MUST (a correct hand-rolled
-   equivalent remains valid).
+   equivalent remains valid). **Migrated-cursor caveat:** for a scalar-seq
+   cursor (post-Slice-2.5 — all six live seats today) both the filename
+   recompute and `status.py mailbox-unread` return 0 by design; the
+   authoritative unread is the ref-bus (`scripts/bus_unread.py`,
+   `seat_status.py`).
 2. **Until M2 is live, reconcile STATE.md against the filesystem** before acting
    on its count (Rule #8 §F "filesystem wins" as a positive step, not a
    fallback).
@@ -1448,7 +1459,8 @@ when the actionable count was 1.
 Empirical basis: same session as Rule #19 — RC3 (STATE.md broken count, observed
 `director=4`-vs-1) + RC4 (cursor lag `T10:23:57Z` vs the handoff's `T11:52:06Z`).
 The M2 fix validated on controlled data (old over-counts 3, new correct 1;
-`docs/DRAFT-v5.7-phase1-implementation-2026-05-30.md` §1).
+`docs/DRAFT-v5.7-phase1-implementation-2026-05-30.md` §1 — origin-project
+artifact, not in this repo).
 
 ## Verdict-ahead-of-report (Rule #21)
 

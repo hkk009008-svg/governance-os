@@ -46,7 +46,7 @@ The operator's hardest discipline is *not* verifying everything. Firing Lane V o
 
 ## Lane V — independent verification (Rule #9)
 
-- Dispatch **cold-context** spec + code-quality reviewer subagents on every `feat`/`refactor`/`fix` commit. The reviewer prompt **MUST NOT cite the director's reviewer findings** — contamination destroys the independence that makes the second pass valuable. Both seats dispatch reviewers **simultaneously**, not sequentially.
+- Dispatch **cold-context** spec + code-quality reviewer subagents on every `feat`/`refactor`/`fix` commit. The reviewer prompt **MUST NOT cite the director's reviewer findings** — contamination destroys the independence that makes the second pass valuable. Both seats dispatch reviewers **simultaneously**, not sequentially. A verifier-helper prompt names: the commit/range, the brief/row id, the expected proof, the forbidden write scope, and the exact report shape.
 - Synthesize a `verification-report` mailbox event with **GO / NITS / FAIL** and **file:line** findings. **Format + severity vocabulary: see [`verification-report-format.md`](verification-report-format.md)** — emit via `coordination/bin/send-event`, never as chat (Rule #19).
 - Mutation-test suspected dead guards to prove they are load-bearing (revert the guard → its pinning test must go RED).
 - **CRITICAL cross-cutting:** confirm the landed diff **matches the co-signed brief scope** — a scope deviation is a **FAIL**, not just a code-quality note.

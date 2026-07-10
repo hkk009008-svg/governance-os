@@ -337,9 +337,12 @@ registry public key; literal bus `prod`; literal gate seat `merge-gate`; the
 canonical HTTPS event-store endpoint and literal `refs/threeway/events`; the
 in-code default-policy digest; HTTPS-only remote proof acquisition; the
 root-owned system LaunchDaemon plist; exact deployed proof interpreter/service;
-the fixed proof-owned Unix-socket parent/path; a private proof-owned `0700`
-temporary root; the exact regular Git and deployed HTTPS exec/transport
-helpers; and one regular TLS CA file. Each file is bound by absolute lexical
+the fixed proof-owned Unix-socket parent/path; a proof-owned `0710` acquisition
+root whose exact gate group has search but no read/write authority; each
+service-created proof-owned `0700` Gitdir as a direct child of that root; the
+exact regular Git and deployed HTTPS exec/transport helpers; and one regular TLS
+CA file.
+Each file is bound by absolute lexical
 path, file digest, device, inode, owner, regular/executable-as-applicable mode,
 native Darwin ACL disposition, and protected parent chain. Both loaders resolve
 their UID's complete group set and reject any mode/group/ACL grant of write,
@@ -360,13 +363,21 @@ system-domain job. Account resolution must bind the gate/proof UIDs exactly to
 itself binds/listens on the fixed Unix stream
 socket; launchd socket activation is not used. That makes mutual effective-peer
 UID checks meaningful: the service accepts only `gate_uid`, and the client
-accepts only `proof_uid`. The proof-owned socket parent grants the gate search/
-connect but no create, replace, or chmod authority. The service accepts no
+accepts only `proof_uid`. The proof-owned socket and acquisition parents grant
+the exact gate group search/connect as applicable but no read, create, replace,
+delete, or chmod authority. The service accepts no
 caller URL, ref, registry, bus, gate-seat, policy, helper, or Git command. It
 derives the endpoint/ref only from its independently loaded protected runtime;
 the trusted public store description must match but cannot select them. The
-service never returns a path or writable descriptor. Unknown frame versions/
-fields, oversized lengths, wrong peers, reconnect, or session replay fail
+service never returns a path or writable descriptor. After real connected-
+socket peer authentication, the service issues a fresh connection-bound
+`session_id` that callers cannot select or resume. Every request/response binds
+that ID, the literal version, a closed phase-valid frame type, and the next
+sequence; both directions require exact types/fields and byte-canonical
+encoding, reject duplicate/unknown fields, and enforce the length bound before
+body read or allocation. EOF/close revokes the session. Wrong peers, unknown
+versions, wrong phases/types, noncanonical or extra fields, caller authority
+fields, reconnect with an old session, or replay of a consumed sequence fail
 closed.
 `run_merge_gate.py`, `poll_once()`, and `run_merge_gate.sh` expose no Git,
 exec-path, helper-directory, manifest, transport, registry, bus, gate-seat,
@@ -378,8 +389,27 @@ Every proof command uses the service-private `_run_proof_git()` boundary in
 for the manually prepared bare repository; a forked child calls
 `fchdir(held_gitdir_fd)` and then `execve()` on the attested absolute Git with
 `--git-dir=.`. Lack of `fork`/`fchdir`/`execve` fails closed. The proof Gitdir is
-owned only by `proof_uid`; gate/user/candidate processes receive neither path
-nor descriptor and have no filesystem authority to mutate it. It contains no
+the proof-owned `0700` direct-child boundary beneath the unchanged `0710`
+acquisition root, with no intervening `0700` component; gate/user/candidate
+processes receive neither path nor descriptor and have no filesystem authority
+to enter or mutate it. In the privileged causal fixture the gate can `lstat()`
+that Gitdir through the unchanged parent. The control proves equivalent real
+syscalls in a same-device gate-owned writable scratch directory, with an absent
+create target, existing unlink/replace targets, same-device writable replace
+source, clear ACL/immutable flags, and a writable mount; `access()` and
+`ENOENT`/`ENOTDIR`/`EXDEV`/`EROFS`/sandbox denial are not proof. Valid control
+denials are `EACCES` for entry operations and `EPERM` for `chmod()` of the
+Gitdir. After the service's pre-command owner/identity check, the root verifier
+independently retains a test-only `harness_gitdir_fd`, `fstat()`-matches its
+device/inode to the service-attested Gitdir, and calls
+`fchown(harness_gitdir_fd, gate_uid, -1)` without passing that descriptor to the
+gate or exposing it in production. Preserving its `0700` mode, empty ACL, both
+UIDs, groups, and every ancestor then lets at least one entry mutation or
+`chmod(Gitdir)` succeed. The selector REDs at the denied-write assertion even
+if the later service postcheck also fails closed; it does not require the proof
+child to complete after the owner flip. If service-side drift evidence is also
+recorded, root restores only the same held directory's owner to `proof_uid` as
+cleanup before releasing the service. It contains no
 `config`, `config.worktree`, `commondir`,
 `objects/info/alternates`, `objects/info/http-alternates`, include,
 replacement, graft, or shallow redirect state; their absence and the held
@@ -387,7 +417,13 @@ directory identity/type are checked before and after every child. After
 successful runtime load and immediately before every command, the service
 reopens and rechecks the runtime manifest, launchd plist, deployed service/
 interpreter, primary Git executable, every helper, registry key, authority
-manifest, and CA file. Post-command drift discards all output. Fetch uses
+manifest, and CA file. The same complete matrix is reopened after each honest
+child exits and before parsing; any post-command drift discards all output.
+Each causal drift atomically installs a byte-identical same-path file preserving
+device, digest, UID/GID, mode, ACL, and executable disposition while changing
+only inode identity; deterministic barriers and phase-specific launch/parse/
+reduction counters prevent a vacuous refusal.
+Fetch uses
 `--no-write-fetch-head`, the attested Git exec-path and `git-remote-http[s]`,
 explicit HTTPS-only protocol allowlisting, the attested CA file, and a child
 environment built from an empty map. Only the exact helper `PATH`, C locale,
@@ -674,11 +710,35 @@ Antigravity decisions remain independently unchanged.
 - Every seat/mode/role mismatch is rejected before mutation or GO authority.
 - Merge-gate proof acquisition loads only a non-caller-substitutable deployment
   attestation; a distinct locked proof UID owns the service-private no-config
-  Gitdir, while exact Git/HTTPS-helper/key/authority/CA/service files and the
-  descriptor-anchored fork/fchdir/execve boundary remain bound through every
-  command.
+  `0700` Gitdir beneath an unchanged gate-searchable/non-writable `0710`
+  acquisition root, while exact Git/HTTPS-helper/key/authority/CA/service files
+  and the descriptor-anchored fork/fchdir/execve boundary remain bound through
+  every command. The complete bound-file matrix is checked both pre-command and
+  post-command/pre-parse with byte-identical same-path inode replacements,
+  no-drift controls, deterministic barriers, and launch/parse/reduction counts;
+  post-command drift discards captured output.
+- A real service-created/bound/listening Unix-stream control, with no socketpair,
+  inherited listener, launchd activation, or mocked credentials, causally proves
+  both reciprocal connected-socket peer UID checks. Both request and response
+  matrices cover version, phase/type, canonical encoding/duplicate keys, exact
+  fields, pre-body length, forbidden request authority keys, connection-bound
+  session ID, and consumed sequence. Old-session bytes on a new connection and
+  duplicate consumed sequence on the original connection deny before proof/Git
+  work, and removing only the corresponding guard makes that case RED.
 - A privileged macOS integration proves a deliberately informed gate-UID writer
-  cannot create, replace, chmod, or delete inside the proof-owned Gitdir; this
+  cannot create, atomically replace, or unlink Gitdir entries or `chmod()` the
+  proof-owned Gitdir itself; its
+  non-vacuous negative first proves same-device gate-owned scratch operations,
+  valid absent/present targets, clear ACL/flags, writable mount, and expected
+  `EACCES`/`EPERM` control errors, then preserves the traversable parent, mode,
+  ACL, both UIDs, and peer checks. The root verifier independently
+  `fstat()`-matches a test-only Gitdir FD to the service-attested device/inode
+  and changes only that directory's owner with `fchown()` after the service
+  precheck; the FD is never passed to the gate. An injected entry mutation or
+  `chmod(Gitdir)` then succeeds and REDs the denied-write assertion independently
+  of later service rejection; proof-child completion is not required under the
+  flipped owner, kernel `ctime` is recorded as a consequence, and any
+  service-side observation restores only that owner as root cleanup before release. This
   boundary is test-infeasible in ordinary unprivileged CI and no mock or skip
   may close it.
 - One `poll_once()` capture serves discovery and all candidates, each reduction

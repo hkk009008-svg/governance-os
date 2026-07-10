@@ -51,8 +51,8 @@ Key directories:
 | `main` | `scripts/ci_smoke.py:100` | Runs the full smoke gate sequence. |
 | `run` | `scripts/check_coordination.py:346` | Validates mailbox event filenames, cursors, kinds, and coordination hygiene. |
 | `run` | `scripts/check_placeholders.py:103` | Scans for adoption-placeholder tokens outside the allowlist. |
-| `check_sha_refs` | `scripts/check_doc_claims.py:1703` | Reports stale or mismatched commit-SHA citations. |
-| `classify_sha_ref_baseline` | `scripts/check_doc_claims.py:1765` | Classifies SHA-reference drift as reviewed baseline or new/changed drift. |
+| `check_sha_refs` | `scripts/check_doc_claims.py:1706` | Reports stale or mismatched commit-SHA citations. |
+| `classify_sha_ref_baseline` | `scripts/check_doc_claims.py:1768` | Classifies SHA-reference drift as reviewed baseline or new/changed drift. |
 | `collect_monitor_state` | `scripts/mailbox_monitor.py:175` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
 | `build_guard` | `scripts/ledger_start_guard.py:133` | Enforces Pipeline-first startup for ledger-routed Codex seats. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |

@@ -18,7 +18,7 @@ TRANSFER-SETUP.md
 DECISIONS.md
 
 # CLAUDE/AGENTS harness docs (contain placeholder load-trigger references)
-CLAUDE.md
+# (CLAUDE.md was bound on 2026-07-10 and removed per the adoption workflow)
 AGENTS.md
 
 # Protocol docs (contain placeholder examples for directors/operators to fill)

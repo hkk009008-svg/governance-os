@@ -2593,14 +2593,23 @@ length-prefixed bytes plus the complete `EventStoreTarget`, tip OID, and tree
 OID. The gate process receives only a versioned length-framed canonical
 response; it never receives the proof path, repository descriptor, Git argv, or
 writable capability. The service retains `_ProofRepositoryHandle` for the one
-session. Immediately before each reduction the gate requests revalidation over
-that same session; the service independently resolves the retained proof ref,
-re-traverses the actual Git object graph, and returns a fresh canonical frame.
-The gate validates exact frame types/lengths and constant-time compares target,
-tip, tree, ordered bytes, and digest before parsing fresh event values. Thus a
-self-consistent digest over a caller-chosen subset cannot claim provenance from
-a real tip. The context sends one close frame and revokes the socket/session;
-the service closes and removes all private state. Remote capture never fetches
+session. After both sides authenticate the real connected-socket peer, the
+service issues a fresh connection-bound `session_id` that no caller selects or
+resumes. Every request and response carries that exact ID, literal protocol
+version, the one closed frame type valid for the current phase, and the next
+sequence number. Both directions require exact concrete field types, exact
+field sets, and byte-canonical encoding; duplicate/unknown fields and
+noncanonical encodings deny. The declared length is bounded before body read or
+allocation. Immediately before each reduction the gate requests revalidation
+over that same session; the service independently resolves the retained proof
+ref, re-traverses the actual Git object graph, and returns the next fresh
+canonical frame. The gate validates the response session/version/type/sequence,
+exact fields/length, and constant-time compares target, tip, tree, ordered
+bytes, and digest before parsing fresh event values. Thus a self-consistent
+digest over a caller-chosen subset cannot claim provenance from a real tip. EOF
+or close irrevocably revokes the connection-bound session; the context never
+reconnects or resumes and a repeated consumed sequence denies. The service
+closes and removes all private state. Remote capture never fetches
 into the input repository or calls the production remote store's syncing
 reader.
 
@@ -2638,9 +2647,11 @@ the canonical HTTPS event-store endpoint and literal
 acquisition; the
 root-owned `/Library/LaunchDaemons/com.pipeline.proof-acquirer.plist`; exact
 deployed Python interpreter and proof-service script; a fixed proof-owned Unix
-socket parent and socket path; a private proof-owned `0700` temporary root; the
-exact regular Git and deployed `git-remote-http[s]`/required exec-helper files;
-and one regular TLS CA bundle.
+socket parent and socket path; a proof-owned `0710` acquisition root whose exact
+gate group has search but no read/write authority; each service-created
+proof-owned `0700` Gitdir as a direct child of that root; the exact regular Git
+and deployed
+`git-remote-http[s]`/required exec-helper files; and one regular TLS CA bundle.
 The protected runtime attestation binds the source commit plus committed
 service-bundle/plist digests and requires the deployed plist to be
 byte-identical to
@@ -2671,11 +2682,24 @@ derives its endpoint/ref only from its independently loaded protected runtime;
 the trusted public store description must match that canonical target but
 cannot select it.
 
-The proof Gitdir is created descriptor-relative beneath the proof service's
-private root and manually prepared without `config`, `config.worktree`, or
-`commondir`. Only `proof_uid` owns the acquisition lifetime; the gate UID and
-all candidate/user processes receive neither path nor descriptor and have no
-mode/group/ACL authority to create, replace, chmod, or delete its entries.
+The proof Gitdir is created descriptor-relative as a direct child of the proof
+service's `0710` acquisition root and manually prepared as the proof-owned
+`0700` boundary without `config`, `config.worktree`, or `commondir`. There is no
+intervening `0700` component. The root's exact gate group has search only, so an
+informed gate process can `lstat()` the Gitdir but cannot enter it, create,
+atomically replace, or unlink entries, or `chmod()` the Gitdir itself. Production
+returns neither path nor descriptor. In the negative, after the service's
+pre-command owner/identity check, the root verifier uses its independently
+opened and retained test-only `harness_gitdir_fd`; `fstat()` must match its
+device/inode to the service-attested Gitdir before the verifier calls
+`fchown(harness_gitdir_fd, gate_uid, -1)`. That descriptor is never passed to the
+gate or exposed by the production service. The `0700` mode, empty ACL, group,
+both UIDs, memberships, parent, and all other controlled authority/fixture facts
+remain unchanged. Kernel-maintained `ctime` may advance as the mechanical
+consequence of `fchown()` and is recorded, not treated as a second injected
+input. The gate can still `lstat()` the same object and its newly acquired owner
+authority permits entry mutation or `chmod()` of the Gitdir without an earlier
+traversal denial.
 Before and after every command the service reopens and rechecks the runtime
 manifest, launchd plist, service/interpreter, Git executable, every required
 exec/transport helper, every registry key, authority manifest, CA file, the
@@ -2836,8 +2860,8 @@ before object writes, CAS, or key load. Exercise two repositories with matching
 commit OIDs and two event refs with matching tips; both replay attempts deny.
 Patch the production remote `RefEventStore._sync()` to fail and drive the real
 `poll_once()` acquisition/evaluation path; it must still capture through the
-proof-repository path and never call `_sync()`. The following exact selectors
-are mandatory:
+proof-repository path and never call `_sync()`. The following twenty-two exact
+selectors are mandatory:
 
 - `test_gate_evaluation_owns_acquisition_and_rejects_caller_snapshot`
 - `test_validation_rereads_actual_proof_ref_after_acquisition`
@@ -2851,6 +2875,7 @@ are mandatory:
 - `test_proof_repository_local_config_redirect_fails_closed`
 - `test_proof_repository_recheck_exec_race_uses_bound_descriptor`
 - `test_gate_uid_writer_cannot_mutate_proof_service_gitdir`
+- `test_proof_service_rejects_wrong_peers_malformed_frames_and_session_replay`
 - `test_poll_once_captures_once_for_two_candidates`
 - `test_each_candidate_reduction_reparses_fresh_events`
 - `test_public_merge_gate_evaluation_is_consistent_and_non_authorizing`
@@ -2893,7 +2918,7 @@ directory at the same pathname with an attacker bare repository before
 traversal and requires identity refusal. Adding a proof-repository alternate,
 graft, or shallow marker likewise fails closed.
 
-The next eight selectors close the focused Task-3E/3F review gaps without
+The next nine selectors close the focused Task-3E/3F/3G review gaps without
 reopening the two-ref CAS questions. The caller-runtime selector proves the
 public evaluator, `poll_once()`, CLI parser, and shell wrapper expose no
 Git/helper/manifest/proof-runtime/registry/bus/gate-seat/policy argument. It
@@ -2905,12 +2930,28 @@ as zero, equal gate/proof UIDs, mismatched real/effective UID, mode/group
 membership, and one Darwin extended-ACL tree-changing grant; every variant
 refuses before store, key, candidate, service connection, or repository access.
 
-The bound-file selector first completes runtime loading, pauses at the exact
-pre-command barrier, and then replaces one primary Git executable,
+The bound-file selector parameterizes every primary Git executable,
 `git-remote-http[s]`/exec helper, registry key, authority manifest, runtime
-manifest, launchd plist, deployed service/interpreter, or TLS CA file inside an
-unchanged directory. Every case refuses before command launch; removing only
-the corresponding lifetime recheck makes this selector RED. The local-metadata
+manifest, launchd plist, deployed service/interpreter, and TLS CA file across
+two exact phases. The pre-command case first completes runtime loading, pauses
+at the exact pre-command barrier, atomically installs a byte-identical file at
+the same lexical path and parent while preserving device, digest, UID/GID,
+mode, ACL, and executable disposition and changing only file-object/inode
+identity, then refuses before command launch. The post-command/pre-parse case
+passes the precheck, lets the honest descriptor-bound child exit zero and
+capture valid output, pauses before the complete postcheck and any parsing or
+reduction, performs the same one-inode replacement, and proves all captured
+status/stdout/stderr is discarded. Before either drift case, a no-drift control
+for that exact phase/file pair proves one honest child launch, zero exit, valid
+output, and successful parse/reduction. Each drift case proves deterministic
+barrier and replacement reachability without sleeps. With intact guards, the
+pre-command case records zero launches/parses/reductions and the post-command
+case records one launch but zero parses/reductions and no result or durable
+mutation. Removing only that file's precheck makes only its pre-command case RED
+because a child launches even if the postcheck later refuses; removing only its
+postcheck makes only its post-command/pre-parse case RED because captured output
+reaches parsing/reduction.
+The local-metadata
 selector independently adds only `config` with `core.sshCommand`, only `config`
 with `url.<base>.insteadOf`, only `config.worktree`, only `commondir`, and only
 `objects/info/http-alternates`; every case must fail before fetch/traversal
@@ -2923,19 +2964,73 @@ The gate-writer selector is a privileged macOS deployment integration, not a
 mock unit proof. It installs/uses distinct locked gate/proof accounts and the
 root-protected LaunchDaemon, deliberately reveals the service Gitdir pathname
 at the post-check barrier to a process running as `gate_uid`, and proves its
-create, replace, chmod, and delete attempts all fail while the service returns
-the unchanged canonical graph. The negative deployment keeps both manifest
-UIDs, account resolution, peer checks, and service process identities distinct
-and changes only the prepared Gitdir owner/mode/ACL so `gate_uid` can mutate it.
-It must prove the service and writer both reach the post-check barrier, the
-injected metadata write succeeds, and the selector becomes RED for the intended
-graph-integrity reason rather than an earlier loader denial. Ordinary
+create, atomic-replace, and unlink attempts inside the Gitdir plus `chmod()` of
+the Gitdir itself all fail while the service returns the unchanged canonical
+graph. The create target starts absent; the unlink and replace targets exist;
+and the replace source exists in a gate-owned writable staging directory on the
+same `st_dev`. Source/targets have clear ACLs and immutable flags, the mount is
+writable, and the gate writer first succeeds at equivalent real syscalls in a
+same-device gate-owned scratch directory. `access()` is not proof. The intended
+control denials are `EACCES` for entry operations and `EPERM` for
+`chmod(Gitdir)`; `ENOENT`, `ENOTDIR`, `EXDEV`, `EROFS`, a missing barrier, or a
+global sandbox denial cannot satisfy the selector. Before the flip, the writer
+must also successfully `lstat()` that direct-child Gitdir through the unchanged
+parent. The control and negative share the same
+gate-searchable/non-writable `0710` acquisition root, exact group memberships,
+`0700` Gitdir mode, empty ACL, manifest UIDs, account resolution, peer checks,
+and service identities. The root verifier independently opens and retains a
+test-only `harness_gitdir_fd`, proves its `fstat()` device/inode equals the
+service-attested Gitdir, and never gives that descriptor to the gate. After the
+service passes its pre-command owner/identity check, the verifier changes the
+sole controlled authority fact with `fchown(harness_gitdir_fd, gate_uid, -1)`.
+The resulting `ctime` advance is recorded as a kernel consequence, not a second
+injected input. The test must RED
+immediately at its denied-write assertion when any one injected entry mutation
+or `chmod(Gitdir)` succeeds; a later service postcheck may also fail closed but
+cannot be the negative's cause, and the negative does not require the proof
+child to complete after ownership changes. If the harness also records a
+service-side drift result, root first restores that same harness-held directory
+owner to `proof_uid` as cleanup before releasing the service. It must prove
+unchanged-parent traversal, service/writer barrier reachability, and no earlier
+loader or ancestor-search denial. Ordinary
 unprivileged CI cannot create the second UID or
 bootstrap the system LaunchDaemon, so this OS boundary is explicitly
 `test-infeasible` there. Unit mocks may cover frame and fail-closed logic but
 must never satisfy this selector or authorize Task-3 GO. The committed
 `scripts/verify_proof_acquirer_macos.py` emits the deployment evidence consumed
 by the integration node.
+
+The peer/frame/session selector launches the real proof-service entry point with
+a test protected runtime naming only a temporary socket path. The service
+itself creates, binds, listens on, and accepts an `AF_UNIX`/`SOCK_STREAM`
+socket; a socketpair, inherited or pre-bound listener, launchd socket
+activation, or mocked `getpeereid()` result is forbidden. The service checks
+the accepted client socket and the client checks the connected listener socket
+with real `getpeereid()` before frame processing. Its honest unprivileged
+control completes one acquire/revalidate/close session with the actual test UID
+as both expected peers; this code-path control does not replace the distinct-
+UID privileged selector.
+Change only the service's expected client UID to a different UID, then only the
+client's expected listener UID to a different UID; each case must reach its
+respective real `getpeereid()` comparison and deny, and becomes RED when only
+that comparison is removed.
+
+After peer authentication the service issues a fresh connection-bound
+`session_id`; no caller selects or resumes it. Every later request and response
+carries that exact ID, literal protocol version, a closed frame type valid for
+the current phase, and the next sequence number. Both directions require exact
+field types/sets and byte-canonical encoding and reject duplicate/unknown
+fields. The declared length is bounded before body read or allocation. EOF or
+close revokes the session, and a dropped context never reconnects.
+Parameterized client-to-service and service-to-client cases inject an unknown
+version, wrong type/phase, noncanonical encoding or duplicate key, one extra
+field, and oversized declared length. Client-to-service cases also inject each
+forbidden authority key separately: `url`, `ref`, `registry`, `bus`,
+`gate_seat`, `policy`, `helper`, and `git_command`. The reconnect case sends
+otherwise identical old-session bytes on a different socket; the replay case
+sends the same consumed sequence twice on the original socket. Each case proves
+both peer checks and its intended decoder/session boundary were reached and
+that no proof/Git operation occurred.
 
 The capture-count selector drives two candidates and asserts one service
 session/context entry plus the same acquired-state identity for discovery and
@@ -3072,9 +3167,22 @@ then remove exactly one of the public-input prohibition, proof-ref reread,
 mutable-event reparse, one-capture boundary, replacement-ref rejection,
 deployment-attestation load, exact executable/helper-file identity, local-
 config seal, descriptor-anchored launch, public-output boundary,
-CLI/environment replacement suppression, hostile-type rejection, proof-service
-peer/frame check, or ambient redirect scrub and require its named selector to
-RED. Run each
+CLI/environment replacement suppression, hostile-type rejection, or ambient
+redirect scrub and require its named selector to RED. For every bound file run
+both replacement phases: removal of only its pre-command recheck must RED only
+the before-launch case, while removal of only its post-command recheck must RED
+only the after-child/before-parse case and otherwise expose captured output.
+Restore that guard and rerun the exact phase/file node GREEN before the next
+mutation; after the complete matrix, rerun the full selector GREEN.
+Run the real self-listening peer/frame/session control, then independently
+remove only the service accepted-socket peer-UID check, client connected-socket
+peer-UID check, request or response version/type/canonical/exact-field check,
+pre-body length bound, connection-to-session binding, or consumed-sequence
+check; the corresponding parameter case must RED with connection/frame/session
+reachability and no proof/Git operation. Generic-extra and caller-authority
+cases may share the exact request-schema guard; they do not require a redundant
+authority-specific guard. Restore each guard and rerun the exact case GREEN
+before the next mutation. Run each
 local/remote positive apply control first, then inject
 only its named race or domain/capability mismatch and require the corresponding
 denial selector to RED if the event expected-old update, remote event
@@ -3088,8 +3196,18 @@ installation already complete, run:
 env -u GIT_INDEX_FILE PIPELINE_PROOF_INTEGRATION=1 .venv/bin/python -m pytest tests/integration/test_proof_acquisition_macos.py::test_gate_uid_writer_cannot_mutate_proof_service_gitdir -q
 ```
 
-Expected: the distinct-UID control passes; changing only the deployment so the
-gate owns the Gitdir makes the selector RED. Preserve the verifier's committed
+Expected: the distinct-UID control passes under the shared traversable-parent
+topology and the gate writer can `lstat()` the direct-child Gitdir. After the
+same-device scratch/target preconditions and intended `EACCES`/`EPERM` control
+denials pass, the root verifier `fstat()`-matches its independent test-only
+`harness_gitdir_fd` to the service-attested directory. After the service's
+pre-command owner/identity check, changing only that directory's owner from
+`proof_uid` to `gate_uid` via `fchown(harness_gitdir_fd, ...)` makes an injected entry
+mutation or `chmod(Gitdir)` succeed and REDs the selector at the denied-write
+assertion, independently of the service's later fail-closed postcheck and
+without requiring the proof child to complete under the changed owner. Any
+optional service observation restores the same held directory owner to
+`proof_uid` as root cleanup before release. Preserve the verifier's committed
 `logs/proof-acquisition-isolation-pipeline-local-authority-2026-07-10.json`
 evidence path in the Task-3 handoff. Without this run, report the exact
 `test-infeasible` deployment precondition and do not request Task-3 GO.
