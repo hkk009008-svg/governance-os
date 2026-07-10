@@ -1,0 +1,42 @@
+{
+  "id": "director2-control-plane-authority-foundation-identity-preflight",
+  "wave": 2,
+  "cycle": "control-plane-authority-foundation-2026-07-10",
+  "owner": "director2",
+  "packet_type": "director-preflight",
+  "row_ids": [
+    "control-plane-authority-task3-preflight"
+  ],
+  "allowed_paths": [
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "scripts/codex_protocol_model.py",
+    "scripts/continuation_readiness.py",
+    ".codex/hooks/update-state.sh",
+    ".codex/hooks/session-smoke.sh",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start from Pipeline, run the director2 Wave-2 start guard and seat status, read this route, then perform only a bounded read-only design/write-set preflight for implementation-plan Task 3.",
+    "Grep every infer_runtime_env, runtime identity, CODEX_SEAT, CODEX_AGENT_ROLE, and mutation-hook caller; report the complete caller matrix and whether Task 3's named files and interfaces are sufficient.",
+    "Own design/interface/write-set sufficiency: identify any caller or sibling surface that would change which files Task 3 must touch, plus the exact mismatch cases and acceptance tests the next route must preserve.",
+    "Send one concise coordination report to coordinator with clear/contradiction disposition and citations; do not edit code, duplicate Pair-A implementation, issue Operator GO, consume coordinator mail, or take a user-gated side effect."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "scripts/codex_protocol_model.py",
+    "scripts/continuation_readiness.py",
+    ".codex/hooks/update-state.sh",
+    ".codex/hooks/session-smoke.sh",
+    "tests/unit/"
+  ]
+}

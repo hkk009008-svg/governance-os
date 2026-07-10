@@ -1,0 +1,44 @@
+{
+  "id": "coord-control-plane-authority-foundation-join",
+  "wave": 2,
+  "cycle": "control-plane-authority-foundation-2026-07-10",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "control-plane-authority-task1",
+    "control-plane-authority-task2",
+    "control-plane-authority-task3-preflight",
+    "control-plane-authority-task4-5-preflight"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-control-plane-authority-foundation-tasks1-2",
+    "operator-control-plane-authority-foundation-lanev",
+    "director2-control-plane-authority-foundation-identity-preflight",
+    "operator2-control-plane-authority-foundation-cutover-preflight"
+  ],
+  "acceptance": [
+    "Keep the cycle open until Director completes implementation-plan Tasks 1 and 2 as two commits, the verify-request cites one fresh implementer, spec reviewer, and quality reviewer for each task with dispositions, Operator returns GO for the exact implementation range, and both Pair-B preflight reports are reconciled.",
+    "Treat Operator NITS or FAIL, either preflight contradiction, a changed write set, a newer route, or invalid capacity/route state as a reroute condition rather than closeout.",
+    "Close only with capacity-board, route-validation, protocol-doctor, smoke, implementation-range, Operator-verdict, and Pair-B-preflight evidence.",
+    "The route commit may correct only the approved plan's base/ADR/reviewer/preflight contradictions found by independent semantic review; do not author production fixes, consume coordinator mail, create signed refs or keys, activate a remote signer, or publish remote refs as coordinator."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-coordinator-join.json",
+    "coordination/mailbox/sent/2026-07-10T00-59-43Z-coordinator-to-all-coordination.md",
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md"
+  ]
+}

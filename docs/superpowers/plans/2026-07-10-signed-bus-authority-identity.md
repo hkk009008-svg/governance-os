@@ -55,6 +55,7 @@
 **Owner:** Pair A director implementation; Pair A operator verification.
 
 **Files:**
+- Append: `DECISIONS.md`
 - Create: `coordination/authority.toml`
 - Create: `scripts/protocol_authority.py`
 - Create: `tests/unit/test_protocol_authority.py`
@@ -66,6 +67,10 @@
 - Produces immutable `HumanMailboxAuthority`, `SignedFactsAuthority`, and `AuthorityManifest` dataclasses.
 - Produces `load_authority(root: Path) -> AuthorityManifest`.
 - Produces `validate_authority_runtime(root: Path, manifest: AuthorityManifest) -> tuple[str, ...]` where an empty tuple is valid and each nonempty item is a stable error string.
+- Records ADR-012, `Signed-bus activation and channel authority split`, before
+  the manifest cites it. The ADR records the user-principal's activation
+  decision, the shadow-to-live staged cutover, the continuing Markdown
+  human-mailbox authority, and the separate external activation gate.
 - The initial committed state is `human_mailbox.authority="live"` and `signed_facts.authority="shadow"`; Task 6 performs the only transition to signed-facts `live`.
 
 - [ ] **Step 1: Write the failing manifest tests**
@@ -104,7 +109,15 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_author
 
 Expected: collection fails with `ModuleNotFoundError: No module named 'protocol_authority'`.
 
-- [ ] **Step 3: Add the initial authority manifest**
+- [ ] **Step 3: Append ADR-012 and add the initial authority manifest**
+
+Append `ADR-012: Signed-bus activation and channel authority split` without
+editing ADR-010. Record that the user-principal fired the signed-bus activation
+trigger on 2026-07-10, that Tasks 1-5 remain a shadow/preflight phase until the
+Task-6 executor token completes local cutover and postcheck, that Markdown
+remains authoritative for human coordination with unpinned coordinators, and
+that remote CI/merge-gate deployment remains separately gated. The ADR itself
+does not authorize key, ref, secret, or remote mutation.
 
 Create exactly:
 
@@ -123,7 +136,7 @@ events_ref = "refs/threeway/events"
 cursor_namespace = "refs/threeway/cursors/"
 
 [decision]
-adr = "DECISIONS.md#signed-bus-activation-and-channel-authority-split"
+adr = "DECISIONS.md#adr-012-signed-bus-activation-and-channel-authority-split"
 activated_by = "user-principal"
 activation_date = "2026-07-10"
 ```
@@ -182,9 +195,9 @@ the missing-ref assertion fails, restore it, and rerun the suite to GREEN.
 - [ ] **Step 6: Review and commit Task 1**
 
 ```bash
-env -u GIT_INDEX_FILE git add -- coordination/authority.toml scripts/protocol_authority.py tests/unit/test_protocol_authority.py tests/unit/test_imports_smoke.py
+env -u GIT_INDEX_FILE git add -- DECISIONS.md coordination/authority.toml scripts/protocol_authority.py tests/unit/test_protocol_authority.py tests/unit/test_imports_smoke.py
 env -u GIT_INDEX_FILE git diff --cached --check
-env -u GIT_INDEX_FILE git commit -m "feat(protocol): add explicit channel authority model" -- coordination/authority.toml scripts/protocol_authority.py tests/unit/test_protocol_authority.py tests/unit/test_imports_smoke.py
+env -u GIT_INDEX_FILE git commit -m "feat(protocol): add explicit channel authority model" -- DECISIONS.md coordination/authority.toml scripts/protocol_authority.py tests/unit/test_protocol_authority.py tests/unit/test_imports_smoke.py
 ```
 
 ---
@@ -803,7 +816,6 @@ executor token.
 **Owner:** Pair A director docs/model sync; Pair A operator final verification.
 
 **Files:**
-- Append: `DECISIONS.md`
 - Modify: `ARCHITECTURE.md`
 - Modify: `coordination/README.md`
 - Modify: `docs/protocol/codex/continuation.md`
@@ -821,7 +833,7 @@ executor token.
 - Modify: `tests/unit/test_protocol_doc_integrity.py`
 
 **Interfaces:**
-- Append an ADR titled `Signed-bus activation and channel authority split`.
+- Verify the Task-1 ADR titled `Signed-bus activation and channel authority split` remains true; do not append a duplicate.
 - Render one model-backed authority table into Codex continuation and agent README surfaces.
 - Document that signed facts are live, human mail remains Markdown, coordinators are human-mailbox unpinned, and protected-main release is deployment-controlled.
 
@@ -841,11 +853,11 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_prompt
 Expected: current docs still contain dormant/cutover-era claims and lack the
 new authority matrix.
 
-- [ ] **Step 3: Append the ADR and synchronize mirrors**
+- [ ] **Step 3: Verify the activation ADR and synchronize mirrors**
 
-Do not edit ADR-010. The new ADR records that the user-principal triggered bus
-activation on 2026-07-10, ends only the signed-bus deferral, and leaves the
-pre-push-hook and Antigravity decisions unchanged.
+Do not edit ADR-010 or the Task-1 ADR-012. Verify ADR-012 records that the
+user-principal triggered bus activation on 2026-07-10, ends only the signed-bus
+deferral, and leaves the pre-push-hook and Antigravity decisions unchanged.
 
 Update ARCHITECTURE facts only after verifying each named source. Describe the
 local signed-fact bus as live and remote CI/merge-gate activation as pending

@@ -1,0 +1,62 @@
+{
+  "id": "operator-control-plane-authority-foundation-lanev",
+  "wave": 2,
+  "cycle": "control-plane-authority-foundation-2026-07-10",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "control-plane-authority-task1",
+    "control-plane-authority-task2"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-control-plane-authority-foundation-tasks1-2"
+  ],
+  "acceptance": [
+    "Remain blocked until a fresh Director verify-request names the exact two-commit implementation range and evidence for Tasks 1 and 2.",
+    "Independently inspect the routed range and every changed file, confirm the verify-request cites a fresh implementer, spec reviewer, and quality reviewer for each task, rerun the plan's focused selectors, verify both prescribed non-vacuity flips, and adversarially test absent-ref, coordinator-unpinned, cursor-migration, and channel-separation behavior.",
+    "Confirm ADR-012 exists under the exact manifest anchor before the manifest cites it, initial signed-facts authority remains shadow, and no signing keys, refs/threeway refs, secrets, remote publication, locks, cursor consume, or unlisted files changed.",
+    "Emit exactly one verification-report GO, NITS, or FAIL bound to the implementation range; do not author production fixes or self-repair the Director diff."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "DECISIONS.md",
+    "coordination/authority.toml",
+    "scripts/protocol_authority.py",
+    "tests/unit/test_protocol_authority.py",
+    "tests/unit/test_imports_smoke.py",
+    "scripts/protocol_mailbox.py",
+    "scripts/status.py",
+    "scripts/check_coordination.py",
+    "scripts/mailbox_monitor.py",
+    "scripts/bus_unread.py",
+    "scripts/consume_bus.py",
+    "scripts/check_go_schema.py",
+    "coordination/bin/send-event",
+    "coordination/bin/consume-events",
+    ".agents/skills/four-seat-protocol/scripts/seat_status.py",
+    "tests/unit/test_protocol_mailbox.py",
+    "tests/unit/test_status.py",
+    "tests/unit/test_check_coordination.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_governance_hardening.py",
+    "tests/unit/test_threeway_activation_scripts.py",
+    "tests/unit/test_seat_status_all.py",
+    "tests/unit/test_check_go_schema.py",
+    "coordination/mailbox/seen/director.txt",
+    "coordination/mailbox/seen/director2.txt",
+    "coordination/mailbox/seen/operator.txt",
+    "coordination/mailbox/seen/operator2.txt",
+    "coordination/mailbox/seen/coordinator.txt",
+    "coordination/mailbox/seen/coordinator2.txt"
+  ]
+}
