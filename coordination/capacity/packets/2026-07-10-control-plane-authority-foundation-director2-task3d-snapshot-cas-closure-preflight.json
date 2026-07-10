@@ -31,12 +31,14 @@
     "Confirm the eight exact Task-3D selectors named in the plan cover forged-subset provenance, honest acquisition, local and remote positive apply controls, local and remote append races, cross-repository refusal, and atomic-unsupported refusal. Each denial varies one fact from a successful control and asserts RefEventStore.append plus sequential publication are unused. Confirm prior remote-lock, signed-fact, cursor, and publication-grammar closures remain intact and Tasks 4 onward retain SHA-256 8d44798592a4c87fc288f1cf25eff5c21e652574d0ed3a6076c4b72f8c14a6fd.",
     "Send one CLEAR or CONTRADICTION report to coordinator. Do not implement, issue Operator GO, consume mail, route work, or take a key/ref/cursor/lock/push/spend/pod/production side effect."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T13-22-51Z-director2-to-coordinator-coordination.md records CONTRADICTION at reviewed Pipeline commit b17bcf67be01ac145497f4f192d603d28254e0ae: EventSnapshot remained caller-substitutable and proof traversal did not disable Git replacement objects or ambient repository redirection. The same report confirms the local/remote two-ref CAS closure is sufficient."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T13-22-51Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
+  "target_commit": "b17bcf67be01ac145497f4f192d603d28254e0ae",
   "commit_range": null,
   "scope_files": [
     "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",

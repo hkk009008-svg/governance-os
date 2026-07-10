@@ -286,16 +286,41 @@ principals run only in `control-plane`, CI only in `ci-runner`, and merge-gate
 only in `protected-runner`; `candidate` and every unknown context are invalid.
 Candidate environments cannot sign or mutate.
 
-Merge-gate evaluation owns event acquisition; it never accepts caller-supplied
-event bytes or a caller-constructible snapshot. Both local and remote
-acquisition resolve the canonical event ref and copy only that ref into an
-isolated temporary bare proof repository retained for the evaluation lifetime.
-Validation resolves the retained proof ref and re-reads its actual tip, tree,
-and ordered event bytes before reduction. The opaque snapshot records the
-canonical source target, fetched tip/tree, ordered bytes, digest, and private
-proof capability. A digest over caller-chosen bytes is not provenance:
-validation independently traverses the Git object graph at the claimed tip and
-compares the actual tree and ordered bytes.
+Merge-gate evaluation owns event acquisition; no public function accepts or
+returns an `EventSnapshot`, event bytes, proof path/ref, or caller-provided
+acquisition capability. `evaluate_gate_read_only()` accepts the trusted event
+store, while the real runner's `poll_once()` enters the same private lexical
+acquisition context once so candidate discovery and every evaluation consume
+one captured tip. Both local and remote acquisition resolve the canonical event
+ref and copy only that ref into an isolated temporary bare proof repository
+retained for the evaluation lifetime. The proof path/ref never appears on a
+returned object. Before every proof command, the context rechecks the private
+repository's no-follow path/device/inode identity and rejects a rebound.
+The private acquired state retains only immutable ordered JSON bytes and their
+binding; candidate discovery discards its freshly parsed events, and each
+reduction reparses from those bytes so mutable `Event.payload` objects are never
+shared across the two phases.
+
+Every proof-object command uses a dedicated runner with explicit
+`git --no-replace-objects --no-lazy-fetch --literal-pathspecs
+--git-dir=<private-proof-repository>` arguments and an environment that inherits
+no ambient `GIT_*` values, then sets only the fixed proof settings named in the
+plan. The protected runner supplies an absolute Git executable before candidate
+input; its no-follow path/device/inode identity is rechecked for every command,
+and subprocess execution names that exact path rather than resolving it through
+ambient `PATH`. The same runner binds Git's absolute exec-path plus an exact
+ordered set of absolute, non-group/world-writable helper directories; each
+directory identity is rechecked, `--exec-path` is explicit, and child `PATH` is
+replaced with only that set. Remote transport/helpers therefore cannot resolve
+from caller-controlled `PATH`. Replacement refs, graft/shallow metadata, and
+untrusted alternates in the proof repository fail closed. Validation
+independently resolves the retained
+proof ref and re-reads its actual tip, tree, and ordered event bytes before
+reduction. A digest over caller-chosen bytes is not provenance: validation
+traverses the real Git object graph at the claimed tip with replacement objects
+disabled and compares the actual tree and ordered bytes. Adding one same-tip
+replacement ref or redirecting the ambient repository/object database cannot
+change which graph is trusted.
 Merge computation writes only to a quarantine object directory backed by the
 input repository as a read-only alternate. Evaluation records the no-follow
 Git-common-directory identity, co-located target/event authority, candidate,
