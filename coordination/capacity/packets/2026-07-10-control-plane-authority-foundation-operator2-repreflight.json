@@ -1,0 +1,59 @@
+{
+  "id": "operator2-control-plane-authority-foundation-activation-repreflight",
+  "wave": 2,
+  "cycle": "control-plane-authority-foundation-2026-07-10",
+  "owner": "operator2",
+  "packet_type": "operator-preflight",
+  "row_ids": [
+    "control-plane-authority-task4-6-repreflight"
+  ],
+  "allowed_paths": [
+    "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "threeway/activation.py",
+    "threeway/cutover.py",
+    "threeway/cursor_backfill.py",
+    "threeway/keys_bootstrap.py",
+    "threeway/keys.py",
+    "scripts/build_threeway_activation_manifest.py",
+    "scripts/execute_threeway_cutover.sh",
+    "scripts/protocol_capacity.py",
+    "scripts/bus_unread.py",
+    "coordination/threeway/keys/",
+    "coordination/threeway/activation/",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start from Pipeline, run the operator2 Wave-2 guard and seat status, read the revised route, then perform one focused read-only repreflight of revised Tasks 4-6C; do not repeat the already-closed environment inventory question.",
+    "Return CLEAR only if verified-exact resume is fully pinned: committed secret-free activation manifest, exact token-bound HEAD and manifest digest, complete managed-ref match with zero ref rewrites, partial/extra/mismatch/already-live refusal, exact pre-run snapshot rollback before live only, and one identical signed-cursor roster across initialize/snapshot/rollback/postcheck.",
+    "Confirm Task 5 binds the exact 11-principal production roster, legal empty/empty and complete/complete states only, explicit off-repo keystore loading and symlink-safe containment, atomic full-roster generation, byte/mtime-preserving no-op, and private-key absence.",
+    "Confirm Tasks 6A, 6B, and 6C are separate review gates: trust-root generation/public-key commit; secret-free measured manifest commit; then a distinct user-authorized ref/authority flip. No current route may authorize keys, refs, authority mutation, cutover, or remote activation.",
+    "Send one concise coordination report to coordinator with CLEAR or BLOCKED and citations; do not edit code/docs, generate keys, create refs, execute cutover, issue production GO, consume coordinator mail, route work, or take another user-gated side effect."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "threeway/activation.py",
+    "threeway/cutover.py",
+    "threeway/cursor_backfill.py",
+    "threeway/keys_bootstrap.py",
+    "threeway/keys.py",
+    "scripts/build_threeway_activation_manifest.py",
+    "scripts/execute_threeway_cutover.sh",
+    "scripts/protocol_capacity.py",
+    "scripts/bus_unread.py",
+    "coordination/threeway/keys/",
+    "coordination/threeway/activation/",
+    "tests/unit/"
+  ]
+}

@@ -13,6 +13,7 @@
   "allowed_paths": [
     "coordination/capacity/packets/",
     "coordination/mailbox/sent/",
+    "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
     "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
     "docs/HANDOFF-coordinator-*.md"
   ],
@@ -20,14 +21,14 @@
   "dependencies": [
     "director-control-plane-authority-foundation-tasks1-2",
     "operator-control-plane-authority-foundation-lanev",
-    "director2-control-plane-authority-foundation-identity-preflight",
-    "operator2-control-plane-authority-foundation-cutover-preflight"
+    "director2-control-plane-authority-foundation-identity-repreflight",
+    "operator2-control-plane-authority-foundation-activation-repreflight"
   ],
   "acceptance": [
-    "Keep the cycle open until Director completes implementation-plan Tasks 1 and 2 as two commits, the verify-request cites one fresh implementer, spec reviewer, and quality reviewer for each task with dispositions, Operator returns GO for the exact implementation range, and both Pair-B preflight reports are reconciled.",
-    "Treat Operator NITS or FAIL, either preflight contradiction, a changed write set, a newer route, or invalid capacity/route state as a reroute condition rather than closeout.",
-    "Close only with capacity-board, route-validation, protocol-doctor, smoke, implementation-range, Operator-verdict, and Pair-B-preflight evidence.",
-    "The route commit may correct only the approved plan's base/ADR/reviewer/preflight contradictions found by independent semantic review; do not author production fixes, consume coordinator mail, create signed refs or keys, activate a remote signer, or publish remote refs as coordinator."
+    "Treat Task 1 as frozen and accepted at e43acc245e2492883ca04b0d835268708ad0995d. Keep the cycle open until Director lands exactly one revised Task-2 commit directly on that commit, sends a fresh verify-request citing accepted Task-1 artifacts plus fresh Task-2 spec/quality review, and Operator returns GO for the range beginning at 78b48ed493899dd126de2d1764cbdbf022111dfd and ending at the Task-2 SHA named by that request.",
+    "Require fresh Director2 CLEAR for revised Tasks 3A-3D and fresh Operator2 CLEAR for revised Tasks 4-6C. Treat either contradiction, Operator NITS/FAIL, a changed write set, a newer route, or invalid capacity/route state as a bounded reroute condition.",
+    "Close only with capacity-board, route-validation, protocol-doctor, smoke, implementation-range, Operator-verdict, and both fresh Pair-B repreflight artifacts.",
+    "The selected cutover policy is verified-exact resume. This route revises planning and preflight only; it grants no key generation, ref mutation, authority flip, cursor consume, lock, push, spend, pod, production generation, target-checkout refresh, remote signer activation, runner deployment, or protected-main update."
   ],
   "done_evidence": [],
   "handoff_artifact": null,
@@ -38,7 +39,12 @@
   "commit_range": null,
   "scope_files": [
     "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-coordinator-join.json",
-    "coordination/mailbox/sent/2026-07-10T00-59-43Z-coordinator-to-all-coordination.md",
-    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md"
+    "coordination/mailbox/sent/2026-07-10T02-42-37Z-coordinator-to-all-coordination.md",
+    "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director-tasks1-2.json",
+    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-operator-lanev.json",
+    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-director2-repreflight.json",
+    "coordination/capacity/packets/2026-07-10-control-plane-authority-foundation-operator2-repreflight.json"
   ]
 }

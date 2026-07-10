@@ -16,8 +16,8 @@
     "director-control-plane-authority-foundation-tasks1-2"
   ],
   "acceptance": [
-    "Remain blocked until a fresh Director verify-request names the exact two-commit implementation range and evidence for Tasks 1 and 2.",
-    "Independently inspect the routed range and every changed file, confirm the verify-request cites a fresh implementer, spec reviewer, and quality reviewer for each task, rerun the plan's focused selectors, verify both prescribed non-vacuity flips, and adversarially test absent-ref, coordinator-unpinned, cursor-migration, and channel-separation behavior.",
+    "Remain blocked until a fresh Director verify-request names the exact range from 78b48ed493899dd126de2d1764cbdbf022111dfd through the new Task-2 commit and cites the accepted Task-1 artifacts plus the fresh Task-2 implementer/spec/quality artifacts.",
+    "Independently inspect the routed range and every changed file, confirm Task 1 remains exactly e43acc245e2492883ca04b0d835268708ad0995d and Task 2 is one direct child commit, rerun the revised focused selectors, verify every prescribed non-vacuity flip, and adversarially test absent-ref, coordinator-unpinned, cursor-migration, mirror parity, draft-handoff scope, terminal-footer exclusion, and channel separation.",
     "Confirm ADR-012 exists under the exact manifest anchor before the manifest cites it, initial signed-facts authority remains shadow, and no signing keys, refs/threeway refs, secrets, remote publication, locks, cursor consume, or unlisted files changed.",
     "Emit exactly one verification-report GO, NITS, or FAIL bound to the implementation range; do not author production fixes or self-repair the Director diff."
   ],
@@ -44,6 +44,9 @@
     "coordination/bin/send-event",
     "coordination/bin/consume-events",
     ".agents/skills/four-seat-protocol/scripts/seat_status.py",
+    ".claude/skills/four-seat-protocol/scripts/seat_status.py",
+    "scripts/draft_handoff.py",
+    "scripts/protocol_capacity.py",
     "tests/unit/test_protocol_mailbox.py",
     "tests/unit/test_status.py",
     "tests/unit/test_check_coordination.py",
@@ -52,6 +55,8 @@
     "tests/unit/test_threeway_activation_scripts.py",
     "tests/unit/test_seat_status_all.py",
     "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_draft_handoff.py",
+    "tests/unit/test_protocol_capacity.py",
     "coordination/mailbox/seen/director.txt",
     "coordination/mailbox/seen/director2.txt",
     "coordination/mailbox/seen/operator.txt",

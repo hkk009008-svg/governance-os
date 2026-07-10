@@ -20,6 +20,11 @@ synthesizing mixed seat authority.
 - Signed-fact cursor identities are independent from human-mailbox cursors.
 - All private signing keys remain outside git and outside candidate-executing
   environments.
+- Local cutover uses verified-exact resume. While signed-fact authority remains
+  `shadow`, a repeated invocation may only verify a complete managed-ref set
+  that exactly matches the committed activation manifest, perform no ref
+  rewrite, and finish the durable `shadow` to `live` marker. Partial, extra,
+  mismatched, changed-HEAD, or already-`live` state fails closed.
 
 ## Current Defects Addressed
 
@@ -192,6 +197,23 @@ the shadow gate, focused tests, full signed-bus suites, and operator GO.
 The flip creates or verifies the authoritative refs and records the manifest's
 live signed-fact state. There is no dual-write window.
 
+The cutover is bound to a committed, secret-free activation manifest under
+`coordination/threeway/activation/<activation_id>.toml`. The manifest pins the
+trusted code and trust-root commits, structured-source
+and projection digests, nonzero projected head, signing and signed-cursor
+rosters, managed-ref set, exact pre-run ref map, and rollback boundary. Both
+preflight and mutation require the same activation-manifest path, coordinator
+executor-token artifact, and side-effect ID. The executor token pins the exact
+HEAD containing the manifest plus its digest; the manifest never contains a
+self-referential commit or tree hash.
+
+Verified-exact resume exists only for the crash window after the complete
+managed-ref set is durable but before the committed authority marker is
+`live`. A resume revalidates every manifest field and ref OID without writing
+refs, then permits only the remaining authority-marker step. Any partial,
+extra, or mismatched ref state is a hard refusal. Once the authority marker is
+`live`, recovery requires a new user-authorized action.
+
 After the flip:
 
 - signed control and promotion emitters write only the signed ref bus;
@@ -231,6 +253,12 @@ Each token names one executor, target, allowed command class, preflight,
 stop-if condition, postcheck, observer seats, closeout owner, and non-goals.
 Generic unit authorization does not permit two executors to race the same
 target.
+
+The local trust-root bootstrap/public-key commit and the local authoritative
+ref cutover are always separate actions. The trust-root token cannot create or
+change refs or the authority marker. The cutover token treats the verified
+public registry and off-repo private keystore as read-only inputs and cannot
+generate keys.
 
 ## Verification
 
