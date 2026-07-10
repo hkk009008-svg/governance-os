@@ -124,7 +124,12 @@ contains the exact field while none of its parents does. Zero or multiple
 candidates fail closed. A committed numeric envelope is legacy only when its
 own unique introducing commit is a HEAD-ancestor, the marker-introduction
 commit is not an ancestor of that event-introduction commit, and current event
-bytes equal the introducing blob. Numeric mail introduced after the marker,
+bytes equal both the introducing blob and the blob at the exact lexical
+`HEAD:<path>`. The repo-relative Git path is derived without dereferencing
+symlinks; every component below the repository root and the leaf itself must be
+an unsymlinked regular path. Deletion or modification at HEAD followed by an
+uncommitted byte restoration, or a leaf/parent symlink rebound, therefore
+remains invalid. Numeric mail introduced after the marker,
 uncommitted numeric mail while the marker is active, a backdated addition, a
 renamed event, or byte-modified legacy mail fails closed. This permits lawful
 numeric mail whose introducing commit does not descend from the marker-
@@ -151,6 +156,13 @@ Every derived human-unread surface calls the same policy: status, both
 seat-status mirrors, `protocol_effectiveness_report.py`, both `update-state.sh`
 mirrors, mailbox monitor, and draft handoff. Coordinators and coordinator2 are
 all-scope aliases on every observational surface, with no cursor file.
+Effectiveness accepts only canonical parsed envelopes, surfaces invalid scan
+state, and carries typed `count`, `unavailable`, and `all-scope-unpinned`
+observations through JSON and summary rendering without coercing either sentinel
+to zero. Continuation readiness uses the human-reader roster only for human
+mail and `SIGNED_FACT_CURSOR_IDENTITIES` only for signed-bus probes.
+Coordinator2 automatic drafts use the canonical `HANDOFF-coordinator-*` token,
+and both coordinator aliases participate symmetrically in route-to-GO samples.
 `ledger_start_guard.py` and `protocol_capacity.py` remain intentionally
 canonical-`coordinator` route-authority surfaces; observational alias parity
 does not silently widen route ownership.
@@ -274,34 +286,46 @@ principals run only in `control-plane`, CI only in `ci-runner`, and merge-gate
 only in `protected-runner`; `candidate` and every unknown context are invalid.
 Candidate environments cannot sign or mutate.
 
-Merge-gate evaluation consumes an immutable, exact-OID event snapshot rather
-than a live `EventStore`. A remote snapshot is captured in an isolated
-temporary bare repository/ref namespace; it never calls the production remote
-store's syncing reader against the input repository. The snapshot records the
-canonical event ref, source OID, ordered immutable event bytes, and their
-digest. Merge computation writes only to a temporary object directory backed
-by the input repository as a read-only alternate. Evaluation records the
-no-follow Git-common-directory identity, target ref, exact event-store remote/
-ref target, candidate ID, snapshot OID/digest, deterministic merge
-materialization inputs, expected old SHA, and proposed merge SHA in one frozen
-result and leaves the input repository, refs, index, worktree, keys, and event
-store byte/OID-identical.
+Merge-gate evaluation owns event acquisition; it never accepts caller-supplied
+event bytes or a caller-constructible snapshot. Both local and remote
+acquisition resolve the canonical event ref and copy only that ref into an
+isolated temporary bare proof repository retained for the evaluation lifetime.
+Validation resolves the retained proof ref and re-reads its actual tip, tree,
+and ordered event bytes before reduction. The opaque snapshot records the
+canonical source target, fetched tip/tree, ordered bytes, digest, and private
+proof capability. A digest over caller-chosen bytes is not provenance:
+validation independently traverses the Git object graph at the claimed tip and
+compares the actual tree and ordered bytes.
+Merge computation writes only to a quarantine object directory backed by the
+input repository as a read-only alternate. Evaluation records the no-follow
+Git-common-directory identity, co-located target/event authority, candidate,
+tip/digest, deterministic materialization, expected old SHA, and proposed merge
+SHA in one frozen result and leaves durable state unchanged.
 
-Every merge authorization records the same repository/candidate/store binding
-as well as its exact effect target. Application accepts no free candidate or
-target arguments: it recomputes repository and event-store identity, freshly
-revalidates both executor tokens and appointment freshness, and requires the
-current event OID and target old SHA to match before any input-object write,
-CAS, or key access. It then deterministically recomputes in a quarantine object
-directory and compares the complete bound materialization before opening an
-input-object writer. Only an exact match may prepare the bound expected-old ref
-transaction, import the exact verified object-closure pack, and commit that
-prepared CAS; missing/mismatched material or stale transaction preparation
-leaves input objects and refs unchanged. Every target-ref update and completion-fact emission retains exact
-merge-gate signer and token requirements; `refs/heads/main` additionally
-requires an opaque protected-runner credential attestation. The current merge-
-gate path mutates refs and emits `merge_completed`, so it is not the token-free
-evaluator.
+Every merge authorization records that same binding and exact effect target.
+Application accepts no free candidate, target, or snapshot arguments. It
+recomputes repository/authority identity, freshly revalidates both executor
+tokens and appointment freshness, and verifies the complete quarantine result
+before any durable object import. Plain Git cannot atomically couple refs in
+different repositories, so cross-repository apply fails closed before private-
+key load, object import, or ref mutation. Co-located local refs publish through
+one prepared `update-ref --stdin` transaction: both expected-old updates reach `prepare`
+while verified quarantines are visible as alternates, then the exact combined
+closure is imported, then the already-prepared transaction commits. A stale ref
+therefore leaves the durable input object set unchanged. Remote authority binds
+exactly one normalized effective push endpoint for both refs; acquisition and
+publication address that endpoint directly rather than a possibly different
+fetch URL or multi-push remote alias. The verified merge commit and signed
+`merge_completed` event commit publish in one atomic two-ref update with exact
+expected-old leases on both refs. Zero/multiple or mismatched push endpoints
+fail closed. A concurrent revocation/event append or target change rejects the
+whole transaction; neither ref advances. Missing atomic capability, mismatched
+material, stale authority, or unsupported topology leaves durable objects and
+refs unchanged. Every
+target-ref update and completion-fact emission retains exact merge-gate signer
+and token requirements; `refs/heads/main` additionally requires an opaque
+protected-runner credential attestation. The current merge-gate path mutates
+refs and emits `merge_completed`, so it is not the token-free evaluator.
 
 ## Signed-Bus Activation Sequence
 

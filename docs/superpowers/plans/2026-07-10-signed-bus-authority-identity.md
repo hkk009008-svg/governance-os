@@ -563,6 +563,120 @@ all nine RED/GREEN/non-vacuity selectors, changed paths, and exclusions.
 
 ---
 
+### Task 2R: Repair The Specification-Review Gaps Additively
+
+**Owner:** Pair A director implementation as exactly one child of spec-failed
+commit `92d1fbcd1bb76ccb377d6bca1631374569696626`; Pair A operator performs one
+final cumulative Lane V only after fresh specification and quality reviews pass.
+
+**Files:**
+- Modify: `scripts/protocol_mailbox.py`
+- Modify: `scripts/protocol_effectiveness_report.py`
+- Modify: `scripts/continuation_readiness.py`
+- Modify: `scripts/draft_handoff.py`
+- Modify: `tests/unit/test_protocol_mailbox.py`
+- Modify: `tests/unit/test_check_coordination.py`
+- Modify: `tests/unit/test_protocol_effectiveness_report.py`
+- Modify: `tests/unit/test_codex_ledger_bridge.py`
+- Modify: `tests/unit/test_draft_handoff.py`
+- Modify only if changed implementation makes a current claim stale: `ARCHITECTURE.md`
+
+`scripts/latest_handoff.py` remains unchanged. Its canonical discovery mapping
+is the reference behavior; the draft producer must match it.
+
+**Interfaces:**
+- Numeric legacy acceptance additionally requires
+  `_current_head_blob_matches_exact_path(root, path, current_bytes)`. That
+  helper derives the repo-relative mailbox path lexically without `resolve()`,
+  rejects a symlink at the leaf or any component below the repository root,
+  requires a regular file at that exact path, and proves
+  `_blob(root, "HEAD", lexical_rel) == current_bytes`. Acceptance separately
+  retains `introducing_blob == current_bytes`. A missing `HEAD:<path>`,
+  committed modification, deletion plus uncommitted restoration, symlink/path
+  rebound, or Git read failure rejects.
+- `recent_mailbox_events(root, limit)` uses
+  `protocol_mailbox.scan_mailbox_events()` and returns canonical envelope/text
+  pairs plus the invalid `(path, reason)` scan state. Invalid envelopes never
+  enter classification or route-to-GO samples, and the report preserves their
+  visible invalid count/reasons.
+- Produces frozen `MailboxUnreadObservation(state, count, event_names, detail)`
+  where `state` is exactly `count`, `unavailable`, or `all-scope-unpinned`;
+  `count` is an integer only for `count`. `mailbox_cursor_unread()` and
+  `classify_seat_utilization()` exchange this type, and JSON/Markdown rendering
+  never coerces either sentinel to zero.
+- `continuation_readiness.py` loops
+  `HUMAN_MAILBOX_CURSOR_OWNERS` plus `HUMAN_MAILBOX_ALL_SCOPE_READERS` for human
+  mail and loops `SIGNED_FACT_CURSOR_IDENTITIES` for ref-bus probes. No cursor
+  path consumes the deprecated addressability alias `RECEIVING_SEATS`.
+- `default_output_path(root, "coordinator2")` returns a filename beginning
+  `HANDOFF-coordinator-`; pair-seat tokens remain unchanged.
+- `route_to_go_seconds()` recognizes the frozen typed coordinator roster, so
+  `coordinator` and `coordinator2` request/route samples are symmetric without
+  widening canonical route ownership.
+
+- [ ] **Step 1: Write the six specification-review regressions**
+
+Run each exact node alone to causal RED, then use its named one-fact flip after
+GREEN:
+
+| Finding | Exact pytest node | Initial RED | One-fact flip |
+|---|---|---|---|
+| 10 | `tests/unit/test_protocol_mailbox.py::test_numeric_legacy_requires_head_blob_at_exact_lexical_mailbox_path` | an exact-byte restoration after HEAD deletion/modification or a leaf/parent symlink rebound passes | bypass `_current_head_blob_matches_exact_path()` and retain only introducing-blob equality |
+| 11 | `tests/unit/test_protocol_effectiveness_report.py::test_recent_mailbox_events_uses_canonical_parser_and_surfaces_invalid_scan` | malformed H1/When/From/kind/envelope affects classification | reinsert one invalid envelope into the returned canonical event pairs |
+| 12 | `tests/unit/test_protocol_effectiveness_report.py::test_generate_report_preserves_unavailable_and_all_scope_unread` | missing/corrupt or coordinator state renders `unread=0` | coerce one sentinel observation to integer zero |
+| 13 | `tests/unit/test_codex_ledger_bridge.py::test_readiness_uses_explicit_human_and_signed_fact_identity_rosters` | readiness probes signed cursors through `RECEIVING_SEATS` | substitute the deprecated alias for `SIGNED_FACT_CURSOR_IDENTITIES` |
+| 14 | `tests/unit/test_draft_handoff.py::test_default_output_path_canonicalizes_coordinator_alias` | coordinator2 automatic output is undiscoverable | render the concrete coordinator2 token in the filename |
+| 15 | `tests/unit/test_protocol_effectiveness_report.py::test_route_to_go_seconds_supports_both_coordinator_aliases` | equivalent coordinator2 route has no sample | hard-code only `coordinator` in request pairing |
+
+- [ ] **Step 2: Prove the review-fix nodes RED**
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_mailbox.py::test_numeric_legacy_requires_head_blob_at_exact_lexical_mailbox_path tests/unit/test_protocol_effectiveness_report.py::test_recent_mailbox_events_uses_canonical_parser_and_surfaces_invalid_scan tests/unit/test_protocol_effectiveness_report.py::test_generate_report_preserves_unavailable_and_all_scope_unread tests/unit/test_codex_ledger_bridge.py::test_readiness_uses_explicit_human_and_signed_fact_identity_rosters tests/unit/test_draft_handoff.py::test_default_output_path_canonicalizes_coordinator_alias tests/unit/test_protocol_effectiveness_report.py::test_route_to_go_seconds_supports_both_coordinator_aliases -q
+```
+
+Expected: six failures reproduce the six source-confirmed specification gaps at
+`92d1fbc`.
+
+- [ ] **Step 3: Implement the minimum review fix**
+
+Add the no-follow lexical-path/regular-file/HEAD-blob guard before legacy
+acceptance; never derive the Git path through `Path.resolve()`. Replace
+effectiveness raw filename/text scanning with canonical envelopes while
+retaining invalid scan state. Thread `MailboxUnreadObservation` through
+utilization and rendering. Split continuation-readiness loops by explicit human
+and signed-fact policy, canonicalize only coordinator draft filenames, and use
+the typed coordinator roster for route-to-GO pairing. Do not change canonical
+discovery or route authority.
+
+- [ ] **Step 4: Prove GREEN, all fifteen flips, and full focus**
+
+Run the six nodes above, all nine Task-2 nodes, and the focused Task-2 suite.
+Independently apply each row's one-fact flip, require only its named selector to
+RED for the intended reason, restore, and rerun final GREEN.
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_authority.py tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_check_coordination.py tests/unit/test_coordination_tooling.py tests/unit/test_governance_hardening.py tests/unit/test_threeway_activation_scripts.py tests/unit/test_seat_status_all.py tests/unit/test_check_go_schema.py tests/unit/test_draft_handoff.py tests/unit/test_protocol_capacity.py tests/unit/test_protocol_effectiveness_report.py tests/unit/test_codex_ledger_bridge.py -q
+```
+
+- [ ] **Step 5: Commit one immutable review-fix child and review it**
+
+Confirm the exact topology is
+`78b48ed -> e43acc2 -> 205f077 -> 92d1fbc -> <review-fix-child>` and the final
+child's sole parent is `92d1fbc`. Do not amend, reset, rebase, squash, or add a
+second routed child.
+
+```bash
+env -u GIT_INDEX_FILE git commit -m "fix(protocol): close mailbox spec-review gaps"
+```
+
+Run fresh specification review over `92d1fbc..<review-fix-child>`. Only after it
+passes, run fresh code-quality review. Director then sends one Operator
+verify-request for `78b48ed..<review-fix-child>` covering all four cumulative
+implementation commits, all fifteen selectors/flips, exact paths, provenance,
+and exclusions.
+
+---
+
 ### Task 3A: Add The Typed Runtime Identity And Authorization Foundation
 
 **Owner:** Pair B director2 implementation in a separate worktree after Task 2; Pair B operator2 verification.
@@ -1864,6 +1978,7 @@ class RepositoryIdentity:
 class EventStoreTarget:
     repository: RepositoryIdentity
     remote: str | None
+    push_endpoint: str | None
     events_ref: str
     normalized_target: str
 
@@ -1872,14 +1987,27 @@ class EventStoreTarget:
 class EventSnapshot:
     event_store: EventStoreTarget
     tip_oid: str
+    tip_tree_oid: str
     event_json: tuple[bytes, ...]
     digest: str
+    # Private proof-repository/ref capability retained only by acquisition.
+    _proof_repository: Path
+    _proof_ref: str
 
-    @classmethod
-    def create(
-        cls, event_store: EventStoreTarget, tip_oid: str,
-        event_json: Sequence[bytes],
-    ) -> EventSnapshot: ...
+
+class SnapshotProvenanceError(ValueError): ...
+
+
+class RefTransactionDomainError(ValueError): ...
+
+
+@dataclass(frozen=True, slots=True)
+class RefTarget:
+    repository: RepositoryIdentity
+    remote: str | None
+    push_endpoint: str | None
+    ref: str
+    normalized_target: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -1894,8 +2022,7 @@ class MergeMaterialization:
 @dataclass(frozen=True, slots=True)
 class MergeGateBinding:
     candidate_id: str
-    repository: RepositoryIdentity
-    target_ref: str
+    target: RefTarget
     bus_id: str
     event_store: EventStoreTarget
     events_tip_oid: str
@@ -1903,6 +2030,16 @@ class MergeGateBinding:
     materialization: MergeMaterialization | None
     expected_old_sha: str | None
     proposed_merge_sha: str | None
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class PreparedEventAppend:
+    event_store: EventStoreTarget
+    expected_tip_oid: str
+    new_tip_oid: str
+    event_id: str
+    # Private quarantine-object capability retained only by preparation.
+    _quarantine_object_dir: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -1968,12 +2105,28 @@ def resolve_repository_identity(repo: Path) -> RepositoryIdentity: ...
 def describe_event_store(store: RefEventStore) -> EventStoreTarget: ...
 
 
+def resolve_ref_target(
+    repo: Path, *, ref: str, remote: str | None,
+) -> RefTarget: ...
+
+
+@contextmanager
 def capture_event_snapshot(
     store: RefEventStore, *, expected_tip_oid: str | None = None,
-) -> EventSnapshot: ...
+) -> Iterator[EventSnapshot]: ...
 
 
 def validate_event_snapshot(snapshot: EventSnapshot) -> tuple[Event, ...]: ...
+
+
+def prepare_append_at(
+    store: RefEventStore,
+    event: Event,
+    private_key,
+    *,
+    expected_tip_oid: str,
+    quarantine: Path,
+) -> PreparedEventAppend: ...
 
 
 def compute_merge_in_scratch(
@@ -1984,9 +2137,10 @@ def compute_merge_in_scratch(
 def materialize_and_cas_verified_merge(
     repo: Path,
     *,
-    target_ref: str,
+    target: RefTarget,
     expected_old_sha: str,
     materialization: MergeMaterialization,
+    completion_append: PreparedEventAppend,
 ) -> bool: ...
 
 
@@ -1997,7 +2151,7 @@ def evaluate_gate_read_only(
     repo: Path,
     registry_dir: Path,
     bus_id: str,
-    target_ref: str,
+    target: RefTarget,
     gate_seat: str = "merge-gate",
     policy: Policy | None = None,
 ) -> MergeGateEvaluation: ...
@@ -2015,27 +2169,41 @@ def apply_gate_evaluation(
 ```
 
 `EventSnapshot.event_json` contains immutable ordered bytes, not mutable
-`Event` objects. Direct construction is disabled. `EventSnapshot.create()`
-computes SHA-256 over length-prefixed event bytes plus the full
-`EventStoreTarget` and tip OID; `validate_event_snapshot()` recomputes and
-constant-time compares that digest before parsing fresh event values.
-`RefEventStore.snapshot_at(tip_oid)` reads
-only that already-present fixed commit and never calls `_sync()`. Local capture
-uses the exact current ref OID. Remote capture uses a disposable temporary bare
-repository/ref namespace, then calls `snapshot_at()` there; it never fetches
-into the input repository or calls the production remote store's public
-syncing readers. `capture_event_snapshot()` accepts the production
-`RefEventStore`, but reads only its immutable public descriptor; the remote
-runner's real `poll_once()` calls capture once and both
-`collect_candidate_ids()` and evaluation consume that snapshot, never a live
-store.
+`Event` objects. There is no public constructor, factory, `replace()` path, or
+caller-supplied target/tip/byte path. `capture_event_snapshot()` alone creates
+the opaque value and owns its lifetime. For both local and remote stores it
+resolves the canonical event ref, copies only that ref into a disposable bare
+proof repository, records the actual fetched tip and tree OIDs, traverses that
+tree for the canonical ordered event bytes, and computes SHA-256 over
+length-prefixed bytes plus the complete `EventStoreTarget`, tip OID, and tree
+OID. The proof repository remains live until the context manager exits.
+`validate_event_snapshot()` independently resolves the retained proof ref,
+re-traverses its actual Git object graph, and constant-time compares target,
+tip, tree, ordered bytes, and digest before parsing fresh event values. Thus a
+self-consistent digest over a caller-chosen subset cannot claim provenance from
+a real tip. Remote capture never fetches into the input repository or calls the
+production remote store's syncing reader. The runner's real `poll_once()`
+captures once and both `collect_candidate_ids()` and evaluation consume that
+snapshot, never a live store.
 
 `resolve_repository_identity()` resolves the no-follow real Git common
-directory and records its absolute path plus device/inode. `describe_event_store()`
-records that identity, exact remote (or local), canonical event ref, and
-normalized event target. Evaluation binds both descriptors. Apply recomputes
-them from its free `repo` and `store` objects and rejects any two-repository,
-two-remote, or two-ref replay before token, key, object, CAS, or append access.
+directory and records its absolute path plus device/inode.
+`describe_event_store()` and `resolve_ref_target()` record repository identity,
+exact remote argument, canonical ref, normalized effect target, and the unique
+effective push endpoint (or local). A configured remote name resolves all of
+its push URLs, normalizes them, and fails closed unless exactly one value is
+configured; an explicit URL/path remote argument is itself the one bound
+endpoint. Resolution never substitutes a configured fetch URL. Remote snapshot
+acquisition fetches the canonical event ref directly from that bound push
+endpoint, and publication addresses the same endpoint rather than the symbolic
+remote name. A local event ref and target ref share a transaction domain only
+when their repository identities match. Remote refs share a domain only when
+both descriptors are remote and their single normalized push endpoints match;
+mixed local/remote, different-endpoint, or multiple-push-URL bindings fail
+closed. Evaluation binds both descriptors. Apply recomputes them from its
+`repo` and `store` handles and raises `RefTransactionDomainError` for a rebound
+or cross-repository domain before private-key load, quarantine/object import,
+or any ref transaction.
 
 - `authorize_principal_operation()` passes the complete token fields above to
   `require_side_effect_executor_token()` for every token-required operation;
@@ -2061,9 +2229,10 @@ two-remote, or two-ref replay before token, key, object, CAS, or append access.
   requires a `MERGEABLE` result with non-null SHAs; both authorizations'
   `merge_binding` exactly equal the evaluation binding; operations are exactly
   `update-target-ref` and `emit-merge-completed`; and their effect targets equal
-  the binding's target ref and normalized event target respectively. It
-  recomputes the authoritative event tip without fetch/ref update and requires both that tip
-  and the target old SHA still match before object writes, key load, or CAS.
+  `binding.target.ref` and the normalized event target respectively. It
+  recomputes the authoritative event tip without fetch/ref update and requires
+  both that tip and the target old SHA still match before object writes, key
+  load, or CAS.
   Immediately before materialization it revalidates each token from the stored
   `PrincipalTokenRevalidation`: discovers newer appointments fresh, rechecks
   supersession/current HEAD, recomputes target-satisfied and standardized stop/
@@ -2073,20 +2242,28 @@ two-remote, or two-ref replay before token, key, object, CAS, or append access.
   alternates. It compares the recomputed tree and commit OIDs to the complete
   frozen materialization before opening an input-object writer. Missing inputs
   or any mismatch deletes the quarantine and leaves input object names/OIDs,
-  refs, keys, and facts unchanged. On an exact match, the helper starts one
-  `git update-ref --stdin` transaction for the bound target and expected old
-  SHA, reaches `prepare` while the verified quarantine is visible as an
-  alternate, and stops without importing if preparation detects stale ref
-  state. Only after successful preparation does it generate the exact
-  `commit ^base ^branch` object-closure pack from quarantine, import that pack
-  through `git index-pack`, and commit the already-prepared ref transaction.
-  An import failure aborts the transaction. Thus every semantic denial,
-  materialization mismatch, and stale-ref path occurs before input-object
-  import; only the content-addressed closure already matched to the binding is
-  materialized. Apply loads the merge-gate key only after the completion-fact
-  authorization. A
-  second apply fails on expected-old mismatch; a changed event tip or newly
-  superseding appointment fails as stale evaluation/authority.
+  refs, keys, and facts unchanged. After both authorizations pass, apply loads
+  the merge-gate key and calls `prepare_append_at()` to build and sign the exact
+  bound `merge_completed` event commit in quarantine as a child of
+  `binding.events_tip_oid`. Preparation never retries, fetches, mutates the
+  event store, or rebases onto a newer tip.
+
+  For a local transaction domain, the helper exposes the verified merge and
+  event quarantines as read-only alternates, opens one `git update-ref --stdin`
+  transaction, queues expected-old updates for both refs, and reaches successful
+  `prepare` before any durable input-object import. Only then does it import the
+  exact combined verified closure and commit the already-prepared transaction;
+  import failure aborts it. A stale target or event ref therefore rejects before
+  the input object set changes. For a remote transaction domain, it publishes
+  the verified merge commit and prepared event commit directly to the bound
+  unique push endpoint in one `git push --atomic` two-ref update with exact old-
+  OID leases for both refs. Unsupported atomic publication has no sequential or
+  non-atomic fallback. A concurrent event append or target change at any point
+  after the preliminary checks therefore rejects the final two-ref transaction
+  and neither authority ref advances. There is no later retrying
+  `store.append()` call. A second apply fails on expected-old mismatch; a
+  changed event tip or newly superseding appointment fails as stale evaluation/
+  authority.
   Current mutating `run_gate()` cannot serve as the pure evaluator.
 - Candidate execution context is invalid before key, credential, ref, or fact
   access. Runner isolation and absence of service keys/credentials remain the
@@ -2100,8 +2277,8 @@ candidate and unknown-context denial, missing
 executor token for protected-main update, and zero fact/ref/main mutation on
 denial.
 
-Cover the signer map, token-required set, credential-required target set, local and
-remote fact targets, pure evaluation no-mutation, every target-ref update,
+Cover the signer map, token-required set, credential-required target set, local
+and remote fact targets, pure evaluation no-mutation, every target-ref update,
 `merge_completed`, and doctor registration. Route the pure-evaluation fixture
 through current mutating `run_gate()` as a RED proving it is not yet safe.
 Reject a candidate/target/repository/event-ref rebound, either authorization
@@ -2111,19 +2288,47 @@ before object writes, CAS, or key load. Exercise two repositories with matching
 commit OIDs and two event refs with matching tips; both replay attempts deny.
 Patch the production remote `RefEventStore._sync()` to fail and drive the real
 `poll_once()` acquisition/evaluation path; it must still capture through the
-scratch descriptor path and never call `_sync()`. Construct a snapshot through
-its factory, then independently flip bytes, target, ref, tip, and digest and
-require evaluator validation to deny. Snapshot refs, object names/OIDs, index,
-worktree, key bytes, and event bytes before/after a MERGEABLE evaluation and
-require exact equality. The current `run_gate()` fixture must change at least
-one target/object/event snapshot as the non-vacuity RED.
+proof-repository path and never call `_sync()`. The following exact selectors
+are mandatory:
+
+- `test_snapshot_rejects_valid_digest_subset_not_reachable_from_claimed_tip`
+- `test_snapshot_accepts_same_bytes_when_acquired_at_actual_tip`
+- `test_local_append_between_check_and_prepare_aborts_both_ref_updates`
+- `test_local_two_ref_apply_succeeds_without_injected_race`
+- `test_remote_append_between_check_and_atomic_push_rejects_both_leases`
+- `test_remote_atomic_two_ref_apply_succeeds_without_injected_race`
+- `test_cross_repository_event_and_target_authorities_refuse_before_mutation`
+- `test_remote_atomic_unsupported_has_no_non_atomic_fallback`
+
+The first selector corrupts the opaque snapshot to pair a real claimed tip with
+a caller-selected subset and a valid recomputed self-digest; independent proof-
+repository traversal must reject it. The second proves the positive acquisition
+path is non-vacuous. Independently corrupt target, proof ref, tip, tree, bytes,
+and digest and require validation to deny. Snapshot refs, object names/OIDs,
+index, worktree, key bytes, and event bytes before/after a MERGEABLE evaluation
+and require exact equality. The current `run_gate()` fixture must change at
+least one target/object/event snapshot as the non-vacuity RED.
+
+The two positive apply selectors are load-bearing controls. The local baseline
+uses co-located refs with no injected append and proves both refs advance once;
+the local race and cross-repository denial each vary exactly one fact from it.
+The remote baseline enables atomic support at one unique push endpoint with no
+injected append and proves exactly one atomic two-ref publication advances both
+refs; the remote race and atomic-unsupported denial each vary exactly one fact
+from it. All four denial selectors assert the durable input object-name/OID set
+and both refs remain unchanged. Every apply selector asserts
+`RefEventStore.append()` and every sequential-publish helper are never called.
 Authorize both operations, then commit a superseding appointment before apply;
 fresh token revalidation must deny with byte/OID-identical repository, event
 store, key probes, and target. On the positive apply path, require deterministic
 materialization of the exact bound tree/commit before CAS; missing base/branch
-  or a flipped expected tree/commit denies with byte/OID-identical input object
-  names, no CAS, and no fact emission. Simulate a target-ref change immediately
-  before transaction `prepare`; it must reject before pack generation/import.
+or a flipped expected tree/commit denies with byte/OID-identical input object
+names, no CAS, and no fact emission. Simulate target and event-ref races at
+transaction preparation/atomic publication and require both refs plus the input
+object set to remain unchanged. Reject cross-repository, mixed-local/remote,
+different-endpoint, fetch/push-substitution, and zero/multiple-push-endpoint
+domains before key load, object import, or ref mutation. Prove an atomic-
+capability rejection cannot call any sequential-publish fallback.
 For each token-required operation, vary command class, expected HEAD,
 appointment, newer appointment, satisfied target, failed preflight, and stop
 predicate. A non-main target needs no protected credential; `refs/heads/main`
@@ -2148,9 +2353,12 @@ token, and target `refs/heads/main` also requires the credential attestation.
 Capture remote events only through the disposable snapshot path, collect
 candidates from snapshot bytes, and pass the frozen `MergeGateBinding` through
 evaluation and both authorized mutations without reconstructing it from free
-arguments. All service emitters
-bind explicit local versus remote targets. Add the new suite to the
-model-derived doctor gate in the same commit.
+arguments. Resolve and bind exactly one effective push endpoint for each remote
+authority, acquire from and publish directly to it, and refuse zero/multiple or
+mismatched endpoints. Prepare both local ref updates before combined closure
+import; use one atomic two-ref publication remotely. All service emitters bind
+explicit local versus remote targets. Add the new suite to the model-derived
+doctor gate in the same commit.
 
 - [ ] **Step 4: Prove GREEN and non-vacuity**
 
@@ -2162,7 +2370,11 @@ Swap `ci` to `merge-gate` in one allowed-operation fixture and confirm the
 assertion fails. Then mark one emitter token-free and route pure evaluation
 through current mutating `run_gate()`; both selectors must fail. Independently
 flip candidate ID, target ref, event tip, and one authorization binding; each
-must RED before restoration. Restore and rerun GREEN.
+must RED before restoration. Run each local/remote positive apply control first,
+then inject only its named race or domain/capability mismatch and require the
+corresponding denial selector to RED if the event expected-old update, remote
+event lease/refspec, prepare-before-import boundary, or no-fallback guard is
+removed. Restore and rerun GREEN.
 
 - [ ] **Step 5: Review and commit Task 3D**
 

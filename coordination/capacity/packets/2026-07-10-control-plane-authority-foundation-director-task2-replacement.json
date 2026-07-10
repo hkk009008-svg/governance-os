@@ -60,13 +60,16 @@
     "After implementation, obtain fresh Task-2 specification and code-quality reviews of 205f077..<corrective-child>. Then send one verify-request naming the exact cumulative range 78b48ed493899dd126de2d1764cbdbf022111dfd..<corrective-child>, accepted Task-1 artifacts, failed-candidate provenance, corrective artifacts, selectors, changed paths, and exclusions.",
     "Keep signed-facts authority shadow. No key/ref/secret creation, authority flip, remote activation/publication, cursor consume, lock, target-checkout refresh, push, spend, pod, production generation, or changes outside the listed paths are authorized."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
-  "next_recipient": "operator",
-  "status": "active",
+  "done_evidence": [
+    "Commit 92d1fbcd1bb76ccb377d6bca1631374569696626 is the sole direct child of failed candidate 205f077a23291496ea4b84c8de1f8acdfa2bd040 and preserves the accepted earlier topology.",
+    "coordination/mailbox/sent/2026-07-10T11-45-25Z-director-to-coordinator-coordination.md records BLOCKED / SPEC REVIEW ISSUES with six source-confirmed gaps. Verification not needed because specification review blocked before verify-request/Lane V."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T11-45-25Z-director-to-coordinator-coordination.md",
+  "next_recipient": "coordinator",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "target_commit": "92d1fbcd1bb76ccb377d6bca1631374569696626",
+  "commit_range": "205f077a23291496ea4b84c8de1f8acdfa2bd040..92d1fbcd1bb76ccb377d6bca1631374569696626",
   "scope_files": [
     "DECISIONS.md",
     "coordination/authority.toml",

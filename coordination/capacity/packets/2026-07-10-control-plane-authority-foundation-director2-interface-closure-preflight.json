@@ -47,12 +47,14 @@
     "Confirm CODEX_PUBLICATION_POLICY has the exact lowercase true/false grammar, Boolean defaults for every actor, deterministic empty/unknown/duplicate/conflict/widen handling, lowercase rendering, and effective-false denial before token or mutation callbacks.",
     "Confirm Tasks 3A-3D remain disjoint sequential commits with exact files, interfaces, RED/GREEN commands, and independent non-vacuity flips; Task 4 onward is unchanged. Send one CLEAR or CONTRADICTION report to coordinator. Do not implement, issue Operator GO, consume mail, route work, or take a user-gated side effect."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T11-43-39Z-director2-to-coordinator-coordination.md records CONTRADICTION at reviewed Pipeline commit 4759b903be019fa6d5b6f39e900eaf529ed3608c: snapshot bytes were not proven reachable from their claimed Git tip and event-tip freshness was not serialized with target publication."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T11-43-39Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": null,
-  "target_commit": null,
+  "target_commit": "4759b903be019fa6d5b6f39e900eaf529ed3608c",
   "commit_range": null,
   "scope_files": [
     "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",

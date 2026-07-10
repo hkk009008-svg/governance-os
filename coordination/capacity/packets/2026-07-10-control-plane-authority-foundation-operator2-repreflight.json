@@ -31,12 +31,12 @@
   ],
   "lock_keys": [],
   "dependencies": [
-    "director-control-plane-authority-foundation-task2-replacement",
-    "director2-control-plane-authority-foundation-identity-interface-closure-preflight"
+    "director-control-plane-authority-foundation-task2-spec-review-fix",
+    "director2-control-plane-authority-foundation-task3d-snapshot-cas-closure-preflight"
   ],
   "acceptance": [
-    "Hold the durable CLEAR at 2026-07-10T04-24-26Z without repeating Tasks 4-6C. Reopen only if the corrective coordinator route changes those task bodies or their activation-safety contract; Task-2 canonical-ref rejection and Task-3 authorization repairs do not by themselves reopen this preflight.",
-    "Remain blocked/observer-only while the replacement Task-2 and Task-3 interface-closure preflight dependencies are open. Send no receipt or duplicate report.",
+    "Hold the durable CLEAR at 2026-07-10T04-24-26Z without repeating Tasks 4-6C. Reopen only if the corrective coordinator route changes those task bodies or their activation-safety contract; the Task-2 review fix and Task-3D snapshot/CAS closure do not by themselves reopen this preflight. The Task-4-through-EOF SHA-256 remains 8d44798592a4c87fc288f1cf25eff5c21e652574d0ed3a6076c4b72f8c14a6fd.",
+    "Remain blocked/observer-only while the Task-2 specification-review-fix and Task-3D snapshot/CAS-closure dependencies are open. Send no receipt or duplicate report.",
     "At coordinator closeout, reuse the attached CLEAR if Tasks 4-6C remain byte-for-byte and semantically unchanged. If a later diff changes those task bodies or their activation contract, stop and await one new focused route before any repeat pass."
   ],
   "done_evidence": [
