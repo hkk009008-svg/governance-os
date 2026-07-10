@@ -6,8 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/session-smoke.sh\"",
-            "statusMessage": "Running R-START smoke"
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/session-smoke.sh\""
           }
         ]
       }
@@ -18,8 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/guard-git-index.sh\"",
-            "statusMessage": "Checking seat git-index safety"
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/guard-git-index.sh\""
           }
         ]
       }
@@ -30,8 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/update-state.sh\"",
-            "statusMessage": "Refreshing four-seat state"
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/update-state.sh\""
           }
         ]
       }

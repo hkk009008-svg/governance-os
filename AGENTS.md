@@ -70,6 +70,33 @@ Ledger-routed Codex seats start from `/Users/hyungkoookkim/Pipeline`, not
 `env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`
 from Pipeline and read the active coordinator route it reports.
 
+## Codex risk-tier router
+
+Use one tier before selecting tools or skills. This is the user-principal's
+project-level applicability rule; a skill's existence alone is not a trigger.
+
+- `tier-0-conversational`: a self-contained answer. Use no repo orientation,
+  implementation skills, mailbox checks, smoke, worktree, or verification
+  commands.
+- `tier-1-read-only`: repository inspection or an evidence-backed report. Use
+  the smallest scoped read commands. Do not invoke brainstorming, TDD,
+  worktree, plan-writing, implementation-review, or completion-verification
+  skills, and do not run live-seat checks without an explicit seat, mailbox,
+  route, wave, handoff, or protocol-decision trigger.
+- `tier-2-local-mutation`: an ordinary code, test, config, or documentation
+  edit. Use impact analysis, task-relevant implementation discipline, focused
+  tests, and one fresh completion verification pass.
+- `tier-3-governed-side-effect`: a live-seat decision, shared protocol state,
+  or external side effect. Apply the exact mailbox, capacity,
+  independent-verification, and user-authorization gates for that action.
+
+Deterministic artifact evidence may be reused against an unchanged HEAD and
+unchanged relevant paths. Tier 3 requires fresh signed-bus, mailbox/cursor,
+lock, approval, and external-state checks; reuse never relaxes a triggered
+guard.
+Do not launch another generic reviewer or repeat Lane V for the same unchanged
+commit unless it asks a genuinely different, pre-stated question.
+
 **Antigravity specifically:** Antigravity ("agy", the Gemini-based agentic IDE)
 reads this file as its agent-agnostic source of truth and translates the
 principles into its own mechanisms. In the **three-way cross-provider protocol**

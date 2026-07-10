@@ -163,3 +163,43 @@ def test_update_state_syncs_markerless_clean_seeded_seat_index(
     assert marker.read_text(encoding="utf-8").strip() == _git(repo, "rev-parse", "HEAD")
     index_tree = _git(repo, "write-tree", env={"GIT_INDEX_FILE": str(seat_index)})
     assert index_tree == head_tree
+
+
+@pytest.mark.parametrize(
+    "hook_path",
+    [
+        ".claude/hooks/update-state.sh",
+        ".codex/hooks/update-state.sh",
+    ],
+)
+def test_update_state_does_not_delete_index_lock_based_only_on_age(
+    tmp_path: Path,
+    repo_root: Path,
+    hook_path: str,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    hook_destination = repo / hook_path
+    hook_destination.parent.mkdir(parents=True)
+    hook_destination.write_text(
+        (repo_root / hook_path).read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    hook_destination.chmod(0o755)
+
+    (repo / "coordination/mailbox/sent").mkdir(parents=True)
+    (repo / "coordination/mailbox/seen").mkdir()
+    (repo / "coordination/presence").mkdir()
+    (repo / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "baseline")
+
+    index_lock = repo / ".git/index.lock"
+    index_lock.write_text("active-or-unknown\n", encoding="utf-8")
+    os.utime(index_lock, (0, 0))
+
+    result = _run([hook_destination], repo)
+
+    assert result.returncode == 0, result.stderr
+    assert index_lock.exists()

@@ -15,15 +15,17 @@
 #
 # Behavior:
 # - Runs on every PostToolUse: Bash|Write|Edit tool call.
-# - Presence auto-freshness (v5.7 M1): stamps the seat's presence file
-#   (head_at_write + updated) on EVERY call, before the skip-perf gate, so
-#   liveness updates during non-committing work. Seat resolution: CODEX_SEAT
+# - Presence auto-freshness (v5.7 M1): stamps a concrete seat's presence file
+#   (head_at_write + updated) on every call, before the shared skip-perf gate,
+#   so liveness updates during non-committing work. Seat resolution: CODEX_SEAT
 #   env (preferred) ELSE a per-session marker `.codex/presence-seat.<session-id>`
 #   so a session launched without CODEX_SEAT can still
 #   stamps presence instead of silently no-opping. The hook NEVER writes
 #   `current_task` or `status` (those are agent-owned per Rule #19).
-# - Skip-perf gate: exits early if HEAD hasn't moved since last run AND
-#   STATE.md still exists on disk. Marker stored at
+# - Readiness fast path: when no concrete seat or per-seat index exists, exits
+#   before seat maintenance if HEAD is unchanged and STATE.md exists.
+# - Shared skip-perf gate: exits after seat maintenance if HEAD hasn't moved
+#   since last run AND STATE.md still exists on disk. Marker stored at
 #   `.codex/hooks/.last-state-head` (gitignored).
 # - On a HEAD move (commit, reset, checkout, rebase, etc.), regenerates
 #   STATE.md from current git state + mailbox cursors.
@@ -40,8 +42,49 @@ _repo_git() {
 
 cd "$(_repo_git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 
-# Sweep stale index.lock files older than 5 minutes to prevent git contention livelocks
-find .git/index.lock -mmin +5 -exec rm -f {} \; 2>/dev/null || true
+MARKER=".codex/hooks/.last-state-head"
+CURRENT=$(_repo_git rev-parse HEAD 2>/dev/null || exit 0)
+LAST=$(cat "$MARKER" 2>/dev/null || echo "")
+if [ -n "${GIT_INDEX_FILE:-}" ]; then
+  SKIP_SCAN_SCOPE=$(printf '%s' "$(basename "$GIT_INDEX_FILE")" | tr -c 'A-Za-z0-9._-' '_')
+else
+  SKIP_SCAN_SCOPE="default"
+fi
+[ -n "$SKIP_SCAN_SCOPE" ] || SKIP_SCAN_SCOPE="default"
+SKIP_SCAN_MARKER=".codex/hooks/.last-skip-worktree-scan-${SKIP_SCAN_SCOPE}"
+SKIP_SCAN_INTERVAL="${CODEX_SKIP_WORKTREE_SCAN_INTERVAL_SECONDS:-60}"
+
+_skip_worktree_scan_due() {
+  local recorded_head="" recorded_epoch="" now
+  [ -f "$SKIP_SCAN_MARKER" ] || return 0
+  read -r recorded_head recorded_epoch < "$SKIP_SCAN_MARKER" || return 0
+  [ "$recorded_head" = "$CURRENT" ] || return 0
+  [[ "$recorded_epoch" =~ ^[0-9]+$ ]] || return 0
+  [[ "$SKIP_SCAN_INTERVAL" =~ ^[0-9]+$ ]] || SKIP_SCAN_INTERVAL=60
+  now=$(date +%s 2>/dev/null || echo 0)
+  [ "$now" -ge "$recorded_epoch" ] || return 0
+  [ $((now - recorded_epoch)) -ge "$SKIP_SCAN_INTERVAL" ]
+}
+
+_resolve_seat() {
+  local seat="${CODEX_SEAT:-}"
+  if [ -z "$seat" ] && [ -n "${CODEX_SESSION_ID:-}" ]; then
+    seat=$(cat ".codex/presence-seat.${CODEX_SESSION_ID}" 2>/dev/null || true)
+  fi
+  printf '%s' "$seat"
+}
+
+SESSION_SEAT=$(_resolve_seat)
+
+# A readiness bridge has no heartbeat or per-seat index to maintain. Avoid the
+# expensive scan only while its default-index throttle marker is still fresh.
+if [ -z "$SESSION_SEAT" ] \
+   && [ -z "${GIT_INDEX_FILE:-}" ] \
+   && [ "$CURRENT" = "$LAST" ] \
+   && [ -f STATE.md ] \
+   && ! _skip_worktree_scan_due; then
+  exit 0
+fi
 
 # Presence heartbeat (v6.0 Tier 2, user-authorized 2026-06-11; replaces the
 # v5.7 M1 sed-in-place stamp): the hook's liveness signal is a SINGLE-LINE
@@ -60,10 +103,7 @@ find .git/index.lock -mmin +5 -exec rm -f {} \; 2>/dev/null || true
 # Tests: origin repo pinned this via tests/unit/test_presence_heartbeat_split.py
 # (awk-sliced this fn); that test was not carried into the bundle — re-pin on adoption.
 _stamp_presence() {
-  local seat="${CODEX_SEAT:-}"
-  if [ -z "$seat" ] && [ -n "${CODEX_SESSION_ID:-}" ]; then
-    seat=$(cat ".codex/presence-seat.${CODEX_SESSION_ID}" 2>/dev/null || true)
-  fi
+  local seat="${1:-}"
   [ -n "$seat" ] || return 0
   mkdir -p coordination/presence
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -71,7 +111,7 @@ _stamp_presence() {
     > "coordination/presence/${seat}-heartbeat.ts"
   return 0
 }
-_stamp_presence || true
+_stamp_presence "$SESSION_SEAT" || true
 
 # v5.8 — per-seat index auto-refresh (D-a). The peer's commits move shared
 # HEAD but NOT this seat's GIT_INDEX_FILE index; the stale index then shows
@@ -131,8 +171,8 @@ _sync_seat_index() {
 # wholesale `git read-tree HEAD` fix, which destroys staged work. Targets
 # whatever index this process resolves (the per-seat GIT_INDEX_FILE under
 # D-a, else the default) — exactly the index a polluting child inherits.
-# Deliberately NOT gated on GIT_INDEX_FILE, and runs BEFORE the skip-perf
-# gate: pollution arrives WITHOUT a HEAD move.
+# Deliberately NOT gated on GIT_INDEX_FILE. A timestamp marker throttles the
+# scan, while a HEAD change always makes it due.
 # Tests: origin repo pinned this via tests/unit/test_skip_worktree_clear.py
 # (awk-sliced this function); that test was not carried into the bundle — re-pin on adoption.
 _clear_skip_worktree() {
@@ -150,13 +190,20 @@ _clear_skip_worktree() {
   return 0
 }
 
-MARKER=".codex/hooks/.last-state-head"
-CURRENT=$(_repo_git rev-parse HEAD 2>/dev/null || exit 0)
-LAST=$(cat "$MARKER" 2>/dev/null || echo "")
+_record_skip_worktree_scan() {
+  local now tmp
+  now=$(date +%s 2>/dev/null || echo 0)
+  tmp="${SKIP_SCAN_MARKER}.tmp.$$"
+  printf '%s %s\n' "$CURRENT" "$now" > "$tmp" \
+    && mv -f "$tmp" "$SKIP_SCAN_MARKER"
+}
 
-# v5.9: clear index pollution first (sane index before sync logic; both run
-# before the shared skip-perf gate — see each function's comment).
-_clear_skip_worktree || true
+# v5.9: periodically clear index pollution before sync logic. A bridge whose
+# HEAD and STATE.md are already current exited before reaching this scan.
+if _skip_worktree_scan_due; then
+  _clear_skip_worktree || true
+  _record_skip_worktree_scan || true
+fi
 
 # v5.8: sync the per-seat index BEFORE the shared skip-perf gate (see
 # _sync_seat_index comment for why the shared marker cannot gate this).

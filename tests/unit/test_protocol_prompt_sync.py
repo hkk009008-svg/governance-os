@@ -166,6 +166,54 @@ def test_subagent_utilization_decision_is_rendered_and_documented():
         assert "direct/no-op because" in text
 
 
+def test_codex_execution_tiers_are_model_backed_and_surface_synced():
+    expected = (
+        (
+            "tier-0-conversational",
+            "self-contained answer",
+            "no repo orientation, implementation skills, mailbox checks, "
+            "smoke, worktree, or verification commands",
+        ),
+        (
+            "tier-1-read-only",
+            "repository inspection or evidence-backed report",
+            "smallest scoped read commands; no implementation skills or "
+            "live-seat checks without an explicit protocol trigger",
+        ),
+        (
+            "tier-2-local-mutation",
+            "ordinary code, test, config, or documentation edit",
+            "impact analysis, task-relevant implementation discipline, focused "
+            "tests, and one completion verification pass",
+        ),
+        (
+            "tier-3-governed-side-effect",
+            "live-seat decision, shared protocol state, or external side effect",
+            "exact mailbox, capacity, independent-verification, and "
+            "user-authorization gates",
+        ),
+    )
+
+    assert model.CODEX_EXECUTION_TIERS == expected
+    rendered = model.render_codex_execution_tiers()
+    for tier in expected:
+        assert all(value in rendered for value in tier)
+    assert "unchanged HEAD and unchanged relevant paths" in rendered
+    assert "same unchanged commit" in rendered
+    assert "Deterministic artifact evidence may be reused" in rendered
+    assert "Tier 3 requires fresh signed-bus, mailbox/cursor, lock, approval" in rendered
+    assert "reuse never relaxes a triggered guard" in rendered
+
+    for path in ("AGENTS.md", "docs/protocol/codex/continuation.md"):
+        text = _compact(_read(path))
+        for tier, _, _ in expected:
+            assert tier in text
+        assert "same unchanged commit" in text
+        assert "Deterministic artifact evidence may be reused" in text
+        assert "Tier 3 requires fresh signed-bus, mailbox/cursor, lock, approval" in text
+        assert "reuse never relaxes a triggered guard" in text
+
+
 def test_agent_extension_routing_contract_is_model_backed():
     expected_contract = (
         (

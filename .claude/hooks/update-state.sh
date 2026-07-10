@@ -41,9 +41,6 @@ _repo_git() {
 
 cd "$(_repo_git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 
-# Sweep stale index.lock files older than 5 minutes to prevent git contention livelocks
-find .git/index.lock -mmin +5 -exec rm -f {} \; 2>/dev/null || true
-
 # Presence heartbeat (v6.0 Tier 2, user-authorized 2026-06-11; replaces the
 # v5.7 M1 sed-in-place stamp): the hook's liveness signal is a SINGLE-LINE
 # atomic overwrite of coordination/presence/<seat>-heartbeat.ts —

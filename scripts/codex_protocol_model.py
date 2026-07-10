@@ -84,6 +84,45 @@ DEMOTED_RUNTIME_CONCEPTS = (
     ("handoff ceremony", "narrow handoff only at real transfer boundaries or explicit request"),
 )
 
+CODEX_EXECUTION_TIERS = (
+    (
+        "tier-0-conversational",
+        "self-contained answer",
+        "no repo orientation, implementation skills, mailbox checks, smoke, "
+        "worktree, or verification commands",
+    ),
+    (
+        "tier-1-read-only",
+        "repository inspection or evidence-backed report",
+        "smallest scoped read commands; no implementation skills or live-seat "
+        "checks without an explicit protocol trigger",
+    ),
+    (
+        "tier-2-local-mutation",
+        "ordinary code, test, config, or documentation edit",
+        "impact analysis, task-relevant implementation discipline, focused "
+        "tests, and one completion verification pass",
+    ),
+    (
+        "tier-3-governed-side-effect",
+        "live-seat decision, shared protocol state, or external side effect",
+        "exact mailbox, capacity, independent-verification, and "
+        "user-authorization gates",
+    ),
+)
+
+VERIFICATION_DEDUPLICATION_RULES = (
+    "Tier 2 uses focused tests plus one fresh completion verification pass.",
+    "Tier 3 uses implementer evidence plus formal operator Lane V when required, "
+    "then GO before push.",
+    "Do not launch another generic reviewer or repeat Lane V for the same "
+    "unchanged commit unless it asks a genuinely different, pre-stated question.",
+    "Deterministic artifact evidence may be reused against an unchanged HEAD "
+    "and unchanged relevant paths.",
+    "Tier 3 requires fresh signed-bus, mailbox/cursor, lock, approval, and "
+    "external-state checks; reuse never relaxes a triggered guard.",
+)
+
 HARNESS_COMPONENTS = (
     ("user", "User principal", "explicit instruction and consent"),
     ("harness", "Codex CLI harness", "readiness bridge or explicit live role"),
@@ -656,6 +695,15 @@ def render_seat_subagent_development() -> str:
     return "\n".join(lines)
 
 
+def render_codex_execution_tiers() -> str:
+    """Return the risk-proportional applicability contract for Codex work."""
+    lines = ["Codex Risk-Tier Router:"]
+    for tier, trigger, checks in CODEX_EXECUTION_TIERS:
+        lines.append(f"- `{tier}`: {trigger}; {checks}.")
+    lines.extend(f"- {rule}" for rule in VERIFICATION_DEDUPLICATION_RULES)
+    return "\n".join(lines)
+
+
 def render_side_effect_executor_contract() -> str:
     """Return the single-executor contract for shared user-gated side effects."""
     lines = [
@@ -1023,6 +1071,7 @@ def render_start_session_inhabitance(agent_names: list[str] | tuple[str, ...] = 
     ]
     lines.extend(f"{index}. {step}" for index, step in enumerate(START_SESSION_STEPS, start=1))
     lines.append("core agent modules: " + ", ".join(CORE_AGENT_MODULES))
+    lines.append(render_codex_execution_tiers())
     lines.append(render_agent_extension_summary(agent_names))
     lines.append(render_agent_extension_routing_contract())
     return "\n".join(lines)
@@ -1062,6 +1111,7 @@ def render_surface_summary() -> str:
         "Pair Operating Contract: director -> operator is the fast path; mailbox artifact, not chat",
         "Capacity Split Default: divisible or preplanned larger work defaults to dual-pair routing",
         "Seat Subagent Development: seats retain authority; subagents own bounded work",
+        "Codex Risk-Tier Router: conversational and read-only work avoid implementation ceremony",
         "Side-Effect Executor Token: generic user approval is unit consent, not executor election",
         "Ledger CLI Bridge: Pipeline kernel -> evidence-ledger target via "
         + LEDGER_CLI_BRIDGE["doc_path"],

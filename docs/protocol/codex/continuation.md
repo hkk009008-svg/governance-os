@@ -16,6 +16,31 @@ For folder ownership, use `docs/protocol/protocol-assembly-map.md`. For full
 agent-neutral governance, use `docs/protocol/agents/`. This file only maps the
 kernel onto Codex commands and runtime choices.
 
+## Codex Risk-Tier Router
+
+- `tier-0-conversational`: a self-contained answer. Use no repo orientation,
+  implementation skills, mailbox checks, smoke, worktree, or verification
+  commands.
+- `tier-1-read-only`: repository inspection or an evidence-backed report. Use
+  the smallest scoped read commands. Brainstorming, TDD, worktree,
+  plan-writing, implementation-review, and completion-verification skills do
+  not apply unless the user changes the task into design or mutation work.
+  Live-seat checks require an explicit seat, mailbox, route, wave, handoff, or
+  protocol-decision trigger.
+- `tier-2-local-mutation`: an ordinary code, test, config, or documentation
+  edit. Use impact analysis, task-relevant implementation discipline, focused
+  tests, and one fresh completion verification pass.
+- `tier-3-governed-side-effect`: a live-seat decision, shared protocol state,
+  or external side effect. Apply the exact mailbox, capacity,
+  independent-verification, and user-authorization gates for that action.
+
+Deterministic artifact evidence may be reused against an unchanged HEAD and
+unchanged relevant paths. Tier 3 requires fresh signed-bus, mailbox/cursor,
+lock, approval, and external-state checks; reuse never relaxes a triggered
+guard.
+Do not launch another generic reviewer or repeat Lane V for the same unchanged
+commit unless it asks a genuinely different, pre-stated question.
+
 ## Claude Function Harmonization:
 
 - core stance: adapt Claude functions to Codex-native primitives; do not transplant Claude-only mechanics.
