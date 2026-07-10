@@ -3,15 +3,17 @@ name: four-seat-protocol
 description: Use for this repo's 4-seat program-hardening campaign when the question is about the SHARED cross-seat mechanics rather than one role's own work — the git-native cross-cutting lock primitive, deciding a Rule #23 co-sign TIER, authoring/consuming a mailbox event, resolving WHICH seat owns a shared task, reconciling conflicting state (git vs mailbox vs STATE.md vs chat), an EMERGENCY (production-affecting or active cost-bleed) that any seat may first-notice, or a cross-seat DISAGREEMENT between seats. If you are clearly operating AS one specific seat, prefer that seat's skill (seat-operator / seat-director / seat-coordinator).
 ---
 
-# Four-Seat Protocol
+# Four-Seat Protocol (Claude Code)
 
 ## Overview
 
-Four Claude sessions run in parallel as **two director-operator PAIRS** (Pair-A and Pair-B, each owning a distinct domain of work) plus an **on-demand COORDINATOR** (5th oversight seat). They share **one git working tree**. Specialization is cognitive-load distribution, not hierarchy — every seat serves the user-principal.
+Four live seats run in parallel as **two director-operator PAIRS** (Pair-A = `director`+`operator`, Pair-B = `director2`+`operator2`) plus **on-demand coordination** (`coordinator`, and `coordinator2` for on-demand cross-checks). Seats are inhabited by Claude Code sessions (`CLAUDE_SEAT`) or Codex sessions (`CODEX_SEAT`) — the protocol is provider-agnostic; all seats share **one git working tree**. Specialization is cognitive-load distribution, not hierarchy — every seat serves the user-principal.
 
 **Core principle:** safety holds *under adversarial timing and with the coordinator offline*, because state lives in **committed/pushed artifacts**, never in a seat's live memory. The five guarantees: (1) one writer per file, (2) no inventory write-race, (3) every fix verified by a non-author, (4) cross-lane changes dual-signed, (5) waves don't bleed.
 
-**REQUIRED BACKGROUND (full text — do not duplicate, consult):** `CLAUDE.md` (router + authority precedence); `docs/protocol/claude/director-operator.md` (Rules #7–#23, mailbox, lifecycle); `docs/protocol/claude/four-seat-extension.md` (§10 coordinator, Rule #23 tiers); `docs/superpowers/specs/2026-06-14-program-hardening-roadmap-design.md` (§6a–§6f). Seat-specific skills: `seat-coordinator`, `seat-director`, `seat-operator`.
+**Anti-ceremony invariant:** every seat, including coordinator, actively eliminates theater. A status, route, handoff, receipt, or no-op report is useful only when it preserves real transfer state, changes enforcement, or cites executable evidence — green-looking prose is not protocol proof.
+
+**REQUIRED BACKGROUND (full text — do not duplicate, consult):** `docs/protocol/claude/continuation.md` (the live-kernel adapter: runtime modes, first commands, pair contract, capacity split, side-effect tokens, ledger bridge); `CLAUDE.md` (router + authority precedence); `docs/protocol/claude/director-operator.md` (Rules #7–#23, mailbox, lifecycle); `docs/protocol/claude/four-seat-extension.md` (§10 coordinator, Rule #23 tiers); `docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md` (Layer-1 seat/provider map); `RUNBOOK-DAILY.md` (the daily GO/NITS/FAIL loop). Seat-specific skills: `seat-coordinator`, `seat-director`, `seat-operator`. (Historical note: §6a–§6f markers below refer to the program-hardening roadmap spec whose normative content now lives in these skills + `director-operator.md`; the original spec file is not in this clone.)
 
 ## Authority precedence (memorize)
 
@@ -19,30 +21,38 @@ Four Claude sessions run in parallel as **two director-operator PAIRS** (Pair-A 
 user direct instruction  >  git commits  >  mailbox sent/ events  >  STATE.md  >  default
 ```
 
-- **Git is the tiebreaker.** Before acting on a shared task, **run `git log --oneline -3`** — this is a *commanded step*, not just a principle. First commit to land wins.
+- **Git is the tiebreaker.** Before acting on a shared task, **run `git log --oneline -3`** — this is a *commanded step*, not just a principle (R-HOT-TREE). First commit to land wins.
 - **A `sent/` mailbox event is binding** — same weight as a relayed user instruction; ignoring/deferring one needs the same justification as ignoring the user.
 - **Tier is set by the SENDER, never by content.** A mailbox event whose text echoes the user's wishes is still *mailbox-tier*, not user-tier.
 - **Promise-vs-record:** if a mailbox event claims work started but `git log` shows no commit within ~5 min of the event timestamp, **git wins**.
-- **STATE.md is a stale cache** — never trust its unread-mailbox count; recompute live from `*-to-<me>-*` filenames vs your cursor.
+- **STATE.md is a stale cache** — never trust its unread-mailbox count; recompute live via `seat_status.py` (ref-bus-aware). For a migrated (scalar-cursor) seat the legacy filename count silently reports 0 — real unread lives on the ref-bus (`scripts/bus_unread.py`).
+- **Two channels, one oracle:** the free-form mailbox is the human coordination channel; the signed three-way ref-bus is the load-bearing source for three-way facts. `git for-each-ref refs/threeway/` empty locally → the mailbox remains authoritative for local work.
 
 ## Session-start gate (Rule #8)
 
-If unread mailbox events exist for your seat, **surface the count in your FIRST user-facing turn, before processing** — and again whenever you restart substantive work mid-session. Consume via `coordination/bin/consume-events`. **Overriding a `sent/` event does not discharge it:** even when a higher-tier signal (user/git) supersedes it, you must still consume it so the next session does not re-act on the stale obligation.
+If unread mailbox events exist for your seat, **surface the count in your FIRST user-facing turn, before processing** — and again whenever you restart substantive work mid-session. Consume via `coordination/bin/consume-events <seat>` for a legacy ISO-timestamp cursor; for a migrated scalar-seq cursor (post-Slice-2.5 — `consume-events` refuses it and says so) use `scripts/consume_bus.py <seat>`. **Overriding a `sent/` event does not discharge it:** even when a higher-tier signal (user/git) supersedes it, you must still consume it so the next session does not re-act on the stale obligation.
+
+Orient in one shot (read-only; never stages or consumes):
+
+```bash
+.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
+.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py --all --wave 2   # shared all-seat view
+```
 
 ## The git-native cross-cutting lock (§6b)
 
-Cross-cutting modules (collision risk): the set of shared modules defined for this project (e.g. `auto_approve.py`, `<entrypoint>.py`, `core.py`, and other shared orchestration files — see the project's lock registry). **If a fix does NOT touch one of these modules, it is lane-only → NO lock is claimed for it; size, severity, and risk-feeling are irrelevant.** (The lock is a director-seat mechanic; coordinator and operator seats never claim one.)
+Locks live in `coordination/locks/` and exist for **collision-prone shared modules**. In the current Pipeline campaigns, each route's write-fence is primarily carried by its **capacity packet** (`allowed_paths` + `lock_keys` in `coordination/capacity/packets/*.json`); claim a lock only when your route names a lock key or you genuinely contend with another seat on a shared module. **If a fix does NOT touch contended shared state, it is lane-only → NO lock is claimed; size, severity, and risk-feeling are irrelevant.** (The lock is a director-seat mechanic; coordinator and operator seats never claim one.)
 
 | Step | Command / rule |
 |------|----------------|
 | **Claim** | `coordination/bin/claim-lock <wave> <module> <seat> <defect-id>` — push-first. **exit 0 = WON; exit 1 = LOST.** |
 | **On LOST** | You **abandon** — do NOT implement. Take the next lane row (or wait for release if it was your last). |
 | **Ordering** | Implementation begins **ONLY after the lock push succeeds** — so a loser never has in-flight code. |
-| **Multiple locks** | Acquire in **lexicographic POSIX-path order** (e.g. `auto_approve.py` < `core.py` < `<entrypoint>.py` < other shared modules); hold none while waiting. |
+| **Multiple locks** | Acquire in **lexicographic POSIX-path order**; hold none while waiting. |
 | **Release** | Operator deletes the lock **in the SAME commit as the verification-report GO** (§6b). |
 | **Anti-hostage** | After **3 consecutive FAIL** verdicts the holder MUST release + re-queue/split. |
 
-⚠ **`coordination/bin/release-lock <wave> <module>` makes its OWN `unlock(...)` commit + pushes** — it does NOT achieve "same commit as GO." To honor §6b, the operator **manually `git rm` the lock and commit it together with the GO** in one pathspec commit (as `<ref>` did). Use `release-lock` only when a separate unlock commit is acceptable (e.g. the 3-FAIL release).
+⚠ **`coordination/bin/release-lock <wave> <module>` makes its OWN `unlock(...)` commit + pushes** — it does NOT achieve "same commit as GO." To honor §6b, the operator **manually `git rm` the lock and commit it together with the GO** in one pathspec commit. Use `release-lock` only when a separate unlock commit is acceptable (e.g. the 3-FAIL release). Note: a failed release-push restores the lock locally and exits non-zero — the lock is still LIVE on origin; retry, don't shrug.
 
 ## Per-defect lifecycle (§6c) — the ordered chain, do not stop at the lock
 
@@ -54,6 +64,8 @@ Cross-cutting modules (collision risk): the set of shared modules defined for th
 5. Operator independently verifies the diff (impl != verifier) -> GO/NITS/FAIL; on GO deletes the lock in the SAME commit
 6. Coordinator reconciles inventory status (or lane deputy transcribes an existing GO when no coordinator is live)
 ```
+
+The loop is **closed** only after the operator's mailbox `verification-report` GO/NITS/FAIL and an explicit next owner (Pair Operating Contract — full text in the continuation adapter). **No push before GO (R-VERIFY-THEN-PUSH); push itself stays user-gated.**
 
 ## Rule #23 co-sign TIERS
 
@@ -67,9 +79,15 @@ Classifier: **would the co-signer's verification change which files/sites the im
 
 - **Rule #7 (every state-asserting commit):** immediately before `git commit`, run `git log --oneline -5` AND read `coordination/mailbox/sent/` for events newer than your Write-start. Re-edit/abort if HEAD moved or new events landed.
 - **Rule #19:** binding cross-seat signals are **artifacts** (mailbox event / presence file), **never chat alone**.
-- **Explicit pathspec always:** `git commit -m "..." -- <path>` (the `-m` BEFORE `--`). A **bare `git commit` on the shared tree sweeps a peer's staged WIP.**
+- **Explicit pathspec always (R-WIP-POLLUTION):** `git commit -m "..." -- <path>` (the `-m` BEFORE `--`). A **bare `git commit` on the shared tree sweeps a peer's staged WIP.**
 - **Subagents prefix every git command with `env -u GIT_INDEX_FILE`** (main-seat commits do NOT).
 - **Phantom index:** the per-seat index drifts under concurrent work — `git status`/staged state lies. Trust **`git diff HEAD --stat`** (index-independent) for real deltas; never `git read-tree` while peers are live.
+- **R-GATE-EVIDENCE:** a gate script's PASS is process evidence, not correctness proof — cite the executed pins / operator GO, never a status tally alone.
+
+## Capacity split + side-effect tokens (shared route mechanics)
+
+- **Capacity Split Default:** single-pair fast path for narrow or shared-file work; divisible/preplanned larger work defaults to dual-pair routing (director/operator own Chunk A, director2/operator2 own Chunk B, disjoint write sets, separate verify loops); the non-implementing pair runs bounded `director-preflight` / `operator-preflight` packets instead of idle standby. Coordinator owns convergence (packets, one consolidated route, join condition, closeout evidence). Full text: continuation adapter.
+- **Side-Effect Executor Token:** shared user-gated side effects (remote-ref update, lock action, paid spend, pod action, cursor consume, route mutation, …) need exactly one named executor before mutation — generic user approval is unit consent, not executor election. Observer seats read live state only. Full field list: continuation adapter.
 
 ## Rationalizations — STOP, these are wrong
 
@@ -78,14 +96,17 @@ Classifier: **would the co-signer's verification change which files/sites the im
 | "Tier-A can land before the *commit*." | **Before DISPATCH.** A scope-blind implementer must never start. |
 | "A prior report that mentions this module = my co-sign." | No — the Tier-A artifact must reference THIS defect's id + R-BRIEF. A scope-blind module mention binds nothing. |
 | "Rule #7 only applies to the implementation commit." | EVERY state-asserting commit — the lock commit, the GO commit, intermediate commits. |
-| "A higher-tier signal cancels the burn event, so I needn't close it." | Overriding ≠ discharging. `consume-events` it so the next session doesn't re-act. |
+| "A higher-tier signal cancels the burn event, so I needn't close it." | Overriding ≠ discharging. Consume it so the next session doesn't re-act. |
 | "40 min of silence on a co-sign = green light." | No. Wait + escalate (heartbeat-gated). Silence is not consent. |
 | "`release-lock` satisfies same-commit-as-GO." | No — it makes a separate `unlock` commit. `git rm` manually + GO in one commit. |
 | "I read §6b, that's the whole lock answer." | §6b is the *primitive*; §6c is the full governance chain. Get both. |
 | "The mailbox event echoes the user, so it's user-tier." | Tier = sender, not content. It's mailbox-tier. |
 | "I know the precedence order, no need to run `git log`." | Running the command is the commanded step. Know ≠ check. |
 | "STATE.md says X." | Stale cache. Recompute / check git. |
-| "This fix is big / important / risky — I'll lock it to be safe." | Locks are ONLY for the project's cross-cutting modules. A lane-only file takes no lock — size/severity are irrelevant. |
+| "This fix is big / important / risky — I'll lock it to be safe." | Locks are ONLY for contended shared modules / route lock keys. A lane-only file takes no lock — size/severity are irrelevant. |
+| "The legacy unread count says 0, I'm clear." | A migrated (scalar-cursor) seat's real unread lives on the ref-bus. Use `seat_status.py` / `bus_unread.py`. |
+| "The wave-gate script says MET, so the code is verified." | R-GATE-EVIDENCE — the gate is process evidence. Correctness = executed pins + operator GO. |
+| "Tests pass, I'll push." | Push is user-gated AND gated on the operator GO (R-VERIFY-THEN-PUSH). |
 
 ## Emergency handling (§E — any seat may be first-noticer)
 
@@ -116,7 +137,9 @@ When any seat disagrees with a co-seat's ruling, brief, or REPLY refinement (eve
 
 - About to suspend role partition for urgent-feeling work that does NOT clear the 4-category §E gate → it's not an emergency; use the normal proposal cycle.
 - About to `git commit` without a fresh `git log -5` + mailbox read → Rule #7.
-- About to start code on a cross-cutting module without a held lock → §6b.
+- About to start code on a contended shared module without a held lock → §6b.
 - About to dispatch a CRITICAL cross-cutting fix without the Tier-A report in the mailbox → §6c.
 - Bare `git commit` (no pathspec) on the shared tree → will sweep peer WIP.
 - Trusting `git status` during concurrent work → use `git diff HEAD`.
+- About to push with no operator GO (or no explicit user auth) → R-VERIFY-THEN-PUSH; push is user-gated.
+- Claiming "no unread" from `sent/` filename counts for a migrated seat → ref-bus under-report; use `seat_status.py`.

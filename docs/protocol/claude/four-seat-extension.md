@@ -42,14 +42,14 @@ to land wins) at any boundary.
 
 ```bash
 # director2 session (new terminal, SAME shared tree)
-cd /Users/hyungkoookkim/Content
+cd /Users/hyungkoookkim/Pipeline
 export CLAUDE_SEAT=director2
 export GIT_INDEX_FILE="$(git rev-parse --absolute-git-dir)/index-director2"
 [ -f "$GIT_INDEX_FILE" ] || git read-tree HEAD   # seed per-seat index from HEAD
 claude
 
 # operator2 session (new terminal, SAME shared tree)
-cd /Users/hyungkoookkim/Content
+cd /Users/hyungkoookkim/Pipeline
 export CLAUDE_SEAT=operator2
 export GIT_INDEX_FILE="$(git rev-parse --absolute-git-dir)/index-operator2"
 [ -f "$GIT_INDEX_FILE" ] || git read-tree HEAD

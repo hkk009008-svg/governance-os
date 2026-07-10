@@ -60,6 +60,7 @@ Keep the manual true as the code evolves (same staleness discipline as `ARCHITEC
 | Run / configure / troubleshoot | [OPERATIONS.md](OPERATIONS.md) |
 | See WHY the architecture is shaped this way (ADR log) | [DECISIONS.md](DECISIONS.md) |
 | Full process detail (core / orchestration / director-operator / failure-modes) | [docs/protocol/claude/](docs/protocol/claude/) |
+| Operate as a Claude seat on the live kernel (modes, first commands, verdicts, pair contract, capacity split) | [docs/protocol/claude/continuation.md](docs/protocol/claude/continuation.md) |
 | Subagent prompt bodies (implementer / reviewer) | [docs/templates/claude/](docs/templates/claude/) |
 | Rule provenance (codified SHAs, empirical basis, beneficiary/consent) | [docs/PROTOCOL-RULES-LOG.md](docs/PROTOCOL-RULES-LOG.md) |
 | The CLAUDE/AGENTS operative-split map | [docs/protocol/migration-map-claudemd-split.md](docs/protocol/migration-map-claudemd-split.md) |
@@ -169,9 +170,12 @@ configurations (e.g. a domain-graph subsystem, config schemas, external-API clie
 integrations) — or top-level pipeline design work (routing, API selection, identity/
 continuity systems, any domain-specific processing chain).
 Action: invoke the matching project or repo skill BEFORE writing or judging the
-code. In Pipeline, use `.agents/skills/*/SKILL.md` for protocol/seat work and
-the active route's target-repo instructions before evidence-ledger product
-edits. When a skill prior shapes a verdict, name it in the work product.
+code. In Pipeline, a Claude session loads the Claude-native `.claude/skills/`
+skills for protocol/seat work (seat-director / seat-operator / seat-coordinator /
+four-seat-protocol / wave-gate / create-regression-pin — the `.agents/skills/`
+copies are the Codex/agent-neutral tree) and the active route's target-repo
+instructions before evidence-ledger product edits. When a skill prior shapes a
+verdict, name it in the work product.
 Details: repo and target instructions named by the active route.
 
 ## Rule #12 — grep-the-writes
@@ -196,19 +200,31 @@ Details: docs/protocol/claude/director-operator.md (Rule #13).
 
 # Director–Operator concurrent operation (minimal model)
 
-Four Claude sessions (two pairs) run in parallel by design — **director-seats** (strategy, briefs,
+Four live seats (two pairs) run in parallel by design — **director-seats** (strategy, briefs,
 ADRs, push decisions) and **operator-seats** (independent post-commit verification,
 doc-sync, mailbox reports). Four seats / two pairs of one team; specialization, not hierarchy;
-all serve the user-principal. A `coordinator` seat is spawned **on demand** at multi-pair-wrap
-boundaries for read-only cross-pair audit — not a standing concurrent seat (see
-docs/protocol/claude/four-seat-extension.md §10). Load-bearing invariants:
+all serve the user-principal. Seats are inhabited by Claude sessions (`CLAUDE_SEAT` at
+launch) or Codex sessions (`CODEX_SEAT`); never infer a seat — orientation mode is the
+default until the user names one. A `coordinator` seat is spawned **on demand** at
+multi-pair-wrap boundaries for read-only cross-pair audit — not a standing concurrent
+seat (see docs/protocol/claude/four-seat-extension.md §10). **Operating a seat on the
+live kernel (modes, first commands, GO/NITS/FAIL loop, capacity split, side-effect
+tokens): docs/protocol/claude/continuation.md.** Load-bearing invariants:
 
 - **User is principal.** User direct instructions override everything.
 - **Authority precedence:** user > git commits (durable record) > mailbox `sent/`
   events (bind the receiving seat — Rule #8) > STATE.md (stale cache) > default.
+  The signed three-way ref-bus carries load-bearing three-way facts once
+  `refs/threeway/*` is live; the mailbox stays the human coordination channel.
 - **Git is the tiebreaker.** Before acting on a shared task, run `git log --oneline -3`;
   the first commit to land wins.
 - **Signal via artifacts** (mailbox event / presence file), not chat alone.
+- **The pair loop closes on the operator's `verification-report` GO/NITS/FAIL** —
+  a gate script's PASS is process evidence, not correctness proof (R-GATE-EVIDENCE);
+  no push before GO (R-VERIFY-THEN-PUSH), and push itself stays user-gated.
+- **Shared-tree hygiene:** re-run `git log -3` + mailbox immediately before any
+  commit/gate decision (R-HOT-TREE); commit with explicit pathspecs only — a bare
+  `git commit`/`git add -A` sweeps peer WIP (R-WIP-POLLUTION).
 
 Full governance — Rules #7–#23, the disagreement protocol, emergency handling, phase
 taxonomy, and mailbox protocol — lives in **docs/protocol/claude/director-operator.md**;

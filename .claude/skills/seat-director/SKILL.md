@@ -9,23 +9,22 @@ description: Use when operating as a per-pair DIRECTOR seat (Pair-A <domain-A> o
 
 The per-pair director owns the **strategic layer within its lane**: writes R-BRIEFs, sets priority, decides implementation mode, claims locks, and Tier-A co-signs the other lane. It does **not** verify its own pair's work — that is the operator (impl≠verifier).
 
-**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (authority, locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/claude/director-operator.md` (Rules #7–#23, R-BRIEF, #12, #13, R-PID); spec §6a/§6c; `docs/templates/claude/implementer.md`; `docs/protocol/claude/orchestration.md` (R-ORCH). **R-SKILL:** before authoring/judging domain-specific subsystem code or configurations load the appropriate `<domain-skill>`; before pipeline-level design work load the pipeline `<domain-skill>`.
-<!-- TODO(<PROJECT>): add this project domain-skill triggers -->
+**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (authority, locks, lifecycle, co-sign tiers, git sharp edges) and `docs/protocol/claude/continuation.md` (live-kernel adapter: runtime modes, pair contract, capacity split, side-effect tokens). Sources: `docs/protocol/claude/director-operator.md` (Rules #7–#23, R-BRIEF, #12, #13, R-PID); `docs/templates/claude/implementer.md`; `docs/protocol/claude/orchestration.md` (R-ORCH). **R-SKILL:** in Pipeline, protocol/seat work loads the matching `.claude/skills/` skill; work routed to the evidence-ledger target repo loads that repo's own instructions first (ledger bridge in the continuation adapter).
 
 ## Session-start orientation (do this first)
 
-Get your bearings in **one shot** instead of re-deriving it by hand — HEAD + ahead/behind, recent commits, **your** live unread mailbox, peer ONLINE/STALE state, and the wave gate:
+**Fresh/transplanted instance: same-seat handoff first** — locate the newest `docs/HANDOFF-<your-concrete-seat>-*.md` before ordinary orientation; if none exists, say so. Then get your bearings in **one shot** — HEAD + ahead/behind, recent commits, **your** live unread mailbox, peer ONLINE/STALE state, and the wave gate:
 
 ```bash
-python .claude/skills/four-seat-protocol/scripts/seat_status.py director --wave <N>
+.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py director --wave 2
 #   (use director2 if you are the Pair-B director; this is the shared umbrella tool)
 ```
 
-Read-only — it never stages or commits. **Rule #8:** if it reports unread > 0, surface that count in your FIRST user-facing turn, then `coordination/bin/consume-events director`.
+Read-only — it never stages or commits. **Rule #8:** if it reports unread > 0, surface that count in your FIRST user-facing turn, then consume: `coordination/bin/consume-events director` for a legacy ISO cursor, `scripts/consume_bus.py director` for a migrated scalar cursor (the script tells you which). Check your capacity packet (`coordination/capacity/packets/`) for the route's `allowed_paths`, acceptance contract, and next recipient before writing anything.
 
 ## First question: is this CROSS-CUTTING? (answer before reaching for the lock)
 
-Locks exist for exactly **four** collision-prone modules: **`auto_approve.py` · `<PROJECT>/context.py` · `core.py` · `<entrypoint>.py`**. If your fix does **not** touch one of these, it is **lane-only → claim NO lock**; go straight to the brief. Size, severity, and "this feels important/risky" are irrelevant — lane-only modules (domain subsystem files, processing-chain modules, domain-specific gate files) take no lock. (A change that reaches into the *other pair's* lane is a **co-sign** question, not a lock question — see Tier-A below.)
+Locks exist for **contended shared modules**. In Pipeline the route's write-fence is primarily its **capacity packet** (`allowed_paths` + `lock_keys`); claim a lock only when your route names a lock key or you genuinely contend with another seat on a shared module. If your fix touches neither, it is **lane-only → claim NO lock**; go straight to the brief. Size, severity, and "this feels important/risky" are irrelevant — lane-only files take no lock. (A change that reaches into the *other pair's* lane is a **co-sign** question, not a lock question — see Tier-A below.)
 
 ## The lifecycle is an ordered chain — do not stop at the lock (§6c)
 
@@ -37,7 +36,7 @@ Locks exist for exactly **four** collision-prone modules: **`auto_approve.py` ·
 5. Operator independently verifies (you do NOT verify your own pair's fix)
 ```
 
-A "ready to commit" fix on a cross-cutting module (`auto_approve.py`/`<PROJECT>/context.py`/`core.py`/`<entrypoint>.py`) is **not** evaluable until you confirm the lock was held **before** the code work. If you can't confirm it, stop and check.
+A "ready to commit" fix on a contended shared module is **not** evaluable until you confirm the lock was held **before** the code work. If you can't confirm it, stop and check.
 
 ## Authoring the R-BRIEF — where evidence is produced (the highest-leverage thing you do)
 
@@ -52,7 +51,13 @@ The brief gates the fix: the co-signer reads it, the implementer obeys it. Autho
 - **Small / tightly-coupled** → implement directly (you author; your operator verifies).
 - **≥5 independent sub-tasks OR ≥800 LOC** → **orchestrate** (R-ORCH): one fresh implementer per task, **sequential on shared files**, reviewers after — never two implementers in parallel on shared files (`docs/protocol/claude/orchestration.md`). Dispatch with the `docs/templates/claude/implementer.md` body incl. its **Git-hygiene block** (`env -u GIT_INDEX_FILE`) + items 4–5.
 - **Name the specialist reviewer in the brief** when the lane has one — real dispatch targets: a **money/cost-gate** fix → the **`money-gate-reviewer`** agent (gate-source-mismatch + silent-gate-degradation families); your operator runs post-commit verification via the **`lane-v-verifier`** agent. You do NOT verify your own pair's fix.
-<!-- TODO(<PROJECT>): add domain-specialist reviewer targets here (e.g. a domain-graph reviewer agent for <domain-skill> content) -->
+
+## Close the loop like a director (Pair Operating Contract)
+
+- Once scope is stable, send **one verify-request per implementation or brief** — include commit/range, brief path, evidence commands, known excluded workspace state, and expected verdict. No receipt/status churn.
+- The loop closes only on your operator's `verification-report` GO/NITS/FAIL — a gate script's PASS never substitutes (R-GATE-EVIDENCE); **no push before GO** (R-VERIFY-THEN-PUSH; push stays user-gated).
+- End every live-seat turn with an **Exact Next Trigger** section naming the next lawful prompt, seat event, standby condition, or blocker.
+- Under a capacity split, own only your chunk's disjoint write set; the other pair's chunk gets its own verify loop (full text: continuation adapter).
 
 ## Tier-A co-sign is a HARD gate (the rule baselines break under pressure)
 
@@ -94,5 +99,5 @@ The loser **abandons** — `claim-lock` exit 1 means you never had a valid claim
 - Brief names a write-target with no grep output under it → Rule #12 hole.
 - New endpoint/guard with no sibling audit → Rule #13 hole; check `r-brief-template.md`.
 - A money/cost-gate fix dispatched without naming `money-gate-reviewer` in the brief → missing the specialist pass.
-- Writing domain-specific subsystem or pipeline code without loading the matching `<domain-skill>` → R-SKILL.
+- Writing domain-specific subsystem or target-repo code without loading the matching project skill / target-repo instructions → R-SKILL.
 - About to verify your own pair's fix → that's the operator's job.

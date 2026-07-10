@@ -9,24 +9,34 @@ description: Use when operating as the on-demand COORDINATOR seat (5th oversight
 
 The coordinator is the **on-demand 5th cross-pair oversight seat** — spawned at a multi-pair-wrap boundary or campaign event, **not** a standing concurrent seat. Prime directive: **own the remediation inventory, gate waves, reconcile status, route co-signs, and surface every consequential decision to the user-principal** — while **never touching production code**.
 
-**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, authority, git sharp edges). Sources: `docs/protocol/claude/four-seat-extension.md` §10; spec §6a (ownership matrix) + §6f (absence-resilience); `docs/REMEDIATION-INVENTORY.md` header.
+**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, authority, git sharp edges) and `docs/protocol/claude/continuation.md` (live-kernel adapter: runtime modes, capacity split, side-effect executor tokens, blocked-wave handling). Sources: `docs/protocol/claude/four-seat-extension.md` §10 (on-demand policy); ownership matrix + absence-resilience (§6a/§6f — carried by these skills); `docs/REMEDIATION-INVENTORY.md` header; `coordination/capacity/packets/` (the live route's packets — you own convergence).
 
 ## Session-start orientation (do this first)
 
-Get oriented in one shot — the shared status script now accepts the coordinator seat (all four peers' heartbeats + every `-to-coordinator-`/`-to-all-` mailbox event; the coordinator is **UNPINNED**, so there is no cursor and the list is all-time):
+**Fresh/transplanted instance: same-seat handoff first** — locate the newest `docs/HANDOFF-coordinator-*.md` before reconciling; if none exists, say so. Then get oriented in one shot — the shared status script accepts the coordinator seat (all peers' heartbeats + every `-to-coordinator-`/`-to-all-` mailbox event; the coordinator is **UNPINNED**, so there is no cursor to consume):
 
 ```bash
-python .claude/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave <N>
+.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
 ```
 
 **Run that FIRST** — it is the one command that surfaces your unread `-to-coordinator-`/`-to-all-` mailbox events; **surface that count in your first user-facing turn (Rule #8)** before any reconcile. Then produce the **gate proof** you will cite (R-EVIDENCE — never assert a gate state from memory):
 
 ```bash
-python scripts/wave_gate_check.py <N>   # exit 0 = MET, 1 = UNMET
-python scripts/ci_smoke.py              # §15 smoke; must be clean before you trust the tree
+.venv/bin/python scripts/wave_gate_check.py 2   # exit 0 = MET, 1 = UNMET
+.venv/bin/python scripts/ci_smoke.py            # §15 smoke; must be clean before you trust the tree
 ```
 
-The coordinator has no `seen/coordinator.txt` cursor and does **not** `consume-events` — it reconciles at the §6f triggers (session-start, wave-boundary gate, a director's gate-request), not via a watermark.
+Before committing an active task-board route, render the hard-gated capacity board and validate the draft route; the protocol doctor gives a strict read-only validation bundle:
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave>
+env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md
+env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave>
+```
+
+Closed-cycle coordinator-join packets are hard-gated too: standby, idle, closeout, transfer, or transplant evidence must cite a durable `docs/HANDOFF-*.md` artifact, and every coordinator turn ends with an **Exact Next Trigger** section. (`coordinator2` exists as an on-demand cross-check owner — it is not a standing coverage actor.)
+
+The coordinator never consumes its cursor (`seen/coordinator.txt` exists only as a migration sentinel) — do **not** run `consume-events coordinator` or `consume_bus.py coordinator`; it reconciles at the §6f triggers (session-start, wave-boundary gate, a director's gate-request), not via a watermark.
 
 ## The prime prohibition (the one rule that defines this seat)
 

@@ -31,9 +31,8 @@ docs/protocol/agents/director-operator.md
 docs/protocol/protocol-assembly-map.md
 
 # Skill definition files (contain placeholder examples for skill authors)
-.claude/skills/seat-director/SKILL.md
-.claude/skills/seat-director/r-brief-template.md
-.claude/skills/four-seat-protocol/SKILL.md
+# (.claude/skills/seat-director/*, .claude/skills/four-seat-protocol/SKILL.md were
+#  bound to Pipeline on 2026-07-10 and removed per the adoption workflow above)
 .claude/skills/create-regression-pin/SKILL.md
 .claude/agents/money-gate-reviewer.md
 .agents/skills/seat-director/SKILL.md

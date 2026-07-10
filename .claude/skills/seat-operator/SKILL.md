@@ -9,18 +9,18 @@ description: Use when operating as a per-pair OPERATOR seat (Pair-A or Pair-B) i
 
 The per-pair operator is the **independent post-commit verifier** for everything the director (or a dispatched implementer) ships. Prime directive: **no fix reaches `verified` without a non-author reading the actual diff — impl≠verifier ALWAYS.** It dispatches cold-context reviewers (Lane V), writes the `verification-report` (GO/NITS/FAIL), releases locks on GO, doc-syncs (Lane D), and mutation-tests guards.
 
-**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/claude/director-operator.md` (Rule #9 cold-context, Lane V/D/S, phase taxonomy, Rules #14/#15/#21); spec §6a/§6c (impl≠verifier, lock-release-on-GO) + §6b (FAIL-cap); `docs/templates/claude/reviewer.md`.
+**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, git sharp edges) and `docs/protocol/claude/continuation.md` (live-kernel adapter: runtime modes, pair contract, capacity split, side-effect tokens). Sources: `docs/protocol/claude/director-operator.md` (Rule #9 cold-context, Lane V/D/S, phase taxonomy, Rules #14/#15/#21); impl≠verifier + lock-release-on-GO + the 3-FAIL cap (§6a/§6b/§6c — carried by the `four-seat-protocol` skill); `docs/templates/claude/reviewer.md` (canonical `pass | issues | unable_to_verify` reviewer vocabulary).
 
 ## Session-start orientation (do this first)
 
-Before any verification work, get your bearings in **one shot** instead of re-deriving it by hand. A bundled composite runs the whole ritual read-only — HEAD + ahead/behind, recent commits, **your** live unread-mailbox count, each peer's heartbeat ONLINE/STALE state, and the wave gate:
+**Fresh/transplanted instance: same-seat handoff first** — locate the newest `docs/HANDOFF-<your-concrete-seat>-*.md` before ordinary orientation; if none exists, say so. Then get your bearings in **one shot**. A bundled composite runs the whole ritual read-only — HEAD + ahead/behind, recent commits, **your** live unread-mailbox count, each peer's heartbeat ONLINE/STALE state, and the wave gate:
 
 ```bash
-python .claude/skills/four-seat-protocol/scripts/seat_status.py operator --wave <N>
+.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py operator --wave 2
 #   (use operator2 if you are the Pair-B operator; the script is the shared umbrella tool)
 ```
 
-It is strictly read-only — it never stages or advances a cursor (that's `consume-events`' job). It computes unread the same way `consume-events` does, so the count is trustworthy. **Rule #8:** if it reports unread > 0, surface that count in your FIRST user-facing turn, then `coordination/bin/consume-events operator`. The count is the *live* recompute — never trust `STATE.md`'s cached number (Rule #20).
+It is strictly read-only — it never stages or advances a cursor. It is ref-bus-aware, so the count is trustworthy for migrated seats too. **Rule #8:** if it reports unread > 0, surface that count in your FIRST user-facing turn, then consume: `coordination/bin/consume-events operator` for a legacy ISO cursor, `scripts/consume_bus.py operator` for a migrated scalar cursor (the tooling tells you which). The count is the *live* recompute — never trust `STATE.md`'s cached number (Rule #20). Check your capacity packet (`coordination/capacity/packets/`) for the route's verify scope and next recipient.
 
 ## Phase detection — when a new commit warrants a pass (and when silence is correct)
 
@@ -35,7 +35,7 @@ The operator's hardest discipline is *not* verifying everything. Firing Lane V o
 | Post-commit `chore`/`docs`/`test`/`style` | commit of that type | Lane D (doc-sync if warranted) or ignore — **not** Lane V |
 | Idle (no signal ~10 min) | quiet | Adjacent useful work (mutation-test prep, NITS bounce) — not invented verification |
 
-**When the phase is ambiguous, default to inaction** — a speculative Lane V on a non-shipping commit burns tokens and signal. (Full taxonomy + exit signals: `docs/protocol/claude/director-operator.md` "Phase taxonomy".)
+**When the phase is ambiguous, default to inaction** — a speculative Lane V on a non-shipping commit burns tokens and signal; return idle evidence or wait for a fresh verify-request. (Full taxonomy + exit signals: `docs/protocol/claude/director-operator.md` "Phase taxonomy".) Under the Pair Operating Contract you wait for a **fresh verify-request or shipping commit** — no duplicate Lane V for docs-only, status-only, or handoff-only commits. End every live-seat turn with an **Exact Next Trigger** section naming the next lawful prompt, seat event, standby condition, or blocker.
 
 ## impl≠verifier is about NON-AUTHORSHIP, not seat identity
 
