@@ -7,9 +7,13 @@ green; coverage lives in `tests/unit/test_check_coordination.py` +
 `tests/unit/test_coordination_tooling.py` (the originally cited
 test_four_seat_coordination.py was not transplanted). `director2`
 /`operator2` went LIVE at the 2026-06-13T08:50Z cutover (historical
-snapshot — read liveness from heartbeats, not this line). **Lanes FINAL** (PRINCIPAL-CONFIRMED 2026-06-13): Pair A = <domain-lane-A>,
-Pair B = <domain-lane-B> (§1 table + §6). Status:
-**ACCEPTED.**
+snapshot — read liveness from heartbeats, not this line). **Lanes:** the
+origin-project badge "FINAL (PRINCIPAL-CONFIRMED 2026-06-13)" is transfer-bundle
+history; the operative lane record for THIS Pipeline deployment is
+`DECISIONS.md` **ADR-009** (PRINCIPAL-CONFIRMED 2026-07-07): Pair A =
+coordination layer, Pair B = verification & signing layer. The angle-bracket
+lane slots below stay unbound by ADR-009's explicit instruction (adopter
+fill-ins, ADR-002). Status: **ACCEPTED.**
 
 **Principle: additive + backward-compatible.** No existing seat is renamed. The
 two current seats keep their exact identifiers, indexes, cursors, presence files,
@@ -28,6 +32,11 @@ Canonical seat IDs become a 4-set: **`director`, `director2`, `operator`,
 |------|----------|----------|------|
 | **A** | `director`  | `operator`  | **<domain-lane-A>** — <!-- TODO(<PROJECT>): list the Pair-A domain modules, subsystems, and data-integrity concerns for this project. --> |
 | **B** | `director2` | `operator2` | **<domain-lane-B>** — <!-- TODO(<PROJECT>): list the Pair-B domain modules, subsystems, external-API clients, and main orchestrator paths for this project. --> |
+
+(Adopter fill-ins per ADR-002 — deliberately unbound. For THIS deployment read
+the lanes from `DECISIONS.md` ADR-009: Pair A = coordination layer, Pair B =
+verification & signing layer; per-route capacity packets refine scope within
+those lanes.)
 
 **Shared seams** (modules that touch both lanes):
 owner = whoever's specific change-lane the edit is in, with a `-to-all-` heads-up
@@ -108,8 +117,10 @@ coordination/mailbox/seen/operator2.txt   <- 2026-06-13T00:00:00Z
 
 ## 6. Work partitioning (the actual speed lever)
 
-- **Pair lanes (FINAL — see the §1 table).** Pair A = **<domain-lane-A>**;
-  Pair B = **<domain-lane-B>**. Each pair's director briefs, its operator
+- **Pair lanes (adopter slots — the operative record is ADR-009).** Pair A =
+  **<domain-lane-A>**; Pair B = **<domain-lane-B>**; in Pipeline: Pair A =
+  coordination layer, Pair B = verification & signing layer (`DECISIONS.md`
+  ADR-009). Each pair's director briefs, its operator
   independently verifies — the current loop, run twice in parallel. Disjoint by
   construction; shared seams handled per Rule #23.
 - **Tiebreaker unchanged.** `git log --oneline -3` before acting on a shared
