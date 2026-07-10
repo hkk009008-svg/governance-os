@@ -407,12 +407,87 @@ class RuntimeOperation(str, Enum):
     ORIENT = "orient"
     REPOSITORY_MUTATE = "repository-mutate"
     MAIL_SEND = "mail-send"
+    ROUTE_MUTATE = "route-mutate"
     HUMAN_CURSOR_CONSUME = "human-cursor-consume"
     LOCK_MUTATE = "lock-mutate"
     SIGNED_CURSOR_CONSUME = "signed-cursor-consume"
     SIGNED_FACT_EMIT = "signed-fact-emit"
     OPERATOR_VERDICT = "operator-verdict"
+    REMOTE_PUBLISH = "remote-publish"
+    TRUST_ROOT_BOOTSTRAP = "trust-root-bootstrap"
+    AUTHORITY_CUTOVER = "authority-cutover"
 ```
+
+- Pins the complete default actor-operation matrix:
+
+```python
+DEFAULT_RUNTIME_OPERATIONS = {
+    "readiness-bridge": frozenset({
+        RuntimeOperation.ORIENT,
+    }),
+    "subagent": frozenset({
+        RuntimeOperation.ORIENT,
+        RuntimeOperation.REPOSITORY_MUTATE,
+    }),
+    "director": frozenset({
+        RuntimeOperation.ORIENT,
+        RuntimeOperation.REPOSITORY_MUTATE,
+        RuntimeOperation.MAIL_SEND,
+        RuntimeOperation.HUMAN_CURSOR_CONSUME,
+        RuntimeOperation.LOCK_MUTATE,
+        RuntimeOperation.SIGNED_CURSOR_CONSUME,
+        RuntimeOperation.SIGNED_FACT_EMIT,
+    }),
+    "operator": frozenset({
+        RuntimeOperation.ORIENT,
+        RuntimeOperation.REPOSITORY_MUTATE,
+        RuntimeOperation.MAIL_SEND,
+        RuntimeOperation.HUMAN_CURSOR_CONSUME,
+        RuntimeOperation.LOCK_MUTATE,
+        RuntimeOperation.SIGNED_CURSOR_CONSUME,
+        RuntimeOperation.SIGNED_FACT_EMIT,
+        RuntimeOperation.OPERATOR_VERDICT,
+    }),
+    "coordinator": frozenset({
+        RuntimeOperation.ORIENT,
+        RuntimeOperation.REPOSITORY_MUTATE,
+        RuntimeOperation.MAIL_SEND,
+        RuntimeOperation.ROUTE_MUTATE,
+        RuntimeOperation.LOCK_MUTATE,
+        RuntimeOperation.SIGNED_CURSOR_CONSUME,
+        RuntimeOperation.SIGNED_FACT_EMIT,
+    }),
+}
+TOKEN_ONLY_RUNTIME_OPERATIONS = frozenset({
+    RuntimeOperation.REMOTE_PUBLISH,
+    RuntimeOperation.TRUST_ROOT_BOOTSTRAP,
+    RuntimeOperation.AUTHORITY_CUTOVER,
+})
+
+RUNTIME_ACTOR_CLASS_BY_IDENTITY = {
+    ("readiness-bridge", None): "readiness-bridge",
+    ("subagent", None): "subagent",
+    ("live-seat", "director"): "director",
+    ("live-seat", "director2"): "director",
+    ("live-seat", "operator"): "operator",
+    ("live-seat", "operator2"): "operator",
+    ("coordinator", "coordinator"): "coordinator",
+    ("coordinator", "coordinator2"): "coordinator",
+}
+```
+
+`REPOSITORY_MUTATE` never widens the identity's path-limited mutation scope.
+The `(mode, concrete_seat)` map above is exhaustive: every tuple not listed is
+invalid and receives no operation defaults. The two pair directors share the
+director operation set, the two pair operators share the operator operation
+set, and both coordinator spellings share the coordinator set without gaining
+a human-mailbox cursor. The readiness and subagent modes never carry a
+concrete seat.
+Token-only operations belong to no default set and become eligible only when a
+complete target-bound token names the same concrete executor, the user has
+authorized the action, and all operation-specific gates pass. Readiness,
+subagent, and mechanical principals can never receive token-only interactive
+operations.
 
 - Produces immutable `RuntimeIdentity` with fields `mode`, `concrete_seat`,
   `behavior_source`, `capability_scope`, `mutation_scope`, `mailbox_policy`,
@@ -476,10 +551,61 @@ def test_override_cannot_widen_readiness_bridge():
     })
     assert identity.identity_valid is False
     assert "widen" in " ".join(identity.validation_errors)
+
+
+DIRECTOR_EXPECTED = frozenset({
+    "orient", "repository-mutate", "mail-send", "human-cursor-consume",
+    "lock-mutate", "signed-cursor-consume", "signed-fact-emit",
+})
+OPERATOR_EXPECTED = DIRECTOR_EXPECTED | {"operator-verdict"}
+COORDINATOR_EXPECTED = frozenset({
+    "orient", "repository-mutate", "mail-send", "route-mutate",
+    "lock-mutate", "signed-cursor-consume", "signed-fact-emit",
+})
+EXPECTED_BY_RUNTIME_IDENTITY = {
+    ("readiness-bridge", None): frozenset({"orient"}),
+    ("subagent", None): frozenset({"orient", "repository-mutate"}),
+    ("live-seat", "director"): DIRECTOR_EXPECTED,
+    ("live-seat", "director2"): DIRECTOR_EXPECTED,
+    ("live-seat", "operator"): OPERATOR_EXPECTED,
+    ("live-seat", "operator2"): OPERATOR_EXPECTED,
+    ("coordinator", "coordinator"): COORDINATOR_EXPECTED,
+    ("coordinator", "coordinator2"): COORDINATOR_EXPECTED,
+}
+
+
+@pytest.mark.parametrize(
+    ("mode", "seat", "operation"),
+    [
+        (mode, seat, operation)
+        for mode, seat in EXPECTED_BY_RUNTIME_IDENTITY
+        for operation in RuntimeOperation
+    ],
+)
+def test_default_mode_seat_operation_matrix_is_exact(mode, seat, operation):
+    identity = _identity_for_mode_and_seat(mode, seat)
+    expected = EXPECTED_BY_RUNTIME_IDENTITY[(mode, seat)]
+    assert model.operation_is_allowed(identity, operation) is (
+        operation.value in expected
+    )
+
+
+def test_token_only_operations_have_no_default_actor():
+    for mode, seat in EXPECTED_BY_RUNTIME_IDENTITY:
+        identity = _identity_for_mode_and_seat(mode, seat)
+        for operation in (
+            RuntimeOperation.REMOTE_PUBLISH,
+            RuntimeOperation.TRUST_ROOT_BOOTSTRAP,
+            RuntimeOperation.AUTHORITY_CUTOVER,
+        ):
+            assert model.operation_is_allowed(identity, operation) is False
 ```
 
 Hook integration coverage belongs to Task 3B so this foundation commit remains
 independently reviewable.
+The matrix expectations above are hard-coded in the test module independently
+from production defaults; tests must not import the production matrix to build
+their expected table.
 
 - [ ] **Step 2: Run tests to prove RED**
 
@@ -676,7 +802,8 @@ operation authorization.
 - [ ] **Step 3: Add operation guards at every entry point**
 
 Use exact operation tokens `mail-send`, `human-cursor-consume`,
-`lock-mutate`, `signed-cursor-consume`, `signed-fact-emit`, and
+`route-mutate`, `lock-mutate`, `signed-cursor-consume`,
+`signed-fact-emit`, and
 `operator-verdict` from the Task-3A `RuntimeOperation` enum; Task 3C does not
 redefine or modify that enum. Validate before reading stdin into a durable artifact,
 creating temporary files, staging, committing, pushing, or updating refs.
@@ -810,9 +937,10 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind service principals"
   binds the exact HEAD that contains the manifest and its digest.
 - `scripts/execute_threeway_cutover.sh --preflight` performs no writes and exits nonzero on partial key registries, dirty tracked files, pre-existing unexplained refs, or non-shadow authority.
 - All driver modes require `--activation-manifest`, `--executor-token`, and
-  `--side-effect-id`. `--yes` remains the sole mutating flag;
-  `--postcheck` is a separate non-authority-changing finalized-state mode that
-  may append only the named secret-free evidence file. `--yes` and
+  `--side-effect-id`. `--yes` is the sole mode permitted to mutate managed refs
+  or authority; `--postcheck` is a separate finalized-state mode that may
+  append only the named secret-free evidence file and cannot change refs,
+  authority, keys, cursors, the activation manifest, the index, or staging. `--yes` and
   `--postcheck` require `--evidence-file`; `--preflight` accepts no evidence
   output path and writes nothing. Mutation mode
   revalidates token-bound HEAD, manifest digest, managed refs, GO artifacts,
@@ -839,6 +967,14 @@ same bytes after success and injected failure. Add cases for:
 - wrong or ambiguous side-effect ID, executor, target, action class, expected
   HEAD, manifest digest, GO artifact, reviewed SHA, or newer appointment
   refused before writes;
+- parameterized mid-cutover race injection after fresh managed-ref creation or
+  verified-exact-resume verification, but before the `live` marker, for each of:
+  HEAD change, activation-manifest digest change, one managed-ref OID change,
+  and a newer executor appointment. Every injection must leave authority
+  `shadow`. Fresh-cutover failures restore the exact pre-run ref snapshot,
+  deleting only refs absent before the attempt; exact-resume failures leave
+  every matching pre-existing ref OID unchanged and perform no ref rewrite.
+  Removing the single injected change must let the same fixture reach `live`;
 - `--preflight` producing no refs, files, cursor changes, or staging.
 
 - [ ] **Step 2: Run tests to prove RED**
@@ -908,7 +1044,9 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_cutove
 
 Change one expected signed cursor from the projected head to `0`; confirm the
 test fails. Then change one exact-resume ref OID and confirm resume refuses.
-Restore both and rerun GREEN.
+Restore both and rerun GREEN. Disable one mid-cutover race injection and
+confirm the same fixture reaches `live`; restore the injection and confirm the
+driver fails closed with the mode-specific ref disposition above.
 
 - [ ] **Step 7: Review and commit Task 4**
 
