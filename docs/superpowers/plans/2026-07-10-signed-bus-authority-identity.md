@@ -396,6 +396,24 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): separate mailbox and signed-
 
 **Interfaces:**
 - Produces `RuntimeIdentityError(ValueError)`.
+- Produces `SessionBindingView(Protocol)` with read-only `session_id`,
+  `mode`, `concrete_seat`, and `role_family` attributes. Task 3B's concrete
+  `SessionBinding` implements this protocol without requiring Task 3A to import
+  a later module.
+- Produces the complete interactive `RuntimeOperation` enum in Task 3A:
+
+```python
+class RuntimeOperation(str, Enum):
+    ORIENT = "orient"
+    REPOSITORY_MUTATE = "repository-mutate"
+    MAIL_SEND = "mail-send"
+    HUMAN_CURSOR_CONSUME = "human-cursor-consume"
+    LOCK_MUTATE = "lock-mutate"
+    SIGNED_CURSOR_CONSUME = "signed-cursor-consume"
+    SIGNED_FACT_EMIT = "signed-fact-emit"
+    OPERATOR_VERDICT = "operator-verdict"
+```
+
 - Produces immutable `RuntimeIdentity` with fields `mode`, `concrete_seat`,
   `behavior_source`, `capability_scope`, `mutation_scope`, `mailbox_policy`,
   `git_policy`, `verification_policy`, `routing_authority`,
@@ -403,7 +421,7 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): separate mailbox and signed-
 - Produces a derived `role_family` property. Pair mappings are
   `director -> director`, `director2 -> director`, `operator -> operator`,
   and `operator2 -> operator`; both coordinator aliases map to `coordinator`.
-- Produces `resolve_runtime_identity(environ: Mapping[str, str], *, session_binding: SessionBinding | None = None) -> RuntimeIdentity`. It returns an invalid object for malformed ambient state and never raises.
+- Produces `resolve_runtime_identity(environ: Mapping[str, str], *, session_binding: SessionBindingView | None = None) -> RuntimeIdentity`. It returns an invalid object for malformed ambient state and never raises.
 - Produces `require_runtime_identity(...) -> RuntimeIdentity` and
   `authorize_operation(..., operation: RuntimeOperation, expected_actor: str | None) -> RuntimeIdentity`; these raise `RuntimeIdentityError` with the same stable ordered error tuple.
 - Keeps `infer_runtime_env()` as the compatibility renderer; it calls the resolver and adds `CODEX_IDENTITY_VALID` and `CODEX_IDENTITY_ERRORS`.
@@ -469,8 +487,9 @@ independently reviewable.
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_codex_protocol_model.py tests/unit/test_codex_ledger_bridge.py -q
 ```
 
-Expected: import/attribute failures for the resolver and a hook test showing the
-current arbitrary presence path write.
+Expected: import/attribute failures for `RuntimeIdentity`,
+`SessionBindingView`, `RuntimeOperation`, and the resolver. Hook failures are
+not expected from this selector and belong to Task 3B.
 
 - [ ] **Step 3: Implement `RuntimeIdentity` and strict resolution**
 
@@ -658,7 +677,8 @@ operation authorization.
 
 Use exact operation tokens `mail-send`, `human-cursor-consume`,
 `lock-mutate`, `signed-cursor-consume`, `signed-fact-emit`, and
-`operator-verdict`. Validate before reading stdin into a durable artifact,
+`operator-verdict` from the Task-3A `RuntimeOperation` enum; Task 3C does not
+redefine or modify that enum. Validate before reading stdin into a durable artifact,
 creating temporary files, staging, committing, pushing, or updating refs.
 Existing side-effect token and user-consent checks remain additional gates.
 
@@ -789,8 +809,15 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind service principals"
   validation and the cutover driver. The executor token, not the manifest,
   binds the exact HEAD that contains the manifest and its digest.
 - `scripts/execute_threeway_cutover.sh --preflight` performs no writes and exits nonzero on partial key registries, dirty tracked files, pre-existing unexplained refs, or non-shadow authority.
-- Both driver modes require `--activation-manifest`, `--executor-token`, and
-  `--side-effect-id`. `--yes` remains the sole additional mutating flag.
+- All driver modes require `--activation-manifest`, `--executor-token`, and
+  `--side-effect-id`. `--yes` remains the sole mutating flag;
+  `--postcheck` is a separate non-authority-changing finalized-state mode that
+  may append only the named secret-free evidence file. `--yes` and
+  `--postcheck` require `--evidence-file`; `--preflight` accepts no evidence
+  output path and writes nothing. Mutation mode
+  revalidates token-bound HEAD, manifest digest, managed refs, GO artifacts,
+  concrete executor, and newer appointment immediately before atomically
+  changing the authority marker.
 
 - [ ] **Step 1: Write cutover regressions**
 
@@ -908,6 +935,24 @@ env -u GIT_INDEX_FILE git commit -m "fix(threeway): separate bus cutover from hu
 - Production CLI binds the exact ordered 11-principal roster and rejects a
   subset or reordered `--seats` value. Pure helpers may accept an injected
   roster only for hermetic tests.
+- Tests define this independent literal rather than deriving expectations from
+  production `SEATS`:
+
+```python
+EXPECTED_SIGNING_ROSTER = (
+    "director",
+    "operator",
+    "coordinator",
+    "director2",
+    "operator2",
+    "coordinator2",
+    "overseer",
+    "ci",
+    "merge-gate",
+    "chief-gemini",
+    "chief-chatgpt",
+)
+```
 - Produces `load_private(identity: str, *, keystore: Path | None = None)`;
   an explicit keystore always wins over the environment fallback.
 - Public and private trees are independently classified as `empty`,
@@ -921,7 +966,8 @@ env -u GIT_INDEX_FILE git commit -m "fix(threeway): separate bus cutover from hu
 
 Add tests proving:
 
-- an empty registry generates the exact 11-seat roster;
+- `tuple(SEATS) == EXPECTED_SIGNING_ROSTER` and an empty registry generates
+  exactly those ordered identities;
 - a complete matching registry/keystore is a no-op and preserves every byte;
 - a partial registry fails before writing;
 - an extra public key fails before writing;
@@ -969,7 +1015,9 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_keys.py tests/u
 Replace one public key with another valid 64-hex key and confirm the
 public/private matching test fails. Then point the keystore through a symlink
 back into the repo and confirm containment fails before directory creation.
-Restore both and rerun GREEN.
+Finally remove `chief-chatgpt` from production `SEATS` while leaving the
+independent expected literal unchanged and confirm the roster contract fails.
+Restore all three mutations and rerun GREEN.
 
 - [ ] **Step 5: Review and commit Task 5**
 
@@ -1180,7 +1228,7 @@ env -u GIT_INDEX_FILE git log --oneline -3
 env -u GIT_INDEX_FILE git status --short --branch
 test -n "$TASK6C_TOKEN_ROUTE"
 test -f "$TASK6C_TOKEN_ROUTE"
-env -u GIT_INDEX_FILE .venv/bin/python scripts/execute_threeway_cutover.sh \
+env -u GIT_INDEX_FILE scripts/execute_threeway_cutover.sh \
   --preflight \
   --activation-manifest coordination/threeway/activation/pipeline-local-authority-2026-07-10.toml \
   --executor-token "$TASK6C_TOKEN_ROUTE" \
@@ -1198,21 +1246,34 @@ env -u GIT_INDEX_FILE scripts/execute_threeway_cutover.sh \
   --yes \
   --activation-manifest coordination/threeway/activation/pipeline-local-authority-2026-07-10.toml \
   --executor-token "$TASK6C_TOKEN_ROUTE" \
-  --side-effect-id threeway-local-authority-flip-pipeline-local-authority-2026-07-10
+  --side-effect-id threeway-local-authority-flip-pipeline-local-authority-2026-07-10 \
+  --evidence-file logs/threeway-activation-pipeline-local-authority-2026-07-10/cutover.txt
 ```
 
 Fresh mode creates the exact managed-ref set. Verified-exact resume verifies
 every existing OID and performs no ref rewrite. Partial, extra, mismatched,
-changed-HEAD/digest, or already-`live` state refuses.
+changed-HEAD/digest, or already-`live` state refuses. After fresh creation or
+exact-resume verification, the driver repeats the token/HEAD/digest/ref/newer-
+appointment checks and atomically changes only
+`signed_facts.authority = "live"`. It writes secret-free command inputs,
+mode, ref OIDs, validation results, and marker result to `cutover.txt`.
 
-- [ ] **Step 3: Change only the committed authority marker**
+- [ ] **Step 3: Revalidate the driver-finalized live state**
 
-```toml
-[signed_facts]
-authority = "live"
+```bash
+env -u GIT_INDEX_FILE scripts/execute_threeway_cutover.sh \
+  --postcheck \
+  --activation-manifest coordination/threeway/activation/pipeline-local-authority-2026-07-10.toml \
+  --executor-token "$TASK6C_TOKEN_ROUTE" \
+  --side-effect-id threeway-local-authority-flip-pipeline-local-authority-2026-07-10 \
+  --evidence-file logs/threeway-activation-pipeline-local-authority-2026-07-10/cutover.txt
 ```
 
-Preserve every other manifest field byte-for-byte.
+Postcheck cannot change refs, authority, keys, cursors, or the index. It fails
+unless the same token-bound HEAD and manifest digest remain current, the exact
+managed refs match, the marker is `live`, every other authority-manifest byte
+is unchanged, and no newer appointment exists; only the designated
+`cutover.txt` evidence append is permitted.
 
 - [ ] **Step 4: Capture secret-free postcheck**
 
@@ -1230,6 +1291,12 @@ Expected: exact manifest-matched events/cursor refs, authority validation `()`,
 - [ ] **Step 5: Commit the live marker and secret-free cutover evidence**
 
 ```bash
+env -u GIT_INDEX_FILE scripts/execute_threeway_cutover.sh \
+  --postcheck \
+  --activation-manifest coordination/threeway/activation/pipeline-local-authority-2026-07-10.toml \
+  --executor-token "$TASK6C_TOKEN_ROUTE" \
+  --side-effect-id threeway-local-authority-flip-pipeline-local-authority-2026-07-10 \
+  --evidence-file logs/threeway-activation-pipeline-local-authority-2026-07-10/cutover.txt
 env -u GIT_INDEX_FILE git add -- coordination/authority.toml \
   logs/threeway-activation-pipeline-local-authority-2026-07-10/cutover.txt
 env -u GIT_INDEX_FILE git diff --cached --check

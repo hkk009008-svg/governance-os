@@ -19,8 +19,11 @@
     "scripts/execute_threeway_cutover.sh",
     "scripts/protocol_capacity.py",
     "scripts/bus_unread.py",
+    "coordination/authority.toml",
     "coordination/threeway/keys/",
     "coordination/threeway/activation/",
+    "logs/threeway-trust-root-pipeline-local-authority-2026-07-10/",
+    "logs/threeway-activation-pipeline-local-authority-2026-07-10/",
     "tests/unit/",
     "coordination/mailbox/sent/"
   ],
@@ -52,8 +55,11 @@
     "scripts/execute_threeway_cutover.sh",
     "scripts/protocol_capacity.py",
     "scripts/bus_unread.py",
+    "coordination/authority.toml",
     "coordination/threeway/keys/",
     "coordination/threeway/activation/",
+    "logs/threeway-trust-root-pipeline-local-authority-2026-07-10/",
+    "logs/threeway-activation-pipeline-local-authority-2026-07-10/",
     "tests/unit/"
   ]
 }

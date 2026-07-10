@@ -204,7 +204,7 @@ create refs, execute cutover, or implement.
 - side_effect_id: `control-plane-authority-plan-reroute-2026-07-10`
 - executor: `coordinator`
 - target: local Pipeline-main route mutation limited to this route file, the revised design/plan, five existing control-plane capacity packets, and two new repreflight capacity packets
-- allowed_command_class: coordinator-owned route mutation through `apply_patch` plus `env -u GIT_INDEX_FILE git add` and one strict-pathspec local `git commit`
+- allowed_command_class: coordinator-owned route mutation through `apply_patch` plus `env -u GIT_INDEX_FILE git add` and the initial strict-pathspec local `git commit` together with bounded review-fix commits sharing this `side_effect_id`
 - preflight: user explicitly continued as coordinator and selected verified-exact resume; HEAD is `99a8b5b813e526e8ff04a3836af8073e5c9c9081`; Pipeline main and the routed worktree are clean; routed worktree HEAD is `e43acc245e2492883ca04b0d835268708ad0995d`; the three cited blocker reports are newest; this route path is absent
 - stop_if_newer_mail_or_live_target_satisfied: stop before commit if newer coordinator mail supersedes this revision, Pipeline HEAD changes, unrelated worktree changes appear, the routed worktree leaves `e43acc245e2492883ca04b0d835268708ad0995d`, another route already satisfies all three blockers, or any edited path falls outside the named target
 - postcheck: capacity board valid; this route valid; protocol doctor passes against this route; smoke OK; git diff/cached scope contains only the named design, plan, capacity packets, and route; committed HEAD contains this exact route
