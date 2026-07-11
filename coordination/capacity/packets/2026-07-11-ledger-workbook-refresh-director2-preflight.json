@@ -1,0 +1,38 @@
+{
+  "id": "director2-ledger-workbook-refresh-preflight",
+  "wave": 2,
+  "cycle": "ledger-workbook-refresh-2026-07-11",
+  "owner": "director2",
+  "packet_type": "director-preflight",
+  "row_ids": [
+    "ledger-workbook-refresh-planner",
+    "ledger-workbook-refresh-guarded-apply",
+    "ledger-workbook-refresh-resource-direction"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/",
+    "docs/superpowers/specs/2026-07-11-ledger-workbook-refresh-design.md",
+    "docs/superpowers/plans/2026-07-11-ledger-workbook-refresh.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-workbook-refresh-2026-07-11/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start from Pipeline, run the Director2 Wave-2 ledger guard and status, read the all-seat route, and perform a bounded read-only contract preflight against the approved spec/plan, evidence-ledger target instructions, and freshly created worktree base.",
+    "Check whether the twenty-file write set and task order can satisfy source priority, typed actions, evidence-chain concurrency, resource compensation, direction/report separation, documentation truth, and user notification without an unplanned production path. Inspect Rule #12/#13 sibling writers where they could change scope.",
+    "Report one concise GO-for-route, contradiction, or missing-required-evidence artifact to coordinator. Name any route-changing issue before Director product edits; do not duplicate implementation or Operator Lane V.",
+    "Do not edit evidence-ledger product files, issue a production verdict, consume coordinator mail, take side effects, mutate route packets, or create duplicate status churn."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/",
+    "docs/superpowers/specs/2026-07-11-ledger-workbook-refresh-design.md",
+    "docs/superpowers/plans/2026-07-11-ledger-workbook-refresh.md"
+  ]
+}

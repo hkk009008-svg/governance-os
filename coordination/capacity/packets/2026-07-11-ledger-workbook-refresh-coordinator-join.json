@@ -1,0 +1,45 @@
+{
+  "id": "coord-ledger-workbook-refresh-join",
+  "wave": 2,
+  "cycle": "ledger-workbook-refresh-2026-07-11",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "ledger-workbook-refresh-planner",
+    "ledger-workbook-refresh-guarded-apply",
+    "ledger-workbook-refresh-resource-direction",
+    "ledger-workbook-refresh-canonical-activation"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-workbook-refresh-implementation",
+    "operator-ledger-workbook-refresh-lanev",
+    "director2-ledger-workbook-refresh-preflight",
+    "operator2-ledger-workbook-refresh-preflight"
+  ],
+  "acceptance": [
+    "Treat the user-approved design/specification and routed execution choice as durable authority through Pipeline commits 62d6e5d, e2ff411, and 4b6ceed. The incoming /Users/hyungkoookkim/Downloads/260710.xlsx is a source-scoped cumulative refresh, not an additive second import.",
+    "Keep this cycle open until the Director completes Tasks 1-7 through sequential fresh implementer/spec-review/quality-review loops, the Operator returns cumulative GO for the exact reviewed range and independent scratch rehearsal, Pair B preflights are reconciled, and the coordinator issues a separate target-bound canonical activation token only for the reviewed Task-8 command.",
+    "Close only after canonical local database/resource activation succeeds, committed verification commands prove the business-state fingerprint and final evidence-chain head, the unified directional readout is hash-bound and remains local-only, every seat can see the closeout, and capacity-board, route-validation, protocol-doctor, smoke, and no-push checks pass.",
+    "Do not edit evidence-ledger product files as coordinator. Do not expose real business figures in tracked Pipeline files or mailbox bodies. Preserve the parked control-plane Task2U worktree and all prior contradiction/verification provenance unchanged until a fresh post-refresh reroute."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-11-ledger-workbook-refresh-coordinator-join.json",
+    "coordination/capacity/packets/2026-07-11-ledger-workbook-refresh-director-implementation.json",
+    "coordination/capacity/packets/2026-07-11-ledger-workbook-refresh-operator-lanev.json",
+    "coordination/capacity/packets/2026-07-11-ledger-workbook-refresh-director2-preflight.json",
+    "coordination/capacity/packets/2026-07-11-ledger-workbook-refresh-operator2-preflight.json"
+  ]
+}
