@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
 import shlex
 import subprocess
+import sys
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -844,3 +846,107 @@ def reconcile(
         degraded_cross_model_review=False,
         degraded_reason=None,
     )
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run one blind Opus review or reconcile its findings."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    review_parser = subparsers.add_parser("review")
+    review_parser.add_argument("--repo-root", default=".")
+    review_parser.add_argument("--head", required=True)
+    review_parser.add_argument("--base")
+    review_parser.add_argument("--requirement", action="append", default=[])
+    review_parser.add_argument("--allow-path", action="append", default=[])
+    review_parser.add_argument("--verification-command", action="append", default=[])
+    review_parser.add_argument("--authorization-source", default="")
+
+    reconcile_parser = subparsers.add_parser("reconcile")
+    reconcile_parser.add_argument(
+        "--codex-verdict", choices=sorted(VALID_CODEX_VERDICTS), required=True
+    )
+    reconcile_parser.add_argument("--opus-review-json", required=True)
+    reconcile_parser.add_argument("--disposition", action="append", default=[])
+    reconcile_parser.add_argument("--evidence", action="append", default=[])
+    return parser
+
+
+def _key_value(items: list[str], *, label: str) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+    for item in items:
+        if "=" not in item:
+            raise ReviewContractError("invalid_cli", f"{label} must use ID=value")
+        key, value = item.split("=", 1)
+        key = key.strip()
+        if not key or key in parsed:
+            raise ReviewContractError("invalid_cli", f"duplicate or empty {label} id")
+        parsed[key] = value.strip()
+    return parsed
+
+
+def _run_review_cli(
+    args: argparse.Namespace,
+    reviewer: Callable[[ReviewRequest], OpusReview],
+) -> OpusReview:
+    request = ReviewRequest(
+        repo_root=Path(args.repo_root),
+        reviewed_head=args.head,
+        reviewed_base=args.base,
+        requirement_paths=tuple(Path(path) for path in args.requirement),
+        allowed_paths=tuple(args.allow_path),
+        verification_commands=tuple(args.verification_command),
+        authorization_source=args.authorization_source,
+    )
+    return reviewer(request)
+
+
+def _run_reconcile_cli(args: argparse.Namespace) -> Reconciliation:
+    try:
+        raw_review = json.loads(args.opus_review_json)
+    except json.JSONDecodeError as exc:
+        raise ReviewContractError("invalid_json", str(exc)) from exc
+    if not isinstance(raw_review, Mapping):
+        raise ReviewContractError("invalid_json", "Opus review must be an object")
+    review_result = OpusReview.from_dict(raw_review)
+    disposition_map = _key_value(args.disposition, label="disposition")
+    evidence_map = _key_value(args.evidence, label="evidence")
+    unknown_evidence = set(evidence_map) - set(disposition_map)
+    if unknown_evidence:
+        raise ReviewContractError(
+            "invalid_cli", f"evidence without disposition: {sorted(unknown_evidence)}"
+        )
+    dispositions = [
+        FindingDisposition(
+            finding_id=finding_id,
+            disposition=disposition,
+            evidence=evidence_map.get(finding_id, ""),
+        )
+        for finding_id, disposition in disposition_map.items()
+    ]
+    return reconcile(args.codex_verdict, review_result, dispositions)
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    reviewer: Callable[[ReviewRequest], OpusReview] | None = None,
+) -> int:
+    args = _parser().parse_args(argv)
+    try:
+        if args.command == "review":
+            result: OpusReview | Reconciliation = _run_review_cli(
+                args, reviewer or review
+            )
+        else:
+            result = _run_reconcile_cli(args)
+    except ReviewContractError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

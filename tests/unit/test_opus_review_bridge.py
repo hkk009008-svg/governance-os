@@ -684,3 +684,107 @@ def test_review_bridge_does_not_write_repository_files(tmp_path: Path) -> None:
 
     assert result.status == "pass"
     assert after == before
+
+
+def test_review_cli_prints_normalized_result(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    requirement = tmp_path / "brief.md"
+    requirement.write_text("Verify the route guard.\n", encoding="utf-8")
+
+    def fake_reviewer(request: bridge.ReviewRequest) -> bridge.OpusReview:
+        assert request.reviewed_head == HEAD
+        assert request.authorization_source == "user-task:verification-1"
+        return bridge.parse_structured_review(
+            _structured_payload(),
+            expected_head=HEAD,
+            expected_base=BASE,
+            effective_model="claude-opus-4-7",
+            authorization_source=request.authorization_source,
+        )
+
+    rc = bridge.main(
+        [
+            "review",
+            "--repo-root",
+            str(tmp_path),
+            "--head",
+            HEAD,
+            "--base",
+            BASE,
+            "--requirement",
+            str(requirement),
+            "--allow-path",
+            "scripts/route_lineage.py",
+            "--verification-command",
+            "env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_route_lineage.py -q",
+            "--authorization-source",
+            "user-task:verification-1",
+        ],
+        reviewer=fake_reviewer,
+    )
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "opus-review/v1"
+    assert payload["status"] == "pass"
+
+
+def test_reconcile_cli_allows_evidence_backed_disproof(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    review = bridge.parse_structured_review(
+        _structured_payload(status="issues", findings=[_finding_payload()]),
+        expected_head=HEAD,
+        expected_base=BASE,
+        effective_model="claude-opus-4-7",
+        authorization_source="user-task:verification-1",
+    )
+
+    rc = bridge.main(
+        [
+            "reconcile",
+            "--codex-verdict",
+            "GO",
+            "--opus-review-json",
+            json.dumps(review.to_dict()),
+            "--disposition",
+            "OPUS-1=disproved",
+            "--evidence",
+            "OPUS-1=focused stale-parent test exits 0 and the branch rejects the stale value",
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "opus-reconciliation/v1"
+    assert payload["go_allowed"] is True
+    assert payload["disproved_finding_ids"] == ["OPUS-1"]
+
+
+def test_reconcile_cli_rejects_missing_disproof_evidence(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    review = bridge.parse_structured_review(
+        _structured_payload(status="issues", findings=[_finding_payload()]),
+        expected_head=HEAD,
+        expected_base=BASE,
+        effective_model="claude-opus-4-7",
+        authorization_source="user-task:verification-1",
+    )
+
+    rc = bridge.main(
+        [
+            "reconcile",
+            "--codex-verdict",
+            "GO",
+            "--opus-review-json",
+            json.dumps(review.to_dict()),
+            "--disposition",
+            "OPUS-1=disproved",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "disproof_evidence_missing" in captured.err
