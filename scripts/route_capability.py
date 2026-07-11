@@ -100,6 +100,17 @@ def _is_nonempty_str(value: Any) -> bool:
 # per-line prose parser accepts as authority. Reject the whole class up front.
 _CONTROL_CHARS = ("\n", "\r")
 
+# Shell control / chaining / substitution / redirection metacharacters. A
+# capability authorizes exactly ONE simple command matching its command class —
+# never a shell composition. The command-class prefix match alone
+# (`cmd.startswith(allowed + " ")`) would let a COMPOUND command through:
+# `git push origin main && git tag unexpected` starts with `git push ` but chains
+# an UNAUTHORIZED second command. consume() rejects any evidence command carrying
+# one of these operators fail-closed, so a matching prefix can no longer smuggle a
+# second command via chaining (; & |), substitution (` $ ( )), or redirection
+# (< >). Newline/CR are already rejected by the receipt control-char guard.
+_SHELL_CONTROL_CHARS = frozenset(";&|`$<>()")
+
 
 def _reject_control_chars(obj: Any, path: str = "") -> list[str]:
     """Recursively reject newline/CR in every string value (all fields, nested)."""
@@ -373,10 +384,13 @@ def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) 
          bound to a superseded generation (or a different route) is refused
          ``stale_capability``, no write. ``authoritative=None`` skips this check
          (backward-compatible: callers with no lineage context are unaffected).
-      3. Command-class enforcement: the executed evidence command must match the
-         capability's ``allowed_command_class`` — the exact literal or a
-         ``<literal> …`` prefix-extension. A grant for ``git push`` cannot be
-         spent recording a ``git tag`` that ran; a mismatch is refused
+      3. Command-class enforcement: the executed evidence command must be a
+         SINGLE simple command (no shell control/chaining/substitution/redirection
+         metacharacter — ``; & | ` $ < > ( )``) matching the capability's
+         ``allowed_command_class`` — the exact literal or a ``<literal> …``
+         prefix-extension. A grant for ``git push`` cannot be spent recording a
+         ``git tag`` that ran, NOR a compound ``git push … && git tag …`` whose
+         prefix would otherwise match; a mismatch is refused
          ``command_class_mismatch``, no write.
       4. ``build_receipt`` + ``validate_receipt`` — the receipt is built FROM the
          capability (binding capability_hash by construction, never trusting a
@@ -416,6 +430,17 @@ def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) 
     # different command that ran. Fail-closed BEFORE any write.
     allowed = capability["allowed_command_class"].strip()
     cmd = str(evidence.get("command", "")).strip()
+    # A capability authorizes exactly ONE simple command — never a shell
+    # composition. Reject any shell control/chaining/substitution/redirection
+    # metacharacter BEFORE the prefix match, so a matching prefix
+    # (`git push origin main && git tag x`) cannot smuggle a chained second
+    # command past the class check.
+    if any(ch in _SHELL_CONTROL_CHARS for ch in cmd):
+        return ConsumeResult(
+            ok=False,
+            reason="command_class_mismatch: evidence command contains a shell control operator",
+            receipt_path=None,
+        )
     if not (cmd == allowed or cmd.startswith(allowed + " ")):
         return ConsumeResult(
             ok=False,

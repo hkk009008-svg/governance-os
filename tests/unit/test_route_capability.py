@@ -334,6 +334,53 @@ def test_consume_allows_command_class_prefix(tmp_path):
     assert res.ok and res.reason == "consumed"
 
 
+# --- consume refuses shell-control operators in the evidence command (F2 residual)
+#
+# The prefix match `cmd.startswith(allowed + " ")` alone lets a COMPOUND command
+# through: "git push origin main && git tag unexpected" starts with "git push "
+# but chains an UNAUTHORIZED second command. A capability authorizes exactly ONE
+# simple command matching its class — never a shell composition. consume must
+# reject any evidence command containing a control/chaining/substitution/
+# redirection metacharacter (; & | ` $ < > ( )), fail-closed BEFORE any write.
+
+def test_consume_refuses_compound_command(tmp_path):
+    # cap allows "git push"; the `&&` chains an unauthorized `git tag` -> refused.
+    ev = {"result": "ok", "command": "git push origin main && git tag unexpected",
+          "output": "To origin/main", "commit": "deadbee"}
+    res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
+    assert not res.ok
+    assert "command_class_mismatch" in res.reason
+    assert list(tmp_path.iterdir()) == []  # fail-closed BEFORE any write
+
+
+def test_consume_refuses_command_substitution(tmp_path):
+    # `$(...)` command substitution smuggles an unauthorized command -> refused.
+    ev = {"result": "ok", "command": "git push $(rm -rf /tmp/x)",
+          "output": "To origin/main", "commit": "deadbee"}
+    res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
+    assert not res.ok
+    assert "command_class_mismatch" in res.reason
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_consume_refuses_piped_command(tmp_path):
+    # a pipe redirects output through an unauthorized second command -> refused.
+    ev = {"result": "ok", "command": "git push origin main | tee log",
+          "output": "To origin/main", "commit": "deadbee"}
+    res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
+    assert not res.ok
+    assert "command_class_mismatch" in res.reason
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_consume_allows_plain_args_with_flags(tmp_path):
+    # a single simple command with flags (no shell metacharacters) still passes.
+    ev = {"result": "ok", "command": "git push origin main --force-with-lease",
+          "output": "To origin/main", "commit": "deadbee"}
+    res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
+    assert res.ok and res.reason == "consumed"
+
+
 # --- consume enforces revocation-on-supersession at the enforcement point (F3) -
 #
 # capability_is_current is correct but nothing called it at consume time. With an
@@ -482,6 +529,20 @@ def test_cli_consume_command_class_mismatch_exit_2(tmp_path, capsys):
         "consume", "--capability", good, "--store", str(store),
         "--result", "ok", "--command", "git tag unexpected",
         "--output", "created tag", "--commit", "deadbee",
+    ]
+    assert route_capability.main(argv) == 2
+    assert "command_class_mismatch" in capsys.readouterr().out
+    assert not store.exists() or list(store.iterdir()) == []
+
+
+def test_cli_consume_compound_command_exit_2(tmp_path, capsys):
+    good = _write_cap(tmp_path)  # allowed_command_class "git push"
+    store = tmp_path / "store"
+    # the `&&` chains an unauthorized second command -> command_class_mismatch -> 2.
+    argv = [
+        "consume", "--capability", good, "--store", str(store),
+        "--result", "ok", "--command", "git push origin main && git tag x",
+        "--output", "To origin/main", "--commit", "deadbee",
     ]
     assert route_capability.main(argv) == 2
     assert "command_class_mismatch" in capsys.readouterr().out
