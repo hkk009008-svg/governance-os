@@ -407,6 +407,20 @@ When `normalization_overrides is None`, canonical actions/blockers must equal
 the pre-task baseline. Do not special-case the real hashes or counts in
 production.
 
+`build_refresh_plan()` also accepts
+`expected_normalization_implementation_commit: str | None = None`. When an
+override is present, this argument is mandatory and must equal the override's
+bound implementation commit; it is supplied independently by the caller. Task
+4 passes the current clean `resolve_parser_commit()` result. The override's
+three automatic reason-class digests must exactly equal freshly derived
+candidate fact sets before any predicate can normalize them.
+
+Task 3 corrective scope may also modify
+`import/workbook_refresh_corrections.py` and
+`import/tests/test_workbook_refresh_corrections.py` solely to populate and test
+the automatic reason-class digests in the existing
+`NormalizationBindings.reason_fact_set_sha256` field.
+
 - [ ] **Step 5: Run focused and full planner suites**
 
 ```bash
