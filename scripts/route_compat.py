@@ -33,16 +33,21 @@ SENT_RELDIR = Path("coordination/mailbox/sent")
 
 
 def _confine(root: Path, relpath: str) -> Path:
-    """Resolve relpath under root; reject absolute or escaping paths (corpus integrity).
+    """Resolve relpath under root; reject absolute paths or ANY ``..`` component (corpus integrity).
 
     expected.json is committed data, but a hostile or fat-fingered ``route_relpath``
-    (absolute, or ``..`` climbing out of the sandbox root) would make the comparator
-    write outside its temp corpus. Fail closed before any filesystem write.
+    (absolute, or containing any ``..`` component — even one that normalizes back
+    inside root) would make the comparator write outside its intended layout. Fail
+    closed before any filesystem write.
     """
     candidate = Path(relpath)
     if candidate.is_absolute():
         raise ValueError(
             f"corpus integrity: route_relpath must be relative, got {relpath!r}"
+        )
+    if ".." in candidate.parts:
+        raise ValueError(
+            f"corpus integrity: route_relpath must not contain '..' components: {relpath!r}"
         )
     resolved_root = root.resolve()
     destination = (resolved_root / candidate).resolve()

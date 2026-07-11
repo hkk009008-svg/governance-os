@@ -64,6 +64,14 @@ def test_run_corpus_rejects_escaping_route_relpath(tmp_path):
         route_compat.run_corpus(fixtures)
 
 
+def test_run_corpus_rejects_internal_dotdot_route_relpath(tmp_path):
+    # A ``..`` that normalizes back INSIDE root (resolved-boundary check passes)
+    # must still be refused: the contract forbids any ``..`` component outright.
+    fixtures = _mini_corpus(tmp_path, "scratch/../escape.md")
+    with pytest.raises(ValueError):
+        route_compat.run_corpus(fixtures)
+
+
 # --- F5: drifted legacy failure gates must break all_match, not just validity ---
 
 
