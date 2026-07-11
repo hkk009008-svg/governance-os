@@ -182,6 +182,7 @@ class RefreshPlan:
     checklist_sha256: str
     database_fingerprint: str
     evidence_chain_head: str
+    component_fact_ids: tuple[str, ...]
     actions: tuple[RefreshAction, ...]
     blockers: tuple[str, ...]
 
@@ -258,6 +259,12 @@ component IDs in the same plan and is empty for actions whose target IDs are
 already in the snapshot and whose referenced foreign entities also already
 exist. Database-only preservation uses stable
 `database:<target-kind>:<id>` row/component IDs.
+
+`RefreshPlan.component_fact_ids` is the sorted complete component inventory
+derived before classification. An applicable plan requires
+`sorted(component_fact_ids) == sorted(action.fact_id for action in actions)`
+and uniqueness on both sides; failure is
+`component-disposition-incomplete` and blocks before database access/apply.
 
 For applicable rows, `<row-id>` is `row:` plus the SHA-256 of canonical JSON
 for normalized `(broadcast_date, start_time, channel, product)` identity; it
@@ -637,9 +644,12 @@ def test_canonical_plan_bytes_and_hash_are_deterministic(tmp_path):
 
 Add these table-driven pins in the same file:
 
-- `test_each_component_fact_has_exactly_one_action`: require unique action
-  `fact_id` values, preserve each action's `row_fact_id`, and require every
-  `depends_on` value to resolve to exactly one other action;
+- `test_each_component_fact_has_exactly_one_action`: independently enumerate
+  the fixture's expected entity, alias, slot, result, payment, placement,
+  allocation, and DB-only component IDs; require exact set/length equality with
+  both `plan.component_fact_ids` and action `fact_id` values, preserve each
+  action's `row_fact_id`, and require every `depends_on` value to resolve to
+  exactly one other action;
 - `test_new_entities_root_result_and_ppl_have_typed_insert_actions`:
   construct missing canonical channel/product/show/producer plus a new result,
   payment, placement, and allocation and require the matching
@@ -780,9 +790,10 @@ nonempty unnamed cells to each emitted `source_ref`. It must not modify
 4. when both unmatched-old and unmatched-new candidates exist, emit
    `ambiguous_identity` rather than guessing a key correction;
 5. preserve DB rows not represented by the previous workbook;
-6. derive unique component-fact IDs, emit typed entity/alias, slot/result, and
+6. derive the canonical complete component-fact inventory, emit typed
+   entity/alias, slot/result, and
    PPL insert/revision actions only for checklist-approved workbook-owned
-   facts, and require one action per component ID;
+   facts, and require an exact inventory/action-ID bijection;
 7. emit `conflict_human_newer` when incoming facts disagree with a later
    `form` result;
 8. group PPL before payment-month normalization, reject conflicting group
@@ -1325,6 +1336,24 @@ def test_optimistic_old_value_mismatch_rolls_back_all_writes(refresh_db):
     assert refresh_db.fingerprint() == before
 
 
+def test_apply_rejects_incomplete_component_inventory_before_writes(refresh_db):
+    before = refresh_db.counts()
+    incomplete = dataclasses.replace(
+        refresh_db.plan,
+        actions=refresh_db.plan.actions[:-1],
+    )
+    with pytest.raises(RefreshApplyError, match="component-disposition-incomplete"):
+        apply_refresh(
+            refresh_db.conn,
+            incomplete,
+            entered_by="owner-test",
+            resource_evidence=resource_evidence_for(incomplete),
+            result_json_path=refresh_db.seeded.tmp_path / "incomplete.json",
+            result_report_path=refresh_db.seeded.tmp_path / "incomplete.md",
+        )
+    assert refresh_db.counts() == before
+
+
 def test_same_workbook_plan_cannot_apply_twice(refresh_db):
     apply_synthetic(refresh_db)
     refresh_db.conn.commit()
@@ -1550,6 +1579,13 @@ def apply_refresh(
 ) -> ApplyResult:
     if plan.blockers or blocking_actions(plan):
         raise RefreshApplyError("plan-has-blockers")
+    action_ids = tuple(action.fact_id for action in plan.actions)
+    if (
+        len(set(plan.component_fact_ids)) != len(plan.component_fact_ids)
+        or len(set(action_ids)) != len(action_ids)
+        or sorted(plan.component_fact_ids) != sorted(action_ids)
+    ):
+        raise RefreshApplyError("component-disposition-incomplete")
     if resource_evidence.previous_sha256 != plan.previous_workbook_sha256:
         raise RefreshApplyError("previous-resource-hash-mismatch")
     if resource_evidence.incoming_sha256 != plan.incoming_workbook_sha256:

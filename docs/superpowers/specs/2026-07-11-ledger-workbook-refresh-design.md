@@ -144,6 +144,13 @@ several component dispositions without duplicating any component:
 - `ambiguous_identity`
 - `quarantine`
 
+The plan carries a canonical `component_fact_ids` inventory derived before
+classification. Applicable plan construction requires a bijection: the sorted
+inventory and sorted action `fact_id` values are identical and contain no
+duplicates. Tests independently enumerate the synthetic expected components,
+so uniqueness cannot hide an uncovered component. Apply rechecks the bijection
+before any lock or write.
+
 Matching first proves that the previous workbook hash is bound to a committed
 lineage root: either the initial `import_root` evidence or the latest successful
 `workbook_refresh_result` whose incoming hash equals that previous workbook.
