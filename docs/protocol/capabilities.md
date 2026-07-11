@@ -14,16 +14,18 @@ contract.
 ## What a capability is
 
 A `governance.capability/v1` is a typed, single-use grant that binds ONE
-side-effect authority to a specific route generation and a subject seat. It is a
-strict **superset of the 10-field side-effect-executor token contract**: it keeps
-the token's fields verbatim —
+side-effect authority to a specific route generation and a subject seat. It
+carries the **authority contract of the 10-field side-effect-executor token** —
 
 - `side_effect_id`, `allowed_command_class` (an **exact command literal**, not a
   category), `target`, `preflight`,
   `stop_if_newer_mail_or_live_target_satisfied` (the stop condition), `postcheck`,
   `observer_seats`, `final_closeout_owner`, `non_goals`
 
-— and adds the capability envelope on top:
+— but it is **not** a byte-verbatim superset of the token: the token's executing
+seat is represented here as the enum `subject` (there is no literal `executor`
+field), a new `issuer` (the granting seat) is added, and the whole is wrapped in
+the capability envelope:
 
 - `schema` — const `governance.capability/v1`.
 - `capability_id` — matches `^cap-[A-Za-z0-9._-]+$`; the one-time key.
@@ -84,8 +86,25 @@ final path already exists, so exactly one consumer wins the replay race, and the
 canonical path never appears with partial content (a crash or `ENOSPC` before the
 link strands only a temp file that a retry ignores — the capability is never
 bricked). A second consume of the same `capability_id` refuses with
-`already_consumed`. Fail-closed ordering: validate the capability → build +
-validate the receipt (evidence non-vacuity) → only then the temp→fsync→link CAS.
+`already_consumed`. Fail-closed ordering: validate the capability → (when a
+route context is supplied) refuse a stale/superseded capability → refuse an
+evidence command that does not match `allowed_command_class` → build + validate
+the receipt (evidence non-vacuity) → only then the temp→fsync→link CAS.
+
+**consume enforces two authority checks before it will write a receipt:**
+
+- **(a) command-class match.** The executed evidence `command` must match the
+  capability's `allowed_command_class` — the exact command literal, or a
+  `<literal> …` prefix-extension (so `allowed_command_class: "git push"` permits
+  `git push origin main` but rejects `git tag …`). A mismatch is refused
+  `command_class_mismatch` with no receipt written — a grant for one command can
+  never be spent recording a different command that ran.
+- **(b) currency (only when a route context is supplied).** When the caller
+  passes `--route-root` (CLI) / `authoritative=<LineageRoute>` (`consume()`), a
+  capability bound to a superseded generation is refused `stale_capability` with
+  no receipt — this is `capability_is_current` enforced at the execution point,
+  not merely available. With no route context the currency check is skipped
+  (backward-compatible).
 
 ### CLI
 
@@ -100,6 +119,13 @@ Consume a capability exactly once, writing an evidence receipt:
 (`--logs-ref logs/<artifact>` may be given instead of, or in addition to,
 `--commit`.)
 
+Pass `--route-root <repo-root>` to additionally enforce currency: the CLI
+resolves the authoritative route (`route_lineage.resolve_authoritative` over that
+root's coordinator routes) and refuses a superseded capability (exit 4). When the
+route set carries no lineage generation to check against (legacy/empty, or a
+tip-less cycle), the requested check cannot be performed, so the CLI fails closed
+(exit 4). Omit `--route-root` and currency is not enforced.
+
 **Exit-code contract** — the CLI is a thin argparse shell that maps the security
 logic's result to a process exit code, so a shell caller (a git-push wrapper, a CI
 step) can gate a side effect on the exit code:
@@ -110,7 +136,8 @@ step) can gate a side effect on the exit code:
 | `validate` | 1 | invalid / unreadable / unparseable |
 | `consume` | 0 | first consume (`consumed: <receipt path>`) |
 | `consume` | 3 | `already_consumed` — the replay refusal |
-| `consume` | 2 | any other refusal (invalid capability, vacuous evidence, or an unreadable/unparseable file) |
+| `consume` | 4 | `stale_capability` (bound generation superseded), or `--route-root` supplied with no lineage generation to check against — fail-closed |
+| `consume` | 2 | any other refusal (invalid capability, vacuous evidence, `command_class_mismatch`, or an unreadable/unparseable file) |
 
 Worked example (every command below runs literally; verified against the code):
 
@@ -143,6 +170,13 @@ generation on either side (an invalid capability, or a legacy no-generation rout
 is treated as NOT current, so a generationless grant can never ride a legacy route
 into "current." A stale capability is carried forward only if a newer route
 re-binds it (route/v1 `capability_refs`, reserved `[]` in v1.0 — P0.4).
+
+**This currency test is enforced at the execution point, not merely available.**
+`consume(..., authoritative=<LineageRoute>)` — reached from the CLI via
+`--route-root` — refuses a stale capability `stale_capability` before any receipt
+is written. So a superseded grant is refused at consume time, exactly as ADR-016
+states; without a route context supplied, currency is not enforced (the caller
+opts in by providing the authoritative route).
 
 ## ADR-012 caveat — necessary, NOT sufficient
 

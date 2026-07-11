@@ -582,29 +582,44 @@ or --executor-token input"). Slices 1-2 (ADR-014/ADR-015) added typed route
 identity and lineage, which capability↔route binding needs.
 
 **Decision:**
-1. Add `scripts/route_capability.py`: `governance.capability/v1` — a strict
-   superset of the 10-field token contract (keeping `allowed_command_class`
-   as an exact command literal, `observer_seats`, `final_closeout_owner`, the
-   stop condition) plus `capability_id`, `issuer`, `subject`, `bound_route_id`,
-   `bound_generation`, `state`, `expires_on`, and non-goals. Canonical bytes
-   and hash come from `threeway.canon.canonicalize` (RFC 8785) — library reuse;
-   the dormant signed bus (ADR-010) is not activated.
+1. Add `scripts/route_capability.py`: `governance.capability/v1` — carries the
+   10-field token's authority contract (`allowed_command_class` as an exact
+   command literal, `target`, `observer_seats`, `final_closeout_owner`, the stop
+   condition, `preflight`, `postcheck`, `non_goals`, `side_effect_id`) with the
+   token's executing seat represented as the enum `subject` (not the literal
+   field name `executor`), plus a new `issuer` (the granting seat) and the
+   lifecycle/binding envelope (`capability_id`, `bound_route_id`,
+   `bound_generation`, `state`, `expires_on`). It is NOT a byte-verbatim superset
+   of the token. Canonical bytes and hash come from `threeway.canon.canonicalize`
+   (RFC 8785) — library reuse; the dormant signed bus (ADR-010) is not activated.
 2. `governance.capability-receipt/v1`: a consume writes a receipt carrying
    NON-VACUOUS executed evidence (command + output + a commit SHA or `logs/`
    artifact ref), mirroring `scripts/check_go_schema.py`. A bare
    `state="consumed"` flip with no evidence is rejected as anti-ceremony.
-3. Consumption is ATOMIC and one-time: exclusive-create (`O_EXCL`) of the
-   receipt keyed by `capability_id`. The first consumer wins; a replay fails
-   `already_consumed`.
+3. Consumption is ATOMIC and one-time via a filesystem compare-and-swap: the
+   complete receipt is written to a temp file (`tempfile.mkstemp`), fsynced, then
+   `os.link`-ed to the canonical path keyed by `capability_id`. The `os.link` is
+   the CAS — it raises `FileExistsError` iff the path already exists (so the first
+   consumer wins; a replay fails `already_consumed`), and the canonical path never
+   appears with partial content, so a failed/killed write cannot brick the grant.
 4. Revocation-on-supersession reuses Slice-2 lineage: a capability is current
    only while its `bound_route_id`/`bound_generation` equal the authoritative
    route's (Slice-2 `resolve_authoritative`). A capability bound to a
    superseded generation is invalid unless a newer route carries it forward
    via route/v1 `capability_refs`.
-5. A `route_capability.py consume` CLI is the mechanical enforcement point
-   (a script that accepts a token at execution time and refuses replay).
-   Wiring `--executor-token` into the dormant `execute_threeway_cutover.sh`
-   is a follow-up with the parked signed-bus plan.
+5. A `route_capability.py consume` CLI is the mechanical enforcement point (a
+   script that accepts a token at execution time and refuses replay). Before it
+   writes a receipt, `consume` enforces two authority checks fail-closed: (a) the
+   executed evidence command must match the capability's `allowed_command_class`
+   (the exact command literal or a `<literal> …` prefix), else
+   `command_class_mismatch`; and (b) when `--route-root` is supplied, the
+   capability must be current against the authoritative route (Slice-2
+   `resolve_authoritative`), else `stale_capability` — this is what makes "a stale
+   capability is refused at execution time" (below) true. Exit codes: 0 consumed
+   / 3 already_consumed / 4 stale_capability (or a `--route-root` with no lineage
+   generation to check against) / 2 other refusal (invalid capability, vacuous
+   evidence, `command_class_mismatch`). Wiring `--executor-token` into the dormant
+   `execute_threeway_cutover.sh` is a follow-up with the parked signed-bus plan.
 6. Compatibility: the prose token blocks and the live route-time token lint
    are UNCHANGED and stay fail-closed; capability/v1 is generated + validated
    alongside, not yet the live authority.
