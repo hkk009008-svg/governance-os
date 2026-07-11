@@ -1787,7 +1787,7 @@ def test_stage_resource_hashes_copies_and_never_edits_incoming(tmp_path):
     assert stage.incoming_sha256 == sha256_file(stage.paths.incoming)
     assert stage.previous_sha256 == sha256_file(stage.paths.canonical)
     assert stage.paths.incoming.read_bytes() == b"incoming"
-    assert stage.paths.staged.read_bytes() == b"incoming"
+    assert stage.staged.read_bytes() == b"incoming"
     assert stage.archive.name == (
         f"홈쇼핑분석_superseded-2026-07-11-{stage.previous_sha256[:12]}.xlsx"
     )
@@ -1817,6 +1817,7 @@ def test_resource_activation_failure_rolls_back_database(
         apply_with_resource(
             refresh_db.conn, refresh_db.plan, "owner-test", paths,
             tmp_path / "apply.result.json", tmp_path / "apply.result.md",
+            fresh_dsn=refresh_db.seeded.dsn,
         )
     assert refresh_db.fingerprint() == before
     assert sha256_file(paths.canonical) == refresh_db.plan.previous_workbook_sha256
@@ -1829,6 +1830,7 @@ def test_database_commit_failure_restores_previous_resource(refresh_db, tmp_path
         apply_with_resource(
             failing, refresh_db.plan, "owner-test", paths,
             tmp_path / "apply.result.json", tmp_path / "apply.result.md",
+            fresh_dsn=refresh_db.seeded.dsn,
         )
     assert sha256_file(paths.canonical) == refresh_db.plan.previous_workbook_sha256
     assert refresh_db.fingerprint() == refresh_db.plan.database_fingerprint
@@ -1841,6 +1843,7 @@ def test_apply_with_resource_commits_one_aligned_db_resource_result(
     result = apply_with_resource(
         refresh_db.conn, refresh_db.plan, "owner-test", paths,
         tmp_path / "apply.result.json", tmp_path / "apply.result.md",
+        fresh_dsn=refresh_db.seeded.dsn,
     )
     assert sha256_file(paths.canonical) == refresh_db.plan.incoming_workbook_sha256
     manifest = json.loads(paths.manifest.read_text())
@@ -1999,13 +2002,18 @@ Order:
    and both immutable report hashes.
 
 `apply_with_resource(conn, plan, entered_by, paths, result_json_path,
-result_report_path) -> ApplyResult` owns this order and is the only function
-the apply CLI calls. It derives the fresh-check DSN from `conn.info.dsn`. On
-any pre-commit or activation failure, it rolls back; if the canonical
+result_report_path, *, fresh_dsn: str) -> ApplyResult` owns this order and is
+the only function the apply CLI calls. The caller must supply the explicit
+fresh-connection DSN: the CLI passes `args.dsn`, and the synthetic harness
+passes `refresh_db.seeded.dsn`. The helper must not recover credentials from
+`conn.info.dsn`, environment variables, or ambient client configuration;
+psycopg may sanitize the live connection string. It passes `fresh_dsn` to
+`resolve_commit_outcome()` and every final fresh-connection postcheck. On any
+pre-commit or activation failure, it rolls back; if the canonical
 path changed, it restores the preverified archive before returning the error.
 On a definite pre-commit commit failure it rolls back, restores, verifies the
 old hash, and records `restored`. If `commit()` raises with an ambiguous
-outcome, `resolve_commit_outcome(dsn, plan_sha256)` opens a fresh connection:
+outcome, `resolve_commit_outcome(fresh_dsn, plan_sha256)` opens a fresh connection:
 presence of the matching `workbook_refresh_result` means keep/verify the new
 resource; confirmed absence means restore; inability to query means record
 `commit_outcome_unknown`, make no further resource mutation, and stop for
