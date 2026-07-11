@@ -1751,7 +1751,7 @@ R-SCOPE and Rule #13 disposition for every sibling writer.
 
 **Interfaces:**
 - Consumes: exact old/new hashes, canonical path, archive directory, ignored manifest path, plan/result output paths, and the guarded DB apply function.
-- Produces: `ResourceStage`, `inspect_resource()`, `stage_resource()`, `activate_resource()`, `restore_resource()`, `write_manifest()`, `resolve_commit_outcome()`, `apply_with_resource()`, and canonical `--apply --activate-resource` mode.
+- Produces: `ResourceStage`, `inspect_resource()`, `stage_resource()`, `activate_resource()`, `restore_resource()`, `write_manifest()`, `resolve_commit_outcome()`, `reverify_committed_resource()`, `apply_with_resource()`, canonical `--apply --activate-resource` mode, and read-only recovery mode `--reverify-committed-resource`.
 
 - [ ] **Step 1: Write failing resource and cross-boundary rollback tests**
 
@@ -1960,6 +1960,18 @@ def stage_resource(paths: ResourcePaths) -> ResourceStage:
     return ResourceStage(paths, previous_sha, incoming_sha, archive, staged)
 ```
 
+The direct `copy2()` calls in the illustrative body above are not publication
+authority. Archive and staged copies must be created through unique adjacent
+no-follow temporary files, flushed and `fsync()`ed, hash-verified, and then
+published atomically. Archive publication is exclusive: a concurrent existing
+destination is accepted only after its full hash equals `previous_sha` and is
+otherwise `archive-hash-conflict`; it is never overwritten. Staged publication
+atomically replaces only the call-owned staged path. Reject symlink/hardlink
+aliases before and immediately before publication, fail closed on stat errors,
+and remove every call-owned temporary on failure. Tests inject partial-copy,
+broken-symlink, hardlink, and substitution-race failures and require the final
+archive to be either absent or complete, never partial.
+
 `ResourceStage.evidence()` returns state `staged`, the exact previous/incoming
 hashes from the stage, and freshly recomputed archive/staged hashes in a
 `ResourceEvidence` instance.
@@ -1972,11 +1984,14 @@ verifies it, then `_replace()`s it onto canonical. `write_manifest()` writes
 JSON through a temp file + `_replace()` and records the activation date,
 parser commit, plan hash, database baseline hash, baseline evidence kind/ID,
 plan/result evidence IDs and chain hashes, full resource/report hashes, and
-states `staged`, `activated`, `restored`, `verified`, or
-`commit_outcome_unknown`. Fields unavailable in an intermediate state are
+states `staged`, `activated`, `restored`, `committed_unverified`, `verified`,
+or `commit_outcome_unknown`. Fields unavailable in an intermediate state are
 explicitly `null`; `verified` requires every parser/plan/baseline/evidence/
-resource/report field to be populated and hash-valid. Manifest serialization
-is canonical and never includes business values.
+resource/report field to be populated and hash-valid. `committed_unverified`
+means a fresh query proved the database commit present and the canonical file
+has the incoming hash, but final fresh verification or verified-manifest
+publication failed; it is never a license to restore or reapply. Manifest
+serialization is canonical and never includes business values.
 
 - [ ] **Step 4: Integrate resource activation around DB commit**
 
@@ -1995,9 +2010,13 @@ Order:
 4. `activate_resource()`;
 5. verify the canonical hash equals the incoming hash;
 6. `conn.commit()`;
-7. final resource hash and result-evidence postchecks through a fresh read
+7. resolve every exception raised by `commit()` through the explicit fresh DSN
+   before any compensation; never classify commit outcome by exception type;
+8. atomically publish the call-owned candidate result outputs once the commit
+   is known present;
+9. final resource hash and result-evidence postchecks through a fresh read
    connection;
-8. manifest state `verified`, binding the activation date, parser/plan/database
+10. manifest state `verified`, binding the activation date, parser/plan/database
    baseline, baseline evidence, both plan/result evidence IDs and chain hashes,
    and both immutable report hashes.
 
@@ -2009,16 +2028,33 @@ passes `refresh_db.seeded.dsn`. The helper must not recover credentials from
 `conn.info.dsn`, environment variables, or ambient client configuration;
 psycopg may sanitize the live connection string. It passes `fresh_dsn` to
 `resolve_commit_outcome()` and every final fresh-connection postcheck. On any
-pre-commit or activation failure, it rolls back; if the canonical
-path changed, it restores the preverified archive before returning the error.
-On a definite pre-commit commit failure it rolls back, restores, verifies the
-old hash, and records `restored`. If `commit()` raises with an ambiguous
-outcome, `resolve_commit_outcome(fresh_dsn, plan_sha256)` opens a fresh connection:
-presence of the matching `workbook_refresh_result` means keep/verify the new
-resource; confirmed absence means restore; inability to query means record
-`commit_outcome_unknown`, make no further resource mutation, and stop for
-operator recovery. A dry run calls only `inspect_resource()` and never stages,
-archives, or activates.
+pre-commit or activation failure, it rolls back, removes only its call-owned
+candidate output/temp files, and, if the canonical path changed, restores the
+preverified archive before recording `restored`. Final output paths are not
+published before commit outcome is known. For every exception raised by
+`commit()`—including wrapper, interface, and operational exceptions—
+`resolve_commit_outcome(fresh_dsn, plan_sha256)` opens a fresh connection:
+presence of the matching `workbook_refresh_result` means keep the incoming
+resource and continue verification; confirmed absence means rollback/restore;
+inability to query means record `commit_outcome_unknown`, make no further
+resource mutation, and stop for operator recovery. After the commit is known
+present, no later error may restore the old resource. A fresh-postcheck,
+candidate-output publication, or final-manifest failure records
+`committed_unverified` when possible; if even that manifest write fails, the
+existing `activated` manifest remains the crash-safe predecessor.
+
+`reverify_committed_resource(plan, paths, result_json_path,
+result_report_path, *, fresh_dsn: str) -> ApplyResult` is idempotent and
+read-only with respect to business/evidence tables and workbook bytes. It
+accepts only an `activated` or `committed_unverified` manifest, revalidates the
+plan hash, activation date, baseline binding, canonical/archive/incoming and
+report hashes, matching result evidence and current chain head through
+`fresh_dsn`, then atomically promotes the manifest to `verified`. It never
+calls `apply_refresh()`, `activate_resource()`, `restore_resource()`, or
+`commit()`. CLI mode `--reverify-committed-resource` is mutually exclusive
+with dry-run/apply, requires the same explicit plan/resource/output/manifest
+paths and `--dsn`, and calls only this recovery function. A dry run calls only
+`inspect_resource()` and never stages, archives, or activates.
 
 - [ ] **Step 5: Run resource, apply, and full import suites**
 
