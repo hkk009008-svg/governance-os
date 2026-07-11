@@ -1803,7 +1803,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" -- docs/protocol/route-v
 
 1. Reformatting Markdown cannot grant or remove authority — structurally guaranteed (authority lives in the sidecar; mutation suite proves it).
 2. Machine decisions about a route/v1 pair come only from typed fields (`read_manifest` never consults prose beyond the hash pin).
-3. The projection is reproducible from the canonical object (`write_route_pair` round-trip test).
+3. The authority-bearing projection sections are reproducible from the canonical object; `title`/`narrative` are non-authority prose and can never change the route hash (`write_route_pair` round-trip + narrative-variants tests).
 4. Canonical serialization + hashing are deterministic (RFC 8785 via the single repo canonicalizer; key-order test).
 5. Legacy routes remain readable and authoritative — zero changes to `protocol_capacity.py`.
 6. The compatibility report (`logs/route-compat-report.json`) triages every legacy↔structured divergence before any cutover discussion.

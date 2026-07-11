@@ -42,5 +42,14 @@ To EXPERIMENT with a typed route for a new cycle:
   authority; breaking the pin fails closed (`RouteManifestError`).
 - Unknown top-level fields are rejected; experimental data goes under
   `extensions`.
+- The `.md` filename must equal `<route_id>.md`; `read_manifest` binds the two
+  and fails closed (`RouteManifestError`) so a hash-valid object cannot ride in
+  under another route's filename.
+- No string field anywhere in the object (top-level, nested, or under
+  `extensions`) may contain a newline or carriage return; `validate_route_object`
+  rejects them (`control characters rejected in <json-path>`). This is the
+  injection guard — the projection interpolates fields unescaped, so a smuggled
+  newline would otherwise render a second prose line the legacy per-line parser
+  reads as authority.
 - `generation` / `parent_route_id` / `expected_control_head` are shape-checked
   but not yet CAS-enforced (that is Slice 2 / P0.3).
