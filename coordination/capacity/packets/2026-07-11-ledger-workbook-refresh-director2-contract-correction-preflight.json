@@ -21,10 +21,12 @@
     "Return one GO-for-route or a bounded remaining contradiction. Do not reopen accepted business-fingerprint/evidence-head separation, non-self-referential report hashing, resource compensation, direction separation, user-option mapping, published-base isolation, or privacy findings unless the corrective diff changed them.",
     "Do not edit target product files, spec/plan/packets, issue Operator GO, consume coordinator mail, take side effects, or broaden into implementation review."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-11T07-35-04Z-director2-to-coordinator-coordination.md records formal GO-FOR-ROUTE for reviewed range 21c56d6..78c2836 at artifact commit 7f94ae7; no remaining route-changing contract contradiction was found."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-11T07-35-04Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "blocked",
   "verify_request": null,
   "target_commit": "78c2836",
   "commit_range": "21c56d6..78c2836",

@@ -30,7 +30,9 @@
     "Do not edit evidence-ledger product files as coordinator. Do not expose real business figures in tracked Pipeline files or mailbox bodies. Preserve the parked control-plane Task2U worktree and all prior contradiction/verification provenance unchanged until a fresh post-refresh reroute.",
     "Treat Director2 contradiction 21c56d6 and Operator2 NITS 54492cb as closed preflight inputs only after correction commits 06433c1 and 78c2836 plus a focused Director2 successor preflight. The successor reopens only the corrected contract deltas; accepted fingerprint, report-hash, compensation, direction, and user-option boundaries remain closed."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Director2 formal GO-FOR-ROUTE at coordination/mailbox/sent/2026-07-11T07-35-04Z-director2-to-coordinator-coordination.md closes the corrective contract preflight for 21c56d6..78c2836; implementation, Operator GO, scratch rehearsal, and canonical activation remain open."
+  ],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
   "status": "ready",
