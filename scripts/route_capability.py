@@ -347,7 +347,7 @@ class ConsumeResult:
     receipt_path: str | None
 
 
-def consume(capability: dict, evidence: dict, *, store_dir) -> ConsumeResult:
+def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) -> ConsumeResult:
     """Atomically consume a capability EXACTLY ONCE, writing an evidence receipt.
 
     This is a filesystem compare-and-swap: the COMPLETE, fsynced receipt is
@@ -368,11 +368,21 @@ def consume(capability: dict, evidence: dict, *, store_dir) -> ConsumeResult:
 
     Fail-closed ordering (NOTHING is written until every check passes):
       1. ``validate_capability`` — a malformed grant is refused, no write.
-      2. ``build_receipt`` + ``validate_receipt`` — the receipt is built FROM the
+      2. Revocation-on-supersession (only when ``authoritative`` is supplied): the
+         capability must be current against the authoritative route — a grant
+         bound to a superseded generation (or a different route) is refused
+         ``stale_capability``, no write. ``authoritative=None`` skips this check
+         (backward-compatible: callers with no lineage context are unaffected).
+      3. Command-class enforcement: the executed evidence command must match the
+         capability's ``allowed_command_class`` — the exact literal or a
+         ``<literal> …`` prefix-extension. A grant for ``git push`` cannot be
+         spent recording a ``git tag`` that ran; a mismatch is refused
+         ``command_class_mismatch``, no write.
+      4. ``build_receipt`` + ``validate_receipt`` — the receipt is built FROM the
          capability (binding capability_hash by construction, never trusting a
          caller-supplied one) and its evidence is validated for non-vacuity
          (a commit SHA or logs/ anchor). Vacuous evidence is refused, no write.
-      3. Only then is the receipt written to a temp file, fsynced, and atomically
+      5. Only then is the receipt written to a temp file, fsynced, and atomically
          linked into place (the link is the one-time CAS).
 
     A consumed capability is NECESSARY-NOT-SUFFICIENT: consumption records that the
@@ -386,6 +396,30 @@ def consume(capability: dict, evidence: dict, *, store_dir) -> ConsumeResult:
         return ConsumeResult(
             ok=False,
             reason="invalid capability: " + "; ".join(cap_issues),
+            receipt_path=None,
+        )
+
+    # 1b. Revocation-on-supersession at the enforcement point. When an
+    # authoritative route is supplied, a capability bound to a superseded
+    # generation (or a different route) is stale — refuse it BEFORE any write.
+    # authoritative=None keeps the historical behavior (currency not enforced).
+    if authoritative is not None and not capability_is_current(capability, authoritative):
+        return ConsumeResult(
+            ok=False,
+            reason="stale_capability: bound route/generation is not the authoritative route",
+            receipt_path=None,
+        )
+
+    # 1c. Command-class enforcement. The executed evidence command must match the
+    # capability's allowed_command_class — the exact literal or a `<literal> …`
+    # prefix-extension — so a grant for one command cannot be spent recording a
+    # different command that ran. Fail-closed BEFORE any write.
+    allowed = capability["allowed_command_class"].strip()
+    cmd = str(evidence.get("command", "")).strip()
+    if not (cmd == allowed or cmd.startswith(allowed + " ")):
+        return ConsumeResult(
+            ok=False,
+            reason=f"command_class_mismatch: evidence command does not match allowed_command_class {allowed!r}",
             receipt_path=None,
         )
 
@@ -478,8 +512,16 @@ def capability_is_current(capability: dict, authoritative: "route_lineage.Lineag
 # Exit-code contract:
 #   validate: 0 valid; 1 invalid / unreadable / unparseable.
 #   consume:  0 first consume; 3 already_consumed (the replay refusal);
-#             2 any other refusal (invalid capability, vacuous evidence, or an
-#               unreadable/unparseable capability file).
+#             4 stale_capability (bound generation superseded) OR --route-root was
+#               supplied but the route set has no lineage generation to check
+#               currency against (fail-closed);
+#             2 any other refusal (invalid capability, vacuous evidence,
+#               command_class_mismatch, or an unreadable/unparseable capability
+#               file).
+#
+# --route-root (optional): when supplied, the CLI resolves the authoritative
+# route via route_lineage.resolve_authoritative and enforces currency — a stale
+# capability is refused (exit 4). When omitted, currency is NOT enforced.
 
 
 def _load_capability_json(path: str) -> tuple[Any, str | None]:
@@ -524,6 +566,13 @@ def main(argv: list[str] | None = None) -> int:
     p_consume.add_argument(
         "--logs-ref", default=None, dest="logs_ref", help="logs/ artifact anchoring the evidence"
     )
+    p_consume.add_argument(
+        "--route-root",
+        default=None,
+        dest="route_root",
+        help="repo root whose coordinator routes establish the authoritative "
+        "lineage; when given, currency is enforced (a stale capability -> exit 4)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -556,14 +605,34 @@ def main(argv: list[str] | None = None) -> int:
     if args.logs_ref is not None:
         evidence["logs_ref"] = args.logs_ref
 
-    result = consume(capability, evidence, store_dir=Path(args.store))
+    # Optional currency enforcement. --route-root resolves the authoritative
+    # route so consume() can refuse a superseded (stale) capability. If the route
+    # set has no lineage generation (legacy/empty, or a tip-less cycle), there is
+    # nothing to establish supersession against — the user asked for a currency
+    # check that cannot be performed, so fail closed with exit 4.
+    authoritative = None
+    if args.route_root is not None:
+        routes = route_lineage.load_routes(Path(args.route_root))
+        res = route_lineage.resolve_authoritative(routes)
+        if res.mode == "lineage" and res.winner:
+            authoritative = next((r for r in routes if r.route_id == res.winner), None)
+        else:
+            print(
+                "no authoritative lineage generation to check currency against "
+                f"(route resolution mode={res.mode}); refusing (fail-closed)"
+            )
+            return 4
+
+    result = consume(capability, evidence, store_dir=Path(args.store), authoritative=authoritative)
     if result.ok:
         print(f"consumed: {result.receipt_path}")
         return 0
-    if result.reason == "already_consumed":
-        print("already_consumed")
-        return 3
+    # Map the refusal reason (by prefix) to the process exit code.
     print(result.reason)
+    if result.reason.startswith("already_consumed"):
+        return 3
+    if result.reason.startswith("stale_capability"):
+        return 4
     return 2
 
 

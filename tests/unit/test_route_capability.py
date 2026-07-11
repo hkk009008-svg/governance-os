@@ -310,6 +310,59 @@ def test_consume_write_failure_does_not_brick_capability(tmp_path, monkeypatch):
     assert final.exists()
 
 
+# --- consume enforces the capability's allowed_command_class (F2) -------------
+#
+# A capability names ONE allowed command literal (allowed_command_class). consume
+# must refuse evidence whose executed command is not that literal (exact match or
+# a `<literal> …` prefix), fail-closed BEFORE any receipt is written — otherwise a
+# grant for `git push` could be spent recording a `git tag` that actually ran.
+
+def test_consume_refuses_command_class_mismatch(tmp_path):
+    # cap allows "git push"; evidence command is "git tag unexpected" -> mismatch.
+    ev = {"result": "ok", "command": "git tag unexpected", "output": "created tag", "commit": "deadbee"}
+    res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
+    assert not res.ok
+    assert "command_class_mismatch" in res.reason
+    # fail-closed BEFORE any write — the store stays empty.
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_consume_allows_command_class_prefix(tmp_path):
+    # "git push origin main" is a prefix-extension of allowed "git push" -> allowed.
+    ev = {"result": "ok", "command": "git push origin main", "output": "To origin/main", "commit": "deadbee"}
+    res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
+    assert res.ok and res.reason == "consumed"
+
+
+# --- consume enforces revocation-on-supersession at the enforcement point (F3) -
+#
+# capability_is_current is correct but nothing called it at consume time. With an
+# authoritative route supplied, a capability bound to a superseded generation is
+# refused fail-closed (no receipt); when the capability is current it consumes.
+
+def test_consume_refuses_stale_capability(tmp_path):
+    cap = _cap(bound_route_id="r6", bound_generation=3)
+    authoritative = _lr("r6", 6)  # a newer generation is authoritative -> stale
+    res = route_capability.consume(cap, _evidence(), store_dir=tmp_path, authoritative=authoritative)
+    assert not res.ok
+    assert "stale_capability" in res.reason
+    assert list(tmp_path.iterdir()) == []  # no receipt on a stale grant
+
+
+def test_consume_allows_current_capability(tmp_path):
+    cap = _cap(bound_route_id="r5", bound_generation=5)
+    authoritative = _lr("r5", 5)  # bound generation == authoritative generation
+    res = route_capability.consume(cap, _evidence(), store_dir=tmp_path, authoritative=authoritative)
+    assert res.ok and res.reason == "consumed"
+
+
+def test_consume_authoritative_none_skips_currency(tmp_path):
+    # Backward-compatible default: authoritative=None does NOT enforce currency,
+    # so an otherwise-valid capability consumes even though it is not checked.
+    res = route_capability.consume(_cap(), _evidence(), store_dir=tmp_path, authoritative=None)
+    assert res.ok and res.reason == "consumed"
+
+
 # --- CLI main() — the mechanical enforcement point (Task 5) -------------------
 #
 # main() is the "script that accepts a token at execution time and refuses
@@ -324,6 +377,17 @@ def _write_cap(tmp_path, **overrides):
     path = tmp_path / "cap.json"
     path.write_text(json.dumps(_cap(**overrides)))
     return str(path)
+
+
+def _write_route(tmp_path, route_id, generation):
+    """Write a coordinator-to-all route .md carrying a lineage generation header,
+    under the mailbox layout route_lineage.load_routes globs (…/sent/*)."""
+    sent = tmp_path / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True, exist_ok=True)
+    (sent / f"{route_id}.md").write_text(
+        f"# {route_id}\n\nRoute generation: {generation}\n"
+    )
+    return route_id
 
 
 def test_cli_validate_good_capability_exit_0(tmp_path, capsys):
@@ -394,10 +458,70 @@ def test_cli_consume_invalid_capability_exit_2(tmp_path, capsys):
 def test_cli_consume_with_logs_ref_exit_0(tmp_path, capsys):
     good = _write_cap(tmp_path)
     store = tmp_path / "store"
+    # command matches allowed_command_class "git push"; anchored by a logs/ ref
+    # (no commit) — the test exercises the logs-ref evidence path to exit 0.
     argv = [
         "consume", "--capability", good, "--store", str(store),
-        "--result", "ok", "--command", "pytest -q",
-        "--output", "42 passed", "--logs-ref", "logs/run-2026-07-12.txt",
+        "--result", "ok", "--command", "git push origin main",
+        "--output", "To origin/main", "--logs-ref", "logs/run-2026-07-12.txt",
     ]
     assert route_capability.main(argv) == 0
     assert "consumed:" in capsys.readouterr().out
+
+
+# --- CLI: command-class + currency enforcement (F2/F3) exit codes -------------
+#
+# Exit-code contract additions: command_class_mismatch -> 2; a stale capability
+# (or a route-root with no lineage generation to check against) -> 4; a current
+# capability with --route-root -> 0.
+
+def test_cli_consume_command_class_mismatch_exit_2(tmp_path, capsys):
+    good = _write_cap(tmp_path)  # allowed_command_class "git push"
+    store = tmp_path / "store"
+    argv = [
+        "consume", "--capability", good, "--store", str(store),
+        "--result", "ok", "--command", "git tag unexpected",
+        "--output", "created tag", "--commit", "deadbee",
+    ]
+    assert route_capability.main(argv) == 2
+    assert "command_class_mismatch" in capsys.readouterr().out
+    assert not store.exists() or list(store.iterdir()) == []
+
+
+def test_cli_consume_refuses_stale_with_route_root(tmp_path, capsys):
+    route_id = "2026-07-12T20-00-00Z-coordinator-to-all-coordination"
+    _write_route(tmp_path, route_id, 6)  # authoritative generation 6
+    store = tmp_path / "store"
+    # capability bound to generation 3 of that route -> stale -> exit 4.
+    cap_path = _write_cap(tmp_path, bound_route_id=route_id, bound_generation=3)
+    argv = [
+        "consume", "--capability", cap_path, "--store", str(store),
+        "--result", "ok", "--command", "git push",
+        "--output", "To origin/main", "--commit", "deadbee",
+        "--route-root", str(tmp_path),
+    ]
+    assert route_capability.main(argv) == 4
+    assert "stale_capability" in capsys.readouterr().out
+    assert not store.exists() or list(store.iterdir()) == []
+    # rebind the capability to the authoritative generation 6 -> exit 0.
+    _write_cap(tmp_path, bound_route_id=route_id, bound_generation=6)
+    assert route_capability.main(argv) == 0
+    assert "consumed:" in capsys.readouterr().out
+
+
+def test_cli_consume_route_root_no_lineage_exit_4(tmp_path, capsys):
+    # --route-root with no coordinator routes: no lineage generation to establish
+    # supersession, so the requested currency check fails closed with exit 4.
+    good = _write_cap(tmp_path)
+    store = tmp_path / "store"
+    empty_root = tmp_path / "empty"
+    empty_root.mkdir()
+    argv = [
+        "consume", "--capability", good, "--store", str(store),
+        "--result", "ok", "--command", "git push",
+        "--output", "To origin/main", "--commit", "deadbee",
+        "--route-root", str(empty_root),
+    ]
+    assert route_capability.main(argv) == 4
+    assert capsys.readouterr().out.strip() != ""
+    assert not store.exists() or list(store.iterdir()) == []
