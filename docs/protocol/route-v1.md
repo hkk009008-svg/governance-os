@@ -65,9 +65,10 @@ the lineage TIP: the highest-generation route that no other route supersedes.
 
       env -u GIT_INDEX_FILE .venv/bin/python scripts/route_lineage.py --check
 
-  It reports the authoritative route id, exits non-zero on a fork (two tips at
-  one generation) or a cycle, and prints `legacy route set` when no route
-  carries a generation (the resolver then falls back to filename order).
+  It reports the authoritative route id, exits non-zero on a fork (any
+  multiple unsuperseded tips), a cycle, or a dangling parent (a route
+  superseding one absent from the set), and prints `legacy route set` when no
+  route carries a generation (the resolver then falls back to filename order).
 
 - A new route may supersede the current tip only under compare-and-swap: its
   `Supersedes route:` must name the current tip and its generation must be

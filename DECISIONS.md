@@ -549,9 +549,11 @@ consumes them for selection.
 3. `expected_control_head` is parsed and reported, not gated on whole-repo
    HEAD equality (audit modification) — parent + generation are the hard gate.
 4. A `route_lineage.py --check` CLI, wired into `scripts/protocol_doctor.py`,
-   fails only on lineage inconsistency among generation-bearing routes (a
-   fork — two tips at the same generation — or a cycle). It passes on the
-   all-legacy live set.
+   fails only on lineage inconsistency among generation-bearing routes (any
+   fork — multiple unsuperseded generation-bearing tips, whether at the same
+   or different generations; a cycle — no tip; or a dangling parent — a
+   superseded route absent from the set). It passes on the all-legacy live
+   set.
 5. This does not activate the dormant signed bus (ADR-010); lineage lives in
    the git-committed mailbox route bodies.
 
