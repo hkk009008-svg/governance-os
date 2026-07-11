@@ -19,7 +19,7 @@
     "director-ledger-workbook-refresh-implementation"
   ],
   "acceptance": [
-    "Remain blocked until Director sends one cumulative verify-request naming the exact reviewed Tasks 1-7 range, twenty-path scope, per-task reviewer outcomes, fresh tests, scratch evidence hashes, cleanup proof, and unchanged canonical DB/resource postchecks.",
+    "Remain blocked until Director sends one cumulative verify-request naming the exact reviewed Tasks 0-7 range, twenty-two-path scope, per-task reviewer outcomes, fresh tests, scratch evidence hashes, cleanup proof, and unchanged canonical DB/resource postchecks.",
     "Run the Operator Wave-2 ledger guard from Pipeline and verify the named evidence-ledger commit/range independently and read-only. Inspect actual diffs and target instructions; rerun focused/full suites; review source priority, expected-old mutation fences, evidence payload completeness, RLS/grants, resource compensation, business-fingerprint/evidence-head separation, local-only reporting, and no excluded path drift.",
     "Under a separate coordinator-issued verification scratch token, independently repeat plan, dry-run, committed scratch apply/resource activation, direction generation, trust-chain and same-hash refusal checks on a fresh scratch DB/resource. Never touch canonical data or repair product code.",
     "Issue exactly one Pipeline verification-report GO, NITS, or FAIL with exact commit/range, commands/results, mutation flips, scratch cleanup, canonical no-change proof, and next trigger. NITS/FAIL returns to Director; only GO permits coordinator consideration of a canonical activation token.",
@@ -52,6 +52,8 @@
     "DECISIONS.md",
     "ARCHITECTURE.md",
     "OPERATIONS.md",
-    "docs/MANUAL.md"
+    "docs/MANUAL.md",
+    "AGENTS.md",
+    "CLAUDE.md"
   ]
 }

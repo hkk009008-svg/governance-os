@@ -22,10 +22,12 @@
     "Report one concise preflight GO, NITS, or contradiction to coordinator. This is route/readiness evidence only and never substitutes for Operator's later cumulative GO.",
     "The orthogonal 2026-07-11T00-11-01Z cross-provider reverify request remains parked without a verdict until this user-priority cycle closes and coordinator reroutes it. Do not consume that request, edit product files, start services, create/drop databases, activate resources, push, lock, or take any other side effect."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "NITS: coordination/mailbox/sent/2026-07-11T07-06-34Z-operator2-to-coordinator-coordination.md at commit 54492cb reports base/isolation/venv/privacy GO and requires /opt/homebrew/opt/libpq/bin for future PostgreSQL commands; correction commit 06433c1 binds those absolute clients."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-11T07-06-34Z-operator2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "done",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

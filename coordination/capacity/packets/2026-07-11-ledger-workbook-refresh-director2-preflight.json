@@ -23,10 +23,12 @@
     "Report one concise GO-for-route, contradiction, or missing-required-evidence artifact to coordinator. Name any route-changing issue before Director product edits; do not duplicate implementation or Operator Lane V.",
     "Do not edit evidence-ledger product files, issue a production verdict, consume coordinator mail, take side effects, mutate route packets, or create duplicate status churn."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "CONTRADICTION: coordination/mailbox/sent/2026-07-11T07-05-46Z-director2-to-coordinator-coordination.md at commit 21c56d6 identifies missing typed insert/component semantics plus instruction/resource/manifest scope gaps; correction is routed through successor packet director2-ledger-workbook-refresh-contract-correction-preflight."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-11T07-05-46Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "done",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
