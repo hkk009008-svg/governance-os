@@ -566,3 +566,55 @@ consumes them for selection.
   generation-bearing routes.
 - No behavior change for legacy routes; the pre-existing start-guard tests
   pass unmodified.
+
+## ADR-016: Consumable side-effect capabilities (capability/v1 + receipt/v1)
+
+**Status:** Accepted (primitive only; live token authority not cut over in this slice)
+
+**Context:**
+Side-effect executor tokens are a 10-field prose contract
+(`scripts/codex_protocol_model.py` `SIDE_EFFECT_EXECUTOR_TOKEN_FIELDS`)
+validated by a route-time lint (`scripts/protocol_capacity.py`). Nothing
+consumes a token at execution time, nothing prevents a token being replayed,
+and route supersession does not revoke an outstanding token — the gap
+operator2 flagged as a BLOCKER (mailbox 2026-07-10T01-23-27Z: "no token path
+or --executor-token input"). Slices 1-2 (ADR-014/ADR-015) added typed route
+identity and lineage, which capability↔route binding needs.
+
+**Decision:**
+1. Add `scripts/route_capability.py`: `governance.capability/v1` — a strict
+   superset of the 10-field token contract (keeping `allowed_command_class`
+   as an exact command literal, `observer_seats`, `final_closeout_owner`, the
+   stop condition) plus `capability_id`, `issuer`, `subject`, `bound_route_id`,
+   `bound_generation`, `state`, `expires_on`, and non-goals. Canonical bytes
+   and hash come from `threeway.canon.canonicalize` (RFC 8785) — library reuse;
+   the dormant signed bus (ADR-010) is not activated.
+2. `governance.capability-receipt/v1`: a consume writes a receipt carrying
+   NON-VACUOUS executed evidence (command + output + a commit SHA or `logs/`
+   artifact ref), mirroring `scripts/check_go_schema.py`. A bare
+   `state="consumed"` flip with no evidence is rejected as anti-ceremony.
+3. Consumption is ATOMIC and one-time: exclusive-create (`O_EXCL`) of the
+   receipt keyed by `capability_id`. The first consumer wins; a replay fails
+   `already_consumed`.
+4. Revocation-on-supersession reuses Slice-2 lineage: a capability is current
+   only while its `bound_route_id`/`bound_generation` equal the authoritative
+   route's (Slice-2 `resolve_authoritative`). A capability bound to a
+   superseded generation is invalid unless a newer route carries it forward
+   via route/v1 `capability_refs`.
+5. A `route_capability.py consume` CLI is the mechanical enforcement point
+   (a script that accepts a token at execution time and refuses replay).
+   Wiring `--executor-token` into the dormant `execute_threeway_cutover.sh`
+   is a follow-up with the parked signed-bus plan.
+6. Compatibility: the prose token blocks and the live route-time token lint
+   are UNCHANGED and stay fail-closed; capability/v1 is generated + validated
+   alongside, not yet the live authority.
+7. ADR-012 invariant preserved: no capability state substitutes for the user
+   push gate. A consumed capability is necessary, never sufficient.
+
+**Consequences:**
+- Side-effect authority becomes replay-safe and route-bound; a stale or
+  already-used capability is refused at execution time by a real script.
+- No behavior change to live routes or the token lint; the active campaign is
+  unaffected (all new files).
+- Full cutover of live token authority to capability/v1 and wiring into the
+  signed-bus cutover script are scoped follow-ups.
