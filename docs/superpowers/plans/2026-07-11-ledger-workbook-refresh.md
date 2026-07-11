@@ -1533,6 +1533,19 @@ def _apply_slot_revision(conn, action: RefreshAction, entered_by: str) -> int:
     return row[0]
 ```
 
+The scalar columns shown in `_apply_slot_revision()` are the minimum update
+body, not an exclusion of the planner's accepted entity dependencies. When a
+`REVISE_SLOT` changes checklist-canonical `channel` or `product`, the helper
+must resolve the new `channel_id` / `product_id` from the corresponding
+created-entity dependency or the proven snapshot entity, set both foreign
+keys, and include both exact old foreign-key IDs resolved from
+`expected_before` in the optimistic `WHERE` predicate. A missing,
+wrong-entity-kind, duplicate, or mismatched resolution fails closed before the
+update. `broadcast_date` and `start_time` remain identity invariants and are
+not updated. This mirrors the placement foreign-key revision rule below and
+keeps the implementation inside `workbook_refresh_db.py`; it does not widen
+the Task-3 write set.
+
 Add equally explicit `_apply_payment_revision`, `_apply_placement_revision`,
 and `_apply_allocation_revision` with `source='excel_import'`, target ID, and
 all mutable old values including `source_ref` and `entered_by` in the WHERE
