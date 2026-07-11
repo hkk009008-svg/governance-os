@@ -32,11 +32,32 @@ NARRATIVE = (("Durable Disposition", "Generated projection for route-compat fixt
 SENT_RELDIR = Path("coordination/mailbox/sent")
 
 
+def _confine(root: Path, relpath: str) -> Path:
+    """Resolve relpath under root; reject absolute or escaping paths (corpus integrity).
+
+    expected.json is committed data, but a hostile or fat-fingered ``route_relpath``
+    (absolute, or ``..`` climbing out of the sandbox root) would make the comparator
+    write outside its temp corpus. Fail closed before any filesystem write.
+    """
+    candidate = Path(relpath)
+    if candidate.is_absolute():
+        raise ValueError(
+            f"corpus integrity: route_relpath must be relative, got {relpath!r}"
+        )
+    resolved_root = root.resolve()
+    destination = (resolved_root / candidate).resolve()
+    if not destination.is_relative_to(resolved_root):
+        raise ValueError(
+            f"corpus integrity: route_relpath escapes the corpus root: {relpath!r}"
+        )
+    return destination
+
+
 def _case_projection(case_dir: Path, route: dict, root: Path, relpath: str | None) -> Path:
     """Materialize the case's projection under root; return its path."""
     hand_written = case_dir / "projection.md"
     if relpath is not None:
-        destination = root / relpath
+        destination = _confine(root, relpath)
     else:
         destination = root / SENT_RELDIR / f"{route['route_id']}.md"
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -55,8 +76,8 @@ def _case_projection(case_dir: Path, route: dict, root: Path, relpath: str | Non
 
 def _structured_verdict(route: dict, projection: Path, root: Path) -> tuple[bool, list[str]]:
     issues = route_manifest.validate_route_object(route)
-    relative = projection.resolve().as_posix()
-    if f"/{SENT_RELDIR.as_posix()}/" not in relative:
+    sent_root = (root / SENT_RELDIR).resolve()
+    if not projection.resolve().is_relative_to(sent_root):
         issues = [*issues, "route projection must live under coordination/mailbox/sent/"]
     return (not issues), issues
 
@@ -88,18 +109,25 @@ def run_corpus(fixtures_dir: Path) -> dict:
                     sent, route, title="round-trip", narrative=NARRATIVE
                 )
                 assert route_manifest.read_manifest(md_path) == route
+        case_gates = sorted(
+            {issue.get("gate", "?") for issue in legacy.blocking_issues}
+        )
         case = {
             "name": name,
             "legacy_valid": legacy.valid,
-            "legacy_gates": sorted(
-                {issue.get("gate", "?") for issue in legacy.blocking_issues}
-            ),
+            "legacy_gates": case_gates,
             "structured_valid": structured_valid,
             "structured_issues": structured_issues,
             "divergence": spec["divergence"],
             "matches_expectation": (
                 legacy.valid == spec["legacy_valid"]
                 and structured_valid == spec["structured_valid"]
+                # When a spec pins the legacy failure REASON, a drifted gate set
+                # (not just a flipped validity bool) must break the match (F5).
+                and (
+                    "legacy_gates" not in spec
+                    or case_gates == sorted(spec["legacy_gates"])
+                )
             ),
         }
         cases.append(case)
