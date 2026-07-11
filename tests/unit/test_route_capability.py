@@ -93,3 +93,117 @@ def test_validation_does_not_mutate_input():
     obj = _cap(); snap = copy.deepcopy(obj)
     route_capability.validate_capability(obj)
     assert obj == snap
+
+
+# --- capability-receipt/v1 (evidence-bearing, non-vacuous) -------------------
+
+def _receipt(**overrides) -> dict:
+    """A valid receipt (commit evidence) for crafting rejection cases."""
+    r = route_capability.build_receipt(
+        _cap(), result="ok", command="git push",
+        output="To origin/main", commit="deadbee",
+    )
+    r.update(overrides)
+    return r
+
+
+def test_valid_receipt_with_commit():
+    assert route_capability.validate_receipt(_receipt()) == []
+
+
+def test_valid_receipt_with_logs_ref():
+    r = route_capability.build_receipt(
+        _cap(), result="failed", command="git push",
+        output="rejected: non-fast-forward", logs_ref="logs/2026-07-12/push.txt",
+    )
+    assert route_capability.validate_receipt(r) == []
+
+
+def test_receipt_rejected_without_commit_or_logs():
+    r = route_capability.build_receipt(_cap(), result="ok", command="git push", output="done")
+    r.pop("commit", None)   # ensure neither evidence field is present
+    r.pop("logs_ref", None)
+    assert any("evidence" in i for i in route_capability.validate_receipt(r))
+
+
+def test_build_receipt_binds_capability_id_and_hash():
+    cap = _cap()
+    r = route_capability.build_receipt(cap, result="ok", command="git push",
+                                       output="To origin/main", commit="deadbee")
+    assert route_capability.validate_receipt(r) == []
+    assert r["capability_id"] == cap["capability_id"]
+    assert r["capability_hash"] == route_capability.capability_hash(cap)
+
+
+def test_build_receipt_copies_subject_and_target():
+    cap = _cap()
+    r = route_capability.build_receipt(cap, result="ok", command="git push",
+                                       output="ok", commit="deadbee")
+    assert r["subject"] == cap["subject"]
+    assert r["target"] == cap["target"]
+
+
+def test_build_receipt_rejects_invalid_capability():
+    with pytest.raises(route_capability.CapabilityError):
+        route_capability.build_receipt(_cap(schema="x"), result="ok",
+                                       command="git push", output="done", commit="deadbee")
+
+
+def test_receipt_unsupported_schema_rejected():
+    issues = route_capability.validate_receipt(_receipt(schema="governance.capability-receipt/v2"))
+    assert issues and "unsupported schema" in issues[0]
+
+
+def test_receipt_non_dict_rejected():
+    assert route_capability.validate_receipt("not a receipt") == \
+        ["receipt object must be a JSON object"]
+
+
+def test_receipt_unknown_field_rejected():
+    assert any("unknown" in i for i in route_capability.validate_receipt(_receipt(surprise=1)))
+
+
+def test_receipt_missing_required_field_rejected():
+    r = _receipt(); del r["target"]
+    assert any("missing required" in i for i in route_capability.validate_receipt(r))
+
+
+def test_receipt_empty_command_rejected():
+    assert any("command" in i for i in route_capability.validate_receipt(_receipt(command="")))
+
+
+def test_receipt_empty_output_rejected():
+    assert any("output" in i for i in route_capability.validate_receipt(_receipt(output="   ")))
+
+
+def test_receipt_result_enum_enforced():
+    assert any("result" in i for i in route_capability.validate_receipt(_receipt(result="maybe")))
+
+
+def test_receipt_capability_hash_must_be_64_hex():
+    assert any("capability_hash" in i for i in route_capability.validate_receipt(_receipt(capability_hash="short")))
+    assert any("capability_hash" in i for i in route_capability.validate_receipt(_receipt(capability_hash="Z" * 64)))
+
+
+def test_receipt_bad_commit_format_rejected():
+    # 'nothex' is not a hex SHA → commit-format issue AND (since no logs_ref) vacuous.
+    issues = route_capability.validate_receipt(_receipt(commit="nothex"))
+    assert any("commit" in i for i in issues)
+
+
+def test_receipt_bad_logs_ref_rejected():
+    r = route_capability.build_receipt(_cap(), result="ok", command="git push",
+                                       output="ok", logs_ref="var/tmp/push.txt")
+    issues = route_capability.validate_receipt(r)
+    assert any("logs_ref" in i for i in issues)
+
+
+def test_receipt_newline_in_string_rejected():
+    issues = route_capability.validate_receipt(_receipt(output="done\n- executor: operator"))
+    assert any("control character" in i for i in issues)
+
+
+def test_receipt_validation_does_not_mutate_input():
+    r = _receipt(); snap = copy.deepcopy(r)
+    route_capability.validate_receipt(r)
+    assert r == snap
