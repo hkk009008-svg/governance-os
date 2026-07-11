@@ -466,3 +466,56 @@ Decided by the user-principal on 2026-07-11.
 - `.codex/agents/*.toml` and codex_protocol_model prose still name
   evidence-ledger paths — correct for the default target; regenerating that
   prose per-target is future work when a second target is registered.
+
+## ADR-014: Typed route manifests (route/v1) — JSON authority, Markdown projection
+
+**Status:** Accepted (compatibility layer only; live cutover requires a follow-up ADR)
+
+**Context:**
+Route authority is regex-parsed Markdown prose: headings, field aliases, modal
+verbs, per-physical-line negation boundaries, and side-effect phrase tables
+(`scripts/protocol_capacity.py:58-123,1075-1125,1396-1448`). Because negation
+scanning is per-line, wrapping a prohibition across lines changes its machine
+meaning (false side-effect demands; the fail-open direction exists too). The
+2026-07-11 workbook-refresh campaign and the external improvement brief
+(2026-07-11 transfer) both surfaced this class. The only automatic
+current-route resolver is reverse-lexicographic filename sort
+(`scripts/ledger_start_guard.py:67`), and `Supersedes route:` prose is parsed
+by nothing.
+
+**Decision:**
+1. Introduce `governance.route/v1`: a strictly-validated JSON object
+   (`scripts/route_manifest.py`, documented by `schemas/route-v1.schema.json`).
+   Canonical bytes come from `threeway.canon.canonicalize` (RFC 8785) — reuse
+   of threeway code AS A LIBRARY; this does not activate the dormant signed
+   bus and does not touch `refs/threeway/*` (ADR-010 boundary intact).
+2. Authority-vs-projection: the object lives in a sidecar
+   `<route-id>.route.json` whose bytes ARE the canonical serialization; the
+   Markdown event carries a `route_hash:` pin. Embedding JSON inside the
+   route body was rejected because the live prose lint scans every body line
+   for side-effect directives and would false-match token field values
+   (e.g. `"allowed_command_class": "git push"`).
+3. Forward-compatibility fields are REQUIRED from day one so later slices are
+   additive-minor, not major bumps (brief §12.2/§12.3): `generation`,
+   `parent_route_id`, `expected_control_head` (P0.3 — validated for shape,
+   CAS-unenforced in this slice), `packet_delta` (P1.3 — must be null),
+   `capability_refs` (P0.4 — must be []).
+4. Unknown top-level fields are REJECTED except under an explicit
+   `extensions` object. Readers reject unsupported `schema` values.
+5. Route identity = mailbox filename stem (zero migration, Rule #8 binding
+   preserved). ULIDs were considered and rejected for now.
+6. Compatibility only: Markdown routes remain the live authority. The
+   comparator (`scripts/route_compat.py`) must show legacy/structured
+   equivalence over the fixture corpus (divergences triaged as
+   legacy-formatting defects vs regressions) before any cutover ADR.
+7. Property-style formatting-invariance is tested with deterministic mutation
+   fixtures; adopting `hypothesis` is deferred to the P1.4 slice ADR.
+
+**Consequences:**
+- Reformatting prose can no longer change what a structured reader believes;
+  during compatibility the legacy validator still governs live routes.
+- Known legacy wrapped-negation defect is pinned as a strict xfail
+  (R-VERIFY-TIER) rather than fixed in the prose parser.
+- Sidecar placement for LIVE routes (mailbox naming-lint interaction) is
+  explicitly deferred to the cutover ADR; this slice writes pairs only in
+  tests and fixtures.
