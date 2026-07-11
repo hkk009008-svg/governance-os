@@ -2746,6 +2746,23 @@ code/test/doc evidence is a FAIL, not an implicit follow-up.
 
 ## Plan Completion Gate
 
+### Task 4 quality correction (2026-07-11)
+
+The recovery CLI must dispatch `--reverify-committed-resource` before applying
+the pre-activation `--previous-workbook` hash check.  The governed recovery
+invocation binds canonical and previous to the same path after activation, so
+the path now carries the incoming hash; recovery instead validates the
+committed-unverified state and canonical incoming identity, with the archived
+previous resource checked by the recovery routine.  A regression must exercise
+apply → `committed_unverified` → same-path CLI reverify.
+
+Task 4 resource publication must be crash-durable and alias-safe: activation
+fsyncs the canonical directory before the database commit; restore and manifest
+publication use unique descriptor-bound no-follow temporary files, fsync file
+contents, atomically replace, and fsync the containing directory.  Tests must
+cover symlink, hardlink, substitution, and durability-barrier failures.  Scope
+remains limited to the four Task 4 paths.
+
 The implementation plan is complete only when Tasks 0–6 are committed and
 reviewed, Task 7 has a non-vacuous rollback plus committed real-data scratch
 apply and Operator GO, Task 8 has one authorized successful canonical
