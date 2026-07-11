@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "governance.capability/v1",
+  "title": "Governance OS consumable side-effect capability v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "capability_id", "issuer", "subject",
+    "bound_route_id", "bound_generation",
+    "side_effect_id", "allowed_command_class", "target",
+    "preflight", "stop_if_newer_mail_or_live_target_satisfied", "postcheck",
+    "observer_seats", "final_closeout_owner", "non_goals",
+    "expires_on", "state"
+  ],
+  "properties": {
+    "schema": { "const": "governance.capability/v1" },
+    "capability_id": { "type": "string", "pattern": "^cap-[A-Za-z0-9._-]+$" },
+    "issuer": { "enum": ["director", "director2", "operator", "operator2", "coordinator", "coordinator2"] },
+    "subject": { "enum": ["director", "director2", "operator", "operator2", "coordinator", "coordinator2"] },
+    "bound_route_id": { "type": "string", "minLength": 1 },
+    "bound_generation": { "type": "integer", "minimum": 1 },
+    "side_effect_id": { "type": "string", "minLength": 1 },
+    "allowed_command_class": { "type": "string", "minLength": 1 },
+    "target": { "type": "string", "minLength": 1 },
+    "preflight": { "type": "string", "minLength": 1 },
+    "stop_if_newer_mail_or_live_target_satisfied": { "type": "string", "minLength": 1 },
+    "postcheck": { "type": "string", "minLength": 1 },
+    "observer_seats": { "type": "string", "minLength": 1 },
+    "final_closeout_owner": { "type": "string", "minLength": 1 },
+    "non_goals": { "type": "string", "minLength": 1 },
+    "expires_on": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event", "packet_id"],
+      "properties": {
+        "event": { "const": "packet_completed" },
+        "packet_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "state": { "enum": ["issued", "activated", "consumed", "revoked", "expired", "failed"] },
+    "extensions": { "type": "object" }
+  }
+}
