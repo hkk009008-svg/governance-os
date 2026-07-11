@@ -13,7 +13,9 @@ in schemas/capability-v1.schema.json is documentation of the same contract.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
+import json
 import os
 import re
 import sys
@@ -463,3 +465,107 @@ def capability_is_current(capability: dict, authoritative: "route_lineage.Lineag
         capability["bound_route_id"] == authoritative.route_id
         and bound_generation == route_generation
     )
+
+
+# --- CLI: the mechanical enforcement point (accept-a-token, refuse-replay) ----
+#
+# main() is the general form of the operator2 BLOCKER: "a script that accepts a
+# token at execution time and refuses replay." It is a thin stdlib-only argparse
+# shell over validate_capability + consume — the security logic lives in those
+# functions; the CLI only maps their results to process exit codes so a shell
+# caller (a git-push wrapper, a CI step) can gate a side effect on the exit code.
+#
+# Exit-code contract:
+#   validate: 0 valid; 1 invalid / unreadable / unparseable.
+#   consume:  0 first consume; 3 already_consumed (the replay refusal);
+#             2 any other refusal (invalid capability, vacuous evidence, or an
+#               unreadable/unparseable capability file).
+
+
+def _load_capability_json(path: str) -> tuple[Any, str | None]:
+    """Read and JSON-parse the file at ``path``.
+
+    Returns ``(obj, None)`` on success or ``(None, message)`` if the file cannot
+    be read or parsed — the CLI turns a message into a fail-closed exit code
+    rather than raising, so a malformed file is refused, never trusted.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh), None
+    except OSError as exc:
+        return None, f"cannot read capability file {path}: {exc}"
+    except json.JSONDecodeError as exc:
+        return None, f"cannot parse capability file {path}: {exc}"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate and consume governance.capability/v1 tokens (ADR-016).",
+    )
+    sub = parser.add_subparsers(dest="subcommand", required=True)
+
+    p_validate = sub.add_parser(
+        "validate", help="strict fail-closed validation of a capability/v1 JSON file"
+    )
+    p_validate.add_argument(
+        "--capability", required=True, help="path to a capability/v1 JSON file"
+    )
+
+    p_consume = sub.add_parser(
+        "consume",
+        help="consume a capability EXACTLY ONCE, writing an evidence receipt (refuses replay)",
+    )
+    p_consume.add_argument("--capability", required=True, help="path to a capability/v1 JSON file")
+    p_consume.add_argument("--store", required=True, help="receipt store directory")
+    p_consume.add_argument("--result", required=True, choices=("ok", "failed"))
+    p_consume.add_argument("--command", required=True, help="the side-effect command that ran")
+    p_consume.add_argument("--output", required=True, help="the command's output")
+    p_consume.add_argument("--commit", default=None, help="commit SHA anchoring the evidence (7-40 hex)")
+    p_consume.add_argument(
+        "--logs-ref", default=None, dest="logs_ref", help="logs/ artifact anchoring the evidence"
+    )
+
+    args = parser.parse_args(argv)
+
+    capability, load_error = _load_capability_json(args.capability)
+    if load_error is not None:
+        print(load_error)
+        # validate treats an unreadable file as invalid (1); consume as a refusal (2).
+        return 1 if args.subcommand == "validate" else 2
+
+    if args.subcommand == "validate":
+        issues = validate_capability(capability)
+        if issues:
+            for issue in issues:
+                print(issue)
+            return 1
+        print(f"capability valid: {capability['capability_id']}")
+        return 0
+
+    # consume: build the evidence dict from the args, then let consume() enforce
+    # fail-closed validation + one-time atomic write. Only anchors the caller
+    # actually supplied are included (an absent commit/logs_ref stays absent, so
+    # consume()'s non-vacuity check refuses genuinely vacuous evidence).
+    evidence: dict[str, Any] = {
+        "result": args.result,
+        "command": args.command,
+        "output": args.output,
+    }
+    if args.commit is not None:
+        evidence["commit"] = args.commit
+    if args.logs_ref is not None:
+        evidence["logs_ref"] = args.logs_ref
+
+    result = consume(capability, evidence, store_dir=Path(args.store))
+    if result.ok:
+        print(f"consumed: {result.receipt_path}")
+        return 0
+    if result.reason == "already_consumed":
+        print("already_consumed")
+        return 3
+    print(result.reason)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

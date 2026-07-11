@@ -308,3 +308,96 @@ def test_consume_write_failure_does_not_brick_capability(tmp_path, monkeypatch):
     retry = route_capability.consume(cap, _evidence(), store_dir=tmp_path)
     assert retry.ok and retry.reason == "consumed"
     assert final.exists()
+
+
+# --- CLI main() — the mechanical enforcement point (Task 5) -------------------
+#
+# main() is the "script that accepts a token at execution time and refuses
+# replay" — the general form of the operator2 BLOCKER. Exit codes are the
+# contract: validate 0/1; consume 0 (first) / 3 (already_consumed) / 2 (any
+# other refusal: invalid capability or vacuous evidence).
+
+import json
+
+
+def _write_cap(tmp_path, **overrides):
+    path = tmp_path / "cap.json"
+    path.write_text(json.dumps(_cap(**overrides)))
+    return str(path)
+
+
+def test_cli_validate_good_capability_exit_0(tmp_path, capsys):
+    good = _write_cap(tmp_path)
+    assert route_capability.main(["validate", "--capability", good]) == 0
+    assert "capability valid" in capsys.readouterr().out
+
+
+def test_cli_validate_bad_capability_exit_1(tmp_path, capsys):
+    bad = _write_cap(tmp_path, state="live")  # invalid lifecycle state
+    assert route_capability.main(["validate", "--capability", bad]) == 1
+    assert "state must be one of" in capsys.readouterr().out
+
+
+def test_cli_validate_nonexistent_path_exit_1(tmp_path, capsys):
+    missing = str(tmp_path / "does-not-exist.json")
+    assert route_capability.main(["validate", "--capability", missing]) == 1
+    assert capsys.readouterr().out.strip() != ""
+
+
+def test_cli_validate_unparseable_file_exit_1(tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ not valid json")
+    assert route_capability.main(["validate", "--capability", str(bad)]) == 1
+    assert capsys.readouterr().out.strip() != ""
+
+
+def test_cli_consume_first_exit_0_then_replay_exit_3(tmp_path, capsys):
+    good = _write_cap(tmp_path)
+    store = tmp_path / "store"
+    argv = [
+        "consume", "--capability", good, "--store", str(store),
+        "--result", "ok", "--command", "git push",
+        "--output", "To origin/main", "--commit", "deadbee",
+    ]
+    assert route_capability.main(argv) == 0
+    assert "consumed:" in capsys.readouterr().out
+    # a SECOND identical consume is the replay — refused with already_consumed.
+    assert route_capability.main(argv) == 3
+    assert "already_consumed" in capsys.readouterr().out
+
+
+def test_cli_consume_vacuous_evidence_exit_2(tmp_path, capsys):
+    good = _write_cap(tmp_path)
+    store = tmp_path / "store"
+    # no --commit and no --logs-ref -> vacuous evidence, refused fail-closed.
+    argv = [
+        "consume", "--capability", good, "--store", str(store),
+        "--result", "ok", "--command", "git push", "--output", "done",
+    ]
+    assert route_capability.main(argv) == 2
+    assert "evidence" in capsys.readouterr().out
+    assert not store.exists() or list(store.iterdir()) == []
+
+
+def test_cli_consume_invalid_capability_exit_2(tmp_path, capsys):
+    bad = _write_cap(tmp_path, state="live")
+    store = tmp_path / "store"
+    argv = [
+        "consume", "--capability", bad, "--store", str(store),
+        "--result", "ok", "--command", "git push",
+        "--output", "To origin/main", "--commit", "deadbee",
+    ]
+    assert route_capability.main(argv) == 2
+    assert "invalid capability" in capsys.readouterr().out
+
+
+def test_cli_consume_with_logs_ref_exit_0(tmp_path, capsys):
+    good = _write_cap(tmp_path)
+    store = tmp_path / "store"
+    argv = [
+        "consume", "--capability", good, "--store", str(store),
+        "--result", "ok", "--command", "pytest -q",
+        "--output", "42 passed", "--logs-ref", "logs/run-2026-07-12.txt",
+    ]
+    assert route_capability.main(argv) == 0
+    assert "consumed:" in capsys.readouterr().out
