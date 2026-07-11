@@ -52,7 +52,9 @@ The user approved this source-scoped authority rule:
   hash without committing either workbook.
 - Compare the previous canonical workbook, the new workbook, and the live
   database through one deterministic planner.
-- Insert genuinely new workbook-owned slots.
+- Insert checklist-approved canonical entities, genuinely new workbook-owned
+  slots and root results, and new internal PPL payments, placements, and
+  allocations through typed actions.
 - Apply workbook-owned slot corrections with append-only before/after evidence
   and optimistic baseline checks.
 - Append result corrections through the existing result-supersession chain.
@@ -102,7 +104,8 @@ An ignored local manifest under `.superpowers/sdd/` records:
 
 - incoming, previous-canonical, archive, staged, and canonical paths;
 - full old and new workbook hashes;
-- parser commit, refresh-plan hash, database baseline hash, and evidence IDs;
+- exact reviewed refresh-code commit, refresh-plan hash, database baseline hash, baseline
+  evidence kind/ID, and plan/result evidence IDs plus chain hashes;
 - activation phase and any compensating recovery action.
 
 The canonical `data/홈쇼핑분석.xlsx` changes only inside the final authorized
@@ -117,26 +120,50 @@ the signed entity checklist, and an explicit year. It emits canonical JSON and
 a human-readable local report from the same in-memory plan.
 
 The canonical JSON is stable under repeated execution and is hashed before any
-write. Each parsed workbook fact receives exactly one disposition:
+write. A parsed workbook row is a container, not one indivisible fact. The
+planner derives stable component-fact IDs for its entity mappings, slot,
+optional result, payment-month fact, placement, and allocation. Each component
+fact receives exactly one disposition; one workbook row can therefore yield
+several component dispositions without duplicating any component:
 
 - `unchanged`
+- `insert_entity`
+- `insert_entity_alias`
 - `insert_slot`
+- `insert_result`
 - `revise_slot`
 - `supersede_result`
+- `insert_ppl_payment`
 - `revise_ppl_payment`
+- `insert_ppl_placement`
 - `revise_ppl_placement`
+- `insert_ppl_allocation`
 - `revise_ppl_allocation`
 - `preserve_db_only`
 - `conflict_human_newer`
 - `ambiguous_identity`
 - `quarantine`
 
-Matching first proves that the previous workbook hash is bound to the existing
-import-root evidence. It then bridges the previous workbook rows to database
-records using the prior source reference plus a canonical natural-key
-consistency check. The new workbook is matched to that proven baseline through
-normalized business identity, never by its row number alone. Any duplicate or
-non-unique candidate becomes `ambiguous_identity`.
+Matching first proves that the previous workbook hash is bound to a committed
+lineage root: either the initial `import_root` evidence or the latest successful
+`workbook_refresh_result` whose incoming hash equals that previous workbook.
+The baseline evidence kind and ID are part of the snapshot, fingerprint, plan,
+and evidence payload. This allows a second and later cumulative successor to
+start from the currently activated workbook without manufacturing a new import
+root. The planner then bridges previous workbook rows to database records using
+the prior source reference plus a canonical natural-key consistency check. The
+new workbook is matched to that proven baseline through normalized business
+identity, never by its row number alone. Any duplicate or non-unique candidate
+becomes `ambiguous_identity`.
+
+The read-only snapshot also includes canonical entities and approved aliases.
+Checklist-covered canonical values absent from the snapshot produce typed
+entity/alias insert actions; uncovered variants still block. New results,
+payments, placements, and allocations have explicit insert actions. Each
+insert action names its complete after-state and dependencies by component-fact
+ID; updates name complete expected-before/after state. A deterministic
+topological order creates entities before their consumers, slots before root
+results, and placements plus slots before allocations.
 
 The planner performs no database, workbook, or resource writes. It refuses to
 produce an applicable plan when entity variants are uncovered, human conflicts
@@ -166,12 +193,18 @@ The command:
 3. Re-runs the read-only database fingerprint and all conflict gates.
 4. Appends a `workbook_refresh_plan` evidence row containing the canonical plan
    hash and complete before/after facts.
-5. Uses the existing slot validation path for new slots.
-6. Uses the existing result RPC to append superseding result revisions with a
-   workbook-refresh reason.
-7. Applies slot and internal-PPL corrections only when every affected row still
+5. Applies checklist-approved entity and alias insert actions through fixed,
+   type-specific SQL, then uses the existing slot validation path for new
+   slots.
+6. Uses the existing result RPC for both new root results and superseding
+   result revisions, with explicit created-ID linkage and a workbook-refresh
+   reason for supersession.
+7. Inserts new internal PPL payments, placements, and allocations through
+   fixed typed SQL in dependency order. Applies slot and internal-PPL
+   corrections only when every affected row still
    equals the plan's expected old values. Agency rows are ineligible.
-8. Appends a `workbook_refresh_result` evidence row with applied dispositions,
+8. Appends a `workbook_refresh_result` evidence row with applied component
+   dispositions,
    report hashes, resource hashes, and verification facts.
 9. Atomically activates the staged canonical resource while the database
    transaction is still recoverable.
@@ -233,7 +266,8 @@ Only the target database and side-effect token differ.
 The refresh makes no canonical change when any of these occurs:
 
 - local database or required service is unavailable;
-- old import-root evidence or workbook hash is missing or inconsistent;
+- initial import-root/prior-refresh lineage evidence or workbook hash is
+  missing or inconsistent;
 - the live database fingerprint differs from the approved plan;
 - a natural key is duplicate, missing, or ambiguous;
 - a later human fact conflicts with the workbook;
@@ -332,10 +366,12 @@ No token grants push, remote update, production generation, or publication.
 
 The cycle is complete only when:
 
-- every emitted workbook fact has exactly one deterministic disposition;
+- every emitted component fact has exactly one deterministic disposition and
+  every dependency resolves to exactly one typed action;
 - no ambiguous, uncovered, or unresolved human-conflict disposition remains;
 - the live database still matches the approved baseline at activation time;
-- workbook-owned updates apply without duplicating historical slots;
+- checklist-approved entity, workbook-owned slot/root-result, and internal PPL
+  inserts plus workbook-owned updates apply without duplicating history;
 - human, agency, and database-only facts remain unchanged;
 - result corrections use the immutable supersession chain;
 - slot and PPL corrections have append-only before/after evidence;

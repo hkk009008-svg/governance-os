@@ -68,6 +68,8 @@ routed subagent-driven execution (option 1) on 2026-07-11.
 | `ARCHITECTURE.md` | Verified module/write-path/trust-kind truth and measured test inventory. |
 | `OPERATIONS.md` | Planner, dry-run, canonical activation, recovery, and troubleshooting commands. |
 | `docs/MANUAL.md` | Korean owner-facing refresh and conflict/recovery procedure. |
+| `AGENTS.md` | Synchronize the stale binding-state claim with populated architecture/operations truth. |
+| `CLAUDE.md` | Mirror the same binding-state correction for the controller instructions. |
 
 ### Versioned interfaces
 
@@ -92,11 +94,17 @@ class CommitOutcomeUnknown(RuntimeError):
 
 class Disposition(str, enum.Enum):
     UNCHANGED = "unchanged"
+    INSERT_ENTITY = "insert_entity"
+    INSERT_ENTITY_ALIAS = "insert_entity_alias"
     INSERT_SLOT = "insert_slot"
+    INSERT_RESULT = "insert_result"
     REVISE_SLOT = "revise_slot"
     SUPERSEDE_RESULT = "supersede_result"
+    INSERT_PPL_PAYMENT = "insert_ppl_payment"
     REVISE_PPL_PAYMENT = "revise_ppl_payment"
+    INSERT_PPL_PLACEMENT = "insert_ppl_placement"
     REVISE_PPL_PLACEMENT = "revise_ppl_placement"
+    INSERT_PPL_ALLOCATION = "insert_ppl_allocation"
     REVISE_PPL_ALLOCATION = "revise_ppl_allocation"
     PRESERVE_DB_ONLY = "preserve_db_only"
     CONFLICT_HUMAN_NEWER = "conflict_human_newer"
@@ -137,9 +145,12 @@ class DbSlotFact:
 
 @dataclasses.dataclass(frozen=True)
 class DatabaseSnapshot:
-    previous_import_evidence_id: int
+    baseline_evidence_id: int
+    baseline_evidence_kind: str
     previous_workbook_sha256: str
     evidence_chain_head: str
+    entities: tuple[dict[str, object], ...]
+    entity_aliases: tuple[dict[str, object], ...]
     slots: tuple[DbSlotFact, ...]
     payments: tuple[dict[str, object], ...]
     placements: tuple[dict[str, object], ...]
@@ -150,8 +161,10 @@ class DatabaseSnapshot:
 class RefreshAction:
     disposition: Disposition
     fact_id: str
+    row_fact_id: str
     target_kind: str
     target_id: int | None
+    depends_on: tuple[str, ...]
     expected_before: dict[str, object]
     after: dict[str, object]
     reason: str
@@ -161,6 +174,9 @@ class RefreshAction:
 class RefreshPlan:
     schema_version: int
     year: int
+    parser_commit: str
+    baseline_evidence_id: int
+    baseline_evidence_kind: str
     previous_workbook_sha256: str
     incoming_workbook_sha256: str
     checklist_sha256: str
@@ -173,9 +189,11 @@ class RefreshPlan:
 @dataclasses.dataclass(frozen=True)
 class AppliedAction:
     fact_id: str
+    row_fact_id: str
     disposition: Disposition
     target_kind: str
     target_id: int
+    depends_on: tuple[str, ...]
     expected_before: dict[str, object]
     actual_after: dict[str, object]
 
@@ -189,6 +207,8 @@ class ApplyResult:
     dispositions: dict[str, int]
     directions: dict[str, str]
     report_hashes: dict[str, str]
+    plan_evidence_id: int
+    plan_evidence_chain_hash: str
     result_evidence_id: int | None
     result_evidence_chain_hash: str | None
 
@@ -221,6 +241,59 @@ adds database `id`, `source`, and provenance fields. `ppl` uses `show`,
 `source_ref`. `controls` uses `payment_month_raw`, `payment_date_raw`, and
 `unheaded_values`.
 
+`DatabaseSnapshot.entities` uses `id`, `entity_type`, `canonical`, and an
+`attributes` dict (channel display name and TV-show broadcaster when present);
+`entity_aliases` uses `id`, `entity_type`, `entity_id`, `alias`, `source`, and
+`approved_by`. Placement rows mirror `biz.ppl_placements` and never carry a
+fixture-only `slot_id`; slot linkage exists only through allocation rows.
+
+`WorkbookFact.fact_id` identifies the parsed row container. Every
+`RefreshAction.fact_id` identifies one addressable component and is unique in
+the plan: `entity:<type>:<canonical>`, `alias:<type>:<raw>`, `<row-id>#slot`,
+`<row-id>#result`, `<row-id>#placement:<key>`,
+`<row-id>#allocation:<key>`, or `payment:<yyyy-mm>`. `row_fact_id` retains the
+container link. One row may therefore emit several component actions, while
+each component ID appears exactly once. `depends_on` contains only other
+component IDs in the same plan and is empty for actions whose target IDs are
+already in the snapshot and whose referenced foreign entities also already
+exist. Database-only preservation uses stable
+`database:<target-kind>:<id>` row/component IDs.
+
+For applicable rows, `<row-id>` is `row:` plus the SHA-256 of canonical JSON
+for normalized `(broadcast_date, start_time, channel, product)` identity; it
+never contains a worksheet row number. Duplicate identities block before
+applicable component IDs are emitted and use deterministic anomaly IDs that
+include sorted source references only for diagnosis.
+
+Insert actions have `target_id=None` and `expected_before={}`. Their `after`
+payloads are complete and use `slot_fact_id` / `placement_fact_id` symbolic
+references when the target will be created by another action. Revision actions
+have a concrete operational `target_id`, but may depend on entity component IDs
+needed by their after-state; they have complete expected-before/after rows
+including source provenance and `entered_by`.
+
+Insert `after` projections are exact (generated IDs/timestamps and the
+token-bound runtime `entered_by` appear in `AppliedAction.actual_after`, not in
+the pre-authorized plan):
+
+- entity: `entity_type`, `canonical`, `attributes`;
+- alias: `entity_type`, `canonical`, `alias`, `source`;
+- slot: every documented slot key plus `source`;
+- result: `slot_id` or `slot_fact_id`, `stage`, `gross_amount`, `net_amount`,
+  `source`, `source_ref`;
+- payment: `pay_month`, `amount`, `source`, `source_ref`;
+- placement: `show`, `producer`, optional `show_fact_id` /
+  `producer_fact_id`, `amount`, `period_month`, `payment_status_ko`, `source`,
+  `source_ref`;
+- allocation: `placement_id` or `placement_fact_id`, `slot_id` or
+  `slot_fact_id`, `amount`, `method`, `method_reason`, `source`, `source_ref`.
+
+Every insert uses `source='excel_import'`. Every revision
+`expected_before` includes all mutable columns plus `source`, `source_ref`, and
+`entered_by`; its `after` contains the same business/source projection with new
+values. Actual evidence adds generated IDs/timestamps and the authorized
+runtime identity.
+
 ---
 
 ## Execution Preconditions: Coordinator Route And Isolation
@@ -240,11 +313,34 @@ Before Task 1 begins, the coordinator must:
 - [ ] In the new worktree, run target R-START before Task 1: project smoke,
   `ARCHITECTURE.md` §2 topology spot-check, `git log --oneline -20`, and a
   freshness comparison against the documented `Last verified` commit. Any
-  stale claim touched by this work is corrected in Task 6 or an earlier
-  bounded docs prep commit.
+  stale claim touched by this work is corrected in Task 0 before product code.
 
 Expected route outcome: one implementation pair, one Pair-B preflight lane, no
 database/resource mutation token yet, and no push authority.
+
+---
+
+### Task 0: Target Instruction Truth Prep
+
+**Files:**
+- Modify: `AGENTS.md` (binding-state paragraph only)
+- Modify: `CLAUDE.md` (matching binding-state paragraph only)
+
+Replace only the stale 2026-07-03 claim that `ARCHITECTURE.md` and
+`OPERATIONS.md` are unfilled skeletons. State that both documents are populated,
+current source plus freshly verified docs are the working truth, and placeholder
+checks remain a drift guard rather than an unfilled-skeleton meter. Keep all
+operating-model, R-CODEX-VERIFY, and R-OPUS-IMPL text unchanged.
+
+Run target smoke and `git diff --check`, obtain fresh specification and quality
+review of these two paragraphs, then commit exactly the two files:
+
+```bash
+env -u GIT_INDEX_FILE git add AGENTS.md CLAUDE.md
+env -u GIT_INDEX_FILE git commit -m "docs: synchronize repository binding state"
+```
+
+Gate: Task 1 does not begin until this prep commit and its two reviews pass.
 
 ---
 
@@ -261,7 +357,7 @@ database/resource mutation token yet, and no push authority.
 - Produces: the exact shared models above (including `ApplyResult`,
   `EvidenceRef`, and `ResourceEvidence`), `parse_refresh_workbook()`,
   `build_refresh_plan()`, `canonical_plan_bytes()`, `plan_sha256()`,
-  `database_fingerprint()`, and `blocking_actions()`.
+  `database_fingerprint()`, `blocking_actions()`, and `mutable_actions()`.
 
 - [ ] **Step 1: Add the synthetic previous/incoming workbook pair**
 
@@ -303,9 +399,55 @@ def signed_checklist() -> tuple[MergeRow, ...]:
 ```python
 def database_from_previous(
     previous: WorkbookSnapshot,
+    checklist: tuple[MergeRow, ...],
     *,
     human_result: bool = False,
 ) -> DatabaseSnapshot:
+    canonical = {
+        (row.entity_type, row.variant): (
+            row.canonical_suggestion if row.decision == "MERGE" else row.variant
+        )
+        for row in checklist
+    }
+    entity_values = set()
+    alias_values = set()
+    for fact in previous.facts:
+        for entity_type, raw in (
+            ("channel", fact.slot["channel"]),
+            ("product", fact.slot["product"]),
+            ("tv_show", fact.ppl.get("show")),
+            ("producer", fact.ppl.get("producer")),
+        ):
+            if not raw:
+                continue
+            value = canonical[(entity_type, raw)]
+            entity_values.add((entity_type, value))
+            if raw != value:
+                alias_values.add((entity_type, raw, value))
+    entities = tuple(
+        {
+            "id": 5000 + index,
+            "entity_type": entity_type,
+            "canonical": value,
+            "attributes": {"name_ko": value} if entity_type == "channel" else {},
+        }
+        for index, (entity_type, value) in enumerate(sorted(entity_values), start=1)
+    )
+    entity_ids = {
+        (entity["entity_type"], entity["canonical"]): entity["id"]
+        for entity in entities
+    }
+    entity_aliases = tuple(
+        {
+            "id": 6000 + index,
+            "entity_type": entity_type,
+            "entity_id": entity_ids[(entity_type, value)],
+            "alias": raw,
+            "source": "excel_import",
+            "approved_by": "synthetic-owner",
+        }
+        for index, (entity_type, raw, value) in enumerate(sorted(alias_values), start=1)
+    )
     slots = []
     payments = []
     placements = []
@@ -315,6 +457,11 @@ def database_from_previous(
             **fact.result,
             "id": 1000 + index,
             "source": "form" if human_result and index == 1 else "excel_import",
+            "source_ref": fact.result["source_ref"],
+            "entered_by": "synthetic-owner",
+            "supersedes_id": None,
+            "reason": None,
+            "entered_at": "2026-01-01T00:00:00+00:00",
         }
         slots.append(DbSlotFact(
             id=index,
@@ -327,9 +474,15 @@ def database_from_previous(
         if fact.ppl.get("amount") is not None:
             placements.append({
                 "id": 2000 + index,
-                "slot_id": index,
-                **fact.ppl,
+                "show": fact.ppl["show"],
+                "producer": fact.ppl["producer"],
+                "amount": fact.ppl["amount"],
+                "period_month": fact.ppl["payment_month"],
+                "payment_status_ko": None,
                 "source": "excel_import",
+                "source_ref": fact.ppl["source_ref"],
+                "entered_by": "synthetic-owner",
+                "created_at": "2026-01-01T00:00:00+00:00",
             })
         if fact.ppl.get("allocation") is not None:
             allocations.append({
@@ -337,7 +490,12 @@ def database_from_previous(
                 "placement_id": 2000 + index,
                 "slot_id": index,
                 "amount": fact.ppl["allocation"],
+                "method": "manual",
+                "method_reason": "synthetic workbook allocation",
                 "source": "excel_import",
+                "source_ref": fact.ppl["source_ref"],
+                "entered_by": "synthetic-owner",
+                "created_at": "2026-01-01T00:00:00+00:00",
             })
     for index, (month, amount) in enumerate(previous.payment_summary, start=1):
         payments.append({
@@ -345,11 +503,17 @@ def database_from_previous(
             "pay_month": month,
             "amount": amount,
             "source": "excel_import",
+            "source_ref": "PPL 지급 요약",
+            "entered_by": "synthetic-owner",
+            "created_at": "2026-01-01T00:00:00+00:00",
         })
     return DatabaseSnapshot(
-        previous_import_evidence_id=1,
+        baseline_evidence_id=1,
+        baseline_evidence_kind="import_root",
         previous_workbook_sha256=previous.workbook_sha256,
         evidence_chain_head="e" * 64,
+        entities=entities,
+        entity_aliases=entity_aliases,
         slots=tuple(slots),
         payments=tuple(payments),
         placements=tuple(placements),
@@ -374,7 +538,7 @@ def build_inputs(
     previous = parse_refresh_workbook(previous_path, 2026, checklist)
     incoming = parse_refresh_workbook(incoming_path, 2026, checklist)
     return previous, incoming, checklist, database_from_previous(
-        previous, human_result=human_result
+        previous, checklist, human_result=human_result
     )
 ```
 
@@ -391,7 +555,7 @@ SYNTHETIC_PREVIOUS = [
 ]
 
 SYNTHETIC_INCOMING = [
-    ("01/01(목)", "KT", "상품C", "정률", 50, 40, 0, "", "", None, ""),
+    ("01/01(목)", "KT", "상품C", "정률", 50, 40, 5, "쇼C", "제작C", 10, "2월"),
     ("01/02(금)", "GS", "상품A", "반특", 120, 90, 12, "쇼A", "제작A", 20, "1월"),
     ("01/03(토)", "NS", "상품B", "정률", 200, 150, 15, "쇼B", "제작B2", 30, "1월"),
 ]
@@ -399,7 +563,9 @@ SYNTHETIC_INCOMING = [
 
 Use only synthetic values. Put explicit `지급월` on one placement, a parseable
 `PPL비용지급일` fallback on another, one nonempty unheaded `AG` cell, and a
-summary mismatch variant selectable by a function argument.
+summary mismatch variant selectable by a function argument. The incoming
+summary adds the new synthetic `2월` payment so the planner/applier tests cover
+payment insertion rather than only revision.
 
 - [ ] **Step 2: Write failing pure planner tests**
 
@@ -408,17 +574,26 @@ Add tests with these exact names and assertions:
 ```python
 def test_shifted_source_rows_match_proven_baseline_not_row_number(tmp_path):
     previous, incoming, checklist, database = build_inputs(tmp_path)
-    plan = build_refresh_plan(previous, incoming, database, checklist_sha256="c" * 64)
+    plan = build_refresh_plan(
+        previous, incoming, database,
+        checklist_sha256="c" * 64,
+        parser_commit="a" * 40,
+    )
     dispositions = [a.disposition for a in plan.actions]
     assert Disposition.INSERT_SLOT in dispositions
     assert Disposition.REVISE_SLOT in dispositions
+    assert Disposition.INSERT_RESULT in dispositions
     assert Disposition.SUPERSEDE_RESULT in dispositions
     assert Disposition.AMBIGUOUS_IDENTITY not in dispositions
 
 
 def test_later_human_result_conflict_blocks_plan(tmp_path):
     previous, incoming, checklist, database = build_inputs(tmp_path, human_result=True)
-    plan = build_refresh_plan(previous, incoming, database, checklist_sha256="c" * 64)
+    plan = build_refresh_plan(
+        previous, incoming, database,
+        checklist_sha256="c" * 64,
+        parser_commit="a" * 40,
+    )
     assert any(a.disposition is Disposition.CONFLICT_HUMAN_NEWER for a in plan.actions)
     assert blocking_actions(plan)
 
@@ -433,7 +608,11 @@ def test_summary_mismatch_and_unheaded_value_are_quarantined(tmp_path):
     previous, incoming, checklist, database = build_inputs(
         tmp_path, summary_mismatch=True, unheaded_value=True
     )
-    plan = build_refresh_plan(previous, incoming, database, checklist_sha256="c" * 64)
+    plan = build_refresh_plan(
+        previous, incoming, database,
+        checklist_sha256="c" * 64,
+        parser_commit="a" * 40,
+    )
     reasons = [a.reason for a in plan.actions if a.disposition is Disposition.QUARANTINE]
     assert any("monthly-summary-mismatch" in reason for reason in reasons)
     assert any("unheaded-cell" in reason for reason in reasons)
@@ -441,7 +620,14 @@ def test_summary_mismatch_and_unheaded_value_are_quarantined(tmp_path):
 
 def test_canonical_plan_bytes_and_hash_are_deterministic(tmp_path):
     previous, incoming, checklist, database = build_inputs(tmp_path)
-    plan = build_refresh_plan(previous, incoming, database, checklist_sha256="c" * 64)
+    plan = build_refresh_plan(
+        previous, incoming, database,
+        checklist_sha256="c" * 64,
+        parser_commit="a" * 40,
+    )
+    assert plan.parser_commit == "a" * 40
+    assert plan.baseline_evidence_id == database.baseline_evidence_id
+    assert plan.baseline_evidence_kind == database.baseline_evidence_kind
     assert plan.database_fingerprint == database_fingerprint(database)
     assert plan.evidence_chain_head == database.evidence_chain_head
     assert canonical_plan_bytes(plan).endswith(b"\n")
@@ -451,6 +637,23 @@ def test_canonical_plan_bytes_and_hash_are_deterministic(tmp_path):
 
 Add these table-driven pins in the same file:
 
+- `test_each_component_fact_has_exactly_one_action`: require unique action
+  `fact_id` values, preserve each action's `row_fact_id`, and require every
+  `depends_on` value to resolve to exactly one other action;
+- `test_new_entities_root_result_and_ppl_have_typed_insert_actions`:
+  construct missing canonical channel/product/show/producer plus a new result,
+  payment, placement, and allocation and require the matching
+  `INSERT_ENTITY`, optional `INSERT_ENTITY_ALIAS`, `INSERT_RESULT`,
+  `INSERT_PPL_PAYMENT`, `INSERT_PPL_PLACEMENT`, and
+  `INSERT_PPL_ALLOCATION` actions with complete after-state and dependency
+  links;
+- `test_insert_action_order_is_deterministic_and_topological`: require every
+  dependency to precede its consumer, including entity → slot → root result
+  and entity/slot → placement → allocation;
+- `test_placement_revision_waits_for_new_producer_entity`: change an existing
+  placement from `제작B` to checklist-approved new `제작B2`, require its
+  `REVISE_PPL_PLACEMENT.depends_on` to name the producer `INSERT_ENTITY`, and
+  require that entity action to precede the revision;
 - `test_each_internal_ppl_change_has_one_typed_disposition`: independently
   change payment, placement, and allocation fields and require exactly one of
   `REVISE_PPL_PAYMENT`, `REVISE_PPL_PLACEMENT`, or
@@ -464,9 +667,15 @@ Add these table-driven pins in the same file:
   `CONFLICT_HUMAN_NEWER` plus a blocker for each target kind;
 - `test_duplicate_identity_is_ambiguous_and_blocking`: duplicate a normalized
   incoming identity and require `AMBIGUOUS_IDENTITY` plus a blocker;
+- `test_existing_alias_disagreement_blocks`: make an existing alias map to a
+  different canonical entity than the signed checklist and require
+  `AMBIGUOUS_IDENTITY` plus no entity mutation;
 - `test_uncovered_checklist_variant_blocks_before_database_access`: add one
   new synthetic entity absent from the checklist and require a blocker without
-  calling any DB helper.
+  calling any DB helper;
+- `test_database_fixture_matches_real_placement_shape`: require every placement
+  to omit `slot_id` and every allocation to carry both `placement_id` and
+  `slot_id`.
 
 - [ ] **Step 3: Run the tests to verify RED**
 
@@ -491,6 +700,21 @@ BLOCKING = {
     Disposition.QUARANTINE,
 }
 
+MUTATING = {
+    Disposition.INSERT_ENTITY,
+    Disposition.INSERT_ENTITY_ALIAS,
+    Disposition.INSERT_SLOT,
+    Disposition.INSERT_RESULT,
+    Disposition.REVISE_SLOT,
+    Disposition.SUPERSEDE_RESULT,
+    Disposition.INSERT_PPL_PAYMENT,
+    Disposition.REVISE_PPL_PAYMENT,
+    Disposition.INSERT_PPL_PLACEMENT,
+    Disposition.REVISE_PPL_PLACEMENT,
+    Disposition.INSERT_PPL_ALLOCATION,
+    Disposition.REVISE_PPL_ALLOCATION,
+}
+
 
 def canonical_plan_bytes(plan: RefreshPlan) -> bytes:
     payload = dataclasses.asdict(plan)
@@ -504,6 +728,10 @@ def plan_sha256(plan: RefreshPlan) -> str:
 
 def blocking_actions(plan: RefreshPlan) -> tuple[RefreshAction, ...]:
     return tuple(a for a in plan.actions if a.disposition in BLOCKING)
+
+
+def mutable_actions(plan: RefreshPlan) -> tuple[RefreshAction, ...]:
+    return tuple(a for a in plan.actions if a.disposition in MUTATING)
 
 
 def database_fingerprint(snapshot: DatabaseSnapshot) -> str:
@@ -542,7 +770,9 @@ nonempty unnamed cells to each emitted `source_ref`. It must not modify
 
 `build_refresh_plan()` must implement this deterministic order:
 
-1. prove the previous workbook hash equals the snapshot/import-root hash;
+1. prove the previous workbook hash equals the snapshot's committed lineage
+   hash and copy `baseline_evidence_id` / `baseline_evidence_kind` plus the
+   verified `parser_commit` into the plan;
 2. map previous rows to `excel_import` DB rows by previous `source_ref` and
    verify canonical natural-key equality;
 3. match previous to incoming rows by normalized `(date, time, channel,
@@ -550,19 +780,24 @@ nonempty unnamed cells to each emitted `source_ref`. It must not modify
 4. when both unmatched-old and unmatched-new candidates exist, emit
    `ambiguous_identity` rather than guessing a key correction;
 5. preserve DB rows not represented by the previous workbook;
-6. emit typed slot/result/PPL actions only for workbook-owned facts;
+6. derive unique component-fact IDs, emit typed entity/alias, slot/result, and
+   PPL insert/revision actions only for checklist-approved workbook-owned
+   facts, and require one action per component ID;
 7. emit `conflict_human_newer` when incoming facts disagree with a later
    `form` result;
 8. group PPL before payment-month normalization, reject conflicting group
    months, and compare detail-derived monthly totals to the summary;
-9. sort actions by `(disposition.value, fact_id, target_kind, target_id or -1)`;
+9. validate every `depends_on` reference and stable-topologically sort actions
+   by dependency followed by `(fact_id, disposition.value, target_kind,
+   target_id or -1)` so entities precede consumers, slots precede root results,
+   and placements/slots precede allocations;
 10. derive `blockers` from the sorted blocking actions;
 11. bind `database_fingerprint(database)` and the independently supplied
     `database.evidence_chain_head` into the immutable plan.
 
 `database_fingerprint()` is intentionally a business-state fingerprint. It
-includes the prior import identity plus slots, payments, placements, and
-allocations, but excludes `evidence_chain_head`. The chain head is a separate
+includes the baseline lineage identity, canonical entities/aliases, slots,
+payments, placements, and allocations, but excludes `evidence_chain_head`. The chain head is a separate
 optimistic-concurrency gate because appending the plan/result evidence rows
 changes it even when the business state is unchanged.
 
@@ -612,7 +847,7 @@ canonical database or resource paths.
 
 **Interfaces:**
 - Consumes: Task-1 models, `database_fingerprint()`, and `build_refresh_plan()`.
-- Produces: `fetch_database_snapshot(conn, previous_workbook_sha256, year) -> DatabaseSnapshot`, `write_plan_outputs(plan, json_path, report_path)`, and read-only `main(argv=None)`.
+- Produces: `fetch_database_snapshot(conn, previous_workbook_sha256, year) -> DatabaseSnapshot`, `resolve_parser_commit(repo_root) -> str`, `write_plan_outputs(plan, json_path, report_path)`, and read-only `main(argv=None)`.
 
 - [ ] **Step 1: Add one reusable migrated scratch-DB harness**
 
@@ -649,6 +884,13 @@ class SeededRefresh:
             "--out-json", str(json_path),
             "--out-report", str(report_path),
         ]
+
+    def build_second_successor(self):
+        previous = self.tmp_path / "second-previous.xlsx"
+        incoming = self.tmp_path / "second-incoming.xlsx"
+        shutil.copy2(self.incoming, previous)
+        build_successor(previous, incoming)
+        return previous, incoming, read_checklist(self.checklist)
 ```
 
 `seeded_refresh_context(tmp_path, monkeypatch)` must use the existing
@@ -659,6 +901,9 @@ decided synthetic checklist, open one non-autocommit connection, and yield the
 model above. In `finally`, close the connection and `DROP DATABASE ... WITH
 (FORCE)`. Create `unbound_previous` by copying the previous workbook, changing
 one synthetic cell, and saving it so its hash has no `import_root` row.
+`build_successor()` changes one synthetic workbook-owned value and recomputes
+its synthetic summary without real data; it never touches either original
+fixture path.
 
 Register it lazily in `import/tests/conftest.py`:
 
@@ -677,13 +922,16 @@ the fixture module performs no work at import time.
 Add these exact cases:
 
 ```python
-def test_fetch_snapshot_binds_previous_import_root_and_latest_results(seeded_refresh):
+def test_fetch_snapshot_binds_lineage_entities_and_latest_results(seeded_refresh):
     snapshot = fetch_database_snapshot(
         seeded_refresh.conn, seeded_refresh.previous_sha256, 2026
     )
     assert snapshot.previous_workbook_sha256 == seeded_refresh.previous_sha256
-    assert snapshot.previous_import_evidence_id > 0
+    assert snapshot.baseline_evidence_id > 0
+    assert snapshot.baseline_evidence_kind == "import_root"
     assert snapshot.evidence_chain_head
+    assert snapshot.entities
+    assert all("slot_id" not in placement for placement in snapshot.placements)
     assert all(slot.latest_result is None or slot.latest_result["id"] for slot in snapshot.slots)
 
 
@@ -704,13 +952,31 @@ def test_plan_cli_is_read_only_and_writes_hash_bound_outputs(
     assert rc == 0
     assert before == after
     assert snapshot_before.evidence_chain_head == snapshot_after.evidence_chain_head
-    assert json.loads(json_path.read_text())["schema_version"] == 1
+    payload = json.loads(json_path.read_text())
+    assert payload["schema_version"] == 1
+    assert len(payload["parser_commit"]) == 40
+    assert payload["baseline_evidence_kind"] == "import_root"
     assert "Plan SHA-256" in report_path.read_text()
 
 
 def test_plan_cli_refuses_unbound_previous_workbook(seeded_refresh):
-    with pytest.raises(RefreshBlocked, match="previous-import-root-not-found"):
+    with pytest.raises(RefreshBlocked, match="previous-lineage-evidence-not-found"):
         main(seeded_refresh.plan_args(previous_workbook=seeded_refresh.unbound_previous))
+
+
+def test_resolve_parser_commit_binds_clean_reviewed_head(monkeypatch):
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repo_root, text=True
+    ).strip()
+    assert resolve_parser_commit(repo_root) == head
+    monkeypatch.setattr(
+        plan_workbook_refresh,
+        "tracked_scope_is_clean",
+        lambda _root: False,
+    )
+    with pytest.raises(RefreshBlocked, match="reviewed-scope-dirty"):
+        resolve_parser_commit(repo_root)
 ```
 
 - [ ] **Step 3: Run the focused tests to verify RED**
@@ -728,13 +994,38 @@ Create `workbook_refresh_db.py`. `fetch_database_snapshot()` must execute only
 SELECT statements and return canonical order. Use these query shapes:
 
 ```sql
-SELECT id, payload->>'workbook_sha256', chain_hash
+SELECT id, kind,
+       CASE WHEN kind='import_root'
+            THEN payload->>'workbook_sha256'
+            ELSE payload->>'incoming_workbook_sha256' END AS workbook_sha256
 FROM trust.evidence
-WHERE kind = 'import_root'
-  AND payload->>'workbook_sha256' = %s
-  AND (payload->>'year')::int = %s
+WHERE (
+        kind='import_root'
+        AND payload->>'workbook_sha256'=%s
+        AND (payload->>'year')::int=%s
+      ) OR (
+        kind='workbook_refresh_result'
+        AND payload->>'incoming_workbook_sha256'=%s
+        AND (payload->>'year')::int=%s
+      )
 ORDER BY id DESC
 LIMIT 1;
+
+SELECT 'channel' AS entity_type, id, code AS canonical,
+       jsonb_build_object('name_ko', name_ko) AS attributes
+FROM biz.channels
+UNION ALL
+SELECT 'product', id, name_ko, '{}'::jsonb FROM biz.products
+UNION ALL
+SELECT 'tv_show', id, name_ko,
+       jsonb_build_object('broadcaster_ko', broadcaster_ko) FROM biz.tv_shows
+UNION ALL
+SELECT 'producer', id, name_ko, '{}'::jsonb FROM biz.producers
+ORDER BY entity_type, id;
+
+SELECT id, entity_type, entity_id, alias, source, approved_by
+FROM biz.entity_aliases
+ORDER BY entity_type, alias, id;
 
 SELECT s.id, s.broadcast_date::text, s.start_time::text,
        c.code, p.name_ko, s.commission_model,
@@ -767,7 +1058,8 @@ SELECT id, placement_id, slot_id, amount, method, method_reason,
 FROM biz.ppl_allocations ORDER BY id;
 ```
 
-Also select the current evidence-chain head independently. Return it on the
+Reject with `previous-lineage-evidence-not-found` when neither baseline kind
+matches. Also select the current evidence-chain head independently. Return it on the
 snapshot, but let the Task-1 `database_fingerprint()` hash only the documented
 business-state projection; neither the fingerprint nor the separate chain-head
 gate includes transient connection state.
@@ -791,12 +1083,24 @@ Open the DB with a read-only transaction:
 ```python
 with psycopg.connect(args.dsn, options="-c default_transaction_read_only=on") as conn:
     snapshot = fetch_database_snapshot(conn, previous_sha, args.year)
-    plan = build_refresh_plan(previous, incoming, snapshot, checklist_sha)
+    parser_commit = resolve_parser_commit(repo_root)
+    plan = build_refresh_plan(
+        previous, incoming, snapshot, checklist_sha,
+        parser_commit=parser_commit,
+    )
 ```
+
+`resolve_parser_commit()` runs `git rev-parse HEAD` in the routed repo,
+requires one 40-hex commit, and refuses tracked changes in any Task 0–6 scope
+path. The plan is generated only after the whole reviewed range lands, so this
+field binds the exact parser/executor/doc commit rather than one file's older
+touch commit. The apply CLI recomputes the same value and requires it to equal
+`plan.parser_commit`; the ignored manifest and both evidence payloads retain it.
 
 Write canonical JSON verbatim from `canonical_plan_bytes(plan)`. The Markdown
 report includes plan hash, workbook/checklist/database hashes, disposition
-names and counts, and blocker reasons, but no business amounts. Exit nonzero
+names and counts, parser commit, baseline evidence kind/ID, and blocker
+reasons, but no business amounts. Exit nonzero
 when `blocking_actions(plan)` is nonempty; still write the local report for
 owner review.
 
@@ -850,6 +1154,8 @@ Extend the shared test support with these exact public helpers:
 ```python
 @dataclasses.dataclass(frozen=True)
 class RefreshCounts:
+    entities: int
+    entity_aliases: int
     slots: int
     results: int
     payments: int
@@ -870,9 +1176,11 @@ class RefreshDbHarness:
 
 Add methods named `counts`, `fingerprint`, `latest_result_reason`,
 `agency_rows`, `internal_values`, `expected_incoming_values`, and
-`change_one_expected_old_value`. Their bodies use fixed, explicit
-SELECT/UPDATE statements: counts query
-the five `biz` tables plus `trust.evidence`; `fingerprint()` delegates to
+`change_one_expected_old_value`, plus test-only
+`no_non_excel_rows_were_added`. Their bodies use fixed, explicit
+SELECT/UPDATE statements: counts query the four canonical entity tables,
+`biz.entity_aliases`, the five operational `biz` tables, and
+`trust.evidence`; `fingerprint()` delegates to
 `fetch_database_snapshot()` and `database_fingerprint()`; result reason reads
 the newest revision; agency/internal helpers return canonical ordered tuples;
 and `change_one_expected_old_value()` changes one synthetic
@@ -943,13 +1251,16 @@ def apply_synthetic(refresh_db):
     )
 
 
-def test_apply_inserts_only_new_slot_and_supersedes_changed_result(refresh_db):
+def test_apply_inserts_entities_slot_root_result_and_superseding_result(refresh_db):
     before = refresh_db.counts()
     result = apply_synthetic(refresh_db)
     after = refresh_db.counts()
+    assert after.entities > before.entities
     assert after.slots == before.slots + 1
     assert after.results == before.results + 2
     assert result.plan_sha256 == plan_sha256(refresh_db.plan)
+    assert result.plan_evidence_id > 0
+    assert len(result.plan_evidence_chain_hash) == 64
     assert result.result_evidence_id is not None
     assert result.result_evidence_chain_hash is not None
     assert len(result.result_evidence_chain_hash) == 64
@@ -957,11 +1268,52 @@ def test_apply_inserts_only_new_slot_and_supersedes_changed_result(refresh_db):
     assert refresh_db.latest_result_reason() == "workbook refresh"
 
 
+def test_apply_inserts_new_payment_placement_and_allocation_in_dependency_order(
+    refresh_db
+):
+    before = refresh_db.counts()
+    result = apply_synthetic(refresh_db)
+    after = refresh_db.counts()
+    assert after.payments == before.payments + 1
+    assert after.placements == before.placements + 1
+    assert after.allocations == before.allocations + 1
+    applied = {action.fact_id: action for action in result.applied}
+    assert all(
+        dependency in applied
+        for action in result.applied
+        for dependency in action.depends_on
+    )
+
+
 def test_apply_updates_only_expected_internal_slot_and_ppl_values(refresh_db):
     agency_before = refresh_db.agency_rows()
     apply_synthetic(refresh_db)
     assert refresh_db.internal_values() == refresh_db.expected_incoming_values()
     assert refresh_db.agency_rows() == agency_before
+
+
+@pytest.mark.parametrize(
+    "disposition",
+    [
+        Disposition.INSERT_ENTITY,
+        Disposition.INSERT_ENTITY_ALIAS,
+        Disposition.INSERT_SLOT,
+        Disposition.INSERT_RESULT,
+        Disposition.INSERT_PPL_PAYMENT,
+        Disposition.INSERT_PPL_PLACEMENT,
+        Disposition.INSERT_PPL_ALLOCATION,
+    ],
+)
+def test_each_insert_class_is_source_bound_and_rollback_atomic(
+    refresh_db, disposition, monkeypatch
+):
+    before = refresh_db.fingerprint()
+    inject_failure_after(disposition, monkeypatch)
+    with pytest.raises(InjectedRefreshFailure):
+        apply_synthetic(refresh_db)
+    refresh_db.conn.rollback()
+    assert refresh_db.fingerprint() == before
+    assert refresh_db.no_non_excel_rows_were_added()
 
 
 def test_optimistic_old_value_mismatch_rolls_back_all_writes(refresh_db):
@@ -978,6 +1330,30 @@ def test_same_workbook_plan_cannot_apply_twice(refresh_db):
     refresh_db.conn.commit()
     with pytest.raises(RefreshApplyError, match="already-applied"):
         apply_synthetic(refresh_db)
+
+
+def test_second_successor_uses_prior_refresh_result_as_lineage_root(refresh_db):
+    first = apply_synthetic(refresh_db)
+    refresh_db.conn.commit()
+    snapshot = fetch_database_snapshot(
+        refresh_db.conn,
+        refresh_db.plan.incoming_workbook_sha256,
+        refresh_db.plan.year,
+    )
+    assert snapshot.baseline_evidence_kind == "workbook_refresh_result"
+    assert snapshot.baseline_evidence_id == first.result_evidence_id
+    second_previous, second_incoming, checklist = (
+        refresh_db.seeded.build_second_successor()
+    )
+    second = build_refresh_plan(
+        parse_refresh_workbook(second_previous, 2026, checklist),
+        parse_refresh_workbook(second_incoming, 2026, checklist),
+        snapshot,
+        checklist_sha256=sha256_file(refresh_db.seeded.checklist),
+        parser_commit=refresh_db.plan.parser_commit,
+    )
+    assert second.previous_workbook_sha256 == refresh_db.plan.incoming_workbook_sha256
+    assert second.baseline_evidence_kind == "workbook_refresh_result"
 
 
 def test_evidence_chain_head_change_rejects_stale_plan(refresh_db):
@@ -1006,6 +1382,11 @@ def test_refresh_evidence_contains_complete_before_after_and_hashes(refresh_db):
     assert set(payload["report_hashes"]) == {"apply.result.json", "apply.result.md"}
     assert payload["expected_evidence_chain_head"] == refresh_db.plan.evidence_chain_head
     assert len(payload["plan_evidence"]["chain_hash"]) == 64
+    assert payload["parser_commit"] == refresh_db.plan.parser_commit
+    assert payload["baseline_evidence"] == {
+        "id": refresh_db.plan.baseline_evidence_id,
+        "kind": refresh_db.plan.baseline_evidence_kind,
+    }
 ```
 
 - [ ] **Step 3: Run RED for DB and apply tests**
@@ -1046,7 +1427,7 @@ Before editing, capture Rule #12 and Rule #13 evidence with:
 
 ```bash
 env -u GIT_INDEX_FILE rg -n \
-  "record_slot|record_result|insert into biz\\.(broadcast_slots|broadcast_results|ppl_)|update biz\\.(broadcast_slots|ppl_)" \
+  "record_slot|record_result|_ensure_entities|insert into biz\\.(channels|products|tv_shows|producers|entity_aliases|broadcast_slots|broadcast_results|ppl_)|update biz\\.(broadcast_slots|ppl_)" \
   import supabase/migrations
 env -u GIT_INDEX_FILE rg -n \
   "agency_excel_import|source='excel_import'|source = 'excel_import'" \
@@ -1058,14 +1439,17 @@ Disposition every sibling writer in the Task-3 review artifact:
 - `run_import.py`/`load_staging.py`: unchanged one-time append path, never
   selected for cumulative refresh;
 - `load_agency.py`: exempt and protected by its distinct agency source;
-- `biz.record_slot` and `biz.record_result`: mirror/reuse for inserts and
-  immutable result revisions;
+- `_ensure_entities()` and the three PPL insert loops in `load_staging.py`:
+  mirror their checklist normalization and schema values with fixed typed
+  helpers; do not call the bulk one-time loader;
+- `biz.record_slot` and `biz.record_result`: mirror/reuse for slot/root-result
+  inserts and immutable result revisions;
 - authenticated client grants: documented no-new-write-surface;
 - the local typed update helpers: sole new operational correction path,
   guarded by source, target ID, all old mutable values, lock, and evidence.
 
-Extend `workbook_refresh_db.py` with explicit functions for each mutable
-target. Do not interpolate table or column names from the plan.
+Extend `workbook_refresh_db.py` with explicit functions for every insert and
+mutable target. Do not interpolate table or column names from the plan.
 
 ```python
 def _apply_slot_revision(conn, action: RefreshAction, entered_by: str) -> int:
@@ -1110,15 +1494,39 @@ Add equally explicit `_apply_payment_revision`, `_apply_placement_revision`,
 and `_apply_allocation_revision` with `source='excel_import'`, target ID, and
 all mutable old values including `source_ref` and `entered_by` in the WHERE
 clause. Each writes the command's `entered_by` identity and incoming
-`source_ref`; no agency source can satisfy the predicate.
+`source_ref`; no agency source can satisfy the predicate. Placement revision
+includes old show/producer foreign keys in its optimistic predicate and
+resolves any new checklist-approved show/producer entity dependencies before
+updating those foreign keys.
 
-For `INSERT_SLOT`, call `biz.record_slot`. For `SUPERSEDE_RESULT`, reselect the
-current `latest_results` head, require it equals `expected_before['id']`, then
-call `biz.record_result` with `supersedes_id`, `reason='workbook refresh'`,
-`source='excel_import'`, and the incoming source reference.
-Every `_apply_action()` then reselects the written row and returns an
-`AppliedAction` with the complete expected-before and actual-after row,
-including source provenance and the command's `entered_by` identity.
+Insert semantics are exact:
+
+- `INSERT_ENTITY` dispatches through a fixed four-branch allowlist for
+  `biz.channels`, `biz.products`, `biz.tv_shows`, or `biz.producers`; it uses no
+  dynamic identifier, requires checklist-normalized `canonical`, and fails on
+  an unexpected existing row;
+- `INSERT_ENTITY_ALIAS` resolves the canonical entity from its dependency or
+  snapshot ID and inserts one `excel_import` alias with `approved_by=entered_by`;
+- `INSERT_SLOT` calls `biz.record_slot` with canonical entity values;
+- `INSERT_RESULT` resolves `slot_fact_id`, then calls `biz.record_result` with
+  no `supersedes_id`; `SUPERSEDE_RESULT` reselects the current
+  `latest_results` head, requires `expected_before['id']`, and calls the same RPC
+  with `supersedes_id`, `reason='workbook refresh'`, `source='excel_import'`,
+  and the incoming source reference;
+- `INSERT_PPL_PAYMENT`, `INSERT_PPL_PLACEMENT`, and
+  `INSERT_PPL_ALLOCATION` use three fixed INSERT statements, complete
+  after-state, `source='excel_import'`, and `entered_by`; placement resolves
+  checklist-approved show/producer IDs, while allocation resolves its
+  placement/slot dependencies. No `ON CONFLICT DO NOTHING` is allowed because
+  it would hide an optimistic-concurrency failure.
+
+`_apply_ordered_actions()` validates the plan's stable topological order and
+maintains `created_ids: dict[str, int]` keyed by component `fact_id`.
+`_apply_action(conn, action, entered_by, created_ids)` rejects an unresolved or
+wrong-kind dependency. It reselects every written row and returns an
+`AppliedAction` with row/component IDs, dependencies, complete
+expected-before, and complete actual-after state including source provenance
+and the command's `entered_by` identity.
 
 - [ ] **Step 6: Implement transaction gates and the rollback-only CLI**
 
@@ -1153,6 +1561,11 @@ def apply_refresh(
     if _refresh_already_applied(conn, plan.incoming_workbook_sha256):
         raise RefreshApplyError("already-applied")
     current = fetch_database_snapshot(conn, plan.previous_workbook_sha256, plan.year)
+    if (
+        current.baseline_evidence_id != plan.baseline_evidence_id
+        or current.baseline_evidence_kind != plan.baseline_evidence_kind
+    ):
+        raise RefreshApplyError("baseline-lineage-changed")
     if current.evidence_chain_head != plan.evidence_chain_head:
         raise RefreshApplyError("evidence-chain-head-changed")
     if database_fingerprint(current) != plan.database_fingerprint:
@@ -1161,7 +1574,7 @@ def apply_refresh(
     plan_evidence = append_refresh_evidence(
         conn, "workbook_refresh_plan", plan_evidence_payload(plan)
     )
-    applied = tuple(_apply_action(conn, action, entered_by) for action in plan.actions)
+    applied = _apply_ordered_actions(conn, mutable_actions(plan), entered_by)
     after_snapshot = fetch_database_snapshot(
         conn, plan.previous_workbook_sha256, plan.year
     )
@@ -1174,6 +1587,8 @@ def apply_refresh(
         dispositions=count_dispositions(plan.actions),
         directions=classify_directions(metrics_before, metrics_after),
         report_hashes={},
+        plan_evidence_id=plan_evidence.id,
+        plan_evidence_chain_hash=plan_evidence.chain_hash,
         result_evidence_id=None,
         result_evidence_chain_hash=None,
     )
@@ -1202,9 +1617,10 @@ projection that excludes `report_hashes`, `result_evidence_id`, and
 the two hashes. This avoids a self-referential file-hash contract. The returned
 `ApplyResult`, result evidence payload, and resource manifest carry the hashes
 and final evidence reference without rewriting either attested output file.
-`plan_evidence_payload()` stores the canonical plan hash and complete action
-facts. `result_evidence_payload()` stores year, previous/incoming workbook
-hashes, both DB fingerprints, every action's disposition/fact/target and
+`plan_evidence_payload()` stores the canonical plan hash, parser commit,
+baseline evidence kind/ID, and complete component-action facts.
+`result_evidence_payload()` stores year, previous/incoming workbook
+hashes, parser commit, baseline evidence kind/ID, both DB fingerprints, every action's disposition/fact/target and
 complete expected-before/after values, result/report hashes, resource
 attestation, direction labels, the expected pre-apply evidence-chain head, and
 the plan-evidence ID/chain-hash linkage. It necessarily excludes the result
@@ -1217,7 +1633,8 @@ Task 3 exposes only rollback rehearsal:
 
 - `--dry-run` requires `--out-result-json` and `--out-result-report`, recomputes
   canonical plan bytes and requires `--expected-plan-sha256` to equal the
-  separately authorized hash, recomputes the workbook/checklist hashes,
+  separately authorized hash, requires `resolve_parser_commit()` to equal the
+  plan's parser commit, recomputes the workbook/checklist hashes,
   constructs a read-only `ResourceEvidence` with state `dry_run_inspected`
   and the exact previous/incoming hashes, executes
   `apply_refresh()`, proves the in-transaction after-state differs when the
@@ -1286,6 +1703,7 @@ def resource_paths(tmp_path):
         canonical=canonical,
         archive_dir=tmp_path / "archive",
         manifest=tmp_path / "refresh.manifest.json",
+        activation_date=datetime.date(2026, 7, 11),
     )
 
 
@@ -1297,6 +1715,7 @@ def integration_resource_paths(refresh_db, tmp_path):
         canonical=canonical,
         archive_dir=tmp_path / "archive",
         manifest=tmp_path / "refresh.manifest.json",
+        activation_date=datetime.date(2026, 7, 11),
     )
 
 
@@ -1306,6 +1725,9 @@ def test_stage_resource_hashes_copies_and_never_edits_incoming(tmp_path):
     assert stage.previous_sha256 == sha256_file(stage.paths.canonical)
     assert stage.paths.incoming.read_bytes() == b"incoming"
     assert stage.paths.staged.read_bytes() == b"incoming"
+    assert stage.archive.name == (
+        f"홈쇼핑분석_superseded-2026-07-11-{stage.previous_sha256[:12]}.xlsx"
+    )
 
 
 def test_activate_and_restore_are_hash_verified(tmp_path):
@@ -1314,6 +1736,12 @@ def test_activate_and_restore_are_hash_verified(tmp_path):
     assert sha256_file(stage.paths.canonical) == stage.incoming_sha256
     restore_resource(stage)
     assert sha256_file(stage.paths.canonical) == stage.previous_sha256
+
+
+def test_stage_requires_token_bound_activation_date(tmp_path):
+    paths = dataclasses.replace(resource_paths(tmp_path), activation_date=None)
+    with pytest.raises(ResourceActivationError, match="activation-date-required"):
+        stage_resource(paths)
 
 
 def test_resource_activation_failure_rolls_back_database(
@@ -1354,6 +1782,14 @@ def test_apply_with_resource_commits_one_aligned_db_resource_result(
     assert sha256_file(paths.canonical) == refresh_db.plan.incoming_workbook_sha256
     manifest = json.loads(paths.manifest.read_text())
     assert manifest["state"] == "verified"
+    assert manifest["parser_commit"] == refresh_db.plan.parser_commit
+    assert manifest["database_baseline_hash"] == refresh_db.plan.database_fingerprint
+    assert manifest["baseline_evidence"] == {
+        "id": refresh_db.plan.baseline_evidence_id,
+        "kind": refresh_db.plan.baseline_evidence_kind,
+    }
+    assert manifest["plan_evidence_id"] == result.plan_evidence_id
+    assert manifest["plan_evidence_chain_hash"] == result.plan_evidence_chain_hash
     assert manifest["result_evidence_id"] == result.result_evidence_id
     assert manifest["result_evidence_chain_hash"] == result.result_evidence_chain_hash
     assert manifest["report_hashes"] == result.report_hashes
@@ -1412,6 +1848,7 @@ class ResourcePaths:
     canonical: pathlib.Path
     archive_dir: pathlib.Path
     manifest: pathlib.Path
+    activation_date: datetime.date | None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1437,9 +1874,14 @@ def inspect_resource(paths: ResourcePaths) -> ResourceEvidence:
 
 
 def stage_resource(paths: ResourcePaths) -> ResourceStage:
+    if paths.activation_date is None:
+        raise ResourceActivationError("activation-date-required")
     previous_sha = sha256_file(paths.canonical)
     incoming_sha = sha256_file(paths.incoming)
-    archive = paths.archive_dir / f"홈쇼핑분석_superseded-{previous_sha[:12]}.xlsx"
+    archive = paths.archive_dir / (
+        "홈쇼핑분석_superseded-"
+        f"{paths.activation_date.isoformat()}-{previous_sha[:12]}.xlsx"
+    )
     staged = paths.canonical.with_suffix(".xlsx.refresh-staged")
     paths.archive_dir.mkdir(parents=True, exist_ok=True)
     if archive.exists() and sha256_file(archive) != previous_sha:
@@ -1461,17 +1903,22 @@ uses `_replace(stage.staged, canonical)`, wraps any `OSError` as
 `ResourceActivationError`, and verifies the new hash. `restore_resource()`
 copies archive to a restore-temp file,
 verifies it, then `_replace()`s it onto canonical. `write_manifest()` writes
-JSON through a temp file + `_replace()` and records states `staged`,
-`activated`, `restored`, `verified`, or `commit_outcome_unknown` with
-plan/evidence hashes. Manifest serialization is canonical and never includes
-business values.
+JSON through a temp file + `_replace()` and records the activation date,
+parser commit, plan hash, database baseline hash, baseline evidence kind/ID,
+plan/result evidence IDs and chain hashes, full resource/report hashes, and
+states `staged`, `activated`, `restored`, `verified`, or
+`commit_outcome_unknown`. Fields unavailable in an intermediate state are
+explicitly `null`; `verified` requires every parser/plan/baseline/evidence/
+resource/report field to be populated and hash-valid. Manifest serialization
+is canonical and never includes business values.
 
 - [ ] **Step 4: Integrate resource activation around DB commit**
 
-Add `--activate-resource`, `--canonical-workbook`, `--archive-dir`,
+Add `--activate-resource`, `--activation-date`, `--canonical-workbook`, `--archive-dir`,
 `--manifest`, `--out-result-json`, and `--out-result-report` to
 `apply_workbook_refresh.py`. `--activate-resource` is legal only with
-`--apply`; `--apply` is rejected without it.
+`--apply`; `--apply` is rejected without it or without an ISO
+`--activation-date` supplied by the target-bound executor token.
 
 Order:
 
@@ -1484,8 +1931,9 @@ Order:
 6. `conn.commit()`;
 7. final resource hash and result-evidence postchecks through a fresh read
    connection;
-8. manifest state `verified`, binding the result evidence ID, result evidence
-   chain hash, and both immutable report hashes.
+8. manifest state `verified`, binding the activation date, parser/plan/database
+   baseline, baseline evidence, both plan/result evidence IDs and chain hashes,
+   and both immutable report hashes.
 
 `apply_with_resource(conn, plan, entered_by, paths, result_json_path,
 result_report_path) -> ApplyResult` owns this order and is the only function
@@ -1641,7 +2089,12 @@ Add:
 ```python
 @dataclasses.dataclass(frozen=True)
 class RefreshDirection:
+    inserted_entities: int
     inserted_slots: int
+    inserted_results: int
+    inserted_ppl_payments: int
+    inserted_ppl_placements: int
+    inserted_ppl_allocations: int
     revised_slots: int
     superseded_results: int
     preserved_db_only: int
@@ -1727,7 +2180,10 @@ counts or real business figures into tracked docs.
 Record:
 
 - cumulative successor workbooks cannot use the one-time importer;
+- initial import-root and prior refresh-result lineage roots make repeated
+  cumulative successors provable;
 - approved source precedence;
+- typed entity/slot/root-result/PPL insert actions and component-fact IDs;
 - planner JSON/hash as the authorization boundary;
 - result supersession versus guarded operational slot/PPL correction;
 - before/after evidence and optimistic predicates;
@@ -1801,7 +2257,7 @@ env -u GIT_INDEX_FILE git commit -m "docs(import): document workbook refresh ope
 ```
 
 After commit: fresh spec review and fresh quality review. The Director then
-synthesizes all Task 1–6 review findings and lands bounded fix commits without
+synthesizes all Task 0–6 review findings and lands bounded fix commits without
 amending history.
 
 ---
@@ -1815,7 +2271,7 @@ amending history.
 - Pipeline mailbox: one Director verify-request after all code/doc reviews pass
 
 **Interfaces:**
-- Consumes: exact Task 1–6 range, user workbook, canonical local workbook/checklist, read-only canonical database, and separate service/scratch tokens.
+- Consumes: exact Task 0–6 range, user workbook, canonical local workbook/checklist, read-only canonical database, and separate service/scratch tokens.
 - Produces: reviewed plan hash, rollback evidence, one committed scratch DB/resource result, scratch directional reports, unchanged canonical DB/resource hashes, and one cumulative verify-request.
 
 - [ ] **Step 1: Obtain the local-service executor token and start only the required local stack**
@@ -1823,6 +2279,12 @@ amending history.
 The Director is the sole executor. If Docker/Supabase is already healthy, cite
 live health and do not repeat the side effect. Starting Docker or Supabase
 without the named token is forbidden.
+
+Operator2 preflight found PostgreSQL clients outside the default PATH. Every
+service/scratch token and command below binds
+`PG_BIN=/opt/homebrew/opt/libpq/bin` and requires executable
+`$PG_BIN/createdb`, `$PG_BIN/dropdb`, `$PG_BIN/pg_dump`, and
+`$PG_BIN/pg_restore`; do not fall back to an ambient binary.
 
 - [ ] **Step 2: Run full synthetic scratch verification**
 
@@ -1870,29 +2332,31 @@ only hashes and dispositions in the local report.
 
 The token names an unused `SCRATCH_DB`, Director as sole executor, the exact
 localhost source DB, dump path, scratch resource root, cleanup command class,
-and a no-canonical-write stop condition. Set `AUTHORIZED_PLAN_SHA256` and
-`ENTERED_BY` from that token; do not derive either from the files being
-executed. The identity must match the preflighted internal owner identity.
+and a no-canonical-write stop condition. Set `AUTHORIZED_PLAN_SHA256`,
+`ENTERED_BY`, and ISO `ACTIVATION_DATE` from that token; do not derive them from
+the files being executed. The identity must match the preflighted internal
+owner identity.
 
 ```bash
 umask 077
 export PGPASSWORD=postgres
+PG_BIN=/opt/homebrew/opt/libpq/bin
 SCRATCH_DSN="postgresql://postgres:postgres@127.0.0.1:54322/$SCRATCH_DB"
 SCRATCH_ROOT="$WORKTREE/.superpowers/sdd/real-data-scratch"
 SCRATCH_DUMP="$WORKTREE/.superpowers/sdd/$SCRATCH_DB.dump"
 SCRATCH_CANONICAL="$SCRATCH_ROOT/resource/홈쇼핑분석.xlsx"
 mkdir -p "$SCRATCH_ROOT/resource"
-createdb --host 127.0.0.1 --port 54322 --username postgres "$SCRATCH_DB"
-pg_dump --host 127.0.0.1 --port 54322 --username postgres \
+"$PG_BIN/createdb" --host 127.0.0.1 --port 54322 --username postgres "$SCRATCH_DB"
+"$PG_BIN/pg_dump" --host 127.0.0.1 --port 54322 --username postgres \
   --dbname postgres --format=custom --file "$SCRATCH_DUMP"
-pg_restore --exit-on-error --no-owner --no-privileges \
+"$PG_BIN/pg_restore" --exit-on-error --no-owner --no-privileges \
   --dbname "$SCRATCH_DSN" "$SCRATCH_DUMP"
 cp /Users/hyungkoookkim/evidence-ledger/data/홈쇼핑분석.xlsx \
   "$SCRATCH_CANONICAL"
 rm -f "$SCRATCH_DUMP"
 ```
 
-`SCRATCH_DB` comes from the token and `createdb` must fail if it already
+`SCRATCH_DB` comes from the token and `$PG_BIN/createdb` must fail if it already
 exists; never drop an unproven pre-existing database. Rerun the planner:
 
 ```bash
@@ -1912,7 +2376,7 @@ cmp -s \
 
 Require `cmp` success, the same plan hash, and a scratch canonical hash equal
 to Step 4's resource hash.
-If dump or restore fails after `createdb` succeeds, run only the token-bound
+If dump or restore fails after `$PG_BIN/createdb` succeeds, run only the token-bound
 cleanup for that exact newly created database and dump; never retry over a
 partially restored DB.
 
@@ -1955,6 +2419,7 @@ env -u GIT_INDEX_FILE /Users/hyungkoookkim/evidence-ledger/.venv/bin/python \
   --entered-by "$ENTERED_BY" \
   --dsn "$SCRATCH_DSN" \
   --canonical-workbook "$SCRATCH_CANONICAL" \
+  --activation-date "$ACTIVATION_DATE" \
   --archive-dir "$SCRATCH_ROOT/archive" \
   --manifest "$WORKTREE/.superpowers/sdd/workbook-refresh.scratch.manifest.json" \
   --out-result-json "$WORKTREE/.superpowers/sdd/workbook-refresh.scratch.result.json" \
@@ -1974,7 +2439,7 @@ the token-bound cleanup below; retain only hash-bound ignored reports/manifest:
 
 ```bash
 test "$SCRATCH_ROOT" = "$WORKTREE/.superpowers/sdd/real-data-scratch"
-dropdb --force --host 127.0.0.1 --port 54322 --username postgres "$SCRATCH_DB"
+"$PG_BIN/dropdb" --force --host 127.0.0.1 --port 54322 --username postgres "$SCRATCH_DB"
 rm -rf -- "$SCRATCH_ROOT"
 unset PGPASSWORD
 ```
@@ -1985,7 +2450,7 @@ Prove again that canonical DB/resource hashes and git status equal Step 4.
 
 The Director mailbox artifact names:
 
-- exact Task 1–6 commit range and paths;
+- exact Task 0–6 commit range and paths;
 - spec and this plan;
 - every per-task implementer/spec/quality artifact and disposition;
 - focused/full test commands;
@@ -2024,7 +2489,7 @@ scratch evidence.
 
 Token names Director as sole executor and binds exact command class, DB DSN,
 incoming/canonical/archive/manifest paths, reviewed plan hash, preflight
-fingerprint, stop conditions, postchecks, observer seats, and no-push
+fingerprint, ISO `ACTIVATION_DATE`, stop conditions, postchecks, observer seats, and no-push
 non-goals.
 
 - [ ] **Step 2: Re-run the planner immediately before activation**
@@ -2044,8 +2509,8 @@ and route the changed facts for review. Do not reuse stale authorization.
 
 Set `AUTHORIZED_PLAN_SHA256` from the canonical activation token issued after
 Step 2. It must equal the fresh plan hash and is not recomputed from the plan
-inside this shell command. Set `ENTERED_BY` from that same token; do not
-hard-code or infer an identity at execution time.
+inside this shell command. Set `ENTERED_BY` and `ACTIVATION_DATE` from that same
+token; do not hard-code or infer either at execution time.
 
 ```bash
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/evidence-ledger/.venv/bin/python \
@@ -2059,6 +2524,7 @@ env -u GIT_INDEX_FILE /Users/hyungkoookkim/evidence-ledger/.venv/bin/python \
   --entered-by "$ENTERED_BY" \
   --dsn postgresql://postgres:postgres@127.0.0.1:54322/postgres \
   --canonical-workbook /Users/hyungkoookkim/evidence-ledger/data/홈쇼핑분석.xlsx \
+  --activation-date "$ACTIVATION_DATE" \
   --archive-dir /Users/hyungkoookkim/evidence-ledger/data/archive \
   --manifest "$WORKTREE/.superpowers/sdd/workbook-refresh.manifest.json" \
   --out-result-json "$WORKTREE/.superpowers/sdd/workbook-refresh.result.json" \
@@ -2074,8 +2540,9 @@ Verify with committed commands:
 
 - canonical resource hash equals incoming hash;
 - archive hash equals the previous canonical hash;
-- manifest state is `verified` and binds plan/result evidence IDs plus the
-  result evidence chain hash;
+- manifest state is `verified` and binds activation date, parser commit,
+  database baseline hash, baseline evidence kind/ID, plan/result evidence IDs
+  plus both chain hashes, and report/resource hashes;
 - current business-state DB fingerprint equals the expected post-apply
   fingerprint, and the current evidence-chain head equals the manifest/result
   evidence chain hash;
@@ -2085,6 +2552,10 @@ Verify with committed commands:
 - slot/PPL corrections match evidence before/after payloads;
 - trust chain recomputes with zero breaks;
 - applying the same incoming hash again is refused before mutation.
+- a read-only successor-lineage probe uses the now-canonical incoming workbook
+  as previous and a hash-identical temporary copy as the next input, then
+  resolves `workbook_refresh_result` as its baseline lineage root without
+  applying that no-change probe.
 
 - [ ] **Step 5: Generate the final unified directional report**
 
@@ -2153,10 +2624,12 @@ than replace Operator GO.
 | Authority boundary and source priority | Tasks 1–3 planner/apply classifications; Tasks 5–6 interpretation and owner docs; Task 7 Operator mutation checks |
 | Canonical resource archive, activation, and recovery | Task 4 integration tests; Task 7 rollback rehearsal; Task 8 sole-executor activation and postchecks |
 | Deterministic matching and payment-month rule | Task 1 pure/table-driven tests; Task 2 hash-bound read-only plan; Task 7 zero-blocker real-data plan |
+| Reusable cumulative lineage and complete typed inserts | Tasks 1–3 component/dependency, entity/root-result/PPL insert, and second-successor tests; Task 8 successor-lineage postcheck |
 | Result immutability and operational correction evidence | Task 3 RPC supersession, optimistic updates, evidence payload, and RLS tests; Task 7 Lane V |
 | Unified directional interpretation | Task 3 DB-view direction capture; Task 5 single report surface; Tasks 7–8 local-only reports |
 | Error handling and stop conditions | Tasks 1–4 blockers/idempotence/rollback; Tasks 7–8 fresh-token and fresh-fingerprint gates |
 | Privacy and no publication | Global constraints; Tasks 6–8 ignored paths, status checks, mailbox hash-only reporting, and no-push closeout |
+| Target instruction truth | Task 0 synchronized AGENTS/CLAUDE binding-state prep plus smoke/reviews |
 | Four-seat capacity and notification | Execution preconditions; per-task fresh reviews; Task 7 Operator GO; Task 8 consolidated coordinator-to-all closeout |
 
 Every row must be cited in the final spec review. A requirement with no landed
@@ -2166,7 +2639,7 @@ code/test/doc evidence is a FAIL, not an implicit follow-up.
 
 ## Plan Completion Gate
 
-The implementation plan is complete only when Tasks 1–6 are committed and
+The implementation plan is complete only when Tasks 0–6 are committed and
 reviewed, Task 7 has a non-vacuous rollback plus committed real-data scratch
 apply and Operator GO, Task 8 has one authorized successful canonical
 activation, the final report is local-only, and the coordinator-to-all
