@@ -74,8 +74,9 @@ prevents acting on bad input.
    doesn't have project test deps (pytest, etc.); the project venv does.
    **Mitigation:** for project-specific tooling (pytest, vite, npx,
    anything not in the standard library), use the project's binary
-   explicitly: `.venv/bin/python -m pytest ...`, `npx ...` from the
-   right directory.
+   explicitly: `env -u GIT_INDEX_FILE .venv/bin/python -m pytest ...`,
+   `npx ...` from the right directory (the env-u prefix keeps a per-seat
+   index from leaking into test/gate subprocesses).
 
 7. **Background-task completion notifications mid-conversation** — The
    harness fires `<system-reminder>` blocks when a background command

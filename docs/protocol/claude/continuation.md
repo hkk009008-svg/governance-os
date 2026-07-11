@@ -83,14 +83,14 @@ same-seat handoff exists, state that and continue with the first commands.
 Readiness orientation:
 
 ```bash
-.venv/bin/python scripts/continuation_readiness.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py
 env -u GIT_INDEX_FILE git log --oneline -5
 ```
 
 Live seat (also stated in the seat skills):
 
 ```bash
-.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
+env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
 env -u GIT_INDEX_FILE git log --oneline -5
 env -u GIT_INDEX_FILE git status --short
 ```
@@ -98,10 +98,10 @@ env -u GIT_INDEX_FILE git status --short
 Coordinator:
 
 ```bash
-.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
+env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
 env -u GIT_INDEX_FILE git log --oneline -5
-.venv/bin/python scripts/wave_gate_check.py 2
-.venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py 2
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
 ```
 
 Before committing an active coordinator task-board route, render the
@@ -116,10 +116,11 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave> 
 ```
 
 The doctor is evidence, not an operator-GO substitute. Optional read-only
-tools: `scripts/mailbox_monitor.py --once` (or `--watch --interval 5` as an
-awareness watchboard — it never consumes or claims a seat) and
-`scripts/draft_handoff.py <seat> --wave 2 --smoke --output` to scaffold a
-handoff — always refresh live state before finalizing one.
+tools: `env -u GIT_INDEX_FILE .venv/bin/python scripts/mailbox_monitor.py --once`
+(or `--watch --interval 5` as an awareness watchboard — it never consumes or
+claims a seat) and
+`env -u GIT_INDEX_FILE .venv/bin/python scripts/draft_handoff.py <seat> --wave 2 --smoke --output`
+to scaffold a handoff — always refresh live state before finalizing one.
 
 ## Mailbox-first rule + cursor consumption
 
@@ -133,7 +134,9 @@ depends on the seat's cursor form:
 - **Legacy ISO-timestamp cursor** → `coordination/bin/consume-events <seat>`
   (stages `coordination/mailbox/seen/<seat>.txt`; never commits).
 - **Migrated scalar-seq cursor** (post-Slice-2.5; `consume-events` refuses it
-  and says so) → `scripts/consume_bus.py <seat>`. Real unread for a migrated
+  and says so) →
+  `env -u GIT_INDEX_FILE .venv/bin/python scripts/consume_bus.py <seat>`
+  (refs-only; index-independent). Real unread for a migrated
   seat comes from the ref-bus (`scripts/bus_unread.py` — a library surfaced
   via `seat_status.py`, not a CLI), NOT from `sent/` filename counts — the
   legacy count silently reports 0.
@@ -228,7 +231,9 @@ cite a gate, or hold push authority.)
 User-gated side effects: push, lock-claim side effects, paid API spend, and
 pod spend require explicit user consent. Use `env -u GIT_INDEX_FILE` for
 ordinary git and pytest commands unless deliberately maintaining a seat-local
-index.
+index. The `coordination/bin` scripts (`send-event`, `consume-events`,
+`claim-lock`, `release-lock`) are the deliberate case — they stage/operate on
+the seat's ambient index by design; never prefix them.
 
 Side-Effect Executor Token:
 - Required fields: `side_effect_id`, `executor`, `target`,
@@ -351,15 +356,21 @@ do not transplant Codex-only mechanics.
 ## Ledger CLI Adoption Bridge
 
 For work routed to `/Users/hyungkoookkim/evidence-ledger`, read
-`docs/protocol/codex/ledger-cli-adoption.md` (the bridge doc is
-provider-shared) before entering the target repo. Pipeline remains the
+`docs/protocol/claude/ledger-cli-adoption.md` (the Claude-native bridge; the
+Codex bridge at `docs/protocol/codex/ledger-cli-adoption.md` scopes itself to
+Codex sessions and emits `.agents/...` paths — do not follow it from a Claude
+seat) before entering the target repo. Pipeline remains the
 four-seat governance kernel; evidence-ledger owns product-local truth.
 Cross-repo git and pytest commands use `env -u GIT_INDEX_FILE` so Pipeline
 seat indexes do not leak into ledger work. Start from
 `/Users/hyungkoookkim/Pipeline` and run
 `env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`
-before target-repo inspection (the guard accepts the five standing seats;
-`coordinator2`, being on-demand oversight, is not in its VALID_SEATS). Read
+before target-repo inspection (the guard accepts the five standing seats —
+`coordinator2`, being on-demand oversight, is not in its VALID_SEATS — and its
+printed guidance is Codex-flavored: it names the `.agents/.../seat_status.py`
+path AND tells you to read the Codex bridge doc; substitute the
+`.claude/skills/four-seat-protocol/scripts/seat_status.py` copy and read
+`docs/protocol/claude/ledger-cli-adoption.md` instead). Read
 evidence-ledger `CLAUDE.md` before product edits.
 
 ## Verification Commands
@@ -368,16 +379,22 @@ Run the narrow command that proves the current claim:
 
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-.venv/bin/python scripts/wave_gate_check.py 2
+env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py 2
 env -u GIT_INDEX_FILE git status --short
 env -u GIT_INDEX_FILE git diff --stat
 ```
+
+The `env -u GIT_INDEX_FILE` prefix on gate/orientation Python is load-bearing,
+not stylistic: the gate path is not index-independent (`ci_smoke` runs
+`check_placeholders`, whose `git ls-files` inherits the ambient index — a
+stale seat index can turn a real violation into a false PASS).
 
 ## Related files
 
 - Rule bodies (Rules #7–#23): `docs/protocol/claude/director-operator.md`
 - Four-seat extension (coordinator §10, co-sign tiers):
   `docs/protocol/claude/four-seat-extension.md`
+- Claude ledger bridge: `docs/protocol/claude/ledger-cli-adoption.md`
 - Codex adapter (peer document): `docs/protocol/codex/continuation.md`
 - Unified three-way doctrine: `docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md`
 - Seat status: `.claude/skills/four-seat-protocol/scripts/seat_status.py`

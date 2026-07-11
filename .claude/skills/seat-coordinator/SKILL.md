@@ -16,14 +16,14 @@ The coordinator is the **on-demand 5th cross-pair oversight seat** — spawned a
 **Fresh/transplanted instance: same-seat handoff first** — locate the newest `docs/HANDOFF-coordinator-*.md` before reconciling; if none exists, say so. Then get oriented in one shot — the shared status script accepts the coordinator seat (all peers' heartbeats + every `-to-coordinator-`/`-to-all-` mailbox event; the coordinator is **UNPINNED**, so there is no cursor to consume):
 
 ```bash
-.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
+env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
 ```
 
 **Run that FIRST** — it is the one command that surfaces your unread `-to-coordinator-`/`-to-all-` mailbox events; **surface that count in your first user-facing turn (Rule #8)** before any reconcile. Then produce the **gate proof** you will cite (R-EVIDENCE — never assert a gate state from memory):
 
 ```bash
-.venv/bin/python scripts/wave_gate_check.py 2   # exit 0 = MET, 1 = UNMET
-.venv/bin/python scripts/ci_smoke.py            # §15 smoke; must be clean before you trust the tree
+env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py 2   # exit 0 = MET, 1 = UNMET
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py            # §15 smoke; must be clean before you trust the tree
 ```
 
 Before committing an active task-board route, render the hard-gated capacity board and validate the draft route; the protocol doctor gives a strict read-only validation bundle:
@@ -52,7 +52,7 @@ You **MAY commit** (explicit pathspec, never production modules): **test-only ar
 ## When a wave is blocked and a fix is needed but no director is online
 
 Do **NOT** fix it. The documented path:
-1. **Run `scripts/wave_gate_check.py <wave>`** to produce a real blocked-gate artifact (R-EVIDENCE — never assert "gate blocked" from memory).
+1. **Run `env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py <wave>`** to produce a real blocked-gate artifact (R-EVIDENCE — never assert "gate blocked" from memory).
 2. **Pod-off IMMEDIATELY** if a director's gate-request is posted and unserviced — this trip-wire fires the *moment* the gate-request is unserviced; it does **NOT** wait on the 24h SLA (spec §6f).
 3. Send **ONE consolidated mailbox event** to all seats naming the blocker row, lane-owner, and the **SLA figure from the inventory header (24h default)**.
 4. **Escalate to the user-principal**, explicitly naming the **acting-coordinator path** (spec §6f): the *only* documented way a non-coordinator seat may advance cross-cutting rows or open the next wave — it requires explicit user authorization recorded in the mailbox.
@@ -66,7 +66,7 @@ You may prepare a **pre-brief skeleton** to reduce a director's burden, but the 
 - Reconcile at **§6f triggers only**: (a) coordinator session-start, (b) wave-boundary gate, (c) a director's gate-request. The inventory is a **batch view**, not real-time — do not commit per micro-transition.
 - **Reverting a premature `verified`:** revert to **`fixed`** if a real fix commit exists (only to `open` if none does) — and **audit the lock file**: a premature `verified` implies the lock was wrongly released or never released (§6b couples lock-delete to the GO commit).
 - **Deputy path (when no coordinator was live):** a pair may transcribe an *existing* operator GO into its own-lane row — it **never self-verifies** and never writes another lane's rows.
-- Enforce with the **script, not prose**: cite/run `scripts/wave_gate_check.py <wave>` + `scripts/ci_smoke.py` as the gate proof. **CAVEAT (ADR-027): `wave_gate_check.py` currently READS the inventory `status` string — it does NOT execute the pins. "GATE MET" means the ceremony was logged, NOT that the code is behaviorally correct. Cite what was mechanically EXECUTED (the operator GO's mutation RED→GREEN / `--runxfail` result), never the status-tally as proof of correctness. Until FIX-1 (gate executes pins, ADR-027) lands, the gate output is process-state, not an oracle.**
+- Enforce with the **script, not prose**: cite/run `env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py <wave>` + `env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py` as the gate proof (the placeholder gate's `git ls-files` inherits the ambient index — an unprefixed run can false-PASS). **CAVEAT (ADR-027): `wave_gate_check.py` currently READS the inventory `status` string — it does NOT execute the pins. "GATE MET" means the ceremony was logged, NOT that the code is behaviorally correct. Cite what was mechanically EXECUTED (the operator GO's mutation RED→GREEN / `--runxfail` result), never the status-tally as proof of correctness. Until FIX-1 (gate executes pins, ADR-027) lands, the gate output is process-state, not an oracle.**
 
 ## Standing duties
 
@@ -87,7 +87,7 @@ You may prepare a **pre-brief skeleton** to reduce a director's burden, but the 
 | "`wave_gate_check.py` says MET, so the wave is verified/correct — I'll cite it as evidence." | The gate READS a `status` string; it executes ZERO tests (ADR-027). "MET" = the ceremony was logged, NOT that the code works. Cite the executed pin (`--runxfail` RED→GREEN) or the operator GO, never the status-tally as a correctness claim. |
 | "The director said it looks done, mark it verified." | Only an operator GO sets `verified`. Director note ≠ co-sign. |
 | "Revert this bad `verified` to `open`." | To `fixed` if a fix commit exists; audit the lock too. |
-| "The gate is obviously blocked." | Run `wave_gate_check.py` and cite it (R-EVIDENCE). |
+| "The gate is obviously blocked." | Run `wave_gate_check.py` (env -u prefixed) and cite it (R-EVIDENCE). |
 | "Pod-off can wait for the 24h SLA." | No — pod-off fires the moment a gate-request is unserviced. |
 | "I'll push the coordinator commits, they're harmless." | Push is user-gated. Surface + wait for auth. |
 

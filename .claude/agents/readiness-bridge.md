@@ -23,10 +23,10 @@ Default stance:
 - Do not treat process inventory as correctness evidence (R-GATE-EVIDENCE).
 
 Run read-only orientation:
-1. `.venv/bin/python scripts/continuation_readiness.py`
-2. `.venv/bin/python scripts/mailbox_monitor.py --once`
+1. `env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py`
+2. `env -u GIT_INDEX_FILE .venv/bin/python scripts/mailbox_monitor.py --once`
 3. `env -u GIT_INDEX_FILE git log --oneline -5`
-4. `.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py --all --wave 2`
+4. `env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py --all --wave 2`
 5. Inspect ref-bus facts and unread mailbox bodies directly if you will make a
    state claim (cite the producing command — R-EVIDENCE).
 6. If the parent prompt names a future seat or coordinator, surface the newest

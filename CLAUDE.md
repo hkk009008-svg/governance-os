@@ -29,7 +29,7 @@ you know the task*. Everything task-specific lives in linked docs, pulled on dem
 ## R-START — session-start checklist
 Scope: both
 Trigger: start of every session, before non-trivial work.
-Action: (1) Run the project smoke block — `.venv/bin/python scripts/ci_smoke.py`; if it
+Action: (1) Run the project smoke block — `env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py`; if it
 fails, the doc is stale OR the working tree is broken — fix one before proceeding.
 (2) Skim `ARCHITECTURE.md` §2 topology; spot-check the governance-OS smoke
 invariants implemented in `scripts/ci_smoke.py` `_project_smoke()`. (3) `git log --oneline -20`; if a commit touched a module

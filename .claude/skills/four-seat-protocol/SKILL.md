@@ -30,13 +30,13 @@ user direct instruction  >  git commits  >  mailbox sent/ events  >  STATE.md  >
 
 ## Session-start gate (Rule #8)
 
-If unread mailbox events exist for your seat, **surface the count in your FIRST user-facing turn, before processing** — and again whenever you restart substantive work mid-session. Consume via `coordination/bin/consume-events <seat>` for a legacy ISO-timestamp cursor; for a migrated scalar-seq cursor (post-Slice-2.5 — `consume-events` refuses it and says so) use `scripts/consume_bus.py <seat>`. **Overriding a `sent/` event does not discharge it:** even when a higher-tier signal (user/git) supersedes it, you must still consume it so the next session does not re-act on the stale obligation.
+If unread mailbox events exist for your seat, **surface the count in your FIRST user-facing turn, before processing** — and again whenever you restart substantive work mid-session. Consume via `coordination/bin/consume-events <seat>` for a legacy ISO-timestamp cursor (it deliberately stages into the seat's ambient index — no `env -u`); for a migrated scalar-seq cursor (post-Slice-2.5 — `consume-events` refuses it and says so) use `env -u GIT_INDEX_FILE .venv/bin/python scripts/consume_bus.py <seat>`. **Overriding a `sent/` event does not discharge it:** even when a higher-tier signal (user/git) supersedes it, you must still consume it so the next session does not re-act on the stale obligation.
 
 Orient in one shot (read-only; never stages or consumes):
 
 ```bash
-.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
-.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py --all --wave 2   # shared all-seat view
+env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
+env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py --all --wave 2   # shared all-seat view
 ```
 
 ## The git-native cross-cutting lock (§6b)
@@ -81,6 +81,7 @@ Classifier: **would the co-signer's verification change which files/sites the im
 - **Rule #19:** binding cross-seat signals are **artifacts** (mailbox event / presence file), **never chat alone**.
 - **Explicit pathspec always (R-WIP-POLLUTION):** `git commit -m "..." -- <path>` (the `-m` BEFORE `--`). A **bare `git commit` on the shared tree sweeps a peer's staged WIP.**
 - **Subagents prefix every git command with `env -u GIT_INDEX_FILE`** (main-seat commits do NOT).
+- **The `coordination/bin` scripts are the deliberate ambient-index exception** — `send-event`, `consume-events`, `claim-lock`, `release-lock` stage/operate on the seat's ambient index and tree BY DESIGN (cursor folding, event staging, lock commits). NEVER prefix them with `env -u`; a prefixed run stages into the wrong index.
 - **Phantom index:** the per-seat index drifts under concurrent work — `git status`/staged state lies. Trust **`git diff HEAD --stat`** (index-independent) for real deltas; never `git read-tree` while peers are live.
 - **R-GATE-EVIDENCE:** a gate script's PASS is process evidence, not correctness proof — cite the executed pins / operator GO, never a status tally alone.
 

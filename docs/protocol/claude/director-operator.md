@@ -714,9 +714,11 @@ findings sets per Rule #9 §"Parallelism" structural independence.
 **Stage 5: Verification-report mailbox event.**
 Operator synthesizes both reviewers' findings into a structured
 `verification-report` event to director-seat:
-- Status (GO / NITS / FAIL / unable_to_verify — the last means verification
-  did not run to a conclusion; re-dispatch in a fixed env, do NOT treat it
-  as a blocking defect; emoji renders are prose-only)
+- Status (GO / NITS / FAIL — the ONLY seat-level verdicts; emoji renders are
+  prose-only). A dispatched reviewer's `unable_to_verify` yields NO seat
+  verdict: re-dispatch in a fixed env and do NOT treat it as a blocking
+  defect — UTV is reviewer-run evidence, never a fourth verification-report
+  status.
 - Per-finding catalog with severity + source + description +
   disposition recommendation
 - Cumulative v4.1 telemetry update (dispatch count + tokens + findings

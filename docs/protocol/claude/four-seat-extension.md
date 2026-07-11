@@ -28,7 +28,7 @@ live `director` session is never broken.
 Canonical seat IDs become a 4-set: **`director`, `director2`, `operator`,
 `operator2`** — where `director`/`operator` ARE seat-1 (unchanged). A `coordinator` broadcast role also exists for cross-seat signaling. Two **pairs**:
 
-| Pair | Director | Operator | Lane (PRINCIPAL-CONFIRMED 2026-06-13, FINAL) |
+| Pair | Director | Operator | Lane (adopter slot — operative record: ADR-009) |
 |------|----------|----------|------|
 | **A** | `director`  | `operator`  | **<domain-lane-A>** — <!-- TODO(<PROJECT>): list the Pair-A domain modules, subsystems, and data-integrity concerns for this project. --> |
 | **B** | `director2` | `operator2` | **<domain-lane-B>** — <!-- TODO(<PROJECT>): list the Pair-B domain modules, subsystems, external-API clients, and main orchestrator paths for this project. --> |

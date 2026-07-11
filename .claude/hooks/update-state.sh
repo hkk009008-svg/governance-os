@@ -39,7 +39,44 @@ _repo_git() {
   env -u GIT_INDEX_FILE git "$@"
 }
 
-cd "$(_repo_git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+# Subagent gate (CLAUDE-HOOK-SUBAGENT-002, operator2 FAIL 2026-07-10):
+# settings-level tool hooks also fire for SUBAGENT tool calls, with the parent
+# env (CLAUDE_SEAT, GIT_INDEX_FILE) inherited and agent_id/agent_type in the
+# hook's stdin JSON. Without this gate a read-only helper stamps the parent
+# seat's heartbeat and maintains its seat index — inherited seat authority.
+# Subagent invocations get NO mutations at all: the parent session's own tool
+# calls keep presence/STATE fresh. (Accepted trade-off: skip-worktree
+# pollution arising DURING subagent activity now self-heals only on the
+# parent's next own tool call.) FAIL-OPEN: a TTY stdin, unreadable payload,
+# or missing python3 is treated as a main-session call.
+PAYLOAD=""
+[ -t 0 ] || PAYLOAD="$(cat 2>/dev/null || true)"
+if [ -n "$PAYLOAD" ] && command -v python3 >/dev/null 2>&1; then
+  if printf '%s' "$PAYLOAD" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if isinstance(d, dict) and ("agent_id" in d or "agent_type" in d) else 1)
+' 2>/dev/null; then
+    exit 0
+  fi
+fi
+
+# Root anchoring (CLAUDE-HOOK-ROOT-001, operator2 FAIL 2026-07-10): NEVER
+# derive the repo from the invocation cwd — a session that cd'd into another
+# repo (evidence-ledger is an allowed additional dir) would get Pipeline's
+# presence/STATE.md/index-marker artifacts written THERE. Anchor to
+# $CLAUDE_PROJECT_DIR (set by the harness for configured hooks); fall back to
+# this script's own location (.claude/hooks/ -> repo root), mirroring
+# session-smoke.sh. Fail-open if neither resolves to a git repo.
+ROOT="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$ROOT" ]; then
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
+fi
+cd "$ROOT" 2>/dev/null || exit 0
+_repo_git rev-parse --show-toplevel >/dev/null 2>&1 || exit 0
 
 # Presence heartbeat (v6.0 Tier 2, user-authorized 2026-06-11; replaces the
 # v5.7 M1 sed-in-place stamp): the hook's liveness signal is a SINGLE-LINE

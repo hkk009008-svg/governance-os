@@ -16,11 +16,11 @@ The per-pair director owns the **strategic layer within its lane**: writes R-BRI
 **Fresh/transplanted instance: same-seat handoff first** — locate the newest `docs/HANDOFF-<your-concrete-seat>-*.md` before ordinary orientation; if none exists, say so. Then get your bearings in **one shot** — HEAD + ahead/behind, recent commits, **your** live unread mailbox, peer ONLINE/STALE state, and the wave gate:
 
 ```bash
-.venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py director --wave 2
+env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py director --wave 2
 #   (use director2 if you are the Pair-B director; this is the shared umbrella tool)
 ```
 
-Read-only — it never stages or commits. **Rule #8:** if it reports unread > 0, surface that count in your FIRST user-facing turn, then consume: `coordination/bin/consume-events director` for a legacy ISO cursor, `scripts/consume_bus.py director` for a migrated scalar cursor (the script tells you which). Check your capacity packet (`coordination/capacity/packets/`) for the route's `allowed_paths`, acceptance contract, and next recipient before writing anything.
+Read-only — it never stages or commits. **Rule #8:** if it reports unread > 0, surface that count in your FIRST user-facing turn, then consume: `coordination/bin/consume-events director` for a legacy ISO cursor, `env -u GIT_INDEX_FILE .venv/bin/python scripts/consume_bus.py director` for a migrated scalar cursor (the script tells you which). Check your capacity packet (`coordination/capacity/packets/`) for the route's `allowed_paths`, acceptance contract, and next recipient before writing anything.
 
 ## First question: is this CROSS-CUTTING? (answer before reaching for the lock)
 

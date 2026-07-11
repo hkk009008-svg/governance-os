@@ -27,8 +27,10 @@ don't let a wrong claim survive your session.
 
 Concrete protocol at session start (≤2 minutes):
 
-1. Run the project smoke block — `.venv/bin/python scripts/ci_smoke.py` (the
-   governance-OS invariants live in its `_project_smoke()`). If it fails, the doc is
+1. Run the project smoke block — `env -u GIT_INDEX_FILE .venv/bin/python
+   scripts/ci_smoke.py` (the governance-OS invariants live in its
+   `_project_smoke()`; the prefix is load-bearing — the placeholder gate's
+   `git ls-files` inherits the ambient index). If it fails, the doc is
    stale OR the working tree is broken — fix one or the other before
    proceeding with the user's task.
 2. Skim `ARCHITECTURE.md` §2 component topology. Spot-check:
@@ -146,7 +148,8 @@ weaken any single pass.
 Beyond the impact-analysis checks above:
 
 - One commit per logical slice. Run the project smoke block
-  (`.venv/bin/python scripts/ci_smoke.py`) before declaring a slice done.
+  (`env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py`) before
+  declaring a slice done.
 - Don't combine concerns. A bug fix isn't a refactor isn't a feature.
 - If your change touches a documented subsystem, update the relevant
   section in `ARCHITECTURE.md` in the same PR.

@@ -6,8 +6,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -92,13 +90,6 @@ def _post_tool_input(cwd: Path, *, subagent: bool) -> str:
     return json.dumps(payload)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "CLAUDE-HOOK-ROOT-001: configured update-state hook mutates the "
-        "invocation repo instead of the Pipeline project root"
-    ),
-)
 def test_claude_update_state_hook_anchors_pipeline_root_across_cwd(
     tmp_path: Path,
 ) -> None:
@@ -107,8 +98,7 @@ def test_claude_update_state_hook_anchors_pipeline_root_across_cwd(
     _init_repo(pipeline, install_pipeline_hook=True)
     _init_repo(target)
     command = _configured_update_state_command(pipeline)
-    if command is None:
-        return
+    assert command is not None, "update-state hook no longer registered in settings.json"
 
     result = _run(
         ["/bin/bash", "-lc", command],
@@ -128,21 +118,40 @@ def test_claude_update_state_hook_anchors_pipeline_root_across_cwd(
     assert not (target / "STATE.md").exists()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "CLAUDE-HOOK-SUBAGENT-002: configured update-state hook inherits parent "
-        "seat authority inside read-only subagents"
-    ),
-)
+def test_claude_update_state_hook_script_location_fallback_anchors_owner(
+    tmp_path: Path,
+) -> None:
+    """Direct invocation with CLAUDE_PROJECT_DIR unset anchors to the script's
+    own repo (BASH_SOURCE fallback), never the foreign invocation cwd."""
+    pipeline = tmp_path / "pipeline"
+    target = tmp_path / "target"
+    _init_repo(pipeline, install_pipeline_hook=True)
+    _init_repo(target)
+
+    result = _run(
+        ["/bin/bash", str(pipeline / ".claude/hooks/update-state.sh")],
+        target,
+        env={
+            "CLAUDE_SEAT": "operator2",
+            "CLAUDE_CODE_SESSION_ID": "fallback-test",
+        },
+        stdin=_post_tool_input(target, subagent=False),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (pipeline / "coordination/presence/operator2-heartbeat.ts").is_file()
+    assert not (target / "coordination/presence/operator2-heartbeat.ts").exists()
+    assert (pipeline / "STATE.md").is_file()
+    assert not (target / "STATE.md").exists()
+
+
 def test_claude_update_state_hook_skips_subagent_seat_mutations(
     tmp_path: Path,
 ) -> None:
     pipeline = tmp_path / "pipeline"
     _init_repo(pipeline, install_pipeline_hook=True)
     command = _configured_update_state_command(pipeline)
-    if command is None:
-        return
+    assert command is not None, "update-state hook no longer registered in settings.json"
 
     result = _run(
         ["/bin/bash", "-lc", command],

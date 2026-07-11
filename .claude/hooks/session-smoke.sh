@@ -23,10 +23,16 @@ if [ ! -x "$PY" ]; then
 fi
 
 # Run the smoke under a hard 180s bound enforced by Python itself.
+# GIT_INDEX_FILE is stripped from the child env: the placeholder gate's
+# `git ls-files` inherits the ambient index, so a seat launched with a stale
+# per-seat index could get a false R-START PASS (operator2 FAIL 2026-07-10,
+# finding-3 class). The tripwire must always judge the default index.
 if out="$("$PY" - "$PY" 2>&1 <<'PYWRAP'
-import subprocess, sys
+import os, subprocess, sys
+env = dict(os.environ)
+env.pop("GIT_INDEX_FILE", None)
 try:
-    r = subprocess.run([sys.argv[1], "scripts/ci_smoke.py"], timeout=180)
+    r = subprocess.run([sys.argv[1], "scripts/ci_smoke.py"], timeout=180, env=env)
     sys.exit(r.returncode)
 except subprocess.TimeoutExpired:
     sys.stderr.write("ci_smoke.py exceeded 180s — aborted\n")
