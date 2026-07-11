@@ -256,3 +256,55 @@ def test_capability_current_only_at_bound_generation():
     assert not route_capability.capability_is_current(cap, _lr("r6", 6))
     # different route entirely -> stale
     assert not route_capability.capability_is_current(cap, _lr("other", 5))
+
+
+def test_capability_not_current_when_generation_none():
+    # Defense-in-depth: a None generation on EITHER side means NOT current, so an
+    # invalid capability (bound_generation=None) can never ride a legacy
+    # no-generation route into "current" and inherit authority it never had.
+    cap_none = _cap(bound_route_id="r7", bound_generation=None)
+    assert not route_capability.capability_is_current(cap_none, _lr("r7", None))
+    # even a well-formed cap generation is not current against a legacy route
+    # whose generation is None (route side None).
+    cap_ok = _cap(bound_route_id="r7", bound_generation=5)
+    assert not route_capability.capability_is_current(cap_ok, _lr("r7", None))
+
+
+def test_consume_write_failure_does_not_brick_capability(tmp_path, monkeypatch):
+    """A failed durability sync must leave NO final receipt — the capability is
+    not bricked and a legitimate retry still succeeds.
+
+    Forces an OSError at the durability barrier (os.fsync) that runs AFTER the
+    complete receipt is written to a temp file but BEFORE it is atomically linked
+    into place. The fix's contract: the canonical receipt path never appears with
+    partial/empty content, the temp scratch is always cleaned, and the grant is
+    not permanently consumed by a write that never landed.
+    """
+    from pathlib import Path
+    cap = _cap()
+    final = tmp_path / f"{cap['capability_id']}.receipt.json"
+
+    def _raise(*_a, **_k):
+        raise OSError("simulated durability-sync failure (ENOSPC/EIO)")
+
+    monkeypatch.setattr(route_capability.os, "fsync", _raise)
+
+    # (a) the durability failure must surface — consume must NOT report success.
+    result = None
+    try:
+        result = route_capability.consume(cap, _evidence(), store_dir=tmp_path)
+    except OSError:
+        pass  # surfaced as an exception — acceptable, and NOT ok=True
+    assert result is None or result.ok is False, "a failed sync must not report ok=True"
+
+    # (b) NO final receipt (empty or partial) is left at the canonical path, and
+    #     no stray temp scratch remains — nothing for a retry to trip over.
+    assert not final.exists(), "final receipt must never appear with partial/no content"
+    assert list(tmp_path.iterdir()) == [], "temp scratch must be cleaned up on failure"
+
+    # (c) with durability restored, a legitimate retry SUCCEEDS — proving the
+    #     earlier failure did not permanently brick the capability.
+    monkeypatch.undo()
+    retry = route_capability.consume(cap, _evidence(), store_dir=tmp_path)
+    assert retry.ok and retry.reason == "consumed"
+    assert final.exists()

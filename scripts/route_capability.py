@@ -17,6 +17,7 @@ import hashlib
 import os
 import re
 import sys
+import tempfile
 from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
@@ -325,8 +326,10 @@ def build_receipt(
 #
 # consume() is the security-critical core: it turns a validated capability + real
 # evidence into a receipt written EXACTLY ONCE per capability_id, using the
-# filesystem itself as the compare-and-swap primitive (O_EXCL). This is what makes
-# replay impossible — a second consume of the same capability_id refuses.
+# filesystem itself as the compare-and-swap primitive (temp-file + fsync +
+# atomic os.link). This is what makes replay impossible — a second consume of the
+# same capability_id refuses — AND durable: the final path never appears with
+# partial content, so a failed/killed write cannot brick the capability.
 #
 # capability_is_current() is revocation-on-supersession: a capability bound to a
 # route generation that a newer generation has superseded (or to a different
@@ -345,12 +348,21 @@ class ConsumeResult:
 def consume(capability: dict, evidence: dict, *, store_dir) -> ConsumeResult:
     """Atomically consume a capability EXACTLY ONCE, writing an evidence receipt.
 
-    This is a filesystem compare-and-swap: the receipt file at
-    ``store_dir/<capability_id>.receipt.json`` is created with
-    ``O_CREAT|O_EXCL``, so the OS guarantees at most one successful create per
-    ``capability_id`` even under concurrent callers. A second consume of the same
-    capability_id refuses with ``already_consumed`` — this is the replay refusal,
-    the core security property of the slice.
+    This is a filesystem compare-and-swap: the COMPLETE, fsynced receipt is
+    ``os.link``-ed into ``store_dir/<capability_id>.receipt.json`` from a temp
+    file, so the OS guarantees at most one successful link per ``capability_id``
+    even under concurrent callers AND the canonical path never appears with
+    partial content. A second consume of the same capability_id refuses with
+    ``already_consumed`` — this is the replay refusal, the core security property
+    of the slice.
+
+    Durability (why link, not O_EXCL-create-then-write): if a content write fails
+    (ENOSPC) or the process is killed between an O_EXCL create and its write, an
+    empty/partial receipt is stranded at the final path, and a legitimate retry
+    then gets ``already_consumed`` against unparseable evidence — the capability is
+    permanently BRICKED. Writing to a temp file, fsyncing, then linking makes the
+    final path appear ONLY with complete content; a crash before the link leaves a
+    temp file a retry ignores.
 
     Fail-closed ordering (NOTHING is written until every check passes):
       1. ``validate_capability`` — a malformed grant is refused, no write.
@@ -358,7 +370,8 @@ def consume(capability: dict, evidence: dict, *, store_dir) -> ConsumeResult:
          capability (binding capability_hash by construction, never trusting a
          caller-supplied one) and its evidence is validated for non-vacuity
          (a commit SHA or logs/ anchor). Vacuous evidence is refused, no write.
-      3. Only then is the receipt file atomically created via O_EXCL.
+      3. Only then is the receipt written to a temp file, fsynced, and atomically
+         linked into place (the link is the one-time CAS).
 
     A consumed capability is NECESSARY-NOT-SUFFICIENT: consumption records that the
     single side effect ran, but it never substitutes for the user push gate — the
@@ -393,21 +406,38 @@ def consume(capability: dict, evidence: dict, *, store_dir) -> ConsumeResult:
             receipt_path=None,
         )
 
-    # 3. Atomic one-time create. Creating the directory is NOT the atomic step;
-    # the O_EXCL open of the receipt file is. FileExistsError on that open is the
-    # replay refusal.
+    # 3. Durable atomic one-time create. Write the COMPLETE receipt to a temp file,
+    # fsync it to disk, THEN os.link() it into place. os.link is the compare-and-swap:
+    # it raises FileExistsError iff the final path already exists, so exactly one
+    # consumer wins the replay race (the O_EXCL one-time semantics are preserved) —
+    # AND it guarantees the canonical path only ever appears carrying fully-written,
+    # fsynced content. A crash or ENOSPC before the link strands only a temp file
+    # that a retry ignores, and the finally always removes it. This is what makes a
+    # failed content write NON-BRICKING: contrast a create-then-write, which leaves a
+    # zero-byte/partial receipt at the final path and then refuses every legitimate
+    # retry with already_consumed against unparseable evidence.
     store_path = Path(store_dir)
     store_path.mkdir(parents=True, exist_ok=True)
     path = store_path / f"{capability['capability_id']}.receipt.json"
+    payload = canonicalize(receipt)
+    fd, tmp = tempfile.mkstemp(
+        dir=store_path, prefix=f"{capability['capability_id']}.", suffix=".tmp"
+    )
     try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-    except FileExistsError:
-        return ConsumeResult(ok=False, reason="already_consumed", receipt_path=None)
-    try:
-        os.write(fd, canonicalize(receipt))
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            return ConsumeResult(ok=False, reason="already_consumed", receipt_path=None)
+        return ConsumeResult(ok=True, reason="consumed", receipt_path=str(path))
     finally:
-        os.close(fd)
-    return ConsumeResult(ok=True, reason="consumed", receipt_path=str(path))
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def capability_is_current(capability: dict, authoritative: "route_lineage.LineageRoute") -> bool:
@@ -419,8 +449,17 @@ def capability_is_current(capability: dict, authoritative: "route_lineage.Lineag
     bound to a superseded generation (a newer generation is now authoritative) or
     to a different route is stale — its authority is revoked, independent of
     whether it has been consumed.
+
+    Defense-in-depth: a ``None`` generation on EITHER side (an invalid capability
+    with ``bound_generation=None``, or a legacy no-generation route) is treated as
+    NOT current, so a generationless grant can never ride a legacy route into
+    "current" and inherit authority it never had.
     """
+    bound_generation = capability["bound_generation"]
+    route_generation = authoritative.lineage.generation
+    if bound_generation is None or route_generation is None:
+        return False
     return (
         capability["bound_route_id"] == authoritative.route_id
-        and capability["bound_generation"] == authoritative.lineage.generation
+        and bound_generation == route_generation
     )
