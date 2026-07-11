@@ -8,10 +8,19 @@
 
 **Tech Stack:** Python 3.11+, openpyxl, psycopg 3, PostgreSQL/Supabase migrations, pytest, existing hash-chained `trust.evidence`, local ignored `.superpowers/sdd/` and `data/` resources.
 
+**Execution approval:** the user approved this specification and selected
+routed subagent-driven execution (option 1) on 2026-07-11.
+
 ## Global Constraints
 
 - Governing spec: `docs/superpowers/specs/2026-07-11-ledger-workbook-refresh-design.md` in Pipeline.
 - Pipeline remains the governance kernel; all product code, migrations, and product docs land in `/Users/hyungkoookkim/evidence-ledger` through an explicit four-seat route.
+- Evidence-ledger's default Codex posture is read-only verification. For this
+  user-selected routed cycle, the Pipeline live Director is the single target
+  controller/committer, fresh subagents are bounded implementers/reviewers
+  under that Director, and the live Operator is the independent Codex verifier.
+  This explicit mapping preserves the target's one-controller and
+  R-CODEX-VERIFY contracts; it does not create a second target committer.
 - At execution time, use `superpowers:using-git-worktrees` and create a new isolated evidence-ledger worktree from a freshly resolved published `origin/main`; do not reuse the stale normal checkout or an old task worktree.
 - Run isolated-worktree Python through `/Users/hyungkoookkim/evidence-ledger/.venv/bin/python`; worktrees do not contain `.venv/`.
 - Prefix every git and pytest command with `env -u GIT_INDEX_FILE`.
@@ -156,6 +165,7 @@ class RefreshPlan:
     incoming_workbook_sha256: str
     checklist_sha256: str
     database_fingerprint: str
+    evidence_chain_head: str
     actions: tuple[RefreshAction, ...]
     blockers: tuple[str, ...]
 
@@ -180,6 +190,13 @@ class ApplyResult:
     directions: dict[str, str]
     report_hashes: dict[str, str]
     result_evidence_id: int | None
+    result_evidence_chain_hash: str | None
+
+
+@dataclasses.dataclass(frozen=True)
+class EvidenceRef:
+    id: int
+    chain_hash: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -241,7 +258,10 @@ database/resource mutation token yet, and no push authority.
 
 **Interfaces:**
 - Consumes: `parse_workbook.parse(path: pathlib.Path, year: int)`, signed `MergeRow` decisions, previous and incoming workbook paths.
-- Produces: `WorkbookSnapshot`, `DatabaseSnapshot`, `RefreshAction`, `RefreshPlan`, `parse_refresh_workbook()`, `build_refresh_plan()`, `canonical_plan_bytes()`, `plan_sha256()`, and `blocking_actions()`.
+- Produces: the exact shared models above (including `ApplyResult`,
+  `EvidenceRef`, and `ResourceEvidence`), `parse_refresh_workbook()`,
+  `build_refresh_plan()`, `canonical_plan_bytes()`, `plan_sha256()`,
+  `database_fingerprint()`, and `blocking_actions()`.
 
 - [ ] **Step 1: Add the synthetic previous/incoming workbook pair**
 
@@ -422,6 +442,8 @@ def test_summary_mismatch_and_unheaded_value_are_quarantined(tmp_path):
 def test_canonical_plan_bytes_and_hash_are_deterministic(tmp_path):
     previous, incoming, checklist, database = build_inputs(tmp_path)
     plan = build_refresh_plan(previous, incoming, database, checklist_sha256="c" * 64)
+    assert plan.database_fingerprint == database_fingerprint(database)
+    assert plan.evidence_chain_head == database.evidence_chain_head
     assert canonical_plan_bytes(plan).endswith(b"\n")
     assert canonical_plan_bytes(plan) == canonical_plan_bytes(plan)
     assert plan_sha256(plan) == hashlib.sha256(canonical_plan_bytes(plan)).hexdigest()
@@ -484,6 +506,16 @@ def blocking_actions(plan: RefreshPlan) -> tuple[RefreshAction, ...]:
     return tuple(a for a in plan.actions if a.disposition in BLOCKING)
 
 
+def database_fingerprint(snapshot: DatabaseSnapshot) -> str:
+    business_state = dataclasses.asdict(snapshot)
+    del business_state["evidence_chain_head"]
+    payload = json.dumps(
+        business_state, sort_keys=True, ensure_ascii=False,
+        separators=(",", ":"), default=_json_default,
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
 def normalize_payment_month(explicit, payment_date, year: int) -> datetime.date | None:
     for value in (explicit, payment_date):
         if value in (None, ""):
@@ -524,7 +556,15 @@ nonempty unnamed cells to each emitted `source_ref`. It must not modify
 8. group PPL before payment-month normalization, reject conflicting group
    months, and compare detail-derived monthly totals to the summary;
 9. sort actions by `(disposition.value, fact_id, target_kind, target_id or -1)`;
-10. derive `blockers` from the sorted blocking actions.
+10. derive `blockers` from the sorted blocking actions;
+11. bind `database_fingerprint(database)` and the independently supplied
+    `database.evidence_chain_head` into the immutable plan.
+
+`database_fingerprint()` is intentionally a business-state fingerprint. It
+includes the prior import identity plus slots, payments, placements, and
+allocations, but excludes `evidence_chain_head`. The chain head is a separate
+optimistic-concurrency gate because appending the plan/result evidence rows
+changes it even when the business state is unchanged.
 
 - [ ] **Step 5: Run focused and existing hermetic tests**
 
@@ -571,8 +611,8 @@ canonical database or resource paths.
 - Modify: `import/tests/refresh_test_support.py`
 
 **Interfaces:**
-- Consumes: Task-1 models and `build_refresh_plan()`.
-- Produces: `fetch_database_snapshot(conn, previous_workbook_sha256, year) -> DatabaseSnapshot`, `database_fingerprint(snapshot) -> str`, `write_plan_outputs(plan, json_path, report_path)`, and read-only `main(argv=None)`.
+- Consumes: Task-1 models, `database_fingerprint()`, and `build_refresh_plan()`.
+- Produces: `fetch_database_snapshot(conn, previous_workbook_sha256, year) -> DatabaseSnapshot`, `write_plan_outputs(plan, json_path, report_path)`, and read-only `main(argv=None)`.
 
 - [ ] **Step 1: Add one reusable migrated scratch-DB harness**
 
@@ -650,21 +690,20 @@ def test_fetch_snapshot_binds_previous_import_root_and_latest_results(seeded_ref
 def test_plan_cli_is_read_only_and_writes_hash_bound_outputs(
     seeded_refresh, tmp_path
 ):
-    before = database_fingerprint(
-        fetch_database_snapshot(
-            seeded_refresh.conn, seeded_refresh.previous_sha256, 2026
-        )
+    snapshot_before = fetch_database_snapshot(
+        seeded_refresh.conn, seeded_refresh.previous_sha256, 2026
     )
+    before = database_fingerprint(snapshot_before)
     json_path = tmp_path / "refresh.plan.json"
     report_path = tmp_path / "refresh.plan.md"
     rc = main(seeded_refresh.plan_args(json_path, report_path))
-    after = database_fingerprint(
-        fetch_database_snapshot(
-            seeded_refresh.conn, seeded_refresh.previous_sha256, 2026
-        )
+    snapshot_after = fetch_database_snapshot(
+        seeded_refresh.conn, seeded_refresh.previous_sha256, 2026
     )
+    after = database_fingerprint(snapshot_after)
     assert rc == 0
     assert before == after
+    assert snapshot_before.evidence_chain_head == snapshot_after.evidence_chain_head
     assert json.loads(json_path.read_text())["schema_version"] == 1
     assert "Plan SHA-256" in report_path.read_text()
 
@@ -728,9 +767,10 @@ SELECT id, placement_id, slot_id, amount, method, method_reason,
 FROM biz.ppl_allocations ORDER BY id;
 ```
 
-Also select the current evidence-chain head independently. Serialize the
-snapshot with Task-1 canonical rules and hash it in `database_fingerprint()`;
-do not include transient connection state.
+Also select the current evidence-chain head independently. Return it on the
+snapshot, but let the Task-1 `database_fingerprint()` hash only the documented
+business-state projection; neither the fingerprint nor the separate chain-head
+gate includes transient connection state.
 
 - [ ] **Step 5: Implement the read-only CLI and report**
 
@@ -911,6 +951,8 @@ def test_apply_inserts_only_new_slot_and_supersedes_changed_result(refresh_db):
     assert after.results == before.results + 2
     assert result.plan_sha256 == plan_sha256(refresh_db.plan)
     assert result.result_evidence_id is not None
+    assert result.result_evidence_chain_hash is not None
+    assert len(result.result_evidence_chain_hash) == 64
     assert set(result.report_hashes) == {"apply.result.json", "apply.result.md"}
     assert refresh_db.latest_result_reason() == "workbook refresh"
 
@@ -938,6 +980,16 @@ def test_same_workbook_plan_cannot_apply_twice(refresh_db):
         apply_synthetic(refresh_db)
 
 
+def test_evidence_chain_head_change_rejects_stale_plan(refresh_db):
+    append_refresh_evidence(
+        refresh_db.conn,
+        "workbook_refresh_plan",
+        {"test_only": "advance-chain-head"},
+    )
+    with pytest.raises(RefreshApplyError, match="evidence-chain-head-changed"):
+        apply_synthetic(refresh_db)
+
+
 def test_refresh_evidence_contains_complete_before_after_and_hashes(refresh_db):
     result = apply_synthetic(refresh_db)
     payload = refresh_db.conn.execute(
@@ -952,6 +1004,8 @@ def test_refresh_evidence_contains_complete_before_after_and_hashes(refresh_db):
         assert all(stored["actual_after"][key] == value for key, value in action.after.items())
     assert payload["resource"]["incoming_sha256"] == refresh_db.plan.incoming_workbook_sha256
     assert set(payload["report_hashes"]) == {"apply.result.json", "apply.result.md"}
+    assert payload["expected_evidence_chain_head"] == refresh_db.plan.evidence_chain_head
+    assert len(payload["plan_evidence"]["chain_hash"]) == 64
 ```
 
 - [ ] **Step 3: Run RED for DB and apply tests**
@@ -1099,10 +1153,12 @@ def apply_refresh(
     if _refresh_already_applied(conn, plan.incoming_workbook_sha256):
         raise RefreshApplyError("already-applied")
     current = fetch_database_snapshot(conn, plan.previous_workbook_sha256, plan.year)
+    if current.evidence_chain_head != plan.evidence_chain_head:
+        raise RefreshApplyError("evidence-chain-head-changed")
     if database_fingerprint(current) != plan.database_fingerprint:
         raise RefreshApplyError("database-fingerprint-changed")
     metrics_before = fetch_direction_metrics(conn, plan.year)
-    plan_evidence_id = append_refresh_evidence(
+    plan_evidence = append_refresh_evidence(
         conn, "workbook_refresh_plan", plan_evidence_payload(plan)
     )
     applied = tuple(_apply_action(conn, action, entered_by) for action in plan.actions)
@@ -1119,30 +1175,43 @@ def apply_refresh(
         directions=classify_directions(metrics_before, metrics_after),
         report_hashes={},
         result_evidence_id=None,
+        result_evidence_chain_hash=None,
     )
     report_hashes = write_apply_outputs(
         result, result_json_path, result_report_path
     )
     result = dataclasses.replace(result, report_hashes=report_hashes)
-    evidence_id = append_refresh_evidence(
+    result_evidence = append_refresh_evidence(
         conn,
         "workbook_refresh_result",
         result_evidence_payload(
-            plan, result, resource_evidence, plan_evidence_id
+            plan, result, resource_evidence, plan_evidence
         ),
     )
-    return dataclasses.replace(result, result_evidence_id=evidence_id)
+    return dataclasses.replace(
+        result,
+        result_evidence_id=result_evidence.id,
+        result_evidence_chain_hash=result_evidence.chain_hash,
+    )
 ```
 
-`append_refresh_evidence()` returns the inserted evidence ID.
+`append_refresh_evidence()` returns `EvidenceRef(id, chain_hash)` from the
+inserted row. `write_apply_outputs()` serializes a documented pre-evidence
+projection that excludes `report_hashes`, `result_evidence_id`, and
+`result_evidence_chain_hash`; it then hashes those immutable bytes and returns
+the two hashes. This avoids a self-referential file-hash contract. The returned
+`ApplyResult`, result evidence payload, and resource manifest carry the hashes
+and final evidence reference without rewriting either attested output file.
 `plan_evidence_payload()` stores the canonical plan hash and complete action
 facts. `result_evidence_payload()` stores year, previous/incoming workbook
 hashes, both DB fingerprints, every action's disposition/fact/target and
 complete expected-before/after values, result/report hashes, resource
-attestation, direction labels, and the plan-evidence ID linkage. The
+attestation, direction labels, the expected pre-apply evidence-chain head, and
+the plan-evidence ID/chain-hash linkage. It necessarily excludes the result
+row's own ID and chain hash. The
 local JSON and Markdown apply outputs use canonical serialization and contain
-counts/directions plus hashes; they are written before result evidence so the
-stored hashes attest exact bytes.
+counts/directions; they are written before result evidence so the stored
+report hashes attest exact bytes.
 
 Task 3 exposes only rollback rehearsal:
 
@@ -1286,11 +1355,19 @@ def test_apply_with_resource_commits_one_aligned_db_resource_result(
     manifest = json.loads(paths.manifest.read_text())
     assert manifest["state"] == "verified"
     assert manifest["result_evidence_id"] == result.result_evidence_id
+    assert manifest["result_evidence_chain_hash"] == result.result_evidence_chain_hash
     assert manifest["report_hashes"] == result.report_hashes
-    assert refresh_db.conn.execute(
-        "SELECT count(*) FROM trust.evidence WHERE id=%s",
+    stored = refresh_db.conn.execute(
+        "SELECT chain_hash FROM trust.evidence WHERE id=%s",
         (result.result_evidence_id,),
-    ).fetchone()[0] == 1
+    ).fetchone()
+    assert stored == (result.result_evidence_chain_hash,)
+    current = fetch_database_snapshot(
+        refresh_db.conn,
+        refresh_db.plan.previous_workbook_sha256,
+        refresh_db.plan.year,
+    )
+    assert current.evidence_chain_head == result.result_evidence_chain_hash
 ```
 
 Define the two test doubles in the same test file:
@@ -1407,7 +1484,8 @@ Order:
 6. `conn.commit()`;
 7. final resource hash and result-evidence postchecks through a fresh read
    connection;
-8. manifest state `verified`.
+8. manifest state `verified`, binding the result evidence ID, result evidence
+   chain hash, and both immutable report hashes.
 
 `apply_with_resource(conn, plan, entered_by, paths, result_json_path,
 result_report_path) -> ApplyResult` owns this order and is the only function
@@ -1996,8 +2074,11 @@ Verify with committed commands:
 
 - canonical resource hash equals incoming hash;
 - archive hash equals the previous canonical hash;
-- manifest state is `verified` and binds plan/result evidence IDs;
-- current DB fingerprint equals the expected post-apply fingerprint;
+- manifest state is `verified` and binds plan/result evidence IDs plus the
+  result evidence chain hash;
+- current business-state DB fingerprint equals the expected post-apply
+  fingerprint, and the current evidence-chain head equals the manifest/result
+  evidence chain hash;
 - no duplicate historical slot was inserted;
 - human, agency, and preserved DB-only facts are byte-equivalent to preflight;
 - result corrections extend same-slot supersession chains;

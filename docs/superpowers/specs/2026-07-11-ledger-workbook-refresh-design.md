@@ -1,6 +1,6 @@
 # Evidence-Ledger Workbook Refresh Design
 
-**Status:** user-approved design, awaiting written-spec review
+**Status:** written specification approved by the user on 2026-07-11
 
 **Approved direction:** source-scoped, provenance-preserving differential refresh
 
