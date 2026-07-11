@@ -61,6 +61,15 @@ def verification_commands(python_executable: str) -> list[list[str]]:
     ]
 
 
+def base_commands(python_executable: str, wave: int) -> list[list[str]]:
+    """The unconditional read-only checks every doctor run performs."""
+    return [
+        [python_executable, "scripts/check_coordination.py"],
+        [python_executable, "scripts/target_binding.py", "--check"],
+        [python_executable, "scripts/protocol_capacity_board.py", "--wave", str(wave)],
+    ]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run strict read-only protocol checks.")
     parser.add_argument("--root", default=str(ROOT))
@@ -75,10 +84,7 @@ def main(argv: list[str] | None = None) -> int:
 
     root = Path(args.root)
     py = _python()
-    commands = [
-        [py, "scripts/check_coordination.py"],
-        [py, "scripts/protocol_capacity_board.py", "--wave", str(args.wave)],
-    ]
+    commands = base_commands(py, args.wave)
     if args.route or args.final_claim:
         commands.append(
             [

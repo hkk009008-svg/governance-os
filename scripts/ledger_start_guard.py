@@ -8,10 +8,12 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import target_binding
 
-PIPELINE_KERNEL = Path("/Users/hyungkoookkim/Pipeline")
-FORBIDDEN_KERNEL = Path("/Users/hyungkoookkim/Content")
-TARGET_REPO = Path("/Users/hyungkoookkim/evidence-ledger")
+# The kernel is wherever this script lives; the target repo and forbidden
+# roots come from the governance.toml binding registry (ADR-013), so future
+# works register a [targets.<name>] table instead of editing constants here.
+PIPELINE_KERNEL = Path(__file__).resolve().parent.parent
 VALID_SEATS = ("coordinator", "director", "director2", "operator", "operator2")
 
 
@@ -53,8 +55,12 @@ def _resolve(path: Path) -> Path:
     return path.expanduser().resolve(strict=False)
 
 
-def find_latest_ledger_route(root: Path) -> Path | None:
-    """Return the newest coordinator-to-all mailbox event that routes ledger work."""
+def find_latest_ledger_route(
+    root: Path, target: target_binding.TargetBinding | None = None
+) -> Path | None:
+    """Return the newest coordinator-to-all mailbox event that routes target work."""
+    if target is None:
+        target = target_binding.resolve_target()
     sent = root / "coordination" / "mailbox" / "sent"
     if not sent.exists():
         return None
@@ -63,8 +69,10 @@ def find_latest_ledger_route(root: Path) -> Path | None:
             body = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        body_lower = body.lower()
         if "Task-board:" in body and (
-            "ledger" in body.lower() or TARGET_REPO.as_posix() in body
+            any(keyword in body_lower for keyword in target.route_keywords)
+            or target.path.as_posix() in body
         ):
             return path
     return None
@@ -91,8 +99,16 @@ def _seat_status_command(seat: str, wave: int) -> str:
     )
 
 
-def first_commands(seat: str, wave: int, kernel: Path, route: Path) -> tuple[str, ...]:
-    """Return the ordered commands/instructions a ledger-routed seat must start with."""
+def first_commands(
+    seat: str,
+    wave: int,
+    kernel: Path,
+    route: Path,
+    target: target_binding.TargetBinding | None = None,
+) -> tuple[str, ...]:
+    """Return the ordered commands/instructions a target-routed seat must start with."""
+    if target is None:
+        target = target_binding.resolve_target()
     route_ref = _safe_relative(route, kernel)
     guidance = route_guidance(route)
     commands = [
@@ -105,8 +121,11 @@ def first_commands(seat: str, wave: int, kernel: Path, route: Path) -> tuple[str
         "env -u GIT_INDEX_FILE git log --oneline -5",
         "env -u GIT_INDEX_FILE git status --short",
         f"read Pipeline route body: {route_ref}",
-        "read docs/protocol/codex/ledger-cli-adoption.md before entering evidence-ledger",
     ]
+    if target.name == "evidence-ledger":
+        commands.append(
+            "read docs/protocol/codex/ledger-cli-adoption.md before entering evidence-ledger"
+        )
     if guidance.base:
         commands.append(f"route base: {guidance.base}")
     if guidance.worktree:
@@ -121,7 +140,7 @@ def first_commands(seat: str, wave: int, kernel: Path, route: Path) -> tuple[str
     )
     commands.append(
         "env -u GIT_INDEX_FILE git -C "
-        f"{_display(TARGET_REPO)} status --short --branch"
+        f"{_display(target.path)} status --short --branch"
     )
     if seat == "coordinator":
         commands.append(
@@ -136,24 +155,39 @@ def build_guard(
     root: Path,
     kernel: Path = PIPELINE_KERNEL,
     wave: int = 2,
+    target_name: str | None = None,
+    binding_root: Path | None = None,
 ) -> GuardResult:
     """Build a guard result without mutating repo state."""
     root = _resolve(root)
     kernel = _resolve(kernel)
-    forbidden = _resolve(FORBIDDEN_KERNEL)
-    errors: list[str] = []
 
+    try:
+        target = target_binding.resolve_target(binding_root, name=target_name)
+        forbidden = target_binding.forbidden_roots(binding_root)
+    except target_binding.BindingError as exc:
+        return GuardResult(
+            ok=False,
+            lines=(
+                "Ledger seat start guard: FAIL",
+                f"Pipeline kernel: {_display(kernel)}",
+            ),
+            errors=(str(exc),),
+        )
+
+    errors: list[str] = []
     if seat not in VALID_SEATS:
         errors.append(f"Unknown seat `{seat}`; expected one of {', '.join(VALID_SEATS)}.")
-    if root == forbidden:
-        errors.append(f"Refusing `{_display(FORBIDDEN_KERNEL)}` for ledger work.")
+    for forbidden_root in forbidden:
+        if root == forbidden_root:
+            errors.append(f"Refusing `{_display(forbidden_root)}` for ledger work.")
     if root != kernel:
         errors.append(
             "Ledger seat work must start from Pipeline governance kernel "
             f"`{_display(kernel)}`, not `{_display(root)}`."
         )
 
-    route = find_latest_ledger_route(root)
+    route = find_latest_ledger_route(root, target)
     if route is None:
         errors.append(
             "No active ledger coordinator route found under "
@@ -166,7 +200,7 @@ def build_guard(
             lines=(
                 "Ledger seat start guard: FAIL",
                 f"Pipeline kernel: {_display(kernel)}",
-                f"Target repo: {_display(TARGET_REPO)}",
+                f"Target repo: {_display(target.path)}",
             ),
             errors=tuple(errors),
         )
@@ -176,14 +210,18 @@ def build_guard(
     lines = [
         "Ledger seat start guard: PASS",
         f"Pipeline kernel: {_display(kernel)}",
-        f"Target repo: {_display(TARGET_REPO)}",
-        f"Forbidden kernel: {_display(FORBIDDEN_KERNEL)}",
+        f"Target: {target.name} ({target.repository})",
+        f"Target repo: {_display(target.path)}",
+        "Forbidden kernel: "
+        + ", ".join(_display(forbidden_root) for forbidden_root in forbidden),
         f"Seat: {seat}",
         f"Wave: {wave}",
         f"Active route: {route_ref}",
         "First commands:",
     ]
-    lines.extend(f"- {command}" for command in first_commands(seat, wave, kernel, route))
+    lines.extend(
+        f"- {command}" for command in first_commands(seat, wave, kernel, route, target)
+    )
     return GuardResult(ok=True, lines=tuple(lines), errors=())
 
 
@@ -193,8 +231,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--seat", choices=VALID_SEATS, required=True)
     parser.add_argument("--wave", type=int, default=2)
+    parser.add_argument(
+        "--target",
+        default=None,
+        help="registered target name from governance.toml (default: [binding].default_target)",
+    )
     parser.add_argument("--root", default=".", help=argparse.SUPPRESS)
     parser.add_argument("--kernel", default=str(PIPELINE_KERNEL), help=argparse.SUPPRESS)
+    parser.add_argument("--binding-root", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     result = build_guard(
@@ -202,6 +246,8 @@ def main(argv: list[str] | None = None) -> int:
         root=Path(args.root),
         kernel=Path(args.kernel),
         wave=args.wave,
+        target_name=args.target,
+        binding_root=Path(args.binding_root) if args.binding_root else None,
     )
     print("\n".join(result.lines))
     if result.errors:

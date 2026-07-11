@@ -69,6 +69,33 @@ env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger log --oneline 
 If the route names an isolated worktree, inspect that worktree before the normal
 target checkout. The normal checkout may be stale.
 
+### 5.1 Target-Binding Registry (governance.toml, ADR-013)
+
+Which product repos this kernel can govern is declared in `governance.toml`,
+not in Python constants. `evidence-ledger` is the default target; a future
+work is onboarded by registering a new table — no code edits:
+
+```toml
+[targets.my-new-app]
+repository = "hkk009008-svg/my-new-app"
+path = "~/my-new-app"
+route_keywords = ["my-new-app"]   # words a coordinator route uses to name this work
+```
+
+Validate the registry (also runs inside `protocol_doctor.py`):
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python scripts/target_binding.py --check
+```
+
+Select a non-default target at seat startup with
+`scripts/ledger_start_guard.py --seat <seat> --wave <wave> --target my-new-app`
+or the `GOVERNANCE_TARGET` environment variable; `GOVERNANCE_TARGET_PATH`
+overrides the local checkout path of the selected target. Missing or unknown
+bindings fail closed with a corrective message. Coordinator routes for the new
+target must mention one of its `route_keywords` (or its path) so the start
+guard resolves them.
+
 ## 6. Side-Effect Boundaries
 
 The following require explicit user authorization or a valid routed executor:
