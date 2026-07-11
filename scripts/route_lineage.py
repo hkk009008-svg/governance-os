@@ -59,3 +59,87 @@ def parse_lineage(body: str) -> RouteLineage:
         parent_route_id=route_id_of(sup_match.group("value")) if sup_match else None,
         expected_control_head=head_match.group("value").lower() if head_match else None,
     )
+
+
+@dataclass(frozen=True)
+class LineageRoute:
+    route_id: str
+    lineage: RouteLineage
+
+
+@dataclass(frozen=True)
+class Resolution:
+    winner: str | None
+    mode: str  # "lineage" | "legacy" | "empty"
+    issues: tuple[str, ...] = field(default_factory=tuple)
+
+
+def resolve_authoritative(routes: list[LineageRoute]) -> Resolution:
+    """Pick the authoritative route. Lineage-first; caller does legacy fallback.
+
+    Lineage resolution fires only when at least one route carries a
+    generation. The tip is a generation-bearing route no other route
+    supersedes; the winner is the highest-generation tip (ties broken by
+    route_id for determinism), and a same-generation multi-tip fork or a
+    tip-less cycle is reported as a structured issue.
+    """
+    if not routes:
+        return Resolution(winner=None, mode="empty")
+    gen_routes = [r for r in routes if r.lineage.generation is not None]
+    if not gen_routes:
+        return Resolution(winner=None, mode="legacy")
+    superseded = {
+        r.lineage.parent_route_id for r in routes if r.lineage.parent_route_id
+    }
+    tips = [r for r in gen_routes if r.route_id not in superseded]
+    if not tips:
+        return Resolution(
+            winner=None,
+            mode="lineage",
+            issues=("lineage has no tip (cycle or every generation superseded)",),
+        )
+    tips.sort(key=lambda r: (r.lineage.generation, r.route_id), reverse=True)
+    top_generation = tips[0].lineage.generation
+    top_tips = [r for r in tips if r.lineage.generation == top_generation]
+    issues: tuple[str, ...] = ()
+    if len(top_tips) > 1:
+        issues = (
+            f"forked lineage: multiple tips at generation {top_generation}: "
+            + ", ".join(sorted(r.route_id for r in top_tips)),
+        )
+    return Resolution(winner=tips[0].route_id, mode="lineage", issues=issues)
+
+
+@dataclass(frozen=True)
+class CasResult:
+    ok: bool
+    reason: str = ""
+
+
+def check_cas(current: LineageRoute, proposed: LineageRoute) -> CasResult:
+    """Accept proposed as the next authoritative route only under compare-and-swap.
+
+    parent must equal the current tip AND generation must be current + 1.
+    Any mismatch is a structured stale_parent refusal (the writer must rebase).
+    """
+    if proposed.lineage.parent_route_id != current.route_id:
+        return CasResult(
+            ok=False,
+            reason=(
+                f"stale_parent: proposed parent {proposed.lineage.parent_route_id!r} "
+                f"is not the current tip {current.route_id!r}"
+            ),
+        )
+    if current.lineage.generation is None or proposed.lineage.generation is None:
+        return CasResult(
+            ok=False, reason="stale_parent: missing generation on current or proposed"
+        )
+    if proposed.lineage.generation != current.lineage.generation + 1:
+        return CasResult(
+            ok=False,
+            reason=(
+                f"stale_parent: proposed generation {proposed.lineage.generation} "
+                f"is not current {current.lineage.generation} + 1"
+            ),
+        )
+    return CasResult(ok=True)
