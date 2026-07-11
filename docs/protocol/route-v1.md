@@ -53,3 +53,27 @@ To EXPERIMENT with a typed route for a new cycle:
   reads as authority.
 - `generation` / `parent_route_id` / `expected_control_head` are shape-checked
   but not yet CAS-enforced (that is Slice 2 / P0.3).
+
+## Route lineage and currency (ADR-015)
+
+Route currency no longer depends on filename timestamp. A route carries
+`Route generation: N` and (unless it is generation 1) `Supersedes route:
+<parent>` — both emitted by the route/v1 renderer. The authoritative route is
+the lineage TIP: the highest-generation route that no other route supersedes.
+
+- Resolve / audit the current authoritative route:
+
+      env -u GIT_INDEX_FILE .venv/bin/python scripts/route_lineage.py --check
+
+  It reports the authoritative route id, exits non-zero on a fork (two tips at
+  one generation) or a cycle, and prints `legacy route set` when no route
+  carries a generation (the resolver then falls back to filename order).
+
+- A new route may supersede the current tip only under compare-and-swap: its
+  `Supersedes route:` must name the current tip and its generation must be
+  the tip's generation + 1. `route_lineage.check_cas` returns a structured
+  `stale_parent` refusal otherwise — the stale writer rebases its delta onto
+  the new tip rather than overwriting it.
+
+Legacy routes without a generation header keep the prior reverse-lexicographic
+behavior, so the live campaign is unaffected until routes adopt generations.

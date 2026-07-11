@@ -80,8 +80,11 @@ def resolve_authoritative(routes: list[LineageRoute]) -> Resolution:
     Lineage resolution fires only when at least one route carries a
     generation. The tip is a generation-bearing route no other route
     supersedes; the winner is the highest-generation tip (ties broken by
-    route_id for determinism), and a same-generation multi-tip fork or a
-    tip-less cycle is reported as a structured issue.
+    route_id for determinism). Structured issues are reported for: any case
+    of multiple unsuperseded generation-bearing tips (a fork — whether the
+    abandoned branch stalled at the same generation or a different one), a
+    tip-less cycle (every generation superseded), and any dangling parent
+    (a route naming a supersedes parent that is not in the input set).
     """
     if not routes:
         return Resolution(winner=None, mode="empty")
@@ -191,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="report the authoritative route and fail on lineage inconsistency",
+        help="report the authoritative route and fail on lineage inconsistency (the default and only action)",
     )
     args = parser.parse_args(argv)
 
