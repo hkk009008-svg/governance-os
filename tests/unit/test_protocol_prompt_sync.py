@@ -604,17 +604,33 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
         for phrase in required[1:]:
             assert phrase.lower() in text, (path, phrase)
 
-    lane_v = _read(".codex/agents/lane-v-verifier.toml")
-    for field in (
+    report_fields = (
         "Cross-model review:",
         "Effective Opus model:",
         "Opus finding dispositions:",
         "Reconciliation guard:",
         "Degraded reason:",
+    )
+    for path in (
+        ".codex/agents/lane-v-verifier.toml",
+        ".codex/agents/protocol-operator.toml",
     ):
-        assert field in lane_v
+        prompt = _read(path)
+        for field in report_fields:
+            assert field in prompt, (path, field)
+
+    lane_v = _read(".codex/agents/lane-v-verifier.toml")
     assert "scripts/opus_review_bridge.py review" in lane_v
     assert "scripts/opus_review_bridge.py reconcile" in lane_v
+
+    protocol_operator = _read(".codex/agents/protocol-operator.toml")
+    for phrase in (
+        "If any required cross-model field is missing, block GO",
+        "go_allowed=false blocks GO",
+        "Confirmed minor Opus findings require NITS",
+        "confirmed important or critical Opus findings require FAIL",
+    ):
+        assert phrase in protocol_operator
 
     operator_skill = _read(".agents/skills/seat-operator/SKILL.md")
     assert "For non-Codex Lane V" in operator_skill
