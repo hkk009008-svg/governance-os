@@ -66,6 +66,7 @@ def base_commands(python_executable: str, wave: int) -> list[list[str]]:
     return [
         [python_executable, "scripts/check_coordination.py"],
         [python_executable, "scripts/target_binding.py", "--check"],
+        [python_executable, "scripts/route_lineage.py", "--check"],
         [python_executable, "scripts/protocol_capacity_board.py", "--wave", str(wave)],
     ]
 

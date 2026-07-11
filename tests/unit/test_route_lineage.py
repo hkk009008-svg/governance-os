@@ -126,3 +126,135 @@ def test_cas_rejects_non_incremented_generation():
     proposed = _lr("r9", generation=9, parent="r2")
     result = route_lineage.check_cas(current, proposed)
     assert not result.ok and "stale_parent" in result.reason
+
+
+# --- Task 4: load_routes + --check CLI + lineage-first guard rewire ---
+from pathlib import Path
+
+
+def _write_route(root: Path, name: str, body: str) -> Path:
+    sent = root / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True, exist_ok=True)
+    path = sent / name
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_find_latest_is_lineage_tip_when_generations_present(tmp_path):
+    import ledger_start_guard
+
+    # older filename carries the HIGHER generation -> lineage must beat filename sort
+    _write_route(
+        tmp_path,
+        "2026-07-12T01-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: ledger-a\nThis routes ledger work.\nRoute generation: 3\n"
+        "Supersedes route: coordination/mailbox/sent/2026-07-12T09-00-00Z-coordinator-to-all-coordination.md\n",
+    )
+    _write_route(
+        tmp_path,
+        "2026-07-12T09-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: ledger-b\nThis routes ledger work.\nRoute generation: 2\n",
+    )
+    result = ledger_start_guard.find_latest_ledger_route(tmp_path)
+    assert result is not None
+    assert result.name == "2026-07-12T01-00-00Z-coordinator-to-all-coordination.md"
+
+
+def test_find_latest_falls_back_to_reverse_lex_without_generation(tmp_path):
+    import ledger_start_guard
+
+    _write_route(
+        tmp_path,
+        "2026-07-12T01-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: ledger-a\nThis routes ledger work.\n",
+    )
+    newest = _write_route(
+        tmp_path,
+        "2026-07-12T09-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: ledger-b\nThis routes ledger work.\n",
+    )
+    result = ledger_start_guard.find_latest_ledger_route(tmp_path)
+    assert result == newest  # identical to prior reverse-lex behavior
+
+
+def test_check_cli_passes_on_legacy_route_set(tmp_path, capsys):
+    _write_route(
+        tmp_path,
+        "2026-07-12T09-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: ledger-b\nThis routes ledger work.\n",
+    )
+    rc = route_lineage.main(["--root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert rc == 0 and "legacy" in out.lower()
+
+
+def test_check_cli_fails_on_forked_lineage(tmp_path, capsys):
+    _write_route(
+        tmp_path,
+        "2026-07-12T01-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: a\nRoute generation: 1\n",
+    )
+    _write_route(
+        tmp_path,
+        "2026-07-12T02-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: b\nRoute generation: 2\n"
+        "Supersedes route: 2026-07-12T01-00-00Z-coordinator-to-all-coordination.md\n",
+    )
+    _write_route(
+        tmp_path,
+        "2026-07-12T03-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: c\nRoute generation: 2\n"
+        "Supersedes route: 2026-07-12T01-00-00Z-coordinator-to-all-coordination.md\n",
+    )
+    rc = route_lineage.main(["--root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert rc == 1 and "forked lineage" in out
+
+
+def test_protocol_doctor_base_commands_include_lineage_check():
+    import protocol_doctor
+
+    commands = protocol_doctor.base_commands(python_executable="PY", wave=2)
+    assert ["PY", "scripts/route_lineage.py", "--check"] in commands
+
+
+# --- Task 4 hardening: --check as a complete audit surface ---
+
+
+def test_resolve_flags_abandoned_different_generation_branch():
+    # r2a is an unsuperseded orphan tip at gen2 alongside r3b at gen3 -> a fork,
+    # even though the two live tips are at DIFFERENT generations.
+    routes = [
+        _lr("r1", generation=1, parent=None),
+        _lr("r2a", generation=2, parent="r1"),
+        _lr("r2b", generation=2, parent="r1"),
+        _lr("r3b", generation=3, parent="r2b"),
+    ]
+    res = route_lineage.resolve_authoritative(routes)
+    assert res.mode == "lineage"
+    assert res.winner == "r3b"  # highest-generation tip, deterministic
+    assert any(
+        "forked" in issue or "multiple" in issue for issue in res.issues
+    ), res.issues
+    assert any("r2a" in issue for issue in res.issues), res.issues
+
+
+def test_resolve_flags_dangling_parent():
+    routes = [_lr("r1", generation=5, parent="ghost")]
+    res = route_lineage.resolve_authoritative(routes)
+    assert res.winner == "r1"  # unchanged winner
+    assert any(
+        "dangling parent" in issue and "ghost" in issue for issue in res.issues
+    ), res.issues
+
+
+def test_check_cli_fails_on_dangling_parent(tmp_path, capsys):
+    _write_route(
+        tmp_path,
+        "2026-07-12T05-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: x\nRoute generation: 5\n"
+        "Supersedes route: 2026-07-11T00-00-00Z-coordinator-to-all-coordination.md\n",
+    )
+    rc = route_lineage.main(["--root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert rc == 1 and "dangling parent" in out

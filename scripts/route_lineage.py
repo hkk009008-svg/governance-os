@@ -99,15 +99,38 @@ def resolve_authoritative(routes: list[LineageRoute]) -> Resolution:
             issues=("lineage has no tip (cycle or every generation superseded)",),
         )
     tips.sort(key=lambda r: (r.lineage.generation, r.route_id), reverse=True)
-    top_generation = tips[0].lineage.generation
-    top_tips = [r for r in tips if r.lineage.generation == top_generation]
-    issues: tuple[str, ...] = ()
-    if len(top_tips) > 1:
-        issues = (
-            f"forked lineage: multiple tips at generation {top_generation}: "
-            + ", ".join(sorted(r.route_id for r in top_tips)),
+    issues: list[str] = []
+    # Any multiple unsuperseded generation-bearing tips is a fork, whether the
+    # abandoned branch stalled at the same generation or a different one. The
+    # winner stays the highest-generation tip (route_id tiebreak) — deterministic.
+    if len(tips) > 1:
+        issues.append(
+            "forked lineage: multiple unsuperseded tips: "
+            + ", ".join(sorted(r.route_id for r in tips))
         )
-    return Resolution(winner=tips[0].route_id, mode="lineage", issues=issues)
+        top_generation = tips[0].lineage.generation
+        top_tips = [r for r in tips if r.lineage.generation == top_generation]
+        if len(top_tips) > 1:
+            issues.append(
+                f"forked lineage: multiple tips at generation {top_generation}: "
+                + ", ".join(sorted(r.route_id for r in top_tips))
+            )
+    # A parent pointer that names no route in the input set is broken/partial
+    # lineage. Report it (sorted, deduped); it does not change the winner.
+    known_ids = {r.route_id for r in routes}
+    dangling = sorted(
+        {
+            (r.route_id, r.lineage.parent_route_id)
+            for r in routes
+            if r.lineage.parent_route_id is not None
+            and r.lineage.parent_route_id not in known_ids
+        }
+    )
+    issues.extend(
+        f"dangling parent: {route_id} supersedes unknown {parent_id}"
+        for route_id, parent_id in dangling
+    )
+    return Resolution(winner=tips[0].route_id, mode="lineage", issues=tuple(issues))
 
 
 @dataclass(frozen=True)
@@ -143,3 +166,47 @@ def check_cas(current: LineageRoute, proposed: LineageRoute) -> CasResult:
             ),
         )
     return CasResult(ok=True)
+
+
+def load_routes(root: Path) -> list[LineageRoute]:
+    """Parse lineage for every coordinator-to-all route under root's mailbox."""
+    sent = root / "coordination" / "mailbox" / "sent"
+    routes: list[LineageRoute] = []
+    if not sent.exists():
+        return routes
+    for path in sorted(sent.glob("*coordinator-to-all*.md")):
+        try:
+            body = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        routes.append(LineageRoute(route_id_of(path.name), parse_lineage(body)))
+    return routes
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate coordinator route lineage consistency (read-only).",
+    )
+    parser.add_argument("--root", default=str(_REPO_ROOT))
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report the authoritative route and fail on lineage inconsistency",
+    )
+    args = parser.parse_args(argv)
+
+    resolution = resolve_authoritative(load_routes(Path(args.root)))
+    if resolution.mode == "legacy":
+        print("ROUTE LINEAGE — legacy route set (no generations); resolution by filename.")
+        return 0
+    if resolution.mode == "empty":
+        print("ROUTE LINEAGE — no coordinator routes found.")
+        return 0
+    print(f"ROUTE LINEAGE — authoritative route: {resolution.winner}")
+    for issue in resolution.issues:
+        print(f"- {issue}")
+    return 1 if resolution.issues else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

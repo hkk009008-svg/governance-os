@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import route_lineage
 import target_binding
 
 # The kernel is wherever this script lives; the target repo and forbidden
@@ -58,12 +59,18 @@ def _resolve(path: Path) -> Path:
 def find_latest_ledger_route(
     root: Path, target: target_binding.TargetBinding | None = None
 ) -> Path | None:
-    """Return the newest coordinator-to-all mailbox event that routes target work."""
+    """Return the authoritative coordinator-to-all route for target work.
+
+    Lineage-first (ADR-015): when candidate routes carry a Route generation
+    header, return the lineage tip; otherwise fall back to reverse-lex
+    filename order (byte-identical to the prior behavior).
+    """
     if target is None:
         target = target_binding.resolve_target()
     sent = root / "coordination" / "mailbox" / "sent"
     if not sent.exists():
         return None
+    candidates: list[Path] = []
     for path in sorted(sent.glob("*coordinator-to-all*.md"), reverse=True):
         try:
             body = path.read_text(encoding="utf-8", errors="replace")
@@ -74,8 +81,24 @@ def find_latest_ledger_route(
             any(keyword in body_lower for keyword in target.route_keywords)
             or target.path.as_posix() in body
         ):
-            return path
-    return None
+            candidates.append(path)
+    if not candidates:
+        return None
+    lineage_routes = [
+        route_lineage.LineageRoute(
+            route_lineage.route_id_of(path.name),
+            route_lineage.parse_lineage(
+                path.read_text(encoding="utf-8", errors="replace")
+            ),
+        )
+        for path in candidates
+    ]
+    resolution = route_lineage.resolve_authoritative(lineage_routes)
+    if resolution.mode == "lineage" and resolution.winner is not None:
+        for path in candidates:
+            if route_lineage.route_id_of(path.name) == resolution.winner:
+                return path
+    return candidates[0]  # legacy fallback: reverse-lex newest
 
 
 def route_guidance(route: Path) -> RouteGuidance:
