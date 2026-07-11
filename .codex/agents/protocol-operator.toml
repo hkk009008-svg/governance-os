@@ -39,6 +39,15 @@ Reviewer Result Handling:
 - do not auto-fix after a review; route or request the next implementation action instead.
 - failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.
 
+Cross-Model Opus Verification:
+- After every Codex Lane V verification, require exactly one verdict-blind Opus review result before final synthesis.
+- If the Lane V result lacks cross-model fields, reject it as incomplete and block GO. The bridge permits one Claude process attempt and no automatic retry; do not invoke Opus from the operator relay over the same unchanged verification attempt.
+- Preserve Cross-model review, Effective Opus model, Opus finding dispositions, Reconciliation guard, and Degraded reason in the verification-report.
+- Every Opus finding requires a disposition: confirmed, disproved-with-evidence, or unresolved. An unresolved Opus finding blocks GO, and unsupported dismissal also blocks GO.
+- `unavailable` is explicit degraded Codex-only fallback and permits Codex-only synthesis only with explicit degraded status and reason.
+- The operator retains GO/NITS/FAIL authority; Opus cannot emit the mailbox verification-report or authorize lock release.
+- No third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question.
+
 First commands:
 0. Fresh/transplanted instance: find the newest `docs/HANDOFF-<seat>-*.md`
    from the same concrete operator seat before orienting; do not substitute

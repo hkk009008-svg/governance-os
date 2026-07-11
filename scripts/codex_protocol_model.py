@@ -1092,6 +1092,25 @@ def render_protocol_assembly_map() -> str:
     return "\n".join(lines)
 
 
+CROSS_MODEL_VERIFICATION_RULES = (
+    "after every Codex Lane V verification, attempt exactly one verdict-blind Opus review before the final verdict",
+    "the Opus request carries the reviewed commit/range, requirements, allowed paths, exact verification commands, and a recorded user-task:<id> or verify-request:<id> authorization source but no Codex verdict, report, findings, or conclusion",
+    "operator retains GO/NITS/FAIL authority; Opus output is advisory evidence and never a mailbox event or protocol verdict",
+    "unavailable is explicit degraded Codex-only fallback with the reason preserved; it is never treated as pass",
+    "every Opus finding requires a disposition: confirmed, disproved with concrete evidence, or unresolved",
+    "an unresolved Opus finding blocks GO; confirmed minor findings require NITS and confirmed important/critical findings require FAIL",
+    "the bridge permits one Claude process attempt and no automatic retry for a verification attempt",
+    "no third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question",
+)
+
+
+def render_cross_model_verification() -> str:
+    """Return the Codex-to-Opus independent verification contract."""
+    lines = ["Cross-Model Opus Verification:"]
+    lines.extend(f"- {rule}" for rule in CROSS_MODEL_VERIFICATION_RULES)
+    return "\n".join(lines)
+
+
 def render_surface_summary() -> str:
     """Return a compact Markdown summary of surfaces and invariants."""
     demoted_names = (
@@ -1111,6 +1130,7 @@ def render_surface_summary() -> str:
         "Pair Operating Contract: director -> operator is the fast path; mailbox artifact, not chat",
         "Capacity Split Default: divisible or preplanned larger work defaults to dual-pair routing",
         "Seat Subagent Development: seats retain authority; subagents own bounded work",
+        "Cross-Model Opus Verification: every Codex Lane V pass attempts one blind Opus review",
         "Codex Risk-Tier Router: conversational and read-only work avoid implementation ceremony",
         "Side-Effect Executor Token: generic user approval is unit consent, not executor election",
         "Ledger CLI Bridge: Pipeline kernel -> evidence-ledger target via "
@@ -1145,6 +1165,9 @@ def main() -> int:
     print()
     print("## Seat Subagent Development")
     print(render_seat_subagent_development())
+    print()
+    print("## Cross-Model Opus Verification")
+    print(render_cross_model_verification())
     print()
     print("## Ledger CLI Bridge")
     print(render_ledger_cli_bridge())

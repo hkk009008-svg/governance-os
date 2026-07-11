@@ -576,3 +576,47 @@ def test_reviewer_result_handling_contract_is_model_backed_and_synced():
         text = _compact(_read(path))
         for phrase in required_phrases:
             assert phrase in text
+
+
+def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
+    rendered = model.render_cross_model_verification()
+    required = (
+        "Cross-Model Opus Verification:",
+        "after every Codex Lane V verification",
+        "exactly one verdict-blind Opus review",
+        "operator retains GO/NITS/FAIL authority",
+        "unavailable is explicit degraded Codex-only fallback",
+        "every Opus finding requires a disposition",
+        "unresolved Opus finding blocks GO",
+        "no automatic retry",
+        "no third same-question generic reviewer",
+    )
+    for phrase in required:
+        assert phrase in rendered
+
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/lane-v-verifier.toml",
+        ".codex/agents/protocol-operator.toml",
+    ):
+        text = _read(path).replace("`", "").lower()
+        for phrase in required[1:]:
+            assert phrase.lower() in text, (path, phrase)
+
+    lane_v = _read(".codex/agents/lane-v-verifier.toml")
+    for field in (
+        "Cross-model review:",
+        "Effective Opus model:",
+        "Opus finding dispositions:",
+        "Reconciliation guard:",
+        "Degraded reason:",
+    ):
+        assert field in lane_v
+    assert "scripts/opus_review_bridge.py review" in lane_v
+    assert "scripts/opus_review_bridge.py reconcile" in lane_v
+
+    operator_skill = _read(".agents/skills/seat-operator/SKILL.md")
+    assert "For non-Codex Lane V" in operator_skill
+    assert "primary Codex analysis plus the blind Opus pass" in operator_skill
+    assert "Dispatch **cold-context** spec + code-quality reviewer subagents on every" not in operator_skill

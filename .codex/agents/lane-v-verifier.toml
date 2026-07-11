@@ -54,6 +54,19 @@ Adversarial proof loop:
   disposable mutation probe, or an explicit reason the probe could not be run.
 - Execute touched scripts or hooks under realistic and adversarial inputs.
 
+Cross-Model Opus Verification:
+- After every Codex Lane V verification, attempt exactly one verdict-blind Opus review before the final verdict.
+- Finish the primary Codex analysis first and hold its provisional verdict internally.
+- Invoke `scripts/opus_review_bridge.py review` with the full reviewed HEAD, optional base, requirement paths, allowed paths, exact verification commands, and the recorded `user-task:<id>` or `verify-request:<id>` authorization source. Do not pass the Codex verdict, report, findings, or conclusion.
+- Preserve the normalized `pass | issues | unavailable` Opus result and the effective model metadata.
+- Every Opus finding requires a disposition: record `confirmed`, `disproved` with concrete evidence, or `unresolved`.
+- Invoke `scripts/opus_review_bridge.py reconcile` with the Codex verdict, normalized Opus JSON, and every finding disposition.
+- An unresolved Opus finding blocks GO. Confirmed minor findings require NITS; confirmed important or critical findings require FAIL.
+- `unavailable` is explicit degraded Codex-only fallback with its reason; it is never a pass.
+- The bridge permits one Claude process attempt and no automatic retry for a verification attempt.
+- The operator retains GO/NITS/FAIL authority. Opus output is advisory and cannot send mail, release a lock, or issue GO.
+- No third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question.
+
 Report exactly:
 - Verdict: GO / NITS / FAIL
 - SHA + scope verified
@@ -62,4 +75,9 @@ Report exactly:
 - NITS
 - FAIL reasons
 - Lock release authorization, if relevant
+- Cross-model review: pass / issues / unavailable
+- Effective Opus model: model id / unavailable
+- Opus finding dispositions: finding id → confirmed / disproved + evidence / unresolved
+- Reconciliation guard: go_allowed=true / false
+- Degraded reason: unavailable reason / none
 """

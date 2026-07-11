@@ -330,6 +330,18 @@ After live-seat/coordinator orientation, record a Subagent utilization decision:
 - Do not run parallel implementation subagents on shared files or behind the
   same push-gated lock.
 
+## Cross-Model Opus Verification
+
+- After every Codex Lane V verification, attempt exactly one verdict-blind Opus review before the final verdict.
+- The Opus request carries the reviewed commit/range, requirements, allowed paths, exact verification commands, and a recorded `user-task:<id>` or `verify-request:<id>` authorization source but no Codex verdict, report, findings, or conclusion.
+- The operator retains GO/NITS/FAIL authority; Opus output is advisory evidence and never a mailbox event or protocol verdict.
+- `unavailable` is explicit degraded Codex-only fallback with the reason preserved; it is never treated as `pass`.
+- Every Opus finding requires a disposition: `confirmed`, `disproved` with concrete evidence, or `unresolved`.
+- An unresolved Opus finding blocks GO; confirmed minor findings require NITS and confirmed important/critical findings require FAIL.
+- The bridge permits one Claude process attempt and no automatic retry for a verification attempt.
+- Use `scripts/opus_review_bridge.py review` for the blind pass and `scripts/opus_review_bridge.py reconcile` before GO.
+- Opus is the required cross-model second pass for the same verification question; no third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question.
+
 ## Verification Commands
 
 Run the narrow command that proves the current claim:

@@ -121,9 +121,22 @@ git state.
 - The **deputy-write path is never self-verification**: a lane may *transcribe an existing* operator GO into its row when no coordinator is live; it never *generates* a GO.
 - **Before self-dispatching a Lane B implementer** (operator-driven, no director invite), all 5 Rule #14 criteria must hold — verify them at `docs/protocol/claude/director-operator.md §Rule #14`; otherwise yield to the director.
 
+## Cross-Model Opus Verification
+
+- After every Codex Lane V verification, attempt exactly one verdict-blind Opus review before the final verdict.
+- The Opus request carries the reviewed commit/range, requirements, allowed paths, exact verification commands, and a recorded `user-task:<id>` or `verify-request:<id>` authorization source but no Codex verdict, report, findings, or conclusion.
+- The operator retains GO/NITS/FAIL authority; Opus output is advisory evidence and never a mailbox event or protocol verdict.
+- `unavailable` is explicit degraded Codex-only fallback with the reason preserved; it is never treated as `pass`.
+- Every Opus finding requires a disposition: `confirmed`, `disproved` with concrete evidence, or `unresolved`.
+- An unresolved Opus finding blocks GO; confirmed minor findings require NITS and confirmed important/critical findings require FAIL.
+- The bridge permits one Claude process attempt and no automatic retry for a verification attempt.
+- Use `scripts/opus_review_bridge.py review` for the blind pass and `scripts/opus_review_bridge.py reconcile` before GO.
+- Opus is the required cross-model second pass for the same verification question; no third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question.
+
 ## Lane V — independent verification (Rule #9)
 
-- Dispatch **cold-context** spec + code-quality reviewer subagents on every `feat`/`refactor`/`fix` commit. The reviewer prompt **MUST NOT cite the director's reviewer findings** — contamination destroys the independence that makes the second pass valuable. Both seats dispatch reviewers **simultaneously**, not sequentially.
+- For non-Codex Lane V, dispatch the existing cold-context spec + code-quality reviewer pair on shipping `feat`/`refactor`/`fix` commits and preserve their independence.
+- For Codex Lane V, the primary Codex analysis plus the blind Opus pass is the required two-model pair for the same verification question. Do not also dispatch generic spec or code-quality reviewers over that unchanged commit. An additional specialist is lawful only for a different pre-stated question under R-VERIFY-TIER.
 - Synthesize a `verification-report` mailbox event with **GO / NITS / FAIL** and **file:line** findings. **Format + severity vocabulary: see [`verification-report-format.md`](verification-report-format.md)** — emit via `coordination/bin/send-event`, never as chat (Rule #19).
 - Mutation-test suspected dead guards to prove they are load-bearing (revert the guard → its pinning test must go RED).
 - **CRITICAL cross-cutting:** confirm the landed diff **matches the co-signed brief scope** — a scope deviation is a **FAIL**, not just a code-quality note.
