@@ -270,6 +270,13 @@ blocking. With the argument, the planner:
 6. records normalization and owner-decision audit entries in the plan;
 7. includes the override JSON hash in canonical plan bytes.
 
+The newly generated normalized plan's `parser_commit` is the independently
+resolved current normalization-implementation commit. The older source-plan
+parser commit remains provenance inside the canonical override JSON (and is
+therefore transitively bound by the override hash); it is never reused as the
+new plan's executable-code commit. This keeps apply's existing
+`HEAD == plan.parser_commit` safety check satisfiable without weakening it.
+
 The planner never edits either workbook. Summary values cannot create detail,
 allocate residuals, or repair a mismatch. If any upstream case remains
 unresolved or a summary remains unequal, the plan is blocking.

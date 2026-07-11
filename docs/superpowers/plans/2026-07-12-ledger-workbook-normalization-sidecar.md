@@ -415,6 +415,12 @@ bound implementation commit; it is supplied independently by the caller. Task
 three automatic reason-class digests must exactly equal freshly derived
 candidate fact sets before any predicate can normalize them.
 
+When overrides are present, the returned `RefreshPlan.parser_commit` is the
+independently supplied expected normalization-implementation commit. The
+blocked source plan's parser commit remains only in the canonical override
+bindings transitively covered by `normalization_overrides_sha256`; apply's
+existing current-HEAD check is not relaxed.
+
 Task 3 corrective scope may also modify
 `import/workbook_refresh_corrections.py` and
 `import/tests/test_workbook_refresh_corrections.py` solely to populate and test
