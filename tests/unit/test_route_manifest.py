@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import json
 
 import pytest
 
@@ -160,3 +161,68 @@ def test_validation_does_not_mutate_input():
     snapshot = copy.deepcopy(obj)
     route_manifest.validate_route_object(obj)
     assert obj == snapshot
+
+
+def test_route_hash_is_deterministic_and_key_order_free():
+    obj_a = _route()
+    obj_b = dict(reversed(list(_route().items())))
+    assert route_manifest.route_hash(obj_a) == route_manifest.route_hash(obj_b)
+    assert len(route_manifest.route_hash(obj_a)) == 64
+
+
+def test_route_hash_changes_when_authority_changes():
+    assert route_manifest.route_hash(_route()) != route_manifest.route_hash(
+        _route(prohibitions=[])
+    )
+
+
+def test_route_hash_refuses_invalid_object():
+    with pytest.raises(ValueError):
+        route_manifest.route_hash(_route(schema="governance.route/v2"))
+
+
+def _write_pair_by_hand(tmp_path, route, *, hash_line=None, sidecar_bytes=None):
+    md_path = tmp_path / f"{route['route_id']}.md"
+    sidecar = tmp_path / f"{route['route_id']}.route.json"
+    digest = hash_line or f"route_hash: {route_manifest.route_hash(route)}"
+    md_path.write_text(
+        f"# Fixture route\n\nTask-board: {route['task_board']}\n\n{digest}\n",
+        encoding="utf-8",
+    )
+    sidecar.write_bytes(
+        sidecar_bytes
+        if sidecar_bytes is not None
+        else route_manifest.canonical_route_bytes(route)
+    )
+    return md_path
+
+
+def test_read_manifest_round_trips(tmp_path):
+    md_path = _write_pair_by_hand(tmp_path, _route())
+    assert route_manifest.read_manifest(md_path) == _route()
+
+
+def test_read_manifest_rejects_missing_sidecar(tmp_path):
+    md_path = _write_pair_by_hand(tmp_path, _route())
+    md_path.with_suffix(".route.json").unlink()
+    with pytest.raises(route_manifest.RouteManifestError):
+        route_manifest.read_manifest(md_path)
+
+
+def test_read_manifest_rejects_hash_mismatch(tmp_path):
+    md_path = _write_pair_by_hand(tmp_path, _route(), hash_line="route_hash: " + "0" * 64)
+    with pytest.raises(route_manifest.RouteManifestError):
+        route_manifest.read_manifest(md_path)
+
+
+def test_read_manifest_rejects_missing_hash_line(tmp_path):
+    md_path = _write_pair_by_hand(tmp_path, _route(), hash_line="(no pin)")
+    with pytest.raises(route_manifest.RouteManifestError):
+        route_manifest.read_manifest(md_path)
+
+
+def test_read_manifest_rejects_noncanonical_sidecar_bytes(tmp_path):
+    pretty = json.dumps(_route(), indent=2).encode("utf-8")
+    md_path = _write_pair_by_hand(tmp_path, _route(), sidecar_bytes=pretty)
+    with pytest.raises(route_manifest.RouteManifestError):
+        route_manifest.read_manifest(md_path)

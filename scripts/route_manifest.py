@@ -228,3 +228,55 @@ def validate_route_object(obj: Any) -> list[str]:
     if "extensions" in obj and not isinstance(obj["extensions"], dict):
         issues.append("extensions must be an object")
     return issues
+
+
+HASH_LINE_RE = re.compile(r"(?im)^route_hash:\s*(?P<digest>[0-9a-f]{64})\s*$")
+
+
+def canonical_route_bytes(obj: dict) -> bytes:
+    """RFC 8785 canonical bytes of a VALID route object (these ARE the sidecar bytes)."""
+    issues = validate_route_object(obj)
+    if issues:
+        raise ValueError("cannot canonicalize an invalid route object: " + "; ".join(issues))
+    return canonicalize(obj)
+
+
+def route_hash(obj: dict) -> str:
+    return hashlib.sha256(canonical_route_bytes(obj)).hexdigest()
+
+
+def sidecar_path(md_path: Path) -> Path:
+    return md_path.with_suffix(".route.json")
+
+
+def read_manifest(md_path: Path) -> dict:
+    """Load and verify the route pair. Fail-closed: any absence/mismatch raises."""
+    try:
+        body = md_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RouteManifestError(f"unreadable route projection: {exc}") from exc
+    pins = HASH_LINE_RE.findall(body)
+    if len(pins) != 1:
+        raise RouteManifestError(
+            f"{md_path.name}: expected exactly one route_hash pin, found {len(pins)}"
+        )
+    sidecar = sidecar_path(md_path)
+    try:
+        raw = sidecar.read_bytes()
+    except OSError as exc:
+        raise RouteManifestError(f"missing route sidecar {sidecar.name}: {exc}") from exc
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RouteManifestError(f"{sidecar.name}: unparseable JSON: {exc}") from exc
+    issues = validate_route_object(obj)
+    if issues:
+        raise RouteManifestError(f"{sidecar.name}: invalid route object: " + "; ".join(issues))
+    if canonicalize(obj) != raw:
+        raise RouteManifestError(f"{sidecar.name}: bytes are not canonical (RFC 8785)")
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != pins[0]:
+        raise RouteManifestError(
+            f"{md_path.name}: route_hash pin {pins[0][:12]}... does not match sidecar {digest[:12]}..."
+        )
+    return obj
