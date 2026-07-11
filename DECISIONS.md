@@ -519,3 +519,48 @@ by nothing.
 - Sidecar placement for LIVE routes (mailbox naming-lint interaction) is
   explicitly deferred to the cutover ADR; this slice writes pairs only in
   tests and fixtures.
+
+## ADR-015: Route currency from typed lineage (generation + parent + compare-and-swap)
+
+**Status:** Accepted
+
+**Context:**
+The only automatic current-route resolver is reverse-lexicographic filename
+sort (`scripts/ledger_start_guard.py` `find_latest_ledger_route`), so a
+transient filesystem observation or a stale writer whose artifact name sorts
+later could appear authoritative. `Supersedes route:` / `Supersedes active
+route:` parent pointers exist in live coordinator routes but are parsed by no
+code. Slice 1 (ADR-014) added `generation` / `parent_route_id` /
+`expected_control_head` to route/v1 and its renderer emits them, but nothing
+consumes them for selection.
+
+**Decision:**
+1. Add `scripts/route_lineage.py`: parse the lineage headers (`Route
+   generation:`, `Supersedes route:` and its `Supersedes active route:`
+   alias, backtick-optional; `Expected control HEAD:`), resolve the
+   authoritative route as the lineage TIP (highest-generation route no other
+   route supersedes), and offer a compare-and-swap check returning a
+   structured `stale_parent` result when a proposed route's parent is not the
+   current tip or its generation is not current+1.
+2. Rewire `find_latest_ledger_route` lineage-first with a legacy fallback:
+   when no candidate route carries a generation header, resolution is
+   byte-identical to the prior reverse-lex behavior. The live campaign (zero
+   generation headers) is unaffected.
+3. `expected_control_head` is parsed and reported, not gated on whole-repo
+   HEAD equality (audit modification) — parent + generation are the hard gate.
+4. A `route_lineage.py --check` CLI, wired into `scripts/protocol_doctor.py`,
+   fails only on lineage inconsistency among generation-bearing routes (a
+   fork — two tips at the same generation — or a cycle). It passes on the
+   all-legacy live set.
+5. This does not activate the dormant signed bus (ADR-010); lineage lives in
+   the git-committed mailbox route bodies.
+
+**Consequences:**
+- Two concurrent coordinators cannot both become authoritative once routes
+  carry generations: a fork is detected (structured issue) and CAS rejects
+  the stale writer with a `stale_parent` result to rebase.
+- Route ancestry is auditable from parent pointers; resolution is
+  deterministic and independent of filename timestamp for
+  generation-bearing routes.
+- No behavior change for legacy routes; the pre-existing start-guard tests
+  pass unmodified.
