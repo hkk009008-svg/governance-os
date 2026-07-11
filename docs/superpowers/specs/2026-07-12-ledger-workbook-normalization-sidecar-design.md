@@ -134,8 +134,9 @@ The workbook contains exactly these visible sheets plus one very-hidden
 `Instructions` explains the permitted edits, color coding, required approval
 fields, and the stop condition for incomplete rows.
 
-`_Bindings` contains the schema version, target commit, plan hash, old/new
-workbook hashes, checklist hash, database fingerprint, evidence-chain head,
+`_Bindings` contains the schema version, source-plan parser commit,
+normalization-implementation commit, plan hash, old/new workbook hashes,
+checklist hash, database fingerprint, evidence-chain head,
 per-class fact-set hashes, generation timestamp, and a canonical hash of all
 protected row data. The validator recomputes every value from supplied source
 artifacts; merely unhiding or editing the sheet cannot create authority.
@@ -251,6 +252,9 @@ Without the argument, current behavior is unchanged and all 83 cases remain
 blocking. With the argument, the planner:
 
 1. validates schema and all source/plan/database/evidence bindings;
+   the source-plan parser commit must match the blocked plan, while the
+   normalization-implementation commit must match the clean current planner
+   commit;
 2. applies the 12 deterministic rules to the exact bound fact sets;
 3. applies owner decisions only to their exact fact IDs and member sets;
 4. regenerates component facts and action classifications;
