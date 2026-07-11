@@ -138,8 +138,11 @@ fields, and the stop condition for incomplete rows.
 normalization-implementation commit, plan hash, old/new workbook hashes,
 checklist hash, database fingerprint, evidence-chain head,
 per-class fact-set hashes, generation timestamp, and a canonical hash of all
-protected row data. The validator recomputes every value from supplied source
-artifacts; merely unhiding or editing the sheet cannot create authority.
+protected row data. The validator recomputes every authoritative
+commit/hash/fact-set value from supplied source artifacts, validates the
+generation timestamp as protected ISO metadata, and recomputes the
+protected-row hash; merely unhiding or editing the sheet cannot create
+authority.
 
 ### 5.3 Missing_Months
 
@@ -171,6 +174,10 @@ partition. Editable columns are:
 Every bound member must appear exactly once. Each subgroup must have one month
 and exactly one amount owner. Divergent months, uncovered members, duplicated
 members, or zero/multiple amount owners are blocking.
+
+The validator collapses the member rows into one typed group decision with a
+nested complete member-assignment tuple. The 14 groups therefore remain 14
+manual decisions even though the sheet contains more than 14 member rows.
 
 ### 5.5 Missing_Fields
 
