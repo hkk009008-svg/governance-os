@@ -280,3 +280,96 @@ def read_manifest(md_path: Path) -> dict:
             f"{md_path.name}: route_hash pin {pins[0][:12]}... does not match sidecar {digest[:12]}..."
         )
     return obj
+
+
+def render_markdown(
+    route: dict,
+    *,
+    title: str,
+    narrative: Sequence[tuple[str, str]] = (),
+) -> str:
+    """Generate the human projection. The object is the authority; this is a view.
+
+    The output is engineered to satisfy the legacy prose validator
+    (protocol_capacity._validate_route_file): task-board marker, full packet
+    enumeration, capacity-split phrases, one-line prohibitions, dash-list
+    side-effect token, join-condition line, terminal Exact Next Trigger.
+    """
+    issues = validate_route_object(route)
+    if issues:
+        raise ValueError("cannot render an invalid route object: " + "; ".join(issues))
+
+    lines: list[str] = [f"# {title}", ""]
+    lines.append(f"**When:** {route['created_at']} · **From:** {route['created_by']} (online)")
+    lines.append("")
+    lines.append("Event type: coordination")
+    lines.append(f"Task-board: {route['task_board']}")
+    if route["parent_route_id"]:
+        lines.append(
+            "Supersedes route: coordination/mailbox/sent/"
+            f"{route['parent_route_id']}.md"
+        )
+    lines.append(f"Route generation: {route['generation']}")
+    if route["expected_control_head"]:
+        lines.append(f"Expected control HEAD: {route['expected_control_head']}")
+    if route["target"]:
+        if route["target"]["worktree"]:
+            lines.append(f"Target worktree: {route['target']['worktree']}")
+        lines.append(f"Target HEAD: {route['target']['base_commit']}")
+    lines.append(f"Route manifest: {route['route_id']}.route.json")
+    lines.append(f"route_hash: {route_hash(route)}")
+
+    for heading, body in narrative:
+        lines.extend(["", f"## {heading}", "", body])
+
+    lines.extend(["", "## Capacity Split Default", ""])
+    if route["capacity_split"]["mode"] == "single_pair":
+        lines.append(
+            "The single-pair fast path applies; the non-implementing pair holds "
+            "bounded planning or preflight packets only. Coordinator owns convergence."
+        )
+    else:
+        chunk_a = ", ".join(route["capacity_split"]["chunk_a"])
+        chunk_b = ", ".join(route["capacity_split"]["chunk_b"])
+        lines.append(
+            "Dual-pair routing applies. "
+            f"Chunk A: {chunk_a}. Chunk B: {chunk_b}. Coordinator owns convergence."
+        )
+
+    lines.extend(["", "## Capacity Packet Coverage", ""])
+    lines.append(
+        f"All {len(route['packet_refs'])} Wave-{route['wave']} packet IDs are named."
+    )
+    lines.append("")
+    for packet_id in route["packet_refs"]:
+        lines.append(f"- {packet_id}")
+
+    if route["prohibitions"]:
+        lines.extend(["", "## Prohibitions", ""])
+        for key in route["prohibitions"]:
+            lines.append(f"- {PROHIBITION_VOCAB[key]}")
+
+    if route["side_effect_token"]:
+        lines.extend(["", "## Side-Effect Executor Token", ""])
+        for field in SIDE_EFFECT_TOKEN_FIELDS:
+            lines.append(f"- {field}: {route['side_effect_token'][field]}")
+
+    lines.extend(["", f"Join condition: {route['join_condition']}"])
+    lines.extend(["", "## Exact Next Trigger", "", route["next_trigger"], ""])
+    return "\n".join(lines) + "\n"
+
+
+def write_route_pair(
+    sent_dir: Path,
+    route: dict,
+    *,
+    title: str,
+    narrative: Sequence[tuple[str, str]] = (),
+) -> tuple[Path, Path]:
+    """Write <route_id>.md + <route_id>.route.json into sent_dir. Fail-closed."""
+    body = render_markdown(route, title=title, narrative=narrative)
+    md_path = sent_dir / f"{route['route_id']}.md"
+    sidecar = sidecar_path(md_path)
+    sidecar.write_bytes(canonical_route_bytes(route))
+    md_path.write_text(body, encoding="utf-8")
+    return md_path, sidecar
