@@ -1,5 +1,6 @@
 # Coordinator route — Task 4 quality correction
 
+- **When:** 2026-07-11T13:20:00Z
 - **from:** coordinator
 - **to:** director
 - **kind:** route
@@ -15,3 +16,9 @@ the real apply → `committed_unverified` → same-path CLI reverify and for
 symlink/hardlink/substitution/durability barriers. Run RED before production,
 then focused/full suites and fresh spec + quality review. Token B only; no
 canonical workbook or real-data mutation; no push.
+
+## Exact Next Trigger
+
+Director reruns Pipeline smoke, commits the already-green four-path Task 4
+correction only after all gates pass, then obtains fresh SPEC PASS and QUALITY
+APPROVED before requesting Task 5 release.
