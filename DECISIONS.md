@@ -416,3 +416,53 @@ origin "FINAL (2026-06-13)" badge alongside ADR-009's 2026-07-07 lane record.
   become placeholder-clean and leave the ADR-002 allowlist.
 - The SHA-ref baseline digest refreshes (line shifts only; the citation set
   and count are unchanged).
+
+## ADR-013: Multi-target binding registry (governance.toml) — amends ADR-008
+
+**Status:** Accepted
+
+**Context:**
+ADR-008 designated evidence-ledger as THE bound target, and the binding was
+implemented as hard-coded machine paths (`scripts/ledger_start_guard.py:12-14`
+held `PIPELINE_KERNEL`/`FORBIDDEN_KERNEL`/`TARGET_REPO` as `/Users/...`
+constants). The 2026-07-11 governance-brief audit deferred multi-target
+binding as conflicting with ADR-008; the user-principal overrode that
+deferral on 2026-07-11: the kernel must be able to govern FUTURE works, not
+just evidence-ledger, so new projects can be started from this governance OS
+without editing kernel source.
+
+**Decision:**
+(1) Add `governance.toml`, a declarative target registry: `[targets.<name>]`
+tables (repository, path, route_keywords, description), a
+`[binding].default_target`, and `[paths].forbidden_roots`. (2) Add
+`scripts/target_binding.py`: fail-closed resolver (missing file, unknown
+target, missing/unknown keys all raise with corrective messages) with
+resolution order CLI `--target` > `GOVERNANCE_TARGET` env >
+`default_target`, plus a `GOVERNANCE_TARGET_PATH` checkout override and a
+read-only `--check` CLI wired into `scripts/protocol_doctor.py`
+(`base_commands`). (3) Rewire `scripts/ledger_start_guard.py` to resolve its
+kernel (script location), target paths, route keywords, and forbidden roots
+through the registry; behavior for the default binding is unchanged (pinned
+by the pre-existing tests in tests/unit/test_codex_ledger_bridge.py, which
+pass unmodified). (4) ADR-008 is AMENDED, not revoked: evidence-ledger stays
+the default target and the product/governance boundary (§8.8) is unchanged;
+what changes is that additional targets register declaratively.
+Decided by the user-principal on 2026-07-11.
+
+**Consequences:**
+- A future work is onboarded by adding a `[targets.<name>]` table (see
+  OPERATIONS.md §5.1) — no Python edits; unknown/missing bindings fail
+  closed.
+- `verified via $ .venv/bin/python -m pytest tests/unit -q → 294 passed`
+  (271 pre-existing + 23 new in tests/unit/test_target_binding.py);
+  `$ scripts/ci_smoke.py → OK`; `$ scripts/protocol_doctor.py --wave 2 →
+  PASS` (now including the registry check).
+- ARCHITECTURE.md module-map anchor for `build_guard` moved (133 → 152,
+  auto-fixed by `check_doc_claims.py --fix`) and a `resolve_target` row was
+  added; the parked Task2U worktree also carries ARCHITECTURE.md edits, so a
+  small merge reconciliation there is expected.
+- The guard's user-facing strings still say "Ledger seat start guard"; a
+  cosmetic generalization is deferred until a second target actually exists.
+- `.codex/agents/*.toml` and codex_protocol_model prose still name
+  evidence-ledger paths — correct for the default target; regenerating that
+  prose per-target is future work when a second target is registered.
