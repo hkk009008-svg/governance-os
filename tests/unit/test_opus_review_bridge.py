@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import inspect
 import json
 import subprocess
@@ -289,8 +290,18 @@ def test_review_request_has_no_codex_result_channel(tmp_path: Path) -> None:
     assert "codex_findings" not in inspect.signature(bridge.ReviewRequest).parameters
     assert "codex_conclusion" not in inspect.signature(bridge.ReviewRequest).parameters
     assert "Do not ask for or infer the Codex verifier's verdict" in prompt
+    assert "Authorization source: user-task:verification-1" in prompt
     assert "Verify the stale-parent guard" not in prompt
     assert "brief.md" in prompt
+
+
+def test_build_review_prompt_rejects_invalid_authorization_source(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.build_review_prompt(_request(tmp_path, authorization="yes"))
+
+    assert excinfo.value.reason == "invalid_authorization"
 
 
 def test_build_claude_command_is_bounded_and_read_only(tmp_path: Path) -> None:
@@ -357,6 +368,19 @@ def test_review_missing_authorization_does_not_invoke_claude(tmp_path: Path) -> 
     assert result.unavailable_reason == "authorization_missing"
 
 
+def test_review_whitespace_authorization_records_missing_source(tmp_path: Path) -> None:
+    def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("Claude must not run without authorization")
+
+    result = bridge.review(
+        _request(tmp_path, authorization=" \t "), runner=forbidden_runner
+    )
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "authorization_missing"
+    assert result.authorization_source == "missing"
+
+
 def test_review_rejects_unstructured_authorization_source(tmp_path: Path) -> None:
     def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise AssertionError("Claude must not run with an invalid authorization source")
@@ -407,6 +431,27 @@ def test_review_normalizes_missing_claude_binary(tmp_path: Path) -> None:
     assert result.unavailable_reason == "claude_not_found"
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        PermissionError("permission denied"),
+        OSError(errno.ENOEXEC, "executable format error"),
+        OSError(errno.EIO, "provider spawn I/O error"),
+    ],
+    ids=["permission", "executable-format", "other-oserror"],
+)
+def test_review_normalizes_provider_spawn_oserror(
+    tmp_path: Path, error: OSError
+) -> None:
+    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise error
+
+    result = bridge.review(_request(tmp_path), runner=fake_runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "process_failed"
+
+
 def test_review_normalizes_invalid_stream_json(tmp_path: Path) -> None:
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, "not-json\n", "")
@@ -415,6 +460,75 @@ def test_review_normalizes_invalid_stream_json(tmp_path: Path) -> None:
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "invalid_json"
+
+
+def test_review_rejects_duplicate_init_events(tmp_path: Path) -> None:
+    stdout = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "model": "claude-opus-4-7",
+                }
+            ),
+            _claude_stream(),
+        ]
+    )
+
+    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+    result = bridge.review(_request(tmp_path), runner=fake_runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "invalid_schema"
+
+
+def test_review_rejects_conflicting_init_events(tmp_path: Path) -> None:
+    stdout = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "model": "claude-opus-4-7",
+                }
+            ),
+            _claude_stream(model="claude-sonnet-4-6"),
+        ]
+    )
+
+    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+    result = bridge.review(_request(tmp_path), runner=fake_runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "invalid_schema"
+
+
+def test_review_rejects_duplicate_result_events(tmp_path: Path) -> None:
+    stdout = "\n".join(
+        [
+            _claude_stream(),
+            json.dumps(
+                {
+                    "type": "result",
+                    "subtype": "success",
+                    "structured_output": _structured_payload(),
+                }
+            ),
+        ]
+    )
+
+    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, stdout, "")
+
+    result = bridge.review(_request(tmp_path), runner=fake_runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "invalid_schema"
 
 
 def test_review_accepts_opus_issues_result(tmp_path: Path) -> None:
