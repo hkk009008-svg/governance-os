@@ -14,8 +14,10 @@ in schemas/capability-v1.schema.json is documentation of the same contract.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import sys
+from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 
@@ -26,6 +28,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from threeway.canon import canonicalize  # noqa: E402
+import route_lineage  # noqa: E402  — read-only: LineageRoute for supersession currency
 
 SCHEMA_ID = "governance.capability/v1"
 
@@ -316,3 +319,108 @@ def build_receipt(
     if logs_ref is not None:
         receipt["logs_ref"] = logs_ref
     return receipt
+
+
+# --- atomic one-time consumption + supersession-revocation binding -----------
+#
+# consume() is the security-critical core: it turns a validated capability + real
+# evidence into a receipt written EXACTLY ONCE per capability_id, using the
+# filesystem itself as the compare-and-swap primitive (O_EXCL). This is what makes
+# replay impossible — a second consume of the same capability_id refuses.
+#
+# capability_is_current() is revocation-on-supersession: a capability bound to a
+# route generation that a newer generation has superseded (or to a different
+# route entirely) is no longer current, independent of consumption state.
+
+
+@dataclass(frozen=True)
+class ConsumeResult:
+    """Outcome of a consume() attempt. ``receipt_path`` is set only on success."""
+
+    ok: bool
+    reason: str
+    receipt_path: str | None
+
+
+def consume(capability: dict, evidence: dict, *, store_dir) -> ConsumeResult:
+    """Atomically consume a capability EXACTLY ONCE, writing an evidence receipt.
+
+    This is a filesystem compare-and-swap: the receipt file at
+    ``store_dir/<capability_id>.receipt.json`` is created with
+    ``O_CREAT|O_EXCL``, so the OS guarantees at most one successful create per
+    ``capability_id`` even under concurrent callers. A second consume of the same
+    capability_id refuses with ``already_consumed`` — this is the replay refusal,
+    the core security property of the slice.
+
+    Fail-closed ordering (NOTHING is written until every check passes):
+      1. ``validate_capability`` — a malformed grant is refused, no write.
+      2. ``build_receipt`` + ``validate_receipt`` — the receipt is built FROM the
+         capability (binding capability_hash by construction, never trusting a
+         caller-supplied one) and its evidence is validated for non-vacuity
+         (a commit SHA or logs/ anchor). Vacuous evidence is refused, no write.
+      3. Only then is the receipt file atomically created via O_EXCL.
+
+    A consumed capability is NECESSARY-NOT-SUFFICIENT: consumption records that the
+    single side effect ran, but it never substitutes for the user push gate — the
+    user still authorizes the side effect itself (ADR-012). No capability state
+    grants authority the principal did not.
+    """
+    # 1. Fail-closed on a malformed capability — write nothing.
+    cap_issues = validate_capability(capability)
+    if cap_issues:
+        return ConsumeResult(
+            ok=False,
+            reason="invalid capability: " + "; ".join(cap_issues),
+            receipt_path=None,
+        )
+
+    # 2. Build the receipt FROM the capability (binds capability_hash by
+    # construction) and validate its evidence BEFORE any write — vacuous
+    # evidence is refused fail-closed, so no receipt file is ever created.
+    receipt = build_receipt(
+        capability,
+        result=evidence["result"],
+        command=evidence["command"],
+        output=evidence["output"],
+        commit=evidence.get("commit"),
+        logs_ref=evidence.get("logs_ref"),
+    )
+    receipt_issues = validate_receipt(receipt)
+    if receipt_issues:
+        return ConsumeResult(
+            ok=False,
+            reason="evidence: " + "; ".join(receipt_issues),
+            receipt_path=None,
+        )
+
+    # 3. Atomic one-time create. Creating the directory is NOT the atomic step;
+    # the O_EXCL open of the receipt file is. FileExistsError on that open is the
+    # replay refusal.
+    store_path = Path(store_dir)
+    store_path.mkdir(parents=True, exist_ok=True)
+    path = store_path / f"{capability['capability_id']}.receipt.json"
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return ConsumeResult(ok=False, reason="already_consumed", receipt_path=None)
+    try:
+        os.write(fd, canonicalize(receipt))
+    finally:
+        os.close(fd)
+    return ConsumeResult(ok=True, reason="consumed", receipt_path=str(path))
+
+
+def capability_is_current(capability: dict, authoritative: "route_lineage.LineageRoute") -> bool:
+    """True iff the capability is bound to the authoritative route's current tip.
+
+    Revocation-on-supersession: a capability is current only when BOTH its
+    ``bound_route_id`` equals the authoritative route's ``route_id`` AND its
+    ``bound_generation`` equals that route's ``lineage.generation``. A capability
+    bound to a superseded generation (a newer generation is now authoritative) or
+    to a different route is stale — its authority is revoked, independent of
+    whether it has been consumed.
+    """
+    return (
+        capability["bound_route_id"] == authoritative.route_id
+        and capability["bound_generation"] == authoritative.lineage.generation
+    )

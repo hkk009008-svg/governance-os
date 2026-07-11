@@ -207,3 +207,52 @@ def test_receipt_validation_does_not_mutate_input():
     r = _receipt(); snap = copy.deepcopy(r)
     route_capability.validate_receipt(r)
     assert r == snap
+
+
+# --- atomic one-time consumption + supersession-revocation binding (Task 4) ---
+
+import route_lineage
+
+
+def _lr(route_id, generation):
+    return route_lineage.LineageRoute(route_id, route_lineage.RouteLineage(generation, None, None))
+
+
+def _evidence():
+    return {"result": "ok", "command": "git push", "output": "To origin/main", "commit": "deadbee"}
+
+
+def test_consume_writes_receipt_and_succeeds(tmp_path):
+    res = route_capability.consume(_cap(), _evidence(), store_dir=tmp_path)
+    assert res.ok and res.receipt_path is not None
+    from pathlib import Path
+    assert Path(res.receipt_path).exists()
+
+
+def test_second_consume_fails_already_consumed(tmp_path):
+    first = route_capability.consume(_cap(), _evidence(), store_dir=tmp_path)
+    assert first.ok
+    second = route_capability.consume(_cap(), _evidence(), store_dir=tmp_path)
+    assert not second.ok and second.reason == "already_consumed"
+
+
+def test_consume_refuses_invalid_capability(tmp_path):
+    res = route_capability.consume(_cap(state="live"), _evidence(), store_dir=tmp_path)
+    assert not res.ok and "invalid capability" in res.reason
+
+
+def test_consume_refuses_vacuous_evidence(tmp_path):
+    ev = {"result": "ok", "command": "git push", "output": "done"}  # no commit/logs_ref
+    res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
+    assert not res.ok and "evidence" in res.reason
+    # and NO receipt file was written (fail-closed before O_EXCL)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_capability_current_only_at_bound_generation():
+    cap = _cap(bound_route_id="r5", bound_generation=5)
+    assert route_capability.capability_is_current(cap, _lr("r5", 5))
+    # superseded: newer generation is authoritative -> stale
+    assert not route_capability.capability_is_current(cap, _lr("r6", 6))
+    # different route entirely -> stale
+    assert not route_capability.capability_is_current(cap, _lr("other", 5))
