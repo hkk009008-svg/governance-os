@@ -1,0 +1,104 @@
+{
+  "all_match": true,
+  "cases": [
+    {
+      "divergence": null,
+      "legacy_gates": [],
+      "legacy_valid": true,
+      "matches_expectation": true,
+      "name": "baseline-valid",
+      "structured_issues": [],
+      "structured_valid": true
+    },
+    {
+      "divergence": "narrative-directive-outside-manifest",
+      "legacy_gates": [
+        "G7"
+      ],
+      "legacy_valid": false,
+      "matches_expectation": true,
+      "name": "missing-side-effect-token",
+      "structured_issues": [],
+      "structured_valid": true
+    },
+    {
+      "divergence": null,
+      "legacy_gates": [
+        "G7"
+      ],
+      "legacy_valid": false,
+      "matches_expectation": true,
+      "name": "multi-executor-token",
+      "structured_issues": [
+        "side_effect_token.executor must be exactly one known seat"
+      ],
+      "structured_valid": false
+    },
+    {
+      "divergence": null,
+      "legacy_gates": [
+        "G7"
+      ],
+      "legacy_valid": false,
+      "matches_expectation": true,
+      "name": "route-outside-mailbox-boundary",
+      "structured_issues": [
+        "route projection must live under coordination/mailbox/sent/"
+      ],
+      "structured_valid": false
+    },
+    {
+      "divergence": "narrative-directive-outside-manifest",
+      "legacy_gates": [
+        "G7"
+      ],
+      "legacy_valid": false,
+      "matches_expectation": true,
+      "name": "subagent-authority-leakage",
+      "structured_issues": [],
+      "structured_valid": true
+    },
+    {
+      "divergence": null,
+      "legacy_gates": [],
+      "legacy_valid": true,
+      "matches_expectation": true,
+      "name": "valid-explicit-prohibition",
+      "structured_issues": [],
+      "structured_valid": true
+    },
+    {
+      "divergence": null,
+      "legacy_gates": [],
+      "legacy_valid": true,
+      "matches_expectation": true,
+      "name": "valid-with-token",
+      "structured_issues": [],
+      "structured_valid": true
+    },
+    {
+      "divergence": "legacy-formatting-false-positive",
+      "legacy_gates": [
+        "G10"
+      ],
+      "legacy_valid": false,
+      "matches_expectation": true,
+      "name": "wrapped-expected-phrase",
+      "structured_issues": [],
+      "structured_valid": true
+    },
+    {
+      "divergence": "legacy-formatting-false-positive",
+      "legacy_gates": [
+        "G7"
+      ],
+      "legacy_valid": false,
+      "matches_expectation": true,
+      "name": "wrapped-negative-prohibition",
+      "structured_issues": [],
+      "structured_valid": true
+    }
+  ],
+  "fixtures": "tests/fixtures/route_compat",
+  "schema": "governance.route-compat-report/1"
+}

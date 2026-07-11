@@ -1,0 +1,28 @@
+{
+  "id": "director2-capacity-split-work",
+  "wave": 2,
+  "cycle": "route-compat-cycle",
+  "owner": "director2",
+  "packet_type": "director-preflight",
+  "row_ids": [
+    "row-a"
+  ],
+  "allowed_paths": [
+    "docs/next-brief/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Prepare bounded planning for the next brief."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "docs/next-brief/"
+  ]
+}

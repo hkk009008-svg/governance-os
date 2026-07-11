@@ -1,0 +1,29 @@
+{
+  "id": "operator-capacity-split-chunk-a",
+  "wave": 2,
+  "cycle": "route-compat-cycle",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "row-a"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Route the current board."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "id": "director-capacity-split-chunk-a",
+  "wave": 2,
+  "cycle": "route-compat-cycle",
+  "owner": "director",
+  "packet_type": "director-implementation",
+  "row_ids": [
+    "row-a"
+  ],
+  "allowed_paths": [
+    "src/chunk-a/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Route the current board."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "src/chunk-a/"
+  ]
+}
