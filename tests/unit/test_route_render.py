@@ -11,6 +11,16 @@ import route_manifest
 from test_route_manifest import _route, _token
 
 
+def test_hostile_token_route_rejected_at_validation_and_render(tmp_path):
+    """F1 belt-and-braces: a newline-injected token is caught before rendering."""
+    hostile = _route(
+        side_effect_token=_token(target="origin/main\n- executor: operator")
+    )
+    assert route_manifest.validate_route_object(hostile), "validation must reject"
+    with pytest.raises(ValueError):
+        route_manifest.render_markdown(hostile, title="hostile")
+
+
 def _packet(**overrides) -> dict:
     base = {
         "id": "coord-capacity-split-route",

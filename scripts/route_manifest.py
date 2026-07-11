@@ -103,6 +103,27 @@ def _is_nonempty_str(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+# Newline / carriage-return in ANY string value is the prose-injection vector:
+# the Markdown projection interpolates fields unescaped, so a smuggled "\n"
+# would render a second physical line the LEGACY per-line prose parser accepts
+# as authority. We reject the whole class at validation, before rendering.
+_CONTROL_CHARS = ("\n", "\r")
+
+
+def _scan_control_chars(value: Any, path: str, issues: list[str]) -> None:
+    """Recursively reject newline/CR in every string value (all fields, nested)."""
+    if isinstance(value, str):
+        if any(ch in value for ch in _CONTROL_CHARS):
+            issues.append(f"control characters rejected in {path}")
+    elif isinstance(value, dict):
+        for key in value:
+            child = f"{path}.{key}" if path else str(key)
+            _scan_control_chars(value[key], child, issues)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _scan_control_chars(item, f"{path}[{index}]", issues)
+
+
 def validate_route_object(obj: Any) -> list[str]:
     """Strict fail-closed validation of a route/v1 object. Empty list == valid."""
     if not isinstance(obj, dict):
@@ -111,6 +132,7 @@ def validate_route_object(obj: Any) -> list[str]:
         return [f"unsupported schema: {obj.get('schema')!r} (expected {SCHEMA_ID})"]
 
     issues: list[str] = []
+    _scan_control_chars(obj, "", issues)
     unknown = sorted(set(obj) - set(REQUIRED_FIELDS) - set(OPTIONAL_FIELDS))
     if unknown:
         issues.append("unknown authority-bearing fields rejected: " + ", ".join(unknown))
@@ -267,11 +289,17 @@ def read_manifest(md_path: Path) -> dict:
         raise RouteManifestError(f"missing route sidecar {sidecar.name}: {exc}") from exc
     try:
         obj = json.loads(raw)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
         raise RouteManifestError(f"{sidecar.name}: unparseable JSON: {exc}") from exc
     issues = validate_route_object(obj)
     if issues:
         raise RouteManifestError(f"{sidecar.name}: invalid route object: " + "; ".join(issues))
+    expected_name = f"{obj['route_id']}.md"
+    if md_path.name != expected_name:
+        raise RouteManifestError(
+            f"{md_path.name}: filename does not bind route_id {obj['route_id']!r} "
+            f"(expected {expected_name})"
+        )
     if canonicalize(obj) != raw:
         raise RouteManifestError(f"{sidecar.name}: bytes are not canonical (RFC 8785)")
     digest = hashlib.sha256(raw).hexdigest()

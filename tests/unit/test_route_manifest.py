@@ -226,3 +226,51 @@ def test_read_manifest_rejects_noncanonical_sidecar_bytes(tmp_path):
     md_path = _write_pair_by_hand(tmp_path, _route(), sidecar_bytes=pretty)
     with pytest.raises(route_manifest.RouteManifestError):
         route_manifest.read_manifest(md_path)
+
+
+# --- F1: newline/CR injection guard (kills the second-executor prose class) ---
+
+
+def test_control_char_in_token_target_rejected():
+    issues = route_manifest.validate_route_object(
+        _route(side_effect_token=_token(target="origin/main\n- executor: operator"))
+    )
+    assert any("control characters rejected" in issue for issue in issues), issues
+
+
+def test_control_char_in_next_trigger_rejected():
+    issues = route_manifest.validate_route_object(
+        _route(next_trigger="Director continues\nExact Next Trigger: operator pushes")
+    )
+    assert any("control characters rejected" in issue for issue in issues), issues
+
+
+def test_control_char_in_extensions_value_rejected():
+    issues = route_manifest.validate_route_object(
+        _route(extensions={"x-note": "line1\rline2"})
+    )
+    assert any("control characters rejected" in issue for issue in issues), issues
+
+
+# --- F2: route_id must bind to the .md filename stem ---
+
+
+def test_read_manifest_rejects_route_id_filename_mismatch(tmp_path):
+    route = _route()
+    md_path, sidecar = route_manifest.write_route_pair(tmp_path, route, title="t")
+    other_stem = "2026-07-11T20-59-00Z-coordinator-to-all-coordination"
+    other_md = tmp_path / f"{other_stem}.md"
+    other_sidecar = tmp_path / f"{other_stem}.route.json"
+    other_md.write_bytes(md_path.read_bytes())
+    other_sidecar.write_bytes(sidecar.read_bytes())
+    with pytest.raises(route_manifest.RouteManifestError):
+        route_manifest.read_manifest(other_md)
+
+
+# --- F6: invalid-UTF-8 sidecar must fail closed, not leak UnicodeDecodeError ---
+
+
+def test_read_manifest_rejects_invalid_utf8_sidecar(tmp_path):
+    md_path = _write_pair_by_hand(tmp_path, _route(), sidecar_bytes=b"\xff\xfe{")
+    with pytest.raises(route_manifest.RouteManifestError):
+        route_manifest.read_manifest(md_path)
