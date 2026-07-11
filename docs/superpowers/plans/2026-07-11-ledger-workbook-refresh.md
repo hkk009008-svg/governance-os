@@ -1406,7 +1406,13 @@ def test_refresh_evidence_contains_complete_before_after_and_hashes(refresh_db):
     for stored, action in zip(payload["actions"], refresh_db.plan.actions, strict=True):
         assert stored["fact_id"] == action.fact_id
         assert stored["expected_before"] == action.expected_before
-        assert all(stored["actual_after"][key] == value for key, value in action.after.items())
+        assert all(
+            stored["actual_after"][key] == value
+            for key, value in action.after.items()
+            if key != "entered_by"
+        )
+        if action.disposition in MUTATING and "entered_by" in action.after:
+            assert stored["actual_after"]["entered_by"] == "owner-test"
     assert payload["resource"]["incoming_sha256"] == refresh_db.plan.incoming_workbook_sha256
     assert set(payload["report_hashes"]) == {"apply.result.json", "apply.result.md"}
     assert payload["expected_evidence_chain_head"] == refresh_db.plan.evidence_chain_head
@@ -1417,6 +1423,14 @@ def test_refresh_evidence_contains_complete_before_after_and_hashes(refresh_db):
         "kind": refresh_db.plan.baseline_evidence_kind,
     }
 ```
+
+`entered_by` is an apply-time fact for every mutating row that carries it, not
+a planner-controlled business value. The plan may retain the proven baseline
+identity in `action.after` so planning stays independent of the later command
+principal; the evidence payload must record the truthful reselected
+`actual_after` with the apply command's `entered_by`. All other planned
+after-values remain exact. The plan SHA and stored action retain the planned
+projection, while `actual_after` proves what the transaction wrote.
 
 - [ ] **Step 3: Run RED for DB and apply tests**
 
