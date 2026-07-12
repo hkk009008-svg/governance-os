@@ -56,6 +56,19 @@ The fixed question is:
 The requested output list is exactly `recommendation`, `reasoning`,
 `assumptions`, `risks`, and `questions`.
 
+The guard hashes `repo_head` together with the four-field state binding. The
+accept wrapper must provide `current_repo_head` as the current full lowercase
+commit SHA, or `null` only when the prepared request's `repo_head` was `null`.
+Any mismatch marks the content-free record `stale` before response validation.
+Materially different normalized `options` also produce a different idempotency
+key.
+
+Sources must never identify database files (`.db` or `.sqlite*`), private-key or
+certificate containers (`.pem`, `.key`, `.p12`, or `.pfx`), customer/business
+data directories, or browser cookie/login stores. Case, whitespace, slash, and
+Unicode normalization do not bypass this classification. Documentation and
+schema references that merely discuss those formats remain allowed.
+
 ## Guard commands
 
 Until this gate passes, the repository default is deliberately still `manual`.
@@ -67,9 +80,14 @@ activation change. Launch the guard without packet content in the command:
 ```bash
 env -u GIT_INDEX_FILE CODEX_CHATGPT_PRO_CONSULTATION=auto \
   /Users/hyungkoookkim/Pipeline/.venv/bin/python \
-  scripts/chatgpt_pro_consult.py prepare \
+scripts/chatgpt_pro_consult.py prepare \
   --state-file .codex/runtime/task5-TRANSPORT-acceptance.json
 ```
+
+Every library and CLI state path must resolve to a direct
+`.codex/runtime/<file>` location. Reject arbitrary parents, nested runtime
+directories, traversal, and symlinked ancestors before creating, opening, or
+changing any state or lock path.
 
 Write the in-memory request JSON to that process through stdin. Immediately
 before the single browser send, mark `prepared -> sending` with the content-free
@@ -128,13 +146,6 @@ CLI attempt to proceed. Any false, unavailable, ambiguous, or timed-out result
 records the configured CLI bridge as unavailable, keeps the default `manual`,
 and stops without a send or automatic retry.
 
-On 2026-07-13, the non-sending preflight completed in 27.7 seconds: the core
-CLI/model and Browser-skill load succeeded, but the standalone CLI returned
-backend `iab`, `browser-connected=false`, `documentation-loaded=false`, and
-failure class `backend_unavailable`. It performed no navigation, tab creation,
-or messaging. This is the exact environment boundary; the configured-CLI hard
-gate is blocked even though its plugin and flags are present.
-
 ### Failure fixtures
 
 Exercise signed-out, wrong-account, challenge, refusal, malformed HTML,
@@ -142,6 +153,44 @@ truncated JSON, and partial-send behavior only with contract fixtures or an
 already-unauthenticated disposable profile. Never sign the user's session out
 or provoke a challenge. Each case must stop without fabricated success,
 credential entry, retry, API fallback, or protocol mutation.
+
+The aggregate fixture gate passes only when all seven cases are present:
+signed-out, wrong-account, challenge, refusal, malformed HTML, truncated JSON,
+and partial-send. Signed-out, wrong-account, and challenge must prove a pre-send
+stop; partial-send must prove terminal failure without resend. The fixture row
+must record correlation as not applicable, the finalized seven-case lifecycle,
+no retry or fallback, content-free mutation proof, and no residual failure.
+
+### Guard-code binding
+
+Activation evidence records `Guard commit` and `Guard relevant paths hash` in
+its Scope section. `Guard commit` is the immutable full commit actually used by
+all acceptance runs; `Bound HEAD` equals that commit. It must exist as a commit
+and be an ancestor of the reviewed HEAD. The reviewed HEAD may contain later
+evidence-log and test-only commits, but none of these acceptance-relevant paths
+may differ from the guard commit:
+
+- `.agents/skills/chatgpt-pro-consultation/SKILL.md`
+- `docs/protocol/codex/chatgpt-pro-consultation-acceptance.md`
+- `scripts/chatgpt_pro_consult.py`
+- `scripts/codex_protocol_model.py`
+
+Construct the content-free relevant-path hash as SHA-256 over the exact NUL
+terminated output of:
+
+```bash
+env -u GIT_INDEX_FILE git ls-tree -r -z --full-tree \
+  <guard-commit> -- \
+  .agents/skills/chatgpt-pro-consultation/SKILL.md \
+  docs/protocol/codex/chatgpt-pro-consultation-acceptance.md \
+  scripts/chatgpt_pro_consult.py \
+  scripts/codex_protocol_model.py
+```
+
+Verify the same manifest hash at the reviewed HEAD and require a quiet scoped
+diff from Guard commit to reviewed HEAD. This avoids the impossible requirement
+that a log name the commit containing itself: guard code lands first; the
+sanitized evidence log and its tests may land in later evidence-only commits.
 
 ### Persistence and authority
 
@@ -170,8 +219,10 @@ Both real transport gates must pass on packets rendered by the fixed code.
 
 ## Stop rule
 
-Desktop in-app and configured CLI browser acceptance are separate hard gates.
-If either required gate is unavailable, ambiguous, or fails—or any safety,
-correlation, lifecycle, mutation, persistence, or fixture check fails—do not set
-the default to auto. Keep `manual`, record the exact bounded blocker, and make no
-automatic retry.
+Desktop in-app, configured CLI browser, bare-CLI manual relay, and the complete
+failure-fixture matrix are four separate hard gates. Their latest revisions
+must all be PASS with transport-appropriate correlation, lifecycle,
+finalization, duplicate/retry, mutation/persistence, and failure cells. A
+missing, pending, failed, malformed, stale-guard, or guard-drifted required row
+blocks activation. Keep `manual`, record the exact bounded blocker, and make no
+automatic retry until all four gates and the immutable guard binding pass.

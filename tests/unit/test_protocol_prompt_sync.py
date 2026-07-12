@@ -33,60 +33,15 @@ def _acceptance_backed_default(text: str | None = None) -> str:
     if text is None:
         text = _read("logs/chatgpt-pro-consultation-acceptance-2026-07-13.md")
 
-    def field(label: str, values: str) -> str:
-        matches = re.findall(
-            rf"^- {re.escape(label)}: `({values})`$",
-            text,
-            flags=re.MULTILINE,
+    if "- Shipped default: `auto`" not in text:
+        return model.chatgpt_pro_consultation_default(
+            repo_root=ROOT,
+            evidence_text=text,
         )
-        assert len(matches) == 1, f"expected one canonical {label} field"
-        return matches[0]
-
-    def transport_result(transport_class: str) -> str:
-        rows: dict[int, list[str]] = {}
-        for line in text.splitlines():
-            if not line.startswith("| T5-"):
-                continue
-            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-            if len(cells) < 2 or cells[1] != transport_class:
-                continue
-            assert len(cells) == 8, "authoritative result rows require eight columns"
-            revision_match = re.search(r"-r([1-9][0-9]*)\b", cells[0])
-            assert revision_match is not None, "transport result row requires revision"
-            revision = int(revision_match.group(1))
-            assert revision not in rows, "transport result revisions must be unique"
-            assert cells[2] in {"pass", "fail"}
-            if cells[2] == "pass":
-                assert cells[3] == "pass"
-                assert cells[4] == (
-                    "`prepared -> sending -> sent -> received -> reconciled`; "
-                    "tab finalized"
-                )
-                assert cells[5] == "pass; one send"
-                assert cells[6] == "pass; content-free snapshots match"
-                assert cells[7] == "none"
-            rows[revision] = cells
-        assert rows, f"expected an authoritative {transport_class} result row"
-        return rows[max(rows)][2]
-
-    desktop = field("Desktop in-app gate", "pass|fail")
-    cli = field("Configured CLI browser gate", "pass|fail")
-    assert desktop == transport_result("Desktop in-app"), (
-        "Desktop result row disagrees with terminal result"
-    )
-    assert cli == transport_result("configured CLI browser"), (
-        "configured CLI result row disagrees with terminal result"
-    )
-    activation = field("Activation gate", "pass|blocked")
-    shipped = field("Shipped default", "auto|manual")
-    blocker = field("Bounded blocker", "none|backend_unavailable")
-    expected_activation = "pass" if desktop == cli == "pass" else "blocked"
-    assert activation == expected_activation
-    expected_default = "auto" if activation == "pass" else "manual"
-    assert shipped == expected_default
-    expected_blocker = "none" if activation == "pass" else "backend_unavailable"
-    assert blocker == expected_blocker
-    return expected_default
+    try:
+        return model.validate_chatgpt_pro_activation_evidence(text, repo_root=ROOT)
+    except model.ChatGPTProActivationEvidenceError as exc:
+        raise AssertionError(str(exc)) from exc
 
 
 def _validate_acceptance_log_structure(text: str) -> None:
@@ -141,13 +96,21 @@ def _validate_acceptance_log_structure(text: str) -> None:
         return values
 
     scope = bullets("## Scope")
-    assert set(scope) == {
+    base_scope = {
         "Bound HEAD",
         "Procedure",
         "Default before gate",
         "Raw consultation content persisted",
     }
+    guard_scope = {"Guard commit", "Guard relevant paths hash"}
+    assert frozenset(scope) in {
+        frozenset(base_scope),
+        frozenset(base_scope | guard_scope),
+    }
     assert re.fullmatch(r"[0-9a-f]{40}", scope["Bound HEAD"])
+    if guard_scope <= set(scope):
+        assert re.fullmatch(r"[0-9a-f]{40}", scope["Guard commit"])
+        assert re.fullmatch(r"[0-9a-f]{64}", scope["Guard relevant paths hash"])
     assert scope["Procedure"] == (
         "docs/protocol/codex/chatgpt-pro-consultation-acceptance.md"
     )
@@ -176,6 +139,8 @@ def _validate_acceptance_log_structure(text: str) -> None:
     allowed_lifecycle = {
         "`prepared -> sending -> sent -> failed`",
         "`prepared -> sending -> sent -> received -> reconciled`; tab finalized",
+        "`prepared -> sending -> sent -> received -> reconciled`; manual relay finalized",
+        "seven-case fixture matrix failed closed; fixtures finalized",
         "`prepared -> sending -> failed`; ephemeral process terminated after 5.5 "
         "minutes; tab finalization unverified",
         "core model healthy; Browser skill loaded; no navigation, tab, or message",
@@ -183,6 +148,8 @@ def _validate_acceptance_log_structure(text: str) -> None:
     }
     allowed_duplicate = {
         "pass; one send",
+        "pass; one relay",
+        "pass; no retry or fallback",
         "delivery uncertain; no retry",
         "no send",
         "pending",
@@ -265,19 +232,31 @@ def _validate_acceptance_log_structure(text: str) -> None:
     assert diagnostics == expected_diagnostics
 
     activation = bullets("## Activation decision")
-    assert set(activation) == {
+    base_activation = {
         "Desktop in-app gate",
         "Configured CLI browser gate",
         "Activation gate",
         "Shipped default",
         "Bounded blocker",
     }
+    required_activation = {"Bare CLI manual gate", "Failure-fixture gate"}
+    assert frozenset(activation) in {
+        frozenset(base_activation),
+        frozenset(base_activation | required_activation),
+    }
     assert activation["Desktop in-app gate"] in {"pass", "fail"}
     assert activation["Configured CLI browser gate"] in {"pass", "fail"}
     assert activation["Activation gate"] in {"pass", "blocked"}
     assert activation["Shipped default"] in {"auto", "manual"}
     assert activation["Bounded blocker"] in {"none", "backend_unavailable"}
-    _acceptance_backed_default(text)
+    if activation["Shipped default"] == "auto":
+        assert guard_scope <= set(scope)
+        assert required_activation <= set(activation)
+        assert _acceptance_backed_default(text) == "auto"
+    else:
+        assert activation["Activation gate"] == "blocked"
+        assert activation["Bounded blocker"] == "backend_unavailable"
+        assert _acceptance_backed_default(text) == "manual"
 
 
 def test_agent_neutral_reviewer_template_exists_with_schema():
@@ -596,6 +575,14 @@ def test_chatgpt_pro_acceptance_procedure_is_fail_closed_and_content_free():
         "challenge",
         "partial-send",
         "do not set the default to auto",
+        "current_repo_head",
+        "direct `.codex/runtime/<file>`",
+        "Guard commit",
+        "Guard relevant paths hash",
+        "bare-CLI manual relay",
+        "complete failure-fixture matrix",
+        "normalized `options`",
+        "browser cookie/login stores",
     ):
         assert phrase in procedure
     lower_procedure = procedure.lower()

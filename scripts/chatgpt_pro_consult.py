@@ -11,7 +11,6 @@ import os
 import re
 import stat
 import sys
-import tempfile
 import threading
 import unicodedata
 import uuid
@@ -65,7 +64,12 @@ FAILURE_CLASSES = frozenset(
     {"auth", "challenge", "network", "partial_send", "malformed", "unavailable"}
 )
 ACCEPT_KEYS = frozenset(
-    {"consultation_id", "response", "current_state_binding"}
+    {
+        "consultation_id",
+        "response",
+        "current_state_binding",
+        "current_repo_head",
+    }
 )
 REQUEST_KEYS = frozenset(
     {
@@ -113,6 +117,30 @@ PROHIBITED_SOURCE_PARTS = (
     ".git/",
     "browser/session",
     "coordination/threeway/keys/",
+)
+PROHIBITED_SOURCE_EXTENSIONS = (
+    ".db",
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+    ".crt",
+    ".cer",
+)
+PROHIBITED_SOURCE_SEGMENTS = frozenset(
+    {
+        "customer",
+        "customers",
+        "customerdata",
+        "customerrecords",
+        "business",
+        "businessdata",
+        "businessrecords",
+        "cookies",
+        "cookiesjournal",
+        "logindata",
+        "logindatajournal",
+    }
 )
 SENSITIVE_PATTERNS = (
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----", re.IGNORECASE),
@@ -304,6 +332,14 @@ def _sha256_text(value: object, name: str, *, allow_none: bool = False) -> str |
     return value
 
 
+def _validate_repo_head(value: object, name: str = "repo_head") -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+        raise ConsultationError(f"{name} must be a full lowercase Git SHA or null")
+    return value
+
+
 def _validate_state_binding(binding: object) -> dict[str, object]:
     value = _exact_mapping(binding, STATE_BINDING_KEYS, "state_binding")
     wave = value["wave"]
@@ -362,6 +398,34 @@ def _validate_fact(value: object, index: int) -> dict[str, object]:
         for part in PROHIBITED_SOURCE_PARTS
     ):
         raise ConsultationError(f"facts[{index}].source is prohibited")
+    compact_path = compact_source.lower()
+    compact_segments = [
+        re.sub(r"[\s_-]+", "", segment)
+        for segment in compact_path.split("/")
+        if segment
+    ]
+    terminal = re.sub(r":\d+(?::\d+)?$", "", compact_path.rsplit("/", 1)[-1])
+    terminal_stem = re.sub(r"[\s_-]+", "", terminal.split(".", 1)[0])
+    prohibited_class = re.compile(
+        r"(?:customer|customers|customerdata|customerrecords|businessdata)"
+        r"(?:exports|records|data)?$"
+    )
+    if (
+        terminal.endswith(PROHIBITED_SOURCE_EXTENSIONS)
+        or re.search(
+            r"\.sqlite(?:[0-9]+|-(?:wal|shm|journal)|\.(?:wal|shm|journal|bak))?$",
+            terminal,
+        )
+        is not None
+        or any(
+            segment in PROHIBITED_SOURCE_SEGMENTS
+            or prohibited_class.fullmatch(segment) is not None
+            for segment in compact_segments
+        )
+        or terminal_stem in PROHIBITED_SOURCE_SEGMENTS
+        or prohibited_class.fullmatch(terminal_stem) is not None
+    ):
+        raise ConsultationError(f"facts[{index}].source is prohibited")
     if compact_source.startswith("~") or re.match(
         r"^(?:[a-z]:)?/(?:users|home)/", compact_source, re.IGNORECASE
     ):
@@ -395,12 +459,7 @@ def validate_request(payload: object) -> dict[str, object]:
     if _is_meta_consultation(purpose, question):
         raise ConsultationError("consultation recursion is not allowed")
 
-    repo_head = request["repo_head"]
-    if repo_head is not None and (
-        not isinstance(repo_head, str)
-        or re.fullmatch(r"[0-9a-f]{40}", repo_head) is None
-    ):
-        raise ConsultationError("repo_head must be a full lowercase Git SHA or null")
+    repo_head = _validate_repo_head(request["repo_head"])
 
     state_binding = _validate_state_binding(request["state_binding"])
 
@@ -443,9 +502,10 @@ def validate_request(payload: object) -> dict[str, object]:
     return normalized
 
 
-def state_binding_hash(binding: object) -> str:
+def state_binding_hash(binding: object, repo_head: object = None) -> str:
     validated = _validate_state_binding(binding)
-    return _sha256(validated)
+    validated_head = _validate_repo_head(repo_head)
+    return _sha256({"repo_head": validated_head, "state_binding": validated})
 
 
 def _escaped_payload(value: object) -> str:
@@ -457,7 +517,7 @@ def prepare_request(payload: object) -> PreparedConsultation:
     """Validate a request and render one deterministic isolated prompt."""
     request = validate_request(payload)
     request_hash = _sha256(request)
-    binding_hash = state_binding_hash(request["state_binding"])
+    binding_hash = state_binding_hash(request["state_binding"], request["repo_head"])
     idempotency_key = _sha256(
         {
             "purpose": request["purpose"],
@@ -465,6 +525,7 @@ def prepare_request(payload: object) -> PreparedConsultation:
             "repo_head": request["repo_head"],
             "state_binding_hash": binding_hash,
             "facts_hash": _sha256(request["facts"]),
+            "options_hash": _sha256(request["options"]),
         }
     )
     response_shape = {
@@ -683,6 +744,19 @@ def _validate_state(value: object) -> dict[str, object]:
     }
 
 
+def _reject_symlink_path_components(path: Path) -> None:
+    absolute = path.absolute()
+    for candidate in (absolute, absolute.parent, *absolute.parent.parents):
+        try:
+            candidate_status = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise ConsultationError("state path is unavailable") from exc
+        if stat.S_ISLNK(candidate_status.st_mode):
+            raise ConsultationError("state path and ancestors must not be symlinks")
+
+
 def _state_path(value: os.PathLike[str] | str) -> Path:
     try:
         path = Path(value)
@@ -690,7 +764,15 @@ def _state_path(value: os.PathLike[str] | str) -> Path:
         raise ConsultationError("state path is invalid") from exc
     if not path.name:
         raise ConsultationError("state path must name a file")
-    return path
+    absolute = path.absolute()
+    _reject_symlink_path_components(absolute)
+    try:
+        resolved = absolute.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise ConsultationError("state path is unavailable") from exc
+    if resolved.parent.parts[-2:] != (".codex", "runtime"):
+        raise ConsultationError("state path must be a direct .codex/runtime file")
+    return resolved
 
 
 def _reject_special_path(path: Path, name: str) -> None:
@@ -730,40 +812,96 @@ def _verify_open_path_identity(
         raise ConsultationError(f"{name} path must identify the open {kind}")
 
 
-def _open_state_parent(state_path: Path) -> int:
-    parent = state_path.parent
-    descriptor: int | None = None
+def _verify_open_entry_identity(
+    descriptor: int,
+    parent_descriptor: int,
+    entry_name: str,
+    name: str,
+    *,
+    directory: bool,
+) -> None:
     try:
-        parent.mkdir(parents=True, mode=_PRIVATE_DIRECTORY_MODE, exist_ok=True)
+        opened_status = os.fstat(descriptor)
+        current_status = os.stat(
+            entry_name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+    except OSError as exc:
+        raise ConsultationError(f"{name} path is unavailable") from exc
+    expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+    if (
+        stat.S_ISLNK(current_status.st_mode)
+        or not expected_type(opened_status.st_mode)
+        or not expected_type(current_status.st_mode)
+        or (opened_status.st_dev, opened_status.st_ino)
+        != (current_status.st_dev, current_status.st_ino)
+    ):
+        kind = "directory" if directory else "regular non-symlink file"
+        raise ConsultationError(f"{name} path must identify the open {kind}")
+
+
+def _open_child_directory(parent_descriptor: int, name: str) -> int:
+    try:
+        os.mkdir(name, _PRIVATE_DIRECTORY_MODE, dir_fd=parent_descriptor)
+    except FileExistsError:
+        pass
+    flags = _open_flags(os.O_RDONLY)
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(name, flags, dir_fd=parent_descriptor)
+    if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise ConsultationError("state directory descriptor must be a directory")
+    _verify_open_entry_identity(
+        descriptor,
+        parent_descriptor,
+        name,
+        f"state directory {name}",
+        directory=True,
+    )
+    return descriptor
+
+
+def _open_state_parent(state_path: Path) -> int:
+    root_descriptor: int | None = None
+    codex_descriptor: int | None = None
+    runtime_descriptor: int | None = None
+    try:
+        state_root = state_path.parent.parent.parent
         flags = _open_flags(os.O_RDONLY)
         if hasattr(os, "O_DIRECTORY"):
             flags |= os.O_DIRECTORY
-        descriptor = os.open(parent, flags)
-        _verify_open_path_identity(
-            descriptor,
-            parent,
-            "state parent",
-            directory=True,
-        )
-        os.fchmod(descriptor, _PRIVATE_DIRECTORY_MODE)
-        if stat.S_IMODE(os.fstat(descriptor).st_mode) != _PRIVATE_DIRECTORY_MODE:
+        root_descriptor = os.open(state_root, flags)
+        codex_descriptor = _open_child_directory(root_descriptor, ".codex")
+        runtime_descriptor = _open_child_directory(codex_descriptor, "runtime")
+        os.fchmod(runtime_descriptor, _PRIVATE_DIRECTORY_MODE)
+        if (
+            stat.S_IMODE(os.fstat(runtime_descriptor).st_mode)
+            != _PRIVATE_DIRECTORY_MODE
+        ):
             raise ConsultationError("state parent mode must be 0700")
-        _verify_open_path_identity(
-            descriptor,
-            parent,
+        _verify_open_entry_identity(
+            runtime_descriptor,
+            codex_descriptor,
+            "runtime",
             "state parent",
             directory=True,
         )
-        result = descriptor
-        descriptor = None
+        result = runtime_descriptor
+        runtime_descriptor = None
         return result
     except ConsultationError:
         raise
     except OSError as exc:
         raise ConsultationError("state parent is unavailable") from exc
     finally:
-        if descriptor is not None:
-            os.close(descriptor)
+        if runtime_descriptor is not None:
+            os.close(runtime_descriptor)
+        if codex_descriptor is not None:
+            os.close(codex_descriptor)
+        if root_descriptor is not None:
+            os.close(root_descriptor)
 
 
 def _open_flags(base: int) -> int:
@@ -790,9 +928,9 @@ def _in_process_state_lock(state_path: Path) -> Iterator[None]:
 @contextmanager
 def _exclusive_state_lock(
     state_path_value: os.PathLike[str] | str,
-) -> Iterator[Path]:
+) -> Iterator[tuple[Path, int]]:
     state_path = _state_path(state_path_value)
-    lock_path = Path(f"{state_path}.lock")
+    lock_name = f"{state_path.name}.lock"
 
     parent_descriptor: int | None = None
     parent_locked = False
@@ -804,18 +942,13 @@ def _exclusive_state_lock(
             parent_descriptor = _open_state_parent(state_path)
             fcntl.flock(parent_descriptor, fcntl.LOCK_EX)
             parent_locked = True
-            _verify_open_path_identity(
-                parent_descriptor,
-                state_path.parent,
-                "state parent",
-                directory=True,
-            )
-            _reject_special_path(state_path, "state")
-            _reject_special_path(lock_path, "lock")
+            _reject_special_entry(parent_descriptor, state_path.name, "state")
+            _reject_special_entry(parent_descriptor, lock_name, "lock")
             descriptor = os.open(
-                lock_path,
+                lock_name,
                 _open_flags(os.O_RDWR | os.O_CREAT),
                 _PRIVATE_FILE_MODE,
+                dir_fd=parent_descriptor,
             )
             if not stat.S_ISREG(os.fstat(descriptor).st_mode):
                 raise ConsultationError("lock descriptor must be a regular file")
@@ -824,9 +957,10 @@ def _exclusive_state_lock(
             descriptor = None
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             locked = True
-            _verify_open_path_identity(
+            _verify_open_entry_identity(
                 lock_file.fileno(),
-                lock_path,
+                parent_descriptor,
+                lock_name,
                 "lock",
                 directory=False,
             )
@@ -834,8 +968,8 @@ def _exclusive_state_lock(
             lock_file.truncate(0)
             lock_file.flush()
             os.fsync(lock_file.fileno())
-            _reject_special_path(state_path, "state")
-            yield state_path
+            _reject_special_entry(parent_descriptor, state_path.name, "state")
+            yield state_path, parent_descriptor
         except ConsultationError:
             raise
         except OSError as exc:
@@ -853,26 +987,53 @@ def _exclusive_state_lock(
                 os.close(parent_descriptor)
 
 
-def _load_state(state_path: Path) -> dict[str, object]:
-    _reject_special_path(state_path, "state")
-    if not state_path.exists():
+def _reject_special_entry(
+    parent_descriptor: int,
+    entry_name: str,
+    name: str,
+) -> None:
+    try:
+        file_status = os.stat(
+            entry_name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise ConsultationError(f"{name} path is unavailable") from exc
+    if stat.S_ISLNK(file_status.st_mode):
+        raise ConsultationError(f"{name} path must not be a symlink")
+    if not stat.S_ISREG(file_status.st_mode):
+        raise ConsultationError(f"{name} path must be a regular file")
+
+
+def _load_state(state_path: Path, parent_descriptor: int) -> dict[str, object]:
+    _reject_special_entry(parent_descriptor, state_path.name, "state")
+    try:
+        os.stat(state_path.name, dir_fd=parent_descriptor, follow_symlinks=False)
+    except FileNotFoundError:
         return {
             "schema_version": STATE_SCHEMA_VERSION,
             "consultations": [],
         }
+    except OSError as exc:
+        raise ConsultationError("consultation state is unavailable") from exc
 
     descriptor: int | None = None
     try:
-        descriptor = os.open(state_path, _open_flags(os.O_RDWR))
-        opened_status = os.fstat(descriptor)
-        current_status = state_path.lstat()
-        if (
-            stat.S_ISLNK(current_status.st_mode)
-            or not stat.S_ISREG(opened_status.st_mode)
-            or (opened_status.st_dev, opened_status.st_ino)
-            != (current_status.st_dev, current_status.st_ino)
-        ):
-            raise ConsultationError("state path must be a regular non-symlink file")
+        descriptor = os.open(
+            state_path.name,
+            _open_flags(os.O_RDWR),
+            dir_fd=parent_descriptor,
+        )
+        _verify_open_entry_identity(
+            descriptor,
+            parent_descriptor,
+            state_path.name,
+            "state",
+            directory=False,
+        )
         os.fchmod(descriptor, _PRIVATE_FILE_MODE)
         with os.fdopen(descriptor, "r", encoding="utf-8") as state_file:
             descriptor = None
@@ -890,29 +1051,40 @@ def _load_state(state_path: Path) -> dict[str, object]:
     return _validate_state(loaded)
 
 
-def _write_state(state_path: Path, state: object) -> None:
+def _write_state(
+    state_path: Path,
+    parent_descriptor: int,
+    state: object,
+) -> None:
     validated = _validate_state(state)
     rendered = _canonical_bytes(validated)
     descriptor: int | None = None
-    temporary_path: Path | None = None
+    temporary_name: str | None = None
     try:
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix=f".{state_path.name}.",
-            suffix=".tmp",
-            dir=state_path.parent,
+        temporary_name = f".{state_path.name}.{uuid.uuid4().hex}.tmp"
+        descriptor = os.open(
+            temporary_name,
+            _open_flags(os.O_RDWR | os.O_CREAT | os.O_EXCL),
+            _PRIVATE_FILE_MODE,
+            dir_fd=parent_descriptor,
         )
-        temporary_path = Path(temporary_name)
         os.fchmod(descriptor, _PRIVATE_FILE_MODE)
         with os.fdopen(os.dup(descriptor), "wb") as state_file:
             state_file.write(rendered)
             state_file.flush()
             os.fsync(state_file.fileno())
-        _reject_special_path(state_path, "state")
-        os.replace(temporary_path, state_path)
-        temporary_path = None
-        _verify_open_path_identity(
+        _reject_special_entry(parent_descriptor, state_path.name, "state")
+        os.replace(
+            temporary_name,
+            state_path.name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
+        temporary_name = None
+        _verify_open_entry_identity(
             descriptor,
-            state_path,
+            parent_descriptor,
+            state_path.name,
             "state",
             directory=False,
         )
@@ -925,9 +1097,9 @@ def _write_state(state_path: Path, state: object) -> None:
     finally:
         if descriptor is not None:
             os.close(descriptor)
-        if temporary_path is not None:
+        if temporary_name is not None:
             try:
-                temporary_path.unlink()
+                os.unlink(temporary_name, dir_fd=parent_descriptor)
             except FileNotFoundError:
                 pass
 
@@ -996,8 +1168,8 @@ def reserve_consultation(
     """Reserve one content-free consultation record under the state-file lock."""
     metadata = _prepared_metadata(prepared)
     timestamp = _operation_timestamp(now)
-    with _exclusive_state_lock(state_path) as locked_path:
-        state = _load_state(locked_path)
+    with _exclusive_state_lock(state_path) as (locked_path, parent_descriptor):
+        state = _load_state(locked_path, parent_descriptor)
         for existing in state["consultations"]:
             if existing["idempotency_key"] == metadata["idempotency_key"]:
                 raise ConsultationError("idempotency key is already reserved")
@@ -1012,7 +1184,7 @@ def reserve_consultation(
             "failure_class": None,
         }
         state["consultations"].append(record)
-        _write_state(locked_path, state)
+        _write_state(locked_path, parent_descriptor, state)
         return dict(record)
 
 
@@ -1038,8 +1210,8 @@ def transition_consultation(
     explicit_timestamp = now is not None
     timestamp = _operation_timestamp(now)
 
-    with _exclusive_state_lock(state_path) as locked_path:
-        state = _load_state(locked_path)
+    with _exclusive_state_lock(state_path) as (locked_path, parent_descriptor):
+        state = _load_state(locked_path, parent_descriptor)
         record = _find_record(state, consultation_id)
         if not explicit_timestamp:
             timestamp = max(timestamp, record["updated_at"])
@@ -1050,7 +1222,7 @@ def transition_consultation(
             failure_class=failure_class,
             now=timestamp,
         )
-        _write_state(locked_path, state)
+        _write_state(locked_path, parent_descriptor, state)
         return dict(record)
 
 
@@ -1063,8 +1235,8 @@ def resume_manual(
     """Explicitly resume the same failed record as a manual relay."""
     explicit_timestamp = now is not None
     timestamp = _operation_timestamp(now)
-    with _exclusive_state_lock(state_path) as locked_path:
-        state = _load_state(locked_path)
+    with _exclusive_state_lock(state_path) as (locked_path, parent_descriptor):
+        state = _load_state(locked_path, parent_descriptor)
         record = _find_record(state, consultation_id)
         if record["status"] != "failed":
             raise ConsultationError("only a failed consultation can resume manually")
@@ -1076,7 +1248,7 @@ def resume_manual(
         record["updated_at"] = timestamp
         record["transport"] = "manual"
         record["failure_class"] = None
-        _write_state(locked_path, state)
+        _write_state(locked_path, parent_descriptor, state)
         return dict(record)
 
 
@@ -1092,13 +1264,20 @@ def accept_response(
         wrapper["consultation_id"],
         "response wrapper.consultation_id",
     )
-    current_binding_hash = state_binding_hash(wrapper["current_state_binding"])
+    current_repo_head = _validate_repo_head(
+        wrapper["current_repo_head"],
+        "response wrapper.current_repo_head",
+    )
+    current_binding_hash = state_binding_hash(
+        wrapper["current_state_binding"],
+        current_repo_head,
+    )
     response = wrapper["response"]
     explicit_timestamp = now is not None
     timestamp = _operation_timestamp(now)
 
-    with _exclusive_state_lock(state_path) as locked_path:
-        state = _load_state(locked_path)
+    with _exclusive_state_lock(state_path) as (locked_path, parent_descriptor):
+        state = _load_state(locked_path, parent_descriptor)
         record = _find_record(state, consultation_id)
         if record["status"] != "sent":
             raise ConsultationError("only a sent consultation can accept a response")
@@ -1114,7 +1293,7 @@ def accept_response(
                 failure_class=None,
                 now=timestamp,
             )
-            _write_state(locked_path, state)
+            _write_state(locked_path, parent_descriptor, state)
             raise ConsultationError("stale consultation state binding")
 
         validated = validate_response(
@@ -1129,7 +1308,7 @@ def accept_response(
             failure_class=None,
             now=timestamp,
         )
-        _write_state(locked_path, state)
+        _write_state(locked_path, parent_descriptor, state)
         return validated
 
 
