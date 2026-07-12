@@ -616,6 +616,8 @@ def test_chatgpt_pro_acceptance_procedure_is_fail_closed_and_content_free():
         "complete failure-fixture matrix",
         "normalized `options`",
         "browser cookie/login stores",
+        "`.crt` or `.cer`",
+        "known backup or database sidecar suffix",
     ):
         assert phrase in procedure
     lower_procedure = procedure.lower()

@@ -118,14 +118,9 @@ PROHIBITED_SOURCE_PARTS = (
     "browser/session",
     "coordination/threeway/keys/",
 )
-PROHIBITED_SOURCE_EXTENSIONS = (
-    ".db",
-    ".pem",
-    ".key",
-    ".p12",
-    ".pfx",
-    ".crt",
-    ".cer",
+PROHIBITED_SOURCE_FILE_PATTERN = re.compile(
+    r"\.(?:db|sqlite[0-9]*|pem|key|p12|pfx|crt|cer)"
+    r"(?:[-.](?:wal|shm|journal|bak|backup|old|orig|copy|tmp|temp))?$"
 )
 PROHIBITED_SOURCE_SEGMENTS = frozenset(
     {
@@ -411,12 +406,7 @@ def _validate_fact(value: object, index: int) -> dict[str, object]:
         r"(?:exports|records|data)?$"
     )
     if (
-        terminal.endswith(PROHIBITED_SOURCE_EXTENSIONS)
-        or re.search(
-            r"\.sqlite(?:[0-9]+|-(?:wal|shm|journal)|\.(?:wal|shm|journal|bak))?$",
-            terminal,
-        )
-        is not None
+        PROHIBITED_SOURCE_FILE_PATTERN.search(terminal) is not None
         or any(
             segment in PROHIBITED_SOURCE_SEGMENTS
             or prohibited_class.fullmatch(segment) is not None

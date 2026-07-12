@@ -64,10 +64,14 @@ Materially different normalized `options` also produce a different idempotency
 key.
 
 Sources must never identify database files (`.db` or `.sqlite*`), private-key or
-certificate containers (`.pem`, `.key`, `.p12`, or `.pfx`), customer/business
-data directories, or browser cookie/login stores. Case, whitespace, slash, and
-Unicode normalization do not bypass this classification. Documentation and
-schema references that merely discuss those formats remain allowed.
+certificate containers (`.pem`, `.key`, `.p12`, `.pfx`, `.crt` or `.cer`),
+customer/business data directories, or browser cookie/login stores. A sensitive
+filename remains prohibited when its extension is followed by a known backup or
+database sidecar suffix: `.bak`, `.backup`, `.old`, `.orig`, `.copy`, `.tmp`,
+`.temp`, `-wal`, `-shm`, `-journal`, or the dotted sidecar equivalents. Case,
+whitespace, slash, and Unicode normalization do not bypass this classification.
+Documentation and schema references that merely discuss those formats, such as
+`docs/example.pem.md`, remain allowed.
 
 ## Guard commands
 

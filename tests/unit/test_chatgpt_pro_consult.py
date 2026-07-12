@@ -446,12 +446,48 @@ def test_prohibited_source_path_classes_are_rejected_after_normalization(source)
 
 
 @pytest.mark.parametrize(
+    "extension",
+    [".db", ".sqlite3", ".pem", ".key", ".p12", ".pfx", ".crt", ".cer"],
+)
+@pytest.mark.parametrize(
+    "suffix",
+    [".bak", ".backup", ".old", ".orig", ".copy", ".tmp", ".temp"],
+)
+def test_sensitive_source_backup_suffixes_are_rejected(extension, suffix):
+    request = valid_request()
+    if extension in {".db", ".sqlite3"}:
+        stem = "data/app"
+    elif extension in {".crt", ".cer"}:
+        stem = "certs/client"
+    else:
+        stem = "keys/client"
+    request["facts"][0]["source"] = f"{stem}{extension}{suffix}"
+
+    with pytest.raises(consult.ConsultationError, match="source is prohibited"):
+        consult.prepare_request(request)
+
+
+@pytest.mark.parametrize("extension", [".db", ".sqlite3"])
+@pytest.mark.parametrize(
+    "suffix",
+    ["-wal", "-shm", "-journal", ".wal", ".shm", ".journal"],
+)
+def test_database_source_sidecars_are_rejected(extension, suffix):
+    request = valid_request()
+    request["facts"][0]["source"] = f"data/app{extension}{suffix}"
+
+    with pytest.raises(consult.ConsultationError, match="source is prohibited"):
+        consult.prepare_request(request)
+
+
+@pytest.mark.parametrize(
     "source",
     [
         "docs/database-design.md:10",
         "docs/storage.sqlite-schema.md:15",
         "docs/certificate-validation.md:20",
         "docs/customer-schema.md:30",
+        "docs/example.pem.md:35",
         "src/business_rules.py:40",
         "src/browser_cookie_policy.py:50",
         "src/login_handler.py:60",
