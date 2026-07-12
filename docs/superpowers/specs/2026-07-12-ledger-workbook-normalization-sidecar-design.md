@@ -261,7 +261,8 @@ blocking. With the argument, the planner:
 1. validates schema and all source/plan/database/evidence bindings;
    the source-plan parser commit must match the blocked plan, while the
    normalization-implementation commit must match the clean current planner
-   commit;
+   commit; the expected current planner commit is supplied independently by
+   the caller and is never copied from the override being validated;
 2. applies the 12 deterministic rules to the exact bound fact sets;
 3. applies owner decisions only to their exact fact IDs and member sets;
 4. regenerates component facts and action classifications;
@@ -269,9 +270,22 @@ blocking. With the argument, the planner:
 6. records normalization and owner-decision audit entries in the plan;
 7. includes the override JSON hash in canonical plan bytes.
 
+The newly generated normalized plan's `parser_commit` is the independently
+resolved current normalization-implementation commit. The older source-plan
+parser commit remains provenance inside the canonical override JSON (and is
+therefore transitively bound by the override hash); it is never reused as the
+new plan's executable-code commit. This keeps apply's existing
+`HEAD == plan.parser_commit` safety check satisfiable without weakening it.
+
 The planner never edits either workbook. Summary values cannot create detail,
 allocate residuals, or repair a mismatch. If any upstream case remains
 unresolved or a summary remains unequal, the plan is blocking.
+
+The three automatic rule families (`nonnumeric_derived_cell`,
+`nonnumeric_ppl_amount`, and stable `unheaded_cell`) each have an exact
+fact-set digest in `reason_fact_set_sha256`. Predicate matching is necessary
+but insufficient: any added, removed, or substituted automatic candidate
+invalidates the override instead of normalizing an additional case.
 
 The applier accepts no new sidecar argument. It receives only the canonical
 plan, whose hash already binds the validated override JSON and normalization
