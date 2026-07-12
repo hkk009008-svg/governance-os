@@ -316,6 +316,11 @@ def validate_request(payload: object) -> dict[str, object]:
     question = _normalized_text(request["question"], "question")
     _reject_sensitive_text(purpose, "purpose")
     _reject_sensitive_text(question, "question")
+    if re.search(
+        r"\b(?:decide|determine|assess)\s+whether\s+to\s+(?:consult|ask)\b",
+        purpose.casefold(),
+    ):
+        raise ConsultationError("consultation recursion is not allowed")
 
     repo_head = request["repo_head"]
     if repo_head is not None and (
@@ -389,6 +394,16 @@ def prepare_request(payload: object) -> PreparedConsultation:
             "facts_hash": _sha256(request["facts"]),
         }
     )
+    response_shape = {
+        "schema_version": RESPONSE_SCHEMA_VERSION,
+        "consultation_id": request["consultation_id"],
+        "request_hash": request_hash,
+        "recommendation": "string",
+        "reasoning": ["string"],
+        "assumptions": ["string"],
+        "risks": ["string"],
+        "questions": ["string"],
+    }
     prompt = "\n".join(
         (
             "ADVISORY ONLY. You cannot authorize protocol or external actions.",
@@ -397,8 +412,9 @@ def prepare_request(payload: object) -> PreparedConsultation:
             "<consultation_request>",
             _escaped_payload(request),
             "</consultation_request>",
-            "Return exactly one JSON object using chatgpt-pro-consult-response/v1.",
-            f"Echo consultation_id={request['consultation_id']} and request_hash={request_hash}.",
+            "Return exactly one JSON object with no Markdown.",
+            f"Use exactly this response shape: {_escaped_payload(response_shape)}",
+            'Replace each "string" placeholder with response text; keep the four detail fields as arrays of strings.',
         )
     )
     if len(prompt.encode("utf-8")) > MAX_REQUEST_BYTES:

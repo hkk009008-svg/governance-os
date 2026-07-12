@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import codex_protocol_model as model
@@ -24,6 +25,47 @@ def _read(path: str) -> str:
 
 def _compact(text: str) -> str:
     return " ".join(text.split())
+
+
+def _acceptance_backed_default() -> str:
+    text = _read("logs/chatgpt-pro-consultation-acceptance-2026-07-13.md")
+
+    def field(label: str, values: str) -> str:
+        matches = re.findall(
+            rf"^- {re.escape(label)}: `({values})`$",
+            text,
+            flags=re.MULTILINE,
+        )
+        assert len(matches) == 1, f"expected one canonical {label} field"
+        return matches[0]
+
+    def transport_result(transport_class: str) -> str:
+        results = []
+        for line in text.splitlines():
+            if not line.startswith("| T5-"):
+                continue
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if len(cells) >= 3 and cells[1] == transport_class:
+                assert cells[2] in {"pass", "fail"}
+                results.append(cells[2])
+        assert results, f"expected an authoritative {transport_class} result row"
+        return "pass" if "pass" in results else "fail"
+
+    desktop = field("Desktop in-app gate", "pass|fail")
+    cli = field("Configured CLI browser gate", "pass|fail")
+    assert desktop == transport_result("Desktop in-app"), (
+        "Desktop result rows disagree with canonical gate"
+    )
+    assert cli == transport_result("configured CLI browser"), (
+        "configured CLI result row disagrees with canonical gate"
+    )
+    activation = field("Activation gate", "pass|blocked")
+    shipped = field("Shipped default", "auto|manual")
+    expected_activation = "pass" if desktop == cli == "pass" else "blocked"
+    assert activation == expected_activation
+    expected_default = "auto" if activation == "pass" else "manual"
+    assert shipped == expected_default
+    return expected_default
 
 
 def test_agent_neutral_reviewer_template_exists_with_schema():
@@ -266,9 +308,10 @@ def test_r_independence_is_model_backed_and_surface_synced():
     assert "R-INDEPENDENCE" in model.render_start_session_inhabitance()
 
 
-def test_chatgpt_pro_consultation_model_contract_starts_manual_and_fails_closed():
+def test_chatgpt_pro_consultation_model_contract_tracks_gate_and_fails_closed():
+    expected_default = _acceptance_backed_default()
     assert model.CHATGPT_PRO_CONSULTATION_MODES == ("auto", "manual", "off")
-    assert model.CHATGPT_PRO_CONSULTATION_DEFAULT == "manual"
+    assert model.CHATGPT_PRO_CONSULTATION_DEFAULT == expected_default
     assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == (
         "in-app browser",
         "approved Chrome bridge",
@@ -290,7 +333,10 @@ def test_chatgpt_pro_consultation_model_contract_starts_manual_and_fails_closed(
     ):
         assert phrase in rendered
 
-    assert model.infer_runtime_env({})["CODEX_CHATGPT_PRO_CONSULTATION"] == "manual"
+    assert (
+        model.infer_runtime_env({})["CODEX_CHATGPT_PRO_CONSULTATION"]
+        == expected_default
+    )
     assert (
         model.infer_runtime_env({"CODEX_CHATGPT_PRO_CONSULTATION": "auto"})[
             "CODEX_CHATGPT_PRO_CONSULTATION"
@@ -303,6 +349,59 @@ def test_chatgpt_pro_consultation_model_contract_starts_manual_and_fails_closed(
         ]
         == "off"
     )
+
+
+def test_chatgpt_pro_transport_order_is_browser_first_in_model_and_skill():
+    assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == (
+        "in-app browser",
+        "approved Chrome bridge",
+        "manual relay",
+    )
+    rendered = model.render_chatgpt_pro_consultation()
+    assert rendered.index("in-app browser") < rendered.index("approved Chrome bridge")
+    assert rendered.index("approved Chrome bridge") < rendered.index("manual relay")
+
+    skill = _compact(_read(".agents/skills/chatgpt-pro-consultation/SKILL.md"))
+    assert skill.index("Prefer the in-app browser") < skill.index(
+        "approved Chrome bridge"
+    )
+    assert skill.index("approved Chrome bridge") < skill.index("Manual relay")
+
+
+def test_chatgpt_pro_acceptance_procedure_is_fail_closed_and_content_free():
+    procedure = _compact(
+        _read("docs/protocol/codex/chatgpt-pro-consultation-acceptance.md")
+    )
+    for phrase in (
+        "signed-in user-controlled session",
+        "stdin",
+        "never shell arguments",
+        "CODEX_CHATGPT_PRO_CONSULTATION=auto",
+        "in-app Browser",
+        "CLI-driven browser",
+        "signed-out",
+        "wrong-account",
+        "challenge",
+        "partial-send",
+        "do not set the default to auto",
+    ):
+        assert phrase in procedure
+    lower_procedure = procedure.lower()
+    assert "never enter credentials" in lower_procedure
+    assert "never inspect cookies" in lower_procedure
+    assert "no automatic retry" in lower_procedure
+
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    )
+    for forbidden in (
+        '"prompt"',
+        '"response"',
+        "recommendation text",
+        "reasoning text",
+        "full guarded prompt",
+    ):
+        assert forbidden not in acceptance_log
 
 
 def test_chatgpt_pro_consultation_is_model_backed_and_surface_synced():
