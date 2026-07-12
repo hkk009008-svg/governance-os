@@ -1,6 +1,9 @@
 """Orthogonal packet-state derivation from legacy fields (ADR-017)."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import packet_state
 
 
@@ -107,3 +110,47 @@ def test_every_transition_target_is_a_known_state():
     for src, dsts in packet_state.WORK_TRANSITIONS.items():
         assert src in known
         assert dsts <= known
+
+
+# --- Task 3: load_packets + build_report + main (read-only --report CLI) ---
+def _write_pkt(root: Path, pkt: dict) -> None:
+    d = root / "coordination" / "capacity" / "packets"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{pkt['id']}.json").write_text(json.dumps(pkt), encoding="utf-8")
+
+
+def test_build_report_flags_blocked_completed_overloading(tmp_path):
+    _write_pkt(tmp_path, _pkt(id="held", wave=2, status="blocked",
+                              packet_type="director-preflight", done_evidence=["CLEAR at route commit abc"]))
+    _write_pkt(tmp_path, _pkt(id="run", wave=2, status="active"))
+    packets = packet_state.load_packets(tmp_path, 2)
+    report = packet_state.build_report(packets)
+    rows = {r["id"]: r for r in report["packets"]}
+    assert rows["held"]["legacy_status"] == "blocked"
+    assert rows["held"]["work_state"] == "completed"
+    assert rows["held"]["overloaded"] is True
+    assert rows["run"]["overloaded"] is False
+
+
+def test_load_packets_filters_by_wave(tmp_path):
+    _write_pkt(tmp_path, _pkt(id="w2", wave=2, status="active"))
+    _write_pkt(tmp_path, _pkt(id="w9", wave=9, status="active"))
+    ids = {p["id"] for p in packet_state.load_packets(tmp_path, 2)}
+    assert ids == {"w2"}
+
+
+def test_load_packets_tolerates_bad_json(tmp_path):
+    d = tmp_path / "coordination" / "capacity" / "packets"
+    d.mkdir(parents=True)
+    (d / "broken.json").write_text("{not json", encoding="utf-8")
+    _write_pkt(tmp_path, _pkt(id="ok", wave=2, status="active"))
+    ids = {p["id"] for p in packet_state.load_packets(tmp_path, 2)}
+    assert ids == {"ok"}
+
+
+def test_cli_report_exits_zero_always(tmp_path, capsys):
+    _write_pkt(tmp_path, _pkt(id="held", wave=2, status="blocked", done_evidence=["x"]))
+    rc = packet_state.main(["--root", str(tmp_path), "--wave", "2"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "held" in out and "completed" in out
