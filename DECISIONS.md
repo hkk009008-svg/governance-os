@@ -811,3 +811,50 @@ commit.
 - The Opus pass is the second reviewer for the same question; R-VERIFY-TIER
   still forbids a third generic pass without a distinct pre-stated question.
 - V1 is Pipeline-scoped and uses no MCP service or new Python dependency.
+
+## ADR-021: consume enforces target, consumable-state, evidence totality, logs_ref confinement, int-only currency
+
+**Status:** Accepted
+
+**Context:**
+The design-time independent coverage enumeration mandated by R-INDEPENDENCE
+(ADR-019) surfaced — and direct probes CONFIRMED — five defects in the shipped,
+three-round-Codex-GO'd `scripts/route_capability.py`: (CRITICAL) `consume`
+enforced the command CLASS but not the TARGET, so a capability for
+`target: origin/main` accepted `git push attacker/main`; (HIGH) `consume`
+accepted any schema-valid `state`, including `revoked`/`expired`/`failed`, and
+never consulted `expires_on`; (robustness) `consume` raised `KeyError`/
+`AttributeError` on malformed evidence instead of a typed refusal; (MED)
+`validate_receipt` accepted a traversing `logs_ref` (`logs/../../etc/passwd`);
+(LOW-MED) `capability_is_current` treated a boolean generation of `True` as `1`.
+The CRITICAL and HIGH are the exact "computable-but-not-enforced" class an
+earlier Codex pass caught for the command field — fixed for the instance, not
+the class. None had been caught by same-model review or end-stage manual
+cross-model probing; only systematic independent design-time enumeration found
+them (the R-INDEPENDENCE thesis, demonstrated).
+
+**Decision:**
+`consume` now enforces, fail-closed before any filesystem write, in order:
+evidence totality (`_validate_evidence`; never raises) → capability validity →
+consumable state (`CONSUMABLE_STATES = {issued, activated}`) → currency (int-only
+generations) → command class (unchanged) → target
+(`_command_targets_match`: the command's non-flag argument components, split on
+whitespace and `/`, must EQUAL the capability's target components in order —
+strict/fail-closed, accepting `git push origin main` for `origin/main`,
+rejecting `git push attacker/main` and any extra/different ref). `validate_receipt`
+rejects a `logs_ref` that is absolute, contains a `..` component, or escapes
+`logs/` (pure lexical). This is an authority-semantics change (hence an ADR).
+The target rule was author-proposed (the independent Codex design-generation run
+was cut off) and adversarially verified cross-model at Lane-V per R-INDEPENDENCE.
+
+**Consequences:**
+- A capability now authorizes exactly one command class acting on exactly its
+  target, from a consumable state, with total/typed refusal on malformed input.
+- Dynamic `expires_on` enforcement still needs a packet-completion signal
+  `consume` lacks; deferred (the terminal `expired` state IS refused). The
+  capability `non_goals` prose (e.g. "no force-push") remains unenforced —
+  `--force-with-lease` is accepted by the target rule; a future increment may
+  enforce non_goals. check_cas/parse_lineage/render_markdown parallels flagged
+  by the same enumeration are the next re-verification targets.
+- `git push` → `git push origin main` updates in existing tests (command must
+  now match target) preserve their original invariants (reviewed).
