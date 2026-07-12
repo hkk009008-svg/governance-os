@@ -704,3 +704,56 @@ pinned strict-xfail (R-VERIFY-TIER-B).
   cases are caught in CI, not post-hoc.
 - Dev/CI installs one more package; runtime install is unchanged.
 - Non-determinism is avoided via the seeded profile; failures reproduce.
+
+## ADR-019: Independence-first verification is the OS default (R-INDEPENDENCE)
+
+**Status:** Accepted
+
+**Context:**
+The 2026-07-12 governance-improvement retrospective examined why so many
+defects surfaced across six kernel-hardening slices. Root cause: for every
+slice, one model (in author, implementer, and reviewer hats via subagents)
+produced work that passed all internal review, and the only independent
+perspective — a cross-model Codex Lane-V pass — ran only at the END, per slice.
+Independence-at-the-end-only let a whole change's blind spots accumulate.
+Every adversarial defect (control-char injection ×2 in two renderers, a
+compound-command bypass, authority that was computable-but-not-enforced at the
+point of use, a comparator path escape, a route-id/filename binding gap, a
+one-time-token bricking-on-crash, property-test vacuousness, and a
+total-function gap in already-shipped code) had been approved by same-model
+internal review and was caught only by the different-perspective verifier. The
+OS's own four-seat model already prescribes separation of build and verify
+(ADR-001) — but nothing forced that independence to (a) fire at DESIGN time or
+(b) use a genuinely DIFFERENT model rather than the same model in an operator
+seat. The user-principal directed on 2026-07-12 that this behavior become the
+OS default.
+
+**Decision:**
+Adopt **R-INDEPENDENCE** as standing doctrine (Scope: both). For an
+adversarial-surface change (parses/renders/composes input into a
+parseable-or-executable context; enforces authority or a security boundary;
+gates a side effect; validates a trust-granting schema), independent
+verification is required at TWO points: (1) design-time — an independent
+reviewer, preferably a DIFFERENT model/harness than the author, enumerates the
+abuse/edge cases before implementation, and the author folds them into the
+plan's acceptance criteria as enforced-and-tested behaviors, not aspirational
+guarantees; (2) per-task, before "done" — an independent reviewer verifies the
+diff against those cases, and for an adversarial surface this SHOULD be
+cross-model because same-model review has correlated blind spots and is
+near-vacuous on exactly these surfaces (the enforcer-is-enforced anti-pattern,
+ADR-003). This EXTENDS ADR-001 / Rule #23 and COMPLEMENTS R-VERIFY-TIER (which
+caps redundant same-question passes; R-INDEPENDENCE requires an early
+new-perspective pass). The operative stub lives in CLAUDE.md; the full text is
+`docs/protocol/claude/independence-first.md`. Non-adversarial / read-only /
+hermetic work does not trigger it.
+
+**Consequences:**
+- Adversarial-surface changes now carry a design-time cross-model enumeration
+  and a per-task cross-model verification, not just an end-stage pass.
+- Follow-ups (recorded, not yet done): mechanize the cross-model requirement in
+  `scripts/check_go_schema.py` (a same-model review must not be claimed to
+  discharge an adversarial-surface task); sync the stub into `AGENTS.md` (the
+  Codex twin) once it is not mid-edit by a peer lane; add the design-time
+  enumeration step to the dispatch templates in `docs/templates/claude/`.
+- This ADR was itself drafted by a Claude seat and is being independently
+  reviewed cross-model (dogfooding R-INDEPENDENCE on R-INDEPENDENCE).
