@@ -1128,9 +1128,12 @@ def render_protocol_assembly_map() -> str:
 
 CROSS_MODEL_VERIFICATION_RULES = (
     "after every Codex Lane V verification in the Pipeline repository, attempt exactly one verdict-blind Opus review before the final verdict",
-    "the Opus request carries the reviewed commit/range, requirements, allowed paths, exact verification commands, and a recorded user-task:<id> or verify-request:<id> authorization source but no Codex verdict, report, findings, or conclusion",
-    "the Opus call occurs only when the parent prompt supplies recorded task-level authorization; absent parent authorization yields unavailable without an external call",
-    "parent-supplied recorded authorization permits exactly the one bounded Opus call and does not grant inherited paid-spend authority",
+    "the Opus request carries the reviewed commit/range, requirements, allowed paths, and exact verification commands but no Codex verdict, report, findings, or conclusion",
+    "the request declares review profile codex-lane-v and normalized evidence uses opus-review/v2",
+    "after Pipeline identity, reviewed commits, and immutable scope validation, missing authorization resolves to standing-policy:codex-lane-v-opus-v1 only when the authorization source is absent",
+    "valid explicit user-task:<id> and verify-request:<id> sources remain accepted; malformed explicit authorization never falls back",
+    "the standing policy permits exactly one provider process attempt and no automatic retry, with one invocation per unchanged Lane V verification",
+    "standing consent does not authorize design-time Opus or any other paid call",
     "V1 applies only to Pipeline-repository verification",
     "Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1, not an incomplete required Opus pass",
     "operator retains GO/NITS/FAIL authority; Opus output is advisory evidence and never a mailbox event or protocol verdict",

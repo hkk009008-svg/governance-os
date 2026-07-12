@@ -756,6 +756,10 @@ def test_review_request_has_no_codex_result_channel(tmp_path: Path) -> None:
     assert "codex_conclusion" not in inspect.signature(bridge.ReviewRequest).parameters
     assert "Do not ask for or infer the Codex verifier's verdict" in prompt
     assert "Authorization source: user-task:verification-1" in prompt
+    assert (
+        "Review profile: codex-lane-v\n"
+        "Authorization source: user-task:verification-1"
+    ) in prompt
     assert "Verify the stale-parent guard" not in prompt
     assert "brief.md" in prompt
 
@@ -995,7 +999,7 @@ def test_review_without_explicit_base_uses_first_parent_verifier_prompt(
 def test_review_rejects_explicit_base_that_does_not_precede_head(
     tmp_path: Path,
 ) -> None:
-    request = _committed_request(tmp_path)
+    request = replace(_committed_request(tmp_path), authorization_source="")
     request = replace(request, reviewed_base=request.reviewed_head)
 
     def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -1022,7 +1026,7 @@ def test_review_proves_revisions_exist_before_provider_call(
     assert excinfo.value.reason == "invalid_scope"
 
 
-def test_missing_authorization_still_requires_existing_reviewed_commits(
+def test_standing_authorization_requires_existing_reviewed_commits(
     tmp_path: Path,
 ) -> None:
     request = replace(
@@ -1031,22 +1035,63 @@ def test_missing_authorization_still_requires_existing_reviewed_commits(
         reviewed_head="f" * 40,
     )
 
+    calls = 0
+
+    def forbidden_runner(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("provider must not run before commit scope proof")
+
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(request)
+        bridge.review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == "invalid_scope"
+    assert calls == 0
 
 
-def test_missing_authorization_still_requires_pipeline_identity(
+def test_standing_authorization_requires_pipeline_identity(
     tmp_path: Path,
 ) -> None:
     request = replace(_committed_request(tmp_path), authorization_source="")
     (tmp_path / "AGENTS.md").unlink()
 
+    calls = 0
+
+    def forbidden_runner(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("provider must not run before Pipeline identity proof")
+
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(request)
+        bridge.review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == "not_pipeline_repo"
+    assert calls == 0
+
+
+def test_standing_authorization_requires_requirement_at_reviewed_head(
+    tmp_path: Path,
+) -> None:
+    request = _committed_request(tmp_path)
+    late_requirement = tmp_path / "late-requirement.md"
+    late_requirement.write_text("mutable only\n", encoding="utf-8")
+    request = replace(
+        request,
+        requirement_paths=(late_requirement,),
+        authorization_source="",
+    )
+    calls = 0
+
+    def forbidden_runner(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("provider must not run before snapshot scope proof")
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.review(request, runner=forbidden_runner)
+
+    assert excinfo.value.reason == "invalid_scope"
+    assert calls == 0
 
 
 def _run_sandbox_probe(
@@ -1710,27 +1755,136 @@ def test_review_canonicalizes_uppercase_scope_before_provider_call(
     assert result.reviewed_base == original.reviewed_base
 
 
-def test_review_missing_authorization_does_not_invoke_claude(tmp_path: Path) -> None:
-    def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        raise AssertionError("Claude must not run without authorization")
-
-    result = bridge.review(_request(tmp_path, authorization=""), runner=forbidden_runner)
-
-    assert result.status == "unavailable"
-    assert result.unavailable_reason == "authorization_missing"
-
-
-def test_review_whitespace_authorization_records_missing_source(tmp_path: Path) -> None:
-    def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        raise AssertionError("Claude must not run without authorization")
-
-    result = bridge.review(
-        _request(tmp_path, authorization=" \t "), runner=forbidden_runner
+def test_missing_authorization_uses_standing_policy_and_invokes_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path, authorization="")
+    calls = 0
+    monkeypatch.setattr(
+        bridge,
+        "_resolve_claude_executable",
+        lambda environment: Path(sys.executable),
     )
 
-    assert result.status == "unavailable"
-    assert result.unavailable_reason == "authorization_missing"
-    assert result.authorization_source == "missing"
+    def fake_runner(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            "",
+        )
+
+    result = bridge.review(request, runner=fake_runner)
+
+    assert calls == 1
+    assert result.status == "pass"
+    assert result.review_profile == "codex-lane-v"
+    assert result.authorization_source == (
+        "standing-policy:codex-lane-v-opus-v1"
+    )
+
+
+def test_whitespace_authorization_uses_standing_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path, authorization=" \t ")
+    calls = 0
+    monkeypatch.setattr(
+        bridge,
+        "_resolve_claude_executable",
+        lambda environment: Path(sys.executable),
+    )
+
+    def fake_runner(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            "",
+        )
+
+    result = bridge.review(request, runner=fake_runner)
+    assert calls == 1
+    assert result.authorization_source == (
+        "standing-policy:codex-lane-v-opus-v1"
+    )
+
+
+def test_standing_authorization_requires_exact_review_profile(
+    tmp_path: Path,
+) -> None:
+    request = replace(
+        _request(tmp_path, authorization=""),
+        review_profile="money-gate",
+    )
+    calls = 0
+
+    def forbidden_runner(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("provider must not run for a wrong profile")
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.review(request, runner=forbidden_runner)
+
+    assert excinfo.value.reason == "invalid_profile"
+    assert calls == 0
+
+
+@pytest.mark.parametrize(
+    "authorization",
+    ["user-task:verification-1", "verify-request:route-22"],
+)
+def test_explicit_authorization_sources_are_preserved(
+    tmp_path: Path, authorization: str
+) -> None:
+    request = _request(tmp_path, authorization=authorization)
+
+    def fake_runner(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            "",
+        )
+
+    result = bridge.review(request, runner=fake_runner)
+    assert result.authorization_source == authorization
+
+
+def test_explicit_standing_policy_source_is_rejected(
+    tmp_path: Path,
+) -> None:
+    request = _request(
+        tmp_path,
+        authorization="standing-policy:codex-lane-v-opus-v1",
+    )
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.review(request)
+
+    assert excinfo.value.reason == "invalid_authorization"
 
 
 def test_review_rejects_unstructured_authorization_source(tmp_path: Path) -> None:
@@ -1767,6 +1921,7 @@ def test_review_rejects_non_opus_effective_model(tmp_path: Path) -> None:
 def test_review_normalizes_timeout_without_retry(tmp_path: Path) -> None:
     calls = 0
     sandbox_roots: list[Path] = []
+    request = _request(tmp_path, authorization="")
 
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         nonlocal calls
@@ -1774,11 +1929,15 @@ def test_review_normalizes_timeout_without_retry(tmp_path: Path) -> None:
         sandbox_roots.append(Path(argv[2]).parent.parent)
         raise subprocess.TimeoutExpired(argv, 900)
 
-    result = bridge.review(_request(tmp_path), runner=fake_runner)
+    result = bridge.review(request, runner=fake_runner)
 
     assert calls == 1
     assert result.status == "unavailable"
     assert result.unavailable_reason == "timeout"
+    assert result.review_profile == "codex-lane-v"
+    assert result.authorization_source == (
+        "standing-policy:codex-lane-v-opus-v1"
+    )
     assert sandbox_roots and not sandbox_roots[0].exists()
     assert not any(
         thread.name == "opus-verification-broker" and thread.is_alive()
@@ -2113,7 +2272,7 @@ def test_review_rejects_non_pipeline_root(tmp_path: Path) -> None:
 def test_review_rejects_scope_command_or_limit_widening(
     tmp_path: Path, changes: dict[str, object], reason: str
 ) -> None:
-    request = replace(_request(tmp_path), **changes)
+    request = replace(_request(tmp_path, authorization=""), **changes)
 
     def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise AssertionError("invalid requests must fail before Claude runs")

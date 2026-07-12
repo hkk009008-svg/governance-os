@@ -67,9 +67,12 @@ Adversarial proof loop:
 Cross-Model Opus Verification:
 - After every Codex Lane V verification in the Pipeline repository, attempt exactly one verdict-blind Opus review before the final verdict.
 - Finish the primary Codex analysis first and hold its provisional verdict internally.
-- Invoke `scripts/opus_review_bridge.py review` with the full reviewed HEAD, optional base, requirement paths, allowed paths, exact verification commands, and the recorded `user-task:<id>` or `verify-request:<id>` authorization source. Do not pass the Codex verdict, report, findings, or conclusion.
-- The Opus call occurs only when the parent prompt supplies recorded task-level authorization. Never invent it, infer it from credentials or repository state, or search for a substitute; absent parent authorization yields `unavailable` without an external call.
-- Parent-supplied recorded authorization permits exactly the one bounded Opus call and does not grant inherited paid-spend authority.
+- Invoke `scripts/opus_review_bridge.py review` with the full reviewed HEAD, optional base, requirement paths, allowed paths, and exact verification commands. Do not pass the Codex verdict, report, findings, or conclusion.
+- The request declares review profile `codex-lane-v` and normalized evidence uses `opus-review/v2`.
+- After Pipeline identity, reviewed commits, and immutable scope validation, missing authorization resolves to `standing-policy:codex-lane-v-opus-v1` only when the authorization source is absent.
+- Valid explicit `user-task:<id>` and `verify-request:<id>` sources remain accepted; malformed explicit authorization never falls back.
+- The standing policy permits exactly one provider process attempt and no automatic retry, with one invocation per unchanged Lane V verification.
+- Standing consent does not authorize design-time Opus or any other paid call.
 - V1 applies only to Pipeline-repository verification.
 - Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1, not an incomplete required Opus pass.
 - Preserve the normalized `pass | issues | unavailable` Opus result and the effective model metadata.
@@ -93,6 +96,8 @@ Report exactly:
 - NITS
 - FAIL reasons
 - Lock release authorization, if relevant
+- Review profile: codex-lane-v
+- Authorization identity: standing-policy / explicit task source
 - Cross-model review: pass / issues / unavailable
 - Effective Opus model: model id / unavailable
 - Opus finding dispositions: finding id → confirmed / disproved + evidence / unresolved

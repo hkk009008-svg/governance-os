@@ -636,7 +636,14 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
         "Cross-Model Opus Verification:",
         "after every Codex Lane V verification",
         "exactly one verdict-blind Opus review",
-        "parent prompt supplies recorded task-level authorization",
+        "review profile codex-lane-v",
+        "standing-policy:codex-lane-v-opus-v1",
+        "only when the authorization source is absent",
+        "malformed explicit authorization never falls back",
+        "one provider process attempt and no automatic retry",
+        "one invocation per unchanged Lane V verification",
+        "does not authorize design-time Opus or any other paid call",
+        "opus-review/v2",
         "V1 applies only to Pipeline-repository verification",
         "Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1",
         "operator retains GO/NITS/FAIL authority",
@@ -645,10 +652,8 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
         "unresolved Opus finding blocks GO",
         "reconciliation requires explicit expected HEAD/base and preserves reviewed scope",
         "reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO",
-        "no automatic retry",
         "no third same-question generic reviewer",
         "Do not launch generic same-question spec or code-quality reviewers",
-        "permits exactly the one bounded Opus call and does not grant inherited paid-spend authority",
         "only a different pre-stated specialist question is eligible",
     )
     for phrase in required:
@@ -665,6 +670,8 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
             assert phrase.lower() in text, (path, phrase)
 
     report_fields = (
+        "Review profile:",
+        "Authorization identity:",
         "Cross-model review:",
         "Effective Opus model:",
         "Opus finding dispositions:",

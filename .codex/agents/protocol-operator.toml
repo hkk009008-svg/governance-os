@@ -51,12 +51,18 @@ Reviewer Result Handling:
 
 Cross-Model Opus Verification:
 - After every Codex Lane V verification in the Pipeline repository, require exactly one verdict-blind Opus review result before final synthesis.
-- The Opus call occurs only when the parent prompt supplies recorded task-level authorization. Never infer authorization from credentials, mail, environment, or repository state.
-- Parent-supplied recorded authorization permits exactly the one bounded Opus call and does not grant inherited paid-spend authority.
+- The Opus request carries the reviewed commit/range, requirements, allowed paths, and exact verification commands but no Codex verdict, report, findings, or conclusion.
+- The request declares review profile `codex-lane-v` and normalized evidence uses `opus-review/v2`.
+- After Pipeline identity, reviewed commits, and immutable scope validation, missing authorization resolves to `standing-policy:codex-lane-v-opus-v1` only when the authorization source is absent.
+- Valid explicit `user-task:<id>` and `verify-request:<id>` sources remain accepted; malformed explicit authorization never falls back.
+- The standing policy permits exactly one provider process attempt and no automatic retry, with one invocation per unchanged Lane V verification.
+- Standing consent does not authorize design-time Opus or any other paid call.
 - V1 applies only to Pipeline-repository verification.
 - Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1, not an incomplete required Opus pass.
-- If any required cross-model field is missing, block GO and reject the Lane V result as incomplete. The bridge permits one Claude process attempt and no automatic retry; do not invoke Opus from the operator relay over the same unchanged verification attempt.
-- Preserve these exact verification-report fields: `Cross-model review:`, `Effective Opus model:`, `Opus finding dispositions:`, `Reconciliation guard:`, and `Degraded reason:`.
+- If any required cross-model field is missing, block GO and reject the Lane V result as incomplete.
+- Preserve these exact verification-report fields: `Review profile:`, `Authorization identity:`, `Cross-model review:`, `Effective Opus model:`, `Opus finding dispositions:`, `Reconciliation guard:`, and `Degraded reason:`.
+- Review profile: codex-lane-v
+- Authorization identity: standing-policy / explicit task source
 - Every Opus finding requires a disposition: confirmed, disproved-with-evidence, or unresolved. An unresolved Opus finding blocks GO, and unsupported dismissal also blocks GO.
 - Reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON.
 - Reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO.

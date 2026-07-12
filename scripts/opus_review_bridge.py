@@ -475,7 +475,7 @@ class OpusReview:
                     "authorization_missing requires authorization_source='missing'",
                 )
         else:
-            source = _validated_authorization_source(source)
+            source = _schema_authorization_source(source)
         return cls(
             reviewed_head=reviewed_head,
             reviewed_base=reviewed_base,
@@ -873,12 +873,23 @@ def _schema_review_profile(value: object) -> str:
 
 
 def _schema_authorization_source(value: str) -> str:
+    source = value.strip()
+    if source == STANDING_CODEX_LANE_V_AUTHORIZATION:
+        return source
     try:
-        return _validated_authorization_source(value)
+        return _validated_authorization_source(source)
     except ReviewContractError as exc:
         raise ReviewContractError(
             "invalid_schema", f"invalid authorization_source: {value!r}"
         ) from exc
+
+
+def _resolved_authorization_source(request: ReviewRequest) -> str:
+    _validated_review_profile(request.review_profile)
+    source = request.authorization_source.strip()
+    if source:
+        return _validated_authorization_source(source)
+    return STANDING_CODEX_LANE_V_AUTHORIZATION
 
 
 def _git_process(
@@ -1651,9 +1662,7 @@ def build_review_prompt(
     verification_commands: tuple[str, ...] | None = None,
 ) -> str:
     _validate_request(request)
-    authorization_source = _validated_authorization_source(
-        request.authorization_source
-    )
+    authorization_source = _resolved_authorization_source(request)
     requirements = [
         _relative_repo_path(request.repo_root, path, must_exist=True)
         for path in request.requirement_paths
@@ -1859,23 +1868,27 @@ def review(
     _require_commit(source, request.reviewed_head, "reviewed_head")
     if request.reviewed_base is not None:
         _require_commit(source, request.reviewed_base, "reviewed_base")
-    if not request.authorization_source.strip():
-        return _unavailable(request, "authorization_missing")
-    authorization_source = _validated_authorization_source(
-        request.authorization_source
-    )
     trusted_revision = _trusted_prompt_revision(source, request)
     trusted_agent_prompt = _load_agent_prompt_at_revision(
         source, trusted_revision
     )
-    child_env = build_claude_environment()
-    claude_executable = _resolve_claude_executable(child_env)
-    if claude_executable is None:
-        return _unavailable(request, "claude_not_found")
+    if request.authorization_source.strip():
+        _validated_authorization_source(request.authorization_source)
 
     with _immutable_review_snapshot(request) as snapshot:
         snapshot_request = _snapshot_request(request, snapshot)
         _validate_request(snapshot_request)
+        authorization_source = _resolved_authorization_source(request)
+        request = replace(
+            request,
+            authorization_source=authorization_source,
+        )
+
+        child_env = build_claude_environment()
+        claude_executable = _resolve_claude_executable(child_env)
+        if claude_executable is None:
+            return _unavailable(request, "claude_not_found")
+
         try:
             with _sandbox_runtime(source, snapshot) as sandbox:
                 with _VerificationBroker(
