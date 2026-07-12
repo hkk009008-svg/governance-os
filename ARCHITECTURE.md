@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-11 @ 0dd9708*
+*Last verified: 2026-07-12 @ be6ece5*
 
 ## 1. Purpose
 
@@ -72,6 +72,11 @@ Key directories:
 - Pushes, lock actions, cursor consumption, pod spend, paid API spend, target
   checkout refresh, and product-generation side effects require explicit
   authorization or a valid routed executor.
+- Codex Lane V attempts one verdict-blind Opus review through
+  `scripts/opus_review_bridge.py` after its primary analysis. Opus remains
+  advisory; the bridge dynamically injects the existing Claude verifier role
+  with project settings and hooks disabled, and an unavailable call is an
+  explicit degraded Codex-only fallback.
 
 ## 5. Mailbox And Capacity State
 

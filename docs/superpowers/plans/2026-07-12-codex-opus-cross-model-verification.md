@@ -2234,13 +2234,27 @@ commit.
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
   tests/unit/test_protocol_prompt_sync.py \
   tests/unit/test_protocol_doc_integrity.py -q
-env -u GIT_INDEX_FILE .venv/bin/python scripts/check_doc_claims.py --sha-refs
+env -u GIT_INDEX_FILE .venv/bin/python -c '
+from pathlib import Path
+from scripts import check_doc_claims as c
+root = Path.cwd()
+status = c.classify_sha_ref_baseline(
+    c.check_sha_refs(c.SHA_DEFAULT_DOCS, root), root
+)
+print(status.warning_line)
+print(
+    f"matches_baseline={status.matches_baseline} "
+    f"count={status.count} new_or_changed={status.new_or_changed_count}"
+)
+raise SystemExit(0 if status.matches_baseline else 1)
+'
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
 env -u GIT_INDEX_FILE git diff --check -- \
   tests/unit/test_protocol_prompt_sync.py ARCHITECTURE.md DECISIONS.md
 ```
 
-Expected: tests pass; SHA-reference check exits 0; smoke ends `OK`; diff check is clean.
+Expected: tests pass; the SHA-reference baseline reports
+`matches_baseline=True` and exits 0; smoke ends `OK`; diff check is clean.
 
 - [ ] **Step 7: Review and commit Task 5**
 

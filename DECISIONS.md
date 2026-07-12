@@ -675,3 +675,45 @@ carrier for G5/G6. This damages semantic truth and blocks future automation.
   gates once the campaign closes.
 - No packet ever needs to be mislabeled to satisfy coverage once Part B lands;
   until then the legacy representation is unchanged.
+
+## ADR-018: Mandatory blind Opus review after Codex Lane V
+
+**Status:** Accepted (user-approved design, 2026-07-12)
+
+**Context:**
+Codex can independently verify a landed change, but implementation and
+verification may still share a model family and therefore a correlated blind
+spot. The user requires a cross-model Claude Opus pass after every Codex Lane
+V verification. The existing protocol also forbids authority leakage, paid
+calls without authorization, and redundant third reviews over an unchanged
+commit.
+
+**Decision:**
+1. After completing its primary analysis, every Codex Lane V verifier attempts
+   exactly one verdict-blind Opus review through
+   `scripts/opus_review_bridge.py`.
+2. The Opus request contains immutable reviewed scope and requirements but no
+   Codex verdict, report, findings, or conclusion.
+3. The bridge dynamically injects the existing Claude verifier role while
+   disabling filesystem setting sources, repository hooks, MCP, memory,
+   nested agents, edit tools, and session persistence. It validates the Claude
+   `system/init` model metadata, accepts only Opus, normalizes output as
+   `opus-review/v1`, and never retries.
+4. Every Opus finding receives a `confirmed`, evidence-backed `disproved`, or
+   `unresolved` disposition. Unresolved findings block GO.
+5. The operator retains GO/NITS/FAIL authority. Opus cannot write protocol
+   state, release locks, or authorize side effects.
+6. Missing authorization, credentials, network, valid schema, matching scope,
+   or proven Opus identity yields an explicit degraded Codex-only fallback;
+   it is never silently treated as a pass.
+7. Automated tests fake the Claude process. A live model smoke remains a
+   separately authorized optional check.
+
+**Consequences:**
+- Same-model verifier blind spots receive a mandatory independent model pass
+  when Opus is available.
+- Verification remains usable when the external provider is unavailable, but
+  the reduced assurance is visible in the report.
+- The Opus pass is the second reviewer for the same question; R-VERIFY-TIER
+  still forbids a third generic pass without a distinct pre-stated question.
+- V1 is Pipeline-scoped and uses no MCP service or new Python dependency.
