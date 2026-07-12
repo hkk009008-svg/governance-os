@@ -266,6 +266,45 @@ def test_r_independence_is_model_backed_and_surface_synced():
     assert "R-INDEPENDENCE" in model.render_start_session_inhabitance()
 
 
+def test_chatgpt_pro_consultation_model_contract_starts_manual_and_fails_closed():
+    assert model.CHATGPT_PRO_CONSULTATION_MODES == ("auto", "manual", "off")
+    assert model.CHATGPT_PRO_CONSULTATION_DEFAULT == "manual"
+    assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == (
+        "in-app browser",
+        "approved Chrome bridge",
+        "manual relay",
+    )
+
+    rendered = model.render_chatgpt_pro_consultation()
+    for phrase in (
+        "ChatGPT Pro Advisory Consultation:",
+        "always invocable",
+        "one guarded browser send per idempotency key",
+        "manual relay",
+        "not the dual-chief order path",
+        "advisory only",
+        "no API fallback",
+        "raw prompts and responses stay out of Git",
+        "coordinator refreshes live state before send and before use",
+        "operator Lane V is never replaced",
+    ):
+        assert phrase in rendered
+
+    assert model.infer_runtime_env({})["CODEX_CHATGPT_PRO_CONSULTATION"] == "manual"
+    assert (
+        model.infer_runtime_env({"CODEX_CHATGPT_PRO_CONSULTATION": "auto"})[
+            "CODEX_CHATGPT_PRO_CONSULTATION"
+        ]
+        == "auto"
+    )
+    assert (
+        model.infer_runtime_env({"CODEX_CHATGPT_PRO_CONSULTATION": "invalid"})[
+            "CODEX_CHATGPT_PRO_CONSULTATION"
+        ]
+        == "off"
+    )
+
+
 def test_agent_extension_routing_contract_is_model_backed():
     expected_contract = (
         (

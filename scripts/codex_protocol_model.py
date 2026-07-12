@@ -149,6 +149,33 @@ R_INDEPENDENCE_RULES = (
     "Canonical full rule: docs/protocol/claude/independence-first.md.",
 )
 
+CHATGPT_PRO_CONSULTATION_MODES = ("auto", "manual", "off")
+CHATGPT_PRO_CONSULTATION_DEFAULT = "manual"
+CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER = (
+    "in-app browser",
+    "approved Chrome bridge",
+    "manual relay",
+)
+CHATGPT_PRO_CONSULTATION_TRIGGERS = (
+    "the user explicitly asks to consult ChatGPT Pro",
+    "an idea or plan has materially different approaches not settled by durable local evidence",
+    "a mailbox-oriented coordinator is about to synthesize a consequential cross-lane plan, reroute, or contradiction resolution",
+    "a design or plan changes an authority, security, external-input, parseable-context, schema-trust, or side-effect boundary",
+    "an approved design or plan needs a genuinely different adversarial challenge",
+)
+CHATGPT_PRO_CONSULTATION_RULES = (
+    "consultation is always invocable in readiness, director, coordinator, and operator modes",
+    "auto permits one guarded browser send per idempotency key; manual permits packet export/import only; off is the fail-closed kill switch",
+    "transport order is in-app browser, approved Chrome bridge, then manual relay; there is no API fallback",
+    "raw prompts and responses stay out of Git, mailbox artifacts, normal logs, screenshots, command arguments, and local transcript files",
+    "ChatGPT Pro output is advisory only and cannot grant protocol or side-effect authority",
+    "the consultation path is not the dual-chief order path and never emits signed-bus or mailbox facts",
+    "coordinator refreshes live state before send and before use; drift makes the response stale",
+    "operator Lane V is never replaced; only an explicit or genuinely distinct strategic question may be consulted",
+    "subagents may prepare a bounded question but only the parent context may send or import a response",
+    "an unchanged question and state are deduplicated; automatic retries are zero in V1",
+)
+
 HARNESS_COMPONENTS = (
     ("user", "User principal", "explicit instruction and consent"),
     ("harness", "Codex CLI harness", "readiness bridge or explicit live role"),
@@ -311,6 +338,11 @@ RUNTIME_ENV_VARIABLES = (
         "CODEX_SIDE_EFFECT_POLICY",
         "user-consent-required",
         "documents that push, lock-claim side effects, paid API spend, and pod spend require user consent outside env",
+    ),
+    (
+        "CODEX_CHATGPT_PRO_CONSULTATION",
+        "auto | manual | off",
+        "controls guarded ChatGPT Pro advisory transport; invalid values fail closed to off",
     ),
     (
         "GIT_INDEX_FILE",
@@ -737,6 +769,18 @@ def render_r_independence() -> str:
     return "\n".join(lines)
 
 
+def render_chatgpt_pro_consultation() -> str:
+    """Return the transport-independent ChatGPT Pro advisory contract."""
+    lines = [
+        "ChatGPT Pro Advisory Consultation:",
+        "- always invocable",
+        "- triggers: " + "; ".join(CHATGPT_PRO_CONSULTATION_TRIGGERS),
+        "- transport order: " + " -> ".join(CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER),
+    ]
+    lines.extend(f"- {rule}" for rule in CHATGPT_PRO_CONSULTATION_RULES)
+    return "\n".join(lines)
+
+
 def render_side_effect_executor_contract() -> str:
     """Return the single-executor contract for shared user-gated side effects."""
     lines = [
@@ -890,6 +934,12 @@ def _mode_from_seat(seat: str) -> str:
 def infer_runtime_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     """Infer the Codex runtime contract from an environment-like mapping."""
     env = environ or {}
+    consultation_mode = env.get(
+        "CODEX_CHATGPT_PRO_CONSULTATION",
+        CHATGPT_PRO_CONSULTATION_DEFAULT,
+    )
+    if consultation_mode not in CHATGPT_PRO_CONSULTATION_MODES:
+        consultation_mode = "off"
     seat = env.get("CODEX_SEAT", "")
     explicit_mode = env.get("CODEX_AGENT_MODE", "")
     explicit_role = env.get("CODEX_AGENT_ROLE", "")
@@ -1037,6 +1087,7 @@ def infer_runtime_env(environ: Mapping[str, str] | None = None) -> dict[str, str
         "CODEX_DECISION_BOUNDARY": decision_boundary,
         "CODEX_NEXT_ACTION_POLICY": next_action,
         "CODEX_SIDE_EFFECT_POLICY": "user-consent-required",
+        "CODEX_CHATGPT_PRO_CONSULTATION": consultation_mode,
         "GIT_INDEX_FILE": env.get("GIT_INDEX_FILE", "(unset)"),
     }
 
@@ -1106,6 +1157,7 @@ def render_start_session_inhabitance(agent_names: list[str] | tuple[str, ...] = 
     lines.append("core agent modules: " + ", ".join(CORE_AGENT_MODULES))
     lines.append(render_codex_execution_tiers())
     lines.append(render_r_independence())
+    lines.append(render_chatgpt_pro_consultation())
     lines.append(render_agent_extension_summary(agent_names))
     lines.append(render_agent_extension_routing_contract())
     return "\n".join(lines)
@@ -1178,6 +1230,7 @@ def render_surface_summary() -> str:
         "Cross-Model Opus Verification: every Codex Lane V pass attempts one blind Opus review",
         "Codex Risk-Tier Router: conversational and read-only work avoid implementation ceremony",
         "R-INDEPENDENCE: adversarial-surface work requires design-time enumeration and independent actual-diff verification",
+        render_chatgpt_pro_consultation(),
         "Side-Effect Executor Token: generic user approval is unit consent, not executor election",
         "Ledger CLI Bridge: Pipeline kernel -> evidence-ledger target via "
         + LEDGER_CLI_BRIDGE["doc_path"],
@@ -1205,6 +1258,9 @@ def main() -> int:
     print()
     print("## R-INDEPENDENCE")
     print(render_r_independence())
+    print()
+    print("## ChatGPT Pro Advisory Consultation")
+    print(render_chatgpt_pro_consultation())
     print()
     print("## Pair Operating Contract")
     print(render_pair_operating_contract())
