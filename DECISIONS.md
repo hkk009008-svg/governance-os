@@ -656,7 +656,7 @@ carrier for G5/G6. This damages semantic truth and blocks future automation.
    read the legacy `status` / `packet_type` / `done_evidence`
    fields. The derivation is READ-ONLY: it writes no packet, adds no field,
    and changes no gate.
-2. A `--report` CLI renders legacy status beside the derived states and flags
+2. A report CLI (the default and only action; no `--report` flag) renders legacy status beside the derived states and flags
    divergences (a `blocked` packet whose derived `work_state` is `completed` —
    the overloading made visible). Exit 0 always; it is a diagnostic, never a
    gate.
