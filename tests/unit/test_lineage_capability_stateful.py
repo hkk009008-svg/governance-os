@@ -73,8 +73,9 @@ class LineageCapabilityMachine(RuleBasedStateMachine):
         return next(r for r in self.routes if r.route_id == res.winner)
 
     # A single supersession per step keeps the lineage linear (one unambiguous
-    # tip). weight=2 so the lineage reliably grows past generation 1, making the
-    # stale path (a cap bound below the tip) non-vacuous — see task-2-report.md.
+    # tip). Hypothesis exercises this rule often enough that the lineage reliably
+    # grows past generation 1 (~1200 calls/run), making the stale path (a cap
+    # bound below the tip) non-vacuous.
     @rule()
     def supersede_route(self):
         tip = self._tip()
