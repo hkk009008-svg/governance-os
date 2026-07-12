@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-12 @ 1327969*
+*Last verified: 2026-07-12 @ 48bb9db*
 
 ## 1. Purpose
 
@@ -84,7 +84,13 @@ Key directories:
   one-shot broker tokens to enter a second default-deny sandbox outside the
   inherited outer Seatbelt; that sandbox denies network, source and sensitive
   reads, non-scratch writes, and unlisted executables. Sandbox failure is an
-  explicit degraded Codex-only fallback and never reaches the provider.
+  explicit degraded Codex-only fallback and never reaches the provider. The
+  provider and each verification command run in distinct process groups with
+  whole-group cleanup, and broker socket reads are time-bounded. The bridge
+  resolves the local Claude executable before sandbox launch, canonicalizes
+  reviewed SHAs to lowercase, disables Git textconv for patch rendering, and
+  applies the same bounded delimiter-safe finding-ID grammar in its JSON Schema
+  and Python parser.
 
 ## 5. Mailbox And Capacity State
 
