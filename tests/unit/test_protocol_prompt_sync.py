@@ -663,7 +663,7 @@ def test_cross_model_opus_bridge_is_mapped_in_architecture_and_decisions():
 
     assert "scripts/opus_review_bridge.py" in architecture
     assert "verdict-blind Opus review" in architecture
-    assert "## ADR-018: Mandatory blind Opus review after Codex Lane V" in decisions
+    assert "## ADR-020: Mandatory blind Opus review after Codex Lane V" in decisions
     assert "degraded Codex-only fallback" in decisions
     assert "operator retains GO/NITS/FAIL authority" in decisions
     assert "--safe-mode" in architecture

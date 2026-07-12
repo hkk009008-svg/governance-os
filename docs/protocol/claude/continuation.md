@@ -115,8 +115,13 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave>
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave> --route coordination/mailbox/sent/<event>.md
 ```
 
-The doctor is evidence, not an operator-GO substitute. Optional read-only
-tools: `env -u GIT_INDEX_FILE .venv/bin/python scripts/mailbox_monitor.py --once`
+The doctor is evidence, not an operator-GO substitute (it also runs the
+route-lineage and target-binding checks unconditionally, ADR-014/015).
+`env -u GIT_INDEX_FILE .venv/bin/python scripts/packet_state.py --wave <wave>`
+renders the read-only orthogonal work/verification state of every packet
+(ADR-017 — its report is the default action; a `blocked` packet with
+completion evidence derives `work_state=completed`, flagged OVERLOADED).
+Optional read-only tools: `env -u GIT_INDEX_FILE .venv/bin/python scripts/mailbox_monitor.py --once`
 (or `--watch --interval 5` as an awareness watchboard — it never consumes or
 claims a seat) and
 `env -u GIT_INDEX_FILE .venv/bin/python scripts/draft_handoff.py <seat> --wave 2 --smoke --output`
@@ -398,6 +403,10 @@ stale seat index can turn a real violation into a false PASS).
 - Codex adapter (peer document): `docs/protocol/codex/continuation.md`
 - Unified three-way doctrine: `docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md`
 - Seat status: `.claude/skills/four-seat-protocol/scripts/seat_status.py`
+- Shared governance references (provider-neutral): `docs/protocol/packet-state.md`
+  (ADR-017 derivation) · `docs/protocol/route-v1.md` (typed route manifests)
+  · `docs/protocol/capabilities.md` (capability/v1 grants — primitive only;
+  the prose side-effect token blocks remain the live authority)
 - Daily loop: `RUNBOOK-DAILY.md` · Program intent: `docs/PROGRAM-MANUAL.md`
 - Verified truth: `ARCHITECTURE.md` · Folder intent:
   `docs/protocol/protocol-assembly-map.md`

@@ -128,6 +128,31 @@ Evidence: the stated new question for any 3rd pass; the xfail pin (or test-infea
 Details: docs/protocol/claude/core.md (R-VERIFY-TIER); origin = a session audit where one
 doc paragraph drew ~25-31 agent-runs across 4 passes without a genuinely new question.
 
+# Independence-first verification (R-INDEPENDENCE)
+Scope: both
+Trigger: designing OR implementing an ADVERSARIAL-SURFACE change — one that parses/
+renders/composes input into a parseable-or-executable context, enforces authority or a
+security boundary, gates a side effect, or validates a trust-granting schema.
+Action: obtain INDEPENDENT verification at TWO points, not just at the end. (1) Design-
+time: before implementing, an independent reviewer — preferably a DIFFERENT model/harness
+than the author (Codex Lane-V for a Claude author, or vice versa) — enumerates the abuse/
+edge cases the change must handle; the author folds them into the plan's acceptance
+criteria as ENFORCED-AND-TESTED behaviors, never aspirational guarantees. (2) Per-task,
+before "done": an independent reviewer verifies the diff against those cases; for an
+adversarial surface this SHOULD be cross-model — a same-model review does NOT discharge it
+(correlated blind spots make it near-vacuous — the enforcer-is-enforced anti-pattern,
+ADR-003). Extends ADR-001 / Rule #23 (moves independence to design-time + prefers cross-
+model); complements R-VERIFY-TIER (which caps redundant SAME-question passes — this
+requires an early NEW-perspective pass). Non-adversarial/read-only/hermetic changes do NOT
+trigger this; smallest sufficient profile still applies.
+Evidence: the committed design-time enumeration artifact; the per-task independent
+verification report citing the reviewer identity + (for adversarial surfaces) cross-model.
+Details: docs/protocol/claude/independence-first.md; origin = the 2026-07-12 governance-
+improvement retrospective (six slices whose adversarial defects — injection ×2, compound-
+command bypass, unenforced authority, path escape, token bricking, test vacuousness, a
+shipped total-function gap — were caught ONLY by the end-stage cross-model verifier, never
+by same-model internal review). ADR-019.
+
 # Multi-task orchestration (R-ORCH)
 Scope: both
 Trigger: a plan with ≥5 independent sub-tasks OR ≥800 LOC of total change; or a

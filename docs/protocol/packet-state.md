@@ -104,7 +104,8 @@ every seat to own exactly one current packet per active cycle, so a packet whose
 work is genuinely **complete** is forced to sit at `status="blocked"` to stay
 represented in the cycle — the `status` string cannot say "done AND still holding
 the slot." `derive_work_state` reports such a packet as `completed`, and the
-`--report` CLI flags it `OVERLOADED` (`overloaded` is `True` exactly when
+CLI's report (its default and only action — there is no `--report` flag;
+args are `--root`/`--wave`) flags it `OVERLOADED` (`overloaded` is `True` exactly when
 `legacy_status == "blocked"` and derived `work_state == "completed"`,
 `scripts/packet_state.py:152`).
 

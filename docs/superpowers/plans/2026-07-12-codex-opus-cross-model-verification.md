@@ -46,7 +46,7 @@ history and must not be executed. The shipping implementation:
 - Preserve all unrelated changes. Stage and commit only task-owned paths with explicit pathspecs; never push without separate user authorization.
 - Each implementation task used a spec-compliance review followed by a code-quality review. This historical delivery loop is not a Codex Lane V third-review rule; same-question Lane V uses the primary Codex analysis plus blind Opus, and only a different pre-stated specialist question is eligible.
 - Do not modify `AGENTS.md`, universal protocol rules, mailbox history, cursors, locks, routes, or signed-bus state for this slice.
-- The branch-local decision landed as ADR-018 after numbering reconciliation. Current-main collision handling remains a separately authorized integration step.
+- The integrated decision is ADR-020 after reconciling current main's ADR-018 and ADR-019.
 
 ---
 
@@ -61,7 +61,7 @@ history and must not be executed. The shipping implementation:
 - Modify `docs/protocol/codex/continuation.md`: Codex-specific runtime contract.
 - Modify `tests/unit/test_protocol_prompt_sync.py`: executable-model and prompt mirror tests.
 - Modify `ARCHITECTURE.md`: record the executable bridge and refresh the verified stamp.
-- Modify `DECISIONS.md`: record ADR-018 for mandatory blind Opus review with degraded fallback.
+- Modify `DECISIONS.md`: record the next available ADR for mandatory blind Opus review with degraded fallback (ADR-020 at integration).
 - Modify `docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md`: keep the approved design aligned with the final safe-mode and sandbox boundary.
 
 ---
