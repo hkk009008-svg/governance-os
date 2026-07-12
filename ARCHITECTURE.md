@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-13 @ 7617d12*
+*Last verified: 2026-07-13 @ 8ca2837*
 
 ## 1. Purpose
 
@@ -58,8 +58,8 @@ Key directories:
 | `resolve_target` | `scripts/target_binding.py:143` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:540` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_r_independence` | `scripts/codex_protocol_model.py:765` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:849` | Renders guard guidance into readiness output. |
+| `render_r_independence` | `scripts/codex_protocol_model.py:766` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:850` | Renders guard guidance into readiness output. |
 | `_resolved_authorization_source` | `scripts/opus_review_bridge.py:887` | Resolves the exact Lane-V profile to explicit task authority or its bounded standing policy. |
 
 ## 4. Runtime Invariants
