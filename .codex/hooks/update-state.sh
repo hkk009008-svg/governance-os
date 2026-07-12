@@ -40,7 +40,38 @@ _repo_git() {
   env -u GIT_INDEX_FILE git "$@"
 }
 
-cd "$(_repo_git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+# Subagent gate (folded from the Claude twin's CLAUDE-HOOK-SUBAGENT-002 fix,
+# user-directed 2026-07-12): if the hook's stdin JSON carries a top-level
+# agent_id/agent_type, this is a subagent tool call running with the PARENT's
+# inherited env (CODEX_SEAT, GIT_INDEX_FILE) — it gets NO mutations at all;
+# the parent session's own tool calls keep presence/STATE fresh. Codex hook
+# stdin semantics are unverified: the gate is FAIL-OPEN (TTY stdin, empty or
+# unparseable payload, or missing python3 => main-session behavior), so it is
+# inert if the Codex harness never sends those keys.
+PAYLOAD=""
+[ -t 0 ] || PAYLOAD="$(cat 2>/dev/null || true)"
+if [ -n "$PAYLOAD" ] && command -v python3 >/dev/null 2>&1; then
+  if printf '%s' "$PAYLOAD" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if isinstance(d, dict) and ("agent_id" in d or "agent_type" in d) else 1)
+' 2>/dev/null; then
+    exit 0
+  fi
+fi
+
+# Root anchoring (folded from the Claude twin's CLAUDE-HOOK-ROOT-001 fix,
+# user-directed 2026-07-12): NEVER derive the repo from the invocation cwd —
+# a session that cd'd into another repo would get this repo's presence/
+# STATE.md/marker artifacts written THERE. Anchor to this script's own
+# location (.codex/hooks/ -> repo root); whichever repo's copy runs operates
+# on ITS OWN repo. Fail-open if the anchor is not a git repo.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
+cd "$ROOT" 2>/dev/null || exit 0
+_repo_git rev-parse --show-toplevel >/dev/null 2>&1 || exit 0
 
 MARKER=".codex/hooks/.last-state-head"
 CURRENT=$(_repo_git rev-parse HEAD 2>/dev/null || exit 0)
