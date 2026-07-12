@@ -48,14 +48,27 @@ def current_guard_binding(text: str) -> str:
         text=True,
     ).stdout.strip()
     guard_hash = model.chatgpt_pro_guard_manifest_hash(ROOT, guard_commit)
-    return text.replace(
+    bound = text.replace(
         re.search(r"^- Bound HEAD: `[0-9a-f]{40}`$", text, re.MULTILINE).group(0),
         f"- Bound HEAD: `{guard_commit}`",
-    ).replace(
-        "- Procedure:",
-        f"- Guard commit: `{guard_commit}`\n"
-        f"- Guard relevant paths hash: `{guard_hash}`\n"
-        "- Procedure:",
+    )
+    if "- Guard commit:" not in bound:
+        return bound.replace(
+            "- Procedure:",
+            f"- Guard commit: `{guard_commit}`\n"
+            f"- Guard relevant paths hash: `{guard_hash}`\n"
+            "- Procedure:",
+        )
+    return re.sub(
+        r"^- Guard commit: `[0-9a-f]{40}`$",
+        f"- Guard commit: `{guard_commit}`",
+        re.sub(
+            r"^- Guard relevant paths hash: `[0-9a-f]{64}`$",
+            f"- Guard relevant paths hash: `{guard_hash}`",
+            bound,
+            flags=re.MULTILINE,
+        ),
+        flags=re.MULTILINE,
     )
 
 
@@ -93,13 +106,45 @@ def replace_terminal_result(text: str, transport_class: str, result: str) -> str
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 
+def replace_terminal_profile_fragment(
+    text: str,
+    transport_class: str,
+    old: str,
+    new: str,
+) -> str:
+    lines = text.splitlines()
+    rows: list[tuple[int, int]] = []
+    for index, line in enumerate(lines):
+        if not line.startswith("| T5-"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2 or cells[1] != transport_class:
+            continue
+        revision = re.search(r"-r([1-9][0-9]*)\b", cells[0])
+        if revision is not None:
+            rows.append((int(revision.group(1)), index))
+    assert rows
+    _, terminal_index = max(rows)
+    assert old in lines[terminal_index]
+    lines[terminal_index] = lines[terminal_index].replace(old, new, 1)
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+
+
 def acceptance_log_with_cli_rows(*rows: str) -> str:
     text = (
         ROOT / "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
     ).read_text(encoding="utf-8")
-    marker = "| T5-CLI-MANUAL |"
-    insertion = "\n".join(rows)
-    promoted = text.replace(marker, f"{insertion}\n{marker}", 1)
+    lines = text.splitlines()
+    manual_rows = []
+    for index, line in enumerate(lines):
+        if not line.startswith("| T5-"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) >= 2 and cells[1] == "bare CLI manual relay":
+            manual_rows.append(index)
+    assert len(manual_rows) == 1
+    lines[manual_rows[0] : manual_rows[0]] = rows
+    promoted = "\n".join(lines) + ("\n" if text.endswith("\n") else "")
     return current_guard_binding(
         promoted.replace(
             "- Configured CLI browser gate: `fail`",
@@ -119,11 +164,17 @@ def acceptance_log_with_all_required_passes(*cli_rows: str) -> str:
         "fixture/disposable profile",
         VALID_FAILURE_FIXTURE_PASS_ROW,
     )
-    return text.replace(
-        "- Activation gate: `pass`",
-        "- Bare CLI manual gate: `pass`\n"
-        "- Failure-fixture gate: `pass`\n"
-        "- Activation gate: `pass`",
+    text = re.sub(
+        r"^- Bare CLI manual gate: `[a-z_]+`$",
+        "- Bare CLI manual gate: `pass`",
+        text,
+        flags=re.MULTILINE,
+    )
+    return re.sub(
+        r"^- Failure-fixture gate: `[a-z_]+`$",
+        "- Failure-fixture gate: `pass`",
+        text,
+        flags=re.MULTILINE,
     )
 
 
@@ -1305,13 +1356,19 @@ def test_invalid_transition_retry_and_transport_change_are_rejected(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "failure_class",
-    ["auth", "challenge", "partial_send"],
-    ids=("signed-out-or-wrong-account", "browser-challenge", "partial-send"),
+    ("fixture_name", "failure_class", "start_sending"),
+    [
+        ("signed-out", "auth", False),
+        ("wrong-account", "auth", False),
+        ("challenge", "challenge", False),
+        ("partial-send", "partial_send", True),
+    ],
 )
 def test_browser_stop_fixtures_fail_without_retry_or_response_import(
     tmp_path,
+    fixture_name,
     failure_class,
+    start_sending,
 ):
     prepared = consult.prepare_request(valid_request())
     state_path = runtime_state_path(tmp_path)
@@ -1320,13 +1377,14 @@ def test_browser_stop_fixtures_fail_without_retry_or_response_import(
         prepared,
         now="2026-07-13T00:00:00Z",
     )
-    consult.transition_consultation(
-        state_path,
-        prepared.consultation_id,
-        target="sending",
-        transport="iab",
-        now="2026-07-13T00:01:00Z",
-    )
+    if start_sending:
+        consult.transition_consultation(
+            state_path,
+            prepared.consultation_id,
+            target="sending",
+            transport="iab",
+            now="2026-07-13T00:01:00Z",
+        )
 
     failed = consult.transition_consultation(
         state_path,
@@ -1339,6 +1397,7 @@ def test_browser_stop_fixtures_fail_without_retry_or_response_import(
 
     assert failed["status"] == "failed"
     assert failed["failure_class"] == failure_class
+    assert fixture_name in {"signed-out", "wrong-account", "challenge", "partial-send"}
     with pytest.raises(consult.ConsultationError):
         consult.transition_consultation(
             state_path,
@@ -1361,6 +1420,95 @@ def test_browser_stop_fixtures_fail_without_retry_or_response_import(
     state_text = state_path.read_text(encoding="utf-8")
     assert prepared.prompt not in state_text
     assert valid_response(prepared)["recommendation"] not in state_text
+
+
+def test_failure_fixture_matrix_covers_exact_seven_contract_cases(tmp_path):
+    observed: set[str] = set()
+    lifecycle_cases = (
+        ("signed-out", "auth", False),
+        ("wrong-account", "auth", False),
+        ("challenge", "challenge", False),
+        ("partial-send", "partial_send", True),
+    )
+    for index, (name, failure_class, start_sending) in enumerate(lifecycle_cases, 1):
+        request = valid_request()
+        request["consultation_id"] = f"00000000-0000-4000-8000-{index:012d}"
+        prepared = consult.prepare_request(request)
+        state_path = runtime_state_path(tmp_path, f"fixture-{index}.json")
+        consult.reserve_consultation(
+            state_path,
+            prepared,
+            now="2026-07-13T00:00:00Z",
+        )
+        if start_sending:
+            consult.transition_consultation(
+                state_path,
+                prepared.consultation_id,
+                target="sending",
+                transport="iab",
+                now="2026-07-13T00:01:00Z",
+            )
+        failed = consult.transition_consultation(
+            state_path,
+            prepared.consultation_id,
+            target="failed",
+            transport="iab",
+            failure_class=failure_class,
+            now="2026-07-13T00:02:00Z",
+        )
+        assert failed["status"] == "failed"
+        with pytest.raises(consult.ConsultationError):
+            consult.transition_consultation(
+                state_path,
+                prepared.consultation_id,
+                target="sending",
+                transport="iab",
+                now="2026-07-13T00:03:00Z",
+            )
+        observed.add(name)
+
+    prepared = consult.prepare_request(valid_request())
+    refusal = valid_response(prepared)
+    refusal["recommendation"] = "I refuse to provide the requested advice."
+    with pytest.raises(consult.ConsultationError):
+        consult.validate_response(
+            refusal,
+            consultation_id=prepared.consultation_id,
+            request_hash=prepared.request_hash,
+        )
+    observed.add("refusal")
+
+    html = valid_response(prepared)
+    html["recommendation"] = "<html><body>upstream error</body></html>"
+    with pytest.raises(consult.ConsultationError):
+        consult.validate_response(
+            html,
+            consultation_id=prepared.consultation_id,
+            request_hash=prepared.request_hash,
+        )
+    observed.add("html")
+
+    truncated = run_cli(
+        tmp_path,
+        [
+            "accept",
+            "--state-file",
+            str(runtime_state_path(tmp_path, "truncated.json")),
+        ],
+        stdin_text='{"response":',
+    )
+    assert json.loads(truncated.stderr) == {"error": "invalid_json", "status": "error"}
+    observed.add("truncated-json")
+
+    assert observed == {
+        "signed-out",
+        "wrong-account",
+        "challenge",
+        "refusal",
+        "html",
+        "truncated-json",
+        "partial-send",
+    }
 
 
 def test_resume_manual_preserves_identity_and_hashes_without_new_record(tmp_path):
@@ -1736,6 +1884,16 @@ def test_valid_evidence_resolver_does_not_mutate_explicit_runtime_default():
 
 def test_future_auto_requires_manual_and_failure_fixture_terminal_passes():
     browser_only_pass = acceptance_log_with_cli_rows(VALID_CLI_PASS_ROW)
+    browser_only_pass = replace_terminal_result(
+        browser_only_pass,
+        "bare CLI manual relay",
+        "pending",
+    )
+    browser_only_pass = replace_terminal_result(
+        browser_only_pass,
+        "fixture/disposable profile",
+        "pending",
+    )
 
     with pytest.raises(AssertionError, match="required acceptance"):
         acceptance_backed_default(browser_only_pass)
@@ -1770,17 +1928,30 @@ def test_future_auto_rejects_nonpassing_terminal_required_row(transport_class):
 
 
 @pytest.mark.parametrize(
-    ("old", "new"),
+    ("transport_class", "old", "new"),
     [
-        ("tab finalized", "tab finalization unverified"),
-        ("manual relay finalized", "manual relay pending"),
-        ("pass; one relay", "pending"),
-        ("seven-case fixture matrix failed closed", "fixture matrix incomplete"),
-        ("pass; no retry or fallback", "pending"),
+        ("configured CLI browser", "tab finalized", "tab finalization unverified"),
+        ("bare CLI manual relay", "manual relay finalized", "manual relay pending"),
+        ("bare CLI manual relay", "pass; one relay", "pending"),
+        (
+            "fixture/disposable profile",
+            "seven-case fixture matrix failed closed",
+            "fixture matrix incomplete",
+        ),
+        ("fixture/disposable profile", "pass; no retry or fallback", "pending"),
     ],
 )
-def test_future_auto_rejects_incomplete_transport_specific_pass_profile(old, new):
-    evidence = acceptance_log_with_all_required_passes().replace(old, new, 1)
+def test_future_auto_rejects_incomplete_transport_specific_pass_profile(
+    transport_class,
+    old,
+    new,
+):
+    evidence = replace_terminal_profile_fragment(
+        acceptance_log_with_all_required_passes(),
+        transport_class,
+        old,
+        new,
+    )
 
     with pytest.raises(AssertionError, match="PASS evidence is incomplete"):
         acceptance_backed_default(evidence)

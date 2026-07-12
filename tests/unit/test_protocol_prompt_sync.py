@@ -214,6 +214,39 @@ def _validate_acceptance_log_structure(text: str) -> None:
         "Desktop r2 result": "pass",
         "Desktop r2 duplicate send": "no",
         "Desktop r2 tab finalized": "yes",
+        "Desktop r3 result": "pass",
+        "Desktop r3 state file": ".codex/runtime/task5-iab-r3-acceptance.json",
+        "Desktop r3 request hash": "9f551ed6…57b2b5",
+        "Desktop r3 idempotency key": "faec7aba…2f98e25",
+        "Desktop r3 binding hash": "f8f0eaef…ebe107f",
+        "Desktop r3 correlation": "pass",
+        "Desktop r3 transport sends": "1",
+        "Desktop r3 transport resend": "no",
+        "Desktop r3 interrupted local accept": "1",
+        "Desktop r3 state after interrupted accept": "sent",
+        "Desktop r3 response imports": "1",
+        "Desktop r3 final state": "reconciled",
+        "Desktop r3 tab finalized": "yes",
+        "Bare CLI manual r2 result": "pass",
+        "Bare CLI manual r2 state file": (
+            ".codex/runtime/task5-manual-r2-acceptance.json"
+        ),
+        "Bare CLI manual r2 request hash": "c2dee748…451918",
+        "Bare CLI manual r2 idempotency key": "a3ed85e4…77fd5b",
+        "Bare CLI manual r2 binding hash": "f8f0eaef…ebe107f",
+        "Bare CLI manual r2 prompt parity": "pass",
+        "Bare CLI manual r2 correlation": "pass",
+        "Bare CLI manual r2 relays": "1",
+        "Bare CLI manual r2 response imports": "1",
+        "Bare CLI manual r2 final state": "reconciled",
+        "Failure-fixture result": "pass",
+        "Failure-fixture cases": (
+            "signed-out,wrong-account,challenge,refusal,html,truncated-json,"
+            "partial-send"
+        ),
+        "Failure-fixture pre-send stops": "signed-out,wrong-account,challenge",
+        "Failure-fixture partial-send start": "sending",
+        "Failure-fixture retry or fallback": "none",
         "Configured CLI r1 failure": "partial_send",
         "Configured CLI r1 response imported": "no",
         "Configured CLI r1 retry": "no",
@@ -594,6 +627,22 @@ def test_chatgpt_pro_acceptance_procedure_is_fail_closed_and_content_free():
         "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
     )
     _validate_acceptance_log_structure(acceptance_log)
+
+
+def test_refreshed_acceptance_requires_exact_seven_case_fixture_evidence():
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    )
+
+    assert (
+        "| T5-FAILURE-FIXTURES-r1 | fixture/disposable profile | pass | "
+        "not applicable | seven-case fixture matrix failed closed; fixtures "
+        "finalized | pass; no retry or fallback | pass; content-free snapshots "
+        "match | none |"
+    ) in acceptance_log
+    assert "- Failure-fixture cases: `signed-out,wrong-account,challenge,refusal,html,truncated-json,partial-send`" in acceptance_log
+    assert "- Failure-fixture pre-send stops: `signed-out,wrong-account,challenge`" in acceptance_log
+    assert "- Failure-fixture partial-send start: `sending`" in acceptance_log
 
 
 @pytest.mark.parametrize(
