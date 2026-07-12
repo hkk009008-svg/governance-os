@@ -1,0 +1,36 @@
+{
+  "id": "director2-ledger-ppl-recommendation-evaluation-preflight",
+  "wave": 2,
+  "cycle": "ledger-ppl-recommendation-evaluation-2026-07-12",
+  "owner": "director2",
+  "packet_type": "director-preflight",
+  "row_ids": [
+    "ppl-recommendation-route-readiness"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-workbook-refresh-2026-07-11/docs/superpowers/specs/2026-07-12-ppl-investment-recommendation-pivot-design.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-workbook-refresh-2026-07-11/docs/superpowers/plans/2026-07-12-ppl-recommendation-evaluation-foundation.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-workbook-refresh-2026-07-11/AGENTS.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-workbook-refresh-2026-07-11/ARCHITECTURE.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start from Pipeline, run the Director2 Wave-2 ledger guard/status, read the committed route, and perform one bounded read-only preflight over the approved spec, exact plan hash, target instructions, thirty-three-path write set, task dependencies, and controller/verifier split.",
+    "Report only a route-changing contradiction, missing required evidence, changed safety boundary, or concise no-contradiction status to coordinator. The Director fast path is non-blocking unless this preflight produces durable contrary evidence.",
+    "Do not edit target product/plan files, issue Operator GO, consume mail, mutate packets, take user-gated side effects, or duplicate task implementation/review."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": "6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa",
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/",
+    "docs/superpowers/specs/2026-07-12-ppl-investment-recommendation-pivot-design.md",
+    "docs/superpowers/plans/2026-07-12-ppl-recommendation-evaluation-foundation.md"
+  ]
+}
