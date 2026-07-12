@@ -91,6 +91,12 @@ Explicit valid `user-task:<id>` and `verify-request:<id>` sources remain
 accepted for compatibility. An explicit malformed authorization source remains
 an error; the standing default applies only when the source is absent.
 
+Because `review_profile` is a new required field in the strict normalized
+review object, the review schema advances from `opus-review/v1` to
+`opus-review/v2`. V1 review JSON is rejected rather than silently inferring a
+profile that it never recorded. The reconciliation schema remains
+`opus-reconciliation/v1` because its shape does not change.
+
 ### 3. One attempt, no retries
 
 One bridge invocation launches at most one Opus provider process. Timeout,
@@ -207,6 +213,8 @@ Implementation follows test-driven development.
 - One bridge invocation never retries or launches more than one provider
   process.
 - Final reports expose authorization identity and degraded status.
+- `opus-review/v2` requires the explicit review profile; v1 review JSON fails
+  closed instead of receiving an inferred profile.
 - No other user-gated side-effect policy is relaxed.
 - Focused tests, full unit tests, SHA baseline, diff checks, and project smoke
   pass on the completed implementation.
