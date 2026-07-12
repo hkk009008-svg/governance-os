@@ -1093,14 +1093,19 @@ def render_protocol_assembly_map() -> str:
 
 
 CROSS_MODEL_VERIFICATION_RULES = (
-    "after every Codex Lane V verification, attempt exactly one verdict-blind Opus review before the final verdict",
+    "after every Codex Lane V verification in the Pipeline repository, attempt exactly one verdict-blind Opus review before the final verdict",
     "the Opus request carries the reviewed commit/range, requirements, allowed paths, exact verification commands, and a recorded user-task:<id> or verify-request:<id> authorization source but no Codex verdict, report, findings, or conclusion",
+    "the Opus call occurs only when the parent prompt supplies recorded task-level authorization; absent parent authorization yields unavailable without an external call",
+    "V1 applies only to Pipeline-repository verification",
+    "Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1, not an incomplete required Opus pass",
     "operator retains GO/NITS/FAIL authority; Opus output is advisory evidence and never a mailbox event or protocol verdict",
     "unavailable is explicit degraded Codex-only fallback with the reason preserved; it is never treated as pass",
     "every Opus finding requires a disposition: confirmed, disproved with concrete evidence, or unresolved",
     "an unresolved Opus finding blocks GO; confirmed minor findings require NITS and confirmed important/critical findings require FAIL",
+    "reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON",
     "the bridge permits one Claude process attempt and no automatic retry for a verification attempt",
     "no third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question",
+    "Do not launch generic same-question spec or code-quality reviewers for Codex Lane V; the primary Codex analysis and blind Opus pass are the pair",
 )
 
 

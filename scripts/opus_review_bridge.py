@@ -4,16 +4,21 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
+import tarfile
+import tempfile
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
+from pathlib import Path, PurePosixPath
+from typing import Any, Iterator
 
 
 SCHEMA_VERSION = "opus-review/v1"
@@ -43,6 +48,63 @@ _FORBIDDEN_COMMAND_CHARS = frozenset(";&|<>`$(){}\n\r")
 _AUTHORIZATION_RE = re.compile(
     r"^(?:user-task|verify-request):[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
 )
+_REVIEW_FIELDS = frozenset(
+    {
+        "schema_version",
+        "reviewed_head",
+        "reviewed_base",
+        "effective_model",
+        "status",
+        "findings",
+        "authorization_source",
+        "unavailable_reason",
+    }
+)
+_STRUCTURED_REVIEW_FIELDS = frozenset(
+    {"schema_version", "reviewed_head", "reviewed_base", "status", "findings"}
+)
+_FINDING_FIELDS = frozenset(
+    {"id", "severity", "claim", "location", "evidence", "reproduction"}
+)
+_VERIFICATION_COMMAND_PREFIX = ("env", "-u", "GIT_INDEX_FILE")
+_PYTEST_FLAG_OPTIONS = frozenset(
+    {
+        "-q",
+        "-qq",
+        "-s",
+        "-v",
+        "-vv",
+        "-x",
+        "--collect-only",
+        "--disable-warnings",
+        "--failed-first",
+        "--new-first",
+        "--no-header",
+        "--no-summary",
+        "--runxfail",
+        "--strict-config",
+        "--strict-markers",
+    }
+)
+_PYTEST_VALUE_OPTIONS = frozenset({"-k", "-m"})
+_PYTEST_VALUE_PREFIXES = (
+    "--color=",
+    "--durations=",
+    "--durations-min=",
+    "--maxfail=",
+    "--tb=",
+)
+_NO_ARGUMENT_VERIFIER_SCRIPTS = frozenset(
+    {
+        "scripts/check_coordination.py",
+        "scripts/check_go_schema.py",
+        "scripts/check_placeholders.py",
+        "scripts/ci_smoke.py",
+    }
+)
+_FIXED_ARGUMENT_VERIFIER_SCRIPTS = {
+    "scripts/check_doc_claims.py": frozenset({("--sha-refs",)}),
+}
 AGENT_RELATIVE_PATH = Path(".claude/agents/lane-v-verifier.md")
 PIPELINE_MARKERS = (
     Path("AGENTS.md"),
@@ -158,6 +220,21 @@ def _optional_string(value: object, field: str) -> str | None:
     return value
 
 
+def _require_exact_fields(
+    value: Mapping[str, Any], expected: frozenset[str], field: str
+) -> None:
+    if any(not isinstance(key, str) for key in value):
+        raise ReviewContractError("invalid_schema", f"{field} keys must be strings")
+    actual = set(value)
+    if actual != expected:
+        missing = sorted(expected - actual)
+        extra = sorted(actual - expected)
+        raise ReviewContractError(
+            "invalid_schema",
+            f"{field} fields mismatch; missing={missing}, extra={extra}",
+        )
+
+
 def _full_sha(value: object, field: str) -> str:
     text = _required_string(value, field).lower()
     if not _FULL_SHA_RE.fullmatch(text):
@@ -183,6 +260,7 @@ class Finding:
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "Finding":
+        _require_exact_fields(value, _FINDING_FIELDS, "findings[]")
         finding_id = _required_string(value.get("id"), "findings[].id")
         severity = _required_string(value.get("severity"), "findings[].severity").lower()
         if severity not in VALID_SEVERITIES:
@@ -233,46 +311,96 @@ class OpusReview:
     ) -> "OpusReview":
         if reason not in UNAVAILABLE_REASONS:
             raise ReviewContractError("invalid_schema", f"unknown unavailable reason {reason!r}")
+        source = authorization_source.strip()
+        if reason == "authorization_missing":
+            if source != "missing":
+                raise ReviewContractError(
+                    "invalid_schema",
+                    "authorization_missing requires authorization_source='missing'",
+                )
+        else:
+            source = _validated_authorization_source(source)
         return cls(
             reviewed_head=reviewed_head,
             reviewed_base=reviewed_base,
             effective_model=None,
             status="unavailable",
             findings=(),
-            authorization_source=authorization_source,
+            authorization_source=source,
             unavailable_reason=reason,
         )
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "OpusReview":
+        _require_exact_fields(value, _REVIEW_FIELDS, "opus-review/v1")
         if value.get("schema_version") != SCHEMA_VERSION:
             raise ReviewContractError("invalid_schema", "unexpected schema_version")
         status = _required_string(value.get("status"), "status")
+        if status not in VALID_STATUSES:
+            raise ReviewContractError("invalid_schema", f"unsupported status {status!r}")
+        reviewed_head = _full_sha(value.get("reviewed_head"), "reviewed_head")
+        reviewed_base = (
+            _full_sha(value.get("reviewed_base"), "reviewed_base")
+            if value.get("reviewed_base") is not None
+            else None
+        )
+        raw_findings = value.get("findings")
+        if not isinstance(raw_findings, list):
+            raise ReviewContractError("invalid_schema", "findings must be a list")
+        findings = tuple(
+            Finding.from_mapping(item)
+            for item in raw_findings
+            if isinstance(item, Mapping)
+        )
+        if len(findings) != len(raw_findings):
+            raise ReviewContractError("invalid_schema", "every finding must be an object")
+        effective_model = _optional_string(value.get("effective_model"), "effective_model")
+        unavailable_reason = _optional_string(
+            value.get("unavailable_reason"), "unavailable_reason"
+        )
+        authorization_source = _required_string(
+            value.get("authorization_source"), "authorization_source"
+        )
         if status == "unavailable":
+            if effective_model is not None or findings:
+                raise ReviewContractError(
+                    "invalid_schema",
+                    "unavailable requires null effective_model and zero findings",
+                )
+            reason = _required_string(unavailable_reason, "unavailable_reason")
+            if reason == "authorization_missing":
+                if authorization_source != "missing":
+                    raise ReviewContractError(
+                        "invalid_schema",
+                        "authorization_missing requires authorization_source='missing'",
+                    )
+            else:
+                authorization_source = _schema_authorization_source(
+                    authorization_source
+                )
             return cls.unavailable(
-                reviewed_head=_full_sha(value.get("reviewed_head"), "reviewed_head"),
-                reviewed_base=(
-                    _full_sha(value.get("reviewed_base"), "reviewed_base")
-                    if value.get("reviewed_base") is not None
-                    else None
-                ),
-                authorization_source=_required_string(
-                    value.get("authorization_source"), "authorization_source"
-                ),
-                reason=_required_string(value.get("unavailable_reason"), "unavailable_reason"),
+                reviewed_head=reviewed_head,
+                reviewed_base=reviewed_base,
+                authorization_source=authorization_source,
+                reason=reason,
             )
+        if unavailable_reason is not None:
+            raise ReviewContractError(
+                "invalid_schema", "pass and issues require null unavailable_reason"
+            )
+        authorization_source = _schema_authorization_source(authorization_source)
         return parse_structured_review(
-            value,
-            expected_head=_full_sha(value.get("reviewed_head"), "reviewed_head"),
-            expected_base=(
-                _full_sha(value.get("reviewed_base"), "reviewed_base")
-                if value.get("reviewed_base") is not None
-                else None
-            ),
-            effective_model=_required_string(value.get("effective_model"), "effective_model"),
-            authorization_source=_required_string(
-                value.get("authorization_source"), "authorization_source"
-            ),
+            {
+                "schema_version": SCHEMA_VERSION,
+                "reviewed_head": reviewed_head,
+                "reviewed_base": reviewed_base,
+                "status": status,
+                "findings": [finding.to_dict() for finding in findings],
+            },
+            expected_head=reviewed_head,
+            expected_base=reviewed_base,
+            effective_model=_required_string(effective_model, "effective_model"),
+            authorization_source=authorization_source,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -296,6 +424,7 @@ def parse_structured_review(
     effective_model: str,
     authorization_source: str,
 ) -> OpusReview:
+    _require_exact_fields(payload, _STRUCTURED_REVIEW_FIELDS, "structured review")
     if payload.get("schema_version") != SCHEMA_VERSION:
         raise ReviewContractError("invalid_schema", "unexpected schema_version")
     reviewed_head = _full_sha(payload.get("reviewed_head"), "reviewed_head")
@@ -336,7 +465,7 @@ def parse_structured_review(
         effective_model=effective_model,
         status=status,
         findings=findings,
-        authorization_source=_required_string(authorization_source, "authorization_source"),
+        authorization_source=_schema_authorization_source(authorization_source),
         unavailable_reason=None,
     )
 
@@ -382,8 +511,72 @@ def _validated_exact_bash_rule(command: str) -> str:
     return f"Bash({shlex.join(argv)})"
 
 
-def _load_agent_prompt(root: Path) -> str:
-    content = (root / AGENT_RELATIVE_PATH).read_text(encoding="utf-8")
+def _validate_pytest_arguments(
+    request: ReviewRequest, arguments: list[str], command: str
+) -> None:
+    targets = 0
+    index = 0
+    while index < len(arguments):
+        token = arguments[index]
+        if token in _PYTEST_FLAG_OPTIONS:
+            index += 1
+            continue
+        if token in _PYTEST_VALUE_OPTIONS:
+            if index + 1 >= len(arguments):
+                raise ReviewContractError("invalid_command", command)
+            index += 2
+            continue
+        if any(token.startswith(prefix) for prefix in _PYTEST_VALUE_PREFIXES):
+            if token.endswith("="):
+                raise ReviewContractError("invalid_command", command)
+            index += 1
+            continue
+        if token.startswith("-") or token.startswith("@"):
+            raise ReviewContractError("invalid_command", command)
+        path_token = token.split("::", 1)[0]
+        try:
+            relative = _relative_repo_path(
+                request.repo_root, path_token, must_exist=False
+            )
+        except ReviewContractError as exc:
+            raise ReviewContractError("invalid_command", command) from exc
+        if not relative.startswith("tests/"):
+            raise ReviewContractError("invalid_command", command)
+        targets += 1
+        index += 1
+    if targets == 0:
+        raise ReviewContractError("invalid_command", command)
+
+
+def _validated_verification_rule(request: ReviewRequest, command: str) -> str:
+    rule = _validated_exact_bash_rule(command)
+    argv = shlex.split(command)
+    if tuple(argv[:3]) != _VERIFICATION_COMMAND_PREFIX or len(argv) < 5:
+        raise ReviewContractError("invalid_command", command)
+
+    executable = argv[3]
+    executable_path = Path(executable)
+    trusted_interpreter = Path(sys.executable).resolve()
+    if executable != ".venv/bin/python" and not (
+        executable_path.is_absolute()
+        and executable_path.resolve() == trusted_interpreter
+    ):
+        raise ReviewContractError("invalid_command", command)
+
+    python_args = argv[4:]
+    if python_args[:2] == ["-m", "pytest"]:
+        _validate_pytest_arguments(request, python_args[2:], command)
+        return rule
+    script = python_args[0]
+    script_args = tuple(python_args[1:])
+    if script in _NO_ARGUMENT_VERIFIER_SCRIPTS and not script_args:
+        return rule
+    if script_args in _FIXED_ARGUMENT_VERIFIER_SCRIPTS.get(script, frozenset()):
+        return rule
+    raise ReviewContractError("invalid_command", command)
+
+
+def _agent_prompt_from_content(content: str) -> str:
     if not content.startswith("---\n"):
         raise ReviewContractError("invalid_agent", "missing opening frontmatter")
     frontmatter_end = content.find("\n---\n", 4)
@@ -395,11 +588,22 @@ def _load_agent_prompt(root: Path) -> str:
     return prompt
 
 
-def _dynamic_agents(request: ReviewRequest) -> dict[str, object]:
+def _load_agent_prompt(root: Path) -> str:
+    content = (root / AGENT_RELATIVE_PATH).read_text(encoding="utf-8")
+    return _agent_prompt_from_content(content)
+
+
+def _dynamic_agents(
+    request: ReviewRequest, *, agent_prompt: str | None = None
+) -> dict[str, object]:
     return {
         "lane-v-verifier": {
             "description": "Independent read-only Pipeline Lane V verifier",
-            "prompt": _load_agent_prompt(_pipeline_root(request.repo_root)),
+            "prompt": (
+                _load_agent_prompt(_pipeline_root(request.repo_root))
+                if agent_prompt is None
+                else agent_prompt
+            ),
             "tools": ["Read", "Grep", "Glob", "Bash"],
             "disallowedTools": [
                 "Edit",
@@ -417,8 +621,10 @@ def _dynamic_agents(request: ReviewRequest) -> dict[str, object]:
     }
 
 
-def _validate_request(request: ReviewRequest) -> None:
-    _pipeline_root(request.repo_root)
+def _validate_request_shape(request: ReviewRequest) -> None:
+    root = request.repo_root.resolve()
+    if not root.is_dir():
+        raise ReviewContractError("invalid_scope", f"missing root: {root}")
     _full_sha(request.reviewed_head, "reviewed_head")
     if request.reviewed_base is not None:
         _full_sha(request.reviewed_base, "reviewed_base")
@@ -439,11 +645,18 @@ def _validate_request(request: ReviewRequest) -> None:
             "invalid_scope", "at least one verification command is required"
         )
     for path in request.requirement_paths:
-        _relative_repo_path(request.repo_root, path, must_exist=True)
+        _relative_repo_path(request.repo_root, path, must_exist=False)
     for path in request.allowed_paths:
         _relative_repo_path(request.repo_root, path, must_exist=False)
     for command in request.verification_commands:
-        _validated_exact_bash_rule(command)
+        _validated_verification_rule(request, command)
+
+
+def _validate_request(request: ReviewRequest) -> None:
+    _validate_request_shape(request)
+    _pipeline_root(request.repo_root)
+    for path in request.requirement_paths:
+        _relative_repo_path(request.repo_root, path, must_exist=True)
 
 
 def _validated_authorization_source(value: str) -> str:
@@ -454,6 +667,192 @@ def _validated_authorization_source(value: str) -> str:
             "authorization source must be user-task:<id> or verify-request:<id>",
         )
     return source
+
+
+def _schema_authorization_source(value: str) -> str:
+    try:
+        return _validated_authorization_source(value)
+    except ReviewContractError as exc:
+        raise ReviewContractError(
+            "invalid_schema", f"invalid authorization_source: {value!r}"
+        ) from exc
+
+
+def _git_process(
+    root: Path, *args: str, text: bool = True
+) -> subprocess.CompletedProcess[Any]:
+    return subprocess.run(
+        ["env", "-u", "GIT_INDEX_FILE", "git", *args],
+        cwd=root,
+        capture_output=True,
+        text=text,
+        check=False,
+    )
+
+
+def _require_git_repository(root: Path) -> Path:
+    resolved = root.resolve()
+    result = _git_process(resolved, "rev-parse", "--show-toplevel")
+    if result.returncode != 0 or Path(result.stdout.strip()).resolve() != resolved:
+        raise ReviewContractError(
+            "invalid_scope", f"repo_root is not a Git worktree root: {resolved}"
+        )
+    return resolved
+
+
+def _require_commit(root: Path, revision: str, field: str) -> None:
+    result = _git_process(root, "cat-file", "-e", f"{revision}^{{commit}}")
+    if result.returncode != 0:
+        raise ReviewContractError(
+            "invalid_scope", f"{field} does not name an existing commit: {revision}"
+        )
+
+
+def _load_agent_prompt_at_revision(root: Path, revision: str) -> str:
+    result = _git_process(
+        root, "show", f"{revision}:{AGENT_RELATIVE_PATH.as_posix()}"
+    )
+    if result.returncode != 0:
+        raise ReviewContractError(
+            "invalid_scope",
+            f"trusted verifier instructions missing at {revision}",
+        )
+    return _agent_prompt_from_content(result.stdout)
+
+
+def _extract_review_archive(archive: bytes, destination: Path) -> None:
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+        members = bundle.getmembers()
+        for member in members:
+            path = PurePosixPath(member.name)
+            if (
+                path.is_absolute()
+                or ".." in path.parts
+                or not path.parts
+                or path.parts[0] == ".git"
+                or not (member.isdir() or member.isfile())
+            ):
+                raise ReviewContractError(
+                    "invalid_scope", f"unsafe snapshot member: {member.name!r}"
+                )
+        bundle.extractall(destination, members=members)
+
+
+def _set_tree_writable(root: Path, *, writable: bool) -> None:
+    paths = [root, *root.rglob("*")]
+    if not writable:
+        paths.sort(key=lambda path: len(path.parts), reverse=True)
+    for path in paths:
+        if path.is_symlink():
+            continue
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+            if writable:
+                mode |= stat.S_IWUSR
+            else:
+                mode &= ~0o222
+            path.chmod(mode)
+        except FileNotFoundError:
+            continue
+
+
+def _install_snapshot_runtime(request: ReviewRequest, snapshot: Path) -> None:
+    needs_local_python = any(
+        shlex.split(command)[3] == ".venv/bin/python"
+        for command in request.verification_commands
+    )
+    if not needs_local_python:
+        return
+    venv = snapshot / ".venv"
+    if venv.exists():
+        raise ReviewContractError(
+            "invalid_scope", "reviewed snapshot must not supply its own .venv"
+        )
+    interpreter = venv / "bin" / "python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.symlink_to(Path(sys.executable).resolve())
+
+
+def _snapshot_request(request: ReviewRequest, snapshot: Path) -> ReviewRequest:
+    requirements = tuple(
+        Path(_relative_repo_path(request.repo_root, path, must_exist=False))
+        for path in request.requirement_paths
+    )
+    allowed_paths = tuple(
+        _relative_repo_path(request.repo_root, path, must_exist=False)
+        for path in request.allowed_paths
+    )
+    return replace(
+        request,
+        repo_root=snapshot,
+        requirement_paths=requirements,
+        allowed_paths=allowed_paths,
+    )
+
+
+@contextmanager
+def _immutable_review_snapshot(request: ReviewRequest) -> Iterator[Path]:
+    source = _require_git_repository(request.repo_root)
+    _require_commit(source, request.reviewed_head, "reviewed_head")
+    if request.reviewed_base is not None:
+        _require_commit(source, request.reviewed_base, "reviewed_base")
+
+    with tempfile.TemporaryDirectory(prefix="opus-review-") as temporary_root:
+        snapshot = Path(temporary_root) / "repo"
+        clone = _git_process(
+            source.parent,
+            "clone",
+            "--quiet",
+            "--no-hardlinks",
+            "--no-checkout",
+            str(source),
+            str(snapshot),
+        )
+        if clone.returncode != 0:
+            raise ReviewContractError("invalid_scope", "could not create review snapshot")
+        fetched = _git_process(
+            snapshot,
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            str(source),
+            request.reviewed_head,
+        )
+        if fetched.returncode != 0:
+            raise ReviewContractError("invalid_scope", "could not fetch reviewed_head")
+        reset = _git_process(
+            snapshot, "reset", "--quiet", "--mixed", request.reviewed_head
+        )
+        if reset.returncode != 0:
+            raise ReviewContractError("invalid_scope", "could not bind snapshot HEAD")
+        archived = _git_process(
+            snapshot,
+            "archive",
+            "--format=tar",
+            request.reviewed_head,
+            text=False,
+        )
+        if archived.returncode != 0:
+            raise ReviewContractError("invalid_scope", "could not materialize snapshot")
+        _extract_review_archive(archived.stdout, snapshot)
+        clean = _git_process(
+            snapshot,
+            "diff",
+            "--quiet",
+            "--no-ext-diff",
+            request.reviewed_head,
+            "--",
+        )
+        if clean.returncode != 0:
+            raise ReviewContractError(
+                "invalid_scope", "materialized snapshot differs from reviewed_head"
+            )
+        _install_snapshot_runtime(request, snapshot)
+        _set_tree_writable(snapshot, writable=False)
+        try:
+            yield snapshot
+        finally:
+            _set_tree_writable(snapshot, writable=True)
 
 
 def _review_git_commands(request: ReviewRequest) -> tuple[str, ...]:
@@ -568,26 +967,41 @@ def build_claude_environment(
             "CLAUDE_CODE_SKIP_PROMPT_HISTORY": "1",
             "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
             "MAX_STRUCTURED_OUTPUT_RETRIES": "0",
+            "PYTHONDONTWRITEBYTECODE": "1",
         }
     )
     return child
 
 
-def build_claude_command(request: ReviewRequest) -> list[str]:
+def build_claude_command(
+    request: ReviewRequest, *, agent_prompt: str | None = None
+) -> list[str]:
     prompt = build_review_prompt(request)
     allowed_commands = (
         *_review_git_commands(request),
         *request.verification_commands,
     )
+    git_rule_count = len(_review_git_commands(request))
     allowed_rules = [
-        _validated_exact_bash_rule(command) for command in allowed_commands
+        *(
+            _validated_exact_bash_rule(command)
+            for command in allowed_commands[:git_rule_count]
+        ),
+        *(
+            _validated_verification_rule(request, command)
+            for command in allowed_commands[git_rule_count:]
+        ),
     ]
     return [
         "claude",
         "-p",
         prompt,
         "--agents",
-        json.dumps(_dynamic_agents(request), sort_keys=True, separators=(",", ":")),
+        json.dumps(
+            _dynamic_agents(request, agent_prompt=agent_prompt),
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
         "--agent",
         "lane-v-verifier",
         "--model",
@@ -670,66 +1084,85 @@ def review(
     *,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> OpusReview:
-    _validate_request(request)
+    try:
+        source = _require_git_repository(request.repo_root)
+    except ReviewContractError as exc:
+        raise ReviewContractError(
+            "not_pipeline_repo", f"repo_root is not a Pipeline Git worktree: {request.repo_root}"
+        ) from exc
+    _validate_request_shape(request)
     if not request.authorization_source.strip():
         return _unavailable(request, "authorization_missing")
     authorization_source = _validated_authorization_source(
         request.authorization_source
     )
-    argv = build_claude_command(request)
-    try:
-        completed = runner(
-            argv,
-            cwd=str(request.repo_root.resolve()),
-            env=build_claude_environment(),
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=request.timeout_seconds,
+    _require_commit(source, request.reviewed_head, "reviewed_head")
+    if request.reviewed_base is not None:
+        _require_commit(source, request.reviewed_base, "reviewed_base")
+    trusted_revision = request.reviewed_base or request.reviewed_head
+    trusted_agent_prompt = _load_agent_prompt_at_revision(
+        source, trusted_revision
+    )
+
+    with _immutable_review_snapshot(request) as snapshot:
+        snapshot_request = _snapshot_request(request, snapshot)
+        _validate_request(snapshot_request)
+        argv = build_claude_command(
+            snapshot_request, agent_prompt=trusted_agent_prompt
         )
-    except FileNotFoundError:
-        return _unavailable(request, "claude_not_found")
-    except subprocess.TimeoutExpired:
-        return _unavailable(request, "timeout")
-    except OSError:
-        return _unavailable(request, "process_failed")
-    if completed.returncode != 0:
-        diagnostic = completed.stderr.lower()
-        reason = (
-            "authentication_failed"
-            if any(
-                token in diagnostic
-                for token in (
-                    "authentication_error",
-                    "not logged in",
-                    "please run /login",
-                    "oauth token",
-                )
+        try:
+            completed = runner(
+                argv,
+                cwd=str(snapshot),
+                env=build_claude_environment(),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=request.timeout_seconds,
             )
-            else "process_failed"
-        )
-        return _unavailable(request, reason)
-    try:
-        model, structured = parse_claude_stream(completed.stdout)
-    except InvocationFailure as exc:
-        return _unavailable(request, exc.reason)
-    if not is_opus_model(model):
-        return _unavailable(request, "effective_model_not_opus")
-    try:
-        return parse_structured_review(
-            structured,
-            expected_head=request.reviewed_head,
-            expected_base=request.reviewed_base,
-            effective_model=model,
-            authorization_source=authorization_source,
-        )
-    except ReviewContractError as exc:
-        reason = (
-            "reviewed_scope_mismatch"
-            if exc.reason == "reviewed_scope_mismatch"
-            else "invalid_schema"
-        )
-        return _unavailable(request, reason)
+        except FileNotFoundError:
+            return _unavailable(request, "claude_not_found")
+        except subprocess.TimeoutExpired:
+            return _unavailable(request, "timeout")
+        except OSError:
+            return _unavailable(request, "process_failed")
+        if completed.returncode != 0:
+            diagnostic = completed.stderr.lower()
+            reason = (
+                "authentication_failed"
+                if any(
+                    token in diagnostic
+                    for token in (
+                        "authentication_error",
+                        "not logged in",
+                        "please run /login",
+                        "oauth token",
+                    )
+                )
+                else "process_failed"
+            )
+            return _unavailable(request, reason)
+        try:
+            model, structured = parse_claude_stream(completed.stdout)
+        except InvocationFailure as exc:
+            return _unavailable(request, exc.reason)
+        if not is_opus_model(model):
+            return _unavailable(request, "effective_model_not_opus")
+        try:
+            return parse_structured_review(
+                structured,
+                expected_head=request.reviewed_head,
+                expected_base=request.reviewed_base,
+                effective_model=model,
+                authorization_source=authorization_source,
+            )
+        except ReviewContractError as exc:
+            reason = (
+                "reviewed_scope_mismatch"
+                if exc.reason == "reviewed_scope_mismatch"
+                else "invalid_schema"
+            )
+            return _unavailable(request, reason)
 
 
 @dataclass(frozen=True)
@@ -742,6 +1175,8 @@ class FindingDisposition:
 @dataclass(frozen=True)
 class Reconciliation:
     codex_verdict: str
+    reviewed_head: str
+    reviewed_base: str | None
     go_allowed: bool
     blocking_finding_ids: tuple[str, ...]
     unresolved_finding_ids: tuple[str, ...]
@@ -755,6 +1190,8 @@ class Reconciliation:
         return {
             "schema_version": RECONCILIATION_SCHEMA_VERSION,
             "codex_verdict": self.codex_verdict,
+            "reviewed_head": self.reviewed_head,
+            "reviewed_base": self.reviewed_base,
             "go_allowed": self.go_allowed,
             "blocking_finding_ids": list(self.blocking_finding_ids),
             "unresolved_finding_ids": list(self.unresolved_finding_ids),
@@ -770,10 +1207,25 @@ def reconcile(
     codex_verdict: str,
     review: OpusReview,
     dispositions: Iterable[FindingDisposition],
+    *,
+    expected_head: str,
+    expected_base: str | None,
 ) -> Reconciliation:
     verdict = codex_verdict.upper()
     if verdict not in VALID_CODEX_VERDICTS:
         raise ReviewContractError("invalid_codex_verdict", verdict)
+    expected_head = _full_sha(expected_head, "expected_head")
+    if expected_base is not None:
+        expected_base = _full_sha(expected_base, "expected_base")
+    if (
+        review.reviewed_head != expected_head
+        or review.reviewed_base != expected_base
+    ):
+        raise ReviewContractError(
+            "reviewed_scope_mismatch",
+            f"expected {expected_base}..{expected_head}, got "
+            f"{review.reviewed_base}..{review.reviewed_head}",
+        )
     disposition_list = tuple(dispositions)
     if review.status != "issues" and disposition_list:
         raise ReviewContractError(
@@ -782,6 +1234,8 @@ def reconcile(
     if review.status == "unavailable":
         return Reconciliation(
             codex_verdict=verdict,
+            reviewed_head=expected_head,
+            reviewed_base=expected_base,
             go_allowed=verdict == "GO",
             blocking_finding_ids=(),
             unresolved_finding_ids=(),
@@ -794,6 +1248,8 @@ def reconcile(
     if review.status == "pass":
         return Reconciliation(
             codex_verdict=verdict,
+            reviewed_head=expected_head,
+            reviewed_base=expected_base,
             go_allowed=verdict == "GO",
             blocking_finding_ids=(),
             unresolved_finding_ids=(),
@@ -837,6 +1293,8 @@ def reconcile(
     blocking = tuple(sorted(unresolved + confirmed_fail + confirmed_nits))
     return Reconciliation(
         codex_verdict=verdict,
+        reviewed_head=expected_head,
+        reviewed_base=expected_base,
         go_allowed=verdict == "GO" and not blocking,
         blocking_finding_ids=blocking,
         unresolved_finding_ids=tuple(unresolved),
@@ -867,6 +1325,8 @@ def _parser() -> argparse.ArgumentParser:
     reconcile_parser.add_argument(
         "--codex-verdict", choices=sorted(VALID_CODEX_VERDICTS), required=True
     )
+    reconcile_parser.add_argument("--head", required=True)
+    reconcile_parser.add_argument("--base")
     reconcile_parser.add_argument("--opus-review-json", required=True)
     reconcile_parser.add_argument("--disposition", action="append", default=[])
     reconcile_parser.add_argument("--evidence", action="append", default=[])
@@ -925,7 +1385,13 @@ def _run_reconcile_cli(args: argparse.Namespace) -> Reconciliation:
         )
         for finding_id, disposition in disposition_map.items()
     ]
-    return reconcile(args.codex_verdict, review_result, dispositions)
+    return reconcile(
+        args.codex_verdict,
+        review_result,
+        dispositions,
+        expected_head=args.head,
+        expected_base=args.base,
+    )
 
 
 def main(

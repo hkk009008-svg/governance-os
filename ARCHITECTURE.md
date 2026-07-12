@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-12 @ be6ece5*
+*Last verified: 2026-07-12 @ 8ad424c*
 
 ## 1. Purpose
 
@@ -74,9 +74,11 @@ Key directories:
   authorization or a valid routed executor.
 - Codex Lane V attempts one verdict-blind Opus review through
   `scripts/opus_review_bridge.py` after its primary analysis. Opus remains
-  advisory; the bridge dynamically injects the existing Claude verifier role
-  with project settings and hooks disabled, and an unavailable call is an
-  explicit degraded Codex-only fallback.
+  advisory; the bridge proves the reviewed commits, materializes a read-only
+  temporary snapshot at the reviewed HEAD, loads verifier instructions from
+  the immutable base revision when present, and admits only narrow exact
+  verification commands. Project settings and hooks remain disabled, and an
+  unavailable call is an explicit degraded Codex-only fallback.
 
 ## 5. Mailbox And Capacity State
 

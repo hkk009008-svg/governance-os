@@ -55,17 +55,22 @@ Adversarial proof loop:
 - Execute touched scripts or hooks under realistic and adversarial inputs.
 
 Cross-Model Opus Verification:
-- After every Codex Lane V verification, attempt exactly one verdict-blind Opus review before the final verdict.
+- After every Codex Lane V verification in the Pipeline repository, attempt exactly one verdict-blind Opus review before the final verdict.
 - Finish the primary Codex analysis first and hold its provisional verdict internally.
 - Invoke `scripts/opus_review_bridge.py review` with the full reviewed HEAD, optional base, requirement paths, allowed paths, exact verification commands, and the recorded `user-task:<id>` or `verify-request:<id>` authorization source. Do not pass the Codex verdict, report, findings, or conclusion.
+- The Opus call occurs only when the parent prompt supplies recorded task-level authorization. Never invent it, infer it from credentials or repository state, or search for a substitute; absent parent authorization yields `unavailable` without an external call.
+- V1 applies only to Pipeline-repository verification.
+- Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1, not an incomplete required Opus pass.
 - Preserve the normalized `pass | issues | unavailable` Opus result and the effective model metadata.
 - Every Opus finding requires a disposition: record `confirmed`, `disproved` with concrete evidence, or `unresolved`.
-- Invoke `scripts/opus_review_bridge.py reconcile` with the Codex verdict, normalized Opus JSON, and every finding disposition.
+- Reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON.
+- Invoke `scripts/opus_review_bridge.py reconcile` with explicit expected `--head`/optional `--base`, the Codex verdict, normalized Opus JSON, and every finding disposition. A scope mismatch rejects stale or replayed review JSON.
 - An unresolved Opus finding blocks GO. Confirmed minor findings require NITS; confirmed important or critical findings require FAIL.
 - `unavailable` is explicit degraded Codex-only fallback with its reason; it is never a pass.
 - The bridge permits one Claude process attempt and no automatic retry for a verification attempt.
 - The operator retains GO/NITS/FAIL authority. Opus output is advisory and cannot send mail, release a lock, or issue GO.
 - No third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question.
+- Do not launch generic same-question spec or code-quality reviewers for Codex Lane V; the primary Codex analysis and blind Opus pass are the pair.
 
 Report exactly:
 - Verdict: GO / NITS / FAIL

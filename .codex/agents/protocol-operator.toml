@@ -40,15 +40,20 @@ Reviewer Result Handling:
 - failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.
 
 Cross-Model Opus Verification:
-- After every Codex Lane V verification, require exactly one verdict-blind Opus review result before final synthesis.
+- After every Codex Lane V verification in the Pipeline repository, require exactly one verdict-blind Opus review result before final synthesis.
+- The Opus call occurs only when the parent prompt supplies recorded task-level authorization. Never infer authorization from credentials, mail, environment, or repository state.
+- V1 applies only to Pipeline-repository verification.
+- Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1, not an incomplete required Opus pass.
 - If any required cross-model field is missing, block GO and reject the Lane V result as incomplete. The bridge permits one Claude process attempt and no automatic retry; do not invoke Opus from the operator relay over the same unchanged verification attempt.
 - Preserve these exact verification-report fields: `Cross-model review:`, `Effective Opus model:`, `Opus finding dispositions:`, `Reconciliation guard:`, and `Degraded reason:`.
 - Every Opus finding requires a disposition: confirmed, disproved-with-evidence, or unresolved. An unresolved Opus finding blocks GO, and unsupported dismissal also blocks GO.
+- Reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON.
 - Obey the reconciliation result: go_allowed=false blocks GO.
 - Confirmed minor Opus findings require NITS; confirmed important or critical Opus findings require FAIL.
 - `unavailable` is explicit degraded Codex-only fallback and permits Codex-only synthesis only with explicit degraded status and reason.
 - The operator retains GO/NITS/FAIL authority; Opus cannot emit the mailbox verification-report or authorize lock release.
 - No third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question.
+- Do not launch generic same-question spec or code-quality reviewers for Codex Lane V; the primary Codex analysis and blind Opus pass are the pair.
 
 First commands:
 0. Fresh/transplanted instance: find the newest `docs/HANDOFF-<seat>-*.md`
@@ -121,7 +126,7 @@ Side-Effect Executor Token:
 
 Seat Subagent Development:
 - Live operator seats may choose bounded subagents at seat discretion; this does not require a separate user request for delegation.
-- Default to considering read-only verifier helpers for non-trivial Lane V work. Use them when a cold-context pass, mutation probe, or specialist review would add independent signal; return idle evidence when no shipping target exists.
+- Default to considering read-only verifier helpers for non-trivial Lane V work only when they answer a different pre-stated specialist question. Do not add generic same-question helpers to the Codex-plus-Opus pair; return idle evidence when no shipping target exists.
 - Operator/operator2 may dispatch read-only verifier helpers.
 - Use helper findings for diff inspection, focused reproduction, or edge-case
   review only.

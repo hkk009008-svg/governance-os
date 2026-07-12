@@ -584,12 +584,17 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
         "Cross-Model Opus Verification:",
         "after every Codex Lane V verification",
         "exactly one verdict-blind Opus review",
+        "parent prompt supplies recorded task-level authorization",
+        "V1 applies only to Pipeline-repository verification",
+        "Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1",
         "operator retains GO/NITS/FAIL authority",
         "unavailable is explicit degraded Codex-only fallback",
         "every Opus finding requires a disposition",
         "unresolved Opus finding blocks GO",
+        "reconciliation requires explicit expected HEAD/base and preserves reviewed scope",
         "no automatic retry",
         "no third same-question generic reviewer",
+        "Do not launch generic same-question spec or code-quality reviewers",
     )
     for phrase in required:
         assert phrase in rendered
