@@ -1,7 +1,7 @@
 # Codex-to-Opus Cross-Model Verification Design
 
 **Date:** 2026-07-12
-**Status:** Implemented and locally verified through executable commit `292b0c9359282f14947c3aef2bc05dc5f9215856`
+**Status:** Implemented, integrated with current main, and locally verified through merge commit `f8e68c8`
 
 ## 1. Problem
 
