@@ -27,8 +27,11 @@ no verdict yet) under explicit user override. Operator2 still owes the
 GO/NITS/FAIL post-hoc when the parking lifts; a NITS/FAIL then returns findings
 to the Claude side as a follow-up cycle on already-published history.
 
-Exact Next Trigger: unchanged per the 22-26-11Z route — user fills the 68
-owner decisions + disposes the 50 quarantined scratch DBs; operator2 services
-the parked re-verify after the cycle closes.
+## Exact Next Trigger
+
+Unchanged per the 22-26-11Z route — user fills the 68 owner decisions +
+disposes the 50 quarantined scratch DBs; operator2 services the parked
+re-verify after the cycle closes. (Superseded hours later by the
+2026-07-12T01-19-04Z direction-change decision event.)
 
 Cursor at send: 0
