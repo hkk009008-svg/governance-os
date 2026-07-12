@@ -568,10 +568,25 @@ def test_command_class_with_flag_or_metachar_rejected(tmp_path, cclass):
     assert not res.ok and list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("cclass", ["git push", "git tag", "git cherry-pick", "npm publish"])
-def test_legit_command_class_accepted(cclass):
-    # Flag-free command words (incl. hyphenated subcommands) still validate.
-    assert route_capability.validate_capability(_cap(allowed_command_class=cclass)) == []
+def test_only_supported_command_class_accepted():
+    # "git push" is the ONLY class the capability system issues; its target model
+    # (_command_targets_match) is git-push-specific. Only the supported class(es)
+    # validate.
+    assert route_capability.validate_capability(_cap(allowed_command_class="git push")) == []
+
+
+@pytest.mark.parametrize("cclass", ["git tag", "git cherry-pick", "npm publish", "git commit"])
+def test_unsupported_command_class_rejected(tmp_path, cclass):
+    # A non-push class would ride the push-specific <repo>/<refspec> target model
+    # with WRONG semantics (e.g. `git cherry-pick feature main` names two commits,
+    # not branch feature/main) — refuse at the grant boundary (cross-model pass-4).
+    cap = _cap(allowed_command_class=cclass)
+    issues = route_capability.validate_capability(cap)
+    assert any("allowed_command_class" in i for i in issues), (cclass, issues)
+    ev = _evidence(command=cclass + " feature main")
+    res = route_capability.consume(_cap(allowed_command_class=cclass, target="feature/main"),
+                                   ev, store_dir=tmp_path)
+    assert not res.ok and list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
@@ -588,3 +603,27 @@ def test_consume_total_over_nonfinite_float_extension(tmp_path, bad):
     res = route_capability.consume(cap, _evidence(), store_dir=tmp_path)
     assert isinstance(res, route_capability.ConsumeResult) and not res.ok
     assert list(tmp_path.iterdir()) == []
+
+
+# F2 continuation: out-of-range INTEGERS are the other canonicalize-hostile
+# number class (RFC-8785 rejects |n| > 2**53-1, the JS safe-integer bound).
+
+@pytest.mark.parametrize("big", [2**53, -(2**53), 2**63, 10**30])
+def test_out_of_range_int_in_capability_rejected(big):
+    issues = route_capability.validate_capability(_cap(extensions={"x": big}))
+    assert any("integer" in i or "canonical" in i for i in issues), (big, issues)
+
+
+def test_consume_total_over_out_of_range_int(tmp_path):
+    # A too-large int in the capability must yield a typed refusal, never an
+    # uncaught IntegerDomainError at hash time.
+    res = route_capability.consume(_cap(extensions={"x": 2**53}), _evidence(), store_dir=tmp_path)
+    assert isinstance(res, route_capability.ConsumeResult) and not res.ok
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("ok_int", [0, 1, -1, 2**53 - 1, -(2**53 - 1)])
+def test_in_range_int_extension_accepted(ok_int):
+    # In-range integers still validate (and canonicalize) fine — the guard must
+    # not over-reject ordinary numbers.
+    assert route_capability.validate_capability(_cap(extensions={"x": ok_int})) == []

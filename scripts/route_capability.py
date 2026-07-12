@@ -92,13 +92,20 @@ CONSUMABLE_STATES = frozenset({"issued", "activated"})
 
 _CAPABILITY_ID_RE = re.compile(r"^cap-[A-Za-z0-9._-]+$")
 
-# A command class is one or more flag-free command WORDS, single-ASCII-space
-# separated (a verb like "git push" or "git cherry-pick"). It must carry no
-# option/flag, no '/', and no shell metacharacter — otherwise a grant could
-# smuggle a flag ("git push --repo=attacker") through the class PREFIX that
-# _command_targets_match strips before its own flag check (cross-model Codex
-# Lane-V pass-3, ADR-019). Enforced at the grant boundary in validate_capability.
-_COMMAND_CLASS_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]*( [A-Za-z][A-Za-z0-9-]*)*")
+# The capability binds exactly the git-push side effect (ADR-016), and
+# _command_targets_match models git push's `<repo> <refspec>` argv. "git push" is
+# therefore the ONLY supported command class: a grant naming any other verb would
+# ride the push-specific target model with WRONG semantics (e.g.
+# "git cherry-pick feature main" names two commits, not branch "feature/main"),
+# and an embedded flag ("git push --repo=attacker") is not the literal class.
+# A future non-push side effect adds its class HERE together with its own
+# target-matching semantics (cross-model Codex Lane-V pass-3/4, ADR-019). Enforced
+# at the grant boundary in validate_capability.
+KNOWN_COMMAND_CLASSES = frozenset({"git push"})
+
+# RFC-8785 (JCS) canonicalizes integers only within the JS safe-integer range;
+# |n| > 2**53-1 raises IntegerDomainError at hash time, so reject it at validation.
+_JCS_INT_MAX = 2**53 - 1
 
 
 class CapabilityError(ValueError):
@@ -164,6 +171,11 @@ def _reject_noncanonical(obj: Any, path: str = "") -> list[str]:
             issues.append(f"control characters rejected in {path or '<root>'}")
         if not _is_utf8_encodable(obj):
             issues.append(f"non-UTF-8 (lone surrogate) string rejected in {path or '<root>'}")
+    elif isinstance(obj, bool):
+        pass  # bool -> true/false canonicalizes fine (int-currency is checked elsewhere)
+    elif isinstance(obj, int):
+        if abs(obj) > _JCS_INT_MAX:
+            issues.append(f"integer outside canonicalizable range rejected in {path or '<root>'}")
     elif isinstance(obj, float):
         if not math.isfinite(obj):
             issues.append(f"non-finite float (not canonicalizable) rejected in {path or '<root>'}")
@@ -213,15 +225,15 @@ def validate_capability(obj: Any) -> list[str]:
         if not _is_nonempty_str(obj[field]):
             issues.append(f"{field} must be a non-empty string")
 
-    # allowed_command_class must be flag-free command WORDS: a grant whose class
-    # embeds an option (e.g. "git push --repo=attacker") would smuggle the flag
-    # through the class prefix that _command_targets_match strips before its own
-    # flag check. Fail-closed at the grant boundary.
+    # allowed_command_class must be a SUPPORTED class: the target model in
+    # _command_targets_match is git-push-specific, so a non-push class (or one
+    # embedding a flag, e.g. "git push --repo=attacker") is refused at the grant
+    # boundary rather than riding the push model with wrong semantics.
     command_class = obj["allowed_command_class"]
-    if isinstance(command_class, str) and not _COMMAND_CLASS_RE.fullmatch(command_class):
+    if isinstance(command_class, str) and command_class not in KNOWN_COMMAND_CLASSES:
         issues.append(
-            "allowed_command_class must be flag-free command words "
-            "(letters/digits/hyphen, single-space separated; no options, '/', or shell metacharacters)"
+            "allowed_command_class must be one of the supported side-effect classes: "
+            + ", ".join(sorted(KNOWN_COMMAND_CLASSES))
         )
 
     expires = obj["expires_on"]
