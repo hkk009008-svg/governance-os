@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -91,6 +92,14 @@ CONSUMABLE_STATES = frozenset({"issued", "activated"})
 
 _CAPABILITY_ID_RE = re.compile(r"^cap-[A-Za-z0-9._-]+$")
 
+# A command class is one or more flag-free command WORDS, single-ASCII-space
+# separated (a verb like "git push" or "git cherry-pick"). It must carry no
+# option/flag, no '/', and no shell metacharacter — otherwise a grant could
+# smuggle a flag ("git push --repo=attacker") through the class PREFIX that
+# _command_targets_match strips before its own flag check (cross-model Codex
+# Lane-V pass-3, ADR-019). Enforced at the grant boundary in validate_capability.
+_COMMAND_CLASS_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]*( [A-Za-z][A-Za-z0-9-]*)*")
+
 
 class CapabilityError(ValueError):
     """A capability object is malformed, unsupported, or fails validation."""
@@ -135,21 +144,36 @@ _CONTROL_CHARS = ("\n", "\r")
 _SHELL_CONTROL_CHARS = frozenset(";&|`$<>()")
 
 
-def _reject_control_chars(obj: Any, path: str = "") -> list[str]:
-    """Recursively reject newline/CR in every string value (all fields, nested)."""
+def _reject_noncanonical(obj: Any, path: str = "") -> list[str]:
+    """Recursively reject values that are structurally valid Python/JSON but that
+    ``canonicalize()`` (RFC-8785) cannot encode — so validation, not the later
+    hash/write, is where they are refused, keeping the validators + consume() TOTAL.
+
+    Three canonicalize-hostile classes (all found by cross-model Codex Lane-V,
+    ADR-019), checked over every nested string/number:
+      - newline/CR in a string (the prose-injection vector);
+      - a non-UTF-8 string (a lone surrogate — valid ``str``, unencodable);
+      - a non-finite float (NaN / +-Inf — ``json.loads`` accepts ``NaN`` by
+        default, so a capability file can carry one; canonicalize raises
+        FloatDomainError on it).
+    ``bool`` is an ``int`` subclass (not ``float``), so it is untouched here.
+    """
     issues: list[str] = []
     if isinstance(obj, str):
         if any(ch in obj for ch in _CONTROL_CHARS):
             issues.append(f"control characters rejected in {path or '<root>'}")
         if not _is_utf8_encodable(obj):
             issues.append(f"non-UTF-8 (lone surrogate) string rejected in {path or '<root>'}")
+    elif isinstance(obj, float):
+        if not math.isfinite(obj):
+            issues.append(f"non-finite float (not canonicalizable) rejected in {path or '<root>'}")
     elif isinstance(obj, dict):
         for key in obj:
             child = f"{path}.{key}" if path else str(key)
-            issues.extend(_reject_control_chars(obj[key], child))
+            issues.extend(_reject_noncanonical(obj[key], child))
     elif isinstance(obj, list):
         for index, item in enumerate(obj):
-            issues.extend(_reject_control_chars(item, f"{path}[{index}]"))
+            issues.extend(_reject_noncanonical(item, f"{path}[{index}]"))
     return issues
 
 
@@ -164,7 +188,7 @@ def validate_capability(obj: Any) -> list[str]:
         return [f"unsupported schema: {obj.get('schema')!r} (expected {SCHEMA_ID})"]
 
     issues: list[str] = []
-    issues.extend(_reject_control_chars(obj))
+    issues.extend(_reject_noncanonical(obj))
     unknown = sorted(set(obj) - set(REQUIRED_FIELDS) - set(OPTIONAL_FIELDS))
     if unknown:
         issues.append("unknown authority-bearing fields rejected: " + ", ".join(unknown))
@@ -188,6 +212,17 @@ def validate_capability(obj: Any) -> list[str]:
     for field in TOKEN_FIELDS:
         if not _is_nonempty_str(obj[field]):
             issues.append(f"{field} must be a non-empty string")
+
+    # allowed_command_class must be flag-free command WORDS: a grant whose class
+    # embeds an option (e.g. "git push --repo=attacker") would smuggle the flag
+    # through the class prefix that _command_targets_match strips before its own
+    # flag check. Fail-closed at the grant boundary.
+    command_class = obj["allowed_command_class"]
+    if isinstance(command_class, str) and not _COMMAND_CLASS_RE.fullmatch(command_class):
+        issues.append(
+            "allowed_command_class must be flag-free command words "
+            "(letters/digits/hyphen, single-space separated; no options, '/', or shell metacharacters)"
+        )
 
     expires = obj["expires_on"]
     if (
@@ -295,7 +330,7 @@ def validate_receipt(obj: Any) -> list[str]:
         return [f"unsupported schema: {obj.get('schema')!r} (expected {RECEIPT_SCHEMA_ID})"]
 
     issues: list[str] = []
-    issues.extend(_reject_control_chars(obj))
+    issues.extend(_reject_noncanonical(obj))
     allowed = set(RECEIPT_REQUIRED_FIELDS) | set(RECEIPT_EVIDENCE_FIELDS)
     unknown = sorted(set(obj) - allowed)
     if unknown:

@@ -529,3 +529,62 @@ def test_double_space_still_consumes(tmp_path):
     # double space still consumes; only NON-ASCII whitespace is rejected.
     res = route_capability.consume(_cap(), _evidence(command="git push  origin main"), store_dir=tmp_path)
     assert res.ok and res.reason == "consumed"
+
+
+# --- Slice-7d: cross-model pass-3 FAIL — finish the two classes, ADR-019 ------
+#
+# A THIRD Codex Lane-V pass (on 0eb4052) still FAILed CHECK-1, but on NEW forms —
+# each finishing a class the earlier fixes left half-closed:
+#   G1 flag smuggled via the COMMAND CLASS: allowed_command_class was only
+#      validated non-empty, so a grant "git push --repo=attacker" put the flag
+#      in the prefix _command_targets_match strips before flag-checking. The
+#      flag-confinement was on the command, not the class definition. Fix at the
+#      grant boundary: validate_capability rejects a class with flags/metachars.
+#   G2 NaN/Inf totality: canonicalize() (RFC-8785) rejects non-finite floats
+#      exactly as it rejects lone surrogates. extensions={"x": NaN} passed
+#      validation and raised FloatDomainError at hash time (json.loads accepts
+#      NaN -> CLI-reachable). The surrogate fix closed non-UTF-8 STRINGS; this
+#      closes the other half of the same class (non-canonicalizable VALUES).
+
+
+_FLAGGED_COMMAND_CLASSES = [
+    "git push --repo=attacker",   # smuggles --repo via the class prefix
+    "git push --receive-pack=x",
+    "git push -f",
+    "git push;git tag",           # shell metachar in the class
+    "git push | tee",
+    "git push origin/main",       # a '/' in the class is not a command word
+]
+
+
+@pytest.mark.parametrize("cclass", _FLAGGED_COMMAND_CLASSES)
+def test_command_class_with_flag_or_metachar_rejected(tmp_path, cclass):
+    cap = _cap(allowed_command_class=cclass)
+    issues = route_capability.validate_capability(cap)
+    assert any("allowed_command_class" in i for i in issues), (cclass, issues)
+    # and consume refuses it (invalid capability), nothing written.
+    ev = _evidence(command=cclass + " origin main")
+    res = route_capability.consume(cap, ev, store_dir=tmp_path)
+    assert not res.ok and list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("cclass", ["git push", "git tag", "git cherry-pick", "npm publish"])
+def test_legit_command_class_accepted(cclass):
+    # Flag-free command words (incl. hyphenated subcommands) still validate.
+    assert route_capability.validate_capability(_cap(allowed_command_class=cclass)) == []
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_float_in_capability_rejected(bad):
+    issues = route_capability.validate_capability(_cap(extensions={"x": bad}))
+    assert any("finite" in i or "canonical" in i for i in issues), (bad, issues)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_consume_total_over_nonfinite_float_extension(tmp_path, bad):
+    # A non-finite float anywhere in the capability must yield a typed refusal,
+    # never an uncaught FloatDomainError at canonicalize/hash time.
+    cap = _cap(extensions={"nested": {"x": bad}})
+    res = route_capability.consume(cap, _evidence(), store_dir=tmp_path)
+    assert isinstance(res, route_capability.ConsumeResult) and not res.ok
+    assert list(tmp_path.iterdir()) == []
