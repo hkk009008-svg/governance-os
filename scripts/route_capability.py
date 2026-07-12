@@ -443,72 +443,55 @@ def _validate_evidence(evidence: Any) -> list[str]:
     return issues
 
 
-# The ONLY whitespace a POSIX shell splits arguments on. Newline/CR are already
-# rejected upstream by the receipt control-char guard; every other Unicode
-# "whitespace" (NBSP U+00A0, line/para separators U+2028/U+2029, em space
-# U+2003, …) is NOT an argument separator to a shell, so a command carrying one
-# is rejected rather than silently re-tokenized (the parsing differential below).
-_ASCII_ARG_WS = {" ", "\t"}
-
-
-def _ref_components(ref: str) -> list[str] | None:
-    """Components of a ref-ish string, split on ASCII space and '/'.
-
-    Returns ``None`` if ANY component is empty — a leading, trailing, or doubled
-    separator (e.g. ``/origin/main``, ``origin//main``, ``origin/main/``). Such a
-    string does NOT denote a clean remote-plus-ref path: git reads
-    ``/origin/main`` as a LOCAL repository path with a default refspec, not remote
-    ``origin`` ref ``main``. Callers treat ``None`` as no-match (fail-closed).
-    """
-    parts = re.split(r"[ /]", ref)
-    if any(part == "" for part in parts):
-        return None
-    return parts
+# Argument separators in a POSIX shell command line are ASCII space and tab
+# ONLY. Every other Unicode "whitespace" (NBSP U+00A0, line/para separators
+# U+2028/U+2029, em space U+2003, …) is a NORMAL character to a shell: it stays
+# glued to its argument token and does NOT split argv. Tokenizing on this class
+# (not Python's str.split(), which splits them all) is what makes the target
+# check semantically equivalent to git's own argv parsing.
+_ASCII_ARG_WS_RE = re.compile(r"[ \t]+")
 
 
 def _command_targets_match(command: str, allowed_command_class: str, target: str) -> bool:
-    """True iff the command, after its command-class prefix, references EXACTLY
-    the capability's target and nothing else — no options, no exotic whitespace.
+    """True iff the command's git argument vector, after the verified command-class
+    prefix, is EXACTLY ``<repo> <refspec>`` for the capability's ``target``.
 
-    Fail-closed hardening (closes the adversarial battery, ADR-019):
+    git parses ``git push [<repository> [<refspec>...]]``: the repository is ONE
+    argv token and each refspec is ONE token. The capability's ``target`` is
+    ``"<repo>/<refspec>"`` where the refspec may itself contain ``/`` (a branch
+    like ``feature/main``). So the ONLY command that acts on exactly the target
+    is ``<class> <repo> <refspec>`` — two whitespace-separated tokens, the
+    refspec kept whole.
 
-      (1) Reject any whitespace that is not a plain ASCII space or tab. Python's
-          ``str.split()`` splits NBSP / line-separator / em-space that a POSIX
-          shell does NOT — so the rule would see ``[origin, main]`` and match
-          while git sees one bogus argument. Rejecting the whole non-ASCII-WS
-          class closes that parsing differential.
-      (2) Reject flags entirely. A capability authorizes exactly its command
-          class acting on its target — no options. Some flags are
-          attacker-controllable (``--receive-pack`` / ``--exec`` run a program on
-          the REMOTE, ``--repo`` overrides the remote) and ``--force`` violates
-          the token's non_goals ("no force-push"). A future increment may add a
-          per-class safe-flag allowlist.
-      (3) The non-flag argument components (split on ASCII space and '/') must
-          EQUAL the target's components in order, with NO empty component. An
-          empty target, extra refs, a different ref, no target, or a stray
-          leading/trailing/double slash all return False. Rejecting empty
-          components (rather than discarding them) closes the '/'-flattening
-          differential: ``git push /origin/main`` — which git reads as a LOCAL
-          repo path, not remote+ref — must NOT match target ``origin/main``.
+    Fail-closed hardening (ADR-019; closes the cross-model Codex Lane-V battery):
+
+      (1) Tokenize on ASCII space/tab ONLY — the whitespace a shell splits argv
+          on. Any other Unicode "whitespace" (NBSP, line/para separator, em
+          space) is a normal character, so it stays inside its token and makes
+          the token not match, rather than being silently split or stripped. The
+          caller must NOT have str.strip()-ed the command with the default
+          (all-whitespace) strip, or a trailing NBSP would vanish before this.
+      (2) Reject flags entirely. A capability authorizes its class acting on its
+          target — no options. Some are attacker-controllable
+          (``--receive-pack`` / ``--exec`` run a program on the REMOTE, ``--repo``
+          overrides it) and ``--force`` violates the token non_goals.
+      (3) The token vector must EQUAL ``[repo, refspec]`` exactly. A missing/empty
+          target, extra tokens, a different ref, the slash form
+          (``git push origin/main`` is a single ``<repository>`` token to git,
+          not remote+ref), and a split refspec (``git push origin feature main``
+          is two refspecs, not branch ``feature/main``) all return False.
     """
     rest = command[len(allowed_command_class):]  # class prefix already verified by the command-class check
-    # (1) exotic-whitespace differential: only ASCII space/tab are shell arg separators.
-    if any(ch.isspace() and ch not in _ASCII_ARG_WS for ch in rest):
-        return False
-    tokens = rest.split()
+    # (1) ASCII-only tokenization: non-ASCII "whitespace" stays inside its token.
+    tokens = [tok for tok in _ASCII_ARG_WS_RE.split(rest) if tok]
     # (2) no flags — a capability authorizes exactly its class acting on its target.
     if any(tok.startswith("-") for tok in tokens):
         return False
-    # (3) the non-flag argument components must EQUAL the target's, in order, with
-    # no empty component (a stray leading/trailing/double slash yields None).
-    cmd_components = _ref_components(" ".join(tokens))
-    target_components = _ref_components(target)
-    return (
-        cmd_components is not None
-        and target_components is not None
-        and bool(target_components)
-        and cmd_components == target_components
-    )
+    # (3) target -> exactly (repo, refspec); the refspec keeps any internal '/'.
+    repo, sep, refspec = target.partition("/")
+    if not sep or not repo or not refspec:
+        return False
+    return tokens == [repo, refspec]
 
 
 def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) -> ConsumeResult:
@@ -619,7 +602,11 @@ def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) 
     # prefix-extension — so a grant for one command cannot be spent recording a
     # different command that ran. Fail-closed BEFORE any write.
     allowed = capability["allowed_command_class"].strip()
-    cmd = str(evidence.get("command", "")).strip()
+    # Strip ONLY ASCII space/tab, not the default all-whitespace strip: a bare
+    # .strip() removes a trailing/leading NBSP (U+00A0.isspace() is True), so
+    # `git push origin main ` would lose its NBSP before _command_targets_match
+    # could reject the token differential (cross-model Codex Lane-V CHECK-1).
+    cmd = str(evidence.get("command", "")).strip(" \t")
     # A capability authorizes exactly ONE simple command — never a shell
     # composition. Reject any shell control/chaining/substitution/redirection
     # metacharacter BEFORE the prefix match, so a matching prefix

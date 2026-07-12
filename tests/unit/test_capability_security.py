@@ -77,9 +77,15 @@ def test_target_match_slash_or_space_accepted(tmp_path):
     assert res.ok and res.reason == "consumed"
 
 
-def test_target_match_slash_form_accepted(tmp_path):
+def test_target_slash_form_refused(tmp_path):
+    # git parses `git push origin/main` as a SINGLE <repository> argument (it
+    # looks for a remote/URL named "origin/main" and errors) — NOT remote origin
+    # ref main. So the slash form does NOT act on the authorized target and must
+    # be refused; only the space form `git push origin main` does (cross-model
+    # Codex Lane-V CHECK-1, ADR-019).
     res = route_capability.consume(_cap(), _evidence(command="git push origin/main"), store_dir=tmp_path)
-    assert res.ok and res.reason == "consumed"
+    assert not res.ok and "target_mismatch" in res.reason
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_target_match_no_flags_plain_command_accepted(tmp_path):
@@ -164,8 +170,7 @@ def test_flag_and_unicode_target_bypasses_all_refused(tmp_path, command):
 
 
 _LEGIT_COMMANDS_MUST_CONSUME = [
-    "git push origin main",   # space-separated target
-    "git push origin/main",   # slash form of the same target
+    "git push origin main",   # space-separated target (the ONLY git-correct form)
 ]
 
 
@@ -375,15 +380,20 @@ def test_target_slash_differential_refused(tmp_path, command):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_command_targets_match_rejects_empty_components():
-    # Unit-level: the matcher itself must reject any empty ref component while
-    # still accepting the two legitimate spellings of the exact target.
+def test_command_targets_match_is_git_argv_exact():
+    # Unit-level: the matcher models git's `<repo> <refspec>` argv. The ONLY
+    # match for target "origin/main" is the two-token space form; the slash form
+    # (a single <repository> token to git) and any stray-slash form are refused.
     m = route_capability._command_targets_match
     assert m("git push origin main", "git push", "origin/main") is True
-    assert m("git push origin/main", "git push", "origin/main") is True
+    assert m("git push origin/main", "git push", "origin/main") is False   # single repo token, not remote+ref
     assert m("git push /origin/main", "git push", "origin/main") is False
     assert m("git push origin//main", "git push", "origin/main") is False
     assert m("git push origin/main/", "git push", "origin/main") is False
+    # a refspec that legitimately contains '/' is ONE token: repo=origin,
+    # refspec=feature/main -> only `git push origin feature/main` matches.
+    assert m("git push origin feature/main", "git push", "origin/feature/main") is True
+    assert m("git push origin feature main", "git push", "origin/feature/main") is False  # two refspecs
 
 
 # F2: surrogate totality — consume TOTAL over non-UTF-8-encodable strings.
@@ -460,3 +470,62 @@ def test_schema_logs_ref_pattern_rejects_traversal(logs_ref):
 def test_schema_logs_ref_pattern_accepts_clean():
     import re as _re
     assert _re.fullmatch(_schema_logs_ref_pattern(), "logs/real/artifact.json") is not None
+
+
+# --- Slice-7c: cross-model re-verify CHECK-1 — git-argv tokenization, ADR-019 -
+#
+# A SECOND Codex Lane-V pass (on the slice-7b fix) still FAILed CHECK-1: the
+# matcher's tokenization was not semantically equivalent to git's argv parsing.
+# Reproduced on the pre-fix code:
+#   (a) consume() did cmd.strip(); Python str.strip() removes a TRAILING NBSP
+#       (U+00A0 .isspace() is True), so "git push origin main " was accepted
+#       before the exotic-whitespace guard could see it.
+#   (b) the slash form and multi-refspec forms were accepted though git parses
+#       them differently (see test_command_targets_match_is_git_argv_exact).
+# Fix: strip only ASCII space/tab in consume; tokenize on ASCII whitespace ONLY
+# and require the token vector to EQUAL [repo, refspec] (target split on first
+# '/', refspec kept whole). This is the class fix — model git argv, not a
+# per-character denylist.
+
+
+_GIT_ARGV_MUST_REFUSE = [
+    "git push origin main ",   # TRAILING NBSP — was stripped before matching
+    " git push origin main",   # LEADING NBSP
+    "git push origin main\t ", # trailing em-space after a tab
+    "git push origin/main",         # slash form: one <repository> token to git
+    "git push origin main",    # interior NBSP (already refused; regression-lock)
+]
+
+
+@pytest.mark.parametrize("command", _GIT_ARGV_MUST_REFUSE)
+def test_git_argv_tokenization_refuses(tmp_path, command):
+    res = route_capability.consume(_cap(), _evidence(command=command), store_dir=tmp_path)
+    assert not res.ok, f"git-argv BYPASS: {command!r} accepted"
+    # Refused fail-closed before any write. A leading exotic-ws char fails the
+    # command-CLASS prefix check; a trailing/interior one fails the TARGET check
+    # — both are valid refusals, and neither writes a receipt.
+    assert ("target_mismatch" in res.reason or "command_class_mismatch" in res.reason), (command, res.reason)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_multi_refspec_refused_for_slash_target(tmp_path):
+    # target origin/feature/main = repo origin, refspec feature/main (ONE branch).
+    # `git push origin feature main` is TWO refspecs -> git-wrong -> refuse.
+    cap = _cap(target="origin/feature/main")
+    res = route_capability.consume(cap, _evidence(command="git push origin feature main"), store_dir=tmp_path)
+    assert not res.ok and "target_mismatch" in res.reason
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_branch_with_slash_refspec_accepted(tmp_path):
+    # The git-correct spelling for that target consumes: repo + one refspec token.
+    cap = _cap(target="origin/feature/main")
+    res = route_capability.consume(cap, _evidence(command="git push origin feature/main"), store_dir=tmp_path)
+    assert res.ok and res.reason == "consumed"
+
+
+def test_double_space_still_consumes(tmp_path):
+    # ASCII whitespace runs collapse (git/shell do too) — a legit command with a
+    # double space still consumes; only NON-ASCII whitespace is rejected.
+    res = route_capability.consume(_cap(), _evidence(command="git push  origin main"), store_dir=tmp_path)
+    assert res.ok and res.reason == "consumed"
