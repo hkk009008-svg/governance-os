@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-11 @ 0dd9708*
+*Last verified: 2026-07-12 @ 0407afb*
 
 ## 1. Purpose
 
@@ -55,7 +55,7 @@ Key directories:
 | `classify_sha_ref_baseline` | `scripts/check_doc_claims.py:1768` | Classifies SHA-reference drift as reviewed baseline or new/changed drift. |
 | `collect_monitor_state` | `scripts/mailbox_monitor.py:175` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
 | `build_guard` | `scripts/ledger_start_guard.py:175` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
-| `resolve_target` | `scripts/target_binding.py:135` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
+| `resolve_target` | `scripts/target_binding.py:143` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:482` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:772` | Renders guard guidance into readiness output. |

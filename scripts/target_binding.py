@@ -48,7 +48,15 @@ class TargetBinding:
 
 
 def _resolve_path(raw: str) -> Path:
-    return Path(raw).expanduser().resolve(strict=False)
+    # Path expansion/resolution can raise non-BindingError exceptions on
+    # otherwise-typed inputs (a null byte -> ValueError 'embedded null
+    # character'; a `~<unknown-user>` prefix -> RuntimeError 'Could not
+    # determine home directory'; other OSError). Fail closed by wrapping any
+    # such failure as BindingError so the registry stays a total function.
+    try:
+        return Path(raw).expanduser().resolve(strict=False)
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise BindingError(f"unresolvable path {raw!r}: {exc}") from exc
 
 
 def load_config(root: Path | str | None = None) -> dict:
