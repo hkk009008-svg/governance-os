@@ -101,6 +101,44 @@ def test_split_line_secret_and_unicode_lookalike_are_rejected():
 
 
 @pytest.mark.parametrize(
+    "text",
+    [
+        "-----BEGIN PRIVATE\nKEY-----",
+        "-----BEGIN PRIVATE\tKEY-----",
+        "Autho\nrization: Bearer abcdefghijklmnopqrstuvwxyz",
+        "Authorization: Bea\trer abcdefghijklmnopqrstuvwxyz",
+    ],
+)
+def test_sensitive_markers_split_by_whitespace_are_rejected(text):
+    request = valid_request()
+    request["facts"][0]["text"] = text
+    with pytest.raises(consult.ConsultationError):
+        consult.prepare_request(request)
+
+
+@pytest.mark.parametrize("source", [".en\nv", ".en\tv"])
+def test_prohibited_source_split_by_whitespace_is_rejected(source):
+    request = valid_request()
+    request["facts"][0]["source"] = source
+    with pytest.raises(consult.ConsultationError):
+        consult.prepare_request(request)
+
+
+@pytest.mark.parametrize(
+    "wave",
+    [
+        pytest.param(2**31, id="above-int32"),
+        pytest.param(10**5000, id="huge"),
+    ],
+)
+def test_wave_outside_int32_range_fails_with_consultation_error(wave):
+    request = valid_request()
+    request["state_binding"]["wave"] = wave
+    with pytest.raises(consult.ConsultationError):
+        consult.prepare_request(request)
+
+
+@pytest.mark.parametrize(
     "mutate",
     [
         lambda value: value["facts"][0].update({"trust": []}),

@@ -23,6 +23,7 @@ MAX_FACTS = 8
 MAX_FACT_BYTES = 2 * 1024
 MAX_REQUEST_BYTES = 16 * 1024
 MAX_RESPONSE_BYTES = 16 * 1024
+_MAX_WAVE = 2**31 - 1
 PHASES = frozenset({"ideation", "pre_plan", "post_plan", "coordinator"})
 REQUEST_KEYS = frozenset(
     {
@@ -82,6 +83,10 @@ SENSITIVE_PATTERNS = (
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,})\b"),
     re.compile(r"\b[A-Za-z0-9+/]{80,}={0,2}\b"),
 )
+_COMPACT_SENSITIVE_PATTERNS = (
+    re.compile(r"-----BEGIN[A-Z]*PRIVATEKEY-----", re.IGNORECASE),
+    re.compile(r"authorization:(?:bearer|basic).+", re.IGNORECASE),
+)
 
 
 class ConsultationError(ValueError):
@@ -98,12 +103,15 @@ class PreparedConsultation:
 
 
 def _canonical_bytes(value: object) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
+    try:
+        return json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError, OverflowError, UnicodeError, RecursionError) as exc:
+        raise ConsultationError("value cannot be canonicalized as UTF-8 JSON") from exc
 
 
 def _sha256(value: object) -> str:
@@ -139,16 +147,18 @@ def _normalized_text(value: object, name: str, *, allow_empty: bool = False) -> 
     return normalized
 
 
+def _whitespace_views(value: str) -> tuple[str, str]:
+    return re.sub(r"\s+", " ", value), re.sub(r"\s+", "", value)
+
+
 def _reject_sensitive_text(value: str, name: str) -> None:
-    collapsed = re.sub(r"\s+", "", value)
-    collapsed_lower = collapsed.lower()
+    collapsed, compact = _whitespace_views(value)
+    views = (value, collapsed, compact, compact.lower())
     for pattern in SENSITIVE_PATTERNS:
-        if (
-            pattern.search(value)
-            or pattern.search(collapsed)
-            or pattern.search(collapsed_lower)
-        ):
+        if any(pattern.search(view) for view in views):
             raise ConsultationError(f"{name} contains sensitive content")
+    if any(pattern.search(compact) for pattern in _COMPACT_SENSITIVE_PATTERNS):
+        raise ConsultationError(f"{name} contains sensitive content")
 
 
 def _uuid4(value: object, name: str) -> str:
@@ -175,9 +185,11 @@ def _validate_state_binding(binding: object) -> dict[str, object]:
     value = _exact_mapping(binding, STATE_BINDING_KEYS, "state_binding")
     wave = value["wave"]
     if wave is not None and (
-        not isinstance(wave, int) or isinstance(wave, bool) or wave < 0
+        type(wave) is not int or not 0 <= wave <= _MAX_WAVE
     ):
-        raise ConsultationError("state_binding.wave must be a non-negative integer or null")
+        raise ConsultationError(
+            "state_binding.wave must be an integer from 0 through 2147483647 or null"
+        )
 
     route_id_value = value["route_id"]
     if route_id_value is None:
@@ -216,11 +228,19 @@ def _validate_fact(value: object, index: int) -> dict[str, object]:
         )
     text = _normalized_text(fact["text"], f"facts[{index}].text")
 
-    source_for_match = source.replace("\\", "/").lower()
-    if any(part in source_for_match for part in PROHIBITED_SOURCE_PARTS):
+    source_path = source.replace("\\", "/")
+    collapsed_source, compact_source = _whitespace_views(source_path)
+    source_views = tuple(
+        candidate.lower() for candidate in (source_path, collapsed_source, compact_source)
+    )
+    if any(
+        part in candidate
+        for candidate in source_views
+        for part in PROHIBITED_SOURCE_PARTS
+    ):
         raise ConsultationError(f"facts[{index}].source is prohibited")
-    if source_for_match.startswith("~") or re.match(
-        r"^(?:[a-z]:)?/(?:users|home)/", source_for_match
+    if compact_source.startswith("~") or re.match(
+        r"^(?:[a-z]:)?/(?:users|home)/", compact_source, re.IGNORECASE
     ):
         raise ConsultationError(f"facts[{index}].source exposes a private home path")
 
