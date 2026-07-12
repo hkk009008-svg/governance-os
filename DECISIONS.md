@@ -858,3 +858,19 @@ was cut off) and adversarially verified cross-model at Lane-V per R-INDEPENDENCE
   by the same enumeration are the next re-verification targets.
 - `git push` → `git push origin main` updates in existing tests (command must
   now match target) preserve their original invariants (reviewed).
+
+## ADR-022: Make Codex R-INDEPENDENCE operative and authorize one standing Lane-V Opus attempt
+
+**Status:** Accepted (user-approved design, 2026-07-12)
+
+**Context:**
+ADR-019 made independence-first verification standing doctrine but left the Codex operative stub and executable role surfaces unfinished. ADR-020 required one blind Opus pass after Codex Lane V, yet its task-level authorization rule made that required pass degrade whenever a parent prompt omitted repeated consent. The user-principal directed that R-INDEPENDENCE become the Pipeline Codex default and granted standing consent for only the existing bounded post-Lane-V Opus attempt.
+
+**Decision:**
+Pipeline Codex classifies the four ADR-019 adversarial surfaces before implementation. Triggered work requires a committed independent design-time abuse/edge/coverage enumeration and independent actual-diff verification before completion. The Codex executable model and core role prompts carry that default. For the exact `codex-lane-v` review profile, after Pipeline identity, reviewed commits, immutable reviewed-HEAD scope, and command validation, an absent authorization source resolves to `standing-policy:codex-lane-v-opus-v1`. Explicit `user-task:` and `verify-request:` sources remain valid; malformed or explicitly forged standing sources fail closed. The normalized review schema advances to `opus-review/v2` with a required profile; v1 review JSON is rejected rather than inferred, while `opus-reconciliation/v1` remains unchanged. One invocation launches at most one provider process and never retries or substitutes another reviewer. Protocol rules allow one invocation per unchanged Lane V verification. Operator authority and every other paid-spend or side-effect gate remain unchanged.
+
+**Consequences:**
+- This extends ADR-019 and supersedes only ADR-020's task-authorization, v1-contract, and separately-authorized-live-smoke details for the named Pipeline Lane V profile.
+- Unavailable credentials, network, sandbox, provider, or valid output remain visible degraded Codex-only evidence after standing authorization is recorded.
+- The bridge enforces one provider process per invocation. Cross-process uniqueness remains auditable from profile, authorization identity, and reviewed commits rather than adding a mutable global call ledger.
+- Standing consent does not authorize design-time Opus or any unrelated paid operation.

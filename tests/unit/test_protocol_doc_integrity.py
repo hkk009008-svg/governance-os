@@ -24,6 +24,15 @@ def test_codex_subagents_never_inherit_seat_authority():
     assert "Subagents do not consume cursors, send mailbox events, issue GO" in compact
 
 
+def test_independence_first_doc_no_longer_lists_agents_sync_as_unfinished():
+    text = (ROOT / "docs/protocol/claude/independence-first.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Sync the operative stub into `AGENTS.md`" not in text
+    assert "Mechanize the cross-model requirement" in text
+    assert "dispatch templates" in text
+
+
 def test_root_and_pr_docs_do_not_reference_stale_architecture_sections():
     for path in ("AGENTS.md", ".github/pull_request_template.md"):
         text = _read(path)

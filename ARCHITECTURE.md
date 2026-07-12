@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-12 @ e3076b5*
+*Last verified: 2026-07-12 @ 9d354e2*
 
 ## 1. Purpose
 
@@ -58,7 +58,9 @@ Key directories:
 | `resolve_target` | `scripts/target_binding.py:143` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:508` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_r_independence` | `scripts/codex_protocol_model.py:733` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:805` | Renders guard guidance into readiness output. |
+| `_resolved_authorization_source` | `scripts/opus_review_bridge.py:887` | Resolves the exact Lane-V profile to explicit task authority or its bounded standing policy. |
 
 ## 4. Runtime Invariants
 
@@ -69,9 +71,11 @@ Key directories:
 - Live seats start with `scripts/ledger_start_guard.py --seat <seat> --wave 2`
   from Pipeline before entering evidence-ledger.
 - Ordinary git and pytest commands use `env -u GIT_INDEX_FILE`.
-- Pushes, lock actions, cursor consumption, pod spend, paid API spend, target
-  checkout refresh, and product-generation side effects require explicit
-  authorization or a valid routed executor.
+- Pushes, lock actions, cursor consumption, pod spend, target checkout refresh,
+  production generation, and paid API spend require explicit authorization or
+  a valid routed executor. The sole standing paid-call exception is
+  `standing-policy:codex-lane-v-opus-v1`, limited to one post-Lane-V Opus
+  attempt under the exact Pipeline `codex-lane-v` profile.
 - Codex Lane V attempts one verdict-blind Opus review through
   `scripts/opus_review_bridge.py` after its primary analysis. Opus remains
   advisory; the bridge proves Pipeline identity and the reviewed commits,
@@ -90,7 +94,17 @@ Key directories:
   resolves the local Claude executable before sandbox launch, canonicalizes
   reviewed SHAs to lowercase, disables Git textconv for patch rendering, and
   applies the same bounded delimiter-safe finding-ID grammar in its JSON Schema
-  and Python parser.
+  and Python parser. The Codex model applies R-INDEPENDENCE before
+  implementation: it classifies the four adversarial surfaces, requires a
+  durable independent design-time enumeration for triggered work, and requires
+  independent actual-diff verification before completion. Lane V requests
+  declare `codex-lane-v`. After Pipeline identity, commits, immutable
+  reviewed-HEAD scope, and command validation, an absent task source resolves
+  to `standing-policy:codex-lane-v-opus-v1`; malformed explicit sources never
+  fall back. Normalized evidence is `opus-review/v2` and records the profile and
+  authorization identity. One invocation launches at most one provider process
+  and never retries. Unavailability remains visibly degraded and the operator
+  retains GO/NITS/FAIL authority.
 
 ## 5. Mailbox And Capacity State
 

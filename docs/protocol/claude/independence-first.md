@@ -40,11 +40,8 @@ change that:
 - Strongest: a **different model/harness** (cross-model). In this repo that is
   typically a Codex `Lane-V` pass (`codex exec --sandbox read-only`) reviewing
   a Claude seat's diff, or a Claude seat reviewing a Codex seat's diff.
-- Weaker (acceptable only for non-adversarial surfaces): a different *seat* of
-  the same model with a genuinely adversarial, red-team prompt.
-- **Not** independent: the author's own model reviewing its own plan against
-  its own implementation. That is the enforcer-is-enforced anti-pattern
-  (ADR-003) and is what this rule exists to prevent.
+- Weaker: a different seat or cold-context reviewer of the same model with a genuinely adversarial prompt. For adversarial design-time enumeration this must be identified as weaker evidence; it does not replace the preferred cross-model per-task verification.
+- **Not** independent: the author reviewing its own plan or implementation, even under a renamed role.
 
 ## Why (the empirical origin)
 
@@ -108,7 +105,5 @@ different perspective saw them. Two structural lessons:
   so a verification-report for an adversarial-surface change must declare the
   reviewer's harness, and fail closed if a same-model review is claimed to
   discharge an adversarial-surface task.
-- Sync the operative stub into `AGENTS.md` (the Codex twin) once it is not
-  mid-edit by a peer lane, per the CLAUDE/AGENTS operative-split map.
-- Add the design-time enumeration step to the implementer/reviewer dispatch
-  templates in `docs/templates/claude/`.
+- Add the design-time enumeration step to the implementer/reviewer
+  dispatch templates in `docs/templates/claude/`.
