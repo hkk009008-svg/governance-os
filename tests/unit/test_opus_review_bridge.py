@@ -58,7 +58,8 @@ def _structured_payload(
     reviewed_base: str | None = BASE,
 ) -> dict[str, object]:
     return {
-        "schema_version": "opus-review/v1",
+        "schema_version": "opus-review/v2",
+        "review_profile": "codex-lane-v",
         "reviewed_head": reviewed_head,
         "reviewed_base": reviewed_base,
         "status": status,
@@ -71,6 +72,7 @@ def test_parse_structured_review_accepts_clean_opus_pass() -> None:
         _structured_payload(),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -78,7 +80,51 @@ def test_parse_structured_review_accepts_clean_opus_pass() -> None:
     assert review.status == "pass"
     assert review.findings == ()
     assert review.effective_model == "claude-opus-4-7"
-    assert review.to_dict()["schema_version"] == "opus-review/v1"
+    assert review.to_dict()["schema_version"] == "opus-review/v2"
+
+
+def test_opus_review_v2_round_trip_preserves_codex_lane_v_profile() -> None:
+    review = bridge.parse_structured_review(
+        _structured_payload(),
+        expected_head=HEAD,
+        expected_base=BASE,
+        expected_profile="codex-lane-v",
+        effective_model="claude-opus-4-7",
+        authorization_source="user-task:verification-1",
+    )
+
+    payload = review.to_dict()
+    assert payload["schema_version"] == "opus-review/v2"
+    assert payload["review_profile"] == "codex-lane-v"
+    assert bridge.OpusReview.from_dict(payload) == review
+
+
+def test_opus_review_from_dict_rejects_v1_without_profile() -> None:
+    payload = _normalized_pass_payload()
+    payload["schema_version"] = "opus-review/v1"
+    payload.pop("review_profile", None)
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.OpusReview.from_dict(payload)
+
+    assert excinfo.value.reason == "invalid_schema"
+
+
+def test_parse_structured_review_rejects_wrong_profile() -> None:
+    payload = _structured_payload()
+    payload["review_profile"] = "money-gate"
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.parse_structured_review(
+            payload,
+            expected_head=HEAD,
+            expected_base=BASE,
+            expected_profile="codex-lane-v",
+            effective_model="claude-opus-4-7",
+            authorization_source="user-task:verification-1",
+        )
+
+    assert excinfo.value.reason == "invalid_schema"
 
 
 def test_parse_structured_review_rejects_scope_mismatch() -> None:
@@ -90,6 +136,7 @@ def test_parse_structured_review_rejects_scope_mismatch() -> None:
             payload,
             expected_head=HEAD,
             expected_base=BASE,
+            expected_profile="codex-lane-v",
             effective_model="claude-opus-4-7",
             authorization_source="user-task:verification-1",
         )
@@ -113,6 +160,7 @@ def test_finding_id_parser_matches_bounded_delimiter_safe_schema(
             _structured_payload(status="issues", findings=[finding]),
             expected_head=HEAD,
             expected_base=BASE,
+            expected_profile="codex-lane-v",
             effective_model="claude-opus-4-7",
             authorization_source="user-task:verification-1",
         )
@@ -134,6 +182,7 @@ def _normalized_pass_payload() -> dict[str, object]:
         _structured_payload(),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     ).to_dict()
@@ -168,6 +217,7 @@ def test_opus_review_from_dict_never_discards_unavailable_evidence() -> None:
     payload = bridge.OpusReview.unavailable(
         reviewed_head=HEAD,
         reviewed_base=BASE,
+        review_profile=bridge.CODEX_LANE_V_REVIEW_PROFILE,
         authorization_source="user-task:verification-1",
         reason="timeout",
     ).to_dict()
@@ -204,6 +254,7 @@ def test_opus_review_from_dict_accepts_only_missing_authorization_sentinel(
     payload = bridge.OpusReview.unavailable(
         reviewed_head=HEAD,
         reviewed_base=BASE,
+        review_profile=bridge.CODEX_LANE_V_REVIEW_PROFILE,
         authorization_source="missing",
         reason="authorization_missing",
     ).to_dict()
@@ -219,6 +270,7 @@ def test_reconcile_blocks_unresolved_finding() -> None:
         _structured_payload(status="issues", findings=[_finding_payload()]),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -239,6 +291,7 @@ def test_reconcile_requires_evidence_to_disprove() -> None:
         _structured_payload(status="issues", findings=[_finding_payload()]),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -263,6 +316,7 @@ def test_reconcile_unavailable_preserves_degraded_codex_verdict(
     review = bridge.OpusReview.unavailable(
         reviewed_head=HEAD,
         reviewed_base=BASE,
+        review_profile=bridge.CODEX_LANE_V_REVIEW_PROFILE,
         authorization_source="user-task:verification-1",
         reason="timeout",
     )
@@ -282,6 +336,7 @@ def test_reconcile_confirmed_minor_requires_nits() -> None:
         ),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -303,6 +358,7 @@ def test_reconcile_confirmed_important_or_critical_requires_fail(
         _structured_payload(status="issues", findings=[_finding_payload(severity=severity)]),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -321,6 +377,7 @@ def test_reconcile_all_evidence_backed_disproofs_allow_codex_go() -> None:
         _structured_payload(status="issues", findings=[_finding_payload()]),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -346,6 +403,7 @@ def test_reconcile_never_upgrades_non_go_codex_verdict(codex_verdict: str) -> No
         _structured_payload(),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -361,6 +419,7 @@ def test_reconcile_requires_exact_finding_disposition_set() -> None:
         _structured_payload(status="issues", findings=[_finding_payload()]),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -380,6 +439,7 @@ def test_reconcile_binds_expected_scope_and_preserves_it_in_output() -> None:
         _structured_payload(),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -413,6 +473,7 @@ def test_reconcile_rejects_nonexistent_commits_in_explicit_pipeline_root() -> No
     review = bridge.OpusReview.unavailable(
         reviewed_head=missing_head,
         reviewed_base=BASE,
+        review_profile=bridge.CODEX_LANE_V_REVIEW_PROFILE,
         authorization_source="user-task:verification-1",
         reason="timeout",
     )
@@ -466,6 +527,7 @@ def _uncommitted_request(
             "env -u GIT_INDEX_FILE .venv/bin/python -m pytest "
             "tests/unit/test_route_lineage.py -q",
         ),
+        review_profile=bridge.CODEX_LANE_V_REVIEW_PROFILE,
         authorization_source=authorization,
     )
 
@@ -2022,6 +2084,7 @@ def test_review_rejects_non_pipeline_root(tmp_path: Path) -> None:
         requirement_paths=(),
         allowed_paths=(),
         verification_commands=(),
+        review_profile=bridge.CODEX_LANE_V_REVIEW_PROFILE,
         authorization_source="user-task:verification-1",
     )
 
@@ -2091,7 +2154,7 @@ def test_review_bridge_does_not_write_repository_files(tmp_path: Path) -> None:
     assert after == before
 
 
-def test_review_cli_prints_normalized_result(
+def test_review_cli_requires_and_emits_review_profile(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     requirement = tmp_path / "brief.md"
@@ -2100,11 +2163,13 @@ def test_review_cli_prints_normalized_result(
     def fake_reviewer(request: bridge.ReviewRequest) -> bridge.OpusReview:
         assert request.reviewed_head == HEAD
         assert request.reviewed_base == BASE
+        assert request.review_profile == "codex-lane-v"
         assert request.authorization_source == "user-task:verification-1"
         return bridge.parse_structured_review(
             _structured_payload(),
             expected_head=HEAD,
             expected_base=BASE,
+            expected_profile=request.review_profile,
             effective_model="claude-opus-4-7",
             authorization_source=request.authorization_source,
         )
@@ -2124,6 +2189,8 @@ def test_review_cli_prints_normalized_result(
             "scripts/route_lineage.py",
             "--verification-command",
             "env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_route_lineage.py -q",
+            "--review-profile",
+            "codex-lane-v",
             "--authorization-source",
             "user-task:verification-1",
         ],
@@ -2132,7 +2199,8 @@ def test_review_cli_prints_normalized_result(
 
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["schema_version"] == "opus-review/v1"
+    assert payload["schema_version"] == "opus-review/v2"
+    assert payload["review_profile"] == "codex-lane-v"
     assert payload["status"] == "pass"
 
 
@@ -2143,6 +2211,7 @@ def test_reconcile_cli_allows_evidence_backed_disproof(
         _structured_payload(status="issues", findings=[_finding_payload()]),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -2183,6 +2252,7 @@ def test_finding_id_round_trips_structured_json_through_reconcile_cli(
         _structured_payload(status="issues", findings=[finding]),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
@@ -2221,6 +2291,7 @@ def test_reconcile_cli_rejects_missing_disproof_evidence(
         _structured_payload(status="issues", findings=[_finding_payload()]),
         expected_head=HEAD,
         expected_base=BASE,
+        expected_profile="codex-lane-v",
         effective_model="claude-opus-4-7",
         authorization_source="user-task:verification-1",
     )
