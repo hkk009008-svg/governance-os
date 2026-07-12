@@ -898,6 +898,80 @@ def _run_sandbox_probe(
     sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
     reason="macOS V1 requires the local sandbox-exec facility",
 )
+@pytest.mark.parametrize("layout", ["normal-checkout", "linked-worktree"])
+def test_sandbox_probe_allows_trusted_venv_inside_source_but_denies_source_reads(
+    tmp_path: Path,
+    layout: str,
+) -> None:
+    trusted_venv = Path(sys.executable).parent.parent.resolve()
+    if layout == "normal-checkout":
+        source = Path(sys.executable).parent.parent.parent.resolve()
+        source_marker = source / "AGENTS.md"
+        assert trusted_venv.is_relative_to(source)
+    else:
+        source = tmp_path / "linked-source"
+        source.mkdir()
+        source_marker = source / "mutable-source.txt"
+        source_marker.write_text("mutable\n", encoding="utf-8")
+        assert not trusted_venv.is_relative_to(source)
+
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    (snapshot / ".venv").symlink_to(trusted_venv, target_is_directory=True)
+    read_source = (
+        "from pathlib import Path; "
+        f"Path({str(source_marker)!r}).read_text(encoding='utf-8')"
+    )
+
+    with bridge._sandbox_runtime(source, snapshot) as runtime:
+        with bridge._VerificationBroker(
+            runtime, snapshot, timeout_seconds=10
+        ) as broker:
+            assert bridge._probe_sandbox_profiles(runtime, snapshot, broker)
+
+            broker_client = broker.register(
+                bridge._sandboxed_verification_argv(
+                    "env -u GIT_INDEX_FILE "
+                    f"{shlex.quote(sys.executable)} -c {shlex.quote(read_source)}",
+                    runtime,
+                )
+            )
+            inner_read = subprocess.run(
+                broker_client,
+                cwd=snapshot,
+                env={
+                    **bridge.build_claude_environment(),
+                    "TMPDIR": str(runtime.provider_scratch),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            outer_read = subprocess.run(
+                [
+                    str(bridge.SANDBOX_EXECUTABLE),
+                    "-f",
+                    str(runtime.outer_profile),
+                    sys.executable,
+                    "-c",
+                    read_source,
+                ],
+                cwd=snapshot,
+                env=bridge.build_claude_environment(),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+    for completed in (inner_read, outer_read):
+        assert completed.returncode != 0
+        assert "Operation not permitted" in completed.stdout + completed.stderr
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
+    reason="macOS V1 requires the local sandbox-exec facility",
+)
 def test_nested_sandbox_runs_admitted_safe_verification(tmp_path: Path) -> None:
     request = _sandbox_probe_request(
         tmp_path,

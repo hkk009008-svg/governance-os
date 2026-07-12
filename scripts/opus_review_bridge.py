@@ -979,6 +979,17 @@ def _sandbox_filters(kind: str, paths: Iterable[Path]) -> str:
     )
 
 
+def _source_except_trusted_runtime(source: Path) -> str:
+    source = source.resolve()
+    trusted_venv = Path(sys.executable).parent.parent.resolve()
+    if trusted_venv.is_relative_to(source):
+        return (
+            f"(require-all (subpath {_sandbox_path(source)}) "
+            f"(require-not (subpath {_sandbox_path(trusted_venv)})))"
+        )
+    return f"(subpath {_sandbox_path(source)})"
+
+
 def _python_process_executables(snapshot: Path) -> tuple[Path, ...]:
     base_prefix = Path(sys.base_prefix).resolve()
     candidates = (
@@ -1001,7 +1012,6 @@ def _verification_profile(source: Path, snapshot: Path, scratch: Path) -> str:
     )
     home = Path(os.environ.get("HOME", str(Path.home()))).resolve()
     sensitive_directories = (
-        source,
         home / ".anthropic",
         home / ".aws",
         home / ".azure",
@@ -1029,6 +1039,8 @@ def _verification_profile(source: Path, snapshot: Path, scratch: Path) -> str:
             "(allow process-fork)",
             f"(allow process-exec {_sandbox_filters('literal', executable_paths)})",
             "(allow file-read*)",
+            "(deny file-read-data "
+            f"{_source_except_trusted_runtime(source)})",
             "(deny file-read* "
             f"{_sandbox_filters('subpath', sensitive_directories)} "
             f"{_sandbox_filters('literal', sensitive_files)})",
@@ -1051,7 +1063,10 @@ def _outer_profile(
         (
             "(version 1)",
             "(allow default)",
-            f"(deny file-read* (subpath {_sandbox_path(source)}))",
+            "(deny file-read-data "
+            f"{_source_except_trusted_runtime(source)})",
+            "(deny process-exec "
+            f"{_source_except_trusted_runtime(source)})",
             "(deny file-write* "
             f"(subpath {_sandbox_path(source)}) "
             f"(subpath {_sandbox_path(snapshot)}) "
