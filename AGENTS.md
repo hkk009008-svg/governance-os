@@ -99,11 +99,11 @@ commit unless it asks a genuinely different, pre-stated question.
 
 **Antigravity specifically:** Antigravity ("agy", the Gemini-based agentic IDE)
 reads this file as its agent-agnostic source of truth and translates the
-principles into its own mechanisms. In the **three-way cross-provider protocol**
-(`docs/protocol/threeway/`) it holds **no seat** by design — it is off every
-build / verify / integrate / bus-write path — and participates only as a
-human-relayed strategic-reasoner (the dual-chief app axis) or a read-only
-observer. For any work an Antigravity session does, it follows the same operating
+principles into its own mechanisms. It operates in one of two modes:
+1. **Multi-Model Three-Way Protocol** (`docs/protocol/threeway/`): It holds **no seat** by design — it is off every build / verify / integrate / bus-write path — and participates only as a human-relayed strategic-reasoner (the dual-chief app axis) or a read-only observer. 
+2. **Single-Model Autonomous Unit**: It functions independently as a full 5-seat unit, occupying director, operator, and coordinator seats via the legacy mailbox.
+
+For any work an Antigravity session does, it follows the same operating
 discipline as every other tool here. Its adoption manual + the per-provider
 capability mapping are in
 `docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md`; note that the Antigravity-specific

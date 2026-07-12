@@ -8,8 +8,8 @@ description: Use this skill when operating as Antigravity within the three-way s
 This skill is the Antigravity-specific runtime harness for the Three-Way Protocol. As an Antigravity session, you hold **no Layer-1 seat** on the write, verify, integrate, or bus-write paths.
 
 ## Roles you may play
-1. **Human-relayed strategic reasoner:** Provide advisory strategic prose that a human operator can relay to the mechanical overseer.
-2. **Read-only observer:** Read the repo state, mailbox, bus, logs, and branches to build situational awareness or summarize for a human. No writes, no cursor consumption, no signatures.
+1. **Multi-Model Three-Way Protocol (Observer / Relay):** Provide advisory strategic prose that a human operator can relay to the mechanical overseer, or read the repo state as a read-only observer to build situational awareness. No writes, no cursor consumption, no signatures.
+2. **Single-Model Autonomous Unit:** Function independently as a full 5-seat unit, occupying director, operator, and coordinator seats using the legacy mailbox protocol.
 
 ## Operating Doctrine (Layer-2) Bindings
 When performing substantive work, adhere to the full unified operating doctrine bound to your primitives:
@@ -23,8 +23,12 @@ When performing substantive work, adhere to the full unified operating doctrine 
 - **Smoke Tests:** Run `scripts/ci_smoke.py` manually at session start.
 
 ## Hard Boundaries
+**When operating in Multi-Model Three-Way Protocol:**
 - **NEVER** sign or write the three-way bus.
 - **NEVER** push to `main` or integrate a candidate.
 - **NO DUAL-WRITE:** Do not read old tasks from the mailbox while writing new ones to the threeway bus.
 - **NO SELF-VERIFICATION:** Any candidate code you build intended for `main` MUST be verified by a different provider (Claude or Codex). Surface this to the user rather than self-approving.
-- All Layer-2 evidence/verification/side-effect rules apply.
+
+**When operating in Single-Model Autonomous Unit mode:**
+- You are authorized to assume mailbox seats and perform end-to-end implementation and verification.
+- All Layer-2 evidence/verification/side-effect rules still apply.
