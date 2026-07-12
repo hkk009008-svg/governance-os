@@ -675,3 +675,32 @@ carrier for G5/G6. This damages semantic truth and blocks future automation.
   gates once the campaign closes.
 - No packet ever needs to be mislabeled to satisfy coverage once Part B lands;
   until then the legacy representation is unchanged.
+
+## ADR-018: Property + stateful testing of the kernel validators (hypothesis, dev-only)
+
+**Status:** Accepted
+
+**Context:**
+The Slices ADR-014..017 validators (route/v1, lineage, capabilities,
+packet-state) are covered by example-based unit tests. Interaction and
+edge-case failures (the class an independent Codex pass repeatedly surfaced
+on the capability slice) are better caught by generated inputs. The audit
+sequenced this after ADR-016/017, which are now complete.
+
+**Decision:**
+Add `hypothesis>=6` to `requirements-dev.txt` ONLY — the governance runtime
+stays two dependencies (`requirements-governance.txt` unchanged, ADR-004
+context). Add property tests driving the four session-owned validators
+(no-crash, fail-closed, determinism, no-mutation, vocabulary-membership,
+round-trips) and a `RuleBasedStateMachine` over capability consumption (the
+one-time invariant). Hypothesis runs under a fixed-seed/derandomized profile
+so CI is reproducible (R-MEASURE). Scope excludes the contended live
+`protocol_capacity.py` validator (campaign mid-pivot); a property that
+surfaces a real defect in an owned validator is fixed the same session or
+pinned strict-xfail (R-VERIFY-TIER-B).
+
+**Consequences:**
+- The kernel validators gain generated-input coverage; regressions and edge
+  cases are caught in CI, not post-hoc.
+- Dev/CI installs one more package; runtime install is unchanged.
+- Non-determinism is avoided via the seeded profile; failures reproduce.
