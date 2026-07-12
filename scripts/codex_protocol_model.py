@@ -571,6 +571,7 @@ CODEX_VERIFICATION_COMMANDS = (
     "tests/unit/test_protocol_capacity.py "
     "tests/unit/test_protocol_doc_integrity.py "
     "tests/unit/test_protocol_prompt_sync.py "
+    "tests/unit/test_chatgpt_pro_consult.py "
     "tests/unit/test_codex_ledger_bridge.py -q",
     "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py",
 )
