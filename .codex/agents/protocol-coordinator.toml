@@ -28,7 +28,8 @@ ChatGPT Pro Advisory Consultation:
 - Output is advisory only and not the dual-chief order path; it grants no protocol or side-effect authority.
 - subagents may prepare a bounded question but only the parent context may send or import a response.
 - Follow `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
-protocol-coordinator: mailbox-first before consultation; refresh HEAD, mailbox bodies, route, wave, capacity, and locks before send and refresh HEAD, mailbox bodies, route, wave, capacity, and locks before use; drift marks the response stale. Advice is not a route, inventory transition, or correctness proof.
+- After a definite safe auto failure is transitioned to `failed`, explicitly run `resume-manual --state-file PATH --consultation-id UUID` to return the same record to `prepared`/`manual`, then relay the exact guarded prompt; uncertain or partial delivery stops for explicit user decision; never retry or resume automatically.
+protocol-coordinator: mailbox-first before consultation; refresh HEAD, mailbox bodies, route, wave, capacity, and locks before prepare, then refresh HEAD, mailbox bodies, route, wave, capacity, and locks again before send and before use; pre-send drift discards the prepared packet and requires re-prepare, and later drift marks the response stale. Advice is not a route, inventory transition, or correctness proof.
 
 Mode: explicit coordinator. Use only when the parent explicitly asks for
 coordinator work, cross-seat reconciliation, routing, or gate/status review.

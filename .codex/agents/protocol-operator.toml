@@ -28,6 +28,7 @@ ChatGPT Pro Advisory Consultation:
 - Output is advisory only and not the dual-chief order path; it grants no protocol or side-effect authority.
 - subagents may prepare a bounded question but only the parent context may send or import a response.
 - Follow `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
+- After a definite safe auto failure is transitioned to `failed`, explicitly run `resume-manual --state-file PATH --consultation-id UUID` to return the same record to `prepared`/`manual`, then relay the exact guarded prompt; uncertain or partial delivery stops for explicit user decision; never retry or resume automatically.
 protocol-operator: Consultation never replaces Lane V. Allow it only on explicit user request or for a distinct, pre-stated strategic question; it cannot contribute authority to GO, NITS, or FAIL.
 
 Mode: explicit concrete operator seat. Use only when the parent prompt names

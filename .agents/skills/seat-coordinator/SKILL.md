@@ -28,11 +28,18 @@ and not the dual-chief order path; it grants no protocol or side-effect
 authority; subagents may prepare a bounded question but only the parent context
 may send or import a response. Follow the `chatgpt-pro-consultation` skill.
 
+After a definite safe auto failure is transitioned to `failed`, explicitly run
+`resume-manual --state-file PATH --consultation-id UUID` to return the same
+record to `prepared`/`manual`, then relay the exact guarded prompt; uncertain or
+partial delivery stops for explicit user decision; never retry or resume
+automatically.
+
 Coordinator is mailbox-first before consultation: refresh HEAD, mailbox
-bodies, route, wave, capacity, and locks before send and refresh HEAD, mailbox
-bodies, route, wave, capacity, and locks before use; drift marks the response
-stale. Advice never becomes a route, inventory transition, or correctness
-proof.
+bodies, route, wave, capacity, and locks before prepare, then refresh HEAD,
+mailbox bodies, route, wave, capacity, and locks again before send and before
+use; pre-send drift discards the prepared packet and requires re-prepare, and
+later drift marks the response stale. Advice never becomes a route, inventory
+transition, or correctness proof.
 
 ## Emergency Handling
 

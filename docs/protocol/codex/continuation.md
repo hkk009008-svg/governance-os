@@ -54,13 +54,20 @@ authority; subagents may prepare a bounded question but only the parent context
 may send or import a response. Follow
 `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
 
+After a definite safe auto failure is transitioned to `failed`, explicitly run
+`resume-manual --state-file PATH --consultation-id UUID` to return the same
+record to `prepared`/`manual`, then relay the exact guarded prompt; uncertain or
+partial delivery stops for explicit user decision; never retry or resume
+automatically.
+
 - Readiness may consult ideas or plans without upgrading into a seat.
 - Director may consult design, brief, or plan tradeoffs, then verify claims
   locally.
 - Coordinator is mailbox-first before consultation: refresh HEAD, mailbox
-  bodies, route, wave, capacity, and locks before send and refresh HEAD,
-  mailbox bodies, route, wave, capacity, and locks before use; drift marks the
-  response stale.
+  bodies, route, wave, capacity, and locks before prepare, then refresh HEAD,
+  mailbox bodies, route, wave, capacity, and locks again before send and before
+  use; pre-send drift discards the prepared packet and requires re-prepare, and
+  later drift marks the response stale.
 - Operator consultation never replaces Lane V. Allow it only on explicit user
   request or for a distinct, pre-stated strategic question; it cannot
   contribute authority to GO, NITS, or FAIL.

@@ -23,6 +23,12 @@ and not the dual-chief order path; it grants no protocol or side-effect
 authority; subagents may prepare a bounded question but only the parent context
 may send or import a response. Follow the `chatgpt-pro-consultation` skill.
 
+After a definite safe auto failure is transitioned to `failed`, explicitly run
+`resume-manual --state-file PATH --consultation-id UUID` to return the same
+record to `prepared`/`manual`, then relay the exact guarded prompt; uncertain or
+partial delivery stops for explicit user decision; never retry or resume
+automatically.
+
 Operator consultation never replaces Lane V. Allow it only on explicit user
 request or for a distinct, pre-stated strategic question; it cannot contribute
 authority to GO, NITS, or FAIL.

@@ -342,13 +342,25 @@ def test_chatgpt_pro_consultation_is_model_backed_and_surface_synced():
 
 def test_chatgpt_pro_consultation_role_boundaries_are_explicit():
     coordinator_surfaces = (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/chatgpt-pro-consultation/SKILL.md",
         ".agents/skills/seat-coordinator/SKILL.md",
         ".codex/agents/protocol-coordinator.toml",
     )
     for path in coordinator_surfaces:
         text = _compact(_read(path))
         assert "mailbox-first before consultation" in text
-        assert "refresh HEAD, mailbox bodies, route, wave, capacity, and locks before use" in text
+        assert (
+            "refresh HEAD, mailbox bodies, route, wave, capacity, and locks before prepare"
+            in text
+        )
+        assert (
+            "refresh HEAD, mailbox bodies, route, wave, capacity, and locks again "
+            "before send and before use"
+            in text
+        )
+        assert "pre-send drift discards the prepared packet and requires re-prepare" in text
         assert "drift marks the response stale" in text
 
     operator_surfaces = (
@@ -360,6 +372,68 @@ def test_chatgpt_pro_consultation_role_boundaries_are_explicit():
         assert "never replaces Lane V" in text
         assert "cannot contribute authority to GO, NITS, or FAIL" in text
         assert "distinct, pre-stated strategic question" in text
+
+
+def test_chatgpt_pro_consultation_skill_preserves_all_normative_triggers():
+    skill = _read(".agents/skills/chatgpt-pro-consultation/SKILL.md")
+    _, frontmatter, body = skill.split("---", 2)
+    description = next(
+        line for line in frontmatter.splitlines() if line.startswith("description:")
+    )
+    assert description.startswith("description: Use when")
+    assert "Provides guarded" not in description
+
+    discovery_triggers = (
+        "user explicitly asks to consult ChatGPT Pro",
+        "idea or plan has unresolved material tradeoffs",
+        "authority, security, external-input, parseable-context, schema-trust, or side-effect boundary",
+        "post-plan needs a distinct adversarial challenge",
+        "mailbox-oriented coordinator needs strategic advice",
+    )
+    for phrase in discovery_triggers:
+        assert phrase in description
+
+    compact_body = _compact(body)
+    for trigger in model.CHATGPT_PRO_CONSULTATION_TRIGGERS:
+        assert trigger in compact_body
+
+
+def test_chatgpt_pro_consultation_manual_fallback_is_surface_synced():
+    surfaces = (
+        "AGENTS.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/chatgpt-pro-consultation/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/readiness-bridge.toml",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-coordinator.toml",
+        ".codex/agents/protocol-operator.toml",
+    )
+    fallback = (
+        "definite safe auto failure is transitioned to failed",
+        "resume-manual --state-file PATH --consultation-id UUID",
+        "return the same record to prepared/manual",
+        "uncertain or partial delivery stops for explicit user decision",
+        "never retry or resume automatically",
+    )
+    for path in surfaces:
+        text = _compact(_read(path)).replace("`", "")
+        for phrase in fallback:
+            assert phrase in text, (path, phrase)
+
+    skill = _compact(_read(".agents/skills/chatgpt-pro-consultation/SKILL.md")).replace(
+        "`", ""
+    )
+    assert (
+        ".venv/bin/python scripts/chatgpt_pro_consult.py resume-manual "
+        "--state-file PATH --consultation-id UUID"
+        in skill
+    )
+    assert "command arguments are content-free identifiers" in skill
+    assert "request and response payload content remains stdin-only" in skill
 
 
 def test_agent_extension_routing_contract_is_model_backed():

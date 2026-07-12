@@ -1,13 +1,20 @@
 ---
 name: chatgpt-pro-consultation
-description: Use when the user explicitly asks to consult ChatGPT Pro; an idea has unresolved material tradeoffs; a consequential pre-plan changes trust or authority boundaries; a post-plan needs a distinct adversarial challenge; or a mailbox-oriented coordinator needs strategic advice before synthesis.
+description: Use when the user explicitly asks to consult ChatGPT Pro; an idea or plan has unresolved material tradeoffs; a pre-plan changes an authority, security, external-input, parseable-context, schema-trust, or side-effect boundary; a post-plan needs a distinct adversarial challenge; or a mailbox-oriented coordinator needs strategic advice before a consequential synthesis, reroute, or contradiction resolution.
 ---
 
 # ChatGPT Pro Advisory Consultation
 
 ## Trigger decision
 
-The capability is always invocable on explicit request. Consult automatically only when the answer could materially change an unresolved idea, consequential pre-plan, post-plan adversarial challenge, or coordinator synthesis. Skip trivial questions, cheap local facts, routine approved implementation, verdict formation, unsafe context, already-converged review, and an unchanged question/state with an existing result. Never consult about whether to consult. Deduplicate unchanged work; automatic retries are zero in V1.
+The capability is always invocable when the user explicitly asks to consult ChatGPT Pro. Otherwise consult automatically only when the answer could materially change the result and one of these canonical triggers holds:
+
+- an idea or plan has materially different approaches not settled by durable local evidence;
+- a mailbox-oriented coordinator is about to synthesize a consequential cross-lane plan, reroute, or contradiction resolution;
+- a design or plan changes an authority, security, external-input, parseable-context, schema-trust, or side-effect boundary; or
+- an approved design or plan needs a genuinely different adversarial challenge.
+
+Skip trivial questions, cheap local facts, routine approved implementation, verdict formation, unsafe context, already-converged review, and an unchanged question/state with an existing result. Never consult about whether to consult. Deduplicate unchanged work; automatic retries are zero in V1.
 
 ## Authority
 
@@ -39,13 +46,13 @@ Verify every material factual claim locally. Classify each recommendation `adopt
 
 - Readiness may consult ideas or read-only plans without upgrading into a seat.
 - Director may consult design, brief, or plan tradeoffs, then must verify claims locally.
-- Coordinator is mailbox-first before consultation: refresh HEAD, mailbox bodies, route, wave, capacity, and locks before sending and refresh HEAD, mailbox bodies, route, wave, capacity, and locks before use; drift marks the response stale.
+- Coordinator is mailbox-first before consultation: refresh HEAD, mailbox bodies, route, wave, capacity, and locks before prepare, then refresh HEAD, mailbox bodies, route, wave, capacity, and locks again before send and before use; pre-send drift discards the prepared packet and requires re-prepare, and later drift marks the response stale.
 - Operator consultation never replaces Lane V. Use it only on explicit request or for a distinct, pre-stated strategic question; it cannot contribute authority to GO, NITS, or FAIL.
 - `off` fails closed. `manual` permits guarded export/import only. `auto` permits the guarded Browser ladder.
 
 ## Failure
 
-If signed out, ask the user to sign in; never enter credentials. Follow Browser safety for a challenge or CAPTCHA. Treat a partial send as failed. Use no automatic retry and no API fallback. Continue from local evidence when advice is optional; return an unresolved high-impact choice to the user. Advisory status, an NDA, manual relay, or a “non-sensitive” response never permits raw transcript persistence.
+If signed out, ask the user to sign in; never enter credentials. Follow Browser safety for a challenge or CAPTCHA. After a definite safe auto failure is transitioned to `failed`, explicitly run `.venv/bin/python scripts/chatgpt_pro_consult.py resume-manual --state-file PATH --consultation-id UUID` to return the same record to `prepared`/`manual`, then relay the exact guarded prompt. The command arguments are content-free identifiers; request and response payload content remains stdin-only; uncertain or partial delivery stops for explicit user decision; never retry or resume automatically. Use no API fallback. Continue from local evidence when advice is optional; return an unresolved high-impact choice to the user. Advisory status, an NDA, manual relay, or a “non-sensitive” response never permits raw transcript persistence.
 
 ## Durable summary
 

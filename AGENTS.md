@@ -110,6 +110,12 @@ authority; subagents may prepare a bounded question but only the parent context
 may send or import a response. Use the repo
 `.agents/skills/chatgpt-pro-consultation/SKILL.md` procedure.
 
+After a definite safe auto failure is transitioned to `failed`, explicitly run
+`resume-manual --state-file PATH --consultation-id UUID` to return the same
+record to `prepared`/`manual`, then relay the exact guarded prompt; uncertain or
+partial delivery stops for explicit user decision; never retry or resume
+automatically.
+
 Standing user approval is narrow: one guard-approved sanitized browser send per
 trigger when `auto` is enabled. It authorizes no credential entry, retry, API
 fallback or spend, broad disclosure, downstream action, or protocol authority.
