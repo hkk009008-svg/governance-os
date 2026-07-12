@@ -21,6 +21,7 @@ Repo root is resolved as the parent of this file's parent (scripts/ → repo/).
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -287,10 +288,14 @@ def render(data: dict) -> str:
 # I/O collectors — each returns a value or "(unavailable: <reason>)"
 # ===========================================================================
 
-def _run_git(args: list[str], timeout: int = 5) -> str:
+def _run_git(repo_root: Path, args: list[str], timeout: int = 5) -> str:
     """Run a git command; return stdout stripped or raise."""
+    env = os.environ.copy()
+    env.pop("GIT_INDEX_FILE", None)
     result = subprocess.run(
         ["git"] + args,
+        cwd=repo_root,
+        env=env,
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -305,7 +310,7 @@ def collect_git(repo_root: Path) -> dict:
 
     def _get(label: str, args: list[str]):
         try:
-            return _run_git(args)
+            return _run_git(repo_root, args)
         except Exception as e:
             return f"(unavailable: {label}: {e})"
 
@@ -314,19 +319,19 @@ def collect_git(repo_root: Path) -> dict:
     branch = _get("branch", ["rev-parse", "--abbrev-ref", "HEAD"])
 
     try:
-        ahead_raw = _run_git(["rev-list", "--count", "origin/main..HEAD"])
+        ahead_raw = _run_git(repo_root, ["rev-list", "--count", "origin/main..HEAD"])
         ahead = int(ahead_raw)
     except Exception as e:
         ahead = f"(unavailable: ahead: {e})"
 
     try:
-        behind_raw = _run_git(["rev-list", "--count", "HEAD..origin/main"])
+        behind_raw = _run_git(repo_root, ["rev-list", "--count", "HEAD..origin/main"])
         behind = int(behind_raw)
     except Exception as e:
         behind = f"(unavailable: behind: {e})"
 
     try:
-        status_out = _run_git(["status", "--porcelain"])
+        status_out = _run_git(repo_root, ["status", "--porcelain"])
         dirty = len([l for l in status_out.splitlines() if l.strip()])
     except Exception as e:
         dirty = f"(unavailable: dirty: {e})"
