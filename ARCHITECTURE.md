@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-12 @ f8e68c8*
+*Last verified: 2026-07-12 @ e3076b5*
 
 ## 1. Purpose
 
@@ -57,8 +57,8 @@ Key directories:
 | `build_guard` | `scripts/ledger_start_guard.py:175` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
 | `resolve_target` | `scripts/target_binding.py:143` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
-| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:482` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:772` | Renders guard guidance into readiness output. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:508` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:805` | Renders guard guidance into readiness output. |
 
 ## 4. Runtime Invariants
 

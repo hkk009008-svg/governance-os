@@ -259,6 +259,14 @@ Evidence: the stated new question for any 3rd pass; the xfail pin (or test-infea
 Details: docs/protocol/agents/core.md (R-VERIFY-TIER); origin = audit wf_6be2ee18-f4b
 (the §8.5 char-landscape note drew ~25-31 agent-runs across 4 passes for one doc paragraph).
 
+# Independence-first verification (R-INDEPENDENCE)
+Scope: both.
+Trigger: before designing or implementing, classify whether the change touches an adversarial-surface: input rendered or composed into a parseable or executable context; authority or security-boundary enforcement; side-effect gating; or schema validation whose acceptance grants trust.
+Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, Lane V plus verdict-blind Opus supplies the per-task cross-model pair.
+Deduplication: R-VERIFY-TIER still prohibits redundant same-question passes. Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.
+Evidence: the committed design-time enumeration artifact and the independent verification report naming the reviewer and harness.
+Details: `docs/protocol/claude/independence-first.md` (ADR-019).
+
 # Multi-task orchestration (R-ORCH)
 Scope: both
 Trigger: a plan with ≥5 independent sub-tasks OR ≥800 LOC of total change; or a

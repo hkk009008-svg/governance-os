@@ -220,6 +220,8 @@ def test_readiness_render_codex_surfaces_ledger_bridge():
     assert "scripts/ledger_start_guard.py --seat <seat> --wave 2" in rendered
     assert "Capacity Split Default:" in rendered
     assert "divisible or preplanned larger work defaults to dual-pair routing" in rendered
+    assert "R-INDEPENDENCE:" in rendered
+    assert "independent design-time enumeration" in rendered
 
 
 def test_ledger_start_guard_cli_rejects_content_kernel():

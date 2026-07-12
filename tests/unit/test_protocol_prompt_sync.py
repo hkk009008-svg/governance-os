@@ -214,6 +214,58 @@ def test_codex_execution_tiers_are_model_backed_and_surface_synced():
         assert "reuse never relaxes a triggered guard" in text
 
 
+def test_r_independence_is_model_backed_and_surface_synced():
+    assert model.R_INDEPENDENCE_TRIGGER_SURFACES == (
+        "input rendered or composed into a parseable or executable context",
+        "authority or security-boundary enforcement",
+        "side-effect gating",
+        "schema validation whose acceptance grants trust",
+    )
+
+    rendered = model.render_r_independence()
+    required = (
+        "R-INDEPENDENCE",
+        "standing default",
+        "before implementation",
+        "independent design-time enumeration",
+        "abuse cases, edge cases, and coverage targets",
+        "different model or harness is preferred",
+        "same-model independent reviewer is weaker",
+        "committed plan or equivalent durable artifact",
+        "independent reviewer verifies the actual diff",
+        "Lane V plus verdict-blind Opus",
+        "R-VERIFY-TIER",
+        "docs/protocol/claude/independence-first.md",
+    )
+    for phrase in required:
+        assert phrase in rendered
+
+    shared_surface_phrases = (
+        "R-INDEPENDENCE",
+        "adversarial-surface",
+        "before implementation",
+        "independent design-time enumeration",
+        "enforced-and-tested",
+        "verify the actual diff",
+        "R-VERIFY-TIER",
+    )
+    for path in (
+        "AGENTS.md",
+        "docs/protocol/codex/continuation.md",
+        ".codex/agents/readiness-bridge.toml",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-coordinator.toml",
+        ".codex/agents/protocol-operator.toml",
+        ".codex/agents/lane-v-verifier.toml",
+        ".codex/agents/money-gate-reviewer.toml",
+    ):
+        text = _compact(_read(path))
+        for phrase in shared_surface_phrases:
+            assert phrase in text, (path, phrase)
+
+    assert "R-INDEPENDENCE" in model.render_start_session_inhabitance()
+
+
 def test_agent_extension_routing_contract_is_model_backed():
     expected_contract = (
         (

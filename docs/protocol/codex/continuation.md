@@ -41,6 +41,15 @@ guard.
 Do not launch another generic reviewer or repeat Lane V for the same unchanged
 commit unless it asks a genuinely different, pre-stated question.
 
+## R-INDEPENDENCE
+
+Scope: both.
+Trigger: before designing or implementing, classify whether the change touches an adversarial-surface: input rendered or composed into a parseable or executable context; authority or security-boundary enforcement; side-effect gating; or schema validation whose acceptance grants trust.
+Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, Lane V plus verdict-blind Opus supplies the per-task cross-model pair.
+Deduplication: R-VERIFY-TIER still prohibits redundant same-question passes. Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.
+Evidence: the committed design-time enumeration artifact and the independent verification report naming the reviewer and harness.
+Details: `docs/protocol/claude/independence-first.md` (ADR-019).
+
 ## Claude Function Harmonization:
 
 - core stance: adapt Claude functions to Codex-native primitives; do not transplant Claude-only mechanics.

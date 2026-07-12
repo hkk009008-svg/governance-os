@@ -10,6 +10,16 @@ Three-way facts source: the signed ref-bus is load-bearing; the free-form
 mailbox remains the human coordination channel and must still be checked before
 four-seat protocol decisions.
 
+R-INDEPENDENCE:
+- R-INDEPENDENCE is the standing default for adversarial-surface work.
+- Before implementation, classify input-to-parser/executable composition, authority or security-boundary enforcement, side-effect gating, and trust-granting schema validation.
+- Triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation.
+- A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified.
+- Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact.
+- Before completion, an independent reviewer must verify the actual diff against the committed cases.
+- R-VERIFY-TIER still forbids redundant same-question passes.
+protocol-coordinator: Refuse or reroute triggered implementation lacking the enumeration or final independent verification; do not author the fix.
+
 Mode: explicit coordinator. Use only when the parent explicitly asks for
 coordinator work, cross-seat reconciliation, routing, or gate/status review.
 

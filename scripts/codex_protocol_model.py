@@ -44,6 +44,10 @@ ACTIVE_KERNEL_INVARIANTS = (
         "push, lock-claim side effects, paid API spend, and pod spend require explicit user consent",
     ),
     (
+        "independence-first verification",
+        "classify adversarial surfaces before implementation and require design-time enumeration plus independent actual-diff verification",
+    ),
+    (
         "side-effect executor token",
         "generic user approval is unit consent, not executor election; shared side effects need one named executor token or live-evidence closeout",
     ),
@@ -121,6 +125,28 @@ VERIFICATION_DEDUPLICATION_RULES = (
     "and unchanged relevant paths.",
     "Tier 3 requires fresh signed-bus, mailbox/cursor, lock, approval, and "
     "external-state checks; reuse never relaxes a triggered guard.",
+)
+
+R_INDEPENDENCE_TRIGGER_SURFACES = (
+    "input rendered or composed into a parseable or executable context",
+    "authority or security-boundary enforcement",
+    "side-effect gating",
+    "schema validation whose acceptance grants trust",
+)
+
+R_INDEPENDENCE_RULES = (
+    "R-INDEPENDENCE is the standing default for Pipeline Codex work.",
+    "Before implementation, classify whether the change touches an adversarial-surface: "
+    + "; ".join(R_INDEPENDENCE_TRIGGER_SURFACES)
+    + ".",
+    "Triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation.",
+    "A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified as such.",
+    "Fold the enumeration into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact.",
+    "Before completion, an independent reviewer verifies the actual diff against the committed cases.",
+    "For Codex-authored adversarial work, Lane V plus verdict-blind Opus supplies the per-task cross-model pair.",
+    "R-VERIFY-TIER still prohibits redundant same-question passes; it does not remove the earlier new-perspective review.",
+    "Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.",
+    "Canonical full rule: docs/protocol/claude/independence-first.md.",
 )
 
 HARNESS_COMPONENTS = (
@@ -704,6 +730,13 @@ def render_codex_execution_tiers() -> str:
     return "\n".join(lines)
 
 
+def render_r_independence() -> str:
+    """Return the Pipeline Codex independence-first contract."""
+    lines = ["R-INDEPENDENCE:"]
+    lines.extend(f"- {rule}" for rule in R_INDEPENDENCE_RULES)
+    return "\n".join(lines)
+
+
 def render_side_effect_executor_contract() -> str:
     """Return the single-executor contract for shared user-gated side effects."""
     lines = [
@@ -1072,6 +1105,7 @@ def render_start_session_inhabitance(agent_names: list[str] | tuple[str, ...] = 
     lines.extend(f"{index}. {step}" for index, step in enumerate(START_SESSION_STEPS, start=1))
     lines.append("core agent modules: " + ", ".join(CORE_AGENT_MODULES))
     lines.append(render_codex_execution_tiers())
+    lines.append(render_r_independence())
     lines.append(render_agent_extension_summary(agent_names))
     lines.append(render_agent_extension_routing_contract())
     return "\n".join(lines)
@@ -1140,6 +1174,7 @@ def render_surface_summary() -> str:
         "Seat Subagent Development: seats retain authority; subagents own bounded work",
         "Cross-Model Opus Verification: every Codex Lane V pass attempts one blind Opus review",
         "Codex Risk-Tier Router: conversational and read-only work avoid implementation ceremony",
+        "R-INDEPENDENCE: adversarial-surface work requires design-time enumeration and independent actual-diff verification",
         "Side-Effect Executor Token: generic user approval is unit consent, not executor election",
         "Ledger CLI Bridge: Pipeline kernel -> evidence-ledger target via "
         + LEDGER_CLI_BRIDGE["doc_path"],
@@ -1164,6 +1199,9 @@ def main() -> int:
     print()
     print("## Kernel Contract")
     print(render_kernel_contract(include_trigger_specific=False))
+    print()
+    print("## R-INDEPENDENCE")
+    print(render_r_independence())
     print()
     print("## Pair Operating Contract")
     print(render_pair_operating_contract())
