@@ -595,6 +595,8 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
         "no automatic retry",
         "no third same-question generic reviewer",
         "Do not launch generic same-question spec or code-quality reviewers",
+        "permits exactly the one bounded Opus call and does not grant inherited paid-spend authority",
+        "only a different pre-stated specialist question is eligible",
     )
     for phrase in required:
         assert phrase in rendered
@@ -642,6 +644,12 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
     assert "primary Codex analysis plus the blind Opus pass" in operator_skill
     assert "Dispatch **cold-context** spec + code-quality reviewer subagents on every" not in operator_skill
 
+    continuation = _read("docs/protocol/codex/continuation.md")
+    assert (
+        "The generic implementer -> spec review -> quality review loop applies to "
+        "implementation delivery, not Codex Lane V same-question review."
+    ) in continuation
+
 
 def test_cross_model_opus_bridge_is_mapped_in_architecture_and_decisions():
     architecture = _read("ARCHITECTURE.md")
@@ -652,3 +660,19 @@ def test_cross_model_opus_bridge_is_mapped_in_architecture_and_decisions():
     assert "## ADR-018: Mandatory blind Opus review after Codex Lane V" in decisions
     assert "degraded Codex-only fallback" in decisions
     assert "operator retains GO/NITS/FAIL authority" in decisions
+    assert "--safe-mode" in architecture
+    assert "OS-enforced sandbox" in architecture
+    assert "precedes the reviewed HEAD" in architecture
+    assert "dynamically injects" not in decisions
+
+
+def test_cross_model_design_and_plan_match_safe_mode_system_prompt_boundary():
+    for path in (
+        "docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md",
+        "docs/superpowers/plans/2026-07-12-codex-opus-cross-model-verification.md",
+    ):
+        text = _read(path)
+        assert "--safe-mode" in text, path
+        assert "--disable-slash-commands" in text, path
+        assert "--append-system-prompt" in text, path
+        assert "dynamically injects" not in text, path

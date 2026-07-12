@@ -694,19 +694,31 @@ commit.
    `scripts/opus_review_bridge.py`.
 2. The Opus request contains immutable reviewed scope and requirements but no
    Codex verdict, report, findings, or conclusion.
-3. The bridge dynamically injects the existing Claude verifier role while
-   disabling filesystem setting sources, repository hooks, MCP, memory,
-   nested agents, edit tools, and session persistence. It validates the Claude
-   `system/init` model metadata, accepts only Opus, normalizes output as
-   `opus-review/v1`, and never retries.
+3. The bridge loads verifier text from the explicit reviewed base or the first
+   parent of reviewed HEAD, then supplies that immutable pre-HEAD text through
+   `--append-system-prompt`. Claude runs with `--safe-mode`,
+   `--disable-slash-commands`, an explicit Opus model, top-level turn limit,
+   empty setting/MCP sources, disabled edit/agent tools, and no session
+   persistence. It validates the Claude `system/init` model metadata, accepts
+   only Opus, normalizes output as `opus-review/v1`, and never retries.
 4. Every Opus finding receives a `confirmed`, evidence-backed `disproved`, or
    `unresolved` disposition. Unresolved findings block GO.
 5. The operator retains GO/NITS/FAIL authority. Opus cannot write protocol
    state, release locks, or authorize side effects.
-6. Missing authorization, credentials, network, valid schema, matching scope,
-   or proven Opus identity yields an explicit degraded Codex-only fallback;
+6. A network-capable outer macOS sandbox denies source/snapshot and persistent
+   home writes. One-shot, unguessable broker tokens bind each admitted Bash
+   command to pre-registered argv; the broker launches that argv outside the
+   inherited outer Seatbelt and inside a second profile that denies network,
+   source/sensitive reads, non-scratch writes, and unlisted executables.
+7. Pipeline identity and expected commits are proved before authorization or
+   other reconcilable unavailability can be returned. Reconciliation receives
+   an explicit Pipeline repo root and proves expected commits exist before GO.
+8. Parent-supplied recorded authorization permits exactly one bounded Opus
+   call; it does not grant inherited paid-spend authority.
+9. Missing authorization, sandbox, credentials, network, valid schema,
+   matching scope, or proven Opus identity yields an explicit degraded Codex-only fallback;
    it is never silently treated as a pass.
-7. Automated tests fake the Claude process. A live model smoke remains a
+10. Automated tests fake the Claude process. A live model smoke remains a
    separately authorized optional check.
 
 **Consequences:**

@@ -83,11 +83,15 @@ in the Opus request.
 
 - validates inputs and task-level authorization;
 - constructs the verdict-blind Claude prompt;
-- invokes the existing Claude `lane-v-verifier` role through Claude Code with
-  an explicit per-invocation Opus model override;
+- loads the existing Claude verifier text from a commit preceding reviewed
+  HEAD and supplies it through `--append-system-prompt` with an explicit Opus
+  model override;
 - applies a 12-turn limit and a 15-minute wall-clock timeout;
-- disables session persistence, MCP servers, browser tools, nested agents,
-  and edit tools;
+- uses `--safe-mode` and `--disable-slash-commands` to disable implicit
+  `CLAUDE.md`, custom-agent, hook, skill, and slash-command instruction sources;
+- disables session persistence, MCP servers, browser tools, nested agents, and
+  edit tools without using `--bare`, preserving subscription OAuth/keychain
+  compatibility;
 - restricts Bash to read-only git commands and the exact verification
   commands named by the request;
 - parses and validates structured output;
@@ -99,10 +103,12 @@ The bridge makes one external invocation at most. It does not retry.
 
 ### 5.3 Existing Claude verifier role
 
-`.claude/agents/lane-v-verifier.md` remains the source of the Claude-side
-verification behavior. The bridge invokes that role with an explicit Opus
-override and verifies the effective model in the returned metadata. It does
-not duplicate the full verifier prompt into a second long-lived role file.
+`.claude/agents/lane-v-verifier.md` remains the source of Claude-side behavior,
+but reviewed HEAD never supplies the active verifier prompt. The bridge uses
+the explicit reviewed base when supplied; otherwise it derives and validates
+the reviewed HEAD's first parent. It reads the verifier text from that
+preceding commit and pins it through `--append-system-prompt`. Safe mode means
+the bridge does not use `--agents` or `--agent`.
 
 If the installed Claude Code version cannot apply the Opus override to this
 agent session, the bridge returns `unavailable` with reason
@@ -129,7 +135,7 @@ Opus never sends mailbox events and never issues protocol GO.
 verify request
   -> Codex verifier independently checks the change
   -> Codex invokes the bridge with immutable verification inputs only
-  -> bridge invokes Claude lane-v-verifier on Opus
+  -> bridge pins pre-HEAD verifier text and invokes safe-mode Claude on Opus
   -> Opus returns an independent structured review
   -> bridge normalizes and validates the review
   -> Codex records evidence-backed dispositions for Opus findings
@@ -206,6 +212,7 @@ Enumerated unavailable reasons include:
 - `reviewed_scope_mismatch`
 - `effective_model_missing`
 - `effective_model_not_opus`
+- `sandbox_unavailable`
 
 ## 8. Authorization and resource bounds
 
@@ -213,7 +220,9 @@ Every verification attempts the Opus review, but the external call requires a
 non-empty task-level authorization source. The verify request or parent task
 records that authorization and passes its stable identifier to the bridge.
 The bridge records the identifier; it does not infer consent from environment
-variables or from the existence of Claude credentials.
+variables or from the existence of Claude credentials. Parent-supplied
+authorization permits exactly the one bounded Opus call and does not grant the
+bridge, provider, broker, or reviewed code inherited paid-spend authority.
 
 If authorization is missing, no external call occurs. The normalized result is
 `unavailable` with `authorization_missing`, and the workflow follows the
@@ -233,6 +242,7 @@ the production defaults through ordinary verifier prompts.
 
 The `reconcile` subcommand accepts:
 
+- an explicit Pipeline repository root and expected HEAD/base commits;
 - Codex verdict: `GO`, `NITS`, or `FAIL`;
 - normalized `opus-review/v1` result; and
 - one disposition for each Opus finding.
@@ -246,6 +256,8 @@ Each disposition is one of:
 
 Rules:
 
+- Pipeline identity and expected commit existence are proved locally before
+  reconciliation can allow GO.
 - Codex `GO` plus Opus `pass` allows GO.
 - Opus `issues` requires a disposition for every finding.
 - A confirmed critical or important finding requires `FAIL`.
@@ -279,12 +291,24 @@ result. An unavailable Opus run is visible degradation, not silent success.
 
 ## 11. Security and isolation
 
-- The outer Codex verifier remains read-only.
-- Claude receives no Write or Edit tool and cannot spawn nested agents.
+- Claude receives only exact Bash capabilities; it has no generic Read, Write,
+  Edit, agent, skill, browser, or web-retrieval tool.
 - MCP, browser, and web-retrieval tools are disabled for the invocation.
 - Claude session persistence is disabled.
-- Bash runs under a deny-by-default permission mode. Only read-only git
-  commands and the exact named verification commands are allowed.
+- A network-capable outer macOS Seatbelt profile denies reads and writes to the
+  mutable source checkout, denies snapshot writes, and denies persistent home
+  writes while preserving provider network and OAuth/keychain reads.
+- Bash exposes read-only Git commands plus one exact broker-client command per
+  verification command. Each client carries an unguessable one-shot token;
+  forged or replayed tokens are rejected, and no generic command payload
+  crosses the private Unix socket.
+- The bridge-owned broker runs outside the inherited outer Seatbelt and maps
+  each token to pre-registered argv. It launches that argv inside a second
+  default-deny profile that denies network, source and sensitive credential or
+  instruction reads, non-scratch writes, and every executable outside the
+  conservative verifier set.
+- Broker output and runtime are bounded, and broker/socket/control artifacts
+  are mode-restricted, joined, and removed on every exit path.
 - The subprocess environment is minimized while preserving the credentials
   Claude Code itself needs. Repository content cannot request new tools,
   permissions, credentials, or external side effects.
@@ -322,7 +346,8 @@ surfaces.
 CI must not invoke a paid model. Unit tests inject a fake `claude` executable
 or subprocess runner and cover:
 
-1. Exact command construction and read-only restrictions.
+1. Safe-mode command construction, pinned pre-HEAD verifier text, and exact
+   command restrictions.
 2. Absence of Codex verdict, report, and findings from the Opus prompt.
 3. One-call enforcement and no automatic retry.
 4. Missing authorization without external invocation.
@@ -336,7 +361,9 @@ or subprocess runner and cover:
 9. Required report fields in the Codex verifier and operator prompts.
 10. Rendered protocol text synchronized across the executable model,
     continuation adapter, operator skill, and role prompts.
-11. No repository writes by the bridge.
+11. Real local sandbox probes for source write/chmod, network, source and
+    sensitive reads, provider execution, safe verification, token
+    forgery/replay, output limits, and timeout cleanup.
 
 Completion verification includes the focused unit tests, prompt-sync tests,
 `scripts/ci_smoke.py`, and `git diff --check`.
@@ -360,6 +387,8 @@ The design is implemented when:
   explicit degraded marker and reason;
 - Opus never edits, persists a session, sends protocol events, or gains final
   verdict authority;
+- sandbox unavailability prevents the provider call and is explicit degraded
+  fallback;
 - automated tests make no paid external calls; and
 - all focused tests and the project smoke gate pass on the final diff.
 

@@ -4,16 +4,20 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import io
 import json
 import os
 import re
+import secrets
 import shlex
+import socket
 import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -39,11 +43,15 @@ UNAVAILABLE_REASONS = frozenset(
         "reviewed_scope_mismatch",
         "effective_model_missing",
         "effective_model_not_opus",
+        "sandbox_unavailable",
     }
 )
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DEFAULT_MAX_TURNS = 12
 DEFAULT_TIMEOUT_SECONDS = 900
+BROKER_OUTPUT_LIMIT_BYTES = 131_072
+BROKER_MAX_REQUEST_BYTES = 256
+BROKER_MAX_RESPONSE_BYTES = BROKER_OUTPUT_LIMIT_BYTES * 3
 _FORBIDDEN_COMMAND_CHARS = frozenset(";&|<>`$(){}\n\r")
 _AUTHORIZATION_RE = re.compile(
     r"^(?:user-task|verify-request):[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
@@ -106,6 +114,7 @@ _FIXED_ARGUMENT_VERIFIER_SCRIPTS = {
     "scripts/check_doc_claims.py": frozenset({("--sha-refs",)}),
 }
 AGENT_RELATIVE_PATH = Path(".claude/agents/lane-v-verifier.md")
+SANDBOX_EXECUTABLE = Path("/usr/bin/sandbox-exec")
 PIPELINE_MARKERS = (
     Path("AGENTS.md"),
     Path("scripts/codex_protocol_model.py"),
@@ -134,6 +143,68 @@ CLAUDE_ENV_ALLOWLIST = frozenset(
         "USER",
     }
 )
+
+BROKER_CLIENT_SOURCE = """#!/usr/bin/env python3
+import base64
+import json
+import socket
+import sys
+
+if len(sys.argv) != 3:
+    print("broker request rejected", file=sys.stderr)
+    raise SystemExit(125)
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    sock.connect(sys.argv[1])
+    sock.sendall(sys.argv[2].encode("ascii") + b"\\n")
+    sock.shutdown(socket.SHUT_WR)
+    chunks = []
+    size = 0
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > 400000:
+            print("broker response rejected", file=sys.stderr)
+            raise SystemExit(125)
+        chunks.append(chunk)
+finally:
+    sock.close()
+try:
+    payload = json.loads(b"".join(chunks))
+except (json.JSONDecodeError, UnicodeDecodeError):
+    print("broker response rejected", file=sys.stderr)
+    raise SystemExit(125)
+status = payload.get("status")
+if status == "rejected":
+    print("broker request rejected", file=sys.stderr)
+    raise SystemExit(125)
+stdout = base64.b64decode(payload.get("stdout", ""), validate=True)
+stderr = base64.b64decode(payload.get("stderr", ""), validate=True)
+sys.stdout.buffer.write(stdout)
+sys.stderr.buffer.write(stderr)
+if status == "timeout":
+    print("verification command timed out", file=sys.stderr)
+    raise SystemExit(124)
+if status == "output_limit":
+    print("verification output limit exceeded", file=sys.stderr)
+    raise SystemExit(125)
+returncode = payload.get("returncode")
+raise SystemExit(returncode if isinstance(returncode, int) and 0 <= returncode <= 125 else 1)
+"""
+
+LIMITED_EXEC_SOURCE = """#!/usr/bin/env python3
+import os
+import resource
+import sys
+
+if len(sys.argv) < 4 or sys.argv[1] != "--limit":
+    raise SystemExit(125)
+limit = int(sys.argv[2])
+resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
+os.execvpe(sys.argv[3], sys.argv[3:], os.environ)
+"""
 
 OPUS_OUTPUT_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -188,6 +259,17 @@ class ReviewRequest:
     authorization_source: str
     max_turns: int = DEFAULT_MAX_TURNS
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+
+
+@dataclass(frozen=True)
+class SandboxRuntime:
+    outer_profile: Path
+    verification_profile: Path
+    broker_client: Path
+    limited_exec: Path
+    broker_dir: Path
+    provider_scratch: Path
+    verification_scratch: Path
 
 
 class InvocationFailure(RuntimeError):
@@ -576,6 +658,44 @@ def _validated_verification_rule(request: ReviewRequest, command: str) -> str:
     raise ReviewContractError("invalid_command", command)
 
 
+def _validated_broker_rule(command: str) -> str:
+    rule = _validated_exact_bash_rule(command)
+    argv = shlex.split(command)
+    if len(argv) != 4:
+        raise ReviewContractError("invalid_command", command)
+    interpreter, client_value, socket_value, token = argv
+    client = Path(client_value)
+    socket_path = Path(socket_value)
+    if (
+        not Path(interpreter).is_absolute()
+        or Path(interpreter).resolve() != Path(sys.executable).resolve()
+        or not client.is_absolute()
+        or not socket_path.is_absolute()
+        or client.name != "broker_client.py"
+        or client.parent.name != "control"
+        or socket_path.name != "verification.sock"
+        or socket_path.parent.name != "broker"
+        or client.parent.parent != socket_path.parent.parent
+        or not client.parent.parent.name.startswith("opus-sandbox-")
+        or not re.fullmatch(r"[0-9a-f]{64}", token)
+    ):
+        raise ReviewContractError("invalid_command", command)
+    try:
+        client_stat = client.stat()
+        control_mode = stat.S_IMODE(client.parent.stat().st_mode)
+        broker_mode = stat.S_IMODE(socket_path.parent.stat().st_mode)
+    except OSError as exc:
+        raise ReviewContractError("invalid_command", command) from exc
+    if (
+        client_stat.st_uid != os.getuid()
+        or stat.S_IMODE(client_stat.st_mode) != 0o500
+        or control_mode != 0o700
+        or broker_mode != 0o700
+    ):
+        raise ReviewContractError("invalid_command", command)
+    return rule
+
+
 def _agent_prompt_from_content(content: str) -> str:
     if not content.startswith("---\n"):
         raise ReviewContractError("invalid_agent", "missing opening frontmatter")
@@ -586,39 +706,6 @@ def _agent_prompt_from_content(content: str) -> str:
     if not prompt:
         raise ReviewContractError("invalid_agent", "empty lane-v-verifier prompt")
     return prompt
-
-
-def _load_agent_prompt(root: Path) -> str:
-    content = (root / AGENT_RELATIVE_PATH).read_text(encoding="utf-8")
-    return _agent_prompt_from_content(content)
-
-
-def _dynamic_agents(
-    request: ReviewRequest, *, agent_prompt: str | None = None
-) -> dict[str, object]:
-    return {
-        "lane-v-verifier": {
-            "description": "Independent read-only Pipeline Lane V verifier",
-            "prompt": (
-                _load_agent_prompt(_pipeline_root(request.repo_root))
-                if agent_prompt is None
-                else agent_prompt
-            ),
-            "tools": ["Read", "Grep", "Glob", "Bash"],
-            "disallowedTools": [
-                "Edit",
-                "Write",
-                "NotebookEdit",
-                "Agent",
-                "Skill",
-                "WebFetch",
-                "WebSearch",
-            ],
-            "model": "opus",
-            "permissionMode": "dontAsk",
-            "maxTurns": request.max_turns,
-        }
-    }
 
 
 def _validate_request_shape(request: ReviewRequest) -> None:
@@ -708,6 +795,34 @@ def _require_commit(root: Path, revision: str, field: str) -> None:
         )
 
 
+def _require_preceding_revision(root: Path, base: str, head: str) -> None:
+    if base == head:
+        raise ReviewContractError(
+            "invalid_scope", "reviewed_base must precede reviewed_head"
+        )
+    result = _git_process(root, "merge-base", "--is-ancestor", base, head)
+    if result.returncode != 0:
+        raise ReviewContractError(
+            "invalid_scope", "reviewed_base must be an ancestor of reviewed_head"
+        )
+
+
+def _trusted_prompt_revision(root: Path, request: ReviewRequest) -> str:
+    if request.reviewed_base is not None:
+        _require_preceding_revision(
+            root, request.reviewed_base, request.reviewed_head
+        )
+        return request.reviewed_base
+    result = _git_process(root, "rev-parse", "--verify", f"{request.reviewed_head}^1")
+    if result.returncode != 0:
+        raise ReviewContractError(
+            "invalid_scope", "reviewed_head has no first parent for verifier trust"
+        )
+    revision = _full_sha(result.stdout.strip(), "trusted_prompt_revision")
+    _require_commit(root, revision, "trusted_prompt_revision")
+    return revision
+
+
 def _load_agent_prompt_at_revision(root: Path, revision: str) -> str:
     result = _git_process(
         root, "show", f"{revision}:{AGENT_RELATIVE_PATH.as_posix()}"
@@ -757,20 +872,17 @@ def _set_tree_writable(root: Path, *, writable: bool) -> None:
 
 
 def _install_snapshot_runtime(request: ReviewRequest, snapshot: Path) -> None:
-    needs_local_python = any(
-        shlex.split(command)[3] == ".venv/bin/python"
-        for command in request.verification_commands
-    )
-    if not needs_local_python:
-        return
     venv = snapshot / ".venv"
     if venv.exists():
         raise ReviewContractError(
             "invalid_scope", "reviewed snapshot must not supply its own .venv"
         )
-    interpreter = venv / "bin" / "python"
-    interpreter.parent.mkdir(parents=True)
-    interpreter.symlink_to(Path(sys.executable).resolve())
+    trusted_venv = Path(sys.executable).parent.parent
+    if not (trusted_venv / "pyvenv.cfg").is_file():
+        raise ReviewContractError(
+            "invalid_scope", "bridge must run from the trusted Pipeline virtualenv"
+        )
+    venv.symlink_to(trusted_venv, target_is_directory=True)
 
 
 def _snapshot_request(request: ReviewRequest, snapshot: Path) -> ReviewRequest:
@@ -855,14 +967,433 @@ def _immutable_review_snapshot(request: ReviewRequest) -> Iterator[Path]:
             _set_tree_writable(snapshot, writable=True)
 
 
+def _sandbox_path(value: Path) -> str:
+    return json.dumps(str(value.resolve()))
+
+
+def _sandbox_filters(kind: str, paths: Iterable[Path]) -> str:
+    return " ".join(
+        f"({kind} {_sandbox_path(path)})"
+        for path in paths
+        if path.exists()
+    )
+
+
+def _python_process_executables(snapshot: Path) -> tuple[Path, ...]:
+    base_prefix = Path(sys.base_prefix).resolve()
+    candidates = (
+        snapshot / ".venv" / "bin" / "python",
+        Path(sys.executable),
+        Path(sys.executable).resolve(),
+        Path(getattr(sys, "_base_executable", sys.executable)).resolve(),
+        base_prefix / "Resources" / "Python.app" / "Contents" / "MacOS" / "Python",
+    )
+    return tuple(dict.fromkeys(path for path in candidates if path.exists()))
+
+
+def _verification_profile(source: Path, snapshot: Path, scratch: Path) -> str:
+    xcode_root = Path("/Applications/Xcode.app/Contents/Developer")
+    executable_paths = (
+        Path("/usr/bin/env"),
+        Path("/usr/bin/git"),
+        xcode_root / "usr" / "bin" / "git",
+        *_python_process_executables(snapshot),
+    )
+    home = Path(os.environ.get("HOME", str(Path.home()))).resolve()
+    sensitive_directories = (
+        source,
+        home / ".anthropic",
+        home / ".aws",
+        home / ".azure",
+        home / ".claude",
+        home / ".codex",
+        home / ".config",
+        home / ".docker",
+        home / ".gnupg",
+        home / ".kube",
+        home / ".ssh",
+        home / "Library" / "Keychains",
+        home / "Library" / "Application Support" / "Claude",
+    )
+    sensitive_files = (
+        home / ".claude.json",
+        home / ".git-credentials",
+        home / ".gitconfig",
+        home / ".netrc",
+        home / ".npmrc",
+    )
+    return "\n".join(
+        (
+            "(version 1)",
+            "(deny default)",
+            "(allow process-fork)",
+            f"(allow process-exec {_sandbox_filters('literal', executable_paths)})",
+            "(allow file-read*)",
+            "(deny file-read* "
+            f"{_sandbox_filters('subpath', sensitive_directories)} "
+            f"{_sandbox_filters('literal', sensitive_files)})",
+            f"(allow file-write* (subpath {_sandbox_path(scratch)}) "
+            '(literal "/dev/null"))',
+            "(allow sysctl-read)",
+            "(allow mach-lookup)",
+            "(allow signal (target self))",
+        )
+    )
+
+
+def _outer_profile(
+    source: Path,
+    snapshot: Path,
+    control: Path,
+) -> str:
+    home = Path(os.environ.get("HOME", str(Path.home()))).resolve()
+    return "\n".join(
+        (
+            "(version 1)",
+            "(allow default)",
+            f"(deny file-read* (subpath {_sandbox_path(source)}))",
+            "(deny file-write* "
+            f"(subpath {_sandbox_path(source)}) "
+            f"(subpath {_sandbox_path(snapshot)}) "
+            f"(subpath {_sandbox_path(control)}) "
+            f"(subpath {_sandbox_path(home)}))",
+        )
+    )
+
+
+@contextmanager
+def _sandbox_runtime(source: Path, snapshot: Path) -> Iterator[SandboxRuntime]:
+    with tempfile.TemporaryDirectory(
+        prefix="opus-sandbox-", dir="/tmp"
+    ) as temporary_root:
+        root = Path(temporary_root)
+        control = root / "control"
+        broker_dir = root / "broker"
+        provider_scratch = root / "provider-scratch"
+        verification_scratch = root / "verification-scratch"
+        for directory in (
+            control,
+            broker_dir,
+            provider_scratch,
+            verification_scratch,
+        ):
+            directory.mkdir(mode=0o700)
+        outer_profile = control / "outer.sb"
+        verification_profile = control / "verification.sb"
+        broker_client = control / "broker_client.py"
+        limited_exec = control / "limited_exec.py"
+        outer_profile.write_text(
+            _outer_profile(source, snapshot, control), encoding="utf-8"
+        )
+        verification_profile.write_text(
+            _verification_profile(source, snapshot, verification_scratch),
+            encoding="utf-8",
+        )
+        broker_client.write_text(BROKER_CLIENT_SOURCE, encoding="utf-8")
+        limited_exec.write_text(LIMITED_EXEC_SOURCE, encoding="utf-8")
+        for path in (
+            outer_profile,
+            verification_profile,
+            broker_client,
+            limited_exec,
+        ):
+            path.chmod(0o500)
+        yield SandboxRuntime(
+            outer_profile=outer_profile,
+            verification_profile=verification_profile,
+            broker_client=broker_client,
+            limited_exec=limited_exec,
+            broker_dir=broker_dir,
+            provider_scratch=provider_scratch,
+            verification_scratch=verification_scratch,
+        )
+
+
+def _sandbox_inner_environment(runtime: SandboxRuntime) -> tuple[str, ...]:
+    scratch = str(runtime.verification_scratch)
+    return (
+        f"HOME={scratch}",
+        f"TMPDIR={scratch}",
+        f"XDG_CACHE_HOME={scratch}",
+        "PYTHONDONTWRITEBYTECODE=1",
+        "PYTEST_ADDOPTS=-p no:cacheprovider",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+    )
+
+
+def _verification_environment(runtime: SandboxRuntime) -> dict[str, str]:
+    return {
+        "HOME": str(runtime.verification_scratch),
+        "LANG": os.environ.get("LANG", "C.UTF-8"),
+        "LC_ALL": os.environ.get("LC_ALL", "C.UTF-8"),
+        "PATH": os.environ.get("PATH", os.defpath),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTEST_ADDOPTS": "-p no:cacheprovider",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "TMPDIR": str(runtime.verification_scratch),
+        "XDG_CACHE_HOME": str(runtime.verification_scratch),
+    }
+
+
+def _sandboxed_verification_argv(
+    command: str, runtime: SandboxRuntime
+) -> list[str]:
+    argv = shlex.split(command)
+    inner = [
+        "/usr/bin/env",
+        "-u",
+        "GIT_INDEX_FILE",
+        *_sandbox_inner_environment(runtime),
+        *argv[3:],
+    ]
+    return [
+        str(SANDBOX_EXECUTABLE),
+        "-f",
+        str(runtime.verification_profile),
+        sys.executable,
+        str(runtime.limited_exec),
+        "--limit",
+        str(BROKER_OUTPUT_LIMIT_BYTES),
+        *inner,
+    ]
+
+
+class _VerificationBroker:
+    def __init__(
+        self,
+        runtime: SandboxRuntime,
+        snapshot: Path,
+        *,
+        timeout_seconds: int,
+    ) -> None:
+        self.runtime = runtime
+        self.snapshot = snapshot
+        self.timeout_seconds = timeout_seconds
+        self.socket_path = runtime.broker_dir / "verification.sock"
+        self._commands: dict[str, tuple[str, ...]] = {}
+        self._used: set[str] = set()
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._active: subprocess.Popen[bytes] | None = None
+        self._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._listener.bind(str(self.socket_path))
+        self.socket_path.chmod(0o600)
+        self._listener.listen(4)
+        self._listener.settimeout(0.1)
+        self._thread = threading.Thread(
+            target=self._serve,
+            name="opus-verification-broker",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def register(self, argv: Iterable[str]) -> list[str]:
+        token = secrets.token_hex(32)
+        with self._lock:
+            self._commands[token] = tuple(argv)
+        return [
+            sys.executable,
+            str(self.runtime.broker_client),
+            str(self.socket_path),
+            token,
+        ]
+
+    def register_verification(self, command: str) -> str:
+        return shlex.join(
+            self.register(_sandboxed_verification_argv(command, self.runtime))
+        )
+
+    @staticmethod
+    def _rejected_payload() -> dict[str, object]:
+        return {
+            "returncode": 125,
+            "status": "rejected",
+            "stderr": "",
+            "stdout": "",
+        }
+
+    def _response_for_token(self, token: str) -> dict[str, object]:
+        with self._lock:
+            command = self._commands.get(token)
+            if command is None or token in self._used:
+                return self._rejected_payload()
+            self._used.add(token)
+        return self._execute(token, command)
+
+    def _execute(self, token: str, command: tuple[str, ...]) -> dict[str, object]:
+        stdout_path = self.runtime.verification_scratch / f"{token}.stdout"
+        stderr_path = self.runtime.verification_scratch / f"{token}.stderr"
+        status = "ok"
+        returncode = 1
+        try:
+            with stdout_path.open("xb") as stdout_file, stderr_path.open(
+                "xb"
+            ) as stderr_file:
+                stdout_path.chmod(0o600)
+                stderr_path.chmod(0o600)
+                process = subprocess.Popen(
+                    command,
+                    cwd=self.snapshot,
+                    env=_verification_environment(self.runtime),
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                )
+                with self._lock:
+                    self._active = process
+                try:
+                    returncode = process.wait(timeout=self.timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    status = "timeout"
+                    process.kill()
+                    returncode = process.wait(timeout=5)
+                finally:
+                    with self._lock:
+                        self._active = None
+            stdout_size = stdout_path.stat().st_size
+            stderr_size = stderr_path.stat().st_size
+            if (
+                status == "ok"
+                and max(stdout_size, stderr_size) >= BROKER_OUTPUT_LIMIT_BYTES
+            ):
+                status = "output_limit"
+            stdout = stdout_path.read_bytes()[:BROKER_OUTPUT_LIMIT_BYTES]
+            stderr = stderr_path.read_bytes()[:BROKER_OUTPUT_LIMIT_BYTES]
+        except (OSError, subprocess.SubprocessError) as exc:
+            status = "rejected"
+            stdout = b""
+            stderr = str(exc).encode("utf-8", errors="replace")
+            returncode = 125
+        finally:
+            stdout_path.unlink(missing_ok=True)
+            stderr_path.unlink(missing_ok=True)
+        return {
+            "returncode": returncode,
+            "status": status,
+            "stdout": base64.b64encode(stdout).decode("ascii"),
+            "stderr": base64.b64encode(stderr).decode("ascii"),
+        }
+
+    def _serve(self) -> None:
+        while not self._stop.is_set():
+            try:
+                connection, _ = self._listener.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            with connection:
+                try:
+                    request = connection.recv(BROKER_MAX_REQUEST_BYTES + 1)
+                    if (
+                        len(request) > BROKER_MAX_REQUEST_BYTES
+                        or not request.endswith(b"\n")
+                    ):
+                        payload = self._rejected_payload()
+                    else:
+                        token = request[:-1].decode("ascii")
+                        payload = self._response_for_token(token)
+                    encoded = json.dumps(
+                        payload, sort_keys=True, separators=(",", ":")
+                    ).encode("utf-8")
+                    if len(encoded) > BROKER_MAX_RESPONSE_BYTES:
+                        encoded = json.dumps(
+                            self._rejected_payload(), separators=(",", ":")
+                        ).encode("utf-8")
+                    connection.sendall(encoded)
+                except (OSError, UnicodeDecodeError):
+                    continue
+
+    def close(self) -> None:
+        self._stop.set()
+        with self._lock:
+            active = self._active
+        if active is not None and active.poll() is None:
+            active.kill()
+        self._listener.close()
+        self._thread.join(timeout=5)
+        if self._thread.is_alive():
+            raise OSError("verification broker did not stop")
+        self.socket_path.unlink(missing_ok=True)
+
+    def __enter__(self) -> _VerificationBroker:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
+
+def _probe_sandbox_profiles(
+    runtime: SandboxRuntime,
+    snapshot: Path,
+    broker: _VerificationBroker,
+) -> bool:
+    if not SANDBOX_EXECUTABLE.is_file() or not os.access(
+        SANDBOX_EXECUTABLE, os.X_OK
+    ):
+        return False
+    nested_probe = _sandboxed_verification_argv(
+        "env -u GIT_INDEX_FILE .venv/bin/python -c 'import pytest'",
+        runtime,
+    )
+    broker_probe = broker.register(nested_probe)
+    probes = (
+        [
+            str(SANDBOX_EXECUTABLE),
+            "-f",
+            str(runtime.outer_profile),
+            "/usr/bin/true",
+        ],
+        [
+            str(SANDBOX_EXECUTABLE),
+            "-f",
+            str(runtime.outer_profile),
+            *broker_probe,
+        ],
+    )
+    try:
+        return all(
+            subprocess.run(
+                argv,
+                cwd=snapshot,
+                env={
+                    **build_claude_environment(),
+                    "TMPDIR": str(runtime.provider_scratch),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ).returncode
+            == 0
+            for argv in probes
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def _review_git_commands(request: ReviewRequest) -> tuple[str, ...]:
     paths = [
         _relative_repo_path(request.repo_root, path, must_exist=False)
         for path in request.allowed_paths
     ]
+    evidence_paths = tuple(
+        dict.fromkeys(
+            [
+                *(
+                    _relative_repo_path(request.repo_root, path, must_exist=True)
+                    for path in request.requirement_paths
+                ),
+                *paths,
+            ]
+        )
+    )
     prefix = ["env", "-u", "GIT_INDEX_FILE", "git"]
     commands: list[list[str]] = [
-        [*prefix, "log", "-1", "--format=fuller", request.reviewed_head]
+        [*prefix, "log", "-1", "--format=fuller", request.reviewed_head],
+        *(
+            [*prefix, "show", f"{request.reviewed_head}:{path}"]
+            for path in evidence_paths
+        ),
     ]
     if request.reviewed_base is None:
         commands.extend(
@@ -914,7 +1445,11 @@ def _review_git_commands(request: ReviewRequest) -> tuple[str, ...]:
     return tuple(shlex.join(argv) for argv in commands)
 
 
-def build_review_prompt(request: ReviewRequest) -> str:
+def build_review_prompt(
+    request: ReviewRequest,
+    *,
+    verification_commands: tuple[str, ...] | None = None,
+) -> str:
     _validate_request(request)
     authorization_source = _validated_authorization_source(
         request.authorization_source
@@ -928,6 +1463,11 @@ def build_review_prompt(request: ReviewRequest) -> str:
         for path in request.allowed_paths
     ]
     git_commands = _review_git_commands(request)
+    exposed_verification_commands = (
+        request.verification_commands
+        if verification_commands is None
+        else verification_commands
+    )
     base = request.reviewed_base or "none"
     return "\n".join(
         [
@@ -944,7 +1484,7 @@ def build_review_prompt(request: ReviewRequest) -> str:
             "Exact read-only Git commands available:",
             *(f"- {command}" for command in git_commands),
             "Exact verification commands available:",
-            *(f"- {command}" for command in request.verification_commands),
+            *(f"- {command}" for command in exposed_verification_commands),
             "Review the committed scope independently and return only the requested schema.",
         ]
     )
@@ -974,12 +1514,22 @@ def build_claude_environment(
 
 
 def build_claude_command(
-    request: ReviewRequest, *, agent_prompt: str | None = None
+    request: ReviewRequest,
+    *,
+    agent_prompt: str,
+    verification_commands: tuple[str, ...],
 ) -> list[str]:
-    prompt = build_review_prompt(request)
+    exposed_verification_commands = verification_commands
+    if len(exposed_verification_commands) != len(request.verification_commands):
+        raise ReviewContractError(
+            "invalid_command", "sandboxed verification command count changed"
+        )
+    prompt = build_review_prompt(
+        request, verification_commands=exposed_verification_commands
+    )
     allowed_commands = (
         *_review_git_commands(request),
-        *request.verification_commands,
+        *exposed_verification_commands,
     )
     git_rule_count = len(_review_git_commands(request))
     allowed_rules = [
@@ -988,7 +1538,7 @@ def build_claude_command(
             for command in allowed_commands[:git_rule_count]
         ),
         *(
-            _validated_verification_rule(request, command)
+            _validated_broker_rule(command)
             for command in allowed_commands[git_rule_count:]
         ),
     ]
@@ -996,16 +1546,14 @@ def build_claude_command(
         "claude",
         "-p",
         prompt,
-        "--agents",
-        json.dumps(
-            _dynamic_agents(request, agent_prompt=agent_prompt),
-            sort_keys=True,
-            separators=(",", ":"),
-        ),
-        "--agent",
-        "lane-v-verifier",
+        "--safe-mode",
+        "--disable-slash-commands",
+        "--append-system-prompt",
+        agent_prompt,
         "--model",
         "opus",
+        "--max-turns",
+        str(request.max_turns),
         "--output-format",
         "stream-json",
         "--verbose",
@@ -1021,7 +1569,7 @@ def build_claude_command(
         "--permission-mode",
         "dontAsk",
         "--tools",
-        "Read,Grep,Glob,Bash",
+        "Bash",
         "--disallowedTools",
         "Edit,Write,NotebookEdit,Agent,Skill,WebFetch,WebSearch",
         "--allowedTools",
@@ -1091,15 +1639,16 @@ def review(
             "not_pipeline_repo", f"repo_root is not a Pipeline Git worktree: {request.repo_root}"
         ) from exc
     _validate_request_shape(request)
+    _pipeline_root(source)
+    _require_commit(source, request.reviewed_head, "reviewed_head")
+    if request.reviewed_base is not None:
+        _require_commit(source, request.reviewed_base, "reviewed_base")
     if not request.authorization_source.strip():
         return _unavailable(request, "authorization_missing")
     authorization_source = _validated_authorization_source(
         request.authorization_source
     )
-    _require_commit(source, request.reviewed_head, "reviewed_head")
-    if request.reviewed_base is not None:
-        _require_commit(source, request.reviewed_base, "reviewed_base")
-    trusted_revision = request.reviewed_base or request.reviewed_head
+    trusted_revision = _trusted_prompt_revision(source, request)
     trusted_agent_prompt = _load_agent_prompt_at_revision(
         source, trusted_revision
     )
@@ -1107,25 +1656,50 @@ def review(
     with _immutable_review_snapshot(request) as snapshot:
         snapshot_request = _snapshot_request(request, snapshot)
         _validate_request(snapshot_request)
-        argv = build_claude_command(
-            snapshot_request, agent_prompt=trusted_agent_prompt
-        )
         try:
-            completed = runner(
-                argv,
-                cwd=str(snapshot),
-                env=build_claude_environment(),
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=request.timeout_seconds,
-            )
-        except FileNotFoundError:
-            return _unavailable(request, "claude_not_found")
-        except subprocess.TimeoutExpired:
-            return _unavailable(request, "timeout")
+            with _sandbox_runtime(source, snapshot) as sandbox:
+                with _VerificationBroker(
+                    sandbox,
+                    snapshot,
+                    timeout_seconds=request.timeout_seconds,
+                ) as broker:
+                    verification_commands = tuple(
+                        broker.register_verification(command)
+                        for command in snapshot_request.verification_commands
+                    )
+                    if not _probe_sandbox_profiles(sandbox, snapshot, broker):
+                        return _unavailable(request, "sandbox_unavailable")
+                    claude_argv = build_claude_command(
+                        snapshot_request,
+                        agent_prompt=trusted_agent_prompt,
+                        verification_commands=verification_commands,
+                    )
+                    argv = [
+                        str(SANDBOX_EXECUTABLE),
+                        "-f",
+                        str(sandbox.outer_profile),
+                        *claude_argv,
+                    ]
+                    child_env = build_claude_environment()
+                    child_env["TMPDIR"] = str(sandbox.provider_scratch)
+                    try:
+                        completed = runner(
+                            argv,
+                            cwd=str(snapshot),
+                            env=child_env,
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                            timeout=request.timeout_seconds,
+                        )
+                    except FileNotFoundError:
+                        return _unavailable(request, "claude_not_found")
+                    except subprocess.TimeoutExpired:
+                        return _unavailable(request, "timeout")
+                    except OSError:
+                        return _unavailable(request, "process_failed")
         except OSError:
-            return _unavailable(request, "process_failed")
+            return _unavailable(request, "sandbox_unavailable")
         if completed.returncode != 0:
             diagnostic = completed.stderr.lower()
             reason = (
@@ -1208,6 +1782,7 @@ def reconcile(
     review: OpusReview,
     dispositions: Iterable[FindingDisposition],
     *,
+    repo_root: Path,
     expected_head: str,
     expected_base: str | None,
 ) -> Reconciliation:
@@ -1226,6 +1801,18 @@ def reconcile(
             f"expected {expected_base}..{expected_head}, got "
             f"{review.reviewed_base}..{review.reviewed_head}",
         )
+    try:
+        root = _require_git_repository(repo_root)
+        _pipeline_root(root)
+    except ReviewContractError as exc:
+        raise ReviewContractError(
+            "not_pipeline_repo",
+            f"repo_root is not a Pipeline Git worktree: {repo_root}",
+        ) from exc
+    _require_commit(root, expected_head, "expected_head")
+    if expected_base is not None:
+        _require_commit(root, expected_base, "expected_base")
+        _require_preceding_revision(root, expected_base, expected_head)
     disposition_list = tuple(dispositions)
     if review.status != "issues" and disposition_list:
         raise ReviewContractError(
@@ -1322,6 +1909,7 @@ def _parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--authorization-source", default="")
 
     reconcile_parser = subparsers.add_parser("reconcile")
+    reconcile_parser.add_argument("--repo-root", required=True)
     reconcile_parser.add_argument(
         "--codex-verdict", choices=sorted(VALID_CODEX_VERDICTS), required=True
     )
@@ -1389,6 +1977,7 @@ def _run_reconcile_cli(args: argparse.Namespace) -> Reconciliation:
         args.codex_verdict,
         review_result,
         dispositions,
+        repo_root=Path(args.repo_root),
         expected_head=args.head,
         expected_base=args.base,
     )

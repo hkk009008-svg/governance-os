@@ -3,9 +3,13 @@ from __future__ import annotations
 import errno
 import inspect
 import json
+import os
+import shlex
+import shutil
 import stat
 import subprocess
 import sys
+import threading
 from dataclasses import replace
 from pathlib import Path
 
@@ -14,8 +18,22 @@ import pytest
 import opus_review_bridge as bridge
 
 
-HEAD = "a" * 40
-BASE = "b" * 40
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _root_revision(revision: str) -> str:
+    completed = subprocess.run(
+        ["env", "-u", "GIT_INDEX_FILE", "git", "rev-parse", revision],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
+HEAD = _root_revision("HEAD")
+BASE = _root_revision("HEAD^1")
 
 
 def _finding_payload(*, severity: str = "important") -> dict[str, object]:
@@ -95,6 +113,7 @@ def _reconcile(
         codex_verdict,
         review,
         dispositions,
+        repo_root=ROOT,
         expected_head=review.reviewed_head,
         expected_base=review.reviewed_base,
     )
@@ -334,6 +353,7 @@ def test_reconcile_binds_expected_scope_and_preserves_it_in_output() -> None:
             "GO",
             review,
             [],
+            repo_root=ROOT,
             expected_head="c" * 40,
             expected_base=BASE,
         )
@@ -343,6 +363,7 @@ def test_reconcile_binds_expected_scope_and_preserves_it_in_output() -> None:
         "GO",
         review,
         [],
+        repo_root=ROOT,
         expected_head=HEAD,
         expected_base=BASE,
     )
@@ -350,6 +371,32 @@ def test_reconcile_binds_expected_scope_and_preserves_it_in_output() -> None:
     assert result.reviewed_base == BASE
     assert result.to_dict()["reviewed_head"] == HEAD
     assert result.to_dict()["reviewed_base"] == BASE
+
+
+def test_reconcile_rejects_nonexistent_commits_in_explicit_pipeline_root() -> None:
+    missing_head = "f" * 40
+    review = bridge.OpusReview.unavailable(
+        reviewed_head=missing_head,
+        reviewed_base=BASE,
+        authorization_source="user-task:verification-1",
+        reason="timeout",
+    )
+
+    try:
+        bridge.reconcile(
+            "GO",
+            review,
+            [],
+            repo_root=ROOT,
+            expected_head=missing_head,
+            expected_base=BASE,
+        )
+    except TypeError as exc:
+        pytest.fail(f"reconcile must require an explicit repo_root: {exc}")
+    except bridge.ReviewContractError as exc:
+        assert exc.reason == "invalid_scope"
+    else:
+        pytest.fail("a syntactically valid nonexistent commit must not allow GO")
 
 
 def _uncommitted_request(
@@ -399,13 +446,17 @@ def _git(root: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
-def _committed_request(tmp_path: Path) -> bridge.ReviewRequest:
+def _committed_request(
+    tmp_path: Path,
+    *,
+    route_test_source: str = "def test_fixture():\n    assert True\n",
+) -> bridge.ReviewRequest:
     request = _uncommitted_request(tmp_path)
     route = tmp_path / "scripts" / "route_lineage.py"
     route.write_text("STATE = 'base'\n", encoding="utf-8")
     route_test = tmp_path / "tests" / "unit" / "test_route_lineage.py"
     route_test.parent.mkdir(parents=True)
-    route_test.write_text("def test_fixture():\n    assert True\n", encoding="utf-8")
+    route_test.write_text(route_test_source, encoding="utf-8")
     agent = tmp_path / ".claude" / "agents" / "lane-v-verifier.md"
     agent.write_text(
         "---\nname: lane-v-verifier\n---\n\n"
@@ -452,6 +503,64 @@ def _request(
     return replace(
         _committed_request(tmp_path),
         authorization_source=authorization,
+    )
+
+
+def _sandbox_probe_request(tmp_path: Path, test_source: str) -> bridge.ReviewRequest:
+    request = _committed_request(tmp_path, route_test_source=test_source)
+    return replace(
+        request,
+        verification_commands=(
+            f"env -u GIT_INDEX_FILE {shlex.quote(sys.executable)} -m pytest "
+            "tests/unit/test_route_lineage.py -q",
+        ),
+    )
+
+
+def _verification_command_from_provider_argv(argv: list[str]) -> list[str]:
+    rules = argv[argv.index("--allowedTools") + 1 :]
+    rule = next(
+        item
+        for item in rules
+        if "broker_client.py" in item or "-m pytest" in item
+    )
+    assert rule.startswith("Bash(") and rule.endswith(")")
+    return shlex.split(rule[len("Bash(") : -1])
+
+
+def _assert_broker_client_command(argv: list[str]) -> None:
+    assert Path(argv[0]).resolve() == Path(sys.executable).resolve()
+    assert Path(argv[1]).name == "broker_client.py"
+    assert Path(argv[2]).is_absolute()
+    assert stat.S_ISSOCK(Path(argv[2]).stat().st_mode)
+    assert stat.S_IMODE(Path(argv[2]).stat().st_mode) == 0o600
+    assert len(argv[3]) == 64
+    assert all(character in "0123456789abcdef" for character in argv[3])
+
+
+def _broker_client_commands(tmp_path: Path, count: int) -> tuple[str, ...]:
+    root = tmp_path / "opus-sandbox-test"
+    control = root / "control"
+    broker_dir = root / "broker"
+    control.mkdir(parents=True, exist_ok=True)
+    broker_dir.mkdir(exist_ok=True)
+    root.chmod(0o700)
+    control.chmod(0o700)
+    broker_dir.chmod(0o700)
+    client = control / "broker_client.py"
+    client.write_text("# bridge-owned fixture\n", encoding="utf-8")
+    client.chmod(0o500)
+    socket_path = broker_dir / "verification.sock"
+    return tuple(
+        shlex.join(
+            [
+                sys.executable,
+                str(client),
+                str(socket_path),
+                f"{index + 1:064x}",
+            ]
+        )
+        for index in range(count)
     )
 
 
@@ -509,19 +618,25 @@ def test_build_review_prompt_rejects_invalid_authorization_source(
 
 def test_build_claude_command_is_bounded_and_read_only(tmp_path: Path) -> None:
     request = _request(tmp_path)
-    argv = bridge.build_claude_command(request)
+    argv = bridge.build_claude_command(
+        request,
+        agent_prompt="PINNED-PRE-HEAD-VERIFIER",
+        verification_commands=_broker_client_commands(tmp_path, 1),
+    )
     rendered = " ".join(argv)
-    dynamic_agents = json.loads(argv[argv.index("--agents") + 1])
-    verifier = dynamic_agents["lane-v-verifier"]
     allowed_rules = argv[argv.index("--allowedTools") + 1 :]
 
     assert argv[:2] == ["claude", "-p"]
-    assert "--agent lane-v-verifier" in rendered
+    assert "--safe-mode" in argv
+    assert "--disable-slash-commands" in argv
+    assert "--bare" not in argv
+    assert "--agents" not in argv
+    assert "--agent" not in argv
+    assert argv[argv.index("--append-system-prompt") + 1] == (
+        "PINNED-PRE-HEAD-VERIFIER"
+    )
+    assert argv[argv.index("--max-turns") + 1] == "12"
     assert "--model opus" in rendered
-    assert verifier["model"] == "opus"
-    assert verifier["maxTurns"] == 12
-    assert "ROLE-CONTENT-FROM-EXISTING-AGENT" in verifier["prompt"]
-    assert "hooks" not in verifier
     assert "--output-format stream-json" in rendered
     assert "--verbose" in argv
     assert "--no-session-persistence" in argv
@@ -535,6 +650,26 @@ def test_build_claude_command_is_bounded_and_read_only(tmp_path: Path) -> None:
         for rule in allowed_rules
     )
     assert all("*" not in rule for rule in allowed_rules)
+    assert any("broker_client.py" in rule for rule in allowed_rules)
+    assert not any("-m pytest" in rule for rule in allowed_rules)
+
+
+def test_build_claude_command_requires_brokered_verification_rules(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+
+    with pytest.raises(TypeError):
+        bridge.build_claude_command(request, agent_prompt="PINNED")
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.build_claude_command(
+            request,
+            agent_prompt="PINNED",
+            verification_commands=request.verification_commands,
+        )
+
+    assert excinfo.value.reason == "invalid_command"
 
 
 @pytest.mark.parametrize(
@@ -559,7 +694,11 @@ def test_review_rejects_mutating_network_provider_or_arbitrary_commands(
     request = replace(_request(tmp_path), verification_commands=(command,))
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.build_claude_command(request)
+        bridge.build_claude_command(
+            request,
+            agent_prompt="PINNED",
+            verification_commands=_broker_client_commands(tmp_path, 1),
+        )
 
     assert excinfo.value.reason == "invalid_command"
 
@@ -576,11 +715,14 @@ def test_review_accepts_only_narrow_pipeline_verification_shapes(
         ),
     )
 
-    argv = bridge.build_claude_command(request)
+    argv = bridge.build_claude_command(
+        request,
+        agent_prompt="PINNED",
+        verification_commands=_broker_client_commands(tmp_path, 2),
+    )
     allowed_rules = argv[argv.index("--allowedTools") + 1 :]
 
-    assert any("-m pytest" in rule for rule in allowed_rules)
-    assert any("scripts/ci_smoke.py" in rule for rule in allowed_rules)
+    assert sum("broker_client.py" in rule for rule in allowed_rules) == 2
 
 
 def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
@@ -592,6 +734,7 @@ def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         snapshot = Path(str(kwargs["cwd"]))
         snapshot_paths.append(snapshot)
+        assert argv[0] == "/usr/bin/sandbox-exec"
         assert snapshot != tmp_path.resolve()
         assert _git(snapshot, "rev-parse", "HEAD") == request.reviewed_head
         assert (snapshot / "brief.md").read_text(encoding="utf-8") == "head requirement\n"
@@ -605,8 +748,7 @@ def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
         assert (snapshot / ".venv" / "bin" / "python").resolve() == Path(
             sys.executable
         ).resolve()
-        agents = json.loads(argv[argv.index("--agents") + 1])
-        verifier_prompt = agents["lane-v-verifier"]["prompt"]
+        verifier_prompt = argv[argv.index("--append-system-prompt") + 1]
         assert "BASE-TRUSTED-AGENT" in verifier_prompt
         assert "HEAD-UNTRUSTED-AGENT" not in verifier_prompt
         assert "MUTABLE-WIP-AGENT" not in verifier_prompt
@@ -627,6 +769,49 @@ def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
     assert (tmp_path / "brief.md").read_text(encoding="utf-8") == "mutable WIP requirement\n"
 
 
+def test_review_without_explicit_base_uses_first_parent_verifier_prompt(
+    tmp_path: Path,
+) -> None:
+    request = replace(_committed_request(tmp_path), reviewed_base=None)
+
+    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "--append-system-prompt" in argv:
+            verifier_prompt = argv[argv.index("--append-system-prompt") + 1]
+        else:
+            agents = json.loads(argv[argv.index("--agents") + 1])
+            verifier_prompt = agents["lane-v-verifier"]["prompt"]
+        assert "BASE-TRUSTED-AGENT" in verifier_prompt
+        assert "HEAD-UNTRUSTED-AGENT" not in verifier_prompt
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=None,
+            ),
+            "",
+        )
+
+    result = bridge.review(request, runner=fake_runner)
+
+    assert result.status == "pass"
+
+
+def test_review_rejects_explicit_base_that_does_not_precede_head(
+    tmp_path: Path,
+) -> None:
+    request = _committed_request(tmp_path)
+    request = replace(request, reviewed_base=request.reviewed_head)
+
+    def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("provider must not run with a non-preceding prompt base")
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.review(request, runner=forbidden_runner)
+
+    assert excinfo.value.reason == "invalid_scope"
+
+
 @pytest.mark.parametrize("field", ["reviewed_head", "reviewed_base"])
 def test_review_proves_revisions_exist_before_provider_call(
     tmp_path: Path, field: str
@@ -640,6 +825,315 @@ def test_review_proves_revisions_exist_before_provider_call(
         bridge.review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == "invalid_scope"
+
+
+def test_missing_authorization_still_requires_existing_reviewed_commits(
+    tmp_path: Path,
+) -> None:
+    request = replace(
+        _committed_request(tmp_path),
+        authorization_source="",
+        reviewed_head="f" * 40,
+    )
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.review(request)
+
+    assert excinfo.value.reason == "invalid_scope"
+
+
+def test_missing_authorization_still_requires_pipeline_identity(
+    tmp_path: Path,
+) -> None:
+    request = replace(_committed_request(tmp_path), authorization_source="")
+    (tmp_path / "AGENTS.md").unlink()
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.review(request)
+
+    assert excinfo.value.reason == "not_pipeline_repo"
+
+
+def _run_sandbox_probe(
+    request: bridge.ReviewRequest,
+    *,
+    expect_success: bool,
+) -> subprocess.CompletedProcess[str]:
+    observed: list[subprocess.CompletedProcess[str]] = []
+
+    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        verification_argv = _verification_command_from_provider_argv(argv)
+        _assert_broker_client_command(verification_argv)
+        completed = subprocess.run(
+            verification_argv,
+            cwd=str(kwargs["cwd"]),
+            env=kwargs["env"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        observed.append(completed)
+        if expect_success:
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+        else:
+            assert completed.returncode != 0
+            assert "Operation not permitted" in completed.stdout + completed.stderr
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            "",
+        )
+
+    result = bridge.review(request, runner=fake_runner)
+    assert result.status == "pass"
+    assert len(observed) == 1
+    return observed[0]
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
+    reason="macOS V1 requires the local sandbox-exec facility",
+)
+def test_nested_sandbox_runs_admitted_safe_verification(tmp_path: Path) -> None:
+    request = _sandbox_probe_request(
+        tmp_path,
+        "def test_safe_verifier(tmp_path):\n"
+        "    artifact = tmp_path / 'proof.txt'\n"
+        "    artifact.write_text('safe', encoding='utf-8')\n"
+        "    assert artifact.read_text(encoding='utf-8') == 'safe'\n",
+    )
+
+    completed = _run_sandbox_probe(request, expect_success=True)
+
+    assert "1 passed" in completed.stdout
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
+    reason="macOS V1 requires the local sandbox-exec facility",
+)
+@pytest.mark.parametrize(
+    "test_source",
+    [
+        pytest.param(
+            "from pathlib import Path\n"
+            "def test_source_write_is_denied():\n"
+            "    Path(%r).write_text('escaped', encoding='utf-8')\n"
+            % str(Path("SOURCE_TARGET")),
+            id="source-write",
+        ),
+        pytest.param(
+            "import os\n"
+            "def test_snapshot_chmod_is_denied():\n"
+            "    os.chmod('scripts/route_lineage.py', 0o777)\n",
+            id="snapshot-chmod",
+        ),
+            pytest.param(
+                "import socket\n"
+                "def test_socket_connect_is_denied():\n"
+                "    socket.create_connection(('127.0.0.1', 9), timeout=0.1)\n",
+                id="socket",
+            ),
+        pytest.param(
+            "from pathlib import Path\n"
+            "def test_source_read_is_denied():\n"
+            "    Path(%r).read_text(encoding='utf-8')\n"
+            % str(Path("SOURCE_READ_TARGET")),
+            id="source-read",
+        ),
+        pytest.param(
+            "from pathlib import Path\n"
+            "def test_sensitive_read_is_denied():\n"
+            "    Path(%r).read_text(encoding='utf-8')\n"
+            % str(Path.home() / ".claude" / "settings.json"),
+            id="sensitive-read",
+        ),
+        pytest.param(
+            "import subprocess\n"
+            "def test_claude_launch_is_denied():\n"
+            "    subprocess.run([%r, '--version'], check=True)\n"
+            % str(Path(shutil.which("claude") or "/missing-claude").resolve()),
+            id="claude-launch",
+        ),
+    ],
+)
+def test_nested_sandbox_denies_adversarial_verifier_actions(
+    tmp_path: Path,
+    test_source: str,
+) -> None:
+    source_target = tmp_path / "scripts" / "route_lineage.py"
+    source_read_target = tmp_path / "AGENTS.md"
+    test_source = test_source.replace("SOURCE_TARGET", str(source_target)).replace(
+        "SOURCE_READ_TARGET", str(source_read_target)
+    )
+    request = _sandbox_probe_request(tmp_path, test_source)
+    before = source_target.read_text(encoding="utf-8")
+
+    _run_sandbox_probe(request, expect_success=False)
+
+    assert source_target.read_text(encoding="utf-8") == before
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
+    reason="macOS V1 requires the local sandbox-exec facility",
+)
+@pytest.mark.parametrize("attack", ["replay", "forged-token"])
+def test_verification_broker_rejects_replay_and_forged_tokens(
+    tmp_path: Path,
+    attack: str,
+) -> None:
+    request = _sandbox_probe_request(
+        tmp_path,
+        "def test_safe_verifier():\n    assert True\n",
+    )
+
+    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        verification_argv = _verification_command_from_provider_argv(argv)
+        _assert_broker_client_command(verification_argv)
+        first = subprocess.run(
+            verification_argv,
+            cwd=str(kwargs["cwd"]),
+            env=kwargs["env"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert first.returncode == 0, first.stdout + first.stderr
+        attacked_argv = list(verification_argv)
+        if attack == "forged-token":
+            attacked_argv[-1] = "0" * 64
+        rejected = subprocess.run(
+            attacked_argv,
+            cwd=str(kwargs["cwd"]),
+            env=kwargs["env"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert rejected.returncode != 0
+        assert "rejected" in (rejected.stdout + rejected.stderr).lower()
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            "",
+        )
+
+    result = bridge.review(request, runner=fake_runner)
+
+    assert result.status == "pass"
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
+    reason="macOS V1 requires the local sandbox-exec facility",
+)
+@pytest.mark.parametrize(
+    ("test_source", "timeout_seconds", "diagnostic"),
+    [
+        (
+            "def test_output_is_bounded():\n"
+            "    print('x' * 1000000)\n"
+            "    assert False\n",
+            10,
+            "output limit",
+        ),
+        (
+            "import time\ndef test_timeout_is_bounded():\n    time.sleep(5)\n",
+            1,
+            "timed out",
+        ),
+    ],
+    ids=["output", "timeout"],
+)
+def test_verification_broker_bounds_output_and_runtime(
+    tmp_path: Path,
+    test_source: str,
+    timeout_seconds: int,
+    diagnostic: str,
+) -> None:
+    request = replace(
+        _sandbox_probe_request(tmp_path, test_source),
+        timeout_seconds=timeout_seconds,
+    )
+
+    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        verification_argv = _verification_command_from_provider_argv(argv)
+        _assert_broker_client_command(verification_argv)
+        completed = subprocess.run(
+            verification_argv,
+            cwd=str(kwargs["cwd"]),
+            env=kwargs["env"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds + 5,
+        )
+        output = completed.stdout + completed.stderr
+        assert completed.returncode != 0
+        assert diagnostic in output.lower()
+        assert len(output) < 300000
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            "",
+        )
+
+    result = bridge.review(request, runner=fake_runner)
+
+    assert result.status == "pass"
+
+
+def test_review_normalizes_missing_sandbox_without_provider_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        bridge,
+        "SANDBOX_EXECUTABLE",
+        tmp_path / "missing-sandbox-exec",
+        raising=False,
+    )
+
+    def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("provider must not run without the required sandbox")
+
+    result = bridge.review(_committed_request(tmp_path), runner=forbidden_runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "sandbox_unavailable"
+
+
+def test_review_normalizes_sandbox_profile_failure_without_provider_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        bridge,
+        "_probe_sandbox_profiles",
+        lambda *args, **kwargs: False,
+        raising=False,
+    )
+
+    def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("provider must not run after sandbox profile failure")
+
+    result = bridge.review(_committed_request(tmp_path), runner=forbidden_runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "sandbox_unavailable"
 
 
 def test_review_invokes_claude_once_and_uses_init_model(
@@ -735,10 +1229,12 @@ def test_review_rejects_non_opus_effective_model(tmp_path: Path) -> None:
 
 def test_review_normalizes_timeout_without_retry(tmp_path: Path) -> None:
     calls = 0
+    sandbox_roots: list[Path] = []
 
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         nonlocal calls
         calls += 1
+        sandbox_roots.append(Path(argv[2]).parent.parent)
         raise subprocess.TimeoutExpired(argv, 900)
 
     result = bridge.review(_request(tmp_path), runner=fake_runner)
@@ -746,6 +1242,11 @@ def test_review_normalizes_timeout_without_retry(tmp_path: Path) -> None:
     assert calls == 1
     assert result.status == "unavailable"
     assert result.unavailable_reason == "timeout"
+    assert sandbox_roots and not sandbox_roots[0].exists()
+    assert not any(
+        thread.name == "opus-verification-broker" and thread.is_alive()
+        for thread in threading.enumerate()
+    )
 
 
 def test_review_normalizes_missing_claude_binary(tmp_path: Path) -> None:
@@ -1113,6 +1614,8 @@ def test_reconcile_cli_allows_evidence_backed_disproof(
     rc = bridge.main(
         [
             "reconcile",
+            "--repo-root",
+            str(ROOT),
             "--codex-verdict",
             "GO",
             "--head",
@@ -1149,6 +1652,8 @@ def test_reconcile_cli_rejects_missing_disproof_evidence(
     rc = bridge.main(
         [
             "reconcile",
+            "--repo-root",
+            str(ROOT),
             "--codex-verdict",
             "GO",
             "--head",

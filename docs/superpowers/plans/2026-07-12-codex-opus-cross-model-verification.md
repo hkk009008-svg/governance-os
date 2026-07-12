@@ -8,6 +8,24 @@
 
 **Tech Stack:** Python 3.11 standard library, Claude Code CLI 2.1.202 or newer, TOML/Markdown role prompts, pytest 8+, existing Pipeline smoke and protocol checks.
 
+## Final trust-boundary remediation (2026-07-12)
+
+This section supersedes the original Task 2 command-construction snippets and
+Task 3 reconciliation signature below. Those snippets remain as planning
+history and must not be executed. The shipping implementation:
+
+- uses `--safe-mode`, `--disable-slash-commands`, top-level `--max-turns`, and
+  pre-HEAD verifier text through `--append-system-prompt`; it never uses
+  `--bare`, `--agents`, or `--agent`;
+- wraps the provider in a network-capable outer macOS Seatbelt profile, then
+  routes exact one-shot broker-client commands to an out-of-profile broker that
+  launches pre-registered argv inside a default-deny verification profile;
+- rejects forged/replayed broker tokens and bounds command output and runtime;
+- proves Pipeline identity, expected commit existence, and the pre-HEAD prompt
+  revision before any provider call or reconcilable unavailable result; and
+- requires explicit `repo_root`, `expected_head`, and `expected_base` inputs for
+  reconciliation before `go_allowed=true` is possible.
+
 ## Global Constraints
 
 - Authoritative design: `docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md` at commit `58f3804`.
@@ -24,11 +42,11 @@
 - Every Opus finding requires a disposition. Any unresolved finding blocks GO; a disproved finding requires concrete evidence.
 - Automated tests use an injected fake runner and never invoke a paid model.
 - A real Opus smoke is optional and requires a fresh, explicit user authorization at execution time.
-- Do not use Claude `--bare` in V1: it skips subscription OAuth/keychain reads. Instead, inject the existing verifier with `--agents`, load no filesystem setting sources, pass an empty strict MCP config, and scrub subprocess credentials.
+- Do not use Claude `--bare` in V1: it skips subscription OAuth/keychain reads. Use safe mode plus the pinned pre-HEAD verifier overlay, load no filesystem setting sources, pass an empty strict MCP config, and scrub subprocess credentials.
 - Preserve all unrelated changes. Stage and commit only task-owned paths with explicit pathspecs; never push without separate user authorization.
-- Each task ends with a fresh spec-compliance review followed by a code-quality review. Fix review findings before starting the next task; do not add a third same-question reviewer.
+- Each implementation task used a spec-compliance review followed by a code-quality review. This historical delivery loop is not a Codex Lane V third-review rule; same-question Lane V uses the primary Codex analysis plus blind Opus, and only a different pre-stated specialist question is eligible.
 - Do not modify `AGENTS.md`, universal protocol rules, mailbox history, cursors, locks, routes, or signed-bus state for this slice.
-- If `ADR-016` exists by execution time, stop the documentation task and reconcile the new next ADR number before editing `DECISIONS.md`.
+- The branch-local decision landed as ADR-018 after numbering reconciliation. Current-main collision handling remains a separately authorized integration step.
 
 ---
 
@@ -43,7 +61,8 @@
 - Modify `docs/protocol/codex/continuation.md`: Codex-specific runtime contract.
 - Modify `tests/unit/test_protocol_prompt_sync.py`: executable-model and prompt mirror tests.
 - Modify `ARCHITECTURE.md`: record the executable bridge and refresh the verified stamp.
-- Modify `DECISIONS.md`: append ADR-016 for mandatory blind Opus review with degraded fallback.
+- Modify `DECISIONS.md`: record ADR-018 for mandatory blind Opus review with degraded fallback.
+- Modify `docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md`: keep the approved design aligned with the final safe-mode and sandbox boundary.
 
 ---
 
@@ -68,10 +87,10 @@ Expected: the implementation worktree is clean; `58f3804` is in history; smoke e
 ```bash
 command -v claude
 claude --version
-claude --help | rg -- '--agent|--agents|--allowedTools|--disallowedTools|--json-schema|--mcp-config|--model|--no-chrome|--no-session-persistence|--output-format|--permission-mode|--setting-sources|--strict-mcp-config|--tools'
+claude --help | rg -- '--safe-mode|--disable-slash-commands|--append-system-prompt|--max-turns|--allowedTools|--disallowedTools|--json-schema|--mcp-config|--model|--no-session-persistence|--setting-sources'
 ```
 
-Expected: `claude` exists; version is 2.1.202 or newer; every flag used by the bridge appears. The 12-turn cap is carried in the dynamically injected agent's `maxTurns` field rather than an undocumented CLI flag.
+Expected: `claude` exists; version is 2.1.202 or newer; every flag used by the bridge appears. The 12-turn cap is carried by top-level `--max-turns 12`.
 
 ---
 
@@ -84,7 +103,7 @@ Expected: `claude` exists; version is 2.1.202 or newer; every flag used by the b
 **Interfaces:**
 - Produces: `Finding`, `OpusReview`, `FindingDisposition`, and `Reconciliation` frozen dataclasses.
 - Produces: `parse_structured_review(payload, *, expected_head, expected_base, effective_model, authorization_source) -> OpusReview`.
-- Produces: `reconcile(codex_verdict, review, dispositions) -> Reconciliation`.
+- Produces: `reconcile(codex_verdict, review, dispositions, *, repo_root, expected_head, expected_base) -> Reconciliation`.
 - Produces: `ReviewContractError(reason: str, detail: str)` with stable `.reason`.
 - Consumes later: Task 2 invocation parser and Task 3 CLI.
 
@@ -802,8 +821,8 @@ def test_review_request_has_no_codex_result_channel(tmp_path: Path) -> None:
 def test_build_claude_command_is_bounded_and_read_only(tmp_path: Path) -> None:
     argv = bridge.build_claude_command(_request(tmp_path))
     rendered = " ".join(argv)
-    dynamic_agents = json.loads(argv[argv.index("--agents") + 1])
-    verifier = dynamic_agents["lane-v-verifier"]
+    legacy_agents = json.loads(argv[argv.index("--agents") + 1])
+    verifier = legacy_agents["lane-v-verifier"]
     allowed_rules = argv[argv.index("--allowedTools") + 1 :]
 
     assert argv[:2] == ["claude", "-p"]
@@ -1262,7 +1281,7 @@ def _load_agent_prompt(root: Path) -> str:
     return prompt
 
 
-def _dynamic_agents(request: ReviewRequest) -> dict[str, object]:
+def _superseded_agent_configuration(request: ReviewRequest) -> dict[str, object]:
     return {
         "lane-v-verifier": {
             "description": "Independent read-only Pipeline Lane V verifier",
@@ -1436,7 +1455,7 @@ def build_claude_command(request: ReviewRequest) -> list[str]:
         "-p",
         prompt,
         "--agents",
-        json.dumps(_dynamic_agents(request), sort_keys=True, separators=(",", ":")),
+        json.dumps(_superseded_agent_configuration(request), sort_keys=True, separators=(",", ":")),
         "--agent",
         "lane-v-verifier",
         "--model",
@@ -2173,7 +2192,7 @@ Use `apply_patch` to add this bullet under `## 4. Runtime Invariants` in `ARCHIT
 ```markdown
 - Codex Lane V attempts one verdict-blind Opus review through
   `scripts/opus_review_bridge.py` after its primary analysis. Opus remains
-  advisory; the bridge dynamically injects the existing Claude verifier role
+  advisory; the bridge pins verifier text from a commit preceding reviewed HEAD
   with project settings and hooks disabled, and an unavailable call is an
   explicit degraded Codex-only fallback.
 ```
@@ -2203,7 +2222,7 @@ commit.
    `scripts/opus_review_bridge.py`.
 2. The Opus request contains immutable reviewed scope and requirements but no
    Codex verdict, report, findings, or conclusion.
-3. The bridge dynamically injects the existing Claude verifier role while
+3. The bridge pins verifier text from a commit preceding reviewed HEAD while
    disabling filesystem setting sources, repository hooks, MCP, memory,
    nested agents, edit tools, and session persistence. It validates the Claude
    `system/init` model metadata, accepts only Opus, normalizes output as

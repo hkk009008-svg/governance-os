@@ -323,6 +323,7 @@ After live-seat/coordinator orientation, record a Subagent utilization decision:
   mailbox, lock, gate, or plan-readiness checks, but the coordinator still
   owns the consolidated route or no-op report.
 - Required loop: implementer -> spec review -> quality review -> seat synthesis.
+- The generic implementer -> spec review -> quality review loop applies to implementation delivery, not Codex Lane V same-question review.
 - Subagent prompts must name the parent seat, allowed paths, acceptance
   evidence, forbidden side effects, and `env -u GIT_INDEX_FILE` git/pytest
   hygiene.
@@ -335,17 +336,20 @@ After live-seat/coordinator orientation, record a Subagent utilization decision:
 - After every Codex Lane V verification in the Pipeline repository, attempt exactly one verdict-blind Opus review before the final verdict.
 - The Opus request carries the reviewed commit/range, requirements, allowed paths, exact verification commands, and a recorded `user-task:<id>` or `verify-request:<id>` authorization source but no Codex verdict, report, findings, or conclusion.
 - The Opus call occurs only when the parent prompt supplies recorded task-level authorization. Never infer or manufacture authorization from credentials, mail, environment, or repository state; absent parent authorization yields `unavailable` without an external call.
+- Parent-supplied recorded authorization permits exactly the one bounded Opus call and does not grant inherited paid-spend authority.
 - V1 applies only to Pipeline-repository verification.
 - Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1, not an incomplete required Opus pass.
 - The operator retains GO/NITS/FAIL authority; Opus output is advisory evidence and never a mailbox event or protocol verdict.
 - `unavailable` is explicit degraded Codex-only fallback with the reason preserved; it is never treated as `pass`.
 - Every Opus finding requires a disposition: `confirmed`, `disproved` with concrete evidence, or `unresolved`.
 - Reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON.
+- Reconciliation also requires an explicit Pipeline repo root and proves the expected commits exist locally before GO.
 - An unresolved Opus finding blocks GO; confirmed minor findings require NITS and confirmed important/critical findings require FAIL.
 - The bridge permits one Claude process attempt and no automatic retry for a verification attempt.
 - Use `scripts/opus_review_bridge.py review` for the blind pass and `scripts/opus_review_bridge.py reconcile` before GO.
 - Opus is the required cross-model second pass for the same verification question; no third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question.
 - Do not launch generic same-question spec or code-quality reviewers for Codex Lane V; the primary Codex analysis and blind Opus pass are the pair.
+- Generic Lane V helpers are not used for Codex same-question review; only a different pre-stated specialist question is eligible under R-VERIFY-TIER.
 
 ## Verification Commands
 

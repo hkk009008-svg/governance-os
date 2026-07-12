@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-12 @ 8ad424c*
+*Last verified: 2026-07-12 @ 1327969*
 
 ## 1. Purpose
 
@@ -74,11 +74,17 @@ Key directories:
   authorization or a valid routed executor.
 - Codex Lane V attempts one verdict-blind Opus review through
   `scripts/opus_review_bridge.py` after its primary analysis. Opus remains
-  advisory; the bridge proves the reviewed commits, materializes a read-only
-  temporary snapshot at the reviewed HEAD, loads verifier instructions from
-  the immutable base revision when present, and admits only narrow exact
-  verification commands. Project settings and hooks remain disabled, and an
-  unavailable call is an explicit degraded Codex-only fallback.
+  advisory; the bridge proves Pipeline identity and the reviewed commits,
+  materializes a temporary snapshot at the reviewed HEAD, and loads verifier
+  instructions from a commit that precedes the reviewed HEAD (the explicit
+  base or first parent). Claude runs with `--safe-mode`,
+  `--disable-slash-commands`, and the pinned prompt supplied through
+  `--append-system-prompt`. A network-capable outer OS-enforced sandbox denies
+  source/snapshot and persistent-home writes. Exact verification commands use
+  one-shot broker tokens to enter a second default-deny sandbox outside the
+  inherited outer Seatbelt; that sandbox denies network, source and sensitive
+  reads, non-scratch writes, and unlisted executables. Sandbox failure is an
+  explicit degraded Codex-only fallback and never reaches the provider.
 
 ## 5. Mailbox And Capacity State
 
