@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -91,6 +92,21 @@ CONSUMABLE_STATES = frozenset({"issued", "activated"})
 
 _CAPABILITY_ID_RE = re.compile(r"^cap-[A-Za-z0-9._-]+$")
 
+# The capability binds exactly the git-push side effect (ADR-016), and
+# _command_targets_match models git push's `<repo> <refspec>` argv. "git push" is
+# therefore the ONLY supported command class: a grant naming any other verb would
+# ride the push-specific target model with WRONG semantics (e.g.
+# "git cherry-pick feature main" names two commits, not branch "feature/main"),
+# and an embedded flag ("git push --repo=attacker") is not the literal class.
+# A future non-push side effect adds its class HERE together with its own
+# target-matching semantics (cross-model Codex Lane-V pass-3/4, ADR-019). Enforced
+# at the grant boundary in validate_capability.
+KNOWN_COMMAND_CLASSES = frozenset({"git push"})
+
+# RFC-8785 (JCS) canonicalizes integers only within the JS safe-integer range;
+# |n| > 2**53-1 raises IntegerDomainError at hash time, so reject it at validation.
+_JCS_INT_MAX = 2**53 - 1
+
 
 class CapabilityError(ValueError):
     """A capability object is malformed, unsupported, or fails validation."""
@@ -135,21 +151,41 @@ _CONTROL_CHARS = ("\n", "\r")
 _SHELL_CONTROL_CHARS = frozenset(";&|`$<>()")
 
 
-def _reject_control_chars(obj: Any, path: str = "") -> list[str]:
-    """Recursively reject newline/CR in every string value (all fields, nested)."""
+def _reject_noncanonical(obj: Any, path: str = "") -> list[str]:
+    """Recursively reject values that are structurally valid Python/JSON but that
+    ``canonicalize()`` (RFC-8785) cannot encode — so validation, not the later
+    hash/write, is where they are refused, keeping the validators + consume() TOTAL.
+
+    Three canonicalize-hostile classes (all found by cross-model Codex Lane-V,
+    ADR-019), checked over every nested string/number:
+      - newline/CR in a string (the prose-injection vector);
+      - a non-UTF-8 string (a lone surrogate — valid ``str``, unencodable);
+      - a non-finite float (NaN / +-Inf — ``json.loads`` accepts ``NaN`` by
+        default, so a capability file can carry one; canonicalize raises
+        FloatDomainError on it).
+    ``bool`` is an ``int`` subclass (not ``float``), so it is untouched here.
+    """
     issues: list[str] = []
     if isinstance(obj, str):
         if any(ch in obj for ch in _CONTROL_CHARS):
             issues.append(f"control characters rejected in {path or '<root>'}")
         if not _is_utf8_encodable(obj):
             issues.append(f"non-UTF-8 (lone surrogate) string rejected in {path or '<root>'}")
+    elif isinstance(obj, bool):
+        pass  # bool -> true/false canonicalizes fine (int-currency is checked elsewhere)
+    elif isinstance(obj, int):
+        if abs(obj) > _JCS_INT_MAX:
+            issues.append(f"integer outside canonicalizable range rejected in {path or '<root>'}")
+    elif isinstance(obj, float):
+        if not math.isfinite(obj):
+            issues.append(f"non-finite float (not canonicalizable) rejected in {path or '<root>'}")
     elif isinstance(obj, dict):
         for key in obj:
             child = f"{path}.{key}" if path else str(key)
-            issues.extend(_reject_control_chars(obj[key], child))
+            issues.extend(_reject_noncanonical(obj[key], child))
     elif isinstance(obj, list):
         for index, item in enumerate(obj):
-            issues.extend(_reject_control_chars(item, f"{path}[{index}]"))
+            issues.extend(_reject_noncanonical(item, f"{path}[{index}]"))
     return issues
 
 
@@ -164,7 +200,7 @@ def validate_capability(obj: Any) -> list[str]:
         return [f"unsupported schema: {obj.get('schema')!r} (expected {SCHEMA_ID})"]
 
     issues: list[str] = []
-    issues.extend(_reject_control_chars(obj))
+    issues.extend(_reject_noncanonical(obj))
     unknown = sorted(set(obj) - set(REQUIRED_FIELDS) - set(OPTIONAL_FIELDS))
     if unknown:
         issues.append("unknown authority-bearing fields rejected: " + ", ".join(unknown))
@@ -188,6 +224,17 @@ def validate_capability(obj: Any) -> list[str]:
     for field in TOKEN_FIELDS:
         if not _is_nonempty_str(obj[field]):
             issues.append(f"{field} must be a non-empty string")
+
+    # allowed_command_class must be a SUPPORTED class: the target model in
+    # _command_targets_match is git-push-specific, so a non-push class (or one
+    # embedding a flag, e.g. "git push --repo=attacker") is refused at the grant
+    # boundary rather than riding the push model with wrong semantics.
+    command_class = obj["allowed_command_class"]
+    if isinstance(command_class, str) and command_class not in KNOWN_COMMAND_CLASSES:
+        issues.append(
+            "allowed_command_class must be one of the supported side-effect classes: "
+            + ", ".join(sorted(KNOWN_COMMAND_CLASSES))
+        )
 
     expires = obj["expires_on"]
     if (
@@ -295,7 +342,7 @@ def validate_receipt(obj: Any) -> list[str]:
         return [f"unsupported schema: {obj.get('schema')!r} (expected {RECEIPT_SCHEMA_ID})"]
 
     issues: list[str] = []
-    issues.extend(_reject_control_chars(obj))
+    issues.extend(_reject_noncanonical(obj))
     allowed = set(RECEIPT_REQUIRED_FIELDS) | set(RECEIPT_EVIDENCE_FIELDS)
     unknown = sorted(set(obj) - allowed)
     if unknown:
@@ -443,72 +490,55 @@ def _validate_evidence(evidence: Any) -> list[str]:
     return issues
 
 
-# The ONLY whitespace a POSIX shell splits arguments on. Newline/CR are already
-# rejected upstream by the receipt control-char guard; every other Unicode
-# "whitespace" (NBSP U+00A0, line/para separators U+2028/U+2029, em space
-# U+2003, …) is NOT an argument separator to a shell, so a command carrying one
-# is rejected rather than silently re-tokenized (the parsing differential below).
-_ASCII_ARG_WS = {" ", "\t"}
-
-
-def _ref_components(ref: str) -> list[str] | None:
-    """Components of a ref-ish string, split on ASCII space and '/'.
-
-    Returns ``None`` if ANY component is empty — a leading, trailing, or doubled
-    separator (e.g. ``/origin/main``, ``origin//main``, ``origin/main/``). Such a
-    string does NOT denote a clean remote-plus-ref path: git reads
-    ``/origin/main`` as a LOCAL repository path with a default refspec, not remote
-    ``origin`` ref ``main``. Callers treat ``None`` as no-match (fail-closed).
-    """
-    parts = re.split(r"[ /]", ref)
-    if any(part == "" for part in parts):
-        return None
-    return parts
+# Argument separators in a POSIX shell command line are ASCII space and tab
+# ONLY. Every other Unicode "whitespace" (NBSP U+00A0, line/para separators
+# U+2028/U+2029, em space U+2003, …) is a NORMAL character to a shell: it stays
+# glued to its argument token and does NOT split argv. Tokenizing on this class
+# (not Python's str.split(), which splits them all) is what makes the target
+# check semantically equivalent to git's own argv parsing.
+_ASCII_ARG_WS_RE = re.compile(r"[ \t]+")
 
 
 def _command_targets_match(command: str, allowed_command_class: str, target: str) -> bool:
-    """True iff the command, after its command-class prefix, references EXACTLY
-    the capability's target and nothing else — no options, no exotic whitespace.
+    """True iff the command's git argument vector, after the verified command-class
+    prefix, is EXACTLY ``<repo> <refspec>`` for the capability's ``target``.
 
-    Fail-closed hardening (closes the adversarial battery, ADR-019):
+    git parses ``git push [<repository> [<refspec>...]]``: the repository is ONE
+    argv token and each refspec is ONE token. The capability's ``target`` is
+    ``"<repo>/<refspec>"`` where the refspec may itself contain ``/`` (a branch
+    like ``feature/main``). So the ONLY command that acts on exactly the target
+    is ``<class> <repo> <refspec>`` — two whitespace-separated tokens, the
+    refspec kept whole.
 
-      (1) Reject any whitespace that is not a plain ASCII space or tab. Python's
-          ``str.split()`` splits NBSP / line-separator / em-space that a POSIX
-          shell does NOT — so the rule would see ``[origin, main]`` and match
-          while git sees one bogus argument. Rejecting the whole non-ASCII-WS
-          class closes that parsing differential.
-      (2) Reject flags entirely. A capability authorizes exactly its command
-          class acting on its target — no options. Some flags are
-          attacker-controllable (``--receive-pack`` / ``--exec`` run a program on
-          the REMOTE, ``--repo`` overrides the remote) and ``--force`` violates
-          the token's non_goals ("no force-push"). A future increment may add a
-          per-class safe-flag allowlist.
-      (3) The non-flag argument components (split on ASCII space and '/') must
-          EQUAL the target's components in order, with NO empty component. An
-          empty target, extra refs, a different ref, no target, or a stray
-          leading/trailing/double slash all return False. Rejecting empty
-          components (rather than discarding them) closes the '/'-flattening
-          differential: ``git push /origin/main`` — which git reads as a LOCAL
-          repo path, not remote+ref — must NOT match target ``origin/main``.
+    Fail-closed hardening (ADR-019; closes the cross-model Codex Lane-V battery):
+
+      (1) Tokenize on ASCII space/tab ONLY — the whitespace a shell splits argv
+          on. Any other Unicode "whitespace" (NBSP, line/para separator, em
+          space) is a normal character, so it stays inside its token and makes
+          the token not match, rather than being silently split or stripped. The
+          caller must NOT have str.strip()-ed the command with the default
+          (all-whitespace) strip, or a trailing NBSP would vanish before this.
+      (2) Reject flags entirely. A capability authorizes its class acting on its
+          target — no options. Some are attacker-controllable
+          (``--receive-pack`` / ``--exec`` run a program on the REMOTE, ``--repo``
+          overrides it) and ``--force`` violates the token non_goals.
+      (3) The token vector must EQUAL ``[repo, refspec]`` exactly. A missing/empty
+          target, extra tokens, a different ref, the slash form
+          (``git push origin/main`` is a single ``<repository>`` token to git,
+          not remote+ref), and a split refspec (``git push origin feature main``
+          is two refspecs, not branch ``feature/main``) all return False.
     """
     rest = command[len(allowed_command_class):]  # class prefix already verified by the command-class check
-    # (1) exotic-whitespace differential: only ASCII space/tab are shell arg separators.
-    if any(ch.isspace() and ch not in _ASCII_ARG_WS for ch in rest):
-        return False
-    tokens = rest.split()
+    # (1) ASCII-only tokenization: non-ASCII "whitespace" stays inside its token.
+    tokens = [tok for tok in _ASCII_ARG_WS_RE.split(rest) if tok]
     # (2) no flags — a capability authorizes exactly its class acting on its target.
     if any(tok.startswith("-") for tok in tokens):
         return False
-    # (3) the non-flag argument components must EQUAL the target's, in order, with
-    # no empty component (a stray leading/trailing/double slash yields None).
-    cmd_components = _ref_components(" ".join(tokens))
-    target_components = _ref_components(target)
-    return (
-        cmd_components is not None
-        and target_components is not None
-        and bool(target_components)
-        and cmd_components == target_components
-    )
+    # (3) target -> exactly (repo, refspec); the refspec keeps any internal '/'.
+    repo, sep, refspec = target.partition("/")
+    if not sep or not repo or not refspec:
+        return False
+    return tokens == [repo, refspec]
 
 
 def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) -> ConsumeResult:
@@ -619,7 +649,11 @@ def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) 
     # prefix-extension — so a grant for one command cannot be spent recording a
     # different command that ran. Fail-closed BEFORE any write.
     allowed = capability["allowed_command_class"].strip()
-    cmd = str(evidence.get("command", "")).strip()
+    # Strip ONLY ASCII space/tab, not the default all-whitespace strip: a bare
+    # .strip() removes a trailing/leading NBSP (U+00A0.isspace() is True), so
+    # `git push origin main ` would lose its NBSP before _command_targets_match
+    # could reject the token differential (cross-model Codex Lane-V CHECK-1).
+    cmd = str(evidence.get("command", "")).strip(" \t")
     # A capability authorizes exactly ONE simple command — never a shell
     # composition. Reject any shell control/chaining/substitution/redirection
     # metacharacter BEFORE the prefix match, so a matching prefix

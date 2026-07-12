@@ -94,6 +94,14 @@ _WEAK_TRIGGER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# next_trigger is rendered as a STANDALONE line (render_markdown), so a value that
+# begins a Markdown block would inject document structure into the human
+# projection. An ordered-list marker ("1." / "2)") is the one block form that
+# starts with an alphanumeric, so it is matched explicitly; every other block
+# marker (#, >, -, *, +, |, backtick, ~, <, _, =, leading space→indented/heading)
+# starts with a non-alphanumeric character and is caught by the isalnum() gate.
+_ORDERED_LIST_RE = re.compile(r"^\d+[.)]")
+
 
 class RouteManifestError(ValueError):
     """A route pair (.md + .route.json) is absent, mismatched, or invalid."""
@@ -247,6 +255,20 @@ def validate_route_object(obj: Any) -> list[str]:
     trigger = obj["next_trigger"]
     if not _is_nonempty_str(trigger) or _WEAK_TRIGGER_RE.fullmatch(trigger.strip()):
         issues.append("next_trigger must be a non-empty, non-weak trigger")
+    elif (
+        not trigger[:1].isalnum()
+        or _ORDERED_LIST_RE.match(trigger)
+        or HASH_LINE_RE.search(trigger)
+    ):
+        # next_trigger is rendered on its OWN line, so a leading Markdown block
+        # marker would inject document structure (a heading/list/quote/fence/hr/
+        # table/html/ordered-list) and a route_hash: value would forge a second
+        # hash pin. Require it to begin with an alphanumeric character and carry no
+        # route_hash pin — closing the whole structural-smuggling class, not just \n.
+        issues.append(
+            "next_trigger must begin with an alphanumeric character and carry no "
+            "route_hash pin (it is rendered as a standalone Markdown line)"
+        )
     if "extensions" in obj and not isinstance(obj["extensions"], dict):
         issues.append("extensions must be an object")
     return issues

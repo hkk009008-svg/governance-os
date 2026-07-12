@@ -57,7 +57,7 @@
 - Modify `tests/unit/test_check_arch_freshness.py` only if an existing assertion needs the new verified stamp shape; do not weaken freshness checks.
 - Modify `docs/protocol/claude/independence-first.md`: retain canonical ownership, align the weaker same-model design-review wording, and remove only the completed AGENTS-sync follow-up.
 - Modify `ARCHITECTURE.md`: record the executable rule, v2 contract, standing policy, validation order, and one-call boundary with a fresh verified stamp.
-- Modify `DECISIONS.md`: append ADR-022; never edit ADR-019, ADR-020, or ADR-021 history.
+- Modify `DECISIONS.md`: append ADR-023; never edit ADR-019, ADR-020, ADR-021, or ADR-022 history.
 
 ## Design-Time Independent Enumeration Artifact
 
@@ -82,7 +82,7 @@ This is a **same-model independent review**, explicitly weaker than a cross-mode
 11. Readiness may classify and route R-INDEPENDENCE work but must not perform seat-authority actions.
 12. Director, coordinator, operator, Lane V, and money-gate prompts must apply role-specific actions without weakening the shared trigger and two review points.
 13. The general paid-spend gate remains intact; only the named post-Lane-V policy is a standing explicit consent exception.
-14. Historical ADR-019/020 and old v1 design/plan documents remain unchanged; ADR-022 records the new decision and v2 transition.
+14. Historical ADR-019/020/021/022 and old v1 design/plan documents remain unchanged; ADR-023 records the new decision and v2 transition.
 
 ---
 
@@ -1040,7 +1040,7 @@ env -u GIT_INDEX_FILE git commit -m "feat(verify): authorize one standing Lane-V
 
 ---
 
-### Task 4: Record ADR-022 And Synchronize Governance Truth
+### Task 4: Record ADR-023 And Synchronize Governance Truth
 
 **Files:**
 - Modify: `tests/unit/test_protocol_prompt_sync.py`
@@ -1051,15 +1051,15 @@ env -u GIT_INDEX_FILE git commit -m "feat(verify): authorize one standing Lane-V
 
 **Interfaces:**
 - Consumes: Task 1 `render_r_independence()` and Task 3 standing-policy/v2 behavior.
-- Produces: append-only ADR-022 and current architecture truth.
-- Preserves: historical ADR-019/020/021 text and historical v1 design/plan files.
+- Produces: append-only ADR-023 and current architecture truth.
+- Preserves: historical ADR-019/020/021/022 text and historical v1 design/plan files.
 
 - [ ] **Step 1: Write failing governance-truth tests**
 
 Extend `test_cross_model_opus_bridge_is_mapped_in_architecture_and_decisions()`:
 
 ```python
-    assert "## ADR-022: Make Codex R-INDEPENDENCE operative and authorize one standing Lane-V Opus attempt" in decisions
+    assert "## ADR-023: Make Codex R-INDEPENDENCE operative and authorize one standing Lane-V Opus attempt" in decisions
     assert "standing-policy:codex-lane-v-opus-v1" in architecture
     assert "opus-review/v2" in architecture
     assert "R-INDEPENDENCE" in architecture
@@ -1090,7 +1090,7 @@ env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest \
   tests/unit/test_protocol_doc_integrity.py::test_independence_first_doc_no_longer_lists_agents_sync_as_unfinished -q
 ```
 
-Expected: FAIL because ADR-022 and the current architecture/canonical-doc updates do not exist.
+Expected: FAIL because ADR-023 and the current architecture/canonical-doc updates do not exist.
 
 - [ ] **Step 3: Align the canonical independence document without duplicating it**
 
@@ -1110,12 +1110,12 @@ Remove only this completed follow-up:
 
 Retain the `check_go_schema.py` and dispatch-template follow-ups.
 
-- [ ] **Step 4: Append ADR-022 exactly once**
+- [ ] **Step 4: Append ADR-023 exactly once**
 
-Append this decision after ADR-021 in `DECISIONS.md`:
+Append this decision after ADR-022 in `DECISIONS.md`:
 
 ```markdown
-## ADR-022: Make Codex R-INDEPENDENCE operative and authorize one standing Lane-V Opus attempt
+## ADR-023: Make Codex R-INDEPENDENCE operative and authorize one standing Lane-V Opus attempt
 
 **Status:** Accepted (user-approved design, 2026-07-12)
 
@@ -1187,7 +1187,7 @@ env -u GIT_INDEX_FILE git diff --check -- \
 env -u GIT_INDEX_FILE git diff -- DECISIONS.md
 ```
 
-Expected: ADR-022 is appended after ADR-021; ADR-019/020/021 have no removed or changed lines.
+Expected: ADR-023 is appended after ADR-022; ADR-019/020/021/022 have no removed or changed lines.
 
 Commit:
 

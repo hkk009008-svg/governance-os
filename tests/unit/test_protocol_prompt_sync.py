@@ -730,7 +730,7 @@ def test_cross_model_opus_bridge_is_mapped_in_architecture_and_decisions():
     assert "precedes the reviewed HEAD" in architecture
     assert "dynamically injects" not in decisions
     assert (
-        "## ADR-022: Make Codex R-INDEPENDENCE operative and authorize one standing Lane-V Opus attempt"
+        "## ADR-023: Make Codex R-INDEPENDENCE operative and authorize one standing Lane-V Opus attempt"
         in decisions
     )
     assert "standing-policy:codex-lane-v-opus-v1" in architecture

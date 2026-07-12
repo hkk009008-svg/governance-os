@@ -77,9 +77,15 @@ def test_target_match_slash_or_space_accepted(tmp_path):
     assert res.ok and res.reason == "consumed"
 
 
-def test_target_match_slash_form_accepted(tmp_path):
+def test_target_slash_form_refused(tmp_path):
+    # git parses `git push origin/main` as a SINGLE <repository> argument (it
+    # looks for a remote/URL named "origin/main" and errors) — NOT remote origin
+    # ref main. So the slash form does NOT act on the authorized target and must
+    # be refused; only the space form `git push origin main` does (cross-model
+    # Codex Lane-V CHECK-1, ADR-019).
     res = route_capability.consume(_cap(), _evidence(command="git push origin/main"), store_dir=tmp_path)
-    assert res.ok and res.reason == "consumed"
+    assert not res.ok and "target_mismatch" in res.reason
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_target_match_no_flags_plain_command_accepted(tmp_path):
@@ -164,8 +170,7 @@ def test_flag_and_unicode_target_bypasses_all_refused(tmp_path, command):
 
 
 _LEGIT_COMMANDS_MUST_CONSUME = [
-    "git push origin main",   # space-separated target
-    "git push origin/main",   # slash form of the same target
+    "git push origin main",   # space-separated target (the ONLY git-correct form)
 ]
 
 
@@ -375,15 +380,20 @@ def test_target_slash_differential_refused(tmp_path, command):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_command_targets_match_rejects_empty_components():
-    # Unit-level: the matcher itself must reject any empty ref component while
-    # still accepting the two legitimate spellings of the exact target.
+def test_command_targets_match_is_git_argv_exact():
+    # Unit-level: the matcher models git's `<repo> <refspec>` argv. The ONLY
+    # match for target "origin/main" is the two-token space form; the slash form
+    # (a single <repository> token to git) and any stray-slash form are refused.
     m = route_capability._command_targets_match
     assert m("git push origin main", "git push", "origin/main") is True
-    assert m("git push origin/main", "git push", "origin/main") is True
+    assert m("git push origin/main", "git push", "origin/main") is False   # single repo token, not remote+ref
     assert m("git push /origin/main", "git push", "origin/main") is False
     assert m("git push origin//main", "git push", "origin/main") is False
     assert m("git push origin/main/", "git push", "origin/main") is False
+    # a refspec that legitimately contains '/' is ONE token: repo=origin,
+    # refspec=feature/main -> only `git push origin feature/main` matches.
+    assert m("git push origin feature/main", "git push", "origin/feature/main") is True
+    assert m("git push origin feature main", "git push", "origin/feature/main") is False  # two refspecs
 
 
 # F2: surrogate totality — consume TOTAL over non-UTF-8-encodable strings.
@@ -460,3 +470,160 @@ def test_schema_logs_ref_pattern_rejects_traversal(logs_ref):
 def test_schema_logs_ref_pattern_accepts_clean():
     import re as _re
     assert _re.fullmatch(_schema_logs_ref_pattern(), "logs/real/artifact.json") is not None
+
+
+# --- Slice-7c: cross-model re-verify CHECK-1 — git-argv tokenization, ADR-019 -
+#
+# A SECOND Codex Lane-V pass (on the slice-7b fix) still FAILed CHECK-1: the
+# matcher's tokenization was not semantically equivalent to git's argv parsing.
+# Reproduced on the pre-fix code:
+#   (a) consume() did cmd.strip(); Python str.strip() removes a TRAILING NBSP
+#       (U+00A0 .isspace() is True), so "git push origin main " was accepted
+#       before the exotic-whitespace guard could see it.
+#   (b) the slash form and multi-refspec forms were accepted though git parses
+#       them differently (see test_command_targets_match_is_git_argv_exact).
+# Fix: strip only ASCII space/tab in consume; tokenize on ASCII whitespace ONLY
+# and require the token vector to EQUAL [repo, refspec] (target split on first
+# '/', refspec kept whole). This is the class fix — model git argv, not a
+# per-character denylist.
+
+
+_GIT_ARGV_MUST_REFUSE = [
+    "git push origin main ",   # TRAILING NBSP — was stripped before matching
+    " git push origin main",   # LEADING NBSP
+    "git push origin main\t ", # trailing em-space after a tab
+    "git push origin/main",         # slash form: one <repository> token to git
+    "git push origin main",    # interior NBSP (already refused; regression-lock)
+]
+
+
+@pytest.mark.parametrize("command", _GIT_ARGV_MUST_REFUSE)
+def test_git_argv_tokenization_refuses(tmp_path, command):
+    res = route_capability.consume(_cap(), _evidence(command=command), store_dir=tmp_path)
+    assert not res.ok, f"git-argv BYPASS: {command!r} accepted"
+    # Refused fail-closed before any write. A leading exotic-ws char fails the
+    # command-CLASS prefix check; a trailing/interior one fails the TARGET check
+    # — both are valid refusals, and neither writes a receipt.
+    assert ("target_mismatch" in res.reason or "command_class_mismatch" in res.reason), (command, res.reason)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_multi_refspec_refused_for_slash_target(tmp_path):
+    # target origin/feature/main = repo origin, refspec feature/main (ONE branch).
+    # `git push origin feature main` is TWO refspecs -> git-wrong -> refuse.
+    cap = _cap(target="origin/feature/main")
+    res = route_capability.consume(cap, _evidence(command="git push origin feature main"), store_dir=tmp_path)
+    assert not res.ok and "target_mismatch" in res.reason
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_branch_with_slash_refspec_accepted(tmp_path):
+    # The git-correct spelling for that target consumes: repo + one refspec token.
+    cap = _cap(target="origin/feature/main")
+    res = route_capability.consume(cap, _evidence(command="git push origin feature/main"), store_dir=tmp_path)
+    assert res.ok and res.reason == "consumed"
+
+
+def test_double_space_still_consumes(tmp_path):
+    # ASCII whitespace runs collapse (git/shell do too) — a legit command with a
+    # double space still consumes; only NON-ASCII whitespace is rejected.
+    res = route_capability.consume(_cap(), _evidence(command="git push  origin main"), store_dir=tmp_path)
+    assert res.ok and res.reason == "consumed"
+
+
+# --- Slice-7d: cross-model pass-3 FAIL — finish the two classes, ADR-019 ------
+#
+# A THIRD Codex Lane-V pass (on 0eb4052) still FAILed CHECK-1, but on NEW forms —
+# each finishing a class the earlier fixes left half-closed:
+#   G1 flag smuggled via the COMMAND CLASS: allowed_command_class was only
+#      validated non-empty, so a grant "git push --repo=attacker" put the flag
+#      in the prefix _command_targets_match strips before flag-checking. The
+#      flag-confinement was on the command, not the class definition. Fix at the
+#      grant boundary: validate_capability rejects a class with flags/metachars.
+#   G2 NaN/Inf totality: canonicalize() (RFC-8785) rejects non-finite floats
+#      exactly as it rejects lone surrogates. extensions={"x": NaN} passed
+#      validation and raised FloatDomainError at hash time (json.loads accepts
+#      NaN -> CLI-reachable). The surrogate fix closed non-UTF-8 STRINGS; this
+#      closes the other half of the same class (non-canonicalizable VALUES).
+
+
+_FLAGGED_COMMAND_CLASSES = [
+    "git push --repo=attacker",   # smuggles --repo via the class prefix
+    "git push --receive-pack=x",
+    "git push -f",
+    "git push;git tag",           # shell metachar in the class
+    "git push | tee",
+    "git push origin/main",       # a '/' in the class is not a command word
+]
+
+
+@pytest.mark.parametrize("cclass", _FLAGGED_COMMAND_CLASSES)
+def test_command_class_with_flag_or_metachar_rejected(tmp_path, cclass):
+    cap = _cap(allowed_command_class=cclass)
+    issues = route_capability.validate_capability(cap)
+    assert any("allowed_command_class" in i for i in issues), (cclass, issues)
+    # and consume refuses it (invalid capability), nothing written.
+    ev = _evidence(command=cclass + " origin main")
+    res = route_capability.consume(cap, ev, store_dir=tmp_path)
+    assert not res.ok and list(tmp_path.iterdir()) == []
+
+
+def test_only_supported_command_class_accepted():
+    # "git push" is the ONLY class the capability system issues; its target model
+    # (_command_targets_match) is git-push-specific. Only the supported class(es)
+    # validate.
+    assert route_capability.validate_capability(_cap(allowed_command_class="git push")) == []
+
+
+@pytest.mark.parametrize("cclass", ["git tag", "git cherry-pick", "npm publish", "git commit"])
+def test_unsupported_command_class_rejected(tmp_path, cclass):
+    # A non-push class would ride the push-specific <repo>/<refspec> target model
+    # with WRONG semantics (e.g. `git cherry-pick feature main` names two commits,
+    # not branch feature/main) — refuse at the grant boundary (cross-model pass-4).
+    cap = _cap(allowed_command_class=cclass)
+    issues = route_capability.validate_capability(cap)
+    assert any("allowed_command_class" in i for i in issues), (cclass, issues)
+    ev = _evidence(command=cclass + " feature main")
+    res = route_capability.consume(_cap(allowed_command_class=cclass, target="feature/main"),
+                                   ev, store_dir=tmp_path)
+    assert not res.ok and list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_float_in_capability_rejected(bad):
+    issues = route_capability.validate_capability(_cap(extensions={"x": bad}))
+    assert any("finite" in i or "canonical" in i for i in issues), (bad, issues)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_consume_total_over_nonfinite_float_extension(tmp_path, bad):
+    # A non-finite float anywhere in the capability must yield a typed refusal,
+    # never an uncaught FloatDomainError at canonicalize/hash time.
+    cap = _cap(extensions={"nested": {"x": bad}})
+    res = route_capability.consume(cap, _evidence(), store_dir=tmp_path)
+    assert isinstance(res, route_capability.ConsumeResult) and not res.ok
+    assert list(tmp_path.iterdir()) == []
+
+
+# F2 continuation: out-of-range INTEGERS are the other canonicalize-hostile
+# number class (RFC-8785 rejects |n| > 2**53-1, the JS safe-integer bound).
+
+@pytest.mark.parametrize("big", [2**53, -(2**53), 2**63, 10**30])
+def test_out_of_range_int_in_capability_rejected(big):
+    issues = route_capability.validate_capability(_cap(extensions={"x": big}))
+    assert any("integer" in i or "canonical" in i for i in issues), (big, issues)
+
+
+def test_consume_total_over_out_of_range_int(tmp_path):
+    # A too-large int in the capability must yield a typed refusal, never an
+    # uncaught IntegerDomainError at hash time.
+    res = route_capability.consume(_cap(extensions={"x": 2**53}), _evidence(), store_dir=tmp_path)
+    assert isinstance(res, route_capability.ConsumeResult) and not res.ok
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("ok_int", [0, 1, -1, 2**53 - 1, -(2**53 - 1)])
+def test_in_range_int_extension_accepted(ok_int):
+    # In-range integers still validate (and canonicalize) fine — the guard must
+    # not over-reject ordinary numbers.
+    assert route_capability.validate_capability(_cap(extensions={"x": ok_int})) == []
