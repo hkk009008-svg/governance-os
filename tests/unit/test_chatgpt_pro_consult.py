@@ -18,6 +18,36 @@ import chatgpt_pro_consult as consult
 
 SCRIPT_PATH = Path(consult.__file__).resolve()
 ROOT = SCRIPT_PATH.parents[1]
+VALID_CLI_PASS_ROW = (
+    "| T5-CLI-BROWSER-r2 (`11111111…2222`) | configured CLI browser | pass | "
+    "pass | `prepared -> sending -> sent -> received -> reconciled`; tab "
+    "finalized | pass; one send | pass; content-free snapshots match | none |"
+)
+
+
+def acceptance_log_with_cli_rows(*rows: str) -> str:
+    text = (
+        ROOT / "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    ).read_text(encoding="utf-8")
+    marker = "| T5-CLI-MANUAL |"
+    insertion = "\n".join(rows)
+    promoted = text.replace(marker, f"{insertion}\n{marker}", 1)
+    return (
+        promoted.replace(
+            "- Configured CLI browser gate: `fail`",
+            "- Configured CLI browser gate: `pass`",
+        )
+        .replace("- Activation gate: `blocked`", "- Activation gate: `pass`")
+        .replace("- Shipped default: `manual`", "- Shipped default: `auto`")
+        .replace("- Bounded blocker: `backend_unavailable`", "- Bounded blocker: `none`")
+    )
+
+
+def assert_only_consultation_state_writes(tmp_path: Path, state_path: Path) -> None:
+    allowed = {state_path.resolve(), Path(f"{state_path}.lock").resolve()}
+    actual = {path.resolve() for path in tmp_path.rglob("*") if path.is_file()}
+    unexpected = sorted(str(path.relative_to(tmp_path)) for path in actual - allowed)
+    assert not unexpected, f"unexpected consultation write: {unexpected}"
 
 
 def acceptance_backed_default(text: str | None = None) -> str:
@@ -36,31 +66,49 @@ def acceptance_backed_default(text: str | None = None) -> str:
         return matches[0]
 
     def transport_result(transport_class: str) -> str:
-        results = []
+        rows: dict[int, list[str]] = {}
         for line in text.splitlines():
             if not line.startswith("| T5-"):
                 continue
             cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-            if len(cells) >= 3 and cells[1] == transport_class:
-                assert cells[2] in {"pass", "fail"}
-                results.append(cells[2])
-        assert results, f"expected an authoritative {transport_class} result row"
-        return "pass" if "pass" in results else "fail"
+            if len(cells) < 2 or cells[1] != transport_class:
+                continue
+            assert len(cells) == 8, "authoritative result rows require eight columns"
+            revision_match = re.search(r"-r([1-9][0-9]*)\b", cells[0])
+            assert revision_match is not None, "transport result row requires revision"
+            revision = int(revision_match.group(1))
+            assert revision not in rows, "transport result revisions must be unique"
+            assert cells[2] in {"pass", "fail"}
+            if cells[2] == "pass":
+                assert cells[3] == "pass"
+                assert cells[4] == (
+                    "`prepared -> sending -> sent -> received -> reconciled`; "
+                    "tab finalized"
+                )
+                assert cells[5] == "pass; one send"
+                assert cells[6] == "pass; content-free snapshots match"
+                assert cells[7] == "none"
+            rows[revision] = cells
+        assert rows, f"expected an authoritative {transport_class} result row"
+        return rows[max(rows)][2]
 
     desktop = field("Desktop in-app gate", "pass|fail")
     cli = field("Configured CLI browser gate", "pass|fail")
     assert desktop == transport_result("Desktop in-app"), (
-        "Desktop result rows disagree with canonical gate"
+        "Desktop result row disagrees with terminal result"
     )
     assert cli == transport_result("configured CLI browser"), (
-        "configured CLI result row disagrees with canonical gate"
+        "configured CLI result row disagrees with terminal result"
     )
     activation = field("Activation gate", "pass|blocked")
     shipped = field("Shipped default", "auto|manual")
+    blocker = field("Bounded blocker", "none|backend_unavailable")
     expected_activation = "pass" if desktop == cli == "pass" else "blocked"
     assert activation == expected_activation
     expected_default = "auto" if activation == "pass" else "manual"
     assert shipped == expected_default
+    expected_blocker = "none" if activation == "pass" else "backend_unavailable"
+    assert blocker == expected_blocker, "activation summary blocker disagrees"
     return expected_default
 
 
@@ -367,6 +415,69 @@ def test_non_schema_response_shapes_fail_closed(payload):
         )
 
 
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda response: response.update(
+            {"recommendation": "<html><body>upstream error</body></html>"}
+        ),
+        lambda response: response["reasoning"].__setitem__(
+            0,
+            "<!DOCTYPE html><title>service unavailable</title>",
+        ),
+        lambda response: response.update(
+            {"recommendation": "I am unable to comply with this request."}
+        ),
+        lambda response: response.update(
+            {"recommendation": "I cannot provide the requested response."}
+        ),
+        lambda response: response.update(
+            {"recommendation": "I'm sorry, but I can't assist with that request."}
+        ),
+        lambda response: response.update(
+            {"recommendation": "I refuse to provide the requested advice."}
+        ),
+    ],
+    ids=(
+        "html-recommendation",
+        "html-detail",
+        "unable-refusal",
+        "cannot-refusal",
+        "apology-refusal",
+        "direct-refusal",
+    ),
+)
+def test_schema_valid_transport_error_or_refusal_content_fails_closed(mutate):
+    prepared = consult.prepare_request(valid_request())
+    response = valid_response(prepared)
+    mutate(response)
+
+    with pytest.raises(consult.ConsultationError):
+        consult.validate_response(
+            response,
+            consultation_id=prepared.consultation_id,
+            request_hash=prepared.request_hash,
+        )
+
+
+def test_response_refusal_classifier_allows_advisory_risk_discussion():
+    prepared = consult.prepare_request(valid_request())
+    response = valid_response(prepared)
+    response["recommendation"] = "I cannot recommend auto mode until both gates pass."
+    response["reasoning"] = [
+        "An upstream may return <html><body>error</body></html>; classify it as malformed."
+    ]
+    response["risks"] = ["A client may be unable to connect during an outage."]
+
+    accepted = consult.validate_response(
+        response,
+        consultation_id=prepared.consultation_id,
+        request_hash=prepared.request_hash,
+    )
+
+    assert accepted["recommendation"] == response["recommendation"]
+
+
 def test_recursion_suppression_rejects_consulting_only_about_whether_to_consult():
     request = valid_request()
     request["purpose"] = "Decide whether to consult ChatGPT Pro"
@@ -374,6 +485,112 @@ def test_recursion_suppression_rejects_consulting_only_about_whether_to_consult(
 
     with pytest.raises(consult.ConsultationError, match="recursion"):
         consult.prepare_request(request)
+
+
+@pytest.mark.parametrize(
+    ("purpose", "question"),
+    [
+        (
+            "Choose if we should consult ChatGPT Pro",
+            "Which choice should decide whether advice is requested?",
+        ),
+        (
+            "Evaluate if a consultation is needed",
+            "Is outside advice needed?",
+        ),
+        (
+            "Assess whether consultation is necessary",
+            "Should a consultation happen?",
+        ),
+        (
+            "Choose a safe implementation boundary",
+            "Do we need to consult ChatGPT Pro?",
+        ),
+        (
+            "Choose a safe implementation boundary",
+            "Is a consultation warranted for this decision?",
+        ),
+        (
+            "Choose a safe implementation boundary",
+            "Should we ask ChatGPT Pro for another consultation?",
+        ),
+        (
+            "Choose a safe implementation boundary",
+            "Do we need to seek a second opinion from an external advisor?",
+        ),
+        (
+            "Work out whether to consult ChatGPT Pro",
+            "Which path should we take?",
+        ),
+        (
+            "Choose a safe implementation boundary",
+            "Can we consult ChatGPT Pro?",
+        ),
+        (
+            "Choose a safe implementation boundary",
+            "Could the team ask an expert for a second opinion?",
+        ),
+        (
+            "Choose a safe implementation boundary",
+            "Please determine if we should seek a second opinion.",
+        ),
+    ],
+)
+def test_meta_consultation_paraphrases_are_rejected(purpose, question):
+    request = valid_request()
+    request["purpose"] = purpose
+    request["question"] = question
+
+    with pytest.raises(consult.ConsultationError, match="recursion"):
+        consult.prepare_request(request)
+
+
+def test_real_consultation_may_reference_consultations_as_advisory_facts():
+    request = valid_request()
+    request["purpose"] = "Evaluate the implementation authority boundary"
+    request["question"] = "How should the consultation result remain advisory?"
+    request["facts"][0]["text"] = "Prior consultations are advisory evidence only."
+
+    prepared = consult.prepare_request(request)
+
+    assert prepared.consultation_id == request["consultation_id"]
+
+
+def test_recursion_classifier_allows_consulting_a_document_not_an_advisor():
+    request = valid_request()
+    request["purpose"] = "Check the deployment procedure"
+    request["question"] = "Should we consult the deployment manual?"
+
+    prepared = consult.prepare_request(request)
+
+    assert prepared.consultation_id == request["consultation_id"]
+
+
+@pytest.mark.parametrize(
+    ("purpose", "question"),
+    [
+        (
+            "Choose a safe boundary",
+            "Which risks should we ask ChatGPT Pro to assess?",
+        ),
+        (
+            "Review transport behavior",
+            "Should we reject a consultation that returns HTML?",
+        ),
+        (
+            "Evaluate refusal handling",
+            "What risks arise if ChatGPT Pro refuses?",
+        ),
+    ],
+)
+def test_recursion_classifier_allows_non_meta_advisory_questions(purpose, question):
+    request = valid_request()
+    request["purpose"] = purpose
+    request["question"] = question
+
+    prepared = consult.prepare_request(request)
+
+    assert prepared.consultation_id == request["consultation_id"]
 
 
 def sent_consultation(
@@ -1109,7 +1326,70 @@ def test_acceptance_gate_summary_cannot_override_failed_transport_row():
         acceptance_backed_default(inconsistent)
 
 
-def test_end_to_end_manual_flow_cannot_mutate_protocol_state(tmp_path):
+@pytest.mark.parametrize(
+    "row",
+    [
+        "| T5-CLI-BROWSER-r2 | configured CLI browser | pass |",
+        VALID_CLI_PASS_ROW.replace("| pass | pass |", "| pass | pending |", 1),
+        VALID_CLI_PASS_ROW.replace(
+            "prepared -> sending -> sent -> received -> reconciled",
+            "prepared -> sent -> received -> reconciled",
+        ),
+        VALID_CLI_PASS_ROW.replace("pass; one send", "delivery uncertain; no retry"),
+        VALID_CLI_PASS_ROW.replace(
+            "pass; content-free snapshots match",
+            "pending",
+        ),
+        VALID_CLI_PASS_ROW.replace("| none |", "| `partial_send` |"),
+        VALID_CLI_PASS_ROW.replace("; tab finalized", ""),
+    ],
+    ids=(
+        "three-cell-pass",
+        "correlation-not-pass",
+        "incomplete-lifecycle",
+        "duplicate-send-unproven",
+        "mutation-unproven",
+        "failure-present",
+        "tab-not-finalized",
+    ),
+)
+def test_acceptance_gate_rejects_pass_rows_without_complete_evidence(row):
+    with pytest.raises(AssertionError):
+        acceptance_backed_default(acceptance_log_with_cli_rows(row))
+
+
+def test_acceptance_gate_rejects_later_terminal_failure_after_pass():
+    later_failure = (
+        "| T5-CLI-BROWSER-r3 (`33333333…4444`) | configured CLI browser | fail | "
+        "not applicable; no response/import | `prepared -> sending -> failed` | "
+        "delivery uncertain; no retry | pass; content-free snapshots match | "
+        "`partial_send` |"
+    )
+
+    with pytest.raises(AssertionError, match="terminal result"):
+        acceptance_backed_default(
+            acceptance_log_with_cli_rows(VALID_CLI_PASS_ROW, later_failure)
+        )
+
+
+def test_acceptance_gate_accepts_complete_latest_transport_pass():
+    assert acceptance_backed_default(
+        acceptance_log_with_cli_rows(VALID_CLI_PASS_ROW)
+    ) == "auto"
+
+
+def test_acceptance_gate_rejects_pass_summary_with_remaining_blocker():
+    contradictory = acceptance_log_with_cli_rows(VALID_CLI_PASS_ROW).replace(
+        "- Bounded blocker: `none`",
+        "- Bounded blocker: `backend_unavailable`",
+    )
+
+    with pytest.raises(AssertionError, match="blocker"):
+        acceptance_backed_default(contradictory)
+
+
+def test_end_to_end_manual_flow_cannot_mutate_protocol_state(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     state_path = tmp_path / "state.json"
     prepared = consult.prepare_request(valid_request())
     consult.reserve_consultation(
@@ -1150,6 +1430,7 @@ def test_end_to_end_manual_flow_cannot_mutate_protocol_state(tmp_path):
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert state["consultations"][0]["status"] == "received"
     assert "recommendation" not in state["consultations"][0]
+    assert_only_consultation_state_writes(tmp_path, state_path)
     for forbidden_path in (
         "coordination",
         "threeway",
@@ -1157,6 +1438,18 @@ def test_end_to_end_manual_flow_cannot_mutate_protocol_state(tmp_path):
         "mailbox",
     ):
         assert not (tmp_path / forbidden_path).exists()
+
+
+def test_nonwrite_assertion_detects_relative_protocol_mutation(tmp_path):
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{}", encoding="utf-8")
+    Path(f"{state_path}.lock").write_bytes(b"")
+    escaped_write = tmp_path / "coordination/mailbox/sent/event.md"
+    escaped_write.parent.mkdir(parents=True)
+    escaped_write.write_text("unexpected", encoding="utf-8")
+
+    with pytest.raises(AssertionError, match="unexpected consultation write"):
+        assert_only_consultation_state_writes(tmp_path, state_path)
 
 
 def test_response_tool_instructions_remain_inert_advisory_text(tmp_path):

@@ -129,6 +129,59 @@ _COMPACT_SENSITIVE_PATTERNS = (
     re.compile(r"-----BEGIN[A-Z]*PRIVATEKEY-----", re.IGNORECASE),
     re.compile(r"authorization:(?:bearer|basic).+", re.IGNORECASE),
 )
+_HTML_DOCUMENT_PATTERN = re.compile(
+    r"^(?:<!doctype\s+html\b.*|<(?:html|body)\b.*</(?:html|body)>)$",
+    re.IGNORECASE | re.DOTALL,
+)
+_EXPLICIT_REFUSAL_PATTERN = re.compile(
+    r"^(?:(?:i(?:'m| am)\s+sorry|i\s+apologi[sz]e|as\s+an?\s+ai(?:\s+model)?)"
+    r"[,.:;\s-]*(?:but\s+)?)?(?:i\s+)?(?:can(?:not|'t)|won't|am\s+unable\s+to)\s+"
+    r"(?:assist|help|comply|provide\s+the\s+requested\s+response)\b"
+    r"|^(?:i\s+)?(?:must|have\s+to)\s+refuse\b"
+    r"|^i\s+refuse\b",
+    re.IGNORECASE,
+)
+_ADVISORY_TARGET_PATTERN = (
+    r"(?:chatgpt(?:\s+pro)?|an?\s+(?:advisor|expert|reviewer|model))"
+)
+_META_ACTION_PATTERN = (
+    rf"(?:consult\s+{_ADVISORY_TARGET_PATTERN}"
+    rf"|ask\s+{_ADVISORY_TARGET_PATTERN}"
+    r"|seek\s+(?:an?\s+)?second\s+opinion"
+    r"|(?:start|request|launch)\s+(?:an?|another|the)?\s*consultation)"
+)
+_META_CONSULTATION_PATTERNS = (
+    re.compile(
+        rf"\b(?:if|whether)\s+(?:(?:we|i|the\s+team)\s+)?"
+        rf"(?:(?:should|must|ought\s+to|need\s+to|can|could)\s+)?"
+        rf"(?:to\s+)?{_META_ACTION_PATTERN}\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"^(?:can|could|should|must|shall|ought\s+to)\s+"
+        rf"(?:we|i|the\s+team)\s+{_META_ACTION_PATTERN}\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"^(?:do|does)\s+(?:we|i|the\s+team)\s+need\s+to\s+"
+        rf"{_META_ACTION_PATTERN}\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:if|whether)\s+(?:an?|another|the)?\s*consultation\s+"
+        r"(?:is\s+)?(?:needed|necessary|appropriate|warranted|worthwhile|required)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^(?:is|would)\s+(?:an?|another|the)?\s*consultation\s+"
+        r"(?:needed|necessary|appropriate|warranted|worthwhile|required)\b"
+        r"|^do\s+(?:we|i|the\s+team)\s+need\s+"
+        r"(?:an?|another|the)?\s*consultation\b"
+        r"|^should\s+(?:an?|another|the)?\s*consultation\s+"
+        r"(?:happen|occur|be\s+(?:started|requested|launched))\b",
+        re.IGNORECASE,
+    ),
+)
 _TIMESTAMP_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _PRIVATE_FILE_MODE = 0o600
 _PRIVATE_DIRECTORY_MODE = 0o700
@@ -206,6 +259,29 @@ def _reject_sensitive_text(value: str, name: str) -> None:
             raise ConsultationError(f"{name} contains sensitive content")
     if any(pattern.search(compact) for pattern in _COMPACT_SENSITIVE_PATTERNS):
         raise ConsultationError(f"{name} contains sensitive content")
+
+
+def _is_meta_consultation(purpose: str, question: str) -> bool:
+    clauses = re.split(r"[\n.;:!?]+", f"{purpose}\n{question}")
+    return any(
+        pattern.search(clause.strip())
+        for clause in clauses
+        if clause.strip()
+        for pattern in _META_CONSULTATION_PATTERNS
+    )
+
+
+def _reject_response_failure_content(
+    value: str,
+    name: str,
+    *,
+    reject_refusal: bool = False,
+) -> None:
+    stripped = value.strip()
+    if _HTML_DOCUMENT_PATTERN.fullmatch(stripped):
+        raise ConsultationError(f"{name} contains an upstream HTML response")
+    if reject_refusal and _EXPLICIT_REFUSAL_PATTERN.search(stripped):
+        raise ConsultationError(f"{name} contains an explicit upstream refusal")
 
 
 def _uuid4(value: object, name: str) -> str:
@@ -316,10 +392,7 @@ def validate_request(payload: object) -> dict[str, object]:
     question = _normalized_text(request["question"], "question")
     _reject_sensitive_text(purpose, "purpose")
     _reject_sensitive_text(question, "question")
-    if re.search(
-        r"\b(?:decide|determine|assess)\s+whether\s+to\s+(?:consult|ask)\b",
-        purpose.casefold(),
-    ):
+    if _is_meta_consultation(purpose, question):
         raise ConsultationError("consultation recursion is not allowed")
 
     repo_head = request["repo_head"]
@@ -447,15 +520,23 @@ def validate_response(
         raise ConsultationError("response correlation does not match the request")
 
     recommendation = _normalized_text(response["recommendation"], "recommendation")
+    _reject_response_failure_content(
+        recommendation,
+        "recommendation",
+        reject_refusal=True,
+    )
     detail_fields: dict[str, list[str]] = {}
     for field in ("reasoning", "assumptions", "risks", "questions"):
         values = response[field]
         if not isinstance(values, list):
             raise ConsultationError(f"{field} must be a list")
-        detail_fields[field] = [
+        normalized_values = [
             _normalized_text(value, f"{field}[{index}]", allow_empty=True)
             for index, value in enumerate(values)
         ]
+        for index, value in enumerate(normalized_values):
+            _reject_response_failure_content(value, f"{field}[{index}]")
+        detail_fields[field] = normalized_values
 
     normalized: dict[str, object] = {
         "schema_version": RESPONSE_SCHEMA_VERSION,

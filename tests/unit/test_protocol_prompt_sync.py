@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 import codex_protocol_model as model
 
 
@@ -27,8 +29,9 @@ def _compact(text: str) -> str:
     return " ".join(text.split())
 
 
-def _acceptance_backed_default() -> str:
-    text = _read("logs/chatgpt-pro-consultation-acceptance-2026-07-13.md")
+def _acceptance_backed_default(text: str | None = None) -> str:
+    if text is None:
+        text = _read("logs/chatgpt-pro-consultation-acceptance-2026-07-13.md")
 
     def field(label: str, values: str) -> str:
         matches = re.findall(
@@ -40,32 +43,241 @@ def _acceptance_backed_default() -> str:
         return matches[0]
 
     def transport_result(transport_class: str) -> str:
-        results = []
+        rows: dict[int, list[str]] = {}
         for line in text.splitlines():
             if not line.startswith("| T5-"):
                 continue
             cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-            if len(cells) >= 3 and cells[1] == transport_class:
-                assert cells[2] in {"pass", "fail"}
-                results.append(cells[2])
-        assert results, f"expected an authoritative {transport_class} result row"
-        return "pass" if "pass" in results else "fail"
+            if len(cells) < 2 or cells[1] != transport_class:
+                continue
+            assert len(cells) == 8, "authoritative result rows require eight columns"
+            revision_match = re.search(r"-r([1-9][0-9]*)\b", cells[0])
+            assert revision_match is not None, "transport result row requires revision"
+            revision = int(revision_match.group(1))
+            assert revision not in rows, "transport result revisions must be unique"
+            assert cells[2] in {"pass", "fail"}
+            if cells[2] == "pass":
+                assert cells[3] == "pass"
+                assert cells[4] == (
+                    "`prepared -> sending -> sent -> received -> reconciled`; "
+                    "tab finalized"
+                )
+                assert cells[5] == "pass; one send"
+                assert cells[6] == "pass; content-free snapshots match"
+                assert cells[7] == "none"
+            rows[revision] = cells
+        assert rows, f"expected an authoritative {transport_class} result row"
+        return rows[max(rows)][2]
 
     desktop = field("Desktop in-app gate", "pass|fail")
     cli = field("Configured CLI browser gate", "pass|fail")
     assert desktop == transport_result("Desktop in-app"), (
-        "Desktop result rows disagree with canonical gate"
+        "Desktop result row disagrees with terminal result"
     )
     assert cli == transport_result("configured CLI browser"), (
-        "configured CLI result row disagrees with canonical gate"
+        "configured CLI result row disagrees with terminal result"
     )
     activation = field("Activation gate", "pass|blocked")
     shipped = field("Shipped default", "auto|manual")
+    blocker = field("Bounded blocker", "none|backend_unavailable")
     expected_activation = "pass" if desktop == cli == "pass" else "blocked"
     assert activation == expected_activation
     expected_default = "auto" if activation == "pass" else "manual"
     assert shipped == expected_default
+    expected_blocker = "none" if activation == "pass" else "backend_unavailable"
+    assert blocker == expected_blocker
     return expected_default
+
+
+def _validate_acceptance_log_structure(text: str) -> None:
+    forbidden = (
+        "RAW_PROMPT_CANARY",
+        "<consultation_request>",
+        "</consultation_request>",
+        '"prompt"',
+        '"response"',
+        '"schema_version"',
+        '"recommendation"',
+        '"reasoning"',
+        '"assumptions"',
+        '"risks"',
+        '"questions"',
+    )
+    for marker in forbidden:
+        assert marker not in text
+
+    lines = text.splitlines()
+    assert lines[0] == "# ChatGPT Pro consultation acceptance - 2026-07-13"
+    expected_headings = (
+        "## Scope",
+        "## Results",
+        "## Commands",
+        "## Diagnostics",
+        "## Activation decision",
+    )
+    sections: dict[str, list[str]] = {heading: [] for heading in expected_headings}
+    seen_headings: list[str] = []
+    current: str | None = None
+    for line in lines[1:]:
+        if not line:
+            continue
+        if line.startswith("## "):
+            assert line in sections
+            seen_headings.append(line)
+            current = line
+            continue
+        assert current is not None
+        sections[current].append(line)
+    assert tuple(seen_headings) == expected_headings
+
+    def bullets(heading: str) -> dict[str, str]:
+        values: dict[str, str] = {}
+        for line in sections[heading]:
+            match = re.fullmatch(r"- ([A-Za-z0-9 /-]+): `([^`\n]+)`", line)
+            assert match is not None
+            label, value = match.groups()
+            assert label not in values
+            values[label] = value
+        return values
+
+    scope = bullets("## Scope")
+    assert set(scope) == {
+        "Bound HEAD",
+        "Procedure",
+        "Default before gate",
+        "Raw consultation content persisted",
+    }
+    assert re.fullmatch(r"[0-9a-f]{40}", scope["Bound HEAD"])
+    assert scope["Procedure"] == (
+        "docs/protocol/codex/chatgpt-pro-consultation-acceptance.md"
+    )
+    assert scope["Default before gate"] in {"auto", "manual"}
+    assert scope["Raw consultation content persisted"] == "no"
+
+    result_lines = sections["## Results"]
+    assert result_lines[:2] == [
+        "| Test ID | Transport class | Result | Safe correlation | Lifecycle | "
+        "Duplicate send | Protocol/ref/remote mutation | Failure class |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    allowed_transports = {
+        "Desktop in-app",
+        "configured CLI browser",
+        "configured CLI non-sending diagnostic",
+        "bare CLI manual relay",
+        "fixture/disposable profile",
+    }
+    allowed_correlation = {
+        "pass",
+        "not applicable",
+        "not applicable; no response/import",
+        "pending",
+    }
+    allowed_lifecycle = {
+        "`prepared -> sending -> sent -> failed`",
+        "`prepared -> sending -> sent -> received -> reconciled`; tab finalized",
+        "`prepared -> sending -> failed`; ephemeral process terminated after 5.5 "
+        "minutes; tab finalization unverified",
+        "core model healthy; Browser skill loaded; no navigation, tab, or message",
+        "pending",
+    }
+    allowed_duplicate = {
+        "pass; one send",
+        "delivery uncertain; no retry",
+        "no send",
+        "pending",
+    }
+    allowed_mutation = {
+        "pass; content-free snapshots match",
+        "pass; content-free snapshots match; no Codex session persisted",
+        "pass; no protected mutation",
+        "pending",
+    }
+    allowed_failure = {
+        "none",
+        "pending",
+        "`malformed`",
+        "`partial_send`",
+        "`backend_unavailable`",
+    }
+    for line in result_lines[2:]:
+        assert line.startswith("| T5-") and line.endswith("|")
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        assert len(cells) == 8
+        assert re.fullmatch(
+            r"T5-[A-Za-z0-9-]+(?: \(`[0-9a-f]{8}…[0-9a-f]{4}`\))?",
+            cells[0],
+        )
+        assert cells[1] in allowed_transports
+        assert cells[2] in {"pass", "fail", "pending"}
+        assert cells[3] in allowed_correlation
+        assert cells[4] in allowed_lifecycle
+        assert cells[5] in allowed_duplicate
+        assert cells[6] in allowed_mutation
+        assert cells[7] in allowed_failure
+
+    commands = bullets("## Commands")
+    assert set(commands) == {
+        "Focused tests",
+        "Full protocol tests",
+        "Project smoke",
+        "Persistence/security scans",
+        "Runtime state/lock pairs checked",
+        "Protected hashes",
+        "CLI-window rollout files created",
+        "CLI-window rollout files modified",
+    }
+    assert re.fullmatch(r"[1-9][0-9]* passed", commands["Focused tests"])
+    assert re.fullmatch(r"[1-9][0-9]* passed", commands["Full protocol tests"])
+    assert commands["Project smoke"] == "OK"
+    assert commands["Persistence/security scans"] == "pass"
+    assert re.fullmatch(
+        r"[1-9][0-9]*",
+        commands["Runtime state/lock pairs checked"],
+    )
+    assert commands["Protected hashes"] == "match"
+    assert commands["CLI-window rollout files created"] == "0"
+    assert commands["CLI-window rollout files modified"] == "0"
+
+    diagnostics = bullets("## Diagnostics")
+    expected_diagnostics = {
+        "Desktop r1 failure": "malformed",
+        "Desktop r1 retry": "no",
+        "Desktop r1 tab finalized": "yes",
+        "Desktop r2 result": "pass",
+        "Desktop r2 duplicate send": "no",
+        "Desktop r2 tab finalized": "yes",
+        "Configured CLI r1 failure": "partial_send",
+        "Configured CLI r1 response imported": "no",
+        "Configured CLI r1 retry": "no",
+        "Configured CLI r1 duration seconds": "330",
+        "Configured CLI r1 tab finalized": "unverified",
+        "Configured CLI preflight duration seconds": "27.7",
+        "Configured CLI core model": "pass",
+        "Configured CLI Browser skill load": "pass",
+        "Configured CLI backend": "iab",
+        "Configured CLI browser connected": "false",
+        "Configured CLI documentation loaded": "false",
+        "Configured CLI preflight navigation": "none",
+        "Configured CLI preflight messaging": "none",
+        "Configured CLI preflight failure": "backend_unavailable",
+    }
+    assert diagnostics == expected_diagnostics
+
+    activation = bullets("## Activation decision")
+    assert set(activation) == {
+        "Desktop in-app gate",
+        "Configured CLI browser gate",
+        "Activation gate",
+        "Shipped default",
+        "Bounded blocker",
+    }
+    assert activation["Desktop in-app gate"] in {"pass", "fail"}
+    assert activation["Configured CLI browser gate"] in {"pass", "fail"}
+    assert activation["Activation gate"] in {"pass", "blocked"}
+    assert activation["Shipped default"] in {"auto", "manual"}
+    assert activation["Bounded blocker"] in {"none", "backend_unavailable"}
+    _acceptance_backed_default(text)
 
 
 def test_agent_neutral_reviewer_template_exists_with_schema():
@@ -394,14 +606,38 @@ def test_chatgpt_pro_acceptance_procedure_is_fail_closed_and_content_free():
     acceptance_log = _read(
         "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
     )
-    for forbidden in (
-        '"prompt"',
-        '"response"',
-        "recommendation text",
-        "reasoning text",
-        "full guarded prompt",
-    ):
-        assert forbidden not in acceptance_log
+    _validate_acceptance_log_structure(acceptance_log)
+
+
+@pytest.mark.parametrize(
+    "injection",
+    [
+        "RAW_PROMPT_CANARY arbitrary raw payload",
+        "<consultation_request>{}</consultation_request>",
+        '{"schema_version":"v1","recommendation":"raw response"}',
+        "## Unknown free-form section\n- arbitrary: content",
+    ],
+    ids=("canary", "prompt-marker", "raw-schema-fields", "unknown-section"),
+)
+def test_acceptance_log_structure_rejects_unsanitized_or_unknown_content(injection):
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    )
+
+    with pytest.raises(AssertionError):
+        _validate_acceptance_log_structure(f"{acceptance_log}\n{injection}\n")
+
+
+def test_acceptance_log_structure_rejects_blocked_summary_without_blocker():
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    ).replace(
+        "- Bounded blocker: `backend_unavailable`",
+        "- Bounded blocker: `none`",
+    )
+
+    with pytest.raises(AssertionError):
+        _validate_acceptance_log_structure(acceptance_log)
 
 
 def test_chatgpt_pro_consultation_is_model_backed_and_surface_synced():
