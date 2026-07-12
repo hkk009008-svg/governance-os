@@ -12,6 +12,7 @@ import re
 import stat
 import sys
 import tempfile
+import threading
 import unicodedata
 import uuid
 from contextlib import contextmanager
@@ -63,7 +64,9 @@ TRANSPORTS = frozenset({"iab", "chrome", "manual"})
 FAILURE_CLASSES = frozenset(
     {"auth", "challenge", "network", "partial_send", "malformed", "unavailable"}
 )
-ACCEPT_KEYS = frozenset({"response", "current_state_binding"})
+ACCEPT_KEYS = frozenset(
+    {"consultation_id", "response", "current_state_binding"}
+)
 REQUEST_KEYS = frozenset(
     {
         "schema_version",
@@ -129,6 +132,8 @@ _COMPACT_SENSITIVE_PATTERNS = (
 _TIMESTAMP_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _PRIVATE_FILE_MODE = 0o600
 _PRIVATE_DIRECTORY_MODE = 0o700
+_PROCESS_LOCKS_GUARD = threading.Lock()
+_PROCESS_LOCKS: dict[str, Any] = {}
 
 
 class ConsultationError(ValueError):
@@ -604,22 +609,64 @@ def _reject_special_path(path: Path, name: str) -> None:
         raise ConsultationError(f"{name} path must be a regular file")
 
 
-def _ensure_state_parent(state_path: Path) -> None:
+def _verify_open_path_identity(
+    descriptor: int,
+    path: Path,
+    name: str,
+    *,
+    directory: bool,
+) -> None:
+    try:
+        opened_status = os.fstat(descriptor)
+        current_status = path.lstat()
+    except OSError as exc:
+        raise ConsultationError(f"{name} path is unavailable") from exc
+    expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+    if (
+        stat.S_ISLNK(current_status.st_mode)
+        or not expected_type(opened_status.st_mode)
+        or not expected_type(current_status.st_mode)
+        or (opened_status.st_dev, opened_status.st_ino)
+        != (current_status.st_dev, current_status.st_ino)
+    ):
+        kind = "directory" if directory else "regular non-symlink file"
+        raise ConsultationError(f"{name} path must identify the open {kind}")
+
+
+def _open_state_parent(state_path: Path) -> int:
     parent = state_path.parent
-    existed = parent.exists()
+    descriptor: int | None = None
     try:
         parent.mkdir(parents=True, mode=_PRIVATE_DIRECTORY_MODE, exist_ok=True)
-        parent_status = parent.lstat()
-        if stat.S_ISLNK(parent_status.st_mode) or not stat.S_ISDIR(
-            parent_status.st_mode
-        ):
-            raise ConsultationError("state parent must be a real directory")
-        if not existed:
-            os.chmod(parent, _PRIVATE_DIRECTORY_MODE)
+        flags = _open_flags(os.O_RDONLY)
+        if hasattr(os, "O_DIRECTORY"):
+            flags |= os.O_DIRECTORY
+        descriptor = os.open(parent, flags)
+        _verify_open_path_identity(
+            descriptor,
+            parent,
+            "state parent",
+            directory=True,
+        )
+        os.fchmod(descriptor, _PRIVATE_DIRECTORY_MODE)
+        if stat.S_IMODE(os.fstat(descriptor).st_mode) != _PRIVATE_DIRECTORY_MODE:
+            raise ConsultationError("state parent mode must be 0700")
+        _verify_open_path_identity(
+            descriptor,
+            parent,
+            "state parent",
+            directory=True,
+        )
+        result = descriptor
+        descriptor = None
+        return result
     except ConsultationError:
         raise
     except OSError as exc:
         raise ConsultationError("state parent is unavailable") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def _open_flags(base: int) -> int:
@@ -632,56 +679,81 @@ def _open_flags(base: int) -> int:
 
 
 @contextmanager
+def _in_process_state_lock(state_path: Path) -> Iterator[None]:
+    key = os.path.normcase(os.path.realpath(os.fspath(state_path)))
+    with _PROCESS_LOCKS_GUARD:
+        process_lock = _PROCESS_LOCKS.setdefault(key, threading.RLock())
+    process_lock.acquire()
+    try:
+        yield
+    finally:
+        process_lock.release()
+
+
+@contextmanager
 def _exclusive_state_lock(
     state_path_value: os.PathLike[str] | str,
 ) -> Iterator[Path]:
     state_path = _state_path(state_path_value)
-    _ensure_state_parent(state_path)
     lock_path = Path(f"{state_path}.lock")
-    _reject_special_path(state_path, "state")
-    _reject_special_path(lock_path, "lock")
 
+    parent_descriptor: int | None = None
+    parent_locked = False
     descriptor: int | None = None
     lock_file = None
     locked = False
-    try:
-        descriptor = os.open(
-            lock_path,
-            _open_flags(os.O_RDWR | os.O_CREAT),
-            _PRIVATE_FILE_MODE,
-        )
-        opened_status = os.fstat(descriptor)
-        current_status = lock_path.lstat()
-        if (
-            stat.S_ISLNK(current_status.st_mode)
-            or not stat.S_ISREG(opened_status.st_mode)
-            or (opened_status.st_dev, opened_status.st_ino)
-            != (current_status.st_dev, current_status.st_ino)
-        ):
-            raise ConsultationError("lock path must be a regular non-symlink file")
-        os.fchmod(descriptor, _PRIVATE_FILE_MODE)
-        lock_file = os.fdopen(descriptor, "r+b")
-        descriptor = None
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        locked = True
-        lock_file.seek(0)
-        lock_file.truncate(0)
-        lock_file.flush()
-        os.fsync(lock_file.fileno())
-        _reject_special_path(state_path, "state")
-        _reject_special_path(lock_path, "lock")
-        yield state_path
-    except ConsultationError:
-        raise
-    except OSError as exc:
-        raise ConsultationError("consultation state lock is unavailable") from exc
-    finally:
-        if locked and lock_file is not None:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-        if lock_file is not None:
-            lock_file.close()
-        if descriptor is not None:
-            os.close(descriptor)
+    with _in_process_state_lock(state_path):
+        try:
+            parent_descriptor = _open_state_parent(state_path)
+            fcntl.flock(parent_descriptor, fcntl.LOCK_EX)
+            parent_locked = True
+            _verify_open_path_identity(
+                parent_descriptor,
+                state_path.parent,
+                "state parent",
+                directory=True,
+            )
+            _reject_special_path(state_path, "state")
+            _reject_special_path(lock_path, "lock")
+            descriptor = os.open(
+                lock_path,
+                _open_flags(os.O_RDWR | os.O_CREAT),
+                _PRIVATE_FILE_MODE,
+            )
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                raise ConsultationError("lock descriptor must be a regular file")
+            os.fchmod(descriptor, _PRIVATE_FILE_MODE)
+            lock_file = os.fdopen(descriptor, "r+b")
+            descriptor = None
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            locked = True
+            _verify_open_path_identity(
+                lock_file.fileno(),
+                lock_path,
+                "lock",
+                directory=False,
+            )
+            lock_file.seek(0)
+            lock_file.truncate(0)
+            lock_file.flush()
+            os.fsync(lock_file.fileno())
+            _reject_special_path(state_path, "state")
+            yield state_path
+        except ConsultationError:
+            raise
+        except OSError as exc:
+            raise ConsultationError("consultation state lock is unavailable") from exc
+        finally:
+            if locked and lock_file is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            if lock_file is not None:
+                lock_file.close()
+            if descriptor is not None:
+                os.close(descriptor)
+            if parent_locked and parent_descriptor is not None:
+                fcntl.flock(parent_descriptor, fcntl.LOCK_UN)
+            if parent_descriptor is not None:
+                os.close(parent_descriptor)
 
 
 def _load_state(state_path: Path) -> dict[str, object]:
@@ -734,15 +806,21 @@ def _write_state(state_path: Path, state: object) -> None:
         )
         temporary_path = Path(temporary_name)
         os.fchmod(descriptor, _PRIVATE_FILE_MODE)
-        with os.fdopen(descriptor, "wb") as state_file:
-            descriptor = None
+        with os.fdopen(os.dup(descriptor), "wb") as state_file:
             state_file.write(rendered)
             state_file.flush()
             os.fsync(state_file.fileno())
         _reject_special_path(state_path, "state")
         os.replace(temporary_path, state_path)
         temporary_path = None
-        os.chmod(state_path, _PRIVATE_FILE_MODE)
+        _verify_open_path_identity(
+            descriptor,
+            state_path,
+            "state",
+            directory=False,
+        )
+        if stat.S_IMODE(os.fstat(descriptor).st_mode) != _PRIVATE_FILE_MODE:
+            raise ConsultationError("state mode must be 0600")
     except ConsultationError:
         raise
     except OSError as exc:
@@ -905,20 +983,6 @@ def resume_manual(
         return dict(record)
 
 
-def _response_record(
-    state: dict[str, object],
-    response: object,
-) -> dict[str, object]:
-    if isinstance(response, dict) and "consultation_id" in response:
-        return _find_record(state, response["consultation_id"])
-    sent_records = [
-        record for record in state["consultations"] if record["status"] == "sent"
-    ]
-    if len(sent_records) == 1:
-        return sent_records[0]
-    raise ConsultationError("response cannot be correlated to one sent consultation")
-
-
 def accept_response(
     state_path: os.PathLike[str] | str,
     payload: object,
@@ -927,6 +991,10 @@ def accept_response(
 ) -> dict[str, object]:
     """Validate one correlated response after checking its current state binding."""
     wrapper = _exact_mapping(payload, ACCEPT_KEYS, "response wrapper")
+    consultation_id = _uuid4(
+        wrapper["consultation_id"],
+        "response wrapper.consultation_id",
+    )
     current_binding_hash = state_binding_hash(wrapper["current_state_binding"])
     response = wrapper["response"]
     explicit_timestamp = now is not None
@@ -934,7 +1002,7 @@ def accept_response(
 
     with _exclusive_state_lock(state_path) as locked_path:
         state = _load_state(locked_path)
-        record = _response_record(state, response)
+        record = _find_record(state, consultation_id)
         if record["status"] != "sent":
             raise ConsultationError("only a sent consultation can accept a response")
         if not explicit_timestamp:

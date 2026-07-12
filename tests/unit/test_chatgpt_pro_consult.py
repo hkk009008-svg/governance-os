@@ -5,6 +5,8 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -38,6 +40,14 @@ def run_cli(
         capture_output=True,
         check=False,
     )
+
+
+def wait_for_path(path: Path, *, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not path.exists():
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"timed out waiting for {path.name}")
+        time.sleep(0.01)
 
 
 def valid_request() -> dict[str, object]:
@@ -361,6 +371,144 @@ def test_duplicate_idempotency_key_is_reserved_once_under_concurrency(tmp_path):
     assert len(json.loads(state_path.read_text())["consultations"]) == 1
 
 
+def test_replaced_lock_path_cannot_admit_a_second_cooperative_reservation(
+    tmp_path,
+    monkeypatch,
+):
+    prepared = consult.prepare_request(valid_request())
+    state_path = tmp_path / "state.json"
+    lock_path = Path(f"{state_path}.lock")
+    first_in_critical_section = threading.Event()
+    second_in_critical_section = threading.Event()
+    release_first = threading.Event()
+    outcomes: list[str] = []
+    unexpected: list[BaseException] = []
+    original_load_state = consult._load_state
+
+    def controlled_load_state(path):
+        if threading.current_thread().name == "first-reserver":
+            first_in_critical_section.set()
+            if not release_first.wait(timeout=5):
+                raise RuntimeError("test did not release first reserver")
+        elif threading.current_thread().name == "second-reserver":
+            second_in_critical_section.set()
+        return original_load_state(path)
+
+    def reserve() -> None:
+        try:
+            consult.reserve_consultation(
+                state_path,
+                prepared,
+                now="2026-07-13T00:00:00Z",
+            )
+        except consult.ConsultationError:
+            outcomes.append("duplicate")
+        except BaseException as exc:  # pragma: no cover - asserted below
+            unexpected.append(exc)
+        else:
+            outcomes.append("reserved")
+
+    monkeypatch.setattr(consult, "_load_state", controlled_load_state)
+    first = threading.Thread(target=reserve, name="first-reserver")
+    second = threading.Thread(target=reserve, name="second-reserver")
+    first.start()
+    assert first_in_critical_section.wait(timeout=5)
+
+    lock_path.unlink()
+    lock_path.write_bytes(b"")
+    lock_path.chmod(0o600)
+    second.start()
+    entered_while_first_held = second_in_critical_section.wait(timeout=0.25)
+
+    release_first.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert unexpected == []
+    assert not entered_while_first_held
+    assert sorted(outcomes) == ["duplicate", "reserved"]
+    assert len(json.loads(state_path.read_text())["consultations"]) == 1
+
+
+def test_replaced_lock_path_cannot_split_cooperative_processes(tmp_path):
+    state_path = tmp_path / "state.json"
+    lock_path = Path(f"{state_path}.lock")
+    first_entered = tmp_path / "first-entered"
+    second_entered = tmp_path / "second-entered"
+    release_first = tmp_path / "release-first"
+    scripts_path = str(SCRIPT_PATH.parent)
+    holder_code = """
+import sys, time
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import chatgpt_pro_consult as consult
+state_path = Path(sys.argv[2])
+entered_path = Path(sys.argv[3])
+release_path = Path(sys.argv[4])
+with consult._exclusive_state_lock(state_path):
+    entered_path.write_text("entered", encoding="utf-8")
+    deadline = time.monotonic() + 5
+    while not release_path.exists():
+        if time.monotonic() >= deadline:
+            raise RuntimeError("release marker timed out")
+        time.sleep(0.01)
+"""
+    contender_code = """
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import chatgpt_pro_consult as consult
+with consult._exclusive_state_lock(Path(sys.argv[2])):
+    Path(sys.argv[3]).write_text("entered", encoding="utf-8")
+"""
+    first = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            holder_code,
+            scripts_path,
+            str(state_path),
+            str(first_entered),
+            str(release_first),
+        ],
+        cwd=tmp_path,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    wait_for_path(first_entered)
+    lock_path.unlink()
+    lock_path.write_bytes(b"")
+    lock_path.chmod(0o600)
+    second = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            contender_code,
+            scripts_path,
+            str(state_path),
+            str(second_entered),
+        ],
+        cwd=tmp_path,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    time.sleep(0.25)
+    entered_while_first_held = second_entered.exists()
+    release_first.write_text("release", encoding="utf-8")
+    first_stdout, first_stderr = first.communicate(timeout=5)
+    second_stdout, second_stderr = second.communicate(timeout=5)
+
+    assert first.returncode == 0, (first_stdout, first_stderr)
+    assert second.returncode == 0, (second_stdout, second_stderr)
+    assert not entered_while_first_held
+    assert second_entered.read_text(encoding="utf-8") == "entered"
+
+
 def test_existing_lock_file_is_private_and_contains_no_payload(tmp_path):
     prepared = consult.prepare_request(valid_request())
     state_path = tmp_path / "state.json"
@@ -379,6 +527,22 @@ def test_existing_lock_file_is_private_and_contains_no_payload(tmp_path):
 
     assert lock_path.read_bytes() == b""
     assert lock_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_existing_state_parent_is_enforced_to_mode_0700(tmp_path):
+    prepared = consult.prepare_request(valid_request())
+    parent = tmp_path / "runtime"
+    parent.mkdir(mode=0o755)
+    parent.chmod(0o755)
+    state_path = parent / "state.json"
+
+    consult.reserve_consultation(
+        state_path,
+        prepared,
+        now="2026-07-13T00:00:00Z",
+    )
+
+    assert parent.stat().st_mode & 0o777 == 0o700
 
 
 @pytest.mark.parametrize("link_name", ["state", "lock"])
@@ -460,6 +624,39 @@ def test_store_updates_through_same_directory_atomic_replace(tmp_path, monkeypat
         assert destination == state_path
         assert source != destination
         assert not source.exists()
+
+
+def test_state_replace_symlink_swap_never_chmods_unrelated_target(
+    tmp_path,
+    monkeypatch,
+):
+    prepared = consult.prepare_request(valid_request())
+    state_path = tmp_path / "state.json"
+    displaced_state = tmp_path / "displaced-state.json"
+    unrelated_target = tmp_path / "unrelated-target.txt"
+    unrelated_target.write_text("unrelated-content", encoding="utf-8")
+    unrelated_target.chmod(0o640)
+    real_replace = consult.os.replace
+
+    def replace_then_swap(source, destination):
+        real_replace(source, destination)
+        Path(destination).rename(displaced_state)
+        Path(destination).symlink_to(unrelated_target)
+
+    monkeypatch.setattr(consult.os, "replace", replace_then_swap)
+    error = None
+    try:
+        consult.reserve_consultation(
+            state_path,
+            prepared,
+            now="2026-07-13T00:00:00Z",
+        )
+    except consult.ConsultationError as exc:
+        error = exc
+
+    assert error is not None
+    assert unrelated_target.read_text(encoding="utf-8") == "unrelated-content"
+    assert unrelated_target.stat().st_mode & 0o777 == 0o640
 
 
 def test_invalid_transition_retry_and_transport_change_are_rejected(tmp_path):
@@ -574,6 +771,7 @@ def test_accept_response_marks_binding_drift_stale_before_response_parsing(tmp_p
         consult.accept_response(
             state_path,
             {
+                "consultation_id": prepared.consultation_id,
                 "response": {"malformed": "must not be parsed first"},
                 "current_state_binding": {
                     "wave": 2,
@@ -612,6 +810,7 @@ def test_accept_response_rejects_tampered_correlation_without_state_change(
         consult.accept_response(
             state_path,
             {
+                "consultation_id": prepared.consultation_id,
                 "response": response,
                 "current_state_binding": valid_request()["state_binding"],
             },
@@ -631,6 +830,7 @@ def test_accept_response_returns_validated_advice_and_marks_received(tmp_path):
     accepted = consult.accept_response(
         state_path,
         {
+            "consultation_id": prepared.consultation_id,
             "response": response,
             "current_state_binding": valid_request()["state_binding"],
         },
@@ -641,6 +841,76 @@ def test_accept_response_returns_validated_advice_and_marks_received(tmp_path):
     state_text = state_path.read_text(encoding="utf-8")
     assert json.loads(state_text)["consultations"][0]["status"] == "received"
     assert response["recommendation"] not in state_text
+
+
+def test_accept_binding_drift_uses_local_id_before_tampered_response_id(tmp_path):
+    prepared = consult.prepare_request(valid_request())
+    state_path = tmp_path / "state.json"
+    sent_consultation(state_path, prepared)
+    response = valid_response(prepared)
+    response["consultation_id"] = "00000000-0000-4000-8000-000000000002"
+
+    with pytest.raises(consult.ConsultationError, match="stale"):
+        consult.accept_response(
+            state_path,
+            {
+                "consultation_id": prepared.consultation_id,
+                "response": response,
+                "current_state_binding": {
+                    "wave": 2,
+                    "route_id": "changed-route",
+                    "relevant_paths_hash": "2" * 64,
+                    "mailbox_snapshot_hash": "3" * 64,
+                },
+            },
+            now="2026-07-13T00:03:00Z",
+        )
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["consultations"][0]["consultation_id"] == prepared.consultation_id
+    assert state["consultations"][0]["status"] == "stale"
+
+
+def test_accept_local_id_disambiguates_multiple_sent_records(tmp_path):
+    first = consult.prepare_request(valid_request())
+    second_request = valid_request()
+    second_request["consultation_id"] = "00000000-0000-4000-8000-000000000002"
+    second_request["question"] = "Which separate option minimizes replay risk?"
+    second_request["state_binding"] = {
+        "wave": None,
+        "route_id": "second-route",
+        "relevant_paths_hash": "4" * 64,
+        "mailbox_snapshot_hash": None,
+    }
+    second = consult.prepare_request(second_request)
+    state_path = tmp_path / "state.json"
+    sent_consultation(state_path, first)
+    sent_consultation(state_path, second)
+
+    with pytest.raises(consult.ConsultationError, match="stale"):
+        consult.accept_response(
+            state_path,
+            {
+                "consultation_id": first.consultation_id,
+                "response": {"malformed": "binding must be checked first"},
+                "current_state_binding": {
+                    "wave": 2,
+                    "route_id": "changed-route",
+                    "relevant_paths_hash": "2" * 64,
+                    "mailbox_snapshot_hash": "3" * 64,
+                },
+            },
+            now="2026-07-13T00:03:00Z",
+        )
+
+    records = {
+        record["consultation_id"]: record
+        for record in json.loads(state_path.read_text(encoding="utf-8"))[
+            "consultations"
+        ]
+    }
+    assert records[first.consultation_id]["status"] == "stale"
+    assert records[second.consultation_id]["status"] == "sent"
 
 
 def test_consultation_mode_defaults_manual_and_unknown_values_fail_closed():
@@ -796,6 +1066,7 @@ def test_cli_accept_reads_response_wrapper_only_from_stdin(tmp_path):
     state_path = tmp_path / "state.json"
     sent_consultation(state_path, prepared)
     wrapper = {
+        "consultation_id": prepared.consultation_id,
         "response": valid_response(prepared),
         "current_state_binding": valid_request()["state_binding"],
     }
@@ -837,6 +1108,7 @@ def test_cli_tampered_response_and_partial_json_fail_closed(
         tmp_path,
         ["accept", "--state-file", str(state_path)],
         payload={
+            "consultation_id": prepared.consultation_id,
             "response": response,
             "current_state_binding": valid_request()["state_binding"],
         },
