@@ -58,6 +58,13 @@ BROKER_OUTPUT_LIMIT_BYTES = 131_072
 BROKER_MAX_REQUEST_BYTES = 256
 BROKER_MAX_RESPONSE_BYTES = BROKER_OUTPUT_LIMIT_BYTES * 3
 BROKER_SOCKET_TIMEOUT_SECONDS = 0.5
+BROKER_CLIENT_CLEANUP_CUSHION_SECONDS = 5
+BROKER_CLIENT_MIN_RECEIVE_TIMEOUT_SECONDS = (
+    1 + BROKER_CLIENT_CLEANUP_CUSHION_SECONDS
+)
+BROKER_CLIENT_MAX_RECEIVE_TIMEOUT_SECONDS = (
+    DEFAULT_TIMEOUT_SECONDS + BROKER_CLIENT_CLEANUP_CUSHION_SECONDS
+)
 _FORBIDDEN_COMMAND_CHARS = frozenset(";&|<>`$(){}\n\r")
 _AUTHORIZATION_RE = re.compile(
     r"^(?:user-task|verify-request):[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
@@ -150,17 +157,34 @@ CLAUDE_ENV_ALLOWLIST = frozenset(
     }
 )
 
-BROKER_CLIENT_SOURCE = """#!/usr/bin/env python3
+BROKER_CLIENT_SOURCE = f"""#!/usr/bin/env python3
 import base64
 import json
 import socket
 import sys
 
-if len(sys.argv) != 3:
+if len(sys.argv) != 4:
+    print("broker request rejected", file=sys.stderr)
+    raise SystemExit(125)
+timeout_text = sys.argv[3]
+if (
+    not timeout_text.isascii()
+    or not timeout_text.isdigit()
+    or len(timeout_text) > 3
+):
+    print("broker request rejected", file=sys.stderr)
+    raise SystemExit(125)
+receive_timeout = int(timeout_text)
+if (
+    str(receive_timeout) != timeout_text
+    or not {BROKER_CLIENT_MIN_RECEIVE_TIMEOUT_SECONDS}
+    <= receive_timeout
+    <= {BROKER_CLIENT_MAX_RECEIVE_TIMEOUT_SECONDS}
+):
     print("broker request rejected", file=sys.stderr)
     raise SystemExit(125)
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-sock.settimeout(5.0)
+sock.settimeout(receive_timeout)
 try:
     sock.connect(sys.argv[1])
     sock.sendall(sys.argv[2].encode("ascii") + b"\\n")
@@ -691,14 +715,17 @@ def _validated_verification_rule(request: ReviewRequest, command: str) -> str:
     raise ReviewContractError("invalid_command", command)
 
 
-def _validated_broker_rule(command: str) -> str:
+def _validated_broker_rule(command: str, *, expected_command_timeout: int) -> str:
     rule = _validated_exact_bash_rule(command)
     argv = shlex.split(command)
-    if len(argv) != 4:
+    if len(argv) != 5:
         raise ReviewContractError("invalid_command", command)
-    interpreter, client_value, socket_value, token = argv
+    interpreter, client_value, socket_value, token, receive_timeout_text = argv
     client = Path(client_value)
     socket_path = Path(socket_value)
+    expected_receive_timeout = (
+        expected_command_timeout + BROKER_CLIENT_CLEANUP_CUSHION_SECONDS
+    )
     if (
         not Path(interpreter).is_absolute()
         or Path(interpreter).resolve() != Path(sys.executable).resolve()
@@ -711,6 +738,11 @@ def _validated_broker_rule(command: str) -> str:
         or client.parent.parent != socket_path.parent.parent
         or not client.parent.parent.name.startswith("opus-sandbox-")
         or not re.fullmatch(r"[0-9a-f]{64}", token)
+        or not re.fullmatch(r"[1-9][0-9]{0,2}", receive_timeout_text)
+        or int(receive_timeout_text) != expected_receive_timeout
+        or not BROKER_CLIENT_MIN_RECEIVE_TIMEOUT_SECONDS
+        <= expected_receive_timeout
+        <= BROKER_CLIENT_MAX_RECEIVE_TIMEOUT_SECONDS
     ):
         raise ReviewContractError("invalid_command", command)
     try:
@@ -1305,6 +1337,9 @@ class _VerificationBroker:
             str(self.runtime.broker_client),
             str(self.socket_path),
             token,
+            str(
+                self.timeout_seconds + BROKER_CLIENT_CLEANUP_CUSHION_SECONDS
+            ),
         ]
 
     def register_verification(self, command: str) -> str:
@@ -1663,7 +1698,9 @@ def build_claude_command(
             for command in allowed_commands[:git_rule_count]
         ),
         *(
-            _validated_broker_rule(command)
+            _validated_broker_rule(
+                command, expected_command_timeout=request.timeout_seconds
+            )
             for command in allowed_commands[git_rule_count:]
         ),
     ]

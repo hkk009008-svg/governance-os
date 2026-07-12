@@ -563,7 +563,10 @@ def _verification_command_from_provider_argv(argv: list[str]) -> list[str]:
     return shlex.split(rule[len("Bash(") : -1])
 
 
-def _assert_broker_client_command(argv: list[str]) -> None:
+def _assert_broker_client_command(
+    argv: list[str], *, expected_command_timeout: int
+) -> None:
+    assert len(argv) == 5
     assert Path(argv[0]).resolve() == Path(sys.executable).resolve()
     assert Path(argv[1]).name == "broker_client.py"
     assert Path(argv[2]).is_absolute()
@@ -571,6 +574,7 @@ def _assert_broker_client_command(argv: list[str]) -> None:
     assert stat.S_IMODE(Path(argv[2]).stat().st_mode) == 0o600
     assert len(argv[3]) == 64
     assert all(character in "0123456789abcdef" for character in argv[3])
+    assert argv[4] == str(expected_command_timeout + 5)
 
 
 def _broker_client_commands(tmp_path: Path, count: int) -> tuple[str, ...]:
@@ -593,6 +597,7 @@ def _broker_client_commands(tmp_path: Path, count: int) -> tuple[str, ...]:
                 str(client),
                 str(socket_path),
                 f"{index + 1:064x}",
+                "905",
             ]
         )
         for index in range(count)
@@ -772,6 +777,29 @@ def test_build_claude_command_requires_brokered_verification_rules(
             request,
             agent_prompt="PINNED",
             verification_commands=request.verification_commands,
+        )
+
+    assert excinfo.value.reason == "invalid_command"
+
+
+@pytest.mark.parametrize(
+    "receive_timeout",
+    ["", "5", "05", "5.0", "+6", "906"],
+    ids=["empty", "below-minimum", "leading-zero", "decimal", "sign", "too-large"],
+)
+def test_build_claude_command_rejects_invalid_broker_receive_timeout(
+    tmp_path: Path,
+    receive_timeout: str,
+) -> None:
+    request = _request(tmp_path)
+    command = shlex.split(_broker_client_commands(tmp_path, 1)[0])
+    command[-1] = receive_timeout
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.build_claude_command(
+            request,
+            agent_prompt="PINNED",
+            verification_commands=(shlex.join(command),),
         )
 
     assert excinfo.value.reason == "invalid_command"
@@ -968,7 +996,9 @@ def _run_sandbox_probe(
 
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         verification_argv = _verification_command_from_provider_argv(argv)
-        _assert_broker_client_command(verification_argv)
+        _assert_broker_client_command(
+            verification_argv, expected_command_timeout=request.timeout_seconds
+        )
         completed = subprocess.run(
             verification_argv,
             cwd=str(kwargs["cwd"]),
@@ -1227,7 +1257,76 @@ def test_verification_broker_silent_peer_cannot_block_shutdown(
                 broker.close()
 
     assert time.monotonic() - started < 2
+    assert bridge.BROKER_SOCKET_TIMEOUT_SECONDS == 0.5
     assert "sock.settimeout(" in bridge.BROKER_CLIENT_SOURCE
+
+
+def test_verification_broker_client_waits_for_admitted_long_command(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    snapshot = tmp_path / "snapshot"
+    source.mkdir()
+    snapshot.mkdir()
+
+    with bridge._sandbox_runtime(source, snapshot) as runtime:
+        with bridge._VerificationBroker(
+            runtime, snapshot, timeout_seconds=7
+        ) as broker:
+            client = broker.register(
+                [
+                    sys.executable,
+                    "-c",
+                    "import time; time.sleep(5.25); print('completed')",
+                ]
+            )
+            completed = subprocess.run(
+                client,
+                cwd=snapshot,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            _assert_broker_client_command(
+                client, expected_command_timeout=broker.timeout_seconds
+            )
+
+    assert completed.stdout.strip() == "completed"
+
+
+@pytest.mark.parametrize(
+    "receive_timeout",
+    ["", "5", "05", "5.0", "+6", "906"],
+    ids=["empty", "below-minimum", "leading-zero", "decimal", "sign", "too-large"],
+)
+def test_generated_broker_client_rejects_noncanonical_receive_timeout(
+    tmp_path: Path,
+    receive_timeout: str,
+) -> None:
+    source = tmp_path / "source"
+    snapshot = tmp_path / "snapshot"
+    source.mkdir()
+    snapshot.mkdir()
+
+    with bridge._sandbox_runtime(source, snapshot) as runtime:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(runtime.broker_client),
+                str(runtime.broker_dir / "missing.sock"),
+                "0" * 64,
+                receive_timeout,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2,
+        )
+
+    assert completed.returncode == 125
+    assert completed.stderr.strip() == "broker request rejected"
 
 
 @pytest.mark.skipif(
@@ -1330,7 +1429,9 @@ def test_verification_broker_rejects_replay_and_forged_tokens(
 
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         verification_argv = _verification_command_from_provider_argv(argv)
-        _assert_broker_client_command(verification_argv)
+        _assert_broker_client_command(
+            verification_argv, expected_command_timeout=request.timeout_seconds
+        )
         first = subprocess.run(
             verification_argv,
             cwd=str(kwargs["cwd"]),
@@ -1342,7 +1443,7 @@ def test_verification_broker_rejects_replay_and_forged_tokens(
         assert first.returncode == 0, first.stdout + first.stderr
         attacked_argv = list(verification_argv)
         if attack == "forged-token":
-            attacked_argv[-1] = "0" * 64
+            attacked_argv[-2] = "0" * 64
         rejected = subprocess.run(
             attacked_argv,
             cwd=str(kwargs["cwd"]),
@@ -1403,7 +1504,9 @@ def test_verification_broker_bounds_output_and_runtime(
 
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         verification_argv = _verification_command_from_provider_argv(argv)
-        _assert_broker_client_command(verification_argv)
+        _assert_broker_client_command(
+            verification_argv, expected_command_timeout=timeout_seconds
+        )
         completed = subprocess.run(
             verification_argv,
             cwd=str(kwargs["cwd"]),
