@@ -653,7 +653,7 @@ carrier for G5/G6. This damages semantic truth and blocks future automation.
 1. Add `scripts/packet_state.py`: the `work_state` and `verification_state`
    vocabularies, a `work_state` transition table + `is_valid_work_transition`,
    and pure `derive_work_state` / `derive_verification_state` functions that
-   read the legacy `status` / `packet_type` / `done_evidence` / `verify_request`
+   read the legacy `status` / `packet_type` / `done_evidence`
    fields. The derivation is READ-ONLY: it writes no packet, adds no field,
    and changes no gate.
 2. A `--report` CLI renders legacy status beside the derived states and flags
