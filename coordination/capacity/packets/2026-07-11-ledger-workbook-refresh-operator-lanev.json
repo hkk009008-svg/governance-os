@@ -25,13 +25,16 @@
     "Issue exactly one Pipeline verification-report GO, NITS, or FAIL with exact commit/range, commands/results, mutation flips, scratch cleanup, canonical no-change proof, and next trigger. NITS/FAIL returns to Director; only GO permits coordinator consideration of a canonical activation token.",
     "Do not edit evidence-ledger product files, consume coordinator mail, activate canonical resources, push, lock, spend, start an untokened service, or create duplicate verification mail."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "GO: coordination/mailbox/sent/2026-07-11T22-24-50Z-operator-to-all-verification-report.md verifies exact target 043a8bc7d21057d1d6f153877ab90f9867fde3f2 and range d57f5384c5528d061583b5f52a99d382cf1edd97..043a8bc7d21057d1d6f153877ab90f9867fde3f2.",
+    "The unverified owner-input, scratch/apply, and canonical-activation remainder was superseded by user direction in coordination/mailbox/sent/2026-07-12T01-19-04Z-director2-to-all-decision.md; no broader GO is inferred."
+  ],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-12-ledger-workbook-refresh-superseded-closeout.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "excepted",
+  "verify_request": "coordination/mailbox/sent/2026-07-11T22-04-35Z-director-to-coordinator-verify-request.md",
+  "target_commit": "043a8bc7d21057d1d6f153877ab90f9867fde3f2",
+  "commit_range": "d57f5384c5528d061583b5f52a99d382cf1edd97..043a8bc7d21057d1d6f153877ab90f9867fde3f2",
   "scope_files": [
     "import/workbook_refresh.py",
     "import/workbook_refresh_db.py",

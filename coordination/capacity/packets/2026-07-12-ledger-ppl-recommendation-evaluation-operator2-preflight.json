@@ -1,0 +1,34 @@
+{
+  "id": "operator2-ledger-ppl-recommendation-evaluation-preflight",
+  "wave": 2,
+  "cycle": "ledger-ppl-recommendation-evaluation-2026-07-12",
+  "owner": "operator2",
+  "packet_type": "operator-preflight",
+  "row_ids": [
+    "ppl-recommendation-execution-readiness"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-workbook-refresh-2026-07-11/",
+    "/Users/hyungkoookkim/evidence-ledger/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start from Pipeline, run the Operator2 Wave-2 ledger guard/status, read the committed route, and perform one bounded read-only preflight of linked-worktree identity, exact base/plan hash, primary venv, baseline commands, ignored artifact fences, read-only database option, likely final Operator selectors, and absence of canonical mutation.",
+    "Report one concise preflight verdict or route-changing contradiction to coordinator. This is execution readiness only and never substitutes for the live Operator's final verification of Director commits.",
+    "Do not edit product files, create/drop/query business databases, start services, consume mail, issue final GO, clean quarantined databases, push, lock, spend, or refresh the normal target checkout."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": "6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa",
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-workbook-refresh-2026-07-11/",
+    "/Users/hyungkoookkim/evidence-ledger/"
+  ]
+}

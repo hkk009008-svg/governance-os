@@ -1,0 +1,46 @@
+{
+  "id": "coord-ledger-ppl-recommendation-evaluation-join",
+  "wave": 2,
+  "cycle": "ledger-ppl-recommendation-evaluation-2026-07-12",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "ppl-recommendation-authority-contract",
+    "ppl-recommendation-readonly-snapshot",
+    "ppl-recommendation-scoring-decision",
+    "ppl-recommendation-retrospective-evaluation",
+    "ppl-recommendation-replay-cli-docs"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-ppl-recommendation-evaluation-implementation",
+    "operator-ledger-ppl-recommendation-evaluation-lanev",
+    "director2-ledger-ppl-recommendation-evaluation-preflight",
+    "operator2-ledger-ppl-recommendation-evaluation-preflight"
+  ],
+  "acceptance": [
+    "Join only after the approved plan is committed unchanged, the design-time adversarial-surface enumeration at docs/HANDOFF-coordinator-2026-07-12-ppl-adversarial-surface-enumeration.md is honored, Tasks 1-9 complete sequentially under controller-only commits and TDD evidence, every per-task specification/code-quality gate closes, and Tasks 2-8 retain an independent read-only cross-check.",
+    "Require one final Director verify-request naming the exact implementation range, path inventory, test evidence, review artifacts, privacy checks, current-profile authority boundary, and exclusions; require one live Operator GO/NITS/FAIL bound to that exact range.",
+    "Close only when capacity board, route validation, protocol doctor, target smoke, document gates, whole-slice tests, replay/mutation evidence, and all-seat visibility pass without any product activation or business-data disclosure.",
+    "Do not edit evidence-ledger product files as coordinator. Do not infer an authority bundle, activate advice, mutate canonical data/resources, clean quarantined databases, or authorize publication."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-12-ledger-ppl-recommendation-evaluation-coordinator-join.json",
+    "coordination/capacity/packets/2026-07-12-ledger-ppl-recommendation-evaluation-director-implementation.json",
+    "coordination/capacity/packets/2026-07-12-ledger-ppl-recommendation-evaluation-operator-lanev.json",
+    "coordination/capacity/packets/2026-07-12-ledger-ppl-recommendation-evaluation-director2-preflight.json",
+    "coordination/capacity/packets/2026-07-12-ledger-ppl-recommendation-evaluation-operator2-preflight.json"
+  ]
+}

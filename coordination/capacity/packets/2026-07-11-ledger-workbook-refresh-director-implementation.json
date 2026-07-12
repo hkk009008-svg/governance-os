@@ -49,13 +49,17 @@
     "After Tasks 1-6 pass all focused/full suites and reviews, obtain the real-data scratch token, execute plan Task 7 only against the cloned scratch DB/resource, clean up the exact token-bound scratch target, and prove canonical DB/resource hashes and git status unchanged. Send one cumulative verify-request naming the exact range, tests, mutations, report hashes, reviewer artifacts, and exclusions.",
     "No canonical database/resource activation, normal-checkout refresh, push, merge, rebase, reset, amend, lock, cursor consume, paid service, pod, remote mutation, or publication is authorized by this packet. A changed base, uncovered file, ambiguous source fact, failed review, blocker disposition, unavailable required test, or need to widen scope returns one bounded coordinator report."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "verify-request: coordination/mailbox/sent/2026-07-11T22-04-35Z-director-to-coordinator-verify-request.md binds d57f5384c5528d061583b5f52a99d382cf1edd97..043a8bc7d21057d1d6f153877ab90f9867fde3f2.",
+    "Operator verification-report GO: coordination/mailbox/sent/2026-07-11T22-24-50Z-operator-to-all-verification-report.md.",
+    "The user-principal superseded the unexecuted owner-input, apply, and activation remainder in coordination/mailbox/sent/2026-07-12T01-19-04Z-director2-to-all-decision.md; this packet is terminal by exception, with no canonical data/resource mutation."
+  ],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-12-ledger-workbook-refresh-superseded-closeout.md",
   "next_recipient": "operator",
-  "status": "ready",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "excepted",
+  "verify_request": "coordination/mailbox/sent/2026-07-11T22-04-35Z-director-to-coordinator-verify-request.md",
+  "target_commit": "043a8bc7d21057d1d6f153877ab90f9867fde3f2",
+  "commit_range": "d57f5384c5528d061583b5f52a99d382cf1edd97..043a8bc7d21057d1d6f153877ab90f9867fde3f2",
   "scope_files": [
     "import/workbook_refresh.py",
     "import/workbook_refresh_db.py",
