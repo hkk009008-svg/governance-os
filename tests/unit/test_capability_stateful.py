@@ -34,7 +34,8 @@ class CapabilityConsumeMachine(RuleBasedStateMachine):
     @rule(cid=st.text(alphabet="abcdef0123456789", min_size=1, max_size=6))
     def consume_capability(self, cid):
         cap = _cap(capability_id=f"cap-{cid}")
-        evidence = {"result": "ok", "command": "git push", "output": "done", "commit": "deadbee"}
+        # command matches BOTH allowed_command_class "git push" and target "origin/main".
+        evidence = {"result": "ok", "command": "git push origin main", "output": "done", "commit": "deadbee"}
         res = route_capability.consume(cap, evidence, store_dir=self.store)
         key = cap["capability_id"]
         if key in self.consumed:

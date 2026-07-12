@@ -219,7 +219,10 @@ def _lr(route_id, generation):
 
 
 def _evidence():
-    return {"result": "ok", "command": "git push", "output": "To origin/main", "commit": "deadbee"}
+    # command "git push origin main" matches BOTH the allowed_command_class
+    # ("git push") AND the target ("origin/main") — target enforcement now
+    # requires the command to act on the authorized target, not just the class.
+    return {"result": "ok", "command": "git push origin main", "output": "To origin/main", "commit": "deadbee"}
 
 
 def test_consume_writes_receipt_and_succeeds(tmp_path):
@@ -242,7 +245,8 @@ def test_consume_refuses_invalid_capability(tmp_path):
 
 
 def test_consume_refuses_vacuous_evidence(tmp_path):
-    ev = {"result": "ok", "command": "git push", "output": "done"}  # no commit/logs_ref
+    # command matches class AND target; the receipt is vacuous (no commit/logs_ref).
+    ev = {"result": "ok", "command": "git push origin main", "output": "done"}  # no commit/logs_ref
     res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
     assert not res.ok and "evidence" in res.reason
     # and NO receipt file was written (fail-closed before O_EXCL)
@@ -467,7 +471,7 @@ def test_cli_consume_first_exit_0_then_replay_exit_3(tmp_path, capsys):
     store = tmp_path / "store"
     argv = [
         "consume", "--capability", good, "--store", str(store),
-        "--result", "ok", "--command", "git push",
+        "--result", "ok", "--command", "git push origin main",
         "--output", "To origin/main", "--commit", "deadbee",
     ]
     assert route_capability.main(argv) == 0
@@ -483,7 +487,7 @@ def test_cli_consume_vacuous_evidence_exit_2(tmp_path, capsys):
     # no --commit and no --logs-ref -> vacuous evidence, refused fail-closed.
     argv = [
         "consume", "--capability", good, "--store", str(store),
-        "--result", "ok", "--command", "git push", "--output", "done",
+        "--result", "ok", "--command", "git push origin main", "--output", "done",
     ]
     assert route_capability.main(argv) == 2
     assert "evidence" in capsys.readouterr().out
@@ -495,7 +499,7 @@ def test_cli_consume_invalid_capability_exit_2(tmp_path, capsys):
     store = tmp_path / "store"
     argv = [
         "consume", "--capability", bad, "--store", str(store),
-        "--result", "ok", "--command", "git push",
+        "--result", "ok", "--command", "git push origin main",
         "--output", "To origin/main", "--commit", "deadbee",
     ]
     assert route_capability.main(argv) == 2
@@ -557,7 +561,7 @@ def test_cli_consume_refuses_stale_with_route_root(tmp_path, capsys):
     cap_path = _write_cap(tmp_path, bound_route_id=route_id, bound_generation=3)
     argv = [
         "consume", "--capability", cap_path, "--store", str(store),
-        "--result", "ok", "--command", "git push",
+        "--result", "ok", "--command", "git push origin main",
         "--output", "To origin/main", "--commit", "deadbee",
         "--route-root", str(tmp_path),
     ]
@@ -579,7 +583,7 @@ def test_cli_consume_route_root_no_lineage_exit_4(tmp_path, capsys):
     empty_root.mkdir()
     argv = [
         "consume", "--capability", good, "--store", str(store),
-        "--result", "ok", "--command", "git push",
+        "--result", "ok", "--command", "git push origin main",
         "--output", "To origin/main", "--commit", "deadbee",
         "--route-root", str(empty_root),
     ]

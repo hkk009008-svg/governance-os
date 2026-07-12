@@ -83,6 +83,12 @@ OPTIONAL_FIELDS = ("extensions",)
 
 LIFECYCLE_STATES = ("issued", "activated", "consumed", "revoked", "expired", "failed")
 
+# Only these two states are consumable. The other four are terminal / non-live:
+# ``consumed`` (already spent), ``revoked`` (authority withdrawn), ``expired``
+# (packet completed), ``failed`` (side effect errored). consume() refuses any
+# capability whose state is not consumable BEFORE any write (fail-closed).
+CONSUMABLE_STATES = frozenset({"issued", "activated"})
+
 _CAPABILITY_ID_RE = re.compile(r"^cap-[A-Za-z0-9._-]+$")
 
 
@@ -238,6 +244,25 @@ _COMMIT_RE = re.compile(r"^[0-9a-f]{7,40}$")
 _LOGS_REF_RE = re.compile(r"^logs/\S+$")
 
 
+def _logs_ref_confined(logs_ref: str) -> bool:
+    """True iff ``logs_ref`` lexically stays under ``logs/`` — a pure-lexical,
+    NO-filesystem confinement check (mirrors scripts/route_compat.py:_confine's
+    reject-absolute / reject-``..`` idiom).
+
+    Rejects: an absolute path (leading ``/``); any ``..`` path component (even one
+    that would normalize back inside, e.g. ``logs/a/../../b``); an empty component
+    (``logs//x``); or a first component that is not ``logs`` (not rooted under
+    ``logs/``). ``^logs/\\S+$`` alone matched ``logs/../../etc/passwd`` — this is
+    the traversal escape it missed.
+    """
+    if logs_ref.startswith("/"):
+        return False
+    parts = logs_ref.split("/")
+    if any(part in ("", "..") for part in parts):
+        return False
+    return parts[0] == "logs"
+
+
 def validate_receipt(obj: Any) -> list[str]:
     """Strict fail-closed validation of a capability-receipt/v1 object.
 
@@ -281,11 +306,23 @@ def validate_receipt(obj: Any) -> list[str]:
     commit = obj.get("commit")
     logs_ref = obj.get("logs_ref")
     has_commit = isinstance(commit, str) and bool(_COMMIT_RE.fullmatch(commit))
-    has_logs = isinstance(logs_ref, str) and bool(_LOGS_REF_RE.fullmatch(logs_ref))
     if commit is not None and not has_commit:
         issues.append("commit must be a 7-40 character lowercase hex SHA")
-    if logs_ref is not None and not has_logs:
-        issues.append("logs_ref must match ^logs/…")
+    # logs_ref: shape AND path-traversal confinement. A logs_ref that escapes
+    # logs/ (absolute, a ``..`` component, an empty component, or not rooted at
+    # logs/) is refused by a pure-lexical check (NO filesystem access) BEFORE it
+    # can serve as a valid evidence anchor — otherwise ``logs/../../etc/passwd``
+    # would ride the ``^logs/\S+$`` shape check into a valid receipt.
+    has_logs = False
+    if logs_ref is not None:
+        if not isinstance(logs_ref, str):
+            issues.append("logs_ref must match ^logs/…")
+        elif not _logs_ref_confined(logs_ref):
+            issues.append(f"logs_ref escapes logs/: {logs_ref!r}")
+        elif not _LOGS_REF_RE.fullmatch(logs_ref):
+            issues.append("logs_ref must match ^logs/…")
+        else:
+            has_logs = True
     if not (has_commit or has_logs):
         issues.append(
             "vacuous evidence rejected: at least one of commit (7-40 hex SHA) or "
@@ -358,6 +395,45 @@ class ConsumeResult:
     receipt_path: str | None
 
 
+def _validate_evidence(evidence: Any) -> list[str]:
+    """Structural validation of a consume() evidence mapping — NEVER raises.
+
+    Returns a list of issues (empty == structurally well-formed). This is what
+    makes consume() TOTAL: an arbitrary or malformed evidence object (a non-dict,
+    or a dict missing ``result``/``command``/``output`` or carrying non-string
+    values) yields a typed refusal here instead of a KeyError/AttributeError
+    downstream. Non-vacuity (a ``commit`` or ``logs_ref`` anchor) is enforced
+    separately by validate_receipt, not here.
+    """
+    if not isinstance(evidence, dict):
+        return [f"evidence must be a JSON object, got {type(evidence).__name__}"]
+    issues: list[str] = []
+    for field in ("result", "command", "output"):
+        if field not in evidence:
+            issues.append(f"missing required evidence field: {field}")
+        elif not isinstance(evidence[field], str):
+            issues.append(f"evidence field {field!r} must be a string")
+    for field in ("commit", "logs_ref"):
+        if field in evidence and not isinstance(evidence[field], str):
+            issues.append(f"evidence field {field!r} must be a string when present")
+    return issues
+
+
+def _command_targets_match(command: str, allowed_command_class: str, target: str) -> bool:
+    """True iff the command, after its command-class prefix, references EXACTLY
+    the capability's target (and only that) — the non-flag argument components,
+    split on whitespace and '/', must equal the target's components in order.
+    Fail-closed: an empty target, extra refs, a different ref, or no target all
+    return False."""
+    rest = command[len(allowed_command_class):].strip()  # class prefix already verified
+    non_flag = [tok for tok in rest.split() if not tok.startswith("-")]
+    cmd_components: list[str] = []
+    for tok in non_flag:
+        cmd_components.extend(p for p in tok.replace("/", " ").split() if p)
+    target_components = [p for p in target.replace("/", " ").split() if p]
+    return bool(target_components) and cmd_components == target_components
+
+
 def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) -> ConsumeResult:
     """Atomically consume a capability EXACTLY ONCE, writing an evidence receipt.
 
@@ -378,7 +454,15 @@ def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) 
     temp file a retry ignores.
 
     Fail-closed ordering (NOTHING is written until every check passes):
+      0. Evidence totality: malformed evidence (a non-dict, or missing/non-string
+         result/command/output) is refused ``malformed evidence`` up front, so
+         consume() is TOTAL — it never raises on any input.
       1. ``validate_capability`` — a malformed grant is refused, no write.
+      1a. Lifecycle: only an ``issued``/``activated`` capability is consumable; a
+         terminal state (``consumed``/``revoked``/``expired``/``failed``) is
+         refused ``not_consumable_state``, no write. (Dynamic ``expires_on``
+         enforcement needs a packet-completion signal consume() lacks and is
+         deferred; the terminal ``expired`` STATE is refused here.)
       2. Revocation-on-supersession (only when ``authoritative`` is supplied): the
          capability must be current against the authoritative route — a grant
          bound to a superseded generation (or a different route) is refused
@@ -392,10 +476,15 @@ def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) 
          ``git tag`` that ran, NOR a compound ``git push … && git tag …`` whose
          prefix would otherwise match; a mismatch is refused
          ``command_class_mismatch``, no write.
+      3a. Target enforcement: the command's non-flag argument components must
+         reference EXACTLY the capability's ``target`` — a grant for
+         ``origin/main`` cannot be spent recording ``git push attacker/main``; a
+         mismatch is refused ``target_mismatch``, no write.
       4. ``build_receipt`` + ``validate_receipt`` — the receipt is built FROM the
          capability (binding capability_hash by construction, never trusting a
          caller-supplied one) and its evidence is validated for non-vacuity
-         (a commit SHA or logs/ anchor). Vacuous evidence is refused, no write.
+         (a commit SHA or logs/ anchor) and logs_ref confinement. Vacuous or
+         traversing evidence is refused, no write.
       5. Only then is the receipt written to a temp file, fsynced, and atomically
          linked into place (the link is the one-time CAS).
 
@@ -404,12 +493,36 @@ def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) 
     user still authorizes the side effect itself (ADR-012). No capability state
     grants authority the principal did not.
     """
+    # 0. Totality: refuse malformed evidence up front so consume() NEVER raises on
+    # any input (a non-dict, or missing/non-string result/command/output). This
+    # runs before every other check so the raw evidence accesses below are safe.
+    evidence_issues = _validate_evidence(evidence)
+    if evidence_issues:
+        return ConsumeResult(
+            ok=False,
+            reason="malformed evidence: " + "; ".join(evidence_issues),
+            receipt_path=None,
+        )
+
     # 1. Fail-closed on a malformed capability — write nothing.
     cap_issues = validate_capability(capability)
     if cap_issues:
         return ConsumeResult(
             ok=False,
             reason="invalid capability: " + "; ".join(cap_issues),
+            receipt_path=None,
+        )
+
+    # 1a. Lifecycle enforcement: only an issued/activated capability is
+    # consumable. A terminal/non-live state (consumed/revoked/expired/failed) is
+    # refused BEFORE any write. Dynamic ``expires_on`` enforcement additionally
+    # needs a packet-completion signal consume() does not receive and is deferred;
+    # the terminal ``expired`` STATE is refused here.
+    state = capability["state"]
+    if state not in CONSUMABLE_STATES:
+        return ConsumeResult(
+            ok=False,
+            reason=f"not_consumable_state: {state}",
             receipt_path=None,
         )
 
@@ -445,6 +558,18 @@ def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) 
         return ConsumeResult(
             ok=False,
             reason=f"command_class_mismatch: evidence command does not match allowed_command_class {allowed!r}",
+            receipt_path=None,
+        )
+
+    # 1d. Target enforcement. The command class matching is NOT enough: a grant for
+    # ``git push`` at target ``origin/main`` must not be spent recording
+    # ``git push attacker/main``. The command's non-flag argument components must
+    # reference EXACTLY the authorized target, nothing more — fail-closed BEFORE
+    # any write.
+    if not _command_targets_match(cmd, allowed, capability["target"]):
+        return ConsumeResult(
+            ok=False,
+            reason=f"target_mismatch: evidence command does not act on the authorized target {capability['target']!r}",
             receipt_path=None,
         )
 
@@ -518,7 +643,11 @@ def capability_is_current(capability: dict, authoritative: "route_lineage.Lineag
     """
     bound_generation = capability["bound_generation"]
     route_generation = authoritative.lineage.generation
-    if bound_generation is None or route_generation is None:
+    # int-only currency: a bool generation (``True``/``False``) or a ``None``
+    # generation on EITHER side is NOT current. ``type(...) is int`` (not
+    # ``isinstance``) rejects bool, since ``True == 1`` — a boolean grant must
+    # never ride an int-1 route into "current" and inherit authority it never had.
+    if type(bound_generation) is not int or type(route_generation) is not int:
         return False
     return (
         capability["bound_route_id"] == authoritative.route_id

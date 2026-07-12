@@ -38,7 +38,8 @@ def _lineage_route(route_id: str, generation: int, parent: str | None) -> route_
 
 
 def _evidence():
-    return {"result": "ok", "command": "git push", "output": "done", "commit": "deadbee"}
+    # command matches BOTH allowed_command_class "git push" and target "origin/main".
+    return {"result": "ok", "command": "git push origin main", "output": "done", "commit": "deadbee"}
 
 
 def _is_current(cap: dict, tip: route_lineage.LineageRoute) -> bool:
