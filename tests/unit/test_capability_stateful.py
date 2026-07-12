@@ -45,9 +45,17 @@ class CapabilityConsumeMachine(RuleBasedStateMachine):
             self.consumed.add(key)
 
     @invariant()
-    def one_receipt_per_consumed_capability(self):
-        for key in self.consumed:
-            assert (self.store / f"{key}.receipt.json").exists()
+    def store_contains_exactly_the_expected_receipts(self):
+        # Subsumes the weaker "each expected receipt exists" check: assert the
+        # store's contents EXACTLY match the expected set, so an EXTRA receipt (a
+        # replay that wrote a second *.receipt.json), a stray file, OR a missing
+        # receipt all fail. consume() removes its temp files in a finally, so
+        # between steps only the .receipt.json files should remain.
+        actual = {p.name for p in self.store.iterdir() if p.is_file()}
+        expected = {f"{cid}.receipt.json" for cid in self.consumed}
+        assert actual == expected, (
+            f"store drift: extra={actual - expected} missing={expected - actual}"
+        )
 
     def teardown(self):
         self._tmp.cleanup()

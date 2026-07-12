@@ -17,6 +17,7 @@ import route_capability
 import route_lineage
 import route_manifest
 import test_route_manifest as tr  # sibling test module: reusable valid-baseline builders
+import test_route_capability as tc  # sibling test module: reusable valid capability baseline
 
 settings.register_profile("ci", settings(derandomize=True, max_examples=200,
                                          deadline=None,
@@ -99,6 +100,43 @@ def test_newline_in_nested_token_field_always_rejected(field, nl, pre, post):
     assert any("control characters rejected" in i for i in issues), issues
 
 
+# ---- DEEP validation is exercised, fail-closed (non-vacuity) ----
+# The arbitrary-dict properties above only ever reach the early "unsupported
+# schema" return (the bounded `_arb` strategy can never spell the schema
+# constant), so they never touch the deep field checks. These properties start
+# from the KNOWN-VALID baseline and corrupt exactly one field to an invalid
+# value that trips a DEEP (post-schema, post-missing) check: each corruption
+# MUST yield a non-empty issues list. This is the property a validator mutated
+# to "accept every schema-correct object" fails.
+#
+# Each pair corrupts a distinct deep branch of validate_route_object:
+_ROUTE_DEEP_CORRUPTIONS = [
+    ("created_by", "intern"),      # not a known seat
+    ("generation", 0),             # integer < 1
+    ("wave", "two"),               # not an integer
+    ("packet_refs", []),           # empty (must be non-empty unique list)
+    ("next_trigger", "none"),      # weak trigger (not authority)
+    ("task_board", ""),            # empty string
+]
+
+
+def test_route_baseline_is_valid_positive_control():
+    # Positive control: the UNcorrupted baseline validates clean, so the
+    # corruption properties below are meaningful (only the corruption fails it).
+    assert route_manifest.validate_route_object(tr._route()) == []
+
+
+@given(pair=st.sampled_from(_ROUTE_DEEP_CORRUPTIONS))
+def test_corrupted_route_field_reaches_deep_validation_fail_closed(pair):
+    field, bad = pair
+    route = tr._route()
+    route[field] = copy.deepcopy(bad)
+    snap = copy.deepcopy(route)
+    issues = route_manifest.validate_route_object(route)
+    assert issues, f"deep check did not fire for corrupted {field}={bad!r}"
+    assert route == snap  # deep validation must not mutate the input
+
+
 # ---- route_lineage.resolve_authoritative ----
 _gen = st.one_of(st.none(), st.integers(min_value=1, max_value=6))
 _lineage_route = st.builds(
@@ -167,6 +205,41 @@ def test_validate_capability_never_crashes_and_no_mutation(obj):
     issues = route_capability.validate_capability(obj)
     assert isinstance(issues, list)
     assert obj == snap
+
+
+# DEEP validation is exercised, fail-closed. As with the route validator, the
+# arbitrary-dict property above only ever hits the "unsupported schema" early
+# return. These start from the KNOWN-VALID capability baseline and corrupt one
+# field to an invalid value that trips a DEEP (post-schema, post-missing) check:
+# each MUST yield a non-empty issues list. This is exactly the property that the
+# Codex mutant — validate_capability rewritten to accept every schema-correct
+# object — fails (see slice5-fix-report.md for the confirmed mutant-catch).
+_CAP_DEEP_CORRUPTIONS = [
+    ("subject", "intern"),                       # not a known seat
+    ("bound_generation", "x"),                   # not an integer
+    ("bound_generation", True),                  # bool is not a valid integer
+    ("expires_on", {"event": "never"}),          # wrong expiry shape
+    ("capability_id", "nope"),                    # fails ^cap-… pattern
+    ("allowed_command_class", ""),               # empty token string
+    ("target", "x\ny"),                          # control char (deep scan)
+]
+
+
+def test_capability_baseline_is_valid_positive_control():
+    # Positive control: the UNcorrupted baseline validates clean, so the
+    # corruption properties below are meaningful (only the corruption fails it).
+    assert route_capability.validate_capability(tc._cap()) == []
+
+
+@given(pair=st.sampled_from(_CAP_DEEP_CORRUPTIONS))
+def test_corrupted_capability_field_reaches_deep_validation_fail_closed(pair):
+    field, bad = pair
+    cap = tc._cap()
+    cap[field] = copy.deepcopy(bad)
+    snap = copy.deepcopy(cap)
+    issues = route_capability.validate_capability(cap)
+    assert issues, f"deep check did not fire for corrupted {field}={bad!r}"
+    assert cap == snap  # deep validation must not mutate the input
 
 
 # ---- packet_state.derive_* ----
