@@ -49,7 +49,7 @@ Cross-Model Opus Verification:
 - Preserve these exact verification-report fields: `Cross-model review:`, `Effective Opus model:`, `Opus finding dispositions:`, `Reconciliation guard:`, and `Degraded reason:`.
 - Every Opus finding requires a disposition: confirmed, disproved-with-evidence, or unresolved. An unresolved Opus finding blocks GO, and unsupported dismissal also blocks GO.
 - Reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON.
-- Reconciliation also requires an explicit Pipeline `--repo-root` and locally proves the expected commits exist before GO is allowed.
+- Reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO.
 - Obey the reconciliation result: go_allowed=false blocks GO.
 - Confirmed minor Opus findings require NITS; confirmed important or critical Opus findings require FAIL.
 - `unavailable` is explicit degraded Codex-only fallback and permits Codex-only synthesis only with explicit degraded status and reason.

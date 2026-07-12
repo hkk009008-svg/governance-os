@@ -10,7 +10,9 @@ import json
 import os
 import re
 import secrets
+import signal
 import shlex
+import shutil
 import socket
 import stat
 import subprocess
@@ -47,11 +49,15 @@ UNAVAILABLE_REASONS = frozenset(
     }
 )
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+FINDING_ID_MAX_LENGTH = 64
+FINDING_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+_FINDING_ID_RE = re.compile(FINDING_ID_PATTERN)
 DEFAULT_MAX_TURNS = 12
 DEFAULT_TIMEOUT_SECONDS = 900
 BROKER_OUTPUT_LIMIT_BYTES = 131_072
 BROKER_MAX_REQUEST_BYTES = 256
 BROKER_MAX_RESPONSE_BYTES = BROKER_OUTPUT_LIMIT_BYTES * 3
+BROKER_SOCKET_TIMEOUT_SECONDS = 0.5
 _FORBIDDEN_COMMAND_CHARS = frozenset(";&|<>`$(){}\n\r")
 _AUTHORIZATION_RE = re.compile(
     r"^(?:user-task|verify-request):[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
@@ -154,6 +160,7 @@ if len(sys.argv) != 3:
     print("broker request rejected", file=sys.stderr)
     raise SystemExit(125)
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(5.0)
 try:
     sock.connect(sys.argv[1])
     sock.sendall(sys.argv[2].encode("ascii") + b"\\n")
@@ -220,7 +227,12 @@ OPUS_OUTPUT_SCHEMA: dict[str, object] = {
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
-                    "id": {"type": "string"},
+                    "id": {
+                        "type": "string",
+                        "pattern": FINDING_ID_PATTERN,
+                        "minLength": 1,
+                        "maxLength": FINDING_ID_MAX_LENGTH,
+                    },
                     "severity": {"enum": ["critical", "important", "minor"]},
                     "claim": {"type": "string"},
                     "location": {"type": ["string", "null"]},
@@ -324,6 +336,27 @@ def _full_sha(value: object, field: str) -> str:
     return text
 
 
+def _finding_id(value: object) -> str:
+    if not isinstance(value, str) or not _FINDING_ID_RE.fullmatch(value):
+        raise ReviewContractError(
+            "invalid_schema",
+            "findings[].id must use 1-64 letters, digits, dots, underscores, or hyphens",
+        )
+    return value
+
+
+def _canonical_review_request(request: ReviewRequest) -> ReviewRequest:
+    return replace(
+        request,
+        reviewed_head=_full_sha(request.reviewed_head, "reviewed_head"),
+        reviewed_base=(
+            _full_sha(request.reviewed_base, "reviewed_base")
+            if request.reviewed_base is not None
+            else None
+        ),
+    )
+
+
 def is_opus_model(model: str | None) -> bool:
     if model is None:
         return False
@@ -343,7 +376,7 @@ class Finding:
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "Finding":
         _require_exact_fields(value, _FINDING_FIELDS, "findings[]")
-        finding_id = _required_string(value.get("id"), "findings[].id")
+        finding_id = _finding_id(value.get("id"))
         severity = _required_string(value.get("severity"), "findings[].severity").lower()
         if severity not in VALID_SEVERITIES:
             raise ReviewContractError(
@@ -775,6 +808,67 @@ def _git_process(
         text=text,
         check=False,
     )
+
+
+def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+def _run_process_group(
+    argv: list[str],
+    *,
+    cwd: str,
+    env: Mapping[str, str],
+    capture_output: bool,
+    text: bool,
+    check: bool,
+    timeout: int,
+) -> subprocess.CompletedProcess[str]:
+    if not capture_output or not text:
+        raise ValueError("process-group runner requires captured text output")
+    with tempfile.TemporaryFile(mode="w+b") as stdout_file, tempfile.TemporaryFile(
+        mode="w+b"
+    ) as stderr_file:
+        process = subprocess.Popen(
+            argv,
+            cwd=cwd,
+            env=env,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            start_new_session=True,
+        )
+        timed_out = False
+        try:
+            returncode = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            returncode = -signal.SIGKILL
+        finally:
+            _terminate_process_group(process)
+
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        stdout = stdout_file.read().decode("utf-8", errors="replace")
+        stderr = stderr_file.read().decode("utf-8", errors="replace")
+    if timed_out:
+        raise subprocess.TimeoutExpired(
+            argv,
+            timeout,
+            output=stdout,
+            stderr=stderr,
+        )
+    completed = subprocess.CompletedProcess(argv, returncode, stdout, stderr)
+    if check:
+        completed.check_returncode()
+    return completed
 
 
 def _require_git_repository(root: Path) -> Path:
@@ -1252,6 +1346,7 @@ class _VerificationBroker:
                     env=_verification_environment(self.runtime),
                     stdout=stdout_file,
                     stderr=stderr_file,
+                    start_new_session=True,
                 )
                 with self._lock:
                     self._active = process
@@ -1259,9 +1354,8 @@ class _VerificationBroker:
                     returncode = process.wait(timeout=self.timeout_seconds)
                 except subprocess.TimeoutExpired:
                     status = "timeout"
-                    process.kill()
-                    returncode = process.wait(timeout=5)
                 finally:
+                    _terminate_process_group(process)
                     with self._lock:
                         self._active = None
             stdout_size = stdout_path.stat().st_size
@@ -1297,6 +1391,7 @@ class _VerificationBroker:
             except OSError:
                 break
             with connection:
+                connection.settimeout(BROKER_SOCKET_TIMEOUT_SECONDS)
                 try:
                     request = connection.recv(BROKER_MAX_REQUEST_BYTES + 1)
                     if (
@@ -1322,8 +1417,8 @@ class _VerificationBroker:
         self._stop.set()
         with self._lock:
             active = self._active
-        if active is not None and active.poll() is None:
-            active.kill()
+        if active is not None:
+            _terminate_process_group(active)
         self._listener.close()
         self._thread.join(timeout=5)
         if self._thread.is_alive():
@@ -1417,6 +1512,7 @@ def _review_git_commands(request: ReviewRequest) -> tuple[str, ...]:
                     *prefix,
                     "show",
                     "--no-ext-diff",
+                    "--no-textconv",
                     "--stat",
                     "--oneline",
                     request.reviewed_head,
@@ -1427,6 +1523,7 @@ def _review_git_commands(request: ReviewRequest) -> tuple[str, ...]:
                     *prefix,
                     "show",
                     "--no-ext-diff",
+                    "--no-textconv",
                     "--format=fuller",
                     request.reviewed_head,
                     "--",
@@ -1442,6 +1539,7 @@ def _review_git_commands(request: ReviewRequest) -> tuple[str, ...]:
                     *prefix,
                     "diff",
                     "--no-ext-diff",
+                    "--no-textconv",
                     "--stat",
                     reviewed_range,
                     "--",
@@ -1451,6 +1549,7 @@ def _review_git_commands(request: ReviewRequest) -> tuple[str, ...]:
                     *prefix,
                     "diff",
                     "--no-ext-diff",
+                    "--no-textconv",
                     reviewed_range,
                     "--",
                     *paths,
@@ -1528,11 +1627,22 @@ def build_claude_environment(
     return child
 
 
+def _resolve_claude_executable(environment: Mapping[str, str]) -> Path | None:
+    candidate = shutil.which("claude", path=environment.get("PATH"))
+    if candidate is None:
+        return None
+    executable = Path(candidate).resolve()
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        return None
+    return executable
+
+
 def build_claude_command(
     request: ReviewRequest,
     *,
     agent_prompt: str,
     verification_commands: tuple[str, ...],
+    claude_executable: Path | str = "claude",
 ) -> list[str]:
     exposed_verification_commands = verification_commands
     if len(exposed_verification_commands) != len(request.verification_commands):
@@ -1558,7 +1668,7 @@ def build_claude_command(
         ),
     ]
     return [
-        "claude",
+        str(claude_executable),
         "-p",
         prompt,
         "--safe-mode",
@@ -1645,7 +1755,7 @@ def _unavailable(request: ReviewRequest, reason: str) -> OpusReview:
 def review(
     request: ReviewRequest,
     *,
-    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
 ) -> OpusReview:
     try:
         source = _require_git_repository(request.repo_root)
@@ -1653,6 +1763,7 @@ def review(
         raise ReviewContractError(
             "not_pipeline_repo", f"repo_root is not a Pipeline Git worktree: {request.repo_root}"
         ) from exc
+    request = _canonical_review_request(request)
     _validate_request_shape(request)
     _pipeline_root(source)
     _require_commit(source, request.reviewed_head, "reviewed_head")
@@ -1667,6 +1778,10 @@ def review(
     trusted_agent_prompt = _load_agent_prompt_at_revision(
         source, trusted_revision
     )
+    child_env = build_claude_environment()
+    claude_executable = _resolve_claude_executable(child_env)
+    if claude_executable is None:
+        return _unavailable(request, "claude_not_found")
 
     with _immutable_review_snapshot(request) as snapshot:
         snapshot_request = _snapshot_request(request, snapshot)
@@ -1688,6 +1803,7 @@ def review(
                         snapshot_request,
                         agent_prompt=trusted_agent_prompt,
                         verification_commands=verification_commands,
+                        claude_executable=claude_executable,
                     )
                     argv = [
                         str(SANDBOX_EXECUTABLE),
@@ -1695,10 +1811,9 @@ def review(
                         str(sandbox.outer_profile),
                         *claude_argv,
                     ]
-                    child_env = build_claude_environment()
                     child_env["TMPDIR"] = str(sandbox.provider_scratch)
                     try:
-                        completed = runner(
+                        completed = (runner or _run_process_group)(
                             argv,
                             cwd=str(snapshot),
                             env=child_env,
@@ -1951,7 +2066,7 @@ def _key_value(items: list[str], *, label: str) -> dict[str, str]:
 
 def _run_review_cli(
     args: argparse.Namespace,
-    reviewer: Callable[[ReviewRequest], OpusReview],
+    reviewer: Callable[[ReviewRequest], OpusReview] | None,
 ) -> OpusReview:
     request = ReviewRequest(
         repo_root=Path(args.repo_root),
@@ -1962,7 +2077,9 @@ def _run_review_cli(
         verification_commands=tuple(args.verification_command),
         authorization_source=args.authorization_source,
     )
-    return reviewer(request)
+    if reviewer is not None:
+        return reviewer(_canonical_review_request(request))
+    return review(request)
 
 
 def _run_reconcile_cli(args: argparse.Namespace) -> Reconciliation:
@@ -2007,7 +2124,7 @@ def main(
     try:
         if args.command == "review":
             result: OpusReview | Reconciliation = _run_review_cli(
-                args, reviewer or review
+                args, reviewer
             )
         else:
             result = _run_reconcile_cli(args)

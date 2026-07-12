@@ -592,6 +592,7 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
         "every Opus finding requires a disposition",
         "unresolved Opus finding blocks GO",
         "reconciliation requires explicit expected HEAD/base and preserves reviewed scope",
+        "reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO",
         "no automatic retry",
         "no third same-question generic reviewer",
         "Do not launch generic same-question spec or code-quality reviewers",
@@ -642,6 +643,11 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
     operator_skill = _read(".agents/skills/seat-operator/SKILL.md")
     assert "For non-Codex Lane V" in operator_skill
     assert "primary Codex analysis plus the blind Opus pass" in operator_skill
+    assert "Spawn read-only `lane-v-verifier` for ordinary landed diffs" not in operator_skill
+    assert (
+        "For non-Codex Lane V, spawn read-only `lane-v-verifier` for ordinary landed diffs"
+        in operator_skill
+    )
     assert "Dispatch **cold-context** spec + code-quality reviewer subagents on every" not in operator_skill
 
     continuation = _read("docs/protocol/codex/continuation.md")

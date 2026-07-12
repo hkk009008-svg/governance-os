@@ -1104,6 +1104,7 @@ CROSS_MODEL_VERIFICATION_RULES = (
     "every Opus finding requires a disposition: confirmed, disproved with concrete evidence, or unresolved",
     "an unresolved Opus finding blocks GO; confirmed minor findings require NITS and confirmed important/critical findings require FAIL",
     "reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON",
+    "reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO",
     "the bridge permits one Claude process attempt and no automatic retry for a verification attempt",
     "no third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question",
     "Do not launch generic same-question spec or code-quality reviewers for Codex Lane V; the primary Codex analysis and blind Opus pass are the pair",

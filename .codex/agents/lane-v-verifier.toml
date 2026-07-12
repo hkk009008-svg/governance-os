@@ -65,6 +65,7 @@ Cross-Model Opus Verification:
 - Preserve the normalized `pass | issues | unavailable` Opus result and the effective model metadata.
 - Every Opus finding requires a disposition: record `confirmed`, `disproved` with concrete evidence, or `unresolved`.
 - Reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON.
+- Reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO.
 - Invoke `scripts/opus_review_bridge.py reconcile` with explicit Pipeline `--repo-root`, expected `--head`/optional `--base`, the Codex verdict, normalized Opus JSON, and every finding disposition. A scope mismatch or missing commit rejects stale, replayed, or invented review scope.
 - An unresolved Opus finding blocks GO. Confirmed minor findings require NITS; confirmed important or critical findings require FAIL.
 - `unavailable` is explicit degraded Codex-only fallback with its reason; it is never a pass.

@@ -4,12 +4,15 @@ import errno
 import inspect
 import json
 import os
+import signal
 import shlex
 import shutil
+import socket
 import stat
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -92,6 +95,38 @@ def test_parse_structured_review_rejects_scope_mismatch() -> None:
         )
 
     assert excinfo.value.reason == "reviewed_scope_mismatch"
+
+
+@pytest.mark.parametrize(
+    "finding_id",
+    ["", " OPUS-1", "OPUS-1 ", "OPUS=1", "OPUS/1", "A" * 65],
+    ids=["empty", "leading-space", "trailing-space", "equals", "slash", "too-long"],
+)
+def test_finding_id_parser_matches_bounded_delimiter_safe_schema(
+    finding_id: str,
+) -> None:
+    finding = _finding_payload()
+    finding["id"] = finding_id
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.parse_structured_review(
+            _structured_payload(status="issues", findings=[finding]),
+            expected_head=HEAD,
+            expected_base=BASE,
+            effective_model="claude-opus-4-7",
+            authorization_source="user-task:verification-1",
+        )
+
+    assert excinfo.value.reason == "invalid_schema"
+    schema = bridge.OPUS_OUTPUT_SCHEMA["properties"]["findings"]["items"][
+        "properties"
+    ]["id"]
+    assert schema == {
+        "type": "string",
+        "pattern": bridge.FINDING_ID_PATTERN,
+        "minLength": 1,
+        "maxLength": bridge.FINDING_ID_MAX_LENGTH,
+    }
 
 
 def _normalized_pass_payload() -> dict[str, object]:
@@ -564,6 +599,57 @@ def _broker_client_commands(tmp_path: Path, count: int) -> tuple[str, ...]:
     )
 
 
+def _process_tree_command(pid_path: Path, *, parent_waits: bool) -> list[str]:
+    descendant_source = "import time; time.sleep(60)"
+    parent_source = "\n".join(
+        (
+            "from pathlib import Path",
+            "import subprocess",
+            "import sys",
+            "import time",
+            "descendant = subprocess.Popen([sys.executable, '-c', sys.argv[2]])",
+            "Path(sys.argv[1]).write_text(str(descendant.pid), encoding='utf-8')",
+            *(('time.sleep(60)',) if parent_waits else ()),
+        )
+    )
+    return [sys.executable, "-c", parent_source, str(pid_path), descendant_source]
+
+
+def _pid_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _wait_for_pid_file(pid_path: Path, *, timeout: float = 5.0) -> int:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pid_path.is_file() and pid_path.read_text(encoding="utf-8").strip():
+            return int(pid_path.read_text(encoding="utf-8"))
+        time.sleep(0.02)
+    raise AssertionError("descendant pid was not recorded")
+
+
+def _wait_for_pid_exit(pid: int, *, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _pid_exists(pid):
+            return True
+        time.sleep(0.02)
+    return not _pid_exists(pid)
+
+
+def _kill_pid_if_alive(pid: int | None) -> None:
+    if pid is None or not _pid_exists(pid):
+        return
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
 def _claude_stream(
     *,
     model: str = "claude-opus-4-7",
@@ -652,6 +738,25 @@ def test_build_claude_command_is_bounded_and_read_only(tmp_path: Path) -> None:
     assert all("*" not in rule for rule in allowed_rules)
     assert any("broker_client.py" in rule for rule in allowed_rules)
     assert not any("-m pytest" in rule for rule in allowed_rules)
+
+
+@pytest.mark.parametrize("reviewed_base", [BASE, None], ids=["range", "single-commit"])
+def test_review_patch_commands_disable_external_diff_and_textconv(
+    tmp_path: Path,
+    reviewed_base: str | None,
+) -> None:
+    request = replace(_request(tmp_path), reviewed_base=reviewed_base)
+    patch_commands = []
+    for command in bridge._review_git_commands(request):
+        argv = shlex.split(command)
+        git_subcommand = argv[argv.index("git") + 1]
+        if git_subcommand in {"diff", "show"} and "--" in argv:
+            patch_commands.append(argv)
+
+    assert patch_commands
+    for argv in patch_commands:
+        assert "--no-ext-diff" in argv
+        assert "--no-textconv" in argv
 
 
 def test_build_claude_command_requires_brokered_verification_rules(
@@ -968,6 +1073,163 @@ def test_sandbox_probe_allows_trusted_venv_inside_source_but_denies_source_reads
         assert "Operation not permitted" in completed.stdout + completed.stderr
 
 
+@pytest.mark.parametrize(
+    ("parent_waits", "expected_returncode"),
+    [(False, 0), (True, 124)],
+    ids=["normal-parent-exit", "timeout"],
+)
+def test_verification_broker_reaps_entire_process_group(
+    tmp_path: Path,
+    parent_waits: bool,
+    expected_returncode: int,
+) -> None:
+    source = tmp_path / "source"
+    snapshot = tmp_path / "snapshot"
+    source.mkdir()
+    snapshot.mkdir()
+    pid_path = tmp_path / "descendant.pid"
+    descendant_pid: int | None = None
+
+    try:
+        with bridge._sandbox_runtime(source, snapshot) as runtime:
+            with bridge._VerificationBroker(
+                runtime, snapshot, timeout_seconds=1
+            ) as broker:
+                client = broker.register(
+                    _process_tree_command(pid_path, parent_waits=parent_waits)
+                )
+                completed = subprocess.run(
+                    client,
+                    cwd=snapshot,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=5,
+                )
+            descendant_pid = _wait_for_pid_file(pid_path)
+
+        assert completed.returncode == expected_returncode
+        assert _wait_for_pid_exit(descendant_pid)
+    finally:
+        _kill_pid_if_alive(descendant_pid)
+
+
+def test_verification_broker_context_shutdown_reaps_active_process_group(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    snapshot = tmp_path / "snapshot"
+    source.mkdir()
+    snapshot.mkdir()
+    pid_path = tmp_path / "descendant.pid"
+    descendant_pid: int | None = None
+    completed: list[subprocess.CompletedProcess[str]] = []
+
+    try:
+        with bridge._sandbox_runtime(source, snapshot) as runtime:
+            broker = bridge._VerificationBroker(
+                runtime, snapshot, timeout_seconds=30
+            )
+            closed = False
+            try:
+                client = broker.register(
+                    _process_tree_command(pid_path, parent_waits=True)
+                )
+                client_thread = threading.Thread(
+                    target=lambda: completed.append(
+                        subprocess.run(
+                            client,
+                            cwd=snapshot,
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                            timeout=10,
+                        )
+                    )
+                )
+                client_thread.start()
+                descendant_pid = _wait_for_pid_file(pid_path)
+                broker.close()
+                closed = True
+                client_thread.join(timeout=5)
+                assert not client_thread.is_alive()
+            finally:
+                if not closed:
+                    broker.close()
+
+        assert completed
+        assert _wait_for_pid_exit(descendant_pid)
+    finally:
+        _kill_pid_if_alive(descendant_pid)
+
+
+@pytest.mark.parametrize(
+    "parent_waits", [False, True], ids=["normal-parent-exit", "timeout"]
+)
+def test_provider_process_group_runner_reaps_descendants(
+    tmp_path: Path,
+    parent_waits: bool,
+) -> None:
+    pid_path = tmp_path / "descendant.pid"
+    command = _process_tree_command(pid_path, parent_waits=parent_waits)
+    descendant_pid: int | None = None
+
+    try:
+        if parent_waits:
+            with pytest.raises(subprocess.TimeoutExpired):
+                bridge._run_process_group(
+                    command,
+                    cwd=str(tmp_path),
+                    env=os.environ.copy(),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=1,
+                )
+        else:
+            completed = bridge._run_process_group(
+                command,
+                cwd=str(tmp_path),
+                env=os.environ.copy(),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+            assert completed.returncode == 0
+        descendant_pid = _wait_for_pid_file(pid_path)
+        assert _wait_for_pid_exit(descendant_pid)
+    finally:
+        _kill_pid_if_alive(descendant_pid)
+
+
+def test_verification_broker_silent_peer_cannot_block_shutdown(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    snapshot = tmp_path / "snapshot"
+    source.mkdir()
+    snapshot.mkdir()
+
+    with bridge._sandbox_runtime(source, snapshot) as runtime:
+        broker = bridge._VerificationBroker(runtime, snapshot, timeout_seconds=5)
+        peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        peer.connect(str(broker.socket_path))
+        time.sleep(0.2)
+        closed = False
+        started = time.monotonic()
+        try:
+            broker.close()
+            closed = True
+        finally:
+            peer.close()
+            if not closed:
+                broker.close()
+
+    assert time.monotonic() - started < 2
+    assert "sock.settimeout(" in bridge.BROKER_CLIENT_SOURCE
+
+
 @pytest.mark.skipif(
     sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
     reason="macOS V1 requires the local sandbox-exec facility",
@@ -1247,6 +1509,42 @@ def test_review_invokes_claude_once_and_uses_init_model(
     assert child_env["MAX_STRUCTURED_OUTPUT_RETRIES"] == "0"
 
 
+def test_review_canonicalizes_uppercase_scope_before_provider_call(
+    tmp_path: Path,
+) -> None:
+    original = _request(tmp_path)
+    request = replace(
+        original,
+        reviewed_head=original.reviewed_head.upper(),
+        reviewed_base=original.reviewed_base.upper() if original.reviewed_base else None,
+    )
+    calls = 0
+
+    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        prompt = argv[argv.index("-p") + 1]
+        assert f"Reviewed HEAD: {original.reviewed_head}" in prompt
+        assert f"Reviewed base: {original.reviewed_base}" in prompt
+        assert original.reviewed_head.upper() not in prompt
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=original.reviewed_head,
+                reviewed_base=original.reviewed_base,
+            ),
+            "",
+        )
+
+    result = bridge.review(request, runner=fake_runner)
+
+    assert calls == 1
+    assert result.status == "pass"
+    assert result.reviewed_head == original.reviewed_head
+    assert result.reviewed_base == original.reviewed_base
+
+
 def test_review_missing_authorization_does_not_invoke_claude(tmp_path: Path) -> None:
     def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise AssertionError("Claude must not run without authorization")
@@ -1328,6 +1626,66 @@ def test_review_normalizes_missing_claude_binary(tmp_path: Path) -> None:
         raise FileNotFoundError("claude")
 
     result = bridge.review(_request(tmp_path), runner=fake_runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "claude_not_found"
+
+
+def test_review_resolves_claude_before_default_process_group_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    fake_bin = tmp_path.parent / f"{tmp_path.name}-provider-bin"
+    fake_bin.mkdir()
+    fake_claude = fake_bin / "claude"
+    fake_claude.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_claude.chmod(0o755)
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: str(fake_claude))
+    calls = 0
+
+    def fake_process_group_runner(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        assert Path(argv[3]) == fake_claude.resolve()
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(bridge, "_run_process_group", fake_process_group_runner)
+
+    result = bridge.review(request)
+
+    assert calls == 1
+    assert result.status == "pass"
+
+
+def test_review_missing_claude_is_unavailable_before_sandbox_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: None)
+
+    def forbidden_sandbox(*args: object, **kwargs: object) -> object:
+        raise AssertionError("sandbox must not launch without a resolved Claude binary")
+
+    def forbidden_runner(
+        *args: object, **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("provider must not run without a resolved Claude binary")
+
+    monkeypatch.setattr(bridge, "_sandbox_runtime", forbidden_sandbox)
+
+    result = bridge.review(request, runner=forbidden_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "claude_not_found"
@@ -1638,6 +1996,7 @@ def test_review_cli_prints_normalized_result(
 
     def fake_reviewer(request: bridge.ReviewRequest) -> bridge.OpusReview:
         assert request.reviewed_head == HEAD
+        assert request.reviewed_base == BASE
         assert request.authorization_source == "user-task:verification-1"
         return bridge.parse_structured_review(
             _structured_payload(),
@@ -1653,9 +2012,9 @@ def test_review_cli_prints_normalized_result(
             "--repo-root",
             str(tmp_path),
             "--head",
-            HEAD,
+            HEAD.upper(),
             "--base",
-            BASE,
+            BASE.upper(),
             "--requirement",
             str(requirement),
             "--allow-path",
@@ -1710,6 +2069,46 @@ def test_reconcile_cli_allows_evidence_backed_disproof(
     assert payload["schema_version"] == "opus-reconciliation/v1"
     assert payload["go_allowed"] is True
     assert payload["disproved_finding_ids"] == ["OPUS-1"]
+
+
+def test_finding_id_round_trips_structured_json_through_reconcile_cli(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    finding = _finding_payload()
+    finding["id"] = "OPUS.safe_1-2"
+    normalized = bridge.parse_structured_review(
+        _structured_payload(status="issues", findings=[finding]),
+        expected_head=HEAD,
+        expected_base=BASE,
+        effective_model="claude-opus-4-7",
+        authorization_source="user-task:verification-1",
+    )
+
+    rc = bridge.main(
+        [
+            "reconcile",
+            "--repo-root",
+            str(ROOT),
+            "--codex-verdict",
+            "GO",
+            "--head",
+            HEAD.upper(),
+            "--base",
+            BASE.upper(),
+            "--opus-review-json",
+            json.dumps(normalized.to_dict()),
+            "--disposition",
+            "OPUS.safe_1-2=disproved",
+            "--evidence",
+            "OPUS.safe_1-2=focused round-trip evidence",
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["reviewed_head"] == HEAD
+    assert payload["reviewed_base"] == BASE
+    assert payload["disproved_finding_ids"] == ["OPUS.safe_1-2"]
 
 
 def test_reconcile_cli_rejects_missing_disproof_evidence(

@@ -343,7 +343,7 @@ After live-seat/coordinator orientation, record a Subagent utilization decision:
 - `unavailable` is explicit degraded Codex-only fallback with the reason preserved; it is never treated as `pass`.
 - Every Opus finding requires a disposition: `confirmed`, `disproved` with concrete evidence, or `unresolved`.
 - Reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON.
-- Reconciliation also requires an explicit Pipeline repo root and proves the expected commits exist locally before GO.
+- Reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO.
 - An unresolved Opus finding blocks GO; confirmed minor findings require NITS and confirmed important/critical findings require FAIL.
 - The bridge permits one Claude process attempt and no automatic retry for a verification attempt.
 - Use `scripts/opus_review_bridge.py review` for the blind pass and `scripts/opus_review_bridge.py reconcile` before GO.

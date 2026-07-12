@@ -133,6 +133,7 @@ git state.
 - `unavailable` is explicit degraded Codex-only fallback with the reason preserved; it is never treated as `pass`.
 - Every Opus finding requires a disposition: `confirmed`, `disproved` with concrete evidence, or `unresolved`.
 - Reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON.
+- Reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO.
 - An unresolved Opus finding blocks GO; confirmed minor findings require NITS and confirmed important/critical findings require FAIL.
 - The bridge permits one Claude process attempt and no automatic retry for a verification attempt.
 - Use `scripts/opus_review_bridge.py review` for the blind pass and `scripts/opus_review_bridge.py reconcile` with an explicit Pipeline `--repo-root` before GO.
@@ -159,9 +160,10 @@ Live operator seats may choose bounded subagents at seat discretion; this does n
 Default behavior: every live seat and coordinator actively considers bounded subagents for non-trivial routed work and uses them when they add independent signal, capacity, or fresh verification. Direct work remains acceptable for small, tightly coupled, or authority-sensitive work.
 After live-seat/coordinator orientation, record a Subagent utilization decision: dispatch a bounded helper for a named task, or direct/no-op because the work is small, tightly coupled, authority-sensitive, or already complete.
 
-- Spawn read-only `lane-v-verifier` for ordinary landed diffs when a cold
-  context pass helps; spawn `money-gate-reviewer` for spend, budget, cost-key,
-  accumulator, or silent gate-degradation diffs.
+- For non-Codex Lane V, spawn read-only `lane-v-verifier` for ordinary landed diffs
+  when a cold context pass helps; spawn `money-gate-reviewer` for spend, budget,
+  cost-key, accumulator, or silent gate-degradation diffs. For Codex Lane V,
+  use an additional helper only for a different pre-stated specialist question.
 - Run specialist reviewers in parallel only when they answer different
   questions. Do not ask multiple agents to re-check the same already-converged
   fact unless R-VERIFY-TIER permits a distinct new question.
