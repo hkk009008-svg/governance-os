@@ -377,9 +377,11 @@ def test_consume_refuses_piped_command(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_consume_allows_plain_args_with_flags(tmp_path):
-    # a single simple command with flags (no shell metacharacters) still passes.
-    ev = {"result": "ok", "command": "git push origin main --force-with-lease",
+def test_consume_allows_plain_command(tmp_path):
+    # a single simple command with no flags and no shell metacharacters passes.
+    # (Flag-bearing commands are now REFUSED by the hardened target check — see
+    # test_capability_security.test_flag_and_unicode_target_bypasses_all_refused.)
+    ev = {"result": "ok", "command": "git push origin main",
           "output": "To origin/main", "commit": "deadbee"}
     res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
     assert res.ok and res.reason == "consumed"

@@ -419,16 +419,46 @@ def _validate_evidence(evidence: Any) -> list[str]:
     return issues
 
 
+# The ONLY whitespace a POSIX shell splits arguments on. Newline/CR are already
+# rejected upstream by the receipt control-char guard; every other Unicode
+# "whitespace" (NBSP U+00A0, line/para separators U+2028/U+2029, em space
+# U+2003, …) is NOT an argument separator to a shell, so a command carrying one
+# is rejected rather than silently re-tokenized (the parsing differential below).
+_ASCII_ARG_WS = {" ", "\t"}
+
+
 def _command_targets_match(command: str, allowed_command_class: str, target: str) -> bool:
     """True iff the command, after its command-class prefix, references EXACTLY
-    the capability's target (and only that) — the non-flag argument components,
-    split on whitespace and '/', must equal the target's components in order.
-    Fail-closed: an empty target, extra refs, a different ref, or no target all
-    return False."""
-    rest = command[len(allowed_command_class):].strip()  # class prefix already verified
-    non_flag = [tok for tok in rest.split() if not tok.startswith("-")]
+    the capability's target and nothing else — no options, no exotic whitespace.
+
+    Fail-closed hardening (closes the adversarial battery, ADR-019):
+
+      (1) Reject any whitespace that is not a plain ASCII space or tab. Python's
+          ``str.split()`` splits NBSP / line-separator / em-space that a POSIX
+          shell does NOT — so the rule would see ``[origin, main]`` and match
+          while git sees one bogus argument. Rejecting the whole non-ASCII-WS
+          class closes that parsing differential.
+      (2) Reject flags entirely. A capability authorizes exactly its command
+          class acting on its target — no options. Some flags are
+          attacker-controllable (``--receive-pack`` / ``--exec`` run a program on
+          the REMOTE, ``--repo`` overrides the remote) and ``--force`` violates
+          the token's non_goals ("no force-push"). A future increment may add a
+          per-class safe-flag allowlist.
+      (3) The non-flag argument components (split on whitespace and '/') must
+          EQUAL the target's components in order. An empty target, extra refs, a
+          different ref, or no target all return False.
+    """
+    rest = command[len(allowed_command_class):]  # class prefix already verified by the command-class check
+    # (1) exotic-whitespace differential: only ASCII space/tab are shell arg separators.
+    if any(ch.isspace() and ch not in _ASCII_ARG_WS for ch in rest):
+        return False
+    tokens = rest.split()
+    # (2) no flags — a capability authorizes exactly its class acting on its target.
+    if any(tok.startswith("-") for tok in tokens):
+        return False
+    # (3) the non-flag argument components must EQUAL the target's, in order.
     cmd_components: list[str] = []
-    for tok in non_flag:
+    for tok in tokens:
         cmd_components.extend(p for p in tok.replace("/", " ").split() if p)
     target_components = [p for p in target.replace("/", " ").split() if p]
     return bool(target_components) and cmd_components == target_components
