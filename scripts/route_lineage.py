@@ -159,6 +159,15 @@ def check_cas(current: LineageRoute, proposed: LineageRoute) -> CasResult:
         return CasResult(
             ok=False, reason="stale_parent: missing generation on current or proposed"
         )
+    # Int-only generations (Rule #13 symmetry with capability_is_current). A bool
+    # is an int subclass, so `True == 1 == 0 + 1` would otherwise ride the
+    # successor arithmetic below; reject a boolean (or any non-int) generation on
+    # either side so a bool can never be accepted as an int generation.
+    if not (type(current.lineage.generation) is int and type(proposed.lineage.generation) is int):
+        return CasResult(
+            ok=False,
+            reason="stale_parent: generation must be an integer (a boolean must never ride an int successor)",
+        )
     if proposed.lineage.generation != current.lineage.generation + 1:
         return CasResult(
             ok=False,
