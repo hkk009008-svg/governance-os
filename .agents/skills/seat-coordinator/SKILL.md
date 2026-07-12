@@ -16,6 +16,31 @@ route, handoff, no-op, or status only when it changes routing/enforcement,
 preserves real transfer state, or cites executable evidence; never manufacture
 green-looking coordinator activity from receipts or prose alone.
 
+## ChatGPT Pro Advisory Consultation
+
+This capability is always invocable in readiness, director, coordinator, and
+operator modes. `manual` remains the default and permits guarded manual relay
+only; `auto` permits one guarded browser send per idempotency key, and `off`
+fails closed. There is no API fallback; automatic retries are zero in V1; raw
+prompts and responses stay out of Git, mailbox artifacts, normal logs,
+screenshots, command arguments, and transcript files. Output is advisory only
+and not the dual-chief order path; it grants no protocol or side-effect
+authority; subagents may prepare a bounded question but only the parent context
+may send or import a response. Follow the `chatgpt-pro-consultation` skill.
+
+After a definite safe auto failure is transitioned to `failed`, explicitly run
+`resume-manual --state-file PATH --consultation-id UUID` to return the same
+record to `prepared`/`manual`, then relay the exact guarded prompt; uncertain or
+partial delivery stops for explicit user decision; never retry or resume
+automatically.
+
+Coordinator is mailbox-first before consultation: refresh HEAD, mailbox
+bodies, route, wave, capacity, and locks before prepare, then refresh HEAD,
+mailbox bodies, route, wave, capacity, and locks again before send and before
+use; pre-send drift discards the prepared packet and requires re-prepare, and
+later drift marks the response stale. Advice never becomes a route, inventory
+transition, or correctness proof.
+
 ## Emergency Handling
 
 - Emergency scope is exactly four categories: Production-affecting OR user-data-integrity issue, Security-critical, Active bleed-rate, and External time-pressure.

@@ -101,6 +101,10 @@ STATE.md
 .codex/hooks/.last-skip-worktree-scan*
 .codex/hooks/.skip-worktree-cleared.log
 
+# Local ChatGPT Pro consultation lifecycle metadata; never prompt/response content.
+.codex/runtime/chatgpt-pro-consultations.json
+.codex/runtime/chatgpt-pro-consultations.json.lock
+
 # Claude hook runtime state (written by .claude/hooks/update-state.sh; never committed)
 .claude/hooks/.last-state-head
 .claude/hooks/.skip-worktree-cleared.log

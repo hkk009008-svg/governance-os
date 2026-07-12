@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+import pytest
 
 import codex_protocol_model as model
 
@@ -24,6 +27,294 @@ def _read(path: str) -> str:
 
 def _compact(text: str) -> str:
     return " ".join(text.split())
+
+
+def _acceptance_backed_default(text: str | None = None) -> str:
+    if text is None:
+        text = _read("logs/chatgpt-pro-consultation-acceptance-2026-07-13.md")
+
+    if "- Shipped default: `auto`" not in text:
+        return model.chatgpt_pro_consultation_default(
+            repo_root=ROOT,
+            evidence_text=text,
+        )
+    try:
+        return model.validate_chatgpt_pro_activation_evidence(text, repo_root=ROOT)
+    except model.ChatGPTProActivationEvidenceError as exc:
+        raise AssertionError(str(exc)) from exc
+
+
+def _validate_acceptance_log_structure(text: str) -> None:
+    forbidden = (
+        "RAW_PROMPT_CANARY",
+        "<consultation_request>",
+        "</consultation_request>",
+        '"prompt"',
+        '"response"',
+        '"schema_version"',
+        '"recommendation"',
+        '"reasoning"',
+        '"assumptions"',
+        '"risks"',
+        '"questions"',
+    )
+    for marker in forbidden:
+        assert marker not in text
+
+    lines = text.splitlines()
+    assert lines[0] == "# ChatGPT Pro consultation acceptance - 2026-07-13"
+    expected_headings = (
+        "## Scope",
+        "## Results",
+        "## Commands",
+        "## Diagnostics",
+        "## Activation decision",
+    )
+    sections: dict[str, list[str]] = {heading: [] for heading in expected_headings}
+    seen_headings: list[str] = []
+    current: str | None = None
+    for line in lines[1:]:
+        if not line:
+            continue
+        if line.startswith("## "):
+            assert line in sections
+            seen_headings.append(line)
+            current = line
+            continue
+        assert current is not None
+        sections[current].append(line)
+    assert tuple(seen_headings) == expected_headings
+
+    def bullets(heading: str) -> dict[str, str]:
+        values: dict[str, str] = {}
+        for line in sections[heading]:
+            match = re.fullmatch(r"- ([A-Za-z0-9 /-]+): `([^`\n]+)`", line)
+            assert match is not None
+            label, value = match.groups()
+            assert label not in values
+            values[label] = value
+        return values
+
+    scope = bullets("## Scope")
+    base_scope = {
+        "Bound HEAD",
+        "Procedure",
+        "Default before gate",
+        "Raw consultation content persisted",
+    }
+    guard_scope = {"Guard commit", "Guard relevant paths hash"}
+    assert frozenset(scope) in {
+        frozenset(base_scope),
+        frozenset(base_scope | guard_scope),
+    }
+    assert re.fullmatch(r"[0-9a-f]{40}", scope["Bound HEAD"])
+    if guard_scope <= set(scope):
+        assert re.fullmatch(r"[0-9a-f]{40}", scope["Guard commit"])
+        assert re.fullmatch(r"[0-9a-f]{64}", scope["Guard relevant paths hash"])
+    assert scope["Procedure"] == (
+        "docs/protocol/codex/chatgpt-pro-consultation-acceptance.md"
+    )
+    assert scope["Default before gate"] in {"auto", "manual"}
+    assert scope["Raw consultation content persisted"] == "no"
+
+    result_lines = sections["## Results"]
+    assert result_lines[:2] == [
+        "| Test ID | Transport class | Result | Safe correlation | Lifecycle | "
+        "Duplicate send | Protocol/ref/remote mutation | Failure class |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    allowed_transports = {
+        "Desktop in-app",
+        "configured CLI browser",
+        "configured CLI non-sending diagnostic",
+        "bare CLI manual relay",
+        "fixture/disposable profile",
+    }
+    allowed_correlation = {
+        "pass",
+        "not applicable",
+        "not applicable; no response/import",
+        "pending",
+    }
+    allowed_lifecycle = {
+        "`prepared -> sending -> sent -> failed`",
+        "`prepared -> sending -> sent -> received -> reconciled`; tab finalized",
+        "`prepared -> sending -> sent -> received -> reconciled`; manual relay finalized",
+        "seven-case fixture matrix failed closed; fixtures finalized",
+        "`prepared -> sending -> failed`; ephemeral process terminated after 5.5 "
+        "minutes; tab finalization unverified",
+        "core model healthy; Browser skill loaded; no navigation, tab, or message",
+        "pending",
+    }
+    allowed_duplicate = {
+        "pass; one send",
+        "pass; one relay",
+        "pass; no retry or fallback",
+        "delivery uncertain; no retry",
+        "no send",
+        "pending",
+    }
+    allowed_mutation = {
+        "pass; content-free snapshots match",
+        "pass; content-free snapshots match; no Codex session persisted",
+        "pass; no protected mutation",
+        "pending",
+    }
+    allowed_failure = {
+        "none",
+        "pending",
+        "`malformed`",
+        "`partial_send`",
+        "`backend_unavailable`",
+    }
+    for line in result_lines[2:]:
+        assert line.startswith("| T5-") and line.endswith("|")
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        assert len(cells) == 8
+        assert re.fullmatch(
+            r"T5-[A-Za-z0-9-]+(?: \(`[0-9a-f]{8}…[0-9a-f]{4}`\))?",
+            cells[0],
+        )
+        assert cells[1] in allowed_transports
+        assert cells[2] in {"pass", "fail", "pending"}
+        assert cells[3] in allowed_correlation
+        assert cells[4] in allowed_lifecycle
+        assert cells[5] in allowed_duplicate
+        assert cells[6] in allowed_mutation
+        assert cells[7] in allowed_failure
+
+    commands = bullets("## Commands")
+    assert set(commands) == {
+        "Focused tests",
+        "Full protocol tests",
+        "Project smoke",
+        "Persistence/security scans",
+        "Runtime state/lock pairs checked",
+        "Protected hashes",
+        "CLI-window rollout files created",
+        "CLI-window rollout files modified",
+    }
+    assert re.fullmatch(r"[1-9][0-9]* passed", commands["Focused tests"])
+    assert re.fullmatch(r"[1-9][0-9]* passed", commands["Full protocol tests"])
+    assert commands["Project smoke"] == "OK"
+    assert commands["Persistence/security scans"] == "pass"
+    assert re.fullmatch(
+        r"[1-9][0-9]*",
+        commands["Runtime state/lock pairs checked"],
+    )
+    assert commands["Protected hashes"] == "match"
+    assert commands["CLI-window rollout files created"] == "0"
+    assert commands["CLI-window rollout files modified"] == "0"
+
+    diagnostics = bullets("## Diagnostics")
+    expected_diagnostics = {
+        "Desktop r1 failure": "malformed",
+        "Desktop r1 retry": "no",
+        "Desktop r1 tab finalized": "yes",
+        "Desktop r2 result": "pass",
+        "Desktop r2 duplicate send": "no",
+        "Desktop r2 tab finalized": "yes",
+        "Desktop r3 result": "pass",
+        "Desktop r3 state file": ".codex/runtime/task5-iab-r3-acceptance.json",
+        "Desktop r3 request hash": "9f551ed6…57b2b5",
+        "Desktop r3 idempotency key": "faec7aba…2f98e25",
+        "Desktop r3 binding hash": "f8f0eaef…ebe107f",
+        "Desktop r3 correlation": "pass",
+        "Desktop r3 transport sends": "1",
+        "Desktop r3 transport resend": "no",
+        "Desktop r3 interrupted local accept": "1",
+        "Desktop r3 state after interrupted accept": "sent",
+        "Desktop r3 response imports": "1",
+        "Desktop r3 final state": "reconciled",
+        "Desktop r3 tab finalized": "yes",
+        "Desktop r4 result": "pass",
+        "Desktop r4 state file": ".codex/runtime/task5-iab-r4-acceptance.json",
+        "Desktop r4 request hash": "db21ab3d…ae2843e",
+        "Desktop r4 idempotency key": "2f823517…023add1",
+        "Desktop r4 binding hash": "37ce5271…fadbbf36",
+        "Desktop r4 correlation": "pass",
+        "Desktop r4 transport sends": "1",
+        "Desktop r4 retry": "no",
+        "Desktop r4 response imports": "1",
+        "Desktop r4 final state": "reconciled",
+        "Desktop r4 tab finalized": "yes",
+        "Desktop r4 failure": "none",
+        "Bare CLI manual r2 result": "pass",
+        "Bare CLI manual r2 state file": (
+            ".codex/runtime/task5-manual-r2-acceptance.json"
+        ),
+        "Bare CLI manual r2 request hash": "c2dee748…451918",
+        "Bare CLI manual r2 idempotency key": "a3ed85e4…77fd5b",
+        "Bare CLI manual r2 binding hash": "f8f0eaef…ebe107f",
+        "Bare CLI manual r2 prompt parity": "pass",
+        "Bare CLI manual r2 correlation": "pass",
+        "Bare CLI manual r2 relays": "1",
+        "Bare CLI manual r2 response imports": "1",
+        "Bare CLI manual r2 final state": "reconciled",
+        "Bare CLI manual r3 result": "pass",
+        "Bare CLI manual r3 state file": (
+            ".codex/runtime/task5-manual-r3-acceptance.json"
+        ),
+        "Bare CLI manual r3 request hash": "6704a57f…0c93feb",
+        "Bare CLI manual r3 idempotency key": "22176eba…1a633ad",
+        "Bare CLI manual r3 binding hash": "37ce5271…fadbbf36",
+        "Bare CLI manual r3 prompt parity": "pass",
+        "Bare CLI manual r3 correlation": "pass",
+        "Bare CLI manual r3 relays": "1",
+        "Bare CLI manual r3 response imports": "1",
+        "Bare CLI manual r3 final state": "reconciled",
+        "Bare CLI manual r3 failure": "none",
+        "Failure-fixture result": "pass",
+        "Failure-fixture cases": (
+            "signed-out,wrong-account,challenge,refusal,html,truncated-json,"
+            "partial-send"
+        ),
+        "Failure-fixture pre-send stops": "signed-out,wrong-account,challenge",
+        "Failure-fixture partial-send start": "sending",
+        "Failure-fixture retry or fallback": "none",
+        "Configured CLI r1 failure": "partial_send",
+        "Configured CLI r1 response imported": "no",
+        "Configured CLI r1 retry": "no",
+        "Configured CLI r1 duration seconds": "330",
+        "Configured CLI r1 tab finalized": "unverified",
+        "Configured CLI preflight duration seconds": "27.7",
+        "Configured CLI core model": "pass",
+        "Configured CLI Browser skill load": "pass",
+        "Configured CLI backend": "iab",
+        "Configured CLI browser connected": "false",
+        "Configured CLI documentation loaded": "false",
+        "Configured CLI preflight navigation": "none",
+        "Configured CLI preflight messaging": "none",
+        "Configured CLI preflight failure": "backend_unavailable",
+    }
+    assert diagnostics == expected_diagnostics
+
+    activation = bullets("## Activation decision")
+    base_activation = {
+        "Desktop in-app gate",
+        "Configured CLI browser gate",
+        "Activation gate",
+        "Shipped default",
+        "Bounded blocker",
+    }
+    required_activation = {"Bare CLI manual gate", "Failure-fixture gate"}
+    assert frozenset(activation) in {
+        frozenset(base_activation),
+        frozenset(base_activation | required_activation),
+    }
+    assert activation["Desktop in-app gate"] in {"pass", "fail"}
+    assert activation["Configured CLI browser gate"] in {"pass", "fail"}
+    assert activation["Activation gate"] in {"pass", "blocked"}
+    assert activation["Shipped default"] in {"auto", "manual"}
+    assert activation["Bounded blocker"] in {"none", "backend_unavailable"}
+    if activation["Shipped default"] == "auto":
+        assert guard_scope <= set(scope)
+        assert required_activation <= set(activation)
+        assert _acceptance_backed_default(text) == "auto"
+    else:
+        assert activation["Activation gate"] == "blocked"
+        assert activation["Bounded blocker"] == "backend_unavailable"
+        assert _acceptance_backed_default(text) == "manual"
 
 
 def test_agent_neutral_reviewer_template_exists_with_schema():
@@ -264,6 +555,315 @@ def test_r_independence_is_model_backed_and_surface_synced():
             assert phrase in text, (path, phrase)
 
     assert "R-INDEPENDENCE" in model.render_start_session_inhabitance()
+
+
+def test_chatgpt_pro_consultation_model_contract_tracks_gate_and_fails_closed():
+    expected_default = _acceptance_backed_default()
+    assert model.CHATGPT_PRO_CONSULTATION_MODES == ("auto", "manual", "off")
+    assert model.CHATGPT_PRO_CONSULTATION_DEFAULT == expected_default
+    assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == (
+        "in-app browser",
+        "approved Chrome bridge",
+        "manual relay",
+    )
+
+    rendered = model.render_chatgpt_pro_consultation()
+    for phrase in (
+        "ChatGPT Pro Advisory Consultation:",
+        "always invocable",
+        "one guarded browser send per idempotency key",
+        "manual relay",
+        "not the dual-chief order path",
+        "advisory only",
+        "no API fallback",
+        "raw prompts and responses stay out of Git",
+        "coordinator refreshes live state before send and before use",
+        "operator Lane V is never replaced",
+    ):
+        assert phrase in rendered
+
+    assert (
+        model.infer_runtime_env({})["CODEX_CHATGPT_PRO_CONSULTATION"]
+        == expected_default
+    )
+    assert (
+        model.infer_runtime_env({"CODEX_CHATGPT_PRO_CONSULTATION": "auto"})[
+            "CODEX_CHATGPT_PRO_CONSULTATION"
+        ]
+        == "auto"
+    )
+    assert (
+        model.infer_runtime_env({"CODEX_CHATGPT_PRO_CONSULTATION": "invalid"})[
+            "CODEX_CHATGPT_PRO_CONSULTATION"
+        ]
+        == "off"
+    )
+
+
+def test_chatgpt_pro_transport_order_is_browser_first_in_model_and_skill():
+    assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == (
+        "in-app browser",
+        "approved Chrome bridge",
+        "manual relay",
+    )
+    rendered = model.render_chatgpt_pro_consultation()
+    assert rendered.index("in-app browser") < rendered.index("approved Chrome bridge")
+    assert rendered.index("approved Chrome bridge") < rendered.index("manual relay")
+
+    skill = _compact(_read(".agents/skills/chatgpt-pro-consultation/SKILL.md"))
+    assert skill.index("Prefer the in-app browser") < skill.index(
+        "approved Chrome bridge"
+    )
+    assert skill.index("approved Chrome bridge") < skill.index("Manual relay")
+
+
+def test_chatgpt_pro_acceptance_procedure_is_fail_closed_and_content_free():
+    procedure = _compact(
+        _read("docs/protocol/codex/chatgpt-pro-consultation-acceptance.md")
+    )
+    for phrase in (
+        "signed-in user-controlled session",
+        "stdin",
+        "never shell arguments",
+        "CODEX_CHATGPT_PRO_CONSULTATION=auto",
+        "in-app Browser",
+        "CLI-driven browser",
+        "signed-out",
+        "wrong-account",
+        "challenge",
+        "partial-send",
+        "do not set the default to auto",
+        "current_repo_head",
+        "direct `.codex/runtime/<file>`",
+        "Guard commit",
+        "Guard relevant paths hash",
+        "bare-CLI manual relay",
+        "complete failure-fixture matrix",
+        "normalized `options`",
+        "browser cookie/login stores",
+        "`.crt` or `.cer`",
+        "known backup or database sidecar suffix",
+    ):
+        assert phrase in procedure
+    lower_procedure = procedure.lower()
+    assert "never enter credentials" in lower_procedure
+    assert "never inspect cookies" in lower_procedure
+    assert "no automatic retry" in lower_procedure
+
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    )
+    _validate_acceptance_log_structure(acceptance_log)
+
+
+def test_refreshed_acceptance_requires_exact_seven_case_fixture_evidence():
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    )
+
+    assert (
+        "| T5-FAILURE-FIXTURES-r1 | fixture/disposable profile | pass | "
+        "not applicable | seven-case fixture matrix failed closed; fixtures "
+        "finalized | pass; no retry or fallback | pass; content-free snapshots "
+        "match | none |"
+    ) in acceptance_log
+    assert "- Failure-fixture cases: `signed-out,wrong-account,challenge,refusal,html,truncated-json,partial-send`" in acceptance_log
+    assert "- Failure-fixture pre-send stops: `signed-out,wrong-account,challenge`" in acceptance_log
+    assert "- Failure-fixture partial-send start: `sending`" in acceptance_log
+
+
+def test_final_guard_acceptance_binding_preserves_blocked_manual_default():
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    )
+
+    assert (
+        "- Bound HEAD: `b7efee47314785397ec2e173778881a1c9eb9899`"
+    ) in acceptance_log
+    assert (
+        "- Guard commit: `b7efee47314785397ec2e173778881a1c9eb9899`"
+    ) in acceptance_log
+    assert (
+        "- Guard relevant paths hash: "
+        "`1dca17fe72a60f06d6c870dfba7dd312673f82abcb4329f55e79af2b83c57e19`"
+    ) in acceptance_log
+    assert (
+        "| T5-IAB-r4 (`be64019b…d2a8`) | Desktop in-app | pass | pass | "
+        "`prepared -> sending -> sent -> received -> reconciled`; tab finalized "
+        "| pass; one send | pass; content-free snapshots match | none |"
+    ) in acceptance_log
+    assert (
+        "| T5-CLI-MANUAL-r3 (`dd2106d4…7b34`) | bare CLI manual relay | pass "
+        "| pass | `prepared -> sending -> sent -> received -> reconciled`; manual "
+        "relay finalized | pass; one relay | pass; content-free snapshots match | "
+        "none |"
+    ) in acceptance_log
+    assert "- Configured CLI browser gate: `fail`" in acceptance_log
+    assert "- Activation gate: `blocked`" in acceptance_log
+    assert "- Shipped default: `manual`" in acceptance_log
+    assert "- Bounded blocker: `backend_unavailable`" in acceptance_log
+
+
+@pytest.mark.parametrize(
+    "injection",
+    [
+        "RAW_PROMPT_CANARY arbitrary raw payload",
+        "<consultation_request>{}</consultation_request>",
+        '{"schema_version":"v1","recommendation":"raw response"}',
+        "## Unknown free-form section\n- arbitrary: content",
+    ],
+    ids=("canary", "prompt-marker", "raw-schema-fields", "unknown-section"),
+)
+def test_acceptance_log_structure_rejects_unsanitized_or_unknown_content(injection):
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    )
+
+    with pytest.raises(AssertionError):
+        _validate_acceptance_log_structure(f"{acceptance_log}\n{injection}\n")
+
+
+def test_acceptance_log_structure_rejects_blocked_summary_without_blocker():
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    ).replace(
+        "- Bounded blocker: `backend_unavailable`",
+        "- Bounded blocker: `none`",
+    )
+
+    with pytest.raises(AssertionError):
+        _validate_acceptance_log_structure(acceptance_log)
+
+
+def test_chatgpt_pro_consultation_is_model_backed_and_surface_synced():
+    rendered = model.render_chatgpt_pro_consultation()
+    shared = (
+        "ChatGPT Pro Advisory Consultation",
+        "always invocable",
+        "one guarded browser send per idempotency key",
+        "manual relay",
+        "no API fallback",
+        "raw prompts and responses stay out of Git",
+        "advisory only",
+        "not the dual-chief order path",
+        "subagents may prepare a bounded question but only the parent context may send",
+        "automatic retries are zero in V1",
+    )
+    for phrase in shared:
+        assert phrase in rendered
+
+    for path in (
+        "AGENTS.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/chatgpt-pro-consultation/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/readiness-bridge.toml",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-coordinator.toml",
+        ".codex/agents/protocol-operator.toml",
+    ):
+        text = _compact(_read(path))
+        for phrase in shared:
+            assert phrase in text, (path, phrase)
+
+
+def test_chatgpt_pro_consultation_role_boundaries_are_explicit():
+    coordinator_surfaces = (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/chatgpt-pro-consultation/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".codex/agents/protocol-coordinator.toml",
+    )
+    for path in coordinator_surfaces:
+        text = _compact(_read(path))
+        assert "mailbox-first before consultation" in text
+        assert (
+            "refresh HEAD, mailbox bodies, route, wave, capacity, and locks before prepare"
+            in text
+        )
+        assert (
+            "refresh HEAD, mailbox bodies, route, wave, capacity, and locks again "
+            "before send and before use"
+            in text
+        )
+        assert "pre-send drift discards the prepared packet and requires re-prepare" in text
+        assert "drift marks the response stale" in text
+
+    operator_surfaces = (
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/protocol-operator.toml",
+    )
+    for path in operator_surfaces:
+        text = _compact(_read(path))
+        assert "never replaces Lane V" in text
+        assert "cannot contribute authority to GO, NITS, or FAIL" in text
+        assert "distinct, pre-stated strategic question" in text
+
+
+def test_chatgpt_pro_consultation_skill_preserves_all_normative_triggers():
+    skill = _read(".agents/skills/chatgpt-pro-consultation/SKILL.md")
+    _, frontmatter, body = skill.split("---", 2)
+    description = next(
+        line for line in frontmatter.splitlines() if line.startswith("description:")
+    )
+    assert description.startswith("description: Use when")
+    assert "Provides guarded" not in description
+
+    discovery_triggers = (
+        "user explicitly asks to consult ChatGPT Pro",
+        "idea or plan has unresolved material tradeoffs",
+        "authority, security, external-input, parseable-context, schema-trust, or side-effect boundary",
+        "post-plan needs a distinct adversarial challenge",
+        "mailbox-oriented coordinator needs strategic advice",
+    )
+    for phrase in discovery_triggers:
+        assert phrase in description
+
+    compact_body = _compact(body)
+    for trigger in model.CHATGPT_PRO_CONSULTATION_TRIGGERS:
+        assert trigger in compact_body
+
+
+def test_chatgpt_pro_consultation_manual_fallback_is_surface_synced():
+    surfaces = (
+        "AGENTS.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/chatgpt-pro-consultation/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/readiness-bridge.toml",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-coordinator.toml",
+        ".codex/agents/protocol-operator.toml",
+    )
+    fallback = (
+        "definite safe auto failure is transitioned to failed",
+        "resume-manual --state-file PATH --consultation-id UUID",
+        "return the same record to prepared/manual",
+        "uncertain or partial delivery stops for explicit user decision",
+        "never retry or resume automatically",
+    )
+    for path in surfaces:
+        text = _compact(_read(path)).replace("`", "")
+        for phrase in fallback:
+            assert phrase in text, (path, phrase)
+
+    skill = _compact(_read(".agents/skills/chatgpt-pro-consultation/SKILL.md")).replace(
+        "`", ""
+    )
+    assert (
+        ".venv/bin/python scripts/chatgpt_pro_consult.py resume-manual "
+        "--state-file PATH --consultation-id UUID"
+        in skill
+    )
+    assert "command arguments are content-free identifiers" in skill
+    assert "request and response payload content remains stdin-only" in skill
 
 
 def test_agent_extension_routing_contract_is_model_backed():

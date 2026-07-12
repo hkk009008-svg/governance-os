@@ -12,6 +12,27 @@ The per-pair director owns the **strategic layer within its lane**: writes R-BRI
 **REQUIRED BACKGROUND:** the `four-seat-protocol` skill (authority, locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/claude/director-operator.md` (Rules #7–#23, R-BRIEF, #12, #13, R-PID); spec §6a/§6c; `docs/templates/agents/implementer.md`; `docs/protocol/agents/orchestration.md` (R-ORCH). **R-SKILL:** before authoring/judging domain-specific subsystem code or configurations load the appropriate `<domain-skill>`; before pipeline-level design work load the pipeline `<domain-skill>`.
 <!-- TODO(<PROJECT>): add this project domain-skill triggers -->
 
+## ChatGPT Pro Advisory Consultation
+
+This capability is always invocable in readiness, director, coordinator, and
+operator modes. `manual` remains the default and permits guarded manual relay
+only; `auto` permits one guarded browser send per idempotency key, and `off`
+fails closed. There is no API fallback; automatic retries are zero in V1; raw
+prompts and responses stay out of Git, mailbox artifacts, normal logs,
+screenshots, command arguments, and transcript files. Output is advisory only
+and not the dual-chief order path; it grants no protocol or side-effect
+authority; subagents may prepare a bounded question but only the parent context
+may send or import a response. Follow the `chatgpt-pro-consultation` skill.
+
+After a definite safe auto failure is transitioned to `failed`, explicitly run
+`resume-manual --state-file PATH --consultation-id UUID` to return the same
+record to `prepared`/`manual`, then relay the exact guarded prompt; uncertain or
+partial delivery stops for explicit user decision; never retry or resume
+automatically.
+
+Director may consult design, brief, or plan tradeoffs, then verify every
+material claim locally before changing the brief, plan, or verify-request.
+
 ## Emergency Handling
 
 - Emergency scope is exactly four categories: Production-affecting OR user-data-integrity issue, Security-critical, Active bleed-rate, and External time-pressure.
