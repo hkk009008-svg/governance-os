@@ -227,6 +227,18 @@ def _validate_acceptance_log_structure(text: str) -> None:
         "Desktop r3 response imports": "1",
         "Desktop r3 final state": "reconciled",
         "Desktop r3 tab finalized": "yes",
+        "Desktop r4 result": "pass",
+        "Desktop r4 state file": ".codex/runtime/task5-iab-r4-acceptance.json",
+        "Desktop r4 request hash": "db21ab3d…ae2843e",
+        "Desktop r4 idempotency key": "2f823517…023add1",
+        "Desktop r4 binding hash": "37ce5271…fadbbf36",
+        "Desktop r4 correlation": "pass",
+        "Desktop r4 transport sends": "1",
+        "Desktop r4 retry": "no",
+        "Desktop r4 response imports": "1",
+        "Desktop r4 final state": "reconciled",
+        "Desktop r4 tab finalized": "yes",
+        "Desktop r4 failure": "none",
         "Bare CLI manual r2 result": "pass",
         "Bare CLI manual r2 state file": (
             ".codex/runtime/task5-manual-r2-acceptance.json"
@@ -239,6 +251,19 @@ def _validate_acceptance_log_structure(text: str) -> None:
         "Bare CLI manual r2 relays": "1",
         "Bare CLI manual r2 response imports": "1",
         "Bare CLI manual r2 final state": "reconciled",
+        "Bare CLI manual r3 result": "pass",
+        "Bare CLI manual r3 state file": (
+            ".codex/runtime/task5-manual-r3-acceptance.json"
+        ),
+        "Bare CLI manual r3 request hash": "6704a57f…0c93feb",
+        "Bare CLI manual r3 idempotency key": "22176eba…1a633ad",
+        "Bare CLI manual r3 binding hash": "37ce5271…fadbbf36",
+        "Bare CLI manual r3 prompt parity": "pass",
+        "Bare CLI manual r3 correlation": "pass",
+        "Bare CLI manual r3 relays": "1",
+        "Bare CLI manual r3 response imports": "1",
+        "Bare CLI manual r3 final state": "reconciled",
+        "Bare CLI manual r3 failure": "none",
         "Failure-fixture result": "pass",
         "Failure-fixture cases": (
             "signed-out,wrong-account,challenge,refusal,html,truncated-json,"
@@ -645,6 +670,38 @@ def test_refreshed_acceptance_requires_exact_seven_case_fixture_evidence():
     assert "- Failure-fixture cases: `signed-out,wrong-account,challenge,refusal,html,truncated-json,partial-send`" in acceptance_log
     assert "- Failure-fixture pre-send stops: `signed-out,wrong-account,challenge`" in acceptance_log
     assert "- Failure-fixture partial-send start: `sending`" in acceptance_log
+
+
+def test_final_guard_acceptance_binding_preserves_blocked_manual_default():
+    acceptance_log = _read(
+        "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
+    )
+
+    assert (
+        "- Bound HEAD: `b7efee47314785397ec2e173778881a1c9eb9899`"
+    ) in acceptance_log
+    assert (
+        "- Guard commit: `b7efee47314785397ec2e173778881a1c9eb9899`"
+    ) in acceptance_log
+    assert (
+        "- Guard relevant paths hash: "
+        "`1dca17fe72a60f06d6c870dfba7dd312673f82abcb4329f55e79af2b83c57e19`"
+    ) in acceptance_log
+    assert (
+        "| T5-IAB-r4 (`be64019b…d2a8`) | Desktop in-app | pass | pass | "
+        "`prepared -> sending -> sent -> received -> reconciled`; tab finalized "
+        "| pass; one send | pass; content-free snapshots match | none |"
+    ) in acceptance_log
+    assert (
+        "| T5-CLI-MANUAL-r3 (`dd2106d4…7b34`) | bare CLI manual relay | pass "
+        "| pass | `prepared -> sending -> sent -> received -> reconciled`; manual "
+        "relay finalized | pass; one relay | pass; content-free snapshots match | "
+        "none |"
+    ) in acceptance_log
+    assert "- Configured CLI browser gate: `fail`" in acceptance_log
+    assert "- Activation gate: `blocked`" in acceptance_log
+    assert "- Shipped default: `manual`" in acceptance_log
+    assert "- Bounded blocker: `backend_unavailable`" in acceptance_log
 
 
 @pytest.mark.parametrize(

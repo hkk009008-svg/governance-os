@@ -74,15 +74,19 @@ def current_guard_binding(text: str) -> str:
 
 def replace_transport_row(text: str, transport_class: str, replacement: str) -> str:
     lines = text.splitlines()
-    matches = []
+    rows: list[tuple[int, int]] = []
     for index, line in enumerate(lines):
         if not line.startswith("| T5-"):
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) >= 2 and cells[1] == transport_class:
-            matches.append(index)
-    assert len(matches) == 1
-    lines[matches[0]] = replacement
+        if len(cells) < 2 or cells[1] != transport_class:
+            continue
+        revision = re.search(r"-r([1-9][0-9]*)\b", cells[0])
+        if revision is not None:
+            rows.append((int(revision.group(1)), index))
+    assert rows
+    _, terminal_index = max(rows)
+    lines[terminal_index] = replacement
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 
@@ -142,7 +146,7 @@ def acceptance_log_with_cli_rows(*rows: str) -> str:
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         if len(cells) >= 2 and cells[1] == "bare CLI manual relay":
             manual_rows.append(index)
-    assert len(manual_rows) == 1
+    assert manual_rows
     lines[manual_rows[0] : manual_rows[0]] = rows
     promoted = "\n".join(lines) + ("\n" if text.endswith("\n") else "")
     return current_guard_binding(
