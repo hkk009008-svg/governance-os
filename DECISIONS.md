@@ -633,3 +633,45 @@ identity and lineage, which capability↔route binding needs.
   unaffected (all new files).
 - Full cutover of live token authority to capability/v1 and wiring into the
   signed-bus cutover script are scoped follow-ups.
+
+## ADR-017: Orthogonal packet state — derive work/verification dimensions (Part A: derivation only)
+
+**Status:** Accepted (derivation module only; the gate remap is deferred)
+
+**Context:**
+The capacity-packet `status` field (ready|active|blocked|done|excepted,
+`scripts/protocol_capacity.py`) overloads three orthogonal facts: what
+happened to the work, whether the seat is still represented in the active
+cycle, and whether the result was independently accepted. Because G1
+exactly-one coverage requires every seat to own exactly one current packet
+per active cycle, a work-COMPLETE packet is forced to sit at `blocked` — e.g.
+the workbook-refresh director2 preflight carries completion `done_evidence`
+yet status is `blocked`. `done` separately doubles as the verification
+carrier for G5/G6. This damages semantic truth and blocks future automation.
+
+**Decision:**
+1. Add `scripts/packet_state.py`: the `work_state` and `verification_state`
+   vocabularies, a `work_state` transition table + `is_valid_work_transition`,
+   and pure `derive_work_state` / `derive_verification_state` functions that
+   read the legacy `status` / `packet_type` / `done_evidence` / `verify_request`
+   fields. The derivation is READ-ONLY: it writes no packet, adds no field,
+   and changes no gate.
+2. A `--report` CLI renders legacy status beside the derived states and flags
+   divergences (a `blocked` packet whose derived `work_state` is `completed` —
+   the overloading made visible). Exit 0 always; it is a diagnostic, never a
+   gate.
+3. `unable_to_verify` is a verdict, never a stored status; the derivation may
+   return it only for a completed operator-verification packet with no
+   parseable verdict, and it is never persisted.
+4. Part B — accepting orthogonal fields at parse time in `protocol_capacity.py`
+   and remapping G1/G5/G6 onto the new dimensions — is DEFERRED. It changes the
+   live board's validity and is gated on the active workbook-refresh cycle
+   closing.
+
+**Consequences:**
+- The completed-vs-blocked overloading becomes machine-visible without any
+  change to live gates or packet files; the active campaign is unaffected.
+- The derivation is the semantic-truth foundation Part B will wire into the
+  gates once the campaign closes.
+- No packet ever needs to be mislabeled to satisfy coverage once Part B lands;
+  until then the legacy representation is unchanged.
