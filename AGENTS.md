@@ -97,6 +97,25 @@ guard.
 Do not launch another generic reviewer or repeat Lane V for the same unchanged
 commit unless it asks a genuinely different, pre-stated question.
 
+## R-CONSULT — ChatGPT Pro Advisory Consultation
+
+The capability is always invocable in readiness, director, coordinator, and
+operator modes. `manual` remains the default and permits guarded manual relay
+only; `auto` permits one guarded browser send per idempotency key, and `off`
+fails closed. There is no API fallback; automatic retries are zero in V1; raw
+prompts and responses stay out of Git, mailbox artifacts, normal logs,
+screenshots, command arguments, and transcript files. Output is advisory only
+and not the dual-chief order path; it grants no protocol or side-effect
+authority; subagents may prepare a bounded question but only the parent context
+may send or import a response. Use the repo
+`.agents/skills/chatgpt-pro-consultation/SKILL.md` procedure.
+
+Standing user approval is narrow: one guard-approved sanitized browser send per
+trigger when `auto` is enabled. It authorizes no credential entry, retry, API
+fallback or spend, broad disclosure, downstream action, or protocol authority.
+All unrelated risk-tier, mailbox, verification, and user-gated side-effect
+rules remain in force.
+
 **Antigravity specifically:** Antigravity ("agy", the Gemini-based agentic IDE)
 reads this file as its agent-agnostic source of truth and translates the
 principles into its own mechanisms. It operates in one of two modes:

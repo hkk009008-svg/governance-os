@@ -21,6 +21,16 @@ R-INDEPENDENCE:
 - R-VERIFY-TIER still forbids redundant same-question passes.
 readiness-bridge: Classify and route only; readiness authority does not perform the review or implementation.
 
+ChatGPT Pro Advisory Consultation:
+- The capability is always invocable in readiness, director, coordinator, and operator modes.
+- `manual` remains the default and permits guarded manual relay only; `auto` permits one guarded browser send per idempotency key, and `off` fails closed.
+- There is no API fallback; automatic retries are zero in V1.
+- raw prompts and responses stay out of Git, mailbox artifacts, normal logs, screenshots, command arguments, and transcript files.
+- Output is advisory only and not the dual-chief order path; it grants no protocol or side-effect authority.
+- subagents may prepare a bounded question but only the parent context may send or import a response.
+- Follow `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
+readiness-bridge: Consult ideas or plans without upgrading into a seat.
+
 Default stance:
 - Do not claim a director, director2, operator, operator2, or coordinator seat.
 - Do not consume mailbox cursors.

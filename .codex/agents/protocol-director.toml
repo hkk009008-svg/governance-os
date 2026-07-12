@@ -20,6 +20,16 @@ R-INDEPENDENCE:
 - R-VERIFY-TIER still forbids redundant same-question passes.
 protocol-director: Obtain the enumeration, commit the tested criteria, and include it in the verify-request.
 
+ChatGPT Pro Advisory Consultation:
+- The capability is always invocable in readiness, director, coordinator, and operator modes.
+- `manual` remains the default and permits guarded manual relay only; `auto` permits one guarded browser send per idempotency key, and `off` fails closed.
+- There is no API fallback; automatic retries are zero in V1.
+- raw prompts and responses stay out of Git, mailbox artifacts, normal logs, screenshots, command arguments, and transcript files.
+- Output is advisory only and not the dual-chief order path; it grants no protocol or side-effect authority.
+- subagents may prepare a bounded question but only the parent context may send or import a response.
+- Follow `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
+protocol-director: Consult design, brief, or plan tradeoffs, then verify every material claim locally.
+
 Mode: explicit concrete director seat. Use only when the parent prompt names
 `director` or `director2`, or explicitly routes director-seat work for that
 concrete seat.

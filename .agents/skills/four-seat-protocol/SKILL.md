@@ -40,6 +40,30 @@ When artifacts disagree, current git and mailbox bodies win over stale prose.
 
 Never silently upgrade from bridge mode into a seat.
 
+## ChatGPT Pro Advisory Consultation
+
+This capability is always invocable in readiness, director, coordinator, and
+operator modes. `manual` remains the default and permits guarded manual relay
+only; `auto` permits one guarded browser send per idempotency key, and `off`
+fails closed. There is no API fallback; automatic retries are zero in V1; raw
+prompts and responses stay out of Git, mailbox artifacts, normal logs,
+screenshots, command arguments, and transcript files. Output is advisory only
+and not the dual-chief order path; it grants no protocol or side-effect
+authority; subagents may prepare a bounded question but only the parent context
+may send or import a response. Follow the dedicated
+`chatgpt-pro-consultation` skill.
+
+- Readiness may consult ideas or plans without upgrading into a seat.
+- Director may consult design, brief, or plan tradeoffs, then verify claims
+  locally.
+- Coordinator is mailbox-first before consultation: refresh HEAD, mailbox
+  bodies, route, wave, capacity, and locks before send and refresh HEAD,
+  mailbox bodies, route, wave, capacity, and locks before use; drift marks the
+  response stale.
+- Operator consultation never replaces Lane V. Allow it only on explicit user
+  request or for a distinct, pre-stated strategic question; it cannot
+  contribute authority to GO, NITS, or FAIL.
+
 ## Claude Function Harmonization:
 
 - core stance: adapt Claude functions to Codex-native primitives; do not transplant Claude-only mechanics.

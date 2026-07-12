@@ -11,6 +11,22 @@ The per-pair operator is the **independent post-commit verifier** for everything
 
 **REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/agents/director-operator.md` (Rule #9 cold-context, Lane V/D/S, current operator triggers, Rules #14/#15/#21); `docs/protocol/agents/orchestration.md`; spec §6a/§6c (impl≠verifier, lock-release-on-GO) + §6b (FAIL-cap); `docs/templates/agents/reviewer.md`.
 
+## ChatGPT Pro Advisory Consultation
+
+This capability is always invocable in readiness, director, coordinator, and
+operator modes. `manual` remains the default and permits guarded manual relay
+only; `auto` permits one guarded browser send per idempotency key, and `off`
+fails closed. There is no API fallback; automatic retries are zero in V1; raw
+prompts and responses stay out of Git, mailbox artifacts, normal logs,
+screenshots, command arguments, and transcript files. Output is advisory only
+and not the dual-chief order path; it grants no protocol or side-effect
+authority; subagents may prepare a bounded question but only the parent context
+may send or import a response. Follow the `chatgpt-pro-consultation` skill.
+
+Operator consultation never replaces Lane V. Allow it only on explicit user
+request or for a distinct, pre-stated strategic question; it cannot contribute
+authority to GO, NITS, or FAIL.
+
 ## Emergency Handling
 
 - Emergency scope is exactly four categories: Production-affecting OR user-data-integrity issue, Security-critical, Active bleed-rate, and External time-pressure.

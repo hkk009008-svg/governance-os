@@ -305,6 +305,63 @@ def test_chatgpt_pro_consultation_model_contract_starts_manual_and_fails_closed(
     )
 
 
+def test_chatgpt_pro_consultation_is_model_backed_and_surface_synced():
+    rendered = model.render_chatgpt_pro_consultation()
+    shared = (
+        "ChatGPT Pro Advisory Consultation",
+        "always invocable",
+        "one guarded browser send per idempotency key",
+        "manual relay",
+        "no API fallback",
+        "raw prompts and responses stay out of Git",
+        "advisory only",
+        "not the dual-chief order path",
+        "subagents may prepare a bounded question but only the parent context may send",
+        "automatic retries are zero in V1",
+    )
+    for phrase in shared:
+        assert phrase in rendered
+
+    for path in (
+        "AGENTS.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/chatgpt-pro-consultation/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/readiness-bridge.toml",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-coordinator.toml",
+        ".codex/agents/protocol-operator.toml",
+    ):
+        text = _compact(_read(path))
+        for phrase in shared:
+            assert phrase in text, (path, phrase)
+
+
+def test_chatgpt_pro_consultation_role_boundaries_are_explicit():
+    coordinator_surfaces = (
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".codex/agents/protocol-coordinator.toml",
+    )
+    for path in coordinator_surfaces:
+        text = _compact(_read(path))
+        assert "mailbox-first before consultation" in text
+        assert "refresh HEAD, mailbox bodies, route, wave, capacity, and locks before use" in text
+        assert "drift marks the response stale" in text
+
+    operator_surfaces = (
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/protocol-operator.toml",
+    )
+    for path in operator_surfaces:
+        text = _compact(_read(path))
+        assert "never replaces Lane V" in text
+        assert "cannot contribute authority to GO, NITS, or FAIL" in text
+        assert "distinct, pre-stated strategic question" in text
+
+
 def test_agent_extension_routing_contract_is_model_backed():
     expected_contract = (
         (
