@@ -858,3 +858,66 @@ was cut off) and adversarially verified cross-model at Lane-V per R-INDEPENDENCE
   by the same enumeration are the next re-verification targets.
 - `git push` → `git push origin main` updates in existing tests (command must
   now match target) preserve their original invariants (reviewed).
+
+## ADR-022: R-INDEPENDENCE empirically validated — cross-model verification found eight defects same-model review missed
+
+**Status:** Accepted
+
+**Context:**
+ADR-019 made independence-first verification (R-INDEPENDENCE) the OS default on
+the strength of a retrospective. On 2026-07-12 the user-principal reset the Codex
+usage limit and directed re-verifying the shipped, already-"GO"'d adversarial
+slices — which produced a controlled test of the doctrine itself. Slice-7 (the
+capability-consumption authority, `scripts/route_capability.py`) had passed three
+same-model Codex rounds AND a 17-vector author-run adversarial battery that
+reported "0 residual." A cross-model Codex Lane-V loop then FAILed it four times
+before returning GO on the fifth pass. Each FAIL was a distinct, independently
+reproduced, real defect — eight in total: (1) a target-confinement `/`-flattening
+differential (`git push /origin/main` accepted for target `origin/main`); (2)
+non-UTF-8-string totality (a lone surrogate raised at `canonicalize` after the
+store `mkdir`); (3) a sibling JSON-schema doc weaker than the enforced check; (4)
+git-argv tokenization non-equivalence (trailing-NBSP-via-`strip`, slash-form,
+multi-refspec); (5) a flag smuggled via the command-CLASS prefix
+(`allowed_command_class="git push --repo=attacker"`); (6) non-finite-float
+totality (NaN/Inf in a validated field); (7) a push-specific target model riding
+a non-push command class; (8) out-of-range-integer totality. None was found by
+same-model review. The recurring shape: fixing an INSTANCE re-exposed the CLASS
+(a `/`-fix led to the whole tokenization class; string-totality led to float-
+then int-totality) — ADR-019's "fix the class, not the instance" made concrete.
+
+By contrast, the two part-#4 fixes in the SAME session (route_manifest
+`next_trigger` structural smuggling; route_lineage `check_cas` int-only
+generations) were designed against an INDEPENDENT design-time enumeration BEFORE
+implementation and each cleared cross-model verification on the FIRST pass — the
+exact difference R-INDEPENDENCE predicts between end-only and design-time
+independence.
+
+**Decision:**
+Record this as the canonical empirical evidence for ADR-019, and affirm two
+operating rules it establishes. (a) Design-time independent enumeration BEFORE
+implementation is the load-bearing half of R-INDEPENDENCE: the two first-pass-GO
+fixes had it; slice-7's original build did not. (b) A cross-model verification
+loop that keeps returning FAIL on genuinely-NEW defects is CONVERGENCE, not
+thrashing, and is permitted under R-VERIFY-TIER (which caps redundant
+SAME-question passes, not new-question ones); it terminates on GO or on a scope
+decision surfaced to the user (here, a restrict-vs-generalize command-class fork
+at pass 4). Same-model self-verification — however many rounds, however large the
+self-run battery — does NOT discharge an adversarial-surface task (ADR-003
+enforcer-is-enforced, now quantified at 8/8 defects missed).
+
+**Consequences:**
+- Slice-7 shipped cross-model-clean (`origin/main` through `e13d410`); the
+  part-#4 fixes shipped (`75aeb3a`, `c3f2e9c`). Every defect has a committed
+  regression test that fails on the pre-fix code.
+- Operational fragility recorded, not yet mechanized: cross-model verification
+  depends on a single external harness (Codex) whose availability gates "done."
+  A fallback independent-verification path for when it is unavailable is a
+  follow-up — until then the doctrine can block on that harness.
+- Push authority is per-action and user-gated (R-VERIFY-THEN-PUSH): a "fix X"
+  authorization does NOT extend to a push, and a cross-model GO satisfies the
+  verification gate but NOT the push gate — reaffirmed after the auto-mode
+  classifier correctly blocked an inferred push of the part-#4 commits this
+  session.
+- No renumbering (append-only). This is a LOCAL ADR (022); the 027/028/032/034-064
+  markers remain origin-repo provenance per ADR-006, so 022 (not 035) is the
+  correct next local number.
