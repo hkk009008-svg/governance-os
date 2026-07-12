@@ -63,7 +63,7 @@ write path** (strategic reasoning becomes human-relayed apps; the overseer is a 
 
 **Codex occupies:** `director` (Pair A builder), `operator2` (Pair B verifier), `coordinator2`
 (Pair B integrator). **Claude occupies:** `director2` (Pair B builder), `operator` (Pair A
-verifier), `coordinator` (Pair A integrator). **Antigravity occupies no seat** — see Part IV / the
+verifier), `coordinator` (Pair A integrator). **Antigravity occupies no seat in the cross-provider configuration**, but may occupy all seats when running as a **Single-Model Autonomous Unit** — see Part IV / the
 Antigravity manual.
 
 **Emergent independence property:** the provider that wrote a change is locked out of the *primary*
@@ -382,9 +382,9 @@ impl ≠ verifier on any provider.
   three hooks, the mailbox bus). Its adoption work is the Layer-1 threeway migration for `director`
   and `operator2`, plus adding target-state `coordinator2` as a real harness/orientation role during
   Slice 2.5 before any Codex session may claim that seat live.
-- **Antigravity:** read [`ANTIGRAVITY-ADOPTION.md`](ANTIGRAVITY-ADOPTION.md). Antigravity holds **no
+- **Antigravity:** read [`ANTIGRAVITY-ADOPTION.md`](ANTIGRAVITY-ADOPTION.md). In the cross-provider protocol, Antigravity holds **no
   Layer-1 seat**; it participates as a human-relayed strategic-reasoner (chief axis) and/or
-  read-only observer, and adopts the full Layer-2 doctrine for any work an agy session performs.
+  read-only observer. Alternatively, it can run as a **Single-Model Autonomous Unit**, holding all seats (director, operator, coordinator) via the legacy mailbox. In all modes, it adopts the full Layer-2 doctrine for any work an agy session performs.
 - **Claude:** `CLAUDE.md` + `docs/protocol/claude/` are the existing mechanics. Claude occupies
   `director2`, `operator`, `coordinator`.
 
