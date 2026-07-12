@@ -19,7 +19,11 @@
     "subject": { "type": "string", "minLength": 1 },
     "target": { "type": "string", "minLength": 1 },
     "commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
-    "logs_ref": { "type": "string", "pattern": "^logs/\\S+$" }
+    "logs_ref": {
+      "type": "string",
+      "pattern": "^logs/(?![^\\s]*\\.\\.)[^/\\s][^\\s]*$",
+      "$comment": "Mirrors the authoritative lexical confinement in scripts/route_capability.py:_logs_ref_confined — rooted under logs/, no absolute path, no empty component (no // or trailing /), no '..' traversal. The Python check remains authoritative; this pattern documents the same rejection so the schema no longer permits logs/../../etc/passwd, which the bare ^logs/\\S+$ pattern accepted."
+    }
   },
   "anyOf": [
     { "required": ["commit"] },

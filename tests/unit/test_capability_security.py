@@ -333,3 +333,130 @@ def test_property_currency_requires_int_generations(bound, route):
     result = route_capability.capability_is_current(cap, _lr("r", route))
     expected = type(bound) is int and type(route) is int and bound == route
     assert result is expected
+
+
+# --- Slice-7b: cross-model (Codex Lane-V) FAIL findings, ADR-019 -------------
+#
+# After slice-7 self-hardening + a 17-vector SELF-adversarial battery reported
+# "0 residual", an INDEPENDENT cross-model verifier (Codex) still found two real
+# gaps and one doc drift — the R-INDEPENDENCE thesis in action (a different
+# perspective finds what same-model review cannot). Each was reproduced by a
+# direct probe on the pre-fix code:
+#
+#   F1 target '/'-differential — the component match discarded EMPTY components,
+#      so `git push /origin/main` (git reads this as a LOCAL repo path, not
+#      remote+ref) flattened to [origin, main] and matched target origin/main.
+#   F2 surrogate totality — a lone UTF-16 surrogate (e.g. "\ud800") is a valid
+#      Python str but NOT UTF-8 encodable; it passed every isinstance(str) check
+#      and detonated at canonicalize() (RFC-8785) with an uncaught exception,
+#      AFTER store_dir.mkdir ran. consume() was claimed TOTAL and was not. The
+#      gap is class-wide: ANY canonicalized string field (evidence output/
+#      logs_ref, OR the capability's own target) triggers it, not just output.
+#   F3 schema drift — the sibling JSON Schema (documentation of the contract)
+#      still permitted a traversing logs_ref via ^logs/\S+$, weaker than the
+#      authoritative Python confinement.
+
+
+_TARGET_SLASH_DIFFERENTIAL_MUST_REFUSE = [
+    "git push /origin/main",    # leading slash -> git reads a LOCAL repo path
+    "git push origin//main",    # empty middle component
+    "git push origin/main/",    # trailing slash -> empty final component
+    "git push /origin//main/",  # combined stray slashes
+]
+
+
+@pytest.mark.parametrize("command", _TARGET_SLASH_DIFFERENTIAL_MUST_REFUSE)
+def test_target_slash_differential_refused(tmp_path, command):
+    # A stray leading/trailing/double slash makes the command act on something
+    # OTHER than the authorized origin/main -> must refuse, nothing written.
+    res = route_capability.consume(_cap(), _evidence(command=command), store_dir=tmp_path)
+    assert not res.ok, f"SLASH BYPASS: {command!r} was accepted"
+    assert "target_mismatch" in res.reason, (command, res.reason)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_command_targets_match_rejects_empty_components():
+    # Unit-level: the matcher itself must reject any empty ref component while
+    # still accepting the two legitimate spellings of the exact target.
+    m = route_capability._command_targets_match
+    assert m("git push origin main", "git push", "origin/main") is True
+    assert m("git push origin/main", "git push", "origin/main") is True
+    assert m("git push /origin/main", "git push", "origin/main") is False
+    assert m("git push origin//main", "git push", "origin/main") is False
+    assert m("git push origin/main/", "git push", "origin/main") is False
+
+
+# F2: surrogate totality — consume TOTAL over non-UTF-8-encodable strings.
+
+_SURROGATE = "\ud800"  # lone high surrogate: a valid str, NOT UTF-8 encodable
+
+
+def test_consume_total_over_surrogate_in_output(tmp_path):
+    res = route_capability.consume(_cap(), _evidence(output=_SURROGATE), store_dir=tmp_path)
+    assert isinstance(res, route_capability.ConsumeResult) and not res.ok
+    assert list(tmp_path.iterdir()) == []  # nothing written
+
+
+def test_consume_total_over_surrogate_in_logs_ref(tmp_path):
+    ev = {"result": "ok", "command": "git push origin main", "output": "done",
+          "logs_ref": "logs/" + _SURROGATE}
+    res = route_capability.consume(_cap(), ev, store_dir=tmp_path)
+    assert isinstance(res, route_capability.ConsumeResult) and not res.ok
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_consume_total_over_surrogate_in_capability_target(tmp_path):
+    cap = _cap(target="orig" + _SURROGATE + "in/main")
+    ev = _evidence(command="git push orig" + _SURROGATE + "in main")
+    res = route_capability.consume(cap, ev, store_dir=tmp_path)
+    assert isinstance(res, route_capability.ConsumeResult) and not res.ok
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_validate_capability_rejects_surrogate_string():
+    issues = route_capability.validate_capability(_cap(target="a" + _SURROGATE))
+    assert any("UTF-8" in i or "surrogate" in i for i in issues), issues
+
+
+def test_validate_receipt_rejects_surrogate_string():
+    r = _receipt_with_logs("logs/ok/x.json")
+    r["output"] = _SURROGATE
+    issues = route_capability.validate_receipt(r)
+    assert any("UTF-8" in i or "surrogate" in i for i in issues), issues
+
+
+@settings(max_examples=60, deadline=None)
+@given(field=st.sampled_from(["result", "command", "output"]))
+def test_property_surrogate_evidence_never_raises(field):
+    # A lone surrogate in any required evidence string yields a typed refusal,
+    # never an exception (totality over the non-UTF-8 class).
+    with tempfile.TemporaryDirectory() as d:
+        ev = _evidence(**{field: "x" + _SURROGATE})
+        res = route_capability.consume(_cap(), ev, store_dir=Path(d))
+        assert isinstance(res, route_capability.ConsumeResult) and not res.ok
+        assert list(Path(d).iterdir()) == []
+
+
+# F3: the sibling JSON Schema must document the SAME logs_ref confinement.
+
+def _schema_logs_ref_pattern() -> str:
+    import json
+    schema_path = (
+        Path(__file__).resolve().parents[2] / "schemas" / "capability-receipt-v1.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    return schema["properties"]["logs_ref"]["pattern"]
+
+
+@pytest.mark.parametrize("logs_ref", _TRAVERSING_LOGS_REFS)
+def test_schema_logs_ref_pattern_rejects_traversal(logs_ref):
+    import re as _re
+    pattern = _schema_logs_ref_pattern()
+    assert _re.fullmatch(pattern, logs_ref) is None, (
+        f"schema logs_ref pattern {pattern!r} wrongly accepts traversing {logs_ref!r}"
+    )
+
+
+def test_schema_logs_ref_pattern_accepts_clean():
+    import re as _re
+    assert _re.fullmatch(_schema_logs_ref_pattern(), "logs/real/artifact.json") is not None

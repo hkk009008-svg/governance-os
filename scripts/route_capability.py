@@ -100,6 +100,23 @@ def _is_nonempty_str(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def _is_utf8_encodable(value: str) -> bool:
+    """True iff ``value`` round-trips through UTF-8.
+
+    A lone UTF-16 surrogate (e.g. ``"\\ud800"``) is a valid Python ``str`` but
+    is NOT UTF-8 encodable, so it passes every ``isinstance(str)`` check and then
+    detonates at ``canonicalize()`` (RFC-8785) with an uncaught exception — after
+    a receipt directory may already have been created. Rejecting the whole
+    non-encodable class up front keeps the validators and ``consume()`` TOTAL
+    (cross-model Codex Lane-V finding, ADR-019).
+    """
+    try:
+        value.encode("utf-8")
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
 # Newline / carriage-return in ANY string value is the prose-injection vector
 # (mirrors route_manifest): a future Markdown projection would interpolate fields
 # unescaped, so a smuggled "\n" could render a second physical line a legacy
@@ -124,6 +141,8 @@ def _reject_control_chars(obj: Any, path: str = "") -> list[str]:
     if isinstance(obj, str):
         if any(ch in obj for ch in _CONTROL_CHARS):
             issues.append(f"control characters rejected in {path or '<root>'}")
+        if not _is_utf8_encodable(obj):
+            issues.append(f"non-UTF-8 (lone surrogate) string rejected in {path or '<root>'}")
     elif isinstance(obj, dict):
         for key in obj:
             child = f"{path}.{key}" if path else str(key)
@@ -413,9 +432,14 @@ def _validate_evidence(evidence: Any) -> list[str]:
             issues.append(f"missing required evidence field: {field}")
         elif not isinstance(evidence[field], str):
             issues.append(f"evidence field {field!r} must be a string")
+        elif not _is_utf8_encodable(evidence[field]):
+            issues.append(f"evidence field {field!r} must be UTF-8 encodable (no lone surrogates)")
     for field in ("commit", "logs_ref"):
-        if field in evidence and not isinstance(evidence[field], str):
-            issues.append(f"evidence field {field!r} must be a string when present")
+        if field in evidence:
+            if not isinstance(evidence[field], str):
+                issues.append(f"evidence field {field!r} must be a string when present")
+            elif not _is_utf8_encodable(evidence[field]):
+                issues.append(f"evidence field {field!r} must be UTF-8 encodable (no lone surrogates)")
     return issues
 
 
@@ -425,6 +449,21 @@ def _validate_evidence(evidence: Any) -> list[str]:
 # U+2003, …) is NOT an argument separator to a shell, so a command carrying one
 # is rejected rather than silently re-tokenized (the parsing differential below).
 _ASCII_ARG_WS = {" ", "\t"}
+
+
+def _ref_components(ref: str) -> list[str] | None:
+    """Components of a ref-ish string, split on ASCII space and '/'.
+
+    Returns ``None`` if ANY component is empty — a leading, trailing, or doubled
+    separator (e.g. ``/origin/main``, ``origin//main``, ``origin/main/``). Such a
+    string does NOT denote a clean remote-plus-ref path: git reads
+    ``/origin/main`` as a LOCAL repository path with a default refspec, not remote
+    ``origin`` ref ``main``. Callers treat ``None`` as no-match (fail-closed).
+    """
+    parts = re.split(r"[ /]", ref)
+    if any(part == "" for part in parts):
+        return None
+    return parts
 
 
 def _command_targets_match(command: str, allowed_command_class: str, target: str) -> bool:
@@ -444,9 +483,13 @@ def _command_targets_match(command: str, allowed_command_class: str, target: str
           the REMOTE, ``--repo`` overrides the remote) and ``--force`` violates
           the token's non_goals ("no force-push"). A future increment may add a
           per-class safe-flag allowlist.
-      (3) The non-flag argument components (split on whitespace and '/') must
-          EQUAL the target's components in order. An empty target, extra refs, a
-          different ref, or no target all return False.
+      (3) The non-flag argument components (split on ASCII space and '/') must
+          EQUAL the target's components in order, with NO empty component. An
+          empty target, extra refs, a different ref, no target, or a stray
+          leading/trailing/double slash all return False. Rejecting empty
+          components (rather than discarding them) closes the '/'-flattening
+          differential: ``git push /origin/main`` — which git reads as a LOCAL
+          repo path, not remote+ref — must NOT match target ``origin/main``.
     """
     rest = command[len(allowed_command_class):]  # class prefix already verified by the command-class check
     # (1) exotic-whitespace differential: only ASCII space/tab are shell arg separators.
@@ -456,12 +499,16 @@ def _command_targets_match(command: str, allowed_command_class: str, target: str
     # (2) no flags — a capability authorizes exactly its class acting on its target.
     if any(tok.startswith("-") for tok in tokens):
         return False
-    # (3) the non-flag argument components must EQUAL the target's, in order.
-    cmd_components: list[str] = []
-    for tok in tokens:
-        cmd_components.extend(p for p in tok.replace("/", " ").split() if p)
-    target_components = [p for p in target.replace("/", " ").split() if p]
-    return bool(target_components) and cmd_components == target_components
+    # (3) the non-flag argument components must EQUAL the target's, in order, with
+    # no empty component (a stray leading/trailing/double slash yields None).
+    cmd_components = _ref_components(" ".join(tokens))
+    target_components = _ref_components(target)
+    return (
+        cmd_components is not None
+        and target_components is not None
+        and bool(target_components)
+        and cmd_components == target_components
+    )
 
 
 def consume(capability: dict, evidence: dict, *, store_dir, authoritative=None) -> ConsumeResult:
