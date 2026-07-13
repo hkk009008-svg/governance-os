@@ -1496,11 +1496,11 @@ SHA_DEFAULT_DOCS = [
 # Current checked baseline for historical SHA references carried from protocol
 # provenance docs. ci_smoke stays quiet when this reviewed set is unchanged, and
 # any count or digest change becomes a hard new-drift signal.
-# 2026-07-10: digest refreshed after a bounded claude-tree cleanup shifted
-# citation line numbers in docs/protocol/claude/director-operator.md; the
-# citation SET is unchanged (count held at 215, zero SHAs added/removed).
+# 2026-07-13: digest refreshed after Task 8 trigger guidance shifted citation
+# line numbers in AGENTS.md and protocol director-operator docs; the citation
+# SET is unchanged (count held at 215, zero SHAs added/removed).
 SHA_REF_BASELINE_COUNT = 215
-SHA_REF_BASELINE_DIGEST = "b511d1c0dc402219e3344aaec9bcc8d30a4dd295f5195120d9716c142c32a3a3"
+SHA_REF_BASELINE_DIGEST = "47cc8a32d25fb5592b17273799b63ea6e6d3dfa025e3657b60cfec03e9302a18"
 
 
 @dataclass(frozen=True)
