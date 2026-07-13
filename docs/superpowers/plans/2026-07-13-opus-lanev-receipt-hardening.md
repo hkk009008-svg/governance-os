@@ -2051,6 +2051,92 @@ env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind Lane V producer trigger
 
 ---
 
+### Task 9: Close Final Adversarial Review Gaps Before Provider Spend
+
+**Files:**
+
+- Modify: `scripts/opus_review_bridge.py`
+- Modify only if an end-to-end or matrix regression exposes a production defect: `scripts/opus_review_receipts.py`
+- Modify: `tests/unit/test_opus_review_bridge.py`
+- Modify: `tests/unit/test_opus_review_receipts.py`
+- Modify only if line-position accounting changes: `scripts/check_doc_claims.py`
+
+The first independent Section 9 actual-diff review returned **FAIL** before any
+provider attempt. It identified one production authority bypass and two
+mandatory-test gaps. This task is the bounded correction slice; the unchanged
+failed head must never be sent to the provider.
+
+- [ ] **Step 1: Add failing, mutation-sensitive regressions**
+
+Add a hostile-`PATH` regression proving every authority read launches the
+trusted absolute `/usr/bin/git`, continues to strip all ambient `GIT_*`
+selectors, and never executes a same-named shim. The test must fail if the
+launcher is mutated back to bare `git`.
+
+Replace the split linked-worktree/root tests with an end-to-end process race.
+Use a fresh temporary primary repository whose default receipt root is absent
+and two real linked worktrees. Synchronize both workers immediately before
+`ReceiptStore.for_repo(worktree)`; do not inject `state_root`. The process that
+obtains `launch` must hold its attempt lock until the other worker has attempted
+nonblocking acquisition. Assert both stores resolve the same primary-root
+runtime directory, neither worktree-local runtime directory is created,
+exactly one result is `launch`, exactly one is `attempt_in_progress`, and
+concurrent initialization raises no exception. The test must fail if
+default-root derivation becomes per-worktree or shared initialization loses its
+race safety.
+
+Replace the misleading three-label crash test with child processes that each
+call production `review()` and interrupt a distinct production seam: wrap
+`LockedAttempt.reserve_or_load` and exit after a real `launch` reservation but
+before provider entry; exit from inside the entered provider callable; wrap
+`_validated_provider_result`, call the real validator, and exit after the
+normalized result exists; and wrap the actual `receipts.os.replace` call and
+exit immediately before replacement, after the temporary receipt is durable.
+Use an fsynced stage trace produced by those actual wrappers, exact child exit
+codes, and exact trace-prefix assertions; a parameter label is not boundary
+evidence. Immediately reopen the store and assert generation-1 `reserved` with
+no review. An exact subsequent production `review()` must persist
+`reviewed/unavailable` with `failure_stage=receipt_recovery` and
+`unavailable_reason=attempt_state_uncertain`, without entering the provider;
+an identical replay must return the same result. The pre-replace case must also
+observe the expected orphan temporary file. A separate post-replace crash, if
+added, accepts durable `reviewed` but must still prove no provider relaunch.
+
+Exercise `LockedAttempt.record_review`, `record_reconciliation`,
+`begin_publication`, `finish_publication`, `cancel_publication`, and
+`recover_publication` against the independent, hand-authored 30-cell oracle in
+design Section 9.7. Assert every transition, exact idempotent replay, and
+illegal `invalid_receipt_transition`; separately assert every changed valid
+reconciliation/publication witness produces its exact replay-conflict reason.
+The test must assert its case-key set equals the Cartesian product of the five
+states and six operations, rather than sample selected edges. Mutation probes
+must demonstrate that the hostile-PATH, linked-root, crash-stage, missing-cell,
+and forbidden-edge regressions each flip.
+
+- [ ] **Step 2: Implement the narrow correction**
+
+Pin the host Git executable used by `_git_process()` to `/usr/bin/git` while
+preserving `--no-replace-objects` and the existing removal of every ambient
+`GIT_*` key. Change receipt/bridge production code only if a new end-to-end or
+matrix test exposes a real defect; otherwise keep the lifecycle implementation
+unchanged and correct the inadequate tests.
+
+- [ ] **Step 3: Verify and independently review the new head**
+
+Run the two complete affected files, their focused mutation probes, the full
+descriptor acceptance command, the full unit suite, repository gates, and
+`git diff --check`. A fresh spec reviewer must verify that all three findings
+are closed non-vacuously; a fresh quality reviewer must inspect the actual
+diff. Only after both return clean may a new whole-branch Section 9 review form
+the provisional Codex verdict and authorize the sole receipt-backed Opus
+attempt for that new unchanged head.
+
+Commit the implementation with the descriptor-bound terminal trailer. Do not
+emit mail, publish a report, activate the primary checkout, push, or invoke the
+provider during Task 9.
+
+---
+
 ## Final Integration And Verification
 
 After every task's implementer report and task review are clean, run one broad whole-branch review for plan/spec integration and maintainability. This is a different pre-stated question from Lane V's final adversarial gate.
@@ -2131,13 +2217,13 @@ env -u GIT_INDEX_FILE git status --short
 env -u GIT_INDEX_FILE git show --stat --oneline HEAD
 ```
 
-Expected: one reviewed commit per Task 1-8 plus the prompt prep and amended
+Expected: one reviewed commit per Task 1-9 plus the prompt prep and amended
 plan/descriptor commits, clean worktree, no live mailbox/cursor/route/lock or
 primary-activation changes, and no push.
 
 ## Plan Self-Review Record
 
-- Spec coverage: Tasks 1-8 map all design Sections 6.1-6.12, 8, 9.1-9.6, 10.1-10.4, and 11.
+- Spec coverage: Tasks 1-9 map all design Sections 6.1-6.12, 8, 9.1-9.7, 10.1-10.4, and 11.
 - File boundaries: receipt serialization/storage does not import provider policy; bridge owns provider/severity behavior; report gate owns report parsing/publication; `check_go_schema` owns CI corpus accounting.
 - Type consistency: Task 1 produces `ScopeDescriptor`/`ReviewScope`; Task 2 consumes them and produces `ReceiptStore`; Task 3 consumes the store and produces stored v3/v2 evidence; Tasks 5-6 consume those exact mappings; Task 7 documents the final names.
 - Execution conflict scan: Tasks are sequential where they share `opus_review_bridge.py`, `opus_review_receipts.py`, or their tests; no two implementers run concurrently on shared files.

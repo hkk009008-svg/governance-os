@@ -1056,6 +1056,61 @@ applies. The following cases are mandatory acceptance targets.
 - a cross-repository or evidence-ledger review fabricates Pipeline descriptor
   authority instead of returning to the coordinator's separate bridge route.
 
+### 9.7 Final actual-diff review corrections
+
+The first independent final actual-diff review stopped before provider spend
+and identified three remaining adversarial gaps. They are mandatory acceptance
+targets for the final implementation head:
+
+- every host-side Git authority read executes the trusted absolute
+  `/usr/bin/git`, retains `--no-replace-objects`, and strips every ambient
+  `GIT_*` selector; an attacker-controlled `PATH` containing a `git` shim must
+  neither select the executable nor observe an invocation;
+- two processes starting in two real linked worktrees concurrently derive and
+  initialize an initially absent default receipt root and reserve the same
+  authoritative scope, without a test-injected `state_root`; a barrier is
+  immediately before `ReceiptStore.for_repo`, and the `launch` owner retains
+  its lock until the losing nonblocking attempt completes. Both stores resolve
+  the primary-root runtime directory, neither worktree-local root is created,
+  and the only results are one `launch` and one `attempt_in_progress`;
+- crash coverage calls production `review()` and interrupts four distinct
+  seams: after real `reserve_or_load` returns `launch` but before provider
+  entry, inside the entered provider callable, after the real
+  `_validated_provider_result` returns but before persistence, and at the
+  actual `receipts.os.replace` call immediately before replacement. Fsynced
+  traces from the wrappers, exact child exit codes, the generation-1 reserved
+  record, and the pre-replace orphan temporary file are boundary evidence. A
+  later exact review degrades to persisted `reviewed/unavailable` receipt
+  recovery without entering the provider, and an exact replay stays inert; and
+- lifecycle coverage uses the following independent 30-cell oracle for the
+  six concrete `LockedAttempt` methods. `invalid` means exact
+  `invalid_receipt_transition`; `exact replay` means no write or generation
+  change.
+
+| Entry state | `record_review` | `record_reconciliation` | `begin_publication` | `finish_publication` | `cancel_publication` | `recover_publication` |
+|---|---|---|---|---|---|---|
+| `reserved` | to `reviewed` | invalid | invalid | invalid | invalid | invalid |
+| `reviewed` | invalid | to `reconciled` | invalid | invalid | invalid | invalid |
+| `reconciled` | invalid | exact replay | to `publishing` | invalid | invalid | invalid |
+| `publishing` | invalid | exact replay | exact replay | to `published` | to `reconciled` | `finalize` unchanged or `clear` to `reconciled` |
+| `published` | invalid | exact replay | exact replay | exact replay | invalid | invalid |
+
+Changed valid inputs are a separate oracle: reconciliation changes from
+`reconciled`, `publishing`, or `published` raise
+`reconciliation_replay_conflict`; publication witness changes for begin from
+`publishing`/`published`, finish from `publishing`/`published`, cancel from
+`publishing`, or recover from `publishing` raise
+`publication_replay_conflict`. They do not count as illegal-state cells.
+
+Tests must prove each correction non-vacuously: restoring bare `git`, deriving
+state beneath a linked worktree, collapsing crash fixtures to one raise site,
+deleting a matrix cell, or permitting one forbidden state/operation edge must
+cause a focused failure.
+The independent reviewer that found these gaps was a same-model harness; the
+final receipt-backed Opus review remains the distinct-model challenge and is
+not invoked until these regressions and a new Codex actual-diff review are
+green on one unchanged head.
+
 A fresh independent reviewer must challenge this enumeration before the design
 commit. Before completion, an independent actual-diff review must verify that
 the implemented tests cover these cases. A same-model subagent is acceptable
