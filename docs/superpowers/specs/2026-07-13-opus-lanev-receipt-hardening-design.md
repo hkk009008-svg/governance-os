@@ -2,9 +2,10 @@
 
 **Date:** 2026-07-13
 **Status:** Approved by the user-principal on 2026-07-13 and implemented through
-Tasks 1–7 in the isolated hardening branch; the independent whole-branch review
-found one active-trigger guidance integration gap, now covered by approved
-Task 8 below; independently challenged before approval; amended after
+Task 9 in the isolated hardening branch; independent whole-branch reviews found
+the active-trigger guidance gap covered by Task 8 and the duplicate shipping
+authority gap covered by Task 10 below; independently challenged before
+approval; amended after
 `a3717e3` to bind exact index staging, explicit recovery, trusted startup, and
 the real provider prompt
 **Implementation base:** `555041477bcdb9a432a1b238d664be0958c5c9ef`
@@ -441,10 +442,12 @@ the one durable report. Every transition occurs under the per-attempt lock and
 increments a checked generation; no stale writer may replace a newer state.
 
 If a process dies after `reserved` is durable but before `reviewed`, no caller
-may relaunch the provider. A second process that cannot acquire the attempt
-lock returns `attempt_in_progress`. If the next identical `review` invocation
-acquires the lock after the owner has exited and finds the receipt still
-`reserved`, it transitions the receipt without provider use to
+may relaunch the provider. A low-level observer using the explicit nonblocking
+attempt-lock API receives `attempt_in_progress` when the lock is held. The
+public `review()` path uses the blocking attempt lock: an identical concurrent
+caller waits, then returns the completed stored result or, if the owner exited
+while the receipt remained `reserved`, transitions the receipt without
+provider use to
 `reviewed/unavailable` with
 `unavailable_reason=attempt_state_uncertain`. Reconciliation may then preserve
 only a visibly degraded Codex verdict. Wall-clock age is not used to decide
@@ -1118,6 +1121,30 @@ for design review only when explicitly identified as weaker; the required
 post-Lane-V Opus attempt remains the distinct-model implementation review when
 the provider is available.
 
+### 9.8 Global uniqueness of shipping scope authority
+
+The next fresh actual-diff review stopped before provider reservation and
+identified an ambiguity shared by the bridge and report gate. Both consumers
+validated one `Lane-V-Scope:` inside the terminal trailer paragraph but did not
+reject an additional canonical `Lane-V-Scope: ` line in an earlier commit-body
+paragraph.
+
+A shipping commit is lawful only when its complete decoded message contains
+exactly one canonical line beginning `Lane-V-Scope: `. That same sole line must
+also be the one exact reference in the terminal Git trailer block, and its
+value must continue to match the reviewed descriptor/report authority. A
+body-plus-trailer pair is invalid even when both values are identical. The
+bridge and report gate must enforce the same rule; paired regressions exercise
+the real resolvers, the report gate covers both structural modes, and one
+lawful terminal-only positive control proves the correction is not vacuous.
+
+The minimum repair adds the global count beside the existing terminal parser.
+It does not introduce a new shared parsing abstraction or alter provider,
+receipt, reconciliation, or publication semantics. The one provider attempt
+remains unopened until this correction, its task review, the repeated local
+verification bundle, and a new whole-branch actual-diff review are green on one
+unchanged head.
+
 ## 10. Test Strategy
 
 Implementation follows test-driven development. Each behavior begins with a
@@ -1245,9 +1272,11 @@ Rollout order for the remaining work is:
 5. after whole-branch review, complete Task 8's active trigger-producer and
    consumer synchronization under its precommitted narrow descriptor;
 6. run focused, full, smoke, baseline, doc, and whole-branch checks;
-7. perform independent actual-diff review against Section 9 and make the one
-   authorized receipt-backed advisory Opus attempt only when the capability
-   guard succeeds, preserving an exact degraded reason without retry otherwise;
+7. perform independent actual-diff review against Section 9, correct any
+   blocking finding under a committed amendment, and repeat the review; make
+   the one authorized receipt-backed advisory Opus attempt only after PASS and
+   only when the capability guard succeeds, preserving an exact degraded reason
+   without retry otherwise;
 8. return a durable handoff to the coordinator for the separately routed
    evidence-ledger-aware bridge work; and
 9. only under separate explicit executor authority, fast-forward and revalidate

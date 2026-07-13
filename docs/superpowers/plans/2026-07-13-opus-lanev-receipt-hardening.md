@@ -27,7 +27,7 @@
   review base and content-addressed provider-prompt authority while adding the
   exact Task 7 write root `docs/PROTOCOL-RULES-LOG.md`; it does not widen
   authority to `docs`.
-- Task 8 and the final unchanged-HEAD Lane V review use the precommitted
+- Tasks 8-10 and the final unchanged-HEAD Lane V review use the precommitted
   `sha256:e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84`
   generation of that same descriptor. It adds only the twelve exact active
   producer/consumer guidance files named in Task 8, plus the existing narrow
@@ -2137,6 +2137,59 @@ provider during Task 9.
 
 ---
 
+### Task 10: Reject Duplicate Shipping Authority Outside The Terminal Trailer
+
+**Files:**
+
+- Modify: `scripts/opus_review_bridge.py`
+- Modify: `scripts/verification_report_gate.py`
+- Modify: `tests/unit/test_opus_review_bridge.py`
+- Modify: `tests/unit/test_verification_report_gate.py`
+
+The fresh whole-branch Section 9 review returned **FAIL** before provider
+reservation. Both shipping-authority consumers count `Lane-V-Scope:` only
+inside the terminal Git trailer paragraph. A commit containing one canonical
+reference in an earlier body paragraph and a second lawful terminal trailer is
+therefore accepted even though design Section 9 requires one canonical
+shipping reference in the entire commit message.
+
+- [ ] **Step 1: Add paired failing regressions and confirm RED**
+
+Add one bridge regression and the existing report-gate two-mode matrix case
+for a canonical body `Lane-V-Scope:` plus a lawful terminal
+`Lane-V-Scope:`. Each test must exercise the real shipping-authority resolver,
+fail at the current head because the malformed commit is accepted, and retain
+one lawful-trigger positive control. The report-gate case must cover both
+`codex-lane-v` and `claude-lane-v`.
+
+- [ ] **Step 2: Implement the minimum global-uniqueness guard**
+
+In both consumers, collect canonical `Lane-V-Scope: ` lines across the entire
+decoded commit message and require exactly one. Independently require that the
+same sole line is the one exact terminal trailer already accepted by the
+existing parser. Reject body-plus-trailer, duplicate-body, duplicate-terminal,
+body-only, non-terminal, and mismatched references without broadening the
+accepted syntax or changing descriptor parsing. Do not extract a new shared
+parser or change provider, receipt, reconciliation, or publication behavior.
+
+- [ ] **Step 3: Verify, independently review, and commit**
+
+Run both complete affected test files and demonstrate the new regressions are
+mutation-sensitive by bypassing only the global count and observing their RED
+failure. Run the full descriptor acceptance command, `scripts/ci_smoke.py`,
+the changed-authority SHA subset, and `git diff --check`. Obtain a fresh
+task-scoped spec-and-quality review of the actual diff. Commit the correction
+with the descriptor-bound terminal trailer. Do not reserve a receipt, invoke
+the provider, emit mail, publish a report, activate the primary checkout,
+push, or change protocol state during Task 10.
+
+Only after Task 10 is green and independently reviewed may a fresh whole-branch
+Section 9 review form a new provisional Codex verdict. The single
+receipt-backed Opus attempt remains unopened and is authorized only by a PASS
+on that new unchanged head.
+
+---
+
 ## Final Integration And Verification
 
 After every task's implementer report and task review are clean, run one broad whole-branch review for plan/spec integration and maintainability. This is a different pre-stated question from Lane V's final adversarial gate.
@@ -2217,13 +2270,13 @@ env -u GIT_INDEX_FILE git status --short
 env -u GIT_INDEX_FILE git show --stat --oneline HEAD
 ```
 
-Expected: one reviewed commit per Task 1-9 plus the prompt prep and amended
+Expected: one reviewed commit per Task 1-10 plus the prompt prep and amended
 plan/descriptor commits, clean worktree, no live mailbox/cursor/route/lock or
 primary-activation changes, and no push.
 
 ## Plan Self-Review Record
 
-- Spec coverage: Tasks 1-9 map all design Sections 6.1-6.12, 8, 9.1-9.7, 10.1-10.4, and 11.
+- Spec coverage: Tasks 1-10 map all design Sections 6.1-6.12, 8, 9.1-9.8, 10.1-10.4, and 11.
 - File boundaries: receipt serialization/storage does not import provider policy; bridge owns provider/severity behavior; report gate owns report parsing/publication; `check_go_schema` owns CI corpus accounting.
 - Type consistency: Task 1 produces `ScopeDescriptor`/`ReviewScope`; Task 2 consumes them and produces `ReceiptStore`; Task 3 consumes the store and produces stored v3/v2 evidence; Tasks 5-6 consume those exact mappings; Task 7 documents the final names.
 - Execution conflict scan: Tasks are sequential where they share `opus_review_bridge.py`, `opus_review_receipts.py`, or their tests; no two implementers run concurrently on shared files.
