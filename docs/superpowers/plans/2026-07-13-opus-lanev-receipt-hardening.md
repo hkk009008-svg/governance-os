@@ -829,7 +829,17 @@ class LaneVReport:
     body_digest: str
 ```
 
-Parse the body as UTF-8 strictly. Require exactly one undecorated `VERDICT: GO|NITS|FAIL` line and exactly one exact `## Verification Attestation` heading. Parse every attestation line as one `Label: value` pair, require the exact ordered labels, and reject blank/continuation/heading lines inside the section. Parse dispositions and guard with duplicate-key rejection, then require `canonical_json_bytes(parsed).decode() == original_value`.
+Parse the body as UTF-8 strictly and reject every carriage return or NUL.
+Require exactly one undecorated `VERDICT: GO|NITS|FAIL` line and exactly one
+exact `## Verification Attestation` heading. The heading is followed by exactly
+one blank framing line, then the 17 consecutive physical `Label: value` lines
+in canonical order. After field 17, accept only EOF or exactly one blank line
+followed by an exact level-two heading. A blank, continuation, prose line,
+`###` heading, extra framing blank, or eighteenth field cannot terminate the
+section successfully. Measure each raw UTF-8 line and the exact heading-through-
+field-17 byte span before value/JSON parsing. Parse dispositions and guard with
+duplicate-key rejection, then require
+`canonical_json_bytes(parsed).decode() == original_value`.
 
 For `codex-lane-v`, require harness `codex:lane-v-verifier`, profile `codex-lane-v`, valid receipt/scope values, status `pass|issues|unavailable`, model/reason consistency, dispositions `none` or exact objects, and guard keys exactly `digest` then `go_allowed` in canonical JSON, where digest matches `sha256:<64-lowercase-hex>`. For `claude-lane-v`, require harness `claude:lane-v-verifier` and every Opus-specific value exactly `not-applicable`.
 
@@ -846,7 +856,31 @@ The non-Codex positive fixture uses a committed descriptor with `verification_mo
 
 - [ ] **Step 5: Implement structural authority validation**
 
-Load descriptor and trigger bytes from Git, not the working tree, through the shared Task 1 scope-reference parser. Require `Scope authority` to equal `<descriptor-path>@<descriptor-digest>` and `Trigger identity` to equal the canonical trigger identity. `validate_structural_authority()` returns the parsed descriptor/reference for live validation in Task 6; it performs no private-state read.
+Do not call Task 4's Codex-only `resolve_authoritative_scope()`. Build a
+provider-neutral committed-authority loader from Task 1's public
+`strict_json_loads()`, `ScopeDescriptor.from_mapping()`,
+`parse_scope_reference()`, `canonical_trigger_identity()`, and path
+normalization primitives. It accepts both supported Codex and Claude
+mode/harness tuples, loads bounded descriptor/trigger bytes from Git rather
+than the working tree, and returns:
+
+```python
+@dataclass(frozen=True)
+class StructuralAuthority:
+    descriptor: receipts.ScopeDescriptor
+    reference: receipts.ScopeReference
+    trigger_kind: str
+    trigger_commit: str
+    trigger_path: str | None
+    trigger_identity: str
+    verify_request_recipient: str | None
+```
+
+Require `Scope authority` to equal
+`<descriptor-path>@<descriptor-digest>` and `Trigger identity` to equal the
+canonical trigger identity. `validate_structural_authority()` returns this
+provider-neutral authority for live validation in Task 6 and performs no
+private-state read, changed-path review, provider validation, or receipt access.
 
 - [ ] **Step 6: Write failing historical-manifest tests**
 
@@ -864,11 +898,28 @@ Pin manifest schema and drift:
 }
 ```
 
-Tests must hash raw bytes before any decoding and prove exact path+body acceptance, changed body detection, deleted baseline detection, duplicate path/digest rejection, a new non-v2 report rejection regardless of timestamp/filename, and a modified historical path being accepted only if its new body fully satisfies v2. Unmatched new reports decode as strict UTF-8; `errors="replace"` is not allowed at the trust boundary.
+Tests must hash raw bytes before any decoding and prove exact path+body acceptance,
+changed body detection, deleted baseline detection, duplicate path/digest
+rejection, a new non-v2 report rejection regardless of timestamp/filename,
+and a modified historical path being accepted only if its new body fully
+satisfies v2. Unmatched new reports decode as strict UTF-8; `errors="replace"`
+is not allowed at the trust boundary. `legacy_manifest_violations()` validates
+manifest shape, duplicates, and missing paths; a changed digest is passed to
+`repository_report_violations()` for a possible full v2 migration before it is
+reported as drift.
 
 - [ ] **Step 7: Extend `check_go_schema.py` and generate the exact baseline**
 
-Preserve `go_report_violations()` and every existing GO evidence rule. Add `repository_report_violations(root, named_reports, manifest)` so a report is accepted only when its path+raw-byte digest exactly matches the manifest or it passes v2 parsing/structural authority. Validate every baseline path exists and matches. Update the live-mailbox test to assert the real baseline-backed corpus rather than describing it as empty.
+Preserve `go_report_violations()` and every existing GO evidence rule. Add a
+raw carrier such as `RawReport(relative_path: str, raw: bytes)` and one public
+`repository_report_violations(root, named_reports, manifest)` path. Hash raw
+bytes first, strict-decode each report once, require either an exact legacy
+path+digest or full v2 parsing/structural authority, and then apply the existing
+GO evidence rules to that same decoded text when the verdict is GO. NITS/FAIL
+skip only GO-specific evidence rules, not legacy/v2 structural validation.
+Validate every baseline path exists; a modified baseline path is accepted only
+after complete v2 migration. Update the live-mailbox test to assert the real
+baseline-backed corpus rather than describing it as empty.
 
 Add an explicit maintainer command:
 
@@ -876,11 +927,29 @@ Add an explicit maintainer command:
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_go_schema.py --generate-baseline scripts/baselines/lane_v_report_v1.json
 ```
 
-The command scans only `coordination/mailbox/sent/*-verification-report.md`, sorts by repository-relative path, writes canonical pretty JSON through a same-directory temp plus `os.replace`, and refuses to overwrite an existing manifest unless `--replace-baseline` is also supplied. Run it once in this task, inspect every listed path, and commit the resulting exact hashes. Normal `check_go_schema.py` takes the existing optional mailbox directory and never mutates.
+Initial generation enumerates only NUL-delimited Git-tracked `HEAD`
+`coordination/mailbox/sent/*-verification-report.md` paths and hashes raw Git
+blob bytes. It sorts by repository-relative path, writes canonical pretty JSON
+through a same-directory temporary, fsyncs it, publishes with atomic
+no-clobber semantics, and fsyncs the directory. An existing target fails.
+`--replace-baseline` is valid only with `--generate-baseline`, requires an
+existing valid manifest, and may update digests only for the exact existing
+path set: it cannot add later reports, remove a missing historical path, or
+change paths. After validation, explicit replacement uses same-directory
+`os.replace` plus directory fsync. Tests pin concurrent creation, unchanged
+target on failure, untracked-new detection, v2 migration of changed history,
+missing-history retention, and path-set-preserving replacement. Run initial
+generation once in this task, inspect every listed path, and commit the exact
+hashes. Normal `check_go_schema.py` separately scans current filesystem reports
+as raw bytes and never mutates.
 
 - [ ] **Step 8: Wire CI smoke to the repository scan and confirm no private-state dependency**
 
-Change the smoke report gate to call the repository-aware validator with the committed manifest. A test sets `.codex/runtime` absent/unreadable and proves the historical/v2 structural scan still completes; CI must not load a receipt.
+Change both the CLI and smoke report gate to call the same public
+repository-aware validator with the committed manifest; do not retain a second
+private scan/trust path. A test sets `.codex/runtime` absent/unreadable and
+proves the historical/v2 structural scan still completes; CI must not load a
+receipt.
 
 - [ ] **Step 9: Run Task 5 tests and commit**
 

@@ -471,6 +471,13 @@ duplicate fields, unknown fields, decorated field names, continuation lines,
 and values outside their field-specific bounds are rejected. Free-form prose
 elsewhere in the report cannot satisfy or override the section.
 
+The physical grammar is exact: the heading is followed by one blank framing
+line and then the 17 consecutive field lines. After the final field, the report
+either ends or has one blank line followed by the next exact level-two heading.
+A blank, continuation, prose line, subheading, extra field, carriage return, or
+NUL cannot terminate or escape the section. Raw UTF-8 line and section byte
+limits are applied before value/JSON parsing.
+
 Every new report declares:
 
 ```text
@@ -579,6 +586,15 @@ The manifest contains no report prose or business data. CI and
 `scripts/ci_smoke.py` validate it without access to private receipt state.
 Consequently CI proves committed structure and immutable legacy accounting,
 while the live `send-event` boundary proves the local receipt match.
+
+Initial manifest generation enumerates only NUL-delimited Git-tracked `HEAD`
+paths and hashes their raw blobs; it never grandfathers ignored or mutable
+working-tree files. Normal validation separately enumerates current filesystem
+reports, reads each once as raw bytes, and therefore detects untracked new
+reports. Explicit replacement may update digests only for the already-reviewed
+manifest path set; it cannot add later reports, remove missing history, or
+change paths. Initial publication is atomic no-clobber, while an explicit valid
+replacement uses same-directory fsync/replace/fsync durability.
 
 ### 6.10 Provider output and resource safety
 
