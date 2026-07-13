@@ -345,6 +345,30 @@ def test_attempt_key_ignores_scope_order_but_scope_digest_tracks_every_input() -
     assert receipts.compute_scope_digest(left) != receipts.compute_scope_digest(changed)
 
 
+def test_public_review_scope_normalizer_round_trips_exact_typed_scope() -> None:
+    scope = _review_scope()
+
+    normalized = receipts.review_scope_from_mapping(scope.to_mapping())
+
+    assert normalized == scope
+
+
+@pytest.mark.parametrize("mutation", ["unknown", "wrong-type", "noncanonical"])
+def test_public_review_scope_normalizer_rejects_malformed_stored_scope(
+    mutation: str,
+) -> None:
+    value = _review_scope().to_mapping()
+    if mutation == "unknown":
+        value["unknown"] = "field"
+    elif mutation == "wrong-type":
+        value["reviewed_head"] = 7
+    else:
+        value["allowed_path_roots"] = list(reversed(value["allowed_path_roots"]))
+
+    with pytest.raises(receipts.ReceiptContractError, match="invalid_review_scope"):
+        receipts.review_scope_from_mapping(value)
+
+
 def test_hashes_use_canonical_mappings_and_lowercase_rendering() -> None:
     scope = _review_scope()
     attempt_mapping = {
@@ -876,10 +900,23 @@ def test_receipt_store_git_launcher_strips_every_git_environment_key(
     assert store.state_root == repo / ".codex/runtime/opus-review-receipts/v1"
     assert len(launches) == 1
     argv, kwargs = launches[0]
-    assert argv[:2] == ["git", "--no-replace-objects"]
+    assert argv[:3] == [
+        "/usr/bin/git",
+        "--no-replace-objects",
+        "--literal-pathspecs",
+    ]
     assert Path(kwargs["cwd"]) == repo
     environment = kwargs["env"]
     assert isinstance(environment, dict)
+    assert set(environment) == {
+        "PATH",
+        "LANG",
+        "LC_ALL",
+        "HOME",
+        "XDG_CONFIG_HOME",
+    }
+    assert environment["PATH"] == "/usr/bin:/bin"
+    assert environment["LANG"] == environment["LC_ALL"] == "C"
     assert not any(key.startswith("GIT_") for key in environment)
 
 
@@ -1269,7 +1306,7 @@ def test_reconciliation_detects_generation_change_under_lock(tmp_path: Path) -> 
         attempt.record_review(_review_mapping())
         receipt_path, _ = _receipt_paths(tmp_path / "state")
         payload = json.loads(receipt_path.read_text(encoding="utf-8"))
-        payload["generation"] = 3
+        payload["generation"] = 4
         receipt_path.write_bytes(receipts.canonical_json_bytes(payload))
         with pytest.raises(
             receipts.ReceiptStateError, match="receipt_generation_conflict"
@@ -1322,30 +1359,118 @@ def _prepare_reconciled(store: object) -> None:
         )
 
 
-def test_publication_transitions_are_bound_and_finish_is_idempotent(
+def _real_publication_witness(
+    tmp_path: Path, *, name: str = ".candidate.tmp", raw: bytes = b"report\n"
+) -> tuple[str, str, str, int, int, Path]:
+    sent = tmp_path / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True, exist_ok=True)
+    candidate = sent / name
+    candidate.write_bytes(raw)
+    candidate.chmod(0o600)
+    observed = candidate.stat()
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-07-13T05-00-00Z-operator-to-all-verification-report.md"
+    )
+    digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+    return path, digest, name, observed.st_dev, observed.st_ino, candidate
+
+
+_INDEX_BLOB_OID = "a" * 40
+_INDEX_MODE = "100644"
+_INDEX_STAGE = 0
+
+
+def test_publication_transitions_retain_full_creation_witness(
     tmp_path: Path,
 ) -> None:
     store = receipts.ReceiptStore.for_repo(tmp_path, state_root=tmp_path / "state")
     _prepare_reconciled(store)
-    path = "coordination/mailbox/sent/0043-operator-to-director-verification-report.md"
-    digest = "sha256:" + "6" * 64
+    path, digest, name, device, inode, candidate = _real_publication_witness(tmp_path)
+    final = tmp_path / path
     with store.lock_attempt(_review_scope(), blocking=False) as attempt:
         attempt.reserve_or_load(_review_scope())
-        publishing = attempt.begin_publication(path, digest)
-        repeated_begin = attempt.begin_publication(path, digest)
+        publishing = attempt.begin_publication(
+            path,
+            digest,
+            name,
+            device,
+            inode,
+            _INDEX_BLOB_OID,
+            _INDEX_MODE,
+            _INDEX_STAGE,
+        )
+        repeated_begin = attempt.begin_publication(
+            path,
+            digest,
+            name,
+            device,
+            inode,
+            _INDEX_BLOB_OID,
+            _INDEX_MODE,
+            _INDEX_STAGE,
+        )
         with pytest.raises(
             receipts.ReceiptStateError, match="publication_replay_conflict"
         ):
-            attempt.begin_publication(path + ".other", digest)
-        published = attempt.finish_publication(path, digest)
-        repeated_finish = attempt.finish_publication(path, digest)
+            attempt.begin_publication(
+                path.replace("05-00-00Z", "05-00-01Z"),
+                digest,
+                name,
+                device,
+                inode,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+            )
+        os.link(candidate, final)
+        final_stat = final.stat()
+        assert (final_stat.st_dev, final_stat.st_ino) == (device, inode)
+        published = attempt.finish_publication(
+            path,
+            digest,
+            name,
+            device,
+            inode,
+            _INDEX_BLOB_OID,
+            _INDEX_MODE,
+            _INDEX_STAGE,
+        )
+        repeated_finish = attempt.finish_publication(
+            path,
+            digest,
+            name,
+            device,
+            inode,
+            _INDEX_BLOB_OID,
+            _INDEX_MODE,
+            _INDEX_STAGE,
+        )
         with pytest.raises(
             receipts.ReceiptStateError, match="publication_replay_conflict"
         ):
-            attempt.finish_publication(path, "sha256:" + "7" * 64)
+            attempt.finish_publication(
+                path,
+                "sha256:" + "7" * 64,
+                name,
+                device,
+                inode,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+            )
     assert publishing.state == "publishing"
     assert publishing.generation == 4
-    assert publishing.publication == {"path": path, "candidate_digest": digest}
+    assert publishing.publication == {
+        "path": path,
+        "candidate_digest": digest,
+        "candidate_name": name,
+        "candidate_device": device,
+        "candidate_inode": inode,
+        "index_blob_oid": _INDEX_BLOB_OID,
+        "index_mode": _INDEX_MODE,
+        "index_stage": _INDEX_STAGE,
+    }
     assert repeated_begin == publishing
     assert published.state == "published"
     assert published.generation == 5
@@ -1355,8 +1480,7 @@ def test_publication_transitions_are_bound_and_finish_is_idempotent(
 def test_publication_recovery_handles_absent_exact_and_mismatch(
     tmp_path: Path,
 ) -> None:
-    path = "coordination/mailbox/sent/0043-operator-to-director-verification-report.md"
-    digest = "sha256:" + "8" * 64
+    path, digest, name, device, inode, candidate = _real_publication_witness(tmp_path)
 
     absent_store = receipts.ReceiptStore.for_repo(
         tmp_path, state_root=tmp_path / "absent"
@@ -1364,9 +1488,13 @@ def test_publication_recovery_handles_absent_exact_and_mismatch(
     _prepare_reconciled(absent_store)
     with absent_store.lock_attempt(_review_scope(), blocking=False) as attempt:
         attempt.reserve_or_load(_review_scope())
-        attempt.begin_publication(path, digest)
-        assert attempt.recover_publication(path, None) == "clear"
-        restarted = attempt.begin_publication(path, "sha256:" + "9" * 64)
+        attempt.begin_publication(
+            path, digest, name, device, inode, _INDEX_BLOB_OID, _INDEX_MODE, _INDEX_STAGE
+        )
+        assert attempt.recover_publication(path, None, None, None) == "clear"
+        restarted = attempt.begin_publication(
+            path, digest, name, device, inode, _INDEX_BLOB_OID, _INDEX_MODE, _INDEX_STAGE
+        )
     assert restarted.state == "publishing"
     assert restarted.generation == 6
 
@@ -1376,10 +1504,20 @@ def test_publication_recovery_handles_absent_exact_and_mismatch(
     _prepare_reconciled(exact_store)
     with exact_store.lock_attempt(_review_scope(), blocking=False) as attempt:
         attempt.reserve_or_load(_review_scope())
-        attempt.begin_publication(path, digest)
-        assert attempt.recover_publication(path, digest) == "finalize"
-        finalized = attempt.finish_publication(path, digest)
+        attempt.begin_publication(
+            path, digest, name, device, inode, _INDEX_BLOB_OID, _INDEX_MODE, _INDEX_STAGE
+        )
+        final = tmp_path / path
+        os.link(candidate, final)
+        final_stat = final.stat()
+        assert attempt.recover_publication(
+            path, digest, final_stat.st_dev, final_stat.st_ino
+        ) == "finalize"
+        finalized = attempt.finish_publication(
+            path, digest, name, device, inode, _INDEX_BLOB_OID, _INDEX_MODE, _INDEX_STAGE
+        )
     assert finalized.state == "published"
+    final.unlink()
 
     mismatch_store = receipts.ReceiptStore.for_repo(
         tmp_path, state_root=tmp_path / "mismatch"
@@ -1387,16 +1525,209 @@ def test_publication_recovery_handles_absent_exact_and_mismatch(
     _prepare_reconciled(mismatch_store)
     with mismatch_store.lock_attempt(_review_scope(), blocking=False) as attempt:
         attempt.reserve_or_load(_review_scope())
-        attempt.begin_publication(path, digest)
+        attempt.begin_publication(
+            path, digest, name, device, inode, _INDEX_BLOB_OID, _INDEX_MODE, _INDEX_STAGE
+        )
         with pytest.raises(
             receipts.ReceiptStateError, match="publication_replay_conflict"
         ):
-            attempt.recover_publication(path, "sha256:" + "a" * 64)
+            attempt.recover_publication(
+                path, "sha256:" + "a" * 64, device, inode
+            )
+
+
+def test_publication_cancel_requires_exact_tuple_and_generation(tmp_path: Path) -> None:
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=tmp_path / "state")
+    _prepare_reconciled(store)
+    path, digest, name, device, inode, _ = _real_publication_witness(tmp_path)
+    with store.lock_attempt(_review_scope(), blocking=False) as attempt:
+        attempt.reserve_or_load(_review_scope())
+        publishing = attempt.begin_publication(
+            path, digest, name, device, inode, _INDEX_BLOB_OID, _INDEX_MODE, _INDEX_STAGE
+        )
+        for changed in (
+            (
+                path.replace("05-00-00Z", "05-00-01Z"),
+                digest,
+                name,
+                device,
+                inode,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+                publishing.generation,
+            ),
+            (
+                path,
+                digest,
+                name + ".other",
+                device,
+                inode,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+                publishing.generation,
+            ),
+            (
+                path,
+                digest,
+                name,
+                device + 1,
+                inode,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+                publishing.generation,
+            ),
+            (
+                path,
+                digest,
+                name,
+                device,
+                inode + 1,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+                publishing.generation,
+            ),
+            (
+                path,
+                digest,
+                name,
+                device,
+                inode,
+                "b" * 40,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+                publishing.generation,
+            ),
+            (
+                path,
+                digest,
+                name,
+                device,
+                inode,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+                publishing.generation + 1,
+            ),
+        ):
+            with pytest.raises(
+                receipts.ReceiptStateError, match="publication_replay_conflict"
+            ):
+                attempt.cancel_publication(*changed)
+        cancelled = attempt.cancel_publication(
+            path,
+            digest,
+            name,
+            device,
+            inode,
+            _INDEX_BLOB_OID,
+            _INDEX_MODE,
+            _INDEX_STAGE,
+            publishing.generation,
+        )
+    assert cancelled.state == "reconciled"
+    assert cancelled.generation == 5
+    assert cancelled.publication is None
+
+
+@pytest.mark.parametrize(
+    "candidate_name",
+    ["bad\\name", "bad*name", "bad?name", "bad[name", "bad\nname", "x" * 256],
+)
+def test_publication_witness_rejects_noncanonical_candidate_basename(
+    tmp_path: Path, candidate_name: str
+) -> None:
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=tmp_path / "state")
+    _prepare_reconciled(store)
+    path, digest, _, device, inode, _ = _real_publication_witness(tmp_path)
+    with store.lock_attempt(_review_scope(), blocking=False) as attempt:
+        attempt.reserve_or_load(_review_scope())
+        with pytest.raises(receipts.ReceiptStateError, match="invalid_publication"):
+            attempt.begin_publication(
+                path,
+                digest,
+                candidate_name,
+                device,
+                inode,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+            )
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "unknown-key",
+        "missing-key",
+        "bool-device",
+        "negative-device",
+        "bool-inode",
+        "zero-inode",
+        "nested-name",
+        "bad-index-oid",
+        "bad-index-mode",
+        "bool-index-stage",
+        "nonzero-index-stage",
+        "odd-publishing-generation",
+    ],
+)
+def test_receipt_rejects_malformed_publication_witness_and_parity(
+    tmp_path: Path, corruption: str
+) -> None:
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=tmp_path / "state")
+    _prepare_reconciled(store)
+    path, digest, name, device, inode, _ = _real_publication_witness(tmp_path)
+    with store.lock_attempt(_review_scope(), blocking=False) as attempt:
+        attempt.reserve_or_load(_review_scope())
+        attempt.begin_publication(
+            path, digest, name, device, inode, _INDEX_BLOB_OID, _INDEX_MODE, _INDEX_STAGE
+        )
+    receipt_file, _ = _receipt_paths(store.state_root)
+    value = json.loads(receipt_file.read_text(encoding="utf-8"))
+    publication = value["publication"]
+    assert isinstance(publication, dict)
+    if corruption == "unknown-key":
+        publication["extra"] = "x"
+    elif corruption == "missing-key":
+        publication.pop("candidate_inode")
+    elif corruption == "bool-device":
+        publication["candidate_device"] = True
+    elif corruption == "negative-device":
+        publication["candidate_device"] = -1
+    elif corruption == "bool-inode":
+        publication["candidate_inode"] = False
+    elif corruption == "zero-inode":
+        publication["candidate_inode"] = 0
+    elif corruption == "nested-name":
+        publication["candidate_name"] = "nested/candidate"
+    elif corruption == "bad-index-oid":
+        publication["index_blob_oid"] = "A" * 40
+    elif corruption == "bad-index-mode":
+        publication["index_mode"] = "100755"
+    elif corruption == "bool-index-stage":
+        publication["index_stage"] = False
+    elif corruption == "nonzero-index-stage":
+        publication["index_stage"] = 1
+    else:
+        value["generation"] = 5
+    receipt_file.write_bytes(receipts.canonical_json_bytes(value))
+
+    with store.lock_receipt(receipts.compute_attempt_key(_review_scope())) as attempt:
+        with pytest.raises(receipts.ReceiptStateError):
+            attempt.load_existing()
 
 
 def test_illegal_lifecycle_edges_fail_closed(tmp_path: Path) -> None:
     reserved_store = receipts.ReceiptStore.for_repo(
         tmp_path, state_root=tmp_path / "reserved"
+    )
+    publication_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-13T05-00-00Z-operator-to-all-verification-report.md"
     )
     with reserved_store.lock_attempt(_review_scope(), blocking=False) as attempt:
         attempt.reserve_or_load(_review_scope())
@@ -1405,7 +1736,16 @@ def test_illegal_lifecycle_edges_fail_closed(tmp_path: Path) -> None:
                 _reconciliation_input(), _reconciliation_result()
             )
         with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
-            attempt.begin_publication("coordination/report.md", "sha256:" + "b" * 64)
+            attempt.begin_publication(
+                publication_path,
+                "sha256:" + "b" * 64,
+                ".candidate",
+                1,
+                1,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+            )
 
     reviewed_store = receipts.ReceiptStore.for_repo(
         tmp_path, state_root=tmp_path / "reviewed"
@@ -1416,7 +1756,16 @@ def test_illegal_lifecycle_edges_fail_closed(tmp_path: Path) -> None:
         with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
             attempt.record_review(_review_mapping())
         with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
-            attempt.begin_publication("coordination/report.md", "sha256:" + "b" * 64)
+            attempt.begin_publication(
+                publication_path,
+                "sha256:" + "b" * 64,
+                ".candidate",
+                1,
+                1,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
+            )
 
     reconciled_store = receipts.ReceiptStore.for_repo(
         tmp_path, state_root=tmp_path / "reconciled"
@@ -1426,10 +1775,17 @@ def test_illegal_lifecycle_edges_fail_closed(tmp_path: Path) -> None:
         attempt.reserve_or_load(_review_scope())
         with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
             attempt.finish_publication(
-                "coordination/report.md", "sha256:" + "b" * 64
+                publication_path,
+                "sha256:" + "b" * 64,
+                ".candidate",
+                1,
+                1,
+                _INDEX_BLOB_OID,
+                _INDEX_MODE,
+                _INDEX_STAGE,
             )
         with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
-            attempt.recover_publication("coordination/report.md", None)
+            attempt.recover_publication(publication_path, None, None, None)
 
 
 def test_receipt_store_accepts_normalized_review_larger_than_descriptor_limit(

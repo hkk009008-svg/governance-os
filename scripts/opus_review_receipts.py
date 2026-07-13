@@ -12,6 +12,7 @@ import re
 import shlex
 import stat
 import subprocess
+import tempfile
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -27,6 +28,11 @@ CODEX_MODE = "codex-lane-v"
 CODEX_HARNESS = "codex:lane-v-verifier"
 CLAUDE_MODE = "claude-lane-v"
 CLAUDE_HARNESS = "claude:lane-v-verifier"
+PIPELINE_MARKER_PATHS = (
+    "AGENTS.md",
+    "scripts/codex_protocol_model.py",
+    ".claude/agents/lane-v-verifier.md",
+)
 
 _ATTEMPT_KEY_SCHEMA_VERSION = "opus-review-attempt-key/v1"
 _DESCRIPTOR_MAX_BYTES = 65_536
@@ -58,6 +64,37 @@ _DESCRIPTOR_FIELDS = frozenset(
 )
 _REVIEWED_BASE_FIELDS = frozenset({"policy", "commit"})
 _REQUIREMENT_FIELDS = frozenset({"path", "blob_id", "digest"})
+_CHANGED_PATH_FIELDS = frozenset({"status", "path"})
+_REVIEW_SCOPE_FIELDS = frozenset(
+    {
+        "schema_version",
+        "receipt_schema_version",
+        "review_schema_version",
+        "reconciliation_schema_version",
+        "repository_identity",
+        "task_id",
+        "question_id",
+        "trigger_kind",
+        "trigger_identity",
+        "trigger_commit",
+        "trigger_path",
+        "trigger_blob_id",
+        "descriptor_path",
+        "descriptor_digest",
+        "descriptor_blob_id",
+        "review_profile",
+        "verification_mode",
+        "verification_harness",
+        "authorization_identity",
+        "reviewed_head",
+        "requested_base",
+        "effective_base",
+        "changed_paths",
+        "requirements",
+        "allowed_path_roots",
+        "verification_commands",
+    }
+)
 _SUPPORTED_VERIFIERS = frozenset(
     {
         (CODEX_MODE, CODEX_HARNESS, CODEX_MODE),
@@ -88,6 +125,31 @@ _STATE_MINIMUM_GENERATION = {
     "publishing": 4,
     "published": 5,
 }
+_STATE_GENERATION_PARITY = {
+    "reserved": 1,
+    "reviewed": 0,
+    "reconciled": 1,
+    "publishing": 0,
+    "published": 1,
+}
+_PUBLICATION_FIELDS = frozenset(
+    {
+        "path",
+        "candidate_digest",
+        "candidate_name",
+        "candidate_device",
+        "candidate_inode",
+        "index_blob_oid",
+        "index_mode",
+        "index_stage",
+    }
+)
+_PUBLICATION_PATH_RE = re.compile(
+    r"^coordination/mailbox/sent/"
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
+    r"operator2?-to-[a-z][a-z0-9]*-verification-report\.md$"
+)
+_GIT_OBJECT_ID_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 
 
 class ReceiptContractError(ValueError):
@@ -104,6 +166,27 @@ class ReceiptStateError(RuntimeError):
         super().__init__(f"{reason}: {detail}")
         self.reason = reason
         self.detail = detail
+
+
+def require_pipeline_root(repo_root: str | os.PathLike[str]) -> Path:
+    """Require the exact existing Pipeline marker boundary without invoking Git."""
+
+    root = Path(repo_root).resolve()
+    if not root.is_dir():
+        raise ReceiptContractError("not_pipeline_repo", "repository root is missing")
+    for relative in PIPELINE_MARKER_PATHS:
+        marker = root / relative
+        try:
+            observed = os.lstat(marker)
+        except OSError as exc:
+            raise ReceiptContractError(
+                "not_pipeline_repo", f"missing Pipeline marker: {relative}"
+            ) from exc
+        if not stat.S_ISREG(observed.st_mode):
+            raise ReceiptContractError(
+                "not_pipeline_repo", f"invalid Pipeline marker: {relative}"
+            )
+    return root
 
 
 def _duplicate_checked_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -564,6 +647,73 @@ class ReviewScope:
         }
 
 
+def review_scope_from_mapping(value: Mapping[str, object]) -> ReviewScope:
+    """Strictly normalize one stored receipt scope into its typed contract."""
+
+    reason = "invalid_review_scope"
+    if not isinstance(value, Mapping) or set(value) != _REVIEW_SCOPE_FIELDS:
+        raise ReceiptContractError(reason, "stored review scope fields do not match")
+    changed_value = value["changed_paths"]
+    requirements_value = value["requirements"]
+    if not isinstance(changed_value, list) or not isinstance(requirements_value, list):
+        raise ReceiptContractError(
+            reason, "changed_paths and requirements must be arrays"
+        )
+    changed_paths: list[ChangedPath] = []
+    for item in changed_value:
+        if not isinstance(item, Mapping) or set(item) != _CHANGED_PATH_FIELDS:
+            raise ReceiptContractError(reason, "invalid changed path entry")
+        status = item["status"]
+        path = item["path"]
+        if not isinstance(status, str) or not isinstance(path, str):
+            raise ReceiptContractError(reason, "invalid changed path values")
+        try:
+            path_bytes = path.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise ReceiptContractError(reason, "invalid changed path text") from exc
+        changed_paths.append(ChangedPath(status, path, path_bytes))
+    requirements: list[Mapping[str, str]] = []
+    for item in requirements_value:
+        if not isinstance(item, Mapping) or set(item) != _REQUIREMENT_FIELDS:
+            raise ReceiptContractError(reason, "invalid requirement entry")
+        if not all(isinstance(item[field], str) for field in _REQUIREMENT_FIELDS):
+            raise ReceiptContractError(reason, "invalid requirement values")
+        requirements.append(dict(item))
+    try:
+        scope = ReviewScope(
+            repository_identity=value["repository_identity"],
+            task_id=value["task_id"],
+            question_id=value["question_id"],
+            trigger_kind=value["trigger_kind"],
+            trigger_identity=value["trigger_identity"],
+            trigger_commit=value["trigger_commit"],
+            trigger_path=value["trigger_path"],
+            trigger_blob_id=value["trigger_blob_id"],
+            descriptor_path=value["descriptor_path"],
+            descriptor_digest=value["descriptor_digest"],
+            descriptor_blob_id=value["descriptor_blob_id"],
+            review_profile=value["review_profile"],
+            verification_mode=value["verification_mode"],
+            verification_harness=value["verification_harness"],
+            authorization_identity=value["authorization_identity"],
+            reviewed_head=value["reviewed_head"],
+            requested_base=value["requested_base"],
+            effective_base=value["effective_base"],
+            changed_paths=tuple(changed_paths),
+            requirements=tuple(requirements),
+            allowed_path_roots=tuple(value["allowed_path_roots"]),
+            verification_commands=tuple(value["verification_commands"]),
+        )
+        normalized = scope.to_mapping()
+    except ReceiptContractError:
+        raise
+    except (AttributeError, TypeError, UnicodeError, ValueError) as exc:
+        raise ReceiptContractError(reason, "stored review scope is malformed") from exc
+    if canonical_json_bytes(value) != canonical_json_bytes(normalized):
+        raise ReceiptContractError(reason, "stored review scope is not canonical")
+    return scope
+
+
 def parse_scope_reference(value: str) -> ScopeReference:
     reason = "invalid_scope_reference"
     if not isinstance(value, str):
@@ -768,6 +918,101 @@ def _canonical_receipt_bytes(record: ReceiptRecord) -> bytes:
     return raw
 
 
+def _publication_path(value: object) -> str:
+    normalized = _normalize_repo_path(value, reason="invalid_publication")
+    if _PUBLICATION_PATH_RE.fullmatch(normalized) is None:
+        raise ReceiptContractError(
+            "invalid_publication",
+            "publication path must be a canonical verification-report event",
+        )
+    return normalized
+
+
+def _publication_witness_from_values(
+    path: object,
+    candidate_digest: object,
+    candidate_name: object,
+    candidate_device: object,
+    candidate_inode: object,
+    index_blob_oid: object,
+    index_mode: object,
+    index_stage: object,
+    *,
+    exact_fields: set[object] | None = None,
+) -> dict[str, object]:
+    if exact_fields is not None and exact_fields != _PUBLICATION_FIELDS:
+        raise ReceiptContractError(
+            "invalid_publication", "publication witness fields do not match"
+        )
+    normalized_path = _publication_path(path)
+    normalized_digest = _sha256_text(
+        candidate_digest,
+        "candidate_digest",
+        reason="invalid_publication",
+    )
+    try:
+        normalized_name = _normalize_repo_path(
+            candidate_name, reason="invalid_publication"
+        )
+        encoded_name = normalized_name.encode("utf-8")
+    except (ReceiptContractError, UnicodeEncodeError) as exc:
+        if isinstance(exc, ReceiptContractError):
+            raise
+        raise ReceiptContractError(
+            "invalid_publication", "candidate_name must be valid UTF-8"
+        ) from exc
+    if (
+        "/" in normalized_name
+        or len(encoded_name) > 255
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in normalized_name)
+    ):
+        raise ReceiptContractError(
+            "invalid_publication", "candidate_name must be a direct-child basename"
+        )
+    if (
+        isinstance(candidate_device, bool)
+        or not isinstance(candidate_device, int)
+        or candidate_device < 0
+    ):
+        raise ReceiptContractError(
+            "invalid_publication", "candidate_device must be non-negative integer"
+        )
+    if (
+        isinstance(candidate_inode, bool)
+        or not isinstance(candidate_inode, int)
+        or candidate_inode <= 0
+    ):
+        raise ReceiptContractError(
+            "invalid_publication", "candidate_inode must be positive integer"
+        )
+    if (
+        not isinstance(index_blob_oid, str)
+        or _GIT_OBJECT_ID_RE.fullmatch(index_blob_oid) is None
+    ):
+        raise ReceiptContractError(
+            "invalid_publication",
+            "index_blob_oid must be a full lowercase Git object ID",
+        )
+    if index_mode != "100644":
+        raise ReceiptContractError(
+            "invalid_publication", "index_mode must be literal 100644"
+        )
+    if isinstance(index_stage, bool) or index_stage != 0:
+        raise ReceiptContractError(
+            "invalid_publication", "index_stage must be non-boolean integer zero"
+        )
+    return {
+        "path": normalized_path,
+        "candidate_digest": normalized_digest,
+        "candidate_name": normalized_name,
+        "candidate_device": candidate_device,
+        "candidate_inode": candidate_inode,
+        "index_blob_oid": index_blob_oid,
+        "index_mode": index_mode,
+        "index_stage": index_stage,
+    }
+
+
 def _receipt_from_bytes(raw: bytes, expected_attempt_key: str) -> ReceiptRecord:
     try:
         value = _bounded_json_loads(
@@ -816,6 +1061,7 @@ def _receipt_from_bytes(raw: bytes, expected_attempt_key: str) -> ReceiptRecord:
         isinstance(generation, bool)
         or not isinstance(generation, int)
         or generation < _STATE_MINIMUM_GENERATION[state]
+        or generation % 2 != _STATE_GENERATION_PARITY[state]
     ):
         raise ReceiptStateError(
             "receipt_generation_rollback",
@@ -834,6 +1080,21 @@ def _receipt_from_bytes(raw: bytes, expected_attempt_key: str) -> ReceiptRecord:
         raise ReceiptStateError(
             "invalid_receipt_schema", "publication must be an object"
         )
+    if isinstance(publication, Mapping):
+        try:
+            publication = _publication_witness_from_values(
+                publication.get("path"),
+                publication.get("candidate_digest"),
+                publication.get("candidate_name"),
+                publication.get("candidate_device"),
+                publication.get("candidate_inode"),
+                publication.get("index_blob_oid"),
+                publication.get("index_mode"),
+                publication.get("index_stage"),
+                exact_fields=set(publication),
+            )
+        except ReceiptContractError as exc:
+            raise _state_error_from_contract(exc) from exc
     if state == "reserved" and any(
         item is not None for item in (review, reconciliation, publication)
     ):
@@ -977,25 +1238,36 @@ class ReceiptStore:
         stat_fn: Callable[[int], os.stat_result] = os.fstat,
     ) -> ReceiptStore:
         if state_root is None:
-            environment = {
-                key: value
-                for key, value in os.environ.items()
-                if not key.startswith("GIT_")
-            }
-            git_common = subprocess.run(
-                [
-                    "git",
-                    "--no-replace-objects",
-                    "rev-parse",
-                    "--path-format=absolute",
-                    "--git-common-dir",
-                ],
-                cwd=repo_root,
-                env=environment,
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
+            with tempfile.TemporaryDirectory(
+                prefix="opus-receipt-git-", dir="/tmp"
+            ) as name:
+                private_root = Path(name)
+                os.chmod(private_root, 0o700)
+                home = private_root / "home"
+                xdg = private_root / "xdg"
+                home.mkdir(mode=0o700)
+                xdg.mkdir(mode=0o700)
+                git_common = subprocess.run(
+                    [
+                        "/usr/bin/git",
+                        "--no-replace-objects",
+                        "--literal-pathspecs",
+                        "rev-parse",
+                        "--path-format=absolute",
+                        "--git-common-dir",
+                    ],
+                    cwd=repo_root,
+                    env={
+                        "PATH": "/usr/bin:/bin",
+                        "LANG": "C",
+                        "LC_ALL": "C",
+                        "HOME": str(home),
+                        "XDG_CONFIG_HOME": str(xdg),
+                    },
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
             primary_root = Path(git_common).resolve().parent
             root = primary_root / ".codex/runtime/opus-review-receipts/v1"
         else:
@@ -1406,23 +1678,52 @@ class LockedAttempt:
         return updated
 
     @staticmethod
-    def _publication_pair(path: str, candidate_digest: str) -> dict[str, str]:
+    def _publication_witness(
+        path: str,
+        candidate_digest: str,
+        candidate_name: str,
+        candidate_device: int,
+        candidate_inode: int,
+        index_blob_oid: str,
+        index_mode: str,
+        index_stage: int,
+    ) -> dict[str, object]:
         try:
-            normalized_path = normalize_repo_path(path)
-            normalized_digest = _sha256_text(
+            return _publication_witness_from_values(
+                path,
                 candidate_digest,
-                "candidate_digest",
-                reason="invalid_publication",
+                candidate_name,
+                candidate_device,
+                candidate_inode,
+                index_blob_oid,
+                index_mode,
+                index_stage,
             )
         except ReceiptContractError as exc:
             raise _state_error_from_contract(exc) from exc
-        return {"path": normalized_path, "candidate_digest": normalized_digest}
 
     def begin_publication(
-        self, path: str, candidate_digest: str
+        self,
+        path: str,
+        candidate_digest: str,
+        candidate_name: str,
+        candidate_device: int,
+        candidate_inode: int,
+        index_blob_oid: str,
+        index_mode: str,
+        index_stage: int,
     ) -> ReceiptRecord:
         current = self._verified_current()
-        publication = self._publication_pair(path, candidate_digest)
+        publication = self._publication_witness(
+            path,
+            candidate_digest,
+            candidate_name,
+            candidate_device,
+            candidate_inode,
+            index_blob_oid,
+            index_mode,
+            index_stage,
+        )
         if current.state in {"publishing", "published"}:
             if canonical_json_bytes(current.publication) == canonical_json_bytes(
                 publication
@@ -1453,10 +1754,27 @@ class LockedAttempt:
         return updated
 
     def finish_publication(
-        self, path: str, candidate_digest: str
+        self,
+        path: str,
+        candidate_digest: str,
+        candidate_name: str,
+        candidate_device: int,
+        candidate_inode: int,
+        index_blob_oid: str,
+        index_mode: str,
+        index_stage: int,
     ) -> ReceiptRecord:
         current = self._verified_current()
-        publication = self._publication_pair(path, candidate_digest)
+        publication = self._publication_witness(
+            path,
+            candidate_digest,
+            candidate_name,
+            candidate_device,
+            candidate_inode,
+            index_blob_oid,
+            index_mode,
+            index_stage,
+        )
         if current.state == "published":
             if canonical_json_bytes(current.publication) == canonical_json_bytes(
                 publication
@@ -1490,29 +1808,97 @@ class LockedAttempt:
         self._current = updated
         return updated
 
+    def cancel_publication(
+        self,
+        path: str,
+        candidate_digest: str,
+        candidate_name: str,
+        candidate_device: int,
+        candidate_inode: int,
+        index_blob_oid: str,
+        index_mode: str,
+        index_stage: int,
+        expected_generation: int,
+    ) -> ReceiptRecord:
+        current = self._verified_current()
+        publication = self._publication_witness(
+            path,
+            candidate_digest,
+            candidate_name,
+            candidate_device,
+            candidate_inode,
+            index_blob_oid,
+            index_mode,
+            index_stage,
+        )
+        if current.state != "publishing":
+            raise ReceiptStateError(
+                "invalid_receipt_transition",
+                f"cannot cancel publication from state {current.state!r}",
+            )
+        if (
+            isinstance(expected_generation, bool)
+            or not isinstance(expected_generation, int)
+            or current.generation != expected_generation
+            or canonical_json_bytes(current.publication)
+            != canonical_json_bytes(publication)
+        ):
+            raise ReceiptStateError(
+                "publication_replay_conflict",
+                "publication cancellation does not match planned tuple/generation",
+            )
+        updated = ReceiptRecord(
+            receipt_id=current.receipt_id,
+            attempt_key=current.attempt_key,
+            scope_digest=current.scope_digest,
+            scope=current.scope,
+            state="reconciled",
+            generation=current.generation + 1,
+            review=current.review,
+            reconciliation=current.reconciliation,
+            publication=None,
+        )
+        self._atomic_replace(updated)
+        self._current = updated
+        return updated
+
     def recover_publication(
-        self, path: str, observed_digest: str | None
+        self,
+        path: str,
+        observed_digest: str | None,
+        observed_device: int | None,
+        observed_inode: int | None,
     ) -> str:
         current = self._verified_current()
-        try:
-            normalized_path = normalize_repo_path(path)
-            normalized_observed = (
-                _sha256_text(
-                    observed_digest,
-                    "observed_digest",
-                    reason="invalid_publication",
-                )
-                if observed_digest is not None
-                else None
-            )
-        except ReceiptContractError as exc:
-            raise _state_error_from_contract(exc) from exc
         if current.state != "publishing":
             raise ReceiptStateError(
                 "invalid_receipt_transition",
                 f"cannot recover publication from state {current.state!r}",
             )
         assert current.publication is not None
+        try:
+            normalized_path = _publication_path(path)
+            if observed_digest is None:
+                if observed_device is not None or observed_inode is not None:
+                    raise ReceiptContractError(
+                        "invalid_publication",
+                        "absent recovery requires all observed witness fields null",
+                    )
+                normalized_observed = None
+            else:
+                observed = _publication_witness_from_values(
+                    path,
+                    observed_digest,
+                    ".observed",
+                    observed_device,
+                    observed_inode,
+                    current.publication.get("index_blob_oid"),
+                    current.publication.get("index_mode"),
+                    current.publication.get("index_stage"),
+                )
+                normalized_observed = observed["candidate_digest"]
+        except ReceiptContractError as exc:
+            raise _state_error_from_contract(exc) from exc
         planned_path = current.publication.get("path")
         planned_digest = current.publication.get("candidate_digest")
         if normalized_path != planned_path:
@@ -1534,9 +1920,13 @@ class LockedAttempt:
             self._atomic_replace(updated)
             self._current = updated
             return "clear"
-        if normalized_observed == planned_digest:
+        if (
+            normalized_observed == planned_digest
+            and observed_device == current.publication.get("candidate_device")
+            and observed_inode == current.publication.get("candidate_inode")
+        ):
             return "finalize"
         raise ReceiptStateError(
             "publication_replay_conflict",
-            "observed digest does not match publication candidate",
+            "observed witness does not match publication candidate",
         )
