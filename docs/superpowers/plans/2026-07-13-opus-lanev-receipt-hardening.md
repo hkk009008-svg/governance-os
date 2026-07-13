@@ -379,14 +379,96 @@ env -u GIT_INDEX_FILE git commit -m "feat(opus): persist one replay-safe review 
 ```
 
 ---
-### Task 3: Bind Bridge Review And Reconciliation To Authoritative Receipts
+### Task 3: Bound Provider Resources And Classify Host Capabilities
 
 **Files:**
 - Modify: `scripts/opus_review_bridge.py`
 - Modify: `tests/unit/test_opus_review_bridge.py`
 
 **Interfaces:**
-- Consumes: `ScopeDescriptor`, `ReviewScope`, and `ReceiptStore` from Tasks 1-2; a shipping-commit or committed verify-request trigger; the existing provider/sandbox implementation; Codex verdict/dispositions/evidence.
+- Consumes: the current provider runner, broker/sandbox process-group code, and Tasks 1-2 receipt contracts for sanitized failure metadata.
+- Produces: `CapturedProcess`, `HostCapabilities`, `probe_host_capabilities()`, bounded concurrent drains, deterministic partial-constructor cleanup, and capability-gated integration markers.
+
+- [ ] **Step 1: Write failing bounded-output tests**
+
+Use real short-lived subprocesses that independently and simultaneously write more than `PROVIDER_OUTPUT_LIMIT_BYTES = 131072` to stdout/stderr. Assert both pipes are fully drained, retained bytes never exceed the cap, per-stream truncation flags are exact, the child cannot deadlock on a full pipe, timeout kills descendants, reader failure still kills the group and joins the other drainer, and reader threads are joined before return. Preserve/add provider parsing cases for malformed JSON, oversized JSON, invalid UTF-8, trailing stream events, mismatched returned scope, missing/non-Opus model, and nonzero exit while drainers are active.
+
+Pin the return type:
+
+```python
+@dataclass(frozen=True)
+class CapturedProcess:
+    args: tuple[str, ...]
+    returncode: int
+    stdout: bytes
+    stderr: bytes
+    stdout_truncated: bool
+    stderr_truncated: bool
+```
+
+- [ ] **Step 2: Run bounded-output tests and confirm RED**
+
+Expected: the existing tempfile-backed runner has no truncation fields and retains all bytes.
+
+- [ ] **Step 3: Replace unbounded temporary streams with concurrent bounded drains**
+
+Launch with `stdout=PIPE`, `stderr=PIPE`, and `start_new_session=True`. Start one reader thread per pipe before waiting. Each reader loops to EOF, appends only the first 131072 bytes, and marks truncation while continuing to discard. On timeout, kill the process group, wait, close parent pipe handles, and join both readers. Decode only after the bound check; any truncation returns unavailable reason `output_limit` with failure stage `provider_exit` and exact truncation flags. Never persist raw retained bytes.
+
+- [ ] **Step 4: Write failing broker-constructor cleanup tests**
+
+Inject factories so socket allocation succeeds while bind, listen, or thread start fails. For every failure assert listener `close()` ran, any started thread was stopped/joined, socket path was removed, and calling `close()` again is harmless. Preserve a regression that enables `ResourceWarning` as an error.
+
+- [ ] **Step 5: Implement constructor ownership from allocation onward**
+
+Initialize every cleanup field before socket allocation, wrap the rest of `__init__` in `try/except BaseException`, call one idempotent `_close_partial()` on error, then re-raise. Normal `__exit__` calls the same cleanup. Do not depend on `__del__`.
+
+- [ ] **Step 6: Write failing capability-probe and integration-selection tests**
+
+Define:
+
+```python
+@dataclass(frozen=True)
+class HostCapabilities:
+    seatbelt: bool
+    af_unix: bool
+    claude_cli: bool
+    missing: tuple[str, ...]
+```
+
+Pure tests inject command/socket probes and verify exact missing names. Actual Seatbelt/AF_UNIX/Claude tests share one fixture that runs the real probe once and skips with `host capability unavailable: <comma-separated names>` only when the required facility is absent. Add the pure injected provider/broker harness in this task; provider contract tests must use it and must never be hidden by this skip.
+
+- [ ] **Step 7: Implement capability probing without weakening production**
+
+Seatbelt probes `/usr/bin/sandbox-exec -p '(version 1) (allow default)' /usr/bin/true`; AF_UNIX creates/binds/closes a socket in a temporary directory; Claude resolution uses the existing allowlisted environment resolver. The probe reports capability only. Production review still reserves first and converts unavailable facilities to one stored `sandbox_unavailable`/`claude_not_found` result; it never bypasses sandboxing. Pin failure stages to the exact enum `broker_start|sandbox_probe|provider_spawn|provider_timeout|provider_exit|response_parse|contract_validation|model_validation|receipt_recovery`, and assert no raw argv/environment/stdout/stderr/provider text appears in stored state or CLI errors.
+
+- [ ] **Step 8: Run Task 3 tests and commit**
+
+Run:
+
+```bash
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -W error::ResourceWarning -m pytest tests/unit/test_opus_review_bridge.py -q
+env -u GIT_INDEX_FILE git diff --check
+```
+
+Expected in this managed host: pure tests pass, actual Seatbelt/AF_UNIX cases skip with named capability reasons, and no ResourceWarning occurs.
+
+Commit:
+
+```bash
+env -u GIT_INDEX_FILE git add scripts/opus_review_bridge.py tests/unit/test_opus_review_bridge.py
+env -u GIT_INDEX_FILE git commit -m "fix(opus): bound provider output and cleanup" -m "Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62"
+```
+
+---
+
+### Task 4: Bind Bridge Review And Reconciliation To Authoritative Receipts
+
+**Files:**
+- Modify: `scripts/opus_review_bridge.py`
+- Modify: `tests/unit/test_opus_review_bridge.py`
+
+**Interfaces:**
+- Consumes: `ScopeDescriptor`, `ReviewScope`, and `ReceiptStore` from Tasks 1-2; the bounded provider/capability seams from Task 3; a shipping-commit or committed verify-request trigger; Codex verdict/dispositions/evidence.
 - Produces: trigger-only `ReviewRequest`, `ResolvedReviewRequest`, `ReviewReceiptResult`, `resolve_authoritative_scope()`, receipt-backed `review()`, receipt-backed `reconcile_receipt()`, `opus-review/v3`, `opus-reconciliation/v2`, and canonical report attestation fields.
 
 - [ ] **Step 1: Write failing CLI-boundary tests**
@@ -486,7 +568,7 @@ Pass the raw bytes to Task 1's parser, reject an empty set, and check complete c
 
 - [ ] **Step 7: Write failing receipt-backed review tests with a pure provider seam**
 
-Refactor the tests so policy/receipt cases inject a provider callable and never construct a real broker:
+Use Task 3's pure provider seam so policy/receipt cases inject a provider callable and never construct a real broker:
 
 ```python
 calls = 0
@@ -546,7 +628,7 @@ Keep the existing severity calculation as a private pure helper that consumes a 
 
 The canonical dispositions object contains exactly `disposition`, `evidence`, and `evidence_digest` for each finding ID. Require the exact stored Codex verdict later at publication; do not infer NITS versus FAIL from `go_allowed` alone.
 
-- [ ] **Step 11: Run Task 3 tests and commit**
+- [ ] **Step 11: Run Task 4 tests and commit**
 
 Run:
 
@@ -562,88 +644,6 @@ Commit:
 ```bash
 env -u GIT_INDEX_FILE git add scripts/opus_review_bridge.py tests/unit/test_opus_review_bridge.py
 env -u GIT_INDEX_FILE git commit -m "feat(opus): reconcile only bridge-issued receipts" -m "Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62"
-```
-
----
-
-### Task 4: Bound Provider Resources And Classify Host Capabilities
-
-**Files:**
-- Modify: `scripts/opus_review_bridge.py`
-- Modify: `tests/unit/test_opus_review_bridge.py`
-
-**Interfaces:**
-- Consumes: the Task 3 `_perform_provider_review()` seam and current broker/sandbox process-group code.
-- Produces: `CapturedProcess`, `HostCapabilities`, `probe_host_capabilities()`, bounded concurrent drains, deterministic partial-constructor cleanup, and capability-gated integration markers.
-
-- [ ] **Step 1: Write failing bounded-output tests**
-
-Use real short-lived subprocesses that independently and simultaneously write more than `PROVIDER_OUTPUT_LIMIT_BYTES = 131072` to stdout/stderr. Assert both pipes are fully drained, retained bytes never exceed the cap, per-stream truncation flags are exact, the child cannot deadlock on a full pipe, timeout kills descendants, reader failure still kills the group and joins the other drainer, and reader threads are joined before return. Preserve/add provider parsing cases for malformed JSON, oversized JSON, invalid UTF-8, trailing stream events, mismatched returned scope, missing/non-Opus model, and nonzero exit while drainers are active.
-
-Pin the return type:
-
-```python
-@dataclass(frozen=True)
-class CapturedProcess:
-    args: tuple[str, ...]
-    returncode: int
-    stdout: bytes
-    stderr: bytes
-    stdout_truncated: bool
-    stderr_truncated: bool
-```
-
-- [ ] **Step 2: Run bounded-output tests and confirm RED**
-
-Expected: the existing tempfile-backed runner has no truncation fields and retains all bytes.
-
-- [ ] **Step 3: Replace unbounded temporary streams with concurrent bounded drains**
-
-Launch with `stdout=PIPE`, `stderr=PIPE`, and `start_new_session=True`. Start one reader thread per pipe before waiting. Each reader loops to EOF, appends only the first 131072 bytes, and marks truncation while continuing to discard. On timeout, kill the process group, wait, close parent pipe handles, and join both readers. Decode only after the bound check; any truncation returns unavailable reason `output_limit` with failure stage `provider_exit` and exact truncation flags. Never persist raw retained bytes.
-
-- [ ] **Step 4: Write failing broker-constructor cleanup tests**
-
-Inject factories so socket allocation succeeds while bind, listen, or thread start fails. For every failure assert listener `close()` ran, any started thread was stopped/joined, socket path was removed, and calling `close()` again is harmless. Preserve a regression that enables `ResourceWarning` as an error.
-
-- [ ] **Step 5: Implement constructor ownership from allocation onward**
-
-Initialize every cleanup field before socket allocation, wrap the rest of `__init__` in `try/except BaseException`, call one idempotent `_close_partial()` on error, then re-raise. Normal `__exit__` calls the same cleanup. Do not depend on `__del__`.
-
-- [ ] **Step 6: Write failing capability-probe and integration-selection tests**
-
-Define:
-
-```python
-@dataclass(frozen=True)
-class HostCapabilities:
-    seatbelt: bool
-    af_unix: bool
-    claude_cli: bool
-    missing: tuple[str, ...]
-```
-
-Pure tests inject command/socket probes and verify exact missing names. Actual Seatbelt/AF_UNIX/Claude tests share one fixture that runs the real probe once and skips with `host capability unavailable: <comma-separated names>` only when the required facility is absent. Provider contract tests must use the pure injected provider/broker harness from Task 3 and must never be hidden by this skip.
-
-- [ ] **Step 7: Implement capability probing without weakening production**
-
-Seatbelt probes `/usr/bin/sandbox-exec -p '(version 1) (allow default)' /usr/bin/true`; AF_UNIX creates/binds/closes a socket in a temporary directory; Claude resolution uses the existing allowlisted environment resolver. The probe reports capability only. Production review still reserves first and converts unavailable facilities to one stored `sandbox_unavailable`/`claude_not_found` result; it never bypasses sandboxing. Pin failure stages to the exact enum `broker_start|sandbox_probe|provider_spawn|provider_timeout|provider_exit|response_parse|contract_validation|model_validation|receipt_recovery`, and assert no raw argv/environment/stdout/stderr/provider text appears in stored state or CLI errors.
-
-- [ ] **Step 8: Run Task 4 tests and commit**
-
-Run:
-
-```bash
-env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -W error::ResourceWarning -m pytest tests/unit/test_opus_review_bridge.py -q
-env -u GIT_INDEX_FILE git diff --check
-```
-
-Expected in this managed host: pure tests pass, actual Seatbelt/AF_UNIX cases skip with named capability reasons, and no ResourceWarning occurs.
-
-Commit:
-
-```bash
-env -u GIT_INDEX_FILE git add scripts/opus_review_bridge.py tests/unit/test_opus_review_bridge.py
-env -u GIT_INDEX_FILE git commit -m "fix(opus): bound provider output and cleanup" -m "Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62"
 ```
 
 ---
