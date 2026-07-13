@@ -4,6 +4,7 @@ import errno
 import hashlib
 import inspect
 import json
+import multiprocessing
 import os
 import signal
 import shlex
@@ -1383,6 +1384,17 @@ def test_bridge_host_git_launcher_strips_every_git_environment_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture = _authority_fixture(tmp_path / "repo")
+    hostile_bin = tmp_path / "hostile-bin"
+    hostile_bin.mkdir()
+    shim_marker = tmp_path / "git-shim-invoked"
+    git_shim = hostile_bin / "git"
+    git_shim.write_text(
+        "#!/bin/sh\n"
+        f"printf 'invoked\\n' >> {shlex.quote(str(shim_marker))}\n"
+        "exit 97\n",
+        encoding="utf-8",
+    )
+    git_shim.chmod(0o755)
     real_run = subprocess.run
     launches: list[tuple[list[str], dict[str, object]]] = []
 
@@ -1392,21 +1404,22 @@ def test_bridge_host_git_launcher_strips_every_git_environment_key(
         launches.append((argv, kwargs))
         return real_run(argv, **kwargs)
 
+    monkeypatch.setenv("PATH", str(hostile_bin))
     monkeypatch.setenv("GIT_FUTURE_AUTHORITY_SELECTOR", "attacker-controlled")
     monkeypatch.setattr(bridge.subprocess, "run", launch_spy)
 
-    completed = bridge._git_process(
-        fixture.root, "rev-parse", "--show-toplevel"
-    )
+    resolved = bridge.resolve_authoritative_scope(fixture.request)
 
-    assert completed.returncode == 0
-    assert len(launches) == 1
-    argv, kwargs = launches[0]
-    assert argv[:2] == ["git", "--no-replace-objects"]
-    assert Path(kwargs["cwd"]) == fixture.root
-    environment = kwargs["env"]
-    assert isinstance(environment, dict)
-    assert not any(key.startswith("GIT_") for key in environment)
+    assert resolved.request.reviewed_head == fixture.head
+    assert launches
+    assert not shim_marker.exists()
+    for argv, kwargs in launches:
+        assert argv[:2] == ["/usr/bin/git", "--no-replace-objects"]
+        assert Path(kwargs["cwd"]) == fixture.root
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        assert environment["PATH"] == str(hostile_bin)
+        assert not any(key.startswith("GIT_") for key in environment)
 
 
 def test_authoritative_scope_ignores_replace_ref_for_reviewed_commit(
@@ -1878,6 +1891,191 @@ def _receipt_store_factory(
     return lambda repo_root: receipts.ReceiptStore.for_repo(
         repo_root, state_root=state_root
     )
+
+
+def _append_fsynced_crash_trace(trace_path: Path, stage: str) -> None:
+    descriptor = os.open(
+        trace_path,
+        os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_CLOEXEC", 0),
+        0o600,
+    )
+    try:
+        raw = (stage + "\n").encode("utf-8")
+        assert os.write(descriptor, raw) == len(raw)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _crash_review_worker(
+    request: bridge.ReviewRequest,
+    resolved: bridge.ResolvedReviewRequest,
+    state_root: Path,
+    trace_path: Path,
+    seam: str,
+    exit_code: int,
+) -> None:
+    original_reserve = receipts.LockedAttempt.reserve_or_load
+    original_validator = bridge._validated_provider_result
+
+    def traced_reserve(
+        attempt: receipts.LockedAttempt,
+        scope: receipts.ReviewScope,
+    ) -> receipts.ReservationDecision:
+        decision = original_reserve(attempt, scope)
+        if decision.action == "launch":
+            _append_fsynced_crash_trace(trace_path, "reserve:launch")
+            if seam == "after_reservation":
+                os._exit(exit_code)
+        return decision
+
+    def provider(
+        provider_resolved: bridge.ResolvedReviewRequest,
+    ) -> bridge.OpusReview:
+        _append_fsynced_crash_trace(trace_path, "provider:entered")
+        if seam == "provider_entry":
+            os._exit(exit_code)
+        return _normalized_pass_review(provider_resolved)
+
+    def traced_validator(
+        candidate: object,
+        scope: receipts.ReviewScope,
+    ) -> bridge.OpusReview:
+        normalized = original_validator(candidate, scope)
+        _append_fsynced_crash_trace(trace_path, "validator:normalized")
+        if seam == "normalized_result":
+            os._exit(exit_code)
+        return normalized
+
+    def crash_before_replace(*args: object, **kwargs: object) -> None:
+        _append_fsynced_crash_trace(trace_path, "replace:before")
+        os._exit(exit_code)
+
+    receipts.LockedAttempt.reserve_or_load = traced_reserve
+    if seam in {"normalized_result", "before_replace"}:
+        bridge._validated_provider_result = traced_validator
+    if seam == "before_replace":
+        receipts.os.replace = crash_before_replace
+
+    bridge.review(
+        request,
+        scope_resolver=lambda unused: resolved,
+        store_factory=lambda unused: receipts.ReceiptStore.for_repo(
+            resolved.request.repo_root, state_root=state_root
+        ),
+        provider=provider,
+    )
+    _append_fsynced_crash_trace(trace_path, "review:returned")
+    os._exit(98)
+
+
+@pytest.mark.parametrize(
+    ("seam", "exit_code", "expected_trace"),
+    (
+        ("after_reservation", 71, ("reserve:launch",)),
+        (
+            "provider_entry",
+            72,
+            ("reserve:launch", "provider:entered"),
+        ),
+        (
+            "normalized_result",
+            73,
+            ("reserve:launch", "provider:entered", "validator:normalized"),
+        ),
+        (
+            "before_replace",
+            74,
+            (
+                "reserve:launch",
+                "provider:entered",
+                "validator:normalized",
+                "replace:before",
+            ),
+        ),
+    ),
+)
+def test_review_process_crashes_at_four_real_persistence_seams(
+    tmp_path: Path,
+    seam: str,
+    exit_code: int,
+    expected_trace: tuple[str, ...],
+) -> None:
+    fixture = _authority_fixture(tmp_path / "repo")
+    resolved = bridge.resolve_provider_authoritative_scope(fixture.request)
+    state_root = tmp_path / "state" / seam
+    trace_path = tmp_path / f"{seam}.trace"
+    context = multiprocessing.get_context("fork")
+    process = context.Process(
+        target=_crash_review_worker,
+        args=(
+            fixture.request,
+            resolved,
+            state_root,
+            trace_path,
+            seam,
+            exit_code,
+        ),
+    )
+    try:
+        process.start()
+        process.join(timeout=15)
+        assert process.exitcode == exit_code
+    finally:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=5)
+
+    store = receipts.ReceiptStore.for_repo(
+        fixture.root, state_root=state_root
+    )
+    with store.lock_attempt(resolved.scope, blocking=False) as attempt:
+        reserved = attempt.load_existing()
+    assert reserved.state == "reserved"
+    assert reserved.generation == 1
+    assert reserved.review is None
+
+    trace = tuple(trace_path.read_text(encoding="utf-8").splitlines())
+    assert trace == expected_trace
+    orphan_temporary_files = tuple(state_root.glob("*.tmp-*"))
+    if seam == "before_replace":
+        assert len(orphan_temporary_files) == 1
+        orphan = json.loads(
+            orphan_temporary_files[0].read_text(encoding="utf-8")
+        )
+        assert orphan["state"] == "reviewed"
+        assert orphan["generation"] == 2
+    else:
+        assert orphan_temporary_files == ()
+
+    provider_calls = 0
+
+    def forbidden_provider(
+        unused: bridge.ResolvedReviewRequest,
+    ) -> bridge.OpusReview:
+        nonlocal provider_calls
+        provider_calls += 1
+        raise AssertionError("receipt recovery must not re-enter the provider")
+
+    recovered = bridge.review(
+        fixture.request,
+        scope_resolver=lambda unused: resolved,
+        store_factory=lambda unused: store,
+        provider=forbidden_provider,
+    )
+    replayed = bridge.review(
+        fixture.request,
+        scope_resolver=lambda unused: resolved,
+        store_factory=lambda unused: store,
+        provider=forbidden_provider,
+    )
+
+    assert provider_calls == 0
+    assert recovered.to_dict() == replayed.to_dict()
+    assert recovered.receipt_state == "reviewed"
+    assert recovered.review.status == "unavailable"
+    assert recovered.review.failure_stage == "receipt_recovery"
+    assert recovered.review.unavailable_reason == "attempt_state_uncertain"
 
 
 def test_review_receipt_exact_replay_calls_provider_once(tmp_path: Path) -> None:

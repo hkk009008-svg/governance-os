@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import dataclasses
+import errno
 import hashlib
 import json
 import multiprocessing
 import os
 import stat
 import subprocess
+import traceback
 from pathlib import Path
 
 import pytest
@@ -679,24 +681,39 @@ def _verify_request_scope(blob_id: str = DESCRIPTOR_BLOB) -> receipts.ReviewScop
     )
 
 
-def _reserve_worker(
-    state_root: str,
+def _default_root_reserve_worker(
+    worktree: str,
     start: object,
-    release: object,
+    losing_attempted: object,
     results: object,
 ) -> None:
+    store: receipts.ReceiptStore | None = None
     try:
-        store = receipts.ReceiptStore.for_repo(
-            Path(state_root).parent, state_root=state_root
+        start.wait(10)
+        store = receipts.ReceiptStore.for_repo(Path(worktree))
+        try:
+            with store.lock_attempt(_review_scope(), blocking=False) as attempt:
+                decision = attempt.reserve_or_load(_review_scope())
+                if decision.action == "launch" and not losing_attempted.wait(10):
+                    raise AssertionError(
+                        "launch owner released before a losing attempt completed"
+                    )
+                results.put(("ok", decision.action, str(store.state_root)))
+        except receipts.ReceiptStateError as exc:
+            if exc.reason == "attempt_in_progress":
+                losing_attempted.set()
+            results.put(("ok", exc.reason, str(store.state_root)))
+    except BaseException as exc:
+        results.put(
+            (
+                "error",
+                type(exc).__name__,
+                str(exc),
+                traceback.format_exc(),
+                None if store is None else str(store.state_root),
+                None if store is None else store.state_root.exists(),
+            )
         )
-        start.wait()
-        with store.lock_attempt(_review_scope(), blocking=False) as attempt:
-            decision = attempt.reserve_or_load(_review_scope())
-            results.put(decision.action)
-            if decision.action == "launch":
-                release.wait(10)
-    except receipts.ReceiptStateError as exc:
-        results.put(exc.reason)
 
 
 def _reconciliation_input(
@@ -927,18 +944,95 @@ def test_scope_and_receipt_id_access_contend_on_same_lock(tmp_path: Path) -> Non
                 pass
 
 
-def test_receipt_store_uses_primary_common_root_across_linked_worktrees(
+def test_attempt_lock_retries_one_concurrent_create_enoent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = receipts.ReceiptStore.for_repo(
+        tmp_path, state_root=tmp_path / "state"
+    )
+    original_open = os.open
+    matching_lock_opens = 0
+
+    def injected_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal matching_lock_opens
+        if (
+            isinstance(path, str)
+            and path.endswith(".lock")
+            and flags & os.O_CREAT
+        ):
+            matching_lock_opens += 1
+            if matching_lock_opens == 1:
+                raise FileNotFoundError(
+                    errno.ENOENT,
+                    "injected concurrent O_CREAT|O_NOFOLLOW race",
+                    path,
+                )
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(receipts.os, "open", injected_open)
+
+    with store.lock_attempt(_review_scope(), blocking=False) as attempt:
+        decision = attempt.reserve_or_load(_review_scope())
+
+    assert decision.action == "launch"
+    assert matching_lock_opens == 2
+
+
+def test_linked_worktrees_race_default_root_and_one_scope_reservation(
     tmp_path: Path,
 ) -> None:
     primary, first, second = _linked_worktrees(tmp_path)
-
-    first_store = receipts.ReceiptStore.for_repo(first)
-    second_store = receipts.ReceiptStore.for_repo(second)
-
     expected = primary / ".codex/runtime/opus-review-receipts/v1"
-    assert first_store.state_root == expected
-    assert second_store.state_root == expected
+    first_local = first / ".codex/runtime/opus-review-receipts/v1"
+    second_local = second / ".codex/runtime/opus-review-receipts/v1"
+    assert not expected.exists()
+    context = multiprocessing.get_context("fork")
+    start = context.Barrier(2)
+    losing_attempted = context.Event()
+    results = context.Queue()
+    processes = [
+        context.Process(
+            target=_default_root_reserve_worker,
+            args=(str(worktree), start, losing_attempted, results),
+        )
+        for worktree in (first, second)
+    ]
+    try:
+        for process in processes:
+            process.start()
+        outcomes = [results.get(timeout=15) for _ in processes]
+        for process in processes:
+            process.join(timeout=15)
+        assert all(process.exitcode == 0 for process in processes)
+    finally:
+        losing_attempted.set()
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=5)
+        results.close()
+        results.join_thread()
+
+    errors = [outcome for outcome in outcomes if outcome[0] != "ok"]
+    assert not errors, "\n".join(
+        f"state_root={outcome[4]!r} exists={outcome[5]!r}\n{outcome[3]}"
+        for outcome in errors
+    )
+    assert {outcome[1] for outcome in outcomes} == {
+        "launch",
+        "attempt_in_progress",
+    }
+    assert {Path(outcome[2]) for outcome in outcomes} == {expected}
     assert stat.S_IMODE(expected.stat().st_mode) == 0o700
+    assert not first_local.exists()
+    assert not second_local.exists()
 
 
 @pytest.mark.parametrize("selector", ("GIT_DIR", "GIT_COMMON_DIR"))
@@ -1215,39 +1309,6 @@ def test_distinct_authoritative_task_id_creates_distinct_receipt(
     assert len(tuple((tmp_path / "state").glob("*.json"))) == 2
 
 
-def test_two_processes_racing_one_scope_launch_at_most_once(tmp_path: Path) -> None:
-    context = multiprocessing.get_context("fork")
-    start = context.Event()
-    release = context.Event()
-    results = context.Queue()
-    state_root = tmp_path / "state"
-    processes = [
-        context.Process(
-            target=_reserve_worker,
-            args=(str(state_root), start, release, results),
-        )
-        for _ in range(2)
-    ]
-    try:
-        for process in processes:
-            process.start()
-        start.set()
-        outcomes = {results.get(timeout=10), results.get(timeout=10)}
-        release.set()
-        for process in processes:
-            process.join(timeout=10)
-        assert outcomes == {"launch", "attempt_in_progress"}
-        assert all(process.exitcode == 0 for process in processes)
-    finally:
-        release.set()
-        for process in processes:
-            if process.is_alive():
-                process.terminate()
-            process.join(timeout=5)
-        results.close()
-        results.join_thread()
-
-
 def test_pre_reservation_failure_leaves_no_receipt(tmp_path: Path) -> None:
     invalid = dataclasses.replace(
         _review_scope(), authorization_identity="contains whitespace"
@@ -1257,25 +1318,6 @@ def test_pre_reservation_failure_leaves_no_receipt(tmp_path: Path) -> None:
         with pytest.raises(receipts.ReceiptContractError, match="invalid_review_scope"):
             attempt.reserve_or_load(invalid)
     assert tuple((tmp_path / "state").glob("*.json")) == ()
-
-
-@pytest.mark.parametrize(
-    "stage", ["after_reservation", "provider_ownership", "normalized_result"]
-)
-def test_post_reservation_failures_never_relaunch(
-    tmp_path: Path, stage: str
-) -> None:
-    store = receipts.ReceiptStore.for_repo(
-        tmp_path, state_root=tmp_path / stage
-    )
-    with pytest.raises(RuntimeError, match=stage):
-        with store.lock_attempt(_review_scope(), blocking=False) as attempt:
-            decision = attempt.reserve_or_load(_review_scope())
-            assert decision.action == "launch"
-            raise RuntimeError(stage)
-    with store.lock_attempt(_review_scope(), blocking=False) as attempt:
-        recovered = attempt.reserve_or_load(_review_scope())
-    assert recovered.action == "degrade_uncertain"
 
 
 def test_atomic_review_replacement_failure_preserves_reservation(
@@ -1466,6 +1508,174 @@ def _real_publication_witness(
 _INDEX_BLOB_OID = "a" * 40
 _INDEX_MODE = "100644"
 _INDEX_STAGE = 0
+_LIFECYCLE_PUBLICATION_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-07-13T05-00-00Z-operator-to-all-verification-report.md"
+)
+_LIFECYCLE_PUBLICATION_DIGEST = "sha256:" + "b" * 64
+_LIFECYCLE_PUBLICATION_NAME = ".candidate"
+_LIFECYCLE_PUBLICATION_DEVICE = 17
+_LIFECYCLE_PUBLICATION_INODE = 23
+_LIFECYCLE_STATES = (
+    "reserved",
+    "reviewed",
+    "reconciled",
+    "publishing",
+    "published",
+)
+_LIFECYCLE_OPERATIONS = (
+    "record_review",
+    "record_reconciliation",
+    "begin_publication",
+    "finish_publication",
+    "cancel_publication",
+    "recover_publication",
+)
+_LIFECYCLE_ORACLE = {
+    ("reserved", "record_review"): "to:reviewed",
+    ("reserved", "record_reconciliation"): "invalid",
+    ("reserved", "begin_publication"): "invalid",
+    ("reserved", "finish_publication"): "invalid",
+    ("reserved", "cancel_publication"): "invalid",
+    ("reserved", "recover_publication"): "invalid",
+    ("reviewed", "record_review"): "invalid",
+    ("reviewed", "record_reconciliation"): "to:reconciled",
+    ("reviewed", "begin_publication"): "invalid",
+    ("reviewed", "finish_publication"): "invalid",
+    ("reviewed", "cancel_publication"): "invalid",
+    ("reviewed", "recover_publication"): "invalid",
+    ("reconciled", "record_review"): "invalid",
+    ("reconciled", "record_reconciliation"): "replay",
+    ("reconciled", "begin_publication"): "to:publishing",
+    ("reconciled", "finish_publication"): "invalid",
+    ("reconciled", "cancel_publication"): "invalid",
+    ("reconciled", "recover_publication"): "invalid",
+    ("publishing", "record_review"): "invalid",
+    ("publishing", "record_reconciliation"): "replay",
+    ("publishing", "begin_publication"): "replay",
+    ("publishing", "finish_publication"): "to:published",
+    ("publishing", "cancel_publication"): "to:reconciled",
+    ("publishing", "recover_publication"): "finalize",
+    ("published", "record_review"): "invalid",
+    ("published", "record_reconciliation"): "replay",
+    ("published", "begin_publication"): "replay",
+    ("published", "finish_publication"): "replay",
+    ("published", "cancel_publication"): "invalid",
+    ("published", "recover_publication"): "invalid",
+}
+_CHANGED_VALID_REPLAY_CASES = (
+    ("reconciled", "record_reconciliation", "reconciliation_replay_conflict"),
+    ("publishing", "record_reconciliation", "reconciliation_replay_conflict"),
+    ("published", "record_reconciliation", "reconciliation_replay_conflict"),
+    ("publishing", "begin_publication", "publication_replay_conflict"),
+    ("published", "begin_publication", "publication_replay_conflict"),
+    ("publishing", "finish_publication", "publication_replay_conflict"),
+    ("published", "finish_publication", "publication_replay_conflict"),
+    ("publishing", "cancel_publication", "publication_replay_conflict"),
+    ("publishing", "recover_publication", "publication_replay_conflict"),
+)
+
+
+def _lifecycle_review() -> dict[str, object]:
+    return _review_mapping("issues", ("OPUS-1",))
+
+
+def _lifecycle_reconciliation_input(
+    *, changed: bool = False
+) -> dict[str, object]:
+    return _reconciliation_input(
+        finding_ids=("OPUS-1",),
+        verdict="NITS",
+        evidence_suffix="-changed" if changed else "",
+    )
+
+
+def _lifecycle_reconciliation_result() -> dict[str, object]:
+    return _reconciliation_result("NITS")
+
+
+def _lifecycle_publication_arguments(
+    *, changed: bool = False
+) -> tuple[str, str, str, int, int, str, str, int]:
+    return (
+        _LIFECYCLE_PUBLICATION_PATH,
+        (
+            "sha256:" + "c" * 64
+            if changed
+            else _LIFECYCLE_PUBLICATION_DIGEST
+        ),
+        _LIFECYCLE_PUBLICATION_NAME,
+        _LIFECYCLE_PUBLICATION_DEVICE,
+        _LIFECYCLE_PUBLICATION_INODE,
+        _INDEX_BLOB_OID,
+        _INDEX_MODE,
+        _INDEX_STAGE,
+    )
+
+
+def _advance_attempt_to_lifecycle_state(
+    attempt: receipts.LockedAttempt,
+    state: str,
+) -> receipts.ReceiptRecord:
+    current = attempt.reserve_or_load(_review_scope()).record
+    if state == "reserved":
+        return current
+    current = attempt.record_review(_lifecycle_review())
+    if state == "reviewed":
+        return current
+    current = attempt.record_reconciliation(
+        _lifecycle_reconciliation_input(),
+        _lifecycle_reconciliation_result(),
+    )
+    if state == "reconciled":
+        return current
+    current = attempt.begin_publication(*_lifecycle_publication_arguments())
+    if state == "publishing":
+        return current
+    current = attempt.finish_publication(*_lifecycle_publication_arguments())
+    assert state == "published"
+    return current
+
+
+def _invoke_lifecycle_operation(
+    attempt: receipts.LockedAttempt,
+    operation: str,
+    *,
+    generation: int,
+    changed: bool = False,
+) -> receipts.ReceiptRecord | str:
+    if operation == "record_review":
+        return attempt.record_review(_lifecycle_review())
+    if operation == "record_reconciliation":
+        return attempt.record_reconciliation(
+            _lifecycle_reconciliation_input(changed=changed),
+            _lifecycle_reconciliation_result(),
+        )
+    if operation == "begin_publication":
+        return attempt.begin_publication(
+            *_lifecycle_publication_arguments(changed=changed)
+        )
+    if operation == "finish_publication":
+        return attempt.finish_publication(
+            *_lifecycle_publication_arguments(changed=changed)
+        )
+    if operation == "cancel_publication":
+        return attempt.cancel_publication(
+            *_lifecycle_publication_arguments(changed=changed),
+            generation,
+        )
+    if operation == "recover_publication":
+        return attempt.recover_publication(
+            _LIFECYCLE_PUBLICATION_PATH,
+            (
+                "sha256:" + "c" * 64
+                if changed
+                else _LIFECYCLE_PUBLICATION_DIGEST
+            ),
+            _LIFECYCLE_PUBLICATION_DEVICE,
+            _LIFECYCLE_PUBLICATION_INODE,
+        )
+    raise AssertionError(f"unknown lifecycle operation {operation!r}")
 
 
 def test_publication_transitions_retain_full_creation_witness(
@@ -1808,71 +2018,121 @@ def test_receipt_rejects_malformed_publication_witness_and_parity(
             attempt.load_existing()
 
 
-def test_illegal_lifecycle_edges_fail_closed(tmp_path: Path) -> None:
-    reserved_store = receipts.ReceiptStore.for_repo(
-        tmp_path, state_root=tmp_path / "reserved"
-    )
-    publication_path = (
-        "coordination/mailbox/sent/"
-        "2026-07-13T05-00-00Z-operator-to-all-verification-report.md"
-    )
-    with reserved_store.lock_attempt(_review_scope(), blocking=False) as attempt:
-        attempt.reserve_or_load(_review_scope())
-        with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
-            attempt.record_reconciliation(
-                _reconciliation_input(), _reconciliation_result()
-            )
-        with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
-            attempt.begin_publication(
-                publication_path,
-                "sha256:" + "b" * 64,
-                ".candidate",
-                1,
-                1,
-                _INDEX_BLOB_OID,
-                _INDEX_MODE,
-                _INDEX_STAGE,
-            )
+def test_locked_attempt_lifecycle_matches_independent_thirty_cell_oracle(
+    tmp_path: Path,
+) -> None:
+    expected_case_keys = {
+        (state, operation)
+        for state in _LIFECYCLE_STATES
+        for operation in _LIFECYCLE_OPERATIONS
+    }
+    assert len(expected_case_keys) == 30
+    assert set(_LIFECYCLE_ORACLE) == expected_case_keys
 
-    reviewed_store = receipts.ReceiptStore.for_repo(
-        tmp_path, state_root=tmp_path / "reviewed"
-    )
-    with reviewed_store.lock_attempt(_review_scope(), blocking=False) as attempt:
-        attempt.reserve_or_load(_review_scope())
-        attempt.record_review(_review_mapping())
-        with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
-            attempt.record_review(_review_mapping())
-        with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
-            attempt.begin_publication(
-                publication_path,
-                "sha256:" + "b" * 64,
-                ".candidate",
-                1,
-                1,
-                _INDEX_BLOB_OID,
-                _INDEX_MODE,
-                _INDEX_STAGE,
-            )
+    for state, operation in sorted(expected_case_keys):
+        state_root = tmp_path / f"{state}-{operation}"
+        store = receipts.ReceiptStore.for_repo(
+            tmp_path, state_root=state_root
+        )
+        with store.lock_attempt(_review_scope(), blocking=False) as attempt:
+            before = _advance_attempt_to_lifecycle_state(attempt, state)
+            receipt_path, _ = _receipt_paths(state_root)
+            before_bytes = receipt_path.read_bytes()
+            before_inode = receipt_path.stat().st_ino
+            expectation = _LIFECYCLE_ORACLE[(state, operation)]
 
-    reconciled_store = receipts.ReceiptStore.for_repo(
-        tmp_path, state_root=tmp_path / "reconciled"
-    )
-    _prepare_reconciled(reconciled_store)
-    with reconciled_store.lock_attempt(_review_scope(), blocking=False) as attempt:
-        attempt.reserve_or_load(_review_scope())
-        with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
-            attempt.finish_publication(
-                publication_path,
-                "sha256:" + "b" * 64,
-                ".candidate",
-                1,
-                1,
-                _INDEX_BLOB_OID,
-                _INDEX_MODE,
-                _INDEX_STAGE,
+            if expectation == "invalid":
+                with pytest.raises(receipts.ReceiptStateError) as excinfo:
+                    _invoke_lifecycle_operation(
+                        attempt,
+                        operation,
+                        generation=before.generation,
+                    )
+                assert excinfo.value.reason == "invalid_receipt_transition"
+                expected_state = state
+                expected_generation = before.generation
+            else:
+                result = _invoke_lifecycle_operation(
+                    attempt,
+                    operation,
+                    generation=before.generation,
+                )
+                if expectation == "replay":
+                    assert result == before
+                    expected_state = state
+                    expected_generation = before.generation
+                elif expectation == "finalize":
+                    assert result == "finalize"
+                    expected_state = state
+                    expected_generation = before.generation
+                else:
+                    assert expectation.startswith("to:")
+                    expected_state = expectation.removeprefix("to:")
+                    expected_generation = before.generation + 1
+                    assert isinstance(result, receipts.ReceiptRecord)
+                    assert result.state == expected_state
+                    assert result.generation == expected_generation
+
+            if expectation in {"invalid", "replay", "finalize"}:
+                assert receipt_path.read_bytes() == before_bytes
+                assert receipt_path.stat().st_ino == before_inode
+
+        with store.lock_attempt(_review_scope(), blocking=False) as attempt:
+            persisted = attempt.load_existing()
+        assert persisted.state == expected_state
+        assert persisted.generation == expected_generation
+
+
+@pytest.mark.parametrize(
+    ("state", "operation", "reason"),
+    _CHANGED_VALID_REPLAY_CASES,
+)
+def test_changed_valid_lifecycle_replays_raise_exact_conflict(
+    tmp_path: Path,
+    state: str,
+    operation: str,
+    reason: str,
+) -> None:
+    assert set(_CHANGED_VALID_REPLAY_CASES) == {
+        (
+            "reconciled",
+            "record_reconciliation",
+            "reconciliation_replay_conflict",
+        ),
+        (
+            "publishing",
+            "record_reconciliation",
+            "reconciliation_replay_conflict",
+        ),
+        (
+            "published",
+            "record_reconciliation",
+            "reconciliation_replay_conflict",
+        ),
+        ("publishing", "begin_publication", "publication_replay_conflict"),
+        ("published", "begin_publication", "publication_replay_conflict"),
+        ("publishing", "finish_publication", "publication_replay_conflict"),
+        ("published", "finish_publication", "publication_replay_conflict"),
+        ("publishing", "cancel_publication", "publication_replay_conflict"),
+        ("publishing", "recover_publication", "publication_replay_conflict"),
+    }
+    state_root = tmp_path / f"{state}-{operation}"
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=state_root)
+    with store.lock_attempt(_review_scope(), blocking=False) as attempt:
+        before = _advance_attempt_to_lifecycle_state(attempt, state)
+        receipt_path, _ = _receipt_paths(state_root)
+        before_bytes = receipt_path.read_bytes()
+        before_inode = receipt_path.stat().st_ino
+        with pytest.raises(receipts.ReceiptStateError) as excinfo:
+            _invoke_lifecycle_operation(
+                attempt,
+                operation,
+                generation=before.generation,
+                changed=True,
             )
-        with pytest.raises(receipts.ReceiptStateError, match="invalid_receipt_transition"):
-            attempt.recover_publication(publication_path, None, None, None)
+        assert excinfo.value.reason == reason
+        assert receipt_path.read_bytes() == before_bytes
+        assert receipt_path.stat().st_ino == before_inode
 
 
 def test_receipt_store_accepts_normalized_review_larger_than_descriptor_limit(

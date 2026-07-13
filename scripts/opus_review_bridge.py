@@ -1099,7 +1099,7 @@ def _git_process(
         if not key.startswith("GIT_")
     }
     return subprocess.run(
-        ["git", "--no-replace-objects", *args],
+        ["/usr/bin/git", "--no-replace-objects", *args],
         cwd=root,
         env=environment,
         capture_output=True,

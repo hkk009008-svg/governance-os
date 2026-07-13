@@ -1579,12 +1579,23 @@ class LockedAttempt:
             raise ReceiptStateError("attempt_lock_reentry", "attempt lock is active")
         directory_fd = _ensure_private_directory(self._store.state_root)
         try:
-            lock_fd = os.open(
-                self._lock_name,
-                _private_file_flags(os.O_CREAT | os.O_RDWR),
-                0o600,
-                dir_fd=directory_fd,
-            )
+            lock_flags = _private_file_flags(os.O_CREAT | os.O_RDWR)
+            try:
+                lock_fd = os.open(
+                    self._lock_name,
+                    lock_flags,
+                    0o600,
+                    dir_fd=directory_fd,
+                )
+            except FileNotFoundError:
+                # Darwin can return ENOENT to one simultaneous O_CREAT|O_NOFOLLOW
+                # openat caller. Retry once; validation and flock remain unchanged.
+                lock_fd = os.open(
+                    self._lock_name,
+                    lock_flags,
+                    0o600,
+                    dir_fd=directory_fd,
+                )
             try:
                 _validate_private_file(
                     lock_fd,
