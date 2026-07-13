@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
@@ -22,6 +23,23 @@ import opus_review_bridge as bridge
 
 
 ROOT = Path(__file__).resolve().parents[2]
+EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES = 131_072
+
+
+@pytest.fixture(scope="module")
+def host_capabilities() -> bridge.HostCapabilities:
+    return bridge.probe_host_capabilities()
+
+
+def _require_host_capabilities(
+    capabilities: bridge.HostCapabilities,
+    *required: str,
+) -> None:
+    missing = tuple(
+        name for name in required if not getattr(capabilities, name)
+    )
+    if missing:
+        pytest.skip(f"host capability unavailable: {', '.join(missing)}")
 
 
 def _root_revision(revision: str) -> str:
@@ -746,6 +764,102 @@ def _claude_stream(
     )
 
 
+def _captured_process(
+    argv: list[str],
+    returncode: int,
+    stdout: str | bytes,
+    stderr: str | bytes,
+    *,
+    stdout_truncated: bool = False,
+    stderr_truncated: bool = False,
+) -> bridge.CapturedProcess:
+    return bridge.CapturedProcess(
+        args=tuple(argv),
+        returncode=returncode,
+        stdout=stdout.encode("utf-8") if isinstance(stdout, str) else stdout,
+        stderr=stderr.encode("utf-8") if isinstance(stderr, str) else stderr,
+        stdout_truncated=stdout_truncated,
+        stderr_truncated=stderr_truncated,
+    )
+
+
+class _PureVerificationBroker:
+    def __init__(
+        self,
+        runtime: bridge.SandboxRuntime,
+        snapshot: Path,
+        *,
+        timeout_seconds: int,
+    ) -> None:
+        self.runtime = runtime
+        self.snapshot = snapshot
+        self.timeout_seconds = timeout_seconds
+        self.socket_path = runtime.broker_dir / "verification.sock"
+        self._counter = 0
+        self.closed = False
+
+    def register_verification(self, command: str) -> str:
+        del command
+        self._counter += 1
+        return shlex.join(
+            [
+                sys.executable,
+                str(self.runtime.broker_client),
+                str(self.socket_path),
+                f"{self._counter:064x}",
+                str(self.timeout_seconds + 5),
+            ]
+        )
+
+    def close(self) -> None:
+        self.closed = True
+
+    def __enter__(self) -> _PureVerificationBroker:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
+
+def _pure_review(
+    request: bridge.ReviewRequest,
+    *,
+    runner: object,
+    resolver: object | None = None,
+    sandbox_probe: object | None = None,
+) -> bridge.OpusReview:
+    def captured_runner(
+        argv: list[str], **kwargs: object
+    ) -> bridge.CapturedProcess:
+        completed = runner(argv, **kwargs)
+        if isinstance(completed, bridge.CapturedProcess):
+            return completed
+        assert isinstance(completed, subprocess.CompletedProcess)
+        return _captured_process(
+            argv,
+            completed.returncode,
+            completed.stdout,
+            completed.stderr,
+        )
+
+    return bridge.review(
+        request,
+        resolver=(
+            (lambda environment: Path(sys.executable))
+            if resolver is None
+            else resolver
+        ),
+        runtime_factory=bridge._sandbox_runtime,
+        broker_factory=_PureVerificationBroker,
+        sandbox_probe=(
+            (lambda runtime, snapshot, broker: True)
+            if sandbox_probe is None
+            else sandbox_probe
+        ),
+        runner=captured_runner,
+    )
+
+
 def test_review_request_has_no_codex_result_channel(tmp_path: Path) -> None:
     request = _request(tmp_path)
     prompt = bridge.build_review_prompt(request)
@@ -930,7 +1044,7 @@ def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
     request = _committed_request(tmp_path)
     snapshot_paths: list[Path] = []
 
-    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_runner(argv: list[str], **kwargs: object) -> bridge.CapturedProcess:
         snapshot = Path(str(kwargs["cwd"]))
         snapshot_paths.append(snapshot)
         assert argv[0] == "/usr/bin/sandbox-exec"
@@ -951,7 +1065,7 @@ def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
         assert "BASE-TRUSTED-AGENT" in verifier_prompt
         assert "HEAD-UNTRUSTED-AGENT" not in verifier_prompt
         assert "MUTABLE-WIP-AGENT" not in verifier_prompt
-        return subprocess.CompletedProcess(
+        return _captured_process(
             argv,
             0,
             _claude_stream(
@@ -961,7 +1075,7 @@ def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "pass"
     assert snapshot_paths and not snapshot_paths[0].exists()
@@ -991,7 +1105,7 @@ def test_review_without_explicit_base_uses_first_parent_verifier_prompt(
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "pass"
 
@@ -1006,7 +1120,7 @@ def test_review_rejects_explicit_base_that_does_not_precede_head(
         raise AssertionError("provider must not run with a non-preceding prompt base")
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(request, runner=forbidden_runner)
+        _pure_review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == "invalid_scope"
 
@@ -1021,7 +1135,7 @@ def test_review_proves_revisions_exist_before_provider_call(
         raise AssertionError("Claude must not run for a missing reviewed commit")
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(request, runner=forbidden_runner)
+        _pure_review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == "invalid_scope"
 
@@ -1043,7 +1157,7 @@ def test_standing_authorization_requires_existing_reviewed_commits(
         raise AssertionError("provider must not run before commit scope proof")
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(request, runner=forbidden_runner)
+        _pure_review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == "invalid_scope"
     assert calls == 0
@@ -1063,7 +1177,7 @@ def test_standing_authorization_requires_pipeline_identity(
         raise AssertionError("provider must not run before Pipeline identity proof")
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(request, runner=forbidden_runner)
+        _pure_review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == "not_pipeline_repo"
     assert calls == 0
@@ -1088,7 +1202,7 @@ def test_standing_authorization_requires_requirement_at_reviewed_head(
         raise AssertionError("provider must not run before snapshot scope proof")
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(request, runner=forbidden_runner)
+        _pure_review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == "invalid_scope"
     assert calls == 0
@@ -1101,7 +1215,7 @@ def _run_sandbox_probe(
 ) -> subprocess.CompletedProcess[str]:
     observed: list[subprocess.CompletedProcess[str]] = []
 
-    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_runner(argv: list[str], **kwargs: object) -> bridge.CapturedProcess:
         verification_argv = _verification_command_from_provider_argv(argv)
         _assert_broker_client_command(
             verification_argv, expected_command_timeout=request.timeout_seconds
@@ -1120,7 +1234,7 @@ def _run_sandbox_probe(
         else:
             assert completed.returncode != 0
             assert "Operation not permitted" in completed.stdout + completed.stderr
-        return subprocess.CompletedProcess(
+        return _captured_process(
             argv,
             0,
             _claude_stream(
@@ -1136,15 +1250,13 @@ def _run_sandbox_probe(
     return observed[0]
 
 
-@pytest.mark.skipif(
-    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
-    reason="macOS V1 requires the local sandbox-exec facility",
-)
 @pytest.mark.parametrize("layout", ["normal-checkout", "linked-worktree"])
 def test_sandbox_probe_allows_trusted_venv_inside_source_but_denies_source_reads(
     tmp_path: Path,
     layout: str,
+    host_capabilities: bridge.HostCapabilities,
 ) -> None:
+    _require_host_capabilities(host_capabilities, "seatbelt", "af_unix")
     trusted_venv = Path(sys.executable).parent.parent.resolve()
     if layout == "normal-checkout":
         source = Path(sys.executable).parent.parent.parent.resolve()
@@ -1219,7 +1331,9 @@ def test_verification_broker_reaps_entire_process_group(
     tmp_path: Path,
     parent_waits: bool,
     expected_returncode: int,
+    host_capabilities: bridge.HostCapabilities,
 ) -> None:
+    _require_host_capabilities(host_capabilities, "af_unix")
     source = tmp_path / "source"
     snapshot = tmp_path / "snapshot"
     source.mkdir()
@@ -1253,7 +1367,9 @@ def test_verification_broker_reaps_entire_process_group(
 
 def test_verification_broker_context_shutdown_reaps_active_process_group(
     tmp_path: Path,
+    host_capabilities: bridge.HostCapabilities,
 ) -> None:
+    _require_host_capabilities(host_capabilities, "af_unix")
     source = tmp_path / "source"
     snapshot = tmp_path / "snapshot"
     source.mkdir()
@@ -1334,15 +1450,546 @@ def test_provider_process_group_runner_reaps_descendants(
                 timeout=5,
             )
             assert completed.returncode == 0
+        assert not any(
+            thread.name.startswith("opus-provider-drain-") and thread.is_alive()
+            for thread in threading.enumerate()
+        )
         descendant_pid = _wait_for_pid_file(pid_path)
         assert _wait_for_pid_exit(descendant_pid)
     finally:
         _kill_pid_if_alive(descendant_pid)
 
 
-def test_verification_broker_silent_peer_cannot_block_shutdown(
+def _simultaneous_stream_command(
+    *, stdout_size: int, stderr_size: int, returncode: int = 0
+) -> list[str]:
+    source = "\n".join(
+        (
+            "import os",
+            "import sys",
+            "import threading",
+            "barrier = threading.Barrier(3)",
+            "def emit(fd, byte, size):",
+            "    barrier.wait()",
+            "    remaining = size",
+            "    chunk = byte * 8192",
+            "    while remaining:",
+            "        written = os.write(fd, chunk[:remaining])",
+            "        remaining -= written",
+            "threads = [",
+            "    threading.Thread(target=emit, args=(1, b'O', int(sys.argv[1]))),",
+            "    threading.Thread(target=emit, args=(2, b'E', int(sys.argv[2]))),",
+            "]",
+            "for thread in threads: thread.start()",
+            "barrier.wait()",
+            "for thread in threads: thread.join()",
+            "raise SystemExit(int(sys.argv[3]))",
+        )
+    )
+    return [
+        sys.executable,
+        "-c",
+        source,
+        str(stdout_size),
+        str(stderr_size),
+        str(returncode),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("stdout_size", "stderr_size", "stdout_truncated", "stderr_truncated"),
+    [
+        (EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES + 4096, 17, True, False),
+        (19, EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES + 4096, False, True),
+        (
+            EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES + 4096,
+            EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES + 8192,
+            True,
+            True,
+        ),
+    ],
+    ids=["stdout", "stderr", "both"],
+)
+def test_provider_process_group_runner_bounds_and_drains_concurrent_streams(
+    tmp_path: Path,
+    stdout_size: int,
+    stderr_size: int,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+) -> None:
+    assert getattr(bridge, "PROVIDER_OUTPUT_LIMIT_BYTES", None) == (
+        EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES
+    )
+    command = _simultaneous_stream_command(
+        stdout_size=stdout_size,
+        stderr_size=stderr_size,
+    )
+
+    completed = bridge._run_process_group(
+        command,
+        cwd=str(tmp_path),
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
+    )
+
+    assert isinstance(completed, bridge.CapturedProcess)
+    assert completed.args == tuple(command)
+    assert completed.returncode == 0
+    assert completed.stdout == b"O" * min(
+        stdout_size, EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES
+    )
+    assert completed.stderr == b"E" * min(
+        stderr_size, EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES
+    )
+    assert completed.stdout_truncated is stdout_truncated
+    assert completed.stderr_truncated is stderr_truncated
+    assert not any(
+        thread.name.startswith("opus-provider-drain-") and thread.is_alive()
+        for thread in threading.enumerate()
+    )
+
+
+def test_provider_process_group_runner_preserves_nonzero_exit_after_drain(
     tmp_path: Path,
 ) -> None:
+    command = _simultaneous_stream_command(
+        stdout_size=65_537,
+        stderr_size=65_539,
+        returncode=7,
+    )
+
+    completed = bridge._run_process_group(
+        command,
+        cwd=str(tmp_path),
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
+    )
+
+    assert completed.returncode == 7
+    assert completed.stdout == b"O" * 65_537
+    assert completed.stderr == b"E" * 65_539
+    assert not completed.stdout_truncated
+    assert not completed.stderr_truncated
+
+
+def test_provider_reader_failure_kills_group_and_joins_other_reader(
+    tmp_path: Path,
+) -> None:
+    pid_path = tmp_path / "reader-failure-descendant.pid"
+    command = _process_tree_command(pid_path, parent_waits=True)
+    call_lock = threading.Lock()
+    calls = 0
+    descendant_pid: int | None = None
+
+    def injected_reader(stream: object, limit: int) -> tuple[bytes, bool]:
+        nonlocal calls
+        assert limit == EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES
+        with call_lock:
+            calls += 1
+            call_number = calls
+        if call_number == 1:
+            _wait_for_pid_file(pid_path)
+            raise RuntimeError("raw reader detail must stay private")
+        while stream.read(8192):
+            pass
+        return b"", False
+
+    try:
+        with pytest.raises(OSError, match="provider output capture failed") as excinfo:
+            bridge._run_process_group(
+                command,
+                cwd=str(tmp_path),
+                env=os.environ.copy(),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+                stream_reader=injected_reader,
+            )
+        assert "raw reader detail" not in str(excinfo.value)
+        descendant_pid = _wait_for_pid_file(pid_path)
+        assert _wait_for_pid_exit(descendant_pid)
+        assert calls == 2
+        assert not any(
+            thread.name.startswith("opus-provider-drain-") and thread.is_alive()
+            for thread in threading.enumerate()
+        )
+    finally:
+        _kill_pid_if_alive(descendant_pid)
+
+
+class _InjectedDrainThread:
+    def __init__(
+        self,
+        *,
+        target: object,
+        args: tuple[str, object],
+        name: str,
+        fail_start: bool,
+        pid_path: Path,
+    ) -> None:
+        self.stream = args[1]
+        self.start_called = False
+        self.started = False
+        self.joined = False
+        self._fail_start = fail_start
+        self._pid_path = pid_path
+        self._thread = threading.Thread(target=target, args=args, name=name)
+
+    def start(self) -> None:
+        self.start_called = True
+        if self._fail_start:
+            _wait_for_pid_file(self._pid_path)
+            raise RuntimeError("raw thread start detail must stay private")
+        self._thread.start()
+        self.started = True
+
+    def join(self) -> None:
+        assert self.started
+        self.joined = True
+        self._thread.join()
+
+    def is_alive(self) -> bool:
+        return self._thread.is_alive()
+
+
+@pytest.mark.parametrize(
+    ("failure_index", "expected_joined"),
+    [(0, (False, False)), (1, (True, False))],
+    ids=["first-start", "second-start"],
+)
+def test_provider_reader_start_failure_owns_all_partial_cleanup(
+    tmp_path: Path,
+    failure_index: int,
+    expected_joined: tuple[bool, bool],
+) -> None:
+    pid_path = tmp_path / f"reader-start-{failure_index}-descendant.pid"
+    command = _process_tree_command(pid_path, parent_waits=True)
+    created: list[_InjectedDrainThread] = []
+    descendant_pid: int | None = None
+
+    def thread_factory(**kwargs: object) -> _InjectedDrainThread:
+        args = kwargs["args"]
+        assert isinstance(args, tuple)
+        reader = _InjectedDrainThread(
+            target=kwargs["target"],
+            args=args,
+            name=str(kwargs["name"]),
+            fail_start=len(created) == failure_index,
+            pid_path=pid_path,
+        )
+        created.append(reader)
+        return reader
+
+    try:
+        with pytest.raises(
+            OSError, match=r"^provider output capture failed$"
+        ) as excinfo:
+            bridge._run_process_group(
+                command,
+                cwd=str(tmp_path),
+                env=os.environ.copy(),
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+                thread_factory=thread_factory,
+            )
+
+        assert excinfo.value.args == ("provider output capture failed",)
+        assert "raw thread start detail" not in str(excinfo.value)
+        assert len(created) == 2
+        assert tuple(reader.joined for reader in created) == expected_joined
+        assert all(reader.start_called for reader in created[: failure_index + 1])
+        assert all(
+            not reader.start_called for reader in created[failure_index + 1 :]
+        )
+        assert len({id(reader.stream) for reader in created}) == 2
+        assert all(getattr(reader.stream, "closed") for reader in created)
+        assert not any(reader.is_alive() for reader in created)
+        assert not any(
+            thread.name.startswith("opus-provider-drain-") and thread.is_alive()
+            for thread in threading.enumerate()
+        )
+        descendant_pid = _wait_for_pid_file(pid_path)
+        assert _wait_for_pid_exit(descendant_pid)
+    finally:
+        _kill_pid_if_alive(descendant_pid)
+
+
+class _CleanupSocket:
+    def __init__(self, stage: str) -> None:
+        self.stage = stage
+        self.closed = False
+
+    def bind(self, path: str) -> None:
+        Path(path).write_bytes(b"partial broker socket")
+        if self.stage == "bind":
+            raise OSError("raw bind detail")
+
+    def listen(self, backlog: int) -> None:
+        assert backlog == 4
+        if self.stage == "listen":
+            raise OSError("raw listen detail")
+
+    def settimeout(self, timeout: float) -> None:
+        assert timeout == 0.1
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _CleanupThread:
+    def __init__(self, *, fail_start: bool) -> None:
+        self.fail_start = fail_start
+        self.started = False
+        self.joined = False
+        self.alive = False
+
+    def start(self) -> None:
+        self.started = True
+        self.alive = True
+        if self.fail_start:
+            raise RuntimeError("raw thread start detail")
+
+    def join(self, timeout: float | None = None) -> None:
+        assert timeout in {None, 5}
+        self.joined = True
+        self.alive = False
+
+    def is_alive(self) -> bool:
+        return self.alive
+
+
+@pytest.mark.parametrize("stage", ["bind", "listen", "thread_start"])
+def test_verification_broker_constructor_cleans_every_partial_stage(
+    tmp_path: Path,
+    stage: str,
+) -> None:
+    source = tmp_path / "source"
+    snapshot = tmp_path / "snapshot"
+    source.mkdir()
+    snapshot.mkdir()
+    listener = _CleanupSocket(stage)
+    created_threads: list[_CleanupThread] = []
+
+    def socket_factory(*args: object) -> _CleanupSocket:
+        assert args == (socket.AF_UNIX, socket.SOCK_STREAM)
+        return listener
+
+    def thread_factory(**kwargs: object) -> _CleanupThread:
+        assert kwargs["name"] == "opus-verification-broker"
+        assert kwargs["daemon"] is True
+        thread = _CleanupThread(fail_start=stage == "thread_start")
+        created_threads.append(thread)
+        return thread
+
+    with bridge._sandbox_runtime(source, snapshot) as runtime:
+        broker = bridge._VerificationBroker.__new__(bridge._VerificationBroker)
+        with pytest.raises((OSError, RuntimeError)):
+            broker.__init__(
+                runtime,
+                snapshot,
+                timeout_seconds=5,
+                socket_factory=socket_factory,
+                thread_factory=thread_factory,
+            )
+
+        assert listener.closed
+        assert not broker.socket_path.exists()
+        assert broker._stop.is_set()
+        if stage == "thread_start":
+            assert created_threads[0].started
+            assert created_threads[0].joined
+            assert not created_threads[0].is_alive()
+        else:
+            assert created_threads == []
+        broker.close()
+        broker.close()
+
+
+@pytest.mark.parametrize(
+    ("seatbelt", "af_unix", "claude_cli", "missing"),
+    [
+        (True, True, True, ()),
+        (False, True, True, ("seatbelt",)),
+        (True, False, True, ("af_unix",)),
+        (True, True, False, ("claude_cli",)),
+        (
+            False,
+            False,
+            False,
+            ("seatbelt", "af_unix", "claude_cli"),
+        ),
+    ],
+)
+def test_probe_host_capabilities_classifies_exact_missing_names(
+    seatbelt: bool,
+    af_unix: bool,
+    claude_cli: bool,
+    missing: tuple[str, ...],
+) -> None:
+    commands: list[tuple[str, ...]] = []
+
+    def command_probe(argv: tuple[str, ...]) -> bool:
+        commands.append(argv)
+        return seatbelt
+
+    capabilities = bridge.probe_host_capabilities(
+        command_probe=command_probe,
+        socket_probe=lambda: af_unix,
+        claude_resolver=(
+            (lambda environment: Path("/fake/claude"))
+            if claude_cli
+            else (lambda environment: None)
+        ),
+    )
+
+    assert capabilities == bridge.HostCapabilities(
+        seatbelt=seatbelt,
+        af_unix=af_unix,
+        claude_cli=claude_cli,
+        missing=missing,
+    )
+    assert commands == [
+        (
+            "/usr/bin/sandbox-exec",
+            "-p",
+            "(version 1) (allow default)",
+            "/usr/bin/true",
+        )
+    ]
+
+
+def test_probe_host_capabilities_fails_closed_without_leaking_probe_errors() -> None:
+    def unavailable(*args: object) -> bool:
+        raise OSError("raw host probe detail")
+
+    def missing_claude(environment: object) -> Path | None:
+        raise OSError("raw resolver detail")
+
+    capabilities = bridge.probe_host_capabilities(
+        command_probe=unavailable,
+        socket_probe=unavailable,
+        claude_resolver=missing_claude,
+    )
+
+    assert capabilities.missing == ("seatbelt", "af_unix", "claude_cli")
+
+
+def test_review_uses_complete_injected_host_seam(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    calls: list[str] = []
+
+    def resolver(environment: object) -> Path:
+        calls.append("resolver")
+        return Path(sys.executable)
+
+    @contextmanager
+    def runtime_factory(source: Path, snapshot: Path) -> object:
+        calls.append("runtime")
+        with bridge._sandbox_runtime(source, snapshot) as runtime:
+            yield runtime
+
+    def broker_factory(
+        runtime: bridge.SandboxRuntime,
+        snapshot: Path,
+        *,
+        timeout_seconds: int,
+    ) -> _PureVerificationBroker:
+        calls.append("broker")
+        return _PureVerificationBroker(
+            runtime,
+            snapshot,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def sandbox_probe(
+        runtime: bridge.SandboxRuntime,
+        snapshot: Path,
+        broker: _PureVerificationBroker,
+    ) -> bool:
+        calls.append("sandbox_probe")
+        return True
+
+    def runner(argv: list[str], **kwargs: object) -> bridge.CapturedProcess:
+        calls.append("runner")
+        return _captured_process(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            "",
+        )
+
+    result = bridge.review(
+        request,
+        resolver=resolver,
+        runtime_factory=runtime_factory,
+        broker_factory=broker_factory,
+        sandbox_probe=sandbox_probe,
+        runner=runner,
+    )
+
+    assert result.status == "pass"
+    assert calls == ["resolver", "runtime", "broker", "sandbox_probe", "runner"]
+
+
+def test_review_gives_truncation_precedence_over_parseable_provider_output(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+
+    def runner(argv: list[str], **kwargs: object) -> bridge.CapturedProcess:
+        return _captured_process(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            b"provider stderr must not escape",
+            stdout_truncated=True,
+            stderr_truncated=False,
+        )
+
+    result = _pure_review(request, runner=runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "output_limit"
+    serialized = json.dumps(result.to_dict(), sort_keys=True)
+    assert "provider stderr" not in serialized
+
+
+def test_provider_failure_stages_are_exact() -> None:
+    assert bridge.PROVIDER_FAILURE_STAGES == frozenset(
+        {
+            "broker_start",
+            "sandbox_probe",
+            "provider_spawn",
+            "provider_timeout",
+            "provider_exit",
+            "response_parse",
+            "contract_validation",
+            "model_validation",
+            "receipt_recovery",
+        }
+    )
+
+
+def test_verification_broker_silent_peer_cannot_block_shutdown(
+    tmp_path: Path,
+    host_capabilities: bridge.HostCapabilities,
+) -> None:
+    _require_host_capabilities(host_capabilities, "af_unix")
     source = tmp_path / "source"
     snapshot = tmp_path / "snapshot"
     source.mkdir()
@@ -1370,7 +2017,9 @@ def test_verification_broker_silent_peer_cannot_block_shutdown(
 
 def test_verification_broker_client_waits_for_admitted_long_command(
     tmp_path: Path,
+    host_capabilities: bridge.HostCapabilities,
 ) -> None:
+    _require_host_capabilities(host_capabilities, "af_unix")
     source = tmp_path / "source"
     snapshot = tmp_path / "snapshot"
     source.mkdir()
@@ -1436,11 +2085,11 @@ def test_generated_broker_client_rejects_noncanonical_receive_timeout(
     assert completed.stderr.strip() == "broker request rejected"
 
 
-@pytest.mark.skipif(
-    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
-    reason="macOS V1 requires the local sandbox-exec facility",
-)
-def test_nested_sandbox_runs_admitted_safe_verification(tmp_path: Path) -> None:
+def test_nested_sandbox_runs_admitted_safe_verification(
+    tmp_path: Path,
+    host_capabilities: bridge.HostCapabilities,
+) -> None:
+    _require_host_capabilities(host_capabilities, "seatbelt", "af_unix")
     request = _sandbox_probe_request(
         tmp_path,
         "def test_safe_verifier(tmp_path):\n"
@@ -1454,37 +2103,37 @@ def test_nested_sandbox_runs_admitted_safe_verification(tmp_path: Path) -> None:
     assert "1 passed" in completed.stdout
 
 
-@pytest.mark.skipif(
-    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
-    reason="macOS V1 requires the local sandbox-exec facility",
-)
 @pytest.mark.parametrize(
-    "test_source",
+    ("test_source", "required_capabilities"),
     [
         pytest.param(
             "from pathlib import Path\n"
             "def test_source_write_is_denied():\n"
             "    Path(%r).write_text('escaped', encoding='utf-8')\n"
             % str(Path("SOURCE_TARGET")),
+            ("seatbelt", "af_unix"),
             id="source-write",
         ),
         pytest.param(
             "import os\n"
             "def test_snapshot_chmod_is_denied():\n"
             "    os.chmod('scripts/route_lineage.py', 0o777)\n",
+            ("seatbelt", "af_unix"),
             id="snapshot-chmod",
         ),
-            pytest.param(
-                "import socket\n"
-                "def test_socket_connect_is_denied():\n"
-                "    socket.create_connection(('127.0.0.1', 9), timeout=0.1)\n",
-                id="socket",
-            ),
+        pytest.param(
+            "import socket\n"
+            "def test_socket_connect_is_denied():\n"
+            "    socket.create_connection(('127.0.0.1', 9), timeout=0.1)\n",
+            ("seatbelt", "af_unix"),
+            id="socket",
+        ),
         pytest.param(
             "from pathlib import Path\n"
             "def test_source_read_is_denied():\n"
             "    Path(%r).read_text(encoding='utf-8')\n"
             % str(Path("SOURCE_READ_TARGET")),
+            ("seatbelt", "af_unix"),
             id="source-read",
         ),
         pytest.param(
@@ -1492,13 +2141,14 @@ def test_nested_sandbox_runs_admitted_safe_verification(tmp_path: Path) -> None:
             "def test_sensitive_read_is_denied():\n"
             "    Path(%r).read_text(encoding='utf-8')\n"
             % str(Path.home() / ".claude" / "settings.json"),
+            ("seatbelt", "af_unix"),
             id="sensitive-read",
         ),
         pytest.param(
             "import subprocess\n"
             "def test_claude_launch_is_denied():\n"
-            "    subprocess.run([%r, '--version'], check=True)\n"
-            % str(Path(shutil.which("claude") or "/missing-claude").resolve()),
+            "    subprocess.run([CLAUDE_EXECUTABLE, '--version'], check=True)\n",
+            ("seatbelt", "af_unix", "claude_cli"),
             id="claude-launch",
         ),
     ],
@@ -1506,7 +2156,18 @@ def test_nested_sandbox_runs_admitted_safe_verification(tmp_path: Path) -> None:
 def test_nested_sandbox_denies_adversarial_verifier_actions(
     tmp_path: Path,
     test_source: str,
+    required_capabilities: tuple[str, ...],
+    host_capabilities: bridge.HostCapabilities,
 ) -> None:
+    _require_host_capabilities(host_capabilities, *required_capabilities)
+    if "CLAUDE_EXECUTABLE" in test_source:
+        claude_executable = bridge._resolve_claude_executable(
+            bridge.build_claude_environment()
+        )
+        assert claude_executable is not None
+        test_source = test_source.replace(
+            "CLAUDE_EXECUTABLE", repr(str(claude_executable))
+        )
     source_target = tmp_path / "scripts" / "route_lineage.py"
     source_read_target = tmp_path / "AGENTS.md"
     test_source = test_source.replace("SOURCE_TARGET", str(source_target)).replace(
@@ -1520,21 +2181,19 @@ def test_nested_sandbox_denies_adversarial_verifier_actions(
     assert source_target.read_text(encoding="utf-8") == before
 
 
-@pytest.mark.skipif(
-    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
-    reason="macOS V1 requires the local sandbox-exec facility",
-)
 @pytest.mark.parametrize("attack", ["replay", "forged-token"])
 def test_verification_broker_rejects_replay_and_forged_tokens(
     tmp_path: Path,
     attack: str,
+    host_capabilities: bridge.HostCapabilities,
 ) -> None:
+    _require_host_capabilities(host_capabilities, "seatbelt", "af_unix")
     request = _sandbox_probe_request(
         tmp_path,
         "def test_safe_verifier():\n    assert True\n",
     )
 
-    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_runner(argv: list[str], **kwargs: object) -> bridge.CapturedProcess:
         verification_argv = _verification_command_from_provider_argv(argv)
         _assert_broker_client_command(
             verification_argv, expected_command_timeout=request.timeout_seconds
@@ -1561,7 +2220,7 @@ def test_verification_broker_rejects_replay_and_forged_tokens(
         )
         assert rejected.returncode != 0
         assert "rejected" in (rejected.stdout + rejected.stderr).lower()
-        return subprocess.CompletedProcess(
+        return _captured_process(
             argv,
             0,
             _claude_stream(
@@ -1576,10 +2235,6 @@ def test_verification_broker_rejects_replay_and_forged_tokens(
     assert result.status == "pass"
 
 
-@pytest.mark.skipif(
-    sys.platform != "darwin" or not Path("/usr/bin/sandbox-exec").is_file(),
-    reason="macOS V1 requires the local sandbox-exec facility",
-)
 @pytest.mark.parametrize(
     ("test_source", "timeout_seconds", "diagnostic"),
     [
@@ -1603,13 +2258,15 @@ def test_verification_broker_bounds_output_and_runtime(
     test_source: str,
     timeout_seconds: int,
     diagnostic: str,
+    host_capabilities: bridge.HostCapabilities,
 ) -> None:
+    _require_host_capabilities(host_capabilities, "seatbelt", "af_unix")
     request = replace(
         _sandbox_probe_request(tmp_path, test_source),
         timeout_seconds=timeout_seconds,
     )
 
-    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_runner(argv: list[str], **kwargs: object) -> bridge.CapturedProcess:
         verification_argv = _verification_command_from_provider_argv(argv)
         _assert_broker_client_command(
             verification_argv, expected_command_timeout=timeout_seconds
@@ -1627,7 +2284,7 @@ def test_verification_broker_bounds_output_and_runtime(
         assert completed.returncode != 0
         assert diagnostic in output.lower()
         assert len(output) < 300000
-        return subprocess.CompletedProcess(
+        return _captured_process(
             argv,
             0,
             _claude_stream(
@@ -1646,17 +2303,19 @@ def test_review_normalizes_missing_sandbox_without_provider_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        bridge,
-        "SANDBOX_EXECUTABLE",
-        tmp_path / "missing-sandbox-exec",
-        raising=False,
-    )
-
     def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise AssertionError("provider must not run without the required sandbox")
 
-    result = bridge.review(_committed_request(tmp_path), runner=forbidden_runner)
+    monkeypatch.setattr(
+        bridge, "SANDBOX_EXECUTABLE", tmp_path / "missing-sandbox-exec"
+    )
+    result = bridge.review(
+        _committed_request(tmp_path),
+        resolver=lambda environment: Path(sys.executable),
+        runtime_factory=bridge._sandbox_runtime,
+        broker_factory=_PureVerificationBroker,
+        runner=forbidden_runner,
+    )
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "sandbox_unavailable"
@@ -1664,19 +2323,15 @@ def test_review_normalizes_missing_sandbox_without_provider_call(
 
 def test_review_normalizes_sandbox_profile_failure_without_provider_call(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        bridge,
-        "_probe_sandbox_profiles",
-        lambda *args, **kwargs: False,
-        raising=False,
-    )
-
     def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise AssertionError("provider must not run after sandbox profile failure")
 
-    result = bridge.review(_committed_request(tmp_path), runner=forbidden_runner)
+    result = _pure_review(
+        _committed_request(tmp_path),
+        runner=forbidden_runner,
+        sandbox_probe=lambda runtime, snapshot, broker: False,
+    )
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "sandbox_unavailable"
@@ -1701,7 +2356,7 @@ def test_review_invokes_claude_once_and_uses_init_model(
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "pass"
     assert result.effective_model == "claude-opus-4-7"
@@ -1747,7 +2402,7 @@ def test_review_canonicalizes_uppercase_scope_before_provider_call(
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert calls == 1
     assert result.status == "pass"
@@ -1757,15 +2412,9 @@ def test_review_canonicalizes_uppercase_scope_before_provider_call(
 
 def test_missing_authorization_uses_standing_policy_and_invokes_once(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request(tmp_path, authorization="")
     calls = 0
-    monkeypatch.setattr(
-        bridge,
-        "_resolve_claude_executable",
-        lambda environment: Path(sys.executable),
-    )
 
     def fake_runner(
         argv: list[str], **kwargs: object
@@ -1782,7 +2431,7 @@ def test_missing_authorization_uses_standing_policy_and_invokes_once(
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert calls == 1
     assert result.status == "pass"
@@ -1794,15 +2443,9 @@ def test_missing_authorization_uses_standing_policy_and_invokes_once(
 
 def test_whitespace_authorization_uses_standing_policy(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request(tmp_path, authorization=" \t ")
     calls = 0
-    monkeypatch.setattr(
-        bridge,
-        "_resolve_claude_executable",
-        lambda environment: Path(sys.executable),
-    )
 
     def fake_runner(
         argv: list[str], **kwargs: object
@@ -1819,7 +2462,7 @@ def test_whitespace_authorization_uses_standing_policy(
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
     assert calls == 1
     assert result.authorization_source == (
         "standing-policy:codex-lane-v-opus-v1"
@@ -1841,7 +2484,7 @@ def test_standing_authorization_requires_exact_review_profile(
         raise AssertionError("provider must not run for a wrong profile")
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(request, runner=forbidden_runner)
+        _pure_review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == "invalid_profile"
     assert calls == 0
@@ -1869,7 +2512,7 @@ def test_explicit_authorization_sources_are_preserved(
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
     assert result.authorization_source == authorization
 
 
@@ -1892,7 +2535,7 @@ def test_review_rejects_unstructured_authorization_source(tmp_path: Path) -> Non
         raise AssertionError("Claude must not run with an invalid authorization source")
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(_request(tmp_path, authorization="yes"), runner=forbidden_runner)
+        _pure_review(_request(tmp_path, authorization="yes"), runner=forbidden_runner)
 
     assert excinfo.value.reason == "invalid_authorization"
 
@@ -1912,7 +2555,7 @@ def test_review_rejects_non_opus_effective_model(tmp_path: Path) -> None:
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "effective_model_not_opus"
@@ -1929,7 +2572,7 @@ def test_review_normalizes_timeout_without_retry(tmp_path: Path) -> None:
         sandbox_roots.append(Path(argv[2]).parent.parent)
         raise subprocess.TimeoutExpired(argv, 900)
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert calls == 1
     assert result.status == "unavailable"
@@ -1949,7 +2592,7 @@ def test_review_normalizes_missing_claude_binary(tmp_path: Path) -> None:
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise FileNotFoundError("claude")
 
-    result = bridge.review(_request(tmp_path), runner=fake_runner)
+    result = _pure_review(_request(tmp_path), runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "claude_not_found"
@@ -1970,11 +2613,11 @@ def test_review_resolves_claude_before_default_process_group_launch(
 
     def fake_process_group_runner(
         argv: list[str], **kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
+    ) -> bridge.CapturedProcess:
         nonlocal calls
         calls += 1
         assert Path(argv[3]) == fake_claude.resolve()
-        return subprocess.CompletedProcess(
+        return _captured_process(
             argv,
             0,
             _claude_stream(
@@ -1986,7 +2629,12 @@ def test_review_resolves_claude_before_default_process_group_launch(
 
     monkeypatch.setattr(bridge, "_run_process_group", fake_process_group_runner)
 
-    result = bridge.review(request)
+    result = bridge.review(
+        request,
+        runtime_factory=bridge._sandbox_runtime,
+        broker_factory=_PureVerificationBroker,
+        sandbox_probe=lambda runtime, snapshot, broker: True,
+    )
 
     assert calls == 1
     assert result.status == "pass"
@@ -1994,22 +2642,19 @@ def test_review_resolves_claude_before_default_process_group_launch(
 
 def test_review_missing_claude_is_unavailable_before_sandbox_launch(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request(tmp_path)
-    monkeypatch.setattr(shutil, "which", lambda *args, **kwargs: None)
-
-    def forbidden_sandbox(*args: object, **kwargs: object) -> object:
-        raise AssertionError("sandbox must not launch without a resolved Claude binary")
 
     def forbidden_runner(
         *args: object, **kwargs: object
     ) -> subprocess.CompletedProcess[str]:
         raise AssertionError("provider must not run without a resolved Claude binary")
 
-    monkeypatch.setattr(bridge, "_sandbox_runtime", forbidden_sandbox)
-
-    result = bridge.review(request, runner=forbidden_runner)
+    result = _pure_review(
+        request,
+        runner=forbidden_runner,
+        resolver=lambda environment: None,
+    )
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "claude_not_found"
@@ -2021,8 +2666,14 @@ def test_review_missing_claude_is_unavailable_before_sandbox_launch(
         PermissionError("permission denied"),
         OSError(errno.ENOEXEC, "executable format error"),
         OSError(errno.EIO, "provider spawn I/O error"),
+        OSError("provider output capture failed"),
     ],
-    ids=["permission", "executable-format", "other-oserror"],
+    ids=[
+        "permission",
+        "executable-format",
+        "other-oserror",
+        "reader-thread-start",
+    ],
 )
 def test_review_normalizes_provider_spawn_oserror(
     tmp_path: Path, error: OSError
@@ -2030,7 +2681,7 @@ def test_review_normalizes_provider_spawn_oserror(
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise error
 
-    result = bridge.review(_request(tmp_path), runner=fake_runner)
+    result = _pure_review(_request(tmp_path), runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "process_failed"
@@ -2040,10 +2691,49 @@ def test_review_normalizes_invalid_stream_json(tmp_path: Path) -> None:
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, "not-json\n", "")
 
-    result = bridge.review(_request(tmp_path), runner=fake_runner)
+    result = _pure_review(_request(tmp_path), runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "invalid_json"
+
+
+def test_review_rejects_invalid_utf8_before_stream_parsing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_parser(stdout: str) -> object:
+        raise AssertionError("invalid UTF-8 must fail before provider parsing")
+
+    monkeypatch.setattr(bridge, "parse_claude_stream", forbidden_parser)
+
+    def fake_runner(argv: list[str], **kwargs: object) -> bridge.CapturedProcess:
+        return _captured_process(argv, 0, b"\xff", b"")
+
+    result = _pure_review(_request(tmp_path), runner=fake_runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "invalid_json"
+
+
+def test_review_rejects_stream_events_after_result(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    stdout = "\n".join(
+        (
+            _claude_stream(
+                reviewed_head=request.reviewed_head,
+                reviewed_base=request.reviewed_base,
+            ),
+            json.dumps({"type": "assistant", "message": "trailing"}),
+        )
+    )
+
+    def fake_runner(argv: list[str], **kwargs: object) -> bridge.CapturedProcess:
+        return _captured_process(argv, 0, stdout, b"")
+
+    result = _pure_review(request, runner=fake_runner)
+
+    assert result.status == "unavailable"
+    assert result.unavailable_reason == "invalid_schema"
 
 
 def test_review_rejects_duplicate_init_events(tmp_path: Path) -> None:
@@ -2067,7 +2757,7 @@ def test_review_rejects_duplicate_init_events(tmp_path: Path) -> None:
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, stdout, "")
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "invalid_schema"
@@ -2095,7 +2785,7 @@ def test_review_rejects_conflicting_init_events(tmp_path: Path) -> None:
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, stdout, "")
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "invalid_schema"
@@ -2126,7 +2816,7 @@ def test_review_rejects_duplicate_result_events(tmp_path: Path) -> None:
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, stdout, "")
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "invalid_schema"
@@ -2150,7 +2840,7 @@ def test_review_accepts_opus_issues_result(tmp_path: Path) -> None:
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "issues"
     assert tuple(finding.id for finding in result.findings) == ("OPUS-1",)
@@ -2172,7 +2862,7 @@ def test_review_rejects_missing_effective_model(tmp_path: Path) -> None:
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, stdout, "")
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "effective_model_missing"
@@ -2191,7 +2881,7 @@ def test_review_normalizes_scope_mismatch(tmp_path: Path) -> None:
             argv, 0, _claude_stream(structured=payload), ""
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "reviewed_scope_mismatch"
@@ -2210,7 +2900,7 @@ def test_review_normalizes_invalid_structured_schema(tmp_path: Path) -> None:
             argv, 0, _claude_stream(structured=payload), ""
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == "invalid_schema"
@@ -2229,7 +2919,7 @@ def test_review_normalizes_nonzero_process_failures(
     def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 1, "", diagnostic)
 
-    result = bridge.review(_request(tmp_path), runner=fake_runner)
+    result = _pure_review(_request(tmp_path), runner=fake_runner)
 
     assert result.status == "unavailable"
     assert result.unavailable_reason == reason
@@ -2278,7 +2968,7 @@ def test_review_rejects_scope_command_or_limit_widening(
         raise AssertionError("invalid requests must fail before Claude runs")
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        bridge.review(request, runner=forbidden_runner)
+        _pure_review(request, runner=forbidden_runner)
 
     assert excinfo.value.reason == reason
 
@@ -2302,7 +2992,7 @@ def test_review_bridge_does_not_write_repository_files(tmp_path: Path) -> None:
             "",
         )
 
-    result = bridge.review(request, runner=fake_runner)
+    result = _pure_review(request, runner=fake_runner)
     after = {
         path.relative_to(tmp_path).as_posix(): path.read_bytes()
         for path in tmp_path.rglob("*")

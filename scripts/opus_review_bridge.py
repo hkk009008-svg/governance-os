@@ -20,6 +20,7 @@ import sys
 import tarfile
 import tempfile
 import threading
+import time
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -50,6 +51,20 @@ UNAVAILABLE_REASONS = frozenset(
         "effective_model_missing",
         "effective_model_not_opus",
         "sandbox_unavailable",
+        "output_limit",
+    }
+)
+PROVIDER_FAILURE_STAGES = frozenset(
+    {
+        "broker_start",
+        "sandbox_probe",
+        "provider_spawn",
+        "provider_timeout",
+        "provider_exit",
+        "response_parse",
+        "contract_validation",
+        "model_validation",
+        "receipt_recovery",
     }
 )
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -58,6 +73,7 @@ FINDING_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 _FINDING_ID_RE = re.compile(FINDING_ID_PATTERN)
 DEFAULT_MAX_TURNS = 12
 DEFAULT_TIMEOUT_SECONDS = 900
+PROVIDER_OUTPUT_LIMIT_BYTES = 131_072
 BROKER_OUTPUT_LIMIT_BYTES = 131_072
 BROKER_MAX_REQUEST_BYTES = 256
 BROKER_MAX_RESPONSE_BYTES = BROKER_OUTPUT_LIMIT_BYTES * 3
@@ -321,6 +337,24 @@ class SandboxRuntime:
     broker_dir: Path
     provider_scratch: Path
     verification_scratch: Path
+
+
+@dataclass(frozen=True)
+class CapturedProcess:
+    args: tuple[str, ...]
+    returncode: int
+    stdout: bytes
+    stderr: bytes
+    stdout_truncated: bool
+    stderr_truncated: bool
+
+
+@dataclass(frozen=True)
+class HostCapabilities:
+    seatbelt: bool
+    af_unix: bool
+    claude_cli: bool
+    missing: tuple[str, ...]
 
 
 class InvocationFailure(RuntimeError):
@@ -916,6 +950,21 @@ def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
         process.wait(timeout=5)
 
 
+def _drain_bounded_stream(stream: Any, limit: int) -> tuple[bytes, bool]:
+    retained = bytearray()
+    truncated = False
+    while True:
+        chunk = stream.read(65_536)
+        if not chunk:
+            break
+        remaining = max(0, limit - len(retained))
+        if remaining:
+            retained.extend(chunk[:remaining])
+        if len(chunk) > remaining:
+            truncated = True
+    return bytes(retained), truncated
+
+
 def _run_process_group(
     argv: list[str],
     *,
@@ -925,43 +974,109 @@ def _run_process_group(
     text: bool,
     check: bool,
     timeout: int,
-) -> subprocess.CompletedProcess[str]:
+    stream_reader: Callable[[Any, int], tuple[bytes, bool]] = _drain_bounded_stream,
+    thread_factory: Callable[..., Any] = threading.Thread,
+) -> CapturedProcess:
     if not capture_output or not text:
         raise ValueError("process-group runner requires captured text output")
-    with tempfile.TemporaryFile(mode="w+b") as stdout_file, tempfile.TemporaryFile(
-        mode="w+b"
-    ) as stderr_file:
-        process = subprocess.Popen(
-            argv,
-            cwd=cwd,
-            env=env,
-            stdout=stdout_file,
-            stderr=stderr_file,
-            start_new_session=True,
-        )
-        timed_out = False
-        try:
-            returncode = process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            returncode = -signal.SIGKILL
-        finally:
-            _terminate_process_group(process)
+    process = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    if process.stdout is None or process.stderr is None:
+        _terminate_process_group(process)
+        raise OSError("provider output capture failed")
 
-        stdout_file.seek(0)
-        stderr_file.seek(0)
-        stdout = stdout_file.read().decode("utf-8", errors="replace")
-        stderr = stderr_file.read().decode("utf-8", errors="replace")
+    results: dict[str, tuple[bytes, bool]] = {}
+    reader_errors: dict[str, BaseException] = {}
+    reader_failed = threading.Event()
+
+    def drain(name: str, stream: Any) -> None:
+        try:
+            results[name] = stream_reader(stream, PROVIDER_OUTPUT_LIMIT_BYTES)
+        except BaseException as exc:
+            reader_errors[name] = exc
+            reader_failed.set()
+
+    readers: tuple[Any, ...] = ()
+    started_readers: list[Any] = []
+    setup_error: Exception | None = None
+    timed_out = False
+    returncode = -signal.SIGKILL
+    deadline = time.monotonic() + timeout
+    try:
+        readers = (
+            thread_factory(
+                target=drain,
+                args=("stdout", process.stdout),
+                name="opus-provider-drain-stdout",
+            ),
+            thread_factory(
+                target=drain,
+                args=("stderr", process.stderr),
+                name="opus-provider-drain-stderr",
+            ),
+        )
+        for reader in readers:
+            reader.start()
+            started_readers.append(reader)
+
+        while True:
+            if reader_failed.is_set():
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            try:
+                returncode = process.wait(timeout=min(0.05, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
+    except Exception as exc:
+        setup_error = exc
+    finally:
+        _terminate_process_group(process)
+        if setup_error is not None or timed_out or reader_errors:
+            process.stdout.close()
+            process.stderr.close()
+        for reader in started_readers:
+            reader.join()
+        process.stdout.close()
+        process.stderr.close()
+
+    stdout, stdout_truncated = results.get("stdout", (b"", False))
+    stderr, stderr_truncated = results.get("stderr", (b"", False))
+    if setup_error is not None:
+        raise OSError("provider output capture failed") from None
     if timed_out:
         raise subprocess.TimeoutExpired(
-            argv,
+            tuple(argv),
             timeout,
             output=stdout,
             stderr=stderr,
         )
-    completed = subprocess.CompletedProcess(argv, returncode, stdout, stderr)
-    if check:
-        completed.check_returncode()
+    if reader_errors:
+        raise OSError("provider output capture failed")
+    completed = CapturedProcess(
+        args=tuple(argv),
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+        stdout_truncated=stdout_truncated,
+        stderr_truncated=stderr_truncated,
+    )
+    if check and returncode != 0:
+        raise subprocess.CalledProcessError(
+            returncode,
+            tuple(argv),
+            output=stdout,
+            stderr=stderr,
+        )
     return completed
 
 
@@ -1368,6 +1483,8 @@ class _VerificationBroker:
         snapshot: Path,
         *,
         timeout_seconds: int,
+        socket_factory: Callable[..., Any] = socket.socket,
+        thread_factory: Callable[..., Any] = threading.Thread,
     ) -> None:
         self.runtime = runtime
         self.snapshot = snapshot
@@ -1378,17 +1495,26 @@ class _VerificationBroker:
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._active: subprocess.Popen[bytes] | None = None
-        self._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._listener.bind(str(self.socket_path))
-        self.socket_path.chmod(0o600)
-        self._listener.listen(4)
-        self._listener.settimeout(0.1)
-        self._thread = threading.Thread(
-            target=self._serve,
-            name="opus-verification-broker",
-            daemon=True,
-        )
-        self._thread.start()
+        self._listener: Any | None = None
+        self._thread: Any | None = None
+        try:
+            self._listener = socket_factory(socket.AF_UNIX, socket.SOCK_STREAM)
+            self._listener.bind(str(self.socket_path))
+            self.socket_path.chmod(0o600)
+            self._listener.listen(4)
+            self._listener.settimeout(0.1)
+            self._thread = thread_factory(
+                target=self._serve,
+                name="opus-verification-broker",
+                daemon=True,
+            )
+            self._thread.start()
+        except BaseException:
+            try:
+                self._close_partial()
+            except BaseException:
+                pass
+            raise
 
     def register(self, argv: Iterable[str]) -> list[str]:
         token = secrets.token_hex(32)
@@ -1482,6 +1608,8 @@ class _VerificationBroker:
     def _serve(self) -> None:
         while not self._stop.is_set():
             try:
+                if self._listener is None:
+                    break
                 connection, _ = self._listener.accept()
             except socket.timeout:
                 continue
@@ -1510,17 +1638,32 @@ class _VerificationBroker:
                 except (OSError, UnicodeDecodeError):
                     continue
 
-    def close(self) -> None:
+    def _close_partial(self) -> None:
         self._stop.set()
         with self._lock:
             active = self._active
         if active is not None:
             _terminate_process_group(active)
-        self._listener.close()
-        self._thread.join(timeout=5)
-        if self._thread.is_alive():
-            raise OSError("verification broker did not stop")
+            with self._lock:
+                if self._active is active:
+                    self._active = None
+        listener = self._listener
+        self._listener = None
+        if listener is not None:
+            listener.close()
+        thread = self._thread
+        if thread is not None:
+            try:
+                if thread.is_alive():
+                    thread.join(timeout=5)
+            except RuntimeError:
+                pass
+            if thread.is_alive():
+                raise OSError("verification broker did not stop")
         self.socket_path.unlink(missing_ok=True)
+
+    def close(self) -> None:
+        self._close_partial()
 
     def __enter__(self) -> _VerificationBroker:
         return self
@@ -1733,6 +1876,80 @@ def _resolve_claude_executable(environment: Mapping[str, str]) -> Path | None:
     return executable
 
 
+def _probe_command_execution(argv: tuple[str, ...]) -> bool:
+    try:
+        completed = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return completed.returncode == 0
+
+
+def _probe_af_unix() -> bool:
+    try:
+        with tempfile.TemporaryDirectory(
+            prefix="opus-capability-", dir="/tmp"
+        ) as temporary_root:
+            socket_path = Path(temporary_root) / "probe.sock"
+            listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                listener.bind(str(socket_path))
+            finally:
+                listener.close()
+    except OSError:
+        return False
+    return True
+
+
+def probe_host_capabilities(
+    *,
+    command_probe: Callable[[tuple[str, ...]], bool] = _probe_command_execution,
+    socket_probe: Callable[[], bool] = _probe_af_unix,
+    claude_resolver: Callable[
+        [Mapping[str, str]], Path | None
+    ] = _resolve_claude_executable,
+) -> HostCapabilities:
+    seatbelt_argv = (
+        "/usr/bin/sandbox-exec",
+        "-p",
+        "(version 1) (allow default)",
+        "/usr/bin/true",
+    )
+    try:
+        seatbelt = bool(command_probe(seatbelt_argv))
+    except (OSError, subprocess.SubprocessError):
+        seatbelt = False
+    try:
+        af_unix = bool(socket_probe())
+    except (OSError, subprocess.SubprocessError):
+        af_unix = False
+    try:
+        claude_cli = claude_resolver(build_claude_environment()) is not None
+    except (OSError, subprocess.SubprocessError):
+        claude_cli = False
+    missing = tuple(
+        name
+        for name, available in (
+            ("seatbelt", seatbelt),
+            ("af_unix", af_unix),
+            ("claude_cli", claude_cli),
+        )
+        if not available
+    )
+    return HostCapabilities(
+        seatbelt=seatbelt,
+        af_unix=af_unix,
+        claude_cli=claude_cli,
+        missing=missing,
+    )
+
+
 def build_claude_command(
     request: ReviewRequest,
     *,
@@ -1814,6 +2031,10 @@ def parse_claude_stream(stdout: str) -> tuple[str, Mapping[str, Any]]:
             raise InvocationFailure("invalid_json", str(exc)) from exc
         if not isinstance(message, dict):
             raise InvocationFailure("invalid_json", "stream event must be an object")
+        if result_seen:
+            raise InvocationFailure(
+                "invalid_schema", "stream event appeared after result"
+            )
         if message.get("type") == "system" and message.get("subtype") == "init":
             if init_seen:
                 raise InvocationFailure(
@@ -1854,7 +2075,11 @@ def _unavailable(request: ReviewRequest, reason: str) -> OpusReview:
 def review(
     request: ReviewRequest,
     *,
-    runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+    resolver: Callable[[Mapping[str, str]], Path | None] | None = None,
+    runtime_factory: Callable[..., Any] | None = None,
+    broker_factory: Callable[..., Any] | None = None,
+    sandbox_probe: Callable[..., bool] | None = None,
+    runner: Callable[..., CapturedProcess] | None = None,
 ) -> OpusReview:
     try:
         source = _require_git_repository(request.repo_root)
@@ -1885,13 +2110,13 @@ def review(
         )
 
         child_env = build_claude_environment()
-        claude_executable = _resolve_claude_executable(child_env)
+        claude_executable = (resolver or _resolve_claude_executable)(child_env)
         if claude_executable is None:
             return _unavailable(request, "claude_not_found")
 
         try:
-            with _sandbox_runtime(source, snapshot) as sandbox:
-                with _VerificationBroker(
+            with (runtime_factory or _sandbox_runtime)(source, snapshot) as sandbox:
+                with (broker_factory or _VerificationBroker)(
                     sandbox,
                     snapshot,
                     timeout_seconds=request.timeout_seconds,
@@ -1900,7 +2125,9 @@ def review(
                         broker.register_verification(command)
                         for command in snapshot_request.verification_commands
                     )
-                    if not _probe_sandbox_profiles(sandbox, snapshot, broker):
+                    if not (sandbox_probe or _probe_sandbox_profiles)(
+                        sandbox, snapshot, broker
+                    ):
                         return _unavailable(request, "sandbox_unavailable")
                     claude_argv = build_claude_command(
                         snapshot_request,
@@ -1933,8 +2160,12 @@ def review(
                         return _unavailable(request, "process_failed")
         except OSError:
             return _unavailable(request, "sandbox_unavailable")
+        if completed.stdout_truncated or completed.stderr_truncated:
+            return _unavailable(request, "output_limit")
         if completed.returncode != 0:
-            diagnostic = completed.stderr.lower()
+            diagnostic = completed.stderr.decode(
+                "utf-8", errors="replace"
+            ).lower()
             reason = (
                 "authentication_failed"
                 if any(
@@ -1950,7 +2181,11 @@ def review(
             )
             return _unavailable(request, reason)
         try:
-            model, structured = parse_claude_stream(completed.stdout)
+            stdout = completed.stdout.decode("utf-8")
+        except UnicodeDecodeError:
+            return _unavailable(request, "invalid_json")
+        try:
+            model, structured = parse_claude_stream(stdout)
         except InvocationFailure as exc:
             return _unavailable(request, exc.reason)
         if not is_opus_model(model):
