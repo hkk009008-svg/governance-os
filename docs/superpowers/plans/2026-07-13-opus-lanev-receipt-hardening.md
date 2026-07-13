@@ -379,6 +379,60 @@ env -u GIT_INDEX_FILE git commit -m "feat(opus): persist one replay-safe review 
 ```
 
 ---
+### Task 2A: Add Secure Receipt-ID Lookup For Reconciliation
+
+**Files:**
+- Modify: `scripts/opus_review_receipts.py`
+- Modify: `tests/unit/test_opus_review_receipts.py`
+
+**Interfaces:**
+- Consumes: Task 2's validated common-directory store, descriptor-relative
+  receipt naming, metadata checks, and per-attempt lock.
+- Produces: `ReceiptStore.lock_receipt()` and
+  `LockedAttempt.load_existing()` for Task 4's receipt-only reconciliation.
+
+- [ ] **Step 1: Write failing receipt-ID lookup tests**
+
+Create a receipt through `lock_attempt(scope)`, then acquire it through
+`lock_receipt(record.receipt_id)` and prove `load_existing()` returns the same
+record and enables an ordinary reconciliation transition. Reject wrong prefix,
+wrong length, uppercase hex, non-hex, path separators, and traversal-shaped
+identifiers before opening the state directory. A canonical but absent ID must
+raise `receipt_missing` and must not create a receipt. Corrupt, symlink, special,
+wrong-mode, wrong-owner, and link-count cases continue through the existing
+descriptor-relative metadata checks. Two access paths for the same ID must
+contend on the same lock.
+
+- [ ] **Step 2: Run the lookup tests and confirm RED**
+
+Expected: `ReceiptStore` has no `lock_receipt()` method.
+
+- [ ] **Step 3: Implement exact receipt-ID lookup without directory scanning**
+
+Validate the exact grammar `opr1:<64 lowercase hex>`, derive the existing
+receipt and lock basenames directly from that digest, and reuse `LockedAttempt`
+plus the existing private-directory/file checks. `load_existing()` requires an
+active lock, reads exactly that receipt, stores it as the current checked
+generation for later transitions, and never reserves or creates a receipt.
+Keep `state_root` internal and expose no CLI here.
+
+- [ ] **Step 4: Run Task 2A tests and commit**
+
+Run:
+
+```bash
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_opus_review_receipts.py -q
+env -u GIT_INDEX_FILE git diff --check
+```
+
+Commit:
+
+```bash
+env -u GIT_INDEX_FILE git add scripts/opus_review_receipts.py tests/unit/test_opus_review_receipts.py
+env -u GIT_INDEX_FILE git commit -m "feat(opus): lock existing receipts by id" -m "Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62"
+```
+
+---
 ### Task 3: Bound Provider Resources And Classify Host Capabilities
 
 **Files:**
@@ -468,7 +522,10 @@ env -u GIT_INDEX_FILE git commit -m "fix(opus): bound provider output and cleanu
 - Modify: `tests/unit/test_opus_review_bridge.py`
 
 **Interfaces:**
-- Consumes: `ScopeDescriptor`, `ReviewScope`, and `ReceiptStore` from Tasks 1-2; the bounded provider/capability seams from Task 3; a shipping-commit or committed verify-request trigger; Codex verdict/dispositions/evidence.
+- Consumes: `ScopeDescriptor`, `ReviewScope`, `ReceiptStore`, and the secure
+  `lock_receipt()`/`load_existing()` seam from Tasks 1-2A; the bounded
+  provider/capability seams from Task 3; a shipping-commit or committed
+  verify-request trigger; Codex verdict/dispositions/evidence.
 - Produces: trigger-only `ReviewRequest`, `ResolvedReviewRequest`, `ReviewReceiptResult`, `resolve_authoritative_scope()`, receipt-backed `review()`, receipt-backed `reconcile_receipt()`, `opus-review/v3`, `opus-reconciliation/v2`, and canonical report attestation fields.
 
 - [ ] **Step 1: Write failing CLI-boundary tests**

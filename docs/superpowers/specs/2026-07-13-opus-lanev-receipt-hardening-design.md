@@ -395,6 +395,15 @@ liveness. There is no reset or retry CLI.
 The receipt ID is deterministic from the attempt key and version. It is an
 identifier, not a bearer secret.
 
+Receipt-only reconciliation locates state through the store, never by scanning
+or opening the runtime directory in the bridge. `ReceiptStore.lock_receipt()`
+accepts only the canonical `opr1:<64 lowercase hex>` identifier, maps it to the
+one exact descriptor-relative receipt and lock name, and `load_existing()`
+fails closed without creating a receipt when that exact record is absent. The
+same metadata, ownership, no-follow, and exclusive-lock checks used by
+scope-derived review access therefore remain authoritative during
+reconciliation.
+
 ### 6.7 CLI contracts
 
 `review` accepts the repository, reviewed HEAD/base, exact review profile and
