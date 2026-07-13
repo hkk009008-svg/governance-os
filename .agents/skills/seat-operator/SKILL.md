@@ -1,6 +1,6 @@
 ---
 name: "seat-operator"
-description: "Use when operating as a per-pair OPERATOR seat (Pair-A or Pair-B) in this repo's 4-seat program-hardening campaign \u2014 independently verifying a director/implementer commit (Lane V), issuing a verification-report GO/NITS/FAIL, releasing a cross-cutting lock on GO, re-verifying a NITS nit-fix diff, confirming a CRITICAL cross-cutting diff matches the co-signed brief scope, mutation-testing a guard, or deciding whether a fresh verify-request or shipping commit warrants a verification pass."
+description: "Use when operating as a per-pair OPERATOR seat (Pair-A or Pair-B) in this repo's 4-seat program-hardening campaign \u2014 independently verifying a lawfully triggered reviewed HEAD (Lane V), issuing a verification-report GO/NITS/FAIL, releasing a cross-cutting lock on GO, re-verifying a NITS nit-fix diff, confirming a CRITICAL cross-cutting diff matches the co-signed brief scope, mutation-testing a guard, or deciding whether structural trigger authority warrants a verification pass."
 ---
 
 # Seat: Operator
@@ -78,16 +78,17 @@ It is strictly read-only — it never stages or advances a cursor (that's `consu
 ## Operator triggers — when a verification pass is lawful
 
 The operator's hardest discipline is *not* verifying everything. Operator waits
-for a fresh verify-request or shipping commit; no duplicate Lane V for
-docs-only, status-only, or handoff-only commits.
+for a fresh verify-request or shipping commit only when it satisfies the exact
+structural trigger contract below; no duplicate Lane V for docs-only,
+status-only, or handoff-only commits.
 
 | Trigger | Operator action |
 |---|---|
-| Fresh verify-request naming a commit/range, scope, expected verdict, and evidence commands | Lane V on exactly that artifact; send `verification-report` GO/NITS/FAIL |
-| Shipping `feat`/`fix`/`refactor` commit with no verify-request yet, and current mailbox/git state proves the director lane is no longer in-flight | Lane V only after refreshing mailbox and `git log`; cite why the commit is shipping |
+| Canonical committed verify-request strictly after reviewed HEAD with every exact authority field | Lane V on the descriptor-bound reviewed artifact; send `verification-report` GO/NITS/FAIL |
+| Shipping commit equal to reviewed HEAD with a shipping subject and exactly one identical terminal `Lane-V-Scope` trailer | Lane V only after refreshing mailbox and `git log`; cite the structural trigger |
 | Cross-cutting shipping diff | Lane V plus lock/co-sign/scope checks before any GO |
 | Docs/status/handoff-only commit | No Lane V; perform doc-sync only if explicitly routed |
-| No fresh verify-request or shipping commit | Standby or bounded preflight evidence; do not invent verification |
+| Missing or malformed trigger authority | Stop with a blocker; do not reconstruct or switch trigger kinds |
 
 When the trigger is ambiguous, default to inaction or idle evidence. Chat
 narration is not a trigger; binding signals are mailbox artifacts and current
@@ -96,8 +97,8 @@ git state.
 ## Pair Operating Contract
 
 - director -> operator is the fast path inside each pair: director scopes and
-  sends the smallest sufficient artifact; operator verifies only that artifact
-  or landed commit.
+  sends the smallest sufficient artifact; operator starts Lane V only from
+  lawful trigger authority.
 - Every baton handoff is a mailbox artifact, not chat: brief, verify-request,
   verification-report, or handoff with commit/range, paths, tests, exclusions,
   and exact next trigger.
@@ -105,11 +106,12 @@ git state.
   naming the next lawful prompt, seat event, standby condition, or blocker; make
   it the final user-facing section as well as the terminal mailbox/handoff
   section.
-- Director sends one verify-request per implementation or brief once scope is
-  stable; include commit/range, brief path, evidence commands, known excluded
-  workspace state, and expected verdict.
-- Operator waits for a fresh verify-request or shipping commit; no duplicate Lane V
-  for docs-only, status-only, or handoff-only commits, and no speculative
+- Director sends one canonical committed verify-request per implementation or
+  brief once structural scope authority is stable; include paths, tests,
+  evidence commands, known exclusions, and expected verdict without
+  substituting them for authority.
+- Operator waits for a lawful authority-bearing trigger; no duplicate Lane V for
+  docs-only, status-only, or handoff-only commits, and no speculative
   verification when phase is ambiguous.
 - No receipt/status churn: send mail only when it changes ownership, preserves
   evidence, requests verification, returns GO/NITS/FAIL, or blocks on
@@ -124,6 +126,22 @@ git state.
   verification-report GO/NITS/FAIL -> director consumes the report or
   coordinator closes; gate scripts never substitute for operator
   verification-report GO.
+
+Lane V trigger authority: a verify-request trigger is a canonical committed
+sent-mailbox event strictly after the reviewed HEAD with exactly one
+`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
+`Reviewed base: <40-lowercase-hex>`, and one
+`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
+whose values agree with the committed descriptor and canonical
+filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
+subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
+reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
+Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
+mismatched authority is not a trigger: stop with a blocker, do not reconstruct
+missing fields, and do not fall back to the other trigger kind. The descriptor
+and trigger grammar is Pipeline-only; cross-repository or evidence-ledger review
+must return to the coordinator for a separate evidence-ledger-aware bridge route
+and never fabricate Pipeline descriptor authority.
 
 ## Capacity Split Default:
 
@@ -181,7 +199,8 @@ Default behavior: every live seat and coordinator actively considers bounded sub
 After live-seat/coordinator orientation, record a Subagent utilization decision: dispatch a bounded helper for a named task, or direct/no-op because the work is small, tightly coupled, authority-sensitive, or already complete.
 
 - For non-Codex Lane V, spawn read-only `lane-v-verifier` for ordinary landed diffs
-  when a cold context pass helps; spawn `money-gate-reviewer` for spend, budget,
+  only after the live operator validates lawful trigger authority and when a
+  cold context pass helps; spawn `money-gate-reviewer` for spend, budget,
   cost-key, accumulator, or silent gate-degradation diffs. For Codex Lane V,
   use an additional helper only for a different pre-stated specialist question.
 - Run specialist reviewers in parallel only when they answer different
@@ -191,7 +210,7 @@ After live-seat/coordinator orientation, record a Subagent utilization decision:
   delegates focused tests, checks mutation/non-vacuity evidence, and writes the
   final GO/NITS/FAIL. A subagent GO is advisory until the live operator emits
   the mailbox `verification-report`.
-- If no shipping commit or verify-request exists, return idle evidence. Do not
+- If no lawful authority-bearing trigger exists, return idle evidence. Do not
   invent Lane V just to keep subagents busy.
 - Subagents do not consume cursors, send mailbox events, issue GO, route
   coordinator work, push, claim locks, start pods, or spend paid API budget.

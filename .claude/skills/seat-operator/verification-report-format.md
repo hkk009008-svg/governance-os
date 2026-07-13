@@ -18,9 +18,25 @@ EOF
 ```
 
 `send-event` writes the H1 header, the `**When:** … · **From:** …` envelope,
-and the `Cursor at send:` footer automatically. The **kind lives in the
-filename only** (`…-<from>-to-<to>-verification-report.md`); there is no in-body
-kind field in protocol v6.0.
+and the `Cursor at send:` footer automatically. For a `verification-report`,
+the kind is carried by `…-<from>-to-<to>-verification-report.md`; the separate
+verify-request trigger contract below additionally requires its exact in-body
+`Event type: verify-request` authority field.
+
+## Lane V trigger authority
+
+A verify-request trigger is a canonical committed sent-mailbox event strictly
+after the reviewed HEAD with exactly one `Event type: verify-request`, one
+`Reviewed head: <40-lowercase-hex>`, one
+`Reviewed base: <40-lowercase-hex>`, and one
+`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
+whose values agree with the committed descriptor and canonical
+filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
+subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
+reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
+Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
+mismatched authority is not a trigger: stop with a blocker, do not reconstruct
+missing fields, and do not fall back to the other trigger kind.
 
 ## Body skeleton
 
@@ -75,6 +91,10 @@ repeat requirements, allowed paths, or verification commands:
 env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
   --repo-root . --head "$HEAD" --base "$BASE" --review-profile codex-lane-v \
   --shipping-commit "$HEAD"
+env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
+  --repo-root . --head "$HEAD" --base "$BASE" --review-profile codex-lane-v \
+  --verify-request-commit "$TRIGGER_COMMIT" \
+  --verify-request-path "$TRIGGER_PATH"
 env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py reconcile \
   --repo-root . --receipt-id "$RECEIPT_ID" --head "$HEAD" --base "$BASE" \
   --codex-verdict GO

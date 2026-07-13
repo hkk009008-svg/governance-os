@@ -50,6 +50,9 @@ machine token everywhere: **`pass` | `issues` | `unable_to_verify`**.
 - The Evidence-preamble git calls below (`rev-parse` / `status --short` / `show` /
   `diff A..B` / `cat-file -e`) are all read-only and obey this same prefix; they
   introduce no state-changing git.
+- For Lane V, a named commit or prose-only event is not trigger authority.
+  Validate only parent-supplied structural authority; never invent trigger
+  authority or reconstruct missing fields.
 
 ## RESULT SCHEMA (emit verbatim as the LAST thing in your reply)
 
@@ -117,7 +120,9 @@ defects against an unverified tree, and do NOT run the independent pass.
    "files inspected via `git show <SHA>:…` — provenance = reviewed commit".
 5. **Commit trailer (W4)** — `env -u GIT_INDEX_FILE git show -s --format=%(trailers) <SHA>` →
    record the literal trailer block into `commit_trailer.observed`; `expected` is the
-   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` line (the only sanctioned trailer).
+   standard `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` line. A
+   parent-authorized shipping commit may also carry the exact `Lane-V-Scope`
+   trailer; the reviewer never creates it.
    **Absent ≠ unreadable**: a missing trailer is `present:false`; an unreadable commit is U5.
 6. **Tests** — run exactly the dispatch's mandated `… pytest … -q`; paste the LITERAL summary
    line (`N passed[, M failed][, K skipped][, J xfailed]`) and the pytest EXIT CODE. Any
@@ -212,7 +217,8 @@ In addition to standard concerns, check:
 - <task-specific concern 2> (e.g., public API stability if refactor)
 - defects beyond the listed concerns: do one independent pass and report any you find (or none).
 - Commit trailer: the `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` line is present
-  and well-formed (the only sanctioned trailer).
+  and well-formed. A parent-authorized shipping commit may also carry its exact
+  `Lane-V-Scope` trailer; the reviewer never creates it.
 
 Report: Strengths, Issues (Critical / Important / Minor), Assessment.
 If verification could not run (U1–U5), report Assessment = unable_to_verify with the failing

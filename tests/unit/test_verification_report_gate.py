@@ -456,11 +456,36 @@ def _authority_fixture(
     return root, fields, report_path, head, base
 
 
+def _structural_report(
+    fields: list[tuple[str, str]], report_path: str
+) -> gate.LaneVReport:
+    sender = "operator2" if "-operator2-to-" in report_path else "operator"
+    head = dict(fields)["Reviewed head"]
+    return gate.parse_lane_v_report(
+        report_path,
+        _report_bytes(
+            fields,
+            head=head,
+            h1_sender=sender.capitalize(),
+            envelope_sender=sender,
+        ),
+    )
+
+
+def _validate_structural_fixture(
+    root: Path, fields: list[tuple[str, str]], report_path: str
+) -> gate.StructuralAuthority:
+    return gate.validate_structural_authority(
+        root, _structural_report(fields, report_path)
+    )
+
+
 @pytest.mark.parametrize(
     ("mode", "trigger_kind", "recipient"),
     [
         ("codex-lane-v", "shipping-commit", "operator"),
-        ("codex-lane-v", "shipping-commit", "operator2"),
+        ("codex-lane-v", "verify-request", "operator"),
+        ("claude-lane-v", "shipping-commit", "operator2"),
         ("claude-lane-v", "verify-request", "operator2"),
     ],
 )
@@ -490,6 +515,187 @@ def test_structural_authority_accepts_committed_shipping_and_verify_request(
     assert authority.verify_request_recipient == (
         recipient if trigger_kind == "verify-request" else None
     )
+
+
+@pytest.mark.parametrize("mode", ("codex-lane-v", "claude-lane-v"))
+@pytest.mark.parametrize(
+    "malformation",
+    (
+        "missing-field",
+        "duplicate-field",
+        "short-sha",
+        "uppercase-sha",
+        "stale-commit",
+        "uncommitted-event",
+        "misplaced-event",
+        "mismatched-scope",
+    ),
+)
+def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
+    tmp_path: Path, mode: str, malformation: str
+) -> None:
+    recipient = "operator" if mode == "codex-lane-v" else "operator2"
+    root, lawful_fields, report_path, head, base = _authority_fixture(
+        tmp_path / "repo",
+        mode=mode,
+        trigger_kind="verify-request",
+        recipient=recipient,
+    )
+    values = dict(lawful_fields)
+    _, trigger_commit, trigger_path = values["Trigger identity"].split(":", 2)
+    malformed_fields = lawful_fields
+
+    if malformation in {
+        "missing-field",
+        "duplicate-field",
+        "short-sha",
+        "uppercase-sha",
+        "mismatched-scope",
+    }:
+        event_path = root / trigger_path
+        event_text = event_path.read_text(encoding="utf-8")
+        if malformation == "missing-field":
+            event_text = event_text.replace(
+                f"Lane-V-Scope: {values['Scope authority']}\n", ""
+            )
+        elif malformation == "duplicate-field":
+            event_text = event_text.replace(
+                "Event type: verify-request\n",
+                "Event type: verify-request\nEvent type: verify-request\n",
+            )
+        elif malformation == "short-sha":
+            event_text = event_text.replace(
+                f"Reviewed head: {head}", f"Reviewed head: {head[:12]}"
+            )
+        elif malformation == "uppercase-sha":
+            event_text = event_text.replace(
+                f"Reviewed base: {base}", f"Reviewed base: {base.upper()}"
+            )
+        else:
+            event_text = event_text.replace(
+                f"Lane-V-Scope: {values['Scope authority']}",
+                f"Lane-V-Scope: {DESCRIPTOR_PATH}@sha256:{'0' * 64}",
+            )
+        event_path.write_text(event_text, encoding="utf-8")
+        _git(root, "add", trigger_path)
+        _git(root, "commit", "--amend", "-q", "-m", "coord: request verification")
+        malformed_commit = _git(root, "rev-parse", "HEAD")
+        malformed_fields = _replace_field(
+            lawful_fields,
+            "Trigger identity",
+            f"verify-request:{malformed_commit}:{trigger_path}",
+        )
+    elif malformation == "stale-commit":
+        malformed_fields = _replace_field(
+            lawful_fields,
+            "Trigger identity",
+            f"verify-request:{head}:{trigger_path}",
+        )
+    elif malformation == "uncommitted-event":
+        uncommitted_path = trigger_path.replace("05-01-00Z", "05-02-00Z")
+        (root / uncommitted_path).write_text(
+            (root / trigger_path).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        malformed_fields = _replace_field(
+            lawful_fields,
+            "Trigger identity",
+            f"verify-request:{trigger_commit}:{uncommitted_path}",
+        )
+    else:
+        misplaced_path = trigger_path.replace(
+            "coordination/mailbox/sent/", "coordination/mailbox/drafts/"
+        )
+        malformed_fields = _replace_field(
+            lawful_fields,
+            "Trigger identity",
+            f"verify-request:{trigger_commit}:{misplaced_path}",
+        )
+
+    with pytest.raises(gate.ReportGateError):
+        _validate_structural_fixture(root, malformed_fields, report_path)
+
+    lawful = _validate_structural_fixture(root, lawful_fields, report_path)
+    assert lawful.trigger_kind == "verify-request"
+    assert lawful.trigger_commit == trigger_commit
+
+
+@pytest.mark.parametrize("mode", ("codex-lane-v", "claude-lane-v"))
+@pytest.mark.parametrize(
+    "malformation",
+    (
+        "missing-trailer",
+        "duplicate-trailer",
+        "body-only",
+        "non-terminal",
+        "mismatched-trailer",
+        "non-shipping-subject",
+        "stale-commit",
+    ),
+)
+def test_shipping_authority_rejections_flip_to_one_lawful_trigger(
+    tmp_path: Path, mode: str, malformation: str
+) -> None:
+    recipient = "operator" if mode == "codex-lane-v" else "operator2"
+    root, lawful_fields, report_path, head, base = _authority_fixture(
+        tmp_path / "repo",
+        mode=mode,
+        trigger_kind="shipping-commit",
+        recipient=recipient,
+    )
+    scope_authority = dict(lawful_fields)["Scope authority"]
+    malformed_fields = lawful_fields
+
+    if malformation == "stale-commit":
+        malformed_fields = _replace_field(
+            lawful_fields, "Trigger identity", f"shipping-commit:{base}"
+        )
+    else:
+        subject = (
+            "docs: reviewed change"
+            if malformation == "non-shipping-subject"
+            else "feat: reviewed change"
+        )
+        amend_args = ["commit", "--amend", "-q", "-m", subject]
+        if malformation == "duplicate-trailer":
+            amend_args.extend(
+                ("-m", f"Lane-V-Scope: {scope_authority}\nLane-V-Scope: {scope_authority}")
+            )
+        elif malformation == "body-only":
+            amend_args.extend(
+                ("-m", f"Authority context\nLane-V-Scope: {scope_authority}")
+            )
+        elif malformation == "non-terminal":
+            amend_args.extend(
+                (
+                    "-m",
+                    f"Lane-V-Scope: {scope_authority}",
+                    "-m",
+                    "Context after the authority line",
+                )
+            )
+        elif malformation == "mismatched-trailer":
+            amend_args.extend(
+                ("-m", f"Lane-V-Scope: {DESCRIPTOR_PATH}@sha256:{'0' * 64}")
+            )
+        elif malformation == "non-shipping-subject":
+            amend_args.extend(("-m", f"Lane-V-Scope: {scope_authority}"))
+        _git(root, *amend_args)
+        malformed_head = _git(root, "rev-parse", "HEAD")
+        malformed_fields = _replace_field(
+            malformed_fields, "Reviewed head", malformed_head
+        )
+        malformed_fields = _replace_field(
+            malformed_fields,
+            "Trigger identity",
+            f"shipping-commit:{malformed_head}",
+        )
+
+    with pytest.raises(gate.ReportGateError):
+        _validate_structural_fixture(root, malformed_fields, report_path)
+
+    lawful = _validate_structural_fixture(root, lawful_fields, report_path)
+    assert lawful.trigger_kind == "shipping-commit"
+    assert lawful.trigger_commit == head
 
 
 @pytest.mark.parametrize(

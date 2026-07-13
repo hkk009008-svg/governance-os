@@ -263,8 +263,8 @@ Side-Effect Executor Token:
 ## Pair Operating Contract
 
 - director -> operator is the fast path inside each pair: director scopes and
-  sends the smallest sufficient artifact; operator verifies only that artifact
-  or landed commit.
+  sends the smallest sufficient artifact; operator starts Lane V only from
+  lawful trigger authority.
 - Every baton handoff is a mailbox artifact, not chat: brief, verify-request,
   verification-report, or handoff with commit/range, paths, tests, exclusions,
   and exact next trigger.
@@ -272,12 +272,13 @@ Side-Effect Executor Token:
   naming the next lawful prompt, seat event, standby condition, or blocker —
   the final user-facing section as well as the terminal mailbox/handoff
   section.
-- Director sends one verify-request per implementation or brief once scope is
-  stable; include commit/range, brief path, evidence commands, known excluded
-  workspace state, and expected verdict.
-- Operator waits for a fresh verify-request or shipping commit; no duplicate
-  Lane V for docs-only, status-only, or handoff-only commits, and no
-  speculative verification when phase is ambiguous.
+- Director sends one canonical committed verify-request per implementation or
+  brief once structural scope authority is stable; include paths, tests,
+  evidence commands, known exclusions, and expected verdict without
+  substituting them for authority.
+- Operator waits for a lawful authority-bearing trigger; no duplicate Lane V
+  for docs-only, status-only, or handoff-only commits, and no speculative
+  verification when phase is ambiguous.
 - No receipt/status churn: send mail only when it changes ownership, preserves
   evidence, requests verification, returns GO/NITS/FAIL, or blocks on
   user-gated side effects.
@@ -291,6 +292,22 @@ Side-Effect Executor Token:
   verification-report GO/NITS/FAIL -> director consumes the report or
   coordinator closes; gate scripts never substitute for operator
   verification-report GO.
+
+Lane V trigger authority: a verify-request trigger is a canonical committed
+sent-mailbox event strictly after the reviewed HEAD with exactly one
+`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
+`Reviewed base: <40-lowercase-hex>`, and one
+`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
+whose values agree with the committed descriptor and canonical
+filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
+subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
+reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
+Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
+mismatched authority is not a trigger: stop with a blocker, do not reconstruct
+missing fields, and do not fall back to the other trigger kind. The descriptor
+and trigger grammar is Pipeline-only; cross-repository or evidence-ledger review
+must return to the coordinator for a separate evidence-ledger-aware bridge route
+and never fabricate Pipeline descriptor authority.
 
 ## Capacity Split Default
 

@@ -31,6 +31,37 @@ def _compact(text: str) -> str:
     return " ".join(text.split())
 
 
+def _trigger_contract_text(path: str) -> str:
+    return _compact(_read(path).replace("`", ""))
+
+
+VERIFY_REQUEST_TRIGGER_FRAGMENTS = (
+    "canonical committed sent-mailbox event",
+    "strictly after the reviewed HEAD",
+    "Event type: verify-request",
+    "Reviewed head: <40-lowercase-hex>",
+    "Reviewed base: <40-lowercase-hex>",
+    (
+        "Lane-V-Scope: coordination/verification/scopes/"
+        "<uuid>.json@sha256:<64-lowercase-hex>"
+    ),
+)
+SHIPPING_TRIGGER_FRAGMENTS = (
+    "shipping trigger commit equals the reviewed HEAD",
+    "subject begins feat, fix, or refactor",
+    "exactly one identical descriptor reference in the terminal Git trailer block",
+)
+INVALID_TRIGGER_FRAGMENTS = (
+    (
+        "Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, "
+        "stale, or mismatched authority is not a trigger"
+    ),
+    "stop with a blocker",
+    "do not reconstruct missing fields",
+    "do not fall back to the other trigger kind",
+)
+
+
 def _acceptance_backed_default(text: str | None = None) -> str:
     if text is None:
         text = _read("logs/chatgpt-pro-consultation-acceptance-2026-07-13.md")
@@ -1331,7 +1362,177 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
     assert "verification_report_gate" not in hooks
 
 
-def test_task7_scope_covers_the_exact_protocol_rules_log() -> None:
+def test_lane_v_trigger_producer_contract_is_surface_synced() -> None:
+    producer_paths = (
+        "AGENTS.md",
+        "RUNBOOK-DAILY.md",
+        "coordination/README.md",
+        "docs/PROGRAM-MANUAL.md",
+        "scripts/codex_protocol_model.py",
+        "docs/protocol/agents/director-operator.md",
+        "docs/protocol/claude/director-operator.md",
+        "docs/protocol/claude/continuation.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".claude/skills/seat-director/SKILL.md",
+        ".codex/agents/protocol-director.toml",
+    )
+
+    for path in producer_paths:
+        text = _trigger_contract_text(path)
+        for fragment in (
+            *VERIFY_REQUEST_TRIGGER_FRAGMENTS,
+            *SHIPPING_TRIGGER_FRAGMENTS,
+            *INVALID_TRIGGER_FRAGMENTS,
+        ):
+            assert fragment in text, (path, fragment)
+
+
+def test_lane_v_trigger_consumer_contract_is_surface_synced() -> None:
+    consumer_paths = (
+        "AGENTS.md",
+        "RUNBOOK-DAILY.md",
+        "docs/PROGRAM-MANUAL.md",
+        "scripts/codex_protocol_model.py",
+        "docs/protocol/agents/director-operator.md",
+        "docs/protocol/claude/director-operator.md",
+        "docs/protocol/claude/continuation.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".claude/skills/seat-operator/SKILL.md",
+        ".codex/agents/protocol-operator.toml",
+        ".codex/agents/lane-v-verifier.toml",
+        ".claude/agents/lane-v-verifier.md",
+        ".agents/skills/seat-operator/verification-report-format.md",
+        ".claude/skills/seat-operator/verification-report-format.md",
+    )
+
+    for path in consumer_paths:
+        text = _trigger_contract_text(path)
+        for fragment in (
+            *VERIFY_REQUEST_TRIGGER_FRAGMENTS,
+            *SHIPPING_TRIGGER_FRAGMENTS,
+            *INVALID_TRIGGER_FRAGMENTS,
+        ):
+            assert fragment in text, (path, fragment)
+
+
+def test_lane_v_active_surfaces_remove_commit_only_and_prose_only_substitutes() -> None:
+    rendered_pair = model.render_pair_operating_contract()
+    rendered_cross_model = model.render_cross_model_verification()
+    stale_model_phrases = (
+        "operator verifies only that artifact or landed commit",
+        "include commit/range, brief path",
+        "Operator waits for a fresh verify-request or shipping commit",
+    )
+    for phrase in stale_model_phrases:
+        assert phrase not in rendered_pair
+        assert phrase not in rendered_cross_model
+
+    active_paths = (
+        "AGENTS.md",
+        "RUNBOOK-DAILY.md",
+        "coordination/README.md",
+        "docs/PROGRAM-MANUAL.md",
+        "docs/protocol/agents/director-operator.md",
+        "docs/protocol/claude/director-operator.md",
+        "docs/protocol/claude/continuation.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".claude/skills/seat-director/SKILL.md",
+        ".claude/skills/seat-operator/SKILL.md",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-operator.toml",
+        ".codex/agents/lane-v-verifier.toml",
+        ".claude/agents/lane-v-verifier.md",
+    )
+    stale_surface_phrases = (
+        "send one verify-request to operator with commit/range, tests, and exclusions",
+        "verify only the named verify-request or shipping commit/range",
+        "Fresh verify-request naming a commit/range, scope",
+    )
+    for path in active_paths:
+        text = _trigger_contract_text(path)
+        for phrase in stale_surface_phrases:
+            assert phrase not in text, (path, phrase)
+
+    for path in (
+        "docs/templates/agents/reviewer.md",
+        "docs/templates/claude/reviewer.md",
+    ):
+        assert "the only sanctioned trailer" not in _read(path), path
+
+
+def test_implementer_and_reviewer_templates_never_invent_trigger_authority() -> None:
+    implementer_paths = (
+        "docs/templates/agents/implementer.md",
+        "docs/templates/claude/implementer.md",
+    )
+    reviewer_paths = (
+        "docs/templates/agents/reviewer.md",
+        "docs/templates/claude/reviewer.md",
+    )
+    conditional_rule = (
+        "emit a shipping Lane-V-Scope trailer only when the parent explicitly "
+        "authorizes that commit and supplies the exact descriptor reference"
+    )
+    for path in implementer_paths:
+        text = _trigger_contract_text(path)
+        assert conditional_rule in text, path
+        assert "never invent trigger authority" in text, path
+
+    for path in reviewer_paths:
+        text = _trigger_contract_text(path)
+        assert "a named commit or prose-only event is not trigger authority" in text, path
+        assert "never invent trigger authority" in text, path
+
+
+def test_lane_v_trigger_guidance_pins_bridge_forms_and_pipeline_boundary() -> None:
+    bridge_paths = (
+        ".codex/agents/lane-v-verifier.toml",
+        ".claude/agents/lane-v-verifier.md",
+        ".agents/skills/seat-operator/verification-report-format.md",
+        ".claude/skills/seat-operator/verification-report-format.md",
+    )
+    for path in bridge_paths:
+        text = _read(path)
+        assert '--shipping-commit "$HEAD"' in text, path
+        assert '--verify-request-commit "$TRIGGER_COMMIT"' in text, path
+        assert '--verify-request-path "$TRIGGER_PATH"' in text, path
+
+    pipeline_boundary_paths = (
+        "scripts/codex_protocol_model.py",
+        "docs/protocol/agents/director-operator.md",
+        "docs/protocol/claude/director-operator.md",
+        "docs/protocol/claude/continuation.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".claude/skills/seat-operator/SKILL.md",
+        ".codex/agents/protocol-operator.toml",
+        ".codex/agents/lane-v-verifier.toml",
+        ".claude/agents/lane-v-verifier.md",
+    )
+    for path in pipeline_boundary_paths:
+        text = _trigger_contract_text(path)
+        for fragment in (
+            "descriptor and trigger grammar is Pipeline-only",
+            "return to the coordinator",
+            "separate evidence-ledger-aware bridge route",
+            "never fabricate Pipeline descriptor authority",
+        ):
+            assert fragment in text, (path, fragment)
+
+    agent_report = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
+    claude_report = ROOT / ".claude/skills/seat-operator/verification-report-format.md"
+    assert agent_report.read_bytes() == claude_report.read_bytes()
+
+
+def test_task8_scope_covers_the_exact_trigger_authority_generation() -> None:
     descriptor_path = (
         "coordination/verification/scopes/"
         "2a876e95-3a87-4203-a613-1a29dd957b5b.json"
@@ -1339,10 +1540,55 @@ def test_task7_scope_covers_the_exact_protocol_rules_log() -> None:
     descriptor_raw = (ROOT / descriptor_path).read_bytes()
     descriptor = json.loads(descriptor_raw)
     old_digest = "74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe"
-    current_digest = "c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93"
+    task7_digest = "c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93"
+    current_digest = "e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84"
 
-    assert "docs/PROTOCOL-RULES-LOG.md" in descriptor["allowed_path_roots"]
-    assert "docs" not in descriptor["allowed_path_roots"]
+    expected_roots = (
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-operator",
+        ".claude/agents/lane-v-verifier.md",
+        ".claude/skills/seat-director/SKILL.md",
+        ".claude/skills/seat-operator",
+        ".codex/agents",
+        ".github/workflows/ci.yml",
+        ".gitignore",
+        "AGENTS.md",
+        "ARCHITECTURE.md",
+        "DECISIONS.md",
+        "RUNBOOK-DAILY.md",
+        "coordination/README.md",
+        "coordination/bin/send-event",
+        "coordination/verification/scopes",
+        "docs/PROGRAM-MANUAL.md",
+        "docs/PROTOCOL-RULES-LOG.md",
+        "docs/protocol",
+        "docs/superpowers/plans",
+        "docs/superpowers/specs",
+        "docs/templates/agents/implementer.md",
+        "docs/templates/agents/reviewer.md",
+        "docs/templates/claude/implementer.md",
+        "docs/templates/claude/reviewer.md",
+        "scripts",
+        "tests/unit",
+    )
+    expected_focused_command = (
+        "env -u GIT_INDEX_FILE .venv/bin/python -m pytest "
+        "tests/unit/test_opus_review_receipts.py "
+        "tests/unit/test_opus_review_bridge.py "
+        "tests/unit/test_check_go_schema.py "
+        "tests/unit/test_verification_report_gate.py "
+        "tests/unit/test_coordination_tooling.py "
+        "tests/unit/test_protocol_prompt_sync.py "
+        "tests/unit/test_protocol_capacity.py "
+        "tests/unit/test_protocol_doc_integrity.py -q"
+    )
+
+    assert descriptor["allowed_path_roots"] == list(expected_roots)
+    assert descriptor["allowed_path_roots"] == sorted(descriptor["allowed_path_roots"])
+    assert descriptor["verification_commands"][0] == expected_focused_command
+    for broad_substitute in (".agents/skills", ".claude/agents", ".claude/skills", "docs"):
+        assert broad_substitute not in descriptor["allowed_path_roots"]
     assert hashlib.sha256(descriptor_raw).hexdigest() == current_digest
 
     plan = _read(
@@ -1358,16 +1604,17 @@ def test_task7_scope_covers_the_exact_protocol_rules_log() -> None:
         f"`sha256:{old_digest}`" in compact_plan
     )
     assert (
-        "Task 7 and the final unchanged-HEAD Lane V review use the amended "
-        f"`sha256:{current_digest}`" in compact_plan
+        "Task 7 and the post-Task-7 test-only integration correction remain "
+        f"historically bound to the amended `sha256:{task7_digest}` generation"
+        in compact_plan
     )
     assert (
         f"Prep 5B and committed Task 6 remain historically bound to `{old_digest}`"
         in compact_design
     )
     assert (
-        "Task 7 and final unchanged-HEAD Lane V use the amended digest "
-        f"`{current_digest}`" in compact_design
+        "Task 7 and its post-task test-only correction use the amended digest "
+        f"`{task7_digest}`" in compact_design
     )
 
     task7 = plan.split("### Task 7:", 1)[1].split(
@@ -1380,9 +1627,30 @@ def test_task7_scope_covers_the_exact_protocol_rules_log() -> None:
     mistyped_prior_design = correct_prior_design.replace("/specs/", "/plans/")
     assert f"- Modify: `{descriptor_path}`" in task7
     assert descriptor_path in task7
-    assert f"@sha256:{current_digest}" in task7
+    assert f"@sha256:{task7_digest}" in task7
     assert correct_prior_design in task7
     assert mistyped_prior_design not in task7
+
+    task8 = plan.split("### Task 8:", 1)[1].split(
+        "## Final Integration And Verification", 1
+    )[0]
+    expected_additions = (
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".claude/agents/lane-v-verifier.md",
+        ".claude/skills/seat-director/SKILL.md",
+        "AGENTS.md",
+        "RUNBOOK-DAILY.md",
+        "coordination/README.md",
+        "docs/PROGRAM-MANUAL.md",
+        "docs/templates/agents/implementer.md",
+        "docs/templates/agents/reviewer.md",
+        "docs/templates/claude/implementer.md",
+        "docs/templates/claude/reviewer.md",
+    )
+    for path in expected_additions:
+        assert path in task8
+    assert f"@sha256:{current_digest}" in task8
 
     final = plan.split("## Final Integration And Verification", 1)[1]
     assert f"Expected descriptor digest: `{current_digest}`" in final

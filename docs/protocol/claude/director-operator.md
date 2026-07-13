@@ -1639,18 +1639,34 @@ The handoff doc is how the next instance of either role learns:
 
 ## Operator trigger taxonomy
 
-Operator waits for a fresh verify-request or shipping commit. The current rule
-is artifact-first: chat narration is not a protocol trigger, docs/status/handoff
-commits do not create duplicate Lane V, and ambiguous work defaults to standby
-or bounded preflight evidence.
+Lane V trigger authority: a verify-request trigger is a canonical committed
+sent-mailbox event strictly after the reviewed HEAD with exactly one
+`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
+`Reviewed base: <40-lowercase-hex>`, and one
+`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
+whose values agree with the committed descriptor and canonical
+filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
+subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
+reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
+Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
+mismatched authority is not a trigger: stop with a blocker, do not reconstruct
+missing fields, and do not fall back to the other trigger kind. The descriptor
+and trigger grammar is Pipeline-only; cross-repository or evidence-ledger review
+must return to the coordinator for a separate evidence-ledger-aware bridge route
+and never fabricate Pipeline descriptor authority.
+
+Operator waits for a fresh verify-request or shipping commit only when it
+satisfies the lawful structural trigger contract above. Chat narration, a named
+SHA, and docs/status/handoff commits are not protocol triggers; ambiguous or
+malformed authority defaults to a blocker or bounded preflight evidence.
 
 | Trigger | Operator action | Stop condition |
 |---|---|---|
-| Fresh verify-request naming a commit/range, scope, expected verdict, and evidence commands | Lane V on exactly the named artifact | Send mailbox `verification-report` GO/NITS/FAIL |
-| Shipping `feat`/`fix`/`refactor` commit with no verify-request yet, after current mailbox/git state proves the director lane is no longer in-flight | Lane V only for that shipping diff | Send `verification-report` and cite why the target is shipping |
+| Canonical committed verify-request strictly after reviewed HEAD with every exact authority field | Lane V on the descriptor-bound reviewed artifact | Send mailbox `verification-report` GO/NITS/FAIL |
+| Shipping commit equal to reviewed HEAD with a shipping subject and exactly one identical terminal `Lane-V-Scope` trailer | Lane V only for that descriptor-bound shipping diff | Send `verification-report` and cite the structural trigger |
 | Cross-cutting shipping diff | Lane V plus lock/co-sign/scope checks | GO only if the diff matches the co-signed scope |
 | Docs/status/handoff-only commit | No Lane V; doc-sync only when routed | Standby or send the routed doc-sync artifact |
-| No fresh verify-request or shipping commit | Standby or bounded preflight evidence | No receipt/status churn |
+| Missing or malformed trigger authority | No Lane V | Block; never reconstruct or switch trigger kinds |
 
 If the trigger is ambiguous, do not speculate. Refresh mailbox and git, then
 stand by unless a fresh artifact creates ownership.

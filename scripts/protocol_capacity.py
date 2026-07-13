@@ -660,7 +660,7 @@ def _actor_action(owner: str, wave: int, packet: Packet | None) -> dict[str, Any
             "startup": startup,
             "packet": "-",
             "dependencies": "-",
-            "next_action": "standby until a fresh coordinator route, verify-request, or user prompt assigns work",
+            "next_action": "standby until a fresh coordinator route, lawful authority-bearing trigger, or user prompt assigns work",
             "stop_condition": "do not send receipt/status mail unless ownership, evidence, or blockers change",
         }
 
@@ -695,7 +695,7 @@ def _packet_action_text(owner: str, packet: Packet) -> tuple[str, str]:
     if packet.packet_type == "director-implementation":
         return (
             "implement the named scope inside allowed paths",
-            "send one verify-request to operator with commit/range, tests, and exclusions",
+            "send one canonical committed verify-request strictly after reviewed HEAD with exactly one Event type: verify-request, one full lowercase Reviewed head, one full lowercase Reviewed base, and one canonical Lane-V-Scope descriptor reference; include tests and exclusions without substituting them for authority",
         )
     if packet.packet_type in {"director-brief", "director-cosign", "director-preflight"}:
         return (
@@ -704,8 +704,8 @@ def _packet_action_text(owner: str, packet: Packet) -> tuple[str, str]:
         )
     if packet.packet_type == "operator-verification":
         return (
-            "verify only the named verify-request or shipping commit/range",
-            "send verification-report GO/NITS/FAIL; do not author production fixes by default",
+            "verify only a lawful trigger: that canonical verify-request or a shipping commit equal to reviewed HEAD with a feat/fix/refactor subject and one identical Lane-V-Scope reference in the terminal Git trailer block",
+            "send verification-report GO/NITS/FAIL; never reconstruct missing trigger fields or fall back; do not author production fixes by default",
         )
     if packet.packet_type in {"operator-doc-sync", "operator-preflight"}:
         return (
@@ -727,7 +727,7 @@ def _blocked_stop_condition(owner: str, packet: Packet) -> str:
     if packet.packet_type in {"director-brief", "director-cosign", "director-preflight"}:
         return "report bounded planning/preflight evidence to coordinator; no production fix or GO"
     if packet.packet_type in {"operator-verification", "operator-doc-sync", "operator-preflight"}:
-        return "wait for verify-request/dependency or report FAIL/NITS with evidence"
+        return "wait for a lawful authority-bearing trigger/dependency or report FAIL/NITS with evidence; never reconstruct missing trigger fields or fall back"
     if owner == "coordinator":
         return "route blocker or no-op with exact next trigger; no production fix"
     return "preserve blocker evidence and await the named dependency"

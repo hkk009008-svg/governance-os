@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -186,6 +187,54 @@ def test_capacity_board_renders_next_lawful_action_per_actor(tmp_path: Path):
     assert "packet: director2-capacity-split-work (director-preflight, blocked)" in rendered
     assert "deps: -" in rendered
     assert "stop: report bounded planning/preflight evidence to coordinator; no production fix or GO" in rendered
+
+
+def test_capacity_actions_require_structural_lane_v_trigger_authority(tmp_path: Path):
+    _write_capacity_split_cycle(tmp_path)
+    report = protocol_capacity.collect_capacity_report(tmp_path, 2)
+    packets = {packet.owner: packet for packet in report.packets}
+
+    director_next, director_stop = protocol_capacity._packet_action_text(
+        "director", packets["director"]
+    )
+    operator_next, operator_stop = protocol_capacity._packet_action_text(
+        "operator", replace(packets["operator"], status="active")
+    )
+    _, blocked_operator_stop = protocol_capacity._packet_action_text(
+        "operator", packets["operator"]
+    )
+    for fragment in (
+        "canonical committed verify-request strictly after reviewed HEAD",
+        "exactly one Event type: verify-request",
+        "full lowercase Reviewed head",
+        "full lowercase Reviewed base",
+        "canonical Lane-V-Scope descriptor reference",
+    ):
+        assert fragment in director_stop
+
+    for fragment in (
+        "shipping commit equal to reviewed HEAD",
+        "feat/fix/refactor subject",
+        "one identical Lane-V-Scope reference in the terminal Git trailer block",
+    ):
+        assert fragment in operator_next
+
+    for stop_text in (operator_stop, blocked_operator_stop):
+        assert (
+            "never reconstruct missing trigger fields or fall back" in stop_text
+        )
+
+    combined = "\n".join(
+        (
+            director_next,
+            director_stop,
+            operator_next,
+            operator_stop,
+            blocked_operator_stop,
+        )
+    )
+    assert "commit/range, tests, and exclusions" not in combined
+    assert "named verify-request or shipping commit/range" not in combined
 
 
 def test_active_implementation_path_isolation_rejects_parent_child_overlap(

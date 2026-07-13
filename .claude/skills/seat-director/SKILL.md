@@ -9,6 +9,19 @@ description: Use when operating as a per-pair DIRECTOR seat (Pair-A director or 
 
 The per-pair director owns the **strategic layer within its lane**: writes R-BRIEFs, sets priority, decides implementation mode, claims locks, and Tier-A co-signs the other lane. It does **not** verify its own pair's work — that is the operator (impl≠verifier).
 
+Lane V trigger authority: a verify-request trigger is a canonical committed
+sent-mailbox event strictly after the reviewed HEAD with exactly one
+`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
+`Reviewed base: <40-lowercase-hex>`, and one
+`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
+whose values agree with the committed descriptor and canonical
+filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
+subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
+reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
+Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
+mismatched authority is not a trigger: stop with a blocker, do not reconstruct
+missing fields, and do not fall back to the other trigger kind.
+
 **REQUIRED BACKGROUND:** the `four-seat-protocol` skill (authority, locks, lifecycle, co-sign tiers, git sharp edges) and `docs/protocol/claude/continuation.md` (live-kernel adapter: runtime modes, pair contract, capacity split, side-effect tokens). Sources: `docs/protocol/claude/director-operator.md` (Rules #7–#23, R-BRIEF, #12, #13, R-PID); `docs/templates/claude/implementer.md`; `docs/protocol/claude/orchestration.md` (R-ORCH). **R-SKILL:** in Pipeline, protocol/seat work loads the matching `.claude/skills/` skill; work routed to the evidence-ledger target repo loads that repo's own instructions first (ledger bridge in the continuation adapter).
 
 ## Session-start orientation (do this first)
@@ -54,7 +67,10 @@ The brief gates the fix: the co-signer reads it, the implementer obeys it. Autho
 
 ## Close the loop like a director (Pair Operating Contract)
 
-- Once scope is stable, send **one verify-request per implementation or brief** — include commit/range, brief path, evidence commands, known excluded workspace state, and expected verdict. No receipt/status churn.
+- Once scope is stable, send **one canonical committed verify-request per
+  implementation or brief** with every exact structural authority field;
+  include paths, tests, evidence commands, known exclusions, and expected
+  verdict without substituting them for authority. No receipt/status churn.
 - The loop closes only on your operator's `verification-report` GO/NITS/FAIL — a gate script's PASS never substitutes (R-GATE-EVIDENCE); **no push before GO** (R-VERIFY-THEN-PUSH; push stays user-gated).
 - End every live-seat turn with an **Exact Next Trigger** section naming the next lawful prompt, seat event, standby condition, or blocker.
 - Under a capacity split, own only your chunk's disjoint write set; the other pair's chunk gets its own verify loop (full text: continuation adapter).

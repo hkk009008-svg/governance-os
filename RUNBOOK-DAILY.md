@@ -10,13 +10,27 @@ The one visible loop. Everything else is a pointer.
 director brief  →  operator verify  →  GO / NITS / FAIL  →  push
 ```
 
-1. **Director** scopes the smallest sufficient brief or fix and commits it.
-2. **Operator** independently verifies the named commit (Lane V) and returns a
+1. **Director** scopes the smallest sufficient brief or fix and produces one
+   lawful authority-bearing trigger.
+2. **Operator** independently verifies only from that trigger (Lane V) and returns a
    verification-report mailbox artifact: GO, NITS, or FAIL.
 3. **Director** acts on the verdict:
    - GO → push to origin (and only then).
    - NITS → nit-fix diff, then operator re-verifies.
    - FAIL → diagnose, re-implement, repeat.
+
+Lane V trigger authority: a verify-request trigger is a canonical committed
+sent-mailbox event strictly after the reviewed HEAD with exactly one
+`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
+`Reviewed base: <40-lowercase-hex>`, and one
+`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
+whose values agree with the committed descriptor and canonical
+filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
+subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
+reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
+Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
+mismatched authority is not a trigger: stop with a blocker, do not reconstruct
+missing fields, and do not fall back to the other trigger kind.
 
 ---
 

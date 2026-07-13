@@ -386,13 +386,27 @@ empirical basis, beneficiary/consent) is in docs/PROTOCOL-RULES-LOG.md.
 
 - **Pair Operating Contract:** efficient pair work is the short director ->
   operator artifact loop. Director scopes the smallest sufficient
-  brief/fix/verify-request; operator verifies only the named artifact or landed
-  commit; all baton passes are a mailbox artifact, not chat; no duplicate Lane V
-  for docs/status/handoff-only commits; No receipt/status churn unless it
+  brief/fix and produces one lawful authority-bearing trigger; operator verifies
+  only from that trigger; all baton passes are a mailbox artifact, not chat; no
+  duplicate Lane V for docs/status/handoff-only commits; No receipt/status churn unless it
   changes ownership, preserves evidence, requests verification, returns
   GO/NITS/FAIL, or blocks on user-gated side effects; first commit to land wins
   after git/mailbox refresh; close the loop with an operator verification-report
   GO/NITS/FAIL and an exact next trigger.
+
+  Lane V trigger authority: a verify-request trigger is a canonical committed
+  sent-mailbox event strictly after the reviewed HEAD with exactly one
+  `Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
+  `Reviewed base: <40-lowercase-hex>`, and one
+  `Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
+  whose values agree with the committed descriptor and canonical
+  filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
+  subject begins `feat`, `fix`, or `refactor`, and exactly one identical
+  descriptor reference in the terminal Git trailer block supplies its
+  `Lane-V-Scope`. Missing, duplicated, abbreviated, uppercase, misplaced,
+  uncommitted, stale, or mismatched authority is not a trigger: stop with a
+  blocker, do not reconstruct missing fields, and do not fall back to the other
+  trigger kind.
 
 - **Capacity Split Default:** single-pair fast path remains the default for
   narrow or shared-file work. divisible or preplanned larger work defaults to

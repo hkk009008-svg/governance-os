@@ -52,6 +52,9 @@ severity inside the verdict.
   `ls-tree`, and `cat-file -e` are safe with the prefix.
 - If tests or tooling invoke git internally, keep the outer command exactly as
   specified by the parent prompt.
+- For Lane V, a named commit or prose-only event is not trigger authority.
+  Validate only parent-supplied structural authority; never invent trigger
+  authority or reconstruct missing fields.
 
 ## RESULT SCHEMA
 

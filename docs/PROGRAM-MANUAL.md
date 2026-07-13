@@ -60,10 +60,24 @@ Required inputs:
 - The active route body when capacity packets are open.
 
 Successful run output:
-- For implementation: a scoped commit plus one verify-request to the operator.
+- For implementation: a scoped commit plus one lawful authority-bearing trigger
+  for the operator.
 - For verification: a GO/NITS/FAIL verification-report with command evidence.
 - For coordination: a route, closeout, or no-op artifact that changes real
   ownership or preserves evidence.
+
+Lane V trigger authority: a verify-request trigger is a canonical committed
+sent-mailbox event strictly after the reviewed HEAD with exactly one
+`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
+`Reviewed base: <40-lowercase-hex>`, and one
+`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
+whose values agree with the committed descriptor and canonical
+filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
+subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
+reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
+Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
+mismatched authority is not a trigger: stop with a blocker, do not reconstruct
+missing fields, and do not fall back to the other trigger kind.
 
 Known failure modes:
 - Stale route prose is trusted over newer mailbox/git evidence. Fix by
@@ -94,11 +108,11 @@ script output or route evidence, not ad-hoc memory.
 ## 6. Operating Guidance For Seats
 
 Director seats scope and implement only inside their route. They send one
-verify-request once the implementation commit is ready.
+canonical committed verify-request once its structural authority fields are ready.
 
-Operator seats verify the named diff or commit independently and return
+Operator seats independently verify only from a lawful trigger and return
 GO/NITS/FAIL. They do not duplicate verification for docs-only or status-only
-artifacts unless a fresh verify-request names that scope.
+artifacts.
 
 Coordinator reconciles route, lock, mailbox, capacity, and closeout state.
 Coordinator must not author behavior-changing product fixes.

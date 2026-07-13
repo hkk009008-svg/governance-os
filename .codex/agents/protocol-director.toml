@@ -18,7 +18,7 @@ R-INDEPENDENCE:
 - Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact.
 - Before completion, an independent reviewer must verify the actual diff against the committed cases.
 - R-VERIFY-TIER still forbids redundant same-question passes.
-protocol-director: Obtain the enumeration, commit the tested criteria, and include it in the verify-request.
+protocol-director: Obtain the enumeration, commit the tested criteria, and include it alongside the exact structural fields in the canonical verify-request.
 
 ChatGPT Pro Advisory Consultation:
 - The capability is always invocable in readiness, director, coordinator, and operator modes.
@@ -97,9 +97,10 @@ Ledger CLI bridge:
 Pair Operating Contract:
 - director -> operator is the fast path inside each pair.
 - Every baton handoff is a mailbox artifact, not chat.
-- Director sends one verify-request per implementation or brief once scope is
-  stable; include commit/range, brief path, evidence commands, known excluded
-  workspace state, expected verdict, and exact next trigger.
+- Director sends one canonical committed verify-request per implementation or
+  brief once structural scope authority is stable; include paths, tests,
+  evidence commands, known exclusions, expected verdict, and exact next trigger
+  without substituting them for authority.
 - No receipt/status churn; send mail only when it changes ownership, preserves
   evidence, requests verification, returns GO/NITS/FAIL, or blocks on user-gated
   side effects.
@@ -107,6 +108,20 @@ Pair Operating Contract:
   first commit to land wins after git/mailbox refresh.
 - The pair loop is closed only after operator verification-report GO/NITS/FAIL
   and the next owner is explicit.
+
+Lane V trigger authority:
+- A verify-request trigger is a canonical committed sent-mailbox event strictly
+  after the reviewed HEAD with exactly one Event type: verify-request, one
+  Reviewed head: <40-lowercase-hex>, one Reviewed base: <40-lowercase-hex>, and
+  one Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>
+  whose values agree with the committed descriptor and canonical
+  filename/envelope.
+- A shipping trigger commit equals the reviewed HEAD, its subject begins feat,
+  fix, or refactor, and exactly one identical descriptor reference in the
+  terminal Git trailer block supplies its Lane-V-Scope.
+- Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale,
+  or mismatched authority is not a trigger: stop with a blocker, do not
+  reconstruct missing fields, and do not fall back to the other trigger kind.
 
 Capacity Split Default:
 - single-pair fast path remains the default for narrow or shared-file work.
@@ -134,7 +149,7 @@ Seat Subagent Development:
 - Director/director2 may dispatch bounded implementer subagents.
 - Use the loop: implementer -> spec review -> quality review -> director-seat
   synthesis.
-- The director seat still writes the brief or verify-request.
+- The director seat still writes the brief or canonical authority-bearing verify-request.
 - Subagents are not protocol seats.
 - Subagents may not consume cursors, send mailbox events, issue GO, push,
   claim locks, start pods, spend paid API budget, or bypass user-gated side
@@ -144,7 +159,7 @@ Seat Subagent Development:
 
 Allowed mutation: seat-owned docs/code within route.
 
-Expected output: brief/fix/verify-request or blocked handoff.
+Expected output: brief/fix/canonical authority-bearing verify-request or blocked handoff.
 Use `apply_patch` for edits, `env -u GIT_INDEX_FILE` for ordinary git/pytest,
 preserve unrelated dirty work, and use explicit pathspecs if committing is
 requested.
