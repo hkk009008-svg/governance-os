@@ -830,6 +830,59 @@ def test_receipt_store_uses_primary_common_root_across_linked_worktrees(
     assert stat.S_IMODE(expected.stat().st_mode) == 0o700
 
 
+@pytest.mark.parametrize("selector", ("GIT_DIR", "GIT_COMMON_DIR"))
+def test_receipt_store_ignores_ambient_repository_root_selector(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    selector: str,
+) -> None:
+    target = tmp_path / "target"
+    foreign = tmp_path / "foreign"
+    target.mkdir()
+    foreign.mkdir()
+    _git(target, "init", "-q")
+    _git(foreign, "init", "-q")
+    monkeypatch.setenv(selector, str(foreign / ".git"))
+
+    store = receipts.ReceiptStore.for_repo(target)
+
+    expected = target / ".codex/runtime/opus-review-receipts/v1"
+    foreign_runtime = foreign / ".codex/runtime/opus-review-receipts/v1"
+    assert store.state_root == expected
+    assert expected.is_dir()
+    assert not foreign_runtime.exists()
+
+
+def test_receipt_store_git_launcher_strips_every_git_environment_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    real_run = subprocess.run
+    launches: list[tuple[list[str], dict[str, object]]] = []
+
+    def launch_spy(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[object]:
+        launches.append((argv, kwargs))
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setenv("GIT_FUTURE_RECEIPT_SELECTOR", "attacker-controlled")
+    monkeypatch.setattr(receipts.subprocess, "run", launch_spy)
+
+    store = receipts.ReceiptStore.for_repo(repo)
+
+    assert store.state_root == repo / ".codex/runtime/opus-review-receipts/v1"
+    assert len(launches) == 1
+    argv, kwargs = launches[0]
+    assert argv[:2] == ["git", "--no-replace-objects"]
+    assert Path(kwargs["cwd"]) == repo
+    environment = kwargs["env"]
+    assert isinstance(environment, dict)
+    assert not any(key.startswith("GIT_") for key in environment)
+
+
 def test_initial_reservation_is_durable_and_private(tmp_path: Path) -> None:
     decision, state_root = _reserve_once(tmp_path)
     receipt_path, lock_path = _receipt_paths(state_root)

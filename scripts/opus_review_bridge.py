@@ -1082,9 +1082,15 @@ def _resolved_authorization_source(
 def _git_process(
     root: Path, *args: str, text: bool = True
 ) -> subprocess.CompletedProcess[Any]:
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("GIT_")
+    }
     return subprocess.run(
-        ["env", "-u", "GIT_INDEX_FILE", "git", *args],
+        ["git", "--no-replace-objects", *args],
         cwd=root,
+        env=environment,
         capture_output=True,
         text=text,
         check=False,
@@ -3730,6 +3736,84 @@ def stored_reconciliation_from_record(
     """Validate and decode the bridge-issued reconciliation on a receipt."""
 
     return _reconciliation_result_from_record(record)
+
+
+def validated_report_reconciliation_scope(
+    repo_root: Path,
+    record: receipts.ReceiptRecord,
+    reviewed_head: str,
+    effective_base: str,
+) -> ReconciliationReceiptResult:
+    """Validate a report's effective scope and return its canonical result."""
+
+    report_head = _literal_full_sha(reviewed_head, "reviewed_head")
+    report_base = _literal_full_sha(effective_base, "effective_base")
+    try:
+        root = _require_git_repository(repo_root)
+        _pipeline_root(root)
+    except ReviewContractError as exc:
+        raise ReviewContractError(
+            "not_pipeline_repo",
+            f"repo_root is not a Pipeline Git worktree: {repo_root}",
+        ) from exc
+
+    scope = record.scope
+    stored_head = scope.get("reviewed_head")
+    stored_base = scope.get("effective_base")
+    if (
+        "requested_base" not in scope
+        or not isinstance(stored_head, str)
+        or not isinstance(stored_base, str)
+    ):
+        raise ReviewContractError(
+            "invalid_receipt_scope", "receipt scope has invalid commits"
+        )
+    stored_head = _full_sha(stored_head, "stored reviewed_head")
+    stored_base = _full_sha(stored_base, "stored effective_base")
+    raw_requested_base = scope.get("requested_base")
+    stored_requested_base = (
+        _full_sha(raw_requested_base, "stored requested_base")
+        if raw_requested_base is not None
+        else None
+    )
+    if report_head != stored_head or report_base != stored_base:
+        raise ReviewContractError(
+            "reviewed_scope_mismatch",
+            f"report {report_base}..{report_head} does not match receipt "
+            f"{stored_base}..{stored_head}",
+        )
+    if (
+        stored_requested_base is not None
+        and stored_requested_base != stored_base
+    ):
+        raise ReviewContractError(
+            "invalid_receipt_scope",
+            "stored requested base does not match effective base",
+        )
+    if scope.get("repository_identity") != _repository_identity(root):
+        raise ReviewContractError(
+            "receipt_repository_mismatch",
+            "receipt belongs to a different Git repository",
+        )
+    _require_commit(root, stored_head, "reviewed_head")
+    _require_commit(root, stored_base, "effective_base")
+    _require_preceding_revision(root, stored_base, stored_head)
+    try:
+        reconciliation = stored_reconciliation_from_record(record)
+    except ReviewContractError as exc:
+        raise ReviewContractError(
+            "invalid_receipt_reconciliation",
+            "receipt reconciliation does not match its stored scope",
+        ) from exc
+    if (
+        reconciliation.reconciliation.reviewed_head != stored_head
+        or reconciliation.reconciliation.reviewed_base != stored_base
+    ):
+        raise ReviewContractError(
+            "invalid_receipt_reconciliation",
+            "receipt reconciliation does not match its stored scope",
+        )
+    return reconciliation
 
 
 def reconcile_receipt(

@@ -781,6 +781,121 @@ def test_shipping_trigger_resolves_only_committed_authority_and_uppercase_shas(
     assert resolved.scope.descriptor_digest == fixture.descriptor_digest
 
 
+@pytest.mark.parametrize(
+    "selector",
+    (
+        "GIT_DIR",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    ),
+)
+def test_authoritative_scope_rejects_foreign_graph_from_ambient_git_selector(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    selector: str,
+) -> None:
+    target = _authority_fixture(
+        tmp_path / "target",
+        descriptor_task_id="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        descriptor_path_task_id="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    )
+    foreign = _authority_fixture(tmp_path / "foreign")
+    assert target.head != foreign.head
+    invisible = bridge._git_process(
+        target.root, "cat-file", "-e", f"{foreign.head}^{{commit}}"
+    )
+    assert invisible.returncode != 0
+    foreign_git_dir = foreign.root / ".git"
+    _git(
+        foreign.root,
+        "config",
+        "core.worktree",
+        str(target.root.resolve()),
+    )
+    selector_value = (
+        foreign_git_dir / "objects"
+        if selector
+        in {"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"}
+        else foreign_git_dir
+    )
+    monkeypatch.setenv(selector, str(selector_value))
+
+    with pytest.raises(
+        (bridge.ReviewContractError, receipts.ReceiptContractError)
+    ):
+        bridge.resolve_authoritative_scope(
+            replace(foreign.request, repo_root=target.root)
+        )
+
+
+def test_bridge_host_git_launcher_strips_every_git_environment_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _authority_fixture(tmp_path / "repo")
+    real_run = subprocess.run
+    launches: list[tuple[list[str], dict[str, object]]] = []
+
+    def launch_spy(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[object]:
+        launches.append((argv, kwargs))
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setenv("GIT_FUTURE_AUTHORITY_SELECTOR", "attacker-controlled")
+    monkeypatch.setattr(bridge.subprocess, "run", launch_spy)
+
+    completed = bridge._git_process(
+        fixture.root, "rev-parse", "--show-toplevel"
+    )
+
+    assert completed.returncode == 0
+    assert len(launches) == 1
+    argv, kwargs = launches[0]
+    assert argv[:2] == ["git", "--no-replace-objects"]
+    assert Path(kwargs["cwd"]) == fixture.root
+    environment = kwargs["env"]
+    assert isinstance(environment, dict)
+    assert not any(key.startswith("GIT_") for key in environment)
+
+
+def test_authoritative_scope_ignores_replace_ref_for_reviewed_commit(
+    tmp_path: Path,
+) -> None:
+    fixture = _authority_fixture(tmp_path / "repo")
+    feature_path = fixture.root / "scripts" / "feature.py"
+    original = _git(
+        fixture.root,
+        "show",
+        f"{fixture.head}:scripts/feature.py",
+    )
+    feature_path.write_text("VALUE = 'replacement'\n", encoding="utf-8")
+    _git(fixture.root, "add", "scripts/feature.py")
+    attacker_tree = _git(fixture.root, "write-tree")
+    attacker = _git(
+        fixture.root,
+        "commit-tree",
+        attacker_tree,
+        "-m",
+        "chore: attacker replacement",
+    )
+    _git(fixture.root, "reset", "-q", "--hard", fixture.head)
+    _git(fixture.root, "replace", fixture.head, attacker)
+    assert (
+        _git(fixture.root, "show", f"{fixture.head}:scripts/feature.py")
+        == "VALUE = 'replacement'"
+    )
+
+    resolved = bridge.resolve_authoritative_scope(fixture.request)
+
+    assert resolved.request.reviewed_head == fixture.head
+    shown = bridge._git_process(
+        fixture.root, "show", f"{fixture.head}:scripts/feature.py"
+    )
+    assert shown.returncode == 0
+    assert shown.stdout.strip() == original
+
+
 def test_shipping_scope_line_in_middle_body_is_not_a_terminal_trailer(
     tmp_path: Path,
 ) -> None:
@@ -1523,6 +1638,269 @@ def _reconcile_stored(
         dispositions=dispositions,
         store_factory=lambda repo_root: store,
     )
+
+
+def _reconciled_record(
+    tmp_path: Path,
+    *,
+    requested_base: bool = True,
+) -> tuple[
+    _AuthorityFixture,
+    bridge.ReconciliationReceiptResult,
+    receipts.ReceiptRecord,
+]:
+    fixture = _authority_fixture(tmp_path / "repo")
+    store = receipts.ReceiptStore.for_repo(
+        fixture.root, state_root=tmp_path / "state"
+    )
+    result = bridge.review(
+        fixture.request
+        if requested_base
+        else replace(fixture.request, reviewed_base=None),
+        provider=_normalized_pass_review,
+        store_factory=lambda repo_root: store,
+    )
+    reconciled = bridge.reconcile_receipt(
+        repo_root=fixture.root,
+        receipt_id=result.receipt_id,
+        expected_head=fixture.head,
+        expected_base=fixture.base if requested_base else None,
+        codex_verdict="GO",
+        dispositions=(),
+        store_factory=lambda repo_root: store,
+    )
+    with store.lock_receipt(result.receipt_id) as attempt:
+        record = attempt.load_existing()
+    return fixture, reconciled, record
+
+
+@pytest.mark.parametrize("requested_base", ("explicit", "omitted"))
+def test_report_reconciliation_scope_returns_canonical_result(
+    tmp_path: Path, requested_base: str
+) -> None:
+    fixture, reconciled, record = _reconciled_record(
+        tmp_path, requested_base=requested_base == "explicit"
+    )
+    assert record.scope["requested_base"] == (
+        fixture.base if requested_base == "explicit" else None
+    )
+
+    validated = bridge.validated_report_reconciliation_scope(
+        fixture.root,
+        record,
+        fixture.head,
+        fixture.base,
+    )
+
+    assert validated.to_dict() == reconciled.to_dict()
+
+
+@pytest.mark.parametrize(
+    ("field", "value_attribute"),
+    (
+        ("reviewed_head", "descriptor_commit"),
+        ("effective_base", "descriptor_commit"),
+    ),
+)
+def test_report_reconciliation_scope_rejects_report_and_receipt_scope_mismatch(
+    tmp_path: Path, field: str, value_attribute: str
+) -> None:
+    fixture, _, record = _reconciled_record(tmp_path)
+    report_head = fixture.head
+    report_base = fixture.base
+    if field == "reviewed_head":
+        report_head = getattr(fixture, value_attribute)
+    else:
+        report_base = getattr(fixture, value_attribute)
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.validated_report_reconciliation_scope(
+            fixture.root,
+            record,
+            report_head,
+            report_base,
+        )
+
+    assert excinfo.value.reason == "reviewed_scope_mismatch"
+
+
+@pytest.mark.parametrize("requested_base", ("mismatch", "missing"))
+def test_report_reconciliation_scope_rejects_invalid_requested_base_relation(
+    tmp_path: Path, requested_base: str
+) -> None:
+    fixture, _, record = _reconciled_record(tmp_path)
+    scope = dict(record.scope)
+    if requested_base == "mismatch":
+        scope["requested_base"] = fixture.descriptor_commit
+    else:
+        del scope["requested_base"]
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.validated_report_reconciliation_scope(
+            fixture.root,
+            replace(record, scope=scope),
+            fixture.head,
+            fixture.base,
+        )
+
+    assert excinfo.value.reason == "invalid_receipt_scope"
+
+
+def test_report_reconciliation_scope_rejects_other_repository(
+    tmp_path: Path,
+) -> None:
+    fixture, _, record = _reconciled_record(tmp_path)
+    other = _authority_fixture(
+        tmp_path / "other",
+        descriptor_task_id="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        descriptor_path_task_id="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    )
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.validated_report_reconciliation_scope(
+            other.root,
+            record,
+            fixture.head,
+            fixture.base,
+        )
+
+    assert excinfo.value.reason == "receipt_repository_mismatch"
+
+
+@pytest.mark.parametrize("missing_field", ("reviewed_head", "effective_base"))
+def test_report_reconciliation_scope_requires_stored_commits_to_exist(
+    tmp_path: Path, missing_field: str
+) -> None:
+    fixture, _, record = _reconciled_record(tmp_path)
+    missing = "f" * 40
+    scope = dict(record.scope)
+    scope[missing_field] = missing
+    if missing_field == "effective_base":
+        scope["requested_base"] = None
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.validated_report_reconciliation_scope(
+            fixture.root,
+            replace(record, scope=scope),
+            missing if missing_field == "reviewed_head" else fixture.head,
+            missing if missing_field == "effective_base" else fixture.base,
+        )
+
+    assert excinfo.value.reason == "invalid_scope"
+
+
+def test_report_reconciliation_scope_requires_base_to_precede_head(
+    tmp_path: Path,
+) -> None:
+    fixture, _, record = _reconciled_record(tmp_path)
+    tree = _git(fixture.root, "show", "-s", "--format=%T", fixture.head)
+    unrelated = _git(
+        fixture.root,
+        "commit-tree",
+        tree,
+        "-m",
+        "test: unrelated root",
+    )
+    scope = dict(record.scope)
+    scope["effective_base"] = unrelated
+    scope["requested_base"] = None
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.validated_report_reconciliation_scope(
+            fixture.root,
+            replace(record, scope=scope),
+            fixture.head,
+            unrelated,
+        )
+
+    assert excinfo.value.reason == "invalid_scope"
+
+
+@pytest.mark.parametrize(
+    ("scope_field", "report_head_attribute", "report_base_attribute"),
+    (
+        ("reviewed_head", "descriptor_commit", "base"),
+        ("effective_base", "head", "descriptor_commit"),
+    ),
+)
+def test_report_reconciliation_scope_rejects_reconciliation_scope_mismatch(
+    tmp_path: Path,
+    scope_field: str,
+    report_head_attribute: str,
+    report_base_attribute: str,
+) -> None:
+    fixture, _, record = _reconciled_record(tmp_path)
+    scope = dict(record.scope)
+    scope[scope_field] = getattr(
+        fixture,
+        report_head_attribute
+        if scope_field == "reviewed_head"
+        else report_base_attribute,
+    )
+    scope["requested_base"] = None
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.validated_report_reconciliation_scope(
+            fixture.root,
+            replace(record, scope=scope),
+            getattr(fixture, report_head_attribute),
+            getattr(fixture, report_base_attribute),
+        )
+
+    assert excinfo.value.reason == "invalid_receipt_reconciliation"
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value_attribute"),
+    (
+        ("input", "expected_head", "descriptor_commit"),
+        ("input", "expected_base", "descriptor_commit"),
+        ("result", "reviewed_head", "descriptor_commit"),
+        ("result", "reviewed_base", "descriptor_commit"),
+    ),
+)
+def test_report_reconciliation_scope_rejects_each_input_and_result_commit_mismatch(
+    tmp_path: Path,
+    section: str,
+    field: str,
+    value_attribute: str,
+) -> None:
+    fixture, _, record = _reconciled_record(tmp_path)
+    assert record.reconciliation is not None
+    wrapper = dict(record.reconciliation)
+    changed = dict(wrapper[section])
+    changed[field] = getattr(fixture, value_attribute)
+    wrapper[section] = changed
+    if section == "input":
+        wrapper["input_digest"] = "sha256:" + hashlib.sha256(
+            receipts.canonical_json_bytes(changed)
+        ).hexdigest()
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.validated_report_reconciliation_scope(
+            fixture.root,
+            replace(record, reconciliation=wrapper),
+            fixture.head,
+            fixture.base,
+        )
+
+    assert excinfo.value.reason == "invalid_receipt_reconciliation"
+
+
+def test_report_reconciliation_scope_requires_canonical_reconciliation(
+    tmp_path: Path,
+) -> None:
+    fixture, _, record = _reconciled_record(tmp_path)
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.validated_report_reconciliation_scope(
+            fixture.root,
+            replace(record, reconciliation=None),
+            fixture.head,
+            fixture.base,
+        )
+
+    assert excinfo.value.reason == "invalid_receipt_reconciliation"
 
 
 def test_reconcile_receipt_has_no_fabricated_review_input() -> None:

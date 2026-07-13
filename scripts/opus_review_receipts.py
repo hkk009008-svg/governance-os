@@ -977,17 +977,21 @@ class ReceiptStore:
         stat_fn: Callable[[int], os.stat_result] = os.fstat,
     ) -> ReceiptStore:
         if state_root is None:
+            environment = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("GIT_")
+            }
             git_common = subprocess.run(
                 [
-                    "env",
-                    "-u",
-                    "GIT_INDEX_FILE",
                     "git",
+                    "--no-replace-objects",
                     "rev-parse",
                     "--path-format=absolute",
                     "--git-common-dir",
                 ],
                 cwd=repo_root,
+                env=environment,
                 check=True,
                 capture_output=True,
                 text=True,
