@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-13
 **Status:** Approved for implementation by the user-principal on 2026-07-13;
-independently challenged before approval
+independently challenged before approval; amended after `a3717e3` to bind exact
+index staging, explicit recovery, trusted startup, and the real provider prompt
 **Implementation base:** `555041477bcdb9a432a1b238d664be0958c5c9ef`
 **Supersedes:** the caller-supplied reconciliation and prompt-only invocation
 enforcement portions of the 2026-07-12 Opus designs. Their sandbox, authority,
@@ -69,9 +70,19 @@ The design must preserve these existing contracts:
   visible degraded paths; they do not silently become a successful Opus pass.
 - The standing authorization is limited to the exact Pipeline
   `codex-lane-v` profile and one bounded provider attempt.
-- Raw prompts and raw provider streams do not enter Git, mailbox artifacts, or
-  persistent logs.
+- Raw per-attempt rendered task prompts and raw provider streams do not enter
+  Git, mailbox artifacts, or persistent logs. The static reviewed
+  provider-instruction source is ordinary committed code and is pinned here.
 - Historical mailbox reports remain readable without a mass rewrite.
+
+Tasks 1-5A remain bound to the original descriptor. The post-amendment
+authority for Prep 5B and Tasks 6-7 is
+`coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`
+at SHA-256
+`74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe`.
+It retains the exact implementation base while naming a content-addressed
+prompt-authority requirement that precommits the provider-only prompt blob and
+body facts.
 
 ## 3. Goals
 
@@ -166,9 +177,21 @@ expanding the already large provider bridge further:
   - publishes with atomic no-replace semantics while binding one report to the
     authoritative task.
 - `coordination/bin/send-event`
-  - invokes candidate validation after composing the complete temporary event
-    and before the atomic rename into `coordination/mailbox/sent/`;
-  - leaves no final event and stages nothing when validation fails.
+  - starts with absolute privileged Bash and invokes candidate validation after
+    composing the complete temporary event;
+  - delegates no-replace publication and exact no-filter index staging to the
+    locked Python publisher;
+  - leaves no reported success and stages nothing when pre-publication
+    validation fails; interrupted publication remains explicitly recoverable.
+- `scripts/prompts/opus_lane_v_advisory.md`
+  - is the provider-only advisory prompt loaded as an exactly pinned reviewed
+    Git blob;
+  - grants no seat, verdict, mailbox, lock, Git, or side-effect authority;
+  - leaves the genuine Claude Lane V role file unchanged.
+- `scripts/prompts/opus_lane_v_advisory.authority.<blob>.json`
+  - is a descriptor-named content-addressed requirement;
+  - pins the exact prompt path, blob OID, full/body digests, and sizes before
+    the prompt becomes executable.
 - `scripts/ci_smoke.py`
   - runs the same historical-baseline and structural report validation over
     committed mailbox contents;
@@ -555,14 +578,19 @@ vice versa.
 The gate holds the task's publication lock and records the `publishing` path,
 candidate digest, direct-child candidate basename, device, and inode. It creates
 the final report with same-directory atomic hard-link/no-replace semantics,
-durably completes the file and directory fsync sequence below, then records
-`published` while retaining that exact five-part tuple. A Codex publication is
-an additional receipt transition; a non-Codex task uses an equivalent private
-publication record keyed by its authoritative task ID. Exactly one canonical
-report and creation witness may publish per task. A repeated or altered
-publication is rejected. For verification reports, the current shell-level
-check-then-`mv` sequence is replaced by this single publisher; no preliminary
-existence check is treated as publication authority.
+durably completes the file and directory fsync sequence, writes the captured
+bytes as an exact Git blob with `hash-object -w --no-filters --stdin`, stages
+only the canonical final path with `update-index --cacheinfo`, and revalidates
+the stage-0 entry, object bytes, and final witness. Only then does it record
+`published` while retaining the exact five-part creation tuple. `published`
+therefore attests both the durable final and the exact index binding observed
+under the lock. A Codex publication is an additional receipt transition; a
+non-Codex task uses an equivalent private publication record keyed by its
+authoritative task ID. Exactly one canonical report and creation witness may
+publish per task. A repeated or altered fresh publication is rejected. For
+verification reports, the current shell-level check-then-`mv` and later
+`git add` sequence is replaced by this single publisher; no preliminary
+existence check or clean-filtered staging is treated as publication authority.
 
 The non-Codex record schema is `lane-v-task-publication/v1` and contains exactly
 the canonical task UUID, an authority digest, state, generation, path, and
@@ -578,6 +606,14 @@ generation 1. Every begin, exact absent-final clear, exact planned-tuple cancel,
 or exact-final finish increments generation. Unknown fields, illegal
 parity/nullability, changed authority, malformed private state, or mismatched
 recovery fail without rewriting the record.
+
+The amended schema also carries `index_blob_oid`, `index_mode`, and
+`index_stage`. They are null before `publishing`; in `publishing|published`
+they are an exact full Git object ID, literal `100644`, and non-boolean integer
+zero. The Codex receipt publication mapping carries the same fields. They are
+part of strict field/type/parity/transition/replay validation, and an existing
+index entry for a fresh report path is a conflict. `published` is illegal until
+both the file witness and these exact stage-0 facts have been revalidated.
 
 Codex live validation occurs under the receipt lock and decodes the stored
 review and reconciliation through the bridge's public normalization functions;
@@ -614,12 +650,17 @@ another directory are rejected rather than reduced to `.name`.
 The final must be the same inode and digest through its own no-follow descriptor.
 After exact candidate validation the publisher fsyncs the held file descriptor.
 After linking it validates and fsyncs the same final inode, fsyncs the directory,
-removes the temporary candidate, fsyncs the directory again, reopens the final,
-requires link count 1 and the same digest, fsyncs that descriptor, and only then
-records `published`. A failure removes only a just-created final whose identity
-is proven; otherwise it preserves conflict state and fails closed. A durable
-`published` transition can therefore never precede file-data and mailbox-name
-durability.
+writes the captured bytes with absolute system Git as an unfiltered object,
+stages only the canonical path with `update-index --cacheinfo`, and parses one
+NUL-delimited stage-0 index entry without shell command substitution. The
+object bytes, index mode/OID/stage/path, and reopened final witness must all
+match. It then removes the temporary candidate, fsyncs the directory again,
+reopens the final, requires link count 1 and the same digest, fsyncs that
+descriptor, checks index durability, and only then records `published`. A
+failure before that transition preserves the witnessed `publishing` state for
+explicit recovery and never reports success. A durable `published` transition
+can therefore never precede file-data, mailbox-name, and exact-index
+validation.
 
 If publication recovery finds the named final path with the expected digest,
 device, and inode, it finalizes `published`; if the path is absent, it clears
@@ -627,18 +668,28 @@ the interrupted publication reservation before accepting one new candidate,
 first removing a surviving stored candidate basename only when its no-follow
 descriptor matches the stored witness/digest. An absent stored candidate is
 also valid; a mismatched candidate or final path, digest, device, or inode fails
-closed. Validation or
-publication failure leaves no new final event and the shell trap removes the
-temporary file. A Git staging failure
-after successful publication preserves the validated final event and its
-publication binding, matching current `send-event` recovery semantics; the
-operator stages that exact path manually rather than emitting another report.
+closed. Validation failure before `publishing` leaves no new final event and
+the shell trap removes only its unbound temporary file. A link, object-write,
+index-stage, or final-revalidation failure after `publishing` remains a
+non-successful, explicitly recoverable record. The operator does not stage
+manually and does not emit another report.
 
 Recovery may finalize the persisted path from an earlier second. The publisher
-therefore emits exactly that canonical repository-relative path on stdout, and
-`send-event` validates and stages only the returned path. Empty, multiline,
-absolute, traversing, wrong-directory, or wrong-suffix output fails before
-staging; diagnostics use stderr and failure emits no stdout.
+therefore emits exactly that canonical repository-relative path on stdout only
+after the final and exact stage-0 index blob both validate. `send-event`
+validates that returned path but performs no second staging operation. Empty,
+multiline, absolute, traversing, wrong-directory, or wrong-suffix output fails
+closed; diagnostics use stderr and failure emits no stdout.
+
+Recovery is explicit through `resume --repo-root ROOT (--receipt-id ID |
+--task-id UUID)` and read-only inspection through the analogous `status`
+command. Neither accepts caller-supplied path, digest, object ID, or witness.
+`resume` accepts only stored `publishing`, reacquires the same lock, validates
+the stored final/candidate witness, converges a missing or already-correct exact
+index entry, and then completes. Public `publish` still rejects `published`.
+`status` emits canonical single-line sanitized JSON containing only state,
+stored path, file-witness match, index OID, and staged-blob match. Output loss
+after `published` is resolved by `status`, never another publication.
 
 `send-event` resolves the trusted Python from the resolved Git common
 directory's Pipeline root and fails closed if that interpreter is unavailable.
@@ -658,6 +709,16 @@ modules, adjacent cached bytecode, primary-path TOCTOU, and linked-worktree
 module paths cannot replace the captured modules. Root-selection Git uses the
 absolute system Git, all `GIT_*` values removed, and `--no-replace-objects`.
 Other event kinds are unchanged.
+
+The shell begins with `#!/bin/bash -p`, establishes the system PATH before any
+external command, initializes cleanup variables before installing its trap,
+and uses a partial-initialization-safe trap. Hostile `PATH`, `BASH_ENV`,
+exported functions, HOME/XDG config, attributes, and clean filters cannot alter
+the selected runtime or staged bytes. Live activation remains fail-closed until
+an explicitly authorized executor fast-forwards a clean, unchanged primary
+checkout to the landed Task 7 head and revalidates the required blob modes and
+OIDs. That shared-checkout activation is a separate user-gated side effect, not
+part of Tasks 6-7 or coordinator handoff.
 
 ### 6.9 Historical report compatibility
 
@@ -716,19 +777,56 @@ constructor failure closes the listener, stops any started thread, and removes
 the socket path before re-raising. Normal context-manager cleanup remains
 idempotent.
 
+### 6.11 Provider-only advisory prompt
+
+The current bridge actually loads `.claude/agents/lane-v-verifier.md` from the
+trusted reviewed base, strips its YAML frontmatter, and passes the Markdown body
+as `--append-system-prompt`; `.codex/agents/lane-v-verifier.toml` is not a
+provider input. Because that shared Claude file is also a genuine Claude Lane V
+role and lies outside the original descriptor's allowed roots, it is not
+repurposed. The amended scope descriptor instead names a prompt-authority
+requirement whose own expected Git blob OID appears in its filename. That
+content-addressed JSON precommits the exact path, Git blob OID, full-file/body
+SHA-256 digests, and byte sizes for
+`scripts/prompts/opus_lane_v_advisory.md`. An inert prep commit then adds those
+exact bytes; a later commit validates the authority-requirement blob, loads the
+named prompt Git blob from the literal reviewed commit, and rejects it unless
+every earlier fact matches. The reviewed commit cannot select different
+instruction bytes. There is no HEAD-drift, WIP, mirror, frontmatter-body, or
+linked-worktree fallback.
+
+The exact target body is committed verbatim in the implementation plan's
+approved post-`a3717e3` amendment. It identifies the model as a read-only
+advisory evidence reviewer, not a seat or decision-maker, and expressly denies
+GO/NITS/FAIL, mailbox, route, lock, staging, commit, push, and side-effect
+authority. It returns only the caller's `pass|issues` evidence schema.
+
+Before reservation, `ReviewScope` binds the descriptor/trigger authority, the
+content-addressed authority-requirement blob, prompt path, Git blob OID,
+full-file SHA-256/size, and extracted-body SHA-256/size. Those fields enter the
+scope digest and receipt. The already-
+loaded exact body is passed to the provider; it is not reloaded after
+reservation and raw prompt text is never persisted. Same-attempt prompt drift
+is `attempt_scope_conflict`, not another launch. A real-Git rendered regression
+captures the provider argv and proves the descriptor-bound body is exactly the
+`--append-system-prompt` value while the blind generated task prompt remains a
+separate `-p` value.
+
 ## 7. Data Flow
 
 ```text
 Codex completes verdict-blind Lane V analysis
   -> review resolves the committed trigger and authoritative scope descriptor
-  -> review validates Pipeline, commits, requirements, commands, and coverage
+  -> review validates Pipeline, commits, requirements, commands, coverage,
+     and the descriptor-bound advisory prompt blob
   -> bridge canonicalizes scope and reserves the immutable attempt key
   -> bridge performs zero or one sandboxed Opus provider launch
   -> bridge persists normalized pass/issues/unavailable evidence as reviewed
   -> Codex investigates every finding and supplies dispositions
   -> reconcile loads only the receipt and stores one bound reconciliation
   -> bridge renders the report-field block
-  -> send-event validates and no-clobber-publishes one bound candidate
+  -> send-event invokes one locked transaction that validates, no-clobber
+     publishes, exact-stages, and revalidates one bound candidate
   -> operator emits GO/NITS/FAIL; CI preserves structural and legacy evidence
 ```
 
@@ -785,6 +883,8 @@ applies. The following cases are mandatory acceptance targets.
 - a second invocation uses reordered or duplicate paths/commands;
 - a second invocation changes requirements, authorization, allowed paths, or
   commands for the same authoritative task and commit range;
+- authority-requirement blob, prompt path/blob, full-file digest/size, or
+  extracted-body digest/size changes for the same attempt key;
 - a caller invents a task ID, selects a descriptor not bound by its trigger, or
   changes a descriptor while retaining its task ID;
 - two lawful, pre-stated task IDs ask genuinely different questions on one
@@ -826,6 +926,10 @@ applies. The following cases are mandatory acceptance targets.
 - timeout kills the full process group and joins drainers;
 - malformed, oversized, non-UTF-8, or trailing provider output;
 - returned review names a non-Opus model or mismatched scope;
+- the reviewed path, mutable WIP, old Claude path, Codex mirror, or YAML
+  frontmatter attempts to replace the descriptor-bound provider body;
+- the loaded body claims seat, verdict, mailbox, route, lock, Git, or
+  side-effect authority;
 - socket allocation succeeds but bind/listen/thread start fails;
 - cleanup is called twice; and
 - Seatbelt, AF_UNIX, Claude CLI, credentials, or network capability is absent.
@@ -860,9 +964,13 @@ applies. The following cases are mandatory acceptance targets.
 - cancellation receives a stale generation or changed planned tuple;
 - no-replace publication races a same-second collision;
 - crash occurs before/after the `publishing` transition or atomic link;
+- crash occurs before/after object write, index update, stage verification,
+  final revalidation, `published`, or stdout emission;
 - recovery sees absent, exact, or mismatched final content;
-- recovery finalizes an older cross-second path and the shell attempts to stage
-  its newer computed path;
+- recovery finds a missing, exact, foreign, clean-filtered, wrong-mode,
+  wrong-stage, or wrong-object index entry;
+- recovery finalizes an older cross-second path while the shell attempts a
+  second staging operation;
 - candidate/final symlink, FIFO, directory, mode, link-count, inode-swap, or
   post-link digest mutation;
 - candidate CLI path is non-canonical, outside the held directory, or aliases a
@@ -873,8 +981,15 @@ applies. The following cases are mandatory acceptance targets.
 - primary-root interpreter, gate, import, or common-directory trust is missing
   while an untrusted linked-worktree substitute exists;
 - caller `PYTHONPATH`, `sitecustomize`, or adjacent malicious cached bytecode
-  attempts to replace the trusted gate/import path; and
-- Git staging fails after a validated final event is published.
+  attempts to replace the trusted gate/import path;
+- hostile PATH-selected Bash, `BASH_ENV`, exported functions, HOME/XDG Git
+  config, attributes, clean/smudge filters, or dynamic-loader variables alter
+  startup, object bytes, or index selection;
+- `ls-tree -z` or `ls-files --stage -z` is parsed through NUL-stripping shell
+  command substitution;
+- index staging fails while state is `publishing`; and
+- primary-checkout activation is attempted without a clean unchanged head,
+  fast-forward ancestry, and separate executor authority.
 
 A fresh independent reviewer must challenge this enumeration before the design
 commit. Before completion, an independent actual-diff review must verify that
@@ -901,6 +1016,8 @@ failing test or mutation probe.
 - every legal and illegal lifecycle transition;
 - abandoned-lock reservation degradation without provider invocation;
 - exact and concurrent reconciliation replay plus changed replay rejection;
+- trusted prompt metadata sensitivity, stored scope binding, and
+  same-attempt prompt-drift conflict;
 - ambient Git-selector and replace-ref rejection for both authority reads and
   receipt-root derivation;
 - secure path, mode, symlink, and malformed-state rejection, with ownership
@@ -921,21 +1038,26 @@ failing test or mutation probe.
 - exact task-publication schema/generation/authority conflicts and public
   published-replay rejection;
 - descriptor-relative candidate/final identity, persisted basename/inode
-  recovery, exact cancellation, file/directory fsync ordering, and collision
-  rollback;
+  recovery, exact index OID/mode/stage witness, exact cancellation,
+  file/directory/index fsync ordering, and collision rollback;
+- object write, exact no-filter stage, NUL-delimited index parsing, blob/final
+  revalidation, explicit resume/status, and every post-link crash boundary;
 - publisher-returned cross-second path staging plus strict stdout validation;
-- primary-root interpreter/script trust with no linked-worktree fallback;
+- absolute privileged-Bash startup and primary-root interpreter/script trust
+  with no PATH, startup-file, exported-function, or linked-worktree fallback;
 - `send-event` leaves no final event and stages nothing on failure;
-- successful candidate validation preserves the envelope; staging failure
-  preserves the one validated final event for manual staging; and
+- successful candidate validation preserves the envelope; stage failure leaves
+  explicit recoverable `publishing` and never reports success; and
 - `ci_smoke` needs no private receipt store.
 
 ### 10.3 Resource tests
 
 - deterministic constructor cleanup by injecting bind/listen/thread failures;
 - bounded concurrent stdout/stderr drains and truncation classification;
-- process-group cleanup on timeout and reader failure; and
-- pure sandbox profile generation and capability-probe classification.
+- process-group cleanup on timeout and reader failure;
+- pure sandbox profile generation and capability-probe classification; and
+- descriptor-bound provider prompt metadata and exact rendered argv separation
+  from the blind `-p` task prompt.
 
 Tests that exercise actual Seatbelt, AF_UNIX, or Claude execution run only when
 a shared capability probe proves those facilities are usable. A skip names the
@@ -984,17 +1106,23 @@ Implementation updates:
 - the report-format source used by operator prompts, if impact analysis shows
   one canonical source exists.
 
-Rollout order is:
+Rollout order for the remaining work is:
 
-1. land receipt and report tests with the implementation;
-2. generate and verify the exact historical-report baseline at that commit;
-3. switch bridge reconciliation to receipt-only;
-4. switch prompts and docs to the new CLI and fields;
-5. activate `send-event` candidate validation;
-6. run focused, full, smoke, baseline, and doc checks;
-7. perform independent actual-diff review against Section 9; and
-8. attempt the one authorized post-Lane-V Opus review if the host capability
-   exists, otherwise preserve the exact degraded reason.
+1. commit this docs-only amendment without staging paused Task 6 WIP;
+2. seed the inert provider-only advisory prompt in an independently reviewed
+   prep commit so it exists at the next trusted base;
+3. complete and independently review Task 6's file-plus-index transaction and
+   recovery paths;
+4. complete Task 7's prompt binding, loader switch, rendered regression,
+   doctrine, and docs, then independently review its actual diff;
+5. run focused, full, smoke, baseline, doc, and whole-branch checks;
+6. perform independent actual-diff review against Section 9 and make the one
+   authorized receipt-backed advisory Opus attempt only when the capability
+   guard succeeds, preserving an exact degraded reason without retry otherwise;
+7. return a durable handoff to the coordinator for the separately routed
+   evidence-ledger-aware bridge work; and
+8. only under separate explicit executor authority, fast-forward and revalidate
+   a clean unchanged primary checkout to activate the live `send-event` path.
 
 No mailbox event, live route, cursor, lock, push, or external publication is
 part of implementation without its separately triggered authority.
@@ -1003,15 +1131,18 @@ part of implementation without its separately triggered authority.
 
 The pre-plan touches authority, parseable output, schema trust, and a mailbox
 side-effect gate, so a guarded ChatGPT Pro consultation was prepared under
-consultation ID `1351461e-3d8c-4b25-b1e7-ed5657483d91`. The guard rejected the
-preparation before any prompt left the machine. The no-retry rule was obeyed;
-there was no imported advice and therefore no design change attributed to the
-consultation.
+consultation ID `1351461e-3d8c-4b25-b1e7-ed5657483d91`. Its first local
+execution stopped before sending because sandboxed permission enforcement
+could not complete the protected-runtime `fchmod`; this was not a policy or
+packet rejection. The corrected scoped runtime invocation succeeded and the
+consultation was reconciled. It was not retried after reconciliation.
 
-The selected design instead rests on the local implementation audit, the
-existing Opus contracts, the user-principal's explicit approval to remove the
-caller-JSON compatibility path, and the independent adversarial review required
-before this document is committed.
+The reconciled result remained advisory and granted no protocol, verdict,
+mailbox, lock, Git, or side-effect authority. No raw consultation prompt or
+response is recorded here. The selected amendments rest on sanitized advisory
+input, the local implementation audit, the existing Opus contracts, the
+user-principal's explicit directions, and the independent adversarial review
+required before implementation resumes.
 
 A fresh same-model reviewer challenged the draft independently. This is
 explicitly weaker than a distinct-model review. It identified shared-worktree

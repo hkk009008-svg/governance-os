@@ -1,0 +1,9 @@
+{
+  "schema_version": "opus-provider-prompt-authority/v1",
+  "prompt_path": "scripts/prompts/opus_lane_v_advisory.md",
+  "prompt_blob_oid": "57df5979559c3c89030f685567bb5729a14d1688",
+  "file_sha256": "sha256:86bb83ebec8bbfefe04a60af616e414f87ae972ceb3a27fc3f0332500e70f4b4",
+  "file_size_bytes": 3034,
+  "body_sha256": "sha256:a9e74423c4417ec7ac1a6b1dd6dde3357e088a6197db62f520cd9f93742347de",
+  "body_size_bytes": 2917
+}

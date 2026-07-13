@@ -4,15 +4,27 @@
 
 **Goal:** Make every Pipeline Codex Lane V verdict depend on one authoritative, receipt-backed Opus attempt whose complete scope and final verification report are mechanically bound and replay-safe.
 
-**Architecture:** A new stdlib-only receipt module owns canonical scope hashing, secure shared state, per-attempt locks, and lifecycle transitions. The existing bridge resolves immutable Git authority and performs the one provider attempt inside that lifecycle; a separate report gate validates `lane-v-report/v2` and atomically publishes one bound mailbox report while `check_go_schema.py` preserves exact historical reports through a content-hash baseline.
+**Architecture:** A new stdlib-only receipt module owns canonical scope hashing, secure shared state, per-attempt locks, and lifecycle transitions. The existing bridge resolves immutable Git authority and performs the one provider attempt inside that lifecycle; a separate report gate validates `lane-v-report/v2`, atomically publishes one bound mailbox report, stages the exact no-filter blob under the same publication lock, and supports explicit crash recovery while `check_go_schema.py` preserves exact historical reports through a content-hash baseline.
 
 **Tech Stack:** Python 3.11+ standard library, pytest, Git plumbing, POSIX `flock`, Bash, and macOS Seatbelt only behind a runtime capability probe.
 
 ## Global Constraints
 
 - The approved design is `docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md`; its Sections 6, 8, 9, and 10 are binding acceptance criteria.
-- The authoritative descriptor is `coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json` with exact digest `sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62`.
-- Every Task 1-7 commit must end with the exact trailer `Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62`.
+- Tasks 1-5A remain historically bound to
+  `coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json`
+  at exact digest
+  `sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62`.
+- The post-amendment authority for Prep Task 5B and Tasks 6-7 is
+  `coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`
+  at exact digest
+  `sha256:74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe`.
+  It retains the exact `5550414...` review base and complete allowed roots but
+  additionally names a content-addressed prompt-authority requirement whose
+  blob pins the provider prompt path, Git blob OID, full-file/body SHA-256
+  digests, and byte sizes before that file becomes executable.
+- Every remaining implementation commit ends with the exact trailer
+  `Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe`.
 - Production receipt state is shared across linked worktrees at `<resolved-git-common-dir-parent>/.codex/runtime/opus-review-receipts/v1/`; non-Codex publication state is at the sibling `lane-v-report-publications/v1/` directory. There is no production CLI flag that changes either root.
 - State directories are owned by the current uid, real directories, and mode `0700`; lock and JSON files are regular, non-symlink files owned by the current uid and mode `0600`.
 - Receipt writes use descriptor-relative opens, same-directory temporary files, file `fsync`, `os.replace`, and directory `fsync`; every read-modify-write runs under the same per-attempt `flock` and checks a monotonically increasing generation.
@@ -27,7 +39,7 @@
 - Provider stdout and stderr are drained concurrently, each retains at most `131072` bytes, and any truncation yields sanitized unavailable reason `output_limit` rather than parseable success.
 - New reports contain one exact `## Verification Attestation` section with all fields in canonical order. Codex reports must match live reconciled receipt state and the exact stored Codex verdict; supported non-Codex reports use descriptor-derived `claude-lane-v` / `claude:lane-v-verifier` authority and literal `not-applicable` for every Opus field.
 - Historical reports are accepted only by exact repository-relative path plus SHA-256 in `scripts/baselines/lane_v_report_v1.json`; modified or deleted baseline entries fail CI.
-- `send-event` validates and no-replace publishes verification reports before staging. Validation failure leaves no final event; staging failure preserves the one validated final event for manual staging.
+- `send-event` starts with absolute privileged Bash, validates and no-replace publishes verification reports, and delegates exact no-filter index staging to the locked Python publisher. `published` means both the durable final report and the exact stage-0 Git blob were verified. A separate explicit resume/status path recovers interrupted `publishing`; the shell never performs a second `git add` and never treats a final-only result as success.
 - Pure contract, parser, cleanup-injection, and output-bound tests always run. Actual Seatbelt, AF_UNIX, Claude, credential, or network integrations skip only after a shared capability probe names the unavailable facility; production remains fail-closed.
 - Use `/Users/hyungkoookkim/Pipeline/.venv/bin/python` for worktree tests and prefix ordinary Git/pytest commands with `env -u GIT_INDEX_FILE`.
 - No task emits a live mailbox event, consumes a cursor, mutates a route/lock, pushes, or performs any external publication.
@@ -41,7 +53,9 @@
 | `scripts/verification_report_gate.py` | Strict v2 report parsing, descriptor/trigger binding, live receipt comparison, non-Codex publication records, recovery, and atomic no-replace publication. |
 | `scripts/check_go_schema.py` | Existing GO evidence checks plus historical manifest accounting and repository-wide v2 structural validation. |
 | `scripts/baselines/lane_v_report_v1.json` | Exact path and SHA-256 manifest for every pre-v2 verification report. |
-| `coordination/bin/send-event` | Compose a complete candidate, route verification reports through the Python publisher, then stage the exact published path. |
+| `coordination/bin/send-event` | Start from trusted absolute Bash, compose a complete candidate, and route verification reports through the Python publisher that owns both publication and exact index staging. |
+| `scripts/prompts/opus_lane_v_advisory.md` | Provider-only advisory prompt loaded as a descriptor-bound reviewed Git blob; it grants no seat, verdict, mailbox, lock, or side-effect authority. |
+| `scripts/prompts/opus_lane_v_advisory.authority.<blob>.json` | Content-addressed committed requirement that pins the exact advisory prompt path, blob, digests, and sizes before activation. |
 | `tests/unit/test_opus_review_receipts.py` | Canonicalization, Git-path, security, lock, lifecycle, replay, and concurrency coverage. |
 | `tests/unit/test_opus_review_bridge.py` | Authority resolution, CLI incompatibility, receipt integration, severity preservation, output bounds, cleanup, and capability behavior. |
 | `tests/unit/test_verification_report_gate.py` | Strict parser, authority/live-state comparison, publication race, and recovery coverage. |
@@ -1043,6 +1057,297 @@ env -u GIT_INDEX_FILE git commit -m "fix(opus): isolate Git authority from ambie
 
 ---
 
+## Approved Amendment After `a3717e3`
+
+This amendment is binding and supersedes every conflicting Task 6 or Task 7
+sentence below it. It was requested after the plan lineage that began at
+`a3717e3` and is committed after the later Git-authority hardening commits; no
+history is rewritten.
+
+### Corrected consultation provenance
+
+The advisory guard was not rejected on policy or packet content. Its first
+local execution stopped before sending because sandboxed permission enforcement
+could not complete the protected-runtime `fchmod`. A corrected scoped runtime
+invocation succeeded and the consultation was reconciled. The consultation
+remained advisory: it granted no protocol, verdict, mailbox, lock, Git, or
+side-effect authority. No raw prompt or response belongs in this plan, Git,
+mailbox artifacts, logs, screenshots, command arguments, or transcript files.
+
+### Actual provider-prompt trust path and bootstrap
+
+At the currently reviewed base
+`555041477bcdb9a432a1b238d664be0958c5c9ef`, the bridge loads
+`.claude/agents/lane-v-verifier.md` with `git show`, strips YAML frontmatter,
+and passes the remaining Markdown body as the value immediately following
+`--append-system-prompt`. The separate `-p` value is the generated blind task
+prompt. `.codex/agents/lane-v-verifier.toml` is not loaded by the provider.
+
+The loaded Claude body currently claims an operator-seat identity, asks the
+provider to issue GO/NITS/FAIL, and discusses lock release. Reusing that shared
+file as the fix would weaken the genuine Claude Lane V role, and the committed
+scope descriptor does not authorize `.claude/agents/`. Therefore the approved
+replacement is a dedicated provider-only source at
+`scripts/prompts/opus_lane_v_advisory.md`, which is inside the existing
+`scripts` scope root. The amended descriptor names a prompt-authority
+requirement whose own expected Git blob OID is encoded in its filename; that
+content-addressed requirement commits the expected prompt Git blob OID,
+full-file/body SHA-256 digests, and byte sizes before the file becomes
+executable. A prep commit adds the inert exact prompt file. Task 7 replaces the old
+base-path loader with descriptor-bound loading: obtain the named blob from the
+reviewed commit, prove every precommitted content fact before receipt
+reservation, and pass the already-verified body without reloading it. The
+reviewed commit selects no instruction bytes beyond that prior content-addressed
+authority. No HEAD-drift, linked-worktree, mutable-WIP, mirror, or frontmatter
+fallback is allowed.
+
+After Task 7, the exact body returned by `_agent_prompt_from_content()` and
+passed through `--append-system-prompt` must be the following text, byte for
+byte after surrounding whitespace is stripped:
+
+```markdown
+# Independent Read-Only Evidence Review
+
+You are a read-only advisory evidence reviewer, not an operator seat or
+protocol decision-maker. Independently inspect the committed diff and run only
+the allowed checks. Return evidence and findings for the Codex operator to
+reconcile; do not trust the implementer's prose report. The Codex operator
+alone decides GO, NITS, FAIL, mailbox actions, lock actions, and every other
+protocol or side-effect decision.
+
+## Hard invariant: read-only advisory work
+
+You have only the exposed read, search, and Bash capabilities. Do not edit,
+stage, commit, produce a patch, write mail, mutate a lock, or perform any other
+side effect. If evidence shows a defect or scope mismatch, return an advisory
+finding with file:line evidence. Do not issue a protocol verdict.
+
+## Git hygiene
+
+- Prefix every Git invocation with `env -u GIT_INDEX_FILE `.
+- Use read-only Git operations only: `show`, `log`, `diff A..B`, `grep`,
+  `rev-parse`, and `ls-tree`.
+- Run pytest only through the exact verification commands exposed by the
+  caller. Do not construct or broaden commands yourself.
+
+## Inputs
+
+- The immutable reviewed HEAD and base.
+- Committed requirements and the complete allowed-path scope.
+- An allowlist of exact read-only Git and verification commands.
+
+## Evidence-review procedure
+
+1. Scope-match the actual diff to every committed requirement and allowed
+   path. Identify intended sites that remain uncovered.
+2. Run the exposed regression and relevant suite commands. Report their exact
+   output evidence; do not infer a result from an implementer's report.
+3. For a guard, check whether the supplied evidence demonstrates a
+   non-vacuous mutation or pre-fix failure. If it does not, record that gap as
+   a finding rather than attempting an unapproved mutation.
+4. Execute exposed checks for every changed executable artifact and report
+   runtime failures or missing adversarial cases.
+5. Audit sibling sites that share the same fence, flag, state, or write path
+   and identify any uncovered parallel site.
+6. Cite command output or file:line evidence for every factual claim. A
+   command scoped to one path proves only that path.
+7. A disclosed refinement toward a co-signed policy may be relevant to scope;
+   describe the evidence and leave scope disposition and any ratification
+   decision to the Codex operator.
+
+## Advisory output
+
+Return only the structured schema requested by the invocation.
+
+- `status: pass` means only that this bounded review found no issue; it is not
+  GO.
+- `status: issues` carries advisory findings; it is not NITS or FAIL.
+- If required evidence cannot be obtained, return `status: issues` with a
+  finding that states the limitation; do not invent evidence.
+- Do not state or imply that mail may be sent, a lock may be released, a
+  verdict has been issued, or any protocol or side effect is authorized.
+
+Be terse. Evidence over prose.
+```
+
+Commit this amendment first with strict pathspecs: the plan, design, amended
+scope descriptor, and content-addressed prompt-authority requirement only. The
+prompt Markdown remains untracked for Prep 5B, and the paused Task 6 Python/test
+WIP remains unstaged. This amendment commit itself is the transition from the
+old authority and therefore carries the original descriptor trailer.
+
+```bash
+env -u GIT_INDEX_FILE git add docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json scripts/prompts/opus_lane_v_advisory.authority.583cdcb5b5129b629ae4ada21627a4fc5bab1b9c.json
+env -u GIT_INDEX_FILE git commit -m "docs(plan): bind staged publication and advisory prompt" -m "Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62"
+```
+
+### Prep Task 5B: Seed The Provider-Only Advisory Prompt
+
+**Files:**
+- Create: `scripts/prompts/opus_lane_v_advisory.md`
+- Modify: `tests/unit/test_opus_review_bridge.py`
+
+Write the prompt file with minimal YAML frontmatter followed by the exact body
+above. Add a pure regression that loads the committed file through
+`_agent_prompt_from_content()` and compares the result to the exact plan block;
+also assert the provider body contains the advisory limitations and contains
+none of the old authority phrases. This prep commit does not change
+`AGENT_RELATIVE_PATH`, so it is inert at runtime and realizes the exact
+descriptor-bound blob required by Task 7.
+
+Run the focused bridge tests, `git diff --check`, and commit with the required
+scope trailer before resuming Task 6.
+
+```bash
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_opus_review_bridge.py -q
+env -u GIT_INDEX_FILE git diff --check
+env -u GIT_INDEX_FILE git add scripts/prompts/opus_lane_v_advisory.md tests/unit/test_opus_review_bridge.py
+env -u GIT_INDEX_FILE git commit -m "feat(opus): seed advisory provider prompt" -m "Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe"
+```
+
+### Hardened Task 6 publication contract
+
+Task 6 must retain `publishing` until both the durable final report and the
+exact stage-0 Git index entry are proven. `published` means all of the following
+were checked while the same task/receipt lock remained held:
+
+1. the no-replace final is the witnessed inode and exact candidate bytes;
+2. those captured bytes were written with absolute `/usr/bin/git
+   --no-replace-objects hash-object -w --no-filters --stdin`;
+3. only the canonical final path was staged with one argument to
+   `update-index --add --cacheinfo 100644,<oid>,<path>`;
+4. NUL-delimited stage-0 index output was parsed without shell command
+   substitution and matched the exact mode, object ID, stage, and path;
+5. `cat-file blob <oid>` matched the captured bytes and digest;
+6. the final file was reopened and still matched the stored path, digest,
+   device, and inode after staging; and
+7. the resolved index file and its parent directory received the required
+   durability checks before the state transition.
+
+Both the Codex receipt publication mapping and
+`lane-v-task-publication/v1` persist `index_blob_oid`,
+`index_mode="100644"`, and `index_stage=0` with the file witness. These values
+are null before `publishing`, exact and non-null in `publishing|published`, and
+participate in strict unknown-field, type, generation, transition, recovery,
+and replay validation. A pre-existing index entry for a fresh final path is a
+conflict rather than an object to overwrite.
+
+Every Git child uses a positive environment rather than an inherited one:
+absolute executable, fixed `PATH=/usr/bin:/bin`, `LANG=C`, `LC_ALL=C`, a new
+private `HOME` and `XDG_CONFIG_HOME`, no inherited `GIT_*`, `PYTHON*`, shell
+startup, dynamic-loader, alternate-object, or config selectors, and no clean or
+smudge filters. The Python publisher owns staging. The verification-report
+branch of `send-event` must not call `git add` after the publisher returns.
+
+The publication order is candidate validation, live authority validation,
+sanitized no-write computation of the expected object ID, proof that the fresh
+path has no index entry, `publishing` transition with the complete file/index
+witness, no-replace link and durability, exact blob write and index stage,
+stage/blob/final revalidation, candidate cleanup and directory durability, then
+`published`. A crash or error after linking or staging but before `published`
+leaves a recoverable `publishing` record; it must not report success or clear
+the witness. Retry is never implicit.
+
+Add explicit `resume` and `status` operations to the Python gate:
+
+```text
+verification_report_gate.py resume --repo-root ROOT (--receipt-id ID | --task-id UUID)
+verification_report_gate.py status --repo-root ROOT (--receipt-id ID | --task-id UUID)
+```
+
+Neither command accepts caller-supplied path, digest, object ID, or candidate
+metadata. `resume` reacquires the authoritative lock, loads only the stored
+witness, revalidates the live report, idempotently writes/restages the exact
+blob, and accepts only `publishing`; it never converts an already `published`
+record into a fresh success. The public `publish` API continues to reject every
+published replay. `status` is read-only and emits canonical one-line JSON with
+only state, stored path, file-witness match, index OID, and staged-blob match;
+it fails closed on malformed or divergent state. Recovery of final-only,
+candidate-only, final-plus-candidate, post-link, post-object-write, post-stage,
+pre-state-finish, index-mismatch, blob-mismatch, and already-published cases
+must be pinned. If output is lost after `published`, `status`, never a second
+`publish`, establishes the result.
+
+The crash matrix injects failure before and after `publishing`, the hard link,
+each file/directory fsync, object write, index update, stage verification,
+final revalidation, `published`, and stdout emission. A durable final with a
+missing index is staged by `resume`; an already-correct index converges;
+mismatched file/index state fails closed. Both candidate and final may clear
+back to `reconciled|ready` only when both are absent and the held directory is
+fsynced. An object-only leftover grants no authority and is harmless.
+
+`coordination/bin/send-event` begins exactly with `#!/bin/bash -p`, immediately
+sets a fixed system `PATH`, initializes every cleanup variable before installing
+the trap, and uses a partial-initialization-safe trap. Tests must supply a
+PATH-selected fake Bash, hostile `BASH_ENV`, exported functions, hostile
+HOME/XDG config, attributes/clean filters, and mutable candidate/final/index
+fixtures and prove none can change the staged bytes or selected runtime.
+
+The trusted-runtime bootstrap is explicit: the shell executes only gate,
+receipt, and bridge blobs captured from the primary checkout's literal HEAD.
+Until an authorized landing places those blobs at primary HEAD, live
+verification-report emission fails closed. Tests operate in synthetic primary
+repositories; Tasks 6-7 do not emit a live report and never execute a mutable
+linked-worktree fallback. Activating the new live path requires a separate,
+explicitly authorized primary-checkout fast-forward after Tasks 6-7: require a
+clean unchanged primary HEAD and fast-forward ancestry, name one executor,
+re-read the landed blob modes/OIDs, and stop on dirt, divergence, or HEAD drift.
+That shared-checkout activation is not implied by this implementation plan or
+by the later coordinator handoff.
+
+### Hardened Task 7 rendered-prompt regression
+
+Task 7 additionally modifies `scripts/opus_review_bridge.py`,
+`scripts/opus_review_receipts.py`,
+`tests/unit/test_opus_review_bridge.py` plus
+`tests/unit/test_opus_review_receipts.py`; it consumes
+`scripts/prompts/opus_lane_v_advisory.md` unchanged. Change
+`AGENT_RELATIVE_PATH` to the dedicated provider prompt only after Prep Task 5B
+has landed. Before receipt
+reservation, validate and parse the descriptor-named content-addressed
+authority requirement, load its prompt path as a Git blob from the literal
+reviewed commit, and require the prompt to match the earlier committed
+repository path, Git blob OID, full-file SHA-256/size, and extracted-body
+SHA-256/size. Bind the
+descriptor/trigger authority plus those prompt facts into `ReviewScope` and
+therefore the scope digest and receipt. Pass those already-loaded exact bytes
+to `--append-system-prompt`; do not reload after reservation and do not persist
+the raw body. Prompt drift for the same attempt key is
+`attempt_scope_conflict`, never a second provider launch.
+
+Add
+`test_review_renders_descriptor_bound_advisory_prompt_separately_from_task_prompt`
+using a real temporary Git history. Make `reviewed_base` a pre-authority,
+pre-prompt commit exactly like real base `5550414`; commit the amended
+descriptor and content-addressed authority requirement later, then the exact
+prompt prep, then reviewed HEAD while preserving that prompt blob. Put distinct
+authority-granting sentinels in the old `.claude` provider path, the Codex
+mirror, and mutable WIP; put a frontmatter sentinel in the exact prompt's YAML.
+Capture the provider argv and prove loading succeeds from the descriptor-bound
+Git blob at reviewed HEAD rather than from
+`_trusted_prompt_revision(reviewed_base)`. Assert:
+
+- the value following `--append-system-prompt` equals the exact stripped
+  descriptor-bound body above;
+- the stored authority-requirement blob, prompt path/blob OID, full-file
+  digest/size, and extracted-body digest/size match the bytes used to render
+  that argument;
+- old-path, WIP, mirror, and frontmatter sentinels are absent;
+- the advisory-only sentences are present;
+- `operator-seat verifier`, `report FAIL with file:line evidence`, `in-scope
+  (GO + ratify-owed)`, `**Verdict:** GO / NITS / FAIL`, and `GO authorizes its
+  release` are absent; and
+- the separate value following `-p` contains the blind immutable task scope
+  and `evidence, not authority` instruction but not the base-body sentinel or
+  any Codex verdict.
+
+This exact-argument assertion is the rendered-prompt regression. Static grep or
+prompt-sync coverage alone does not satisfy it. A paired negative test mutates
+the reviewed Git blob at the same path and proves prompt metadata validation
+fails before receipt reservation or provider construction.
+
+---
+
 ### Task 6: Live Receipt Validation And Atomic Mailbox Publication
 
 **Files:**
@@ -1055,7 +1360,10 @@ env -u GIT_INDEX_FILE git commit -m "fix(opus): isolate Git authority from ambie
 
 **Interfaces:**
 - Consumes: one fully composed temporary verification-report, intended final repository-relative path, committed authority from Task 5, and either a reconciled Codex receipt or descriptor-authorized non-Codex task.
-- Produces: `validate_live_report()`, `publish_candidate()`, receipt/publication recovery, one no-clobber final report, and a `send-event` verifier-only publication branch.
+- Produces: `validate_live_report()`, `publish_candidate()`, explicit
+  `resume`/`status`, receipt/publication recovery, one no-clobber final report
+  with an exact no-filter stage-0 index binding, and a `send-event`
+  verifier-only publication branch with no shell staging.
 
 - [ ] **Step 1: Write failing live Codex binding tests**
 
@@ -1095,15 +1403,18 @@ candidate_digest: null | sha256:<64 lowercase hex>
 candidate_name: null | canonical direct-child basename
 candidate_device: null | non-bool non-negative integer
 candidate_inode: null | non-bool positive integer
+index_blob_oid: null | full lowercase Git object ID
+index_mode: null | literal 100644
+index_stage: null | non-bool integer 0
 ```
 
 `authority_digest` hashes canonical JSON containing repository identity, task
 ID, mode, harness, descriptor path/digest, trigger identity, reviewed HEAD/base,
 and authorized operator recipient. `ready` is odd-generation at least 1 with
-all five publication fields null; `publishing` is even-generation at least 2
-with path, digest, candidate basename, device, and inode present; `published` is
-odd-generation at least 3 with the same tuple. Boolean generations and integer
-witness fields are invalid.
+all eight publication/index fields null; `publishing` is even-generation at
+least 2 with the complete file witness and exact index OID/mode/stage present;
+`published` is odd-generation at least 3 with the same values. Boolean
+generations/stages and invalid integer witness fields are rejected.
 Initial validation creates `ready` generation 1. Every begin, absent-final
 clear, exact planned-tuple cancel, or exact-final finish increments generation.
 Unknown fields, illegal parity/nullability, malformed private metadata, or
@@ -1127,7 +1438,14 @@ assert published.read_bytes() == candidate_bytes_captured_before_publish
 assert not temp_report.exists()
 ```
 
-Run two processes against one task/path and assert exactly one succeeds. Run one task against two paths and one path against altered bytes; reject both replays. Simulate crashes after `publishing` and after `os.link()`: absent final clears to permit one new candidate, exact final finalizes, mismatched final fails closed. Assert validation failure creates no final file and does not enter `publishing`.
+Run two processes against one task/path and assert exactly one succeeds. Run one
+task against two paths and one path against altered bytes; reject both replays.
+Simulate crashes after `publishing` and after `os.link()`: absent final may clear
+only under the amended absent-state rule, an exact final becomes recovery input
+but cannot finalize until the exact object/index binding converges and all
+file/blob/index witnesses revalidate, and a mismatched final fails closed.
+Assert validation failure creates no final file and does not enter
+`publishing`.
 
 Also require exact public replay rejection when entry state is already
 `published`, while preserving internal transition idempotence needed by
@@ -1188,16 +1506,23 @@ os.link(
 )
 ```
 
-`FileExistsError` is never overwritten. Hash the final through the same directory descriptor and finish only when it equals the candidate digest. Recovery follows the exact absent/exact/mismatched rules from the design.
+`FileExistsError` is never overwritten. Hash the final through the same
+directory descriptor, but file equality alone never permits finish. Recovery
+follows the exact absent/exact/mismatched rules from the design and must
+converge the stored object/index witness before `finish_publication`.
 
 Open the final with `O_NOFOLLOW`, require a current-uid regular file whose
 device/inode equals the held candidate, and require the exact digest. Fsync the
 held candidate after its first exact read and fsync the final inode after link
-validation. Then fsync the directory, unlink the candidate by basename, fsync
-the directory again, reopen the final, require link count 1 plus the same
-inode/digest, fsync that descriptor, and only then finish publication. A failure
-after linking removes only a final whose identity is proven to be this
-invocation's link; otherwise retain conflict state and fail closed. Candidate
+validation. Then fsync the directory, write the captured bytes as the exact
+unfiltered Git object, stage only the stored canonical path, parse and verify
+one NUL-delimited stage-0 entry, compare `cat-file` bytes/digest, and reopen and
+revalidate the final witness. Only after those object/index/final checks may the
+candidate be unlinked by basename, the directory fsynced again, the final
+reopened with link count 1 plus the same inode/digest, the index durability
+checked, and `finish_publication` called. A failure after linking retains
+recoverable `publishing` unless a pre-link exact cancellation rule applies; it
+does not file-only-finish or report success. Candidate
 symlink/FIFO/directory/wrong mode/wrong link count, candidate-name swaps,
 preexisting final symlink/regular file, exact-byte different-inode recovery,
 surviving-candidate exact/missing/mismatch recovery, final inode mismatch, and
@@ -1210,11 +1535,14 @@ The CLI is:
 
 ```text
 verification_report_gate.py publish --repo-root <root> --candidate <temp-path> --final-relative <relative-path>
+verification_report_gate.py resume --repo-root <root> (--receipt-id <id> | --task-id <uuid>)
+verification_report_gate.py status --repo-root <root> (--receipt-id <id> | --task-id <uuid>)
 ```
 
-It has no `--state-root`, no bypass, and returns nonzero with a sanitized reason.
-On success it emits exactly one newline-terminated canonical repository-relative
-published path and nothing else on stdout; failure emits no stdout.
+They have no `--state-root`, caller witness/path override, or bypass. `publish`
+and successful `resume` emit exactly one newline-terminated canonical
+repository-relative published path and nothing else on stdout; failure emits no
+stdout. `status` emits only its canonical single-line sanitized JSON contract.
 
 - [ ] **Step 6: Write failing `send-event` end-to-end tests**
 
@@ -1224,9 +1552,11 @@ In temporary Git repositories, install a `.venv/bin/python` symlink to `sys.exec
 - valid report preserves the exact composed envelope and stages its final path;
 - same-second/no-replace collision never overwrites;
 - a publication race yields one final report;
-- forced `git add` failure preserves the validated final report, prints the manual-staging recovery, and a second emission for the same task is rejected;
-- recovery of an exact older cross-second final stages and reports only the
-  publisher-returned older path;
+- forced exact-blob/index-stage failure leaves a recoverable `publishing`
+  record, reports only the explicit resume command on stderr, and never returns
+  success or asks the operator to run a separate `git add`;
+- recovery of an exact older cross-second final idempotently stages and reports
+  only the publisher-returned older path;
 - empty, multiline, absolute, traversing, wrong-directory, or wrong-suffix
   publisher stdout is rejected before staging;
 - candidate CLI paths outside `sent`, with parent/alias components, or using the
@@ -1251,8 +1581,10 @@ In temporary Git repositories, install a `.venv/bin/python` symlink to `sys.exec
 
 - [ ] **Step 7: Route only verification reports through the Python publisher**
 
-Keep current validation/composition for every event kind. Immediately after
-shell strict mode, set/export the fixed trusted `PATH=/usr/bin:/bin`. Before any
+Keep current validation/composition for every event kind. Begin with absolute
+privileged Bash (`#!/bin/bash -p`), initialize cleanup variables, install only
+a partial-initialization-safe trap, and immediately set/export the fixed
+trusted `PATH=/usr/bin:/bin`. Before any
 Git command, remove every inherited `GIT_*` variable; invoke the absolute system
 Git with `--no-replace-objects` (and retain absolute `/usr/bin/env -u
 GIT_INDEX_FILE` as an explicit protocol marker). Resolve the absolute common
@@ -1273,47 +1605,54 @@ created secure empty mode-`0700`
 `-X pycache_prefix` directory; no caller `PYTHON*`, user/system
 `sitecustomize`, adjacent cached bytecode, or ambient module path may
 participate. The trap removes both temporary directories. After the temp file is
-complete, use logic equivalent to:
+complete, use logic equivalent to the following only for trusted-runtime
+extraction and publisher invocation. The approved amendment's Python-owned
+exact staging, `LANG=C`/`LC_ALL=C`, recovery, and stdout contract supersede any
+weaker detail in this illustrative shell fragment:
 
 ```bash
 if [ "$KIND" = "verification-report" ]; then
   COMMON=$(/usr/bin/env -u GIT_INDEX_FILE /usr/bin/git --no-replace-objects -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)
-  PRIMARY_ROOT=$(dirname "$COMMON")
+  PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
   TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
   [ -x "$TRUSTED_PYTHON" ] || { echo "send-event: trusted Pipeline Python unavailable" >&2; exit 4; }
   TRUSTED_HEAD=$(/usr/bin/env -u GIT_INDEX_FILE /usr/bin/git --no-replace-objects -C "$PRIMARY_ROOT" rev-parse 'HEAD^{commit}')
-  TRUSTED_CODE=$(mktemp -d "$ROOT/coordination/mailbox/sent/.trusted-code.XXXXXX")
+  TRUSTED_CODE=$(/usr/bin/mktemp -d "$ROOT/coordination/mailbox/sent/.trusted-code.XXXXXX")
   for SOURCE in verification_report_gate.py opus_review_receipts.py opus_review_bridge.py; do
     # Parse one exact `git ls-tree -z` entry here and require
     # 100644|100755, blob, and the literal scripts/$SOURCE path.
     /usr/bin/env -u GIT_INDEX_FILE /usr/bin/git --no-replace-objects -C "$PRIMARY_ROOT" \
       show "$TRUSTED_HEAD:scripts/$SOURCE" >"$TRUSTED_CODE/$SOURCE"
-    chmod 0600 "$TRUSTED_CODE/$SOURCE"
+    /bin/chmod 0600 "$TRUSTED_CODE/$SOURCE"
   done
-  PYCACHE_PREFIX=$(mktemp -d "$ROOT/coordination/mailbox/sent/.pycache.XXXXXX")
-  PUBLISHED_OUT=$(mktemp "$ROOT/coordination/mailbox/sent/.published.XXXXXX.tmp")
-  /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+  PYCACHE_PREFIX=$(/usr/bin/mktemp -d "$ROOT/coordination/mailbox/sent/.pycache.XXXXXX")
+  PUBLISHED_OUT=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.published.XXXXXX.tmp")
+  /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
     "$TRUSTED_PYTHON" -E -s -S -B -X pycache_prefix="$PYCACHE_PREFIX" \
     "$TRUSTED_CODE/verification_report_gate.py" \
     publish --repo-root "$ROOT" --candidate "$TMP" --final-relative "$REL" \
     >"$PUBLISHED_OUT"
-  PUBLISHED_REL=$(LC_ALL=C sed -n '1p' "$PUBLISHED_OUT")
-  printf '%s\n' "$PUBLISHED_REL" | cmp -s - "$PUBLISHED_OUT" || exit 4
-  printf '%s\n' "$PUBLISHED_REL" | LC_ALL=C grep -Eq \
+  PUBLISHED_REL=$(LC_ALL=C /usr/bin/sed -n '1p' "$PUBLISHED_OUT")
+  printf '%s\n' "$PUBLISHED_REL" | /usr/bin/cmp -s - "$PUBLISHED_OUT" || exit 4
+  printf '%s\n' "$PUBLISHED_REL" | LC_ALL=C /usr/bin/grep -Eq \
     '^coordination/mailbox/sent/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-operator2?-to-[a-z][a-z0-9]*-verification-report\.md$' \
     || exit 4
   REL=$PUBLISHED_REL
   F="$ROOT/$REL"
 else
-  mv "$TMP" "$F"
+  /bin/mv "$TMP" "$F"
 fi
 ```
 
-Then retain the existing `git add -f -- "$REL"` behavior. If staging fails
-after publication, print the exact publisher-returned retained path and exit 0.
-The trap removes only temporary candidate/output files, never the published
-final. Missing gate, unsupported CLI, import failure, primary-root mismatch, or
-unavailable interpreter leaves no final and stages nothing.
+Do not retain the shell's `git add` behavior for verification reports. The
+Python publisher writes and verifies the exact no-filter blob and stage-0 index
+entry while the publication lock remains held. A publication or stage failure
+exits nonzero, leaves recoverable `publishing` state when a witnessed final may
+exist, and prints an explicit sanitized `resume` instruction on stderr. The
+trap removes only invocation-owned temporary code/output paths; it never
+deletes a witnessed candidate or final needed by recovery. Missing gate,
+unsupported CLI, import failure, primary-root mismatch, or unavailable
+interpreter leaves no reported success and stages nothing.
 
 - [ ] **Step 8: Run Task 6 tests and commit**
 
@@ -1331,7 +1670,7 @@ Commit:
 
 ```bash
 env -u GIT_INDEX_FILE git add scripts/verification_report_gate.py scripts/opus_review_receipts.py coordination/bin/send-event tests/unit/test_verification_report_gate.py tests/unit/test_opus_review_receipts.py tests/unit/test_coordination_tooling.py
-env -u GIT_INDEX_FILE git commit -m "feat(mailbox): publish one receipt-bound Lane V report" -m "Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62"
+env -u GIT_INDEX_FILE git commit -m "feat(mailbox): publish one receipt-bound Lane V report" -m "Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe"
 ```
 
 ---
@@ -1339,7 +1678,12 @@ env -u GIT_INDEX_FILE git commit -m "feat(mailbox): publish one receipt-bound La
 ### Task 7: Converge Protocol Model, Prompts, Report Format, And Architecture
 
 **Files:**
+- Modify: `scripts/opus_review_bridge.py`
+- Modify: `scripts/opus_review_receipts.py`
+- Read/verify unchanged: `scripts/prompts/opus_lane_v_advisory.md`
 - Modify: `scripts/codex_protocol_model.py`
+- Modify: `tests/unit/test_opus_review_bridge.py`
+- Modify: `tests/unit/test_opus_review_receipts.py`
 - Modify: `tests/unit/test_protocol_prompt_sync.py`
 - Modify: `.codex/agents/lane-v-verifier.toml`
 - Modify: `.codex/agents/protocol-operator.toml`
@@ -1362,9 +1706,14 @@ env -u GIT_INDEX_FILE git commit -m "feat(mailbox): publish one receipt-bound La
 
 **Interfaces:**
 - Consumes: final Task 1-6 CLI/schema names and the authoritative scope descriptor path/digest.
-- Produces: one canonical executable doctrine in `CROSS_MODEL_VERIFICATION_RULES`, synchronized operator/verifier surfaces, exact v2 report skeleton, updated truth/ADR/assembly docs, and prompt-sync regressions.
+- Produces: one canonical executable doctrine in `CROSS_MODEL_VERIFICATION_RULES`, a descriptor-bound provider-only advisory prompt, the exact rendered-prompt regression specified in the approved amendment, synchronized operator/verifier surfaces, exact v2 report skeleton, updated truth/ADR/assembly docs, and prompt-sync regressions.
 
 - [ ] **Step 1: Write failing prompt and documentation sync assertions**
+
+First write the approved amendment's real-Git rendered-prompt regression in
+`tests/unit/test_opus_review_bridge.py`. It must capture the actual provider
+argv and distinguish `--append-system-prompt` from `-p`; static file scanning is
+not sufficient. Then update the documentation sync assertions below.
 
 Update the existing cross-model prompt-sync test to require these exact concepts across the model, continuation, operator skill, lane-v verifier, and protocol operator:
 
@@ -1395,10 +1744,12 @@ Assert the old caller-selected `--requirement`, `--allow-path`, `--verification-
 Run:
 
 ```bash
-env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_protocol_prompt_sync.py -q
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_opus_review_bridge.py::test_review_renders_descriptor_bound_advisory_prompt_separately_from_task_prompt tests/unit/test_protocol_prompt_sync.py -q
 ```
 
-Expected: the new receipt/schema phrases are absent and old CLI text remains.
+Expected: the rendered-prompt test fails because descriptor-bound loading is
+not implemented, and the new receipt/schema phrases are absent or old CLI text
+remains on the prompt-sync surface.
 
 - [ ] **Step 3: Update the executable protocol model first**
 
@@ -1451,7 +1802,7 @@ Replace the obsolete `_resolved_authorization_source` module-map row with stable
 Run:
 
 ```bash
-env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_protocol_prompt_sync.py tests/unit/test_check_go_schema.py -q
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_opus_review_receipts.py tests/unit/test_opus_review_bridge.py tests/unit/test_protocol_prompt_sync.py tests/unit/test_check_go_schema.py -q
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py ARCHITECTURE.md docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py --sha-refs
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/ci_smoke.py
@@ -1463,8 +1814,8 @@ Expected: prompt/schema tests pass, doc anchors and SHA baseline show no drift, 
 Commit:
 
 ```bash
-env -u GIT_INDEX_FILE git add scripts/codex_protocol_model.py scripts/route_capability.py tests/unit/test_protocol_prompt_sync.py .codex/agents/lane-v-verifier.toml .codex/agents/protocol-operator.toml .agents/skills/seat-operator/SKILL.md .agents/skills/seat-operator/verification-report-format.md .claude/skills/seat-operator/verification-report-format.md .github/workflows/ci.yml docs/protocol/codex/continuation.md docs/protocol/claude/independence-first.md docs/protocol/protocol-assembly-map.md docs/PROTOCOL-RULES-LOG.md ARCHITECTURE.md DECISIONS.md docs/superpowers/plans/2026-07-12-codex-opus-cross-model-verification.md docs/superpowers/plans/2026-07-12-codex-r-independence-standing-opus-authorization.md docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md docs/superpowers/specs/2026-07-12-codex-r-independence-standing-opus-authorization-design.md docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md
-env -u GIT_INDEX_FILE git commit -m "refactor(codex): bind Lane V workflow to receipts" -m "Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62"
+env -u GIT_INDEX_FILE git add scripts/opus_review_bridge.py scripts/opus_review_receipts.py tests/unit/test_opus_review_bridge.py tests/unit/test_opus_review_receipts.py scripts/codex_protocol_model.py scripts/route_capability.py tests/unit/test_protocol_prompt_sync.py .codex/agents/lane-v-verifier.toml .codex/agents/protocol-operator.toml .agents/skills/seat-operator/SKILL.md .agents/skills/seat-operator/verification-report-format.md .claude/skills/seat-operator/verification-report-format.md .github/workflows/ci.yml docs/protocol/codex/continuation.md docs/protocol/claude/independence-first.md docs/protocol/protocol-assembly-map.md docs/PROTOCOL-RULES-LOG.md ARCHITECTURE.md DECISIONS.md docs/superpowers/plans/2026-07-12-codex-opus-cross-model-verification.md docs/superpowers/plans/2026-07-12-codex-r-independence-standing-opus-authorization.md docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md docs/superpowers/specs/2026-07-12-codex-r-independence-standing-opus-authorization-design.md docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md
+env -u GIT_INDEX_FILE git commit -m "refactor(codex): bind Lane V workflow to receipts" -m "Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe"
 ```
 
 ---
@@ -1499,16 +1850,31 @@ env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/che
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py --sha-refs
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/ci_smoke.py
 env -u GIT_INDEX_FILE git diff --check 555041477bcdb9a432a1b238d664be0958c5c9ef..HEAD
-shasum -a 256 coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json
+shasum -a 256 coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json
+shasum -a 256 scripts/prompts/opus_lane_v_advisory.md scripts/prompts/opus_lane_v_advisory.authority.583cdcb5b5129b629ae4ada21627a4fc5bab1b9c.json
+env -u GIT_INDEX_FILE git hash-object --no-filters scripts/prompts/opus_lane_v_advisory.md scripts/prompts/opus_lane_v_advisory.authority.583cdcb5b5129b629ae4ada21627a4fc5bab1b9c.json
 ```
 
-Expected descriptor digest: `90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62`.
+Expected descriptor digest: `74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe`.
+Expected prompt/authority SHA-256 values are
+`86bb83ebec8bbfefe04a60af616e414f87ae972ceb3a27fc3f0332500e70f4b4`
+and `94768300138a01ca8c74fcd350a15a1557f7131730f7da94565d9566189f8acf`;
+their Git blob OIDs are `57df5979559c3c89030f685567bb5729a14d1688` and
+`583cdcb5b5129b629ae4ada21627a4fc5bab1b9c`.
 
 - [ ] **Run the independent actual-diff adversarial gate**
 
 The primary Codex Lane V question is: “Does the final `5550414..HEAD` implementation mechanically enforce every abuse/edge case in approved design Section 9, with non-vacuous tests and no bypass around attempt uniqueness, scope authority, exact report verdict, or no-replace publication?” Inspect the actual diff and test mutations before forming the provisional verdict.
 
-Then invoke the receipt-backed review exactly once for the final unchanged HEAD using the shipping-commit trigger and the descriptor's exact base. If the capability probe reports Seatbelt/AF_UNIX/Claude unavailable, preserve the resulting single degraded receipt/reason and do not retry or substitute another provider. Reconcile the stored receipt with the provisional Codex verdict and evidence-backed dispositions. Do not emit a mailbox report, consume a cursor, release a lock, or push.
+Then invoke the receipt-backed review exactly once for the final unchanged HEAD
+using the shipping-commit trigger and amended descriptor
+`2a876e95-3a87-4203-a613-1a29dd957b5b` with its exact `5550414...` base and
+precommitted provider-prompt blob. If the capability probe reports
+Seatbelt/AF_UNIX/Claude unavailable, preserve the resulting single degraded
+receipt/reason and do not retry or substitute another provider. Reconcile the
+stored receipt with the provisional Codex verdict and evidence-backed
+dispositions. Do not emit a mailbox report, consume a cursor, release a lock,
+activate the primary checkout, or push.
 
 - [ ] **Verify final branch state**
 
@@ -1518,7 +1884,9 @@ env -u GIT_INDEX_FILE git status --short
 env -u GIT_INDEX_FILE git show --stat --oneline HEAD
 ```
 
-Expected: one reviewed commit per Task 1-7 after the plan/descriptor preparation commit, clean worktree, no live mailbox/cursor/route/lock changes, and no push.
+Expected: one reviewed commit per Task 1-7 plus the prompt prep and amended
+plan/descriptor commits, clean worktree, no live mailbox/cursor/route/lock or
+primary-activation changes, and no push.
 
 ## Plan Self-Review Record
 
@@ -1526,4 +1894,9 @@ Expected: one reviewed commit per Task 1-7 after the plan/descriptor preparation
 - File boundaries: receipt serialization/storage does not import provider policy; bridge owns provider/severity behavior; report gate owns report parsing/publication; `check_go_schema` owns CI corpus accounting.
 - Type consistency: Task 1 produces `ScopeDescriptor`/`ReviewScope`; Task 2 consumes them and produces `ReceiptStore`; Task 3 consumes the store and produces stored v3/v2 evidence; Tasks 5-6 consume those exact mappings; Task 7 documents the final names.
 - Execution conflict scan: Tasks are sequential where they share `opus_review_bridge.py`, `opus_review_receipts.py`, or their tests; no two implementers run concurrently on shared files.
-- Authority scan: the scope descriptor is committed before implementation, every shipping task commit carries its exact path/digest trailer, and no planned step performs a live protocol or external-publication side effect.
+- Authority scan: the original descriptor remains the historical authority for
+  Tasks 1-5A; the amended descriptor precommits the exact advisory prompt blob
+  and is the authority for Prep 5B and Tasks 6-7. Every remaining shipping task
+  commit carries its exact path/digest trailer, and no implementation step
+  performs live protocol, primary-activation, or external-publication side
+  effects.
