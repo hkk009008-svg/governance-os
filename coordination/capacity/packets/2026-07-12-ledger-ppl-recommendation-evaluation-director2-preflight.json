@@ -22,11 +22,13 @@
     "Do not edit target product/plan files, issue Operator GO, consume mail, mutate packets, take user-gated side effects, or duplicate task implementation/review."
   ],
   "done_evidence": [
-    "coordination/mailbox/sent/2026-07-13T04-10-28Z-director2-to-coordinator-coordination.md records a route-changing BLOCKED disposition: the approved plan and target AGENTS.md deny Codex target commit authority, while the later route allowed the already-landed Codex controller range without a durable explicit user exception."
+    "coordination/mailbox/sent/2026-07-13T04-10-28Z-director2-to-coordinator-coordination.md records the execution-authority contradiction found by the bounded contract preflight.",
+    "coordination/mailbox/sent/2026-07-13T04-27-12Z-operator-to-coordinator-coordination.md records the user-principal's option-1 ruling: ratify only the exact already-landed range as a bounded exception, with no future Codex commit or publication authority.",
+    "coordination/mailbox/sent/2026-07-13T04-28-11Z-coordinator-to-all-decision.md binds the narrow exception and closes this preflight as done without granting a correctness verdict."
   ],
-  "handoff_artifact": "coordination/mailbox/sent/2026-07-13T04-10-28Z-director2-to-coordinator-coordination.md",
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-13T04-28-11Z-coordinator-to-all-decision.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "done",
   "verify_request": null,
   "target_commit": "e7cf287b6bfd1a5481647d05e05bf01effcf8911",
   "commit_range": "6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa..e7cf287b6bfd1a5481647d05e05bf01effcf8911",

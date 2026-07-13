@@ -32,7 +32,7 @@
   "done_evidence": [],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "ready",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
