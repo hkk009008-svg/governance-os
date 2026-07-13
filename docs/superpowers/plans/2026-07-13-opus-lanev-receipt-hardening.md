@@ -2145,6 +2145,8 @@ provider during Task 9.
 - Modify: `scripts/verification_report_gate.py`
 - Modify: `tests/unit/test_opus_review_bridge.py`
 - Modify: `tests/unit/test_verification_report_gate.py`
+- Modify only when the two production insertions shift verified symbol lines:
+  `ARCHITECTURE.md`
 
 The fresh whole-branch Section 9 review returned **FAIL** before provider
 reservation. Both shipping-authority consumers count `Lane-V-Scope:` only
@@ -2178,10 +2180,14 @@ Run both complete affected test files and demonstrate the new regressions are
 mutation-sensitive by bypassing only the global count and observing their RED
 failure. Run the full descriptor acceptance command, `scripts/ci_smoke.py`,
 the changed-authority SHA subset, and `git diff --check`. Obtain a fresh
-task-scoped spec-and-quality review of the actual diff. Commit the correction
-with the descriptor-bound terminal trailer. Do not reserve a receipt, invoke
-the provider, emit mail, publish a report, activate the primary checkout,
-push, or change protocol state during Task 10.
+task-scoped spec-and-quality review of the actual diff. If the insertions move
+the documented `resolve_provider_authoritative_scope` or `publish_candidate`
+definitions, update only those mechanically verified `ARCHITECTURE.md` line
+anchors and re-run the anchor checker; do not compress production code to
+preserve stale line numbers. Commit the correction with the descriptor-bound
+terminal trailer. Do not reserve a receipt, invoke the provider, emit mail,
+publish a report, activate the primary checkout, push, or change protocol
+state during Task 10.
 
 Only after Task 10 is green and independently reviewed may a fresh whole-branch
 Section 9 review form a new provisional Codex verdict. The single
