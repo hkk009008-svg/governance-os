@@ -37,6 +37,7 @@ _PATH_MAX_BYTES = 512
 _COMMAND_MAX_BYTES = 4_096
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_RECEIPT_ID_RE = re.compile(r"^opr1:[0-9a-f]{64}$")
 _QUESTION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _FORBIDDEN_COMMAND_CHARS = frozenset(";&|<>`$(){}\n\r\x00")
 _VERIFICATION_COMMAND_PREFIX = ("env", "-u", "GIT_INDEX_FILE")
@@ -181,6 +182,15 @@ def _full_sha(value: object, label: str, *, reason: str) -> str:
 def _sha256_text(value: object, label: str, *, reason: str) -> str:
     if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
         raise ReceiptContractError(reason, f"{label} must be a canonical SHA-256")
+    return value
+
+
+def _canonical_receipt_id(value: object) -> str:
+    if not isinstance(value, str) or _RECEIPT_ID_RE.fullmatch(value) is None:
+        raise ReceiptContractError(
+            "invalid_receipt_id",
+            "receipt_id must be opr1 followed by 64 lowercase hex characters",
+        )
     return value
 
 
@@ -993,15 +1003,22 @@ class ReceiptStore:
     def lock_attempt(
         self, scope: ReviewScope, *, blocking: bool = True
     ) -> LockedAttempt:
-        return LockedAttempt(self, scope, blocking=blocking)
+        return LockedAttempt(self, compute_attempt_key(scope), blocking=blocking)
+
+    def lock_receipt(
+        self, receipt_id: str, *, blocking: bool = True
+    ) -> LockedAttempt:
+        return LockedAttempt(
+            self, _canonical_receipt_id(receipt_id), blocking=blocking
+        )
 
 
 class LockedAttempt:
     def __init__(
-        self, store: ReceiptStore, scope: ReviewScope, *, blocking: bool
+        self, store: ReceiptStore, attempt_key: str, *, blocking: bool
     ) -> None:
         self._store = store
-        self._attempt_key = compute_attempt_key(scope)
+        self._attempt_key = _canonical_receipt_id(attempt_key)
         key_digest = self._attempt_key.removeprefix("opr1:")
         self._receipt_name = f"{key_digest}.json"
         self._lock_name = f"{key_digest}.lock"
@@ -1107,6 +1124,13 @@ class LockedAttempt:
             os.close(receipt_fd)
         return _receipt_from_bytes(raw, self._attempt_key)
 
+    def load_existing(self) -> ReceiptRecord:
+        self._require_locked()
+        current = self._read_receipt()
+        assert current is not None
+        self._current = current
+        return current
+
     def _create_initial(self, record: ReceiptRecord) -> None:
         raw = _canonical_receipt_bytes(record)
         directory_fd = self._require_locked()
@@ -1142,7 +1166,8 @@ class LockedAttempt:
     def _verified_current(self) -> ReceiptRecord:
         if self._current is None:
             raise ReceiptStateError(
-                "attempt_not_loaded", "reserve_or_load must run before a transition"
+                "attempt_not_loaded",
+                "reserve_or_load or load_existing must run before a transition",
             )
         observed = self._read_receipt()
         assert observed is not None

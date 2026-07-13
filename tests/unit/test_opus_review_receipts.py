@@ -670,6 +670,152 @@ def _run_reconciliation_race(
         results.join_thread()
 
 
+def test_receipt_id_lookup_loads_exact_record_and_allows_reconciliation(
+    tmp_path: Path,
+) -> None:
+    scope = _review_scope()
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=tmp_path / "state")
+    with store.lock_attempt(scope, blocking=False) as attempt:
+        attempt.reserve_or_load(scope)
+        reviewed = attempt.record_review(_review_mapping())
+
+    with store.lock_receipt(reviewed.receipt_id, blocking=False) as attempt:
+        loaded = attempt.load_existing()
+        reconciled = attempt.record_reconciliation(
+            _reconciliation_input(), _reconciliation_result()
+        )
+
+    assert loaded == reviewed
+    assert reconciled.state == "reconciled"
+    assert reconciled.generation == reviewed.generation + 1
+
+
+def test_receipt_id_load_requires_active_lock(tmp_path: Path) -> None:
+    scope = _review_scope()
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=tmp_path / "state")
+    with store.lock_attempt(scope, blocking=False) as attempt:
+        record = attempt.reserve_or_load(scope).record
+
+    unlocked = store.lock_receipt(record.receipt_id, blocking=False)
+    with pytest.raises(receipts.ReceiptStateError, match="attempt_lock_required"):
+        unlocked.load_existing()
+
+
+@pytest.mark.parametrize(
+    "receipt_id",
+    [
+        "sha256:" + "a" * 64,
+        "opr1:" + "a" * 63,
+        "opr1:" + "a" * 65,
+        "opr1:" + "A" * 64,
+        "opr1:" + "g" * 64,
+        "opr1:" + "a" * 31 + "/" + "b" * 32,
+        "opr1:" + "a" * 31 + "\\" + "b" * 32,
+        "opr1:../" + "a" * 61,
+    ],
+)
+def test_lock_receipt_rejects_malformed_id_before_state_root_io(
+    tmp_path: Path, receipt_id: str
+) -> None:
+    state_root = tmp_path / "must-not-open"
+    store = receipts.ReceiptStore(state_root)
+
+    with pytest.raises(receipts.ReceiptContractError, match="invalid_receipt_id"):
+        store.lock_receipt(receipt_id, blocking=False)
+
+    assert not state_root.exists()
+
+
+def test_receipt_id_lookup_missing_record_never_creates_receipt(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "state"
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=state_root)
+    missing_id = "opr1:" + "f" * 64
+
+    with store.lock_receipt(missing_id, blocking=False) as attempt:
+        with pytest.raises(receipts.ReceiptStateError, match="receipt_missing"):
+            attempt.load_existing()
+
+    assert tuple(state_root.glob("*.json")) == ()
+    assert not (state_root / ("f" * 64 + ".json")).exists()
+
+
+def test_receipt_id_lookup_derives_exact_names_without_directory_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    decision, state_root = _reserve_once(tmp_path)
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=state_root)
+
+    def reject_scan(*args: object, **kwargs: object) -> object:
+        raise AssertionError("receipt lookup must not scan the state directory")
+
+    monkeypatch.setattr(receipts.os, "scandir", reject_scan)
+    with store.lock_receipt(decision.record.receipt_id, blocking=False) as attempt:
+        assert attempt.load_existing() == decision.record
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    ["corrupt", "mode", "symlink", "directory", "fifo", "hardlink"],
+)
+def test_receipt_id_lookup_reuses_receipt_file_security_checks(
+    tmp_path: Path, replacement: str
+) -> None:
+    decision, state_root = _reserve_once(tmp_path)
+    receipt_path, _ = _receipt_paths(state_root)
+    original = receipt_path.with_suffix(".original")
+    if replacement == "corrupt":
+        receipt_path.write_bytes(b'{"schema_version":')
+        receipt_path.chmod(0o600)
+    elif replacement == "mode":
+        receipt_path.chmod(0o755)
+    else:
+        receipt_path.rename(original)
+        if replacement == "symlink":
+            receipt_path.symlink_to(original.name)
+        elif replacement == "directory":
+            receipt_path.mkdir()
+        elif replacement == "hardlink":
+            os.link(original, receipt_path)
+        else:
+            os.mkfifo(receipt_path, mode=0o600)
+
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=state_root)
+    with pytest.raises(receipts.ReceiptStateError):
+        with store.lock_receipt(
+            decision.record.receipt_id, blocking=False
+        ) as attempt:
+            attempt.load_existing()
+
+
+def test_receipt_id_lookup_reuses_owner_check(tmp_path: Path) -> None:
+    decision, state_root = _reserve_once(tmp_path)
+
+    def wrong_owner(fd: int) -> os.stat_result:
+        observed = list(os.fstat(fd))
+        observed[4] = os.getuid() + 1
+        return os.stat_result(observed)
+
+    store = receipts.ReceiptStore.for_repo(
+        tmp_path, state_root=state_root, stat_fn=wrong_owner
+    )
+    with pytest.raises(receipts.ReceiptStateError, match="receipt_file_owner"):
+        with store.lock_receipt(decision.record.receipt_id, blocking=False):
+            pass
+
+
+def test_scope_and_receipt_id_access_contend_on_same_lock(tmp_path: Path) -> None:
+    scope = _review_scope()
+    store = receipts.ReceiptStore.for_repo(tmp_path, state_root=tmp_path / "state")
+
+    with store.lock_attempt(scope, blocking=False) as scope_attempt:
+        record = scope_attempt.reserve_or_load(scope).record
+        with pytest.raises(receipts.ReceiptStateError, match="attempt_in_progress"):
+            with store.lock_receipt(record.receipt_id, blocking=False):
+                pass
+
+
 def test_receipt_store_uses_primary_common_root_across_linked_worktrees(
     tmp_path: Path,
 ) -> None:
