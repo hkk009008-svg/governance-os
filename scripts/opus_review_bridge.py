@@ -1497,12 +1497,25 @@ def _shipping_authority(
         raise ReviewContractError(
             "invalid_trigger", "shipping commit subject must be feat, fix, or refactor"
         )
+    references = [
+        line.removeprefix("Lane-V-Scope: ")
+        for line in lines
+        if line.startswith("Lane-V-Scope: ")
+    ]
+    if len(references) != 1:
+        raise ReviewContractError(
+            "invalid_trigger", "shipping commit requires one Lane-V-Scope trailer"
+        )
     trailers = [
         line.removeprefix("Lane-V-Scope: ")
         for line in _terminal_git_trailers(message.stdout)
         if line.startswith("Lane-V-Scope: ")
     ]
     if len(trailers) != 1:
+        raise ReviewContractError(
+            "invalid_trigger", "shipping commit requires one Lane-V-Scope trailer"
+        )
+    if trailers[0] != references[0]:
         raise ReviewContractError(
             "invalid_trigger", "shipping commit requires one Lane-V-Scope trailer"
         )

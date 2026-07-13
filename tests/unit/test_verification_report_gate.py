@@ -731,6 +731,7 @@ def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
     (
         "missing-trailer",
         "duplicate-trailer",
+        "body-plus-trailer",
         "body-only",
         "non-terminal",
         "mismatched-trailer",
@@ -782,6 +783,15 @@ def test_shipping_authority_rejections_flip_to_one_lawful_trigger(
             amend_args.extend(
                 ("-m", f"Lane-V-Scope: {scope_authority}\nLane-V-Scope: {scope_authority}")
             )
+        elif malformation == "body-plus-trailer":
+            amend_args.extend(
+                (
+                    "-m",
+                    f"Authority context\nLane-V-Scope: {scope_authority}",
+                    "-m",
+                    f"Lane-V-Scope: {scope_authority}",
+                )
+            )
         elif malformation == "body-only":
             amend_args.extend(
                 ("-m", f"Authority context\nLane-V-Scope: {scope_authority}")
@@ -818,6 +828,10 @@ def test_shipping_authority_rejections_flip_to_one_lawful_trigger(
             "shipping commit requires the report's exact Lane-V-Scope trailer",
         ),
         "duplicate-trailer": (
+            "invalid_shipping_trigger",
+            "shipping commit requires the report's exact Lane-V-Scope trailer",
+        ),
+        "body-plus-trailer": (
             "invalid_shipping_trigger",
             "shipping commit requires the report's exact Lane-V-Scope trailer",
         ),

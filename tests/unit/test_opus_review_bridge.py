@@ -1473,6 +1473,40 @@ def test_shipping_scope_line_in_middle_body_is_not_a_terminal_trailer(
     assert excinfo.value.reason == "invalid_trigger"
 
 
+def test_shipping_scope_is_unique_across_body_and_terminal_trailer(
+    tmp_path: Path,
+) -> None:
+    fixture = _authority_fixture(tmp_path / "malformed")
+    reference = f"{fixture.descriptor_path}@{fixture.descriptor_digest}"
+    _git(
+        fixture.root,
+        "commit",
+        "--amend",
+        "-q",
+        "-m",
+        "feat: bind reviewed change",
+        "-m",
+        f"Authority context\nLane-V-Scope: {reference}",
+        "-m",
+        f"Lane-V-Scope: {reference}",
+    )
+    malformed_head = _git(fixture.root, "rev-parse", "HEAD")
+    malformed_request = replace(
+        fixture.request,
+        reviewed_head=malformed_head,
+        trigger_commit=malformed_head,
+    )
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.resolve_authoritative_scope(malformed_request)
+
+    assert excinfo.value.reason == "invalid_trigger"
+
+    lawful = _authority_fixture(tmp_path / "lawful")
+    resolved = bridge.resolve_authoritative_scope(lawful.request)
+    assert resolved.request.trigger_commit == lawful.trigger_commit
+
+
 @pytest.mark.parametrize(
     ("case", "fixture_kwargs", "request_change"),
     [

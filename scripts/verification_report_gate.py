@@ -717,12 +717,27 @@ def _shipping_scope(
             "invalid_shipping_trigger",
             "shipping subject must be feat, fix, or refactor",
         )
+    canonical_references = [
+        line.removeprefix("Lane-V-Scope: ")
+        for line in lines
+        if line.startswith("Lane-V-Scope: ")
+    ]
+    if len(canonical_references) != 1:
+        _fail(
+            "invalid_shipping_trigger",
+            "shipping commit requires the report's exact Lane-V-Scope trailer",
+        )
     references = [
         line.removeprefix("Lane-V-Scope: ")
         for line in _terminal_git_trailers(message)
         if line.startswith("Lane-V-Scope: ")
     ]
     if references != [report.fields["Scope authority"]]:
+        _fail(
+            "invalid_shipping_trigger",
+            "shipping commit requires the report's exact Lane-V-Scope trailer",
+        )
+    if references[0] != canonical_references[0]:
         _fail(
             "invalid_shipping_trigger",
             "shipping commit requires the report's exact Lane-V-Scope trailer",
