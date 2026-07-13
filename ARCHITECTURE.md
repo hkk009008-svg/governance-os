@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-13 @ 8ca2837*
+*Last verified: 2026-07-13 @ 3dd6bdc*
 
 ## 1. Purpose
 
@@ -60,7 +60,7 @@ Key directories:
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:540` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_r_independence` | `scripts/codex_protocol_model.py:766` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:850` | Renders guard guidance into readiness output. |
-| `_resolved_authorization_source` | `scripts/opus_review_bridge.py:887` | Resolves the exact Lane-V profile to explicit task authority or its bounded standing policy. |
+| `_resolved_authorization_source` | `scripts/opus_review_bridge.py:1070` | Resolves the exact Lane-V profile to explicit task authority or its bounded standing policy. |
 
 ## 4. Runtime Invariants
 
@@ -98,13 +98,21 @@ Key directories:
   implementation: it classifies the four adversarial surfaces, requires a
   durable independent design-time enumeration for triggered work, and requires
   independent actual-diff verification before completion. Lane V requests
-  declare `codex-lane-v`. After Pipeline identity, commits, immutable
-  reviewed-HEAD scope, and command validation, an absent task source resolves
-  to `standing-policy:codex-lane-v-opus-v1`; malformed explicit sources never
-  fall back. Normalized evidence is `opus-review/v2` and records the profile and
-  authorization identity. One invocation launches at most one provider process
-  and never retries. Unavailability remains visibly degraded and the operator
-  retains GO/NITS/FAIL authority.
+  declare `codex-lane-v`; production scope is derived from a committed
+  `lane-v-scope/v1` descriptor named by either the reviewed shipping commit or
+  a committed `verify-request`, never from caller-selected path/command lists.
+  Requirement and authority blobs are bound to full commits, blob IDs, and
+  digests and rechecked in the isolated snapshot. After Pipeline identity,
+  commits, immutable scope, and command validation, an absent task source
+  resolves to `standing-policy:codex-lane-v-opus-v1`; malformed explicit
+  sources never fall back. Provider payloads use `opus-provider-review/v1`;
+  normalized evidence is `opus-review/v3`, persisted under the shared Git
+  common directory, and receipt-only reconciliation uses
+  `opus-reconciliation/v2`. One authoritative task/range launches at most one
+  provider process: exact replays reuse the receipt, and an abandoned durable
+  reservation becomes visibly `attempt_state_uncertain` rather than retrying.
+  Unavailability remains degraded and the operator retains GO/NITS/FAIL
+  authority.
 
 ## 5. Mailbox And Capacity State
 
