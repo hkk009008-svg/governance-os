@@ -203,6 +203,15 @@ opened and replaced relative to an already validated directory descriptor. The
 store rejects symlinks, non-regular files, wrong ownership, overly permissive
 modes, schema drift, and identity/digest mismatches.
 
+Every host-side Git invocation that selects committed authority, object
+identity, repository identity, or a runtime-state root runs with every inherited
+`GIT_*` variable removed and with `git --no-replace-objects`. The requested
+repository remains the command working directory and must still pass the exact
+root and Pipeline-marker checks. This prevents `GIT_DIR`, `GIT_COMMON_DIR`,
+object-directory/alternate-object selectors, and replace refs from coherently
+redirecting both the reviewed object graph and the receipt root. The provider
+and verification sandboxes retain their separately allowlisted environments.
+
 Each immutable commit range has one deterministic attempt key. Its receipt and
 per-attempt lock filenames are derived from that key. A process acquires and
 holds an exclusive `flock` on the regular mode-`0600` lock file from before
@@ -390,11 +399,11 @@ An identical reconciliation request returns the stored result. Any changed
 verdict, disposition, evidence, expected commit, or receipt scope fails with
 `reconciliation_replay_conflict`.
 
-`publishing` binds one planned mailbox path and candidate digest while the
-atomic no-replace publication is in progress. `published` records the one
-durable report path and digest. Every transition occurs under the per-attempt
-lock and increments a checked generation; no stale writer may replace a newer
-state.
+`publishing` binds one planned mailbox path, candidate digest, direct-child
+candidate basename, device, and inode while atomic no-replace publication is in
+progress. `published` retains that exact five-part tuple for the one durable
+report. Every transition occurs under the per-attempt lock and increments a
+checked generation; no stale writer may replace a newer state.
 
 If a process dies after `reserved` is durable but before `reviewed`, no caller
 may relaunch the provider. A second process that cannot acquire the attempt
@@ -543,27 +552,111 @@ For Codex GO, `go_allowed` must be true. Codex NITS/FAIL require false and must
 equal the stored reconciliation verdict; NITS cannot substitute for FAIL or
 vice versa.
 
-The gate holds the task's publication lock, records a `publishing` path and
-candidate digest, creates the final report with same-directory atomic
-hard-link/no-replace semantics, `fsync`s the directory, then records
-`published`. A Codex publication is an additional receipt transition; a
-non-Codex task uses an equivalent private publication record keyed by its
-authoritative task ID. Exactly one canonical report path+digest may publish per
-task. A repeated or altered publication is rejected. For verification reports,
-the current shell-level check-then-`mv` sequence is replaced by this single
-publisher; no preliminary existence check is treated as publication authority.
+The gate holds the task's publication lock and records the `publishing` path,
+candidate digest, direct-child candidate basename, device, and inode. It creates
+the final report with same-directory atomic hard-link/no-replace semantics,
+durably completes the file and directory fsync sequence below, then records
+`published` while retaining that exact five-part tuple. A Codex publication is
+an additional receipt transition; a non-Codex task uses an equivalent private
+publication record keyed by its authoritative task ID. Exactly one canonical
+report and creation witness may publish per task. A repeated or altered
+publication is rejected. For verification reports, the current shell-level
+check-then-`mv` sequence is replaced by this single publisher; no preliminary
+existence check is treated as publication authority.
+
+The non-Codex record schema is `lane-v-task-publication/v1` and contains exactly
+the canonical task UUID, an authority digest, state, generation, path, and
+candidate digest plus the candidate basename/device/inode creation witness. The
+authority digest covers repository identity, task ID, mode, harness, descriptor
+path/digest, trigger identity, reviewed HEAD/base, and the authorized operator
+recipient. `ready` has an odd generation at least 1 and null publication
+fields; `publishing` has an even generation at least 2 and the path, digest,
+direct-child candidate basename, non-boolean non-negative device, and
+non-boolean positive inode present; `published` has an odd generation at least
+3 and retains that exact tuple. Initial validated reservation creates `ready`
+generation 1. Every begin, exact absent-final clear, exact planned-tuple cancel,
+or exact-final finish increments generation. Unknown fields, illegal
+parity/nullability, changed authority, malformed private state, or mismatched
+recovery fail without rewriting the record.
+
+Codex live validation occurs under the receipt lock and decodes the stored
+review and reconciliation through the bridge's public normalization functions;
+raw receipt mappings are never treated as report authority. It additionally
+matches the receipt's repository identity and stored commits to the current
+provider-neutral structural authority. The receipt transition methods may be
+internally idempotent for crash recovery, but the public publisher rejects an
+entry state of `published`, including an identical replay. Only an entry state
+of `publishing` may recover, and exact recovery requires the observed final's
+path, digest, device, and inode to equal the stored candidate witness. If the
+stored candidate basename remains, recovery opens it without following links,
+requires the same tuple/digest, fsyncs the recovered final inode, unlinks only
+that name, and then requires the final's link count to be 1. If the name is
+absent, recovery still fsyncs that final inode and requires link count 1.
+Recovery always fsyncs the held directory after this handling, reopens the final
+name, and revalidates the stored path/digest/device/inode before
+`finish_publication` may record the durable transition. A fresh
+`os.link` collision is not recovery even if the existing bytes match: an exact
+`cancel_publication` transition requires the full tuple and expected generation,
+increments generation, clears the tuple, and moves Codex
+`publishing -> reconciled` or the task store `publishing -> ready` under the
+same lock. The invocation then fails. This prevents a preexisting exact-byte
+destination from being mistaken for a link created before an interrupted
+publisher exited; cancellation never deletes or reinitializes the record.
+
+Candidate and final names are direct children of one held, descriptor-relative
+`coordination/mailbox/sent` directory. The candidate is opened once with
+`O_NOFOLLOW`, required to be a regular current-uid mode-`0600` single-link
+file, and its device/inode, metadata, bytes, and digest are retained. The name is
+revalidated against that inode immediately before a basename-only hard link.
+The caller-supplied candidate path itself must be absolute, lexically canonical,
+and name that exact held parent; parent/alias components or the same basename in
+another directory are rejected rather than reduced to `.name`.
+The final must be the same inode and digest through its own no-follow descriptor.
+After exact candidate validation the publisher fsyncs the held file descriptor.
+After linking it validates and fsyncs the same final inode, fsyncs the directory,
+removes the temporary candidate, fsyncs the directory again, reopens the final,
+requires link count 1 and the same digest, fsyncs that descriptor, and only then
+records `published`. A failure removes only a just-created final whose identity
+is proven; otherwise it preserves conflict state and fails closed. A durable
+`published` transition can therefore never precede file-data and mailbox-name
+durability.
 
 If publication recovery finds the named final path with the expected digest,
-it finalizes `published`; if the path is absent, it clears the interrupted
-publication reservation before accepting one new candidate; a mismatched path
-or digest fails closed. Validation or publication failure leaves no new final
-event and the shell trap removes the temporary file. A Git staging failure
+device, and inode, it finalizes `published`; if the path is absent, it clears
+the interrupted publication reservation before accepting one new candidate,
+first removing a surviving stored candidate basename only when its no-follow
+descriptor matches the stored witness/digest. An absent stored candidate is
+also valid; a mismatched candidate or final path, digest, device, or inode fails
+closed. Validation or
+publication failure leaves no new final event and the shell trap removes the
+temporary file. A Git staging failure
 after successful publication preserves the validated final event and its
 publication binding, matching current `send-event` recovery semantics; the
 operator stages that exact path manually rather than emitting another report.
 
+Recovery may finalize the persisted path from an earlier second. The publisher
+therefore emits exactly that canonical repository-relative path on stdout, and
+`send-event` validates and stages only the returned path. Empty, multiline,
+absolute, traversing, wrong-directory, or wrong-suffix output fails before
+staging; diagnostics use stderr and failure emits no stdout.
+
 `send-event` resolves the trusted Python from the resolved Git common
 directory's Pipeline root and fails closed if that interpreter is unavailable.
+It also requires the common-directory parent to be the matching primary
+Pipeline checkout. It captures that checkout's literal full HEAD once, requires
+the gate plus receipt/bridge imports to be regular Git blobs at that commit, and
+materializes exactly those three blobs into a newly-created mode-`0700` code
+directory. Python executes that copy, never a mutable primary or linked-worktree
+pathname. Until the captured primary HEAD contains the publication gate,
+verification-report emission fails closed. Bare,
+separate-git-dir-without-primary, root-mismatch, missing/non-blob module,
+unavailable interpreter, import, or missing-CLI cases create and stage nothing.
+The trusted Python runs from that three-file code directory with an allowlisted
+environment, `-E -s -S -B`, and a new secure empty `-X pycache_prefix`
+directory, so caller `PYTHON*`, user/system `sitecustomize`, untracked shadow
+modules, adjacent cached bytecode, primary-path TOCTOU, and linked-worktree
+module paths cannot replace the captured modules. Root-selection Git uses the
+absolute system Git, all `GIT_*` values removed, and `--no-replace-objects`.
 Other event kinds are unchanged.
 
 ### 6.9 Historical report compatibility
@@ -594,7 +687,11 @@ reports, reads each once as raw bytes, and therefore detects untracked new
 reports. Explicit replacement may update digests only for the already-reviewed
 manifest path set; it cannot add later reports, remove missing history, or
 change paths. Initial publication is atomic no-clobber, while an explicit valid
-replacement uses same-directory fsync/replace/fsync durability.
+replacement uses same-directory fsync/replace/fsync durability. Replacement is
+serialized by one secure stable lock under the sanitized Git common directory,
+acquired before resolving the immutable HEAD snapshot and held through target
+replacement and directory fsync. Locking the replaceable manifest inode is not
+sufficient.
 
 ### 6.10 Provider output and resource safety
 
@@ -714,8 +811,13 @@ applies. The following cases are mandatory acceptance targets.
 - changing reviewed HEAD changes a changed requirement's digest;
 - empty diff or non-ancestor base;
 - abbreviated, uppercase, missing, or moving commit reference;
-- command whitespace/quoting variations create a second attempt; and
-- authorization/profile variation attempts to unlock a retry.
+- command whitespace/quoting variations create a second attempt;
+- authorization/profile variation attempts to unlock a retry;
+- inherited `GIT_DIR`, `GIT_COMMON_DIR`, object/alternate-object directories,
+  or replace refs attempt to substitute committed authority or receipt roots;
+  and
+- the requested repository root is valid while a foreign object graph is made
+  visible only through ambient Git selectors.
 
 ### 9.4 Provider and resource behavior
 
@@ -749,9 +851,29 @@ applies. The following cases are mandatory acceptance targets.
 - new report tries to inherit legacy status by timestamp or filename shape;
 - candidate validation fails after the temp file is written;
 - two paths attempt to publish from one reconciliation/task;
+- an identical public invocation enters after the task is already `published`;
+- a fresh exact-byte destination collision is mistaken for crash recovery;
+- a publisher crashes after `publishing` but before linking while an unrelated
+  exact-byte destination already exists;
+- recovery finds the final and a surviving stored candidate hard link, or a
+  different file has replaced that candidate basename;
+- cancellation receives a stale generation or changed planned tuple;
 - no-replace publication races a same-second collision;
 - crash occurs before/after the `publishing` transition or atomic link;
-- recovery sees absent, exact, or mismatched final content; and
+- recovery sees absent, exact, or mismatched final content;
+- recovery finalizes an older cross-second path and the shell attempts to stage
+  its newer computed path;
+- candidate/final symlink, FIFO, directory, mode, link-count, inode-swap, or
+  post-link digest mutation;
+- candidate CLI path is non-canonical, outside the held directory, or aliases a
+  same-named in-directory file;
+- file-data fsync fails before link, after link, or during recovery;
+- candidate-absent recovery directory fsync fails before the published
+  transition;
+- primary-root interpreter, gate, import, or common-directory trust is missing
+  while an untrusted linked-worktree substitute exists;
+- caller `PYTHONPATH`, `sitecustomize`, or adjacent malicious cached bytecode
+  attempts to replace the trusted gate/import path; and
 - Git staging fails after a validated final event is published.
 
 A fresh independent reviewer must challenge this enumeration before the design
@@ -779,6 +901,8 @@ failing test or mutation probe.
 - every legal and illegal lifecycle transition;
 - abandoned-lock reservation degradation without provider invocation;
 - exact and concurrent reconciliation replay plus changed replay rejection;
+- ambient Git-selector and replace-ref rejection for both authority reads and
+  receipt-root derivation;
 - secure path, mode, symlink, and malformed-state rejection, with ownership
   supplied through an injected `stat` boundary where the host cannot create a
   foreign-owned fixture;
@@ -794,6 +918,13 @@ failing test or mutation probe.
 - live receipt/report comparison;
 - one-publication binding, atomic no-replace races, and interrupted-publication
   recovery for absent/exact/mismatched final state;
+- exact task-publication schema/generation/authority conflicts and public
+  published-replay rejection;
+- descriptor-relative candidate/final identity, persisted basename/inode
+  recovery, exact cancellation, file/directory fsync ordering, and collision
+  rollback;
+- publisher-returned cross-second path staging plus strict stdout validation;
+- primary-root interpreter/script trust with no linked-worktree fallback;
 - `send-event` leaves no final event and stages nothing on failure;
 - successful candidate validation preserves the envelope; staging failure
   preserves the one validated final event for manual staging; and

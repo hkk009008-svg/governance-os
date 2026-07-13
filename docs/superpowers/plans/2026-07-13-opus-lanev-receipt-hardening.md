@@ -22,6 +22,7 @@
 - A descriptor is at most `65536` bytes and has the exact keys shown by the committed authority artifact. `question_id` uses 1-128 ASCII letters/digits/dot/underscore/hyphen; requirement and allowed-root lists normalize to 1-128 unique UTF-8 paths of at most 512 bytes each; command lists normalize to 1-32 unique UTF-8 strings of at most 4096 bytes each.
 - Attempt identity is repository identity + profile + authoritative task ID + effective base + reviewed HEAD. Scope digest binds all canonical scope inputs, exact Git blob identities, trigger identity, and resolved authorization.
 - Changed paths are obtained with NUL-delimited Git output, `--no-renames`, `--no-ext-diff`, and `--no-textconv`; comparison is byte-exact, case-sensitive, component-aware, and performs no Unicode normalization. Invalid UTF-8 changed paths fail closed.
+- Every host-side Git launcher used for authority, object identity, repository identity, or runtime-root selection removes all inherited `GIT_*` variables and invokes `git --no-replace-objects`; the requested `repo_root` remains the exact command working directory.
 - One provider launch is allowed per authoritative task and immutable range. There is no retry, reset CLI, substitute provider, or caller-created receipt.
 - Provider stdout and stderr are drained concurrently, each retains at most `131072` bytes, and any truncation yields sanitized unavailable reason `output_limit` rather than parseable success.
 - New reports contain one exact `## Verification Attestation` section with all fields in canonical order. Codex reports must match live reconciled receipt state and the exact stored Codex verdict; supported non-Codex reports use descriptor-derived `claude-lane-v` / `claude:lane-v-verifier` authority and literal `not-applicable` for every Opus field.
@@ -936,12 +937,18 @@ no-clobber semantics, and fsyncs the directory. An existing target fails.
 existing valid manifest, and may update digests only for the exact existing
 path set: it cannot add later reports, remove a missing historical path, or
 change paths. After validation, explicit replacement uses same-directory
-`os.replace` plus directory fsync. Tests pin concurrent creation, unchanged
-target on failure, untracked-new detection, v2 migration of changed history,
-missing-history retention, and path-set-preserving replacement. Run initial
-generation once in this task, inspect every listed path, and commit the exact
-hashes. Normal `check_go_schema.py` separately scans current filesystem reports
-as raw bytes and never mutates.
+`os.replace` plus directory fsync. Both creation and replacement acquire one
+secure persistent lock under the sanitized resolved Git common directory
+before resolving `HEAD` or reading the old target, and hold it through final
+file/directory fsync. The lock is current-uid, regular, exact mode `0600`, link
+count 1, and never unlinked; locking the replaceable manifest inode is invalid.
+Tests pin concurrent creation, a two-writer replacement paused after
+`os.replace`, unsafe stable-lock metadata, unchanged target on failure,
+untracked-new detection, v2 migration of changed history, missing-history
+retention, and path-set-preserving replacement. Run initial generation once in
+this task, inspect every listed path, and commit the exact hashes. Normal
+`check_go_schema.py` separately scans current filesystem reports as raw bytes
+and never mutates.
 
 - [ ] **Step 8: Wire CI smoke to the repository scan and confirm no private-state dependency**
 
@@ -969,6 +976,69 @@ Commit:
 ```bash
 env -u GIT_INDEX_FILE git add scripts/verification_report_gate.py tests/unit/test_verification_report_gate.py scripts/baselines/lane_v_report_v1.json scripts/check_go_schema.py tests/unit/test_check_go_schema.py scripts/ci_smoke.py
 env -u GIT_INDEX_FILE git commit -m "feat(verify): require Lane V report attestations" -m "Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62"
+```
+
+---
+
+### Task 5A: Sanitize Cross-Model Git Authority And Receipt-Root Selection
+
+**Files:**
+- Modify: `scripts/opus_review_bridge.py`
+- Modify: `scripts/opus_review_receipts.py`
+- Modify: `tests/unit/test_opus_review_bridge.py`
+- Modify: `tests/unit/test_opus_review_receipts.py`
+
+**Interfaces:**
+- Consumes: explicit `repo_root` plus host process environment.
+- Produces: host-side Git reads and receipt-root derivation that cannot inherit repository, worktree, object-directory, alternate-object, or replace-ref selectors.
+
+- [ ] **Step 1: Write failing ambient-selector authority tests**
+
+Create independent target and foreign repositories. Parameterize `GIT_DIR`,
+`GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY`, and
+`GIT_ALTERNATE_OBJECT_DIRECTORIES`; prove a foreign commit/object graph that is
+otherwise invisible cannot satisfy target repository commit, trigger,
+descriptor, or changed-path authority. Install a replace ref for a reviewed
+commit and prove the original object remains authoritative. Use an injected
+subprocess spy to require that no inherited key beginning `GIT_` reaches either
+host launcher, including unknown/future names, while argv contains
+`--no-replace-objects`.
+
+- [ ] **Step 2: Write failing receipt-root selector tests**
+
+Poison `GIT_DIR` and `GIT_COMMON_DIR` while calling `ReceiptStore.for_repo()`
+for the target. Require the state root to remain under the target's resolved Git
+common-directory parent and never create/open the foreign runtime root.
+
+- [ ] **Step 3: Sanitize both host-side Git launchers**
+
+Pass each subprocess an environment containing no inherited key whose name
+starts with `GIT_`, invoke `git --no-replace-objects`, preserve `cwd=repo_root`,
+literal SHA use, exact root checks, and existing error behavior. Do not change
+provider/broker child environments, CLI contracts, receipt schemas, or state.
+Keep the reconcile CLI's requested-base helper and add a report-facing public
+`validated_report_reconciliation_scope()` contract for Task 6. It accepts the
+report's full reviewed HEAD and effective base, requires the receipt scope's
+`reviewed_head`/`effective_base` to match, separately requires stored
+`requested_base is None or requested_base == effective_base`, validates current
+repository identity, commit existence and ancestry, decodes the canonical
+stored reconciliation, and requires its input/result reviewed HEAD/base to
+match. Pin each mismatch independently.
+
+- [ ] **Step 4: Verify and commit**
+
+Run:
+
+```bash
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_opus_review_bridge.py tests/unit/test_opus_review_receipts.py -q
+env -u GIT_INDEX_FILE git diff --check
+```
+
+Commit:
+
+```bash
+env -u GIT_INDEX_FILE git add scripts/opus_review_bridge.py scripts/opus_review_receipts.py tests/unit/test_opus_review_bridge.py tests/unit/test_opus_review_receipts.py
+env -u GIT_INDEX_FILE git commit -m "fix(opus): isolate Git authority from ambient selectors" -m "Lane-V-Scope: coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json@sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62"
 ```
 
 ---
@@ -1001,7 +1071,44 @@ Expected: missing `validate_live_report()`.
 
 For Codex, derive the receipt store from the report's repository, acquire the receipt's attempt lock by receipt ID, reload under lock, require state `reconciled|publishing|published`, and compare every field to stored scope/review/reconciliation. Require `report.verdict == reconciliation.codex_verdict` before any `go_allowed` consistency check, and require a verify-request-backed report sender to equal that request's operator recipient.
 
-For non-Codex, use a sibling secure `TaskPublicationStore` at `.codex/runtime/lane-v-report-publications/v1/`, keyed by authoritative task UUID. It uses the same uid/mode/symlink/atomic-write rules as receipts and stores only task ID, authority digest, state, path, candidate digest, and generation.
+Under the Codex receipt lock, lazily import and call Task 4's public
+`stored_review_from_record()`, `stored_reconciliation_from_record()`, and Task
+5A's report-facing `validated_report_reconciliation_scope()`; never
+compare report claims to raw receipt mappings. Match the parsed report's nine
+Opus fields exactly to the normalized reconciliation `report_fields`, compare
+the stored repository identity plus reviewed/effective/requested commits to the
+current sanitized repository and Task 5 structural authority, require the exact
+stored `codex_verdict`, and only then apply `go_allowed`.
+
+For non-Codex, use a sibling secure `TaskPublicationStore` at
+`.codex/runtime/lane-v-report-publications/v1/`, keyed by authoritative task
+UUID, with a second injectable `task_store_factory`. The exact record is:
+
+```text
+schema_version: lane-v-task-publication/v1
+task_id: canonical UUID
+authority_digest: sha256:<64 lowercase hex>
+state: ready | publishing | published
+generation: non-bool positive integer with state-specific parity/minimum
+path: null | canonical coordination/mailbox/sent/*-verification-report.md
+candidate_digest: null | sha256:<64 lowercase hex>
+candidate_name: null | canonical direct-child basename
+candidate_device: null | non-bool non-negative integer
+candidate_inode: null | non-bool positive integer
+```
+
+`authority_digest` hashes canonical JSON containing repository identity, task
+ID, mode, harness, descriptor path/digest, trigger identity, reviewed HEAD/base,
+and authorized operator recipient. `ready` is odd-generation at least 1 with
+all five publication fields null; `publishing` is even-generation at least 2
+with path, digest, candidate basename, device, and inode present; `published` is
+odd-generation at least 3 with the same tuple. Boolean generations and integer
+witness fields are invalid.
+Initial validation creates `ready` generation 1. Every begin, absent-final
+clear, exact planned-tuple cancel, or exact-final finish increments generation.
+Unknown fields, illegal parity/nullability, malformed private metadata, or
+different authority for the same task fails without rewriting; the last case
+is `task_authority_conflict`.
 
 - [ ] **Step 4: Write failing atomic publication and recovery tests**
 
@@ -1013,16 +1120,63 @@ published = gate.publish_candidate(
     candidate_path=temp_report,
     final_relative=final_relative,
     receipt_store_factory=store_factory,
+    task_store_factory=task_store_factory,
 )
 assert published == repo / final_relative
-assert published.read_bytes() == temp_report.read_bytes()
+assert published.read_bytes() == candidate_bytes_captured_before_publish
+assert not temp_report.exists()
 ```
 
 Run two processes against one task/path and assert exactly one succeeds. Run one task against two paths and one path against altered bytes; reject both replays. Simulate crashes after `publishing` and after `os.link()`: absent final clears to permit one new candidate, exact final finalizes, mismatched final fails closed. Assert validation failure creates no final file and does not enter `publishing`.
 
+Also require exact public replay rejection when entry state is already
+`published`, while preserving internal transition idempotence needed by
+recovery. A fresh `FileExistsError`, including an exact-byte regular file, must
+call an exact `cancel_publication(path, digest, candidate_name, device, inode,
+expected_generation)` transition for only this invocation's planned tuple and
+fail; it is never classified as recovery. Under the same lock, cancellation
+requires state/generation/tuple equality, increments generation, clears every
+publication field, and moves Codex `publishing -> reconciled` or the task store
+`publishing -> ready`; it never deletes/reinitializes the record. Persist the
+candidate basename/device/inode in both the Codex receipt
+publication mapping and TaskPublicationStore. Exact recovery requires observed
+path, digest, device, and inode equality. If the stored candidate basename
+survives, unlink it only after a no-follow open proves the same witness/digest,
+fsync the recovered final inode before unlinking, then require the final's link
+count to be 1; if absent, still fsync the recovered final inode and require link
+count 1 immediately. In both branches, fsync the held directory, reopen the
+final name, and revalidate its stored path/digest/device/inode before
+`finish_publication` may run. For absent-final recovery, similarly remove only a
+surviving stored candidate that matches before clearing. A crash after
+`publishing` but before linking must not adopt a preexisting exact-byte
+destination with another inode.
+Pin schema/nullability/parity, generations, authority conflict,
+absent/exact/mismatch recovery, unsafe owner/type/mode/link/symlink state, and
+cancel state/generation/tuple mismatch rejection. Exercise the witness through a
+real same-directory `os.link`, not mocked equal integer values. Mirror the exact
+witness-key/type validation in the Codex receipt publication mapping and its
+tests, not only the non-Codex store.
+
+This Task 6 contract supersedes Task 2's staged two-field
+`begin_publication()`, `finish_publication()`, and `recover_publication()`
+signatures. Replace that earlier path/digest-pair contract with the full
+path/digest/candidate-name/device/inode witness, exact cancellation, and
+recovery semantics specified here.
+
 - [ ] **Step 5: Implement no-replace publication under the task lock**
 
-Require candidate and final parent to be the same validated mailbox directory. After live validation, record `publishing`, then call:
+Open `coordination`, `mailbox`, and `sent` descriptor-relatively with
+`O_DIRECTORY|O_CLOEXEC|O_NOFOLLOW`; candidate and final must be direct children
+of that same held `sent` descriptor. Require the supplied candidate path to be
+absolute and lexically canonical and prove its parent is that held directory;
+reject parent/alias components and the same basename supplied from another
+directory rather than silently discarding the parent. Open the candidate once with
+`O_RDONLY|O_CLOEXEC|O_NOFOLLOW|O_NONBLOCK`, then require current UID, regular
+type, mode `0600`, link count 1, and stable pre/post-read metadata. Retain the
+device/inode, exact bytes, and digest, and immediately before linking prove the
+candidate name still resolves to that held inode. After live validation and
+recovery handling, record `publishing` with that exact
+path/digest/candidate-name/device/inode witness, then call:
 
 ```python
 os.link(
@@ -1032,16 +1186,35 @@ os.link(
     dst_dir_fd=directory_fd,
     follow_symlinks=False,
 )
-os.fsync(directory_fd)
 ```
 
-`FileExistsError` is never overwritten. Hash the final through the same directory descriptor and finish only when it equals the candidate digest. Recovery follows the exact absent/exact/mismatched rules from the design. The CLI is:
+`FileExistsError` is never overwritten. Hash the final through the same directory descriptor and finish only when it equals the candidate digest. Recovery follows the exact absent/exact/mismatched rules from the design.
+
+Open the final with `O_NOFOLLOW`, require a current-uid regular file whose
+device/inode equals the held candidate, and require the exact digest. Fsync the
+held candidate after its first exact read and fsync the final inode after link
+validation. Then fsync the directory, unlink the candidate by basename, fsync
+the directory again, reopen the final, require link count 1 plus the same
+inode/digest, fsync that descriptor, and only then finish publication. A failure
+after linking removes only a final whose identity is proven to be this
+invocation's link; otherwise retain conflict state and fail closed. Candidate
+symlink/FIFO/directory/wrong mode/wrong link count, candidate-name swaps,
+preexisting final symlink/regular file, exact-byte different-inode recovery,
+surviving-candidate exact/missing/mismatch recovery, final inode mismatch, and
+post-link mutation all need non-vacuous tests. Inject file-fsync failure before
+link, after link, and during recovery and prove no durable `published` state can
+precede durable report data/name state. Also inject a directory-fsync failure in
+candidate-absent exact recovery and require the state to remain `publishing`.
+
+The CLI is:
 
 ```text
 verification_report_gate.py publish --repo-root <root> --candidate <temp-path> --final-relative <relative-path>
 ```
 
 It has no `--state-root`, no bypass, and returns nonzero with a sanitized reason.
+On success it emits exactly one newline-terminated canonical repository-relative
+published path and nothing else on stdout; failure emits no stdout.
 
 - [ ] **Step 6: Write failing `send-event` end-to-end tests**
 
@@ -1051,27 +1224,96 @@ In temporary Git repositories, install a `.venv/bin/python` symlink to `sys.exec
 - valid report preserves the exact composed envelope and stages its final path;
 - same-second/no-replace collision never overwrites;
 - a publication race yields one final report;
-- forced `git add` failure preserves the validated final report, prints the manual-staging recovery, and a second emission for the same task is rejected; and
+- forced `git add` failure preserves the validated final report, prints the manual-staging recovery, and a second emission for the same task is rejected;
+- recovery of an exact older cross-second final stages and reports only the
+  publisher-returned older path;
+- empty, multiline, absolute, traversing, wrong-directory, or wrong-suffix
+  publisher stdout is rejected before staging;
+- candidate CLI paths outside `sent`, with parent/alias components, or using the
+  same basename from another directory are rejected before state/publication;
+- inherited `GIT_DIR`, `GIT_COMMON_DIR`, object/alternate-object selectors,
+  replace refs, and unknown `GIT_*` names cannot redirect shell root/primary
+  selection or staging;
+- a real linked worktree ignores substitute Python/gate files in that linked
+  checkout and fails closed for a missing/non-executable primary interpreter,
+  missing/non-blob gate or imports at the captured primary HEAD, invalid
+  primary/common-dir relation, import failure, or missing `publish` CLI;
+- caller `PYTHONPATH`, `PYTHONHOME`, user/system `sitecustomize`, and
+  linked-worktree modules cannot affect the primary gate;
+- a malicious adjacent `__pycache__` entry that would be timestamp- or
+  hash-compatible under normal Python startup cannot affect the primary gate;
+- a required source path stored as a Git symlink (`120000 blob`) at captured
+  primary HEAD is rejected;
+- untracked primary `scripts/json.py`/`hashlib.py` shadows and a peer replacing
+  checked primary working files between validation and exec/import cannot affect
+  the captured gate; and
 - non-verification event behavior remains byte-for-byte compatible with existing tests.
 
 - [ ] **Step 7: Route only verification reports through the Python publisher**
 
-Keep current validation/composition for every event kind. Remove the shell pre-existence check only from the verification-report branch. After the temp file is complete:
+Keep current validation/composition for every event kind. Immediately after
+shell strict mode, set/export the fixed trusted `PATH=/usr/bin:/bin`. Before any
+Git command, remove every inherited `GIT_*` variable; invoke the absolute system
+Git with `--no-replace-objects` (and retain absolute `/usr/bin/env -u
+GIT_INDEX_FILE` as an explicit protocol marker). Resolve the absolute common
+directory, then require
+its parent to be a real primary Pipeline worktree whose own exact common directory
+matches. Bare repositories, separate-git-dir layouts without that primary
+checkout, or parent-repository discovery fail closed. Resolve the primary venv
+interpreter (normal executable venv symlinks are allowed), but require the
+primary gate, receipt module, and bridge module to be regular Git blobs at one
+captured literal full primary HEAD. Materialize exactly those three blobs into
+a newly-created mode-`0700` code directory and execute/import only from that
+directory. Parse one exact NUL-delimited `git ls-tree -z` record per path and
+require mode `100644|100755`, type `blob`, and the exact path; `cat-file -e`
+alone is insufficient because a Git symlink is also a blob. Never execute
+mutable primary or linked-worktree paths. Invoke
+primary Python with an allowlisted environment and `-E -s -S -B` plus a newly
+created secure empty mode-`0700`
+`-X pycache_prefix` directory; no caller `PYTHON*`, user/system
+`sitecustomize`, adjacent cached bytecode, or ambient module path may
+participate. The trap removes both temporary directories. After the temp file is
+complete, use logic equivalent to:
 
 ```bash
 if [ "$KIND" = "verification-report" ]; then
-  COMMON=$(env -u GIT_INDEX_FILE git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)
+  COMMON=$(/usr/bin/env -u GIT_INDEX_FILE /usr/bin/git --no-replace-objects -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)
   PRIMARY_ROOT=$(dirname "$COMMON")
   TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
   [ -x "$TRUSTED_PYTHON" ] || { echo "send-event: trusted Pipeline Python unavailable" >&2; exit 4; }
-  env -u GIT_INDEX_FILE "$TRUSTED_PYTHON" "$PRIMARY_ROOT/scripts/verification_report_gate.py" \
-    publish --repo-root "$ROOT" --candidate "$TMP" --final-relative "$REL"
+  TRUSTED_HEAD=$(/usr/bin/env -u GIT_INDEX_FILE /usr/bin/git --no-replace-objects -C "$PRIMARY_ROOT" rev-parse 'HEAD^{commit}')
+  TRUSTED_CODE=$(mktemp -d "$ROOT/coordination/mailbox/sent/.trusted-code.XXXXXX")
+  for SOURCE in verification_report_gate.py opus_review_receipts.py opus_review_bridge.py; do
+    # Parse one exact `git ls-tree -z` entry here and require
+    # 100644|100755, blob, and the literal scripts/$SOURCE path.
+    /usr/bin/env -u GIT_INDEX_FILE /usr/bin/git --no-replace-objects -C "$PRIMARY_ROOT" \
+      show "$TRUSTED_HEAD:scripts/$SOURCE" >"$TRUSTED_CODE/$SOURCE"
+    chmod 0600 "$TRUSTED_CODE/$SOURCE"
+  done
+  PYCACHE_PREFIX=$(mktemp -d "$ROOT/coordination/mailbox/sent/.pycache.XXXXXX")
+  PUBLISHED_OUT=$(mktemp "$ROOT/coordination/mailbox/sent/.published.XXXXXX.tmp")
+  /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+    "$TRUSTED_PYTHON" -E -s -S -B -X pycache_prefix="$PYCACHE_PREFIX" \
+    "$TRUSTED_CODE/verification_report_gate.py" \
+    publish --repo-root "$ROOT" --candidate "$TMP" --final-relative "$REL" \
+    >"$PUBLISHED_OUT"
+  PUBLISHED_REL=$(LC_ALL=C sed -n '1p' "$PUBLISHED_OUT")
+  printf '%s\n' "$PUBLISHED_REL" | cmp -s - "$PUBLISHED_OUT" || exit 4
+  printf '%s\n' "$PUBLISHED_REL" | LC_ALL=C grep -Eq \
+    '^coordination/mailbox/sent/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-operator2?-to-[a-z][a-z0-9]*-verification-report\.md$' \
+    || exit 4
+  REL=$PUBLISHED_REL
+  F="$ROOT/$REL"
 else
   mv "$TMP" "$F"
 fi
 ```
 
-Then retain the existing `git add -f -- "$REL"` behavior. If staging fails after publication, print the exact retained path and exit 0. The trap removes only the temporary candidate, never the published final.
+Then retain the existing `git add -f -- "$REL"` behavior. If staging fails
+after publication, print the exact publisher-returned retained path and exit 0.
+The trap removes only temporary candidate/output files, never the published
+final. Missing gate, unsupported CLI, import failure, primary-root mismatch, or
+unavailable interpreter leaves no final and stages nothing.
 
 - [ ] **Step 8: Run Task 6 tests and commit**
 
