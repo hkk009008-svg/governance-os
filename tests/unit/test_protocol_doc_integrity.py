@@ -24,12 +24,14 @@ def test_codex_subagents_never_inherit_seat_authority():
     assert "Subagents do not consume cursors, send mailbox events, issue GO" in compact
 
 
-def test_independence_first_doc_no_longer_lists_agents_sync_as_unfinished():
+def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():
     text = (ROOT / "docs/protocol/claude/independence-first.md").read_text(
         encoding="utf-8"
     )
     assert "Sync the operative stub into `AGENTS.md`" not in text
-    assert "Mechanize the cross-model requirement" in text
+    assert "Mechanize the cross-model requirement" not in text
+    assert "## Mechanized enforcement and remaining follow-up" in text
+    assert "live receipt-backed advisory review/reconciliation" in text
     assert "dispatch templates" in text
 
 
