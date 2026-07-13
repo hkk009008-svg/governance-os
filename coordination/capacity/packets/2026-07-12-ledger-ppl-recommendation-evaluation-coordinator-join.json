@@ -30,7 +30,8 @@
     "Do not edit evidence-ledger product files as coordinator. Do not infer an authority bundle, activate advice, mutate canonical data/resources, clean quarantined databases, or authorize publication."
   ],
   "done_evidence": [
-    "FAIL: coordination/mailbox/sent/2026-07-13T04-43-31Z-operator-to-all-verification-report.md binds the exact ratified range and blocks join on three IMPORTANT CLI output-fence defects plus one MINOR renderer guarantee defect. The bounded exception grants no future Codex target commit authority; correction requires an authorized non-Codex controller and a fresh cumulative Operator verdict."
+    "FAIL: coordination/mailbox/sent/2026-07-13T04-43-31Z-operator-to-all-verification-report.md binds the exact ratified range and blocks join on three IMPORTANT CLI output-fence defects plus one MINOR renderer guarantee defect. The bounded exception grants no future Codex target commit authority; correction requires an authorized non-Codex controller and a fresh cumulative Operator verdict.",
+    "FAIL: coordination/mailbox/sent/2026-07-13T08-03-23Z-operator-to-all-verification-report.md binds corrected candidate 8eaed44f803d871f09135c5d89395d38cf9e939e and keeps the join blocked on three IMPORTANT publication races: post-open parent relocation can cross the ignored/tracked fence, post-check/pre-replace temp substitution can publish foreign bytes before detection, and post-check/pre-unlink cleanup substitution can delete a foreign inode. A bounded non-Codex Director correction must add strict non-vacuous regressions for all three races and receive a fresh cumulative Operator verdict."
   ],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
