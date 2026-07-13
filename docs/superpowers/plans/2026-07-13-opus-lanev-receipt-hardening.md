@@ -580,7 +580,18 @@ Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64 lowercase 
 
 Assert rejection for zero or two trailers, wrong digest, descriptor absent at trigger commit, mutable working-tree descriptor changes, arbitrary task IDs, non-`feat|fix|refactor` subjects, shipping SHA unequal to reviewed HEAD, wrong base policy, abbreviated/moving commit names, and unsupported mode/harness/profile. Preserve the existing full-SHA compatibility rule: a 40-character uppercase SHA is canonicalized to lowercase before reservation and therefore resolves to the same attempt as its lowercase form.
 
-For verify requests, use a committed filename ending `-<sender>-to-operator-verification-request.md`, matching `**From:** <sender> (online)` envelope, one exact `Reviewed head:`, one exact `Reviewed base:`, and one exact `Lane-V-Scope:` field. Assert rejection for sender/envelope mismatch, wrong kind/recipient, trigger path mismatch, wrong head/base, altered event blob, or descriptor not named by the event. Prove the exact committed descriptor and verify-request bytes enter the immutable requirements supplied to Opus even when the trigger commit is later than the reviewed HEAD.
+For verify requests, use the canonical committed basename
+`<timestamp>-<sender>-to-<recipient>-verify-request.md`, where `recipient` is
+exactly `operator` or `operator2`. Require the filename timestamp/sender/
+recipient, H1 sender/recipient, `**When:**` timestamp, `**From:** <sender>
+(online)` envelope, `Event type: verify-request`, one exact `Reviewed head:`,
+one exact `Reviewed base:`, and one exact `Lane-V-Scope:` field to agree.
+Assert rejection for sender/envelope mismatch, wrong kind/recipient, trigger
+path mismatch, wrong head/base, altered event blob, or descriptor not named by
+the event. Prove the exact committed descriptor and verify-request blobs enter
+the immutable requirements supplied to Opus even when the trigger commit is
+later than the reviewed HEAD. Preserve the parsed operator recipient for the
+later verification-report sender check.
 
 - [ ] **Step 5: Run the authority tests and confirm RED**
 
@@ -606,13 +617,32 @@ class ReviewRequest:
 
 
 @dataclass(frozen=True)
+class ImmutableGitBlob:
+    purpose: str
+    commit: str
+    path: str
+    blob_id: str
+    digest: str
+    size_bytes: int
+
+
+@dataclass(frozen=True)
+class VerifyRequestEnvelope:
+    timestamp: str
+    sender: str
+    recipient: str
+
+
+@dataclass(frozen=True)
 class ResolvedReviewRequest:
     request: ReviewRequest
     authority: receipts.ScopeDescriptor
     scope: receipts.ReviewScope
-    requirement_paths: tuple[Path, ...]
-    allowed_paths: tuple[str, ...]
+    review_requirements: tuple[ImmutableGitBlob, ...]
+    authority_requirements: tuple[ImmutableGitBlob, ...]
+    allowed_path_roots: tuple[str, ...]
     verification_commands: tuple[str, ...]
+    verify_request: VerifyRequestEnvelope | None
 ```
 
 Run Git with `env -u GIT_INDEX_FILE` and full SHAs. Accept only a literal 40-hex input, canonicalize it to lowercase, then prove it resolves to an existing commit without accepting branches/tags/abbreviations. Read committed bytes with `git show <commit>:<path>` and blob IDs with `git rev-parse <commit>:<path>`. Compute changed paths with:
@@ -621,7 +651,22 @@ Run Git with `env -u GIT_INDEX_FILE` and full SHAs. Accept only a literal 40-hex
 git -c core.quotepath=false -c diff.renames=false diff --name-status -z --no-renames --no-ext-diff --no-textconv <effective-base> <head> --
 ```
 
-Pass the raw bytes to Task 1's parser, reject an empty set, and check complete coverage before opening the receipt store. Requirement bytes come from `<head>:<path>` and contribute path, blob ID, and `sha256:` digest; separately append the committed trigger/descriptor blobs to the prompt's immutable task requirements. Tests mutate working-tree requirement bytes without changing HEAD and prove the digest stays bound to the Git blob, then commit changed requirement bytes at a new HEAD and prove the digest changes. Repository identity is `sha256:` over the UTF-8 resolved absolute Git common-directory path after `_pipeline_root()` succeeds.
+Pass the raw bytes to Task 1's parser, reject an empty set, and check complete
+coverage before opening the receipt store. Requirement bytes come from
+`<head>:<path>` and contribute path, blob ID, `sha256:` digest, and size.
+Descriptor and verify-request authority blobs come from the full trigger
+commit, are each limited to 65,536 bytes, and are retained only as
+`ImmutableGitBlob` metadata after parsing. The isolated snapshot fetches full
+reviewed HEAD, effective base, and any distinct trigger commit, then rechecks
+each `commit:path` blob ID/digest before becoming read-only. The prompt embeds
+no raw authority body or source-worktree absolute path; it exposes the bounded
+metadata and exact `git show <full-commit>:<relative-path>` commands instead.
+Tests mutate working-tree requirement bytes without changing HEAD and prove
+the digest stays bound to the Git blob, then commit changed requirement bytes
+at a new HEAD and prove the digest changes. Also pin later-trigger fetch,
+oversized authority rejection, prompt sentinel absence, and both operator-seat
+recipients. Repository identity is `sha256:` over the UTF-8 resolved absolute
+Git common-directory path after `_pipeline_root()` succeeds.
 
 - [ ] **Step 7: Write failing receipt-backed review tests with a pure provider seam**
 
@@ -658,6 +703,12 @@ def review(
 ```
 
 Resolve and validate everything before `reserve_or_load()`. Hold the attempt lock across `provider()` and `record_review()`. Exact reviewed/reconciled/published repeats return stored normalized evidence. `degrade_uncertain` writes a normalized unavailable v3 result with `failure_stage="receipt_recovery"` and reason `attempt_state_uncertain` without broker construction. Provider/environment failures after reservation become one stored unavailable review; a final receipt-write error reports sanitized `receipt_write` and leaves the durable reservation.
+
+Move Task 3's current provider body into `_perform_provider_review()` while
+preserving its low-level resolver, runtime-factory, broker-factory,
+sandbox-probe, runner, and resource tests. Receipt/replay tests inject only the
+high-level `provider(resolved)` callable and therefore construct no real host
+resource; Task 3 tests continue exercising the low-level seams directly.
 
 - [ ] **Step 9: Write failing receipt-only reconciliation tests**
 

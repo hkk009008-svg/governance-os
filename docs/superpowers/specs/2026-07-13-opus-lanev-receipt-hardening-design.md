@@ -255,7 +255,8 @@ The bridge does not accept caller-selected requirement, allowed-path, or
 verification-command lists in production. It derives the descriptor pointer
 from an authoritative trigger:
 
-- a committed `verify-request` mailbox event addressed to the operator seat,
+- a committed `verify-request` mailbox event addressed to exactly `operator`
+  or `operator2`,
   whose exact `Lane-V-Scope:` field names the descriptor path and SHA-256
   digest; or
 - a shipping `feat`/`fix`/`refactor` reviewed commit whose exact
@@ -270,6 +271,19 @@ trigger path or commit trailer, and Git blob IDs enter the receipt scope. A
 mutable working-tree copy is never authority. The exact committed descriptor
 and verify-request bytes are supplied to Opus as immutable task requirements,
 even when the later verify-request commit is not part of the reviewed snapshot.
+Those requirements are represented by bounded, content-addressed Git blob
+metadata (commit, normalized path, blob ID, SHA-256 digest, and size), not by a
+mutable `Path` or retained raw prompt text. The isolated review repository
+fetches the full trigger commit in addition to the reviewed HEAD/base,
+re-verifies every bound blob there, and exposes exact `git show
+<commit>:<path>` commands. Authority blobs are limited to 65,536 bytes each.
+
+The canonical verify-request basename is
+`<timestamp>-<sender>-to-<recipient>-verify-request.md`, where the recipient is
+`operator` or `operator2`; the filename, H1 sender/recipient, `When` timestamp,
+`From` sender, `Event type: verify-request`, reviewed commits, and scope field
+must agree exactly. The filename's recipient is retained as authority for the
+later verification-report sender check.
 
 The implementation plan for a shipping change creates and commits this
 descriptor before implementation; the shipping commit binds it by trailer. A
