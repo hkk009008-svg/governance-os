@@ -1337,6 +1337,15 @@ def _verify_request_authority(
             "invalid_trigger", "verify-request requires a trigger path"
         )
     try:
+        _require_preceding_revision(
+            root, request.reviewed_head, request.trigger_commit
+        )
+    except ReviewContractError as exc:
+        raise ReviewContractError(
+            "invalid_verify_request",
+            "reviewed HEAD must be a strict ancestor of the verify-request commit",
+        ) from exc
+    try:
         trigger_path = receipts.normalize_repo_path(request.trigger_path)
     except receipts.ReceiptContractError as exc:
         raise ReviewContractError(exc.reason, exc.detail) from exc
@@ -1431,6 +1440,29 @@ def _verify_request_authority(
     )
 
 
+def _terminal_git_trailers(message: str) -> tuple[str, ...]:
+    lines = message.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    separator = next(
+        (
+            index
+            for index in range(len(lines) - 1, -1, -1)
+            if not lines[index].strip()
+        ),
+        None,
+    )
+    if separator is None:
+        return ()
+    terminal_block = tuple(lines[separator + 1 :])
+    if not terminal_block or any(
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*: .+", line) is None
+        for line in terminal_block
+    ):
+        return ()
+    return terminal_block
+
+
 def _shipping_authority(
     root: Path, request: ReviewRequest
 ) -> receipts.ScopeReference:
@@ -1450,7 +1482,7 @@ def _shipping_authority(
         )
     trailers = [
         line.removeprefix("Lane-V-Scope: ")
-        for line in lines
+        for line in _terminal_git_trailers(message.stdout)
         if line.startswith("Lane-V-Scope: ")
     ]
     if len(trailers) != 1:
@@ -2431,6 +2463,27 @@ def _build_provider_review_prompt(
     )
 
 
+def _immutable_blob_commands(
+    resolved: ResolvedReviewRequest,
+) -> tuple[str, ...]:
+    return tuple(
+        shlex.join(
+            [
+                "env",
+                "-u",
+                "GIT_INDEX_FILE",
+                "git",
+                "show",
+                f"{blob.commit}:{blob.path}",
+            ]
+        )
+        for blob in (
+            *resolved.review_requirements,
+            *resolved.authority_requirements,
+        )
+    )
+
+
 def build_review_prompt(
     request: ResolvedReviewRequest | _ProviderReviewRequest,
     *,
@@ -2460,17 +2513,9 @@ def build_review_prompt(
     base = resolved.scope.effective_base
     blobs = (*resolved.review_requirements, *resolved.authority_requirements)
     blob_lines: list[str] = []
-    for blob in blobs:
-        command = shlex.join(
-            [
-                "env",
-                "-u",
-                "GIT_INDEX_FILE",
-                "git",
-                "show",
-                f"{blob.commit}:{blob.path}",
-            ]
-        )
+    for blob, command in zip(
+        blobs, _immutable_blob_commands(resolved), strict=True
+    ):
         blob_lines.append(
             "- "
             f"purpose={blob.purpose} commit={blob.commit} path={blob.path} "
@@ -2633,11 +2678,19 @@ def build_claude_command(
     prompt = build_review_prompt(
         request, verification_commands=exposed_verification_commands
     )
-    allowed_commands = (
+    git_commands = (
         *_review_git_commands(provider_request),
+        *(
+            _immutable_blob_commands(request)
+            if isinstance(request, ResolvedReviewRequest)
+            else ()
+        ),
+    )
+    allowed_commands = (
+        *git_commands,
         *exposed_verification_commands,
     )
-    git_rule_count = len(_review_git_commands(provider_request))
+    git_rule_count = len(git_commands)
     allowed_rules = [
         *(
             _validated_exact_bash_rule(command)
@@ -3419,6 +3472,9 @@ def _canonical_json_text(value: object) -> str:
         raise ReviewContractError(exc.reason, exc.detail) from exc
 
 
+REPORT_ATTESTATION_LINE_LIMIT_BYTES = 49_152
+
+
 def _report_fields(
     *,
     review_result: OpusReview,
@@ -3433,7 +3489,7 @@ def _report_fields(
     guard = _canonical_json_text(
         {"go_allowed": reconciliation.go_allowed, "digest": input_digest}
     )
-    return {
+    fields = {
         "Review profile": review_result.review_profile,
         "Authorization identity": review_result.authorization_source,
         "Opus receipt ID": record.receipt_id,
@@ -3444,6 +3500,16 @@ def _report_fields(
         "Reconciliation guard": guard,
         "Degraded reason": review_result.unavailable_reason or "none",
     }
+    attestation_line = (
+        "Opus finding dispositions: "
+        + fields["Opus finding dispositions"]
+    ).encode("utf-8")
+    if len(attestation_line) > REPORT_ATTESTATION_LINE_LIMIT_BYTES:
+        raise ReviewContractError(
+            "attestation_line_too_large",
+            "Opus finding dispositions attestation exceeds 49152 UTF-8 bytes",
+        )
+    return fields
 
 
 def _validated_reconciliation_scope(
@@ -3469,18 +3535,35 @@ def _validated_reconciliation_scope(
     scope = record.scope
     stored_head = scope.get("reviewed_head")
     stored_base = scope.get("effective_base")
-    if not isinstance(stored_head, str) or not isinstance(stored_base, str):
+    if (
+        "requested_base" not in scope
+        or not isinstance(stored_head, str)
+        or not isinstance(stored_base, str)
+    ):
         raise ReviewContractError(
             "invalid_receipt_scope", "receipt scope has invalid commits"
         )
     stored_head = _full_sha(stored_head, "stored reviewed_head")
     stored_base = _full_sha(stored_base, "stored effective_base")
-    if head != stored_head or (
-        supplied_base is not None and supplied_base != stored_base
+    raw_requested_base = scope.get("requested_base")
+    stored_requested_base = (
+        _full_sha(raw_requested_base, "stored requested_base")
+        if raw_requested_base is not None
+        else None
+    )
+    if (
+        stored_requested_base is not None
+        and stored_requested_base != stored_base
     ):
         raise ReviewContractError(
+            "invalid_receipt_scope",
+            "stored requested base does not match effective base",
+        )
+    if head != stored_head or supplied_base != stored_requested_base:
+        raise ReviewContractError(
             "reviewed_scope_mismatch",
-            f"expected {supplied_base}..{head}, stored {stored_base}..{stored_head}",
+            f"expected {supplied_base}..{head}, stored request "
+            f"{stored_requested_base} for {stored_base}..{stored_head}",
         )
     if scope.get("repository_identity") != _repository_identity(root):
         raise ReviewContractError(
@@ -3853,7 +3936,13 @@ def main(
     except (ReviewContractError, receipts.ReceiptStateError) as exc:
         print(f"error: {exc.reason}", file=sys.stderr)
         return 2
-    print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            result.to_dict(),
+            indent=2,
+            sort_keys=args.command == "review",
+        )
+    )
     return 0
 
 

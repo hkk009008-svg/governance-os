@@ -598,6 +598,7 @@ def _authority_fixture(
     descriptor_changes: dict[str, object] | None = None,
     shipping_subject: str = "feat: bind reviewed change",
     shipping_references: tuple[str, ...] | None = None,
+    shipping_followup_body: str | None = None,
     trailer_reference_override: str | None = None,
     event_overrides: dict[str, str] | None = None,
 ) -> _AuthorityFixture:
@@ -677,8 +678,17 @@ def _authority_fixture(
             (reference,) if shipping_references is None else shipping_references
         )
         commit_args = ["commit", "-q", "-m", shipping_subject]
-        for item in references:
-            commit_args.extend(("-m", f"Lane-V-Scope: {item}"))
+        if references:
+            commit_args.extend(
+                (
+                    "-m",
+                    "\n".join(
+                        f"Lane-V-Scope: {item}" for item in references
+                    ),
+                )
+            )
+        if shipping_followup_body is not None:
+            commit_args.extend(("-m", shipping_followup_body))
         _git(root, *commit_args)
     else:
         _git(root, "commit", "-q", "-m", "feat: bind reviewed change")
@@ -769,6 +779,20 @@ def test_shipping_trigger_resolves_only_committed_authority_and_uppercase_shas(
         f"shipping-commit:{fixture.trigger_commit}"
     )
     assert resolved.scope.descriptor_digest == fixture.descriptor_digest
+
+
+def test_shipping_scope_line_in_middle_body_is_not_a_terminal_trailer(
+    tmp_path: Path,
+) -> None:
+    fixture = _authority_fixture(
+        tmp_path / "repo",
+        shipping_followup_body="Post-trailer prose is not authority.",
+    )
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.resolve_authoritative_scope(fixture.request)
+
+    assert excinfo.value.reason == "invalid_trigger"
 
 
 @pytest.mark.parametrize(
@@ -903,6 +927,34 @@ def test_verify_request_rejects_trigger_path_mismatch(tmp_path: Path) -> None:
         bridge.resolve_authoritative_scope(request)
 
 
+def test_verify_request_rejects_trigger_on_a_fork_of_reviewed_head(
+    tmp_path: Path,
+) -> None:
+    fixture = _authority_fixture(
+        tmp_path / "repo", trigger_kind="verify-request"
+    )
+    assert fixture.event_path is not None
+    event_body = _git(
+        fixture.root,
+        "show",
+        f"{fixture.trigger_commit}:{fixture.event_path}",
+    )
+    _git(fixture.root, "switch", "--detach", fixture.descriptor_commit)
+    event_file = fixture.root / fixture.event_path
+    event_file.parent.mkdir(parents=True, exist_ok=True)
+    event_file.write_text(event_body + "\n", encoding="utf-8")
+    _git(fixture.root, "add", fixture.event_path)
+    _git(fixture.root, "commit", "-q", "-m", "coord: forked verification request")
+    forked_trigger = _git(fixture.root, "rev-parse", "HEAD")
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.resolve_authoritative_scope(
+            replace(fixture.request, trigger_commit=forked_trigger)
+        )
+
+    assert excinfo.value.reason == "invalid_verify_request"
+
+
 def _commit_shipping_fixture_change(
     fixture: _AuthorityFixture, *paths: str, descriptor_digest: str | None = None
 ) -> str:
@@ -973,6 +1025,50 @@ def test_prompt_exposes_content_addressed_git_show_without_raw_authority(
         assert blob.blob_id in prompt
         assert blob.digest in prompt
         assert str(blob.size_bytes) in prompt
+
+
+@pytest.mark.parametrize(
+    "trigger_kind", ["shipping-commit", "verify-request"]
+)
+def test_every_printed_immutable_blob_command_has_an_exact_allowed_rule(
+    tmp_path: Path, trigger_kind: str
+) -> None:
+    fixture = _authority_fixture(
+        tmp_path / "repo", trigger_kind=trigger_kind
+    )
+    resolved = bridge.resolve_authoritative_scope(fixture.request)
+    execution_request = bridge._provider_request_from_resolved(resolved)
+    broker_commands = _broker_client_commands(
+        tmp_path / "broker", len(resolved.verification_commands)
+    )
+
+    argv = bridge.build_claude_command(
+        resolved,
+        execution_request=execution_request,
+        agent_prompt="PINNED-PRE-HEAD-VERIFIER",
+        verification_commands=broker_commands,
+    )
+
+    prompt = argv[argv.index("-p") + 1]
+    printed_commands = tuple(
+        line.split(" command=", 1)[1]
+        for line in prompt.splitlines()
+        if line.startswith("- purpose=")
+    )
+    allowed_rules = tuple(argv[argv.index("--allowedTools") + 1 :])
+    assert len(printed_commands) == len(
+        (*resolved.review_requirements, *resolved.authority_requirements)
+    )
+    for command in printed_commands:
+        assert f"Bash({command})" in allowed_rules
+    assert all(
+        "broker_client.py" not in rule
+        for rule in allowed_rules[: -len(broker_commands)]
+    )
+    assert all(
+        "broker_client.py" in rule
+        for rule in allowed_rules[-len(broker_commands) :]
+    )
 
 
 def test_snapshot_fetches_later_trigger_and_reverifies_bound_blobs(
@@ -1466,6 +1562,66 @@ def test_reconcile_receipt_rejects_wrong_repo_head_base_and_receipt(
             bridge.reconcile_receipt(**arguments)
 
 
+def test_reconcile_requires_originally_explicit_base_and_allows_retry(
+    tmp_path: Path,
+) -> None:
+    fixture = _authority_fixture(tmp_path / "repo")
+    result, store = _reviewed_receipt(fixture, tmp_path / "state")
+
+    for supplied_base in (None, fixture.descriptor_commit):
+        with pytest.raises(bridge.ReviewContractError) as excinfo:
+            bridge.reconcile_receipt(
+                repo_root=fixture.root,
+                receipt_id=result.receipt_id,
+                expected_head=fixture.head,
+                expected_base=supplied_base,
+                codex_verdict="GO",
+                dispositions=(),
+                store_factory=lambda repo_root: store,
+            )
+        assert excinfo.value.reason == "reviewed_scope_mismatch"
+
+    retry = _reconcile_stored(fixture, result, store)
+    assert retry.receipt_state == "reconciled"
+
+
+def test_reconcile_requires_base_omission_when_review_omitted_it(
+    tmp_path: Path,
+) -> None:
+    fixture = _authority_fixture(tmp_path / "repo")
+    store = receipts.ReceiptStore.for_repo(
+        fixture.root, state_root=tmp_path / "state"
+    )
+    result = bridge.review(
+        replace(fixture.request, reviewed_base=None),
+        provider=_normalized_pass_review,
+        store_factory=lambda repo_root: store,
+    )
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.reconcile_receipt(
+            repo_root=fixture.root,
+            receipt_id=result.receipt_id,
+            expected_head=fixture.head,
+            expected_base=fixture.base,
+            codex_verdict="GO",
+            dispositions=(),
+            store_factory=lambda repo_root: store,
+        )
+    assert excinfo.value.reason == "reviewed_scope_mismatch"
+
+    reconciled = bridge.reconcile_receipt(
+        repo_root=fixture.root,
+        receipt_id=result.receipt_id,
+        expected_head=fixture.head,
+        expected_base=None,
+        codex_verdict="GO",
+        dispositions=(),
+        store_factory=lambda repo_root: store,
+    )
+    assert reconciled.receipt_state == "reconciled"
+
+
 def test_reconcile_receipt_exact_replay_and_exact_evidence_hash(
     tmp_path: Path,
 ) -> None:
@@ -1524,6 +1680,80 @@ def test_reconcile_receipt_empty_evidence_hashes_as_none(tmp_path: Path) -> None
     assert record.reconciliation is not None
     persisted = record.reconciliation["input"]["dispositions"]["OPUS-1"]
     assert persisted["evidence_digest"] == "none"
+
+
+def _disposition_with_attestation_line_bytes(
+    target_bytes: int,
+) -> bridge.FindingDisposition:
+    def rendered_size(evidence: str) -> int:
+        mapping = {
+            "OPUS-1": {
+                "disposition": "unresolved",
+                "evidence": evidence,
+                "evidence_digest": "sha256:"
+                + hashlib.sha256(evidence.encode("utf-8")).hexdigest(),
+            }
+        }
+        rendered = receipts.canonical_json_bytes(mapping).decode("utf-8")
+        return len(f"Opus finding dispositions: {rendered}".encode("utf-8"))
+
+    fixed_bytes = rendered_size("x") - 1
+    evidence = "x" * (target_bytes - fixed_bytes)
+    assert rendered_size(evidence) == target_bytes
+    return bridge.FindingDisposition("OPUS-1", "unresolved", evidence)
+
+
+def test_reconcile_attestation_line_exact_byte_limit_is_publishable(
+    tmp_path: Path,
+) -> None:
+    fixture = _authority_fixture(tmp_path / "repo")
+    result, store = _reviewed_receipt(
+        fixture,
+        tmp_path / "state",
+        lambda resolved: _normalized_issues_review(resolved),
+    )
+
+    reconciled = _reconcile_stored(
+        fixture,
+        result,
+        store,
+        dispositions=(_disposition_with_attestation_line_bytes(49_152),),
+    )
+
+    assert bridge.REPORT_ATTESTATION_LINE_LIMIT_BYTES == 49_152
+    assert reconciled.receipt_state == "reconciled"
+
+
+def test_oversized_attestation_leaves_reviewed_and_allows_smaller_retry(
+    tmp_path: Path,
+) -> None:
+    fixture = _authority_fixture(tmp_path / "repo")
+    result, store = _reviewed_receipt(
+        fixture,
+        tmp_path / "state",
+        lambda resolved: _normalized_issues_review(resolved),
+    )
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        _reconcile_stored(
+            fixture,
+            result,
+            store,
+            dispositions=(_disposition_with_attestation_line_bytes(49_153),),
+        )
+
+    assert excinfo.value.reason == "attestation_line_too_large"
+    assert "x" * 100 not in str(excinfo.value)
+    with store.lock_receipt(result.receipt_id) as attempt:
+        assert attempt.load_existing().state == "reviewed"
+
+    retry = _reconcile_stored(
+        fixture,
+        result,
+        store,
+        dispositions=(_disposition_with_attestation_line_bytes(49_152),),
+    )
+    assert retry.receipt_state == "reconciled"
 
 
 def test_stored_reconciliation_is_recomputed_before_replay(
@@ -4252,6 +4482,7 @@ def test_review_cli_requires_and_emits_review_profile(
 
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
+    assert tuple(payload) == tuple(sorted(payload))
     assert payload["schema_version"] == "opus-review/v3"
     assert payload["review_profile"] == "codex-lane-v"
     assert payload["status"] == "pass"
@@ -4273,6 +4504,17 @@ def test_reconcile_cli_passes_receipt_and_exact_evidence(
     )
     receipt_id = "opr1:" + "a" * 64
     evidence = "  focused round-trip evidence  "
+    report_field_names = (
+        "Review profile",
+        "Authorization identity",
+        "Opus receipt ID",
+        "Opus scope digest",
+        "Cross-model review",
+        "Effective Opus model",
+        "Opus finding dispositions",
+        "Reconciliation guard",
+        "Degraded reason",
+    )
 
     def fake_reconciler(**kwargs: object) -> bridge.ReconciliationReceiptResult:
         assert kwargs["receipt_id"] == receipt_id
@@ -4293,7 +4535,7 @@ def test_reconcile_cli_passes_receipt_and_exact_evidence(
             scope_digest="sha256:" + "b" * 64,
             receipt_state="reconciled",
             input_digest="sha256:" + "c" * 64,
-            report_fields={},
+            report_fields={name: name for name in report_field_names},
         )
 
     rc = bridge.main(
@@ -4322,6 +4564,7 @@ def test_reconcile_cli_passes_receipt_and_exact_evidence(
     assert payload["schema_version"] == "opus-reconciliation/v2"
     assert payload["go_allowed"] is True
     assert payload["disproved_finding_ids"] == ["OPUS.safe_1-2"]
+    assert tuple(payload["report_fields"]) == report_field_names
 
 
 def test_reconcile_cli_rejects_missing_disproof_evidence(
