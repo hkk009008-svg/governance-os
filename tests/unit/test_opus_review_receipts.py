@@ -31,6 +31,25 @@ CMD_A = (
 CMD_B = "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py"
 
 
+def _provider_prompt_mapping() -> dict[str, object]:
+    return {
+        "authority_path": (
+            "scripts/prompts/opus_lane_v_advisory.authority."
+            + "4" * 40
+            + ".json"
+        ),
+        "authority_blob_oid": "4" * 40,
+        "authority_digest": "sha256:" + "5" * 64,
+        "authority_size_bytes": 512,
+        "prompt_path": "scripts/prompts/opus_lane_v_advisory.md",
+        "prompt_blob_oid": "6" * 40,
+        "file_sha256": "sha256:" + "7" * 64,
+        "file_size_bytes": 3034,
+        "body_sha256": "sha256:" + "8" * 64,
+        "body_size_bytes": 2917,
+    }
+
+
 def _descriptor_mapping() -> dict[str, object]:
     return {
         "schema_version": "lane-v-scope/v1",
@@ -88,6 +107,74 @@ def _review_scope(
         allowed_path_roots=allowed,
         verification_commands=commands,
     )
+
+
+def test_provider_prompt_facts_are_optional_strict_and_scope_bound() -> None:
+    legacy = _review_scope()
+    legacy_mapping = legacy.to_mapping()
+    assert "provider_prompt" not in legacy_mapping
+    assert receipts.review_scope_from_mapping(legacy_mapping) == legacy
+
+    prompt = receipts.ProviderPromptFacts.from_mapping(
+        _provider_prompt_mapping()
+    )
+    bound = dataclasses.replace(legacy, provider_prompt=prompt)
+    bound_mapping = bound.to_mapping()
+
+    assert bound_mapping["provider_prompt"] == _provider_prompt_mapping()
+    assert receipts.review_scope_from_mapping(bound_mapping) == bound
+    assert receipts.compute_attempt_key(bound) == receipts.compute_attempt_key(legacy)
+    assert receipts.compute_scope_digest(bound) != receipts.compute_scope_digest(legacy)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("authority_size_bytes", True),
+        ("file_size_bytes", False),
+        ("body_size_bytes", True),
+        ("authority_blob_oid", "A" * 40),
+        ("prompt_blob_oid", "6" * 39),
+        ("prompt_path", "../opus_lane_v_advisory.md"),
+        ("file_sha256", "7" * 64),
+    ],
+)
+def test_provider_prompt_facts_reject_malformed_values(
+    field: str, value: object
+) -> None:
+    mapping = _provider_prompt_mapping()
+    mapping[field] = value
+
+    with pytest.raises(
+        receipts.ReceiptContractError, match="invalid_provider_prompt"
+    ):
+        receipts.ProviderPromptFacts.from_mapping(mapping)
+
+
+def test_same_attempt_rejects_descriptor_bound_prompt_drift(tmp_path: Path) -> None:
+    original_prompt = receipts.ProviderPromptFacts.from_mapping(
+        _provider_prompt_mapping()
+    )
+    original = dataclasses.replace(
+        _review_scope(), provider_prompt=original_prompt
+    )
+    changed_mapping = _provider_prompt_mapping()
+    changed_mapping["body_sha256"] = "sha256:" + "9" * 64
+    changed = dataclasses.replace(
+        original,
+        provider_prompt=receipts.ProviderPromptFacts.from_mapping(
+            changed_mapping
+        ),
+    )
+    store = receipts.ReceiptStore(tmp_path / "state")
+
+    with store.lock_attempt(original, blocking=False) as attempt:
+        attempt.reserve_or_load(original)
+    with store.lock_attempt(changed, blocking=False) as attempt:
+        with pytest.raises(
+            receipts.ReceiptStateError, match="attempt_scope_conflict"
+        ):
+            attempt.reserve_or_load(changed)
 
 
 def test_scope_descriptor_rejects_duplicate_and_unknown_fields() -> None:

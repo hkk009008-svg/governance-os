@@ -3,6 +3,9 @@
 **Date:** 2026-07-12
 **Status:** Implemented, integrated with current main, and locally verified through merge commit `f8e68c8`
 
+> **Supersession:** The blindness, sandbox, model-identity, and severity
+> decisions remain historical. Caller-selected scope and reconciliation are superseded by the user-approved 2026-07-13 receipt-hardening design and plan.
+
 ## 1. Problem
 
 Pipeline's Codex Lane V verifier can independently verify a landed change, but

@@ -29,6 +29,7 @@ import time
 import pytest
 
 import check_go_schema as cgs
+import opus_review_receipts as receipts
 import verification_report_gate as report_gate
 
 
@@ -479,6 +480,10 @@ def _shipping_v2_fixture(
         "Review the report gate.\n", encoding="utf-8"
     )
     (root / "scripts").mkdir()
+    for relative in receipts.PIPELINE_MARKER_PATHS:
+        marker = root / relative
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(f"synthetic Pipeline marker: {relative}\n", encoding="utf-8")
     feature = root / "scripts" / "feature.py"
     feature.write_text("VALUE = 'base'\n", encoding="utf-8")
     _git(root, "init", "-q")

@@ -937,3 +937,50 @@ Pipeline Codex classifies the four ADR-019 adversarial surfaces before implement
 - Unavailable credentials, network, sandbox, provider, or valid output remain visible degraded Codex-only evidence after standing authorization is recorded.
 - The bridge enforces one provider process per invocation. Cross-process uniqueness remains auditable from profile, authorization identity, and reviewed commits rather than adding a mutable global call ledger.
 - Standing consent does not authorize design-time Opus or any unrelated paid operation.
+
+## ADR-024: Bind Lane V to shared receipts and one report publication
+
+**Status:** Accepted (user-approved design, 2026-07-13)
+
+**Context:**
+The earlier bridge allowed callers to restate review scope and later submit a
+normalized review document to reconciliation. That made omission, scope
+substitution, and duplicate cross-process attempts possible, and the mailbox
+write boundary did not require the receipt fields already described by the
+operator prompts. A plain local HMAC would not create a new principal because
+the same cooperative local user can read the key and mutate the state.
+
+**Decision:**
+Pipeline binds each Codex Lane-V attempt to a trigger-named committed
+`lane-v-scope/v1` descriptor. The descriptor owns the task, exact base,
+requirements, complete allowed roots, verification commands, and a
+content-addressed provider-prompt authority. The bridge persists one strict
+receipt under the repository's shared Git common directory; the attempt key is
+stable for a task/range, while every scope input contributes to the scope
+digest. `review` returns `opus-review/v3` plus receipt/scope IDs, and
+`reconcile` accepts only that `--receipt-id` and returns
+`opus-reconciliation/v2`; caller-supplied `--opus-review-json` is intentionally
+incompatible and removed. Exact replay is idempotent, changed scope conflicts,
+and an uncertain reservation never retries.
+
+New reports use `lane-v-report/v2` and are validated at the only live publisher,
+`coordination/bin/send-event`. Existing historical reports remain readable only
+through a committed exact path/raw-byte SHA-256 baseline, not a date cutoff or
+permissive parser. Publication is no-replace and remains `publishing` until the
+same lock proves the final file witness and exact stage-0 Git index
+`100644,<blob>,<path>` entry, blob readback, final revalidation, and required
+durability checks. Explicit `resume` and read-only `status` recover interrupted
+publication; public replay cannot republish a completed report.
+
+**Consequences:**
+- The receipt is cooperative-local executable evidence, not a cryptographic
+  attestation from an independent principal and not authority against the
+  repository owner or root.
+- Opus remains advisory. Only the operator issues GO/NITS/FAIL or authorizes
+  mailbox, lock, Git, publication, or other side effects.
+- The provider prompt is descriptor-bound and verified before receipt
+  reservation; its raw body and provider streams never enter the receipt,
+  mailbox, Git logs, or normal logs.
+- Hooks are not the publication authority. Activating the trusted primary
+  checkout path, pushing, routing evidence-ledger work, or emitting a live
+  report remains separately authorized.

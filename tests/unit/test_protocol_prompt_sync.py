@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -1233,28 +1235,21 @@ def test_reviewer_result_handling_contract_is_model_backed_and_synced():
 def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
     rendered = model.render_cross_model_verification()
     required = (
-        "Cross-Model Opus Verification:",
-        "after every Codex Lane V verification",
-        "exactly one verdict-blind Opus review",
-        "review profile codex-lane-v",
-        "standing-policy:codex-lane-v-opus-v1",
-        "only when the authorization source is absent",
-        "malformed explicit authorization never falls back",
+        "lane-v-scope/v1",
+        "opus-review/v3",
+        "opus-reconciliation/v2",
+        "--shipping-commit",
+        "--verify-request-commit",
+        "--verify-request-path",
+        "--receipt-id",
+        "--opus-review-json is removed",
+        "attempt_state_uncertain",
         "one provider process attempt and no automatic retry",
-        "one invocation per unchanged Lane V verification",
-        "does not authorize design-time Opus or any other paid call",
-        "opus-review/v2",
-        "V1 applies only to Pipeline-repository verification",
-        "Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1",
-        "operator retains GO/NITS/FAIL authority",
-        "unavailable is explicit degraded Codex-only fallback",
-        "every Opus finding requires a disposition",
-        "unresolved Opus finding blocks GO",
-        "reconciliation requires explicit expected HEAD/base and preserves reviewed scope",
-        "reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO",
-        "no third same-question generic reviewer",
-        "Do not launch generic same-question spec or code-quality reviewers",
-        "only a different pre-stated specialist question is eligible",
+        "lane-v-report/v2",
+        "## Verification Attestation",
+        "Opus receipt ID:",
+        "Opus scope digest:",
+        "exact stored Codex verdict",
     )
     for phrase in required:
         assert phrase in rendered
@@ -1266,12 +1261,22 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
         ".codex/agents/protocol-operator.toml",
     ):
         text = _read(path).replace("`", "").lower()
-        for phrase in required[1:]:
+        for phrase in required:
             assert phrase.lower() in text, (path, phrase)
+        for stale in (
+            "--requirement ",
+            "--allow-path",
+            "--verification-command",
+            "reconcile --opus-review-json",
+            "normalized opus-review/v2",
+        ):
+            assert stale not in text, (path, stale)
 
     report_fields = (
         "Review profile:",
         "Authorization identity:",
+        "Opus receipt ID:",
+        "Opus scope digest:",
         "Cross-model review:",
         "Effective Opus model:",
         "Opus finding dispositions:",
@@ -1292,10 +1297,10 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
 
     protocol_operator = _read(".codex/agents/protocol-operator.toml")
     for phrase in (
-        "If any required cross-model field is missing, block GO",
-        "go_allowed=false blocks GO",
-        "Confirmed minor Opus findings require NITS",
-        "confirmed important or critical Opus findings require FAIL",
+        "exact stored Codex verdict",
+        "Opus receipt ID: exact stored reconcile field",
+        "Opus scope digest: exact stored reconcile field",
+        "send-event publication gate is authority, not a Codex hook",
     ):
         assert phrase in protocol_operator
 
@@ -1314,10 +1319,113 @@ def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
         "The generic implementer -> spec review -> quality review loop applies to "
         "implementation delivery, not Codex Lane V same-question review."
     ) in continuation
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/lane-v-verifier.toml",
+        ".codex/agents/protocol-operator.toml",
+    ):
+        assert "send-event publication gate" in _read(path), path
+    hooks = _read(".codex/hooks.json")
+    assert "opus_review_bridge" not in hooks
+    assert "verification_report_gate" not in hooks
+
+
+def test_task7_scope_covers_the_exact_protocol_rules_log() -> None:
+    descriptor_path = (
+        "coordination/verification/scopes/"
+        "2a876e95-3a87-4203-a613-1a29dd957b5b.json"
+    )
+    descriptor_raw = (ROOT / descriptor_path).read_bytes()
+    descriptor = json.loads(descriptor_raw)
+    old_digest = "74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe"
+    current_digest = "c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93"
+
+    assert "docs/PROTOCOL-RULES-LOG.md" in descriptor["allowed_path_roots"]
+    assert "docs" not in descriptor["allowed_path_roots"]
+    assert hashlib.sha256(descriptor_raw).hexdigest() == current_digest
+
+    plan = _read(
+        "docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md"
+    )
+    design = _read(
+        "docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md"
+    )
+    compact_plan = _compact(plan)
+    compact_design = _compact(design)
+    assert (
+        f"Prep Task 5B and committed Task 6 remain historically bound to "
+        f"`sha256:{old_digest}`" in compact_plan
+    )
+    assert (
+        "Task 7 and the final unchanged-HEAD Lane V review use the amended "
+        f"`sha256:{current_digest}`" in compact_plan
+    )
+    assert (
+        f"Prep 5B and committed Task 6 remain historically bound to `{old_digest}`"
+        in compact_design
+    )
+    assert (
+        "Task 7 and final unchanged-HEAD Lane V use the amended digest "
+        f"`{current_digest}`" in compact_design
+    )
+
+    task7 = plan.split("### Task 7:", 1)[1].split(
+        "## Final Integration And Verification", 1
+    )[0]
+    correct_prior_design = (
+        "docs/superpowers/specs/"
+        "2026-07-12-codex-opus-cross-model-verification-design.md"
+    )
+    mistyped_prior_design = correct_prior_design.replace("/specs/", "/plans/")
+    assert f"- Modify: `{descriptor_path}`" in task7
+    assert descriptor_path in task7
+    assert f"@sha256:{current_digest}" in task7
+    assert correct_prior_design in task7
+    assert mistyped_prior_design not in task7
+
+    final = plan.split("## Final Integration And Verification", 1)[1]
+    assert f"Expected descriptor digest: `{current_digest}`" in final
+    assert f"with amended digest `{current_digest}`" in _compact(final)
+
+
+def test_verification_report_format_mirrors_pin_the_v2_attestation_order():
+    agent_path = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
+    claude_path = ROOT / ".claude/skills/seat-operator/verification-report-format.md"
+    assert agent_path.read_bytes() == claude_path.read_bytes()
+
+    text = agent_path.read_text(encoding="utf-8")
+    start = text.index("## Verification Attestation\n", text.index("## Body skeleton"))
+    end = text.index("\n\n## Findings", start)
+    field_lines = [
+        line.split(":", 1)[0] + ":"
+        for line in text[start:end].splitlines()
+        if line and not line.startswith("## ")
+    ]
+    assert field_lines == [
+        "Verification schema:",
+        "Verification mode:",
+        "Verification harness:",
+        "Verification task ID:",
+        "Scope authority:",
+        "Trigger identity:",
+        "Reviewed head:",
+        "Reviewed base:",
+        "Review profile:",
+        "Authorization identity:",
+        "Opus receipt ID:",
+        "Opus scope digest:",
+        "Cross-model review:",
+        "Effective Opus model:",
+        "Opus finding dispositions:",
+        "Reconciliation guard:",
+        "Degraded reason:",
+    ]
 
 
 def test_cross_model_opus_bridge_is_mapped_in_architecture_and_decisions():
     architecture = _read("ARCHITECTURE.md")
+    compact_architecture = _compact(architecture)
     decisions = _read("DECISIONS.md")
 
     assert "scripts/opus_review_bridge.py" in architecture
@@ -1327,16 +1435,35 @@ def test_cross_model_opus_bridge_is_mapped_in_architecture_and_decisions():
     assert "operator retains GO/NITS/FAIL authority" in decisions
     assert "--safe-mode" in architecture
     assert "OS-enforced sandbox" in architecture
-    assert "precedes the reviewed HEAD" in architecture
+    assert "literal reviewed commit" in architecture
+    assert "content-addressed prompt-authority requirement" in architecture
     assert "dynamically injects" not in decisions
     assert (
         "## ADR-023: Make Codex R-INDEPENDENCE operative and authorize one standing Lane-V Opus attempt"
         in decisions
     )
     assert "standing-policy:codex-lane-v-opus-v1" in architecture
-    assert "opus-review/v2" in architecture
+    assert "opus-review/v3" in architecture
+    assert "opus-reconciliation/v2" in architecture
+    assert (
+        "reserved -> reviewed -> reconciled -> publishing -> published"
+        in compact_architecture
+    )
+    assert "prompt source itself is intentionally committed" in compact_architecture
+    assert "raw prompt text is never persisted." not in architecture
     assert "R-INDEPENDENCE" in architecture
     assert "one provider process" in architecture
+
+    hardened_design = _read(
+        "docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md"
+    )
+    compact_design = _compact(hardened_design)
+    assert "exact eight-field" in compact_design
+    assert "Candidate-only recovery" in compact_design
+    assert "Final-only recovery" in compact_design
+    assert "Final-plus-candidate" in compact_design
+    assert "only when both the stored final and candidate names are" in compact_design
+    assert "exact five-part" not in hardened_design
 
 
 def test_cross_model_design_and_plan_match_safe_mode_system_prompt_boundary():

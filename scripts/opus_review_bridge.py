@@ -24,7 +24,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
@@ -171,12 +171,14 @@ _NO_ARGUMENT_VERIFIER_SCRIPTS = frozenset(
 _FIXED_ARGUMENT_VERIFIER_SCRIPTS = {
     "scripts/check_doc_claims.py": frozenset({("--sha-refs",)}),
 }
-AGENT_RELATIVE_PATH = Path(".claude/agents/lane-v-verifier.md")
+PROVIDER_PROMPT_RELATIVE_PATH = Path(receipts.PROVIDER_PROMPT_PATH)
+_PROVIDER_PROMPT_AUTHORITY_PATH_RE = re.compile(
+    r"^scripts/prompts/opus_lane_v_advisory\.authority\."
+    r"(?P<blob_oid>[0-9a-f]{40})\.json$"
+)
 SANDBOX_EXECUTABLE = Path("/usr/bin/sandbox-exec")
-PIPELINE_MARKERS = (
-    Path("AGENTS.md"),
-    Path("scripts/codex_protocol_model.py"),
-    AGENT_RELATIVE_PATH,
+PIPELINE_MARKERS = tuple(
+    Path(relative) for relative in receipts.PIPELINE_MARKER_PATHS
 )
 CLAUDE_ENV_ALLOWLIST = frozenset(
     {
@@ -363,6 +365,12 @@ class VerifyRequestEnvelope:
 
 
 @dataclass(frozen=True)
+class ResolvedProviderPrompt:
+    facts: receipts.ProviderPromptFacts
+    body: str = field(repr=False)
+
+
+@dataclass(frozen=True)
 class ResolvedReviewRequest:
     request: ReviewRequest
     authority: receipts.ScopeDescriptor
@@ -372,6 +380,9 @@ class ResolvedReviewRequest:
     allowed_path_roots: tuple[str, ...]
     verification_commands: tuple[str, ...]
     verify_request: VerifyRequestEnvelope | None
+    provider_prompt: ResolvedProviderPrompt | None = field(
+        default=None, repr=False
+    )
 
 
 @dataclass(frozen=True)
@@ -1683,34 +1694,136 @@ def resolve_authoritative_scope(request: ReviewRequest) -> ResolvedReviewRequest
         raise ReviewContractError(exc.reason, exc.detail) from exc
 
 
-def _trusted_prompt_revision(
-    root: Path, request: _ProviderReviewRequest
+def _prompt_authority_requirement_path(
+    authority: receipts.ScopeDescriptor,
 ) -> str:
-    if request.reviewed_base is not None:
-        _require_preceding_revision(
-            root, request.reviewed_base, request.reviewed_head
+    candidates = tuple(
+        path
+        for path in authority.requirement_paths
+        if path.startswith(
+            "scripts/prompts/opus_lane_v_advisory.authority."
         )
-        return request.reviewed_base
-    result = _git_process(root, "rev-parse", "--verify", f"{request.reviewed_head}^1")
-    if result.returncode != 0:
-        raise ReviewContractError(
-            "invalid_scope", "reviewed_head has no first parent for verifier trust"
-        )
-    revision = _full_sha(result.stdout.strip(), "trusted_prompt_revision")
-    _require_commit(root, revision, "trusted_prompt_revision")
-    return revision
-
-
-def _load_agent_prompt_at_revision(root: Path, revision: str) -> str:
-    result = _git_process(
-        root, "show", f"{revision}:{AGENT_RELATIVE_PATH.as_posix()}"
+        and path.endswith(".json")
     )
-    if result.returncode != 0:
+    if len(candidates) != 1:
         raise ReviewContractError(
-            "invalid_scope",
-            f"trusted verifier instructions missing at {revision}",
+            "invalid_provider_prompt",
+            "Codex review requires exactly one provider prompt authority requirement",
         )
-    return _agent_prompt_from_content(result.stdout)
+    candidate = candidates[0]
+    if _PROVIDER_PROMPT_AUTHORITY_PATH_RE.fullmatch(candidate) is None:
+        raise ReviewContractError(
+            "invalid_provider_prompt",
+            "provider prompt authority requirement path is not content-addressed",
+        )
+    return candidate
+
+
+def _descriptor_bound_provider_prompt(
+    resolved: ResolvedReviewRequest,
+) -> ResolvedProviderPrompt:
+    root = resolved.request.repo_root
+    authority_path = _prompt_authority_requirement_path(resolved.authority)
+    match = _PROVIDER_PROMPT_AUTHORITY_PATH_RE.fullmatch(authority_path)
+    assert match is not None
+    authority_blob, authority_raw = _git_blob(
+        root,
+        purpose="provider_prompt_authority",
+        commit=resolved.request.reviewed_head,
+        path=authority_path,
+        maximum_bytes=65_536,
+    )
+    if authority_blob.blob_id != match.group("blob_oid"):
+        raise ReviewContractError(
+            "invalid_provider_prompt",
+            "provider prompt authority filename does not match its Git blob",
+        )
+    try:
+        authority_mapping = receipts.strict_json_loads(authority_raw)
+        if not isinstance(authority_mapping, Mapping):
+            raise receipts.ReceiptContractError(
+                "invalid_provider_prompt", "provider prompt authority must be an object"
+            )
+        authority = receipts.ProviderPromptAuthority.from_mapping(
+            authority_mapping
+        )
+    except receipts.ReceiptContractError as exc:
+        raise ReviewContractError("invalid_provider_prompt", exc.detail) from exc
+
+    prompt_blob, prompt_raw = _git_blob(
+        root,
+        purpose="provider_prompt",
+        commit=resolved.request.reviewed_head,
+        path=authority.prompt_path,
+        maximum_bytes=65_536,
+    )
+    if (
+        prompt_blob.path != PROVIDER_PROMPT_RELATIVE_PATH.as_posix()
+        or prompt_blob.blob_id != authority.prompt_blob_oid
+        or prompt_blob.digest != authority.file_sha256
+        or prompt_blob.size_bytes != authority.file_size_bytes
+    ):
+        raise ReviewContractError(
+            "invalid_provider_prompt",
+            "provider prompt Git blob does not match committed authority",
+        )
+    try:
+        prompt_content = prompt_raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReviewContractError(
+            "invalid_provider_prompt", "provider prompt must be UTF-8"
+        ) from exc
+    try:
+        body = _agent_prompt_from_content(prompt_content)
+    except ReviewContractError as exc:
+        raise ReviewContractError("invalid_provider_prompt", exc.detail) from exc
+    body_raw = body.encode("utf-8")
+    body_digest = "sha256:" + hashlib.sha256(body_raw).hexdigest()
+    if (
+        body_digest != authority.body_sha256
+        or len(body_raw) != authority.body_size_bytes
+    ):
+        raise ReviewContractError(
+            "invalid_provider_prompt",
+            "provider prompt body does not match committed authority",
+        )
+    try:
+        facts = receipts.ProviderPromptFacts.from_mapping(
+            {
+                "authority_path": authority_blob.path,
+                "authority_blob_oid": authority_blob.blob_id,
+                "authority_digest": authority_blob.digest,
+                "authority_size_bytes": authority_blob.size_bytes,
+                "prompt_path": prompt_blob.path,
+                "prompt_blob_oid": prompt_blob.blob_id,
+                "file_sha256": prompt_blob.digest,
+                "file_size_bytes": prompt_blob.size_bytes,
+                "body_sha256": body_digest,
+                "body_size_bytes": len(body_raw),
+            }
+        )
+    except receipts.ReceiptContractError as exc:
+        raise ReviewContractError("invalid_provider_prompt", exc.detail) from exc
+    return ResolvedProviderPrompt(facts=facts, body=body)
+
+
+def resolve_provider_authoritative_scope(
+    request: ReviewRequest,
+) -> ResolvedReviewRequest:
+    """Resolve review authority and bind the exact provider prompt before state."""
+
+    resolved = resolve_authoritative_scope(request)
+    provider_prompt = _descriptor_bound_provider_prompt(resolved)
+    scope = replace(resolved.scope, provider_prompt=provider_prompt.facts)
+    try:
+        scope.to_mapping()
+    except receipts.ReceiptContractError as exc:
+        raise ReviewContractError(exc.reason, exc.detail) from exc
+    return replace(
+        resolved,
+        scope=scope,
+        provider_prompt=provider_prompt,
+    )
 
 
 def _extract_review_archive(archive: bytes, destination: Path) -> None:
@@ -2832,6 +2945,7 @@ def _provider_request_from_resolved(
 def _perform_provider_review(
     authority: ResolvedReviewRequest | _ProviderReviewRequest,
     *,
+    agent_prompt: str | None = None,
     resolver: Callable[[Mapping[str, str]], Path | None] | None = None,
     runtime_factory: Callable[..., Any] | None = None,
     broker_factory: Callable[..., Any] | None = None,
@@ -2839,9 +2953,20 @@ def _perform_provider_review(
     runner: Callable[..., CapturedProcess] | None = None,
 ) -> OpusReview:
     if isinstance(authority, ResolvedReviewRequest):
+        if (
+            authority.provider_prompt is None
+            or authority.scope.provider_prompt
+            != authority.provider_prompt.facts
+        ):
+            raise ReviewContractError(
+                "invalid_provider_prompt",
+                "resolved review lacks its descriptor-bound provider prompt",
+            )
+        trusted_agent_prompt = authority.provider_prompt.body
         provider_request = _provider_request_from_resolved(authority)
         snapshot_authority: ResolvedReviewRequest | _ProviderReviewRequest = authority
     else:
+        trusted_agent_prompt = agent_prompt or ""
         provider_request = _canonical_provider_request(authority)
         snapshot_authority = provider_request
     try:
@@ -2858,15 +2983,19 @@ def _perform_provider_review(
     _require_commit(source, provider_request.reviewed_head, "reviewed_head")
     if provider_request.reviewed_base is not None:
         _require_commit(source, provider_request.reviewed_base, "reviewed_base")
-    trusted_revision = _trusted_prompt_revision(source, provider_request)
-    trusted_agent_prompt = _load_agent_prompt_at_revision(
-        source, trusted_revision
-    )
     if (
         isinstance(authority, _ProviderReviewRequest)
         and provider_request.authorization_source.strip()
     ):
         _validated_authorization_source(provider_request.authorization_source)
+    if (
+        isinstance(authority, _ProviderReviewRequest)
+        and (not isinstance(agent_prompt, str) or not agent_prompt.strip())
+    ):
+        raise ReviewContractError(
+            "invalid_provider_prompt",
+            "low-level provider review requires an already-verified prompt",
+        )
 
     with _immutable_review_snapshot(snapshot_authority) as snapshot:
         snapshot_request = _snapshot_request(provider_request, snapshot)
@@ -3101,7 +3230,7 @@ def review(
     *,
     scope_resolver: Callable[
         [ReviewRequest], ResolvedReviewRequest
-    ] = resolve_authoritative_scope,
+    ] = resolve_provider_authoritative_scope,
     store_factory: Callable[
         [Path], receipts.ReceiptStore
     ] = receipts.ReceiptStore.for_repo,

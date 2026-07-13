@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-13 @ 3dd6bdc*
+*Last verified: 2026-07-13 @ 7882b9e*
 
 ## 1. Purpose
 
@@ -60,7 +60,9 @@ Key directories:
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:540` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_r_independence` | `scripts/codex_protocol_model.py:766` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:850` | Renders guard guidance into readiness output. |
-| `_resolved_authorization_source` | `scripts/opus_review_bridge.py:1070` | Resolves the exact Lane-V profile to explicit task authority or its bounded standing policy. |
+| `ReceiptStore` | `scripts/opus_review_receipts.py:1497` | Owns the shared-Git-common-directory receipt lifecycle and one-attempt scope conflict guard. |
+| `resolve_provider_authoritative_scope` | `scripts/opus_review_bridge.py:1810` | Resolves trigger-bound scope and verifies the descriptor-bound advisory prompt before receipt reservation. |
+| `publish_candidate` | `scripts/verification_report_gate.py:2407` | Publishes one validated Lane-V report as a durable file-plus-stage-0-index transaction with explicit recovery. |
 
 ## 4. Runtime Invariants
 
@@ -79,11 +81,19 @@ Key directories:
 - Codex Lane V attempts one verdict-blind Opus review through
   `scripts/opus_review_bridge.py` after its primary analysis. Opus remains
   advisory; the bridge proves Pipeline identity and the reviewed commits,
-  materializes a temporary snapshot at the reviewed HEAD, and loads verifier
-  instructions from a commit that precedes the reviewed HEAD (the explicit
-  base or first parent). Claude runs with `--safe-mode`,
-  `--disable-slash-commands`, and the pinned prompt supplied through
-  `--append-system-prompt`. A network-capable outer OS-enforced sandbox denies
+  materializes a temporary snapshot at the reviewed HEAD, and resolves one
+  content-addressed prompt-authority requirement from the committed
+  `lane-v-scope/v1` descriptor. The authority filename binds its own Git blob
+  OID and precommits the dedicated provider prompt's path, blob OID, full/body
+  SHA-256 digests, and byte sizes. The bridge loads only that prompt blob from
+  the literal reviewed commit, proves every fact before receipt creation, and
+  passes the exact advisory body through `--append-system-prompt` separately
+  from the blind `-p` task scope. It has no base, first-parent, working-tree,
+  mirror, or frontmatter fallback. Raw prompt text is never persisted in
+  receipt/runtime state, provider output, or runtime logs; the dedicated prompt
+  source itself is intentionally committed.
+  Claude runs with `--safe-mode` and `--disable-slash-commands`. A
+  network-capable outer OS-enforced sandbox denies
   source/snapshot and persistent-home writes. Exact verification commands use
   one-shot broker tokens to enter a second default-deny sandbox outside the
   inherited outer Seatbelt; that sandbox denies network, source and sensitive
@@ -108,11 +118,28 @@ Key directories:
   sources never fall back. Provider payloads use `opus-provider-review/v1`;
   normalized evidence is `opus-review/v3`, persisted under the shared Git
   common directory, and receipt-only reconciliation uses
-  `opus-reconciliation/v2`. One authoritative task/range launches at most one
-  provider process: exact replays reuse the receipt, and an abandoned durable
-  reservation becomes visibly `attempt_state_uncertain` rather than retrying.
-  Unavailability remains degraded and the operator retains GO/NITS/FAIL
-  authority.
+  `opus-reconciliation/v2`. The shared lifecycle is exactly
+  `reserved -> reviewed -> reconciled -> publishing -> published`. The complete
+  changed-path set, requirements,
+  descriptor/trigger facts, commands, authorization, and provider-prompt facts
+  contribute to the scope digest. One authoritative task/range launches at
+  most one provider process attempt and no automatic retry: exact replays reuse
+  the receipt, changed scope conflicts, and an abandoned durable reservation
+  becomes visibly `attempt_state_uncertain`. Provider stdout and stderr are
+  drained concurrently with a 131072-byte cap per stream; Seatbelt, AF_UNIX,
+  and Claude execution tests run only after an explicit host-capability probe,
+  while pure schema/scope/prompt tests always run.
+- New verification reports use `lane-v-report/v2` with 17 ordered attestation
+  fields. `coordination/bin/send-event` is the live publication boundary: it
+  validates committed descriptor authority and, for Codex, the exact shared
+  receipt/reconciliation before a no-replace publish. `publishing` retains the
+  candidate inode/digest plus exact stage-0 Git blob OID, mode `100644`, and
+  stage `0` until the final bytes, object, index entry, blob readback, and
+  durability checks agree; `resume` and read-only `status` are the only crash
+  recovery paths. Exact historical report path/raw-byte hashes remain accepted
+  through the committed legacy manifest. `.codex/hooks.json` is not the Lane-V
+  authority. Unavailability remains degraded and the operator retains
+  GO/NITS/FAIL authority.
 
 ## 5. Mailbox And Capacity State
 

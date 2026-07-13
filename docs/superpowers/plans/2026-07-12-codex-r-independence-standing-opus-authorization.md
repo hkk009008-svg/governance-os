@@ -1,5 +1,8 @@
 # Codex R-INDEPENDENCE And Standing Opus Authorization Implementation Plan
 
+> **Supersession:** The blindness, sandbox, model-identity, and severity
+> decisions remain historical. Caller-selected scope and reconciliation are superseded by the user-approved 2026-07-13 receipt-hardening design and plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make R-INDEPENDENCE the version-controlled Pipeline Codex default and authorize exactly one non-retried Opus attempt for each Pipeline Codex Lane V verification when task-level authorization is absent.

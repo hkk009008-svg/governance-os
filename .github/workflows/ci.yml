@@ -12,7 +12,7 @@
 #   - Anti-ceremony (check_no_ceremony; hard-fail local + CI)
 #   - Reviewer-result schema (consume_reviewer_result smoke_check)
 #   - Adoption-placeholder (check_placeholders; hard-fail local + CI — ADR-002)
-#   - GO evidence validator (check_go_schema; hard-fail local + CI)
+#   - Lane-V report-v2 + exact legacy-hash validator (check_go_schema; hard-fail local + CI)
 #   - ARCHITECTURE Last-verified (check_arch_freshness; inert unless ARCHITECTURE.md
 #     changed vs merge-base; fetch-depth: 0 already set for merge-base resolution)
 #

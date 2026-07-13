@@ -33,6 +33,10 @@ PIPELINE_MARKER_PATHS = (
     "scripts/codex_protocol_model.py",
     ".claude/agents/lane-v-verifier.md",
 )
+PROVIDER_PROMPT_PATH = "scripts/prompts/opus_lane_v_advisory.md"
+PROVIDER_PROMPT_AUTHORITY_SCHEMA_VERSION = (
+    "opus-provider-prompt-authority/v1"
+)
 
 _ATTEMPT_KEY_SCHEMA_VERSION = "opus-review-attempt-key/v1"
 _DESCRIPTOR_MAX_BYTES = 65_536
@@ -150,6 +154,38 @@ _PUBLICATION_PATH_RE = re.compile(
     r"operator2?-to-[a-z][a-z0-9]*-verification-report\.md$"
 )
 _GIT_OBJECT_ID_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+_PROVIDER_PROMPT_AUTHORITY_PATH_RE = re.compile(
+    r"^scripts/prompts/opus_lane_v_advisory\.authority\."
+    r"(?P<blob_oid>[0-9a-f]{40})\.json$"
+)
+_PROVIDER_PROMPT_AUTHORITY_FIELDS = frozenset(
+    {
+        "schema_version",
+        "prompt_path",
+        "prompt_blob_oid",
+        "file_sha256",
+        "file_size_bytes",
+        "body_sha256",
+        "body_size_bytes",
+    }
+)
+_PROVIDER_PROMPT_FACT_FIELDS = frozenset(
+    {
+        "authority_path",
+        "authority_blob_oid",
+        "authority_digest",
+        "authority_size_bytes",
+        "prompt_path",
+        "prompt_blob_oid",
+        "file_sha256",
+        "file_size_bytes",
+        "body_sha256",
+        "body_size_bytes",
+    }
+)
+_REVIEW_SCOPE_WITH_PROVIDER_PROMPT_FIELDS = frozenset(
+    {*_REVIEW_SCOPE_FIELDS, "provider_prompt"}
+)
 
 
 class ReceiptContractError(ValueError):
@@ -408,6 +444,223 @@ def _validated_verifier(
     return mode, harness, profile
 
 
+def _provider_prompt_size(value: object, field_name: str) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 1 <= value <= _DESCRIPTOR_MAX_BYTES
+    ):
+        raise ReceiptContractError(
+            "invalid_provider_prompt",
+            f"{field_name} must be an integer from 1 to {_DESCRIPTOR_MAX_BYTES}",
+        )
+    return value
+
+
+def _provider_prompt_path(value: object) -> str:
+    if not isinstance(value, str):
+        raise ReceiptContractError(
+            "invalid_provider_prompt", "prompt_path must be a string"
+        )
+    try:
+        path = _normalize_repo_path(value, reason="invalid_provider_prompt")
+    except ReceiptContractError as exc:
+        raise ReceiptContractError("invalid_provider_prompt", exc.detail) from exc
+    if path != PROVIDER_PROMPT_PATH:
+        raise ReceiptContractError(
+            "invalid_provider_prompt",
+            f"prompt_path must be {PROVIDER_PROMPT_PATH!r}",
+        )
+    return path
+
+
+def _provider_prompt_exact_fields(
+    value: object, expected: frozenset[str], label: str
+) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or set(value) != expected:
+        actual = sorted(value) if isinstance(value, Mapping) else type(value).__name__
+        raise ReceiptContractError(
+            "invalid_provider_prompt",
+            f"{label} fields must be {sorted(expected)!r}, got {actual!r}",
+        )
+    return value
+
+
+@dataclass(frozen=True)
+class ProviderPromptAuthority:
+    prompt_path: str
+    prompt_blob_oid: str
+    file_sha256: str
+    file_size_bytes: int
+    body_sha256: str
+    body_size_bytes: int
+
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, object]
+    ) -> ProviderPromptAuthority:
+        mapping = _provider_prompt_exact_fields(
+            value,
+            _PROVIDER_PROMPT_AUTHORITY_FIELDS,
+            "provider prompt authority",
+        )
+        if mapping["schema_version"] != PROVIDER_PROMPT_AUTHORITY_SCHEMA_VERSION:
+            raise ReceiptContractError(
+                "invalid_provider_prompt", "unexpected prompt authority schema"
+            )
+        try:
+            prompt_blob_oid = _full_sha(
+                mapping["prompt_blob_oid"],
+                "prompt_blob_oid",
+                reason="invalid_provider_prompt",
+            )
+            file_sha256 = _sha256_text(
+                mapping["file_sha256"],
+                "file_sha256",
+                reason="invalid_provider_prompt",
+            )
+            body_sha256 = _sha256_text(
+                mapping["body_sha256"],
+                "body_sha256",
+                reason="invalid_provider_prompt",
+            )
+        except ReceiptContractError as exc:
+            raise ReceiptContractError("invalid_provider_prompt", exc.detail) from exc
+        file_size = _provider_prompt_size(
+            mapping["file_size_bytes"], "file_size_bytes"
+        )
+        body_size = _provider_prompt_size(
+            mapping["body_size_bytes"], "body_size_bytes"
+        )
+        if body_size > file_size:
+            raise ReceiptContractError(
+                "invalid_provider_prompt", "body_size_bytes exceeds file_size_bytes"
+            )
+        return cls(
+            prompt_path=_provider_prompt_path(mapping["prompt_path"]),
+            prompt_blob_oid=prompt_blob_oid,
+            file_sha256=file_sha256,
+            file_size_bytes=file_size,
+            body_sha256=body_sha256,
+            body_size_bytes=body_size,
+        )
+
+
+@dataclass(frozen=True)
+class ProviderPromptFacts:
+    authority_path: str
+    authority_blob_oid: str
+    authority_digest: str
+    authority_size_bytes: int
+    prompt_path: str
+    prompt_blob_oid: str
+    file_sha256: str
+    file_size_bytes: int
+    body_sha256: str
+    body_size_bytes: int
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, object]) -> ProviderPromptFacts:
+        mapping = _provider_prompt_exact_fields(
+            value, _PROVIDER_PROMPT_FACT_FIELDS, "provider prompt facts"
+        )
+        authority_path_value = mapping["authority_path"]
+        if not isinstance(authority_path_value, str):
+            raise ReceiptContractError(
+                "invalid_provider_prompt", "authority_path must be a string"
+            )
+        try:
+            authority_path = _normalize_repo_path(
+                authority_path_value, reason="invalid_provider_prompt"
+            )
+            authority_blob_oid = _full_sha(
+                mapping["authority_blob_oid"],
+                "authority_blob_oid",
+                reason="invalid_provider_prompt",
+            )
+            authority_digest = _sha256_text(
+                mapping["authority_digest"],
+                "authority_digest",
+                reason="invalid_provider_prompt",
+            )
+            prompt_blob_oid = _full_sha(
+                mapping["prompt_blob_oid"],
+                "prompt_blob_oid",
+                reason="invalid_provider_prompt",
+            )
+            file_sha256 = _sha256_text(
+                mapping["file_sha256"],
+                "file_sha256",
+                reason="invalid_provider_prompt",
+            )
+            body_sha256 = _sha256_text(
+                mapping["body_sha256"],
+                "body_sha256",
+                reason="invalid_provider_prompt",
+            )
+        except ReceiptContractError as exc:
+            raise ReceiptContractError("invalid_provider_prompt", exc.detail) from exc
+        match = _PROVIDER_PROMPT_AUTHORITY_PATH_RE.fullmatch(authority_path)
+        if match is None or match.group("blob_oid") != authority_blob_oid:
+            raise ReceiptContractError(
+                "invalid_provider_prompt",
+                "authority filename does not bind authority_blob_oid",
+            )
+        authority_size = _provider_prompt_size(
+            mapping["authority_size_bytes"], "authority_size_bytes"
+        )
+        file_size = _provider_prompt_size(
+            mapping["file_size_bytes"], "file_size_bytes"
+        )
+        body_size = _provider_prompt_size(
+            mapping["body_size_bytes"], "body_size_bytes"
+        )
+        if body_size > file_size:
+            raise ReceiptContractError(
+                "invalid_provider_prompt", "body_size_bytes exceeds file_size_bytes"
+            )
+        return cls(
+            authority_path=authority_path,
+            authority_blob_oid=authority_blob_oid,
+            authority_digest=authority_digest,
+            authority_size_bytes=authority_size,
+            prompt_path=_provider_prompt_path(mapping["prompt_path"]),
+            prompt_blob_oid=prompt_blob_oid,
+            file_sha256=file_sha256,
+            file_size_bytes=file_size,
+            body_sha256=body_sha256,
+            body_size_bytes=body_size,
+        )
+
+    def to_mapping(self) -> dict[str, object]:
+        normalized = type(self).from_mapping(
+            {
+                "authority_path": self.authority_path,
+                "authority_blob_oid": self.authority_blob_oid,
+                "authority_digest": self.authority_digest,
+                "authority_size_bytes": self.authority_size_bytes,
+                "prompt_path": self.prompt_path,
+                "prompt_blob_oid": self.prompt_blob_oid,
+                "file_sha256": self.file_sha256,
+                "file_size_bytes": self.file_size_bytes,
+                "body_sha256": self.body_sha256,
+                "body_size_bytes": self.body_size_bytes,
+            }
+        )
+        return {
+            "authority_path": normalized.authority_path,
+            "authority_blob_oid": normalized.authority_blob_oid,
+            "authority_digest": normalized.authority_digest,
+            "authority_size_bytes": normalized.authority_size_bytes,
+            "prompt_path": normalized.prompt_path,
+            "prompt_blob_oid": normalized.prompt_blob_oid,
+            "file_sha256": normalized.file_sha256,
+            "file_size_bytes": normalized.file_size_bytes,
+            "body_sha256": normalized.body_sha256,
+            "body_size_bytes": normalized.body_size_bytes,
+        }
+
+
 @dataclass(frozen=True)
 class ScopeDescriptor:
     task_id: str
@@ -515,6 +768,7 @@ class ReviewScope:
     requirements: tuple[Mapping[str, str], ...]
     allowed_path_roots: tuple[str, ...]
     verification_commands: tuple[str, ...]
+    provider_prompt: ProviderPromptFacts | None = None
 
     def to_mapping(self) -> dict[str, object]:
         reason = "invalid_review_scope"
@@ -611,7 +865,7 @@ class ReviewScope:
             reason=reason,
             require_json_list=False,
         )
-        return {
+        mapping: dict[str, object] = {
             "schema_version": SCOPE_SCHEMA_VERSION,
             "receipt_schema_version": RECEIPT_SCHEMA_VERSION,
             "review_schema_version": REVIEW_SCHEMA_VERSION,
@@ -645,13 +899,23 @@ class ReviewScope:
             "allowed_path_roots": list(allowed_path_roots),
             "verification_commands": list(verification_commands),
         }
+        if self.provider_prompt is not None:
+            if not isinstance(self.provider_prompt, ProviderPromptFacts):
+                raise ReceiptContractError(
+                    reason, "provider_prompt must be ProviderPromptFacts"
+                )
+            mapping["provider_prompt"] = self.provider_prompt.to_mapping()
+        return mapping
 
 
 def review_scope_from_mapping(value: Mapping[str, object]) -> ReviewScope:
     """Strictly normalize one stored receipt scope into its typed contract."""
 
     reason = "invalid_review_scope"
-    if not isinstance(value, Mapping) or set(value) != _REVIEW_SCOPE_FIELDS:
+    if not isinstance(value, Mapping) or set(value) not in {
+        _REVIEW_SCOPE_FIELDS,
+        _REVIEW_SCOPE_WITH_PROVIDER_PROMPT_FIELDS,
+    }:
         raise ReceiptContractError(reason, "stored review scope fields do not match")
     changed_value = value["changed_paths"]
     requirements_value = value["requirements"]
@@ -679,6 +943,12 @@ def review_scope_from_mapping(value: Mapping[str, object]) -> ReviewScope:
         if not all(isinstance(item[field], str) for field in _REQUIREMENT_FIELDS):
             raise ReceiptContractError(reason, "invalid requirement values")
         requirements.append(dict(item))
+    provider_prompt_value = value.get("provider_prompt")
+    provider_prompt = (
+        ProviderPromptFacts.from_mapping(provider_prompt_value)
+        if provider_prompt_value is not None
+        else None
+    )
     try:
         scope = ReviewScope(
             repository_identity=value["repository_identity"],
@@ -703,6 +973,7 @@ def review_scope_from_mapping(value: Mapping[str, object]) -> ReviewScope:
             requirements=tuple(requirements),
             allowed_path_roots=tuple(value["allowed_path_roots"]),
             verification_commands=tuple(value["verification_commands"]),
+            provider_prompt=provider_prompt,
         )
         normalized = scope.to_mapping()
     except ReceiptContractError:

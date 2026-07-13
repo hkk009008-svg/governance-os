@@ -26,6 +26,7 @@
     "DECISIONS.md",
     "coordination/bin/send-event",
     "coordination/verification/scopes",
+    "docs/PROTOCOL-RULES-LOG.md",
     "docs/protocol",
     "docs/superpowers/plans",
     "docs/superpowers/specs",

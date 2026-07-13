@@ -636,6 +636,471 @@ class _AuthorityFixture:
     event_path: str | None
 
 
+PROMPT_AUTHORITY_TASK_ID = "22222222-3333-4444-8555-666666666666"
+PROMPT_PATH = "scripts/prompts/opus_lane_v_advisory.md"
+PROMPT_AUTHORITY_PREFIX = (
+    "scripts/prompts/opus_lane_v_advisory.authority."
+)
+
+
+@dataclass(frozen=True)
+class _PromptAuthorityFixture:
+    root: Path
+    request: bridge.ReviewRequest
+    base: str
+    head: str
+    descriptor_path: str
+    descriptor_digest: str
+    authority_path: str | None
+    authority_blob_oid: str | None
+    prompt_blob_oid: str
+    prompt_bytes: bytes
+    prompt_body: str | None
+
+
+def _hash_git_blob(root: Path, raw: bytes) -> str:
+    completed = subprocess.run(
+        ["env", "-u", "GIT_INDEX_FILE", "git", "hash-object", "--stdin"],
+        cwd=root,
+        input=raw,
+        check=True,
+        capture_output=True,
+    )
+    return completed.stdout.decode("ascii").strip()
+
+
+def _prompt_authority_fixture(
+    root: Path,
+    *,
+    include_authority: bool = True,
+    extra_authority: bool = False,
+    authority_filename_oid: str | None = None,
+    authority_overrides: dict[str, object] | None = None,
+    authority_raw: bytes | None = None,
+    authority_prompt_bytes: bytes | None = None,
+    committed_prompt_bytes: bytes | None = None,
+) -> _PromptAuthorityFixture:
+    root.mkdir()
+    (root / "AGENTS.md").write_text("# Pipeline fixture\n", encoding="utf-8")
+    scripts = root / "scripts"
+    scripts.mkdir()
+    (scripts / "codex_protocol_model.py").write_text(
+        "# Pipeline marker\n", encoding="utf-8"
+    )
+    (scripts / "feature.py").write_text("VALUE = 'base'\n", encoding="utf-8")
+    requirement = root / "requirements" / "task.md"
+    requirement.parent.mkdir()
+    requirement.write_text("Review the committed feature.\n", encoding="utf-8")
+    old_claude = root / ".claude" / "agents" / "lane-v-verifier.md"
+    old_claude.parent.mkdir(parents=True)
+    old_claude.write_text(
+        "---\nname: lane-v-verifier\n---\n\n"
+        "OLD-CLAUDE-AUTHORITY-SENTINEL\n",
+        encoding="utf-8",
+    )
+    codex_mirror = root / ".codex" / "agents" / "lane-v-verifier.toml"
+    codex_mirror.parent.mkdir(parents=True)
+    codex_mirror.write_text(
+        'developer_instructions = "CODEX-MIRROR-AUTHORITY-SENTINEL"\n',
+        encoding="utf-8",
+    )
+
+    _git(root, "init", "-q")
+    _git(root, "config", "user.name", "Prompt Authority Fixture")
+    _git(root, "config", "user.email", "prompt-authority@example.invalid")
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "chore: pre-authority base")
+    base = _git(root, "rev-parse", "HEAD")
+
+    expected_prompt = (
+        (ROOT / PROMPT_PATH).read_bytes()
+        if authority_prompt_bytes is None
+        else authority_prompt_bytes
+    )
+    prompt_blob_oid = _hash_git_blob(root, expected_prompt)
+    try:
+        prompt_body = bridge._agent_prompt_from_content(
+            expected_prompt.decode("utf-8")
+        )
+        body_bytes = prompt_body.encode("utf-8")
+    except (UnicodeDecodeError, bridge.ReviewContractError):
+        prompt_body = None
+        body_bytes = b""
+    authority_mapping: dict[str, object] = {
+        "schema_version": "opus-provider-prompt-authority/v1",
+        "prompt_path": PROMPT_PATH,
+        "prompt_blob_oid": prompt_blob_oid,
+        "file_sha256": "sha256:" + hashlib.sha256(expected_prompt).hexdigest(),
+        "file_size_bytes": len(expected_prompt),
+        "body_sha256": "sha256:" + hashlib.sha256(body_bytes).hexdigest(),
+        "body_size_bytes": len(body_bytes),
+    }
+    if authority_overrides:
+        authority_mapping.update(authority_overrides)
+    manifest_raw = authority_raw or (
+        json.dumps(authority_mapping, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    authority_blob_oid = _hash_git_blob(root, manifest_raw)
+    encoded_oid = authority_filename_oid or authority_blob_oid
+    authority_path = f"{PROMPT_AUTHORITY_PREFIX}{encoded_oid}.json"
+
+    requirement_paths = ["requirements/task.md"]
+    if include_authority:
+        manifest = root / authority_path
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_bytes(manifest_raw)
+        requirement_paths.append(authority_path)
+    if extra_authority:
+        extra_raw = manifest_raw + b" "
+        extra_oid = _hash_git_blob(root, extra_raw)
+        extra_path = f"{PROMPT_AUTHORITY_PREFIX}{extra_oid}.json"
+        (root / extra_path).write_bytes(extra_raw)
+        requirement_paths.append(extra_path)
+
+    descriptor_path = (
+        "coordination/verification/scopes/"
+        f"{PROMPT_AUTHORITY_TASK_ID}.json"
+    )
+    descriptor = {
+        "schema_version": "lane-v-scope/v1",
+        "task_id": PROMPT_AUTHORITY_TASK_ID,
+        "question_id": "descriptor-bound-advisory-prompt",
+        "trigger_kind": "shipping-commit",
+        "verification_mode": "codex-lane-v",
+        "verification_harness": "codex:lane-v-verifier",
+        "review_profile": "codex-lane-v",
+        "reviewed_base": {"policy": "exact", "commit": base},
+        "requirement_paths": requirement_paths,
+        "allowed_path_roots": [
+            ".claude",
+            ".codex",
+            "coordination/verification/scopes",
+            "requirements",
+            "scripts",
+        ],
+        "verification_commands": [
+            "env -u GIT_INDEX_FILE .venv/bin/python -m pytest "
+            "tests/unit/test_feature.py -q"
+        ],
+    }
+    descriptor_file = root / descriptor_path
+    descriptor_file.parent.mkdir(parents=True)
+    descriptor_raw = (
+        json.dumps(descriptor, indent=2, ensure_ascii=False) + "\n"
+    ).encode("utf-8")
+    descriptor_file.write_bytes(descriptor_raw)
+    descriptor_digest = "sha256:" + hashlib.sha256(descriptor_raw).hexdigest()
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "docs: bind prompt authority")
+
+    committed_prompt = (
+        expected_prompt
+        if committed_prompt_bytes is None
+        else committed_prompt_bytes
+    )
+    prompt_file = root / PROMPT_PATH
+    prompt_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_file.write_bytes(committed_prompt)
+    _git(root, "add", PROMPT_PATH)
+    _git(root, "commit", "-q", "-m", "feat: seed advisory provider prompt")
+
+    (scripts / "feature.py").write_text("VALUE = 'reviewed'\n", encoding="utf-8")
+    _git(root, "add", "scripts/feature.py")
+    _git(
+        root,
+        "commit",
+        "-q",
+        "-m",
+        "feat: bind reviewed prompt",
+        "-m",
+        f"Lane-V-Scope: {descriptor_path}@{descriptor_digest}",
+    )
+    head = _git(root, "rev-parse", "HEAD")
+
+    prompt_file.write_text(
+        "---\nname: wip\n---\n\nMUTABLE-WIP-PROMPT-SENTINEL\n",
+        encoding="utf-8",
+    )
+    return _PromptAuthorityFixture(
+        root=root,
+        request=bridge.ReviewRequest(
+            repo_root=root,
+            reviewed_head=head,
+            reviewed_base=base,
+            review_profile="codex-lane-v",
+            authorization_source="",
+            trigger_kind="shipping-commit",
+            trigger_commit=head,
+        ),
+        base=base,
+        head=head,
+        descriptor_path=descriptor_path,
+        descriptor_digest=descriptor_digest,
+        authority_path=authority_path if include_authority else None,
+        authority_blob_oid=authority_blob_oid if include_authority else None,
+        prompt_blob_oid=prompt_blob_oid,
+        prompt_bytes=expected_prompt,
+        prompt_body=prompt_body,
+    )
+
+
+def test_review_renders_descriptor_bound_advisory_prompt_separately_from_task_prompt(
+    tmp_path: Path,
+) -> None:
+    fixture = _prompt_authority_fixture(tmp_path / "repo")
+    assert fixture.prompt_body is not None
+    observed_argv: list[list[str]] = []
+    store = receipts.ReceiptStore(tmp_path / "state")
+
+    def fake_runner(argv: list[str], **kwargs: object) -> bridge.CapturedProcess:
+        observed_argv.append(argv)
+        return _captured_process(
+            argv,
+            0,
+            _claude_stream(
+                reviewed_head=fixture.head,
+                reviewed_base=fixture.base,
+            ),
+            "",
+        )
+
+    def provider(resolved: bridge.ResolvedReviewRequest) -> bridge.OpusReview:
+        return bridge._perform_provider_review(
+            resolved,
+            resolver=lambda environment: Path(sys.executable),
+            runtime_factory=bridge._sandbox_runtime,
+            broker_factory=_PureVerificationBroker,
+            sandbox_probe=lambda runtime, snapshot, broker: True,
+            runner=fake_runner,
+        )
+
+    result = bridge.review(
+        fixture.request,
+        store_factory=lambda root: store,
+        provider=provider,
+    )
+
+    assert result.review.status == "pass"
+    assert len(observed_argv) == 1
+    argv = observed_argv[0]
+    provider_prompt = argv[argv.index("--append-system-prompt") + 1]
+    task_prompt = argv[argv.index("-p") + 1]
+    assert provider_prompt == fixture.prompt_body
+    advisory_body_sentinel = "# Independent Read-Only Evidence Review"
+    assert advisory_body_sentinel in provider_prompt
+    assert advisory_body_sentinel not in task_prompt
+    assert "read-only advisory evidence reviewer" in provider_prompt
+    assert "Do not issue a protocol verdict." in provider_prompt
+    for sentinel in (
+        "OLD-CLAUDE-AUTHORITY-SENTINEL",
+        "CODEX-MIRROR-AUTHORITY-SENTINEL",
+        "MUTABLE-WIP-PROMPT-SENTINEL",
+        "description: Provider-only read-only advisory evidence review",
+    ):
+        assert sentinel not in provider_prompt
+    for authority_phrase in (
+        "operator-seat verifier",
+        "report FAIL with file:line evidence",
+        "in-scope (GO + ratify-owed)",
+        "**Verdict:** GO / NITS / FAIL",
+        "GO authorizes its release",
+    ):
+        assert authority_phrase not in provider_prompt
+    assert f"Reviewed HEAD: {fixture.head}" in task_prompt
+    assert f"Reviewed base: {fixture.base}" in task_prompt
+    assert "evidence, not authority" in task_prompt
+    assert "OLD-CLAUDE-AUTHORITY-SENTINEL" not in task_prompt
+    assert "MUTABLE-WIP-PROMPT-SENTINEL" not in task_prompt
+    assert "**Verdict:**" not in task_prompt
+
+    with store.lock_receipt(result.receipt_id) as attempt:
+        record = attempt.load_existing()
+    prompt_facts = record.scope["provider_prompt"]
+    assert isinstance(prompt_facts, dict)
+    assert prompt_facts == {
+        "authority_path": fixture.authority_path,
+        "authority_blob_oid": fixture.authority_blob_oid,
+        "authority_digest": "sha256:"
+        + hashlib.sha256(
+            _git(
+                fixture.root,
+                "show",
+                f"{fixture.head}:{fixture.authority_path}",
+            ).encode("utf-8")
+            + b"\n"
+        ).hexdigest(),
+        "authority_size_bytes": len(
+            subprocess.run(
+                [
+                    "env",
+                    "-u",
+                    "GIT_INDEX_FILE",
+                    "git",
+                    "show",
+                    f"{fixture.head}:{fixture.authority_path}",
+                ],
+                cwd=fixture.root,
+                check=True,
+                capture_output=True,
+            ).stdout
+        ),
+        "prompt_path": PROMPT_PATH,
+        "prompt_blob_oid": fixture.prompt_blob_oid,
+        "file_sha256": "sha256:"
+        + hashlib.sha256(fixture.prompt_bytes).hexdigest(),
+        "file_size_bytes": len(fixture.prompt_bytes),
+        "body_sha256": "sha256:"
+        + hashlib.sha256(fixture.prompt_body.encode("utf-8")).hexdigest(),
+        "body_size_bytes": len(fixture.prompt_body.encode("utf-8")),
+    }
+    serialized_scope = json.dumps(record.scope, sort_keys=True)
+    assert fixture.prompt_body not in serialized_scope
+    assert fixture.prompt_body not in repr(
+        bridge.resolve_provider_authoritative_scope(fixture.request)
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_detail"),
+    [
+        (
+            "missing-authority",
+            "Codex review requires exactly one provider prompt authority requirement",
+        ),
+        (
+            "multiple-authority",
+            "Codex review requires exactly one provider prompt authority requirement",
+        ),
+        ("malformed-authority", "schema_version"),
+        (
+            "filename-oid-mismatch",
+            "provider prompt authority filename does not match its Git blob",
+        ),
+        (
+            "wrong-prompt-path",
+            f"prompt_path must be {PROMPT_PATH!r}",
+        ),
+        (
+            "wrong-prompt-blob",
+            "provider prompt Git blob does not match committed authority",
+        ),
+        (
+            "wrong-file-digest",
+            "provider prompt Git blob does not match committed authority",
+        ),
+        (
+            "wrong-file-size",
+            "provider prompt Git blob does not match committed authority",
+        ),
+        (
+            "wrong-body-digest",
+            "provider prompt body does not match committed authority",
+        ),
+        (
+            "wrong-body-size",
+            "provider prompt body does not match committed authority",
+        ),
+        (
+            "unknown-authority-field",
+            "provider prompt authority fields must be "
+            "['body_sha256', 'body_size_bytes', 'file_sha256', "
+            "'file_size_bytes', 'prompt_blob_oid', 'prompt_path', "
+            "'schema_version'], got ['body_sha256', 'body_size_bytes', "
+            "'file_sha256', 'file_size_bytes', 'prompt_blob_oid', "
+            "'prompt_path', 'schema_version', 'unexpected']",
+        ),
+        (
+            "boolean-size",
+            "file_size_bytes must be an integer from 1 to 65536",
+        ),
+        ("invalid-prompt-utf8", "provider prompt must be UTF-8"),
+        ("invalid-prompt-frontmatter", "missing opening frontmatter"),
+        (
+            "reviewed-prompt-drift",
+            "provider prompt Git blob does not match committed authority",
+        ),
+    ],
+)
+def test_prompt_authority_failure_precedes_store_and_provider_construction(
+    tmp_path: Path, case: str, expected_detail: str
+) -> None:
+    exact_prompt = (ROOT / PROMPT_PATH).read_bytes()
+    kwargs: dict[str, object] = {}
+    if case == "missing-authority":
+        kwargs["include_authority"] = False
+    elif case == "multiple-authority":
+        kwargs["extra_authority"] = True
+    elif case == "malformed-authority":
+        kwargs["authority_raw"] = b'{"schema_version":"x","schema_version":"y"}\n'
+    elif case == "filename-oid-mismatch":
+        kwargs["authority_filename_oid"] = "0" * 40
+    elif case == "wrong-prompt-path":
+        kwargs["authority_overrides"] = {
+            "prompt_path": "scripts/prompts/not_opus_lane_v_advisory.md"
+        }
+    elif case == "wrong-prompt-blob":
+        kwargs["authority_overrides"] = {"prompt_blob_oid": "f" * 40}
+    elif case == "wrong-file-digest":
+        kwargs["authority_overrides"] = {
+            "file_sha256": "sha256:" + "0" * 64
+        }
+    elif case == "wrong-file-size":
+        kwargs["authority_overrides"] = {
+            "file_size_bytes": len(exact_prompt) + 1
+        }
+    elif case == "wrong-body-digest":
+        kwargs["authority_overrides"] = {
+            "body_sha256": "sha256:" + "0" * 64
+        }
+    elif case == "wrong-body-size":
+        kwargs["authority_overrides"] = {"body_size_bytes": 1}
+    elif case == "unknown-authority-field":
+        kwargs["authority_overrides"] = {"unexpected": "x"}
+    elif case == "boolean-size":
+        kwargs["authority_overrides"] = {"file_size_bytes": True}
+    elif case == "invalid-prompt-utf8":
+        kwargs["authority_prompt_bytes"] = b"\xff"
+        kwargs["authority_overrides"] = {
+            "body_sha256": "sha256:" + hashlib.sha256(b"x").hexdigest(),
+            "body_size_bytes": 1,
+        }
+    elif case == "invalid-prompt-frontmatter":
+        kwargs["authority_prompt_bytes"] = b"# no frontmatter\n"
+        kwargs["authority_overrides"] = {
+            "body_sha256": "sha256:" + hashlib.sha256(b"x").hexdigest(),
+            "body_size_bytes": 1,
+        }
+    elif case == "reviewed-prompt-drift":
+        kwargs["committed_prompt_bytes"] = exact_prompt.replace(
+            b"Evidence over prose.", b"DRIFTED PROMPT BODY."
+        )
+    fixture = _prompt_authority_fixture(tmp_path / case, **kwargs)
+    calls = {"store": 0, "provider": 0}
+
+    def forbidden_store(root: Path) -> receipts.ReceiptStore:
+        del root
+        calls["store"] += 1
+        raise AssertionError("store construction must follow prompt validation")
+
+    def forbidden_provider(
+        resolved: bridge.ResolvedReviewRequest,
+    ) -> bridge.OpusReview:
+        del resolved
+        calls["provider"] += 1
+        raise AssertionError("provider construction must follow prompt validation")
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.review(
+            fixture.request,
+            store_factory=forbidden_store,
+            provider=forbidden_provider,
+        )
+
+    assert excinfo.value.reason == "invalid_provider_prompt"
+    assert excinfo.value.detail == expected_detail
+    assert calls == {"store": 0, "provider": 0}
+
+
 def _authority_fixture(
     root: Path,
     *,
@@ -678,6 +1143,34 @@ def _authority_fixture(
     _git(root, "commit", "-q", "-m", "chore: base")
     base = _git(root, "rev-parse", "HEAD")
 
+    provider_prompt = (
+        "---\nname: fixture-advisory\n---\n\n"
+        "Fixture read-only advisory evidence review.\n"
+    ).encode("utf-8")
+    provider_body = bridge._agent_prompt_from_content(
+        provider_prompt.decode("utf-8")
+    ).encode("utf-8")
+    provider_prompt_oid = _hash_git_blob(root, provider_prompt)
+    prompt_authority = {
+        "schema_version": "opus-provider-prompt-authority/v1",
+        "prompt_path": PROMPT_PATH,
+        "prompt_blob_oid": provider_prompt_oid,
+        "file_sha256": "sha256:" + hashlib.sha256(provider_prompt).hexdigest(),
+        "file_size_bytes": len(provider_prompt),
+        "body_sha256": "sha256:" + hashlib.sha256(provider_body).hexdigest(),
+        "body_size_bytes": len(provider_body),
+    }
+    prompt_authority_raw = (
+        json.dumps(prompt_authority, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    prompt_authority_oid = _hash_git_blob(root, prompt_authority_raw)
+    prompt_authority_path = (
+        f"{PROMPT_AUTHORITY_PREFIX}{prompt_authority_oid}.json"
+    )
+    prompt_authority_file = root / prompt_authority_path
+    prompt_authority_file.parent.mkdir(parents=True, exist_ok=True)
+    prompt_authority_file.write_bytes(prompt_authority_raw)
+
     descriptor_path = (
         "coordination/verification/scopes/"
         f"{descriptor_path_task_id}.json"
@@ -691,7 +1184,10 @@ def _authority_fixture(
         "verification_harness": "codex:lane-v-verifier",
         "review_profile": "codex-lane-v",
         "reviewed_base": {"policy": "exact", "commit": base},
-        "requirement_paths": ["requirements/task.md"],
+        "requirement_paths": [
+            "requirements/task.md",
+            prompt_authority_path,
+        ],
         "allowed_path_roots": [
             "coordination/mailbox/sent",
             "coordination/verification/scopes",
@@ -713,8 +1209,14 @@ def _authority_fixture(
     descriptor_file.write_bytes(descriptor_bytes)
     descriptor_digest = "sha256:" + hashlib.sha256(descriptor_bytes).hexdigest()
     _git(root, "add", descriptor_path)
+    _git(root, "add", prompt_authority_path)
     _git(root, "commit", "-q", "-m", "docs: bind review authority")
     descriptor_commit = _git(root, "rev-parse", "HEAD")
+
+    provider_prompt_file = root / PROMPT_PATH
+    provider_prompt_file.write_bytes(provider_prompt)
+    _git(root, "add", PROMPT_PATH)
+    _git(root, "commit", "-q", "-m", "feat: seed fixture advisory prompt")
 
     (scripts / "feature.py").write_text("VALUE = 'reviewed'\n", encoding="utf-8")
     _git(root, "add", "scripts/feature.py")
@@ -934,7 +1436,7 @@ def test_authoritative_scope_ignores_replace_ref_for_reviewed_commit(
         == "VALUE = 'replacement'"
     )
 
-    resolved = bridge.resolve_authoritative_scope(fixture.request)
+    resolved = bridge.resolve_provider_authoritative_scope(fixture.request)
 
     assert resolved.request.reviewed_head == fixture.head
     shown = bridge._git_process(
@@ -1032,7 +1534,7 @@ def test_verify_request_resolves_exact_committed_envelope(
         recipient=recipient,
     )
 
-    resolved = bridge.resolve_authoritative_scope(fixture.request)
+    resolved = bridge.resolve_provider_authoritative_scope(fixture.request)
 
     assert resolved.verify_request == bridge.VerifyRequestEnvelope(
         timestamp="2026-07-13T00:16:59Z",
@@ -1480,7 +1982,7 @@ def test_review_receipt_abandoned_reservation_degrades_without_provider(
     tmp_path: Path,
 ) -> None:
     fixture = _authority_fixture(tmp_path / "repo")
-    resolved = bridge.resolve_authoritative_scope(fixture.request)
+    resolved = bridge.resolve_provider_authoritative_scope(fixture.request)
     store = receipts.ReceiptStore.for_repo(
         fixture.root, state_root=tmp_path / "state"
     )
@@ -1604,7 +2106,7 @@ def test_review_receipt_write_failure_leaves_reserved_for_uncertain_recovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture = _authority_fixture(tmp_path / "repo")
-    resolved = bridge.resolve_authoritative_scope(fixture.request)
+    resolved = bridge.resolve_provider_authoritative_scope(fixture.request)
     store = receipts.ReceiptStore.for_repo(
         fixture.root, state_root=tmp_path / "state"
     )
@@ -2630,6 +3132,7 @@ def _pure_review(
     runner: object,
     resolver: object | None = None,
     sandbox_probe: object | None = None,
+    agent_prompt: str = "PINNED-TEST-ADVISORY-PROMPT",
 ) -> bridge.OpusReview:
     def captured_runner(
         argv: list[str], **kwargs: object
@@ -2647,6 +3150,7 @@ def _pure_review(
 
     return bridge._perform_provider_review(
         request,
+        agent_prompt=agent_prompt,
         resolver=(
             (lambda environment: Path(sys.executable))
             if resolver is None
@@ -2841,7 +3345,7 @@ def test_review_accepts_only_narrow_pipeline_verification_shapes(
     assert sum("broker_client.py" in rule for rule in allowed_rules) == 2
 
 
-def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
+def test_review_runs_in_immutable_head_snapshot_with_preverified_prompt(
     tmp_path: Path,
 ) -> None:
     request = _committed_request(tmp_path)
@@ -2865,7 +3369,8 @@ def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
             sys.executable
         ).resolve()
         verifier_prompt = argv[argv.index("--append-system-prompt") + 1]
-        assert "BASE-TRUSTED-AGENT" in verifier_prompt
+        assert verifier_prompt == "PINNED-TEST-ADVISORY-PROMPT"
+        assert "BASE-TRUSTED-AGENT" not in verifier_prompt
         assert "HEAD-UNTRUSTED-AGENT" not in verifier_prompt
         assert "MUTABLE-WIP-AGENT" not in verifier_prompt
         return _captured_process(
@@ -2885,47 +3390,38 @@ def test_review_runs_in_immutable_head_snapshot_with_trusted_base_agent(
     assert (tmp_path / "brief.md").read_text(encoding="utf-8") == "mutable WIP requirement\n"
 
 
-def test_review_without_explicit_base_uses_first_parent_verifier_prompt(
+def test_low_level_review_requires_an_already_verified_provider_prompt(
     tmp_path: Path,
 ) -> None:
     request = replace(_committed_request(tmp_path), reviewed_base=None)
 
-    def fake_runner(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if "--append-system-prompt" in argv:
-            verifier_prompt = argv[argv.index("--append-system-prompt") + 1]
-        else:
-            agents = json.loads(argv[argv.index("--agents") + 1])
-            verifier_prompt = agents["lane-v-verifier"]["prompt"]
-        assert "BASE-TRUSTED-AGENT" in verifier_prompt
-        assert "HEAD-UNTRUSTED-AGENT" not in verifier_prompt
-        return subprocess.CompletedProcess(
-            argv,
-            0,
-            _claude_stream(
-                reviewed_head=request.reviewed_head,
-                reviewed_base=None,
-            ),
-            "",
-        )
+    def forbidden_runner(*args: object, **kwargs: object) -> object:
+        raise AssertionError("provider must not run without a verified prompt")
 
-    result = _pure_review(request, runner=fake_runner)
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge._perform_provider_review(request, runner=forbidden_runner)
 
-    assert result.status == "pass"
+    assert excinfo.value.reason == "invalid_provider_prompt"
 
 
 def test_review_rejects_explicit_base_that_does_not_precede_head(
     tmp_path: Path,
 ) -> None:
-    request = replace(_committed_request(tmp_path), authorization_source="")
-    request = replace(request, reviewed_base=request.reviewed_head)
+    fixture = _prompt_authority_fixture(tmp_path / "repo")
+    request = replace(fixture.request, reviewed_base=fixture.head)
+    calls = 0
 
-    def forbidden_runner(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        raise AssertionError("provider must not run with a non-preceding prompt base")
+    def forbidden_store(root: Path) -> receipts.ReceiptStore:
+        del root
+        nonlocal calls
+        calls += 1
+        raise AssertionError("store must not open for a mismatched base")
 
     with pytest.raises(bridge.ReviewContractError) as excinfo:
-        _pure_review(request, runner=forbidden_runner)
+        bridge.review(request, store_factory=forbidden_store)
 
-    assert excinfo.value.reason == "invalid_scope"
+    assert excinfo.value.reason == "reviewed_scope_mismatch"
+    assert calls == 0
 
 
 @pytest.mark.parametrize("field", ["reviewed_head", "reviewed_base"])
@@ -3047,7 +3543,11 @@ def _run_sandbox_probe(
             "",
         )
 
-    result = bridge._perform_provider_review(request, runner=fake_runner)
+    result = bridge._perform_provider_review(
+        request,
+        agent_prompt="PINNED-TEST-ADVISORY-PROMPT",
+        runner=fake_runner,
+    )
     assert result.status == "pass"
     assert len(observed) == 1
     return observed[0]
@@ -3735,6 +4235,7 @@ def test_review_uses_complete_injected_host_seam(tmp_path: Path) -> None:
 
     result = bridge._perform_provider_review(
         request,
+        agent_prompt="PINNED-TEST-ADVISORY-PROMPT",
         resolver=resolver,
         runtime_factory=runtime_factory,
         broker_factory=broker_factory,
@@ -4036,7 +4537,11 @@ def test_verification_broker_rejects_replay_and_forged_tokens(
             "",
         )
 
-    result = bridge._perform_provider_review(request, runner=fake_runner)
+    result = bridge._perform_provider_review(
+        request,
+        agent_prompt="PINNED-TEST-ADVISORY-PROMPT",
+        runner=fake_runner,
+    )
 
     assert result.status == "pass"
 
@@ -4100,7 +4605,11 @@ def test_verification_broker_bounds_output_and_runtime(
             "",
         )
 
-    result = bridge._perform_provider_review(request, runner=fake_runner)
+    result = bridge._perform_provider_review(
+        request,
+        agent_prompt="PINNED-TEST-ADVISORY-PROMPT",
+        runner=fake_runner,
+    )
 
     assert result.status == "pass"
 
@@ -4117,6 +4626,7 @@ def test_review_normalizes_missing_sandbox_without_provider_call(
     )
     result = bridge._perform_provider_review(
         _committed_request(tmp_path),
+        agent_prompt="PINNED-TEST-ADVISORY-PROMPT",
         resolver=lambda environment: Path(sys.executable),
         runtime_factory=bridge._sandbox_runtime,
         broker_factory=_PureVerificationBroker,
@@ -4437,6 +4947,7 @@ def test_review_resolves_claude_before_default_process_group_launch(
 
     result = bridge._perform_provider_review(
         request,
+        agent_prompt="PINNED-TEST-ADVISORY-PROMPT",
         runtime_factory=bridge._sandbox_runtime,
         broker_factory=_PureVerificationBroker,
         sandbox_probe=lambda runtime, snapshot, broker: True,

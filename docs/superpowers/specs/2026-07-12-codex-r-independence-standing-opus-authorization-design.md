@@ -2,6 +2,9 @@
 
 **Status:** User-approved design, 2026-07-12
 
+> **Supersession:** The blindness, sandbox, model-identity, and severity
+> decisions remain historical. Caller-selected scope and reconciliation are superseded by the user-approved 2026-07-13 receipt-hardening design and plan.
+
 ## Problem
 
 ADR-019 declares R-INDEPENDENCE to be the governance OS default for both

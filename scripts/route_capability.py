@@ -280,9 +280,9 @@ def capability_hash(obj: dict) -> str:
 # security property is NON-VACUITY: a receipt that carries only a command + its
 # output is ceremony — it proves nothing durable. So the receipt MUST anchor to
 # either a commit SHA or a logs/ artifact, mirroring the R-GATE-EVIDENCE shape
-# enforced on GO verification-reports by scripts/check_go_schema.py
-# (check_go_schema.py:49-70: a real `$ <cmd>` + `→ <output>` PLUS a commit SHA
-# `[0-9a-f]{7,40}` OR a `logs/` reference). validate_receipt rejects the case
+# enforced on GO verification-reports by scripts/check_go_schema.py: a real
+# `$ <cmd>` + `→ <output>` plus a commit SHA or `logs/` reference.
+# validate_receipt rejects the case
 # where NEITHER commit nor logs_ref is present.
 
 RECEIPT_SCHEMA_ID = "governance.capability-receipt/v1"

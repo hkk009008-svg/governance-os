@@ -1,9 +1,11 @@
 # Opus Lane V Receipt And Report Hardening Design
 
 **Date:** 2026-07-13
-**Status:** Approved for implementation by the user-principal on 2026-07-13;
-independently challenged before approval; amended after `a3717e3` to bind exact
-index staging, explicit recovery, trusted startup, and the real provider prompt
+**Status:** Approved by the user-principal on 2026-07-13 and implemented through
+Tasks 1–7 in the isolated hardening branch, pending the plan's independent
+whole-branch verification; independently challenged before approval; amended
+after `a3717e3` to bind exact index staging, explicit recovery, trusted startup,
+and the real provider prompt
 **Implementation base:** `555041477bcdb9a432a1b238d664be0958c5c9ef`
 **Supersedes:** the caller-supplied reconciliation and prompt-only invocation
 enforcement portions of the 2026-07-12 Opus designs. Their sandbox, authority,
@@ -75,14 +77,15 @@ The design must preserve these existing contracts:
   provider-instruction source is ordinary committed code and is pinned here.
 - Historical mailbox reports remain readable without a mass rewrite.
 
-Tasks 1-5A remain bound to the original descriptor. The post-amendment
-authority for Prep 5B and Tasks 6-7 is
-`coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`
-at SHA-256
-`74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe`.
-It retains the exact implementation base while naming a content-addressed
-prompt-authority requirement that precommits the provider-only prompt blob and
-body facts.
+Tasks 1-5A remain bound to the original descriptor. Prep 5B and committed Task
+6 remain historically bound to
+`74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe` of
+`coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`.
+Task 7 and final unchanged-HEAD Lane V use the amended digest
+`c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`
+of that same path. Both generations retain the exact implementation base and
+content-addressed provider-prompt authority; the Task 7 generation additionally
+authorizes only the exact `docs/PROTOCOL-RULES-LOG.md` write, not `docs`.
 
 ## 3. Goals
 
@@ -422,11 +425,12 @@ An identical reconciliation request returns the stored result. Any changed
 verdict, disposition, evidence, expected commit, or receipt scope fails with
 `reconciliation_replay_conflict`.
 
-`publishing` binds one planned mailbox path, candidate digest, direct-child
-candidate basename, device, and inode while atomic no-replace publication is in
-progress. `published` retains that exact five-part tuple for the one durable
-report. Every transition occurs under the per-attempt lock and increments a
-checked generation; no stale writer may replace a newer state.
+`publishing` binds one exact eight-field file/index witness while atomic
+no-replace publication is in progress: planned mailbox path, candidate digest,
+direct-child candidate basename, device, inode, expected Git blob OID, literal
+index mode `100644`, and stage `0`. `published` retains that exact witness for
+the one durable report. Every transition occurs under the per-attempt lock and
+increments a checked generation; no stale writer may replace a newer state.
 
 If a process dies after `reserved` is durable but before `reviewed`, no caller
 may relaunch the provider. A second process that cannot acquire the attempt
@@ -575,45 +579,43 @@ For Codex GO, `go_allowed` must be true. Codex NITS/FAIL require false and must
 equal the stored reconciliation verdict; NITS cannot substitute for FAIL or
 vice versa.
 
-The gate holds the task's publication lock and records the `publishing` path,
-candidate digest, direct-child candidate basename, device, and inode. It creates
-the final report with same-directory atomic hard-link/no-replace semantics,
-durably completes the file and directory fsync sequence, writes the captured
-bytes as an exact Git blob with `hash-object -w --no-filters --stdin`, stages
-only the canonical final path with `update-index --cacheinfo`, and revalidates
-the stage-0 entry, object bytes, and final witness. Only then does it record
-`published` while retaining the exact five-part creation tuple. `published`
-therefore attests both the durable final and the exact index binding observed
-under the lock. A Codex publication is an additional receipt transition; a
-non-Codex task uses an equivalent private publication record keyed by its
-authoritative task ID. Exactly one canonical report and creation witness may
-publish per task. A repeated or altered fresh publication is rejected. For
-verification reports, the current shell-level check-then-`mv` and later
-`git add` sequence is replaced by this single publisher; no preliminary
-existence check or clean-filtered staging is treated as publication authority.
+The gate holds the task's publication lock and records the complete
+`publishing` witness: path, candidate digest/name/device/inode, and expected
+stage-0 Git object ID/mode/stage. It creates the final report with
+same-directory atomic hard-link/no-replace semantics, durably completes the
+file and directory fsync sequence, writes the captured bytes as an exact Git
+blob with `hash-object -w --no-filters --stdin`, stages only the canonical final
+path with `update-index --cacheinfo`, and revalidates the stage-0 entry, object
+bytes, and final witness. Only then does it record `published` while retaining
+that exact eight-field witness. `published` therefore attests both the durable
+final and the exact index binding observed under the lock. A Codex publication
+is an additional receipt transition; a non-Codex task uses an equivalent
+private publication record keyed by its authoritative task ID. Exactly one
+canonical report and creation witness may publish per task. A repeated or
+altered fresh publication is rejected. For verification reports, the current
+shell-level check-then-`mv` and later `git add` sequence is replaced by this
+single publisher; no preliminary existence check or clean-filtered staging is
+treated as publication authority.
 
 The non-Codex record schema is `lane-v-task-publication/v1` and contains exactly
-the canonical task UUID, an authority digest, state, generation, path, and
-candidate digest plus the candidate basename/device/inode creation witness. The
-authority digest covers repository identity, task ID, mode, harness, descriptor
-path/digest, trigger identity, reviewed HEAD/base, and the authorized operator
-recipient. `ready` has an odd generation at least 1 and null publication
-fields; `publishing` has an even generation at least 2 and the path, digest,
-direct-child candidate basename, non-boolean non-negative device, and
-non-boolean positive inode present; `published` has an odd generation at least
-3 and retains that exact tuple. Initial validated reservation creates `ready`
-generation 1. Every begin, exact absent-final clear, exact planned-tuple cancel,
-or exact-final finish increments generation. Unknown fields, illegal
-parity/nullability, changed authority, malformed private state, or mismatched
-recovery fail without rewriting the record.
-
-The amended schema also carries `index_blob_oid`, `index_mode`, and
-`index_stage`. They are null before `publishing`; in `publishing|published`
-they are an exact full Git object ID, literal `100644`, and non-boolean integer
-zero. The Codex receipt publication mapping carries the same fields. They are
-part of strict field/type/parity/transition/replay validation, and an existing
-index entry for a fresh report path is a conflict. `published` is illegal until
-both the file witness and these exact stage-0 facts have been revalidated.
+the canonical task UUID, an authority digest, state, generation, and the same
+eight publication fields: path, candidate digest/name/device/inode, and
+`index_blob_oid`/`index_mode`/`index_stage`. The authority digest covers
+repository identity, task ID, mode, harness, descriptor path/digest, trigger
+identity, reviewed HEAD/base, and the authorized operator recipient. `ready`
+has an odd generation at least 1 and all eight publication fields null;
+`publishing` has an even generation at least 2 and the exact path, digest,
+direct-child candidate basename, non-boolean non-negative device, non-boolean
+positive inode, full Git object ID, literal mode `100644`, and non-boolean stage
+zero present; `published` has an odd generation at least 3 and retains that
+exact witness. The Codex receipt publication mapping carries the same fields.
+Initial validated reservation creates `ready` generation 1. Every begin, fresh
+pre-link exact-witness cancellation, both-names-absent recovery clear, or
+exact-witness finish increments generation. Unknown fields, illegal
+type/parity/nullability, changed authority, malformed private state, mismatched
+recovery, or a pre-existing index entry for a fresh report path fails without
+rewriting the record. `published` is illegal until the file witness, blob
+bytes, and exact stage-0 facts have all been revalidated.
 
 Codex live validation occurs under the receipt lock and decodes the stored
 review and reconciliation through the bridge's public normalization functions;
@@ -622,22 +624,20 @@ matches the receipt's repository identity and stored commits to the current
 provider-neutral structural authority. The receipt transition methods may be
 internally idempotent for crash recovery, but the public publisher rejects an
 entry state of `published`, including an identical replay. Only an entry state
-of `publishing` may recover, and exact recovery requires the observed final's
-path, digest, device, and inode to equal the stored candidate witness. If the
-stored candidate basename remains, recovery opens it without following links,
-requires the same tuple/digest, fsyncs the recovered final inode, unlinks only
-that name, and then requires the final's link count to be 1. If the name is
-absent, recovery still fsyncs that final inode and requires link count 1.
-Recovery always fsyncs the held directory after this handling, reopens the final
-name, and revalidates the stored path/digest/device/inode before
-`finish_publication` may record the durable transition. A fresh
-`os.link` collision is not recovery even if the existing bytes match: an exact
-`cancel_publication` transition requires the full tuple and expected generation,
-increments generation, clears the tuple, and moves Codex
-`publishing -> reconciled` or the task store `publishing -> ready` under the
-same lock. The invocation then fails. This prevents a preexisting exact-byte
-destination from being mistaken for a link created before an interrupted
-publisher exited; cancellation never deletes or reinitializes the record.
+of `publishing` may recover. Candidate-only recovery verifies the witnessed
+bytes/inode, recreates the no-replace final link, and continues. Final-only
+recovery validates and fsyncs that witnessed inode. Final-plus-candidate
+recovery requires both names to be the same witnessed inode and exact bytes,
+then removes only the verified candidate name after the final is durable. In
+all three cases recovery idempotently writes or verifies the expected blob,
+converges only the exact stage-0 index entry, revalidates the final witness,
+blob bytes, and index tuple, and only then calls `finish_publication` with the
+stored eight-field witness. A fresh `os.link` collision is not recovery even if
+the existing bytes match; it fails and cannot be mistaken for a link created
+by an interrupted publisher. Because that pre-link destination is not the
+witnessed inode created by this invocation, an exact witness-plus-generation
+cancellation returns the fresh attempt to `reconciled|ready`; this narrow
+fresh-`EEXIST` transition is distinct from the interrupted-recovery clear below.
 
 Candidate and final names are direct children of one held, descriptor-relative
 `coordination/mailbox/sent` directory. The candidate is opened once with
@@ -662,17 +662,17 @@ explicit recovery and never reports success. A durable `published` transition
 can therefore never precede file-data, mailbox-name, and exact-index
 validation.
 
-If publication recovery finds the named final path with the expected digest,
-device, and inode, it finalizes `published`; if the path is absent, it clears
-the interrupted publication reservation before accepting one new candidate,
-first removing a surviving stored candidate basename only when its no-follow
-descriptor matches the stored witness/digest. An absent stored candidate is
-also valid; a mismatched candidate or final path, digest, device, or inode fails
-closed. Validation failure before `publishing` leaves no new final event and
-the shell trap removes only its unbound temporary file. A link, object-write,
-index-stage, or final-revalidation failure after `publishing` remains a
-non-successful, explicitly recoverable record. The operator does not stage
-manually and does not emit another report.
+Publication recovery clears the interrupted reservation back to
+`reconciled|ready` only when both the stored final and candidate names are
+absent, the exact index entry is absent, the held directory is fsynced, and all
+three facts remain true immediately before the checked transition. A surviving
+valid candidate is therefore recovery input, never discardable evidence. Any
+mismatched candidate or final path, digest, device, inode, blob, or index entry
+fails closed. Validation failure before `publishing` leaves no new final event
+and the shell trap removes only its unbound temporary file. A link,
+object-write, index-stage, or final-revalidation failure after `publishing`
+remains a non-successful, explicitly recoverable record. The operator does not
+stage manually and does not emit another report.
 
 Recovery may finalize the persisted path from an earlier second. The publisher
 therefore emits exactly that canonical repository-relative path on stdout only
@@ -804,10 +804,10 @@ authority. It returns only the caller's `pass|issues` evidence schema.
 Before reservation, `ReviewScope` binds the descriptor/trigger authority, the
 content-addressed authority-requirement blob, prompt path, Git blob OID,
 full-file SHA-256/size, and extracted-body SHA-256/size. Those fields enter the
-scope digest and receipt. The already-
-loaded exact body is passed to the provider; it is not reloaded after
-reservation and raw prompt text is never persisted. Same-attempt prompt drift
-is `attempt_scope_conflict`, not another launch. A real-Git rendered regression
+scope digest and receipt. The already-loaded exact body is passed to the
+provider; it is not reloaded after reservation and raw prompt text is never
+persisted in receipt/runtime state or provider-output logs. Same-attempt prompt
+drift is `attempt_scope_conflict`, not another launch. A real-Git rendered regression
 captures the provider argv and proves the descriptor-bound body is exactly the
 `--append-system-prompt` value while the blind generated task prompt remains a
 separate `-p` value.
@@ -1034,14 +1034,16 @@ failing test or mutation probe.
 - exact descriptor-derived mode/harness/task/trigger and verdict binding;
 - live receipt/report comparison;
 - one-publication binding, atomic no-replace races, and interrupted-publication
-  recovery for absent/exact/mismatched final state;
+  recovery for final-only, candidate-only, final-plus-candidate, both-absent,
+  and mismatched witnesses;
 - exact task-publication schema/generation/authority conflicts and public
   published-replay rejection;
 - descriptor-relative candidate/final identity, persisted basename/inode
   recovery, exact index OID/mode/stage witness, exact cancellation,
   file/directory/index fsync ordering, and collision rollback;
-- object write, exact no-filter stage, NUL-delimited index parsing, blob/final
-  revalidation, explicit resume/status, and every post-link crash boundary;
+- object write, exact no-filter stage, NUL-delimited index parsing, exact
+  file/blob/index revalidation before finish, explicit resume/status, and every
+  post-link crash boundary;
 - publisher-returned cross-second path staging plus strict stdout validation;
 - absolute privileged-Bash startup and primary-root interpreter/script trust
   with no PATH, startup-file, exported-function, or linked-worktree fallback;

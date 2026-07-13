@@ -1,5 +1,8 @@
 # Codex-to-Opus Cross-Model Verification Implementation Plan
 
+> **Supersession:** The blindness, sandbox, model-identity, and severity
+> decisions remain historical. Caller-selected scope and reconciliation are superseded by the user-approved 2026-07-13 receipt-hardening design and plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make every Codex Lane V verification attempt exactly one verdict-blind Claude Opus review, reconcile disagreements with an executable guard, and degrade visibly to Codex-only verification when Opus is unavailable.

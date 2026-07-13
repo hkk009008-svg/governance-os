@@ -15,16 +15,19 @@
   `coordination/verification/scopes/9655cc07-e71a-4ca4-9201-5492be8bb91f.json`
   at exact digest
   `sha256:90d72201235c5eeca3f18df6fe16064f24847b4da3b46ef29ffb8f3889f5bb62`.
-- The post-amendment authority for Prep Task 5B and Tasks 6-7 is
-  `coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`
-  at exact digest
-  `sha256:74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe`.
-  It retains the exact `5550414...` review base and complete allowed roots but
-  additionally names a content-addressed prompt-authority requirement whose
-  blob pins the provider prompt path, Git blob OID, full-file/body SHA-256
-  digests, and byte sizes before that file becomes executable.
+- Prep Task 5B and committed Task 6 remain historically bound to
+  `sha256:74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe`
+  of
+  `coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`;
+  their already-executed commit trailers remain unchanged.
+- Task 7 and the final unchanged-HEAD Lane V review use the amended
+  `sha256:c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`
+  generation of that same descriptor. It retains the exact `5550414...`
+  review base and content-addressed provider-prompt authority while adding the
+  exact Task 7 write root `docs/PROTOCOL-RULES-LOG.md`; it does not widen
+  authority to `docs`.
 - Every remaining implementation commit ends with the exact trailer
-  `Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe`.
+  `Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`.
 - Production receipt state is shared across linked worktrees at `<resolved-git-common-dir-parent>/.codex/runtime/opus-review-receipts/v1/`; non-Codex publication state is at the sibling `lane-v-report-publications/v1/` directory. There is no production CLI flag that changes either root.
 - State directories are owned by the current uid, real directories, and mode `0700`; lock and JSON files are regular, non-symlink files owned by the current uid and mode `0600`.
 - Receipt writes use descriptor-relative opens, same-directory temporary files, file `fsync`, `os.replace`, and directory `fsync`; every read-modify-write runs under the same per-attempt `flock` and checks a monotonically increasing generation.
@@ -1680,10 +1683,14 @@ env -u GIT_INDEX_FILE git commit -m "feat(mailbox): publish one receipt-bound La
 **Files:**
 - Modify: `scripts/opus_review_bridge.py`
 - Modify: `scripts/opus_review_receipts.py`
+- Modify: `coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`
+  (add only the exact `docs/PROTOCOL-RULES-LOG.md` write root)
 - Read/verify unchanged: `scripts/prompts/opus_lane_v_advisory.md`
 - Modify: `scripts/codex_protocol_model.py`
 - Modify: `tests/unit/test_opus_review_bridge.py`
 - Modify: `tests/unit/test_opus_review_receipts.py`
+- Modify: `tests/unit/test_check_go_schema.py` (synthetic Pipeline-marker fixture
+  only; Task 6's fail-closed repository boundary exposed this integration drift)
 - Modify: `tests/unit/test_protocol_prompt_sync.py`
 - Modify: `.codex/agents/lane-v-verifier.toml`
 - Modify: `.codex/agents/protocol-operator.toml`
@@ -1804,18 +1811,36 @@ Run:
 ```bash
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_opus_review_receipts.py tests/unit/test_opus_review_bridge.py tests/unit/test_protocol_prompt_sync.py tests/unit/test_check_go_schema.py -q
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py ARCHITECTURE.md docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py --sha-refs ARCHITECTURE.md docs/protocol/claude/independence-first.md docs/protocol/codex/continuation.md docs/protocol/protocol-assembly-map.md .agents/skills/seat-operator/verification-report-format.md .claude/skills/seat-operator/verification-report-format.md docs/superpowers/plans/2026-07-12-codex-opus-cross-model-verification.md docs/superpowers/plans/2026-07-12-codex-r-independence-standing-opus-authorization.md docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md docs/superpowers/specs/2026-07-12-codex-r-independence-standing-opus-authorization-design.md
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py --sha-refs docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py --sha-refs
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/ci_smoke.py
 env -u GIT_INDEX_FILE git diff --check
 ```
 
-Expected: prompt/schema tests pass, doc anchors and SHA baseline show no drift, smoke is green, and `.codex/hooks.json` is not in the diff.
+Expected: prompt/schema tests pass. The first scoped SHA command exits 0 for
+only the explicit changed authority surfaces named there; it is not proof about
+excluded changed documents. The separate current-plan/design command exits 1
+with exactly six known checker limitations: four `sha_unreachable` occurrences
+for the plan-amendment commit already named in those documents, which resolves
+as a commit with subject
+`docs(plan): close Git authority and publication gaps` but is not reachable
+from this worktree HEAD, plus two `sha_not_found` occurrences for the prompt
+and authority Git blob OIDs listed in the final expected values, which are
+blobs rather than commits. Direct object-type inspection plus the final
+prompt/authority SHA and `hash-object` commands are the positive proof. The
+exact global `--sha-refs` command exits 1 on the inherited 215
+`sha_not_found` findings. The changed-drift baseline in `ci_smoke` remains
+green; doc anchors and smoke pass; and `.codex/hooks.json` is not in the diff.
+Neither non-green SHA command is a passed gate or a Task 7 product-fix
+requirement.
 
 Commit:
 
 ```bash
-env -u GIT_INDEX_FILE git add scripts/opus_review_bridge.py scripts/opus_review_receipts.py tests/unit/test_opus_review_bridge.py tests/unit/test_opus_review_receipts.py scripts/codex_protocol_model.py scripts/route_capability.py tests/unit/test_protocol_prompt_sync.py .codex/agents/lane-v-verifier.toml .codex/agents/protocol-operator.toml .agents/skills/seat-operator/SKILL.md .agents/skills/seat-operator/verification-report-format.md .claude/skills/seat-operator/verification-report-format.md .github/workflows/ci.yml docs/protocol/codex/continuation.md docs/protocol/claude/independence-first.md docs/protocol/protocol-assembly-map.md docs/PROTOCOL-RULES-LOG.md ARCHITECTURE.md DECISIONS.md docs/superpowers/plans/2026-07-12-codex-opus-cross-model-verification.md docs/superpowers/plans/2026-07-12-codex-r-independence-standing-opus-authorization.md docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md docs/superpowers/specs/2026-07-12-codex-r-independence-standing-opus-authorization-design.md docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md
-env -u GIT_INDEX_FILE git commit -m "refactor(codex): bind Lane V workflow to receipts" -m "Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe"
+env -u GIT_INDEX_FILE git add scripts/opus_review_bridge.py scripts/opus_review_receipts.py tests/unit/test_opus_review_bridge.py tests/unit/test_opus_review_receipts.py tests/unit/test_check_go_schema.py scripts/codex_protocol_model.py scripts/route_capability.py tests/unit/test_protocol_prompt_sync.py .codex/agents/lane-v-verifier.toml .codex/agents/protocol-operator.toml .agents/skills/seat-operator/SKILL.md .agents/skills/seat-operator/verification-report-format.md .claude/skills/seat-operator/verification-report-format.md .github/workflows/ci.yml docs/protocol/codex/continuation.md docs/protocol/claude/independence-first.md docs/protocol/protocol-assembly-map.md docs/PROTOCOL-RULES-LOG.md ARCHITECTURE.md DECISIONS.md docs/superpowers/plans/2026-07-12-codex-opus-cross-model-verification.md docs/superpowers/plans/2026-07-12-codex-r-independence-standing-opus-authorization.md docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md docs/superpowers/specs/2026-07-12-codex-r-independence-standing-opus-authorization-design.md docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md
+env -u GIT_INDEX_FILE git add coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json
+env -u GIT_INDEX_FILE git commit -m "refactor(codex): bind Lane V workflow to receipts" -m "Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93"
 ```
 
 ---
@@ -1847,6 +1872,8 @@ env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest t
 ```bash
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_go_schema.py
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py --sha-refs ARCHITECTURE.md docs/protocol/claude/independence-first.md docs/protocol/codex/continuation.md docs/protocol/protocol-assembly-map.md .agents/skills/seat-operator/verification-report-format.md .claude/skills/seat-operator/verification-report-format.md docs/superpowers/plans/2026-07-12-codex-opus-cross-model-verification.md docs/superpowers/plans/2026-07-12-codex-r-independence-standing-opus-authorization.md docs/superpowers/specs/2026-07-12-codex-opus-cross-model-verification-design.md docs/superpowers/specs/2026-07-12-codex-r-independence-standing-opus-authorization-design.md
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py --sha-refs docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py --sha-refs
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/ci_smoke.py
 env -u GIT_INDEX_FILE git diff --check 555041477bcdb9a432a1b238d664be0958c5c9ef..HEAD
@@ -1855,12 +1882,22 @@ shasum -a 256 scripts/prompts/opus_lane_v_advisory.md scripts/prompts/opus_lane_
 env -u GIT_INDEX_FILE git hash-object --no-filters scripts/prompts/opus_lane_v_advisory.md scripts/prompts/opus_lane_v_advisory.authority.583cdcb5b5129b629ae4ada21627a4fc5bab1b9c.json
 ```
 
-Expected descriptor digest: `74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe`.
+Expected descriptor digest: `c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`.
 Expected prompt/authority SHA-256 values are
 `86bb83ebec8bbfefe04a60af616e414f87ae972ceb3a27fc3f0332500e70f4b4`
 and `94768300138a01ca8c74fcd350a15a1557f7131730f7da94565d9566189f8acf`;
 their Git blob OIDs are `57df5979559c3c89030f685567bb5729a14d1688` and
 `583cdcb5b5129b629ae4ada21627a4fc5bab1b9c`.
+
+The explicit changed-authority subset SHA command must exit 0 with no findings,
+but proves only its named files. The current plan/design command retains the
+exact six limitations classified above: four unreachable references to the
+verified plan-amendment commit and two prompt/authority blob OIDs that the SHA
+checker correctly cannot resolve as commits. The exact global `--sha-refs` command is
+retained for visibility and currently exits 1 on the inherited 215
+`sha_not_found` findings. These are explicit checker/repository-history
+exceptions, not green gates or Task 7 product fixes. `ci_smoke` remains the
+changed-drift gate.
 
 - [ ] **Run the independent actual-diff adversarial gate**
 
@@ -1869,7 +1906,9 @@ The primary Codex Lane V question is: “Does the final `5550414..HEAD` implemen
 Then invoke the receipt-backed review exactly once for the final unchanged HEAD
 using the shipping-commit trigger and amended descriptor
 `2a876e95-3a87-4203-a613-1a29dd957b5b` with its exact `5550414...` base and
-precommitted provider-prompt blob. If the capability probe reports
+precommitted provider-prompt blob, with amended digest
+`c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`.
+If the capability probe reports
 Seatbelt/AF_UNIX/Claude unavailable, preserve the resulting single degraded
 receipt/reason and do not retry or substitute another provider. Reconcile the
 stored receipt with the provisional Codex verdict and evidence-backed

@@ -99,11 +99,13 @@ different perspective saw them. Two structural lessons:
 - the per-task independent verification report, citing the reviewer's identity
   and — for an adversarial surface — that it was cross-model.
 
-## Follow-ups (not yet mechanized)
+## Mechanized enforcement and remaining follow-up
 
-- Mechanize the cross-model requirement: extend `scripts/check_go_schema.py`
-  so a verification-report for an adversarial-surface change must declare the
-  reviewer's harness, and fail closed if a same-model review is claimed to
-  discharge an adversarial-surface task.
+- Mechanized: `scripts/check_go_schema.py` and
+  `scripts/verification_report_gate.py` now require `lane-v-report/v2`, the
+  exact verification harness and trigger-bound descriptor fields, and, for
+  Codex Lane V, a live receipt-backed advisory review/reconciliation before
+  `coordination/bin/send-event` publishes the report. Exact historical reports
+  remain readable only through the committed path/raw-byte digest manifest.
 - Add the design-time enumeration step to the implementer/reviewer
   dispatch templates in `docs/templates/claude/`.

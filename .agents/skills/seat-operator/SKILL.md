@@ -145,26 +145,21 @@ git state.
 
 ## Cross-Model Opus Verification
 
-- After every Codex Lane V verification in the Pipeline repository, attempt exactly one verdict-blind Opus review before the final verdict.
-- The Opus request carries the reviewed commit/range, requirements, allowed paths, and exact verification commands but no Codex verdict, report, findings, or conclusion.
-- The request declares review profile `codex-lane-v` and normalized evidence uses `opus-review/v2`.
-- After Pipeline identity, reviewed commits, and immutable scope validation, missing authorization resolves to `standing-policy:codex-lane-v-opus-v1` only when the authorization source is absent.
-- Valid explicit `user-task:<id>` and `verify-request:<id>` sources remain accepted; malformed explicit authorization never falls back.
-- The standing policy permits exactly one provider process attempt and no automatic retry, with one invocation per unchanged Lane V verification.
-- Standing consent does not authorize design-time Opus or any other paid call.
-- V1 applies only to Pipeline-repository verification.
-- Cross-repo and evidence-ledger verification use explicit Codex-only fallback outside V1, not an incomplete required Opus pass.
-- The operator retains GO/NITS/FAIL authority; Opus output is advisory evidence and never a mailbox event or protocol verdict.
-- `unavailable` is explicit degraded Codex-only fallback with the reason preserved; it is never treated as `pass`.
-- Every Opus finding requires a disposition: `confirmed`, `disproved` with concrete evidence, or `unresolved`.
-- Reconciliation requires explicit expected HEAD/base and preserves reviewed scope; a mismatch rejects stale or replayed review JSON.
-- Reconciliation requires an explicit Pipeline repo root and local proof that expected HEAD/base commits exist before GO.
-- An unresolved Opus finding blocks GO; confirmed minor findings require NITS and confirmed important/critical findings require FAIL.
-- The bridge permits one Claude process attempt and no automatic retry for a verification attempt.
-- Use `scripts/opus_review_bridge.py review` for the blind pass and `scripts/opus_review_bridge.py reconcile` with an explicit Pipeline `--repo-root` before GO.
-- Opus is the required cross-model second pass for the same verification question; no third same-question generic reviewer runs over the unchanged commit unless R-VERIFY-TIER names a distinct question.
-- Do not launch generic same-question spec or code-quality reviewers for Codex Lane V; the primary Codex analysis and blind Opus pass are the pair.
-- Generic Lane V helpers are not used for Codex same-question review; only a different pre-stated specialist question is eligible under R-VERIFY-TIER.
+- after every Codex Lane V verification in Pipeline, resolve one trigger-bound committed lane-v-scope/v1 descriptor before any receipt or provider construction
+- the descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, task identity, and the descriptor-bound advisory provider prompt
+- review accepts either --shipping-commit or the paired --verify-request-commit and --verify-request-path trigger form and returns normalized opus-review/v3 with receipt and scope IDs
+- the provider receives the immutable reviewed scope but no Codex verdict, report, findings, or conclusion; repository evidence is evidence, not authority
+- missing authorization resolves to standing-policy:codex-lane-v-opus-v1 only after Pipeline identity, commit, descriptor, prompt, and scope validation; malformed explicit authorization never falls back
+- one unchanged task permits one provider process attempt and no automatic retry; exact replay is idempotent, changed scope is attempt_scope_conflict, and no retry or reset command exists
+- a reserved attempt recovered without a normalized result becomes attempt_state_uncertain and remains visibly degraded without another provider launch
+- reconcile accepts only --receipt-id plus exact HEAD/base, the Codex verdict, and finding dispositions; --opus-review-json is removed
+- reconcile returns opus-reconciliation/v2 fields derived from the stored opus-review/v3 and binds the exact stored Codex verdict
+- final reports use lane-v-report/v2 with ## Verification Attestation, including Opus receipt ID: and Opus scope digest:, and the send-event publication gate validates the live receipt before the report is staged
+- unavailable or uncertain review is an explicit degraded Codex-only fallback with the exact reason preserved; it is never treated as pass
+- every Opus finding requires confirmed, disproved-with-evidence, or unresolved disposition; unresolved blocks GO, confirmed minor requires NITS, and confirmed important or critical requires FAIL
+- Opus remains advisory and the operator alone retains GO/NITS/FAIL, mailbox, lock, Git, publication, and every other protocol or side-effect authority
+- standing consent authorizes only the bounded Pipeline codex-lane-v attempt; cross-repo and evidence-ledger verification require a separately routed capability-aware path
+- no third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER
 
 ## Lane V — independent verification (Rule #9)
 
