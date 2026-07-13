@@ -353,6 +353,16 @@ def _git_with_input(root: Path, raw: bytes, *args: str) -> str:
     return completed.stdout.decode("ascii").strip()
 
 
+def _git_object_exists(root: Path, object_name: str) -> bool:
+    completed = subprocess.run(
+        ["env", "-u", "GIT_INDEX_FILE", "git", "cat-file", "-e", object_name],
+        cwd=root,
+        check=False,
+        capture_output=True,
+    )
+    return completed.returncode == 0
+
+
 def _authority_fixture(
     root: Path,
     *,
@@ -532,7 +542,10 @@ def test_structural_authority_accepts_committed_shipping_and_verify_request(
     ),
 )
 def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
-    tmp_path: Path, mode: str, malformation: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    malformation: str,
 ) -> None:
     recipient = "operator" if mode == "codex-lane-v" else "operator2"
     root, lawful_fields, report_path, head, base = _authority_fixture(
@@ -586,10 +599,20 @@ def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
             f"verify-request:{malformed_commit}:{trigger_path}",
         )
     elif malformation == "stale-commit":
+        stale_tree = _git(root, "rev-parse", f"{trigger_commit}^{{tree}}")
+        before_reviewed_head = _git(root, "rev-parse", f"{head}^")
+        stale_commit = _git_with_input(
+            root,
+            b"coord: stale verification request\n",
+            "commit-tree",
+            stale_tree,
+            "-p",
+            before_reviewed_head,
+        )
         malformed_fields = _replace_field(
             lawful_fields,
             "Trigger identity",
-            f"verify-request:{head}:{trigger_path}",
+            f"verify-request:{stale_commit}:{trigger_path}",
         )
     elif malformation == "uncommitted-event":
         uncommitted_path = trigger_path.replace("05-01-00Z", "05-02-00Z")
@@ -605,14 +628,66 @@ def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
         misplaced_path = trigger_path.replace(
             "coordination/mailbox/sent/", "coordination/mailbox/drafts/"
         )
+        misplaced_event = root / misplaced_path
+        misplaced_event.parent.mkdir(parents=True)
+        misplaced_event.write_bytes((root / trigger_path).read_bytes())
+        _git(root, "add", misplaced_path)
+        _git(root, "commit", "-q", "-m", "coord: misplace verification request")
+        misplaced_commit = _git(root, "rev-parse", "HEAD")
         malformed_fields = _replace_field(
             lawful_fields,
             "Trigger identity",
-            f"verify-request:{trigger_commit}:{misplaced_path}",
+            f"verify-request:{misplaced_commit}:{misplaced_path}",
         )
 
-    with pytest.raises(gate.ReportGateError):
+    malformed_values = dict(malformed_fields)
+    if malformation in {"stale-commit", "misplaced-event"}:
+        _, malformed_commit, malformed_path = malformed_values[
+            "Trigger identity"
+        ].split(":", 2)
+        assert _git_object_exists(root, f"{malformed_commit}:{malformed_path}")
+        assert _git(
+            root, "rev-parse", f"{malformed_commit}:{malformed_path}"
+        ) == _git(
+            root, "rev-parse", f"{trigger_commit}:{trigger_path}"
+        )
+        expected_parent = (
+            _git(root, "rev-parse", f"{head}^")
+            if malformation == "stale-commit"
+            else trigger_commit
+        )
+        assert _git(root, "rev-parse", f"{malformed_commit}^") == expected_parent
+
+    with pytest.raises(gate.ReportGateError) as rejection:
         _validate_structural_fixture(root, malformed_fields, report_path)
+
+    if malformation == "stale-commit":
+        assert rejection.value.detail == (
+            "verify-request trigger commit must be an ancestor"
+        )
+        require_strict_ancestor = gate._require_strict_ancestor
+
+        def bypass_trigger_temporal_guard(
+            repo_root: Path,
+            ancestor: str,
+            descendant: str,
+            label: str,
+        ) -> None:
+            if label != "verify-request trigger commit":
+                require_strict_ancestor(repo_root, ancestor, descendant, label)
+
+        with monkeypatch.context() as temporal_guard:
+            temporal_guard.setattr(
+                gate, "_require_strict_ancestor", bypass_trigger_temporal_guard
+            )
+            unguarded = _validate_structural_fixture(
+                root, malformed_fields, report_path
+            )
+        assert unguarded.trigger_commit == malformed_commit
+        assert unguarded.trigger_path == malformed_path
+    elif malformation == "misplaced-event":
+        assert rejection.value.reason == "invalid_verify_request"
+        assert rejection.value.detail == "verify-request must be a sent mailbox event"
 
     lawful = _validate_structural_fixture(root, lawful_fields, report_path)
     assert lawful.trigger_kind == "verify-request"
