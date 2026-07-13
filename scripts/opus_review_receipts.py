@@ -3,14 +3,20 @@
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import hashlib
 import json
+import os
 import re
 import shlex
+import stat
+import subprocess
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 
 SCOPE_SCHEMA_VERSION = "lane-v-scope/v1"
@@ -24,6 +30,7 @@ CLAUDE_HARNESS = "claude:lane-v-verifier"
 
 _ATTEMPT_KEY_SCHEMA_VERSION = "opus-review-attempt-key/v1"
 _DESCRIPTOR_MAX_BYTES = 65_536
+_RECEIPT_MAX_BYTES = 1_048_576
 _PATH_COLLECTION_MAX_ITEMS = 128
 _COMMAND_COLLECTION_MAX_ITEMS = 32
 _PATH_MAX_BYTES = 512
@@ -57,9 +64,41 @@ _SUPPORTED_VERIFIERS = frozenset(
     }
 )
 _CHANGED_STATUSES = frozenset({"A", "D", "M", "T", "U", "X"})
+RECEIPT_STATES = ("reserved", "reviewed", "reconciled", "publishing", "published")
+RESERVATION_ACTIONS = ("launch", "return", "degrade_uncertain")
+_RECEIPT_FIELDS = frozenset(
+    {
+        "schema_version",
+        "receipt_id",
+        "attempt_key",
+        "scope_digest",
+        "scope",
+        "state",
+        "generation",
+        "review",
+        "reconciliation",
+        "publication",
+    }
+)
+_STATE_MINIMUM_GENERATION = {
+    "reserved": 1,
+    "reviewed": 2,
+    "reconciled": 3,
+    "publishing": 4,
+    "published": 5,
+}
 
 
 class ReceiptContractError(ValueError):
+    def __init__(self, reason: str, detail: str) -> None:
+        super().__init__(f"{reason}: {detail}")
+        self.reason = reason
+        self.detail = detail
+
+
+class ReceiptStateError(RuntimeError):
+    """A fail-closed private receipt-store or lifecycle violation."""
+
     def __init__(self, reason: str, detail: str) -> None:
         super().__init__(f"{reason}: {detail}")
         self.reason = reason
@@ -79,15 +118,15 @@ def _reject_json_constant(value: str) -> None:
     raise ReceiptContractError("invalid_json", f"non-finite number {value!r}")
 
 
-def strict_json_loads(raw: bytes) -> Any:
-    """Decode bounded UTF-8 JSON while rejecting duplicate keys and constants."""
-
+def _bounded_json_loads(
+    raw: bytes, *, maximum_bytes: int, too_large_reason: str, label: str
+) -> Any:
     if not isinstance(raw, bytes):
         raise ReceiptContractError("invalid_json", "input must be bytes")
-    if len(raw) > _DESCRIPTOR_MAX_BYTES:
+    if len(raw) > maximum_bytes:
         raise ReceiptContractError(
-            "descriptor_too_large",
-            f"descriptor exceeds {_DESCRIPTOR_MAX_BYTES} bytes",
+            too_large_reason,
+            f"{label} exceeds {maximum_bytes} bytes",
         )
     try:
         text = raw.decode("utf-8")
@@ -100,6 +139,17 @@ def strict_json_loads(raw: bytes) -> Any:
         raise
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ReceiptContractError("invalid_json", str(exc)) from exc
+
+
+def strict_json_loads(raw: bytes) -> Any:
+    """Decode bounded descriptor JSON while rejecting duplicate keys/constants."""
+
+    return _bounded_json_loads(
+        raw,
+        maximum_bytes=_DESCRIPTOR_MAX_BYTES,
+        too_large_reason="descriptor_too_large",
+        label="descriptor",
+    )
 
 
 def _require_exact_fields(
@@ -652,3 +702,812 @@ def compute_attempt_key(scope: ReviewScope) -> str:
 def compute_scope_digest(scope: ReviewScope) -> str:
     digest = hashlib.sha256(canonical_json_bytes(scope.to_mapping())).hexdigest()
     return f"sha256:{digest}"
+
+
+@dataclass(frozen=True)
+class ReceiptRecord:
+    receipt_id: str
+    attempt_key: str
+    scope_digest: str
+    scope: Mapping[str, Any]
+    state: str
+    generation: int
+    review: Mapping[str, Any] | None
+    reconciliation: Mapping[str, Any] | None
+    publication: Mapping[str, Any] | None
+
+
+@dataclass(frozen=True)
+class ReservationDecision:
+    action: str
+    record: ReceiptRecord
+
+
+def _state_error_from_contract(exc: ReceiptContractError) -> ReceiptStateError:
+    return ReceiptStateError(exc.reason, exc.detail)
+
+
+def _receipt_mapping(record: ReceiptRecord) -> dict[str, object]:
+    return {
+        "schema_version": RECEIPT_SCHEMA_VERSION,
+        "receipt_id": record.receipt_id,
+        "attempt_key": record.attempt_key,
+        "scope_digest": record.scope_digest,
+        "scope": dict(record.scope),
+        "state": record.state,
+        "generation": record.generation,
+        "review": dict(record.review) if record.review is not None else None,
+        "reconciliation": (
+            dict(record.reconciliation)
+            if record.reconciliation is not None
+            else None
+        ),
+        "publication": (
+            dict(record.publication) if record.publication is not None else None
+        ),
+    }
+
+
+def _canonical_receipt_bytes(record: ReceiptRecord) -> bytes:
+    raw = canonical_json_bytes(_receipt_mapping(record))
+    if len(raw) > _RECEIPT_MAX_BYTES:
+        raise ReceiptStateError(
+            "receipt_too_large",
+            f"complete receipt exceeds {_RECEIPT_MAX_BYTES} bytes",
+        )
+    return raw
+
+
+def _receipt_from_bytes(raw: bytes, expected_attempt_key: str) -> ReceiptRecord:
+    try:
+        value = _bounded_json_loads(
+            raw,
+            maximum_bytes=_RECEIPT_MAX_BYTES,
+            too_large_reason="receipt_too_large",
+            label="receipt",
+        )
+    except ReceiptContractError as exc:
+        raise _state_error_from_contract(exc) from exc
+    if not isinstance(value, Mapping) or set(value) != _RECEIPT_FIELDS:
+        raise ReceiptStateError(
+            "invalid_receipt_schema", "receipt fields do not match receipt schema"
+        )
+    if value["schema_version"] != RECEIPT_SCHEMA_VERSION:
+        raise ReceiptStateError(
+            "invalid_receipt_schema", "unexpected receipt schema version"
+        )
+    receipt_id = value["receipt_id"]
+    attempt_key = value["attempt_key"]
+    if receipt_id != expected_attempt_key or attempt_key != expected_attempt_key:
+        raise ReceiptStateError(
+            "receipt_attempt_key_mismatch",
+            "receipt identity does not match the locked attempt",
+        )
+    scope = value["scope"]
+    if not isinstance(scope, Mapping):
+        raise ReceiptStateError("invalid_receipt_schema", "scope must be an object")
+    scope_digest = value["scope_digest"]
+    try:
+        _sha256_text(scope_digest, "scope_digest", reason="invalid_receipt_schema")
+        actual_scope_digest = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(scope)
+        ).hexdigest()
+    except ReceiptContractError as exc:
+        raise _state_error_from_contract(exc) from exc
+    if scope_digest != actual_scope_digest:
+        raise ReceiptStateError(
+            "receipt_scope_digest_mismatch", "scope digest does not match stored scope"
+        )
+    state = value["state"]
+    generation = value["generation"]
+    if state not in RECEIPT_STATES:
+        raise ReceiptStateError("invalid_receipt_state", f"unsupported state {state!r}")
+    if (
+        isinstance(generation, bool)
+        or not isinstance(generation, int)
+        or generation < _STATE_MINIMUM_GENERATION[state]
+    ):
+        raise ReceiptStateError(
+            "receipt_generation_rollback",
+            f"generation {generation!r} is invalid for state {state!r}",
+        )
+    review = value["review"]
+    reconciliation = value["reconciliation"]
+    publication = value["publication"]
+    if review is not None and not isinstance(review, Mapping):
+        raise ReceiptStateError("invalid_receipt_schema", "review must be an object")
+    if reconciliation is not None and not isinstance(reconciliation, Mapping):
+        raise ReceiptStateError(
+            "invalid_receipt_schema", "reconciliation must be an object"
+        )
+    if publication is not None and not isinstance(publication, Mapping):
+        raise ReceiptStateError(
+            "invalid_receipt_schema", "publication must be an object"
+        )
+    if state == "reserved" and any(
+        item is not None for item in (review, reconciliation, publication)
+    ):
+        raise ReceiptStateError(
+            "invalid_receipt_schema", "reserved receipt contains later-state data"
+        )
+    if state == "reviewed" and (
+        review is None or reconciliation is not None or publication is not None
+    ):
+        raise ReceiptStateError(
+            "invalid_receipt_schema", "reviewed receipt fields are inconsistent"
+        )
+    if state == "reconciled" and (
+        review is None or reconciliation is None or publication is not None
+    ):
+        raise ReceiptStateError(
+            "invalid_receipt_schema", "reconciled receipt fields are inconsistent"
+        )
+    if state in {"publishing", "published"} and any(
+        item is None for item in (review, reconciliation, publication)
+    ):
+        raise ReceiptStateError(
+            "invalid_receipt_schema", f"{state} receipt fields are inconsistent"
+        )
+    return ReceiptRecord(
+        receipt_id=receipt_id,
+        attempt_key=attempt_key,
+        scope_digest=scope_digest,
+        scope=dict(scope),
+        state=state,
+        generation=generation,
+        review=dict(review) if review is not None else None,
+        reconciliation=(
+            dict(reconciliation) if reconciliation is not None else None
+        ),
+        publication=dict(publication) if publication is not None else None,
+    )
+
+
+def _private_directory_flags() -> int:
+    return (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+
+
+def _private_file_flags(base: int) -> int:
+    return base | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _ensure_private_directory(path: Path) -> int:
+    missing: list[Path] = []
+    cursor = path
+    while True:
+        try:
+            os.lstat(cursor)
+            break
+        except FileNotFoundError:
+            missing.append(cursor)
+            if cursor.parent == cursor:
+                raise ReceiptStateError(
+                    "receipt_directory_missing", f"cannot create {path}"
+                )
+            cursor = cursor.parent
+    for directory in reversed(missing):
+        try:
+            os.mkdir(directory, 0o700)
+        except FileExistsError:
+            pass
+    try:
+        directory_fd = os.open(path, _private_directory_flags())
+    except OSError as exc:
+        raise ReceiptStateError(
+            "receipt_directory_open", f"cannot open private state directory: {exc}"
+        ) from exc
+    try:
+        observed = os.fstat(directory_fd)
+        if observed.st_uid != os.getuid():
+            raise ReceiptStateError(
+                "receipt_directory_owner", "state directory owner is not current uid"
+            )
+        if not stat.S_ISDIR(observed.st_mode):
+            raise ReceiptStateError(
+                "receipt_directory_type", "state root is not a directory"
+            )
+        if stat.S_IMODE(observed.st_mode) != 0o700:
+            raise ReceiptStateError(
+                "receipt_directory_mode", "state directory mode must be 0700"
+            )
+    except BaseException:
+        os.close(directory_fd)
+        raise
+    return directory_fd
+
+
+def _validate_private_file(
+    fd: int,
+    *,
+    label: str,
+    stat_fn: Callable[[int], os.stat_result],
+) -> None:
+    observed = stat_fn(fd)
+    if observed.st_uid != os.getuid():
+        raise ReceiptStateError(
+            "receipt_file_owner", f"{label} owner is not current uid"
+        )
+    if not stat.S_ISREG(observed.st_mode):
+        raise ReceiptStateError("receipt_file_type", f"{label} is not regular")
+    if stat.S_IMODE(observed.st_mode) != 0o600:
+        raise ReceiptStateError("receipt_file_mode", f"{label} mode must be 0600")
+    if observed.st_nlink != 1:
+        raise ReceiptStateError(
+            "receipt_file_link_count", f"{label} must have exactly one link"
+        )
+
+
+def _write_all(fd: int, raw: bytes) -> None:
+    offset = 0
+    while offset < len(raw):
+        written = os.write(fd, raw[offset:])
+        if written <= 0:
+            raise ReceiptStateError("receipt_write_failed", "short receipt write")
+        offset += written
+
+
+@dataclass(frozen=True)
+class ReceiptStore:
+    state_root: Path
+    _stat_fn: Callable[[int], os.stat_result] = field(
+        default=os.fstat, repr=False, compare=False
+    )
+
+    @classmethod
+    def for_repo(
+        cls,
+        repo_root: str | os.PathLike[str],
+        *,
+        state_root: str | os.PathLike[str] | None = None,
+        stat_fn: Callable[[int], os.stat_result] = os.fstat,
+    ) -> ReceiptStore:
+        if state_root is None:
+            git_common = subprocess.run(
+                [
+                    "env",
+                    "-u",
+                    "GIT_INDEX_FILE",
+                    "git",
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-common-dir",
+                ],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            primary_root = Path(git_common).resolve().parent
+            root = primary_root / ".codex/runtime/opus-review-receipts/v1"
+        else:
+            root = Path(state_root).absolute()
+        directory_fd = _ensure_private_directory(root)
+        os.close(directory_fd)
+        return cls(root, stat_fn)
+
+    def lock_attempt(
+        self, scope: ReviewScope, *, blocking: bool = True
+    ) -> LockedAttempt:
+        return LockedAttempt(self, scope, blocking=blocking)
+
+
+class LockedAttempt:
+    def __init__(
+        self, store: ReceiptStore, scope: ReviewScope, *, blocking: bool
+    ) -> None:
+        self._store = store
+        self._attempt_key = compute_attempt_key(scope)
+        key_digest = self._attempt_key.removeprefix("opr1:")
+        self._receipt_name = f"{key_digest}.json"
+        self._lock_name = f"{key_digest}.lock"
+        self._blocking = blocking
+        self._directory_fd: int | None = None
+        self._lock_fd: int | None = None
+        self._current: ReceiptRecord | None = None
+
+    def __enter__(self) -> LockedAttempt:
+        if self._directory_fd is not None:
+            raise ReceiptStateError("attempt_lock_reentry", "attempt lock is active")
+        directory_fd = _ensure_private_directory(self._store.state_root)
+        try:
+            lock_fd = os.open(
+                self._lock_name,
+                _private_file_flags(os.O_CREAT | os.O_RDWR),
+                0o600,
+                dir_fd=directory_fd,
+            )
+            try:
+                _validate_private_file(
+                    lock_fd,
+                    label="attempt lock",
+                    stat_fn=self._store._stat_fn,
+                )
+                operation = fcntl.LOCK_EX
+                if not self._blocking:
+                    operation |= fcntl.LOCK_NB
+                try:
+                    fcntl.flock(lock_fd, operation)
+                except OSError as exc:
+                    if exc.errno in {errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK}:
+                        raise ReceiptStateError(
+                            "attempt_in_progress", "attempt lock is held"
+                        ) from exc
+                    raise
+            except BaseException:
+                os.close(lock_fd)
+                raise
+        except BaseException:
+            os.close(directory_fd)
+            raise
+        self._directory_fd = directory_fd
+        self._lock_fd = lock_fd
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        lock_fd = self._lock_fd
+        directory_fd = self._directory_fd
+        self._lock_fd = None
+        self._directory_fd = None
+        self._current = None
+        if lock_fd is not None:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            finally:
+                os.close(lock_fd)
+        if directory_fd is not None:
+            os.close(directory_fd)
+
+    def _require_locked(self) -> int:
+        if self._directory_fd is None or self._lock_fd is None:
+            raise ReceiptStateError("attempt_lock_required", "attempt lock is not held")
+        return self._directory_fd
+
+    def _read_receipt(self, *, allow_missing: bool = False) -> ReceiptRecord | None:
+        directory_fd = self._require_locked()
+        try:
+            receipt_fd = os.open(
+                self._receipt_name,
+                _private_file_flags(os.O_RDONLY | os.O_NONBLOCK),
+                dir_fd=directory_fd,
+            )
+        except FileNotFoundError:
+            if allow_missing:
+                return None
+            raise ReceiptStateError("receipt_missing", "attempt receipt is missing")
+        except OSError as exc:
+            raise ReceiptStateError(
+                "receipt_file_open", f"cannot open attempt receipt: {exc}"
+            ) from exc
+        try:
+            _validate_private_file(
+                receipt_fd,
+                label="attempt receipt",
+                stat_fn=self._store._stat_fn,
+            )
+            chunks: list[bytes] = []
+            remaining = _RECEIPT_MAX_BYTES + 1
+            while remaining:
+                chunk = os.read(receipt_fd, min(65_536, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            if len(raw) > _RECEIPT_MAX_BYTES:
+                raise ReceiptStateError(
+                    "receipt_too_large",
+                    f"receipt exceeds {_RECEIPT_MAX_BYTES} bytes",
+                )
+        finally:
+            os.close(receipt_fd)
+        return _receipt_from_bytes(raw, self._attempt_key)
+
+    def _create_initial(self, record: ReceiptRecord) -> None:
+        raw = _canonical_receipt_bytes(record)
+        directory_fd = self._require_locked()
+        receipt_fd: int | None = None
+        file_durable = False
+        try:
+            receipt_fd = os.open(
+                self._receipt_name,
+                _private_file_flags(os.O_CREAT | os.O_EXCL | os.O_WRONLY),
+                0o600,
+                dir_fd=directory_fd,
+            )
+            _validate_private_file(
+                receipt_fd,
+                label="attempt receipt",
+                stat_fn=self._store._stat_fn,
+            )
+            _write_all(receipt_fd, raw)
+            os.fsync(receipt_fd)
+            file_durable = True
+        except BaseException:
+            if not file_durable:
+                try:
+                    os.unlink(self._receipt_name, dir_fd=directory_fd)
+                except FileNotFoundError:
+                    pass
+            raise
+        finally:
+            if receipt_fd is not None:
+                os.close(receipt_fd)
+        os.fsync(directory_fd)
+
+    def _verified_current(self) -> ReceiptRecord:
+        if self._current is None:
+            raise ReceiptStateError(
+                "attempt_not_loaded", "reserve_or_load must run before a transition"
+            )
+        observed = self._read_receipt()
+        assert observed is not None
+        if observed.generation < self._current.generation:
+            raise ReceiptStateError(
+                "receipt_generation_rollback",
+                "stored generation moved behind the locked generation",
+            )
+        if observed.generation != self._current.generation:
+            raise ReceiptStateError(
+                "receipt_generation_conflict",
+                "stored generation changed during the locked transition",
+            )
+        if canonical_json_bytes(_receipt_mapping(observed)) != canonical_json_bytes(
+            _receipt_mapping(self._current)
+        ):
+            raise ReceiptStateError(
+                "receipt_state_conflict", "stored receipt changed without a generation"
+            )
+        return observed
+
+    def _atomic_replace(self, record: ReceiptRecord) -> None:
+        raw = _canonical_receipt_bytes(record)
+        directory_fd = self._require_locked()
+        temporary_name = f"{self._receipt_name}.tmp-{uuid.uuid4().hex}"
+        temporary_fd: int | None = None
+        try:
+            temporary_fd = os.open(
+                temporary_name,
+                _private_file_flags(os.O_CREAT | os.O_EXCL | os.O_WRONLY),
+                0o600,
+                dir_fd=directory_fd,
+            )
+            _validate_private_file(
+                temporary_fd,
+                label="temporary receipt",
+                stat_fn=self._store._stat_fn,
+            )
+            _write_all(temporary_fd, raw)
+            os.fsync(temporary_fd)
+            os.close(temporary_fd)
+            temporary_fd = None
+            os.replace(
+                temporary_name,
+                self._receipt_name,
+                src_dir_fd=directory_fd,
+                dst_dir_fd=directory_fd,
+            )
+            os.fsync(directory_fd)
+        except BaseException as exc:
+            if temporary_fd is not None:
+                os.close(temporary_fd)
+            try:
+                os.unlink(temporary_name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
+            if isinstance(exc, ReceiptStateError):
+                raise
+            raise ReceiptStateError(
+                "receipt_replace_failed", f"atomic receipt replacement failed: {exc}"
+            ) from exc
+
+    @staticmethod
+    def _normalized_mapping(value: Mapping[str, Any], label: str) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise ReceiptStateError(
+                "invalid_receipt_transition", f"{label} must be an object"
+            )
+        try:
+            normalized = _bounded_json_loads(
+                canonical_json_bytes(value),
+                maximum_bytes=_RECEIPT_MAX_BYTES,
+                too_large_reason="receipt_too_large",
+                label=label,
+            )
+        except ReceiptContractError as exc:
+            raise _state_error_from_contract(exc) from exc
+        if not isinstance(normalized, dict):
+            raise ReceiptStateError(
+                "invalid_receipt_transition", f"{label} must be an object"
+            )
+        return normalized
+
+    def reserve_or_load(self, scope: ReviewScope) -> ReservationDecision:
+        self._require_locked()
+        if compute_attempt_key(scope) != self._attempt_key:
+            raise ReceiptStateError(
+                "attempt_scope_conflict", "scope belongs to a different attempt"
+            )
+        scope_mapping = scope.to_mapping()
+        scope_digest = compute_scope_digest(scope)
+        current = self._read_receipt(allow_missing=True)
+        if current is None:
+            record = ReceiptRecord(
+                receipt_id=self._attempt_key,
+                attempt_key=self._attempt_key,
+                scope_digest=scope_digest,
+                scope=scope_mapping,
+                state="reserved",
+                generation=1,
+                review=None,
+                reconciliation=None,
+                publication=None,
+            )
+            self._create_initial(record)
+            self._current = record
+            return ReservationDecision("launch", record)
+        if (
+            current.scope_digest != scope_digest
+            or canonical_json_bytes(current.scope) != canonical_json_bytes(scope_mapping)
+        ):
+            raise ReceiptStateError(
+                "attempt_scope_conflict", "attempt already has a different scope"
+            )
+        self._current = current
+        action = "degrade_uncertain" if current.state == "reserved" else "return"
+        return ReservationDecision(action, current)
+
+    def record_review(self, review: Mapping[str, Any]) -> ReceiptRecord:
+        current = self._verified_current()
+        if current.state != "reserved":
+            raise ReceiptStateError(
+                "invalid_receipt_transition",
+                f"cannot record review from state {current.state!r}",
+            )
+        normalized_review = self._normalized_mapping(review, "review")
+        updated = ReceiptRecord(
+            receipt_id=current.receipt_id,
+            attempt_key=current.attempt_key,
+            scope_digest=current.scope_digest,
+            scope=current.scope,
+            state="reviewed",
+            generation=current.generation + 1,
+            review=normalized_review,
+            reconciliation=None,
+            publication=None,
+        )
+        self._atomic_replace(updated)
+        self._current = updated
+        return updated
+
+    @staticmethod
+    def _validate_reconciliation_dispositions(
+        review: Mapping[str, Any], input_mapping: Mapping[str, Any]
+    ) -> None:
+        status = review.get("status")
+        dispositions = input_mapping.get("dispositions")
+        if not isinstance(dispositions, Mapping):
+            raise ReceiptStateError(
+                "invalid_reconciliation_input", "dispositions must be an object"
+            )
+        if status in {"pass", "unavailable"}:
+            if dispositions:
+                raise ReceiptStateError(
+                    "unexpected_dispositions",
+                    "pass and unavailable reviews have no finding dispositions",
+                )
+            return
+        if status != "issues":
+            raise ReceiptStateError(
+                "invalid_reconciliation_input", "stored review has invalid status"
+            )
+        findings = review.get("findings")
+        if not isinstance(findings, list):
+            raise ReceiptStateError(
+                "invalid_reconciliation_input", "stored findings must be an array"
+            )
+        expected_ids: list[str] = []
+        for finding in findings:
+            if not isinstance(finding, Mapping) or not isinstance(finding.get("id"), str):
+                raise ReceiptStateError(
+                    "invalid_reconciliation_input", "stored finding has no valid id"
+                )
+            expected_ids.append(finding["id"])
+        if len(expected_ids) != len(set(expected_ids)) or set(dispositions) != set(
+            expected_ids
+        ):
+            raise ReceiptStateError(
+                "finding_disposition_mismatch",
+                "finding disposition IDs must equal stored review finding IDs",
+            )
+
+    def record_reconciliation(
+        self,
+        input_mapping: Mapping[str, Any],
+        result_mapping: Mapping[str, Any],
+    ) -> ReceiptRecord:
+        current = self._verified_current()
+        normalized_input = self._normalized_mapping(
+            input_mapping, "reconciliation input"
+        )
+        normalized_result = self._normalized_mapping(
+            result_mapping, "reconciliation result"
+        )
+        input_digest = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(normalized_input)
+        ).hexdigest()
+        reconciliation = {
+            "input": normalized_input,
+            "input_digest": input_digest,
+            "result": normalized_result,
+        }
+        if current.state in {"reconciled", "publishing", "published"}:
+            if canonical_json_bytes(current.reconciliation) == canonical_json_bytes(
+                reconciliation
+            ):
+                return current
+            raise ReceiptStateError(
+                "reconciliation_replay_conflict",
+                "attempt already has a different reconciliation",
+            )
+        if current.state != "reviewed":
+            raise ReceiptStateError(
+                "invalid_receipt_transition",
+                f"cannot reconcile from state {current.state!r}",
+            )
+        assert current.review is not None
+        self._validate_reconciliation_dispositions(current.review, normalized_input)
+        updated = ReceiptRecord(
+            receipt_id=current.receipt_id,
+            attempt_key=current.attempt_key,
+            scope_digest=current.scope_digest,
+            scope=current.scope,
+            state="reconciled",
+            generation=current.generation + 1,
+            review=current.review,
+            reconciliation=reconciliation,
+            publication=None,
+        )
+        self._atomic_replace(updated)
+        self._current = updated
+        return updated
+
+    @staticmethod
+    def _publication_pair(path: str, candidate_digest: str) -> dict[str, str]:
+        try:
+            normalized_path = normalize_repo_path(path)
+            normalized_digest = _sha256_text(
+                candidate_digest,
+                "candidate_digest",
+                reason="invalid_publication",
+            )
+        except ReceiptContractError as exc:
+            raise _state_error_from_contract(exc) from exc
+        return {"path": normalized_path, "candidate_digest": normalized_digest}
+
+    def begin_publication(
+        self, path: str, candidate_digest: str
+    ) -> ReceiptRecord:
+        current = self._verified_current()
+        publication = self._publication_pair(path, candidate_digest)
+        if current.state in {"publishing", "published"}:
+            if canonical_json_bytes(current.publication) == canonical_json_bytes(
+                publication
+            ):
+                return current
+            raise ReceiptStateError(
+                "publication_replay_conflict",
+                "attempt already names a different publication",
+            )
+        if current.state != "reconciled":
+            raise ReceiptStateError(
+                "invalid_receipt_transition",
+                f"cannot begin publication from state {current.state!r}",
+            )
+        updated = ReceiptRecord(
+            receipt_id=current.receipt_id,
+            attempt_key=current.attempt_key,
+            scope_digest=current.scope_digest,
+            scope=current.scope,
+            state="publishing",
+            generation=current.generation + 1,
+            review=current.review,
+            reconciliation=current.reconciliation,
+            publication=publication,
+        )
+        self._atomic_replace(updated)
+        self._current = updated
+        return updated
+
+    def finish_publication(
+        self, path: str, candidate_digest: str
+    ) -> ReceiptRecord:
+        current = self._verified_current()
+        publication = self._publication_pair(path, candidate_digest)
+        if current.state == "published":
+            if canonical_json_bytes(current.publication) == canonical_json_bytes(
+                publication
+            ):
+                return current
+            raise ReceiptStateError(
+                "publication_replay_conflict", "published receipt has another target"
+            )
+        if current.state != "publishing":
+            raise ReceiptStateError(
+                "invalid_receipt_transition",
+                f"cannot finish publication from state {current.state!r}",
+            )
+        if canonical_json_bytes(current.publication) != canonical_json_bytes(publication):
+            raise ReceiptStateError(
+                "publication_replay_conflict",
+                "publication does not match the planned path and digest",
+            )
+        updated = ReceiptRecord(
+            receipt_id=current.receipt_id,
+            attempt_key=current.attempt_key,
+            scope_digest=current.scope_digest,
+            scope=current.scope,
+            state="published",
+            generation=current.generation + 1,
+            review=current.review,
+            reconciliation=current.reconciliation,
+            publication=publication,
+        )
+        self._atomic_replace(updated)
+        self._current = updated
+        return updated
+
+    def recover_publication(
+        self, path: str, observed_digest: str | None
+    ) -> str:
+        current = self._verified_current()
+        try:
+            normalized_path = normalize_repo_path(path)
+            normalized_observed = (
+                _sha256_text(
+                    observed_digest,
+                    "observed_digest",
+                    reason="invalid_publication",
+                )
+                if observed_digest is not None
+                else None
+            )
+        except ReceiptContractError as exc:
+            raise _state_error_from_contract(exc) from exc
+        if current.state != "publishing":
+            raise ReceiptStateError(
+                "invalid_receipt_transition",
+                f"cannot recover publication from state {current.state!r}",
+            )
+        assert current.publication is not None
+        planned_path = current.publication.get("path")
+        planned_digest = current.publication.get("candidate_digest")
+        if normalized_path != planned_path:
+            raise ReceiptStateError(
+                "publication_replay_conflict", "observed path does not match plan"
+            )
+        if normalized_observed is None:
+            updated = ReceiptRecord(
+                receipt_id=current.receipt_id,
+                attempt_key=current.attempt_key,
+                scope_digest=current.scope_digest,
+                scope=current.scope,
+                state="reconciled",
+                generation=current.generation + 1,
+                review=current.review,
+                reconciliation=current.reconciliation,
+                publication=None,
+            )
+            self._atomic_replace(updated)
+            self._current = updated
+            return "clear"
+        if normalized_observed == planned_digest:
+            return "finalize"
+        raise ReceiptStateError(
+            "publication_replay_conflict",
+            "observed digest does not match publication candidate",
+        )
