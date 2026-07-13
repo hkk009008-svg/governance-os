@@ -62,13 +62,15 @@
     "After Task 9 and all reviews, send one cumulative verify-request naming the exact base/head/range, path inventory, TDD and test evidence, per-task reviews/cross-checks, mutable-source replay proof, database non-mutation proof, local-profile stage result without business values, and excluded side effects.",
     "No canonical database/resource/workbook mutation, advice activation, shadow persistence, UI, normal-checkout refresh, cleanup of quarantined databases, push, merge, publication, deployment, lock, cursor consume, paid spend, pod action, production generation, amend, reset, rebase, or scope widening is authorized. Stop on plan contradiction, failed baseline/review, uncovered path, data disclosure risk, or newer route."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "verify-request: coordination/mailbox/sent/2026-07-13T00-16-59Z-director-to-operator-verify-request.md binds the clean 27-commit, 33-path range 6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa..e7cf287b6bfd1a5481647d05e05bf01effcf8911 and records the required cumulative test, review, privacy, replay, database no-write, and authority-boundary evidence."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-13T00-16-59Z-director-to-operator-verify-request.md",
   "next_recipient": "operator",
-  "status": "ready",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-13T00-16-59Z-director-to-operator-verify-request.md",
+  "target_commit": "e7cf287b6bfd1a5481647d05e05bf01effcf8911",
+  "commit_range": "6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa..e7cf287b6bfd1a5481647d05e05bf01effcf8911",
   "scope_files": [
     "docs/superpowers/plans/2026-07-12-ppl-recommendation-evaluation-foundation.md",
     "recommendation/__init__.py",
