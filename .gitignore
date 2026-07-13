@@ -104,6 +104,8 @@ STATE.md
 # Local ChatGPT Pro consultation lifecycle metadata; never prompt/response content.
 .codex/runtime/chatgpt-pro-consultations.json
 .codex/runtime/chatgpt-pro-consultations.json.lock
+.codex/runtime/opus-review-receipts/
+.codex/runtime/lane-v-report-publications/
 
 # Claude hook runtime state (written by .claude/hooks/update-state.sh; never committed)
 .claude/hooks/.last-state-head
