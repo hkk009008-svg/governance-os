@@ -27,7 +27,7 @@
   review base and content-addressed provider-prompt authority while adding the
   exact Task 7 write root `docs/PROTOCOL-RULES-LOG.md`; it does not widen
   authority to `docs`.
-- Tasks 8-10 and the final unchanged-HEAD Lane V review use the precommitted
+- Tasks 8-11 and the final unchanged-HEAD Lane V review use the precommitted
   `sha256:e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84`
   generation of that same descriptor. It adds only the twelve exact active
   producer/consumer guidance files named in Task 8, plus the existing narrow
@@ -2196,6 +2196,85 @@ on that new unchanged head.
 
 ---
 
+### Task 11: Enforce Reconciliation Severity Floors And Pin Public Blocking
+
+**Files:**
+
+- Modify: `scripts/opus_review_bridge.py`
+- Modify: `tests/unit/test_opus_review_bridge.py`
+- Modify: `tests/unit/test_verification_report_gate.py`
+- Modify `scripts/verification_report_gate.py` only if the end-to-end legacy
+  receipt regression proves that canonical recomputation is insufficient
+
+The next fresh whole-branch Section 9 review returned **FAIL** before provider
+reservation. Reconciliation classifies confirmed Important/Critical findings
+into `confirmed_fail_finding_ids` but preserves a caller-supplied `NITS`
+verdict. The report gate then accepts the exact stored `NITS` plus
+`go_allowed=false`, even though the preserved severity contract requires
+`FAIL`. The same incomplete predicate accepts confirmed Minor plus `GO` as an
+unpublishable persisted reconciliation. Separately, the public concurrency
+test releases the first provider before proving that the second `review()` has
+reached the held blocking attempt lock, so a `blocking=False` mutation may
+survive scheduler timing.
+
+- [ ] **Step 1: Add failing severity-floor regressions and confirm RED**
+
+Parameterize the pure reconciliation boundary so confirmed Minor rejects
+`GO` but accepts `NITS` and `FAIL`, while any confirmed Important/Critical
+finding rejects `GO` and `NITS` and accepts only `FAIL`. Mixed confirmed
+severities take the highest floor. Assert one exact sanitized contract-error
+reason and prove the submitted verdict is never rewritten.
+
+At the receipt boundary, prove invalid Minor/`GO` and Important/`NITS`
+combinations fail before persistence, leave the receipt in `reviewed`, and
+permit one corrected `NITS`/`FAIL` reconciliation. At the report boundary,
+construct a canonical legacy Important/`NITS` reconciliation under a bounded
+test-only permissive helper, restore production normalization, and prove live
+validation rejects the matching report as `invalid_live_receipt`. Do not add a
+second severity implementation to the report gate: it must reject because it
+recomputes the stored reconciliation through the bridge.
+
+- [ ] **Step 2: Strengthen the public blocking-lock regression**
+
+Replace scheduler timing in the existing two-thread public `review()` test
+with a condition-controlled `fcntl.flock` double. The first exclusive owner
+holds the lock. The second acquisition records its exact operation and signals
+contention while holding the condition; `LOCK_NB` raises
+`EWOULDBLOCK`, while blocking `LOCK_EX` waits until the first owner releases.
+Before releasing the provider, assert exactly one contending waiter, an active
+owner, operation exactly `LOCK_EX` without `LOCK_NB`, and an incomplete second
+future. Release in `finally` so a failed assertion cannot strand a worker.
+Keep the existing low-level nonblocking observer tests unchanged.
+
+- [ ] **Step 3: Implement the minimum verdict-floor guard**
+
+After all dispositions are validated and confirmed findings are classified,
+reject a submitted verdict below the required floor before constructing or
+persisting `Reconciliation`: confirmed Important/Critical requires `FAIL`, and
+confirmed Minor forbids `GO`. A stricter operator verdict remains lawful.
+Do not coerce the verdict, change unavailable/pass behavior, alter unresolved
+handling, add a retry/reset path, or change report/publication semantics.
+
+- [ ] **Step 4: Prove both corrections are non-vacuous, review, and commit**
+
+Temporarily bypass only the new severity-floor predicate and prove the pure,
+receipt, and legacy-gate regressions turn RED, including a separate Minor
+branch flip. Temporarily call the public attempt lock with `blocking=False`
+and prove the synchronized concurrency test turns RED. Restore production,
+run both complete affected test files, the descriptor acceptance command,
+`scripts/ci_smoke.py`, the changed-authority SHA subset, anchor validation,
+and `git diff --check`, then obtain a fresh task-scoped spec-and-quality review
+of the actual diff. Commit with the descriptor-bound terminal trailer. Do not
+reserve a production receipt, invoke the provider, emit mail, publish a
+report, activate the primary checkout, push, or change protocol state.
+
+Only after Task 11 is green and independently reviewed may another fresh
+whole-branch Section 9 review form the provisional Codex verdict. The sole
+receipt-backed provider attempt remains unopened until that review returns
+PASS on the same unchanged head.
+
+---
+
 ## Final Integration And Verification
 
 After every task's implementer report and task review are clean, run one broad whole-branch review for plan/spec integration and maintainability. This is a different pre-stated question from Lane V's final adversarial gate.
@@ -2276,13 +2355,13 @@ env -u GIT_INDEX_FILE git status --short
 env -u GIT_INDEX_FILE git show --stat --oneline HEAD
 ```
 
-Expected: one reviewed commit per Task 1-10 plus the prompt prep and amended
+Expected: one reviewed commit per Task 1-11 plus the prompt prep and amended
 plan/descriptor commits, clean worktree, no live mailbox/cursor/route/lock or
 primary-activation changes, and no push.
 
 ## Plan Self-Review Record
 
-- Spec coverage: Tasks 1-10 map all design Sections 6.1-6.12, 8, 9.1-9.8, 10.1-10.4, and 11.
+- Spec coverage: Tasks 1-11 map all design Sections 6.1-6.12, 8, 9.1-9.9, 10.1-10.4, and 11.
 - File boundaries: receipt serialization/storage does not import provider policy; bridge owns provider/severity behavior; report gate owns report parsing/publication; `check_go_schema` owns CI corpus accounting.
 - Type consistency: Task 1 produces `ScopeDescriptor`/`ReviewScope`; Task 2 consumes them and produces `ReceiptStore`; Task 3 consumes the store and produces stored v3/v2 evidence; Tasks 5-6 consume those exact mappings; Task 7 documents the final names.
 - Execution conflict scan: Tasks are sequential where they share `opus_review_bridge.py`, `opus_review_receipts.py`, or their tests; no two implementers run concurrently on shared files.

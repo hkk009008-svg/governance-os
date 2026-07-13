@@ -2,9 +2,10 @@
 
 **Date:** 2026-07-13
 **Status:** Approved by the user-principal on 2026-07-13 and implemented through
-Task 9 in the isolated hardening branch; independent whole-branch reviews found
-the active-trigger guidance gap covered by Task 8 and the duplicate shipping
-authority gap covered by Task 10 below; independently challenged before
+Task 10 in the isolated hardening branch; independent whole-branch reviews found
+the active-trigger guidance gap covered by Task 8, the duplicate shipping
+authority gap covered by Task 10, and the reconciliation severity-floor gap
+covered by Task 11 below; independently challenged before
 approval; amended after
 `a3717e3` to bind exact index staging, explicit recovery, trusted startup, and
 the real provider prompt
@@ -1145,6 +1146,55 @@ remains unopened until this correction, its task review, the repeated local
 verification bundle, and a new whole-branch actual-diff review are green on one
 unchanged head.
 
+### 9.9 Reconciliation severity floors and public blocking evidence
+
+The next independent actual-diff review stopped before provider reservation
+and found that severity classification and verdict enforcement were split.
+Confirmed Important/Critical findings were recorded in
+`confirmed_fail_finding_ids`, but a caller-supplied `NITS` remained the exact
+stored verdict. Because `go_allowed=false` is also lawful for `NITS`, the live
+report gate could publish that under-classified result. Confirmed Minor plus
+`GO` similarly produced an unpublishable stored reconciliation rather than a
+contract rejection.
+
+The bridge must validate, but never choose or rewrite, the operator verdict.
+After disposition classification and before reconciliation persistence, the
+accepted matrix is:
+
+| Highest confirmed severity | Accepted submitted verdicts |
+|---|---|
+| none | existing behavior |
+| Minor | `NITS`, `FAIL` |
+| Important or Critical | `FAIL` |
+
+Mixed confirmed findings take the highest floor. A verdict below the floor is
+rejected with one sanitized contract reason while the receipt remains
+`reviewed`, so the operator can submit one corrected exact verdict. This is a
+validation boundary, not provider authority: Opus still cannot emit or coerce
+`GO`, `NITS`, or `FAIL`, and a stricter operator verdict remains lawful.
+Unavailable, pass, disproved-only, and unresolved behavior otherwise remains
+unchanged.
+
+The report gate does not duplicate this matrix. Its existing canonical receipt
+normalization recomputes reconciliation through the bridge; therefore a legacy
+or tampered Important/`NITS` record must fail live validation as an invalid
+receipt. A regression creates that old canonical shape only under a bounded
+test helper, restores the production helper, and proves the gate rejects it.
+
+Public `review()` continues to acquire the attempt lock in blocking mode so an
+identical concurrent caller waits and replays rather than receiving
+`attempt_in_progress`. Its regression must signal only after the second worker
+has reached a held exclusive lock. A condition-controlled `flock` double
+records the exact contended operation, distinguishes `LOCK_EX` from
+`LOCK_EX|LOCK_NB`, and releases the first provider only after proving one
+blocked waiter and one active owner. The intentional low-level nonblocking
+observer contract remains unchanged. Removing the verdict-floor predicate or
+changing public `review()` to `blocking=False` must turn the focused tests RED.
+
+The sole production provider attempt remains unopened until this correction,
+its task review, repeated local verification, and another whole-branch
+actual-diff review are green on one unchanged head.
+
 ## 10. Test Strategy
 
 Implementation follows test-driven development. Each behavior begins with a
@@ -1171,7 +1221,8 @@ failing test or mutation probe.
   supplied through an injected `stat` boundary where the host cannot create a
   foreign-owned fixture;
 - legacy caller JSON rejection; and
-- unchanged severity/disposition rules loaded from receipt state.
+- enforced severity/disposition floors loaded from receipt state, corrected
+  retry before persistence, and legacy invalid-reconciliation gate rejection.
 
 ### 10.2 Report tests
 
