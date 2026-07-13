@@ -29,6 +29,54 @@ ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES = 131_072
 
 
+def test_provider_only_advisory_prompt_exactly_matches_plan() -> None:
+    plan = (
+        ROOT
+        / "docs"
+        / "superpowers"
+        / "plans"
+        / "2026-07-13-opus-lanev-receipt-hardening.md"
+    ).read_text(encoding="utf-8")
+    anchor = (
+        "After Task 7, the exact body returned by "
+        "`_agent_prompt_from_content()` and\n"
+        "passed through `--append-system-prompt` must be the following text, byte "
+        "for\nbyte after surrounding whitespace is stripped:\n\n"
+    )
+    _, anchor_found, after_anchor = plan.partition(anchor)
+    assert anchor_found == anchor
+    _, fence_found, after_fence = after_anchor.partition("```markdown\n")
+    assert fence_found == "```markdown\n"
+    expected_body, closing_fence_found, _ = after_fence.partition("\n```")
+    assert closing_fence_found == "\n```"
+
+    content = (
+        ROOT / "scripts" / "prompts" / "opus_lane_v_advisory.md"
+    ).read_text(encoding="utf-8")
+    actual_body = bridge._agent_prompt_from_content(content)
+
+    assert actual_body == expected_body
+
+    advisory_limitations = (
+        "You are a read-only advisory evidence reviewer, not an operator seat or\n"
+        "protocol decision-maker.",
+        "The Codex operator\nalone decides GO, NITS, FAIL, mailbox actions, lock "
+        "actions, and every other\nprotocol or side-effect decision.",
+        "Do not issue a protocol verdict.",
+        "Do not edit,\nstage, commit, produce a patch, write mail, mutate a lock, or "
+        "perform any other\nside effect.",
+    )
+    old_authority_phrases = (
+        "operator-seat verifier",
+        "report FAIL with file:line evidence",
+        "in-scope (GO + ratify-owed)",
+        "**Verdict:** GO / NITS / FAIL",
+        "GO authorizes its release",
+    )
+    assert all(limitation in actual_body for limitation in advisory_limitations)
+    assert all(phrase not in actual_body for phrase in old_authority_phrases)
+
+
 @pytest.fixture(scope="module")
 def host_capabilities() -> bridge.HostCapabilities:
     return bridge.probe_host_capabilities()
