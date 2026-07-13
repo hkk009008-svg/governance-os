@@ -1,8 +1,8 @@
 # Opus Lane V Receipt And Report Hardening Design
 
 **Date:** 2026-07-13
-**Status:** Conceptually approved and independently challenged; user review of
-the written specification pending
+**Status:** Approved for implementation by the user-principal on 2026-07-13;
+independently challenged before approval
 **Implementation base:** `555041477bcdb9a432a1b238d664be0958c5c9ef`
 **Supersedes:** the caller-supplied reconciliation and prompt-only invocation
 enforcement portions of the 2026-07-12 Opus designs. Their sandbox, authority,
