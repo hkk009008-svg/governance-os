@@ -21,13 +21,15 @@
     "Report only a route-changing contradiction, missing required evidence, changed safety boundary, or concise no-contradiction status to coordinator. The Director fast path is non-blocking unless this preflight produces durable contrary evidence.",
     "Do not edit target product/plan files, issue Operator GO, consume mail, mutate packets, take user-gated side effects, or duplicate task implementation/review."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-13T04-10-28Z-director2-to-coordinator-coordination.md records a route-changing BLOCKED disposition: the approved plan and target AGENTS.md deny Codex target commit authority, while the later route allowed the already-landed Codex controller range without a durable explicit user exception."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-13T04-10-28Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "blocked",
   "verify_request": null,
-  "target_commit": "6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa",
-  "commit_range": null,
+  "target_commit": "e7cf287b6bfd1a5481647d05e05bf01effcf8911",
+  "commit_range": "6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa..e7cf287b6bfd1a5481647d05e05bf01effcf8911",
   "scope_files": [
     "coordination/mailbox/sent/",
     "docs/superpowers/specs/2026-07-12-ppl-investment-recommendation-pivot-design.md",
