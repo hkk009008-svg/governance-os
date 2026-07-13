@@ -2,10 +2,11 @@
 
 **Date:** 2026-07-13
 **Status:** Approved by the user-principal on 2026-07-13 and implemented through
-Tasks 1–7 in the isolated hardening branch, pending the plan's independent
-whole-branch verification; independently challenged before approval; amended
-after `a3717e3` to bind exact index staging, explicit recovery, trusted startup,
-and the real provider prompt
+Tasks 1–7 in the isolated hardening branch; the independent whole-branch review
+found one active-trigger guidance integration gap, now covered by approved
+Task 8 below; independently challenged before approval; amended after
+`a3717e3` to bind exact index staging, explicit recovery, trusted startup, and
+the real provider prompt
 **Implementation base:** `555041477bcdb9a432a1b238d664be0958c5c9ef`
 **Supersedes:** the caller-supplied reconciliation and prompt-only invocation
 enforcement portions of the 2026-07-12 Opus designs. Their sandbox, authority,
@@ -81,11 +82,16 @@ Tasks 1-5A remain bound to the original descriptor. Prep 5B and committed Task
 6 remain historically bound to
 `74d50ded74c017c614fb6a746231e0f910ac28d247c9ad728c099f71d2aa8ffe` of
 `coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`.
-Task 7 and final unchanged-HEAD Lane V use the amended digest
+Task 7 and its post-task test-only correction use the amended digest
 `c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`
 of that same path. Both generations retain the exact implementation base and
 content-addressed provider-prompt authority; the Task 7 generation additionally
 authorizes only the exact `docs/PROTOCOL-RULES-LOG.md` write, not `docs`.
+Task 8 and final unchanged-HEAD Lane V use the precommitted digest
+`e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84`.
+That generation adds only twelve exact active guidance roots and two focused
+test modules; it does not grant broad `.agents/skills`, `.claude`,
+`coordination`, `docs`, or `docs/templates` authority.
 
 ## 3. Goals
 
@@ -105,6 +111,8 @@ authorizes only the exact `docs/PROTOCOL-RULES-LOG.md` write, not `docs`.
    capabilities without weakening production fail-closed behavior.
 10. Preserve the current seat, mailbox, lock, commit, push, and final-verdict
     authority model.
+11. Make every active trigger producer and consumer describe the same exact
+    authority structure already enforced by the bridge and publication gate.
 
 ## 4. Non-goals And Trust Boundary
 
@@ -812,6 +820,38 @@ captures the provider argv and proves the descriptor-bound body is exactly the
 `--append-system-prompt` value while the blind generated task prompt remains a
 separate `-p` value.
 
+### 6.12 Authority-bearing trigger production
+
+The bridge and report gate already consume two exact trigger forms. Active
+producer and consumer guidance must now expose that same contract rather than
+describing a looser commit-only or prose-only approximation.
+
+A verify-request trigger is a canonical committed sent-mailbox event strictly
+after the reviewed HEAD. It contains exactly one `Event type: verify-request`,
+one full lowercase forty-hex `Reviewed head`, one full lowercase forty-hex
+`Reviewed base`, and one canonical
+`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64
+lowercase hex>` field. The event fields agree with the committed descriptor and
+the canonical filename/envelope.
+
+A shipping trigger is lawful only when its commit equals the reviewed HEAD,
+its subject begins `feat`, `fix`, or `refactor`, and exactly one identical
+descriptor reference appears in the terminal Git trailer block. A descriptor
+reference in the body, an arbitrary landed commit, or a trigger commit distinct
+from reviewed HEAD grants no authority.
+
+Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
+mismatched authority means no lawful trigger exists. The operator stops with a
+blocker and never reconstructs fields or falls back to the other trigger kind.
+Implementers may emit the shipping trailer only under explicit parent commit
+authority with the exact descriptor reference supplied; implementers and
+reviewers never invent it.
+
+This descriptor and trigger grammar remains Pipeline-only. Evidence-ledger or
+other cross-repository verification returns to the coordinator for a separate
+evidence-ledger-aware bridge route; no seat fabricates Pipeline descriptor
+authority to bridge the repository boundary.
+
 ## 7. Data Flow
 
 ```text
@@ -991,6 +1031,31 @@ applies. The following cases are mandatory acceptance targets.
 - primary-checkout activation is attempted without a clean unchanged head,
   fast-forward ancestry, and separate executor authority.
 
+### 9.6 Trigger-production and operator-start authority
+
+- verify-request omits or duplicates event type, reviewed HEAD, reviewed base,
+  or descriptor reference;
+- verify-request uses an abbreviated or uppercase SHA, a non-canonical scope
+  path/digest, a mismatched task ID, or fields inconsistent with its
+  filename/envelope;
+- event is uncommitted, stale, not strictly after reviewed HEAD, or points to a
+  different base/head than the committed descriptor;
+- shipping trigger is not the reviewed HEAD, has a non-shipping subject, omits
+  or duplicates the descriptor reference, or places it in the commit body
+  rather than the terminal trailer block;
+- director, implementer, reviewer, capacity action, continuation, or operator
+  guidance accepts a named commit or body-free prose as sufficient authority;
+- an implementer invents a descriptor reference without explicit parent commit
+  authority;
+- an operator reconstructs missing fields or silently falls back between
+  verify-request and shipping trigger forms;
+- Codex-only tests pass while the Claude structural mode lacks either trigger
+  form, or vice versa;
+- historical reports, handoffs, or plans are treated as fresh trigger
+  authority; and
+- a cross-repository or evidence-ledger review fabricates Pipeline descriptor
+  authority instead of returning to the coordinator's separate bridge route.
+
 A fresh independent reviewer must challenge this enumeration before the design
 commit. Before completion, an independent actual-diff review must verify that
 the implemented tests cover these cases. A same-model subagent is acceptable
@@ -1038,6 +1103,11 @@ failing test or mutation probe.
   and mismatched witnesses;
 - exact task-publication schema/generation/authority conflicts and public
   published-replay rejection;
+- synchronized producer/consumer guidance for both trigger forms and both
+  Codex/Claude structural modes, including non-vacuous malformed-to-lawful
+  fixture flips;
+- capacity-board text, implementer commit conditions, reviewer preflight, and
+  exact narrow descriptor-root/digest pins;
 - descriptor-relative candidate/final identity, persisted basename/inode
   recovery, exact index OID/mode/stage witness, exact cancellation,
   file/directory/index fsync ordering, and collision rollback;
@@ -1117,13 +1187,15 @@ Rollout order for the remaining work is:
    recovery paths;
 4. complete Task 7's prompt binding, loader switch, rendered regression,
    doctrine, and docs, then independently review its actual diff;
-5. run focused, full, smoke, baseline, doc, and whole-branch checks;
-6. perform independent actual-diff review against Section 9 and make the one
+5. after whole-branch review, complete Task 8's active trigger-producer and
+   consumer synchronization under its precommitted narrow descriptor;
+6. run focused, full, smoke, baseline, doc, and whole-branch checks;
+7. perform independent actual-diff review against Section 9 and make the one
    authorized receipt-backed advisory Opus attempt only when the capability
    guard succeeds, preserving an exact degraded reason without retry otherwise;
-7. return a durable handoff to the coordinator for the separately routed
+8. return a durable handoff to the coordinator for the separately routed
    evidence-ledger-aware bridge work; and
-8. only under separate explicit executor authority, fast-forward and revalidate
+9. only under separate explicit executor authority, fast-forward and revalidate
    a clean unchanged primary checkout to activate the live `send-event` path.
 
 No mailbox event, live route, cursor, lock, push, or external publication is

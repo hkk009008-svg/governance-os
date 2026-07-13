@@ -20,14 +20,24 @@
   of
   `coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`;
   their already-executed commit trailers remain unchanged.
-- Task 7 and the final unchanged-HEAD Lane V review use the amended
+- Task 7 and the post-Task-7 test-only integration correction remain
+  historically bound to the amended
   `sha256:c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`
   generation of that same descriptor. It retains the exact `5550414...`
   review base and content-addressed provider-prompt authority while adding the
   exact Task 7 write root `docs/PROTOCOL-RULES-LOG.md`; it does not widen
   authority to `docs`.
-- Every remaining implementation commit ends with the exact trailer
-  `Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`.
+- Task 8 and the final unchanged-HEAD Lane V review use the precommitted
+  `sha256:e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84`
+  generation of that same descriptor. It adds only the twelve exact active
+  producer/consumer guidance files named in Task 8, plus the existing narrow
+  roots, and extends the focused verification command with
+  `tests/unit/test_protocol_capacity.py` and
+  `tests/unit/test_protocol_doc_integrity.py`. It does not add broad
+  `.agents/skills`, `.claude`, `coordination`, `docs`, or `docs/templates`
+  authority.
+- The Task 8 shipping commit ends with the exact trailer
+  `Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84`.
 - Production receipt state is shared across linked worktrees at `<resolved-git-common-dir-parent>/.codex/runtime/opus-review-receipts/v1/`; non-Codex publication state is at the sibling `lane-v-report-publications/v1/` directory. There is no production CLI flag that changes either root.
 - State directories are owned by the current uid, real directories, and mode `0700`; lock and JSON files are regular, non-symlink files owned by the current uid and mode `0600`.
 - Receipt writes use descriptor-relative opens, same-directory temporary files, file `fsync`, `os.replace`, and directory `fsync`; every read-modify-write runs under the same per-attempt `flock` and checks a monotonically increasing generation.
@@ -1845,6 +1855,202 @@ env -u GIT_INDEX_FILE git commit -m "refactor(codex): bind Lane V workflow to re
 
 ---
 
+### Task 8: Bind Authority-Bearing Lane V Trigger Production
+
+The Task 7 whole-branch integration review found one Important defect: the
+gate and bridge reject structurally incomplete triggers, but several active
+director, implementer, reviewer, operator, and continuation surfaces still
+describe a named commit or prose-only event as sufficient authority. This task
+closes that producer/consumer integration gap. It does not change receipt,
+provider, report-publication, mailbox, or side-effect authority.
+
+**Files:**
+- Modify: `coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json`
+- Modify: `AGENTS.md`
+- Modify: `RUNBOOK-DAILY.md`
+- Modify: `coordination/README.md`
+- Modify: `docs/PROGRAM-MANUAL.md`
+- Modify: `scripts/codex_protocol_model.py`
+- Modify: `scripts/protocol_capacity.py`
+- Modify: `docs/protocol/agents/director-operator.md`
+- Modify: `docs/protocol/claude/director-operator.md`
+- Modify: `docs/protocol/claude/continuation.md`
+- Modify: `docs/protocol/codex/continuation.md`
+- Modify: `.agents/skills/four-seat-protocol/SKILL.md`
+- Modify: `.agents/skills/seat-director/SKILL.md`
+- Modify: `.agents/skills/seat-operator/SKILL.md`
+- Modify: `.claude/skills/seat-director/SKILL.md`
+- Modify: `.claude/skills/seat-operator/SKILL.md`
+- Modify: `.codex/agents/protocol-director.toml`
+- Modify: `.codex/agents/protocol-operator.toml`
+- Modify: `.codex/agents/lane-v-verifier.toml`
+- Modify: `.claude/agents/lane-v-verifier.md`
+- Modify: `docs/templates/agents/implementer.md`
+- Modify: `docs/templates/agents/reviewer.md`
+- Modify: `docs/templates/claude/implementer.md`
+- Modify: `docs/templates/claude/reviewer.md`
+- Modify: `.agents/skills/seat-operator/verification-report-format.md`
+- Modify: `.claude/skills/seat-operator/verification-report-format.md`
+- Modify: `tests/unit/test_protocol_prompt_sync.py`
+- Modify: `tests/unit/test_protocol_capacity.py`
+- Modify: `tests/unit/test_verification_report_gate.py`
+
+`CLAUDE.md`, `ARCHITECTURE.md`, `.claude/skills/four-seat-protocol/SKILL.md`,
+coordinator prompts/skills, optional guardrail agents, R-BRIEF templates,
+historical plans/specs/handoffs/mail, and append-only decisions need no direct
+edit. Their current text either delegates to an amended surface, already
+states the exact contract, holds no trigger-production authority, or is an
+immutable historical record.
+
+**Interfaces:**
+- Consumes: the already-enforced trigger parsers in
+  `scripts/verification_report_gate.py` and `scripts/opus_review_bridge.py`.
+- Produces: one synchronized producer/consumer contract for both Codex and
+  Claude structural modes, plus regressions that make looser guidance fail.
+
+The exact contract is:
+
+1. A verify-request trigger is a canonical committed sent-mailbox event
+   strictly after the reviewed HEAD. Its body contains exactly one
+   `Event type: verify-request`, one full lowercase forty-hex
+   `Reviewed head`, one full lowercase forty-hex `Reviewed base`, and one
+   `Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64
+   lowercase hex>` field. Those values agree with the committed descriptor and
+   the canonical filename/envelope.
+2. A shipping trigger is lawful only when the trigger commit equals the
+   reviewed HEAD, its subject begins `feat`, `fix`, or `refactor`, and its
+   terminal Git trailer block contains exactly one identical descriptor
+   reference.
+3. Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale,
+   or mismatched authority is not a trigger. The operator stops with a blocker
+   and never reconstructs the missing fields or falls back to the other trigger
+   kind.
+4. An implementer emits a shipping trailer only when the parent explicitly
+   authorizes that commit and supplies the exact descriptor reference. An
+   implementer or reviewer never invents authority.
+5. A cross-repository or evidence-ledger review cannot fabricate Pipeline
+   descriptor authority. It returns to the coordinator for the separate
+   evidence-ledger-aware bridge route.
+
+- [ ] **Step 1: Write failing synchronized-contract tests**
+
+Before prose or model changes, extend `test_protocol_prompt_sync.py` with
+separate producer and consumer matrices. Each active surface must contain the
+canonical verify-request fields, terminal shipping-trailer rule, and
+stop-without-reconstruction rule appropriate to its role. Pin the conditional
+implementer rule, both byte-identical report-format mirrors, both bridge
+trigger command forms, the Pipeline-only coordinator-return boundary, and the
+exact twelve descriptor-root additions while rejecting broad substitutes.
+
+Extend `test_protocol_capacity.py` so director/operator action text cannot
+regress to a commit-only or prose-only trigger. Extend
+`test_verification_report_gate.py` so both `codex-lane-v` and
+`claude-lane-v` are exercised with both trigger kinds, and so missing,
+duplicate, short/uppercase, stale, body-only/non-terminal, or mismatched
+authority fails before publication. The tests must prove the rejection is
+non-vacuous by flipping each malformed fixture to one lawful trigger and
+observing acceptance.
+
+- [ ] **Step 2: Run the new tests and confirm RED**
+
+```bash
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest \
+  tests/unit/test_protocol_prompt_sync.py \
+  tests/unit/test_protocol_capacity.py \
+  tests/unit/test_verification_report_gate.py -q
+```
+
+Expected: the new guidance-sync and capacity assertions fail against the loose
+producer surfaces. Existing gate positives remain green.
+
+- [ ] **Step 3: Update the executable model, then every active producer and consumer**
+
+Start with `CROSS_MODEL_VERIFICATION_RULES` and the capacity-board action
+strings, then update the listed protocol docs, continuations, skills, role
+agents, templates, and report mirrors. Preserve each surface's role and
+brevity; use the canonical protocol docs as the detailed explanation rather
+than inventing a second schema. Remove claims that event bodies are free prose,
+that event kind exists only in the filename, that any landed SHA is a trigger,
+or that `Co-Authored-By` is the only sanctioned trailer.
+
+Impact analysis must first locate every producer/consumer copy with `rg`, and a
+post-edit re-grep must show no active contradictory copy remains. Do not edit
+the descriptor-bound provider prompt
+`scripts/prompts/opus_lane_v_advisory.md`; a rendered-argv regression must
+continue proving that the provider receives that advisory-only blob rather
+than `.claude/agents/lane-v-verifier.md`.
+
+- [ ] **Step 4: Materialize the precommitted descriptor generation**
+
+Retain every current root, sort the final root list, and add only:
+
+```text
+.agents/skills/four-seat-protocol/SKILL.md
+.agents/skills/seat-director/SKILL.md
+.claude/agents/lane-v-verifier.md
+.claude/skills/seat-director/SKILL.md
+AGENTS.md
+RUNBOOK-DAILY.md
+coordination/README.md
+docs/PROGRAM-MANUAL.md
+docs/templates/agents/implementer.md
+docs/templates/agents/reviewer.md
+docs/templates/claude/implementer.md
+docs/templates/claude/reviewer.md
+```
+
+Append `tests/unit/test_protocol_capacity.py` and
+`tests/unit/test_protocol_doc_integrity.py` to the descriptor's existing
+focused pytest command. Serialize with `json.dumps(value, indent=2) + "\n"`.
+The exact resulting file SHA-256 must be
+`e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84`.
+
+- [ ] **Step 5: Verify, independently review, and commit**
+
+Run:
+
+```bash
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest \
+  tests/unit/test_protocol_prompt_sync.py \
+  tests/unit/test_protocol_capacity.py \
+  tests/unit/test_verification_report_gate.py \
+  tests/unit/test_protocol_doc_integrity.py -q
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest \
+  tests/unit/test_opus_review_bridge.py::test_review_renders_descriptor_bound_advisory_prompt_separately_from_task_prompt -q
+shasum -a 256 coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json
+env -u GIT_INDEX_FILE git diff --check
+```
+
+A fresh implementer performs the edits; one spec reviewer checks only the
+exact contract and file dispositions, then one code-quality reviewer checks
+the actual diff and regressions. Root inspects and stages exact pathspecs only.
+
+Commit:
+
+```bash
+env -u GIT_INDEX_FILE git add \
+  coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json \
+  AGENTS.md RUNBOOK-DAILY.md coordination/README.md docs/PROGRAM-MANUAL.md \
+  scripts/codex_protocol_model.py scripts/protocol_capacity.py \
+  docs/protocol/agents/director-operator.md docs/protocol/claude/director-operator.md \
+  docs/protocol/claude/continuation.md docs/protocol/codex/continuation.md \
+  .agents/skills/four-seat-protocol/SKILL.md .agents/skills/seat-director/SKILL.md \
+  .agents/skills/seat-operator/SKILL.md .claude/skills/seat-director/SKILL.md \
+  .claude/skills/seat-operator/SKILL.md .codex/agents/protocol-director.toml \
+  .codex/agents/protocol-operator.toml .codex/agents/lane-v-verifier.toml \
+  .claude/agents/lane-v-verifier.md docs/templates/agents/implementer.md \
+  docs/templates/agents/reviewer.md docs/templates/claude/implementer.md \
+  docs/templates/claude/reviewer.md \
+  .agents/skills/seat-operator/verification-report-format.md \
+  .claude/skills/seat-operator/verification-report-format.md \
+  tests/unit/test_protocol_prompt_sync.py tests/unit/test_protocol_capacity.py \
+  tests/unit/test_verification_report_gate.py
+env -u GIT_INDEX_FILE git commit -m "fix(protocol): bind Lane V producer triggers" \
+  -m "Lane-V-Scope: coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json@sha256:e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84"
+```
+
+---
+
 ## Final Integration And Verification
 
 After every task's implementer report and task review are clean, run one broad whole-branch review for plan/spec integration and maintainability. This is a different pre-stated question from Lane V's final adversarial gate.
@@ -1858,7 +2064,9 @@ env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest \
   tests/unit/test_check_go_schema.py \
   tests/unit/test_verification_report_gate.py \
   tests/unit/test_coordination_tooling.py \
-  tests/unit/test_protocol_prompt_sync.py -q
+  tests/unit/test_protocol_prompt_sync.py \
+  tests/unit/test_protocol_capacity.py \
+  tests/unit/test_protocol_doc_integrity.py -q
 ```
 
 - [ ] **Run the full unit suite once**
@@ -1882,7 +2090,7 @@ shasum -a 256 scripts/prompts/opus_lane_v_advisory.md scripts/prompts/opus_lane_
 env -u GIT_INDEX_FILE git hash-object --no-filters scripts/prompts/opus_lane_v_advisory.md scripts/prompts/opus_lane_v_advisory.authority.583cdcb5b5129b629ae4ada21627a4fc5bab1b9c.json
 ```
 
-Expected descriptor digest: `c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`.
+Expected descriptor digest: `e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84`.
 Expected prompt/authority SHA-256 values are
 `86bb83ebec8bbfefe04a60af616e414f87ae972ceb3a27fc3f0332500e70f4b4`
 and `94768300138a01ca8c74fcd350a15a1557f7131730f7da94565d9566189f8acf`;
@@ -1904,10 +2112,10 @@ changed-drift gate.
 The primary Codex Lane V question is: “Does the final `5550414..HEAD` implementation mechanically enforce every abuse/edge case in approved design Section 9, with non-vacuous tests and no bypass around attempt uniqueness, scope authority, exact report verdict, or no-replace publication?” Inspect the actual diff and test mutations before forming the provisional verdict.
 
 Then invoke the receipt-backed review exactly once for the final unchanged HEAD
-using the shipping-commit trigger and amended descriptor
+using the shipping-commit trigger and final descriptor
 `2a876e95-3a87-4203-a613-1a29dd957b5b` with its exact `5550414...` base and
 precommitted provider-prompt blob, with amended digest
-`c16aa28ce9211e7214ba8fb5586059515a8a59de3b37a0f853c6e13da73d5a93`.
+`e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84`.
 If the capability probe reports
 Seatbelt/AF_UNIX/Claude unavailable, preserve the resulting single degraded
 receipt/reason and do not retry or substitute another provider. Reconcile the
@@ -1923,19 +2131,20 @@ env -u GIT_INDEX_FILE git status --short
 env -u GIT_INDEX_FILE git show --stat --oneline HEAD
 ```
 
-Expected: one reviewed commit per Task 1-7 plus the prompt prep and amended
+Expected: one reviewed commit per Task 1-8 plus the prompt prep and amended
 plan/descriptor commits, clean worktree, no live mailbox/cursor/route/lock or
 primary-activation changes, and no push.
 
 ## Plan Self-Review Record
 
-- Spec coverage: Tasks 1-7 map all design Sections 6.1-6.10, 8, 9.1-9.5, 10.1-10.4, and 11.
+- Spec coverage: Tasks 1-8 map all design Sections 6.1-6.12, 8, 9.1-9.6, 10.1-10.4, and 11.
 - File boundaries: receipt serialization/storage does not import provider policy; bridge owns provider/severity behavior; report gate owns report parsing/publication; `check_go_schema` owns CI corpus accounting.
 - Type consistency: Task 1 produces `ScopeDescriptor`/`ReviewScope`; Task 2 consumes them and produces `ReceiptStore`; Task 3 consumes the store and produces stored v3/v2 evidence; Tasks 5-6 consume those exact mappings; Task 7 documents the final names.
 - Execution conflict scan: Tasks are sequential where they share `opus_review_bridge.py`, `opus_review_receipts.py`, or their tests; no two implementers run concurrently on shared files.
 - Authority scan: the original descriptor remains the historical authority for
   Tasks 1-5A; the amended descriptor precommits the exact advisory prompt blob
-  and is the authority for Prep 5B and Tasks 6-7. Every remaining shipping task
+  and is the authority for Prep 5B and Tasks 6-7. The final narrowly widened
+  generation is the authority for Task 8 and final review. Every shipping task
   commit carries its exact path/digest trailer, and no implementation step
   performs live protocol, primary-activation, or external-publication side
   effects.
