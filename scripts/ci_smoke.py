@@ -25,7 +25,7 @@ Two halves run in sequence:
     - Reviewer-result schema validation: consume_reviewer_result smoke_check
       (schema-validation only; never re-runs pytest — ADR-032).
     - Adoption-placeholder gate: check_placeholders (hard-fail local + CI — ADR-002).
-    - GO verification-report evidence validator: check_go_schema (hard-fail local + CI).
+    - Lane V report corpus + GO evidence validator: check_go_schema (hard-fail local + CI).
     - ARCHITECTURE Last-verified gate: check_arch_freshness (inert unless
       ARCHITECTURE.md changed vs merge-base; hard-fail when it fires).
 
@@ -230,23 +230,30 @@ def main() -> int:
         return 1
     print("PLACEHOLDER CHECK — PASS (no unallowlisted tokens).")
 
-    # GO verification-report evidence validator (check_go_schema). Hard-fail local + CI.
-    # Calls _scan_dir() + go_report_violations() directly — NOT main().
+    # Lane V verification-report repository validator. Hard-fail local + CI.
+    # CLI and smoke share this exact public raw-byte legacy/v2 validation path.
     import check_go_schema as _cgs
 
-    _go_named = _cgs._scan_dir(_cgs.DEFAULT_MAILBOX)
-    _go_violations = _cgs.go_report_violations(_go_named)
+    try:
+        _go_reports = _cgs.scan_repository_reports(_repo_root)
+        _go_manifest = _cgs.load_baseline_manifest(_cgs.DEFAULT_MANIFEST)
+        _go_violations = _cgs.repository_report_violations(
+            _repo_root, _go_reports, _go_manifest
+        )
+    except (OSError, UnicodeError, _cgs.BaselineGenerationError) as _go_error:
+        print(f"\nGO-SCHEMA CHECK — FAIL: {_go_error}")
+        return 1
     if _go_violations:
-        _go_total = sum(1 for _, body in _go_named if _cgs._VERDICT_GO_RE.search(body))
         print(
-            f"\nGO-SCHEMA CHECK — FAIL: {len(_go_violations)} violation(s) "
-            f"in {_go_total} GO report(s)\n"
+            f"\nGO-SCHEMA CHECK — FAIL: {len(_go_violations)} violation(s)\n"
         )
         for _v in _go_violations:
             print(f"  ! {_v}")
         return 1
-    _go_total = sum(1 for _, body in _go_named if _cgs._VERDICT_GO_RE.search(body))
-    print(f"GO-SCHEMA CHECK — PASS ({_go_total} GO report(s) validated; zero violations).")
+    print(
+        "GO-SCHEMA CHECK — PASS "
+        f"({len(_go_reports)} verification-report(s) validated; zero violations)."
+    )
 
     # ARCHITECTURE Last-verified gate (check_arch_freshness). Inert unless
     # ARCHITECTURE.md changed vs merge-base; self-degrades if git/base unavailable.

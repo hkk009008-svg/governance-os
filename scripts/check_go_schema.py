@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""check_go_schema.py — validate that GO verification-report events carry real evidence.
+"""Validate the exact Lane V report corpus and GO verification evidence.
+
+Every current filesystem verification report must either match the committed
+historical path/raw-byte digest manifest or satisfy ``lane-v-report/v2`` plus
+its committed structural authority.  The normal scan includes untracked files,
+while baseline generation hashes only NUL-delimited tracked ``HEAD`` blobs.
 
 R-GATE-EVIDENCE (ADR-003): a `verification-report` mailbox event whose verdict is GO
 MUST contain all three of:
@@ -13,31 +18,49 @@ Sub-rule: a GO whose evidence references `wave_gate_check` and contains NO pytes
 regression-pin (`--runxfail`) output → FAIL.  wave_gate_check reads an inventory
 string; it does not execute tests, so it is not GO-grade evidence.
 
-NITS / FAIL verdicts make no ship-claim → NOT gated (mirrors check_no_ceremony R6,
-which gates only the `pass` verdict).
+NITS / FAIL verdicts still require exact legacy or v2 structure but skip only
+these GO-specific evidence rules (mirrors check_no_ceremony R6, which gates
+only the `pass` verdict).
 
 Only the v6.0 `VERDICT: GO` shape is gated (canonical, per
 `.claude/skills/seat-operator/verification-report-format.md`).  The grandfathered YAML
 `**Status:** ✅ clean` form is NOT handled here — see the report for rationale.
 
 Usage:  .venv/bin/python scripts/check_go_schema.py [<dir>]
-        <dir> defaults to coordination/mailbox/sent/
-        Scans for *-verification-report.md files.
+        .venv/bin/python scripts/check_go_schema.py \
+          --generate-baseline scripts/baselines/lane_v_report_v1.json
 
 Exit codes:
-    0 — clean (no GO reports, or all GO reports carry complete evidence)
-    1 — at least one GO report is missing a required field (named in output)
+    0 — every report passes legacy/v2 structure and any GO evidence rules
+    1 — report, manifest, generation, or GO evidence validation failed
 """
 from __future__ import annotations
 
+import argparse
+import fcntl
+import hashlib
+import json
+import os
 import pathlib
 import re
+import stat
+import subprocess
 import sys
+import tempfile
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
+
+import opus_review_receipts as receipts
+import verification_report_gate as report_gate
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Default scan directory (overridable by CLI argument for tests).
 DEFAULT_MAILBOX = ROOT / "coordination" / "mailbox" / "sent"
+DEFAULT_MANIFEST = ROOT / "scripts" / "baselines" / "lane_v_report_v1.json"
+_BASELINE_MAX_BYTES = 1_048_576
+_BASELINE_LOCK_NAME = "codex-lane-v-report-baseline.lock"
 
 # --- Patterns (v6.0 verification-report-format.md) --------------------------
 
@@ -71,6 +94,16 @@ _LOGS_REF_RE = re.compile(r"\blogs/\S+")
 _WAVE_GATE_RE = re.compile(r"\bwave_gate_check\b")
 _PYTEST_CMD_RUNXFAIL_RE = re.compile(r"^\s*\$\s+.*--runxfail\b", re.MULTILINE)
 _PYTEST_RESULT_RE = re.compile(r"\b\d+\s+(passed|failed|xpassed|xfailed|error)\b")
+
+
+@dataclass(frozen=True)
+class RawReport:
+    relative_path: str
+    raw: bytes
+
+
+class BaselineGenerationError(RuntimeError):
+    """A fail-closed baseline generation or durable-publication failure."""
 
 
 def _has_real_pytest_evidence(text: str) -> bool:
@@ -140,6 +173,586 @@ def go_report_violations(
     return violations
 
 
+def repository_report_violations(
+    root: pathlib.Path,
+    named_reports: list[RawReport],
+    manifest: object,
+) -> list[str]:
+    """Validate exact legacy accounting or full v2 structure for every report."""
+
+    report_paths = [report.relative_path for report in named_reports]
+    violations = report_gate.legacy_manifest_violations(manifest, report_paths)
+    if any(
+        item.startswith("legacy manifest:")
+        or item.startswith("legacy manifest reports[")
+        or item.startswith("current report path:")
+        for item in violations
+    ):
+        return violations
+    assert isinstance(manifest, Mapping)
+    raw_entries = manifest["reports"]
+    assert isinstance(raw_entries, list)
+    manifest_digests = {
+        entry["path"]: entry["sha256"]
+        for entry in raw_entries
+        if isinstance(entry, Mapping)
+    }
+    if len(set(report_paths)) != len(report_paths):
+        violations.append("current reports: duplicate repository-relative path")
+        return violations
+
+    decoded_reports: list[tuple[str, str]] = []
+    for named in named_reports:
+        if not isinstance(named, RawReport) or not isinstance(named.raw, bytes):
+            violations.append("current reports: expected RawReport values")
+            continue
+        raw_digest = hashlib.sha256(named.raw).hexdigest()
+        try:
+            text = named.raw.decode("utf-8")
+        except UnicodeDecodeError:
+            violations.append(f"{named.relative_path}: report must be strict UTF-8")
+            continue
+        decoded_reports.append((named.relative_path, text))
+        if manifest_digests.get(named.relative_path) == raw_digest:
+            continue
+        historical = named.relative_path in manifest_digests
+        try:
+            parsed = report_gate.parse_lane_v_report(
+                named.relative_path,
+                named.raw,
+                decoded_text=text,
+            )
+            report_gate.validate_structural_authority(root, parsed)
+        except report_gate.ReportGateError as exc:
+            if historical:
+                violations.append(
+                    f"{named.relative_path}: baseline drift; full "
+                    f"{report_gate.REPORT_SCHEMA_VERSION} validation failed: {exc}"
+                )
+            else:
+                violations.append(
+                    f"{named.relative_path}: report is not an exact legacy baseline "
+                    f"and must satisfy {report_gate.REPORT_SCHEMA_VERSION}: {exc}"
+                )
+
+    violations.extend(go_report_violations(decoded_reports))
+    return violations
+
+
+def scan_repository_reports(
+    root: pathlib.Path, directory: pathlib.Path | None = None
+) -> list[RawReport]:
+    """Read every current report once from one directory-relative no-follow FD."""
+
+    resolved_root = root.resolve()
+    scan_dir = (
+        resolved_root / "coordination" / "mailbox" / "sent"
+        if directory is None
+        else directory.resolve()
+    )
+    try:
+        relative_directory = scan_dir.relative_to(resolved_root)
+    except ValueError as exc:
+        raise OSError(f"verification report directory is outside repository: {scan_dir}") from exc
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise OSError("safe O_NOFOLLOW report open is unavailable")
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        directory_descriptor = os.open(scan_dir, directory_flags)
+    except FileNotFoundError:
+        return []
+    try:
+        if not stat.S_ISDIR(os.fstat(directory_descriptor).st_mode):
+            raise NotADirectoryError(str(scan_dir))
+        names = sorted(os.listdir(directory_descriptor))
+        reports: list[RawReport] = []
+        report_flags = (
+            os.O_RDONLY
+            | nofollow
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        for name in names:
+            if not name.endswith("-verification-report.md"):
+                continue
+            display_path = scan_dir / name
+            descriptor = os.open(
+                name,
+                report_flags,
+                dir_fd=directory_descriptor,
+            )
+            try:
+                opened = os.fstat(descriptor)
+                if not stat.S_ISREG(opened.st_mode):
+                    raise OSError(
+                        f"verification report is not a regular file: {display_path}"
+                    )
+                raw = os.read(descriptor, opened.st_size + 1)
+                after = os.fstat(descriptor)
+                if (
+                    len(raw) != opened.st_size
+                    or (after.st_dev, after.st_ino, after.st_size)
+                    != (opened.st_dev, opened.st_ino, opened.st_size)
+                ):
+                    raise OSError(
+                        f"verification report changed while reading: {display_path}"
+                    )
+            finally:
+                os.close(descriptor)
+            relative_path = (relative_directory / name).as_posix()
+            reports.append(RawReport(relative_path, raw))
+        return reports
+    finally:
+        os.close(directory_descriptor)
+
+
+def _baseline_git(root: pathlib.Path, *args: str) -> bytes:
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+    try:
+        completed = subprocess.run(
+            ["git", "--no-replace-objects", *args],
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise BaselineGenerationError(f"git unavailable: {exc}") from exc
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="backslashreplace").strip()
+        raise BaselineGenerationError(f"git command failed: {detail}")
+    return completed.stdout
+
+
+def _git_common_directory(root: pathlib.Path) -> pathlib.Path:
+    raw = _baseline_git(
+        root,
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-common-dir",
+    )
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise BaselineGenerationError("Git common directory is not UTF-8") from exc
+    if not text.endswith("\n") or "\n" in text[:-1] or "\x00" in text:
+        raise BaselineGenerationError("Git common directory output is malformed")
+    common = pathlib.Path(text[:-1])
+    if not common.is_absolute():
+        raise BaselineGenerationError("Git common directory is not absolute")
+    try:
+        resolved = common.resolve(strict=True)
+        identity = os.stat(resolved, follow_symlinks=False)
+    except OSError as exc:
+        raise BaselineGenerationError(
+            f"Git common directory is unavailable: {exc}"
+        ) from exc
+    if not stat.S_ISDIR(identity.st_mode):
+        raise BaselineGenerationError("Git common directory is not a directory")
+    return resolved
+
+
+def _validate_generation_lock(
+    descriptor: int,
+    lock_path: pathlib.Path,
+) -> os.stat_result:
+    try:
+        opened = os.fstat(descriptor)
+        current = os.stat(lock_path, follow_symlinks=False)
+    except OSError as exc:
+        raise BaselineGenerationError(
+            f"unsafe baseline generation lock: {exc}"
+        ) from exc
+    required_uid = os.geteuid()
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or opened.st_uid != required_uid
+        or opened.st_nlink != 1
+        or stat.S_IMODE(opened.st_mode) != 0o600
+        or not stat.S_ISREG(current.st_mode)
+        or current.st_uid != required_uid
+        or current.st_nlink != 1
+        or stat.S_IMODE(current.st_mode) != 0o600
+        or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+    ):
+        raise BaselineGenerationError(
+            "unsafe baseline generation lock: expected stable mode-0600 "
+            "current-uid one-link regular file"
+        )
+    return opened
+
+
+@contextmanager
+def _baseline_generation_lock(root: pathlib.Path) -> Iterator[None]:
+    common = _git_common_directory(root)
+    lock_path = common / _BASELINE_LOCK_NAME
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise BaselineGenerationError(
+            "unsafe baseline generation lock: O_NOFOLLOW is unavailable"
+        )
+    flags = os.O_RDWR | nofollow | getattr(os, "O_CLOEXEC", 0)
+    created = False
+    try:
+        descriptor = os.open(lock_path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+        created = True
+    except FileExistsError:
+        try:
+            descriptor = os.open(lock_path, flags)
+        except OSError as exc:
+            raise BaselineGenerationError(
+                f"unsafe baseline generation lock: {exc}"
+            ) from exc
+    except OSError as exc:
+        raise BaselineGenerationError(
+            f"unsafe baseline generation lock: {exc}"
+        ) from exc
+    try:
+        if created:
+            try:
+                os.fchmod(descriptor, 0o600)
+                os.fsync(descriptor)
+                _fsync_directory(common)
+            except OSError as exc:
+                raise BaselineGenerationError(
+                    f"unsafe baseline generation lock: {exc}"
+                ) from exc
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        _validate_generation_lock(descriptor, lock_path)
+        try:
+            yield
+        except BaseException:
+            raise
+        else:
+            _validate_generation_lock(descriptor, lock_path)
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
+
+def _tracked_head_reports(root: pathlib.Path) -> list[RawReport]:
+    top = _baseline_git(root, "rev-parse", "--show-toplevel")
+    try:
+        top_path = pathlib.Path(top.decode("utf-8").strip()).resolve()
+    except UnicodeDecodeError as exc:
+        raise BaselineGenerationError("Git root is not UTF-8") from exc
+    if top_path != root.resolve():
+        raise BaselineGenerationError("root must be the Git worktree root")
+    raw_head = _baseline_git(root, "rev-parse", "--verify", "HEAD^{commit}")
+    try:
+        head = raw_head.decode("ascii").strip()
+    except UnicodeDecodeError as exc:
+        raise BaselineGenerationError("resolved HEAD is not ASCII") from exc
+    if re.fullmatch(r"[0-9a-f]{40}", head) is None:
+        raise BaselineGenerationError("resolved HEAD is not one full lowercase commit SHA")
+    raw_paths = _baseline_git(
+        root,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--name-only",
+        head,
+        "--",
+        "coordination/mailbox/sent",
+    )
+    if raw_paths and not raw_paths.endswith(b"\x00"):
+        raise BaselineGenerationError("NUL-delimited Git path stream is truncated")
+    reports: list[RawReport] = []
+    for raw_path in raw_paths.split(b"\x00")[:-1]:
+        try:
+            path = raw_path.decode("utf-8")
+            normalized = receipts.normalize_repo_path(path)
+        except (UnicodeDecodeError, receipts.ReceiptContractError) as exc:
+            raise BaselineGenerationError(f"invalid tracked report path: {raw_path!r}") from exc
+        pure = pathlib.PurePosixPath(normalized)
+        if (
+            pure.parent.as_posix() != "coordination/mailbox/sent"
+            or not pure.name.endswith("-verification-report.md")
+        ):
+            continue
+        blob = _baseline_git(root, "show", f"{head}:{normalized}")
+        reports.append(RawReport(normalized, blob))
+    return sorted(reports, key=lambda item: item.relative_path)
+
+
+def _baseline_mapping(reports: list[RawReport]) -> dict[str, object]:
+    return {
+        "schema_version": report_gate.LEGACY_MANIFEST_SCHEMA_VERSION,
+        "reports": [
+            {
+                "path": report.relative_path,
+                "sha256": hashlib.sha256(report.raw).hexdigest(),
+            }
+            for report in reports
+        ],
+    }
+
+
+def _baseline_bytes(manifest: Mapping[str, object]) -> bytes:
+    return (
+        json.dumps(
+            manifest,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def _validated_baseline_manifest(raw: bytes) -> Mapping[str, object]:
+    try:
+        value = receipts.strict_json_loads(raw)
+    except receipts.ReceiptContractError as exc:
+        raise BaselineGenerationError(f"valid existing manifest required: {exc}") from exc
+    paths: list[str] = []
+    if isinstance(value, Mapping) and isinstance(value.get("reports"), list):
+        for entry in value["reports"]:
+            if isinstance(entry, Mapping) and isinstance(entry.get("path"), str):
+                paths.append(entry["path"])
+    manifest_violations = report_gate.legacy_manifest_violations(value, paths)
+    if manifest_violations:
+        raise BaselineGenerationError(
+            "valid existing manifest required: " + "; ".join(manifest_violations)
+        )
+    assert isinstance(value, Mapping)
+    return value
+
+
+def _nofollow_read_flags() -> int:
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise BaselineGenerationError("safe O_NOFOLLOW open is unavailable")
+    return os.O_RDONLY | nofollow | getattr(os, "O_CLOEXEC", 0)
+
+
+def _regular_manifest_stat(
+    descriptor: int, *, error_prefix: str
+) -> os.stat_result:
+    try:
+        identity = os.fstat(descriptor)
+    except OSError as exc:
+        raise BaselineGenerationError(f"{error_prefix}: {exc}") from exc
+    if not stat.S_ISREG(identity.st_mode) or identity.st_nlink != 1:
+        raise BaselineGenerationError(
+            f"{error_prefix}: expected one-link regular file"
+        )
+    if identity.st_size > _BASELINE_MAX_BYTES:
+        raise BaselineGenerationError(
+            f"{error_prefix}: manifest exceeds {_BASELINE_MAX_BYTES} bytes"
+        )
+    return identity
+
+
+def _require_manifest_path_identity(
+    target: pathlib.Path,
+    opened: os.stat_result,
+    *,
+    error: str,
+) -> None:
+    try:
+        current = os.stat(target, follow_symlinks=False)
+    except OSError as exc:
+        raise BaselineGenerationError(f"{error}: {exc}") from exc
+    if (
+        not stat.S_ISREG(current.st_mode)
+        or current.st_nlink != 1
+        or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+    ):
+        raise BaselineGenerationError(error)
+
+
+def _read_manifest_fd(
+    descriptor: int, opened: os.stat_result, *, error: str
+) -> bytes:
+    try:
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        raw = os.read(descriptor, opened.st_size + 1)
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise BaselineGenerationError(f"{error}: {exc}") from exc
+    if (
+        len(raw) != opened.st_size
+        or (after.st_dev, after.st_ino, after.st_size)
+        != (opened.st_dev, opened.st_ino, opened.st_size)
+    ):
+        raise BaselineGenerationError(error)
+    return raw
+
+
+def load_baseline_manifest(path: pathlib.Path = DEFAULT_MANIFEST) -> Mapping[str, object]:
+    try:
+        descriptor = os.open(path, _nofollow_read_flags())
+    except (OSError, BaselineGenerationError) as exc:
+        raise BaselineGenerationError(
+            f"valid existing manifest required: {exc}"
+        ) from exc
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_SH)
+        opened = _regular_manifest_stat(
+            descriptor, error_prefix="valid existing manifest required"
+        )
+        _require_manifest_path_identity(
+            path,
+            opened,
+            error="valid existing manifest required: target identity changed",
+        )
+        raw = _read_manifest_fd(
+            descriptor,
+            opened,
+            error="valid existing manifest required: target changed while reading",
+        )
+        _require_manifest_path_identity(
+            path,
+            opened,
+            error="valid existing manifest required: target identity changed",
+        )
+        return _validated_baseline_manifest(raw)
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
+
+def _fsync_directory(directory: pathlib.Path) -> None:
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _durable_publish_manifest(
+    target: pathlib.Path, raw: bytes
+) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", dir=target.parent
+    )
+    temporary = pathlib.Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, target)
+        except FileExistsError as exc:
+            raise BaselineGenerationError(
+                f"baseline target already exists: {target}"
+            ) from exc
+        temporary.unlink()
+        _fsync_directory(target.parent)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _replace_manifest_locked(
+    target: pathlib.Path,
+    raw: bytes,
+    generated_paths: set[str],
+) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(target, _nofollow_read_flags())
+    except (OSError, BaselineGenerationError) as exc:
+        raise BaselineGenerationError(f"unsafe baseline target: {exc}") from exc
+    temporary: pathlib.Path | None = None
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        opened = _regular_manifest_stat(
+            descriptor, error_prefix="unsafe baseline target"
+        )
+        _require_manifest_path_identity(
+            target,
+            opened,
+            error="baseline target changed during replacement",
+        )
+        existing_raw = _read_manifest_fd(
+            descriptor,
+            opened,
+            error="baseline target changed during replacement",
+        )
+        existing = _validated_baseline_manifest(existing_raw)
+        existing_paths = {
+            entry["path"] for entry in existing["reports"]  # type: ignore[index]
+        }
+        if existing_paths != generated_paths:
+            raise BaselineGenerationError(
+                "replacement must preserve the exact reviewed path set"
+            )
+
+        temporary_descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{target.name}.", dir=target.parent
+        )
+        temporary = pathlib.Path(temporary_name)
+        with os.fdopen(temporary_descriptor, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        _require_manifest_path_identity(
+            target,
+            opened,
+            error="baseline target changed during replacement",
+        )
+        os.replace(temporary, target)
+        temporary = None
+        _fsync_directory(target.parent)
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
+
+def generate_baseline(
+    root: pathlib.Path,
+    target: pathlib.Path,
+    *,
+    replace: bool = False,
+) -> Mapping[str, object]:
+    """Generate the tracked-HEAD historical manifest with durable publication."""
+
+    resolved_root = root.resolve()
+    with _baseline_generation_lock(resolved_root):
+        reports = _tracked_head_reports(resolved_root)
+        manifest = _baseline_mapping(reports)
+        manifest_violations = report_gate.legacy_manifest_violations(
+            manifest, [report.relative_path for report in reports]
+        )
+        if manifest_violations:
+            raise BaselineGenerationError(
+                "invalid generated manifest: " + "; ".join(manifest_violations)
+            )
+        raw = _baseline_bytes(manifest)
+        if replace:
+            generated_paths = {
+                entry["path"] for entry in manifest["reports"]  # type: ignore[index]
+            }
+            _replace_manifest_locked(target, raw, generated_paths)
+        else:
+            _durable_publish_manifest(target, raw)
+        return manifest
+
+
 def _scan_dir(directory: pathlib.Path) -> list[tuple[str, str]]:
     """Read all *-verification-report.md files from `directory`.
 
@@ -149,48 +762,71 @@ def _scan_dir(directory: pathlib.Path) -> list[tuple[str, str]]:
         return []
     pairs: list[tuple[str, str]] = []
     for path in sorted(directory.glob("*-verification-report.md")):
-        try:
-            body = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:  # pragma: no cover — defensive
-            continue
+        body = path.read_bytes().decode("utf-8")
         pairs.append((path.name, body))
     return pairs
 
 
-def main() -> int:
-    # CLI: optional directory argument.
-    if len(sys.argv) > 2:
-        print(f"usage: {sys.argv[0]} [<dir>]", file=sys.stderr)
-        return 1
-    scan_dir = pathlib.Path(sys.argv[1]) if len(sys.argv) == 2 else DEFAULT_MAILBOX
-
-    named_reports = _scan_dir(scan_dir)
-    if not named_reports:
-        print("GO-SCHEMA CHECK — no verification-report events found (vacuous pass).")
-        return 0
-
-    violations = go_report_violations(named_reports)
-    total_go = sum(
-        1 for _, body in named_reports if _VERDICT_GO_RE.search(body)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="check_go_schema.py",
+        description="Validate repository Lane V reports or generate the reviewed baseline.",
     )
+    parser.add_argument("directory", nargs="?")
+    parser.add_argument("--generate-baseline", type=pathlib.Path)
+    parser.add_argument("--replace-baseline", action="store_true")
+    arguments = parser.parse_args(argv)
+    if arguments.replace_baseline and arguments.generate_baseline is None:
+        print(
+            "GO-SCHEMA CHECK — FAIL: --replace-baseline requires --generate-baseline",
+            file=sys.stderr,
+        )
+        return 1
+    if arguments.generate_baseline is not None and arguments.directory is not None:
+        print(
+            "GO-SCHEMA CHECK — FAIL: directory cannot be combined with baseline generation",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        if arguments.generate_baseline is not None:
+            target = arguments.generate_baseline
+            if not target.is_absolute():
+                target = ROOT / target
+            manifest = generate_baseline(
+                ROOT,
+                target,
+                replace=arguments.replace_baseline,
+            )
+            manifest_digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            print(
+                "GO-SCHEMA BASELINE — PASS: "
+                f"{len(manifest['reports'])} report(s); sha256:{manifest_digest}"
+            )
+            return 0
+
+        scan_dir = (
+            pathlib.Path(arguments.directory)
+            if arguments.directory is not None
+            else DEFAULT_MAILBOX
+        )
+        reports = scan_repository_reports(ROOT, scan_dir)
+        manifest = load_baseline_manifest(DEFAULT_MANIFEST)
+        violations = repository_report_violations(ROOT, reports, manifest)
+    except (BaselineGenerationError, OSError, UnicodeError) as exc:
+        print(f"GO-SCHEMA CHECK — FAIL: {exc}")
+        return 1
     if violations:
         print(
-            f"GO-SCHEMA CHECK — FAIL: {len(violations)} violation(s) "
-            f"in {total_go} GO report(s)\n"
+            f"GO-SCHEMA CHECK — FAIL: {len(violations)} violation(s)\n"
         )
         for v in violations:
             print(f"  ! {v}")
         return 1
-
-    if total_go:
-        print(
-            f"GO-SCHEMA CHECK — PASS: {total_go} GO report(s) carry complete evidence."
-        )
-    else:
-        print(
-            f"GO-SCHEMA CHECK — PASS: {len(named_reports)} verification-report(s) found, "
-            "none are GO verdicts (NITS/FAIL not gated)."
-        )
+    print(
+        "GO-SCHEMA CHECK — PASS: "
+        f"{len(reports)} verification-report(s) passed legacy/v2 and GO evidence gates."
+    )
     return 0
 
 
