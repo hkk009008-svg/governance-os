@@ -60,6 +60,21 @@ INVALID_TRIGGER_FRAGMENTS = (
     "do not reconstruct missing fields",
     "do not fall back to the other trigger kind",
 )
+PIPELINE_ONLY_EXECUTION_BOUNDARY_FRAGMENTS = (
+    "descriptor and trigger grammar is Pipeline-only",
+    "return to the coordinator",
+    "separate evidence-ledger-aware bridge route",
+    "never fabricate Pipeline descriptor authority",
+)
+TASK8_TRIGGER_FRAGMENT_CATEGORIES = (
+    ("lawful verify-request production", VERIFY_REQUEST_TRIGGER_FRAGMENTS),
+    ("lawful shipping production", SHIPPING_TRIGGER_FRAGMENTS),
+    ("invalid-trigger fail-closed", INVALID_TRIGGER_FRAGMENTS),
+    (
+        "Pipeline-only execution boundary",
+        PIPELINE_ONLY_EXECUTION_BOUNDARY_FRAGMENTS,
+    ),
+)
 
 
 def _acceptance_backed_default(text: str | None = None) -> str:
@@ -1419,6 +1434,22 @@ def test_lane_v_trigger_consumer_contract_is_surface_synced() -> None:
             assert fragment in text, (path, fragment)
 
 
+def test_lane_v_trigger_renderers_include_every_task8_contract_category() -> None:
+    rendered_outputs = (
+        ("render_pair_operating_contract", model.render_pair_operating_contract()),
+        (
+            "render_cross_model_verification",
+            model.render_cross_model_verification(),
+        ),
+    )
+
+    for renderer_name, rendered in rendered_outputs:
+        text = _compact(rendered.replace("`", ""))
+        for category, fragments in TASK8_TRIGGER_FRAGMENT_CATEGORIES:
+            for fragment in fragments:
+                assert fragment in text, (renderer_name, category, fragment)
+
+
 def test_lane_v_active_surfaces_remove_commit_only_and_prose_only_substitutes() -> None:
     rendered_pair = model.render_pair_operating_contract()
     rendered_cross_model = model.render_cross_model_verification()
@@ -1519,12 +1550,7 @@ def test_lane_v_trigger_guidance_pins_bridge_forms_and_pipeline_boundary() -> No
     )
     for path in pipeline_boundary_paths:
         text = _trigger_contract_text(path)
-        for fragment in (
-            "descriptor and trigger grammar is Pipeline-only",
-            "return to the coordinator",
-            "separate evidence-ledger-aware bridge route",
-            "never fabricate Pipeline descriptor authority",
-        ):
+        for fragment in PIPELINE_ONLY_EXECUTION_BOUNDARY_FRAGMENTS:
             assert fragment in text, (path, fragment)
 
     agent_report = ROOT / ".agents/skills/seat-operator/verification-report-format.md"

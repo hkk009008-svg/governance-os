@@ -641,10 +641,10 @@ def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
         )
 
     malformed_values = dict(malformed_fields)
+    _, malformed_commit, malformed_path = malformed_values[
+        "Trigger identity"
+    ].split(":", 2)
     if malformation in {"stale-commit", "misplaced-event"}:
-        _, malformed_commit, malformed_path = malformed_values[
-            "Trigger identity"
-        ].split(":", 2)
         assert _git_object_exists(root, f"{malformed_commit}:{malformed_path}")
         assert _git(
             root, "rev-parse", f"{malformed_commit}:{malformed_path}"
@@ -658,13 +658,47 @@ def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
         )
         assert _git(root, "rev-parse", f"{malformed_commit}^") == expected_parent
 
+    expected_reason, expected_detail = {
+        "missing-field": (
+            "invalid_verify_request",
+            "committed verify-request requires one exact Lane-V-Scope",
+        ),
+        "duplicate-field": (
+            "invalid_verify_request",
+            "committed verify-request requires one exact Event type",
+        ),
+        "short-sha": (
+            "invalid_verify_request",
+            "Reviewed head does not agree",
+        ),
+        "uppercase-sha": (
+            "invalid_verify_request",
+            "Reviewed base does not agree",
+        ),
+        "stale-commit": (
+            "invalid_structural_authority",
+            "verify-request trigger commit must be an ancestor",
+        ),
+        "uncommitted-event": (
+            "invalid_structural_authority",
+            "committed verify-request is missing at "
+            f"{malformed_commit}:{malformed_path}",
+        ),
+        "misplaced-event": (
+            "invalid_verify_request",
+            "verify-request must be a sent mailbox event",
+        ),
+        "mismatched-scope": (
+            "invalid_verify_request",
+            "Scope authority does not agree",
+        ),
+    }[malformation]
     with pytest.raises(gate.ReportGateError) as rejection:
         _validate_structural_fixture(root, malformed_fields, report_path)
+    assert rejection.value.reason == expected_reason
+    assert rejection.value.detail == expected_detail
 
     if malformation == "stale-commit":
-        assert rejection.value.detail == (
-            "verify-request trigger commit must be an ancestor"
-        )
         require_strict_ancestor = gate._require_strict_ancestor
 
         def bypass_trigger_temporal_guard(
@@ -685,9 +719,6 @@ def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
             )
         assert unguarded.trigger_commit == malformed_commit
         assert unguarded.trigger_path == malformed_path
-    elif malformation == "misplaced-event":
-        assert rejection.value.reason == "invalid_verify_request"
-        assert rejection.value.detail == "verify-request must be a sent mailbox event"
 
     lawful = _validate_structural_fixture(root, lawful_fields, report_path)
     assert lawful.trigger_kind == "verify-request"
@@ -708,10 +739,13 @@ def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
     ),
 )
 def test_shipping_authority_rejections_flip_to_one_lawful_trigger(
-    tmp_path: Path, mode: str, malformation: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    malformation: str,
 ) -> None:
     recipient = "operator" if mode == "codex-lane-v" else "operator2"
-    root, lawful_fields, report_path, head, base = _authority_fixture(
+    root, lawful_fields, report_path, head, _ = _authority_fixture(
         tmp_path / "repo",
         mode=mode,
         trigger_kind="shipping-commit",
@@ -721,8 +755,21 @@ def test_shipping_authority_rejections_flip_to_one_lawful_trigger(
     malformed_fields = lawful_fields
 
     if malformation == "stale-commit":
+        _git(
+            root,
+            "commit",
+            "--allow-empty",
+            "-q",
+            "-m",
+            "fix: alternate reviewed change",
+            "-m",
+            f"Lane-V-Scope: {scope_authority}",
+        )
+        stale_commit = _git(root, "rev-parse", "HEAD")
         malformed_fields = _replace_field(
-            lawful_fields, "Trigger identity", f"shipping-commit:{base}"
+            lawful_fields,
+            "Trigger identity",
+            f"shipping-commit:{stale_commit}",
         )
     else:
         subject = (
@@ -765,8 +812,66 @@ def test_shipping_authority_rejections_flip_to_one_lawful_trigger(
             f"shipping-commit:{malformed_head}",
         )
 
-    with pytest.raises(gate.ReportGateError):
+    expected_reason, expected_detail = {
+        "missing-trailer": (
+            "invalid_shipping_trigger",
+            "shipping commit requires the report's exact Lane-V-Scope trailer",
+        ),
+        "duplicate-trailer": (
+            "invalid_shipping_trigger",
+            "shipping commit requires the report's exact Lane-V-Scope trailer",
+        ),
+        "body-only": (
+            "invalid_shipping_trigger",
+            "shipping commit requires the report's exact Lane-V-Scope trailer",
+        ),
+        "non-terminal": (
+            "invalid_shipping_trigger",
+            "shipping commit requires the report's exact Lane-V-Scope trailer",
+        ),
+        "mismatched-trailer": (
+            "invalid_shipping_trigger",
+            "shipping commit requires the report's exact Lane-V-Scope trailer",
+        ),
+        "non-shipping-subject": (
+            "invalid_shipping_trigger",
+            "shipping subject must be feat, fix, or refactor",
+        ),
+        "stale-commit": (
+            "invalid_shipping_trigger",
+            "shipping trigger must equal Reviewed head",
+        ),
+    }[malformation]
+    with pytest.raises(gate.ReportGateError) as rejection:
         _validate_structural_fixture(root, malformed_fields, report_path)
+    assert rejection.value.reason == expected_reason
+    assert rejection.value.detail == expected_detail
+
+    if malformation == "stale-commit":
+        shipping_scope = gate._shipping_scope
+
+        def bypass_shipping_head_equality(
+            repo_root: Path,
+            report: gate.LaneVReport,
+            trigger_commit: str,
+        ) -> receipts.ScopeReference:
+            fields = MappingProxyType(
+                {**report.fields, "Reviewed head": trigger_commit}
+            )
+            return shipping_scope(
+                repo_root,
+                dataclasses.replace(report, fields=fields),
+                trigger_commit,
+            )
+
+        with monkeypatch.context() as head_equality:
+            head_equality.setattr(
+                gate, "_shipping_scope", bypass_shipping_head_equality
+            )
+            unguarded = _validate_structural_fixture(
+                root, malformed_fields, report_path
+            )
+        assert unguarded.trigger_commit == stale_commit
 
     lawful = _validate_structural_fixture(root, lawful_fields, report_path)
     assert lawful.trigger_kind == "shipping-commit"
