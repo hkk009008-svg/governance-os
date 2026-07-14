@@ -95,23 +95,53 @@ Codex-native continuation details live in
 - `.codex/hooks.json` + `.codex/hooks/*.sh` — Codex lifecycle wrappers for the
   existing smoke, heartbeat/state, and git-index guard scripts.
 
-For a CLI live-seat Codex launch:
+For a local Codex seat launch, give each seat its own model and speed in
+`~/.codex/pipeline-seat-launcher.toml`:
+
+```toml
+[seats.director]
+model = "gpt-5.6-sol"
+service_tier = "default"
+
+[seats.director2]
+model = "gpt-5.6-sol"
+service_tier = "fast"
+
+[seats.operator]
+model = "gpt-5.6-sol"
+service_tier = "default"
+
+[seats.operator2]
+model = "gpt-5.6-sol"
+service_tier = "default"
+
+[seats.coordinator]
+model = "gpt-5.6-sol"
+service_tier = "default"
+```
+
+Then launch only the selected seat:
 
 ```bash
-cd /Users/hyungkoookkim/Pipeline
-export CODEX_SEAT=<director|director2|operator|operator2>
-CODEX_GIT_DIR="$(env -u GIT_INDEX_FILE git rev-parse --absolute-git-dir)"
-export GIT_INDEX_FILE="$CODEX_GIT_DIR/index-codex-$CODEX_SEAT"
-[ -f "$GIT_INDEX_FILE" ] || env -u GIT_INDEX_FILE git read-tree --index-output="$GIT_INDEX_FILE" HEAD
-codex
+coordination/bin/codex-seat director
+coordination/bin/codex-seat director2
+```
+
+Each table is independent. Changing one table does not change another seat.
+`service_tier` accepts `fast` or `default`. Arguments after `--`, including a
+start prompt, pass to Codex unchanged:
+
+```bash
+coordination/bin/codex-seat operator -- "continue as operator"
+coordination/bin/codex-seat --dry-run operator
 ```
 
 Codex may require `/hooks` review/trust before repo-local hooks run. If a Codex
 thread is not launched with `CODEX_SEAT` and a per-seat index, keep it in
 readiness bridge mode unless the user explicitly accepts one-off seat work.
-Use the hook-safe `--index-output` seed above for missing Codex indexes; direct
-`git read-tree HEAD` under exported `GIT_INDEX_FILE` is blocked by the Codex
-git-index guard.
+The launcher creates a missing per-seat index with the hook-safe
+`--index-output` form and preserves an existing index. Direct `git read-tree
+HEAD` under exported `GIT_INDEX_FILE` is blocked by the Codex git-index guard.
 
 Codex live-seat mailbox consumption stages only
 `coordination/mailbox/seen/<seat>.txt` in the seat-local index. After consuming,
