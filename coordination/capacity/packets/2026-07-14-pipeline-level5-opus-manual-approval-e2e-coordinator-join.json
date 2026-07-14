@@ -1,0 +1,38 @@
+{
+  "id": "coord-pipeline-level5-opus-manual-approval-e2e-executor-join",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-manual-approval-e2e-2026-07-14",
+  "row_ids": [
+    "level5-wave1-opus-manual-approval-e2e-transport"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "allowed_paths": [
+    "logs/pipeline-level5-opus-manual-approval-e2e-acceptance-2026-07-14.json",
+    ".codex/runtime/opus-review-receipts/v1/",
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Treat b89a5a86a60e9954069caf35687f381d49b622fb as the route base. Preserve pipeline-level5-wave0-opus-attempt-2026-07-14, pipeline-level5-opus-existing-session-attempt-2026-07-14, pipeline-level5-opus-user-approved-attempt-2026-07-14, and pipeline-level5-opus-coordinator-e2e-attempt-2026-07-14 as terminal identities that may not be retried, resumed, replayed, or reused.",
+    "The user-principal first verified the manual approval channel with a harmless read-only escalation, then directly instructed the coordinator to try Opus end to end. Use only side_effect_id pipeline-level5-opus-manual-approval-e2e-attempt-2026-07-14, authorization source user-task:pipeline-level5-opus-manual-approval-e2e-2026-07-14, coordinator as sole executor, one launch request, zero retry, and zero fallback.",
+    "Before provider entry refresh coordinator mail, HEAD, capacity, route, locks, receipt state, forbidden environment-key names, Claude executable, bridge blobs, and the immutable review worktree. Require reviewed head 97c270f8f0e630fdaaded672e0da37ed32335de5, base 555041477bcdb9a432a1b238d664be0958c5c9ef, descriptor 2a876e95-3a87-4203-a613-1a29dd957b5b, and descriptor digest sha256:e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84.",
+    "Run the merged main bridge exactly once with review profile codex-lane-v, transport profile anthropic-claude-existing-session-v1, shipping commit 97c270f8f0e630fdaaded672e0da37ed32335de5, and authorization source user-task:pipeline-level5-opus-manual-approval-e2e-2026-07-14. The actual provider command requires a fresh manual approval. Enter no credentials; use no API, Chrome, manual relay, alternate provider, workaround, or transport fallback.",
+    "After any denial, process entry, ambiguity, timeout, unavailable result, uncertain state, receipt conflict, or normalized result, stop permanently with zero retry. Persist only content-free outcome metadata. A real bridge receipt permits one canonical coordinator-to-Operator2 verify-request; absence of a receipt parks the cycle without Operator2 authority."
+  ],
+  "done_evidence": [],
+  "next_recipient": "operator2",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
+  "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",
+  "scope_files": [
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json",
+    "logs/pipeline-level5-opus-manual-approval-e2e-acceptance-2026-07-14.json"
+  ]
+}

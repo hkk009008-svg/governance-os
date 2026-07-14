@@ -1,0 +1,26 @@
+{
+  "id": "director-pipeline-level5-opus-manual-approval-e2e-standby",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-manual-approval-e2e-2026-07-14",
+  "row_ids": [
+    "level5-wave1-opus-manual-approval-e2e-transport"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "director",
+  "packet_type": "idle",
+  "allowed_paths": [],
+  "dependencies": [],
+  "acceptance": [
+    "Pair A Director has no routed work in this coordinator-executed external transport cycle. Do not implement, verify, consume, route, invoke a provider, repeat the side effect, or reuse any terminal attempt identity."
+  ],
+  "done_evidence": [
+    "The user directly instructed the active coordinator to try Opus end to end. Director is excepted without changing earlier Pair-A evidence."
+  ],
+  "next_recipient": "coordinator",
+  "status": "excepted",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": []
+}
