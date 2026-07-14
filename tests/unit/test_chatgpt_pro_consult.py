@@ -1551,7 +1551,9 @@ def test_failure_fixture_matrix_covers_exact_seven_contract_cases(tmp_path):
     }
 
 
-def test_resume_manual_preserves_identity_and_hashes_without_new_record(tmp_path):
+def test_resume_manual_preserves_manual_identity_and_hashes_without_new_record(
+    tmp_path,
+):
     prepared = consult.prepare_request(valid_request())
     state_path = runtime_state_path(tmp_path)
     initial = consult.reserve_consultation(
@@ -1563,7 +1565,7 @@ def test_resume_manual_preserves_identity_and_hashes_without_new_record(tmp_path
         state_path,
         prepared.consultation_id,
         target="failed",
-        transport="iab",
+        transport="manual",
         failure_class="unavailable",
         now="2026-07-13T00:01:00Z",
     )
@@ -1823,11 +1825,11 @@ def test_accept_local_id_disambiguates_multiple_sent_records(tmp_path):
     assert records[second.consultation_id]["status"] == "sent"
 
 
-def test_consultation_mode_matches_artifact_gate_and_unknown_values_fail_closed():
+def test_consultation_mode_matches_auto_policy_and_unknown_values_fail_closed():
     assert consult.DEFAULT_STATE_PATH == Path(
         ".codex/runtime/chatgpt-pro-consultations.json"
     )
-    assert consult.consultation_mode({}) == acceptance_backed_default()
+    assert consult.consultation_mode({}) == "auto"
     assert (
         consult.consultation_mode({"CODEX_CHATGPT_PRO_CONSULTATION": "auto"})
         == "auto"
@@ -1838,8 +1840,14 @@ def test_consultation_mode_matches_artifact_gate_and_unknown_values_fail_closed(
     )
 
 
-def test_default_mode_is_auto_only_after_acceptance_gate():
-    assert consult.CHATGPT_PRO_CONSULTATION_DEFAULT == acceptance_backed_default()
+def test_default_consultation_mode_is_auto():
+    assert consult.CHATGPT_PRO_CONSULTATION_DEFAULT == "auto"
+    assert consult.consultation_mode({}) == "auto"
+
+
+def test_runtime_default_is_auto_while_historical_acceptance_stays_blocked():
+    assert consult.CHATGPT_PRO_CONSULTATION_DEFAULT == "auto"
+    assert acceptance_backed_default() == "manual"
 
 
 def test_acceptance_gate_summary_cannot_override_failed_transport_row():
@@ -1917,9 +1925,9 @@ def test_valid_evidence_resolver_does_not_mutate_explicit_runtime_default():
         model.validate_chatgpt_pro_activation_evidence(evidence, repo_root=ROOT)
         == "auto"
     )
-    assert model.CHATGPT_PRO_CONSULTATION_DEFAULT == "manual"
-    assert consult.consultation_mode({}) == "manual"
-    assert model.infer_runtime_env({})["CODEX_CHATGPT_PRO_CONSULTATION"] == "manual"
+    assert model.CHATGPT_PRO_CONSULTATION_DEFAULT == "auto"
+    assert consult.consultation_mode({}) == "auto"
+    assert model.infer_runtime_env({})["CODEX_CHATGPT_PRO_CONSULTATION"] == "auto"
 
 
 def test_future_auto_requires_manual_and_failure_fixture_terminal_passes():
@@ -2268,6 +2276,117 @@ def test_cli_manual_rejects_browser_sending_transition(tmp_path):
     assert state["consultations"][0]["status"] == "prepared"
 
 
+@pytest.mark.parametrize("transport", ["chrome", "manual"])
+def test_cli_auto_rejects_non_iab_sending_transition_before_state_change(
+    tmp_path,
+    transport,
+):
+    state_path = runtime_state_path(tmp_path)
+    prepared_result = run_cli(
+        tmp_path,
+        ["prepare", "--state-file", str(state_path)],
+        payload=valid_request(),
+        mode="auto",
+    )
+    prepared = json.loads(prepared_result.stdout)
+
+    result = run_cli(
+        tmp_path,
+        [
+            "transition",
+            "--state-file",
+            str(state_path),
+            "--consultation-id",
+            prepared["consultation_id"],
+            "--to",
+            "sending",
+            "--transport",
+            transport,
+        ],
+        mode="auto",
+    )
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert json.loads(result.stderr) == {
+        "error": "transport_not_allowed",
+        "status": "error",
+    }
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["consultations"][0]["status"] == "prepared"
+    assert state["consultations"][0]["transport"] is None
+
+
+def test_cli_auto_rejects_manual_resume_without_mutating_failed_record(tmp_path):
+    prepared = consult.prepare_request(valid_request())
+    state_path = runtime_state_path(tmp_path)
+    consult.reserve_consultation(state_path, prepared, now="2026-07-13T00:00:00Z")
+    failed = consult.transition_consultation(
+        state_path,
+        prepared.consultation_id,
+        target="failed",
+        transport="iab",
+        failure_class="unavailable",
+        now="2026-07-13T00:01:00Z",
+    )
+
+    result = run_cli(
+        tmp_path,
+        [
+            "resume-manual",
+            "--state-file",
+            str(state_path),
+            "--consultation-id",
+            prepared.consultation_id,
+        ],
+        mode="auto",
+    )
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert json.loads(result.stderr) == {
+        "error": "transport_not_allowed",
+        "status": "error",
+    }
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["consultations"] == [failed]
+
+
+def test_cli_manual_mode_cannot_resume_failed_iab_provenance(tmp_path):
+    prepared = consult.prepare_request(valid_request())
+    state_path = runtime_state_path(tmp_path)
+    consult.reserve_consultation(state_path, prepared, now="2026-07-13T00:00:00Z")
+    failed = consult.transition_consultation(
+        state_path,
+        prepared.consultation_id,
+        target="failed",
+        transport="iab",
+        failure_class="unavailable",
+        now="2026-07-13T00:01:00Z",
+    )
+
+    result = run_cli(
+        tmp_path,
+        [
+            "resume-manual",
+            "--state-file",
+            str(state_path),
+            "--consultation-id",
+            prepared.consultation_id,
+        ],
+        mode="manual",
+    )
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert json.loads(result.stderr) == {
+        "error": "consultation_rejected",
+        "status": "error",
+    }
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["consultations"] == [failed]
+
+
 def test_cli_accept_reads_response_wrapper_only_from_stdin(tmp_path):
     prepared = consult.prepare_request(valid_request())
     state_path = runtime_state_path(tmp_path)
@@ -2387,7 +2506,7 @@ def test_cli_resume_manual_is_only_failed_to_prepared_path(tmp_path):
         state_path,
         prepared.consultation_id,
         target="failed",
-        transport="iab",
+        transport="manual",
         failure_class="unavailable",
         now="2026-07-13T00:01:00Z",
     )

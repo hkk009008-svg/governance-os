@@ -144,6 +144,10 @@
     {
       "path": "coordination/mailbox/sent/2026-07-13T04-43-31Z-operator-to-all-verification-report.md",
       "sha256": "6667c4a28c85ce5b9c12c418f0e8af286154f5c3f9884883a35825327d808960"
+    },
+    {
+      "path": "coordination/mailbox/sent/2026-07-13T08-03-23Z-operator-to-all-verification-report.md",
+      "sha256": "befec33c46550c2b52cb2db54dbd4a291b53a7279499c559c730eb021e9a248c"
     }
   ]
 }

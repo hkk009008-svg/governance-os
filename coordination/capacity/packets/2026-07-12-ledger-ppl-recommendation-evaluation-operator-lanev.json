@@ -26,13 +26,16 @@
     "Verify no business data or runtime authority is tracked, no live recommendation path exists, and the current-data step either stops at AUTHORITY_BUNDLE_REQUIRED or uses an exactly bound reviewed local bundle without disclosing business values.",
     "Issue exactly one Pipeline verification-report GO, NITS, or FAIL bound to the reviewed range. Do not repair code, consume mail, mutate target data/resources, activate advice, push, lock, spend, or broaden scope."
   ],
-  "done_evidence": [],
-  "handoff_artifact": null,
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-13T04-43-31Z-operator-to-all-verification-report.md reports VERDICT: FAIL for 6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa..e7cf287b6bfd1a5481647d05e05bf01effcf8911. Three IMPORTANT findings prove inherited Git repository selection, case-alias output collision, and validated-parent replacement can bypass the claimed output fence; one MINOR finding requires fixing or narrowing the renderer no-link guarantee.",
+    "coordination/mailbox/sent/2026-07-13T08-03-23Z-operator-to-all-verification-report.md reports VERDICT: FAIL for 6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa..8eaed44f803d871f09135c5d89395d38cf9e939e. Three IMPORTANT findings prove post-open parent relocation, late temp substitution before replace, and late cleanup substitution before unlink still violate the claimed publication and no-foreign-delete guarantees; the prior inherited-GIT_*, case/normalization-alias, and renderer findings are corrected for the exercised sequences."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-13T08-03-23Z-operator-to-all-verification-report.md",
   "next_recipient": "coordinator",
-  "status": "active",
-  "verify_request": "coordination/mailbox/sent/2026-07-13T00-16-59Z-director-to-operator-verify-request.md",
-  "target_commit": "e7cf287b6bfd1a5481647d05e05bf01effcf8911",
-  "commit_range": "6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa..e7cf287b6bfd1a5481647d05e05bf01effcf8911",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-13T07-43-30Z-director-to-operator-verify-request.md",
+  "target_commit": "8eaed44f803d871f09135c5d89395d38cf9e939e",
+  "commit_range": "6941cb1eb5167da0b50d21cbf0e93ceff62cb1fa..8eaed44f803d871f09135c5d89395d38cf9e939e",
   "scope_files": [
     "docs/superpowers/plans/2026-07-12-ppl-recommendation-evaluation-foundation.md",
     "recommendation/",

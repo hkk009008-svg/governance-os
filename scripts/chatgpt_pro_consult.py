@@ -1222,7 +1222,7 @@ def resume_manual(
     *,
     now: str | None = None,
 ) -> dict[str, object]:
-    """Explicitly resume the same failed record as a manual relay."""
+    """Resume the same failed manual-origin record."""
     explicit_timestamp = now is not None
     timestamp = _operation_timestamp(now)
     with _exclusive_state_lock(state_path) as (locked_path, parent_descriptor):
@@ -1230,6 +1230,8 @@ def resume_manual(
         record = _find_record(state, consultation_id)
         if record["status"] != "failed":
             raise ConsultationError("only a failed consultation can resume manually")
+        if record["transport"] != "manual":
+            raise ConsultationError("only a manual consultation can resume manually")
         if not explicit_timestamp:
             timestamp = max(timestamp, record["updated_at"])
         if timestamp < record["updated_at"]:
@@ -1319,7 +1321,7 @@ class _CLIError(Exception):
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = _SafeArgumentParser(description="Guarded ChatGPT Pro manual relay")
+    parser = _SafeArgumentParser(description="Guarded ChatGPT Pro consultation")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     prepare = subparsers.add_parser("prepare")
@@ -1384,6 +1386,8 @@ def main(argv: list[str] | None = None) -> int:
         elif arguments.command == "transition":
             if mode == "manual" and arguments.transport != "manual":
                 raise _CLIError("transport_not_allowed")
+            if mode == "auto" and arguments.transport != "iab":
+                raise _CLIError("transport_not_allowed")
             result = transition_consultation(
                 arguments.state_file,
                 arguments.consultation_id,
@@ -1394,6 +1398,8 @@ def main(argv: list[str] | None = None) -> int:
         elif arguments.command == "accept":
             result = accept_response(arguments.state_file, json.load(sys.stdin))
         elif arguments.command == "resume-manual":
+            if mode != "manual":
+                raise _CLIError("transport_not_allowed")
             result = resume_manual(
                 arguments.state_file,
                 arguments.consultation_id,

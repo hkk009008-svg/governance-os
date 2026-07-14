@@ -420,11 +420,11 @@ def test_main_exits_0_on_empty_sent_dir(tmp_path: pathlib.Path):
 # ---------------------------------------------------------------------------
 
 def test_main_on_live_mailbox():
-    """The real 36-report corpus is exactly baseline-backed and exits cleanly."""
+    """The real 37-report corpus is exactly baseline-backed and exits cleanly."""
     reports = cgs.scan_repository_reports(cgs.ROOT)
     manifest = cgs.load_baseline_manifest(cgs.DEFAULT_MANIFEST)
-    assert len(reports) == 36
-    assert len(manifest["reports"]) == 36
+    assert len(reports) == 37
+    assert len(manifest["reports"]) == 37
     assert cgs.repository_report_violations(cgs.ROOT, reports, manifest) == []
     import sys
 

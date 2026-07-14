@@ -29,10 +29,14 @@
     "Close only when capacity board, route validation, protocol doctor, target smoke, document gates, whole-slice tests, replay/mutation evidence, and all-seat visibility pass without any product activation or business-data disclosure.",
     "Do not edit evidence-ledger product files as coordinator. Do not infer an authority bundle, activate advice, mutate canonical data/resources, clean quarantined databases, or authorize publication."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "FAIL: coordination/mailbox/sent/2026-07-13T04-43-31Z-operator-to-all-verification-report.md binds the exact ratified range and blocks join on three IMPORTANT CLI output-fence defects plus one MINOR renderer guarantee defect. The bounded exception grants no future Codex target commit authority; correction requires an authorized non-Codex controller and a fresh cumulative Operator verdict.",
+    "FAIL: coordination/mailbox/sent/2026-07-13T08-03-23Z-operator-to-all-verification-report.md binds corrected candidate 8eaed44f803d871f09135c5d89395d38cf9e939e and keeps the join blocked on three IMPORTANT publication races: post-open parent relocation can cross the ignored/tracked fence, post-check/pre-replace temp substitution can publish foreign bytes before detection, and post-check/pre-unlink cleanup substitution can delete a foreign inode. A bounded non-Codex Director correction must add strict non-vacuous regressions for all three races and receive a fresh cumulative Operator verdict.",
+    "HOLD: coordination/mailbox/sent/2026-07-13T11-38-14Z-coordinator-to-all-coordination.md supersedes the standalone non-Codex Director trigger after the user clarified that non-Codex capability is to be used through the bounded Opus review bridge. Guarded advisory consultation 2a860e88-f5d6-4179-92de-16dd141a6682 supports the hold but grants no authority. The current receipt-hardening branch is Pipeline-only and unfinished at 5092b4d5e1ee7dd028caa60abf3a19aa78add48d; its inherited trusted provider prompt still assigns operator-seat, verdict, and lock-release language, while the current Task 7 plan does not include the loaded prompt or its required advisory-only regression. The PPL correction lives in evidence-ledger; no controller may edit the target until the hardening plan is corrected, the cycle closes with advisory-only prompt proof, and a separately verified target-aware Opus design-time and actual-diff check is routed with complete immutable state binding."
+  ],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "blocked",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

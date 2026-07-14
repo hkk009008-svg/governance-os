@@ -1,8 +1,11 @@
 # ChatGPT Pro consultation transport acceptance
 
-This procedure is the hard gate for changing the consultation default from
-`manual` to `auto`. It proves the guarded lifecycle and each transport class
-without granting the advisory response any protocol authority.
+The default policy is `auto`. This procedure checks its single automatic path:
+the current runtime in-app Browser (`iab`), then a hard block. The automatic
+path is `iab -> block`; it never substitutes another transport or workaround.
+Passing this local procedure does not claim live readiness or clear a
+coordinator-owned hold. The historical acceptance log remains historical and
+must not be rewritten to describe the current policy.
 
 ## Safety boundary
 
@@ -13,12 +16,13 @@ without granting the advisory response any protocol authority.
   session memory. Send request and response JSON through stdin, never shell
   arguments, environment variables, temporary files, normal logs, screenshots,
   mailbox events, or repository artifacts.
-- Use a fresh ChatGPT conversation for each browser transport and one confirmed
+- Use a fresh ChatGPT conversation for each `iab` attempt and one confirmed
   send per consultation ID. There is no automatic retry and no API fallback.
 - Verify the visible account/session state without credential handling. On a
   signed-out, wrong-account, consent, challenge, CAPTCHA, redirect, popup, or
-  ambiguous profile state, stop. Never enter credentials, never inspect cookies
-  or storage, never weaken security, and never auto-navigate around the stop.
+  ambiguous profile state, mark the attempt failed and block with zero send.
+  Never enter credentials, never inspect cookies or storage, never weaken
+  security, and never auto-navigate around the stop.
 - A partial-send or uncertain delivery is a stop state. Mark the attempt failed
   and do not resend automatically.
 
@@ -32,18 +36,15 @@ Before transport work:
    instructions.
 4. Confirm an in-app Browser signed-in user-controlled session is visibly
    available without inspecting credentials, cookies, storage, or profiles.
-5. Inspect the current Codex CLI help/configuration read-only. A bare CLI packet
-   export/import is not a CLI-driven browser pass; the CLI gate is attempted
-   only if the current CLI actually exposes its configured browser bridge.
-6. Record content-free before snapshots for bound HEAD, refs, remotes, mailbox,
+5. Record content-free before snapshots for bound HEAD, refs, remotes, mailbox,
    inventory, locks, signed bus, and working-tree scope. Snapshot output must not
    contain request or response content.
 
 ## Fixed packet
 
-Use a fresh UUIDv4 per transport and bind the current full lowercase HEAD. The
+Use a fresh UUIDv4 per attempt and bind the current full lowercase HEAD. The
 state binding is content-free (`wave`, `route_id`, and mailbox hash are null;
-the relevant-path hash binds the allowed Task 5 paths). Use one short trusted
+the relevant-path hash binds the allowed guard paths). Use one short trusted
 fact stating that this is a non-sensitive transport acceptance check, and no
 repository excerpt.
 
@@ -75,11 +76,10 @@ Documentation and schema references that merely discuss those formats, such as
 
 ## Guard commands
 
-Until this gate passes, the repository default is deliberately still `manual`.
-For every pre-activation command that exercises an `iab` or `chrome` lifecycle,
-use the explicit per-process override
-`CODEX_CHATGPT_PRO_CONSULTATION=auto`; this is acceptance configuration, not an
-activation change. Launch the guard without packet content in the command:
+The repository default is `auto`. Keep
+`CODEX_CHATGPT_PRO_CONSULTATION=auto` explicit on acceptance commands so the
+recorded command states the policy under test. Launch the guard without packet
+content in the command:
 
 ```bash
 env -u GIT_INDEX_FILE CODEX_CHATGPT_PRO_CONSULTATION=auto \
@@ -95,23 +95,19 @@ changing any state or lock path.
 
 Write the in-memory request JSON to that process through stdin. Immediately
 before the single browser send, mark `prepared -> sending` with the content-free
-consultation ID and transport (`iab` or `chrome`). Only after visible confirmation
+consultation ID and transport `iab`. Only after visible confirmation
 that exactly one send occurred, mark `sending -> sent`. Pass the exact in-memory
 response wrapper to `accept` through stdin; it must contain the local
 consultation ID, the exact response object, and the unchanged current state
 binding. Confirm matching ID and request hash, then mark `received -> reconciled`.
-Keep the override on `transition` and `accept` commands for the same browser
-attempt. Never set it globally and never change the model default before both
-real browser gates pass.
-
-For manual relay, use transport `manual` and the same lifecycle. Export the exact
-guarded packet, verify it renders identically to the guarded Browser packet for
-the same input, and import the exact correlated response through stdin. Do not
-substitute an unguarded question.
+Keep the override on `transition` and `accept` commands for the same `iab`
+attempt. Never set it globally. If the current runtime transport is unavailable,
+signed out, challenged, or ambiguous before send, record the safe failure and
+block with zero send.
 
 ## Required checks
 
-### Desktop in-app Browser
+### Current-runtime in-app Browser (`iab`)
 
 1. Open a fresh approved ChatGPT-origin conversation.
 2. Confirm the visible signed-in state without handling credentials.
@@ -120,35 +116,14 @@ substitute an unguarded question.
 5. Accept through the guard, verify ID/hash correlation, reconcile, and finalize
    the consultation tab under the Browser skill rules.
 
-### Configured CLI browser
+### IAB-or-block preflight
 
-Repeat the browser check from a fresh chat through the CLI-configured browser
-bridge only when the current CLI exposes it. Record the exact bridge boundary.
-If the bridge is unavailable or the send fails, record a bounded blocker and do
-not set the default to auto. Bare CLI manual relay does not satisfy this gate.
-
-Enabled feature flags, an installed Browser plugin, and a configured
-`node_repl` MCP server prove configuration only; they do not prove that the
-standalone CLI can connect to a usable browser backend. Before preparing a CLI
-acceptance record or entering `sending`, run one non-sending preflight through
-`codex exec --ephemeral --sandbox read-only`. It may load the Browser skill,
-select the explicit `iab` backend, and load its documentation, but it must not
-navigate, create a tab, send a message, or receive consultation content.
-Persist no session and return only content-free diagnostic fields:
-core-model status, skill-load status, backend, browser-connected,
-documentation-loaded, and failure class.
-
-```bash
-env -u GIT_INDEX_FILE CODEX_CHATGPT_PRO_CONSULTATION=auto \
-  codex exec --ephemeral \
-  -C /Users/hyungkoookkim/Pipeline/.worktrees/chatgpt-pro-consultation \
-  --sandbox read-only --color never -
-```
-
-Only `browser-connected=true` and `documentation-loaded=true` permit the real
-CLI attempt to proceed. Any false, unavailable, ambiguous, or timed-out result
-records the configured CLI bridge as unavailable, keeps the default `manual`,
-and stops without a send or automatic retry.
+Before `prepared -> sending`, confirm that the Browser skill and its current
+runtime `iab` transport are available and that the visible session is safely
+signed in. An unavailable transport, auth uncertainty, challenge, or ambiguous
+state is a terminal pre-send failure for that attempt. Record only the
+content-free failure class and block with zero send. Do not retry, switch
+transport, or improvise a workaround.
 
 ### Failure fixtures
 
@@ -219,14 +194,14 @@ consultation ID, state file, guarded packet, or idempotency key. After a prompt
 contract fix, increment a non-sensitive revision label in the request purpose
 or trusted acceptance fact, generate a fresh UUIDv4, use a new state path, and
 run `prepare` again so the revised acceptance has a distinct idempotency key.
-Both real transport gates must pass on packets rendered by the fixed code.
+The new revision still uses only the current runtime `iab` path.
 
 ## Stop rule
 
-Desktop in-app, configured CLI browser, bare-CLI manual relay, and the complete
-failure-fixture matrix are four separate hard gates. Their latest revisions
-must all be PASS with transport-appropriate correlation, lifecycle,
-finalization, duplicate/retry, mutation/persistence, and failure cells. A
-missing, pending, failed, malformed, stale-guard, or guard-drifted required row
-blocks activation. Keep `manual`, record the exact bounded blocker, and make no
-automatic retry until all four gates and the immutable guard binding pass.
+The current-runtime `iab` check and the complete failure-fixture matrix are the
+active hard gates. Their latest revisions must pass with correlation,
+lifecycle, finalization, duplicate/retry, mutation/persistence, and failure
+evidence. An unavailable, signed-out, challenged, ambiguous, partial, failed,
+malformed, stale-guard, or guard-drifted result blocks without fallback or
+automatic retry. Local passage still requires coordinator-owned live acceptance
+before any hold can be cleared.

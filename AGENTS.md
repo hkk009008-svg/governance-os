@@ -100,9 +100,11 @@ commit unless it asks a genuinely different, pre-stated question.
 ## R-CONSULT — ChatGPT Pro Advisory Consultation
 
 The capability is always invocable in readiness, director, coordinator, and
-operator modes. `manual` remains the default and permits guarded manual relay
-only; `auto` permits one guarded browser send per idempotency key, and `off`
-fails closed. There is no API fallback; automatic retries are zero in V1; raw
+operator modes. The default is `auto`, which permits one guarded send per
+idempotency key through only the current runtime in-app Browser transport
+(`iab`); `manual` is an explicit legacy compatibility mode, and `off` fails
+closed. The auto transport order is `iab -> block`: there is no automatic
+Chrome, manual relay, API, retry, or workaround fallback. Raw
 prompts and responses stay out of Git, mailbox artifacts, normal logs,
 screenshots, command arguments, and transcript files. Output is advisory only
 and not the dual-chief order path; it grants no protocol or side-effect
@@ -110,11 +112,9 @@ authority; subagents may prepare a bounded question but only the parent context
 may send or import a response. Use the repo
 `.agents/skills/chatgpt-pro-consultation/SKILL.md` procedure.
 
-After a definite safe auto failure is transitioned to `failed`, explicitly run
-`resume-manual --state-file PATH --consultation-id UUID` to return the same
-record to `prepared`/`manual`, then relay the exact guarded prompt; uncertain or
-partial delivery stops for explicit user decision; never retry or resume
-automatically.
+If `iab` is unavailable, signed out, challenged, or ambiguous before send,
+transition the record to `failed` when safe to do so and block with zero send.
+Uncertain or partial delivery also blocks without retry or fallback.
 
 Standing user approval is narrow: one guard-approved sanitized browser send per
 trigger when `auto` is enabled. It authorizes no credential entry, retry, API

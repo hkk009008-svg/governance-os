@@ -984,3 +984,38 @@ publication; public replay cannot republish a completed report.
 - Hooks are not the publication authority. Activating the trusted primary
   checkout path, pushing, routing evidence-ledger work, or emitting a live
   report remains separately authorized.
+
+## ADR-025: Make governance-os private and end MIT licensing prospectively
+
+**Status:** Accepted (user-approved, 2026-07-14)
+
+**Context:**
+ADR-007 licensed the repository under MIT because it was a public transfer
+bundle. The user-principal subsequently directed that
+`hkk009008-svg/governance-os` become private and that current and future
+versions stop being distributed under MIT. The visibility transition was
+verified immediately after mutation with
+`$ gh repo view hkk009008-svg/governance-os --json visibility,isPrivate`, which
+returned `PRIVATE` and `isPrivate: true`.
+
+**Decision:**
+Keep the GitHub repository private. Replace the root MIT text with a
+proprietary, all-rights-reserved notice and update README.md accordingly.
+Access to the private repository does not itself grant a license; permission
+requires a separate written agreement from the copyright holder.
+
+This decision supersedes ADR-007 only for current and future versions carrying
+the proprietary notice. ADR-007 and its implementation history remain intact
+as provenance. This decision does not rewrite history or purport to revoke
+rights validly granted for versions obtained while MIT applied.
+
+**Consequences:**
+- GitHub access is restricted to the owner and explicitly authorized
+  collaborators.
+- Previously obtained MIT-licensed versions may continue under their existing
+  terms; making the repository private does not erase external local copies.
+- Historical plans and evidence retain their original MIT/public statements
+  as time-bound records and are not rewritten.
+- The proprietary-notice implementation commit remains local until a separate
+  user-authorized push. Repository visibility and Git publication remain
+  distinct side effects.

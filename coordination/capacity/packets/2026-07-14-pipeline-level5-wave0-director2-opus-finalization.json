@@ -1,0 +1,33 @@
+{
+  "id": "director2-pipeline-level5-wave0-opus-finalization",
+  "wave": 2,
+  "cycle": "pipeline-level5-wave0-2026-07-14",
+  "owner": "director2",
+  "packet_type": "director-preflight",
+  "row_ids": [
+    "level5-wave1-opus-finalization"
+  ],
+  "allowed_paths": [
+    "logs/pipeline-level5-wave0-opus-finalization-2026-07-14.json",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Take read-only finalization ownership of the existing clean worktree /Users/hyungkoookkim/Pipeline/.worktrees/opus-lanev-receipt-hardening at exact head 97c270f8f0e630fdaaded672e0da37ed32335de5. Do not modify, commit, rebase, merge, reset, clean, or otherwise change any branch/worktree file under this packet.",
+    "Run the exact final-integration commands in docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md: complete focused bundle, full unit suite, GO/doc/SHA/smoke gates, descriptor/prompt hashes, range diff check, and branch-state checks. Record only content-free command/result/digest metadata in the allowed log artifact.",
+    "Perform the pre-stated independent actual-diff question over 555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5 and Section 9 of docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md. Any local failure stops before provider launch and returns one bounded blocker; this packet grants no code correction authority.",
+    "Only after all local gates PASS on unchanged head, use the explicit user consent recorded in the coordinator route plus its executor token to execute the one receipt-backed Opus attempt under the exact codex-lane-v descriptor and advisory prompt. Consent authorizes spend and the token elects Director2. No retry, fallback, substitute reviewer, fabricated receipt, raw prompt/response persistence, or second attempt is permitted. An unavailable/degraded receipt is preserved once but does not satisfy Opus transport completion.",
+    "Reconcile the real stored receipt with evidence-backed dispositions, recheck exact head/cleanliness, and send one Director2-to-Operator2 verify-request naming the immutable range, commands, descriptor, receipt ID/status, findings/dispositions, main divergence, exclusions, and exact next trigger. Receipt presence is attempt evidence only."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "operator2",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
+  "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",
+  "scope_files": [
+    "logs/pipeline-level5-wave0-opus-finalization-2026-07-14.json"
+  ]
+}

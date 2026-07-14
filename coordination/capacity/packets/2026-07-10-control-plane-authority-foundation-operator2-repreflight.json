@@ -40,11 +40,12 @@
     "At coordinator closeout, reuse the attached CLEAR if Tasks 4-6C remain byte-for-byte and semantically unchanged. If a later diff changes those task bodies or their activation contract, stop and await one new focused route before any repeat pass."
   ],
   "done_evidence": [
-    "coordination/mailbox/sent/2026-07-10T04-24-26Z-operator2-to-coordinator-coordination.md records CLEAR for Tasks 4-6C at reviewed Pipeline HEAD e9ad5bee34aa14fea556901780490f720bbcc4d6; reuse remains valid only while those tasks and their activation contract are semantically unchanged."
+    "coordination/mailbox/sent/2026-07-10T04-24-26Z-operator2-to-coordinator-coordination.md records CLEAR for Tasks 4-6C at reviewed Pipeline HEAD e9ad5bee34aa14fea556901780490f720bbcc4d6; reuse remains valid only while those tasks and their activation contract are semantically unchanged.",
+    "SCHEDULING EXCEPTION ONLY: direct user-principal supersession activates the Pipeline Level-5 first cycle. The prior CLEAR remains bounded to its historical contract and grants no current activation or verification authority. A fresh control-plane reroute is required to resume."
   ],
   "handoff_artifact": "coordination/mailbox/sent/2026-07-10T04-24-26Z-operator2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

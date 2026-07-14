@@ -22,10 +22,12 @@
     "Confirm ADR-013 remains append-only and Task 6C is still the sole live transition; signed-facts authority remains shadow; Tasks 4-6C and the Task-4-through-EOF suffix remain unchanged; later mainline ARCHITECTURE anchor updates are preserved; and no private key, ref, authority, cursor, lock, push, checkout, spend, pod, generation, publication, or unlisted-path side effect occurred.",
     "Emit exactly one durable verification-report GO, NITS, or FAIL bound to the cumulative range. Do not repair the Director diff, reuse the failed prior Operator packet, or push before GO."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "SCHEDULING EXCEPTION ONLY: direct user-principal supersession activates the Pipeline Level-5 first cycle. The prior cumulative verification obligation and FAIL provenance remain binding and unexecuted; no GO is implied. A fresh control-plane verify-request and packet are required after any lawful successor implementation."
+  ],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

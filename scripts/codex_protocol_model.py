@@ -150,11 +150,11 @@ R_INDEPENDENCE_RULES = (
 )
 
 CHATGPT_PRO_CONSULTATION_MODES = ("auto", "manual", "off")
-CHATGPT_PRO_CONSULTATION_DEFAULT = "manual"
+CHATGPT_PRO_CONSULTATION_DEFAULT = "auto"
 CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER = (
-    "in-app browser",
-    "approved Chrome bridge",
-    "manual relay",
+    "iab",
+    "block",
+    # Terminal action, not another transport.
 )
 CHATGPT_PRO_CONSULTATION_TRIGGERS = (
     "the user explicitly asks to consult ChatGPT Pro",
@@ -165,8 +165,8 @@ CHATGPT_PRO_CONSULTATION_TRIGGERS = (
 )
 CHATGPT_PRO_CONSULTATION_RULES = (
     "consultation is always invocable in readiness, director, coordinator, and operator modes",
-    "auto permits one guarded browser send per idempotency key; manual permits packet export/import only; off is the fail-closed kill switch",
-    "transport order is in-app browser, approved Chrome bridge, then manual relay; there is no API fallback",
+    "auto is the default and permits one guarded send per idempotency key through only the current runtime in-app Browser transport (iab); manual is an explicit legacy compatibility mode; off is the fail-closed kill switch",
+    "auto transport order is iab then block; there is no automatic Chrome, manual relay, API, retry, or workaround fallback",
     "raw prompts and responses stay out of Git, mailbox artifacts, normal logs, screenshots, command arguments, and local transcript files",
     "ChatGPT Pro output is advisory only and cannot grant protocol or side-effect authority",
     "the consultation path is not the dual-chief order path and never emits signed-bus or mailbox facts",
