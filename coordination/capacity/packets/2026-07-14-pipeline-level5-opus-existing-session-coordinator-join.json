@@ -26,10 +26,17 @@
     "Join only after one bridge-issued provider pass under pipeline-level5-opus-existing-session-attempt-2026-07-14 and one Operator2 verification-report GO for immutable reviewed head 97c270f8f0e630fdaaded672e0da37ed32335de5. Receipt presence alone is not correctness evidence; unavailable, ambiguous, denied, or uncertain delivery cannot satisfy the criterion and never authorizes a retry.",
     "ChatGPT implementation is merged but this cycle does not claim live ChatGPT readiness or clear its acceptance hold. No coordinator production edit, provider invocation, cursor consume, lock/ref mutation, merge, push, publication, cleanup, pod action, or API fallback is authorized."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "TERMINAL DENIAL EVIDENCE: coordination/mailbox/sent/2026-07-14T12-51-51Z-director2-to-coordinator-coordination.md and logs/pipeline-level5-opus-existing-session-acceptance-2026-07-14.json record one outer-runtime denial before process creation under pipeline-level5-opus-existing-session-attempt-2026-07-14. No provider process, paid request, receipt, retry, fallback, or raw prompt/response persistence occurred.",
+    "SCHEDULING PARK ONLY: all five pipeline-level5-opus-existing-session-2026-07-14 packets are excepted after the terminal denial. This is not GO, correctness completion, or satisfaction of the real-provider transport criterion.",
+    "Operator2 received no receipt-backed verify-request and issued no GO, NITS, or FAIL. The immutable review worktree remains clean at 97c270f8f0e630fdaaded672e0da37ed32335de5; locks and receipt state remain unchanged.",
+    "capacity board evidence: post-edit scripts/protocol_capacity_board.py --wave 2 and route validation report valid true with this cycle removed from active scheduling.",
+    "smoke OK evidence: scripts/ci_smoke.py ends OK against the unchanged production head and this coordinator-only metadata diff.",
+    "Next trigger: coordination/mailbox/sent/2026-07-14T12-56-24Z-coordinator-to-all-coordination.md requires a separate user-approved and separately routed cycle before any future external transmission or paid-service action."
+  ],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
   "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",

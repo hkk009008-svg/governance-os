@@ -20,10 +20,14 @@
     "Only if every preflight remains green, execute exactly one provider process attempt under side_effect_id pipeline-level5-opus-existing-session-attempt-2026-07-14 using the main bridge executable against immutable reviewed head 97c270f8f0e630fdaaded672e0da37ed32335de5 and descriptor 2a876e95-3a87-4203-a613-1a29dd957b5b. This separately authorized action is not the denied outer-runtime submission. No retry is permitted after process entry, denial, ambiguity, timeout, unavailability, or uncertain state.",
     "Persist only content-free command/result/receipt metadata in the allowed log. If the provider returns a receipt-backed pass or issues result, reconcile findings with evidence and send one canonical Director2-to-Operator2 verify-request naming the immutable range, descriptor, receipt, bridge blob/profile, commands, findings/dispositions, exclusions, and exact next trigger. If process creation is denied or delivery is unavailable/uncertain, send one bounded blocker to coordinator and do not trigger Operator2."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "TERMINAL DENIAL EVIDENCE: coordination/mailbox/sent/2026-07-14T12-51-51Z-director2-to-coordinator-coordination.md and logs/pipeline-level5-opus-existing-session-acceptance-2026-07-14.json record exactly one launch request denied before process creation, with provider_process_started=false, paid_request_sent=false, receipt_created=false, and retry_count=0.",
+    "This packet and side-effect identity pipeline-level5-opus-existing-session-attempt-2026-07-14 are excepted and terminal. They must not be resumed, retried, replayed, or reused.",
+    "Any future external action requires a distinct coordinator route and side-effect identity after explicit user acknowledgement of the exact private-repository transmission and paid-service action."
+  ],
   "handoff_artifact": null,
   "next_recipient": "operator2",
-  "status": "active",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
   "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",
