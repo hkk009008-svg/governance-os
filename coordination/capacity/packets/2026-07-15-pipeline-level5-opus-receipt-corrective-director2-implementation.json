@@ -10,35 +10,23 @@
   "owner": "director2",
   "packet_type": "director-implementation",
   "allowed_paths": [
-    "coordination/bin/send-event",
-    "scripts/check_go_schema.py",
-    "scripts/opus_review_bridge.py",
-    "scripts/opus_review_receipts.py",
     "scripts/verification_report_gate.py",
-    "tests/unit/test_coordination_tooling.py",
-    "tests/unit/test_check_go_schema.py",
-    "tests/unit/test_opus_review_bridge.py",
-    "tests/unit/test_opus_review_receipts.py",
     "tests/unit/test_verification_report_gate.py",
-    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
-    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md",
-    "ARCHITECTURE.md",
-    "docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md",
-    "docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md"
+    "coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json",
+    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md"
   ],
   "dependencies": [
     "operator2-pipeline-level5-opus-manual-approval-e2e-lanev"
   ],
   "acceptance": [
-    "Start from Pipeline main commit 563cc85c6716b746c5baff788cae8408c38b31d0 in a fresh isolated worktree and branch. Do not reset, reuse, or mutate .worktrees/opus-lanev-receipt-hardening or any prior receipt/runtime state.",
-    "Use coordination/mailbox/sent/2026-07-14T15-53-30Z-operator2-to-all-verification-report.md as the committed independent adversarial enumeration. Fix exactly its five findings without reopening unrelated reviewed-range behavior.",
-    "Before each fix, add a deterministic non-vacuous regression and capture RED or strict-xfail evidence: real process death after publishing preserves the witnessed candidate for recovery and never deletes a substituted foreign file; baseline authority cannot be selected or suppressed through PATH; a symlinked sent directory is rejected without accepting outside bytes; shutdown cannot miss or leak a newly started verifier child; and malformed receipt IDs create no runtime/state root before rejection. Fixed defects finish with passing regressions, not final xfails.",
-    "Audit every sibling cleanup/removal path in send-event, every historical-baseline Git invocation and report-corpus directory open, every verifier child registration/close interleaving, and every untrusted receipt-ID entry path. Record mirror, defer, document, or exempt disposition for each sibling in the verify-request.",
-    "Preserve the exact no-retry semantics and old receipt evidence. Do not regenerate the historical report baseline, weaken a gate, relax canonical path or process ownership checks, or treat process_failed as an Opus pass.",
-    "Keep the five production fixes and their tests in one cumulative corrective head because the changed files implement the verification boundary used to judge the same change. Update ARCHITECTURE.md or the approved plan/design only for claims proven stale by the final code; otherwise leave their intended contracts unchanged.",
-    "Create descriptor coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json with the exact allowed paths, abuse cases, and verification commands. The shipping commit must use a fix subject and exactly one matching Lane-V-Scope trailer, then a canonical committed Director2-to-Operator2 verify-request must bind the full head/base/descriptor.",
-    "At minimum run bash -n coordination/bin/send-event; the focused five-file regression suite; scripts/check_go_schema.py; scripts/check_doc_claims.py --sha-refs; scripts/ci_smoke.py; scripts/protocol_doctor.py --wave 2; and git diff --check for the exact corrective range.",
-    "No provider invocation, old receipt mutation, manual approval change, credential entry, alternate transport, push, merge, publication beyond the one verify-request, cursor consume, lock action, pod action, production generation, or unrelated cleanup."
+    "Treat coordination/mailbox/sent/2026-07-14T20-09-29Z-operator2-to-all-verification-report.md at d42f7282ef975ead173c8d8ea97580afa67ce3a2 as the binding independent enumeration. Its five confirmed routed closures are immutable; fix only the fresh unowned-candidate cleanup defect in scripts/verification_report_gate.py and its focused regression file.",
+    "Create a fresh isolated worktree and new branch at exact failed reviewed head 63062315a738be1a7f3ff62f0388dc957339ad0c. Preserve .worktrees/opus-receipt-corrective-director2-2026-07-15 at 93c504bf255f8e8e9c23fbbc38c20bb01ec9980d, .worktrees/opus-lanev-receipt-hardening, all prior branches, descriptors, reports, receipts, and runtime state unchanged; do not reset, reuse, merge, cherry-pick, or rewrite them.",
+    "Before the fix, add one strict non-vacuous regression and capture RED or strict-xfail evidence against 63062315a738be1a7f3ff62f0388dc957339ad0c. For both Codex receipt-backed and non-Codex task-backed existing publishing states, prove the exact stored eight-field recovery witness survives while a distinct fresh unowned candidate is identity-checked and removed; prove no foreign substituted object is deleted. Finish with the regression passing and no final xfail.",
+    "Audit both existing-publishing branches and every preserve_unowned_candidate or equivalent cleanup guard in scripts/verification_report_gate.py. Record mirror, defer, document, or exempt disposition for every sibling in the verify-request; do not reopen or edit the five confirmed closures.",
+    "Create fresh descriptor coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json with trigger_kind verify-request, task_id 30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9, exact reviewed_base 63062315a738be1a7f3ff62f0388dc957339ad0c, only the two mutable code/test paths plus the descriptor as allowed roots, and requirement paths already present at the reviewed head that include the existing pre-publication cleanup design guarantee and the content-addressed provider-prompt authority.",
+    "Land one narrow reviewed head containing only the fix, regression, and fresh descriptor. Use a fix subject but no Lane-V-Scope shipping trailer because authority is verify-request-only. Then commit one canonical Director2-to-Operator2 verify-request strictly after the reviewed head with exactly one Event type, full Reviewed head, full Reviewed base, and matching Lane-V-Scope. Its neutral acceptance text must require fresh unowned-candidate removal plus exact stored-witness preservation for both paths without exposing Operator2's verdict or conclusions. Never fall back to shipping-trigger authority.",
+    "At minimum run the focused RED/GREEN selectors, the full five-file regression suite, scripts/check_go_schema.py, scripts/check_doc_claims.py --sha-refs, scripts/ci_smoke.py, scripts/protocol_doctor.py --wave 2, provider-free structural resolution of the later verify-request trigger, and git diff --check for 63062315a738be1a7f3ff62f0388dc957339ad0c..reviewed-head.",
+    "No provider invocation, old receipt or descriptor mutation, historical-baseline regeneration, gate weakening, manual approval change, credential entry, alternate transport, push, merge, cherry-pick, publication beyond the one verify-request, cursor consume, lock action, pod action, production generation, or unrelated cleanup."
   ],
   "done_evidence": [],
   "next_recipient": "operator2",
@@ -47,16 +35,8 @@
   "target_commit": null,
   "commit_range": null,
   "scope_files": [
-    "coordination/bin/send-event",
-    "scripts/check_go_schema.py",
-    "scripts/opus_review_bridge.py",
-    "scripts/opus_review_receipts.py",
     "scripts/verification_report_gate.py",
-    "tests/unit/test_coordination_tooling.py",
-    "tests/unit/test_check_go_schema.py",
-    "tests/unit/test_opus_review_bridge.py",
-    "tests/unit/test_opus_review_receipts.py",
     "tests/unit/test_verification_report_gate.py",
-    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json"
+    "coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json"
   ]
 }
