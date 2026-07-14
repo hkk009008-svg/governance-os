@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-13 @ 7882b9e*
+*Last verified: 2026-07-15 @ 4da9742*
 
 ## 1. Purpose
 
@@ -62,7 +62,7 @@ Key directories:
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:854` | Renders guard guidance into readiness output. |
 | `ReceiptStore` | `scripts/opus_review_receipts.py:1497` | Owns the shared-Git-common-directory receipt lifecycle and one-attempt scope conflict guard. |
 | `resolve_provider_authoritative_scope` | `scripts/opus_review_bridge.py:1823` | Resolves trigger-bound scope and verifies the descriptor-bound advisory prompt before receipt reservation. |
-| `publish_candidate` | `scripts/verification_report_gate.py:2422` | Publishes one validated Lane-V report as a durable file-plus-stage-0-index transaction with explicit recovery. |
+| `publish_candidate` | `scripts/verification_report_gate.py:2472` | Publishes one validated Lane-V report as a durable file-plus-stage-0-index transaction with explicit recovery. |
 
 ## 4. Runtime Invariants
 
