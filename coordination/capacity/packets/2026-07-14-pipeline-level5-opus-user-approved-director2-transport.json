@@ -20,10 +20,15 @@
     "Only if every preflight remains green, execute exactly one provider process attempt under side_effect_id pipeline-level5-opus-user-approved-attempt-2026-07-14. Use the main bridge executable against immutable reviewed head 97c270f8f0e630fdaaded672e0da37ed32335de5, base 555041477bcdb9a432a1b238d664be0958c5c9ef, descriptor 2a876e95-3a87-4203-a613-1a29dd957b5b, review profile codex-lane-v, transport profile anthropic-claude-existing-session-v1, and authorization source user-task:pipeline-level5-opus-user-approved-2026-07-14. No retry is permitted after any outer-runtime denial, process entry, ambiguity, timeout, unavailability, uncertain state, or result.",
     "Persist only content-free command, result, and receipt metadata in the allowed log. If a real bridge-issued receipt exists, reconcile every finding and send one canonical Director2-to-Operator2 verify-request naming the immutable range, descriptor, receipt, bridge blobs and profile, command evidence, dispositions, exclusions, and exact next trigger. If process creation is denied or delivery is unavailable or uncertain, send one bounded blocker to coordinator and do not trigger Operator2."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "TERMINAL DENIAL EVIDENCE: coordination/mailbox/sent/2026-07-14T13-53-55Z-director2-to-coordinator-coordination.md and logs/pipeline-level5-opus-user-approved-acceptance-2026-07-14.json record exactly one launch request denied before process creation, with provider_process_started=false, paid_request_sent=false, receipt_created=false, and retry_count=0.",
+    "Coordinator independently reran 555 local bridge, receipt, prompt-sync, and GO-schema tests with 18 skips. That local result does not constitute a provider attempt, transport pass, or reproduction of the outer runtime policy denial.",
+    "This packet and side-effect identity pipeline-level5-opus-user-approved-attempt-2026-07-14 are excepted and terminal. They must not be resumed, retried, replayed, or reused.",
+    "Any fresh external action requires a distinct coordinator route and side-effect identity plus exact authority for the new private-repository transmission, paid-service action, and named executor."
+  ],
   "handoff_artifact": null,
   "next_recipient": "operator2",
-  "status": "active",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
   "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",

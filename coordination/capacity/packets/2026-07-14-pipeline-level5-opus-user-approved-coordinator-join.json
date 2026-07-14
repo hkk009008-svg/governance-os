@@ -26,10 +26,18 @@
     "Join only after one bridge-issued provider pass under pipeline-level5-opus-user-approved-attempt-2026-07-14 and one Operator2 verification-report GO for immutable reviewed head 97c270f8f0e630fdaaded672e0da37ed32335de5. Receipt presence alone is not correctness evidence; denial, ambiguity, timeout, unavailability, or uncertain delivery stops without retry.",
     "ChatGPT live acceptance remains a separate hold. No coordinator production edit, provider invocation, cursor consume, lock/ref mutation, merge, push, publication, cleanup, pod action, production generation, or API fallback is authorized."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "TERMINAL DENIAL EVIDENCE: coordination/mailbox/sent/2026-07-14T13-53-55Z-director2-to-coordinator-coordination.md and logs/pipeline-level5-opus-user-approved-acceptance-2026-07-14.json record one outer-runtime denial before process creation under pipeline-level5-opus-user-approved-attempt-2026-07-14. No provider process, paid request, receipt, retry, fallback, or raw prompt/response persistence occurred.",
+    "INDEPENDENT LOCAL CHECK: coordinator reran the bridge, receipt, prompt-sync, and GO-schema unit suites and observed 555 passed, 18 skipped. This validates local guards only; it does not reproduce the outer tenant-policy denial or satisfy the real-provider transport criterion.",
+    "SCHEDULING PARK ONLY: all five pipeline-level5-opus-user-approved-2026-07-14 packets are excepted after the terminal denial. This is not GO, correctness completion, successful transport, or permission to state the broader task is done.",
+    "Operator2 received no receipt-backed verify-request and issued no GO, NITS, or FAIL. The immutable review worktree remains clean at 97c270f8f0e630fdaaded672e0da37ed32335de5; locks and receipt state remain unchanged.",
+    "capacity board evidence: post-edit scripts/protocol_capacity_board.py --wave 2 and route validation report valid true with this cycle removed from active scheduling.",
+    "smoke OK evidence: scripts/ci_smoke.py ends OK against the unchanged production head and this coordinator-only metadata diff.",
+    "Next trigger: coordination/mailbox/sent/2026-07-14T14-01-33Z-coordinator-to-all-coordination.md requires a distinct side-effect identity and exact new external-action authority before any fresh private-repository transmission or paid-service attempt."
+  ],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
   "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",
