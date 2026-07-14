@@ -23,8 +23,8 @@
   ],
   "acceptance": [
     "Preserve coord-control-plane-authority-foundation-join and coord-ledger-ppl-recommendation-evaluation-join as blocked parked Wave-2 provenance. Their FAIL, CONTRADICTION, HOLD, and dirty-worktree evidence remains binding; this cycle supersedes scheduling priority only.",
-    "Join only after Operator GO for the exact Pair-A A1..A2 range and Operator2 GO for immutable Opus head 97c270f8f0e630fdaaded672e0da37ed32335de5. Receipt presence alone is not correctness evidence. One real user-consented attempt and a provider pass are transport-completion criteria; Operator2 GO remains the binding correctness verdict.",
-    "Require fresh HEAD, mailbox, capacity, route, lock, branch, and worktree checks. The dirty authority worktree must remain byte-for-byte untouched, the Opus worktree must remain clean at 97c270f, and the Pair-A write set must not overlap the Opus branch.",
+    "Join only after Operator GO for the exact Pair-A A1..A2 range descended from immutable base 807669de25766318554e927c5908d2ccdf0ef684 and Operator2 GO for immutable Opus head 97c270f8f0e630fdaaded672e0da37ed32335de5. Receipt presence alone is not correctness evidence. One real user-consented attempt and a provider pass are transport-completion criteria; Operator2 GO remains the binding correctness verdict.",
+    "Require fresh HEAD, mailbox, capacity, route, lock, branch, and worktree checks. Later route-metadata commits do not move Pair-A base 807669de25766318554e927c5908d2ccdf0ef684, but any Pair-A implementation scope_files drift from that base fails closed; route, packet, and mailbox metadata use their separate freshness checks. The dirty authority worktree must remain byte-for-byte untouched, the Opus worktree must remain clean at 97c270f, and the Pair-A write set must not overlap the Opus branch.",
     "This join authorizes only a later integration decision. It does not merge, push, close PPL, declare Wave 0 complete, activate authority, consume a cursor, mutate a lock/ref/key, or prove current-main correctness."
   ],
   "done_evidence": [],

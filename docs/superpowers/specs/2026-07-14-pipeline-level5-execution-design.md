@@ -256,7 +256,12 @@ code version; legacy writable paths are deleted, not merely disabled.
 ### Pair A - P0 containment
 
 Pair A implements two sequential, independently reviewable commits on a new
-isolated worktree based on the coordinator route commit:
+isolated worktree based on the exact immutable base selected by the active
+coordinator route. The current user-directed base is
+`807669de25766318554e927c5908d2ccdf0ef684`; later route-metadata commits do not
+move it, while any Pair-A implementation `scope_files` drift from that base
+fails closed. Route, packet, and mailbox metadata remain subject to separate
+freshness checks:
 
 1. reject `coordinator` and `coordinator2` at every routed human/signed consume
    entry point in the authorized slice, with real-entrypoint regressions and a

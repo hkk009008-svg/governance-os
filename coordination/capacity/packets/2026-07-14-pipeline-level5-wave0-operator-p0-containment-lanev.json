@@ -16,7 +16,7 @@
     "director-pipeline-level5-wave0-p0-containment"
   ],
   "acceptance": [
-    "Remain blocked until one Director verify-request names the exact two-commit A1..A2 range, every changed path, RED/GREEN and task-review artifacts, mutation evidence, dirty-worktree preservation check, focused/relevant suites, shell/doc/smoke evidence, and exclusions.",
+    "Remain blocked until one Director verify-request proves the exact two-commit A1..A2 range descends from immutable Pair-A base 807669de25766318554e927c5908d2ccdf0ef684 and names every changed path, RED/GREEN and task-review artifacts, mutation evidence, dirty-worktree preservation check, focused/relevant suites, shell/doc/smoke evidence, and exclusions.",
     "Independently inspect every changed file and direct call site. Prove no alias, scalar cursor, --to value, direct Python call, or status recommendation can advance/stage coordinator state; coordinator output is cursor-free all-scope; all four pair seats remain unchanged; and the parked authority worktree was not modified.",
     "Delete/rename a cited mechanism test or bypass the ledger evidence predicate and prove the checker turns RED. Verify a prose PASS, fixture label, plan checkbox, zero-row wave gate, smoke/doctor result, or receipt presence cannot promote a behavior claim without executable evidence.",
     "Return exactly one verification-report GO, NITS, or FAIL for the immutable range. Do not repair, merge, push, consume, mutate route/packet/lock/ref state, or enter either parked worktree."

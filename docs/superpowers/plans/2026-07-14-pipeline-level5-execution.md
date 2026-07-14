@@ -67,7 +67,12 @@ no second implementation is created.
 
 Owner: Director
 Verifier: Operator
-Execution: new isolated worktree based on the committed Wave-0 route
+Execution: new isolated worktree based on exact coordinator-selected base
+`807669de25766318554e927c5908d2ccdf0ef684`. The later coordinator reroute
+commit is route metadata, not a reason to move this immutable implementation
+base. Before worktree creation, fail closed if any Pair-A implementation
+`scope_files` path differs between this base and current `main`; route,
+packet, and mailbox metadata use their separate freshness checks.
 
 Allowed production paths:
 
@@ -224,7 +229,8 @@ Operator2 does not edit the branch, rerun the provider, merge, push, or publish.
 
 The coordinator joins only when:
 
-- Operator returns GO for the exact Pair-A two-commit range and write set;
+- Operator returns GO for the exact Pair-A two-commit range descended from
+  `807669de25766318554e927c5908d2ccdf0ef684` and its authorized write set;
 - Operator2 returns GO for immutable Opus head `97c270f`;
 - the bridge records one real routed attempt and its status; a provider `pass`
   is a transport-completion criterion only, while Operator2 GO is the binding
