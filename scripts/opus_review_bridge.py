@@ -2754,6 +2754,7 @@ def probe_host_capabilities(
         [Mapping[str, str]], Path | None
     ] = _resolve_claude_executable,
 ) -> HostCapabilities:
+    child_env = build_claude_environment()
     seatbelt_argv = (
         "/usr/bin/sandbox-exec",
         "-p",
@@ -2769,7 +2770,7 @@ def probe_host_capabilities(
     except (OSError, subprocess.SubprocessError):
         af_unix = False
     try:
-        claude_cli = claude_resolver(build_claude_environment()) is not None
+        claude_cli = claude_resolver(child_env) is not None
     except (OSError, subprocess.SubprocessError):
         claude_cli = False
     missing = tuple(

@@ -4582,6 +4582,32 @@ def test_probe_host_capabilities_fails_closed_without_leaking_probe_errors() -> 
     assert capabilities.missing == ("seatbelt", "af_unix", "claude_cli")
 
 
+@pytest.mark.parametrize("forbidden_name", FORBIDDEN_CLAUDE_ENVIRONMENT)
+def test_probe_host_capabilities_rejects_overrides_before_any_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    forbidden_name: str,
+) -> None:
+    for name in FORBIDDEN_CLAUDE_ENVIRONMENT:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(forbidden_name, "")
+    calls: list[str] = []
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        calls.append("called")
+        raise AssertionError("no capability probe may run")
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge.probe_host_capabilities(
+            command_probe=forbidden,
+            socket_probe=forbidden,
+            claude_resolver=forbidden,
+        )
+
+    assert excinfo.value.reason == "forbidden_environment"
+    assert forbidden_name in str(excinfo.value)
+    assert calls == []
+
+
 def test_clean_existing_session_environment_is_forwarded_without_overrides() -> None:
     source = {
         "HOME": "/Users/example",
