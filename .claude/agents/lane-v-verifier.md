@@ -60,6 +60,7 @@ Shipping review command shape:
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
   --repo-root . --head "$HEAD" --base "$BASE" --review-profile "$REVIEW_PROFILE" \
+  --transport-profile anthropic-claude-existing-session-v1 \
   --shipping-commit "$HEAD"
 ```
 
@@ -68,6 +69,7 @@ Verify-request review command shape:
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
   --repo-root . --head "$HEAD" --base "$BASE" --review-profile "$REVIEW_PROFILE" \
+  --transport-profile anthropic-claude-existing-session-v1 \
   --verify-request-commit "$TRIGGER_COMMIT" \
   --verify-request-path "$TRIGGER_PATH"
 ```

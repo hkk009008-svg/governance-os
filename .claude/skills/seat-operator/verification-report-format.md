@@ -90,9 +90,11 @@ repeat requirements, allowed paths, or verification commands:
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
   --repo-root . --head "$HEAD" --base "$BASE" --review-profile codex-lane-v \
+  --transport-profile anthropic-claude-existing-session-v1 \
   --shipping-commit "$HEAD"
 env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
   --repo-root . --head "$HEAD" --base "$BASE" --review-profile codex-lane-v \
+  --transport-profile anthropic-claude-existing-session-v1 \
   --verify-request-commit "$TRIGGER_COMMIT" \
   --verify-request-path "$TRIGGER_PATH"
 env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py reconcile \

@@ -28,6 +28,21 @@ import opus_review_receipts as receipts
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_PROVIDER_OUTPUT_LIMIT_BYTES = 131_072
+EXISTING_SESSION_TRANSPORT_PROFILE = "anthropic-claude-existing-session-v1"
+FORBIDDEN_CLAUDE_ENVIRONMENT = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "ALL_PROXY",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "NO_PROXY",
+    "all_proxy",
+    "https_proxy",
+    "http_proxy",
+    "no_proxy",
+)
 
 
 def test_provider_only_advisory_prompt_exactly_matches_plan() -> None:
@@ -4567,6 +4582,63 @@ def test_probe_host_capabilities_fails_closed_without_leaking_probe_errors() -> 
     assert capabilities.missing == ("seatbelt", "af_unix", "claude_cli")
 
 
+def test_clean_existing_session_environment_is_forwarded_without_overrides() -> None:
+    source = {
+        "HOME": "/Users/example",
+        "PATH": "/usr/bin:/bin",
+        "LANG": "en_US.UTF-8",
+        "LC_ALL": "en_US.UTF-8",
+        "LOGNAME": "example",
+        "SHELL": "/bin/zsh",
+        "SSL_CERT_DIR": "/etc/ssl/certs",
+        "SSL_CERT_FILE": "/etc/ssl/cert.pem",
+        "TERM": "xterm-256color",
+        "TMPDIR": "/tmp/example",
+        "USER": "example",
+        "UNRELATED": "must-not-be-forwarded",
+    }
+
+    child = bridge.build_claude_environment(source)
+
+    for key, value in source.items():
+        if key != "UNRELATED":
+            assert child[key] == value
+    assert "UNRELATED" not in child
+    assert not (set(child) & set(FORBIDDEN_CLAUDE_ENVIRONMENT))
+
+
+@pytest.mark.parametrize("forbidden_name", FORBIDDEN_CLAUDE_ENVIRONMENT)
+def test_forbidden_existing_session_override_blocks_before_any_host_seam(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forbidden_name: str,
+) -> None:
+    request = _uncommitted_request(tmp_path)
+    for name in FORBIDDEN_CLAUDE_ENVIRONMENT:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(forbidden_name, "")
+    calls: list[str] = []
+
+    def forbidden(*args: object, **kwargs: object) -> object:
+        calls.append("called")
+        raise AssertionError("no host seam may run")
+
+    monkeypatch.setattr(bridge, "_require_git_repository", forbidden)
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge._perform_provider_review(
+            request,
+            agent_prompt="PINNED-TEST-ADVISORY-PROMPT",
+            resolver=forbidden,
+            runtime_factory=forbidden,
+            runner=forbidden,
+        )
+
+    assert excinfo.value.reason == "forbidden_environment"
+    assert forbidden_name in str(excinfo.value)
+    assert calls == []
+
+
 def test_review_uses_complete_injected_host_seam(tmp_path: Path) -> None:
     request = _request(tmp_path)
     calls: list[str] = []
@@ -5710,10 +5782,50 @@ def test_review_cli_rejects_caller_selected_scope_lists() -> None:
         "b" * 40,
         "--review-profile",
         "codex-lane-v",
+        "--transport-profile",
+        EXISTING_SESSION_TRANSPORT_PROFILE,
     ]
     for old_flag in ("--requirement", "--allow-path", "--verification-command"):
         with pytest.raises(SystemExit):
             bridge._parser().parse_args([*common, old_flag, "x"])
+
+
+@pytest.mark.parametrize(
+    "transport_arguments",
+    [
+        (),
+        ("--transport-profile", "anthropic-api-v1"),
+    ],
+    ids=["missing", "wrong"],
+)
+def test_review_cli_rejects_missing_or_wrong_transport_profile_before_reviewer(
+    transport_arguments: tuple[str, ...],
+) -> None:
+    calls = 0
+
+    def forbidden_reviewer(request: bridge.ReviewRequest) -> bridge.ReviewReceiptResult:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("reviewer must not run for an invalid transport profile")
+
+    with pytest.raises(SystemExit):
+        bridge.main(
+            [
+                "review",
+                "--repo-root",
+                ".",
+                "--head",
+                HEAD,
+                "--shipping-commit",
+                HEAD,
+                "--review-profile",
+                "codex-lane-v",
+                *transport_arguments,
+            ],
+            reviewer=forbidden_reviewer,
+        )
+
+    assert calls == 0
 
 
 def test_reconcile_cli_rejects_caller_json() -> None:
@@ -5792,6 +5904,8 @@ def test_review_cli_requires_and_emits_review_profile(
             HEAD.upper(),
             "--review-profile",
             "codex-lane-v",
+            "--transport-profile",
+            EXISTING_SESSION_TRANSPORT_PROFILE,
             "--authorization-source",
             "user-task:verification-1",
         ],

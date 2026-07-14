@@ -35,6 +35,9 @@ PROVIDER_SCHEMA_VERSION = "opus-provider-review/v1"
 REVIEW_SCHEMA_VERSION = receipts.REVIEW_SCHEMA_VERSION
 RECONCILIATION_SCHEMA_VERSION = receipts.RECONCILIATION_SCHEMA_VERSION
 CODEX_LANE_V_REVIEW_PROFILE = "codex-lane-v"
+CLAUDE_EXISTING_SESSION_TRANSPORT_PROFILE = (
+    "anthropic-claude-existing-session-v1"
+)
 STANDING_CODEX_LANE_V_AUTHORIZATION = (
     "standing-policy:codex-lane-v-opus-v1"
 )
@@ -182,18 +185,10 @@ PIPELINE_MARKERS = tuple(
 )
 CLAUDE_ENV_ALLOWLIST = frozenset(
     {
-        "ALL_PROXY",
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "ANTHROPIC_BASE_URL",
-        "CLAUDE_CODE_OAUTH_TOKEN",
         "HOME",
-        "HTTPS_PROXY",
-        "HTTP_PROXY",
         "LANG",
         "LC_ALL",
         "LOGNAME",
-        "NO_PROXY",
         "PATH",
         "SHELL",
         "SSL_CERT_DIR",
@@ -202,6 +197,11 @@ CLAUDE_ENV_ALLOWLIST = frozenset(
         "TMPDIR",
         "USER",
     }
+)
+CLAUDE_ENV_FORBIDDEN_OVERRIDES = (
+    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_OAUTH_TOKEN", "ALL_PROXY", "HTTPS_PROXY", "HTTP_PROXY",
+    "NO_PROXY", "all_proxy", "https_proxy", "http_proxy", "no_proxy",
 )
 
 BROKER_CLIENT_SOURCE = f"""#!/usr/bin/env python3
@@ -2679,6 +2679,13 @@ def build_claude_environment(
     source: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     source = os.environ if source is None else source
+    forbidden = sorted(set(source).intersection(CLAUDE_ENV_FORBIDDEN_OVERRIDES))
+    if forbidden:
+        raise ReviewContractError(
+            "forbidden_environment",
+            "forbidden existing-session environment override present: "
+            + ", ".join(forbidden),
+        )
     child = {key: value for key, value in source.items() if key in CLAUDE_ENV_ALLOWLIST}
     child.update(
         {
@@ -2965,6 +2972,7 @@ def _perform_provider_review(
     sandbox_probe: Callable[..., bool] | None = None,
     runner: Callable[..., CapturedProcess] | None = None,
 ) -> OpusReview:
+    child_env = build_claude_environment()
     if isinstance(authority, ResolvedReviewRequest):
         if (
             authority.provider_prompt is None
@@ -3023,7 +3031,6 @@ def _perform_provider_review(
             authorization_source=authorization_source,
         )
 
-        child_env = build_claude_environment()
         try:
             claude_executable = (resolver or _resolve_claude_executable)(child_env)
         except OSError:
@@ -4062,6 +4069,11 @@ def _parser() -> argparse.ArgumentParser:
         choices=(CODEX_LANE_V_REVIEW_PROFILE,),
         required=True,
     )
+    review_parser.add_argument(
+        "--transport-profile",
+        choices=(CLAUDE_EXISTING_SESSION_TRANSPORT_PROFILE,),
+        required=True,
+    )
     review_parser.add_argument("--authorization-source", default="")
 
     reconcile_parser = subparsers.add_parser("reconcile")
@@ -4094,6 +4106,7 @@ def _run_review_cli(
     args: argparse.Namespace,
     reviewer: Callable[[ReviewRequest], ReviewReceiptResult] | None,
 ) -> ReviewReceiptResult:
+    build_claude_environment()
     if args.shipping_commit is not None:
         if args.verify_request_path is not None:
             raise ReviewContractError(

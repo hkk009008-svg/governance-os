@@ -1534,6 +1534,9 @@ def test_lane_v_trigger_guidance_pins_bridge_forms_and_pipeline_boundary() -> No
         assert '--shipping-commit "$HEAD"' in text, path
         assert '--verify-request-commit "$TRIGGER_COMMIT"' in text, path
         assert '--verify-request-path "$TRIGGER_PATH"' in text, path
+        assert text.count(
+            "--transport-profile anthropic-claude-existing-session-v1"
+        ) == 2, path
 
     pipeline_boundary_paths = (
         "scripts/codex_protocol_model.py",
