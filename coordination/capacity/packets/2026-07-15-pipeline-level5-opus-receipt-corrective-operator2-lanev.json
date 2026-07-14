@@ -1,0 +1,59 @@
+{
+  "id": "operator2-pipeline-level5-opus-receipt-corrective-lanev",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-receipt-corrective-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-receipt-corrective"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator2",
+  "packet_type": "operator-verification",
+  "allowed_paths": [
+    "coordination/bin/send-event",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_opus_review_receipts.py",
+    "tests/unit/test_verification_report_gate.py",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
+    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md",
+    "coordination/mailbox/sent/*operator2-to-all-verification-report.md",
+    "ARCHITECTURE.md",
+    "docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md",
+    "docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md"
+  ],
+  "dependencies": [
+    "director2-pipeline-level5-opus-receipt-corrective-implementation"
+  ],
+  "acceptance": [
+    "Remain blocked until one canonical committed Director2-to-Operator2 verify-request binds a new cumulative corrective shipping head, its full base, and descriptor 256b36e2-2fe4-43e8-b2e3-0a99a07e6229 with the exact digest.",
+    "Independently verify all five Operator2 FAIL findings against the actual corrected diff. Reproduce each pre-fix abuse case against the reviewed base and prove each corrected head rejects or safely recovers it without vacuous mocks or timing-only assertions.",
+    "Run every descriptor command plus fresh capacity, route, lock, smoke, protocol doctor, architecture freshness, report-schema, and exact-range diff checks. Inspect the sibling audit dispositions and reject any undisclosed write-set widening.",
+    "Treat opr1:b79ded16d73c5c001a811b1377ba8df85e4577c2cb8d0e87535e105548e35a49 and all prior authorization identities as immutable terminal evidence. Never retry, reset, resume, or reuse them. Any cross-model step for the new task must be independently guard-authorized under the standing policy, use only the new descriptor/head identity, and stop after one attempt with zero fallback.",
+    "Return exactly one canonical lane-v-report/v2 GO, NITS, or FAIL. Provider unavailability remains explicit degraded evidence and never supplies the Codex verdict. Do not repair findings, merge, push, consume, claim locks, or invoke an alternate provider/transport."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/bin/send-event",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_opus_review_receipts.py",
+    "tests/unit/test_verification_report_gate.py",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json"
+  ]
+}

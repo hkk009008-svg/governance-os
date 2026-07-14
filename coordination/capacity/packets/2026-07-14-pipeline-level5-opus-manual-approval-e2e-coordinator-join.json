@@ -27,7 +27,9 @@
     "The manually approved coordinator bridge command was submitted exactly once and created receipt opr1:b79ded16d73c5c001a811b1377ba8df85e4577c2cb8d0e87535e105548e35a49 in reviewed state.",
     "The normalized result is unavailable at provider_exit with reason process_failed, no effective model, and zero findings. This is not an Opus pass or correctness verdict.",
     "No retry, fallback, workaround, alternate provider, credential entry, or second process is authorized or used. The side-effect identity is terminal.",
-    "Content-free evidence is preserved in logs/pipeline-level5-opus-manual-approval-e2e-acceptance-2026-07-14.json and the canonical receipt-backed trigger is coordination/mailbox/sent/2026-07-14T15-17-58Z-coordinator-to-operator2-verify-request.md."
+    "Content-free evidence is preserved in logs/pipeline-level5-opus-manual-approval-e2e-acceptance-2026-07-14.json and the canonical receipt-backed trigger is coordination/mailbox/sent/2026-07-14T15-17-58Z-coordinator-to-operator2-verify-request.md.",
+    "Final reconciliation at Pipeline HEAD 563cc85c6716b746c5baff788cae8408c38b31d0 read coordination/mailbox/sent/2026-07-14T15-53-30Z-operator2-to-all-verification-report.md as VERDICT: FAIL; fresh capacity board evidence was valid and smoke OK was observed before opening the corrective route.",
+    "Next trigger: activate pipeline-level5-opus-receipt-corrective-2026-07-15 for one cumulative Director2 correction and independent Operator2 re-verification; never retry or reset the terminal receipt."
   ],
   "next_recipient": "operator2",
   "status": "done",

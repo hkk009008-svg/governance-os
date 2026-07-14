@@ -1,0 +1,39 @@
+{
+  "id": "coord-pipeline-level5-opus-receipt-corrective-join",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-receipt-corrective-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-receipt-corrective"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*"
+  ],
+  "dependencies": [
+    "operator2-pipeline-level5-opus-receipt-corrective-lanev"
+  ],
+  "acceptance": [
+    "Treat the committed Operator2 FAIL report at 563cc85c6716b746c5baff788cae8408c38b31d0 as binding. The prior provider receipt and every prior attempt identity are terminal evidence only and may not be retried, reset, replayed, or reused.",
+    "Keep the corrective cycle open until Director2 lands one descriptor-bound cumulative corrective head and Operator2 returns one canonical verification-report GO, NITS, or FAIL for that exact head and range.",
+    "On GO, refresh HEAD, mail, capacity, route, locks, smoke, protocol doctor, exact report evidence, and branch cleanliness before routing integration or closeout. On NITS or FAIL, return only the bounded corrective diff to Director2.",
+    "Do not let Wave 2 MET, green deterministic tests, or an unavailable cross-model result substitute for the Operator2 verdict. Do not author production behavior as coordinator."
+  ],
+  "done_evidence": [],
+  "next_recipient": "director2",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/bin/send-event",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py"
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "id": "director2-pipeline-level5-opus-receipt-corrective-implementation",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-receipt-corrective-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-receipt-corrective"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "director2",
+  "packet_type": "director-implementation",
+  "allowed_paths": [
+    "coordination/bin/send-event",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_opus_review_receipts.py",
+    "tests/unit/test_verification_report_gate.py",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
+    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md",
+    "ARCHITECTURE.md",
+    "docs/superpowers/plans/2026-07-13-opus-lanev-receipt-hardening.md",
+    "docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md"
+  ],
+  "dependencies": [
+    "operator2-pipeline-level5-opus-manual-approval-e2e-lanev"
+  ],
+  "acceptance": [
+    "Start from Pipeline main commit 563cc85c6716b746c5baff788cae8408c38b31d0 in a fresh isolated worktree and branch. Do not reset, reuse, or mutate .worktrees/opus-lanev-receipt-hardening or any prior receipt/runtime state.",
+    "Use coordination/mailbox/sent/2026-07-14T15-53-30Z-operator2-to-all-verification-report.md as the committed independent adversarial enumeration. Fix exactly its five findings without reopening unrelated reviewed-range behavior.",
+    "Before each fix, add a deterministic non-vacuous regression and capture RED or strict-xfail evidence: real process death after publishing preserves the witnessed candidate for recovery and never deletes a substituted foreign file; baseline authority cannot be selected or suppressed through PATH; a symlinked sent directory is rejected without accepting outside bytes; shutdown cannot miss or leak a newly started verifier child; and malformed receipt IDs create no runtime/state root before rejection. Fixed defects finish with passing regressions, not final xfails.",
+    "Audit every sibling cleanup/removal path in send-event, every historical-baseline Git invocation and report-corpus directory open, every verifier child registration/close interleaving, and every untrusted receipt-ID entry path. Record mirror, defer, document, or exempt disposition for each sibling in the verify-request.",
+    "Preserve the exact no-retry semantics and old receipt evidence. Do not regenerate the historical report baseline, weaken a gate, relax canonical path or process ownership checks, or treat process_failed as an Opus pass.",
+    "Keep the five production fixes and their tests in one cumulative corrective head because the changed files implement the verification boundary used to judge the same change. Update ARCHITECTURE.md or the approved plan/design only for claims proven stale by the final code; otherwise leave their intended contracts unchanged.",
+    "Create descriptor coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json with the exact allowed paths, abuse cases, and verification commands. The shipping commit must use a fix subject and exactly one matching Lane-V-Scope trailer, then a canonical committed Director2-to-Operator2 verify-request must bind the full head/base/descriptor.",
+    "At minimum run bash -n coordination/bin/send-event; the focused five-file regression suite; scripts/check_go_schema.py; scripts/check_doc_claims.py --sha-refs; scripts/ci_smoke.py; scripts/protocol_doctor.py --wave 2; and git diff --check for the exact corrective range.",
+    "No provider invocation, old receipt mutation, manual approval change, credential entry, alternate transport, push, merge, publication beyond the one verify-request, cursor consume, lock action, pod action, production generation, or unrelated cleanup."
+  ],
+  "done_evidence": [],
+  "next_recipient": "operator2",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/bin/send-event",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_opus_review_receipts.py",
+    "tests/unit/test_verification_report_gate.py",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json"
+  ]
+}
