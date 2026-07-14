@@ -2606,6 +2606,96 @@ def _inject_fsync_error(
     return observed
 
 
+def _expected_candidate_witness(
+    root: Path, candidate: Path, raw: bytes, final_relative: str
+) -> dict[str, object]:
+    observed = candidate.stat()
+    return {
+        "path": final_relative,
+        "candidate_digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "candidate_name": candidate.name,
+        "candidate_device": observed.st_dev,
+        "candidate_inode": observed.st_ino,
+        "index_blob_oid": _git_with_input(
+            root, raw, "hash-object", "--no-filters", "--stdin"
+        ),
+        "index_mode": "100644",
+        "index_stage": 0,
+    }
+
+
+def test_receipt_begin_post_replace_fsync_failure_retains_witnessed_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _live_codex_fixture(tmp_path / "repo")
+    candidate = _candidate_path(fixture.root, fixture.raw)
+    expected = _expected_candidate_witness(
+        fixture.root, candidate, fixture.raw, fixture.report.relative_path
+    )
+    state_directory = fixture.store.state_root.stat()
+    injected = _inject_fsync_error(
+        monkeypatch,
+        lambda metadata: stat.S_ISDIR(metadata.st_mode)
+        and (metadata.st_dev, metadata.st_ino)
+        == (state_directory.st_dev, state_directory.st_ino),
+    )
+
+    with pytest.raises(gate.ReportGateError, match="publication_resumable"):
+        gate.publish_candidate(
+            repo_root=fixture.root,
+            candidate_path=candidate,
+            final_relative=fixture.report.relative_path,
+            receipt_store_factory=lambda _root: fixture.store,
+        )
+
+    assert injected["raised"] is True
+    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+        record = attempt.load_existing()
+    assert record.state == "publishing"
+    assert gate._stored_publication_witness(record) == expected
+    assert candidate.exists()
+
+
+def test_task_begin_post_replace_fsync_failure_retains_witnessed_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _live_claude_fixture(tmp_path / "repo")
+    store = gate.TaskPublicationStore.for_repo(
+        fixture.root, state_root=fixture.root / ".task-publications"
+    )
+    gate.validate_live_report(
+        fixture.root,
+        fixture.report,
+        task_store_factory=lambda _root: store,
+    )
+    candidate = _candidate_path(fixture.root, fixture.raw)
+    expected = _expected_candidate_witness(
+        fixture.root, candidate, fixture.raw, fixture.report.relative_path
+    )
+    state_directory = store.state_root.stat()
+    injected = _inject_fsync_error(
+        monkeypatch,
+        lambda metadata: stat.S_ISDIR(metadata.st_mode)
+        and (metadata.st_dev, metadata.st_ino)
+        == (state_directory.st_dev, state_directory.st_ino),
+    )
+
+    with pytest.raises(gate.ReportGateError, match="publication_resumable"):
+        gate.publish_candidate(
+            repo_root=fixture.root,
+            candidate_path=candidate,
+            final_relative=fixture.report.relative_path,
+            task_store_factory=lambda _root: store,
+        )
+
+    assert injected["raised"] is True
+    with store.lock_task(TASK_ID) as task:
+        record = task.load_existing()
+    assert record.state == "publishing"
+    assert gate._stored_publication_witness(record) == expected
+    assert candidate.exists()
+
+
 def test_candidate_fsync_oserror_before_link_never_publishes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

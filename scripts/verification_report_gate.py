@@ -2108,6 +2108,25 @@ def _last_pre_publish_guard(
     _verify_blob(git, raw, digest, expected_oid)
 
 
+def _retain_post_replace_candidate(
+    attempt: object,
+    witness: tuple[str, str, str, int, int, str, str, int],
+    set_candidate_ownership: Callable[[bool], None],
+) -> None:
+    """Retain a candidate only for an exact publishing witness reloaded from disk."""
+
+    try:
+        observed = attempt.load_existing()
+        if getattr(observed, "state", None) != "publishing":
+            return
+        stored = _stored_publication_witness(observed)
+    except BaseException:
+        # Recovery evidence must never replace the original begin failure.
+        return
+    if tuple(stored[field] for field in _TASK_WITNESS_FIELDS) == witness:
+        set_candidate_ownership(True)
+
+
 def _locked_publish_new(
     *,
     attempt: object,
@@ -2144,7 +2163,13 @@ def _locked_publish_new(
         0,
     )
     _publication_checkpoint("before_publishing")
-    publishing = attempt.begin_publication(*witness)
+    try:
+        publishing = attempt.begin_publication(*witness)
+    except BaseException:
+        _retain_post_replace_candidate(
+            attempt, witness, set_candidate_ownership
+        )
+        raise
     set_candidate_ownership(True)
     _publication_checkpoint("after_publishing")
     _require_candidate_name(candidate, sent_fd)
