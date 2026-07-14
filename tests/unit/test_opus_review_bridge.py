@@ -2855,6 +2855,40 @@ def test_reconcile_receipt_has_no_fabricated_review_input() -> None:
     assert "receipt_id" in parameters
 
 
+def test_reconcile_receipt_rejects_malformed_id_before_store_initialization(
+    tmp_path: Path,
+) -> None:
+    fixture = _authority_fixture(tmp_path / "repo")
+    state_root = tmp_path / "receipt-state"
+    factory_calls = 0
+
+    def store_factory(repo_root: Path) -> receipts.ReceiptStore:
+        nonlocal factory_calls
+        factory_calls += 1
+        return receipts.ReceiptStore.for_repo(
+            repo_root,
+            state_root=state_root,
+        )
+
+    with pytest.raises(
+        (bridge.ReviewContractError, receipts.ReceiptContractError)
+    ) as excinfo:
+        bridge.reconcile_receipt(
+            repo_root=fixture.root,
+            receipt_id="opr1:not-canonical",
+            expected_head=fixture.head,
+            expected_base=fixture.base,
+            codex_verdict="GO",
+            dispositions=(),
+            store_factory=store_factory,
+        )
+
+    assert factory_calls == 0
+    assert not state_root.exists()
+    assert isinstance(excinfo.value, bridge.ReviewContractError)
+    assert excinfo.value.reason == "invalid_receipt_id"
+
+
 def test_reconcile_receipt_rejects_wrong_repo_head_base_and_receipt(
     tmp_path: Path,
 ) -> None:
@@ -4113,6 +4147,141 @@ def test_verification_broker_context_shutdown_reaps_active_process_group(
         assert _wait_for_pid_exit(descendant_pid)
     finally:
         _kill_pid_if_alive(descendant_pid)
+
+
+def test_verification_broker_close_linearizes_with_inflight_spawn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source"
+    snapshot = tmp_path / "snapshot"
+    source.mkdir()
+    snapshot.mkdir()
+    popen_created = threading.Event()
+    allow_popen_return = threading.Event()
+    close_probed_lock = threading.Event()
+    close_observed_active_spawn: list[bool] = []
+    child_alive_when_close_returned: list[bool] = []
+    spawned: list[subprocess.Popen[bytes]] = []
+    responses: list[dict[str, object]] = []
+    real_popen = subprocess.Popen
+
+    class ObservedLock:
+        def __init__(self) -> None:
+            self._lock = threading.Lock()
+
+        def __enter__(self) -> ObservedLock:
+            if threading.current_thread().name == "broker-close":
+                acquired = self._lock.acquire(blocking=False)
+                close_observed_active_spawn.append(not acquired)
+                close_probed_lock.set()
+                if not acquired:
+                    self._lock.acquire()
+            else:
+                self._lock.acquire()
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            self._lock.release()
+
+    def held_popen(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        process = real_popen(*args, **kwargs)
+        spawned.append(process)
+        popen_created.set()
+        if not allow_popen_return.wait(timeout=5):
+            bridge._terminate_process_group(process)
+            raise AssertionError("test did not release the Popen return seam")
+        return process
+
+    with bridge._sandbox_runtime(source, snapshot) as runtime:
+        broker = bridge._VerificationBroker(
+            runtime,
+            snapshot,
+            timeout_seconds=30,
+        )
+        broker._lock = ObservedLock()
+        monkeypatch.setattr(bridge.subprocess, "Popen", held_popen)
+        client = broker.register(
+            [sys.executable, "-c", "import time; time.sleep(30)"]
+        )
+        token = client[-2]
+        response_thread = threading.Thread(
+            target=lambda: responses.append(broker._response_for_token(token)),
+            name="broker-response",
+        )
+
+        def close_broker() -> None:
+            broker.close()
+            child_alive_when_close_returned.append(spawned[0].poll() is None)
+
+        close_thread = threading.Thread(target=close_broker, name="broker-close")
+        try:
+            response_thread.start()
+            assert popen_created.wait(timeout=5)
+            close_thread.start()
+            assert close_probed_lock.wait(timeout=5)
+            allow_popen_return.set()
+            close_thread.join(timeout=5)
+            assert not close_thread.is_alive()
+            if spawned[0].poll() is None:
+                bridge._terminate_process_group(spawned[0])
+            response_thread.join(timeout=5)
+            assert not response_thread.is_alive()
+        finally:
+            allow_popen_return.set()
+            if spawned and spawned[0].poll() is None:
+                bridge._terminate_process_group(spawned[0])
+            response_thread.join(timeout=5)
+            close_thread.join(timeout=5)
+            broker.close()
+
+    assert close_observed_active_spawn[0] is True
+    assert child_alive_when_close_returned == [False]
+    assert len(responses) == 1
+
+
+def test_verification_broker_rejects_registration_after_close(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    snapshot = tmp_path / "snapshot"
+    source.mkdir()
+    snapshot.mkdir()
+
+    with bridge._sandbox_runtime(source, snapshot) as runtime:
+        broker = bridge._VerificationBroker(
+            runtime,
+            snapshot,
+            timeout_seconds=5,
+        )
+        broker.close()
+
+        with pytest.raises(RuntimeError, match="broker is closed"):
+            broker.register([sys.executable, "-c", "pass"])
+
+
+def test_verification_broker_rejects_registered_token_after_close_without_admission(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    snapshot = tmp_path / "snapshot"
+    source.mkdir()
+    snapshot.mkdir()
+
+    with bridge._sandbox_runtime(source, snapshot) as runtime:
+        broker = bridge._VerificationBroker(
+            runtime,
+            snapshot,
+            timeout_seconds=5,
+        )
+        client = broker.register([sys.executable, "-c", "pass"])
+        token = client[-2]
+        broker.close()
+
+        response = broker._response_for_token(token)
+
+    assert response == broker._rejected_payload()
+    assert token not in broker._used
 
 
 @pytest.mark.parametrize(

@@ -2999,6 +2999,41 @@ def test_publish_candidate_recovery_rejects_equal_bytes_different_inode(
     assert record.state == "publishing"
 
 
+@pytest.mark.parametrize("operation", ["resume", "status"])
+def test_receipt_recovery_rejects_malformed_id_before_store_initialization(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    root, _, _, _, _ = _authority_fixture(tmp_path / "repo")
+    (root / "coordination" / "mailbox" / "sent").mkdir(parents=True)
+    state_root = tmp_path / "receipt-state"
+    factory_calls = 0
+
+    def store_factory(repo_root: Path) -> receipts.ReceiptStore:
+        nonlocal factory_calls
+        factory_calls += 1
+        return receipts.ReceiptStore.for_repo(
+            repo_root,
+            state_root=state_root,
+        )
+
+    function = (
+        gate.resume_publication
+        if operation == "resume"
+        else gate.publication_status
+    )
+    with pytest.raises(gate.ReportGateError) as excinfo:
+        function(
+            repo_root=root,
+            receipt_id="opr1:not-canonical",
+            receipt_store_factory=store_factory,
+        )
+
+    assert factory_calls == 0
+    assert not state_root.exists()
+    assert excinfo.value.reason == "invalid_receipt_id"
+
+
 @pytest.mark.parametrize(
     "unsafe",
     ["relative", "dotdot", "other-parent", "symlink", "directory", "fifo", "mode", "nlink"],

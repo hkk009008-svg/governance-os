@@ -185,6 +185,13 @@ def _canonical_uuid(value: str) -> str:
     return value
 
 
+def _canonical_receipt_id(value: str) -> str:
+    try:
+        return receipts.canonical_receipt_id(value)
+    except receipts.ReceiptContractError as exc:
+        raise ReportGateError(exc.reason, exc.detail) from exc
+
+
 def _full_sha(value: str, label: str, *, allow_none: bool = False) -> str:
     if allow_none and value == "none":
         return value
@@ -2809,14 +2816,19 @@ def resume_publication(
 ) -> Path:
     if (receipt_id is None) == (task_id is None):
         _fail("invalid_resume_identifier", "choose exactly one receipt or task ID")
+    canonical_receipt_id = (
+        _canonical_receipt_id(receipt_id) if receipt_id is not None else None
+    )
     root = _require_repository(Path(repo_root))
     sent_fd = _open_sent_directory(root)
     try:
         with _SanitizedGit(root) as git:
             try:
-                if receipt_id is not None:
+                if canonical_receipt_id is not None:
                     store = receipt_store_factory(root)
-                    with store.lock_receipt(receipt_id, blocking=True) as attempt:
+                    with store.lock_receipt(
+                        canonical_receipt_id, blocking=True
+                    ) as attempt:
                         record = attempt.load_existing()
 
                         def validate_codex(
@@ -2842,7 +2854,9 @@ def resume_publication(
                             observed = attempt.load_existing()
                             if record.state != "published" and observed.state == "published":
                                 status_instruction = _publication_cli_command(
-                                    root, "status", receipt_id=receipt_id
+                                    root,
+                                    "status",
+                                    receipt_id=canonical_receipt_id,
                                 )
                                 raise ReportGateError(
                                     "publication_status_required",
@@ -2996,13 +3010,18 @@ def publication_status(
 ) -> dict[str, object]:
     if (receipt_id is None) == (task_id is None):
         _fail("invalid_status_identifier", "choose exactly one receipt or task ID")
+    canonical_receipt_id = (
+        _canonical_receipt_id(receipt_id) if receipt_id is not None else None
+    )
     root = _require_repository(Path(repo_root))
     sent_fd: int | None = None
     try:
         with _SanitizedGit(root) as git:
-            if receipt_id is not None:
+            if canonical_receipt_id is not None:
                 store = receipt_store_factory(root)
-                with store.lock_receipt(receipt_id, blocking=True) as attempt:
+                with store.lock_receipt(
+                    canonical_receipt_id, blocking=True
+                ) as attempt:
                     record = attempt.load_existing()
                     if record.state in {"publishing", "published"}:
                         sent_fd = _open_sent_directory(root)
