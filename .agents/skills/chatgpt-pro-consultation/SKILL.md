@@ -28,11 +28,11 @@ Treat the result as advisory only. This is not the dual-chief order path and gra
 
 ## Browser transport
 
-In `auto` mode, **REQUIRED SUB-SKILL:** load and follow `browser:control-in-app-browser`. Prefer the in-app browser, then an approved Chrome bridge. Open a fresh chat on an approved ChatGPT origin; never inspect cookies/storage, enter credentials, accept consequential consent, upload files, or add context outside the guarded prompt. Transition `prepared -> sending` immediately before the send and `sending -> sent` only after one confirmed send, using `.venv/bin/python scripts/chatgpt_pro_consult.py transition` with transport `iab` or `chrome`; one guarded browser send per idempotency key. Finalize consultation tabs under the Browser skill's rules.
+The default is `auto`; its transport order is `iab -> block`. In `auto` mode, **REQUIRED SUB-SKILL:** load and follow `browser:control-in-app-browser`. Use only the current runtime in-app Browser transport (`iab`); do not launch or substitute Chrome. Open a fresh chat on an approved ChatGPT origin; never inspect cookies/storage, enter credentials, accept consequential consent, upload files, or add context outside the guarded prompt. Transition `prepared -> sending` immediately before the send and `sending -> sent` only after one confirmed send, using `.venv/bin/python scripts/chatgpt_pro_consult.py transition` with transport `iab`; one guarded browser send per idempotency key. Finalize consultation tabs under the Browser skill's rules.
 
 ## Manual relay
 
-`manual` is the default and permits no browser send. Give the user the exact prepared prompt to paste into a fresh ChatGPT Pro chat and ask for the exact correlated JSON response. Do not offer an unguarded alternate prompt. Use the same lifecycle transitions with transport `manual`; mark partial or uncertain delivery failed.
+`manual` is an explicit legacy compatibility mode and permits no browser send. Give the user the exact prepared prompt to paste into a fresh ChatGPT Pro chat and ask for the exact correlated JSON response. Do not offer an unguarded alternate prompt. Use the same lifecycle transitions with transport `manual`; mark partial or uncertain delivery failed. Never switch to this mode as an `auto` fallback.
 
 ## Accept
 
@@ -48,11 +48,11 @@ Verify every material factual claim locally. Classify each recommendation `adopt
 - Director may consult design, brief, or plan tradeoffs, then must verify claims locally.
 - Coordinator is mailbox-first before consultation: refresh HEAD, mailbox bodies, route, wave, capacity, and locks before prepare, then refresh HEAD, mailbox bodies, route, wave, capacity, and locks again before send and before use; pre-send drift discards the prepared packet and requires re-prepare, and later drift marks the response stale.
 - Operator consultation never replaces Lane V. Use it only on explicit request or for a distinct, pre-stated strategic question; it cannot contribute authority to GO, NITS, or FAIL.
-- `off` fails closed. `manual` permits guarded export/import only. `auto` permits the guarded Browser ladder.
+- `off` fails closed. `manual` permits guarded export/import only when explicitly configured. `auto` permits only the guarded current-runtime `iab` transport, then blocks.
 
 ## Failure
 
-If signed out, ask the user to sign in; never enter credentials. Follow Browser safety for a challenge or CAPTCHA. After a definite safe auto failure is transitioned to `failed`, explicitly run `.venv/bin/python scripts/chatgpt_pro_consult.py resume-manual --state-file PATH --consultation-id UUID` to return the same record to `prepared`/`manual`, then relay the exact guarded prompt. The command arguments are content-free identifiers; request and response payload content remains stdin-only; uncertain or partial delivery stops for explicit user decision; never retry or resume automatically. Use no API fallback. Continue from local evidence when advice is optional; return an unresolved high-impact choice to the user. Advisory status, an NDA, manual relay, or a “non-sensitive” response never permits raw transcript persistence.
+If `iab` is unavailable, signed out, challenged, or ambiguous before send, transition the record to `failed` when safe to do so and block with zero send. Never enter credentials. Follow Browser safety for a challenge or CAPTCHA. Uncertain or partial delivery also blocks without retry or fallback. Do not switch to Chrome, manual relay, an API, another provider, or a workaround. Continue from local evidence when advice is optional; return an unresolved high-impact choice to the user. Advisory status, an NDA, manual relay, or a “non-sensitive” response never permits raw transcript persistence.
 
 ## Durable summary
 

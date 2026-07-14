@@ -557,26 +557,22 @@ def test_r_independence_is_model_backed_and_surface_synced():
     assert "R-INDEPENDENCE" in model.render_start_session_inhabitance()
 
 
-def test_chatgpt_pro_consultation_model_contract_tracks_gate_and_fails_closed():
-    expected_default = _acceptance_backed_default()
+def test_chatgpt_pro_consultation_model_contract_is_auto_or_block():
     assert model.CHATGPT_PRO_CONSULTATION_MODES == ("auto", "manual", "off")
-    assert model.CHATGPT_PRO_CONSULTATION_DEFAULT == expected_default
-    assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == (
-        "in-app browser",
-        "approved Chrome bridge",
-        "manual relay",
-    )
+    assert model.CHATGPT_PRO_CONSULTATION_DEFAULT == "auto"
+    assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == ("iab", "block")
 
     rendered = model.render_chatgpt_pro_consultation()
     for phrase in (
         "ChatGPT Pro Advisory Consultation:",
         "always invocable",
-        "one guarded browser send per idempotency key",
-        "manual relay",
+        "one guarded send per idempotency key",
+        "current runtime in-app Browser transport (iab)",
+        "transport order: iab -> block",
         "not the dual-chief order path",
         "advisory only",
-        "no API fallback",
-        "raw prompts and responses stay out of Git",
+        "no automatic Chrome, manual relay, API, retry, or workaround fallback",
+        "prompts and responses stay out of Git",
         "coordinator refreshes live state before send and before use",
         "operator Lane V is never replaced",
     ):
@@ -584,7 +580,7 @@ def test_chatgpt_pro_consultation_model_contract_tracks_gate_and_fails_closed():
 
     assert (
         model.infer_runtime_env({})["CODEX_CHATGPT_PRO_CONSULTATION"]
-        == expected_default
+        == "auto"
     )
     assert (
         model.infer_runtime_env({"CODEX_CHATGPT_PRO_CONSULTATION": "auto"})[
@@ -600,21 +596,48 @@ def test_chatgpt_pro_consultation_model_contract_tracks_gate_and_fails_closed():
     )
 
 
-def test_chatgpt_pro_transport_order_is_browser_first_in_model_and_skill():
-    assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == (
-        "in-app browser",
-        "approved Chrome bridge",
-        "manual relay",
-    )
+def test_chatgpt_pro_transport_order_is_iab_then_block_in_model_and_skill():
+    assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == ("iab", "block")
     rendered = model.render_chatgpt_pro_consultation()
-    assert rendered.index("in-app browser") < rendered.index("approved Chrome bridge")
-    assert rendered.index("approved Chrome bridge") < rendered.index("manual relay")
+    assert rendered.index("transport order: iab -> block") < rendered.index(
+        "no automatic Chrome"
+    )
 
     skill = _compact(_read(".agents/skills/chatgpt-pro-consultation/SKILL.md"))
-    assert skill.index("Prefer the in-app browser") < skill.index(
-        "approved Chrome bridge"
+    assert "transport order is `iab -> block`" in skill
+    assert "Use only the current runtime in-app Browser transport (`iab`)" in skill
+    assert "do not launch or substitute Chrome" in skill
+
+
+def test_chatgpt_pro_auto_policy_is_iab_then_block_without_fallback_instructions():
+    assert model.CHATGPT_PRO_CONSULTATION_DEFAULT == "auto"
+    assert model.infer_runtime_env({})["CODEX_CHATGPT_PRO_CONSULTATION"] == "auto"
+    assert model.CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER == ("iab", "block")
+
+    rendered = _compact(model.render_chatgpt_pro_consultation())
+    assert "transport order: iab -> block" in rendered
+    assert "approved Chrome bridge" not in rendered
+    assert "then manual relay" not in rendered
+
+    surfaces = (
+        "AGENTS.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/chatgpt-pro-consultation/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".codex/agents/readiness-bridge.toml",
+        ".codex/agents/protocol-director.toml",
+        ".codex/agents/protocol-coordinator.toml",
+        ".codex/agents/protocol-operator.toml",
     )
-    assert skill.index("approved Chrome bridge") < skill.index("Manual relay")
+    for path in surfaces:
+        text = _compact(_read(path))
+        assert "default is `auto`" in text, path
+        assert "transport order is `iab -> block`" in text, path
+        assert "approved Chrome bridge" not in text, path
+        assert "resume-manual" not in text, path
 
 
 def test_chatgpt_pro_acceptance_procedure_is_fail_closed_and_content_free():
@@ -740,14 +763,11 @@ def test_chatgpt_pro_consultation_is_model_backed_and_surface_synced():
     shared = (
         "ChatGPT Pro Advisory Consultation",
         "always invocable",
-        "one guarded browser send per idempotency key",
-        "manual relay",
-        "no API fallback",
-        "raw prompts and responses stay out of Git",
+        "current runtime in-app Browser transport",
+        "prompts and responses stay out of Git",
         "advisory only",
         "not the dual-chief order path",
         "subagents may prepare a bounded question but only the parent context may send",
-        "automatic retries are zero in V1",
     )
     for phrase in shared:
         assert phrase in rendered
@@ -828,7 +848,7 @@ def test_chatgpt_pro_consultation_skill_preserves_all_normative_triggers():
         assert trigger in compact_body
 
 
-def test_chatgpt_pro_consultation_manual_fallback_is_surface_synced():
+def test_chatgpt_pro_consultation_auto_failure_block_is_surface_synced():
     surfaces = (
         "AGENTS.md",
         "docs/protocol/codex/continuation.md",
@@ -842,28 +862,17 @@ def test_chatgpt_pro_consultation_manual_fallback_is_surface_synced():
         ".codex/agents/protocol-coordinator.toml",
         ".codex/agents/protocol-operator.toml",
     )
-    fallback = (
-        "definite safe auto failure is transitioned to failed",
-        "resume-manual --state-file PATH --consultation-id UUID",
-        "return the same record to prepared/manual",
-        "uncertain or partial delivery stops for explicit user decision",
-        "never retry or resume automatically",
+    block = (
+        "If iab is unavailable, signed out, challenged, or ambiguous before send",
+        "transition the record to failed when safe to do so and block with zero send",
+        "Uncertain or partial delivery also blocks without retry or fallback",
     )
     for path in surfaces:
         text = _compact(_read(path)).replace("`", "")
-        for phrase in fallback:
+        for phrase in block:
             assert phrase in text, (path, phrase)
-
-    skill = _compact(_read(".agents/skills/chatgpt-pro-consultation/SKILL.md")).replace(
-        "`", ""
-    )
-    assert (
-        ".venv/bin/python scripts/chatgpt_pro_consult.py resume-manual "
-        "--state-file PATH --consultation-id UUID"
-        in skill
-    )
-    assert "command arguments are content-free identifiers" in skill
-    assert "request and response payload content remains stdin-only" in skill
+        assert "resume-manual" not in text, path
+        assert "approved Chrome bridge" not in text, path
 
 
 def test_agent_extension_routing_contract_is_model_backed():

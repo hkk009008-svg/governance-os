@@ -1319,7 +1319,7 @@ class _CLIError(Exception):
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = _SafeArgumentParser(description="Guarded ChatGPT Pro manual relay")
+    parser = _SafeArgumentParser(description="Guarded ChatGPT Pro consultation")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     prepare = subparsers.add_parser("prepare")
@@ -1384,6 +1384,8 @@ def main(argv: list[str] | None = None) -> int:
         elif arguments.command == "transition":
             if mode == "manual" and arguments.transport != "manual":
                 raise _CLIError("transport_not_allowed")
+            if mode == "auto" and arguments.transport != "iab":
+                raise _CLIError("transport_not_allowed")
             result = transition_consultation(
                 arguments.state_file,
                 arguments.consultation_id,
@@ -1394,6 +1396,8 @@ def main(argv: list[str] | None = None) -> int:
         elif arguments.command == "accept":
             result = accept_response(arguments.state_file, json.load(sys.stdin))
         elif arguments.command == "resume-manual":
+            if mode != "manual":
+                raise _CLIError("transport_not_allowed")
             result = resume_manual(
                 arguments.state_file,
                 arguments.consultation_id,
