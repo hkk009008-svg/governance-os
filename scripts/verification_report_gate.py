@@ -1614,11 +1614,10 @@ def validate_live_report(
                 "invalid_task_publication", f"task state access failed: {reason}"
             ) from exc
         return authority
+    receipt_id = _canonical_receipt_id(report.fields["Opus receipt ID"])
     try:
         store = receipt_store_factory(root)
-        with store.lock_receipt(
-            report.fields["Opus receipt ID"], blocking=True
-        ) as attempt:
+        with store.lock_receipt(receipt_id, blocking=True) as attempt:
             record = attempt.load_existing()
             _validate_codex_record(root, report, authority, record)
     except ReportGateError:

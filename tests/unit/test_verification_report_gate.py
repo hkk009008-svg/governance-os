@@ -1242,6 +1242,35 @@ def test_live_codex_binding_accepts_exact_reconciled_report(
     assert validated == fixture.authority
 
 
+def test_live_codex_rejects_malformed_receipt_id_before_store_initialization(
+    tmp_path: Path,
+) -> None:
+    fixture = _live_codex_fixture(tmp_path / "repo")
+    fields = dict(fixture.report.fields)
+    fields["Opus receipt ID"] = "opr1:not-canonical"
+    state_root = tmp_path / "malformed-receipt-state"
+    factory_calls = 0
+
+    def store_factory(repo_root: Path) -> receipts.ReceiptStore:
+        nonlocal factory_calls
+        factory_calls += 1
+        return receipts.ReceiptStore.for_repo(
+            repo_root,
+            state_root=state_root,
+        )
+
+    with pytest.raises(gate.ReportGateError) as excinfo:
+        gate.validate_live_report(
+            fixture.root,
+            _mutated_report(fixture.report, fields=fields),
+            receipt_store_factory=store_factory,
+        )
+
+    assert factory_calls == 0
+    assert not state_root.exists()
+    assert excinfo.value.reason == "invalid_receipt_id"
+
+
 def test_live_codex_binding_rejects_legacy_underclassified_reconciliation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
