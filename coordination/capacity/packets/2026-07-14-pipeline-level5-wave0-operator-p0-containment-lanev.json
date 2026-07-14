@@ -21,10 +21,12 @@
     "Delete/rename a cited mechanism test or bypass the ledger evidence predicate and prove the checker turns RED. Verify a prose PASS, fixture label, plan checkbox, zero-row wave gate, smoke/doctor result, or receipt presence cannot promote a behavior claim without executable evidence.",
     "Return exactly one verification-report GO, NITS, or FAIL for the immutable range. Do not repair, merge, push, consume, mutate route/packet/lock/ref state, or enter either parked worktree."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "SCHEDULING SUPERSESSION ONLY: no Pair-A implementation or lawful verify-request landed, so Operator issued no GO, NITS, or FAIL. The 2026-07-14T03-42-01Z contradiction remains preserved for a future corrected route."
+  ],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

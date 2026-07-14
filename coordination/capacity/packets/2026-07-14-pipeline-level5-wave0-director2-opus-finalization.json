@@ -20,10 +20,13 @@
     "Only after all local gates PASS on unchanged head, use the explicit user consent recorded in the coordinator route plus its executor token to execute the one receipt-backed Opus attempt under the exact codex-lane-v descriptor and advisory prompt. Consent authorizes spend and the token elects Director2. No retry, fallback, substitute reviewer, fabricated receipt, raw prompt/response persistence, or second attempt is permitted. An unavailable/degraded receipt is preserved once but does not satisfy Opus transport completion.",
     "Reconcile the real stored receipt with evidence-backed dispositions, recheck exact head/cleanliness, and send one Director2-to-Operator2 verify-request naming the immutable range, commands, descriptor, receipt ID/status, findings/dispositions, main divergence, exclusions, and exact next trigger. Receipt presence is attempt evidence only."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "TERMINAL DENIAL EVIDENCE: coordination/mailbox/sent/2026-07-14T05-12-10Z-director2-to-coordinator-coordination.md and logs/pipeline-level5-wave0-opus-finalization-2026-07-14.json record that the outer runtime denied side_effect_id pipeline-level5-wave0-opus-attempt-2026-07-14 before process creation. No provider request, receipt, spend, retry, fallback, or workaround occurred.",
+    "This packet and its executor token are excepted and must never be resumed or reused. Any later transport uses the separate pipeline-level5-opus-existing-session-2026-07-14 cycle, a new side-effect identity, and the merged existing-session bridge."
+  ],
   "handoff_artifact": null,
   "next_recipient": "operator2",
-  "status": "active",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
   "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",

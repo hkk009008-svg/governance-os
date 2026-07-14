@@ -20,10 +20,13 @@
     "Prove the receipt is the real bridge-issued artifact for the routed attempt, was not manually synthesized or retried, and grants no correctness or seat authority. Distinguish provider availability from correctness; an unavailable/degraded result cannot satisfy this packet's GO criterion.",
     "Return exactly one verification-report GO, NITS, or FAIL for the immutable range. Do not edit the Opus branch, rerun the provider, repair findings, merge, push, publish, consume, or mutate packets/locks/refs."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "SCHEDULING SUPERSESSION ONLY: the old Director2 packet produced no receipt-backed verify-request because the outer runtime denied process creation. Operator2 therefore issued no GO, NITS, or FAIL and must not act from the old dependency.",
+    "A later Operator2 pass requires the distinct verify-request and receipt created, if any, under pipeline-level5-opus-existing-session-2026-07-14; it cannot reconstruct or reuse the denied attempt."
+  ],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
   "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",

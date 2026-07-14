@@ -1,0 +1,26 @@
+{
+  "id": "operator-pipeline-level5-opus-existing-session-standby",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-existing-session-2026-07-14",
+  "owner": "operator",
+  "packet_type": "idle",
+  "row_ids": [
+    "level5-wave1-opus-existing-session-transport"
+  ],
+  "allowed_paths": [],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Pair A has no routed verification in this authority-sensitive transport cycle. Do not reconstruct a verify-request, duplicate Lane V, consume, route, or invoke a provider."
+  ],
+  "done_evidence": [
+    "Direct user scope and the coordinator split assign the separate existing-session transport verification only to Operator2; Operator is excepted from this cycle without issuing GO, NITS, or FAIL."
+  ],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "excepted",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": []
+}
