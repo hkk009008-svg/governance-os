@@ -21,9 +21,14 @@
     "Rerun the descriptor's deterministic gates without invoking the provider. Distinguish transport evidence from correctness: receipt presence is not GO, unavailable or uncertain delivery cannot satisfy the real-provider criterion, and every provider finding requires an evidence-backed disposition.",
     "Return exactly one verification-report GO, NITS, or FAIL. Do not edit production or bridge behavior, rerun the provider, retry a denial, repair findings, merge, push, publish, consume, or mutate receipts, locks, or refs."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "SCHEDULING PARK ONLY: the coordinator launch request was denied before process creation and produced no receipt-backed verify-request. Operator2 therefore issued no GO, NITS, or FAIL for this cycle.",
+    "The denied side-effect identity and missing trigger may not be reconstructed, retried, or worked around. Receipt absence is preserved as unsatisfied transport evidence, not a correctness verdict.",
+    "The coordinator's local 897-pass deterministic run does not create Lane V authority or satisfy the missing provider receipt dependency.",
+    "A future Operator2 pass requires an external tenant trust-policy change, a distinct coordinator cycle, and a new canonical receipt-backed verify-request after separately authorized external execution."
+  ],
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
   "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",

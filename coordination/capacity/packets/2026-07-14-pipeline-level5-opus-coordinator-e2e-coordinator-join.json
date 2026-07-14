@@ -23,9 +23,18 @@
     "Run the merged main bridge exactly once with review profile codex-lane-v, transport profile anthropic-claude-existing-session-v1, the shipping commit equal to reviewed head, and the new authorization source. Enter no credentials; reject API keys, auth-token overrides, custom endpoints, and proxy overrides; use no API, Chrome, manual relay, alternate provider, workaround, or transport fallback.",
     "After any denial, process entry, ambiguity, timeout, unavailable result, uncertain state, receipt conflict, or normalized result, stop permanently with zero retry. Persist only content-free outcome metadata. A real bridge receipt permits one canonical coordinator-to-Operator2 verify-request; absence of a receipt parks the cycle without Operator2 authority."
   ],
-  "done_evidence": [],
-  "next_recipient": "operator2",
-  "status": "active",
+  "done_evidence": [
+    "TERMINAL DENIAL EVIDENCE: logs/pipeline-level5-opus-coordinator-e2e-acceptance-2026-07-14.json and coordination/mailbox/sent/2026-07-14T14-36-36Z-coordinator-to-all-coordination.md record the single routed launch request denied by the outer runtime before CreateProcess under pipeline-level5-opus-coordinator-e2e-attempt-2026-07-14.",
+    "NO EXTERNAL EXECUTION: fresh post-denial checks found no opus_review_bridge.py or Claude CLI process and no receipt root. The bridge and provider never started; no paid request, receipt, retry, fallback, workaround, raw prompt persistence, or prior-attempt reuse occurred.",
+    "LOCAL-ONLY EVIDENCE: before the launch request, coordinator personally ran the exact deterministic descriptor suite and observed 897 passed, 18 skipped; GO schema and smoke also passed. This validates local guards only and does not satisfy provider transport or Opus review.",
+    "SCHEDULING PARK ONLY: all five pipeline-level5-opus-coordinator-e2e-2026-07-14 packets are excepted after the terminal pre-process denial. This is not GO, successful transport, correctness completion, or confirmation that Opus reviewed the range.",
+    "Operator2 received no receipt-backed verify-request and issued no GO, NITS, or FAIL. The immutable review worktree remains clean at 97c270f8f0e630fdaaded672e0da37ed32335de5; locks and receipt state remain unchanged.",
+    "capacity board evidence: post-edit scripts/protocol_capacity_board.py --wave 2 and route validation report valid true with this cycle removed from active scheduling.",
+    "smoke OK evidence: scripts/ci_smoke.py ends OK against the unchanged production head and this coordinator-only metadata diff.",
+    "Next trigger: the current runtime cannot perform this private-repository Opus review. Only an external tenant trust-policy change plus a separately authorized distinct future cycle could allow another launch; this side-effect identity cannot be retried or worked around."
+  ],
+  "next_recipient": "coordinator",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
   "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",
