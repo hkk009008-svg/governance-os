@@ -2380,7 +2380,7 @@ def _publish_candidate_result(
                     ) as attempt:
                         record = attempt.load_existing()
                         _validate_codex_record(root, report, authority, record)
-                        preserve_unowned_candidate = record.state == "publishing"
+                        preserve_unowned_candidate = _candidate_is_stored(record, candidate)
                         try:
                             published = _locked_publish_new(
                                 attempt=attempt,
@@ -2431,7 +2431,7 @@ def _publish_candidate_result(
                 ) as task:
                     record = task.load_or_create(authority_digest)
                     _validate_non_codex_record(record, authority_digest)
-                    preserve_unowned_candidate = record.state == "publishing"
+                    preserve_unowned_candidate = _candidate_is_stored(record, candidate)
                     try:
                         published = _locked_publish_new(
                             attempt=task,
@@ -2515,6 +2515,21 @@ def publish_candidate(
         receipt_store_factory=receipt_store_factory,
         task_store_factory=task_store_factory,
     ).path
+
+
+def _candidate_is_stored(record: object, candidate: _CapturedCandidate) -> bool:
+    """Match a captured file to the candidate fields of a valid stored witness."""
+
+    if getattr(record, "state", None) != "publishing":
+        return False
+    witness = _stored_publication_witness(record)
+    fields = _TASK_WITNESS_FIELDS[1:5]
+    return tuple(witness[field] for field in fields) == (
+        candidate.digest,
+        candidate.name,
+        candidate.device,
+        candidate.inode,
+    )
 
 
 def _stored_publication_witness(record: object) -> dict[str, object]:

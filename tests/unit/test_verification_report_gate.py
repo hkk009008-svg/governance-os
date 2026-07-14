@@ -2624,6 +2624,114 @@ def _expected_candidate_witness(
     }
 
 
+@pytest.mark.parametrize("publication_mode", ["receipt", "task"])
+@pytest.mark.parametrize("candidate_case", ["fresh", "substituted", "stored"])
+def test_existing_publishing_state_cleans_only_distinct_fresh_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publication_mode: str,
+    candidate_case: str,
+) -> None:
+    if publication_mode == "receipt":
+        fixture = _live_codex_fixture(tmp_path / "repo")
+        store = fixture.store
+        stored_candidate = _candidate_path(
+            fixture.root, fixture.raw, ".stored-witness.tmp"
+        )
+        _begin_interrupted_publication(
+            fixture, stored_candidate, fixture.report.relative_path
+        )
+        publish_kwargs = {
+            "receipt_store_factory": lambda _root: store,
+        }
+        with store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+            stored_witness = gate._stored_publication_witness(
+                attempt.load_existing()
+            )
+    else:
+        fixture = _live_claude_fixture(tmp_path / "repo")
+        store = gate.TaskPublicationStore.for_repo(
+            fixture.root, state_root=fixture.root / ".task-publications"
+        )
+        gate.validate_live_report(
+            fixture.root,
+            fixture.report,
+            task_store_factory=lambda _root: store,
+        )
+        stored_candidate = _candidate_path(
+            fixture.root, fixture.raw, ".stored-witness.tmp"
+        )
+        stored_witness = _expected_candidate_witness(
+            fixture.root,
+            stored_candidate,
+            fixture.raw,
+            fixture.report.relative_path,
+        )
+        with store.lock_task(TASK_ID) as attempt:
+            attempt.load_existing()
+            attempt.begin_publication(
+                *(stored_witness[field] for field in gate._TASK_WITNESS_FIELDS)
+            )
+        publish_kwargs = {
+            "task_store_factory": lambda _root: store,
+        }
+
+    stored_identity = (
+        stored_candidate.stat().st_dev,
+        stored_candidate.stat().st_ino,
+    )
+    candidate = (
+        stored_candidate
+        if candidate_case == "stored"
+        else _candidate_path(fixture.root, fixture.raw, ".fresh-unowned.tmp")
+    )
+    foreign_raw = b"foreign substituted object\n"
+    cleanup_calls = 0
+    real_cleanup = gate._cleanup_unbound_candidate
+
+    def cleanup_after_optional_substitution(
+        captured: object, sent_fd: int
+    ) -> None:
+        nonlocal cleanup_calls
+        cleanup_calls += 1
+        if candidate_case == "substituted":
+            replacement = candidate.with_name(".foreign-substitute.tmp")
+            replacement.write_bytes(foreign_raw)
+            replacement.chmod(0o600)
+            os.replace(replacement, candidate)
+        real_cleanup(captured, sent_fd)
+
+    monkeypatch.setattr(
+        gate, "_cleanup_unbound_candidate", cleanup_after_optional_substitution
+    )
+    with pytest.raises(gate.ReportGateError) as excinfo:
+        gate.publish_candidate(
+            repo_root=fixture.root,
+            candidate_path=candidate,
+            final_relative=fixture.report.relative_path,
+            **publish_kwargs,
+        )
+
+    assert excinfo.value.reason == "publication_resume_required"
+    assert cleanup_calls == (0 if candidate_case == "stored" else 1)
+    if publication_mode == "receipt":
+        with store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+            observed = attempt.load_existing()
+    else:
+        with store.lock_task(TASK_ID) as attempt:
+            observed = attempt.load_existing()
+    assert observed.state == "publishing"
+    assert gate._stored_publication_witness(observed) == stored_witness
+    assert (
+        stored_candidate.stat().st_dev,
+        stored_candidate.stat().st_ino,
+    ) == stored_identity
+    if candidate_case == "substituted":
+        assert candidate.read_bytes() == foreign_raw
+    elif candidate_case == "fresh":
+        assert not candidate.exists()
+
+
 def test_receipt_begin_post_replace_fsync_failure_retains_witnessed_candidate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3074,7 +3182,7 @@ def test_public_publish_rejects_interruption_and_explicit_resume_converges(
     )
     assert published == absent.root / absent.report.relative_path
     assert not old_absent.exists()
-    assert new_absent.exists()
+    assert not new_absent.exists()
     assert _git(absent.root, "ls-files", "--stage", "--", absent.report.relative_path)
 
     exact = _live_codex_fixture(tmp_path / "exact")
