@@ -937,3 +937,38 @@ Pipeline Codex classifies the four ADR-019 adversarial surfaces before implement
 - Unavailable credentials, network, sandbox, provider, or valid output remain visible degraded Codex-only evidence after standing authorization is recorded.
 - The bridge enforces one provider process per invocation. Cross-process uniqueness remains auditable from profile, authorization identity, and reviewed commits rather than adding a mutable global call ledger.
 - Standing consent does not authorize design-time Opus or any unrelated paid operation.
+
+## ADR-024: Make governance-os private and end MIT licensing prospectively
+
+**Status:** Accepted (user-approved, 2026-07-14)
+
+**Context:**
+ADR-007 licensed the repository under MIT because it was a public transfer
+bundle. The user-principal subsequently directed that
+`hkk009008-svg/governance-os` become private and that current and future
+versions stop being distributed under MIT. The visibility transition was
+verified immediately after mutation with
+`$ gh repo view hkk009008-svg/governance-os --json visibility,isPrivate`, which
+returned `PRIVATE` and `isPrivate: true`.
+
+**Decision:**
+Keep the GitHub repository private. Replace the root MIT text with a
+proprietary, all-rights-reserved notice and update README.md accordingly.
+Access to the private repository does not itself grant a license; permission
+requires a separate written agreement from the copyright holder.
+
+This decision supersedes ADR-007 only for current and future versions carrying
+the proprietary notice. ADR-007 and its implementation history remain intact
+as provenance. This decision does not rewrite history or purport to revoke
+rights validly granted for versions obtained while MIT applied.
+
+**Consequences:**
+- GitHub access is restricted to the owner and explicitly authorized
+  collaborators.
+- Previously obtained MIT-licensed versions may continue under their existing
+  terms; making the repository private does not erase external local copies.
+- Historical plans and evidence retain their original MIT/public statements
+  as time-bound records and are not rewritten.
+- The proprietary-notice implementation commit remains local until a separate
+  user-authorized push. Repository visibility and Git publication remain
+  distinct side effects.

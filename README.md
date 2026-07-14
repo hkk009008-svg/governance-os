@@ -61,4 +61,5 @@ when you need the full SHA-reference audit report.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+Proprietary. All rights reserved. Access to this private repository does not
+grant a license. See [LICENSE](LICENSE).
