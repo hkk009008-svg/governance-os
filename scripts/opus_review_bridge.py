@@ -3497,6 +3497,17 @@ def _reconcile_review(
         else:
             confirmed_nits.append(finding_id)
 
+    if confirmed_fail and verdict != "FAIL":
+        raise ReviewContractError(
+            "verdict_severity_mismatch",
+            "confirmed important or critical findings require FAIL",
+        )
+    if confirmed_nits and verdict == "GO":
+        raise ReviewContractError(
+            "verdict_severity_mismatch",
+            "confirmed minor findings require at least NITS",
+        )
+
     blocking = tuple(sorted(unresolved + confirmed_fail + confirmed_nits))
     return Reconciliation(
         codex_verdict=verdict,

@@ -438,10 +438,22 @@ def test_reconcile_unavailable_preserves_degraded_codex_verdict(
     assert result.degraded_reason == "timeout"
 
 
-def test_reconcile_confirmed_minor_requires_nits() -> None:
+@pytest.mark.parametrize(
+    ("severity", "codex_verdict"),
+    [
+        ("minor", "GO"),
+        ("important", "GO"),
+        ("important", "NITS"),
+        ("critical", "GO"),
+        ("critical", "NITS"),
+    ],
+)
+def test_reconcile_rejects_verdict_below_confirmed_severity_floor(
+    severity: str, codex_verdict: str
+) -> None:
     review = bridge.parse_structured_review(
         _structured_payload(
-            status="issues", findings=[_finding_payload(severity="minor")]
+            status="issues", findings=[_finding_payload(severity=severity)]
         ),
         expected_head=HEAD,
         expected_base=BASE,
@@ -450,18 +462,27 @@ def test_reconcile_confirmed_minor_requires_nits() -> None:
         authorization_source="user-task:verification-1",
     )
 
-    result = _reconcile(
-        "GO", review, [bridge.FindingDisposition("OPUS-1", "confirmed", "")]
-    )
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        _reconcile(
+            codex_verdict,
+            review,
+            [bridge.FindingDisposition("OPUS-1", "confirmed", "")],
+        )
 
-    assert not result.go_allowed
-    assert result.confirmed_nits_finding_ids == ("OPUS-1",)
-    assert result.confirmed_fail_finding_ids == ()
+    assert excinfo.value.reason == "verdict_severity_mismatch"
 
 
-@pytest.mark.parametrize("severity", ["important", "critical"])
-def test_reconcile_confirmed_important_or_critical_requires_fail(
-    severity: str,
+@pytest.mark.parametrize(
+    ("severity", "codex_verdict", "expected_bucket"),
+    [
+        ("minor", "NITS", "nits"),
+        ("minor", "FAIL", "nits"),
+        ("important", "FAIL", "fail"),
+        ("critical", "FAIL", "fail"),
+    ],
+)
+def test_reconcile_accepts_verdict_at_or_above_confirmed_severity_floor(
+    severity: str, codex_verdict: str, expected_bucket: str
 ) -> None:
     review = bridge.parse_structured_review(
         _structured_payload(status="issues", findings=[_finding_payload(severity=severity)]),
@@ -473,12 +494,46 @@ def test_reconcile_confirmed_important_or_critical_requires_fail(
     )
 
     result = _reconcile(
-        "GO", review, [bridge.FindingDisposition("OPUS-1", "confirmed", "")]
+        codex_verdict,
+        review,
+        [bridge.FindingDisposition("OPUS-1", "confirmed", "")],
     )
 
+    assert result.codex_verdict == codex_verdict
     assert not result.go_allowed
-    assert result.confirmed_fail_finding_ids == ("OPUS-1",)
-    assert result.confirmed_nits_finding_ids == ()
+    assert result.confirmed_fail_finding_ids == (
+        ("OPUS-1",) if expected_bucket == "fail" else ()
+    )
+    assert result.confirmed_nits_finding_ids == (
+        ("OPUS-1",) if expected_bucket == "nits" else ()
+    )
+
+
+def test_reconcile_mixed_confirmed_findings_uses_highest_severity_floor(
+) -> None:
+    minor = _finding_payload(severity="minor")
+    important = _finding_payload(severity="important")
+    important["id"] = "OPUS-2"
+    review = bridge.parse_structured_review(
+        _structured_payload(status="issues", findings=[minor, important]),
+        expected_head=HEAD,
+        expected_base=BASE,
+        expected_profile="codex-lane-v",
+        effective_model="claude-opus-4-7",
+        authorization_source="user-task:verification-1",
+    )
+    dispositions = [
+        bridge.FindingDisposition("OPUS-1", "confirmed", ""),
+        bridge.FindingDisposition("OPUS-2", "confirmed", ""),
+    ]
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        _reconcile("NITS", review, dispositions)
+
+    assert excinfo.value.reason == "verdict_severity_mismatch"
+    result = _reconcile("FAIL", review, dispositions)
+    assert result.confirmed_fail_finding_ids == ("OPUS-2",)
+    assert result.confirmed_nits_finding_ids == ("OPUS-1",)
 
 
 def test_reconcile_all_evidence_backed_disproofs_allow_codex_go() -> None:
@@ -2141,12 +2196,45 @@ def test_review_receipt_exact_replay_calls_provider_once(tmp_path: Path) -> None
     assert first.to_dict()["schema_version"] == "opus-review/v3"
 
 
-def test_review_receipt_concurrent_calls_launch_one_provider(tmp_path: Path) -> None:
+def test_review_receipt_concurrent_calls_launch_one_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     fixture = _authority_fixture(tmp_path / "repo")
     state_root = tmp_path / "state"
     entered = threading.Event()
     release = threading.Event()
+    contended = threading.Event()
+    condition = threading.Condition()
+    contended_operations: list[int] = []
+    owner_fd: int | None = None
+    waiter_count = 0
     calls = 0
+
+    def deterministic_flock(fd: int, operation: int) -> None:
+        nonlocal owner_fd, waiter_count
+        with condition:
+            if operation == receipts.fcntl.LOCK_UN:
+                assert owner_fd == fd
+                owner_fd = None
+                condition.notify_all()
+                return
+            assert operation & receipts.fcntl.LOCK_EX
+            if owner_fd is None:
+                owner_fd = fd
+                return
+            contended_operations.append(operation)
+            waiter_count += 1
+            contended.set()
+            try:
+                if operation & receipts.fcntl.LOCK_NB:
+                    raise BlockingIOError(
+                        errno.EWOULDBLOCK, "deterministic attempt contention"
+                    )
+                while owner_fd is not None:
+                    condition.wait()
+                owner_fd = fd
+            finally:
+                waiter_count -= 1
 
     def provider(resolved: bridge.ResolvedReviewRequest) -> bridge.OpusReview:
         nonlocal calls
@@ -2155,6 +2243,7 @@ def test_review_receipt_concurrent_calls_launch_one_provider(tmp_path: Path) -> 
         assert release.wait(timeout=5)
         return _normalized_pass_review(resolved)
 
+    monkeypatch.setattr(receipts.fcntl, "flock", deterministic_flock)
     with ThreadPoolExecutor(max_workers=2) as executor:
         first_future = executor.submit(
             bridge.review,
@@ -2169,7 +2258,15 @@ def test_review_receipt_concurrent_calls_launch_one_provider(tmp_path: Path) -> 
             provider=provider,
             store_factory=_receipt_store_factory(state_root),
         )
-        release.set()
+        try:
+            assert contended.wait(timeout=5)
+            with condition:
+                assert contended_operations == [receipts.fcntl.LOCK_EX]
+                assert waiter_count == 1
+                assert owner_fd is not None
+                assert not second_future.done()
+        finally:
+            release.set()
         first = first_future.result(timeout=5)
         second = second_future.result(timeout=5)
 
@@ -2454,6 +2551,57 @@ def _reconciled_record(
     with store.lock_receipt(result.receipt_id) as attempt:
         record = attempt.load_existing()
     return fixture, reconciled, record
+
+
+@pytest.mark.parametrize(
+    ("severity", "invalid_verdict", "corrected_verdict"),
+    [
+        ("minor", "GO", "NITS"),
+        ("important", "NITS", "FAIL"),
+    ],
+)
+def test_reconcile_receipt_rejects_severity_mismatch_before_persistence(
+    tmp_path: Path,
+    severity: str,
+    invalid_verdict: str,
+    corrected_verdict: str,
+) -> None:
+    fixture = _authority_fixture(tmp_path / severity)
+    result, store = _reviewed_receipt(
+        fixture,
+        tmp_path / f"state-{severity}",
+        lambda resolved: _normalized_issues_review(
+            resolved, severity=severity
+        ),
+    )
+    dispositions = (
+        bridge.FindingDisposition("OPUS-1", "confirmed", ""),
+    )
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        _reconcile_stored(
+            fixture,
+            result,
+            store,
+            verdict=invalid_verdict,
+            dispositions=dispositions,
+        )
+
+    assert excinfo.value.reason == "verdict_severity_mismatch"
+    with store.lock_receipt(result.receipt_id) as attempt:
+        unchanged = attempt.load_existing()
+    assert unchanged.state == "reviewed"
+    assert unchanged.reconciliation is None
+
+    corrected = _reconcile_stored(
+        fixture,
+        result,
+        store,
+        verdict=corrected_verdict,
+        dispositions=dispositions,
+    )
+    assert corrected.reconciliation.codex_verdict == corrected_verdict
+    assert corrected.receipt_state == "reconciled"
 
 
 @pytest.mark.parametrize("requested_base", ("explicit", "omitted"))
@@ -2960,9 +3108,10 @@ def test_reconcile_receipt_conflicting_replays_fail_closed(
             "dispositions": original,
         },
         {
+            "verdict": "FAIL",
             "dispositions": (
                 bridge.FindingDisposition("OPUS-1", "confirmed", ""),
-            )
+            ),
         },
         {
             "dispositions": (

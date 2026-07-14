@@ -10,7 +10,7 @@ import multiprocessing
 import os
 import stat
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from types import MappingProxyType
 
@@ -1240,6 +1240,49 @@ def test_live_codex_binding_accepts_exact_reconciled_report(
     )
 
     assert validated == fixture.authority
+
+
+def test_live_codex_binding_rejects_legacy_underclassified_reconciliation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    production_reconcile = bridge._reconcile_review
+
+    def legacy_permissive_reconcile(
+        codex_verdict: str,
+        review: bridge.OpusReview,
+        dispositions: Iterable[bridge.FindingDisposition],
+        *,
+        expected_head: str,
+        expected_base: str | None,
+    ) -> bridge.Reconciliation:
+        fail_result = production_reconcile(
+            "FAIL",
+            review,
+            dispositions,
+            expected_head=expected_head,
+            expected_base=expected_base,
+        )
+        return dataclasses.replace(
+            fail_result, codex_verdict=codex_verdict, go_allowed=False
+        )
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(
+            bridge, "_reconcile_review", legacy_permissive_reconcile
+        )
+        fixture = _live_codex_fixture(
+            tmp_path / "repo",
+            status="issues",
+            verdict="NITS",
+            finding_severity="important",
+        )
+
+    with pytest.raises(gate.ReportGateError, match="invalid_live_receipt"):
+        gate.validate_live_report(
+            fixture.root,
+            fixture.report,
+            receipt_store_factory=lambda _root: fixture.store,
+        )
 
 
 @pytest.mark.parametrize("mutation", ["unknown", "wrong-type"])
