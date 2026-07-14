@@ -244,14 +244,14 @@ def scan_repository_reports(
 ) -> list[RawReport]:
     """Read every current report once from one directory-relative no-follow FD."""
 
-    resolved_root = root.resolve()
+    absolute_root = pathlib.Path(os.path.abspath(root))
     scan_dir = (
-        resolved_root / "coordination" / "mailbox" / "sent"
+        absolute_root / "coordination" / "mailbox" / "sent"
         if directory is None
-        else directory.resolve()
+        else pathlib.Path(os.path.abspath(directory))
     )
     try:
-        relative_directory = scan_dir.relative_to(resolved_root)
+        relative_directory = scan_dir.relative_to(absolute_root)
     except ValueError as exc:
         raise OSError(f"verification report directory is outside repository: {scan_dir}") from exc
     nofollow = getattr(os, "O_NOFOLLOW", 0)
@@ -261,11 +261,21 @@ def scan_repository_reports(
         os.O_RDONLY
         | getattr(os, "O_DIRECTORY", 0)
         | getattr(os, "O_CLOEXEC", 0)
+        | nofollow
     )
+    descriptors: list[int] = []
     try:
-        directory_descriptor = os.open(scan_dir, directory_flags)
+        current = os.open(absolute_root, directory_flags)
+        descriptors.append(current)
+        for component in relative_directory.parts:
+            current = os.open(component, directory_flags, dir_fd=current)
+            descriptors.append(current)
+        directory_descriptor = descriptors.pop()
     except FileNotFoundError:
         return []
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
     try:
         if not stat.S_ISDIR(os.fstat(directory_descriptor).st_mode):
             raise NotADirectoryError(str(scan_dir))
@@ -317,7 +327,7 @@ def _baseline_git(root: pathlib.Path, *args: str) -> bytes:
     }
     try:
         completed = subprocess.run(
-            ["git", "--no-replace-objects", *args],
+            ["/usr/bin/git", "--no-replace-objects", *args],
             cwd=root,
             env=environment,
             capture_output=True,
