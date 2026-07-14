@@ -2111,6 +2111,7 @@ def _locked_publish_new(
     candidate: _CapturedCandidate,
     sent_fd: int,
     git: _SanitizedGit,
+    set_candidate_ownership: Callable[[bool], None],
 ) -> Path:
     state = getattr(record, "state", None)
     if state == "published":
@@ -2138,6 +2139,7 @@ def _locked_publish_new(
     )
     _publication_checkpoint("before_publishing")
     publishing = attempt.begin_publication(*witness)
+    set_candidate_ownership(True)
     _publication_checkpoint("after_publishing")
     _require_candidate_name(candidate, sent_fd)
     try:
@@ -2170,6 +2172,7 @@ def _locked_publish_new(
         )
     except FileExistsError as exc:
         attempt.cancel_publication(*witness, publishing.generation)
+        set_candidate_ownership(False)
         raise ReportGateError(
             "publication_path_exists", "final report already exists"
         ) from exc
@@ -2323,7 +2326,13 @@ def _publish_candidate_result(
     root = _require_repository(Path(repo_root))
     sent_fd = _open_sent_directory(root)
     candidate: _CapturedCandidate | None = None
-    publication_may_own_candidate = False
+    publication_owns_candidate = False
+    preserve_unowned_candidate = False
+
+    def set_candidate_ownership(owned: bool) -> None:
+        nonlocal publication_owns_candidate
+        publication_owns_candidate = owned
+
     try:
         candidate = _capture_candidate(root, Path(candidate_path), sent_fd)
         report = parse_lane_v_report(final_relative, candidate.raw)
@@ -2340,8 +2349,8 @@ def _publish_candidate_result(
                     ) as attempt:
                         record = attempt.load_existing()
                         _validate_codex_record(root, report, authority, record)
+                        preserve_unowned_candidate = record.state == "publishing"
                         try:
-                            publication_may_own_candidate = True
                             published = _locked_publish_new(
                                 attempt=attempt,
                                 record=record,
@@ -2350,6 +2359,7 @@ def _publish_candidate_result(
                                 candidate=candidate,
                                 sent_fd=sent_fd,
                                 git=git,
+                                set_candidate_ownership=set_candidate_ownership,
                             )
                             return _PublishedReportResult(
                                 path=published,
@@ -2390,8 +2400,8 @@ def _publish_candidate_result(
                 ) as task:
                     record = task.load_or_create(authority_digest)
                     _validate_non_codex_record(record, authority_digest)
+                    preserve_unowned_candidate = record.state == "publishing"
                     try:
-                        publication_may_own_candidate = True
                         published = _locked_publish_new(
                             attempt=task,
                             record=record,
@@ -2400,6 +2410,7 @@ def _publish_candidate_result(
                             candidate=candidate,
                             sent_fd=sent_fd,
                             git=git,
+                            set_candidate_ownership=set_candidate_ownership,
                         )
                         return _PublishedReportResult(
                             path=published,
@@ -2439,7 +2450,11 @@ def _publish_candidate_result(
                 reason = getattr(exc, "reason", "publication_failed")
                 raise ReportGateError("publication_failed", str(reason)) from exc
     except BaseException:
-        if candidate is not None and not publication_may_own_candidate:
+        if (
+            candidate is not None
+            and not publication_owns_candidate
+            and not preserve_unowned_candidate
+        ):
             _cleanup_unbound_candidate(candidate, sent_fd)
         raise
     finally:

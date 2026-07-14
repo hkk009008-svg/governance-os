@@ -606,6 +606,96 @@ def test_verification_send_event_process_death_does_not_unlink_substituted_name(
     assert not (repo / record["path"]).exists()
 
 
+def test_publication_cli_published_replay_cleans_unowned_second_candidate(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    head, body = _verification_shell_fixture(repo, repo_root)
+    final_relative, raw = _fixed_report(head, body)
+    sent = repo / "coordination/mailbox/sent"
+    first = sent / ".first-candidate.tmp"
+    first.write_bytes(raw)
+    first.chmod(0o600)
+    command = [
+        repo / ".venv/bin/python",
+        "-E",
+        "-s",
+        "-S",
+        "-B",
+        repo / "scripts/verification_report_gate.py",
+        "publish",
+        "--repo-root",
+        repo,
+        "--candidate",
+        first,
+        "--final-relative",
+        final_relative,
+    ]
+    first_result = _run(command, repo)
+    assert first_result.returncode == 0, first_result.stderr
+    assert not first.exists()
+    assert (repo / final_relative).exists()
+
+    second = sent / ".second-candidate.tmp"
+    second.write_bytes(raw)
+    second.chmod(0o600)
+    command[command.index(first)] = second
+    replay = _run(command, repo)
+
+    assert replay.returncode == 6
+    assert "publication_status_required" in replay.stderr
+    assert not second.exists()
+    assert (repo / final_relative).read_bytes() == raw
+
+
+def test_publication_cli_cancelled_link_conflict_cleans_candidate(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    head, body = _verification_shell_fixture(repo, repo_root)
+    final_relative, raw = _fixed_report(head, body)
+    candidate = repo / "coordination/mailbox/sent/.link-conflict-candidate.tmp"
+    candidate.write_bytes(raw)
+    candidate.chmod(0o600)
+    final = repo / final_relative
+    conflicting = b"existing untracked final must survive\n"
+    final.write_bytes(conflicting)
+    final.chmod(0o600)
+
+    result = _run(
+        [
+            repo / ".venv/bin/python",
+            "-E",
+            "-s",
+            "-S",
+            "-B",
+            repo / "scripts/verification_report_gate.py",
+            "publish",
+            "--repo-root",
+            repo,
+            "--candidate",
+            candidate,
+            "--final-relative",
+            final_relative,
+        ],
+        repo,
+    )
+
+    assert result.returncode == 4
+    assert "publication_path_exists" in result.stderr
+    assert not candidate.exists()
+    assert final.read_bytes() == conflicting
+    records = list(
+        (repo / ".codex/runtime/lane-v-report-publications/v1").glob("*.json")
+    )
+    assert len(records) == 1
+    assert json.loads(records[0].read_text(encoding="utf-8"))["state"] == "ready"
+
+
 def _resume_command_from_failure(stderr: str) -> list[str]:
     commands = [
         line.split("run: ", 1)[1]
