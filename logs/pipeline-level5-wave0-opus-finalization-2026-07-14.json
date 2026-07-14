@@ -1,6 +1,6 @@
 {
   "schema_version": "pipeline-level5-opus-finalization/v1",
-  "generated_at": "2026-07-14T03:50:33Z",
+  "generated_at": "2026-07-14T05:12:10Z",
   "seat": "director2",
   "task_board": "pipeline-level5-wave0-2026-07-14",
   "packet": "director2-pipeline-level5-wave0-opus-finalization",
@@ -78,12 +78,23 @@
     "minor_findings": 0,
     "operator_verdict": false
   },
+  "user_approval": {
+    "received": true,
+    "scope": "one_receipt_backed_opus_attempt",
+    "descriptor_id": "2a876e95-3a87-4203-a613-1a29dd957b5b",
+    "reviewed_head": "97c270f8f0e630fdaaded672e0da37ed32335de5",
+    "private_repository_diff_and_prompt_transmission_acknowledged": true,
+    "paid_service_use_acknowledged": true
+  },
   "provider_attempt": {
-    "status": "not_started",
+    "status": "launch_denied",
+    "launch_request_count": 1,
     "provider_process_started": false,
+    "paid_request_sent": false,
     "receipt_created": false,
     "retry_count": 0,
-    "reason_code": "explicit_private_repo_network_export_and_paid_service_approval_required",
+    "reason_code": "outer_runtime_policy_rejected_private_repo_export_before_create_process",
+    "transport_completion_satisfied": false,
     "raw_prompt_or_response_persisted": false
   },
   "final_state": {
@@ -93,7 +104,8 @@
     "director2_unread": 0,
     "route_valid": true,
     "capacity_valid": true,
-    "locks_empty": true
+    "locks_empty": true,
+    "operator2_dependency_satisfied": false
   },
-  "exact_next_trigger": "User explicitly approves one receipt-backed Opus review attempt with private repository diff/prompt transmission and paid-service use; director2 then refreshes all Tier-3 gates and executes exactly once."
+  "exact_next_trigger": "Continue as coordinator to adjudicate or park the Opus transport criterion after the outer runtime denied process creation despite fresh explicit user approval; do not trigger Operator2 without a receipt-backed Director2 verify-request."
 }
