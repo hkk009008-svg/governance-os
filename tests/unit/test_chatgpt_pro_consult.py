@@ -1551,7 +1551,9 @@ def test_failure_fixture_matrix_covers_exact_seven_contract_cases(tmp_path):
     }
 
 
-def test_resume_manual_preserves_identity_and_hashes_without_new_record(tmp_path):
+def test_resume_manual_preserves_manual_identity_and_hashes_without_new_record(
+    tmp_path,
+):
     prepared = consult.prepare_request(valid_request())
     state_path = runtime_state_path(tmp_path)
     initial = consult.reserve_consultation(
@@ -1563,7 +1565,7 @@ def test_resume_manual_preserves_identity_and_hashes_without_new_record(tmp_path
         state_path,
         prepared.consultation_id,
         target="failed",
-        transport="iab",
+        transport="manual",
         failure_class="unavailable",
         now="2026-07-13T00:01:00Z",
     )
@@ -2350,6 +2352,41 @@ def test_cli_auto_rejects_manual_resume_without_mutating_failed_record(tmp_path)
     assert state["consultations"] == [failed]
 
 
+def test_cli_manual_mode_cannot_resume_failed_iab_provenance(tmp_path):
+    prepared = consult.prepare_request(valid_request())
+    state_path = runtime_state_path(tmp_path)
+    consult.reserve_consultation(state_path, prepared, now="2026-07-13T00:00:00Z")
+    failed = consult.transition_consultation(
+        state_path,
+        prepared.consultation_id,
+        target="failed",
+        transport="iab",
+        failure_class="unavailable",
+        now="2026-07-13T00:01:00Z",
+    )
+
+    result = run_cli(
+        tmp_path,
+        [
+            "resume-manual",
+            "--state-file",
+            str(state_path),
+            "--consultation-id",
+            prepared.consultation_id,
+        ],
+        mode="manual",
+    )
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert json.loads(result.stderr) == {
+        "error": "consultation_rejected",
+        "status": "error",
+    }
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["consultations"] == [failed]
+
+
 def test_cli_accept_reads_response_wrapper_only_from_stdin(tmp_path):
     prepared = consult.prepare_request(valid_request())
     state_path = runtime_state_path(tmp_path)
@@ -2469,7 +2506,7 @@ def test_cli_resume_manual_is_only_failed_to_prepared_path(tmp_path):
         state_path,
         prepared.consultation_id,
         target="failed",
-        transport="iab",
+        transport="manual",
         failure_class="unavailable",
         now="2026-07-13T00:01:00Z",
     )

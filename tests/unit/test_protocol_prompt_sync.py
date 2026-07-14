@@ -650,17 +650,18 @@ def test_chatgpt_pro_acceptance_procedure_is_fail_closed_and_content_free():
         "never shell arguments",
         "CODEX_CHATGPT_PRO_CONSULTATION=auto",
         "in-app Browser",
-        "CLI-driven browser",
+        "automatic path is `iab -> block`",
+        "block with zero send",
+        "does not claim live readiness",
+        "historical acceptance log remains historical",
         "signed-out",
         "wrong-account",
         "challenge",
         "partial-send",
-        "do not set the default to auto",
         "current_repo_head",
         "direct `.codex/runtime/<file>`",
         "Guard commit",
         "Guard relevant paths hash",
-        "bare-CLI manual relay",
         "complete failure-fixture matrix",
         "normalized `options`",
         "browser cookie/login stores",
@@ -672,6 +673,10 @@ def test_chatgpt_pro_acceptance_procedure_is_fail_closed_and_content_free():
     assert "never enter credentials" in lower_procedure
     assert "never inspect cookies" in lower_procedure
     assert "no automatic retry" in lower_procedure
+    assert "chrome" not in lower_procedure
+    assert "manual relay" not in lower_procedure
+    assert "configured cli browser" not in lower_procedure
+    assert "resume-manual" not in lower_procedure
 
     acceptance_log = _read(
         "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"

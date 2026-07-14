@@ -1222,7 +1222,7 @@ def resume_manual(
     *,
     now: str | None = None,
 ) -> dict[str, object]:
-    """Explicitly resume the same failed record as a manual relay."""
+    """Resume the same failed manual-origin record."""
     explicit_timestamp = now is not None
     timestamp = _operation_timestamp(now)
     with _exclusive_state_lock(state_path) as (locked_path, parent_descriptor):
@@ -1230,6 +1230,8 @@ def resume_manual(
         record = _find_record(state, consultation_id)
         if record["status"] != "failed":
             raise ConsultationError("only a failed consultation can resume manually")
+        if record["transport"] != "manual":
+            raise ConsultationError("only a manual consultation can resume manually")
         if not explicit_timestamp:
             timestamp = max(timestamp, record["updated_at"])
         if timestamp < record["updated_at"]:
