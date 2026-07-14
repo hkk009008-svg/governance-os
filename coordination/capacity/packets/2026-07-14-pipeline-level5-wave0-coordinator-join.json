@@ -1,0 +1,46 @@
+{
+  "id": "coord-pipeline-level5-wave0-join",
+  "wave": 2,
+  "cycle": "pipeline-level5-wave0-2026-07-14",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "level5-wave0-coordinator-authority-containment",
+    "level5-wave0-mechanism-evidence-containment",
+    "level5-wave1-opus-finalization"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-pipeline-level5-wave0-p0-containment",
+    "operator-pipeline-level5-wave0-p0-containment-lanev",
+    "director2-pipeline-level5-wave0-opus-finalization",
+    "operator2-pipeline-level5-wave0-opus-final-lanev"
+  ],
+  "acceptance": [
+    "Preserve coord-control-plane-authority-foundation-join and coord-ledger-ppl-recommendation-evaluation-join as blocked parked Wave-2 provenance. Their FAIL, CONTRADICTION, HOLD, and dirty-worktree evidence remains binding; this cycle supersedes scheduling priority only.",
+    "Join only after Operator GO for the exact Pair-A A1..A2 range and Operator2 GO for immutable Opus head 97c270f8f0e630fdaaded672e0da37ed32335de5. Receipt presence alone is not correctness evidence. One real user-consented attempt and a provider pass are transport-completion criteria; Operator2 GO remains the binding correctness verdict.",
+    "Require fresh HEAD, mailbox, capacity, route, lock, branch, and worktree checks. The dirty authority worktree must remain byte-for-byte untouched, the Opus worktree must remain clean at 97c270f, and the Pair-A write set must not overlap the Opus branch.",
+    "This join authorizes only a later integration decision. It does not merge, push, close PPL, declare Wave 0 complete, activate authority, consume a cursor, mutate a lock/ref/key, or prove current-main correctness."
+  ],
+  "done_evidence": [],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "docs/superpowers/specs/2026-07-14-pipeline-level5-execution-design.md",
+    "docs/superpowers/plans/2026-07-14-pipeline-level5-execution.md",
+    "coordination/capacity/packets/2026-07-14-pipeline-level5-wave0-coordinator-join.json",
+    "coordination/capacity/packets/2026-07-14-pipeline-level5-wave0-director-p0-containment.json",
+    "coordination/capacity/packets/2026-07-14-pipeline-level5-wave0-operator-p0-containment-lanev.json",
+    "coordination/capacity/packets/2026-07-14-pipeline-level5-wave0-director2-opus-finalization.json",
+    "coordination/capacity/packets/2026-07-14-pipeline-level5-wave0-operator2-opus-final-lanev.json"
+  ]
+}

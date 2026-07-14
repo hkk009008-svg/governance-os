@@ -39,11 +39,12 @@
     "At coordinator closeout, reuse this CLEAR only if the Task3I contract, twenty-two selector identities, accepted hashes, and Task-4 suffix remain unchanged; otherwise require one focused reroute."
   ],
   "done_evidence": [
-    "coordination/mailbox/sent/2026-07-10T23-36-33Z-director2-to-coordinator-coordination.md records Task3I plan-level CLEAR at reviewed coordinator route commit 12b1d7ef1f660ff9405bb585dffdf4124435f2af: the privileged supervisor choreography and real-kernel Darwin/Linux peer-credential CI/doctor contract are implementable while the twenty-two Task-3D selector names and immutable Task-3/Task-4 segments remain preserved. This is not runtime proof, protected macOS evidence, or Operator GO."
+    "coordination/mailbox/sent/2026-07-10T23-36-33Z-director2-to-coordinator-coordination.md records Task3I plan-level CLEAR at reviewed coordinator route commit 12b1d7ef1f660ff9405bb585dffdf4124435f2af: the privileged supervisor choreography and real-kernel Darwin/Linux peer-credential CI/doctor contract are implementable while the twenty-two Task-3D selector names and immutable Task-3/Task-4 segments remain preserved. This is not runtime proof, protected macOS evidence, or Operator GO.",
+    "SCHEDULING EXCEPTION ONLY: direct user-principal supersession activates the Pipeline Level-5 first cycle. The prior CLEAR limitations and blocked execution prerequisites remain binding; Task3I is not complete or authorized for implementation. A fresh control-plane reroute is required to resume."
   ],
   "handoff_artifact": "coordination/mailbox/sent/2026-07-10T23-36-33Z-director2-to-coordinator-coordination.md",
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": "12b1d7ef1f660ff9405bb585dffdf4124435f2af",
   "commit_range": null,

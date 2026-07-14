@@ -34,10 +34,12 @@
     "Rule #12/#13 evidence is a Director-brief precondition, not prose alone. Cite fresh grep-the-writes output for coordination/authority.toml read_scope; threeway/refstore.py advance_cursor plus scripts/consume_bus.py and threeway/cutover.py signed-cursor writers; scripts/protocol_mailbox.py advance_human_cursor plus coordination/bin/consume-events staging; and threeway/cursor_backfill.py human-cursor rewrites/restoration. Disposition: share exact cursor-ref construction across authority validation and both signed readers; protocol_mailbox re-exports the canonical signed-fact roster; consume-events inherits descriptor-bound advance with no edit; canonical parser consumers inherit provenance/envelope fixes with no mirror edits; and activation-only cutover/backfill writers remain explicitly outside Task2U.",
     "User-priority park effective 2026-07-11: preserve the nine-file unstaged Task2U worktree at 6983673db60bff0d21548a90ab1db2fcbbfa377a exactly as reported in coordination/mailbox/sent/2026-07-11T00-06-19Z-director-to-coordinator-coordination.md. Do not clean, stage, commit, reset, rebase, or continue it until coord-ledger-workbook-refresh-join is done and coordinator sends a fresh reroute."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "SCHEDULING EXCEPTION ONLY: the user-principal approved the Pipeline Level-5 program and assigned coordinator to activate its first cycle. The 2026-07-14 Level-5 route transfers only current-main scripts/consume_bus.py to the narrow coordinator-consume containment slice and preserves this packet's FAIL/contradiction chain plus dirty 6983673 worktree unchanged. This is not GO, completion, or permission to discard WIP; a fresh control-plane reroute is required to resume."
+  ],
   "handoff_artifact": null,
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
