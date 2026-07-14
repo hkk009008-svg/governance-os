@@ -23,9 +23,14 @@
     "Run the merged main bridge exactly once with review profile codex-lane-v, transport profile anthropic-claude-existing-session-v1, shipping commit 97c270f8f0e630fdaaded672e0da37ed32335de5, and authorization source user-task:pipeline-level5-opus-manual-approval-e2e-2026-07-14. The actual provider command requires a fresh manual approval. Enter no credentials; use no API, Chrome, manual relay, alternate provider, workaround, or transport fallback.",
     "After any denial, process entry, ambiguity, timeout, unavailable result, uncertain state, receipt conflict, or normalized result, stop permanently with zero retry. Persist only content-free outcome metadata. A real bridge receipt permits one canonical coordinator-to-Operator2 verify-request; absence of a receipt parks the cycle without Operator2 authority."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "The manually approved coordinator bridge command was submitted exactly once and created receipt opr1:b79ded16d73c5c001a811b1377ba8df85e4577c2cb8d0e87535e105548e35a49 in reviewed state.",
+    "The normalized result is unavailable at provider_exit with reason process_failed, no effective model, and zero findings. This is not an Opus pass or correctness verdict.",
+    "No retry, fallback, workaround, alternate provider, credential entry, or second process is authorized or used. The side-effect identity is terminal.",
+    "Content-free evidence is preserved in logs/pipeline-level5-opus-manual-approval-e2e-acceptance-2026-07-14.json and the canonical receipt-backed trigger is coordination/mailbox/sent/2026-07-14T15-17-58Z-coordinator-to-operator2-verify-request.md."
+  ],
   "next_recipient": "operator2",
-  "status": "active",
+  "status": "done",
   "verify_request": null,
   "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
   "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",
