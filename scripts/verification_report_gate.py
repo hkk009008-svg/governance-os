@@ -1873,6 +1873,28 @@ def _revalidate_candidate_basename(
         os.close(descriptor)
 
 
+def _cleanup_unbound_candidate(
+    candidate: _CapturedCandidate, sent_fd: int
+) -> None:
+    """Remove only the exact held candidate when no publication owns it."""
+
+    try:
+        _revalidate_candidate_basename(
+            sent_fd,
+            candidate.name,
+            raw=candidate.raw,
+            digest=candidate.digest,
+            device=candidate.device,
+            inode=candidate.inode,
+            expected_nlink=1,
+        )
+        os.unlink(candidate.name, dir_fd=sent_fd)
+        os.fsync(sent_fd)
+    except (OSError, ReportGateError):
+        # A changed or uncertain basename is not ours to remove.
+        return
+
+
 def _open_witnessed_final(
     sent_fd: int,
     final_name: str,
@@ -2301,6 +2323,7 @@ def _publish_candidate_result(
     root = _require_repository(Path(repo_root))
     sent_fd = _open_sent_directory(root)
     candidate: _CapturedCandidate | None = None
+    publication_may_own_candidate = False
     try:
         candidate = _capture_candidate(root, Path(candidate_path), sent_fd)
         report = parse_lane_v_report(final_relative, candidate.raw)
@@ -2318,6 +2341,7 @@ def _publish_candidate_result(
                         record = attempt.load_existing()
                         _validate_codex_record(root, report, authority, record)
                         try:
+                            publication_may_own_candidate = True
                             published = _locked_publish_new(
                                 attempt=attempt,
                                 record=record,
@@ -2367,6 +2391,7 @@ def _publish_candidate_result(
                     record = task.load_or_create(authority_digest)
                     _validate_non_codex_record(record, authority_digest)
                     try:
+                        publication_may_own_candidate = True
                         published = _locked_publish_new(
                             attempt=task,
                             record=record,
@@ -2413,6 +2438,10 @@ def _publish_candidate_result(
             except Exception as exc:
                 reason = getattr(exc, "reason", "publication_failed")
                 raise ReportGateError("publication_failed", str(reason)) from exc
+    except BaseException:
+        if candidate is not None and not publication_may_own_candidate:
+            _cleanup_unbound_candidate(candidate, sent_fd)
+        raise
     finally:
         if candidate is not None:
             os.close(candidate.fd)
