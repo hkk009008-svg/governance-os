@@ -602,7 +602,9 @@ over every vector ID.
 
 ## Final verification and review gate
 
-Run once from the final Task-3 HEAD:
+Run once from the final Phase-2A review-range HEAD. The reviewed implementation
+base is the reconciled pre-Task-1 commit
+`b470cd70b1db35b7d18682af6fcb97fccd1a5729`:
 
 ```sh
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q \
@@ -621,14 +623,19 @@ env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python \
   scripts/target_binding.py --check
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python \
   scripts/ci_smoke.py
-env -u GIT_INDEX_FILE git diff --check HEAD~3..HEAD
-env -u GIT_INDEX_FILE git diff --name-only HEAD~3..HEAD
+env -u GIT_INDEX_FILE git diff --check \
+  b470cd70b1db35b7d18682af6fcb97fccd1a5729..HEAD
+env -u GIT_INDEX_FILE git diff --name-only \
+  b470cd70b1db35b7d18682af6fcb97fccd1a5729..HEAD
 ```
 
-Expected changed paths are exactly the six files in **File map**. The committed
-AST purity and exact-output-field tests are the enforcement evidence; do not
-substitute a one-off regex scan. Give one independent reviewer the committed
-plan and exact `HEAD~3..HEAD` diff. The review question is: “Can any malformed
+Expected implementation paths are exactly the six files in **File map**; the
+only seventh path is this plan, updated with independently reproduced review
+corrections and the truthful final range. The committed AST purity and exact-
+output-field tests are the enforcement evidence; do not substitute a one-off
+regex scan. Give one independent reviewer the committed plan and exact
+`b470cd70b1db35b7d18682af6fcb97fccd1a5729..HEAD` diff. The review question is:
+“Can any malformed
 boundary value, resolver drift, duplicate, nullable identity, route/scope
 ambiguity, replay order, hidden import/call, or output shape escape the
 shadow-only authority boundary or make reduction nondeterministic?” Any
