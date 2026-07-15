@@ -13,16 +13,17 @@
     "docs/superpowers/plans/2026-07-15-opus-transport-first-recovery.md",
     "coordination/capacity/packets/",
     "coordination/mailbox/sent/",
+    "coordination/verification/authorities/b8c59c86-2426-46cf-8975-7b075d75fc09.json",
     "docs/HANDOFF-coordinator-*"
   ],
   "dependencies": [
     "operator2-pipeline-opus-transport-first-recovery-stage-a-lanev"
   ],
   "acceptance": [
-    "Keep terminal receipt opr1:de2f5b672b8e1ea03b7575d7a636e0d56bef9817f0d8b5b74fb0632678b68f85 immutable. Capacity, smoke, route validity, the reconciled manual consultation, and local hypotheses are not proof that Opus is fixed.",
-    "Remain blocked until Director2 lands the provider-free reviewed Stage A implementation range from base 40fd0a5e43c6b28330ced9ddffe01483cde42b65 through immutable initial commit 56091d107382abfe9f06df1aa4cd003d71be7b5e and exactly one additive compatibility-fix commit, then publishes the canonical descriptor/request and Operator2 returns exactly one Stage A GO, NITS, or FAIL. Do not route a root fix before the first boundary is proven.",
-    "On Stage A GO, refresh HEAD, mailbox bodies, capacity, locks, shared WIP, exact report evidence, receipt state, and no-provider proof. Then open a fresh Stage B route for only the proven boundary. On NITS or FAIL, route only the bounded diagnostic correction.",
-    "Any provider-side diagnostic, live canary, local merge, or push requires a later distinct route and side-effect executor token. The final order remains independent GO, local merge, post-merge verification, then push. Coordinator never authors the production fix."
+    "Bind the exact owner freeze docs/HANDOFF-owner-2026-07-16-opus-stage-a.md introduced at 44bd0e8bfe5b2b34cdacb4eccb42ad736d61e142 with blob 5ed34553b4cb00f6f8738add2f9d1af5cd543490 and SHA-256 04b09cf05c44b8a74f0a9556fbfc4ea1b942c697bb6b90aba2d3e5c8ec9ecfeb. Require exact old clean F=16c4f83aef4130d977a91d623a9254c4fd46980a before Q. Keep terminal receipt opr1:de2f5b672b8e1ea03b7575d7a636e0d56bef9817f0d8b5b74fb0632678b68f85 immutable and compare the complete receipt-store manifest to the correction-route baseline.",
+    "Remain blocked until Director2 lands exactly one provider-free Q whose sole parent is F, two fresh independent reviews pass, the coordinator commits the exact external authority object, Director2 publishes descriptor-only D and request-only T, and Operator2 returns one canonical Stage A GO, NITS, or FAIL for R..Q. Capacity, smoke, route validity, prior reviews, or local hypotheses do not substitute for that verdict.",
+    "On Stage A GO, refresh HEAD, mailbox bodies, capacity, locks, shared WIP, exact report evidence, receipt state, provider-attempt count, and manifest equality. Then open the existing recovery plan's Stage B route only for the proven root boundary. On NITS or FAIL, stop and route only the bounded disposition permitted by the correction plan; no second post-Q implementation commit is implicit.",
+    "Stage C remains one separately authorized fresh canary after Stage B GO and requires a distinct named executor and side-effect token. Local integration, post-integration verification, publication, push, retry, fallback, cleanup, receipt mutation, and target-repo work each remain separately gated. Coordinator owns metadata/route/join work only and never authors the production fix."
   ],
   "done_evidence": [],
   "next_recipient": "coordinator",
@@ -32,10 +33,13 @@
   "commit_range": null,
   "scope_files": [
     "docs/superpowers/plans/2026-07-15-opus-transport-first-recovery.md",
+    "docs/superpowers/plans/2026-07-16-opus-quality-correction-and-recovery-routing.md",
+    "docs/HANDOFF-owner-2026-07-16-opus-stage-a.md",
     "coordination/capacity/packets/2026-07-15-pipeline-opus-transport-first-recovery-stage-a-director-standby.json",
     "coordination/capacity/packets/2026-07-15-pipeline-opus-transport-first-recovery-stage-a-operator-standby.json",
     "coordination/capacity/packets/2026-07-15-pipeline-opus-transport-first-recovery-stage-a-director2-diagnostics.json",
     "coordination/capacity/packets/2026-07-15-pipeline-opus-transport-first-recovery-stage-a-operator2-lanev.json",
-    "coordination/capacity/packets/2026-07-15-pipeline-opus-transport-first-recovery-stage-a-coordinator-join.json"
+    "coordination/capacity/packets/2026-07-15-pipeline-opus-transport-first-recovery-stage-a-coordinator-join.json",
+    "coordination/verification/authorities/b8c59c86-2426-46cf-8975-7b075d75fc09.json"
   ]
 }
