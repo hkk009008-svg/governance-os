@@ -4,7 +4,7 @@
 
 **Goal:** Close the two independently confirmed Stage-A quality defects and the independently confirmed legacy-output-limit review regression with append-only provider-free corrections, obtain lawful Operator2 GO, and resume the existing transport-first Stage B-D recovery without retry, fallback, or authority drift.
 
-**Architecture:** Preserve the immutable `R -> M0 -> F -> Q1` history, where `Q1=6d596b5f238fdc72f6d7384fddfd112072c52352` added the semantic validator and broker-cleanup lifecycle correction but failed both fresh reviews on one legacy output-limit compatibility edge. Append exactly one provider-free `Q2` whose sole parent is `Q1`; `Q2` restores the three historically emitted null-diagnostic output-limit truncation shapes and rejects the impossible false/false shape without changing the finite-detail contract. A separately committed external authority object binds the amended correction plan, umbrella design, post-review correction route, and two new pre-descriptor PASS results without widening `R..Q2`. A descriptor-only commit `D` and canonical verify-request-only commit `T` then bind `R..Q2`, with `T` referencing that external object exactly once. Only a provider-free Operator2 GO may reopen the original plan's Stage B root repair; Stage C remains one separately authorized fresh canary and Stage D remains GO-before-integration and separately authorized publication.
+**Architecture:** Preserve the immutable `R -> M0 -> F -> Q1` history, where `Q1=6d596b5f238fdc72f6d7384fddfd112072c52352` added the semantic validator and broker-cleanup lifecycle correction but failed both fresh reviews on one legacy output-limit compatibility edge. Append exactly one provider-free `Q2` whose sole parent is `Q1`; `Q2` restores the three historically emitted null-diagnostic output-limit truncation shapes and rejects the impossible false/false shape without changing the finite-detail contract. A separately committed external authority object binds the amended correction plan, umbrella design, post-review correction route, and two new pre-descriptor PASS results without widening `R..Q2`. Descriptor-only `D=f223aa4e6fe1b89b244fc2f6256f9d2b75b1f46f` is valid. Initial request `T0=84bd414cb35b7780206fcce48c19ebbfaf54ab8f` is an immutable non-authority artifact because it omitted the required terminal `Exact Next Trigger` section. Append exactly one request-completion commit `T` whose sole parent is `T0`, whose only changed path is the existing request path, and whose only content change is that terminal transfer section. Final `T` binds `R..Q2` and references the unchanged external object exactly once. Only a provider-free Operator2 GO may reopen the original plan's Stage B root repair; Stage C remains one separately authorized fresh canary and Stage D remains GO-before-integration and separately authorized publication.
 
 **Tech Stack:** Python 3.14, frozen dataclasses, context managers, the existing Opus review and receipt schemas, pytest, Git append-only ranges, Lane-V descriptors, and the Pipeline mailbox/capacity protocol.
 
@@ -29,7 +29,8 @@
   - `tests/unit/test_opus_review_bridge.py`
   - `tests/unit/test_opus_review_receipts.py`
 
-- Descriptor task `b8c59c86-2426-46cf-8975-7b075d75fc09` retains exact reviewed base `R`. The legacy `lane-v-scope/v1` descriptor has no `reviewed_head` field; canonical verify-request `T` binds the final reviewed head `Q2`. Its descriptor commit is `D`; its request-only commit is `T`.
+- Descriptor task `b8c59c86-2426-46cf-8975-7b075d75fc09` retains exact reviewed base `R`. The legacy `lane-v-scope/v1` descriptor has no `reviewed_head` field; final canonical verify-request `T` binds the final reviewed head `Q2`. Its descriptor commit is immutable `D=f223aa4e6fe1b89b244fc2f6256f9d2b75b1f46f`; invalid `T0=84bd414cb35b7780206fcce48c19ebbfaf54ab8f` grants no authority; corrected request-completion commit `T` is the only Operator2 trigger.
+- Preserve `Q2`, `D`, and `T0` byte-for-byte. The only authorized continuation after `T0` is one metadata-only `T` modifying `coordination/mailbox/sent/2026-07-15T21-40-25Z-director2-to-operator2-verify-request.md` to add exactly one terminal `## Exact Next Trigger` section before the existing cursor line. No new descriptor, request path, authority object, review, Q3, provider attempt, or receipt mutation is authorized.
 - Stage A, including `Q1` and `Q2`, authorizes zero Claude/Opus provider attempts and zero receipt mutations. All tests use injected factories, fake runners, and temporary paths.
 - Preserve every existing public unavailable reason. Preserve every existing failure stage and add exactly one stage, `broker_cleanup`; add exactly one finite detail, `broker_cleanup_failed`.
 - Broker cleanup failure before a provider result exists remains fail-closed as `sandbox_unavailable/broker_cleanup/broker_cleanup_failed`. If the runner already returned one completed result, broker cleanup failure must not discard or relabel it: parse it once through the existing model/review contract, preserve the resulting pass/issues/unavailable semantics, perform no retry, and serialize no raw cleanup text. A completed result never gains findings or authority merely because broker cleanup failed.
@@ -250,6 +251,73 @@ docs(protocol): authorize Opus Stage A Q2 compatibility correction
 
 No production, test, plan, descriptor, authority-object, receipt, or runtime
 path belongs in this route commit.
+
+### Task 1B: Commit the post-`T0` request-completion correction route
+
+**Execution note:** Tasks 5A-6 produced valid `Q2`, two PASS reviews, the
+external authority object, and descriptor `D`. Initial request
+`T0=84bd414cb35b7780206fcce48c19ebbfaf54ab8f` contains every authority binding
+but fails `scripts/check_coordination.py` with `missing_end_trigger`. Blocker
+`coordination/mailbox/sent/2026-07-15T21-42-18Z-director2-to-coordinator-coordination.md`
+at its complete-body commit is the binding input. `T0` is not a Lane-V trigger.
+
+**Files:**
+
+- Modify: the same three Stage-A capacity packets from Task 1A
+- Create: one new canonical coordinator-to-all coordination event
+- Read: the complete committed blocker and immutable `T0` request blob
+
+**Interfaces:**
+
+- Consumes: clean immutable `Q2`, `D`, `T0`, the unchanged descriptor digest and external authority object, the complete blocker commit/blob/digest, zero provider attempts, and the unchanged receipt manifest.
+- Produces: one capacity-valid metadata route authorizing exactly one request-completion commit `T`; no production, test, descriptor, review, or authority-object change.
+
+- [ ] **Step 1: Reconcile immutable request state**
+
+Require clean Stage-A head `T0`, prove `parent(T0) == D`, and resolve the sole
+request path/blob from `T0`. Rerun `scripts/check_coordination.py` from that
+worktree and require the sole failure for the request path to be
+`missing_end_trigger`; any other failure blocks. Resolve the complete blocker
+from primary `main` by exact commit/blob/SHA-256, require the amended plan to be
+committed, and prove the external authority object, descriptor digest,
+prospective receipt/lock absence, and receipt manifest are unchanged.
+
+- [ ] **Step 2: Amend only the three Stage-A packets**
+
+Record final metadata topology:
+
+```text
+R -> M0 -> F -> Q1 -> Q2 -> D -> T0 (invalid) -> T (canonical)
+```
+
+Director2 may modify only the existing request path. `parent(T) == T0`; the
+request diff adds exactly one terminal `## Exact Next Trigger` section before
+the existing cursor line and preserves every H1, envelope, timestamp, event,
+task-board, wave, reviewed-head/base, descriptor, external-authority, and
+provider-budget field byte-for-byte. Operator2 ignores `T0`, resolves only
+final `T`, and retains exact `R..Q2` scope. NITS/FAIL grants no further request
+or Q3.
+
+- [ ] **Step 3: Generate, validate, and commit one route**
+
+Use `coordination/bin/send-event coordinator all coordination` once with subject
+`authorize Stage A request completion correction`. Bind the complete blocker,
+amended plan, `Q2`, `D`, `T0`, request path/blob, descriptor digest, external
+authority commit/path/blob, both PASS review identities/question digests, zero
+provider/receipt budgets, and unchanged manifest. Include the capacity-split
+decision, all packet IDs, join condition, exact next trigger, and complete
+coordinator metadata-route executor token.
+
+Run the capacity board, `--validate-route`, `scripts/check_coordination.py`,
+and `git diff --check`. Commit exactly the three packet paths plus the generated
+event with subject:
+
+```text
+docs(protocol): authorize Opus Stage A request completion correction
+```
+
+No implementation, test, plan, descriptor, authority-object, receipt, runtime,
+or existing request path belongs in this route commit.
 
 ### Task 2: Add RED semantic-consistency tests
 
@@ -786,7 +854,13 @@ test "$(env -u GIT_INDEX_FILE git diff-tree --no-commit-id --name-only -r \
 
 Expected: `D_SHA` directly parents `Q2_SHA` and changes exactly the descriptor path.
 
-- [ ] **Step 5: Generate and commit request-only `T`**
+- [ ] **Step 5: Generate and commit initial request-only `T0` (historical)**
+
+**Execution correction:** This step produced immutable
+`T0=84bd414cb35b7780206fcce48c19ebbfaf54ab8f`, which contains the authority
+bindings but omitted the repository-wide terminal transfer section. It is not
+an Operator2 trigger. Task 1B and Task 6A supersede only this step's terminal
+authority and direct-topology claims.
 
 Use the canonical event producer from the Stage-A worktree and capture its actual path:
 
@@ -824,20 +898,23 @@ test "$(env -u GIT_INDEX_FILE git diff --cached --name-only)" = \
   "$REQUEST_PATH"
 env -u GIT_INDEX_FILE git commit -m \
   "coord(director2): request Stage A quality verification"
-T_SHA="$(env -u GIT_INDEX_FILE git rev-parse 'HEAD^{commit}')"
-test "$(env -u GIT_INDEX_FILE git rev-parse "${T_SHA}^")" = "$D_SHA"
+T0_SHA="$(env -u GIT_INDEX_FILE git rev-parse 'HEAD^{commit}')"
+test "$(env -u GIT_INDEX_FILE git rev-parse "${T0_SHA}^")" = "$D_SHA"
 test "$(env -u GIT_INDEX_FILE git diff-tree --no-commit-id --name-only -r \
-  "$T_SHA")" = "$REQUEST_PATH"
+  "$T0_SHA")" = "$REQUEST_PATH"
 test "$(env -u GIT_INDEX_FILE .venv/bin/python -c \
   'from pathlib import Path; import hashlib, sys; print("sha256:" + hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest())' \
   "$DESCRIPTOR_PATH")" = "$DESCRIPTOR_DIGEST"
-test "$(env -u GIT_INDEX_FILE git show "$T_SHA:$REQUEST_PATH" | grep -Fxc \
+test "$(env -u GIT_INDEX_FILE git show "$T0_SHA:$REQUEST_PATH" | grep -Fxc \
   "Stage-A-External-Authority: $EXTERNAL_AUTHORITY_COMMIT:$EXTERNAL_AUTHORITY_PATH@$EXTERNAL_AUTHORITY_BLOB")" = 1
 ```
 
-Expected: the body contains exactly one of each binding field and exactly one external-authority reference, `T_SHA` directly parents `D_SHA`, the request commit changes exactly one sent-mailbox path, and the committed descriptor bytes still produce `$DESCRIPTOR_DIGEST`. A same-second collision or uncertain producer result is reconciled before any retry.
+Historical result: the body contains exactly one of each binding field and exactly one external-authority reference, `T0_SHA` directly parents `D_SHA`, the request commit changes exactly one sent-mailbox path, and the committed descriptor bytes still produce `$DESCRIPTOR_DIGEST`. The missing terminal transfer section makes `T0` non-authoritative despite those bindings.
 
-- [ ] **Step 6: Resolve authority provider-free and prove zero receipt mutation**
+- [ ] **Step 6: Resolve final authority provider-free and prove zero receipt mutation**
+
+When `T0` exists, run this step only after Task 6A and set `T_SHA` to final
+corrected `T`; never substitute `T0` merely because its resolver fields parse.
 
 First validate the referenced external object and recover the committed pre-Stage-A receipt manifest from the correction route:
 
@@ -1022,6 +1099,66 @@ test "$RECEIPT_MANIFEST_AFTER_SHA" = "$RECEIPT_MANIFEST_BEFORE_SHA"
 
 Any prospective receipt/lock, manifest drift, resolver mismatch, or external-object mismatch blocks Operator2; do not delete or repair runtime state and do not retry through another resolver.
 
+### Task 6A: Complete the canonical request append-only
+
+**Files:**
+
+- Modify: `coordination/mailbox/sent/2026-07-15T21-40-25Z-director2-to-operator2-verify-request.md`
+
+**Interfaces:**
+
+- Consumes: the committed Task-1B route, immutable `T0=84bd414cb35b7780206fcce48c19ebbfaf54ab8f` request blob `d0c2a5890bad9ee51be384499e566c7309b0e5c5`, valid `D`, unchanged external authority object, and zero-provider evidence.
+- Produces: exactly one commit `T` whose sole parent is `T0`, whose sole changed path is the existing request, and whose subject is `coord(director2): correct Stage A quality verification request`.
+
+- [ ] **Step 1: Add only the terminal transfer section**
+
+Immediately before the existing `Cursor at send: 0` line, insert exactly:
+
+```markdown
+## Exact Next Trigger
+
+Continue as operator2 from this committed canonical request. Validate the
+verify-request trigger, descriptor, external authority object, exact R..Q2
+range, zero-provider evidence, prospective receipt/lock absence, and unchanged
+receipt manifest; then commit exactly one GO, NITS, or FAIL verification report.
+On any authority, topology, scope, test, smoke, receipt, or manifest
+contradiction, stop with concrete NITS or FAIL evidence rather than
+reconstructing authority.
+```
+
+Do not regenerate the event or alter any existing byte except the insertion
+boundary. `git diff --word-diff=porcelain T0 -- <request>` must show only this
+section.
+
+- [ ] **Step 2: Validate before commit**
+
+Run `scripts/check_coordination.py`, `scripts/ci_smoke.py`, descriptor parsing,
+external-object validation, request field-count checks, descriptor digest
+recomputation, `git diff --check`, and receipt-manifest equality. Require exactly
+one `Event type`, `Reviewed head`, `Reviewed base`, `Lane-V-Scope`,
+`Stage-A-External-Authority`, and `Exact Next Trigger`. Provider attempts and
+receipt mutations remain zero.
+
+- [ ] **Step 3: Commit final `T` and prove scope**
+
+Stage only the existing request path and commit with the fixed subject. Prove:
+
+```bash
+T0_SHA=84bd414cb35b7780206fcce48c19ebbfaf54ab8f
+T_SHA="$(env -u GIT_INDEX_FILE git rev-parse 'HEAD^{commit}')"
+test "$(env -u GIT_INDEX_FILE git rev-parse "${T_SHA}^")" = "$T0_SHA"
+test "$(env -u GIT_INDEX_FILE git diff-tree --no-commit-id --name-only -r \
+  "$T_SHA")" = \
+  coordination/mailbox/sent/2026-07-15T21-40-25Z-director2-to-operator2-verify-request.md
+```
+
+- [ ] **Step 4: Resolve only final `T` provider-free**
+
+Rerun Task 6 Step 6 with `T_SHA` set to final `T`, never `T0`. Require the same
+effective base, reviewed head, descriptor digest, four changed paths, external
+authority object, and receipt-manifest baseline; require a new prospective
+attempt key with neither receipt nor lock. Only then may Operator2 start.
+
 ### Task 7: Operator2 verifies Stage A and coordinator resumes Stages B-D
 
 **Files:**
@@ -1060,7 +1197,10 @@ Before reporting this plan executed, capture fresh output for:
 ```bash
 STAGE_A_ROOT=.worktrees/opus-transport-first-stage-a-director2
 T_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse 'HEAD^{commit}')"
-D_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${T_SHA}^")"
+T0_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${T_SHA}^")"
+test "$T0_SHA" = 84bd414cb35b7780206fcce48c19ebbfaf54ab8f
+D_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${T0_SHA}^")"
+test "$D_SHA" = f223aa4e6fe1b89b244fc2f6256f9d2b75b1f46f
 Q2_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${D_SHA}^")"
 Q1_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${Q2_SHA}^")"
 test "$Q1_SHA" = 6d596b5f238fdc72f6d7384fddfd112072c52352
@@ -1077,6 +1217,9 @@ test "$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" diff --name-only \
 scripts/opus_review_receipts.py
 tests/unit/test_opus_review_bridge.py
 tests/unit/test_opus_review_receipts.py"
+test "$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" diff-tree \
+  --no-commit-id --name-only -r "$T_SHA")" = \
+  coordination/mailbox/sent/2026-07-15T21-40-25Z-director2-to-operator2-verify-request.md
 (
   cd "$STAGE_A_ROOT"
   env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
@@ -1107,10 +1250,11 @@ Before making that claim, rerun the complete Task 6 Step 6 external-object, prov
 - The semantic rule table rejects a tuple still emitted by production or accepts a contradictory tuple from the invalid matrix.
 - Cleanup can still be labeled startup, raw diagnostic text escapes, or a completed result is discarded, retried, relabeled, or allowed to bypass the existing parser and contract checks.
 - Independent spec or quality review returns a blocking finding.
+- `T0` is treated as authority, final `T` does not directly parent exact `T0`, any path other than the existing request changes in `T0..T`, or any pre-existing request byte changes outside the one terminal transfer-section insertion.
 - Descriptor, external authority, or request topology, digest, full SHAs/blobs, event count, or command allowlist differs from the committed contract.
 - Operator2 returns NITS/FAIL or no lawful trigger exists.
 - Any integration, activation, or push is proposed without its separate named authorization.
 
 ## Exact Next Trigger
 
-After this amended plan is committed and the coordinator's post-`Q1` three-packet correction route validates, Director2 appends exactly one provider-free `Q2` to immutable `Q1`. Descriptor `D`, request `T`, Operator2 verification, any Stage-C provider attempt, local integration, and publication remain gated in that order by their separate authorities. The target-aware bridge cannot start until `docs/HANDOFF-director-2026-07-16-opus-b-d-recovery.md`, its final GO, integrated head, merged-tree evidence, and terminal join `done_evidence` validate.
+After this amended plan is committed, the coordinator binds the complete request blocker and issues the Task-1B three-packet metadata route. Director2 then appends exactly one request-completion `T` to immutable `T0`; Operator2 must ignore `T0` and act only after final `T` passes coordination, smoke, provider-free resolver, prospective receipt/lock, and manifest checks. Any Stage-C provider attempt, local integration, and publication remain gated in that order by their separate authorities. The target-aware bridge cannot start until `docs/HANDOFF-director-2026-07-16-opus-b-d-recovery.md`, its final GO, integrated head, merged-tree evidence, and terminal join `done_evidence` validate.
