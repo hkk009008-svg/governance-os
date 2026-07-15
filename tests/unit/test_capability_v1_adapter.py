@@ -706,6 +706,41 @@ def test_corpus_guard_rejects_semantically_swapped_replay_bindings() -> None:
     _assert_corpus_error(corpus, "legacy_invalid")
 
 
+def test_corpus_guard_rejects_swapped_case_bound_misuse_associations() -> None:
+    corpus = _load_strict(CORPUS)
+    dependency_case = _case(corpus, "misuse:dependency-change")
+    acceptance_case = _case(corpus, "misuse:acceptance-change")
+    dependency_case["misuse_vector_id"], acceptance_case["misuse_vector_id"] = (
+        acceptance_case["misuse_vector_id"],
+        dependency_case["misuse_vector_id"],
+    )
+    bindings = corpus["phase2_misuse_bindings"]
+    dependency_binding = bindings["relevant_dependency_change"]
+    acceptance_binding = bindings["relevant_acceptance_change"]
+    dependency_binding["target_id"], acceptance_binding["target_id"] = (
+        acceptance_binding["target_id"],
+        dependency_binding["target_id"],
+    )
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_corpus_guard_rejects_extra_case_bound_delta_field() -> None:
+    corpus = _load_strict(CORPUS)
+    dependency_case = _case(corpus, "misuse:dependency-change")
+    changed_record = dependency_case["source_records"][1]
+    changed_record["acceptance_digest"] = _digest("8")
+    changed_record["source_digest"] = _canonical_digest(
+        {
+            field: value
+            for field, value in changed_record.items()
+            if field != "source_digest"
+        }
+    )
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
 def test_corpus_guard_rejects_changed_source_digest() -> None:
     corpus = _load_strict(CORPUS)
     _case(corpus, "mapping:capacity-ready")["source_records"][0][
@@ -848,9 +883,21 @@ def test_every_specialized_mapping_key_reaches_public_adapter_probe(
         if rule.requested_transition is None
     }
     expected_domains = {key[0] for key in expected_keys}
-    observed_keys: set[
-        tuple[str, str, tuple[tuple[str, bool | str], ...]]
-    ] = set()
+    expected_axes = {
+        (key, route_is_null, unit_is_null)
+        for key in expected_keys
+        for route_is_null in (False, True)
+        for unit_is_null in (False, True)
+    }
+    observed_axes: list[
+        tuple[
+            tuple[str, str, tuple[tuple[str, bool | str], ...]],
+            bool,
+            bool,
+        ]
+    ] = []
+    observed_source_ids: set[str] = set()
+    observed_work_ids: set[str] = set()
     real_adapt = adapter.adapt_v1_history
 
     def traced_adapt(raw_history, *, resolve_actor, resolve_scope):
@@ -863,7 +910,18 @@ def test_every_specialized_mapping_key_reaches_public_adapter_probe(
                 tuple(sorted(record["context"].items())),
             )
             if key in expected_keys:
-                observed_keys.add(key)
+                observed_axes.append(
+                    (key, record["route_id"] is None, record["unit_id"] is None)
+                )
+                observed_source_ids.add(record["source_id"])
+                observed_work_ids.add(record["work_id"])
+                assert record["source_digest"] == _canonical_digest(
+                    {
+                        field: value
+                        for field, value in record.items()
+                        if field != "source_digest"
+                    }
+                )
         return real_adapt(
             records,
             resolve_actor=resolve_actor,
@@ -874,8 +932,11 @@ def test_every_specialized_mapping_key_reaches_public_adapter_probe(
     report = adapter._check_corpus(_load_strict(CORPUS))
 
     assert adapter._report_is_gate_clean(report) is True
-    assert observed_keys == expected_keys
-    assert {key[0] for key in observed_keys} == expected_domains
+    assert set(observed_axes) == expected_axes
+    assert len(observed_axes) == len(expected_axes)
+    assert len(observed_source_ids) == len(expected_axes)
+    assert len(observed_work_ids) == len(expected_axes)
+    assert {key[0] for key, _, _ in observed_axes} == expected_domains
 
 
 def test_specialized_domain_fallback_success_blocks_gate(monkeypatch) -> None:
@@ -902,6 +963,41 @@ def test_specialized_domain_fallback_success_blocks_gate(monkeypatch) -> None:
     assert adapter._report_is_gate_clean(report) is False
     assert set(report.specialized_event_ids) == expected_event_ids
     assert "adapter_error" in {item.kind for item in report.divergences}
+
+
+def test_named_specialized_fallback_success_blocks_gate(monkeypatch) -> None:
+    target_key = ("provider_result", "pass", ())
+    target_event_id = "mapping:provider-pass"
+    real_adapt = adapter.adapt_v1_history
+
+    def named_provider_fallback(raw_history, *, resolve_actor, resolve_scope):
+        records = tuple(raw_history)
+        record = records[0]
+        key = (
+            record["domain"],
+            record["value"],
+            tuple(sorted(record["context"].items())),
+        )
+        if (
+            key == target_key
+            and record["route_id"] is not None
+            and record["unit_id"] is not None
+        ):
+            return (object(),)
+        return real_adapt(
+            records,
+            resolve_actor=resolve_actor,
+            resolve_scope=resolve_scope,
+        )
+
+    monkeypatch.setattr(adapter, "adapt_v1_history", named_provider_fallback)
+    report = adapter._check_corpus(_load_strict(CORPUS))
+
+    assert adapter._report_is_gate_clean(report) is False
+    assert target_event_id in report.specialized_event_ids
+    assert (target_event_id, "adapter_error") in {
+        (item.case_id, item.kind) for item in report.divergences
+    }
 
 
 def test_independent_input_orders_return_one_canonical_envelope_tuple() -> None:
@@ -1163,6 +1259,11 @@ def test_reversing_causal_history_is_rejected_not_repaired() -> None:
 def test_actor_and_scope_resolver_drift_are_deterministic_failures() -> None:
     corpus = _load_strict(CORPUS)
     actor = _actor_from_corpus(corpus)
+    changed_actor = dataclasses.replace(actor, principal="user:drift")
+    changed_actor = dataclasses.replace(
+        changed_actor,
+        binding_digest=_canonical_digest(reducer._actor_mapping(changed_actor)),
+    )
     scope = _scope_resolver(corpus)
     actor_calls = 0
     scope_calls = 0
@@ -1170,9 +1271,7 @@ def test_actor_and_scope_resolver_drift_are_deterministic_failures() -> None:
     def drift_actor(_digest: str) -> reducer.ActorContext:
         nonlocal actor_calls
         actor_calls += 1
-        return actor if actor_calls == 1 else dataclasses.replace(
-            actor, principal="user:drift"
-        )
+        return actor if actor_calls == 1 else changed_actor
 
     actor_record = _case(corpus, "history:actor-resolver-drift")[
         "source_records"
@@ -1220,16 +1319,20 @@ def test_external_resolver_exception_is_sanitized() -> None:
     assert "raw resolver secret" not in str(exc_info.value)
 
 
-def test_actor_result_equality_exception_is_sanitized() -> None:
+def test_second_actor_equality_spoof_is_rejected_before_comparison() -> None:
     corpus = _load_strict(CORPUS)
     record_value = _case(corpus, "mapping:capacity-ready")["source_records"]
+    actor = _actor_from_corpus(corpus)
+    actor_calls = 0
 
-    class ExplosiveEquality:
+    class EqualitySpoof:
         def __eq__(self, _other: object) -> bool:
-            raise RuntimeError("raw-resolver-secret")
+            return True
 
     def resolve_actor(_digest: str) -> object:
-        return ExplosiveEquality()
+        nonlocal actor_calls
+        actor_calls += 1
+        return actor if actor_calls == 1 else EqualitySpoof()
 
     with pytest.raises(adapter.LegacyAdapterError) as exc_info:
         adapter.adapt_v1_history(
@@ -1240,7 +1343,38 @@ def test_actor_result_equality_exception_is_sanitized() -> None:
 
     assert exc_info.value.code == "legacy_invalid"
     assert str(exc_info.value) == "legacy_invalid"
-    assert "raw-resolver-secret" not in str(exc_info.value)
+
+
+def test_actor_comparison_never_invokes_hostile_equality_or_truth() -> None:
+    corpus = _load_strict(CORPUS)
+    record_value = _case(corpus, "mapping:capacity-ready")["source_records"]
+    actor = _actor_from_corpus(corpus)
+    calls = {"actor": 0, "equality": 0, "truth": 0}
+
+    class HostileTruth:
+        def __bool__(self) -> bool:
+            calls["truth"] += 1
+            raise RuntimeError("raw-truth-secret")
+
+    class HostileEquality:
+        def __eq__(self, _other: object) -> object:
+            calls["equality"] += 1
+            return HostileTruth()
+
+    def resolve_actor(_digest: str) -> object:
+        calls["actor"] += 1
+        return actor if calls["actor"] == 1 else HostileEquality()
+
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        adapter.adapt_v1_history(
+            record_value,
+            resolve_actor=resolve_actor,
+            resolve_scope=_scope_resolver(corpus),
+        )
+
+    assert exc_info.value.code == "legacy_invalid"
+    assert str(exc_info.value) == "legacy_invalid"
+    assert calls == {"actor": 2, "equality": 0, "truth": 0}
 
 
 def test_opaque_web_evidence_changes_only_relevant_shadow_digests() -> None:

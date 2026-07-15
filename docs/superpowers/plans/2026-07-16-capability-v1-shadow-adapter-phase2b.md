@@ -472,6 +472,22 @@ fixture partition exactly and bind no Phase-2 target. Reducer replay IDs equal
 the v2 replay fixture set exactly; its permutation set remains pinned and
 executed by `test_capability_reducer_replay.py`.
 
+The three case-bound associations also have this production-side exact oracle,
+independent of each case's self-declared misuse label:
+
+```text
+relevant_dependency_change -> misuse:dependency-change -> dependency_digest
+relevant_acceptance_change -> misuse:acceptance-change -> acceptance_digest
+relevant_evidence_change -> misuse:evidence-change -> evidence_refs
+```
+
+Each oracle case has exactly two parsed records. Work/route/unit/actor identity,
+mutable scope ref/digest, content digest, verification ref, and normalized
+effect-reservation refs stay equal. Among dependency digest, acceptance digest,
+and normalized evidence refs, exactly the oracle-named field changes. Stable
+source identity/digest, work revision, and the ready-to-active value progression
+may differ as required by the causal history.
+
 Include route histories covering named/null route IDs, named/null unit IDs,
 sequential updates, exact duplicate source identity, changed duplicate content,
 disjoint-order permutations, stale/gapped revision, resolver drift, scope
@@ -503,6 +519,15 @@ def test_specialized_states_never_emit_route_events():
     assert report.specialized_event_ids == ()
 
 
+def test_every_specialized_mapping_key_covers_route_unit_matrix():
+    assert observed_probe_axes() == {
+        (mapping_key, route_is_null, unit_is_null)
+        for mapping_key in specialized_mapping_keys()
+        for route_is_null in (False, True)
+        for unit_is_null in (False, True)
+    }
+
+
 def test_independent_input_orders_return_one_canonical_envelope_tuple():
     left, right = independent_records()
     forward = adapter.adapt_v1_history(
@@ -530,8 +555,10 @@ def test_both_parity_directions_block(mutation, expected_kind):
 ```
 
 Also remove one case, add one unmanifested case, empty one misuse target's
-source records, point two misuse IDs at one target, change one source digest,
-and change one adapter mapping to prove each guard is non-vacuous.
+source records, point two misuse IDs at one target, swap the dependency and
+acceptance case labels plus binding targets together, add a second delta field,
+change one source digest, inject a named-route/unit specialized fallback, and
+change one adapter mapping to prove each guard is non-vacuous.
 
 - [ ] **Step 3: Run RED**
 
@@ -559,25 +586,43 @@ cursor, resolve actor/scope twice, and apply it to an in-memory `KernelState`.
 Resolver handling is deterministic:
 
 ```python
-first_actor = resolve_actor(record.actor_binding_digest)
-second_actor = resolve_actor(record.actor_binding_digest)
-if first_actor != second_actor:
+first_actor_value = resolve_actor(record.actor_binding_digest)
+first_actor, first_actor_bytes = capability_reducer._validate_actor(
+    first_actor_value
+)
+second_actor_value = resolve_actor(record.actor_binding_digest)
+second_actor, second_actor_bytes = capability_reducer._validate_actor(
+    second_actor_value
+)
+if first_actor_bytes != second_actor_bytes:
     raise LegacyAdapterError("legacy_nondeterministic")
 ```
 
-Use the same two-read rule for scope through the reducer's existing application
-boundary. Validate causal order as supplied, map every external resolver or
-reducer exception to one stable sanitized adapter code, and canonically sort
-only the fully accepted output tuple. Task-2 tests own absolute resolved paths,
-ambiguous or redundant resolved scope, and scope-resolver drift; none of those
-checks may be pulled into Task 1's opaque-record parser.
+Each actor result crosses the reducer-owned validator separately before byte
+comparison; raw actor equality and truth conversion are forbidden. Two valid
+unequal canonical actors are `legacy_nondeterministic`; malformed or ineligible
+results become stable sanitized failures. Pass only the validated first
+`ActorContext` to `apply_transition`. Use the same two-read rule for scope
+through the reducer's existing application boundary. Validate causal order as
+supplied, map every external resolver or reducer exception to one stable
+sanitized adapter code, and canonically sort only the fully accepted output
+tuple. Task-2 tests own absolute resolved paths, ambiguous or redundant resolved
+scope, and scope-resolver drift; none of those checks may be pulled into Task
+1's opaque-record parser.
 
 Maintain a local `source_id -> (source_digest, envelope)` map: an exact replay
 reuses the original envelope before consulting the next cursor, while changed
 content under the same source ID reaches the same transition identity and
 blocks as a conflict. Stale revisions, scope/route ambiguity, and resolver drift
 also block without a partial event tuple. Specialized cases are checked for
-meaning parity but emit zero events.
+meaning parity but emit zero events. For every `_ADAPTER_RULES` entry with no
+transition, derive one syntactically valid named route and unit from committed
+corpus records and probe the public adapter once for each `(null, null)`,
+`(null, named)`, `(named, null)`, and `(named, named)` route/unit cell. Every
+row-bound probe has a unique source/work identity and recomputed source digest.
+Only `legacy_unmapped` with zero actor/scope resolver calls is accepted; success,
+another error, or resolver use blocks, and a non-empty success records the
+mapping case in `specialized_event_ids`.
 
 Add an AST/source-shape test proving `_compact_projection()` does not call
 `compact_state_mapping.meaning_for()` and does not read fixture data. Mutate

@@ -123,6 +123,23 @@ _SOURCE_PATHS = (
     "tests/fixtures/compact_kernel/v1_misuse_vectors.json",
     "tests/fixtures/compact_kernel/v2_replay_vectors.json",
 )
+_CASE_BOUND_MISUSE_DELTA_ORACLE = (
+    (
+        "relevant_dependency_change",
+        "misuse:dependency-change",
+        "dependency_digest",
+    ),
+    (
+        "relevant_acceptance_change",
+        "misuse:acceptance-change",
+        "acceptance_digest",
+    ),
+    (
+        "relevant_evidence_change",
+        "misuse:evidence-change",
+        "evidence_refs",
+    ),
+)
 
 
 class LegacyAdapterError(ValueError):
@@ -1157,12 +1174,17 @@ def _adapt_parsed_history(
         )
 
         try:
-            first_actor = resolve_actor(record.actor_binding_digest)
-            second_actor = resolve_actor(record.actor_binding_digest)
-            same_actor = bool(first_actor == second_actor)
+            first_actor_value = resolve_actor(record.actor_binding_digest)
+            first_actor, first_actor_bytes = capability_reducer._validate_actor(
+                first_actor_value
+            )
+            second_actor_value = resolve_actor(record.actor_binding_digest)
+            _second_actor, second_actor_bytes = capability_reducer._validate_actor(
+                second_actor_value
+            )
         except Exception:
             raise _legacy_invalid() from None
-        if not same_actor:
+        if first_actor_bytes != second_actor_bytes:
             raise LegacyAdapterError("legacy_nondeterministic")
         try:
             state = capability_reducer.apply_transition(
@@ -1442,7 +1464,13 @@ def _case_resolvers(
         actor_calls += 1
         actor = actors[digest]
         if mode == "actor_drift" and actor_calls % 2 == 0:
-            return replace(actor, principal="user:drift")
+            drifted = replace(actor, principal="user:drift")
+            return replace(
+                drifted,
+                binding_digest=_canonical_digest(
+                    capability_reducer._actor_mapping(drifted)
+                ),
+            )
         return actor
 
     def resolve_scope(ref: str) -> capability_reducer.ResolvedScope:
@@ -1463,12 +1491,21 @@ def _case_resolvers(
 def _specialized_probe_record(
     template: dict[str, object],
     row: dict[str, object],
+    *,
+    route_id: str | None,
+    unit_id: str | None,
 ) -> dict[str, object]:
+    axis_id = (
+        f"route-{'null' if route_id is None else 'named'}-"
+        f"unit-{'null' if unit_id is None else 'named'}"
+    )
     probe = dict(template)
     probe.update(
         {
-            "source_id": f"specialized-probe:{row['id']}",
-            "work_id": f"work-specialized-probe-{row['id']}",
+            "source_id": f"specialized-probe:{row['id']}:{axis_id}",
+            "work_id": f"work-specialized-probe-{row['id']}-{axis_id}",
+            "route_id": route_id,
+            "unit_id": unit_id,
             "domain": row["domain"],
             "value": row["value"],
             "context": {
@@ -1491,6 +1528,56 @@ def _append_kind(
         kind = "adapter_error"
     if kind != "match":
         findings.add((case_id, kind))
+
+
+def _validate_case_bound_misuse_deltas(
+    case_by_id: dict[str, dict[str, object]],
+    bindings: dict[str, object],
+) -> None:
+    stable_fields = (
+        "work_id",
+        "route_id",
+        "unit_id",
+        "actor_binding_digest",
+        "mutable_scope_ref",
+        "mutable_scope_digest",
+        "content_digest",
+        "verification_ref",
+        "effect_reservation_refs",
+    )
+    delta_fields = (
+        "dependency_digest",
+        "acceptance_digest",
+        "evidence_refs",
+    )
+    for misuse_id, case_id, required_delta in _CASE_BOUND_MISUSE_DELTA_ORACLE:
+        if bindings.get(misuse_id) != {
+            "target_kind": "case",
+            "target_id": case_id,
+        }:
+            raise _legacy_invalid()
+        case = case_by_id.get(case_id)
+        if type(case) is not dict:
+            raise _legacy_invalid()
+        records = case.get("source_records")
+        if type(records) is not list or len(records) != 2:
+            raise _legacy_invalid()
+        try:
+            first, second = tuple(_parse_legacy_record(item) for item in records)
+        except Exception:
+            raise _legacy_invalid() from None
+        if any(
+            getattr(first, field) != getattr(second, field)
+            for field in stable_fields
+        ):
+            raise _legacy_invalid()
+        changed_fields = {
+            field
+            for field in delta_fields
+            if getattr(first, field) != getattr(second, field)
+        }
+        if changed_fields != {required_delta}:
+            raise _legacy_invalid()
 
 
 def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
@@ -1593,6 +1680,35 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     ):
         raise _legacy_invalid()
     specialized_probe_template = template_records[0]
+    named_route_ids: set[str] = set()
+    named_unit_ids: set[str] = set()
+    for item in cases:
+        source_records = item["source_records"]
+        if type(source_records) is not list:
+            raise _legacy_invalid()
+        for source_record in source_records:
+            if type(source_record) is not dict:
+                raise _legacy_invalid()
+            route_id = source_record.get("route_id")
+            unit_id = source_record.get("unit_id")
+            if route_id is not None:
+                named_route_ids.add(
+                    _require_string(route_id, capability_reducer.ID_PATTERN)
+                )
+            if unit_id is not None:
+                named_unit_ids.add(
+                    _require_string(unit_id, capability_reducer.ID_PATTERN)
+                )
+    if not named_route_ids or not named_unit_ids:
+        raise _legacy_invalid()
+    named_route_id = min(named_route_ids)
+    named_unit_id = min(named_unit_ids)
+    specialized_probe_axes = (
+        (None, None),
+        (None, named_unit_id),
+        (named_route_id, None),
+        (named_route_id, named_unit_id),
+    )
 
     bindings = corpus["phase2_misuse_bindings"]
     deferred = corpus["deferred_phase3_misuse_ids"]
@@ -1642,6 +1758,7 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
             raise _legacy_invalid()
     if replay_bound_misuse_ids != set(declared_replay_misuse_ids):
         raise _legacy_invalid()
+    _validate_case_bound_misuse_deltas(case_by_id, bindings)
 
     actors, scopes = _fixture_runtime(corpus)
     findings: set[tuple[str, str]] = set()
@@ -1874,34 +1991,37 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
                 _append_kind(findings, case_id, "adapter_error")
             probe_rule = _rule_for_key(observation_keys[0])
             if kind == "mapping" and probe_rule.requested_transition is None:
-                resolver_used = False
+                for probe_route_id, probe_unit_id in specialized_probe_axes:
+                    resolver_used = False
 
-                def reject_resolver(_value: str) -> object:
-                    nonlocal resolver_used
-                    resolver_used = True
-                    raise RuntimeError
+                    def reject_resolver(_value: str) -> object:
+                        nonlocal resolver_used
+                        resolver_used = True
+                        raise RuntimeError
 
-                probe = _specialized_probe_record(
-                    specialized_probe_template,
-                    mapping_by_id[mapping_id],
-                )
-                try:
-                    result = adapt_v1_history(
-                        (probe,),
-                        resolve_actor=reject_resolver,
-                        resolve_scope=reject_resolver,
+                    probe = _specialized_probe_record(
+                        specialized_probe_template,
+                        mapping_by_id[mapping_id],
+                        route_id=probe_route_id,
+                        unit_id=probe_unit_id,
                     )
-                except LegacyAdapterError as error:
-                    if error.code != "legacy_unmapped":
+                    try:
+                        result = adapt_v1_history(
+                            (probe,),
+                            resolve_actor=reject_resolver,
+                            resolve_scope=reject_resolver,
+                        )
+                    except LegacyAdapterError as error:
+                        if error.code != "legacy_unmapped":
+                            _append_kind(findings, case_id, "adapter_error")
+                    except Exception:
                         _append_kind(findings, case_id, "adapter_error")
-                except Exception:
-                    _append_kind(findings, case_id, "adapter_error")
-                else:
-                    _append_kind(findings, case_id, "adapter_error")
-                    if result:
-                        specialized_event_ids.add(case_id)
-                if resolver_used:
-                    _append_kind(findings, case_id, "adapter_error")
+                    else:
+                        _append_kind(findings, case_id, "adapter_error")
+                        if result:
+                            specialized_event_ids.add(case_id)
+                    if resolver_used:
+                        _append_kind(findings, case_id, "adapter_error")
         else:
             for order in normalized_orders:
                 raw_history = tuple(records[index] for index in order)
