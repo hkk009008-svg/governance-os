@@ -313,6 +313,36 @@ def test_legacy_record_rejects_invalid_source_digest_syntax() -> None:
     _assert_adapter_error("legacy_invalid", [record])
 
 
+@pytest.mark.parametrize(
+    ("field", "normalized_refs"),
+    (
+        ("evidence_refs", ("artifact:one", "web:two")),
+        (
+            "effect_reservation_refs",
+            ("reservation:one", "reservation:two"),
+        ),
+    ),
+)
+def test_source_digest_uses_normalized_reference_order(
+    field: str,
+    normalized_refs: tuple[str, str],
+) -> None:
+    normalized = _valid_legacy_record(**{field: list(normalized_refs)})
+    normalized_digest = normalized["source_digest"]
+
+    reversed_with_normalized_digest = dict(normalized)
+    reversed_with_normalized_digest[field] = list(reversed(normalized_refs))
+    _assert_adapter_error(
+        "legacy_unmapped", [reversed_with_normalized_digest]
+    )
+
+    reversed_with_raw_digest = _valid_legacy_record(
+        **{field: list(reversed(normalized_refs))}
+    )
+    assert reversed_with_raw_digest["source_digest"] != normalized_digest
+    _assert_adapter_error("legacy_invalid", [reversed_with_raw_digest])
+
+
 def test_opaque_web_reference_is_never_interpreted() -> None:
     record = _valid_legacy_record(
         evidence_refs=["web:not-a-url-and-still-opaque"]

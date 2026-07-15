@@ -159,13 +159,11 @@ def _strict_json_loads(value: object) -> object:
 
 
 def _source_digest(value: dict[str, object]) -> str:
-    without_digest = {
-        field: value[field]
-        for field in _LEGACY_RECORD_FIELDS
-        if field != "source_digest"
-    }
+    expected_fields = set(_LEGACY_RECORD_FIELDS) - {"source_digest"}
+    if set(value) != expected_fields:
+        raise _legacy_invalid()
     try:
-        return "sha256:" + sha256(canonicalize(without_digest)).hexdigest()
+        return "sha256:" + sha256(canonicalize(value)).hexdigest()
     except Exception:
         raise _legacy_invalid() from None
 
@@ -227,7 +225,27 @@ def _parse_legacy_record(value: object) -> _LegacyRecord:
     )
     effect_reservation_refs = _require_refs(value["effect_reservation_refs"])
 
-    if source_digest != _source_digest(value):
+    normalized_without_digest: dict[str, object] = {
+        "schema": schema,
+        "source_id": source_id,
+        "work_id": work_id,
+        "route_id": route_id,
+        "work_revision": work_revision,
+        "unit_id": unit_id,
+        "actor_binding_digest": actor_binding_digest,
+        "domain": domain,
+        "value": state_value,
+        "context": {key: item for key, item in sorted(context.items())},
+        "mutable_scope_ref": mutable_scope_ref,
+        "mutable_scope_digest": mutable_scope_digest,
+        "content_digest": content_digest,
+        "dependency_digest": dependency_digest,
+        "acceptance_digest": acceptance_digest,
+        "evidence_refs": list(evidence_refs),
+        "verification_ref": verification_ref,
+        "effect_reservation_refs": list(effect_reservation_refs),
+    }
+    if source_digest != _source_digest(normalized_without_digest):
         raise _legacy_invalid()
 
     try:
