@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Live-seat authority remains with the routed Director2 and Operator2 seats.
 
-**Goal:** Close the two independently confirmed Stage-A quality defects with one append-only provider-free correction, obtain lawful Operator2 GO, and resume the existing transport-first Stage B-D recovery without retry, fallback, or authority drift.
+**Goal:** Close the two independently confirmed Stage-A quality defects and the independently confirmed legacy-output-limit review regression with append-only provider-free corrections, obtain lawful Operator2 GO, and resume the existing transport-first Stage B-D recovery without retry, fallback, or authority drift.
 
-**Architecture:** Preserve the immutable `R -> M0 -> F` history and append exactly one quality commit `Q`. `Q` adds semantic reason/stage and detail consistency validators and distinguishes broker startup from broker cleanup through a finite `broker_cleanup/broker_cleanup_failed` classification. Cleanup failure before any completed provider result fails closed with that tuple; cleanup failure after one completed result does not discard it, relabel it, or cause a retry, and the completed result continues through the existing parser and contract checks. A separately committed external authority object binds the correction plan, umbrella design, correction route, and two pre-descriptor review results without widening `R..Q`. A descriptor-only commit `D` and canonical verify-request-only commit `T` then bind `R..Q`, with `T` referencing that external object exactly once. Only a provider-free Operator2 GO may reopen the original plan's Stage B root repair; Stage C remains one separately authorized fresh canary and Stage D remains GO-before-integration and separately authorized publication.
+**Architecture:** Preserve the immutable `R -> M0 -> F -> Q1` history, where `Q1=6d596b5f238fdc72f6d7384fddfd112072c52352` added the semantic validator and broker-cleanup lifecycle correction but failed both fresh reviews on one legacy output-limit compatibility edge. Append exactly one provider-free `Q2` whose sole parent is `Q1`; `Q2` restores the three historically emitted null-diagnostic output-limit truncation shapes and rejects the impossible false/false shape without changing the finite-detail contract. A separately committed external authority object binds the amended correction plan, umbrella design, post-review correction route, and two new pre-descriptor PASS results without widening `R..Q2`. A descriptor-only commit `D` and canonical verify-request-only commit `T` then bind `R..Q2`, with `T` referencing that external object exactly once. Only a provider-free Operator2 GO may reopen the original plan's Stage B root repair; Stage C remains one separately authorized fresh canary and Stage D remains GO-before-integration and separately authorized publication.
 
 **Tech Stack:** Python 3.14, frozen dataclasses, context managers, the existing Opus review and receipt schemas, pytest, Git append-only ranges, Lane-V descriptors, and the Pipeline mailbox/capacity protocol.
 
@@ -18,21 +18,22 @@
   R   40fd0a5e43c6b28330ced9ddffe01483cde42b65
   └─ M0  56091d107382abfe9f06df1aa4cd003d71be7b5e
      └─ F   16c4f83aef4130d977a91d623a9254c4fd46980a
+        └─ Q1  6d596b5f238fdc72f6d7384fddfd112072c52352
   ```
 
-- The only authorized implementation continuation is `F -> Q`, where `Q` is one commit and `parent(Q) == F`. Do not amend, rebase, reset, replace, rebuild, merge into, or cherry-pick onto `R`, `M0`, or `F`.
-- The `F..Q` write set and aggregate `R..Q` write set are both bounded to these four paths:
+- The only authorized implementation continuation is `Q1 -> Q2`, where `Q2` is one commit and `parent(Q2) == Q1`. Do not amend, rebase, reset, replace, rebuild, merge into, or cherry-pick onto `R`, `M0`, `F`, or `Q1`.
+- The `Q1..Q2` write set is bounded to exactly `scripts/opus_review_bridge.py` and `tests/unit/test_opus_review_bridge.py`. The aggregate `R..Q2` write set remains exactly these four paths:
 
   - `scripts/opus_review_bridge.py`
   - `scripts/opus_review_receipts.py`
   - `tests/unit/test_opus_review_bridge.py`
   - `tests/unit/test_opus_review_receipts.py`
 
-- Descriptor task `b8c59c86-2426-46cf-8975-7b075d75fc09` retains exact reviewed base `R`. The legacy `lane-v-scope/v1` descriptor has no `reviewed_head` field; canonical verify-request `T` changes the bound reviewed head from `F` to `Q`. Its descriptor commit is `D`; its request-only commit is `T`.
-- Stage A, including `Q`, authorizes zero Claude/Opus provider attempts and zero receipt mutations. All tests use injected factories, fake runners, and temporary paths.
+- Descriptor task `b8c59c86-2426-46cf-8975-7b075d75fc09` retains exact reviewed base `R`. The legacy `lane-v-scope/v1` descriptor has no `reviewed_head` field; canonical verify-request `T` binds the final reviewed head `Q2`. Its descriptor commit is `D`; its request-only commit is `T`.
+- Stage A, including `Q1` and `Q2`, authorizes zero Claude/Opus provider attempts and zero receipt mutations. All tests use injected factories, fake runners, and temporary paths.
 - Preserve every existing public unavailable reason. Preserve every existing failure stage and add exactly one stage, `broker_cleanup`; add exactly one finite detail, `broker_cleanup_failed`.
 - Broker cleanup failure before a provider result exists remains fail-closed as `sandbox_unavailable/broker_cleanup/broker_cleanup_failed`. If the runner already returned one completed result, broker cleanup failure must not discard or relabel it: parse it once through the existing model/review contract, preserve the resulting pass/issues/unavailable semantics, perform no retry, and serialize no raw cleanup text. A completed result never gains findings or authority merely because broker cleanup failed.
-- Legacy `opus-review/v3` records with no diagnostic detail remain readable only for reason/stage pairs actually emitted by a legacy or current producer. Null detail is not permission for a contradictory reason/stage pair. Every current record must be semantically consistent across reason, stage, truncation flags, detail, and return code.
+- Legacy `opus-review/v3` records with no diagnostic detail remain readable only for reason/stage/flag shapes actually emitted by a legacy or current producer. For `output_limit/provider_exit`, null detail and null return code require exactly one of the three non-empty truncation shapes; false/false is contradictory. Every other lawful null-diagnostic legacy pair requires false/false. Null detail is not permission for any other contradictory tuple. Every current record must be semantically consistent across reason, stage, truncation flags, detail, and return code.
 - Raw exception strings, stdout, stderr, paths, socket names, prompts, credentials, session identifiers, and provider content must never enter durable review, receipt, mailbox, or test artifacts.
 - Coordinator owns only metadata correction, route validation, joins, and reconciliation. Director2 owns production/test changes. Operator2 owns GO, NITS, or FAIL.
 - Use the isolated worktree `.worktrees/opus-transport-first-stage-a-director2`. Every ordinary Git and pytest command starts with `env -u GIT_INDEX_FILE`.
@@ -44,8 +45,8 @@ The independent Stage-A code-quality review and the Director2 provider-free repr
 
 1. A current review cannot pair `claude_not_found` with `provider_spawn/stdout_limit`, a nonzero return code, and false truncation flags.
 2. Every finite detail is accepted only with its emitted public reason and stage; details shared by more than one lawful public result, such as `binary_missing`, enumerate those results explicitly.
-3. Legacy unavailable reviews without `failure_detail` or `provider_returncode` remain readable and do not gain invented diagnostics.
-4. Output-limit detail exactly matches the two truncation booleans; any other reason or stage with a true truncation flag is rejected.
+3. Legacy unavailable reviews without `failure_detail` or `provider_returncode` remain readable and do not gain invented diagnostics. Legacy `output_limit/provider_exit` accepts exactly true/false, false/true, and true/true truncation; false/false rejects. Every other lawful null-diagnostic pair requires false/false.
+4. Finite output-limit detail exactly matches the two truncation booleans; any other reason or stage with a true truncation flag is rejected.
 5. `provider_signal` requires a negative return code; positive exits require their matching non-signal detail; zero remains forbidden; no return code is accepted for startup, cleanup, parse, model, contract, or receipt-recovery details.
 6. A runtime or broker `__enter__` `OSError` before the fake runner remains `sandbox_unavailable/broker_start/broker_start_failed` and launches nothing.
 7. A broker `__exit__` `OSError` before any completed fake-runner result becomes `sandbox_unavailable/broker_cleanup/broker_cleanup_failed`, never `broker_start`.
@@ -54,7 +55,7 @@ The independent Stage-A code-quality review and the Director2 provider-free repr
 10. Receipt serialization and reloading accept the new finite stage/detail, reject unknown values, and preserve terminal receipt identity rules.
 11. All existing resolver, spawn, timeout, output-limit, parser, model, contract, and receipt-recovery tuples remain accepted and round-trip exactly.
 12. The complete Stage-A provider-free suite, smoke, diff check, topology check, and terminal prior-receipt digest remain green and unchanged.
-13. The provider-free authority resolver binds exactly `R..Q`, descriptor `D`, request `T`, all requirement blobs, the exact changed paths, and the trigger identity without reserving an attempt, creating a receipt/lock, or calling either provider-capable resolver.
+13. The provider-free authority resolver binds exactly `R..Q2`, descriptor `D`, request `T`, all requirement blobs, the exact changed paths, and the trigger identity without reserving an attempt, creating a receipt/lock, or calling either provider-capable resolver.
 14. The external authority object is content-addressed and binds the exact correction-plan, umbrella-design, correction-route, and two independent-review identities/results; it remains outside descriptor `requirement_paths` and is referenced exactly once by `T`.
 
 ---
@@ -71,7 +72,7 @@ The independent Stage-A code-quality review and the Director2 provider-free repr
 **Interfaces:**
 
 - Consumes: quality blocker `coordination/mailbox/sent/2026-07-15T16-49-37Z-director2-to-coordinator-coordination.md`, umbrella design `50cec4f`, and the fixed owner freeze `docs/HANDOFF-owner-2026-07-16-opus-stage-a.md` bound by its unique introduction commit, Git blob OID, and SHA-256 digest.
-- Produces: one capacity-valid correction that authorizes `Q`, binds `R..Q`, retains descriptor identity, and keeps provider attempts at zero.
+- Produces: the historical capacity-valid correction that authorized `Q1`, bound `R..Q1`, retained descriptor identity, and kept provider attempts at zero.
 
 - [ ] **Step 1: Refresh the hot-tree and mailbox state**
 
@@ -123,17 +124,17 @@ printf '%s\n' "$RECEIPT_MANIFEST_BEFORE_SHA" | \
 
 Expected: the quality blocker remains the unresolved Stage-A join input, the coordinator mailbox is surfaced without consumption, the capacity board identifies Director2 as the only implementation owner and Operator2 as the blocked verifier, and the manifest command emits one deterministic digest without creating or opening a receipt lock. If newer mail, a moved Stage-A branch, or a non-regular receipt-store entry changes that state, stop and reconcile before writing.
 
-Resolve `docs/HANDOFF-owner-2026-07-16-opus-stage-a.md` from committed primary `main`, prove its unique introduction commit is an ancestor of current `main`, validate its exact blob and SHA-256 digest, and require it binds Director2, `R`, `M0`, `F`, the four-path aggregate range, zero provider attempts, and no descriptor/GO/integration claim. Re-read the Stage-A worktree and require exact clean head `F`. The correction route must carry the owner-handoff path/commit/blob/digest and exact-old `F`; a missing, duplicate, stale, or mismatched freeze blocks before packet or branch mutation. Once that route commits, only its exact `Q` append may advance the branch without a replacement owner handoff.
+Resolve `docs/HANDOFF-owner-2026-07-16-opus-stage-a.md` from committed primary `main`, prove its unique introduction commit is an ancestor of current `main`, validate its exact blob and SHA-256 digest, and require it binds Director2, `R`, `M0`, `F`, the four-path aggregate range, zero provider attempts, and no descriptor/GO/integration claim. Re-read the Stage-A worktree and require exact clean head `F`. The correction route must carry the owner-handoff path/commit/blob/digest and exact-old `F`; a missing, duplicate, stale, or mismatched freeze blocks before packet or branch mutation. Once that route commits, only its exact `Q1` append may advance the branch without a replacement owner handoff.
 
 - [ ] **Step 2: Amend the three Stage-A packets**
 
 Keep every existing task-board, owner, pair, and zero-provider constraint. Replace the `F` terminal boundary with this exact topology:
 
 ```text
-R -> M0 -> F -> Q -> D -> T
+R -> M0 -> F -> Q1 -> D -> T
 ```
 
-Record `parent(Q) == F`, one `Q`, exact four-path `F..Q` and `R..Q` allowlists, the new finite cleanup stage/detail, renewed spec and quality review before `D`, and Operator2 as the only Stage-A verdict owner. The coordinator join remains blocked on one canonical GO/NITS/FAIL for `R..Q`.
+Record `parent(Q1) == F`, one `Q1`, exact four-path `F..Q1` and `R..Q1` allowlists, the new finite cleanup stage/detail, renewed spec and quality review before `D`, and Operator2 as the only Stage-A verdict owner. The coordinator join remains blocked on one canonical GO/NITS/FAIL for `R..Q1`.
 
 - [ ] **Step 3: Generate one consolidated correction event**
 
@@ -148,7 +149,7 @@ test -f "$ROUTE_EVENT"
 printf '%s\n' "$ROUTE_EVENT"
 ```
 
-Populate the generated body with findings first, exact SHAs, exact packet IDs, the `R -> M0 -> F -> Q -> D -> T` contract, the two finite additions, provider-attempt count zero, `Receipt-store manifest before Stage A: $RECEIPT_MANIFEST_BEFORE_SHA`, and the join condition. This committed field is the comparison baseline for Task 6 and Completion Verification. Do not consume coordinator mail.
+Populate the generated body with findings first, exact SHAs, exact packet IDs, the `R -> M0 -> F -> Q1 -> D -> T` contract, the two finite additions, provider-attempt count zero, `Receipt-store manifest before Stage A: $RECEIPT_MANIFEST_BEFORE_SHA`, and the join condition. This committed field is the comparison baseline for Task 6 and Completion Verification. Do not consume coordinator mail.
 
 - [ ] **Step 4: Validate before commit**
 
@@ -177,6 +178,78 @@ docs(protocol): authorize Opus Stage A quality correction
 ```
 
 Expected: exactly four paths in the commit and no production/test file.
+
+### Task 1A: Commit the post-`Q1` legacy-compatibility correction route
+
+**Execution note:** Task 1 and Tasks 2-5 produced immutable `Q1`. The two fresh
+Task-6 reviews then returned `FAIL` on the same Important legacy output-limit
+edge. This task is the only lawful continuation; it supersedes Task 1's
+terminal-at-`Q1` clauses without rewriting any existing commit.
+
+**Files:**
+
+- Modify: the same three Stage-A capacity packets from Task 1
+- Create: one new canonical coordinator-to-all coordination event
+- Read: `coordination/mailbox/sent/2026-07-15T21-07-14Z-director2-to-coordinator-coordination.md`
+
+**Interfaces:**
+
+- Consumes: clean immutable `Q1=6d596b5f238fdc72f6d7384fddfd112072c52352`, both recorded review FAILs, unchanged receipt manifest, and this amended committed plan.
+- Produces: one capacity-valid route authorizing exactly one `Q2`, retaining descriptor identity and zero provider/receipt budgets.
+
+- [ ] **Step 1: Content-address the blocker and reverify live state**
+
+From primary `main`, resolve the blocker path's unique introduction commit,
+Git blob ID, and SHA-256 digest. Require that commit to be an ancestor of
+current `main`. Re-read the Stage-A worktree and require a clean exact head
+`Q1`; recompute the receipt-store manifest using Task 1's algorithm and require
+the same committed baseline. Refresh coordinator mail, capacity, locks, and the
+shared index without consuming mail. Any moved head, new verdict, receipt
+change, or duplicate correction route blocks before packet mutation.
+
+- [ ] **Step 2: Amend only the three Stage-A packets**
+
+Replace the terminal topology with:
+
+```text
+R -> M0 -> F -> Q1 -> Q2 -> D -> T
+```
+
+Record `parent(Q2) == Q1`, exactly one `Q2`, exact two-path `Q1..Q2` scope,
+exact four-path aggregate `R..Q2` scope, and these semantics:
+
+- legacy null-detail/null-return-code `output_limit/provider_exit` accepts
+  exactly true/false, false/true, and true/true truncation;
+- its false/false shape rejects as `invalid_schema`;
+- every other lawful legacy null-diagnostic pair still requires false/false;
+- all finite-detail rules and broker-cleanup lifecycle behavior from `Q1`
+  remain unchanged.
+
+Director2 remains the only implementation owner, Operator2 remains the only
+Stage-A verdict owner, and the coordinator join remains blocked on one final
+GO/NITS/FAIL for `R..Q2`.
+
+- [ ] **Step 3: Generate, populate, validate, and commit one route**
+
+Use `coordination/bin/send-event coordinator all coordination` once with the
+subject `authorize Stage A Q2 legacy output-limit compatibility correction`. Bind the blocker
+path/commit/blob/digest, exact amended-plan commit/blob, `Q1`, the corrected
+topology and path sets, both FAIL reviewer identities/question digests, zero
+provider attempts, zero receipt mutations, and the unchanged
+`Receipt-store manifest before Stage A:` line. Include the capacity-split
+decision, all packet IDs, join condition, exact next trigger, and a complete
+coordinator metadata-route executor token.
+
+Run the capacity board, `--validate-route`, `scripts/check_coordination.py`,
+and `git diff --check`. Commit exactly the three packet paths plus the generated
+event with subject:
+
+```text
+docs(protocol): authorize Opus Stage A Q2 compatibility correction
+```
+
+No production, test, plan, descriptor, authority-object, receipt, or runtime
+path belongs in this route commit.
 
 ### Task 2: Add RED semantic-consistency tests
 
@@ -211,11 +284,11 @@ Assert `ReviewContractError.reason == "invalid_schema"` after implementation. Be
 
 - [ ] **Step 2: Add the complete valid-tuple matrix**
 
-Add `test_opus_review_accepts_every_emitted_diagnostic_tuple` covering all current emitter families: resolver/binary, spawn errno, broker start, sandbox probe, timeout, authentication/session, nonzero/signal, every output-limit flag combination, stream encoding/JSON/schema, missing/non-Opus model, review contract/scope mismatch, the fail-closed provider-wrapper `process_failed/provider_exit/review_contract` tuple, and receipt recovery. Add one row for `sandbox_unavailable/broker_cleanup/broker_cleanup_failed`. For every reason/stage pair historically emitted by a legacy producer, add the corresponding null-detail/null-return-code row with false truncation flags.
+Add `test_opus_review_accepts_every_emitted_diagnostic_tuple` covering all current emitter families: resolver/binary, spawn errno, broker start, sandbox probe, timeout, authentication/session, nonzero/signal, every output-limit flag combination, stream encoding/JSON/schema, missing/non-Opus model, review contract/scope mismatch, the fail-closed provider-wrapper `process_failed/provider_exit/review_contract` tuple, and receipt recovery. Add one row for `sandbox_unavailable/broker_cleanup/broker_cleanup_failed`. For every non-output-limit reason/stage pair historically emitted by a legacy producer, add the corresponding null-detail/null-return-code row with false truncation flags. For legacy `output_limit/provider_exit`, add exactly the historically emitted null-detail/null-return-code true/false, false/true, and true/true truncation rows.
 
 - [ ] **Step 3: Add invalid cross-product cases**
 
-Parameterize one mutation at a time: wrong reason, wrong stage, wrong truncation booleans, forbidden return-code sign, forbidden non-null return code, and detail with no matching rule. Include the exact null-detail mutation `claude_not_found/contract_validation/null/null` with both truncation flags false; it must fail despite having the legacy field shape. Assert all cases fail as `invalid_schema`, without matching raw error text.
+Parameterize one mutation at a time: wrong reason, wrong stage, wrong truncation booleans, forbidden return-code sign, forbidden non-null return code, and detail with no matching rule. Include the exact null-detail mutation `claude_not_found/contract_validation/null/null` with both truncation flags false; it must fail despite having the legacy field shape. Also require legacy `output_limit/provider_exit/null/null` with false/false truncation to fail as impossible. Assert all cases fail as `invalid_schema`, without matching raw error text.
 
 - [ ] **Step 4: Pin legacy and receipt behavior**
 
@@ -272,7 +345,7 @@ Keep `_failure_diagnostics` as the primitive type/sign validator. Add a private 
 | `output_limit` | `provider_exit` |
 | `attempt_state_uncertain` | `receipt_recovery` |
 
-Before implementation, grep every `OpusReview.unavailable` and `_unavailable` production write at immutable `F` and reconcile the table against actual legacy/current emitters. A newly discovered lawful pair updates the table and valid matrix before `Q`; an unexplained pair blocks rather than being accepted generically.
+Before implementation, grep every `OpusReview.unavailable` and `_unavailable` production write at immutable `F` and reconcile the table against actual legacy/current emitters. A newly discovered lawful pair updates the table and valid matrix before `Q1`; an unexplained pair blocks rather than being accepted generically.
 
 Add a second private immutable mapping whose key is each non-null finite detail and whose value enumerates the allowed `(unavailable_reason, failure_stage)` pairs. Assert its key set is exactly `PROVIDER_FAILURE_DETAILS`. `binary_missing` explicitly allows both `claude_not_found/provider_spawn` and `process_failed/provider_spawn`. `review_contract` explicitly allows all three existing emitters: `invalid_schema/contract_validation`, `reviewed_scope_mismatch/contract_validation`, and the fail-closed provider-wrapper exception tuple `process_failed/provider_exit`. Every other detail has the emitted pair documented by Task 2; `broker_cleanup_failed` maps only to `sandbox_unavailable/broker_cleanup`.
 
@@ -295,7 +368,7 @@ def _validate_failure_diagnostics(
 It first calls `_failure_diagnostics`, then:
 
 - rejects every unavailable reason/failure-stage pair absent from the reason/stage table, regardless of whether detail and return code are null;
-- accepts both diagnostics as null as the backward-compatible unavailable form only when the public pair is producer-audited and both truncation flags are false, without inventing a detail or return code;
+- accepts both diagnostics as null as the backward-compatible unavailable form only when the public pair is producer-audited, without inventing a detail or return code: non-output-limit pairs require false/false truncation, while `output_limit/provider_exit` requires exactly true/false, false/true, or true/true and rejects false/false;
 - rejects a non-null detail whose public pair is absent from its rule;
 - requires output-limit details to match their exact boolean pair and rejects truncation for every non-output detail;
 - requires negative return code only for `provider_signal` or an output-limit result whose captured process was signaled;
@@ -367,7 +440,7 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
 
 Expected: all selected tests pass; startup, no-result cleanup, and completed-result-preservation mutations each flip at least one assertion; provider-attempt count remains zero.
 
-### Task 5: Create exactly one append-only quality commit `Q`
+### Task 5: Create the immutable initial quality commit `Q1`
 
 **Files:**
 
@@ -376,7 +449,7 @@ Expected: all selected tests pass; startup, no-result cleanup, and completed-res
 **Interfaces:**
 
 - Consumes: committed coordinator correction from Task 1 and green Tasks 2-4.
-- Produces: one commit `Q` whose sole parent is `F` and whose subject is `fix(opus): validate diagnostics and cleanup lifecycle`.
+- Produces: the already-created immutable commit `Q1=6d596b5f238fdc72f6d7384fddfd112072c52352`, whose sole parent is `F` and whose subject is `fix(opus): validate diagnostics and cleanup lifecycle`.
 
 - [ ] **Step 1: Rebind to the exact branch and verify scope**
 
@@ -387,7 +460,7 @@ env -u GIT_INDEX_FILE git -C .worktrees/opus-transport-first-stage-a-director2 \
   status --short
 ```
 
-Expected: HEAD is exactly `16c4f83aef4130d977a91d623a9254c4fd46980a` and only the four authorized paths contain the Task 2-4 edits. Any other path or moved HEAD stops the task.
+Historical pre-commit expectation: HEAD was exactly `16c4f83aef4130d977a91d623a9254c4fd46980a` and only the four authorized paths contained the Task 2-4 edits. `Q1` is now immutable; never reset, amend, or recreate it.
 
 - [ ] **Step 2: Run the complete provider-free gate**
 
@@ -402,26 +475,85 @@ env -u GIT_INDEX_FILE git diff --check
 
 Run these commands inside the Stage-A worktree. Expected: all tests and smoke pass, diff check prints nothing, no provider process launches, and no receipt changes.
 
-- [ ] **Step 3: Commit `Q` with strict pathspecs**
+- [ ] **Step 3: Commit `Q1` with strict pathspecs**
 
 Stage exactly the four paths, inspect `git diff --cached --name-only`, then commit once with the fixed subject. Do not create a separate test or cleanup commit.
 
 - [ ] **Step 4: Prove topology and aggregate scope**
 
 ```bash
-Q_SHA="$(env -u GIT_INDEX_FILE git rev-parse 'HEAD^{commit}')"
-test "$(env -u GIT_INDEX_FILE git rev-parse "${Q_SHA}^")" = \
+Q1_SHA="$(env -u GIT_INDEX_FILE git rev-parse 'HEAD^{commit}')"
+test "$Q1_SHA" = 6d596b5f238fdc72f6d7384fddfd112072c52352
+test "$(env -u GIT_INDEX_FILE git rev-parse "${Q1_SHA}^")" = \
   16c4f83aef4130d977a91d623a9254c4fd46980a
-env -u GIT_INDEX_FILE git rev-list --parents --max-count=4 "$Q_SHA"
+env -u GIT_INDEX_FILE git rev-list --parents --max-count=4 "$Q1_SHA"
 env -u GIT_INDEX_FILE git diff --name-only \
-  16c4f83aef4130d977a91d623a9254c4fd46980a.."$Q_SHA"
+  16c4f83aef4130d977a91d623a9254c4fd46980a.."$Q1_SHA"
 env -u GIT_INDEX_FILE git diff --name-only \
-  40fd0a5e43c6b28330ced9ddffe01483cde42b65.."$Q_SHA"
+  40fd0a5e43c6b28330ced9ddffe01483cde42b65.."$Q1_SHA"
 ```
 
-Expected: strict `R -> M0 -> F -> Q`; `F..Q` and `R..Q` each list only the four allowed paths, with `R..Q` listing all four.
+Expected: strict `R -> M0 -> F -> Q1`; `F..Q1` and `R..Q1` each list only the four allowed paths, with `R..Q1` listing all four.
 
-### Task 6: Re-review `R..Q`, freeze descriptor `D`, and trigger `T`
+### Task 5A: Append exactly one legacy-compatibility commit `Q2`
+
+**Files:**
+
+- Modify: `scripts/opus_review_bridge.py`
+- Modify: `tests/unit/test_opus_review_bridge.py`
+
+**Interfaces:**
+
+- Consumes: immutable `Q1`, the two fresh Task-6 FAIL findings, and the committed Task-1A route.
+- Produces: one commit `Q2` whose sole parent is `Q1` and whose subject is `fix(opus): restore legacy output-limit compatibility`.
+
+- [ ] **Step 1: Add RED compatibility tests before implementation**
+
+At clean exact `Q1`, add a focused table-driven test proving the three historically emitted legacy null-detail/null-return-code `output_limit/provider_exit` forms true/false, false/true, and true/true are accepted. Add a separate test proving false/false is rejected as `invalid_schema`. Run only those tests first. Expected RED: all three lawful forms fail under `Q1`, while the impossible false/false form is incorrectly accepted. This four-way flip is the non-vacuous regression proof.
+
+- [ ] **Step 2: Make the smallest validator correction**
+
+Change only the null-diagnostic compatibility branch in `_validate_failure_diagnostics`: special-case the producer-audited `output_limit/provider_exit` pair to require at least one truncation flag; retain false/false for every other lawful null-diagnostic pair. Do not change finite-detail rules, reason/stage tables, return-code rules, cleanup lifecycle behavior, parser behavior, receipt vocabulary, or receipt identity.
+
+- [ ] **Step 3: Run focused and complete provider-free GREEN**
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_opus_review_bridge.py \
+  -k 'legacy and output_limit' -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_opus_review_bridge.py \
+  tests/unit/test_opus_review_receipts.py \
+  tests/unit/test_verification_report_gate.py -q
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE git diff --check
+```
+
+Expected: all selected and complete tests pass, smoke passes, diff check prints nothing, no provider process launches, no receipt or runtime path changes, and the receipt-store manifest remains equal to the committed baseline.
+
+- [ ] **Step 4: Commit and prove topology and scope**
+
+Stage exactly the two Task-5A paths and commit once with the fixed subject. Then run:
+
+```bash
+Q1_SHA=6d596b5f238fdc72f6d7384fddfd112072c52352
+Q2_SHA="$(env -u GIT_INDEX_FILE git rev-parse 'HEAD^{commit}')"
+test "$(env -u GIT_INDEX_FILE git rev-parse "${Q2_SHA}^")" = "$Q1_SHA"
+test "$(env -u GIT_INDEX_FILE git diff --name-only \
+  "$Q1_SHA..$Q2_SHA" | sort)" = \
+"scripts/opus_review_bridge.py
+tests/unit/test_opus_review_bridge.py"
+test "$(env -u GIT_INDEX_FILE git diff --name-only \
+  40fd0a5e43c6b28330ced9ddffe01483cde42b65.."$Q2_SHA" | sort)" = \
+"scripts/opus_review_bridge.py
+scripts/opus_review_receipts.py
+tests/unit/test_opus_review_bridge.py
+tests/unit/test_opus_review_receipts.py"
+```
+
+Expected: strict `R -> M0 -> F -> Q1 -> Q2`; `Q1..Q2` is exactly two paths and aggregate `R..Q2` remains exactly four paths.
+
+### Task 6: Re-review `R..Q2`, freeze descriptor `D`, and trigger `T`
 
 **Files:**
 
@@ -431,14 +563,14 @@ Expected: strict `R -> M0 -> F -> Q`; `F..Q` and `R..Q` each list only the four 
 
 **Interfaces:**
 
-- Consumes: immutable `R..Q`, provider-free evidence, the committed correction plan and umbrella design, and the committed correction route.
+- Consumes: immutable `R..Q2`, provider-free evidence, the committed correction plan and umbrella design, and the committed post-`Q1` correction route.
 - Produces: fresh independent spec pass, fresh independent code-quality pass, one content-addressed external authority commit on the primary branch, descriptor-only `D`, and request-only `T`.
 
 - [ ] **Step 1: Obtain two fresh independent reviews**
 
-The spec reviewer checks `R..Q` against both the original Stage-A plan and this correction plan. The code-quality reviewer asks only whether the actual diff closes the semantic-tuple and lifecycle defects without regressions or secret leakage. Record two distinct reviewer identities, their harnesses, exact reviewed range, exact question digests, result, and finite findings. Both results must be `PASS` with empty blocking findings. Any Critical or Important finding stops before authority-object or descriptor creation and returns to the coordinator; no second post-`Q` implementation commit is authorized.
+The spec reviewer checks `R..Q2` against both the original Stage-A plan and this correction plan, including the exact legacy output-limit truth table. The code-quality reviewer asks only whether the actual diff closes the semantic-tuple, lifecycle, and legacy-compatibility defects without regressions or secret leakage. Record two new distinct reviewer identities, their harnesses, exact reviewed range, exact question digests, result, and finite findings; the earlier post-`Q1` FAIL records cannot satisfy this step. Both new results must be `PASS` with empty blocking findings. Any Critical or Important finding stops before authority-object or descriptor creation and returns to the coordinator; no second post-`Q2` implementation commit is authorized.
 
-- [ ] **Step 2: Seal one external authority object outside `R..Q`**
+- [ ] **Step 2: Seal one external authority object outside `R..Q2`**
 
 The coordinator refreshes mailbox/capacity and creates exactly one canonical JSON object at:
 
@@ -449,6 +581,13 @@ coordination/verification/authorities/b8c59c86-2426-46cf-8975-7b075d75fc09.json
 Before writing it, require a clean committed copy of this plan and resolve every source identity with Git:
 
 ```bash
+STAGE_A_ROOT=.worktrees/opus-transport-first-stage-a-director2
+test -z "$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" status --short)"
+Q2_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" \
+  rev-parse 'HEAD^{commit}')"
+test "$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" \
+  rev-parse "${Q2_SHA}^")" = \
+  6d596b5f238fdc72f6d7384fddfd112072c52352
 CORRECTION_PLAN_PATH=docs/superpowers/plans/2026-07-16-opus-quality-correction-and-recovery-routing.md
 test -z "$(env -u GIT_INDEX_FILE git status --short -- \
   "$CORRECTION_PLAN_PATH")"
@@ -461,10 +600,14 @@ UMBRELLA_PATH=docs/superpowers/specs/2026-07-16-pipeline-recovery-sequence-desig
 UMBRELLA_BLOB="$(env -u GIT_INDEX_FILE git rev-parse \
   "$UMBRELLA_COMMIT:$UMBRELLA_PATH")"
 ROUTE_COMMIT="$(env -u GIT_INDEX_FILE git log --all --format=%H \
-  --grep='^docs(protocol): authorize Opus Stage A quality correction$')"
+  --grep='^docs(protocol): authorize Opus Stage A Q2 compatibility correction$')"
 test "$(printf '%s\n' "$ROUTE_COMMIT" | grep -Ec '^[0-9a-f]{40}$')" = 1
 env -u GIT_INDEX_FILE git merge-base --is-ancestor \
   "$UMBRELLA_COMMIT" "$ROUTE_COMMIT"
+env -u GIT_INDEX_FILE git merge-base --is-ancestor \
+  "$CORRECTION_PLAN_COMMIT" "$ROUTE_COMMIT"
+env -u GIT_INDEX_FILE git merge-base --is-ancestor \
+  4025b4aaab3fa6aca2fb0dcda614cb422be54e1f "$ROUTE_COMMIT"
 ROUTE_EVENT="$(env -u GIT_INDEX_FILE git diff-tree \
   --no-commit-id --name-only -r "$ROUTE_COMMIT" | sed -n \
   '/^coordination\/mailbox\/sent\/.*-coordinator-to-all-coordination\.md$/p')"
@@ -488,7 +631,7 @@ The object contains exactly these top-level fields:
   "schema_version": "stage-a-external-authority/v1",
   "task_id": "b8c59c86-2426-46cf-8975-7b075d75fc09",
   "reviewed_base": "40fd0a5e43c6b28330ced9ddffe01483cde42b65",
-  "reviewed_head": "$Q_SHA",
+  "reviewed_head": "$Q2_SHA",
   "correction_plan": {
     "commit": "$CORRECTION_PLAN_COMMIT",
     "path": "docs/superpowers/plans/2026-07-16-opus-quality-correction-and-recovery-routing.md",
@@ -511,7 +654,7 @@ The object contains exactly these top-level fields:
       "harness": "$SPEC_REVIEW_HARNESS",
       "question_sha256": "$SPEC_QUESTION_SHA256",
       "reviewed_base": "40fd0a5e43c6b28330ced9ddffe01483cde42b65",
-      "reviewed_head": "$Q_SHA",
+      "reviewed_head": "$Q2_SHA",
       "result": "PASS",
       "findings": []
     },
@@ -521,7 +664,7 @@ The object contains exactly these top-level fields:
       "harness": "$QUALITY_REVIEW_HARNESS",
       "question_sha256": "$QUALITY_QUESTION_SHA256",
       "reviewed_base": "40fd0a5e43c6b28330ced9ddffe01483cde42b65",
-      "reviewed_head": "$Q_SHA",
+      "reviewed_head": "$Q2_SHA",
       "result": "PASS",
       "findings": []
     }
@@ -529,7 +672,7 @@ The object contains exactly these top-level fields:
 }
 ```
 
-Resolve every commit and blob from Git, never from the working tree. Require both reviewer identities to be nonempty and distinct from Director2 and from each other; require exact `R..Q`; require the two ordered review kinds and `PASS` results. Canonicalize with sorted keys and compact separators, parse back with duplicate-key rejection, and validate the exact field sets before commit. With a scoped temporary index, commit only this object on the primary branch as `coord(opus): bind Stage A external review authority`. Capture `EXTERNAL_AUTHORITY_COMMIT` and prove:
+Resolve every commit and blob from Git, never from the working tree. Require both reviewer identities to be nonempty and distinct from Director2 and from each other; require exact `R..Q2`; require the two ordered review kinds and `PASS` results. Canonicalize with sorted keys and compact separators, parse back with duplicate-key rejection, and validate the exact field sets before commit. With a scoped temporary index, commit only this object on the primary branch as `coord(opus): bind Stage A external review authority`. Capture `EXTERNAL_AUTHORITY_COMMIT` and prove:
 
 ```bash
 EXTERNAL_AUTHORITY_PATH=coordination/verification/authorities/b8c59c86-2426-46cf-8975-7b075d75fc09.json
@@ -543,11 +686,11 @@ printf '%s\n%s\n' "$EXTERNAL_AUTHORITY_COMMIT" "$EXTERNAL_AUTHORITY_BLOB" | \
   grep -Ec '^[0-9a-f]{40}$' | grep -qx '2'
 ```
 
-This is an out-of-range authority input. Do not add the correction plan, umbrella design, correction route, external authority object, or pre-descriptor review records to descriptor `requirement_paths`: those paths do not exist at reviewed head `Q`. `T` binds the external object exactly once, and Operator2 validates every referenced Git object before GO.
+This is an out-of-range authority input. Do not add the correction plan, umbrella design, correction route, external authority object, or pre-descriptor review records to descriptor `requirement_paths`: those paths do not exist at reviewed head `Q2`. `T` binds the external object exactly once, and Operator2 validates every referenced Git object before GO.
 
 - [ ] **Step 3: Write and validate the descriptor**
 
-Set `Q_SHA` from the reviewed worktree's exact committed HEAD. Build this exact `lane-v-scope/v1` descriptor shape, with no additional field:
+Retain the already validated `Q2_SHA` from the reviewed worktree's exact committed HEAD. Build this exact `lane-v-scope/v1` descriptor shape, with no additional field:
 
 ```json
 {
@@ -598,7 +741,7 @@ The exact semantic bindings are:
   - `coordination/mailbox/sent/2026-07-15T08-50-32Z-operator2-to-all-verification-report.md`;
   - `scripts/prompts/opus_lane_v_advisory.authority.583cdcb5b5129b629ae4ada21627a4fc5bab1b9c.json`;
 - `allowed_path_roots`: exactly the four production/test paths in Global Constraints; and
-- no `reviewed_head` or other extra field, because `T` binds `$Q_SHA` under the v1 contract.
+- no `reviewed_head` or other extra field, because `T` binds `$Q2_SHA` under the v1 contract.
 
 Copy exactly these two trusted-Python descriptor commands from the original Opus plan, in this order and with no additional serialized command:
 
@@ -636,12 +779,12 @@ test "$(env -u GIT_INDEX_FILE git diff --cached --name-only)" = \
 env -u GIT_INDEX_FILE git commit -m \
   "coord(opus): bind Stage A quality scope"
 D_SHA="$(env -u GIT_INDEX_FILE git rev-parse 'HEAD^{commit}')"
-test "$(env -u GIT_INDEX_FILE git rev-parse "${D_SHA}^")" = "$Q_SHA"
+test "$(env -u GIT_INDEX_FILE git rev-parse "${D_SHA}^")" = "$Q2_SHA"
 test "$(env -u GIT_INDEX_FILE git diff-tree --no-commit-id --name-only -r \
   "$D_SHA")" = "$DESCRIPTOR_PATH"
 ```
 
-Expected: `D_SHA` directly parents `Q_SHA` and changes exactly the descriptor path.
+Expected: `D_SHA` directly parents `Q2_SHA` and changes exactly the descriptor path.
 
 - [ ] **Step 5: Generate and commit request-only `T`**
 
@@ -662,7 +805,7 @@ REQUEST_SEND_OUTPUT="$(coordination/bin/send-event \
 Event type: verify-request
 Task-board: pipeline-opus-transport-first-recovery-stage-a-2026-07-15
 Protocol wave: 2
-Reviewed head: $Q_SHA
+Reviewed head: $Q2_SHA
 Reviewed base: 40fd0a5e43c6b28330ced9ddffe01483cde42b65
 Lane-V-Scope: $DESCRIPTOR_PATH@$DESCRIPTOR_DIGEST
 Stage-A-External-Authority: $EXTERNAL_AUTHORITY_COMMIT:$EXTERNAL_AUTHORITY_PATH@$EXTERNAL_AUTHORITY_BLOB
@@ -748,7 +891,7 @@ Then run this exact read-only resolver check from the Stage-A worktree. It calls
 RECEIPT_COMMON_DIR="$(env -u GIT_INDEX_FILE git rev-parse \
   --path-format=absolute --git-common-dir)"
 RECEIPT_STORE_ROOT="$(dirname "$RECEIPT_COMMON_DIR")/.codex/runtime/opus-review-receipts/v1"
-Q_SHA="$Q_SHA" T_SHA="$T_SHA" REQUEST_PATH="$REQUEST_PATH" \
+Q2_SHA="$Q2_SHA" T_SHA="$T_SHA" REQUEST_PATH="$REQUEST_PATH" \
 DESCRIPTOR_DIGEST="$DESCRIPTOR_DIGEST" \
 RECEIPT_STORE_ROOT="$RECEIPT_STORE_ROOT" \
 env -u GIT_INDEX_FILE .venv/bin/python - <<'PY'
@@ -766,7 +909,7 @@ from opus_review_receipts import (
 )
 
 base = "40fd0a5e43c6b28330ced9ddffe01483cde42b65"
-head = os.environ["Q_SHA"]
+head = os.environ["Q2_SHA"]
 trigger = os.environ["T_SHA"]
 request_path = os.environ["REQUEST_PATH"]
 resolved = resolve_authoritative_scope(
@@ -889,7 +1032,7 @@ Any prospective receipt/lock, manifest drift, resolver mismatch, or external-obj
 
 **Interfaces:**
 
-- Consumes: lawful `T`, descriptor `D`, `R..Q`, and zero-provider evidence.
+- Consumes: lawful `T`, descriptor `D`, `R..Q2`, and zero-provider evidence.
 - Produces: GO/NITS/FAIL for Stage A; on GO only, a smallest-boundary Stage B route followed later by one fresh Stage C canary and Stage D integration gates.
 
 - [ ] **Step 1: Run independent Lane V**
@@ -918,12 +1061,22 @@ Before reporting this plan executed, capture fresh output for:
 STAGE_A_ROOT=.worktrees/opus-transport-first-stage-a-director2
 T_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse 'HEAD^{commit}')"
 D_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${T_SHA}^")"
-Q_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${D_SHA}^")"
-test "$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${Q_SHA}^")" = \
+Q2_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${D_SHA}^")"
+Q1_SHA="$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${Q2_SHA}^")"
+test "$Q1_SHA" = 6d596b5f238fdc72f6d7384fddfd112072c52352
+test "$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" rev-parse "${Q1_SHA}^")" = \
   16c4f83aef4130d977a91d623a9254c4fd46980a
 env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" log --oneline -6
-env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" diff --name-only \
-  40fd0a5e43c6b28330ced9ddffe01483cde42b65.."$Q_SHA"
+test "$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" diff --name-only \
+  "$Q1_SHA..$Q2_SHA" | sort)" = \
+"scripts/opus_review_bridge.py
+tests/unit/test_opus_review_bridge.py"
+test "$(env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" diff --name-only \
+  40fd0a5e43c6b28330ced9ddffe01483cde42b65.."$Q2_SHA" | sort)" = \
+"scripts/opus_review_bridge.py
+scripts/opus_review_receipts.py
+tests/unit/test_opus_review_bridge.py
+tests/unit/test_opus_review_receipts.py"
 (
   cd "$STAGE_A_ROOT"
   env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
@@ -932,7 +1085,7 @@ env -u GIT_INDEX_FILE git -C "$STAGE_A_ROOT" diff --name-only \
     tests/unit/test_verification_report_gate.py -q
   env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
   env -u GIT_INDEX_FILE git diff --check \
-    40fd0a5e43c6b28330ced9ddffe01483cde42b65.."$Q_SHA"
+    40fd0a5e43c6b28330ced9ddffe01483cde42b65.."$Q2_SHA"
 )
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2
 test "$(shasum -a 256 \
@@ -943,12 +1096,12 @@ test "$(shasum -a 256 \
 
 Stage-A completion additionally requires the canonical Operator2 Stage-A GO path and commit, zero Stage-A provider attempts, the exact terminal prior-receipt digest check above, and a durable next owner. Green commands without GO do not satisfy that gate. The full Opus recovery plan is complete only when the fixed Stage-B-D recovery handoff, final Operator2 GO, exact locally integrated main SHA, merged-tree evidence, and terminal join `done_evidence` all agree; publication may remain unauthorized.
 
-Before making that claim, rerun the complete Task 6 Step 6 external-object, provider-free resolver, prospective receipt/lock absence, and before/after receipt-manifest blocks against the final `Q`, `D`, `T`, and request path. Capture the printed resolved summary, both equal manifest digests, and the external commit/path/blob proof. The older terminal-receipt hash alone is insufficient because it does not detect a newly created Stage-A receipt.
+Before making that claim, rerun the complete Task 6 Step 6 external-object, provider-free resolver, prospective receipt/lock absence, and before/after receipt-manifest blocks against the final `Q2`, `D`, `T`, and request path. Capture the printed resolved summary, both equal manifest digests, and the external commit/path/blob proof. The older terminal-receipt hash alone is insufficient because it does not detect a newly created Stage-A receipt.
 
 ## Stop Conditions
 
-- `R`, `M0`, or `F` changes, or `Q` does not directly parent `F`.
-- Any fifth implementation/test path appears in `F..Q` or `R..Q`.
+- `R`, `M0`, `F`, or `Q1` changes, or `Q2` does not directly parent exact `Q1`.
+- Any path other than the bridge and bridge test appears in `Q1..Q2`, or any fifth implementation/test path appears in `R..Q2`.
 - A real provider process, receipt mutation, retry, fallback, or credential action occurs during Stage A.
 - The prospective Stage-A attempt receipt or lock exists, or the receipt-store manifest differs from the baseline committed in the correction route.
 - The semantic rule table rejects a tuple still emitted by production or accepts a contradictory tuple from the invalid matrix.
@@ -960,4 +1113,4 @@ Before making that claim, rerun the complete Task 6 Step 6 external-object, prov
 
 ## Exact Next Trigger
 
-After this plan is committed and the coordinator's three-packet correction route validates, Director2 appends exactly one provider-free `Q` to immutable `F`. Descriptor `D`, request `T`, Operator2 verification, any Stage-C provider attempt, local integration, and publication remain gated in that order by their separate authorities. The target-aware bridge cannot start until `docs/HANDOFF-director-2026-07-16-opus-b-d-recovery.md`, its final GO, integrated head, merged-tree evidence, and terminal join `done_evidence` validate.
+After this amended plan is committed and the coordinator's post-`Q1` three-packet correction route validates, Director2 appends exactly one provider-free `Q2` to immutable `Q1`. Descriptor `D`, request `T`, Operator2 verification, any Stage-C provider attempt, local integration, and publication remain gated in that order by their separate authorities. The target-aware bridge cannot start until `docs/HANDOFF-director-2026-07-16-opus-b-d-recovery.md`, its final GO, integrated head, merged-tree evidence, and terminal join `done_evidence` validate.
