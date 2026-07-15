@@ -93,16 +93,34 @@ REQUIRED_SURFACE_OWNERS: dict[str, str] = {
     "threeway/refstore.py": "signed_bus_event_and_cursor_runtime",
     "threeway/gate.py": "signed_bus_event_and_cursor_runtime",
     "threeway/cutover.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/keys_bootstrap.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/__init__.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/approval_authority.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/canon.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/cursor_backfill.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/envelope.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/gitcas.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/keys.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/legacy_projector.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/loop.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/policy.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/predicate.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/reducer.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/rework.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/store.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/tier.py": "signed_bus_event_and_cursor_runtime",
     "scripts/seat_emit.py": "signed_bus_event_and_cursor_runtime",
     "scripts/chief_emit.py": "signed_bus_event_and_cursor_runtime",
     "scripts/overseer_emit.py": "signed_bus_event_and_cursor_runtime",
     "scripts/sign_ci_result.py": "signed_bus_event_and_cursor_runtime",
     "scripts/consume_bus.py": "signed_bus_event_and_cursor_runtime",
     "scripts/run_merge_gate.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/run_merge_gate.sh": "signed_bus_event_and_cursor_runtime",
     "scripts/overseer_plan.py": "signed_bus_event_and_cursor_runtime",
     "scripts/agy_observer.py": "signed_bus_event_and_cursor_runtime",
     "scripts/bus_unread.py": "signed_bus_event_and_cursor_runtime",
     "scripts/execute_threeway_cutover.sh": "signed_bus_event_and_cursor_runtime",
+    ".github/workflows/ci.yml": "signed_bus_event_and_cursor_runtime",
     "scripts/mailbox_monitor.py": "live_v1_status_and_runtime_readers",
     "scripts/ledger_start_guard.py": "live_v1_status_and_runtime_readers",
     "scripts/codex_protocol_model.py": "live_v1_status_and_runtime_readers",
@@ -121,6 +139,211 @@ REQUIRED_SURFACE_OWNERS: dict[str, str] = {
     ".codex/hooks/session-smoke.sh": "codex_runtime_and_hook_adapter",
     ".codex/hooks/guard-git-index.sh": "codex_runtime_and_hook_adapter",
     ".codex/hooks/update-state.sh": "codex_runtime_and_hook_adapter",
+}
+REQUIRED_WRITER_SURFACES = {
+    "threeway/refstore.py",
+    "threeway/gate.py",
+    "threeway/cutover.py",
+    "threeway/gitcas.py",
+    "threeway/cursor_backfill.py",
+    "threeway/keys_bootstrap.py",
+    "scripts/seat_emit.py",
+    "scripts/chief_emit.py",
+    "scripts/overseer_emit.py",
+    "scripts/sign_ci_result.py",
+    "scripts/consume_bus.py",
+    "scripts/run_merge_gate.py",
+    "scripts/run_merge_gate.sh",
+    "scripts/overseer_plan.py",
+    "scripts/execute_threeway_cutover.sh",
+    ".github/workflows/ci.yml",
+}
+REQUIRED_SYMBOL_OVERRIDES: dict[str, tuple[str, str, str]] = {
+    "scripts.target_binding.main": (
+        "target_binding",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.route_compat.main": (
+        "typed_route_compatibility_canary",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.packet_state.is_valid_work_transition": (
+        "capacity_reducer_and_packet_state_telemetry",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.packet_state.main": (
+        "capacity_reducer_and_packet_state_telemetry",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.protocol_capacity_board.main": (
+        "capacity_reducer_and_packet_state_telemetry",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.protocol_effectiveness_report.main": (
+        "effectiveness_telemetry",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.route_capability.main": (
+        "capability_receipt_recording",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.verification_report_gate.validate_live_report": (
+        "verification_authority_and_publication",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.verification_report_gate.publish_candidate": (
+        "verification_authority_and_publication",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.verification_report_gate.main": (
+        "verification_authority_and_publication",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.consume_reviewer_result.main": (
+        "verification_authority_and_publication",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.chatgpt_pro_consult.main": (
+        "chatgpt_guard_and_browser_executor",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.opus_review_bridge.probe_host_capabilities": (
+        "opus_reservation_and_bridge",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.opus_review_bridge.main": (
+        "opus_reservation_and_bridge",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.compact_state_mapping.main": (
+        "legacy_lifecycle_mapping_contract",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.capability_baseline_runtime.main": (
+        "capability_baseline_runtime_collector",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.route_lineage.check_cas": (
+        "live_v1_route_lineage_reader",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.route_lineage.main": (
+        "live_v1_route_lineage_reader",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "threeway.cutover.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "threeway.keys_bootstrap.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.seat_emit.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.chief_emit.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.overseer_emit.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.sign_ci_result.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.consume_bus.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.run_merge_gate.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.overseer_plan.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.agy_observer.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.mailbox_monitor.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.ledger_start_guard.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.codex_protocol_model.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.protocol_doctor.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.continuation_readiness.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    ".agents.skills.four-seat-protocol.scripts.seat_status.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.status.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.latest_handoff.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.codex_seat_launcher.main": (
+        "codex_runtime_and_hook_adapter",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
 }
 
 ROOT_KEYS = {"schema_version", "authority_contract", "components"}
@@ -173,6 +396,57 @@ def _public_functions(path: str) -> set[str]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and not node.name.startswith("_")
     }
+
+
+def _resolve_repo_local_module(module_name: str) -> str | None:
+    parts = module_name.split(".")
+    if not parts or parts[0] not in {"scripts", "threeway"}:
+        return None
+
+    module_path = REPO_ROOT.joinpath(*parts).with_suffix(".py")
+    package_path = REPO_ROOT.joinpath(*parts, "__init__.py")
+    for candidate in (module_path, package_path):
+        if candidate.is_file():
+            return candidate.relative_to(REPO_ROOT).as_posix()
+    return None
+
+
+def _direct_repo_local_imports(path: str) -> set[str]:
+    source = (REPO_ROOT / path).read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=path)
+    imports: set[str] = set()
+    module_parts = list(Path(path).with_suffix("").parts)
+    package_parts = module_parts[:-1]
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                resolved = _resolve_repo_local_module(alias.name)
+                if resolved is not None:
+                    imports.add(resolved)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                parent_count = len(package_parts) - node.level + 1
+                if parent_count < 1:
+                    continue
+                base_parts = package_parts[:parent_count]
+            else:
+                base_parts = []
+            if node.module:
+                base_parts.extend(node.module.split("."))
+            base_name = ".".join(base_parts)
+            resolved_base = _resolve_repo_local_module(base_name)
+            if resolved_base is not None:
+                imports.add(resolved_base)
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                child_name = ".".join((*base_parts, alias.name))
+                resolved_child = _resolve_repo_local_module(child_name)
+                if resolved_child is not None:
+                    imports.add(resolved_child)
+
+    return imports
 
 
 def test_repository_paths_reject_noncanonical_module_aliases() -> None:
@@ -260,6 +534,51 @@ def test_required_surfaces_have_explicit_owner(path, expected_owner):
         )
     ]
     assert owners == [expected_owner]
+
+
+@pytest.mark.parametrize("path", sorted(REQUIRED_WRITER_SURFACES))
+def test_required_writer_surfaces_have_signed_bus_owner(path: str) -> None:
+    owners = [
+        component["id"]
+        for component in _load_inventory()["components"]
+        if path in component["writer_paths"]
+    ]
+
+    assert owners == ["signed_bus_event_and_cursor_runtime"]
+
+
+def test_classified_modules_close_over_direct_repo_local_imports() -> None:
+    components = _load_inventory()["components"]
+    module_owners: dict[str, list[str]] = {}
+    for component in components:
+        for rule in component["module_rules"]:
+            module_owners.setdefault(rule["path"], []).append(component["id"])
+
+    ownership_failures: list[tuple[str, str, list[str]]] = []
+    for importer in sorted(module_owners):
+        for imported in sorted(_direct_repo_local_imports(importer)):
+            owners = module_owners.get(imported, [])
+            if len(owners) != 1:
+                ownership_failures.append((importer, imported, owners))
+
+    assert not ownership_failures, (
+        "classified modules have direct local imports without exactly one "
+        f"module-rule owner: {ownership_failures}"
+    )
+
+
+def test_required_symbol_overrides_are_exactly_pinned() -> None:
+    actual = {
+        override["symbol"]: (
+            component["id"],
+            override["helper_class"],
+            override["disposition"],
+        )
+        for component in _load_inventory()["components"]
+        for override in component["symbol_overrides"]
+    }
+
+    assert actual == REQUIRED_SYMBOL_OVERRIDES
 
 
 def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:

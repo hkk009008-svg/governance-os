@@ -51,6 +51,7 @@
         "scripts/protocol_capacity.py",
         "scripts/route_lineage.py",
         "scripts/protocol_mailbox.py",
+        "threeway/canon.py",
         "coordination/mailbox/kinds.txt",
         "coordination/mailbox/sent",
         "coordination/mailbox/seen"
@@ -187,7 +188,8 @@
       ],
       "reader_paths": [
         "scripts/route_capability.py",
-        "scripts/route_lineage.py"
+        "scripts/route_lineage.py",
+        "threeway/canon.py"
       ],
       "writer_paths": [
         "scripts/route_capability.py"
@@ -419,6 +421,22 @@
         "threeway/refstore.py",
         "threeway/gate.py",
         "threeway/cutover.py",
+        "threeway/keys_bootstrap.py",
+        "threeway/__init__.py",
+        "threeway/approval_authority.py",
+        "threeway/canon.py",
+        "threeway/cursor_backfill.py",
+        "threeway/envelope.py",
+        "threeway/gitcas.py",
+        "threeway/keys.py",
+        "threeway/legacy_projector.py",
+        "threeway/loop.py",
+        "threeway/policy.py",
+        "threeway/predicate.py",
+        "threeway/reducer.py",
+        "threeway/rework.py",
+        "threeway/store.py",
+        "threeway/tier.py",
         "scripts/seat_emit.py",
         "scripts/chief_emit.py",
         "scripts/overseer_emit.py",
@@ -428,12 +446,30 @@
         "scripts/overseer_plan.py",
         "scripts/agy_observer.py",
         "scripts/bus_unread.py",
-        "scripts/execute_threeway_cutover.sh"
+        "scripts/run_merge_gate.sh",
+        "scripts/execute_threeway_cutover.sh",
+        ".github/workflows/ci.yml"
       ],
       "reader_paths": [
         "threeway/refstore.py",
         "threeway/gate.py",
         "threeway/cutover.py",
+        "threeway/keys_bootstrap.py",
+        "threeway/__init__.py",
+        "threeway/approval_authority.py",
+        "threeway/canon.py",
+        "threeway/cursor_backfill.py",
+        "threeway/envelope.py",
+        "threeway/gitcas.py",
+        "threeway/keys.py",
+        "threeway/legacy_projector.py",
+        "threeway/loop.py",
+        "threeway/policy.py",
+        "threeway/predicate.py",
+        "threeway/reducer.py",
+        "threeway/rework.py",
+        "threeway/store.py",
+        "threeway/tier.py",
         "scripts/seat_emit.py",
         "scripts/chief_emit.py",
         "scripts/overseer_emit.py",
@@ -449,11 +485,25 @@
       ],
       "writer_paths": [
         "threeway/refstore.py",
+        "threeway/gate.py",
         "threeway/cutover.py",
+        "threeway/gitcas.py",
+        "threeway/cursor_backfill.py",
+        "threeway/keys_bootstrap.py",
+        "scripts/seat_emit.py",
+        "scripts/chief_emit.py",
+        "scripts/overseer_emit.py",
+        "scripts/sign_ci_result.py",
+        "scripts/consume_bus.py",
+        "scripts/run_merge_gate.py",
+        "scripts/run_merge_gate.sh",
+        "scripts/overseer_plan.py",
+        "scripts/execute_threeway_cutover.sh",
+        ".github/workflows/ci.yml",
         "coordination/threeway/keys",
         "coordination/mailbox/seen"
       ],
-      "executor_boundary": "These tools are live only for the separate three-way toolchain and grant no compact-kernel route authority. Guarded emit, consume, merge, and cutover executors may read or update refs/threeway/events and refs/threeway/cursors/*; an explicitly confirmed cutover may bridge legacy coordination/mailbox/sent and coordination/mailbox/seen. Signing keys and remote effects remain separately authorized.",
+      "executor_boundary": "These tools are live only for the separate three-way toolchain and grant no compact-kernel route authority. Guarded emit, consume, merge, and cutover executors may read or update refs/threeway/events and refs/threeway/cursors/*; an explicitly confirmed cutover may bridge legacy coordination/mailbox/sent and coordination/mailbox/seen. Standing merge-gate test-ref execution, cutover key bootstrap, and manual CI signing remain explicit, separately authorized executor boundaries and grant no compact-kernel authority. Signing keys and remote effects remain separately authorized.",
       "default_helper_class": "runtime_core",
       "module_rules": [
         {
@@ -464,6 +514,57 @@
         },
         {
           "path": "threeway/cutover.py"
+        },
+        {
+          "path": "threeway/keys_bootstrap.py"
+        },
+        {
+          "path": "threeway/__init__.py"
+        },
+        {
+          "path": "threeway/approval_authority.py"
+        },
+        {
+          "path": "threeway/canon.py"
+        },
+        {
+          "path": "threeway/cursor_backfill.py",
+          "default_helper_class": "historical_adapter"
+        },
+        {
+          "path": "threeway/envelope.py"
+        },
+        {
+          "path": "threeway/gitcas.py"
+        },
+        {
+          "path": "threeway/keys.py"
+        },
+        {
+          "path": "threeway/legacy_projector.py",
+          "default_helper_class": "historical_adapter"
+        },
+        {
+          "path": "threeway/loop.py"
+        },
+        {
+          "path": "threeway/policy.py"
+        },
+        {
+          "path": "threeway/predicate.py"
+        },
+        {
+          "path": "threeway/reducer.py"
+        },
+        {
+          "path": "threeway/rework.py"
+        },
+        {
+          "path": "threeway/store.py",
+          "default_helper_class": "historical_adapter"
+        },
+        {
+          "path": "threeway/tier.py"
         },
         {
           "path": "scripts/seat_emit.py"
@@ -498,6 +599,11 @@
       "symbol_overrides": [
         {
           "symbol": "threeway.cutover.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "threeway.keys_bootstrap.main",
           "helper_class": "cli_entrypoint",
           "disposition": "keep_documented_cli"
         },
