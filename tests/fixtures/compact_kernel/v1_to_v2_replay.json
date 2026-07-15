@@ -2136,17 +2136,17 @@
     {
       "id": "history:stale-work-revision",
       "case_kind": "history",
-      "mapping_row_id": "capacity-ready",
+      "mapping_row_id": "capacity-active",
       "misuse_vector_id": null,
       "disposition": "legacy_ambiguous",
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:stale:revision",
-      "source_digest": "sha256:56008fc9f2a1100e0150c3fa1d9e4265cb0b2a965a0f823de2ee8d6d7b8e86a0",
-      "work_id": "work-stale-revision",
+          "source_id": "history:stale:1",
+          "source_digest": "sha256:254b17a08cf172964af075cff7e57ca02041e2009f7a08c53d33d4413ab75fdf",
+          "work_id": "work-stale-revision",
           "route_id": "route-stale",
-          "work_revision": 2,
+          "work_revision": 1,
           "unit_id": "unit-stale",
           "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
           "domain": "capacity",
@@ -2162,16 +2162,48 @@
           ],
           "verification_ref": null,
           "effect_reservation_refs": []
+        },
+        {
+          "schema": "compact-kernel-legacy-observation/v1",
+          "source_id": "history:stale:2",
+          "source_digest": "sha256:441a3fc54c9cb0984dc701c1a1927ac1d23591fc1f742f18b24898627602a4d5",
+          "work_id": "work-stale-revision",
+          "route_id": "route-stale",
+          "work_revision": 1,
+          "unit_id": "unit-stale",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "domain": "capacity",
+          "value": "active",
+          "context": {},
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [
+            "artifact:one"
+          ],
+          "verification_ref": null,
+          "effect_reservation_refs": []
         }
       ],
       "record_orders": [
         [
-          0
+          0,
+          1
         ]
       ],
       "resolver_mode": "stable",
       "expected": {
         "projections": [
+          {
+            "disposition": "route_event",
+            "compact": "RUN",
+            "terminal_scope": "nonterminal",
+            "next_action": "continue",
+            "effect_eligibility": "never",
+            "advisory_only": false
+          },
           {
             "disposition": "route_event",
             "compact": "RUN",

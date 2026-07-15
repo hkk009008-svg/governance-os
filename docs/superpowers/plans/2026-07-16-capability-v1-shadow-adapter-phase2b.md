@@ -508,6 +508,18 @@ exactly one record produces the case's exact expected error. The
 `compact-kernel-legacy-observation/v1`, `governance.route/v2`, exact order
 `[[0, 1]]`, and expected error `legacy_version`.
 
+The complete `case_kind="history"` ID set equals the production history
+semantic-oracle key set exactly: no declared history is unbound and no oracle
+entry is orphaned. Independent of case names and self-declared outcomes, that
+oracle binds every history's mapping row, record count, schema sequence, order
+set, resolver mode, disposition, success/error shape, and its essential
+identity, revision, scope, and changed-field relationships. In particular,
+`history:stale-work-revision` is an accepted revision followed by a stale
+revision with exact revisions `(1, 1)`; the gate executes the public adapter
+once for the accepted prefix and again for the rejecting history. It remains
+distinct from `history:gapped-work-revision`, whose exact revisions are
+`(1, 3)`.
+
 - [ ] **Step 2: Write failing completeness and parity tests**
 
 Add tests equivalent to:

@@ -30,6 +30,7 @@ else:
 __all__ = ("LegacyAdapterError", "adapt_v1_history", "main")
 
 _LEGACY_SCHEMA = "compact-kernel-legacy-observation/v1"
+_FUTURE_LEGACY_SCHEMA = "compact-kernel-legacy-observation/v9"
 _CORPUS_SCHEMA = "compact-kernel-v1-shadow-replay/v1"
 _REPORT_SCHEMA = "compact-kernel-v1-shadow-parity-report/v1"
 _LEGACY_RECORD_FIELDS = (
@@ -203,6 +204,93 @@ class _CorpusReport:
     specialized_event_ids: tuple[str, ...]
     deferred_phase3_misuse_ids: tuple[str, ...]
     executed_case_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _HistoryCaseOracle:
+    mapping_row_id: str
+    record_count: int
+    schemas: tuple[str, ...]
+    orders: tuple[tuple[int, ...], ...]
+    resolver_mode: str
+    disposition: str
+    expected_error: str | None
+    envelope_count: int
+    requested_transitions: tuple[str, ...]
+    accepted_prefix_transitions: tuple[str, ...] = ()
+
+
+_HISTORY_CASE_ORACLE: dict[str, _HistoryCaseOracle] = {
+    "history:sequential-update": _HistoryCaseOracle(
+        "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
+        "stable", "route_event", None, 2, ("START", "UPDATE"),
+    ),
+    "history:exact-duplicate-source": _HistoryCaseOracle(
+        "capacity-ready", 1, (_LEGACY_SCHEMA,), ((0, 0),), "stable",
+        "route_event", None, 2, ("START", "START"),
+    ),
+    "history:changed-duplicate-source": _HistoryCaseOracle(
+        "capacity-ready", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+    ),
+    "history:disjoint-order-permutations": _HistoryCaseOracle(
+        "capacity-ready", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA),
+        ((0, 1), (1, 0)), "stable", "route_event", None, 2,
+        ("START", "START"),
+    ),
+    "history:stale-work-revision": _HistoryCaseOracle(
+        "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (), ("START",),
+    ),
+    "history:gapped-work-revision": _HistoryCaseOracle(
+        "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+    ),
+    "history:actor-resolver-drift": _HistoryCaseOracle(
+        "capacity-ready", 1, (_LEGACY_SCHEMA,), ((0,),), "actor_drift",
+        "legacy_nondeterministic", "legacy_nondeterministic", 0, (),
+    ),
+    "history:scope-resolver-drift": _HistoryCaseOracle(
+        "capacity-ready", 1, (_LEGACY_SCHEMA,), ((0,),), "scope_drift",
+        "legacy_nondeterministic", "legacy_nondeterministic", 0, (),
+    ),
+    "history:route-ambiguity": _HistoryCaseOracle(
+        "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+    ),
+    "history:scope-ambiguity": _HistoryCaseOracle(
+        "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+    ),
+    "history:overlapping-unit-scopes": _HistoryCaseOracle(
+        "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+    ),
+    "history:content-change": _HistoryCaseOracle(
+        "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
+        "stable", "route_event", None, 2, ("START", "UPDATE"),
+    ),
+    "history:absolute-resolved-path": _HistoryCaseOracle(
+        "capacity-ready", 1, (_LEGACY_SCHEMA,), ((0,),), "stable",
+        "legacy_ambiguous", "legacy_ambiguous", 0, (),
+    ),
+    "history:redundant-resolved-scope": _HistoryCaseOracle(
+        "capacity-ready", 1, (_LEGACY_SCHEMA,), ((0,),), "stable",
+        "legacy_ambiguous", "legacy_ambiguous", 0, (),
+    ),
+    "history:mixed-v1-v2": _HistoryCaseOracle(
+        "capacity-active", 2, (_LEGACY_SCHEMA, capability_reducer.SCHEMA_ID),
+        ((0, 1),), "stable", "legacy_version", "legacy_version", 0, (),
+    ),
+    "history:future-v1-schema": _HistoryCaseOracle(
+        "capacity-ready", 1, (_FUTURE_LEGACY_SCHEMA,), ((0,),), "stable",
+        "legacy_version", "legacy_version", 0, (),
+    ),
+    "history:nonzero-epoch-material": _HistoryCaseOracle(
+        "capacity-ready", 1, (_LEGACY_SCHEMA,), ((0,),), "stable",
+        "legacy_invalid", "legacy_invalid", 0, (),
+    ),
+}
 
 
 _ADAPTER_RULES: tuple[
@@ -1602,6 +1690,260 @@ def _validate_case_bound_misuse_deltas(
             raise _legacy_invalid()
 
 
+_HISTORY_CAUSAL_IDENTITY_FIELDS = (
+    "work_id",
+    "route_id",
+    "unit_id",
+    "mutable_scope_ref",
+    "mutable_scope_digest",
+)
+_HISTORY_VERIFICATION_KEY_FIELDS = (
+    "content_digest",
+    "dependency_digest",
+    "acceptance_digest",
+    "evidence_refs",
+)
+
+
+def _oracle_rebased_record(raw: dict[str, object]) -> _LegacyRecord:
+    candidate = dict(raw)
+    candidate["schema"] = _LEGACY_SCHEMA
+    candidate["source_digest"] = _source_digest(
+        {
+            key: value
+            for key, value in candidate.items()
+            if key != "source_digest"
+        }
+    )
+    return _parse_legacy_record(candidate)
+
+
+def _oracle_parsed_history(
+    case_id: str,
+    records: list[dict[str, object]],
+) -> tuple[_LegacyRecord, ...]:
+    record_fields = set(_LEGACY_RECORD_FIELDS)
+    try:
+        if case_id == "history:future-v1-schema":
+            raw = records[0]
+            if set(raw) != record_fields or raw["schema"] != _FUTURE_LEGACY_SCHEMA:
+                raise _legacy_invalid()
+            return (_oracle_rebased_record(raw),)
+        if case_id == "history:nonzero-epoch-material":
+            raw = records[0]
+            if (
+                set(raw) != record_fields | {"activation_epoch"}
+                or type(raw["activation_epoch"]) is not int
+                or raw["activation_epoch"] != 1
+            ):
+                raise _legacy_invalid()
+            without_epoch = dict(raw)
+            del without_epoch["activation_epoch"]
+            return (_oracle_rebased_record(without_epoch),)
+        if case_id == _MIXED_VERSION_CASE_ID:
+            first, second = records
+            if set(first) != record_fields or set(second) != record_fields:
+                raise _legacy_invalid()
+            return (_parse_legacy_record(first), _oracle_rebased_record(second))
+        return tuple(_parse_legacy_record(record) for record in records)
+    except Exception:
+        raise _legacy_invalid() from None
+
+
+def _oracle_fields_are_equal(
+    records: tuple[_LegacyRecord, ...],
+    fields: tuple[str, ...],
+) -> bool:
+    return all(
+        all(getattr(record, field) == getattr(records[0], field) for field in fields)
+        for record in records[1:]
+    )
+
+
+def _oracle_scopes_overlap(
+    left: capability_reducer.ResolvedScope,
+    right: capability_reducer.ResolvedScope,
+) -> bool:
+    if left.repository != right.repository:
+        return False
+    if set(left.lock_domains) & set(right.lock_domains):
+        return True
+    return any(
+        capability_reducer._path_overlap(left_path, right_path)
+        for left_path in left.paths
+        for right_path in right.paths
+    )
+
+
+def _validate_history_relationship(
+    case_id: str,
+    records: tuple[_LegacyRecord, ...],
+    scopes: dict[str, capability_reducer.ResolvedScope],
+) -> None:
+    revisions = tuple(record.work_revision for record in records)
+    values = tuple(record.value for record in records)
+    source_ids = tuple(record.source_id for record in records)
+    first = records[0]
+
+    if case_id == "history:sequential-update":
+        valid = (
+            len(set(source_ids)) == 2
+            and _oracle_fields_are_equal(records, _HISTORY_CAUSAL_IDENTITY_FIELDS)
+            and revisions == (1, 2)
+            and values == ("ready", "active")
+        )
+    elif case_id == "history:exact-duplicate-source":
+        valid = True
+    elif case_id == "history:changed-duplicate-source":
+        second = records[1]
+        changed_fields = {
+            field
+            for field in _LegacyRecord.__dataclass_fields__
+            if getattr(first, field) != getattr(second, field)
+        }
+        valid = (
+            source_ids[0] == source_ids[1]
+            and revisions == (1, 1)
+            and changed_fields == {"source_digest", "content_digest"}
+        )
+    elif case_id == "history:disjoint-order-permutations":
+        distinct_fields = (
+            "source_id",
+            "work_id",
+            "route_id",
+            "unit_id",
+            "mutable_scope_ref",
+            "mutable_scope_digest",
+        )
+        valid = revisions == (1, 1) and all(
+            getattr(records[0], field) != getattr(records[1], field)
+            for field in distinct_fields
+        )
+    elif case_id in {
+        "history:stale-work-revision",
+        "history:gapped-work-revision",
+    }:
+        expected_revisions = (
+            (1, 1)
+            if case_id == "history:stale-work-revision"
+            else (1, 3)
+        )
+        valid = (
+            len(set(source_ids)) == 2
+            and _oracle_fields_are_equal(records, _HISTORY_CAUSAL_IDENTITY_FIELDS)
+            and revisions == expected_revisions
+            and values == ("ready", "active")
+        )
+    elif case_id in {
+        "history:actor-resolver-drift",
+        "history:scope-resolver-drift",
+    }:
+        valid = True
+    elif case_id == "history:route-ambiguity":
+        second = records[1]
+        valid = (
+            revisions == (1, 2)
+            and first.work_id == second.work_id
+            and first.unit_id == second.unit_id
+            and first.mutable_scope_ref == second.mutable_scope_ref
+            and first.mutable_scope_digest == second.mutable_scope_digest
+            and first.route_id is None
+            and second.route_id is not None
+        )
+    elif case_id == "history:scope-ambiguity":
+        second = records[1]
+        valid = (
+            revisions == (1, 2)
+            and first.work_id == second.work_id
+            and first.route_id == second.route_id
+            and first.unit_id == second.unit_id
+            and first.mutable_scope_ref != second.mutable_scope_ref
+            and first.mutable_scope_digest != second.mutable_scope_digest
+        )
+    elif case_id == "history:overlapping-unit-scopes":
+        second = records[1]
+        left_scope = scopes.get(first.mutable_scope_ref)
+        right_scope = scopes.get(second.mutable_scope_ref)
+        valid = (
+            revisions == (1, 2)
+            and first.work_id == second.work_id
+            and first.route_id == second.route_id
+            and first.unit_id != second.unit_id
+            and left_scope is not None
+            and right_scope is not None
+            and _oracle_scopes_overlap(left_scope, right_scope)
+        )
+    elif case_id == "history:content-change":
+        second = records[1]
+        changed_verification_fields = {
+            field
+            for field in _HISTORY_VERIFICATION_KEY_FIELDS
+            if getattr(first, field) != getattr(second, field)
+        }
+        valid = (
+            len(set(source_ids)) == 2
+            and _oracle_fields_are_equal(records, _HISTORY_CAUSAL_IDENTITY_FIELDS)
+            and revisions == (1, 2)
+            and changed_verification_fields == {"content_digest"}
+        )
+    elif case_id == "history:absolute-resolved-path":
+        scope = scopes.get(first.mutable_scope_ref)
+        valid = (
+            first.mutable_scope_ref == "scope:absolute"
+            and scope is not None
+            and len(scope.paths) == 1
+            and scope.paths[0].startswith("/")
+        )
+    elif case_id == "history:redundant-resolved-scope":
+        scope = scopes.get(first.mutable_scope_ref)
+        valid = (
+            first.mutable_scope_ref == "scope:redundant"
+            and scope is not None
+            and any(
+                capability_reducer._path_overlap(path, other)
+                for index, path in enumerate(scope.paths)
+                for other in scope.paths[index + 1 :]
+            )
+        )
+    elif case_id == _MIXED_VERSION_CASE_ID:
+        valid = source_ids[0] == source_ids[1]
+    elif case_id in {
+        "history:future-v1-schema",
+        "history:nonzero-epoch-material",
+    }:
+        valid = True
+    else:
+        valid = False
+    if not valid:
+        raise _legacy_invalid()
+
+
+def _validate_history_case_oracle(
+    case: dict[str, object],
+    records: list[dict[str, object]],
+    normalized_orders: list[tuple[int, ...]],
+    expected: dict[str, object],
+    scopes: dict[str, capability_reducer.ResolvedScope],
+) -> None:
+    case_id = case["id"]
+    oracle = _HISTORY_CASE_ORACLE.get(case_id)
+    if oracle is None or (
+        case["mapping_row_id"] != oracle.mapping_row_id
+        or len(records) != oracle.record_count
+        or tuple(record.get("schema") for record in records) != oracle.schemas
+        or tuple(normalized_orders) != oracle.orders
+        or case["resolver_mode"] != oracle.resolver_mode
+        or case["disposition"] != oracle.disposition
+        or expected["error_code"] != oracle.expected_error
+        or expected["envelope_count"] != oracle.envelope_count
+        or tuple(expected["requested_transitions"])
+        != oracle.requested_transitions
+    ):
+        raise _legacy_invalid()
+    parsed = _oracle_parsed_history(case_id, records)
+    _validate_history_relationship(case_id, parsed, scopes)
+
+
 def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     if set(corpus) != _CORPUS_FIELDS or corpus["schema_version"] != _CORPUS_SCHEMA:
         raise _legacy_invalid()
@@ -1688,6 +2030,11 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     ):
         raise _legacy_invalid()
     case_by_id = dict(zip(case_ids, cases, strict=True))
+    history_case_ids = {
+        item["id"] for item in cases if item["case_kind"] == "history"
+    }
+    if history_case_ids != set(_HISTORY_CASE_ORACLE):
+        raise _legacy_invalid()
     mapping_cases = [item for item in cases if item["case_kind"] == "mapping"]
     if [item["mapping_row_id"] for item in mapping_cases] != mapping_ids:
         raise _legacy_invalid()
@@ -1907,6 +2254,15 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         ):
             raise _legacy_invalid()
 
+        if kind == "history":
+            _validate_history_case_oracle(
+                case,
+                records,
+                normalized_orders,
+                expected,
+                scopes,
+            )
+
         if case_id == _MIXED_VERSION_CASE_ID and (
             kind != "history"
             or len(records) != 2
@@ -2080,6 +2436,34 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
                     if resolver_used:
                         _append_kind(findings, case_id, "adapter_error")
         else:
+            accepted_prefix = (
+                _HISTORY_CASE_ORACLE[case_id].accepted_prefix_transitions
+                if kind == "history"
+                else ()
+            )
+            if accepted_prefix:
+                resolve_actor, resolve_scope = _case_resolvers(
+                    resolver_mode, actors, scopes
+                )
+                try:
+                    prefix_result = adapt_v1_history(
+                        tuple(records[: len(accepted_prefix)]),
+                        resolve_actor=resolve_actor,
+                        resolve_scope=resolve_scope,
+                    )
+                except Exception:
+                    _append_kind(findings, case_id, "adapter_error")
+                else:
+                    if (
+                        len(prefix_result) != len(accepted_prefix)
+                        or tuple(
+                            event.requested_transition for event in prefix_result
+                        )
+                        != accepted_prefix
+                    ):
+                        _append_kind(
+                            findings, case_id, "authority_semantic_mismatch"
+                        )
             for order in normalized_orders:
                 raw_history = tuple(records[index] for index in order)
                 resolve_actor, resolve_scope = _case_resolvers(

@@ -910,6 +910,165 @@ def test_corpus_guard_binds_exact_mixed_record_sequence_and_order() -> None:
     _assert_corpus_error(corpus, "legacy_invalid")
 
 
+def _replace_exact_duplicate_with_route_v2(
+    corpus: dict[str, object],
+) -> None:
+    case = _case(corpus, "history:exact-duplicate-source")
+    record = case["source_records"][0]
+    record["schema"] = reducer.SCHEMA_ID
+    _refresh_source_digest(record)
+    _declare_expected_error(case, "legacy_version")
+
+
+def _separate_mixed_version_source_identities(
+    corpus: dict[str, object],
+) -> None:
+    case = _case(corpus, "history:mixed-v1-v2")
+    second = case["source_records"][1]
+    second["source_id"] = "history:mixed:v2"
+    _refresh_source_digest(second)
+
+
+def _replace_future_schema_with_route_v2(
+    corpus: dict[str, object],
+) -> None:
+    case = _case(corpus, "history:future-v1-schema")
+    record = case["source_records"][0]
+    record["schema"] = reducer.SCHEMA_ID
+    _refresh_source_digest(record)
+
+
+def _replace_nonzero_epoch_with_principal(
+    corpus: dict[str, object],
+) -> None:
+    case = _case(corpus, "history:nonzero-epoch-material")
+    record = case["source_records"][0]
+    del record["activation_epoch"]
+    record["principal"] = "user:spoof"
+    _refresh_source_digest(record)
+
+
+def _replace_stale_history_with_gap(corpus: dict[str, object]) -> None:
+    stale = _case(corpus, "history:stale-work-revision")
+    gap = _case(corpus, "history:gapped-work-revision")
+    for field in (
+        "mapping_row_id",
+        "disposition",
+        "source_records",
+        "record_orders",
+        "resolver_mode",
+        "expected",
+    ):
+        stale[field] = deepcopy(gap[field])
+
+
+def _swap_actor_and_scope_drift(corpus: dict[str, object]) -> None:
+    actor = _case(corpus, "history:actor-resolver-drift")
+    scope = _case(corpus, "history:scope-resolver-drift")
+    actor["resolver_mode"], scope["resolver_mode"] = (
+        scope["resolver_mode"],
+        actor["resolver_mode"],
+    )
+
+
+def _replace_route_ambiguity_with_scope_ambiguity(
+    corpus: dict[str, object],
+) -> None:
+    route = _case(corpus, "history:route-ambiguity")
+    scope = _case(corpus, "history:scope-ambiguity")
+    for field in (
+        "mapping_row_id",
+        "disposition",
+        "source_records",
+        "record_orders",
+        "resolver_mode",
+        "expected",
+    ):
+        route[field] = deepcopy(scope[field])
+
+
+def _remove_content_change(corpus: dict[str, object]) -> None:
+    case = _case(corpus, "history:content-change")
+    first, second = case["source_records"]
+    second["content_digest"] = first["content_digest"]
+    _refresh_source_digest(second)
+
+
+def _remove_disjoint_reverse_order(corpus: dict[str, object]) -> None:
+    case = _case(corpus, "history:disjoint-order-permutations")
+    case["record_orders"] = [[0, 1]]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        _replace_exact_duplicate_with_route_v2,
+        _separate_mixed_version_source_identities,
+        _replace_future_schema_with_route_v2,
+        _replace_nonzero_epoch_with_principal,
+        _replace_stale_history_with_gap,
+        _swap_actor_and_scope_drift,
+        _replace_route_ambiguity_with_scope_ambiguity,
+        _remove_content_change,
+        _remove_disjoint_reverse_order,
+    ),
+)
+def test_history_semantic_oracle_rejects_case_construction_substitution(
+    mutation,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    mutation(corpus)
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_history_semantic_oracle_keys_equal_exact_history_case_set() -> None:
+    corpus = _load_strict(CORPUS)
+    history_case_ids = {
+        case["id"] for case in corpus["cases"] if case["case_kind"] == "history"
+    }
+
+    assert set(getattr(adapter, "_HISTORY_CASE_ORACLE", ())) == history_case_ids
+
+
+def test_stale_and_gap_histories_pin_distinct_revision_constructions() -> None:
+    corpus = _load_strict(CORPUS)
+    stale = _case(corpus, "history:stale-work-revision")
+    gap = _case(corpus, "history:gapped-work-revision")
+
+    assert tuple(
+        record["work_revision"] for record in stale["source_records"]
+    ) == (1, 1)
+    assert tuple(
+        record["work_revision"] for record in gap["source_records"]
+    ) == (1, 3)
+
+
+def test_stale_history_executes_accepted_prefix_before_rejection(
+    monkeypatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    stale_records = _case(corpus, "history:stale-work-revision")["source_records"]
+    stale_work_id = stale_records[0]["work_id"]
+    observed_lengths: list[int] = []
+    real_adapt = adapter.adapt_v1_history
+
+    def trace_stale(raw_history, *, resolve_actor, resolve_scope):
+        records = tuple(raw_history)
+        if records and records[0]["work_id"] == stale_work_id:
+            observed_lengths.append(len(records))
+        return real_adapt(
+            records,
+            resolve_actor=resolve_actor,
+            resolve_scope=resolve_scope,
+        )
+
+    monkeypatch.setattr(adapter, "adapt_v1_history", trace_stale)
+    adapter._check_corpus(corpus)
+
+    assert observed_lengths == [1, 2]
+
+
 def test_case_bound_misuse_oracle_still_executes_public_adapter(
     monkeypatch,
 ) -> None:
