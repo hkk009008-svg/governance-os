@@ -23,8 +23,8 @@ Use a **bounded two-track recovery**:
    review bridge required by the binding PPL hold.
 4. Install the append-only candidate policy that gives seats room for review
    corrections.
-5. Run the evidence-ledger product correction in parallel only when its target
-   and authority path are ready and disjoint.
+5. Run the evidence-ledger product correction only after candidate-policy
+   integration and the distinct post-candidate target-bridge compatibility GO.
 6. Close planned instruction work and non-authoritative compact-kernel work in
    separate lanes.
 7. Converge legacy authority foundations into one compact kernel instead of
@@ -147,10 +147,12 @@ decision context, not permission to act on stale SHAs.
 
 ```text
 0A owner/WIP reconciliation ───────────────┐
-                                           ├─> 2A candidate policy ─> 3A web default
-0B Opus Stage-A correction ─> 1A Opus B-D ─┘
-                               │
-                               └─> 1B target-aware ledger bridge ─> 2B PPL correction
+                                           ├─> 2A candidate policy
+0B Opus Stage-A correction ─> 1A Opus B-D ─┘          │
+                               │                       ├─> post-candidate bridge GO
+                               └─> 1B target-aware ledger bridge ─┘
+                                                               │
+                                                               └─> 2B PPL correction ─> 3A web default
 
 0A canonical compact branch ─> 3B compact Phases 1-2
                                 │
@@ -335,8 +337,10 @@ not satisfy this gate.
 **Exit gate:** A target-repository-aware cumulative Operator GO covers the exact
 corrected range. Publication remains a separate decision.
 
-**Why parallel with 2A:** The product work is cross-repository and can be
-independently reviewed without sharing candidate-policy files.
+**Why after 2A:** Candidate policy changes the generic bridge/receipt dependency.
+The target-aware bridge therefore receives a distinct post-candidate compatibility
+GO before PPL product work begins; this prevents a stale advisory boundary from
+authorizing target edits.
 
 ### Phase 3A — Implement targeted public web-research default
 
@@ -344,7 +348,8 @@ independently reviewed without sharing candidate-policy files.
 
 **Actions:**
 
-- Start only after candidate policy is integrated and prompt surfaces are clean.
+- Start only after candidate policy is integrated, its target-bridge compatibility
+  GO is binding, PPL is terminal, and prompt surfaces are clean.
 - Keep the feature instruction-only: public read-only evidence gathering with
   local-source precedence and no login, credential, mutation, provider, or
   side-effect authority.
@@ -353,8 +358,10 @@ independently reviewed without sharing candidate-policy files.
 **Exit gate:** Operator GO and authorized integration of the instruction/test
 range.
 
-**Why after candidate policy:** Both plans touch the same active instruction
-surfaces, and web research is lower leverage than the range validator.
+**Why after candidate policy and PPL:** Candidate policy and its compatibility
+GO must be stable first, and the target-review family must be terminal with no
+reserved, in-flight, or unreconciled attempt before prompt-authority surfaces
+change. Web research remains lower leverage than both gates.
 
 ### Phase 3B — Close compact-kernel Phases 1 and 2
 
