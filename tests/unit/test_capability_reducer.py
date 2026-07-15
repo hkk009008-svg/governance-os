@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import dataclasses
+import inspect
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -20,6 +22,119 @@ PERMITTED_IMPORT_MODULES = (
     "threeway.canon",
 )
 PERMITTED_IMPORTED_CALL_NAMES = ("canonicalize", "dataclass", "fullmatch", "sha256")
+PERMITTED_IMPORT_ALIASES: tuple[tuple[str, str | None], ...] = ()
+PERMITTED_FROM_IMPORTS = (
+    ("__future__", ("annotations",)),
+    ("dataclasses", ("dataclass",)),
+    ("hashlib", ("sha256",)),
+    ("re", ("fullmatch",)),
+    ("typing", ("Callable", "Iterable")),
+    ("threeway.canon", ("canonicalize",)),
+)
+PERMITTED_NAME_CALLS = (
+    "NotImplementedError",
+    "ReducerError",
+    "TransitionEnvelope",
+    "_integer_schema",
+    "_nullable_string_schema",
+    "_ref_array_schema",
+    "_require_integer",
+    "_require_nullable_string",
+    "_require_refs",
+    "_require_string",
+    "_string_schema",
+    "_unchecked_transition_mapping",
+    "any",
+    "canonicalize",
+    "dataclass",
+    "frozenset",
+    "fullmatch",
+    "len",
+    "list",
+    "parse_transition",
+    "set",
+    "sha256",
+    "sorted",
+    "transition_bytes",
+    "transition_mapping",
+    "tuple",
+    "type",
+)
+PERMITTED_ATTRIBUTE_CALLS = (
+    ("ValueError", "__init__"),
+    ("digest", "hexdigest"),
+)
+
+
+def _ast_purity_violations(source: str) -> list[str]:
+    tree = ast.parse(source)
+    violations: list[str] = []
+    actual_from_imports: list[tuple[str, tuple[str, ...]]] = []
+    imported_names: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                descriptor = (alias.name, alias.asname)
+                if descriptor not in PERMITTED_IMPORT_ALIASES:
+                    violations.append(f"ast.Import is not permitted: {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            names = tuple(alias.name for alias in node.names)
+            actual_from_imports.append((module, names))
+            imported_names.update(alias.asname or alias.name for alias in node.names)
+            if node.level != 0 or module not in PERMITTED_IMPORT_MODULES:
+                violations.append(f"from-import module is not permitted: {module}")
+            if any(
+                alias.asname is not None or alias.name == "*" for alias in node.names
+            ):
+                violations.append(f"from-import aliases are not permitted: {module}")
+
+    if tuple(actual_from_imports) != PERMITTED_FROM_IMPORTS:
+        violations.append("from-import shape does not match the literal contract")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == "__builtins__":
+            violations.append("dynamic builtin namespace access is not permitted")
+        if not isinstance(node, ast.Call):
+            continue
+
+        function = node.func
+        if isinstance(function, ast.Name):
+            if function.id not in PERMITTED_NAME_CALLS:
+                violations.append(f"name call is not permitted: {function.id}")
+            if (
+                function.id in imported_names
+                and function.id not in PERMITTED_IMPORTED_CALL_NAMES
+            ):
+                violations.append(f"imported call is not permitted: {function.id}")
+        elif isinstance(function, ast.Attribute):
+            if isinstance(function.value, ast.Call):
+                violations.append("call-result callable resolution is not permitted")
+            elif not isinstance(function.value, ast.Name):
+                violations.append("attribute-call base must be one literal name")
+            elif (function.value.id, function.attr) not in PERMITTED_ATTRIBUTE_CALLS:
+                violations.append(
+                    "attribute call is not permitted: "
+                    f"{function.value.id}.{function.attr}"
+                )
+        elif isinstance(function, ast.Subscript):
+            violations.append("subscript callable resolution is not permitted")
+        elif isinstance(function, ast.Lambda):
+            violations.append("lambda callable resolution is not permitted")
+        elif isinstance(function, ast.Call):
+            violations.append("call-result callable resolution is not permitted")
+        else:
+            violations.append(
+                f"callable AST shape is not permitted: {type(function).__name__}"
+            )
+
+    return violations
+
+
+def _assert_reducer_ast_is_pure(source: str) -> None:
+    violations = _ast_purity_violations(source)
+    assert not violations, "\n".join(violations)
 
 
 def _digest(character: str) -> str:
@@ -82,6 +197,47 @@ def test_parse_normalizes_refs_and_canonical_helpers_use_explicit_mapping() -> N
     assert reducer.transition_digest(parsed) == (
         "sha256:" + sha256(canonicalize(mapping)).hexdigest()
     )
+
+
+def test_transition_envelope_and_public_callable_shapes_are_exact() -> None:
+    assert tuple(
+        field.name for field in dataclasses.fields(reducer.TransitionEnvelope)
+    ) == reducer.ENVELOPE_FIELDS
+
+    positional = inspect.Parameter.POSITIONAL_OR_KEYWORD
+    keyword_only = inspect.Parameter.KEYWORD_ONLY
+    expected = (
+        (reducer.parse_transition, (("value", positional),)),
+        (reducer.transition_mapping, (("value", positional),)),
+        (reducer.transition_bytes, (("value", positional),)),
+        (reducer.transition_digest, (("value", positional),)),
+        (
+            reducer.apply_transition,
+            (
+                ("state", positional),
+                ("event", positional),
+                ("actor", keyword_only),
+                ("activation", keyword_only),
+                ("resolve_scope", keyword_only),
+            ),
+        ),
+        (
+            reducer.reduce_protocol_state,
+            (
+                ("events", positional),
+                ("resolve_actor", keyword_only),
+                ("resolve_scope", keyword_only),
+                ("activation", keyword_only),
+            ),
+        ),
+    )
+
+    for function, expected_parameters in expected:
+        actual = tuple(
+            (name, parameter.kind)
+            for name, parameter in inspect.signature(function).parameters.items()
+        )
+        assert actual == expected_parameters
 
 
 def test_parse_rejects_non_object_missing_unknown_wrong_typed_and_wrong_schema() -> None:
@@ -205,7 +361,11 @@ def test_parse_rejects_non_object_missing_unknown_wrong_typed_and_wrong_schema()
     exact_boundaries["expected_unit_version"] = reducer.MAX_INT
     exact_boundaries["activation_epoch"] = reducer.MAX_INT
     exact_boundaries["evidence_refs"] = [f"ref:{index}" for index in range(64)]
-    assert reducer.parse_transition(exact_boundaries).work_revision == reducer.MAX_INT
+    parsed_boundary = reducer.parse_transition(exact_boundaries)
+    assert reducer.MAX_INT == 2**53 - 1
+    assert parsed_boundary.work_revision == reducer.MAX_INT
+    assert reducer.transition_bytes(parsed_boundary)
+    assert reducer.transition_digest(parsed_boundary).startswith("sha256:")
 
     for field, overlong in (
         ("work_id", "w" * 129),
@@ -214,6 +374,15 @@ def test_parse_rejects_non_object_missing_unknown_wrong_typed_and_wrong_schema()
         value = _valid_payload()
         value[field] = overlong
         _assert_invalid(value)
+
+
+@pytest.mark.parametrize(
+    "field", ("work_revision", "expected_unit_version", "activation_epoch")
+)
+def test_parse_rejects_integer_above_rfc8785_safe_max(field: str) -> None:
+    value = _valid_payload()
+    value[field] = 2**53
+    _assert_invalid(value)
 
 
 def test_parse_rejects_payload_principal_and_effect_action_fields() -> None:
@@ -263,40 +432,49 @@ def test_direct_envelope_construction_cannot_bypass_validation() -> None:
 
 def test_reducer_ast_has_only_pure_import_and_call_boundaries() -> None:
     source = Path(reducer.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    imported_names: dict[str, str] = {}
-    imported_modules: set[str] = set()
+    _assert_reducer_ast_is_pure(source)
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imported_modules.add(alias.name)
-                imported_names[alias.asname or alias.name] = alias.name
-        elif isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            imported_modules.add(module)
-            for alias in node.names:
-                imported_names[alias.asname or alias.name] = module
 
-    assert imported_modules <= set(PERMITTED_IMPORT_MODULES)
+@pytest.mark.parametrize(
+    ("mutation", "expected_violations"),
+    (
+        (
+            'import hashlib\nhashlib.md5(b"payload")',
+            ("ast.Import is not permitted", "attribute call is not permitted"),
+        ),
+        (
+            'getattr(__builtins__, "open")("secret")',
+            (
+                "dynamic builtin namespace access is not permitted",
+                "name call is not permitted: getattr",
+                "call-result callable resolution is not permitted",
+            ),
+        ),
+        (
+            '__builtins__["__import__"]("os").getenv("TOKEN")',
+            (
+                "dynamic builtin namespace access is not permitted",
+                "subscript callable resolution is not permitted",
+                "call-result callable resolution is not permitted",
+            ),
+        ),
+        (
+            "(lambda: None)()",
+            ("lambda callable resolution is not permitted",),
+        ),
+        (
+            "callables[0]()",
+            ("subscript callable resolution is not permitted",),
+        ),
+    ),
+)
+def test_reducer_ast_purity_guards_reject_dynamic_call_mutations(
+    mutation: str, expected_violations: tuple[str, ...]
+) -> None:
+    source = Path(reducer.__file__).read_text(encoding="utf-8")
+    with pytest.raises(AssertionError) as exc_info:
+        _assert_reducer_ast_is_pure(source + "\n" + mutation + "\n")
 
-    imported_calls = {
-        node.func.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in imported_names
-    }
-    assert imported_calls <= set(PERMITTED_IMPORTED_CALL_NAMES)
-
-    forbidden_dynamic_calls = {"open", "exec", "eval", "compile", "__import__"}
-    assert not {
-        node.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and node.id in forbidden_dynamic_calls
-    }
-    assert not {
-        node.attr
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute) and node.attr in forbidden_dynamic_calls
-    }
+    message = str(exc_info.value)
+    for expected in expected_violations:
+        assert expected in message

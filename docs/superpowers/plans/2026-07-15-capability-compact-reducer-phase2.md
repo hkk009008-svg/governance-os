@@ -84,6 +84,12 @@ Critical or Important issue in the parent-narrowing, boundary-grammar,
 schema/AST-purity, Phase-2A, or web-research observation scope. Task 1 may begin
 only from the committed version of this plan.
 
+Post-Task-1 review corrected three enforcement gaps without widening the
+Phase-2A boundary: integer fields now stop at the RFC-8785/JavaScript safe
+maximum so every accepted envelope is canonicalizable; AST purity pins every
+permitted call shape and rejects dynamic callable resolution with mutation
+tests; and exact dataclass fields plus public signature kinds are test-pinned.
+
 ## File map
 
 | File | Responsibility |
@@ -108,7 +114,7 @@ REPOSITORY_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$"
 PRINCIPAL_PATTERN = r"^[\x21-\x7e]{1,256}$"
 ACTION_PATTERN = r"^[a-z][a-z0-9_.:-]{0,63}$"
 LOCK_DOMAIN_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
-MAX_INT = 2**63 - 1
+MAX_INT = 2**53 - 1
 MAX_COLLECTION_ITEMS = 64
 REQUESTED_TRANSITIONS = frozenset({
     "START", "UPDATE", "BLOCK", "REQUEST_REVIEW", "REQUEST_CLOSE",
@@ -300,7 +306,7 @@ mapping/bytes/digest helpers, the constants in **Exact interfaces**, and typed
   every `ENVELOPE_FIELDS` key; IDs match `ID_PATTERN`, refs match
   `REF_PATTERN`, and arrays have at most 64
   unique refs, and revisions/epochs are non-boolean integers from their minimum
-  through `2**63 - 1` (`work_revision >= 1`, the other two `>= 0`). Digests match
+  through `2**53 - 1` (`work_revision >= 1`, the other two `>= 0`). Digests match
   `^sha256:[0-9a-f]{64}$`, nullable fields are exactly `route_id`, `unit_id`, and
   `verification_ref`, and ref arrays contain unique strings. Mutations cover
   each missing key, each unknown key, wrong schema, bool-as-int, bad digest,
@@ -350,10 +356,11 @@ mapping/bytes/digest helpers, the constants in **Exact interfaces**, and typed
   "hashlib", "re", "typing", "threeway.canon")` and literal
   `PERMITTED_IMPORTED_CALL_NAMES` is exactly `("canonicalize", "dataclass",
   "fullmatch", "sha256")`; neither allowlist is imported or derived from
-  production. Dynamically resolved calls such as `open`, `exec`, `eval`,
-  `compile`, and `__import__` are forbidden. Local functions, frozen-type
-  constructors, and value methods remain permitted, but any additional import
-  module or imported call name fails the test.
+  production. Test-owned literal allowlists pin every permitted `ast.Call`
+  name and attribute shape. `ast.Import` aliases, unlisted attribute calls,
+  arbitrary builtin access, and subscript, lambda, or call-result callable
+  resolution are forbidden. Mutation tests pin `hashlib.md5`, dynamic `open`,
+  and dynamic `__import__` rejection.
 
 - [ ] **Step 4: Run GREEN and commit**
 

@@ -23,7 +23,7 @@ REPOSITORY_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$"
 PRINCIPAL_PATTERN = r"^[\x21-\x7e]{1,256}$"
 ACTION_PATTERN = r"^[a-z][a-z0-9_.:-]{0,63}$"
 LOCK_DOMAIN_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
-MAX_INT = 2**63 - 1
+MAX_INT = 2**53 - 1
 MAX_COLLECTION_ITEMS = 64
 REQUESTED_TRANSITIONS = frozenset(
     {
@@ -65,7 +65,7 @@ class ReducerError(ValueError):
 
     def __init__(self, code: str) -> None:
         self.code = code
-        super().__init__(code)
+        ValueError.__init__(self, code)
 
 
 @dataclass(frozen=True)
@@ -286,7 +286,8 @@ def transition_digest(value: object) -> str:
     """Return the canonical prefixed SHA-256 digest for one transition."""
 
     try:
-        return "sha256:" + sha256(transition_bytes(value)).hexdigest()
+        digest = sha256(transition_bytes(value))
+        return "sha256:" + digest.hexdigest()
     except ReducerError:
         raise
     except Exception as exc:
