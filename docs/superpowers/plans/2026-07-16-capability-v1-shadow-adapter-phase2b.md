@@ -481,18 +481,32 @@ relevant_acceptance_change -> misuse:acceptance-change -> acceptance_digest
 relevant_evidence_change -> misuse:evidence-change -> evidence_refs
 ```
 
-Each oracle case has exactly two parsed records. Work/route/unit/actor identity,
-mutable scope ref/digest, content digest, verification ref, and normalized
-effect-reservation refs stay equal. Among dependency digest, acceptance digest,
-and normalized evidence refs, exactly the oracle-named field changes. Stable
-source identity/digest, work revision, and the ready-to-active value progression
-may differ as required by the causal history.
+Each oracle case is exactly a `misuse` case with `route_event` disposition,
+stable resolvers, order `[[0, 1]]`, no expected error, two envelopes, and
+requested transitions `START` then `UPDATE`. It has exactly two parsed records
+with distinct source identities and exact work revisions `1` then `2`. Schema,
+work/route/unit/actor identity, domain, normalized context, mutable scope
+ref/digest, content digest, verification ref, and normalized effect-reservation
+refs stay equal. Among dependency digest, acceptance digest, and normalized
+evidence refs, exactly the oracle-named field changes. The main corpus loop must
+still call the public adapter and verify both resulting transitions; the static
+oracle cannot replace execution.
 
 Include route histories covering named/null route IDs, named/null unit IDs,
 sequential updates, exact duplicate source identity, changed duplicate content,
 disjoint-order permutations, stale/gapped revision, resolver drift, scope
 ambiguity, content/dependency/acceptance/evidence change, and opaque `web:`
 evidence. No case obtains identity or scope from prose or filename.
+
+Every declared record order independently covers every declared record index.
+Repeated or extra indexes fail closed except for the exact committed
+`history:exact-duplicate-source` case, whose one record is delivered only as
+`[[0, 0]]`. Every declared record independently crosses the strict parser
+boundary before ordered execution; a parser error is acceptable only when
+exactly one record produces the case's exact expected error. The
+`history:mixed-v1-v2` case is bound to two records with schema sequence
+`compact-kernel-legacy-observation/v1`, `governance.route/v2`, exact order
+`[[0, 1]]`, and expected error `legacy_version`.
 
 - [ ] **Step 2: Write failing completeness and parity tests**
 

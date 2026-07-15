@@ -140,6 +140,8 @@ _CASE_BOUND_MISUSE_DELTA_ORACLE = (
         "evidence_refs",
     ),
 )
+_EXACT_DUPLICATE_DELIVERY_CASE_ID = "history:exact-duplicate-source"
+_MIXED_VERSION_CASE_ID = "history:mixed-v1-v2"
 
 
 class LegacyAdapterError(ValueError):
@@ -1535,10 +1537,13 @@ def _validate_case_bound_misuse_deltas(
     bindings: dict[str, object],
 ) -> None:
     stable_fields = (
+        "schema",
         "work_id",
         "route_id",
         "unit_id",
         "actor_binding_digest",
+        "domain",
+        "context",
         "mutable_scope_ref",
         "mutable_scope_digest",
         "content_digest",
@@ -1560,12 +1565,29 @@ def _validate_case_bound_misuse_deltas(
         if type(case) is not dict:
             raise _legacy_invalid()
         records = case.get("source_records")
-        if type(records) is not list or len(records) != 2:
+        expected = case.get("expected")
+        if (
+            case.get("case_kind") != "misuse"
+            or case.get("disposition") != "route_event"
+            or case.get("resolver_mode") != "stable"
+            or case.get("record_orders") != [[0, 1]]
+            or type(expected) is not dict
+            or expected.get("error_code") is not None
+            or expected.get("envelope_count") != 2
+            or expected.get("requested_transitions") != ["START", "UPDATE"]
+            or type(records) is not list
+            or len(records) != 2
+        ):
             raise _legacy_invalid()
         try:
             first, second = tuple(_parse_legacy_record(item) for item in records)
         except Exception:
             raise _legacy_invalid() from None
+        if (
+            first.source_id == second.source_id
+            or (first.work_revision, second.work_revision) != (1, 2)
+        ):
+            raise _legacy_invalid()
         if any(
             getattr(first, field) != getattr(second, field)
             for field in stable_fields
@@ -1815,7 +1837,16 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
                 )
             ):
                 raise _legacy_invalid()
-        covered_indexes: set[int] = set()
+        declared_indexes = set(range(len(records)))
+        duplicate_delivery = (
+            case_id == _EXACT_DUPLICATE_DELIVERY_CASE_ID
+            and orders == [[0, 0]]
+        )
+        if (
+            case_id == _EXACT_DUPLICATE_DELIVERY_CASE_ID
+            and not duplicate_delivery
+        ):
+            raise _legacy_invalid()
         normalized_orders: list[tuple[int, ...]] = []
         for order in orders:
             if type(order) is not list:
@@ -1826,10 +1857,12 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
                 for index in order
             ):
                 raise _legacy_invalid()
-            covered_indexes.update(order)
+            if (
+                set(order) != declared_indexes
+                or (len(order) != len(records) and not duplicate_delivery)
+            ):
+                raise _legacy_invalid()
             normalized_orders.append(tuple(order))
-        if covered_indexes != set(range(len(records))):
-            raise _legacy_invalid()
 
         projections = expected["projections"]
         expected_count = expected["envelope_count"]
@@ -1871,6 +1904,30 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
             case["disposition"] != expected_error
             or expected_count != 0
             or expected_transitions
+        ):
+            raise _legacy_invalid()
+
+        if case_id == _MIXED_VERSION_CASE_ID and (
+            kind != "history"
+            or len(records) != 2
+            or tuple(record.get("schema") for record in records)
+            != (_LEGACY_SCHEMA, capability_reducer.SCHEMA_ID)
+            or normalized_orders != [(0, 1)]
+            or expected_error != "legacy_version"
+        ):
+            raise _legacy_invalid()
+
+        parser_error_codes: list[str] = []
+        for record in records:
+            try:
+                _parse_legacy_record(record)
+            except LegacyAdapterError as error:
+                parser_error_codes.append(error.code)
+            except Exception:
+                raise _legacy_invalid() from None
+        if parser_error_codes and (
+            len(parser_error_codes) != 1
+            or parser_error_codes[0] != expected_error
         ):
             raise _legacy_invalid()
 

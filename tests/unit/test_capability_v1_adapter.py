@@ -586,6 +586,25 @@ def _assert_corpus_error(corpus: dict[str, object], code: str) -> None:
     assert str(exc_info.value) == code
 
 
+def _refresh_source_digest(record: dict[str, object]) -> None:
+    record["source_digest"] = _canonical_digest(
+        {
+            field: value
+            for field, value in record.items()
+            if field != "source_digest"
+        }
+    )
+
+
+def _declare_expected_error(case: dict[str, object], code: str) -> None:
+    case["disposition"] = code
+    expected = case["expected"]
+    assert type(expected) is dict
+    expected["envelope_count"] = 0
+    expected["requested_transitions"] = []
+    expected["error_code"] = code
+
+
 def test_corpus_has_no_missing_extra_duplicate_or_silently_skipped_case() -> None:
     corpus = _load_strict(CORPUS)
     assert set(corpus) == CORPUS_FIELDS
@@ -741,6 +760,55 @@ def test_corpus_guard_rejects_extra_case_bound_delta_field() -> None:
     _assert_corpus_error(corpus, "legacy_invalid")
 
 
+def test_corpus_guard_rejects_case_bound_duplicate_source_substitution() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "misuse:dependency-change")
+    first, second = case["source_records"]
+    second["source_id"] = first["source_id"]
+    _refresh_source_digest(second)
+    _declare_expected_error(case, "legacy_ambiguous")
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_corpus_guard_rejects_case_bound_gapped_revision_substitution() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "misuse:dependency-change")
+    second = case["source_records"][1]
+    second["work_revision"] = 3
+    _refresh_source_digest(second)
+    _declare_expected_error(case, "legacy_ambiguous")
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+@pytest.mark.parametrize(
+    "case_id",
+    (
+        "misuse:dependency-change",
+        "misuse:acceptance-change",
+        "misuse:evidence-change",
+    ),
+)
+def test_corpus_guard_requires_successful_case_bound_misuse_execution(
+    case_id: str,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, case_id)
+    case["resolver_mode"] = "actor_drift"
+    _declare_expected_error(case, "legacy_nondeterministic")
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_corpus_guard_requires_exact_case_bound_misuse_order() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "misuse:dependency-change")
+    case["record_orders"] = [[1, 0]]
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
 def test_corpus_guard_rejects_changed_source_digest() -> None:
     corpus = _load_strict(CORPUS)
     _case(corpus, "mapping:capacity-ready")["source_records"][0][
@@ -802,6 +870,81 @@ def test_corpus_guard_rejects_falsy_non_list_record_order() -> None:
     case["record_orders"] = [{}]
 
     _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_corpus_guard_rejects_repeated_order_masking_malformed_mixed_record() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "history:mixed-v1-v2")
+    malformed_v1 = case["source_records"][0]
+    malformed_v1["principal"] = "user:spoof"
+    _refresh_source_digest(malformed_v1)
+    case["record_orders"] = [[1, 0, 1]]
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_corpus_guard_rejects_extra_mixed_record_parser_failure() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "history:mixed-v1-v2")
+    malformed_v1 = case["source_records"][0]
+    malformed_v1["principal"] = "user:spoof"
+    _refresh_source_digest(malformed_v1)
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_corpus_guard_requires_each_order_to_cover_every_record() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "history:mixed-v1-v2")
+    case["record_orders"] = [[1], [0, 1]]
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_corpus_guard_binds_exact_mixed_record_sequence_and_order() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "history:mixed-v1-v2")
+    case["source_records"].reverse()
+    case["record_orders"] = [[1, 0]]
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_case_bound_misuse_oracle_still_executes_public_adapter(
+    monkeypatch,
+) -> None:
+    expected_case_ids = {
+        "misuse:dependency-change",
+        "misuse:acceptance-change",
+        "misuse:evidence-change",
+    }
+    observed_case_ids: set[str] = set()
+    real_adapt = adapter.adapt_v1_history
+
+    def suppress_case_bound_execution(raw_history, *, resolve_actor, resolve_scope):
+        records = tuple(raw_history)
+        if len(records) == 2:
+            source_id = records[0]["source_id"]
+            case_id = source_id.rsplit(":", 1)[0]
+            if case_id in expected_case_ids:
+                observed_case_ids.add(case_id)
+                return ()
+        return real_adapt(
+            records,
+            resolve_actor=resolve_actor,
+            resolve_scope=resolve_scope,
+        )
+
+    monkeypatch.setattr(adapter, "adapt_v1_history", suppress_case_bound_execution)
+    report = adapter._check_corpus(_load_strict(CORPUS))
+
+    assert observed_case_ids == expected_case_ids
+    assert adapter._report_is_gate_clean(report) is False
+    assert {
+        item.case_id
+        for item in report.divergences
+        if item.kind == "authority_semantic_mismatch"
+    } >= expected_case_ids
 
 
 def test_complete_corpus_is_gate_clean_and_executes_every_case() -> None:
