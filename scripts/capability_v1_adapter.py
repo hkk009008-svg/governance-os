@@ -1732,6 +1732,18 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
             )
             if records and observation_keys != [declared_key]:
                 raise _legacy_invalid()
+        elif kind == "history":
+            declared = mapping_by_id[mapping_id]
+            declared_key = (
+                declared["domain"],
+                declared["value"],
+                tuple(sorted(declared["context"].items())),
+            )
+            if (
+                observation_rows[-1] != declared
+                or observation_keys[-1] != declared_key
+            ):
+                raise _legacy_invalid()
         if len(projections) != len(observation_rows):
             raise _legacy_invalid()
 

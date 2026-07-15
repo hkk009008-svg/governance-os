@@ -724,6 +724,15 @@ def test_corpus_guard_binds_primary_mapping_case_to_declared_row() -> None:
     _assert_corpus_error(corpus, "legacy_invalid")
 
 
+def test_corpus_guard_binds_history_case_to_final_observation() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "history:sequential-update")
+    assert case["mapping_row_id"] == "capacity-active"
+    case["mapping_row_id"] = "capability-issued"
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
 def test_corpus_guard_rejects_falsy_non_list_record_order() -> None:
     corpus = _load_strict(CORPUS)
     case = _case(corpus, "mapping:capability-issued")
