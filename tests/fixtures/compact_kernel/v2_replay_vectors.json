@@ -155,7 +155,7 @@
         ]
       ],
       "expected": {
-        "report_digest": "sha256:fbc4c2ec108730b6ba78cc6276c4c69c47c18cd9da1b61ab710111294233cb5c",
+        "report_digest": "sha256:2756927bf98c06b04236dc70bec8bfe202ed486a0b9478d54f2657cad33a8ad7",
         "applied_transition_ids": [
           "independent-alpha",
           "independent-beta"
@@ -228,7 +228,7 @@
         ]
       ],
       "expected": {
-        "report_digest": "sha256:fbc4c2ec108730b6ba78cc6276c4c69c47c18cd9da1b61ab710111294233cb5c",
+        "report_digest": "sha256:2756927bf98c06b04236dc70bec8bfe202ed486a0b9478d54f2657cad33a8ad7",
         "applied_transition_ids": [
           "independent-alpha",
           "independent-beta"
@@ -280,7 +280,7 @@
         ]
       ],
       "expected": {
-        "report_digest": "sha256:dbbc08daec313d7d507485c7ba172ce25754187fab7b5881756f6634ff1a8b7a",
+        "report_digest": "sha256:8cc3a6c760d8d3457cea8b4c80f116596813b8c1fed42fb5d45e094fff20d417",
         "applied_transition_ids": [
           "duplicate-exact"
         ],
@@ -541,7 +541,7 @@
         ]
       ],
       "expected": {
-        "report_digest": "sha256:83c3501342691f008af9f133872f1219c212966191e6d6f5339b21c505411173",
+        "report_digest": "sha256:300ea2f3ddb4eb0e9c40cca23791447dd9ae6903beb22988e0758905af33d92a",
         "applied_transition_ids": [
           "merge-alpha",
           "merge-beta"
@@ -952,7 +952,7 @@
         ]
       ],
       "expected": {
-        "report_digest": "sha256:5e8aa222a448eeff71398ac632ad7e3a1fa412af29476b99f4dddb6ed5ea8fb1",
+        "report_digest": "sha256:b52498653775ebdd96657ee512a15421972bfa6fb9b8a34a2dad939e5218a522",
         "applied_transition_ids": [
           "nullable-named",
           "nullable-null"
@@ -1052,7 +1052,7 @@
         ]
       ],
       "expected": {
-        "report_digest": "sha256:a4e5a0126ac69fc4ba07f1ac74d19452fc1f8f2e68a7002b06d16ffa08212c1f",
+        "report_digest": "sha256:b476a9aa18771cdefbf297a59fc65cbd1d83aba814a23749f376e07a4e11009b",
         "applied_transition_ids": [
           "dependency-other-initial",
           "dependency-target-initial",
@@ -1142,7 +1142,7 @@
         ]
       ],
       "expected": {
-        "report_digest": "sha256:c53003260886b374e1ab1b2c4070a7d334cfac697f5a018404f4c85d367673bd",
+        "report_digest": "sha256:a9c54f6723e6e048832b9b358f1af6ca770bba9413818ea8b9f5ca5054d7f98d",
         "applied_transition_ids": [
           "refs-equivalent"
         ],
@@ -1217,7 +1217,7 @@
         ]
       ],
       "expected": {
-        "report_digest": "sha256:1484d8cc6048beebef2e03412fdcbb04a56aed4a6322157f4e93295035f50cd1",
+        "report_digest": "sha256:a9f391cf5703d95d773a744f33b40025e9ca13b6a91a0814b6c976465c2971d5",
         "applied_transition_ids": [
           "web-initial",
           "web-update"
@@ -1265,7 +1265,7 @@
         ]
       ],
       "expected": {
-        "report_digest": "sha256:031756d2d42a56ff5e500263b80df0ac0623606e0f0bf25c4b30ca87543e3cca",
+        "report_digest": "sha256:cd525d04226b60eda4c35c0b5f49facd8bc91b93b8542b73e7041afa33026f34",
         "applied_transition_ids": [
           "request-close"
         ],
