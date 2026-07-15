@@ -1,7 +1,7 @@
 # Targeted Web Research Default Design
 
 Date: 2026-07-15
-Status: approved design, awaiting written-spec review
+Status: approved for implementation by the user-principal
 Owner: user-principal; coordinator records and routes implementation
 
 ## Purpose
