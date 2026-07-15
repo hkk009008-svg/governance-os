@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- The approved umbrella design is `docs/superpowers/specs/2026-07-16-pipeline-recovery-sequence-design.md` at `426744766711d4d6057a4698f5bb19d454ad621d`.
+- The approved umbrella design is `docs/superpowers/specs/2026-07-16-pipeline-recovery-sequence-design.md` at `50cec4fba74fac3a7230ca3769d842e43d99045b`.
 - This plan is a correction companion to `docs/superpowers/plans/2026-07-15-opus-transport-first-recovery.md`; it supersedes only that plan's Stage-A exact-one-fix topology and finite-stage clauses.
 - Preserve this immutable history byte-for-byte:
 
@@ -70,7 +70,7 @@ The independent Stage-A code-quality review and the Director2 provider-free repr
 
 **Interfaces:**
 
-- Consumes: quality blocker `coordination/mailbox/sent/2026-07-15T16-49-37Z-director2-to-coordinator-coordination.md`, umbrella design `4267447`, and the fixed owner freeze `docs/HANDOFF-owner-2026-07-16-opus-stage-a.md` bound by its unique introduction commit, Git blob OID, and SHA-256 digest.
+- Consumes: quality blocker `coordination/mailbox/sent/2026-07-15T16-49-37Z-director2-to-coordinator-coordination.md`, umbrella design `50cec4f`, and the fixed owner freeze `docs/HANDOFF-owner-2026-07-16-opus-stage-a.md` bound by its unique introduction commit, Git blob OID, and SHA-256 digest.
 - Produces: one capacity-valid correction that authorizes `Q`, binds `R..Q`, retains descriptor identity, and keeps provider attempts at zero.
 
 - [ ] **Step 1: Refresh the hot-tree and mailbox state**
@@ -456,7 +456,7 @@ CORRECTION_PLAN_COMMIT="$(env -u GIT_INDEX_FILE git log -1 \
   --format=%H -- "$CORRECTION_PLAN_PATH")"
 CORRECTION_PLAN_BLOB="$(env -u GIT_INDEX_FILE git rev-parse \
   "$CORRECTION_PLAN_COMMIT:$CORRECTION_PLAN_PATH")"
-UMBRELLA_COMMIT=426744766711d4d6057a4698f5bb19d454ad621d
+UMBRELLA_COMMIT=50cec4fba74fac3a7230ca3769d842e43d99045b
 UMBRELLA_PATH=docs/superpowers/specs/2026-07-16-pipeline-recovery-sequence-design.md
 UMBRELLA_BLOB="$(env -u GIT_INDEX_FILE git rev-parse \
   "$UMBRELLA_COMMIT:$UMBRELLA_PATH")"
@@ -495,7 +495,7 @@ The object contains exactly these top-level fields:
     "blob_id": "$CORRECTION_PLAN_BLOB"
   },
   "umbrella_design": {
-    "commit": "426744766711d4d6057a4698f5bb19d454ad621d",
+    "commit": "50cec4fba74fac3a7230ca3769d842e43d99045b",
     "path": "docs/superpowers/specs/2026-07-16-pipeline-recovery-sequence-design.md",
     "blob_id": "$UMBRELLA_BLOB"
   },
@@ -730,7 +730,7 @@ printf '%s\n' "$ROUTE_EVENT" | grep -Eq \
 test "$(env -u GIT_INDEX_FILE git rev-parse \
   "$ROUTE_COMMIT:$ROUTE_EVENT")" = "$ROUTE_BLOB"
 env -u GIT_INDEX_FILE git merge-base --is-ancestor \
-  426744766711d4d6057a4698f5bb19d454ad621d "$ROUTE_COMMIT"
+  50cec4fba74fac3a7230ca3769d842e43d99045b "$ROUTE_COMMIT"
 env -u GIT_INDEX_FILE git merge-base --is-ancestor \
   "$ROUTE_COMMIT" "$EXTERNAL_AUTHORITY_COMMIT"
 test "$(env -u GIT_INDEX_FILE git show "$ROUTE_COMMIT:$ROUTE_EVENT" | \
