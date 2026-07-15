@@ -97,6 +97,8 @@ DANGEROUS_INTROSPECTION_ATTRIBUTES = (
     "__builtins__",
     "__dict__",
     "__subclasses__",
+    "__getattribute__",
+    "__getattr__",
 )
 FORBIDDEN_NAME_REFERENCES = ("__import__", "compile", "eval", "exec", "open")
 
@@ -185,6 +187,9 @@ def _ast_purity_violations(source: str) -> list[str]:
     permitted_digest_assignments = 0
 
     for node in ast.walk(tree):
+        if isinstance(node, ast.Match):
+            violations.append("match statements are not permitted")
+
         if isinstance(node, ast.Name) and node.id == "__builtins__":
             violations.append("dynamic builtin namespace access is not permitted")
         elif isinstance(node, ast.Name) and node.id in FORBIDDEN_NAME_REFERENCES:
@@ -216,6 +221,21 @@ def _ast_purity_violations(source: str) -> list[str]:
         ):
             violations.append(
                 f"protected name rebinding is not permitted: {node.name}"
+            )
+
+        string_binding: str | None = None
+        if isinstance(node, ast.ExceptHandler):
+            string_binding = node.name
+        elif isinstance(node, ast.MatchAs):
+            string_binding = node.name
+        elif isinstance(node, ast.MatchStar):
+            string_binding = node.name
+        elif isinstance(node, ast.MatchMapping):
+            string_binding = node.rest
+        if string_binding in protected_names:
+            violations.append(
+                "protected string binding is not permitted: "
+                f"{string_binding}"
             )
 
         if (
@@ -621,6 +641,26 @@ def test_reducer_ast_has_only_pure_import_and_call_boundaries() -> None:
                 "protected name rebinding is not permitted: canonicalize",
                 "dangerous introspection attribute is not permitted: __globals__",
             ),
+        ),
+        (
+            "match dataclass.__getattribute__:\n"
+            "    case canonicalize:\n"
+            '        match canonicalize("__globals__")["sys"].modules["os"].getenv:\n'
+            "            case canonicalize:\n"
+            '                canonicalize("HOME")',
+            (
+                "match statements are not permitted",
+                "dangerous introspection attribute is not permitted: "
+                "__getattribute__",
+                "protected string binding is not permitted: canonicalize",
+            ),
+        ),
+        (
+            "try:\n"
+            "    raise ValueError\n"
+            "except ValueError as canonicalize:\n"
+            '    canonicalize("HOME")',
+            ("protected string binding is not permitted: canonicalize",),
         ),
     ),
 )
