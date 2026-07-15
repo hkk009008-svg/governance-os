@@ -697,6 +697,42 @@ def test_corpus_guard_rejects_changed_source_digest() -> None:
     _assert_corpus_error(corpus, "legacy_invalid")
 
 
+def test_corpus_guard_rejects_top_level_disposition_contradiction() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "mapping:capacity-ready")
+    assert case["expected"]["projections"][0]["disposition"] == "route_event"
+    assert case["expected"]["envelope_count"] == 1
+    case["disposition"] = "no_route_event"
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_corpus_guard_binds_primary_mapping_case_to_declared_row() -> None:
+    corpus = _load_strict(CORPUS)
+    target = _case(corpus, "mapping:capacity-ready")
+    donor = _case(corpus, "mapping:work-cancelled")
+    for field in (
+        "source_records",
+        "record_orders",
+        "resolver_mode",
+        "disposition",
+        "expected",
+    ):
+        target[field] = deepcopy(donor[field])
+    assert target["mapping_row_id"] == "capacity-ready"
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+def test_corpus_guard_rejects_falsy_non_list_record_order() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "mapping:capability-issued")
+    assert case["source_records"] == []
+    case["record_orders"] = [{}]
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
 def test_complete_corpus_is_gate_clean_and_executes_every_case() -> None:
     corpus = _load_strict(CORPUS)
     report = adapter._check_corpus(corpus)
@@ -785,15 +821,21 @@ def _mutate_projection(
 
 
 def _make_compact_more_permissive(corpus: dict[str, object]) -> dict[str, object]:
-    return _mutate_projection(
-        corpus, "mapping:capability-issued", disposition="route_event"
-    )
+    case = _case(corpus, "mapping:capability-issued")
+    _mutate_projection(corpus, case["id"], disposition="route_event")
+    case["disposition"] = "route_event"
+    case["expected"]["envelope_count"] = 1
+    case["expected"]["requested_transitions"] = ["START"]
+    return corpus
 
 
 def _make_compact_more_restrictive(corpus: dict[str, object]) -> dict[str, object]:
-    return _mutate_projection(
-        corpus, "mapping:capacity-ready", disposition="no_route_event"
-    )
+    case = _case(corpus, "mapping:capacity-ready")
+    _mutate_projection(corpus, case["id"], disposition="no_route_event")
+    case["disposition"] = "no_route_event"
+    case["expected"]["envelope_count"] = 0
+    case["expected"]["requested_transitions"] = []
+    return corpus
 
 
 def _make_effect_more_permissive(corpus: dict[str, object]) -> dict[str, object]:

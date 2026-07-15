@@ -1614,6 +1614,8 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
             not in {"stable", "actor_drift", "scope_drift"}
         ):
             raise _legacy_invalid()
+        if kind == "mapping" and len(records) > 1:
+            raise _legacy_invalid()
         for record in records:
             if type(record) is not dict or "source_digest" not in record:
                 raise _legacy_invalid()
@@ -1635,16 +1637,14 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         covered_indexes: set[int] = set()
         normalized_orders: list[tuple[int, ...]] = []
         for order in orders:
-            if (
-                type(order) is not list
-                or any(
-                    type(index) is not int
-                    or not 0 <= index < len(records)
-                    for index in order
-                )
+            if type(order) is not list:
+                raise _legacy_invalid()
+            if any(
+                type(index) is not int
+                or not 0 <= index < len(records)
+                for index in order
             ):
-                if records or order:
-                    raise _legacy_invalid()
+                raise _legacy_invalid()
             covered_indexes.update(order)
             normalized_orders.append(tuple(order))
         if covered_indexes != set(range(len(records))):
@@ -1667,10 +1667,30 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
             )
         ):
             raise _legacy_invalid()
+        committed_projections = tuple(
+            _require_exact_object(projected, _PROJECTION_FIELDS)
+            for projected in projections
+        )
         if expected_error is None:
-            if case["disposition"] not in {"route_event", "no_route_event"}:
+            expected_disposition = (
+                "route_event" if expected_count > 0 else "no_route_event"
+            )
+            if (
+                case["disposition"]
+                not in {"route_event", "no_route_event"}
+                or case["disposition"] != expected_disposition
+                or len(expected_transitions) != expected_count
+                or any(
+                    projected["disposition"] != case["disposition"]
+                    for projected in committed_projections
+                )
+            ):
                 raise _legacy_invalid()
-        elif case["disposition"] != expected_error:
+        elif (
+            case["disposition"] != expected_error
+            or expected_count != 0
+            or expected_transitions
+        ):
             raise _legacy_invalid()
 
         if records:
@@ -1703,13 +1723,25 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
                     tuple(sorted(row["context"].items())),
                 )
             ]
+        if kind == "mapping":
+            declared = mapping_by_id[mapping_id]
+            declared_key = (
+                declared["domain"],
+                declared["value"],
+                tuple(sorted(declared["context"].items())),
+            )
+            if records and observation_keys != [declared_key]:
+                raise _legacy_invalid()
         if len(projections) != len(observation_rows):
             raise _legacy_invalid()
 
         for projected, row, key in zip(
-            projections, observation_rows, observation_keys, strict=True
+            committed_projections,
+            observation_rows,
+            observation_keys,
+            strict=True,
         ):
-            committed = _require_exact_object(projected, _PROJECTION_FIELDS)
+            committed = projected
             if (
                 committed["disposition"]
                 not in {"route_event", "no_route_event"}
