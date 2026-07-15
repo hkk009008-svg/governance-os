@@ -94,6 +94,18 @@ EXPECTED_PARITY_KINDS = frozenset(
         "adapter_error",
     }
 )
+CAUSAL_ERROR_PREFIX_CASE_IDS = (
+    "history:changed-duplicate-source",
+    "history:gapped-work-revision",
+    "history:route-ambiguity",
+    "history:scope-ambiguity",
+    "history:overlapping-unit-scopes",
+)
+SCOPE_BOUND_AMBIGUITY_CASE_IDS = (
+    "history:route-ambiguity",
+    "history:scope-ambiguity",
+    "history:overlapping-unit-scopes",
+)
 
 
 def test_adapter_public_surface_is_exact() -> None:
@@ -586,6 +598,30 @@ def _assert_corpus_error(corpus: dict[str, object], code: str) -> None:
     assert str(exc_info.value) == code
 
 
+def _assert_corpus_blocks(corpus: dict[str, object]) -> None:
+    try:
+        report = adapter._check_corpus(corpus)
+    except adapter.LegacyAdapterError:
+        return
+    assert adapter._report_is_gate_clean(report) is False
+
+
+def _assert_declared_error_construction_is_blocked(
+    corpus: dict[str, object],
+    case_id: str,
+) -> None:
+    case = _case(corpus, case_id)
+    actors, scopes = adapter._fixture_runtime(corpus)
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        adapter.adapt_v1_history(
+            case["source_records"],
+            resolve_actor=actors.__getitem__,
+            resolve_scope=scopes.__getitem__,
+        )
+    assert exc_info.value.code == case["expected"]["error_code"]
+    _assert_corpus_blocks(corpus)
+
+
 def _refresh_source_digest(record: dict[str, object]) -> None:
     record["source_digest"] = _canonical_digest(
         {
@@ -999,6 +1035,54 @@ def _remove_disjoint_reverse_order(corpus: dict[str, object]) -> None:
     case["record_orders"] = [[0, 1]]
 
 
+def _valid_wrong_scope_digest(
+    corpus: dict[str, object],
+    current_digest: str,
+) -> str:
+    resolve_scope = _scope_resolver(corpus)
+    for scope_ref in sorted(corpus["scopes"]):
+        try:
+            normalized = reducer._normalize_scope(resolve_scope(scope_ref))
+        except reducer.ReducerError:
+            continue
+        candidate = reducer._scope_digest(normalized)
+        if candidate != current_digest:
+            return candidate
+    raise AssertionError("fixture lacks a distinct valid scope digest")
+
+
+def _add_actor_bound_to_another_repository(
+    corpus: dict[str, object],
+) -> reducer.ActorContext:
+    actor = dataclasses.replace(
+        _actor_from_corpus(corpus),
+        binding_id="actor-other-repository",
+        repository="other/repository",
+    )
+    actor = dataclasses.replace(
+        actor,
+        binding_digest=_canonical_digest(reducer._actor_mapping(actor)),
+    )
+    corpus["actors"][actor.binding_digest] = {
+        "binding_id": actor.binding_id,
+        "binding_digest": actor.binding_digest,
+        "repository": actor.repository,
+        "principal": actor.principal,
+        "allowed_actions": sorted(actor.allowed_actions),
+        "user_authorized_actions": sorted(actor.user_authorized_actions),
+        "parent_binding_id": actor.parent_binding_id,
+        "parent_allowed_actions": (
+            None
+            if actor.parent_allowed_actions is None
+            else sorted(actor.parent_allowed_actions)
+        ),
+        "attested": actor.attested,
+        "expired": actor.expired,
+        "revoked": actor.revoked,
+    }
+    return actor
+
+
 @pytest.mark.parametrize(
     "mutation",
     (
@@ -1042,6 +1126,111 @@ def test_stale_and_gap_histories_pin_distinct_revision_constructions() -> None:
     assert tuple(
         record["work_revision"] for record in gap["source_records"]
     ) == (1, 3)
+
+
+@pytest.mark.parametrize("case_id", SCOPE_BOUND_AMBIGUITY_CASE_IDS)
+def test_scope_bound_ambiguity_rejects_same_source_identity(case_id: str) -> None:
+    corpus = _load_strict(CORPUS)
+    first, second = _case(corpus, case_id)["source_records"]
+    second["source_id"] = first["source_id"]
+    _refresh_source_digest(second)
+
+    _assert_declared_error_construction_is_blocked(corpus, case_id)
+
+
+@pytest.mark.parametrize("case_id", SCOPE_BOUND_AMBIGUITY_CASE_IDS)
+def test_scope_bound_ambiguity_rejects_second_actor_from_other_repository(
+    case_id: str,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    other_actor = _add_actor_bound_to_another_repository(corpus)
+    second = _case(corpus, case_id)["source_records"][1]
+    second["actor_binding_digest"] = other_actor.binding_digest
+    _refresh_source_digest(second)
+
+    _assert_declared_error_construction_is_blocked(corpus, case_id)
+
+
+@pytest.mark.parametrize(
+    ("case_id", "record_index"),
+    tuple(
+        (case_id, record_index)
+        for case_id in (
+            "history:scope-ambiguity",
+            "history:overlapping-unit-scopes",
+        )
+        for record_index in (0, 1)
+    ),
+)
+def test_scope_bound_ambiguity_rejects_valid_but_wrong_scope_digest(
+    case_id: str,
+    record_index: int,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    record = _case(corpus, case_id)["source_records"][record_index]
+    record["mutable_scope_digest"] = _valid_wrong_scope_digest(
+        corpus,
+        record["mutable_scope_digest"],
+    )
+    _refresh_source_digest(record)
+
+    _assert_declared_error_construction_is_blocked(corpus, case_id)
+
+
+def test_route_ambiguity_rejects_shared_valid_but_wrong_scope_digest() -> None:
+    corpus = _load_strict(CORPUS)
+    case_id = "history:route-ambiguity"
+    records = _case(corpus, case_id)["source_records"]
+    wrong_digest = _valid_wrong_scope_digest(
+        corpus,
+        records[0]["mutable_scope_digest"],
+    )
+    for record in records:
+        record["mutable_scope_digest"] = wrong_digest
+        _refresh_source_digest(record)
+
+    _assert_declared_error_construction_is_blocked(corpus, case_id)
+
+
+def test_scope_ambiguity_rejects_missing_second_scope_lookup() -> None:
+    corpus = _load_strict(CORPUS)
+    case_id = "history:scope-ambiguity"
+    second = _case(corpus, case_id)["source_records"][1]
+    second["mutable_scope_ref"] = "scope:missing"
+    _refresh_source_digest(second)
+
+    _assert_declared_error_construction_is_blocked(corpus, case_id)
+
+
+def test_causal_error_histories_execute_prefix_then_full_history(
+    monkeypatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    first_source_to_case = {
+        _case(corpus, case_id)["source_records"][0]["source_id"]: case_id
+        for case_id in CAUSAL_ERROR_PREFIX_CASE_IDS
+    }
+    observed_lengths = {case_id: [] for case_id in CAUSAL_ERROR_PREFIX_CASE_IDS}
+    real_adapt = adapter.adapt_v1_history
+
+    def trace_causal_errors(raw_history, *, resolve_actor, resolve_scope):
+        records = tuple(raw_history)
+        if records:
+            case_id = first_source_to_case.get(records[0]["source_id"])
+            if case_id is not None:
+                observed_lengths[case_id].append(len(records))
+        return real_adapt(
+            records,
+            resolve_actor=resolve_actor,
+            resolve_scope=resolve_scope,
+        )
+
+    monkeypatch.setattr(adapter, "adapt_v1_history", trace_causal_errors)
+    adapter._check_corpus(corpus)
+
+    assert observed_lengths == {
+        case_id: [1, 2] for case_id in CAUSAL_ERROR_PREFIX_CASE_IDS
+    }
 
 
 def test_stale_history_executes_accepted_prefix_before_rejection(
@@ -1395,18 +1584,77 @@ def test_parity_kind_set_and_effect_order_are_closed() -> None:
 
 
 def test_adapter_rule_table_is_closed_over_every_mapping_row() -> None:
-    expected_keys = {
+    corpus = _load_strict(CORPUS)
+    rows = _mapping_rows()
+    fixture_keys = {
         (
             row["domain"],
             row["value"],
             tuple(sorted(row["context"].items())),
         )
-        for row in _mapping_rows()
+        for row in rows
     }
-    actual_keys = [key for key, _rule in adapter._ADAPTER_RULES]
+    row_by_id = {row["id"]: row for row in rows}
+    mapping_case_keys = {
+        (
+            row_by_id[case["mapping_row_id"]]["domain"],
+            row_by_id[case["mapping_row_id"]]["value"],
+            tuple(
+                sorted(row_by_id[case["mapping_row_id"]]["context"].items())
+            ),
+        )
+        for case in corpus["cases"]
+        if case["case_kind"] == "mapping"
+    }
+    rule_keys = [key for key, _rule in adapter._ADAPTER_RULES]
+    accepted_keys = set(compact_state_mapping._accepted_context_keys())
 
-    assert set(actual_keys) == expected_keys
-    assert len(actual_keys) == len(set(actual_keys))
+    assert accepted_keys == fixture_keys == set(rule_keys) == mapping_case_keys
+    assert len(rule_keys) == len(set(rule_keys))
+
+
+def test_gate_blocks_one_valid_adapter_rule_omission(monkeypatch) -> None:
+    omitted_key = (
+        "capacity",
+        "blocked",
+        (("completion_evidence", False), ("verification_required", False)),
+    )
+    monkeypatch.setattr(
+        adapter,
+        "_ADAPTER_RULES",
+        tuple(
+            (key, rule)
+            for key, rule in adapter._ADAPTER_RULES
+            if key != omitted_key
+        ),
+    )
+
+    _assert_corpus_blocks(_load_strict(CORPUS))
+
+
+def test_chatgpt_failure_rules_are_producer_derived_and_oracle_independent() -> None:
+    source = inspect.getsource(adapter._chatgpt_failure_rules)
+    tree = ast.parse(source)
+    names = {
+        node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
+    }
+    attributes = {
+        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+    }
+    generated_keys = {
+        key for key, _rule in adapter._chatgpt_failure_rules()
+    }
+    accepted_failure_keys = {
+        key
+        for key in compact_state_mapping._accepted_context_keys()
+        if key[:2] == ("chatgpt", "failed")
+    }
+
+    assert "meaning_for" not in source
+    forbidden_reads = {"open", "load", "loads", "read_text", "read_bytes"}
+    assert not (forbidden_reads & names)
+    assert not (forbidden_reads & attributes)
+    assert generated_keys == accepted_failure_keys
 
 
 def test_compact_projection_is_independent_of_v1_oracle_and_fixtures() -> None:

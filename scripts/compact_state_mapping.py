@@ -100,6 +100,122 @@ def _source_values() -> dict[str, list[str]]:
     }
 
 
+_ContextKey = tuple[
+    str,
+    str,
+    tuple[tuple[str, bool | str], ...],
+]
+
+
+def _accepted_context_keys() -> tuple[_ContextKey, ...]:
+    """Return every finite producer-backed context accepted by current v1."""
+
+    sources = _source_values()
+    keys: set[_ContextKey] = set()
+
+    def add(
+        domain: str,
+        value: str,
+        context: Mapping[str, bool | str],
+    ) -> None:
+        keys.add((domain, value, tuple(sorted(context.items()))))
+
+    capacity_values = set(sources["capacity"])
+    if capacity_values != {"ready", "active", "blocked", "done", "excepted"}:
+        raise StateMappingError("capacity producer vocabulary is not classified")
+    for value in ("ready", "active", "excepted"):
+        add("capacity", value, {})
+    for completion_evidence in (False, True):
+        for verification_required in (False, True):
+            add(
+                "capacity",
+                "blocked",
+                {
+                    "completion_evidence": completion_evidence,
+                    "verification_required": verification_required,
+                },
+            )
+    for required, satisfied, gates_met in (
+        (True, False, False),
+        (True, True, True),
+        (False, False, True),
+    ):
+        add(
+            "capacity",
+            "done",
+            {
+                "verification_required": required,
+                "verification_satisfied": satisfied,
+                "all_triggered_gates_met": gates_met,
+            },
+        )
+
+    capability_values = set(sources["capability"])
+    if capability_values != {
+        "issued",
+        "activated",
+        "consumed",
+        "revoked",
+        "expired",
+        "failed",
+    }:
+        raise StateMappingError("capability producer vocabulary is not classified")
+    for value in capability_values - {"consumed"}:
+        add("capability", value, {})
+    for outcome in ("ok", "failed", "absent"):
+        add("capability", "consumed", {"receipt_outcome": outcome})
+
+    chatgpt_values = set(sources["chatgpt"])
+    if "failed" not in chatgpt_values:
+        raise StateMappingError("ChatGPT producer vocabulary lacks failed")
+    for value in chatgpt_values - {"failed"}:
+        add("chatgpt", value, {})
+    for failure_class in sorted(chatgpt_pro_consult.FAILURE_CLASSES):
+        for transport in sorted(chatgpt_pro_consult.TRANSPORTS):
+            for resume_authorized in (False, True):
+                if failure_class == "partial_send" and resume_authorized:
+                    continue
+                if resume_authorized and transport != "manual":
+                    continue
+                add(
+                    "chatgpt",
+                    "failed",
+                    {
+                        "failure_class": failure_class,
+                        "transport": transport,
+                        "manual_resume_authorized": resume_authorized,
+                    },
+                )
+
+    receipt_values = set(sources["opus_receipt"])
+    if receipt_values != {
+        "reserved",
+        "reviewed",
+        "reconciled",
+        "publishing",
+        "published",
+    }:
+        raise StateMappingError("Opus receipt producer vocabulary is not classified")
+    for action in opus_review_receipts.RESERVATION_ACTIONS:
+        add("opus_receipt", "reserved", {"reservation_action": action})
+    for status in sorted(opus_review_bridge.VALID_STATUSES):
+        add("opus_receipt", "reviewed", {"provider_status": status})
+    for disposition in sorted(opus_review_bridge.VALID_CODEX_VERDICTS):
+        add("opus_receipt", "reconciled", {"disposition": disposition})
+    for value in ("publishing", "published"):
+        add("opus_receipt", value, {})
+
+    for value in sources["provider_result"]:
+        add("provider_result", value, {})
+    for value in sources["local_verdict"]:
+        context = {"verification_key_matches": True} if value == "GO" else {}
+        add("local_verdict", value, context)
+    for value in sources["work_result"]:
+        add("work_result", value, {})
+
+    return tuple(sorted(keys, key=repr))
+
+
 def _strict_context(
     context: Mapping[str, object], required: frozenset[str]
 ) -> Mapping[str, object]:
@@ -467,6 +583,7 @@ def _fixture_result(value: object) -> tuple[int, int]:
         raise StateMappingError("fixture rows must be a non-empty array")
     seen: set[str] = set()
     covered = {domain: set() for domain in expected_sources}
+    row_keys: list[_ContextKey] = []
     expected_fields = {
         "compact",
         "terminal_scope",
@@ -494,12 +611,34 @@ def _fixture_result(value: object) -> tuple[int, int]:
             raise StateMappingError(
                 f"fixture row {row_id!r} has unknown effect eligibility"
             )
+        domain = row["domain"]
+        state_value = row["value"]
+        context = row["context"]
+        if (
+            not isinstance(domain, str)
+            or not isinstance(state_value, str)
+            or not isinstance(context, Mapping)
+            or any(type(key) is not str for key in context)
+            or any(type(item) not in (bool, str) for item in context.values())
+        ):
+            raise StateMappingError(
+                f"fixture row {row_id!r} context key is invalid"
+            )
+        row_keys.append(
+            (domain, state_value, tuple(sorted(context.items())))
+        )
         actual = meaning_for(
-            row["domain"], row["value"], context=row["context"]
+            domain, state_value, context=context
         )
         if asdict(actual) != dict(expected):
             raise StateMappingError(f"fixture row {row_id!r} meaning mismatch")
-        covered[row["domain"]].add(row["value"])
+        covered[domain].add(state_value)
+
+    accepted_keys = set(_accepted_context_keys())
+    if len(row_keys) != len(set(row_keys)) or set(row_keys) != accepted_keys:
+        raise StateMappingError(
+            "fixture accepted context keys do not match current v1"
+        )
 
     expected_coverage = {
         domain: set(values) for domain, values in expected_sources.items()

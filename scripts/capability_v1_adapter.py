@@ -189,6 +189,60 @@ class _AdapterRule:
     advisory_only: bool
 
 
+def _chatgpt_failure_rules() -> tuple[
+    tuple[
+        tuple[str, str, tuple[tuple[str, bool | str], ...]],
+        _AdapterRule,
+    ],
+    ...,
+]:
+    rules: list[
+        tuple[
+            tuple[str, str, tuple[tuple[str, bool | str], ...]],
+            _AdapterRule,
+        ]
+    ] = []
+    producer = compact_state_mapping.chatgpt_pro_consult
+    for failure_class in sorted(producer.FAILURE_CLASSES):
+        for transport in sorted(producer.TRANSPORTS):
+            for resume_authorized in (False, True):
+                if failure_class == "partial_send":
+                    if resume_authorized:
+                        continue
+                    compact = "OUTCOME_UNKNOWN"
+                    terminal_scope = "consultation"
+                    next_action = "reconcile_only"
+                elif resume_authorized:
+                    if transport != "manual":
+                        continue
+                    compact = "FAILED"
+                    terminal_scope = "nonterminal"
+                    next_action = "resume_manual"
+                else:
+                    compact = "FAILED"
+                    terminal_scope = "consultation"
+                    next_action = "no_retry"
+                context = {
+                    "failure_class": failure_class,
+                    "transport": transport,
+                    "manual_resume_authorized": resume_authorized,
+                }
+                rules.append(
+                    (
+                        ("chatgpt", "failed", tuple(sorted(context.items()))),
+                        _AdapterRule(
+                            None,
+                            compact,
+                            terminal_scope,
+                            next_action,
+                            "never",
+                            True,
+                        ),
+                    )
+                )
+    return tuple(rules)
+
+
 @dataclass(frozen=True)
 class _Divergence:
     case_id: str
@@ -231,7 +285,7 @@ _HISTORY_CASE_ORACLE: dict[str, _HistoryCaseOracle] = {
     ),
     "history:changed-duplicate-source": _HistoryCaseOracle(
         "capacity-ready", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
-        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (), ("START",),
     ),
     "history:disjoint-order-permutations": _HistoryCaseOracle(
         "capacity-ready", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA),
@@ -244,7 +298,7 @@ _HISTORY_CASE_ORACLE: dict[str, _HistoryCaseOracle] = {
     ),
     "history:gapped-work-revision": _HistoryCaseOracle(
         "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
-        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (), ("START",),
     ),
     "history:actor-resolver-drift": _HistoryCaseOracle(
         "capacity-ready", 1, (_LEGACY_SCHEMA,), ((0,),), "actor_drift",
@@ -256,15 +310,15 @@ _HISTORY_CASE_ORACLE: dict[str, _HistoryCaseOracle] = {
     ),
     "history:route-ambiguity": _HistoryCaseOracle(
         "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
-        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (), ("START",),
     ),
     "history:scope-ambiguity": _HistoryCaseOracle(
         "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
-        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (), ("START",),
     ),
     "history:overlapping-unit-scopes": _HistoryCaseOracle(
         "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
-        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (),
+        "stable", "legacy_ambiguous", "legacy_ambiguous", 0, (), ("START",),
     ),
     "history:content-change": _HistoryCaseOracle(
         "capacity-active", 2, (_LEGACY_SCHEMA, _LEGACY_SCHEMA), ((0, 1),),
@@ -329,6 +383,24 @@ _ADAPTER_RULES: tuple[
             (
                 ("completion_evidence", False),
                 ("verification_required", False),
+            ),
+        ),
+        _AdapterRule(
+            "BLOCK",
+            "WAIT",
+            "nonterminal",
+            "wait_for_named_condition",
+            "never",
+            False,
+        ),
+    ),
+    (
+        (
+            "capacity",
+            "blocked",
+            (
+                ("completion_evidence", False),
+                ("verification_required", True),
             ),
         ),
         _AdapterRule(
@@ -573,82 +645,7 @@ _ADAPTER_RULES: tuple[
             True,
         ),
     ),
-    (
-        (
-            "chatgpt",
-            "failed",
-            (
-                ("failure_class", "partial_send"),
-                ("manual_resume_authorized", False),
-                ("transport", "iab"),
-            ),
-        ),
-        _AdapterRule(
-            None,
-            "OUTCOME_UNKNOWN",
-            "consultation",
-            "reconcile_only",
-            "never",
-            True,
-        ),
-    ),
-    (
-        (
-            "chatgpt",
-            "failed",
-            (
-                ("failure_class", "network"),
-                ("manual_resume_authorized", True),
-                ("transport", "manual"),
-            ),
-        ),
-        _AdapterRule(
-            None,
-            "FAILED",
-            "nonterminal",
-            "resume_manual",
-            "never",
-            True,
-        ),
-    ),
-    (
-        (
-            "chatgpt",
-            "failed",
-            (
-                ("failure_class", "network"),
-                ("manual_resume_authorized", False),
-                ("transport", "manual"),
-            ),
-        ),
-        _AdapterRule(
-            None,
-            "FAILED",
-            "consultation",
-            "no_retry",
-            "never",
-            True,
-        ),
-    ),
-    (
-        (
-            "chatgpt",
-            "failed",
-            (
-                ("failure_class", "auth"),
-                ("manual_resume_authorized", False),
-                ("transport", "iab"),
-            ),
-        ),
-        _AdapterRule(
-            None,
-            "FAILED",
-            "consultation",
-            "no_retry",
-            "never",
-            True,
-        ),
-    ),
+    *_chatgpt_failure_rules(),
     (
         ("chatgpt", "stale", ()),
         _AdapterRule(
@@ -1775,6 +1772,21 @@ def _oracle_scopes_overlap(
     )
 
 
+def _oracle_record_scope_is_exact(
+    record: _LegacyRecord,
+    scopes: dict[str, capability_reducer.ResolvedScope],
+) -> bool:
+    scope = scopes.get(record.mutable_scope_ref)
+    if scope is None:
+        return False
+    try:
+        normalized = capability_reducer._normalize_scope(scope)
+        digest = capability_reducer._scope_digest(normalized)
+    except capability_reducer.ReducerError:
+        return False
+    return record.mutable_scope_digest == digest
+
+
 def _validate_history_relationship(
     case_id: str,
     records: tuple[_LegacyRecord, ...],
@@ -1842,35 +1854,53 @@ def _validate_history_relationship(
     elif case_id == "history:route-ambiguity":
         second = records[1]
         valid = (
-            revisions == (1, 2)
+            len(set(source_ids)) == 2
+            and revisions == (1, 2)
             and first.work_id == second.work_id
             and first.unit_id == second.unit_id
+            and first.actor_binding_digest == second.actor_binding_digest
             and first.mutable_scope_ref == second.mutable_scope_ref
             and first.mutable_scope_digest == second.mutable_scope_digest
+            and all(
+                _oracle_record_scope_is_exact(record, scopes)
+                for record in records
+            )
             and first.route_id is None
             and second.route_id is not None
         )
     elif case_id == "history:scope-ambiguity":
         second = records[1]
         valid = (
-            revisions == (1, 2)
+            len(set(source_ids)) == 2
+            and revisions == (1, 2)
             and first.work_id == second.work_id
             and first.route_id == second.route_id
             and first.unit_id == second.unit_id
+            and first.actor_binding_digest == second.actor_binding_digest
             and first.mutable_scope_ref != second.mutable_scope_ref
             and first.mutable_scope_digest != second.mutable_scope_digest
+            and all(
+                _oracle_record_scope_is_exact(record, scopes)
+                for record in records
+            )
         )
     elif case_id == "history:overlapping-unit-scopes":
         second = records[1]
         left_scope = scopes.get(first.mutable_scope_ref)
         right_scope = scopes.get(second.mutable_scope_ref)
         valid = (
-            revisions == (1, 2)
+            len(set(source_ids)) == 2
+            and revisions == (1, 2)
             and first.work_id == second.work_id
             and first.route_id == second.route_id
             and first.unit_id != second.unit_id
+            and first.actor_binding_digest == second.actor_binding_digest
             and left_scope is not None
             and right_scope is not None
+            and all(
+                _oracle_record_scope_is_exact(record, scopes)
+                for record in records
+            )
             and _oracle_scopes_overlap(left_scope, right_scope)
         )
     elif case_id == "history:content-change":
@@ -1972,7 +2002,14 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         ): row
         for row in mapping_rows
     }
-    if len(mapping_by_key) != len(mapping_rows):
+    accepted_context_keys = set(compact_state_mapping._accepted_context_keys())
+    adapter_rule_keys = [key for key, _rule in _ADAPTER_RULES]
+    if (
+        len(mapping_by_key) != len(mapping_rows)
+        or len(adapter_rule_keys) != len(set(adapter_rule_keys))
+        or set(mapping_by_key) != accepted_context_keys
+        or set(adapter_rule_keys) != accepted_context_keys
+    ):
         raise _legacy_invalid()
 
     misuse_vectors = misuse_fixture.get("vectors")
@@ -2037,6 +2074,20 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         raise _legacy_invalid()
     mapping_cases = [item for item in cases if item["case_kind"] == "mapping"]
     if [item["mapping_row_id"] for item in mapping_cases] != mapping_ids:
+        raise _legacy_invalid()
+    mapping_case_keys = {
+        (
+            mapping_by_id[item["mapping_row_id"]]["domain"],
+            mapping_by_id[item["mapping_row_id"]]["value"],
+            tuple(
+                sorted(
+                    mapping_by_id[item["mapping_row_id"]]["context"].items()
+                )
+            ),
+        )
+        for item in mapping_cases
+    }
+    if mapping_case_keys != accepted_context_keys:
         raise _legacy_invalid()
     template_case = case_by_id.get("mapping:capacity-ready")
     if type(template_case) is not dict:

@@ -1,7 +1,7 @@
 {
   "schema_version": "compact-kernel-v1-shadow-replay/v1",
   "sources": {
-    "tests/fixtures/compact_state_mapping/v1.json": "sha256:a93374962fa49e8a5e3de8573e7176fddfe7e32d3c9d7aff26709e8e35e474ee",
+    "tests/fixtures/compact_state_mapping/v1.json": "sha256:30493af3d4ec792b3945ac077c85d15c70418a6da7b60720e07a28c8a8b224e5",
     "tests/fixtures/compact_kernel/v1_misuse_vectors.json": "sha256:993aca6a783d0c592db39e5cafb856f3f470d052051040481c2b0f4427325623",
     "tests/fixtures/compact_kernel/v2_replay_vectors.json": "sha256:c1264f6278f7ce9af5e8d10210d4466b8069008f8c16b9e85d2107504992f510"
   },
@@ -90,6 +90,7 @@
     "mapping:capacity-ready",
     "mapping:capacity-active",
     "mapping:capacity-blocked-wait",
+    "mapping:capacity-blocked-wait-verification-required",
     "mapping:capacity-blocked-review",
     "mapping:capacity-blocked-complete",
     "mapping:capacity-done-review",
@@ -113,6 +114,25 @@
     "mapping:chatgpt-failed-manual-resumable",
     "mapping:chatgpt-failed-manual-terminal",
     "mapping:chatgpt-failed-iab-terminal",
+    "mapping:chatgpt-failed-auth-chrome-terminal",
+    "mapping:chatgpt-failed-auth-manual-terminal",
+    "mapping:chatgpt-failed-auth-manual-resumable",
+    "mapping:chatgpt-failed-challenge-chrome-terminal",
+    "mapping:chatgpt-failed-challenge-iab-terminal",
+    "mapping:chatgpt-failed-challenge-manual-terminal",
+    "mapping:chatgpt-failed-challenge-manual-resumable",
+    "mapping:chatgpt-failed-malformed-chrome-terminal",
+    "mapping:chatgpt-failed-malformed-iab-terminal",
+    "mapping:chatgpt-failed-malformed-manual-terminal",
+    "mapping:chatgpt-failed-malformed-manual-resumable",
+    "mapping:chatgpt-failed-network-chrome-terminal",
+    "mapping:chatgpt-failed-network-iab-terminal",
+    "mapping:chatgpt-failed-partial-send-chrome",
+    "mapping:chatgpt-failed-partial-send-manual",
+    "mapping:chatgpt-failed-unavailable-chrome-terminal",
+    "mapping:chatgpt-failed-unavailable-iab-terminal",
+    "mapping:chatgpt-failed-unavailable-manual-terminal",
+    "mapping:chatgpt-failed-unavailable-manual-resumable",
     "mapping:chatgpt-stale",
     "mapping:opus-reserved-launch",
     "mapping:opus-reserved-return",
@@ -290,6 +310,64 @@
           "context": {
             "completion_evidence": false,
             "verification_required": false
+          },
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [
+            "artifact:one"
+          ],
+          "verification_ref": null,
+          "effect_reservation_refs": []
+        }
+      ],
+      "record_orders": [
+        [
+          0
+        ]
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "route_event",
+            "compact": "WAIT",
+            "terminal_scope": "nonterminal",
+            "next_action": "wait_for_named_condition",
+            "effect_eligibility": "never",
+            "advisory_only": false
+          }
+        ],
+        "envelope_count": 1,
+        "requested_transitions": [
+          "BLOCK"
+        ],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:capacity-blocked-wait-verification-required",
+      "case_kind": "mapping",
+      "mapping_row_id": "capacity-blocked-wait-verification-required",
+      "misuse_vector_id": null,
+      "disposition": "route_event",
+      "source_records": [
+        {
+          "schema": "compact-kernel-legacy-observation/v1",
+          "source_id": "mapping:capacity-blocked-wait-verification-required",
+          "source_digest": "sha256:2d15f5dd402e0405bebfdce771676e187cb53d624d405afddde481e8c82e4bc0",
+          "work_id": "work-map-capacity-blocked-wait-verification-required",
+          "route_id": "route-map-capacity-blocked-wait-verification-required",
+          "work_revision": 1,
+          "unit_id": "unit-map-capacity-blocked-wait-verification-required",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "domain": "capacity",
+          "value": "blocked",
+          "context": {
+            "completion_evidence": false,
+            "verification_required": true
           },
           "mutable_scope_ref": "scope:unit-a",
           "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
@@ -1125,6 +1203,519 @@
             "compact": "FAILED",
             "terminal_scope": "consultation",
             "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-auth-chrome-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-auth-chrome-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-auth-manual-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-auth-manual-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-auth-manual-resumable",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-auth-manual-resumable",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "nonterminal",
+            "next_action": "resume_manual",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-challenge-chrome-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-challenge-chrome-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-challenge-iab-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-challenge-iab-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-challenge-manual-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-challenge-manual-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-challenge-manual-resumable",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-challenge-manual-resumable",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "nonterminal",
+            "next_action": "resume_manual",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-malformed-chrome-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-malformed-chrome-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-malformed-iab-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-malformed-iab-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-malformed-manual-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-malformed-manual-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-malformed-manual-resumable",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-malformed-manual-resumable",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "nonterminal",
+            "next_action": "resume_manual",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-network-chrome-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-network-chrome-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-network-iab-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-network-iab-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-partial-send-chrome",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-partial-send-chrome",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "OUTCOME_UNKNOWN",
+            "terminal_scope": "consultation",
+            "next_action": "reconcile_only",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-partial-send-manual",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-partial-send-manual",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "OUTCOME_UNKNOWN",
+            "terminal_scope": "consultation",
+            "next_action": "reconcile_only",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-unavailable-chrome-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-unavailable-chrome-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-unavailable-iab-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-unavailable-iab-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-unavailable-manual-terminal",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-unavailable-manual-terminal",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "consultation",
+            "next_action": "no_retry",
+            "effect_eligibility": "never",
+            "advisory_only": true
+          }
+        ],
+        "envelope_count": 0,
+        "requested_transitions": [],
+        "error_code": null
+      }
+    },
+    {
+      "id": "mapping:chatgpt-failed-unavailable-manual-resumable",
+      "case_kind": "mapping",
+      "mapping_row_id": "chatgpt-failed-unavailable-manual-resumable",
+      "misuse_vector_id": null,
+      "disposition": "no_route_event",
+      "source_records": [],
+      "record_orders": [
+        []
+      ],
+      "resolver_mode": "stable",
+      "expected": {
+        "projections": [
+          {
+            "disposition": "no_route_event",
+            "compact": "FAILED",
+            "terminal_scope": "nonterminal",
+            "next_action": "resume_manual",
             "effect_eligibility": "never",
             "advisory_only": true
           }

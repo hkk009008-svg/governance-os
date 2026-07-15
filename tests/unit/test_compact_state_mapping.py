@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, fields
+import inspect
+from itertools import product
 import json
 from pathlib import Path
 import re
@@ -50,6 +52,111 @@ EXPECTED_LOCAL_VERDICTS = (
 )
 
 
+def _context_key(
+    domain: str,
+    value: str,
+    context: dict[str, bool | str],
+) -> tuple[str, str, tuple[tuple[str, bool | str], ...]]:
+    return (domain, value, tuple(sorted(context.items())))
+
+
+def _producer_values() -> dict[str, list[str]]:
+    return {
+        "capacity": sorted(protocol_capacity.STATUSES),
+        "capability": sorted(route_capability.LIFECYCLE_STATES),
+        "chatgpt": sorted(chatgpt_pro_consult.ALLOWED_TRANSITIONS),
+        "opus_receipt": sorted(opus_review_receipts.RECEIPT_STATES),
+        "provider_result": sorted(opus_review_bridge.VALID_STATUSES),
+        "local_verdict": sorted(EXPECTED_LOCAL_VERDICTS),
+        "work_result": ["cancelled", "failed", "outcome_unknown", "superseded"],
+    }
+
+
+def _finite_context_candidates(
+    domain: str,
+    value: str,
+) -> tuple[dict[str, bool | str], ...]:
+    if domain == "capacity" and value == "blocked":
+        return tuple(
+            {
+                "completion_evidence": completion_evidence,
+                "verification_required": verification_required,
+            }
+            for completion_evidence, verification_required in product(
+                (False, True), repeat=2
+            )
+        )
+    if domain == "capacity" and value == "done":
+        return tuple(
+            {
+                "verification_required": required,
+                "verification_satisfied": satisfied,
+                "all_triggered_gates_met": gates_met,
+            }
+            for required, satisfied, gates_met in product((False, True), repeat=3)
+        )
+    if domain == "capability" and value == "consumed":
+        return tuple(
+            {"receipt_outcome": outcome}
+            for outcome in ("ok", "failed", "absent")
+        )
+    if domain == "chatgpt" and value == "failed":
+        return tuple(
+            {
+                "failure_class": failure_class,
+                "transport": transport,
+                "manual_resume_authorized": resume_authorized,
+            }
+            for failure_class, transport, resume_authorized in product(
+                sorted(chatgpt_pro_consult.FAILURE_CLASSES),
+                sorted(chatgpt_pro_consult.TRANSPORTS),
+                (False, True),
+            )
+        )
+    if domain == "opus_receipt" and value == "reserved":
+        return tuple(
+            {"reservation_action": action}
+            for action in opus_review_receipts.RESERVATION_ACTIONS
+        )
+    if domain == "opus_receipt" and value == "reviewed":
+        return tuple(
+            {"provider_status": status}
+            for status in sorted(opus_review_bridge.VALID_STATUSES)
+        )
+    if domain == "opus_receipt" and value == "reconciled":
+        return tuple(
+            {"disposition": disposition}
+            for disposition in sorted(opus_review_bridge.VALID_CODEX_VERDICTS)
+        )
+    if domain == "local_verdict" and value == "GO":
+        return (
+            {"verification_key_matches": False},
+            {"verification_key_matches": True},
+        )
+    return ({},)
+
+
+def _accepted_keys_from_finite_producer_candidates() -> set[
+    tuple[str, str, tuple[tuple[str, bool | str], ...]]
+]:
+    accepted: set[
+        tuple[str, str, tuple[tuple[str, bool | str], ...]]
+    ] = set()
+    for domain, values in _producer_values().items():
+        for value in values:
+            for context in _finite_context_candidates(domain, value):
+                try:
+                    compact_state_mapping.meaning_for(
+                        domain,
+                        value,
+                        context=context,
+                    )
+                except compact_state_mapping.StateMappingError:
+                    continue
+                accepted.add(_context_key(domain, value, context))
+    return accepted
+
+
 def _load(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -92,6 +199,45 @@ def test_fixture_is_a_total_row_oracle():
     assert covered == {
         domain: set(values) for domain, values in fixture["source_values"].items()
     }
+
+
+def test_accepted_context_manifest_matches_exhaustive_producer_candidates():
+    fixture = _load(FIXTURE_PATH)
+    fixture_keys = {
+        _context_key(row["domain"], row["value"], row["context"])
+        for row in fixture["rows"]
+    }
+
+    assert set(compact_state_mapping._accepted_context_keys()) == (
+        _accepted_keys_from_finite_producer_candidates()
+    )
+    assert fixture_keys == set(compact_state_mapping._accepted_context_keys())
+
+
+def test_accepted_context_manifest_does_not_call_meaning_for(monkeypatch):
+    source = inspect.getsource(compact_state_mapping._accepted_context_keys)
+    expected = compact_state_mapping._accepted_context_keys()
+
+    def forbidden_meaning(*_args, **_kwargs):
+        raise AssertionError("accepted-context manifest called meaning_for")
+
+    monkeypatch.setattr(compact_state_mapping, "meaning_for", forbidden_meaning)
+
+    assert "meaning_for" not in source
+    assert compact_state_mapping._accepted_context_keys() == expected
+
+
+def test_fixture_validator_rejects_one_valid_context_omission():
+    fixture = _load(FIXTURE_PATH)
+    fixture["rows"] = [
+        row for row in fixture["rows"] if row["id"] != "capacity-blocked-wait"
+    ]
+
+    with pytest.raises(
+        compact_state_mapping.StateMappingError,
+        match="accepted context",
+    ):
+        compact_state_mapping._fixture_result(fixture)
 
 
 def test_effect_eligibility_vocabulary_is_closed():
@@ -209,11 +355,15 @@ def test_unknown_incomplete_wrong_typed_or_contradictory_inputs_fail_closed(
 
 def test_cli_validates_the_fixture_without_writing(capsys):
     before = FIXTURE_PATH.read_bytes()
+    fixture = _load(FIXTURE_PATH)
     rc = compact_state_mapping.main(["--check-fixture", str(FIXTURE_PATH)])
     captured = capsys.readouterr()
     assert rc == 0
     assert captured.err == ""
-    assert captured.out == "validated 49 mappings across 7 domains\n"
+    assert captured.out == (
+        f"validated {len(fixture['rows'])} mappings across "
+        f"{len(fixture['source_values'])} domains\n"
+    )
     assert FIXTURE_PATH.read_bytes() == before
 
 

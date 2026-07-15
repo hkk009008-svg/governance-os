@@ -48,12 +48,12 @@ pytest.
   all reducer replay vectors and their pinned permutations; plus an explicit
   deferred set containing every misuse vector whose `enforcing_phase` is `3`.
   No count may be hard-coded as a substitute for set equality.
-- Current evidence, verified with the committed fixtures, is 49 mapping rows
+- Current evidence, verified with the committed fixtures, is 69 mapping rows
   across 7 domains, 8 Phase-2 misuse vectors, 3 deferred Phase-3 vectors, and
-  19 reducer vectors with 31 pinned permutations. The final gate must derive
-  these values again and persist its deterministic count/digest report under
-  `logs/capability-first/`; fixture-set equality, not these prose numbers, is
-  authoritative.
+  19 reducer vectors with 31 pinned permutations; the complete corpus has 89
+  cases. The final gate must derive these values again and persist its
+  deterministic count/digest report under `logs/capability-first/`;
+  fixture-set equality, not these prose numbers, is authoritative.
 - Parity compares route-event disposition, terminal/retry meaning,
   `advisory_only`, and effect eligibility. More-permissive and more-restrictive
   divergences both block. Formatting-only/non-authority differences may be
@@ -845,6 +845,28 @@ After Task 3, give one fresh read-only reviewer the committed plan and exact
 Any Critical or Important finding blocks Phase-2 closeout and is fixed in the
 owning task with a fresh focused test. A clean review does not authorize push,
 merge, Phase 3, or activation.
+
+### Final-review evidence correction 5
+
+The fresh full-range review of
+`f17d14c684e1e1a6378e52ab8f151070fb710e07..c1a50dbcc4726d9abd91b54fd0fa15a14de7a754`
+found no Critical findings and two Important evidence gaps. The bounded
+correction binds successful `START` prefixes and exact actor/source/scope
+provenance for the five affected causal-error cases. It also derives the exact
+accepted-context set from current producer vocabularies, requires equality
+with fixture, adapter-rule, and corpus keys, and adds the missing capacity case
+plus 19 producer-backed ChatGPT failure cases. All specialized additions remain
+`no_route_event`; v1 remains the only writer at epoch `0`.
+
+The focused two-file command produced `13 failed, 192 passed` before any
+production or fixture change, then GREEN via
+`env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q tests/unit/test_compact_state_mapping.py tests/unit/test_capability_v1_adapter.py`
+→ `210 passed`. The fixture CLI was verified via
+`env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/compact_state_mapping.py --check-fixture tests/fixtures/compact_state_mapping/v1.json`
+→ `validated 69 mappings across 7 domains`. The canonical corpus report in
+`logs/capability-first/phase2b-shadow-parity.json` derives 89 cases with no
+blocking divergence or specialized event. These correction facts do not close
+Task 4, authorize Phase 3, or activate a writer.
 
 ## Task 4: Record reviewed Phase-2 closeout
 

@@ -32,6 +32,13 @@
       "expected": {"compact": "WAIT", "terminal_scope": "nonterminal", "next_action": "wait_for_named_condition", "effect_eligibility": "never", "advisory_only": false}
     },
     {
+      "id": "capacity-blocked-wait-verification-required",
+      "domain": "capacity",
+      "value": "blocked",
+      "context": {"completion_evidence": false, "verification_required": true},
+      "expected": {"compact": "WAIT", "terminal_scope": "nonterminal", "next_action": "wait_for_named_condition", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
       "id": "capacity-blocked-review",
       "domain": "capacity",
       "value": "blocked",
@@ -191,6 +198,139 @@
       "value": "failed",
       "context": {"failure_class": "auth", "transport": "iab", "manual_resume_authorized": false},
       "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-auth-chrome-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "auth", "transport": "chrome", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-auth-manual-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "auth", "transport": "manual", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-auth-manual-resumable",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "auth", "transport": "manual", "manual_resume_authorized": true},
+      "expected": {"compact": "FAILED", "terminal_scope": "nonterminal", "next_action": "resume_manual", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-challenge-chrome-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "challenge", "transport": "chrome", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-challenge-iab-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "challenge", "transport": "iab", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-challenge-manual-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "challenge", "transport": "manual", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-challenge-manual-resumable",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "challenge", "transport": "manual", "manual_resume_authorized": true},
+      "expected": {"compact": "FAILED", "terminal_scope": "nonterminal", "next_action": "resume_manual", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-malformed-chrome-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "malformed", "transport": "chrome", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-malformed-iab-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "malformed", "transport": "iab", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-malformed-manual-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "malformed", "transport": "manual", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-malformed-manual-resumable",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "malformed", "transport": "manual", "manual_resume_authorized": true},
+      "expected": {"compact": "FAILED", "terminal_scope": "nonterminal", "next_action": "resume_manual", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-network-chrome-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "network", "transport": "chrome", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-network-iab-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "network", "transport": "iab", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-partial-send-chrome",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "partial_send", "transport": "chrome", "manual_resume_authorized": false},
+      "expected": {"compact": "OUTCOME_UNKNOWN", "terminal_scope": "consultation", "next_action": "reconcile_only", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-partial-send-manual",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "partial_send", "transport": "manual", "manual_resume_authorized": false},
+      "expected": {"compact": "OUTCOME_UNKNOWN", "terminal_scope": "consultation", "next_action": "reconcile_only", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-unavailable-chrome-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "unavailable", "transport": "chrome", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-unavailable-iab-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "unavailable", "transport": "iab", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-unavailable-manual-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "unavailable", "transport": "manual", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-unavailable-manual-resumable",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "unavailable", "transport": "manual", "manual_resume_authorized": true},
+      "expected": {"compact": "FAILED", "terminal_scope": "nonterminal", "next_action": "resume_manual", "effect_eligibility": "never", "advisory_only": true}
     },
     {
       "id": "chatgpt-stale",

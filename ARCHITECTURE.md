@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-16 @ 7cdcefa*
+*Last verified: 2026-07-16 @ c1a50db*
 
 ## 1. Purpose
 
@@ -57,8 +57,9 @@ Key directories:
 | `build_guard` | `scripts/ledger_start_guard.py:175` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
 | `load_kernel_mirror` | `scripts/target_binding.py:147` | Validates the declarative-only compact-kernel epoch/writer mirror without selecting runtime behavior. |
 | `resolve_target` | `scripts/target_binding.py:184` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
+| `_accepted_context_keys` | `scripts/compact_state_mapping.py:110` | Independently enumerates every finite producer-backed v1 mapping context for exact fixture and shadow-gate closure. |
 | `reduce_protocol_state` | `scripts/capability_reducer.py:1230` | Produces one pure, deterministic, non-authoritative compact shadow report. |
-| `adapt_v1_history` | `scripts/capability_v1_adapter.py:2571` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
+| `adapt_v1_history` | `scripts/capability_v1_adapter.py:2622` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:544` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_r_independence` | `scripts/codex_protocol_model.py:770` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
@@ -74,6 +75,9 @@ Key directories:
 - Compact-kernel v1 remains the only authority at epoch `0`. The read-only
   historical adapter imports the pure reducer; the reducer does not import the
   adapter. Neither shadow surface activates or writes runtime state.
+- The shadow parity gate requires exact accepted-context key equality across
+  producer-derived manifest, mapping fixture, adapter rules, and corpus cases;
+  specialized lifecycle contexts remain explicit `no_route_event` evidence.
 - Durable shared state beats chat memory: git commits, mailbox bodies, capacity
   packets, cursor state, and verification reports are authoritative.
 - Live seats start with `scripts/ledger_start_guard.py --seat <seat> --wave 2`
