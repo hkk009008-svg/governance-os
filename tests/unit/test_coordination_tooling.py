@@ -511,6 +511,191 @@ def test_verification_send_event_preserves_recoverable_candidate_and_resumes(
     assert relative in _git(repo, "diff", "--cached", "--name-only")
 
 
+def test_verification_send_event_process_death_preserves_witnessed_candidate(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    head, body = _verification_shell_fixture(repo, repo_root)
+    gate_path = repo / "scripts/verification_report_gate.py"
+    source = gate_path.read_text(encoding="utf-8")
+    needle = '    """Fault-injection seam for crash-boundary regression tests."""\n'
+    replacement = (
+        needle
+        + "    if label == 'after_publishing':\n"
+        + "        os._exit(77)\n"
+    )
+    assert needle in source
+    gate_path.write_text(source.replace(needle, replacement, 1), encoding="utf-8")
+    _git(repo, "add", "scripts/verification_report_gate.py")
+    _git(repo, "commit", "-q", "-m", "test: inject publisher process death")
+
+    result = _run(
+        _verification_command(repo_root / "coordination/bin/send-event", head),
+        repo,
+        input_text=body,
+    )
+
+    assert result.returncode == 77
+    records = list(
+        (repo / ".codex/runtime/lane-v-report-publications/v1").glob("*.json")
+    )
+    assert len(records) == 1
+    record = json.loads(records[0].read_text(encoding="utf-8"))
+    assert record["state"] == "publishing"
+    candidate = repo / "coordination/mailbox/sent" / record["candidate_name"]
+    assert candidate.exists()
+    assert "sha256:" + hashlib.sha256(candidate.read_bytes()).hexdigest() == record[
+        "candidate_digest"
+    ]
+    assert not (repo / record["path"]).exists()
+
+
+def test_verification_send_event_process_death_does_not_unlink_substituted_name(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    head, body = _verification_shell_fixture(repo, repo_root)
+    gate_path = repo / "scripts/verification_report_gate.py"
+    source = gate_path.read_text(encoding="utf-8")
+    needle = '    _publication_checkpoint("after_publishing")\n'
+    replacement = (
+        needle
+        + '    moved_name = ".moved-invocation-candidate.tmp"\n'
+        + "    os.rename(\n"
+        + "        candidate.name, moved_name, src_dir_fd=sent_fd, dst_dir_fd=sent_fd\n"
+        + "    )\n"
+        + "    replacement_fd = os.open(\n"
+        + "        candidate.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600,\n"
+        + "        dir_fd=sent_fd,\n"
+        + "    )\n"
+        + "    os.write(replacement_fd, b'foreign replacement must survive\\n')\n"
+        + "    os.fsync(replacement_fd)\n"
+        + "    os.close(replacement_fd)\n"
+        + "    os._exit(77)\n"
+    )
+    assert needle in source
+    gate_path.write_text(source.replace(needle, replacement, 1), encoding="utf-8")
+    _git(repo, "add", "scripts/verification_report_gate.py")
+    _git(repo, "commit", "-q", "-m", "test: inject candidate name substitution")
+
+    result = _run(
+        _verification_command(repo_root / "coordination/bin/send-event", head),
+        repo,
+        input_text=body,
+    )
+
+    assert result.returncode == 77
+    records = list(
+        (repo / ".codex/runtime/lane-v-report-publications/v1").glob("*.json")
+    )
+    assert len(records) == 1
+    record = json.loads(records[0].read_text(encoding="utf-8"))
+    assert record["state"] == "publishing"
+    sent = repo / "coordination/mailbox/sent"
+    moved = sent / ".moved-invocation-candidate.tmp"
+    assert moved.exists()
+    assert "sha256:" + hashlib.sha256(moved.read_bytes()).hexdigest() == record[
+        "candidate_digest"
+    ]
+    substituted = sent / record["candidate_name"]
+    assert substituted.read_bytes() == b"foreign replacement must survive\n"
+    assert not (repo / record["path"]).exists()
+
+
+def test_publication_cli_published_replay_cleans_unowned_second_candidate(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    head, body = _verification_shell_fixture(repo, repo_root)
+    final_relative, raw = _fixed_report(head, body)
+    sent = repo / "coordination/mailbox/sent"
+    first = sent / ".first-candidate.tmp"
+    first.write_bytes(raw)
+    first.chmod(0o600)
+    command = [
+        repo / ".venv/bin/python",
+        "-E",
+        "-s",
+        "-S",
+        "-B",
+        repo / "scripts/verification_report_gate.py",
+        "publish",
+        "--repo-root",
+        repo,
+        "--candidate",
+        first,
+        "--final-relative",
+        final_relative,
+    ]
+    first_result = _run(command, repo)
+    assert first_result.returncode == 0, first_result.stderr
+    assert not first.exists()
+    assert (repo / final_relative).exists()
+
+    second = sent / ".second-candidate.tmp"
+    second.write_bytes(raw)
+    second.chmod(0o600)
+    command[command.index(first)] = second
+    replay = _run(command, repo)
+
+    assert replay.returncode == 6
+    assert "publication_status_required" in replay.stderr
+    assert not second.exists()
+    assert (repo / final_relative).read_bytes() == raw
+
+
+def test_publication_cli_cancelled_link_conflict_cleans_candidate(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    head, body = _verification_shell_fixture(repo, repo_root)
+    final_relative, raw = _fixed_report(head, body)
+    candidate = repo / "coordination/mailbox/sent/.link-conflict-candidate.tmp"
+    candidate.write_bytes(raw)
+    candidate.chmod(0o600)
+    final = repo / final_relative
+    conflicting = b"existing untracked final must survive\n"
+    final.write_bytes(conflicting)
+    final.chmod(0o600)
+
+    result = _run(
+        [
+            repo / ".venv/bin/python",
+            "-E",
+            "-s",
+            "-S",
+            "-B",
+            repo / "scripts/verification_report_gate.py",
+            "publish",
+            "--repo-root",
+            repo,
+            "--candidate",
+            candidate,
+            "--final-relative",
+            final_relative,
+        ],
+        repo,
+    )
+
+    assert result.returncode == 4
+    assert "publication_path_exists" in result.stderr
+    assert not candidate.exists()
+    assert final.read_bytes() == conflicting
+    records = list(
+        (repo / ".codex/runtime/lane-v-report-publications/v1").glob("*.json")
+    )
+    assert len(records) == 1
+    assert json.loads(records[0].read_text(encoding="utf-8"))["state"] == "ready"
+
+
 def _resume_command_from_failure(stderr: str) -> list[str]:
     commands = [
         line.split("run: ", 1)[1]
@@ -731,6 +916,18 @@ def _assert_no_verification_publication(repo: Path) -> None:
     assert not list((repo / "coordination/mailbox/sent").glob(".published.*"))
 
 
+def _assert_only_unowned_candidate_preserved(repo: Path) -> None:
+    sent = repo / "coordination/mailbox/sent"
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not list(sent.glob("*-verification-report.md"))
+    candidates = list(sent.glob(".*-verification-report.*.tmp"))
+    assert len(candidates) == 1
+    assert "VERDICT: GO" in candidates[0].read_text(encoding="utf-8")
+    assert not list(sent.glob(".trusted-*"))
+    assert not list(sent.glob(".pycache.*"))
+    assert not list(sent.glob(".published.*"))
+
+
 def test_verification_send_event_invalid_report_creates_no_file_or_index(
     tmp_path: Path, repo_root: Path
 ) -> None:
@@ -825,7 +1022,7 @@ def test_verification_send_event_rejects_malformed_publisher_stdout(
     )
 
     assert result.returncode == 4
-    _assert_no_verification_publication(repo)
+    _assert_only_unowned_candidate_preserved(repo)
 
 
 @pytest.mark.parametrize(
@@ -920,7 +1117,10 @@ def test_verification_send_event_fails_closed_on_untrusted_bootstrap_source(
     )
 
     assert result.returncode != 0
-    _assert_no_verification_publication(repo)
+    if source_failure in {"import-failure", "missing-publish"}:
+        _assert_only_unowned_candidate_preserved(repo)
+    else:
+        _assert_no_verification_publication(repo)
 
 
 def test_verification_send_event_uses_primary_head_from_real_linked_worktree(

@@ -185,6 +185,13 @@ def _canonical_uuid(value: str) -> str:
     return value
 
 
+def _canonical_receipt_id(value: str) -> str:
+    try:
+        return receipts.canonical_receipt_id(value)
+    except receipts.ReceiptContractError as exc:
+        raise ReportGateError(exc.reason, exc.detail) from exc
+
+
 def _full_sha(value: str, label: str, *, allow_none: bool = False) -> str:
     if allow_none and value == "none":
         return value
@@ -1607,11 +1614,10 @@ def validate_live_report(
                 "invalid_task_publication", f"task state access failed: {reason}"
             ) from exc
         return authority
+    receipt_id = _canonical_receipt_id(report.fields["Opus receipt ID"])
     try:
         store = receipt_store_factory(root)
-        with store.lock_receipt(
-            report.fields["Opus receipt ID"], blocking=True
-        ) as attempt:
+        with store.lock_receipt(receipt_id, blocking=True) as attempt:
             record = attempt.load_existing()
             _validate_codex_record(root, report, authority, record)
     except ReportGateError:
@@ -1873,6 +1879,28 @@ def _revalidate_candidate_basename(
         os.close(descriptor)
 
 
+def _cleanup_unbound_candidate(
+    candidate: _CapturedCandidate, sent_fd: int
+) -> None:
+    """Remove only the exact held candidate when no publication owns it."""
+
+    try:
+        _revalidate_candidate_basename(
+            sent_fd,
+            candidate.name,
+            raw=candidate.raw,
+            digest=candidate.digest,
+            device=candidate.device,
+            inode=candidate.inode,
+            expected_nlink=1,
+        )
+        os.unlink(candidate.name, dir_fd=sent_fd)
+        os.fsync(sent_fd)
+    except (OSError, ReportGateError):
+        # A changed or uncertain basename is not ours to remove.
+        return
+
+
 def _open_witnessed_final(
     sent_fd: int,
     final_name: str,
@@ -2080,6 +2108,25 @@ def _last_pre_publish_guard(
     _verify_blob(git, raw, digest, expected_oid)
 
 
+def _retain_post_replace_candidate(
+    attempt: object,
+    witness: tuple[str, str, str, int, int, str, str, int],
+    set_candidate_ownership: Callable[[bool], None],
+) -> None:
+    """Retain a candidate only for an exact publishing witness reloaded from disk."""
+
+    try:
+        observed = attempt.load_existing()
+        if getattr(observed, "state", None) != "publishing":
+            return
+        stored = _stored_publication_witness(observed)
+    except BaseException:
+        # Recovery evidence must never replace the original begin failure.
+        return
+    if tuple(stored[field] for field in _TASK_WITNESS_FIELDS) == witness:
+        set_candidate_ownership(True)
+
+
 def _locked_publish_new(
     *,
     attempt: object,
@@ -2089,6 +2136,7 @@ def _locked_publish_new(
     candidate: _CapturedCandidate,
     sent_fd: int,
     git: _SanitizedGit,
+    set_candidate_ownership: Callable[[bool], None],
 ) -> Path:
     state = getattr(record, "state", None)
     if state == "published":
@@ -2115,7 +2163,14 @@ def _locked_publish_new(
         0,
     )
     _publication_checkpoint("before_publishing")
-    publishing = attempt.begin_publication(*witness)
+    try:
+        publishing = attempt.begin_publication(*witness)
+    except BaseException:
+        _retain_post_replace_candidate(
+            attempt, witness, set_candidate_ownership
+        )
+        raise
+    set_candidate_ownership(True)
     _publication_checkpoint("after_publishing")
     _require_candidate_name(candidate, sent_fd)
     try:
@@ -2148,6 +2203,7 @@ def _locked_publish_new(
         )
     except FileExistsError as exc:
         attempt.cancel_publication(*witness, publishing.generation)
+        set_candidate_ownership(False)
         raise ReportGateError(
             "publication_path_exists", "final report already exists"
         ) from exc
@@ -2301,6 +2357,13 @@ def _publish_candidate_result(
     root = _require_repository(Path(repo_root))
     sent_fd = _open_sent_directory(root)
     candidate: _CapturedCandidate | None = None
+    publication_owns_candidate = False
+    preserve_unowned_candidate = False
+
+    def set_candidate_ownership(owned: bool) -> None:
+        nonlocal publication_owns_candidate
+        publication_owns_candidate = owned
+
     try:
         candidate = _capture_candidate(root, Path(candidate_path), sent_fd)
         report = parse_lane_v_report(final_relative, candidate.raw)
@@ -2317,6 +2380,7 @@ def _publish_candidate_result(
                     ) as attempt:
                         record = attempt.load_existing()
                         _validate_codex_record(root, report, authority, record)
+                        preserve_unowned_candidate = _candidate_is_stored(record, candidate)
                         try:
                             published = _locked_publish_new(
                                 attempt=attempt,
@@ -2326,6 +2390,7 @@ def _publish_candidate_result(
                                 candidate=candidate,
                                 sent_fd=sent_fd,
                                 git=git,
+                                set_candidate_ownership=set_candidate_ownership,
                             )
                             return _PublishedReportResult(
                                 path=published,
@@ -2366,6 +2431,7 @@ def _publish_candidate_result(
                 ) as task:
                     record = task.load_or_create(authority_digest)
                     _validate_non_codex_record(record, authority_digest)
+                    preserve_unowned_candidate = _candidate_is_stored(record, candidate)
                     try:
                         published = _locked_publish_new(
                             attempt=task,
@@ -2375,6 +2441,7 @@ def _publish_candidate_result(
                             candidate=candidate,
                             sent_fd=sent_fd,
                             git=git,
+                            set_candidate_ownership=set_candidate_ownership,
                         )
                         return _PublishedReportResult(
                             path=published,
@@ -2413,6 +2480,14 @@ def _publish_candidate_result(
             except Exception as exc:
                 reason = getattr(exc, "reason", "publication_failed")
                 raise ReportGateError("publication_failed", str(reason)) from exc
+    except BaseException:
+        if (
+            candidate is not None
+            and not publication_owns_candidate
+            and not preserve_unowned_candidate
+        ):
+            _cleanup_unbound_candidate(candidate, sent_fd)
+        raise
     finally:
         if candidate is not None:
             os.close(candidate.fd)
@@ -2440,6 +2515,21 @@ def publish_candidate(
         receipt_store_factory=receipt_store_factory,
         task_store_factory=task_store_factory,
     ).path
+
+
+def _candidate_is_stored(record: object, candidate: _CapturedCandidate) -> bool:
+    """Match a captured file to the candidate fields of a valid stored witness."""
+
+    if getattr(record, "state", None) != "publishing":
+        return False
+    witness = _stored_publication_witness(record)
+    fields = _TASK_WITNESS_FIELDS[1:5]
+    return tuple(witness[field] for field in fields) == (
+        candidate.digest,
+        candidate.name,
+        candidate.device,
+        candidate.inode,
+    )
 
 
 def _stored_publication_witness(record: object) -> dict[str, object]:
@@ -2765,14 +2855,19 @@ def resume_publication(
 ) -> Path:
     if (receipt_id is None) == (task_id is None):
         _fail("invalid_resume_identifier", "choose exactly one receipt or task ID")
+    canonical_receipt_id = (
+        _canonical_receipt_id(receipt_id) if receipt_id is not None else None
+    )
     root = _require_repository(Path(repo_root))
     sent_fd = _open_sent_directory(root)
     try:
         with _SanitizedGit(root) as git:
             try:
-                if receipt_id is not None:
+                if canonical_receipt_id is not None:
                     store = receipt_store_factory(root)
-                    with store.lock_receipt(receipt_id, blocking=True) as attempt:
+                    with store.lock_receipt(
+                        canonical_receipt_id, blocking=True
+                    ) as attempt:
                         record = attempt.load_existing()
 
                         def validate_codex(
@@ -2798,7 +2893,9 @@ def resume_publication(
                             observed = attempt.load_existing()
                             if record.state != "published" and observed.state == "published":
                                 status_instruction = _publication_cli_command(
-                                    root, "status", receipt_id=receipt_id
+                                    root,
+                                    "status",
+                                    receipt_id=canonical_receipt_id,
                                 )
                                 raise ReportGateError(
                                     "publication_status_required",
@@ -2952,13 +3049,18 @@ def publication_status(
 ) -> dict[str, object]:
     if (receipt_id is None) == (task_id is None):
         _fail("invalid_status_identifier", "choose exactly one receipt or task ID")
+    canonical_receipt_id = (
+        _canonical_receipt_id(receipt_id) if receipt_id is not None else None
+    )
     root = _require_repository(Path(repo_root))
     sent_fd: int | None = None
     try:
         with _SanitizedGit(root) as git:
-            if receipt_id is not None:
+            if canonical_receipt_id is not None:
                 store = receipt_store_factory(root)
-                with store.lock_receipt(receipt_id, blocking=True) as attempt:
+                with store.lock_receipt(
+                    canonical_receipt_id, blocking=True
+                ) as attempt:
                     record = attempt.load_existing()
                     if record.state in {"publishing", "published"}:
                         sent_fd = _open_sent_directory(root)

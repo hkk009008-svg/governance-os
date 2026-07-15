@@ -1242,6 +1242,35 @@ def test_live_codex_binding_accepts_exact_reconciled_report(
     assert validated == fixture.authority
 
 
+def test_live_codex_rejects_malformed_receipt_id_before_store_initialization(
+    tmp_path: Path,
+) -> None:
+    fixture = _live_codex_fixture(tmp_path / "repo")
+    fields = dict(fixture.report.fields)
+    fields["Opus receipt ID"] = "opr1:not-canonical"
+    state_root = tmp_path / "malformed-receipt-state"
+    factory_calls = 0
+
+    def store_factory(repo_root: Path) -> receipts.ReceiptStore:
+        nonlocal factory_calls
+        factory_calls += 1
+        return receipts.ReceiptStore.for_repo(
+            repo_root,
+            state_root=state_root,
+        )
+
+    with pytest.raises(gate.ReportGateError) as excinfo:
+        gate.validate_live_report(
+            fixture.root,
+            _mutated_report(fixture.report, fields=fields),
+            receipt_store_factory=store_factory,
+        )
+
+    assert factory_calls == 0
+    assert not state_root.exists()
+    assert excinfo.value.reason == "invalid_receipt_id"
+
+
 def test_live_codex_binding_rejects_legacy_underclassified_reconciliation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2577,6 +2606,204 @@ def _inject_fsync_error(
     return observed
 
 
+def _expected_candidate_witness(
+    root: Path, candidate: Path, raw: bytes, final_relative: str
+) -> dict[str, object]:
+    observed = candidate.stat()
+    return {
+        "path": final_relative,
+        "candidate_digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "candidate_name": candidate.name,
+        "candidate_device": observed.st_dev,
+        "candidate_inode": observed.st_ino,
+        "index_blob_oid": _git_with_input(
+            root, raw, "hash-object", "--no-filters", "--stdin"
+        ),
+        "index_mode": "100644",
+        "index_stage": 0,
+    }
+
+
+@pytest.mark.parametrize("publication_mode", ["receipt", "task"])
+@pytest.mark.parametrize("candidate_case", ["fresh", "substituted", "stored"])
+def test_existing_publishing_state_cleans_only_distinct_fresh_candidate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    publication_mode: str,
+    candidate_case: str,
+) -> None:
+    if publication_mode == "receipt":
+        fixture = _live_codex_fixture(tmp_path / "repo")
+        store = fixture.store
+        stored_candidate = _candidate_path(
+            fixture.root, fixture.raw, ".stored-witness.tmp"
+        )
+        _begin_interrupted_publication(
+            fixture, stored_candidate, fixture.report.relative_path
+        )
+        publish_kwargs = {
+            "receipt_store_factory": lambda _root: store,
+        }
+        with store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+            stored_witness = gate._stored_publication_witness(
+                attempt.load_existing()
+            )
+    else:
+        fixture = _live_claude_fixture(tmp_path / "repo")
+        store = gate.TaskPublicationStore.for_repo(
+            fixture.root, state_root=fixture.root / ".task-publications"
+        )
+        gate.validate_live_report(
+            fixture.root,
+            fixture.report,
+            task_store_factory=lambda _root: store,
+        )
+        stored_candidate = _candidate_path(
+            fixture.root, fixture.raw, ".stored-witness.tmp"
+        )
+        stored_witness = _expected_candidate_witness(
+            fixture.root,
+            stored_candidate,
+            fixture.raw,
+            fixture.report.relative_path,
+        )
+        with store.lock_task(TASK_ID) as attempt:
+            attempt.load_existing()
+            attempt.begin_publication(
+                *(stored_witness[field] for field in gate._TASK_WITNESS_FIELDS)
+            )
+        publish_kwargs = {
+            "task_store_factory": lambda _root: store,
+        }
+
+    stored_identity = (
+        stored_candidate.stat().st_dev,
+        stored_candidate.stat().st_ino,
+    )
+    candidate = (
+        stored_candidate
+        if candidate_case == "stored"
+        else _candidate_path(fixture.root, fixture.raw, ".fresh-unowned.tmp")
+    )
+    foreign_raw = b"foreign substituted object\n"
+    cleanup_calls = 0
+    real_cleanup = gate._cleanup_unbound_candidate
+
+    def cleanup_after_optional_substitution(
+        captured: object, sent_fd: int
+    ) -> None:
+        nonlocal cleanup_calls
+        cleanup_calls += 1
+        if candidate_case == "substituted":
+            replacement = candidate.with_name(".foreign-substitute.tmp")
+            replacement.write_bytes(foreign_raw)
+            replacement.chmod(0o600)
+            os.replace(replacement, candidate)
+        real_cleanup(captured, sent_fd)
+
+    monkeypatch.setattr(
+        gate, "_cleanup_unbound_candidate", cleanup_after_optional_substitution
+    )
+    with pytest.raises(gate.ReportGateError) as excinfo:
+        gate.publish_candidate(
+            repo_root=fixture.root,
+            candidate_path=candidate,
+            final_relative=fixture.report.relative_path,
+            **publish_kwargs,
+        )
+
+    assert excinfo.value.reason == "publication_resume_required"
+    assert cleanup_calls == (0 if candidate_case == "stored" else 1)
+    if publication_mode == "receipt":
+        with store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+            observed = attempt.load_existing()
+    else:
+        with store.lock_task(TASK_ID) as attempt:
+            observed = attempt.load_existing()
+    assert observed.state == "publishing"
+    assert gate._stored_publication_witness(observed) == stored_witness
+    assert (
+        stored_candidate.stat().st_dev,
+        stored_candidate.stat().st_ino,
+    ) == stored_identity
+    if candidate_case == "substituted":
+        assert candidate.read_bytes() == foreign_raw
+    elif candidate_case == "fresh":
+        assert not candidate.exists()
+
+
+def test_receipt_begin_post_replace_fsync_failure_retains_witnessed_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _live_codex_fixture(tmp_path / "repo")
+    candidate = _candidate_path(fixture.root, fixture.raw)
+    expected = _expected_candidate_witness(
+        fixture.root, candidate, fixture.raw, fixture.report.relative_path
+    )
+    state_directory = fixture.store.state_root.stat()
+    injected = _inject_fsync_error(
+        monkeypatch,
+        lambda metadata: stat.S_ISDIR(metadata.st_mode)
+        and (metadata.st_dev, metadata.st_ino)
+        == (state_directory.st_dev, state_directory.st_ino),
+    )
+
+    with pytest.raises(gate.ReportGateError, match="publication_resumable"):
+        gate.publish_candidate(
+            repo_root=fixture.root,
+            candidate_path=candidate,
+            final_relative=fixture.report.relative_path,
+            receipt_store_factory=lambda _root: fixture.store,
+        )
+
+    assert injected["raised"] is True
+    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+        record = attempt.load_existing()
+    assert record.state == "publishing"
+    assert gate._stored_publication_witness(record) == expected
+    assert candidate.exists()
+
+
+def test_task_begin_post_replace_fsync_failure_retains_witnessed_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _live_claude_fixture(tmp_path / "repo")
+    store = gate.TaskPublicationStore.for_repo(
+        fixture.root, state_root=fixture.root / ".task-publications"
+    )
+    gate.validate_live_report(
+        fixture.root,
+        fixture.report,
+        task_store_factory=lambda _root: store,
+    )
+    candidate = _candidate_path(fixture.root, fixture.raw)
+    expected = _expected_candidate_witness(
+        fixture.root, candidate, fixture.raw, fixture.report.relative_path
+    )
+    state_directory = store.state_root.stat()
+    injected = _inject_fsync_error(
+        monkeypatch,
+        lambda metadata: stat.S_ISDIR(metadata.st_mode)
+        and (metadata.st_dev, metadata.st_ino)
+        == (state_directory.st_dev, state_directory.st_ino),
+    )
+
+    with pytest.raises(gate.ReportGateError, match="publication_resumable"):
+        gate.publish_candidate(
+            repo_root=fixture.root,
+            candidate_path=candidate,
+            final_relative=fixture.report.relative_path,
+            task_store_factory=lambda _root: store,
+        )
+
+    assert injected["raised"] is True
+    with store.lock_task(TASK_ID) as task:
+        record = task.load_existing()
+    assert record.state == "publishing"
+    assert gate._stored_publication_witness(record) == expected
+    assert candidate.exists()
+
+
 def test_candidate_fsync_oserror_before_link_never_publishes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2955,7 +3182,7 @@ def test_public_publish_rejects_interruption_and_explicit_resume_converges(
     )
     assert published == absent.root / absent.report.relative_path
     assert not old_absent.exists()
-    assert new_absent.exists()
+    assert not new_absent.exists()
     assert _git(absent.root, "ls-files", "--stage", "--", absent.report.relative_path)
 
     exact = _live_codex_fixture(tmp_path / "exact")
@@ -2997,6 +3224,41 @@ def test_publish_candidate_recovery_rejects_equal_bytes_different_inode(
     with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
         record = attempt.load_existing()
     assert record.state == "publishing"
+
+
+@pytest.mark.parametrize("operation", ["resume", "status"])
+def test_receipt_recovery_rejects_malformed_id_before_store_initialization(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    root, _, _, _, _ = _authority_fixture(tmp_path / "repo")
+    (root / "coordination" / "mailbox" / "sent").mkdir(parents=True)
+    state_root = tmp_path / "receipt-state"
+    factory_calls = 0
+
+    def store_factory(repo_root: Path) -> receipts.ReceiptStore:
+        nonlocal factory_calls
+        factory_calls += 1
+        return receipts.ReceiptStore.for_repo(
+            repo_root,
+            state_root=state_root,
+        )
+
+    function = (
+        gate.resume_publication
+        if operation == "resume"
+        else gate.publication_status
+    )
+    with pytest.raises(gate.ReportGateError) as excinfo:
+        function(
+            repo_root=root,
+            receipt_id="opr1:not-canonical",
+            receipt_store_factory=store_factory,
+        )
+
+    assert factory_calls == 0
+    assert not state_root.exists()
+    assert excinfo.value.reason == "invalid_receipt_id"
 
 
 @pytest.mark.parametrize(

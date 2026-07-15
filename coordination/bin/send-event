@@ -170,6 +170,8 @@ if [ "$KIND" = "verification-report" ]; then
   /bin/chmod 0700 "$PYCACHE_PREFIX"
   PUBLISHED_OUT=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.published.XXXXXX.tmp")
   /bin/chmod 0600 "$PUBLISHED_OUT"
+  # From this boundary onward, only the identity-aware publisher may clean up.
+  PRESERVE_TMP=1
   set +e
   /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
     "$TRUSTED_PYTHON" -E -s -S -B -X "pycache_prefix=$PYCACHE_PREFIX" \
@@ -180,7 +182,6 @@ if [ "$KIND" = "verification-report" ]; then
   set -e
   if [ "$PUBLISH_STATUS" -ne 0 ]; then
     if [ "$PUBLISH_STATUS" -eq 5 ]; then
-      PRESERVE_TMP=1
       echo "send-event: publication remains recoverable; use the resume command above" >&2
     fi
     exit "$PUBLISH_STATUS"

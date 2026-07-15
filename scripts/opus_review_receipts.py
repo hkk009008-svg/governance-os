@@ -304,7 +304,7 @@ def _sha256_text(value: object, label: str, *, reason: str) -> str:
     return value
 
 
-def _canonical_receipt_id(value: object) -> str:
+def canonical_receipt_id(value: object) -> str:
     if not isinstance(value, str) or _RECEIPT_ID_RE.fullmatch(value) is None:
         raise ReceiptContractError(
             "invalid_receipt_id",
@@ -1556,7 +1556,7 @@ class ReceiptStore:
         self, receipt_id: str, *, blocking: bool = True
     ) -> LockedAttempt:
         return LockedAttempt(
-            self, _canonical_receipt_id(receipt_id), blocking=blocking
+            self, canonical_receipt_id(receipt_id), blocking=blocking
         )
 
 
@@ -1565,7 +1565,7 @@ class LockedAttempt:
         self, store: ReceiptStore, attempt_key: str, *, blocking: bool
     ) -> None:
         self._store = store
-        self._attempt_key = _canonical_receipt_id(attempt_key)
+        self._attempt_key = canonical_receipt_id(attempt_key)
         key_digest = self._attempt_key.removeprefix("opr1:")
         self._receipt_name = f"{key_digest}.json"
         self._lock_name = f"{key_digest}.lock"

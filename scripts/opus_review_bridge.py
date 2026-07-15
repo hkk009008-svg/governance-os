@@ -2271,6 +2271,8 @@ class _VerificationBroker:
     def register(self, argv: Iterable[str]) -> list[str]:
         token = secrets.token_hex(32)
         with self._lock:
+            if self._stop.is_set():
+                raise RuntimeError("verification broker is closed")
             self._commands[token] = tuple(argv)
         return [
             sys.executable,
@@ -2299,7 +2301,11 @@ class _VerificationBroker:
     def _response_for_token(self, token: str) -> dict[str, object]:
         with self._lock:
             command = self._commands.get(token)
-            if command is None or token in self._used:
+            if (
+                self._stop.is_set()
+                or command is None
+                or token in self._used
+            ):
                 return self._rejected_payload()
             self._used.add(token)
         return self._execute(token, command)
@@ -2315,15 +2321,17 @@ class _VerificationBroker:
             ) as stderr_file:
                 stdout_path.chmod(0o600)
                 stderr_path.chmod(0o600)
-                process = subprocess.Popen(
-                    command,
-                    cwd=self.snapshot,
-                    env=_verification_environment(self.runtime),
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                    start_new_session=True,
-                )
                 with self._lock:
+                    if self._stop.is_set():
+                        return self._rejected_payload()
+                    process = subprocess.Popen(
+                        command,
+                        cwd=self.snapshot,
+                        env=_verification_environment(self.runtime),
+                        stdout=stdout_file,
+                        stderr=stderr_file,
+                        start_new_session=True,
+                    )
                     self._active = process
                 try:
                     returncode = process.wait(timeout=self.timeout_seconds)
@@ -2332,7 +2340,8 @@ class _VerificationBroker:
                 finally:
                     _terminate_process_group(process)
                     with self._lock:
-                        self._active = None
+                        if self._active is process:
+                            self._active = None
             stdout_size = stdout_path.stat().st_size
             stderr_size = stderr_path.stat().st_size
             if (
@@ -2391,8 +2400,8 @@ class _VerificationBroker:
                     continue
 
     def _close_partial(self) -> None:
-        self._stop.set()
         with self._lock:
+            self._stop.set()
             active = self._active
         if active is not None:
             _terminate_process_group(active)
@@ -3990,6 +3999,10 @@ def reconcile_receipt(
     ] = receipts.ReceiptStore.for_repo,
 ) -> ReconciliationReceiptResult:
     try:
+        canonical_receipt_id = receipts.canonical_receipt_id(receipt_id)
+    except receipts.ReceiptContractError as exc:
+        raise ReviewContractError(exc.reason, exc.detail) from exc
+    try:
         root = _require_git_repository(repo_root)
         _pipeline_root(root)
     except ReviewContractError as exc:
@@ -4003,7 +4016,7 @@ def reconcile_receipt(
         preliminary_base = _literal_full_sha(expected_base, "expected_base")
         _require_commit(root, preliminary_base, "expected_base")
     store = store_factory(root)
-    with store.lock_receipt(receipt_id) as attempt:
+    with store.lock_receipt(canonical_receipt_id) as attempt:
         record = attempt.load_existing()
         _, reviewed_head, reviewed_base = _validated_reconciliation_scope(
             root, record, expected_head, expected_base

@@ -420,11 +420,14 @@ def test_main_exits_0_on_empty_sent_dir(tmp_path: pathlib.Path):
 # ---------------------------------------------------------------------------
 
 def test_main_on_live_mailbox():
-    """The real 37-report corpus is exactly baseline-backed and exits cleanly."""
+    """The live corpus contains the routed base and every reviewed baseline path."""
     reports = cgs.scan_repository_reports(cgs.ROOT)
     manifest = cgs.load_baseline_manifest(cgs.DEFAULT_MANIFEST)
-    assert len(reports) == 37
-    assert len(manifest["reports"]) == 37
+    report_paths = {report.relative_path for report in reports}
+    manifest_paths = {entry["path"] for entry in manifest["reports"]}
+    assert len(reports) >= 38
+    assert manifest_paths
+    assert manifest_paths <= report_paths
     assert cgs.repository_report_violations(cgs.ROOT, reports, manifest) == []
     import sys
 
@@ -957,6 +960,50 @@ def test_filesystem_scan_rejects_symlink_swap_at_open(
     assert swapped
 
 
+@pytest.mark.parametrize(
+    ("component", "outside_tail"),
+    [
+        ("coordination", ("mailbox", "sent")),
+        ("mailbox", ("sent",)),
+        ("sent", ()),
+    ],
+)
+def test_filesystem_scan_rejects_symlink_in_canonical_directory_component(
+    tmp_path: pathlib.Path,
+    component: str,
+    outside_tail: tuple[str, ...],
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    canonical_components = ("coordination", "mailbox", "sent")
+    component_index = canonical_components.index(component)
+    canonical_parent = root.joinpath(*canonical_components[:component_index])
+    canonical_parent.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / f"outside-{component}"
+    outside.mkdir()
+    outside_sent = outside.joinpath(*outside_tail)
+    outside_sent.mkdir(parents=True, exist_ok=True)
+    canonical_parent.joinpath(component).symlink_to(
+        outside,
+        target_is_directory=True,
+    )
+    outside_raw = b"# outside report\n\nVERDICT: FAIL\n"
+    outside_sent.joinpath(
+        "2026-07-15T00-00-00Z-attacker-to-all-verification-report.md"
+    ).write_bytes(outside_raw)
+    explicit_directory = root / "coordination" / "mailbox" / "sent"
+
+    for directory in (None, explicit_directory):
+        try:
+            reports = cgs.scan_repository_reports(root, directory)
+        except OSError:
+            continue
+        assert outside_raw not in {report.raw for report in reports}, (
+            f"outside bytes accepted through symlinked {component} component"
+        )
+        pytest.fail(f"symlinked {component} component was not rejected")
+
+
 @pytest.mark.parametrize("unsafe_kind", ["symlink", "fifo"])
 def test_filesystem_scan_rejects_symlink_and_special_file(
     tmp_path: pathlib.Path, unsafe_kind: str
@@ -1049,6 +1096,49 @@ def test_baseline_git_ignores_inherited_git_selectors(
     manifest = cgs.generate_baseline(root, target)
 
     assert [entry["path"] for entry in manifest["reports"]] == [first, second]
+
+
+def test_baseline_git_uses_literal_system_binary_under_hostile_path(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    first, second = _baseline_repo(root)
+    shim_directory = tmp_path / "hostile-bin"
+    shim_directory.mkdir()
+    marker = tmp_path / "hostile-git-invoked"
+    shim = shim_directory / "git"
+    shim.write_text(
+        "#!/bin/sh\n"
+        "printf 'invoked\\n' >> \"$BASELINE_GIT_SHIM_MARKER\"\n"
+        "exec /usr/bin/git \"$@\"\n",
+        encoding="utf-8",
+    )
+    shim.chmod(0o755)
+    monkeypatch.setenv("BASELINE_GIT_SHIM_MARKER", str(marker))
+    monkeypatch.setenv("PATH", str(shim_directory))
+    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+
+    manifest = cgs.generate_baseline(root, target)
+
+    assert [entry["path"] for entry in manifest["reports"]] == [first, second]
+    assert json.loads(target.read_text(encoding="utf-8")) == manifest
+    assert not marker.exists(), "PATH-selected git shim handled baseline reads"
+
+
+def test_baseline_git_uses_literal_system_binary_when_path_has_no_git(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    first, second = _baseline_repo(root)
+    no_git_directory = tmp_path / "no-git-bin"
+    no_git_directory.mkdir()
+    monkeypatch.setenv("PATH", str(no_git_directory))
+    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+
+    manifest = cgs.generate_baseline(root, target)
+
+    assert [entry["path"] for entry in manifest["reports"]] == [first, second]
+    assert json.loads(target.read_text(encoding="utf-8")) == manifest
 
 
 def test_baseline_git_ignores_replace_refs(tmp_path: pathlib.Path) -> None:
