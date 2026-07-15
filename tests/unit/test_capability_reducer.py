@@ -82,6 +82,7 @@ EXPECTED_TOP_LEVEL_FUNCTION_NAMES = (
     "_scope_mapping",
     "_scope_digest",
     "_evidence_digest",
+    "_compute_relevant_digest",
     "_compute_precondition",
     "_work_mapping",
     "_unit_mapping",
@@ -137,6 +138,7 @@ PERMITTED_NAME_CALLS = (
     "_actor_mapping",
     "_applied_mapping",
     "_compute_precondition",
+    "_compute_relevant_digest",
     "_evidence_digest",
     "_integer_schema",
     "_nullable_string_schema",
@@ -562,6 +564,23 @@ def _scope_digest(scope: reducer.ResolvedScope) -> str:
 
 def _evidence_digest(refs: tuple[str, ...] | list[str]) -> str:
     return _canonical_digest(sorted(refs))
+
+
+def _relevant_digest(
+    *,
+    content_digest: str,
+    dependency_digest: str,
+    acceptance_digest: str,
+    evidence_digest: str,
+) -> str:
+    return _canonical_digest(
+        {
+            "content_digest": content_digest,
+            "dependency_digest": dependency_digest,
+            "acceptance_digest": acceptance_digest,
+            "evidence_digest": evidence_digest,
+        }
+    )
 
 
 def _precondition_digest(
@@ -1086,6 +1105,8 @@ def test_every_output_dataclass_has_exact_non_authority_fields() -> None:
             "unit_id",
             "work_revision",
             "resulting_unit_version",
+            "resulting_relevant_digest",
+            "resulting_precondition_digest",
             "mutable_scope_digest",
         ),
         reducer.KernelState: ("works", "units", "transitions"),
@@ -1906,7 +1927,11 @@ def _state_with_unit_version(
         ),
     )
     transitions = tuple(
-        replace(item, resulting_unit_version=version)
+        replace(
+            item,
+            resulting_unit_version=version,
+            resulting_precondition_digest=updated_unit.precondition_digest,
+        )
         if index == transition_index
         else item
         for index, item in enumerate(state.transitions)
@@ -1986,7 +2011,13 @@ def _duplicate_binding_variants(
     renamed_work = reducer.KernelState(
         works=(replace(work, work_id="work-renamed"),),
         units=(renamed_work_unit,),
-        transitions=(replace(item, work_id="work-renamed"),),
+        transitions=(
+            replace(
+                item,
+                work_id="work-renamed",
+                resulting_precondition_digest=renamed_work_unit.precondition_digest,
+            ),
+        ),
     )
 
     renamed_unit = replace(unit, unit_id="unit-renamed")
@@ -2006,7 +2037,13 @@ def _duplicate_binding_variants(
     renamed_unit_state = replace(
         state,
         units=(renamed_unit,),
-        transitions=(replace(item, unit_id="unit-renamed"),),
+        transitions=(
+            replace(
+                item,
+                unit_id="unit-renamed",
+                resulting_precondition_digest=renamed_unit.precondition_digest,
+            ),
+        ),
     )
 
     prior = reducer.AppliedTransition(
@@ -2016,6 +2053,8 @@ def _duplicate_binding_variants(
         unit_id=item.unit_id,
         work_revision=1,
         resulting_unit_version=1,
+        resulting_relevant_digest=item.resulting_relevant_digest,
+        resulting_precondition_digest=item.resulting_precondition_digest,
         mutable_scope_digest=item.mutable_scope_digest,
     )
     later_revision = replace(
@@ -2052,7 +2091,11 @@ def _duplicate_binding_variants(
         state,
         units=(changed_scope_unit,),
         transitions=(
-            replace(item, mutable_scope_digest=changed_scope_digest),
+            replace(
+                item,
+                mutable_scope_digest=changed_scope_digest,
+                resulting_precondition_digest=changed_scope_unit.precondition_digest,
+            ),
         ),
     )
     changed_route = replace(
@@ -2308,3 +2351,222 @@ def test_batch_materialization_guard_is_non_vacuous(
     assert old in source
     violations = _batch_materialization_violations(source.replace(old, new, 1))
     assert expected_violation in violations
+
+
+def test_duplicate_rejects_stale_expected_version_and_absent_precondition_at_revision_two() -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    first = _event_payload(actor=actor, scope=scope)
+    state = _apply(reducer.KernelState(), first, actor=actor, scope=scope)
+    second = _second_payload(
+        state,
+        actor=actor,
+        scope=scope,
+        content_digest=_digest("a"),
+    )
+    state = _apply(state, second, actor=actor, scope=scope)
+
+    forged = dict(second)
+    forged["expected_unit_version"] = 0
+    forged["precondition_digest"] = _precondition_digest(
+        work_id="work-1",
+        unit_id="unit-1",
+        unit_version=0,
+        mutable_scope_digest=reducer.ZERO_DIGEST,
+        content_digest=reducer.ZERO_DIGEST,
+        dependency_digest=reducer.ZERO_DIGEST,
+        acceptance_digest=reducer.ZERO_DIGEST,
+        evidence_digest=reducer.ZERO_DIGEST,
+    )
+    forged_digest = reducer.transition_digest(forged)
+    forged_state = replace(
+        state,
+        transitions=tuple(
+            replace(item, event_digest=forged_digest)
+            if item.transition_id == "transition-2"
+            else item
+            for item in state.transitions
+        ),
+    )
+    _assert_reducer_error(
+        "state_invalid",
+        lambda: reducer.apply_transition(
+            forged_state,
+            forged,
+            actor=object(),
+            activation=reducer.ActivationState(epoch=0),
+            resolve_scope=lambda _ref: pytest.fail("scope resolver called"),
+        ),
+    )
+
+
+def test_state_history_rejects_relevant_change_without_version_bump() -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    first = _event_payload(actor=actor, scope=scope)
+    state = _apply(reducer.KernelState(), first, actor=actor, scope=scope)
+    second = _second_payload(
+        state,
+        actor=actor,
+        scope=scope,
+        content_digest=_digest("a"),
+    )
+    state = _apply(state, second, actor=actor, scope=scope)
+    unit = state.units[0]
+    forged_unit = replace(
+        unit,
+        unit_version=1,
+        precondition_digest=_precondition_digest(
+            work_id=unit.work_id,
+            unit_id=unit.unit_id,
+            unit_version=1,
+            mutable_scope_digest=unit.mutable_scope_digest,
+            content_digest=unit.content_digest,
+            dependency_digest=unit.dependency_digest,
+            acceptance_digest=unit.acceptance_digest,
+            evidence_digest=unit.evidence_digest,
+        ),
+    )
+    forged_state = replace(
+        state,
+        units=(forged_unit,),
+        transitions=tuple(
+            replace(
+                item,
+                resulting_unit_version=1,
+                resulting_precondition_digest=forged_unit.precondition_digest,
+            )
+            if item.transition_id == "transition-2"
+            else item
+            for item in state.transitions
+        ),
+    )
+    _assert_reducer_error(
+        "state_invalid",
+        lambda: reducer.apply_transition(
+            forged_state,
+            first,
+            actor=object(),
+            activation=reducer.ActivationState(epoch=0),
+            resolve_scope=lambda _ref: pytest.fail("scope resolver called"),
+        ),
+    )
+
+
+def test_state_history_rejects_version_bump_without_relevant_change() -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    first = _event_payload(actor=actor, scope=scope)
+    state = _apply(reducer.KernelState(), first, actor=actor, scope=scope)
+    second = _second_payload(state, actor=actor, scope=scope)
+    state = _apply(state, second, actor=actor, scope=scope)
+    unit = state.units[0]
+    forged_unit = replace(
+        unit,
+        unit_version=2,
+        precondition_digest=_precondition_digest(
+            work_id=unit.work_id,
+            unit_id=unit.unit_id,
+            unit_version=2,
+            mutable_scope_digest=unit.mutable_scope_digest,
+            content_digest=unit.content_digest,
+            dependency_digest=unit.dependency_digest,
+            acceptance_digest=unit.acceptance_digest,
+            evidence_digest=unit.evidence_digest,
+        ),
+    )
+    forged_state = replace(
+        state,
+        units=(forged_unit,),
+        transitions=tuple(
+            replace(
+                item,
+                resulting_unit_version=2,
+                resulting_precondition_digest=forged_unit.precondition_digest,
+            )
+            if item.transition_id == "transition-2"
+            else item
+            for item in state.transitions
+        ),
+    )
+    _assert_reducer_error(
+        "state_invalid",
+        lambda: reducer.apply_transition(
+            forged_state,
+            first,
+            actor=object(),
+            activation=reducer.ActivationState(epoch=0),
+            resolve_scope=lambda _ref: pytest.fail("scope resolver called"),
+        ),
+    )
+
+
+def test_legitimate_historical_duplicate_remains_resolver_free() -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    first = _event_payload(actor=actor, scope=scope)
+    state = _apply(reducer.KernelState(), first, actor=actor, scope=scope)
+    second = _second_payload(
+        state,
+        actor=actor,
+        scope=scope,
+        content_digest=_digest("a"),
+    )
+    state = _apply(state, second, actor=actor, scope=scope)
+    third = _second_payload(
+        state,
+        actor=actor,
+        scope=scope,
+        transition_id="transition-3",
+    )
+    state = _apply(state, third, actor=actor, scope=scope)
+    calls = 0
+
+    def forbidden_scope(_ref: str) -> reducer.ResolvedScope:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("scope resolver called")
+
+    replayed = reducer.apply_transition(
+        state,
+        second,
+        actor=object(),
+        activation=reducer.ActivationState(epoch=0),
+        resolve_scope=forbidden_scope,
+    )
+    assert replayed is state
+    assert calls == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("mutable_scope_ref", "scope:forged"),
+        ("content_digest", _digest("b")),
+    ),
+)
+def test_duplicate_rejects_rebound_scope_ref_or_relevant_content(
+    field: str,
+    value: str,
+) -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    payload = _event_payload(actor=actor, scope=scope)
+    state = _apply(reducer.KernelState(), payload, actor=actor, scope=scope)
+    forged = dict(payload)
+    forged[field] = value
+    forged_digest = reducer.transition_digest(forged)
+    forged_state = replace(
+        state,
+        transitions=(replace(state.transitions[0], event_digest=forged_digest),),
+    )
+    _assert_reducer_error(
+        "state_invalid",
+        lambda: reducer.apply_transition(
+            forged_state,
+            forged,
+            actor=object(),
+            activation=reducer.ActivationState(epoch=0),
+            resolve_scope=lambda _ref: pytest.fail("scope resolver called"),
+        ),
+    )

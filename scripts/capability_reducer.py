@@ -155,6 +155,8 @@ class AppliedTransition:
     unit_id: str | None
     work_revision: int
     resulting_unit_version: int
+    resulting_relevant_digest: str
+    resulting_precondition_digest: str
     mutable_scope_digest: str
 
 
@@ -579,6 +581,24 @@ def _evidence_digest(refs: tuple[str, ...]) -> str:
     return _prefixed_digest(canonicalize(list(sorted(refs))))
 
 
+def _compute_relevant_digest(
+    content_digest: str,
+    dependency_digest: str,
+    acceptance_digest: str,
+    evidence_digest: str,
+) -> str:
+    return _prefixed_digest(
+        canonicalize(
+            {
+                "content_digest": content_digest,
+                "dependency_digest": dependency_digest,
+                "acceptance_digest": acceptance_digest,
+                "evidence_digest": evidence_digest,
+            }
+        )
+    )
+
+
 def _compute_precondition(
     work_id: str,
     unit_id: str | None,
@@ -639,6 +659,8 @@ def _applied_mapping(item: AppliedTransition) -> dict[str, object]:
         "unit_id": item.unit_id,
         "work_revision": item.work_revision,
         "resulting_unit_version": item.resulting_unit_version,
+        "resulting_relevant_digest": item.resulting_relevant_digest,
+        "resulting_precondition_digest": item.resulting_precondition_digest,
         "mutable_scope_digest": item.mutable_scope_digest,
     }
 
@@ -752,6 +774,10 @@ def _validate_state(value: object) -> KernelState:
         _require_state_nullable_string(item.unit_id, ID_PATTERN, code)
         _require_state_integer(item.work_revision, 1, code)
         _require_state_integer(item.resulting_unit_version, 1, code)
+        _require_state_string(item.resulting_relevant_digest, DIGEST_PATTERN, code)
+        _require_state_string(
+            item.resulting_precondition_digest, DIGEST_PATTERN, code
+        )
         _require_state_string(item.mutable_scope_digest, DIGEST_PATTERN, code)
     if value.transitions != tuple(sorted(value.transitions, key=transition_key)):
         raise ReducerError(code)
@@ -795,21 +821,39 @@ def _validate_state(value: object) -> KernelState:
             if revision != index:
                 raise ReducerError(code)
     for unit in value.units:
-        results = tuple(
-            item.resulting_unit_version
+        history = tuple(
+            item
             for item in value.transitions
             if item.work_id == unit.work_id and item.unit_id == unit.unit_id
         )
+        unit_relevant_digest = _compute_relevant_digest(
+            unit.content_digest,
+            unit.dependency_digest,
+            unit.acceptance_digest,
+            unit.evidence_digest,
+        )
         if (
-            not results
-            or results[0] != 1
-            or results[-1] != unit.unit_version
+            not history
+            or history[0].resulting_unit_version != 1
         ):
             raise ReducerError(code)
-        for index, result in enumerate(results[1:], 1):
-            previous = results[index - 1]
-            if result not in (previous, previous + 1):
+        for index, item in enumerate(history[1:], 1):
+            previous = history[index - 1]
+            expected_version = (
+                previous.resulting_unit_version
+                if item.resulting_relevant_digest
+                == previous.resulting_relevant_digest
+                else previous.resulting_unit_version + 1
+            )
+            if item.resulting_unit_version != expected_version:
                 raise ReducerError(code)
+        final = history[-1]
+        if (
+            final.resulting_unit_version != unit.unit_version
+            or final.resulting_relevant_digest != unit_relevant_digest
+            or final.resulting_precondition_digest != unit.precondition_digest
+        ):
+            raise ReducerError(code)
 
     for index, unit in enumerate(value.units):
         for other in value.units[index + 1 :]:
@@ -872,6 +916,11 @@ def apply_transition(
         matching_work = tuple(
             work for work in current.works if work.work_id == parsed.work_id
         )
+        matching_unit = tuple(
+            unit
+            for unit in current.units
+            if unit.work_id == parsed.work_id and unit.unit_id == parsed.unit_id
+        )
         if (
             stored.work_id != parsed.work_id
             or stored.unit_id != parsed.unit_id
@@ -879,6 +928,64 @@ def apply_transition(
             or stored.mutable_scope_digest != parsed.mutable_scope_digest
             or len(matching_work) != 1
             or matching_work[0].route_id != parsed.route_id
+            or len(matching_unit) != 1
+            or matching_unit[0].mutable_scope_ref != parsed.mutable_scope_ref
+        ):
+            raise ReducerError("state_invalid")
+
+        unit_history = tuple(
+            item
+            for item in current.transitions
+            if item.work_id == parsed.work_id and item.unit_id == parsed.unit_id
+        )
+        stored_positions = tuple(
+            index
+            for index, item in enumerate(unit_history)
+            if item.transition_id == stored.transition_id
+        )
+        if len(stored_positions) != 1:
+            raise ReducerError("state_invalid")
+        position = stored_positions[0]
+        predecessor = None if position == 0 else unit_history[position - 1]
+        required_version = (
+            0 if predecessor is None else predecessor.resulting_unit_version
+        )
+        consumed_precondition = (
+            _compute_precondition(
+                parsed.work_id,
+                parsed.unit_id,
+                0,
+                ZERO_DIGEST,
+                ZERO_DIGEST,
+                ZERO_DIGEST,
+                ZERO_DIGEST,
+                ZERO_DIGEST,
+            )
+            if predecessor is None
+            else predecessor.resulting_precondition_digest
+        )
+        evidence_digest = _evidence_digest(parsed.evidence_refs)
+        relevant_digest = _compute_relevant_digest(
+            parsed.content_digest,
+            parsed.dependency_digest,
+            parsed.acceptance_digest,
+            evidence_digest,
+        )
+        resulting_precondition = _compute_precondition(
+            parsed.work_id,
+            parsed.unit_id,
+            stored.resulting_unit_version,
+            parsed.mutable_scope_digest,
+            parsed.content_digest,
+            parsed.dependency_digest,
+            parsed.acceptance_digest,
+            evidence_digest,
+        )
+        if (
+            parsed.expected_unit_version != required_version
+            or parsed.precondition_digest != consumed_precondition
+            or stored.resulting_relevant_digest != relevant_digest
+            or stored.resulting_precondition_digest != resulting_precondition
         ):
             raise ReducerError("state_invalid")
         return current
@@ -980,15 +1087,22 @@ def apply_transition(
         raise ReducerError("precondition")
 
     evidence_digest = _evidence_digest(parsed.evidence_refs)
+    relevant_digest = _compute_relevant_digest(
+        parsed.content_digest,
+        parsed.dependency_digest,
+        parsed.acceptance_digest,
+        evidence_digest,
+    )
     if unit is None:
         resulting_version = 1
     else:
-        relevant_changed = (
-            parsed.content_digest != unit.content_digest
-            or parsed.dependency_digest != unit.dependency_digest
-            or parsed.acceptance_digest != unit.acceptance_digest
-            or evidence_digest != unit.evidence_digest
+        previous_relevant_digest = _compute_relevant_digest(
+            unit.content_digest,
+            unit.dependency_digest,
+            unit.acceptance_digest,
+            unit.evidence_digest,
         )
+        relevant_changed = relevant_digest != previous_relevant_digest
         if relevant_changed and unit.unit_version == MAX_INT:
             raise ReducerError("expected_version")
         resulting_version = unit.unit_version + 1 if relevant_changed else unit.unit_version
@@ -1058,6 +1172,8 @@ def apply_transition(
         unit_id=parsed.unit_id,
         work_revision=parsed.work_revision,
         resulting_unit_version=resulting_version,
+        resulting_relevant_digest=relevant_digest,
+        resulting_precondition_digest=post_precondition,
         mutable_scope_digest=parsed.mutable_scope_digest,
     )
     transitions = tuple(

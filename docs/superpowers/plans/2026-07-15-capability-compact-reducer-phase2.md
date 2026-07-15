@@ -213,6 +213,8 @@ class AppliedTransition:
     unit_id: str | None
     work_revision: int
     resulting_unit_version: int
+    resulting_relevant_digest: str
+    resulting_precondition_digest: str
     mutable_scope_digest: str
 
 @dataclass(frozen=True)
@@ -521,6 +523,10 @@ direct-call-only resolver loads in the AST guard. Run the focused reducer,
 schema-sync/canonical regression, smoke, and diff check before Task 3. Do not
 add an adapter, store, external call, mutable cache, activation path, or output
 field while correcting these enforcement gaps.
+
+Resolver-free duplicate replay trusts structurally coherent reducer-produced,
+non-authoritative shadow state; it does not authenticate wholly fabricated
+state or historical actor eligibility.
 
 ### Task 3: Deterministic replay and merge vectors
 
