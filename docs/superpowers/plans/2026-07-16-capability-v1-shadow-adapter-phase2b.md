@@ -202,6 +202,11 @@ verification_ref
 effect_reservation_refs
 ```
 
+`schema` is exactly `compact-kernel-legacy-observation/v1`. This names the
+host-normalized, non-authoritative adapter input without reusing or implying
+the authoritative `governance.route/v1` contract. Task 1 accepts no other
+schema literal.
+
 The adapter derives `transition_id`, `requested_transition`,
 `expected_unit_version`, `precondition_digest`, and `activation_epoch`; those
 keys are forbidden in input. `source_digest` is the canonical SHA-256 of the
@@ -292,6 +297,10 @@ and grants no authority.
 - Produces: `transition_cursor(...) -> tuple[int, int, str]`.
 - Produces: exact `LegacyAdapterError` codes and strict normalized-record
   parsing used by Task 2.
+- Returns `()` for an empty history. Until Task 2 supplies the closed mapping
+  table, every non-empty structurally valid current record finishes strict
+  parsing and digest validation and then raises `legacy_unmapped`; it does not
+  call a resolver, derive a cursor, apply a reducer event, or emit an envelope.
 - Does not yet add the corpus CLI implementation beyond a parser entrypoint
   that fails closed when no valid `--check-corpus` input is supplied.
 
@@ -346,9 +355,12 @@ def test_legacy_record_rejects_authority_and_derived_fields(forbidden):
 ```
 
 Also pin non-object records, exact keys, duplicate JSON keys, bool-as-int,
-unknown schema/domain/value/context, invalid ID/ref/digest, absolute/ambiguous
-scope, source-digest mismatch, future v1 schema, raw route-v2 input, and
-nonzero/explicit epoch rejection.
+unknown schema/domain/value/context, invalid ID/ref/digest syntax (including
+invalid scope-reference or scope-digest syntax), source-digest mismatch, future
+v1 schema, raw route-v2 input, and nonzero/explicit epoch rejection. Pin that
+an empty history returns `()`, a valid current record raises
+`legacy_unmapped`, and actor/scope resolvers are not called in either Task-1
+path.
 
 - [ ] **Step 2: Run RED**
 
@@ -364,23 +376,14 @@ Expected: fail because `transition_cursor`, `LegacyAdapterError`, and
 - [ ] **Step 3: Implement the minimal cursor and strict parser**
 
 `transition_cursor` must call the existing state/ID validators and reuse the
-existing precondition function. The adapter must canonicalize the record
-without `source_digest`, compare the digest, validate causal order as supplied,
-canonically sort only the fully accepted output tuple, and reject all
-derived/authority keys. Do not infer missing values.
-
-Resolver handling is deterministic:
-
-```python
-first_actor = resolve_actor(record.actor_binding_digest)
-second_actor = resolve_actor(record.actor_binding_digest)
-if first_actor != second_actor:
-    raise LegacyAdapterError("legacy_nondeterministic")
-```
-
-Use the same two-read rule for scope via the reducer's existing application
-boundary. Map every external exception to one stable adapter code without
-including raw legacy content in the message.
+existing precondition function. The adapter must canonicalize the strictly
+parsed record without `source_digest`, compare the digest, and reject all
+derived/authority keys. Do not infer missing values. Task 1 must not invent a
+provisional mapping: after a non-empty record passes structural, schema,
+domain/value/context, identifier, opaque scope-reference/digest syntax, and
+source-digest validation, raise `LegacyAdapterError("legacy_unmapped")` without
+calling either resolver. Map every external parsing exception to one stable
+adapter code without including raw legacy content in the message.
 
 - [ ] **Step 4: Add reducer reverse-dependency and mutation guards**
 
@@ -549,6 +552,22 @@ authority.
 
 For every route history, build an event from the normalized record, derive the
 cursor, resolve actor/scope twice, and apply it to an in-memory `KernelState`.
+Resolver handling is deterministic:
+
+```python
+first_actor = resolve_actor(record.actor_binding_digest)
+second_actor = resolve_actor(record.actor_binding_digest)
+if first_actor != second_actor:
+    raise LegacyAdapterError("legacy_nondeterministic")
+```
+
+Use the same two-read rule for scope through the reducer's existing application
+boundary. Validate causal order as supplied, map every external resolver or
+reducer exception to one stable sanitized adapter code, and canonically sort
+only the fully accepted output tuple. Task-2 tests own absolute resolved paths,
+ambiguous or redundant resolved scope, and scope-resolver drift; none of those
+checks may be pulled into Task 1's opaque-record parser.
+
 Maintain a local `source_id -> (source_digest, envelope)` map: an exact replay
 reuses the original envelope before consulting the next cursor, while changed
 content under the same source ID reaches the same transition identity and
