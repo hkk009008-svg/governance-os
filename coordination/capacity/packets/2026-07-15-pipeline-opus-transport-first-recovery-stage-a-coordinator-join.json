@@ -20,7 +20,7 @@
   ],
   "acceptance": [
     "Keep terminal receipt opr1:de2f5b672b8e1ea03b7575d7a636e0d56bef9817f0d8b5b74fb0632678b68f85 immutable. Capacity, smoke, route validity, the reconciled manual consultation, and local hypotheses are not proof that Opus is fixed.",
-    "Remain blocked until Director2 lands one provider-free Stage A diagnostic implementation plus canonical descriptor/request and Operator2 returns exactly one Stage A GO, NITS, or FAIL. Do not route a root fix before the first boundary is proven.",
+    "Remain blocked until Director2 lands the provider-free reviewed Stage A implementation range from base 40fd0a5e43c6b28330ced9ddffe01483cde42b65 through immutable initial commit 56091d107382abfe9f06df1aa4cd003d71be7b5e and exactly one additive compatibility-fix commit, then publishes the canonical descriptor/request and Operator2 returns exactly one Stage A GO, NITS, or FAIL. Do not route a root fix before the first boundary is proven.",
     "On Stage A GO, refresh HEAD, mailbox bodies, capacity, locks, shared WIP, exact report evidence, receipt state, and no-provider proof. Then open a fresh Stage B route for only the proven boundary. On NITS or FAIL, route only the bounded diagnostic correction.",
     "Any provider-side diagnostic, live canary, local merge, or push requires a later distinct route and side-effect executor token. The final order remains independent GO, local merge, post-merge verification, then push. Coordinator never authors the production fix."
   ],

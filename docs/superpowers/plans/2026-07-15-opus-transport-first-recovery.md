@@ -146,7 +146,11 @@ Expected: all selected tests pass, provider-attempt count remains zero, and no t
 **Interfaces:**
 
 - Consumes: the committed coordinator Stage A route and Tasks 1-2 evidence.
-- Produces: one shipping diagnostics commit, one exact descriptor-only commit, and one verify-request-only commit; no provider receipt.
+- Produces: one two-commit reviewed Stage A implementation range, one exact
+  descriptor-only commit, and one verify-request-only commit; no provider
+  receipt. The implementation range consists of immutable initial commit
+  `56091d107382abfe9f06df1aa4cd003d71be7b5e` plus exactly one additive
+  compatibility-fix commit.
 
 - [ ] **Step 1: Run the complete provider-free gate**
 
@@ -162,19 +166,44 @@ env -u GIT_INDEX_FILE git diff --check
 
 Expected: all tests and smoke pass; `git diff --check` has no output; no provider process or receipt is created.
 
-- [ ] **Step 2: Commit only the diagnostic implementation**
+- [ ] **Step 2: Preserve the initial commit and append one review fix**
 
-Commit the four implementation/test paths with subject `fix(opus): expose sanitized transport failure detail`. Exclude the shared root's unrelated WIP and every route/receipt/runtime file.
+Keep `56091d107382abfe9f06df1aa4cd003d71be7b5e` immutable. Do not amend,
+rebase, reset, rewrite, replace, or rebuild it. Add exactly one separate commit
+on top with subject `fix(opus): preserve resolver ENOENT compatibility`. Its
+parent must be `56091d107382abfe9f06df1aa4cd003d71be7b5e`, and its diff may touch
+only `scripts/opus_review_bridge.py` and
+`tests/unit/test_opus_review_bridge.py`. Add the resolver-ENOENT regression
+first, then retain the finite `binary_missing` detail while restoring the
+legacy public result:
+
+```text
+unavailable_reason = process_failed
+failure_stage       = provider_spawn
+failure_detail      = binary_missing
+provider_returncode = null
+```
+
+After the additive commit, re-run independent spec review and code-quality
+review against the complete two-commit range. Exclude the shared root's
+unrelated WIP and every route/receipt/runtime file.
 
 - [ ] **Step 3: Bind descriptor `b8c59c86-2426-46cf-8975-7b075d75fc09`**
 
-Use the commit containing
-`coordination/mailbox/sent/2026-07-15T13-03-19Z-coordinator-to-all-coordination.md`
-as reviewed base and the shipping diagnostics commit as reviewed head. Set
-allowed roots to the exact shipping diff. Require this plan, the original Stage
-A route, the corrective route above, the prior terminal GO report, and the
-existing content-addressed Opus advisory prompt authority. Serialize exactly
-these two trusted-Python descriptor verification commands:
+Use `40fd0a5e43c6b28330ced9ddffe01483cde42b65`, the commit containing
+`coordination/mailbox/sent/2026-07-15T13-03-19Z-coordinator-to-all-coordination.md`,
+as reviewed base and the additive compatibility-fix commit as reviewed head.
+The reviewed range must be the strict linear chain from that base through
+immutable `56091d107382abfe9f06df1aa4cd003d71be7b5e` to the additive fix. Set
+allowed roots to the exact aggregate range diff, which must remain exactly the
+four implementation/test paths named above. Require only descriptor artifacts
+that exist at the reviewed head: the plan version at the reviewed base, the
+original Stage A route, the descriptor-command corrective route, the prior
+terminal GO report, and the existing content-addressed Opus advisory prompt
+authority. Operator2 reads the later coordinator history-contract correction
+separately; it is not a descriptor requirement and must not be fast-forwarded,
+merged, or cherry-picked into the Stage A branch before Lane V. Serialize
+exactly these two trusted-Python descriptor verification commands:
 
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
@@ -183,9 +212,10 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
 ```
 
-Keep `env -u GIT_INDEX_FILE git diff --check` mandatory before the shipping,
-descriptor, and verify-request commits and during Operator2 verification, but
-do not serialize it into `verification_commands`. Commit the descriptor alone.
+Keep `env -u GIT_INDEX_FILE git diff --check` mandatory before the additive
+compatibility-fix, descriptor, and verify-request commits and during Operator2
+verification, but do not serialize it into `verification_commands`. Commit the
+descriptor alone.
 
 - [ ] **Step 4: Send one canonical verify-request**
 
