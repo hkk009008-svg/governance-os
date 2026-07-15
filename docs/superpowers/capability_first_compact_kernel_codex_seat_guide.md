@@ -10,9 +10,11 @@ external-effect failure.
   primitives behind one reducer; do not create a second operation store.
 - Direct work without coordination, independent-verification, or effect triggers
   creates no protocol artifact. Controls are risk-triggered, never seat-triggered.
-- Models may choose in-scope tools, subagents, worktrees, ChatGPT, or Claude from
-  runtime- and user-authorized options; unused capacity creates no record.
-- Provider output is advisory and grants no verdict or side-effect authority.
+- Models may choose in-scope tools, subagents, worktrees, read-only web
+  research, ChatGPT, or Claude from runtime- and user-authorized options;
+  unused capacity creates no record.
+- Web research and provider output are advisory and grant no verdict,
+  protocol-state, or side-effect authority.
 - Retain a public helper only when it has a non-test caller or documented CLI.
 - Version 1 stays authoritative until the user-approved Phase-4 activation;
   shadow state cannot grant GO, terminality, or effects.
@@ -77,6 +79,29 @@ independently testable work, a verifier only when triggered, and a serialized
 writer duty only for coordinated state. Duties may share productive seats; do
 not create standby, observer, Pair-B, utilization, join, receipt-only, or
 terminal-next-trigger artifacts.
+
+Every readiness bridge, director/director2, operator/operator2, and coordinator
+context may choose the runtime's read-only web-search tool whenever external,
+current, niche, or materially uncertain information would improve the work. A
+sanitized query over public information needs no route, reservation, approval
+artifact, or seat handoff. Prefer primary sources, cite the exact sources
+actually relied on, cross-check a consequential ambiguous source, and state the
+source date or freshness when it matters. For repository and protocol state,
+current local durable artifacts still outrank web material.
+
+The fast path ends at research. A query must not disclose private repository,
+mailbox, route, credential, token, personal, or proprietary content. Search
+does not authorize sign-in, credential entry, upload, form submission, paid
+API use, spend, or any downstream action. Results cannot grant GO/NITS/FAIL,
+directly mutate a route or authoritative/live reducer state, reserve an effect,
+or satisfy an independent verification requirement. A separately accepted
+transition may carry one sanitized citation as opaque `evidence_refs` input to
+non-authoritative shadow reduction only. If the runtime tool is unavailable,
+continue from local evidence or report the limitation. Stop and request
+direction when the missing fact would materially change scope, security,
+authority, cost, or an irreversible decision. Do not silently switch to an
+interactive browser, provider API, credentialed transport, or paid fallback,
+and do not download or execute software as part of research.
 
 ## 3. One reducer, no second authority store
 
@@ -238,7 +263,32 @@ For Git push, describe enforcement accurately:
 - otherwise `user-gated audited executor`, with exact refspec, expected remote
   OID, fixed argument vector, and postcheck. Do not claim structural prevention.
 
-## 6. Flexible ChatGPT and Claude use
+## 6. Flexible research, ChatGPT, and Claude use
+
+### Read-only web research
+
+Web search is a runtime research tool, not an advisory-provider dispatch and
+not an external-effect executor. A seat chooses it directly under Section 2's
+public/sanitized/read-only boundary. No consultation reservation is created
+for an ordinary query, and no result is imported as authority.
+
+When research contributes to durable work, record the minimum useful
+provenance: a direct source reference, publication or retrieval date when
+freshness matters, and the local conclusion it supports. Raw search result
+pages and copied private context do not belong in route or protocol state. The
+compact reducer may receive a sanitized durable citation identifier through
+`evidence_refs`; it treats that identifier as opaque evidence, never fetches
+it, judges its truth, or derives eligibility from it. Any action suggested by
+research passes through its ordinary authority and side-effect gates.
+
+Required abuse coverage for the live seat harness is: private query leakage;
+credential, sign-in, form, and upload attempts; paid or credentialed fallback;
+stale or uncited reliance; result-as-verdict or result-as-route confusion; and
+tool unavailability. The hermetic capability-baseline collector may disable
+web access to preserve benchmark comparability; that benchmark setting is not
+a general seat restriction.
+
+### Advisory model transports
 
 `scripts/advisory_dispatch.py` has exactly two callers: the ChatGPT guard and
 Claude bridge. It returns deterministic external eligibility and atomically
