@@ -173,10 +173,8 @@ PERMITTED_NAME_CALLS = (
     "enumerate",
     "frozenset",
     "fullmatch",
-    "iter",
     "len",
     "list",
-    "next",
     "parse_transition",
     "set",
     "sha256",
@@ -2189,3 +2187,124 @@ def test_reducer_ast_rejects_mutable_globals_and_indirect_resolver_loads(
     with pytest.raises(AssertionError) as exc_info:
         _assert_reducer_ast_is_pure(source + "\n" + mutation + "\n")
     assert expected_violation in str(exc_info.value)
+
+
+def _batch_materialization_violations(source: str) -> list[str]:
+    tree = ast.parse(source)
+    functions = tuple(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "reduce_protocol_state"
+    )
+    if len(functions) != 1:
+        return ["reduce_protocol_state definition must be unique"]
+    function = functions[0]
+    parents = {
+        child: parent
+        for parent in ast.walk(function)
+        for child in ast.iter_child_nodes(parent)
+    }
+    violations: list[str] = []
+
+    raw_assignments = tuple(
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "raw_events"
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "tuple"
+        and len(node.value.args) == 1
+        and isinstance(node.value.args[0], ast.Name)
+        and node.value.args[0].id == "events"
+        and not node.value.keywords
+    )
+    if len(raw_assignments) != 1:
+        violations.append("one raw_events = tuple(events) materialization is required")
+    elif not (
+        isinstance(parents.get(raw_assignments[0]), ast.Try)
+        and parents[raw_assignments[0]].body == [raw_assignments[0]]
+    ):
+        violations.append("raw event materialization must be alone in its try body")
+
+    parse_assignments = tuple(
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "parsed_events"
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "tuple"
+        and len(node.value.args) == 1
+        and isinstance(node.value.args[0], ast.GeneratorExp)
+        and isinstance(node.value.args[0].elt, ast.Call)
+        and isinstance(node.value.args[0].elt.func, ast.Name)
+        and node.value.args[0].elt.func.id == "parse_transition"
+        and len(node.value.args[0].generators) == 1
+        and isinstance(node.value.args[0].generators[0].iter, ast.Name)
+        and node.value.args[0].generators[0].iter.id == "raw_events"
+    )
+    if len(parse_assignments) != 1:
+        violations.append("raw events must be parsed by one linear tuple comprehension")
+    elif isinstance(parents.get(parse_assignments[0]), ast.Try):
+        violations.append("parser validation must remain outside the iterator try")
+
+    for node in ast.walk(function):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.BinOp)
+            and isinstance(node.value.op, ast.Add)
+            and (
+                (
+                    isinstance(node.value.left, ast.Name)
+                    and node.value.left.id == node.targets[0].id
+                )
+                or (
+                    isinstance(node.value.right, ast.Name)
+                    and node.value.right.id == node.targets[0].id
+                )
+            )
+        ):
+            violations.append(
+                f"repeated tuple concatenation is not permitted: {node.targets[0].id}"
+            )
+    return violations
+
+
+def test_batch_event_materialization_and_parsing_are_linear() -> None:
+    source = Path(reducer.__file__).read_text(encoding="utf-8")
+    assert not _batch_materialization_violations(source)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected_violation"),
+    (
+        (
+            "raw_events = tuple(events)",
+            "raw_events = ()",
+            "one raw_events = tuple(events) materialization is required",
+        ),
+        (
+            "parsed_events = tuple(parse_transition(event) for event in raw_events)",
+            "parsed_events = ()\n    for event in raw_events:\n"
+            "        parsed_events = parsed_events + (parse_transition(event),)",
+            "repeated tuple concatenation is not permitted: parsed_events",
+        ),
+    ),
+)
+def test_batch_materialization_guard_is_non_vacuous(
+    old: str,
+    new: str,
+    expected_violation: str,
+) -> None:
+    source = Path(reducer.__file__).read_text(encoding="utf-8")
+    assert old in source
+    violations = _batch_materialization_violations(source.replace(old, new, 1))
+    assert expected_violation in violations

@@ -1078,28 +1078,20 @@ def reduce_protocol_state(
     """Reduce a batch into one deterministic observational shadow report."""
 
     try:
-        iterator = iter(events)
+        raw_events = tuple(events)
     except Exception as exc:
         raise ReducerError("invalid_envelope") from exc
-    parsed_events: tuple[TransitionEnvelope, ...] = ()
-    while True:
-        try:
-            event = next(iterator)
-        except StopIteration:
-            break
-        except Exception as exc:
-            raise ReducerError("invalid_envelope") from exc
-        parsed_events = parsed_events + (parse_transition(event),)
+    parsed_events = tuple(parse_transition(event) for event in raw_events)
     active = _validate_activation(activation)
 
     unique_events: dict[str, tuple[TransitionEnvelope, str]] = {}
-    idempotent_ids: tuple[str, ...] = ()
+    idempotent_ids: dict[str, None] = {}
     for parsed in parsed_events:
         event_digest = transition_digest(parsed)
         if parsed.transition_id in unique_events:
             if unique_events[parsed.transition_id][1] != event_digest:
                 raise ReducerError("transition_id_reuse")
-            idempotent_ids = idempotent_ids + (parsed.transition_id,)
+            idempotent_ids[parsed.transition_id] = None
         else:
             unique_events[parsed.transition_id] = (parsed, event_digest)
 
@@ -1157,6 +1149,6 @@ def reduce_protocol_state(
         applied_transition_ids=tuple(
             sorted(item.transition_id for item in current.transitions)
         ),
-        idempotent_transition_ids=tuple(sorted(set(idempotent_ids))),
+        idempotent_transition_ids=tuple(sorted(idempotent_ids)),
         units=current.units,
     )
