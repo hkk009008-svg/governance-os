@@ -6,7 +6,7 @@
     "level5-wave1-opus-receipt-integration"
   ],
   "lock_keys": [],
-  "handoff_artifact": null,
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-15-pipeline-level5-opus-receipt-integration-closeout.md",
   "owner": "coordinator",
   "packet_type": "coordinator-join",
   "allowed_paths": [
@@ -23,9 +23,18 @@
     "On GO, refresh HEAD, mailbox, capacity, route, locks, isolated clean-tree smoke, root smoke, protocol doctor, exact report evidence, retained worktrees, receipt state, and root-preservation witnesses before closing. On NITS or FAIL, route only the bounded correction and keep all local state unpublished.",
     "Do not treat the earlier implementation GO, the merge pretests, this consultation, capacity validation, or the invalid request as verification of the corrected trigger or final integration boundary. Do not author production behavior as coordinator."
   ],
-  "done_evidence": [],
-  "next_recipient": "operator2",
-  "status": "blocked",
+  "done_evidence": [
+    "Operator2 GO evidence: coordination/mailbox/sent/2026-07-15T08-50-32Z-operator2-to-all-verification-report.md verifies reviewed integration head 959b47e0fd6e9d6d7a80bec39391d5f7206b8934 over base 3b9b5c9c47949624ca16f01d93ebfeac189ef457 from canonical corrected verify-request trigger 8cbd03ad0ac907ac49f2cc9c55c4249a9c981e2c.",
+    "Integration topology evidence: merge 959b47e0fd6e9d6d7a80bec39391d5f7206b8934 retains first parent 3b4f71f5108934d12d22be8b6c872f74a3c0c194 and second parent 4c49c43287a936d618bc5fcaa61a26b58b931fd0; corrected descriptor eb1915e59269f688aea0ac11ed61011b0f90c9ef and trigger 8cbd03ad0ac907ac49f2cc9c55c4249a9c981e2c remain strict descendants outside the reviewed range.",
+    "capacity board evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 -> valid true with this integration cycle closed and no blocking issues.",
+    "route validation evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 --validate-route coordination/mailbox/sent/2026-07-15T11-39-48Z-coordinator-to-all-coordination.md -> route valid true with no blocking issues.",
+    "protocol doctor evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave 2 --route coordination/mailbox/sent/2026-07-15T11-39-48Z-coordinator-to-all-coordination.md -> PROTOCOL DOCTOR: PASS.",
+    "smoke OK evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py -> project smoke, ceremony, placeholder, GO-schema, and architecture-freshness checks pass.",
+    "handoff artifact: docs/HANDOFF-coordinator-2026-07-15-pipeline-level5-opus-receipt-integration-closeout.md",
+    "next trigger: remain in local-only standby until newer relevant mail arrives or the user separately authorizes a publication action with an explicit executor and target; no push, external publication, branch or worktree cleanup, or receipt cleanup is authorized by this closeout."
+  ],
+  "next_recipient": "coordinator",
+  "status": "done",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
@@ -36,6 +45,10 @@
     "coordination/mailbox/sent/2026-07-15T01-39-31Z-coordinator-to-all-coordination.md",
     "coordination/mailbox/sent/2026-07-15T02-14-41Z-director2-to-all-coordination.md",
     "coordination/mailbox/sent/2026-07-15T03-43-57Z-coordinator-to-all-coordination.md",
-    "coordination/verification/scopes/f70d24b0-767a-4a8c-98a4-f7114c50b34f.json"
+    "coordination/mailbox/sent/2026-07-15T07-55-11Z-director2-to-operator2-verify-request.md",
+    "coordination/mailbox/sent/2026-07-15T08-50-32Z-operator2-to-all-verification-report.md",
+    "coordination/mailbox/sent/2026-07-15T11-39-48Z-coordinator-to-all-coordination.md",
+    "coordination/verification/scopes/f70d24b0-767a-4a8c-98a4-f7114c50b34f.json",
+    "docs/HANDOFF-coordinator-2026-07-15-pipeline-level5-opus-receipt-integration-closeout.md"
   ]
 }

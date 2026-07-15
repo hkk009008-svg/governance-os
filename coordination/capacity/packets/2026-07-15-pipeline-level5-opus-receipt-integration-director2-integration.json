@@ -25,14 +25,29 @@
     "Only after all prospective-branch checks pass, fast-forward local main from the exact correction route commit to T2 with autostash disabled. Require every captured stable WIP witness, index condition, stash state, and operation marker to remain equal afterward. Both isolated clean-tree smoke and root smoke must remain green; any failure stops. Never modify or auto-fix the user-owned ARCHITECTURE.md file.",
     "No merge, amend, reset, rewind, provider invocation, old descriptor or receipt mutation, approval-mode change, push, remote publication, cursor consume, lock action, branch deletion, worktree removal, recovery-evidence removal, unrelated cleanup, pod action, production generation, retry, fallback, addendum authority, caller-supplied authority, or synthetic reviewed head. Stop and report a concrete blocker on any contradiction."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Director2 integrated reviewed implementation 4c49c43287a936d618bc5fcaa61a26b58b931fd0 through merge 959b47e0fd6e9d6d7a80bec39391d5f7206b8934, retaining the required parents and exact reviewed blobs and modes while preserving root user work.",
+    "After the first request failed closed before provider state, Director2 preserved that evidence and committed fresh descriptor f70d24b0-767a-4a8c-98a4-f7114c50b34f at eb1915e59269f688aea0ac11ed61011b0f90c9ef followed immediately by canonical verify-request coordination/mailbox/sent/2026-07-15T07-55-11Z-director2-to-operator2-verify-request.md at 8cbd03ad0ac907ac49f2cc9c55c4249a9c981e2c.",
+    "Operator2 verification-report GO coordination/mailbox/sent/2026-07-15T08-50-32Z-operator2-to-all-verification-report.md independently closes reviewed integration range 3b9b5c9c47949624ca16f01d93ebfeac189ef457..959b47e0fd6e9d6d7a80bec39391d5f7206b8934 and the corrected trigger and preservation boundary."
+  ],
   "next_recipient": "operator2",
-  "status": "active",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-15T07-55-11Z-director2-to-operator2-verify-request.md",
+  "target_commit": "959b47e0fd6e9d6d7a80bec39391d5f7206b8934",
+  "commit_range": "3b9b5c9c47949624ca16f01d93ebfeac189ef457..959b47e0fd6e9d6d7a80bec39391d5f7206b8934",
   "scope_files": [
-    "coordination/verification/scopes/f70d24b0-767a-4a8c-98a4-f7114c50b34f.json",
-    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md"
+    "ARCHITECTURE.md",
+    "coordination/bin/send-event",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
+    "coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json",
+    "coordination/verification/scopes/cc278e10-389d-484b-9d9b-84323fa76faa.json",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_verification_report_gate.py"
   ]
 }

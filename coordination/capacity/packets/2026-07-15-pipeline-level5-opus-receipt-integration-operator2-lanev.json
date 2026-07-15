@@ -6,7 +6,7 @@
     "level5-wave1-opus-receipt-integration"
   ],
   "lock_keys": [],
-  "handoff_artifact": null,
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-15T08-50-32Z-operator2-to-all-verification-report.md",
   "owner": "operator2",
   "packet_type": "operator-verification",
   "allowed_paths": [
@@ -39,21 +39,22 @@
     "After lawful T2 resolution only, make at most one standing-policy Opus attempt for this exact fresh task, head, trigger, and scope. Keep every prior receipt terminal. A process failure or transport unavailability is explicit degraded evidence with zero retry or fallback; Opus remains advisory and never supplies the verdict.",
     "Return exactly one canonical lane-v-report/v2 GO, NITS, or FAIL. Any unresolved authority, topology, scope, WIP, collision, test, smoke, or provider finding blocks GO according to normal severity. Do not repair, merge, push, amend, reset, consume, claim locks, retry, clean evidence, or alter unrelated user work."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Operator2 verification-report GO: coordination/mailbox/sent/2026-07-15T08-50-32Z-operator2-to-all-verification-report.md verifies reviewed head 959b47e0fd6e9d6d7a80bec39391d5f7206b8934 over base 3b9b5c9c47949624ca16f01d93ebfeac189ef457 from canonical corrected trigger 8cbd03ad0ac907ac49f2cc9c55c4249a9c981e2c.",
+    "The GO records 38 structural authority checks, exact merge topology and thirteen-path scope, exact imported blob and mode identity, retained root-WIP manifests, 850 passing tests in the five-file suite, 51 focused authority tests, schema and smoke success, route validation, protocol doctor PASS, and no blocking finding.",
+    "The one fresh Opus attempt is terminally unavailable with degraded reason process_failed, no effective model, zero findings, and receipt opr1:de2f5b672b8e1ea03b7575d7a636e0d56bef9817f0d8b5b74fb0632678b68f85; it reconciles go_allowed true with no retry or fallback, while the Codex Operator2 verdict alone supplies GO authority."
+  ],
   "next_recipient": "coordinator",
-  "status": "blocked",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-15T07-55-11Z-director2-to-operator2-verify-request.md",
+  "target_commit": "959b47e0fd6e9d6d7a80bec39391d5f7206b8934",
+  "commit_range": "3b9b5c9c47949624ca16f01d93ebfeac189ef457..959b47e0fd6e9d6d7a80bec39391d5f7206b8934",
   "scope_files": [
     "ARCHITECTURE.md",
     "coordination/bin/send-event",
     "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
     "coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json",
     "coordination/verification/scopes/cc278e10-389d-484b-9d9b-84323fa76faa.json",
-    "coordination/verification/scopes/f70d24b0-767a-4a8c-98a4-f7114c50b34f.json",
-    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md",
-    "coordination/mailbox/sent/*operator2-to-all-verification-report.md",
     "scripts/check_go_schema.py",
     "scripts/opus_review_bridge.py",
     "scripts/opus_review_receipts.py",
