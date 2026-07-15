@@ -317,7 +317,13 @@ component boundary without granting compact authority.
   Add a bounded assertion that parses only fixture-classified Python modules,
   resolves their direct repository-local `scripts`/`threeway` imports, and
   requires every resolved module to have exactly one fixture owner. It must not
-  walk arbitrary executables or create a runtime registry.
+  walk arbitrary executables or create a runtime registry. Add a finite
+  `REQUIRED_WRITER_SURFACES` assertion for the signed-bus effect paths:
+  `refstore`, `gate`, `cutover`, `gitcas`, `cursor_backfill`, `keys_bootstrap`,
+  all five signing/consuming emitters, `run_merge_gate.py`,
+  `run_merge_gate.sh`, `overseer_plan.py`, `execute_threeway_cutover.sh`, and
+  the manual signer job in `.github/workflows/ci.yml`. Each must appear exactly
+  once in the signed-bus component's `writer_paths`.
 
   Run:
 
@@ -342,8 +348,9 @@ component boundary without granting compact authority.
 
   Add the named roots/modules and exact helper classifications. Keep all new
   paths in the signed-bus component, add `threeway/canon.py` as a reader of the
-  route-manifest and capability-receipt components, and preserve the authority
-  contract `live_threeway_toolchain_not_compact_route_authority`.
+  route-manifest and capability-receipt components, record the finite effect
+  roots in `writer_paths`, and preserve the authority contract
+  `live_threeway_toolchain_not_compact_route_authority`.
 
   Re-run the Step-1 command. Expected: PASS.
 
