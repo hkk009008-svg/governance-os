@@ -256,10 +256,10 @@ suite pass, all Section-4 mappings and trusted baseline evidence remain valid,
 the kernel mirror remains epoch `0`/writer `v1`, and no compact path is
 authoritative.
 
-## Integration-review reopening
+## Integration-review correction and reclosure
 
 The independent review of `d07fc4d..fa3df0e` found two reproducible gaps, so
-Task 2 did not close the gate:
+Task 2 did not close the gate at that time:
 
 1. The finite root list omitted `scripts/run_merge_gate.sh`, and the classified
    roots directly import unowned local authority helpers. A bounded AST import
@@ -269,9 +269,16 @@ Task 2 did not close the gate:
 2. Removing a non-orphan override such as `scripts.mailbox_monitor.main` leaves
    the suite green because the function silently inherits its module default.
 
-These are test-contract defects, not runtime defects. The correction remains
-limited to the inventory test/fixture and truthful completion records. Current
-v1 behavior, epoch `0`/writer `v1`, and the no-activation boundary do not change.
+These were test-contract defects, not runtime defects. Task-3 commit
+`09d2e7f768a0324ace1a6de61afc483ce222dd52` corrected them within the inventory
+test and fixture: focused RED was `34 failed, 59 passed`; the override mutation
+was `1 failed, 92 deselected`; focused GREEN was `93 passed`; the exact 13-file
+changed-surface regression suite was `303 passed`; and project smoke was `OK`.
+A fresh read-only Codex subagent independently reviewed
+`1c3e5fdae3f072743155e2345e40cfe7b8b7df9d..09d2e7f768a0324ace1a6de61afc483ce222dd52`
+and returned `RESOLVED`, with no Critical or Important issue and
+`Ready to reclose: Yes`. Current v1 behavior, epoch `0`/writer `v1`, and the
+no-activation boundary did not change.
 
 ### Task 3: Close root, import, and override omissions
 
@@ -311,7 +318,7 @@ Assign these paths to `signed_bus_event_and_cursor_runtime`. Classify
 the merge-gate wrapper, cutover key bootstrap, and manual CI signer in the
 component boundary without granting compact authority.
 
-- [ ] **Step 1: Add RED owner/import-closure assertions**
+- [x] **Step 1: Add RED owner/import-closure assertions**
 
   Extend the handwritten `REQUIRED_SURFACE_OWNERS` with the 18 paths above.
   Add a bounded assertion that parses only fixture-classified Python modules,
@@ -335,7 +342,7 @@ component boundary without granting compact authority.
   Expected: RED naming the missing root/helper owners; no syntax or fixture
   parse error.
 
-- [ ] **Step 2: Pin every required symbol override**
+- [x] **Step 2: Pin every required symbol override**
 
   Add an independent `REQUIRED_SYMBOL_OVERRIDES` map containing every required
   symbol, owner, helper class, and disposition, including all current orphan and
@@ -344,7 +351,7 @@ component boundary without granting compact authority.
   deleting `scripts.mailbox_monitor.main`, observing the focused assertion fail,
   and restoring the fixture before continuing.
 
-- [ ] **Step 3: Extend the fixture minimally and verify GREEN**
+- [x] **Step 3: Extend the fixture minimally and verify GREEN**
 
   Add the named roots/modules and exact helper classifications. Keep all new
   paths in the signed-bus component, add `threeway/canon.py` as a reader of the
@@ -354,7 +361,7 @@ component boundary without granting compact authority.
 
   Re-run the Step-1 command. Expected: PASS.
 
-- [ ] **Step 4: Run changed-surface regressions and commit**
+- [x] **Step 4: Run changed-surface regressions and commit**
 
   Run the Task-1 changed-surface command, `scripts/ci_smoke.py`, and
   `git diff --check`. Commit only the two test/fixture paths with subject:
@@ -371,14 +378,16 @@ component boundary without granting compact authority.
 - Modify: this plan
 - Add: `.superpowers/sdd/phase1-inventory-reclosure-report.md`
 
-- [ ] Record the Task-3 RED/mutation/GREEN evidence and exact commit SHA.
-- [ ] Mark the first guide item and Tasks 3-4 complete only after an independent
+- [x] Record the Task-3 RED/mutation/GREEN evidence and exact commit SHA.
+- [x] Mark the first guide item and Tasks 3-4 complete only after an independent
   review finds no Critical or Important issue.
-- [ ] Re-run `scripts/ci_smoke.py` and `git diff --check`; commit only these
+- [x] Re-run `scripts/ci_smoke.py` and `git diff --check`; commit only these
   completion records with subject `docs: reclose capability phase 1 gate`.
 
-**Reclosure gate:** every finite root has one owner; every fixture-classified
-Python module's direct local imports have one owner; every required override is
-pinned independently; the 49 Section-4 mappings and trusted 25-run baseline
-remain valid; epoch `0`/writer `v1` remains authoritative; no compact path is
-activated.
+**Reclosure gate:** met. Every finite root has one owner; every
+fixture-classified Python module's direct local imports have one owner; every
+required override is pinned independently; the 49 Section-4 mappings and
+trusted 25-run baseline remain valid; and the reporter contract remains bound
+to its committed cohort evidence. Current v1 remains authoritative, while the
+epoch `0`/writer `v1` kernel mirror remains declarative only. No compact path is
+authoritative or activated.

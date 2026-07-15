@@ -297,7 +297,7 @@ Prune after cutover:
 **Surfaces:** `governance.toml`, the capacity/effectiveness/packet-state tools,
 existing route/verification/capability tests, and new golden replay fixtures.
 
-- [ ] Inventory every live authority source, reader, writer, effect executor,
+- [x] Inventory every live authority source, reader, writer, effect executor,
   provider adapter, and public helper; classify helpers under Section 7.
 - [x] Encode both Section-4 tables as total parameterized mappings and commit
   replay vectors for forged principals, duplicate IDs, stale versions,
@@ -364,12 +364,23 @@ env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python \
 267 passed in 6.68s
 ```
 
-**Gate status:** reopened by the independent integration review of
-`d07fc4d..fa3df0e`. The first inventory pass omitted a live merge-gate wrapper,
-signed-bus helper modules, and enforceable pins for non-orphan helper overrides.
-The remaining Phase-1 evidence is still valid, epoch `0`/writer `v1` remains
-unchanged, and no compact path is authoritative. The gate closes only after the
-finite owner/import closure and required-override mutation tests pass.
+**Gate status:** reclosed by Task-3 commit
+`09d2e7f768a0324ace1a6de61afc483ce222dd52`. The focused RED was
+`34 failed, 59 passed`; the non-vacuous override mutation was
+`1 failed, 92 deselected` after temporarily removing
+`scripts.mailbox_monitor.main` and was restored before GREEN; the final focused
+suite was `93 passed`; and the exact 13-file changed-surface regression suite
+was `303 passed`. Project smoke was `OK`. A fresh read-only Codex subagent
+independently reviewed
+`1c3e5fdae3f072743155e2345e40cfe7b8b7df9d..09d2e7f768a0324ace1a6de61afc483ce222dd52`
+and returned `RESOLVED`, with no Critical or Important issue and
+`Ready to reclose: Yes`.
+
+The finite owner/import closure and independently pinned required overrides are
+now enforced. The original 49-mapping, committed 25-run cohort, reporter
+contract, and epoch `0`/writer `v1` declarative-mirror evidence above remains
+valid. Current v1 remains authoritative; no compact path is authoritative or
+activated.
 
 ### Phase 2: Compact reducer and non-authoritative shadow
 
