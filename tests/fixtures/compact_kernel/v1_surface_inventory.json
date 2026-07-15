@@ -1,0 +1,393 @@
+{
+  "schema_version": "compact-kernel-surface-inventory/v1",
+  "authority_contract": {
+    "route_authority": "markdown_mailbox",
+    "route_sidecar_role": "compatibility_only",
+    "signed_bus_role": "dormant_for_migration",
+    "capability_consumption_role": "post_effect_evidence_only",
+    "provider_output_role": "advisory_only"
+  },
+  "components": [
+    {
+      "id": "target_binding",
+      "authority_status": "live_v1_configuration_authority",
+      "source_paths": [
+        "governance.toml",
+        "scripts/target_binding.py"
+      ],
+      "reader_paths": [
+        "scripts/target_binding.py"
+      ],
+      "writer_paths": [
+        "governance.toml"
+      ],
+      "executor_boundary": "Target binding is read from governance.toml; only an explicitly authorized configuration edit changes it, and resolution executes no external effect.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "scripts/target_binding.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.target_binding.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "markdown_routes_and_mailbox_writer",
+      "authority_status": "live_v1_route_authority",
+      "source_paths": [
+        "scripts/route_manifest.py",
+        "coordination/mailbox/sent"
+      ],
+      "reader_paths": [
+        "scripts/protocol_capacity.py",
+        "scripts/route_lineage.py"
+      ],
+      "writer_paths": [
+        "scripts/route_manifest.py",
+        "coordination/mailbox/sent"
+      ],
+      "executor_boundary": "An authorized live seat or coordinator publishes the Markdown mailbox event; a paired JSON route sidecar is compatibility-only and never grants route authority.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "scripts/route_manifest.py"
+        }
+      ],
+      "symbol_overrides": []
+    },
+    {
+      "id": "typed_route_compatibility_canary",
+      "authority_status": "compatibility_only_non_authoritative",
+      "source_paths": [
+        "scripts/route_compat.py",
+        "tests/fixtures/route_compat"
+      ],
+      "reader_paths": [
+        "scripts/route_compat.py",
+        "tests/fixtures/route_compat"
+      ],
+      "writer_paths": [
+        "scripts/route_compat.py"
+      ],
+      "executor_boundary": "The canary materializes only temporary fixture projections and optional report output; it cannot publish or supersede a live route.",
+      "default_helper_class": "telemetry",
+      "module_rules": [
+        {
+          "path": "scripts/route_compat.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.route_compat.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "capacity_reducer_and_packet_state_telemetry",
+      "authority_status": "live_v1_route_gate_with_non_authoritative_telemetry",
+      "source_paths": [
+        "scripts/protocol_capacity.py",
+        "scripts/packet_state.py"
+      ],
+      "reader_paths": [
+        "scripts/protocol_capacity_board.py",
+        "scripts/packet_state.py",
+        "coordination/capacity/packets"
+      ],
+      "writer_paths": [
+        "coordination/capacity/packets"
+      ],
+      "executor_boundary": "Capacity reduction and packet-state reporting read committed packet and route state; they do not emit routes, consume cursors, or execute routed work.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "scripts/protocol_capacity.py"
+        },
+        {
+          "path": "scripts/packet_state.py",
+          "default_helper_class": "telemetry"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.packet_state.is_valid_work_transition",
+          "helper_class": "orphan",
+          "disposition": "integrate_or_delete_before_cutover"
+        },
+        {
+          "symbol": "scripts.packet_state.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "effectiveness_telemetry",
+      "authority_status": "non_authoritative_telemetry",
+      "source_paths": [
+        "scripts/protocol_effectiveness_report.py",
+        "scripts/baselines/capability_first_five_profile_v1.json"
+      ],
+      "reader_paths": [
+        "scripts/protocol_effectiveness_report.py",
+        "scripts/baselines/capability_first_five_profile_v1.json",
+        "coordination/mailbox/sent"
+      ],
+      "writer_paths": [
+        "scripts/protocol_effectiveness_report.py"
+      ],
+      "executor_boundary": "The reporter reads repository evidence and may write an explicitly selected logs artifact; its classifications and recommendations grant no authority.",
+      "default_helper_class": "telemetry",
+      "module_rules": [
+        {
+          "path": "scripts/protocol_effectiveness_report.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.protocol_effectiveness_report.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "capability_receipt_recording",
+      "authority_status": "post_effect_evidence_recorder_non_executing",
+      "source_paths": [
+        "scripts/route_capability.py"
+      ],
+      "reader_paths": [
+        "scripts/route_capability.py",
+        "scripts/route_lineage.py"
+      ],
+      "writer_paths": [
+        "scripts/route_capability.py"
+      ],
+      "executor_boundary": "Capability consumption validates and atomically records supplied post-effect evidence; it does not reserve, launch, or perform the represented effect.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "scripts/route_capability.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.route_capability.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "verification_authority_and_publication",
+      "authority_status": "live_v1_verification_gate_and_publication_boundary",
+      "source_paths": [
+        "scripts/verification_report_gate.py"
+      ],
+      "reader_paths": [
+        "scripts/verification_report_gate.py",
+        "coordination/verification/scopes"
+      ],
+      "writer_paths": [
+        "scripts/verification_report_gate.py",
+        "coordination/mailbox/sent"
+      ],
+      "executor_boundary": "Only the guarded publication CLI may perform its scoped Git-index and mailbox publication transaction after live authority validation; parsing alone grants no GO.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "scripts/verification_report_gate.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.verification_report_gate.validate_live_report",
+          "helper_class": "orphan",
+          "disposition": "integrate_or_delete_before_cutover"
+        },
+        {
+          "symbol": "scripts.verification_report_gate.publish_candidate",
+          "helper_class": "orphan",
+          "disposition": "integrate_or_delete_before_cutover"
+        },
+        {
+          "symbol": "scripts.verification_report_gate.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "chatgpt_guard_and_browser_executor",
+      "authority_status": "advisory_only_guard_with_external_browser_executor",
+      "source_paths": [
+        "scripts/chatgpt_pro_consult.py",
+        ".agents/skills/chatgpt-pro-consultation/SKILL.md"
+      ],
+      "reader_paths": [
+        "scripts/chatgpt_pro_consult.py",
+        ".agents/skills/chatgpt-pro-consultation/SKILL.md"
+      ],
+      "writer_paths": [
+        "scripts/chatgpt_pro_consult.py"
+      ],
+      "executor_boundary": "The guard validates and reserves one sanitized attempt; only the current-runtime in-app Browser executor may send after reservation, and its response remains advisory.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "scripts/chatgpt_pro_consult.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.chatgpt_pro_consult.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "opus_reservation_and_bridge",
+      "authority_status": "advisory_only_reserved_provider_bridge",
+      "source_paths": [
+        "scripts/opus_review_receipts.py",
+        "scripts/opus_review_bridge.py"
+      ],
+      "reader_paths": [
+        "scripts/opus_review_receipts.py",
+        "scripts/opus_review_bridge.py"
+      ],
+      "writer_paths": [
+        "scripts/opus_review_receipts.py"
+      ],
+      "executor_boundary": "The bridge may launch one Claude process only through a valid immutable reservation and spend grant; provider output is advisory and cannot publish a verdict.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "scripts/opus_review_receipts.py"
+        },
+        {
+          "path": "scripts/opus_review_bridge.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.opus_review_bridge.probe_host_capabilities",
+          "helper_class": "orphan",
+          "disposition": "integrate_or_delete_before_cutover"
+        },
+        {
+          "symbol": "scripts.opus_review_bridge.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "legacy_lifecycle_mapping_contract",
+      "authority_status": "non_authoritative_read_only_compatibility_telemetry",
+      "source_paths": [
+        "scripts/compact_state_mapping.py",
+        "tests/fixtures/compact_state_mapping/v1.json",
+        "tests/fixtures/compact_kernel/v1_misuse_vectors.json"
+      ],
+      "reader_paths": [
+        "scripts/compact_state_mapping.py",
+        "tests/fixtures/compact_state_mapping/v1.json",
+        "tests/fixtures/compact_kernel/v1_misuse_vectors.json"
+      ],
+      "writer_paths": [],
+      "executor_boundary": "The pure mapping helper and documented fixture-validation CLI observe current producer vocabularies only; they grant no authority, write no runtime state, and execute no effect.",
+      "default_helper_class": "telemetry",
+      "module_rules": [
+        {
+          "path": "scripts/compact_state_mapping.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.compact_state_mapping.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "capability_baseline_runtime_collector",
+      "authority_status": "non_authoritative_benchmark_executor",
+      "source_paths": [
+        "scripts/capability_baseline_runtime.py"
+      ],
+      "reader_paths": [
+        "scripts/capability_baseline_runtime.py",
+        "scripts/baselines/capability_first_five_profile_v1.json",
+        "scripts/protocol_effectiveness_report.py"
+      ],
+      "writer_paths": [
+        "scripts/capability_baseline_runtime.py"
+      ],
+      "executor_boundary": "The collector uses minimal read-only workspaces with one writable fixture directory, one reserved nonce marker, and parent benchmark evidence only; it can establish measurement provenance but grants no live authority.",
+      "default_helper_class": "telemetry",
+      "module_rules": [
+        {
+          "path": "scripts/capability_baseline_runtime.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.capability_baseline_runtime.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "dormant_signed_bus_ref_cas_substrate",
+      "authority_status": "dormant_non_authoritative_migration_substrate",
+      "source_paths": [
+        "scripts/route_lineage.py",
+        "threeway/refstore.py"
+      ],
+      "reader_paths": [
+        "scripts/route_lineage.py",
+        "scripts/consume_bus.py",
+        "threeway/refstore.py"
+      ],
+      "writer_paths": [
+        "scripts/consume_bus.py",
+        "threeway/refstore.py"
+      ],
+      "executor_boundary": "The signed-bus ref store and CAS primitives remain dormant for this migration; this inventory neither activates them nor mutates refs or cursors.",
+      "default_helper_class": "historical_adapter",
+      "module_rules": [
+        {
+          "path": "scripts/route_lineage.py",
+          "default_helper_class": "runtime_core"
+        },
+        {
+          "path": "threeway/refstore.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.route_lineage.check_cas",
+          "helper_class": "orphan",
+          "disposition": "integrate_or_delete_before_cutover"
+        },
+        {
+          "symbol": "scripts.route_lineage.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    }
+  ]
+}

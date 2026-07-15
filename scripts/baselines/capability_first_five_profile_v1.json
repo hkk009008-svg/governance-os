@@ -1,0 +1,90 @@
+{
+  "schema_version": "capability-first-five-profile-contract/v1",
+  "benchmark_id": "capability-first-compact-kernel-phase1-v1",
+  "codex_runtime": {
+    "home_relative_path": ".codex/packages/standalone/current/bin/codex",
+    "identity": "codex-cli/0.144.4@sha256:3302acbda5f53de1a71ebdb0c0f2aae0d47f9324aa9fb6b4e78a47014fd51c7d"
+  },
+  "profiles": [
+    {
+      "id": "none",
+      "ordinals": [1, 2, 3, 4, 5],
+      "scenario_input": "Apply one hermetic text-fixture update; independent verification, coordination, and external effects are not triggered.",
+      "scenario_input_digest": "sha256:262808e56482bba64226955e5ae2cb7ea9112243dce7837cfc66e0b7db2a75c0",
+      "metrics": {
+        "time_to_first_tool": "applicable",
+        "route_to_go": "not_applicable"
+      }
+    },
+    {
+      "id": "verification_only",
+      "ordinals": [1, 2, 3, 4, 5],
+      "scenario_input": "Apply one hermetic parser-fixture update and obtain independent verification for that exact diff; coordination and external effects are not triggered.",
+      "scenario_input_digest": "sha256:e9a66f27b4e1f278cd35f8ac6e3331778a9f1ec4319e663f9f5e452c3ceafc6a",
+      "metrics": {
+        "time_to_first_tool": "applicable",
+        "route_to_go": "not_applicable"
+      }
+    },
+    {
+      "id": "coordination_only",
+      "ordinals": [1, 2, 3, 4, 5],
+      "scenario_input": "Apply two disjoint hermetic fixture updates with one serialized route transition; independent verification and external effects are not triggered.",
+      "scenario_input_digest": "sha256:ec52a4da2f76fde394d13ef71b5f97d19faa81857a2f423bfca5797620208d22",
+      "metrics": {
+        "time_to_first_tool": "applicable",
+        "route_to_go": "not_applicable"
+      }
+    },
+    {
+      "id": "effect_only",
+      "ordinals": [1, 2, 3, 4, 5],
+      "scenario_input": "Prepare one hermetic fixture update and, only after separate user authorization, execute one disposable local effect; independent verification and coordination are not triggered.",
+      "scenario_input_digest": "sha256:2492f27ec2baca7387eda244237ac7f35de4b461249595497eefa427f330b506",
+      "metrics": {
+        "time_to_first_tool": "applicable",
+        "route_to_go": "not_applicable"
+      }
+    },
+    {
+      "id": "combined",
+      "ordinals": [1, 2, 3, 4, 5],
+      "scenario_input": "Apply two disjoint hermetic fixture updates with serialized coordination and independent verification, then only after separate user authorization execute one disposable local effect.",
+      "scenario_input_digest": "sha256:7a7b8e82bd7470f4e83d16824b52ca532c0e2ada050c1a3a1fb836862aa7d236",
+      "metrics": {
+        "time_to_first_tool": "applicable",
+        "route_to_go": "applicable"
+      }
+    }
+  ],
+  "protocol_roots": [
+    "coordination",
+    ".codex/runtime",
+    "logs"
+  ],
+  "artifact_classes": {
+    "coordination": {"protocol_overhead": true},
+    "verification": {"protocol_overhead": true},
+    "effect": {"protocol_overhead": true},
+    "standby": {
+      "protocol_overhead": true,
+      "purposes": ["waiting", "observing", "utilization", "no_op_readiness"]
+    },
+    "telemetry": {"protocol_overhead": false}
+  },
+  "review_identity_fields": [
+    "base",
+    "head",
+    "scope_digest",
+    "question_digest"
+  ],
+  "accepted_result_denominator": {
+    "field": "accepted_result_digest",
+    "identity": "unique_sha256"
+  },
+  "kernel_mirror": {
+    "epoch": 0,
+    "writer": "v1",
+    "authority": "declarative_only"
+  }
+}
