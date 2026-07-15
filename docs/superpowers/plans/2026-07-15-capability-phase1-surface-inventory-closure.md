@@ -255,3 +255,123 @@ The gate is met only when the independent owner oracle and AST classification
 suite pass, all Section-4 mappings and trusted baseline evidence remain valid,
 the kernel mirror remains epoch `0`/writer `v1`, and no compact path is
 authoritative.
+
+## Integration-review reopening
+
+The independent review of `d07fc4d..fa3df0e` found two reproducible gaps, so
+Task 2 did not close the gate:
+
+1. The finite root list omitted `scripts/run_merge_gate.sh`, and the classified
+   roots directly import unowned local authority helpers. A bounded AST import
+   trace from the current `module_rules` reaches 15 unowned `threeway` modules.
+   The explicit cutover and CI launch surfaces also require
+   `threeway/keys_bootstrap.py` and `.github/workflows/ci.yml`.
+2. Removing a non-orphan override such as `scripts.mailbox_monitor.main` leaves
+   the suite green because the function silently inherits its module default.
+
+These are test-contract defects, not runtime defects. The correction remains
+limited to the inventory test/fixture and truthful completion records. Current
+v1 behavior, epoch `0`/writer `v1`, and the no-activation boundary do not change.
+
+### Task 3: Close root, import, and override omissions
+
+**Files:**
+
+- Modify: `tests/unit/test_compact_kernel_surface_inventory.py`
+- Modify: `tests/fixtures/compact_kernel/v1_surface_inventory.json`
+
+**Finite root additions:**
+
+- `scripts/run_merge_gate.sh`
+- `threeway/keys_bootstrap.py`
+- `.github/workflows/ci.yml`
+
+**Finite local-module closure:**
+
+- `threeway/__init__.py`
+- `threeway/approval_authority.py`
+- `threeway/canon.py`
+- `threeway/cursor_backfill.py`
+- `threeway/envelope.py`
+- `threeway/gitcas.py`
+- `threeway/keys.py`
+- `threeway/legacy_projector.py`
+- `threeway/loop.py`
+- `threeway/policy.py`
+- `threeway/predicate.py`
+- `threeway/reducer.py`
+- `threeway/rework.py`
+- `threeway/store.py`
+- `threeway/tier.py`
+
+Assign these paths to `signed_bus_event_and_cursor_runtime`. Classify
+`cursor_backfill`, `legacy_projector`, and the dormant slice-1 `store` as
+`historical_adapter`; classify the remaining helpers as `runtime_core`. Pin
+`threeway.keys_bootstrap.main` as `cli_entrypoint/keep_documented_cli`. Record
+the merge-gate wrapper, cutover key bootstrap, and manual CI signer in the
+component boundary without granting compact authority.
+
+- [ ] **Step 1: Add RED owner/import-closure assertions**
+
+  Extend the handwritten `REQUIRED_SURFACE_OWNERS` with the 18 paths above.
+  Add a bounded assertion that parses only fixture-classified Python modules,
+  resolves their direct repository-local `scripts`/`threeway` imports, and
+  requires every resolved module to have exactly one fixture owner. It must not
+  walk arbitrary executables or create a runtime registry.
+
+  Run:
+
+  ```sh
+  env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python \
+    -m pytest tests/unit/test_compact_kernel_surface_inventory.py -q
+  ```
+
+  Expected: RED naming the missing root/helper owners; no syntax or fixture
+  parse error.
+
+- [ ] **Step 2: Pin every required symbol override**
+
+  Add an independent `REQUIRED_SYMBOL_OVERRIDES` map containing every required
+  symbol, owner, helper class, and disposition, including all current orphan and
+  CLI overrides plus `threeway.keys_bootstrap.main`. Assert the fixture has
+  exactly the expected entry. Prove the pin is non-vacuous by temporarily
+  deleting `scripts.mailbox_monitor.main`, observing the focused assertion fail,
+  and restoring the fixture before continuing.
+
+- [ ] **Step 3: Extend the fixture minimally and verify GREEN**
+
+  Add the named roots/modules and exact helper classifications. Keep all new
+  paths in the signed-bus component, add `threeway/canon.py` as a reader of the
+  route-manifest and capability-receipt components, and preserve the authority
+  contract `live_threeway_toolchain_not_compact_route_authority`.
+
+  Re-run the Step-1 command. Expected: PASS.
+
+- [ ] **Step 4: Run changed-surface regressions and commit**
+
+  Run the Task-1 changed-surface command, `scripts/ci_smoke.py`, and
+  `git diff --check`. Commit only the two test/fixture paths with subject:
+
+  ```text
+  test: complete compact kernel surface closure
+  ```
+
+### Task 4: Reclose truthful Phase-1 records
+
+**Files:**
+
+- Modify: `docs/superpowers/capability_first_compact_kernel_codex_seat_guide.md`
+- Modify: this plan
+- Add: `.superpowers/sdd/phase1-inventory-reclosure-report.md`
+
+- [ ] Record the Task-3 RED/mutation/GREEN evidence and exact commit SHA.
+- [ ] Mark the first guide item and Tasks 3-4 complete only after an independent
+  review finds no Critical or Important issue.
+- [ ] Re-run `scripts/ci_smoke.py` and `git diff --check`; commit only these
+  completion records with subject `docs: reclose capability phase 1 gate`.
+
+**Reclosure gate:** every finite root has one owner; every fixture-classified
+Python module's direct local imports have one owner; every required override is
+pinned independently; the 49 Section-4 mappings and trusted 25-run baseline
+remain valid; epoch `0`/writer `v1` remains authoritative; no compact path is
+activated.

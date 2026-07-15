@@ -297,7 +297,7 @@ Prune after cutover:
 **Surfaces:** `governance.toml`, the capacity/effectiveness/packet-state tools,
 existing route/verification/capability tests, and new golden replay fixtures.
 
-- [x] Inventory every live authority source, reader, writer, effect executor,
+- [ ] Inventory every live authority source, reader, writer, effect executor,
   provider adapter, and public helper; classify helpers under Section 7.
 - [x] Encode both Section-4 tables as total parameterized mappings and commit
   replay vectors for forged principals, duplicate IDs, stale versions,
@@ -332,8 +332,8 @@ existing route/verification/capability tests, and new golden replay fixtures.
 - [x] Add `[protocol.kernel]` epoch `0`/writer `v1` to `governance.toml` only as
   a declarative mirror, never the activation high-water mark.
 
-**Phase-1 closure evidence (2026-07-15):** `REQUIRED_SURFACE_OWNERS` is the
-independent ownership oracle; the committed compact-state fixture validates
+**Phase-1 evidence (2026-07-15):** `REQUIRED_SURFACE_OWNERS` is the independent
+ownership oracle; the committed compact-state fixture validates
 49 mappings across 7 domains; the 25-run cohort and report are committed at
 `8149df28b45bd2b0b159b243923d0ab439c3d815` and integrated by merge `d07fc4d`;
 the reporter's `VerifiedBaselineProvenance` contract binds the committed
@@ -364,8 +364,12 @@ env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python \
 267 passed in 6.68s
 ```
 
-**Gate:** current v1 behavior is frozen by golden replay and mapping tests; all
-public helpers are classified; no compact path is authoritative.
+**Gate status:** reopened by the independent integration review of
+`d07fc4d..fa3df0e`. The first inventory pass omitted a live merge-gate wrapper,
+signed-bus helper modules, and enforceable pins for non-orphan helper overrides.
+The remaining Phase-1 evidence is still valid, epoch `0`/writer `v1` remains
+unchanged, and no compact path is authoritative. The gate closes only after the
+finite owner/import closure and required-override mutation tests pass.
 
 ### Phase 2: Compact reducer and non-authoritative shadow
 
