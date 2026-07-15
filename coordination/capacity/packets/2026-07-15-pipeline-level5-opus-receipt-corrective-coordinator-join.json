@@ -6,7 +6,7 @@
     "level5-wave1-opus-receipt-corrective"
   ],
   "lock_keys": [],
-  "handoff_artifact": null,
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-15-pipeline-level5-opus-receipt-corrective-closeout.md",
   "owner": "coordinator",
   "packet_type": "coordinator-join",
   "allowed_paths": [
@@ -24,13 +24,28 @@
     "On GO, refresh HEAD, mail, capacity, route, locks, smoke, protocol doctor, exact report evidence, and branch cleanliness before routing integration or closeout. On NITS or FAIL, return only the bounded corrective diff to Director2.",
     "Do not let Wave 2 MET, green deterministic tests, or an unavailable cross-model result substitute for the Operator2 verdict. Do not author production behavior as coordinator."
   ],
-  "done_evidence": [],
-  "next_recipient": "director2",
-  "status": "blocked",
+  "done_evidence": [
+    "Operator2 GO evidence: coordination/mailbox/sent/2026-07-15T00-00-08Z-operator2-to-all-verification-report.md verifies 63062315a738be1a7f3ff62f0388dc957339ad0c..4c49c43287a936d618bc5fcaa61a26b58b931fd0 from canonical verify-request trigger 062b44851325905d54fb9059c01b2d5e0b982982.",
+    "Retained branch evidence: codex/opus-unbound-candidate-director2-2026-07-15 remains clean at trigger 062b44851325905d54fb9059c01b2d5e0b982982; reviewed head 4c49c43287a936d618bc5fcaa61a26b58b931fd0 is not integrated into main and its merge-base with main is 563cc85c6716b746c5baff788cae8408c38b31d0.",
+    "capacity board evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 -> valid true with this corrective cycle closed and no blocking issues.",
+    "route validation evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 --validate-route coordination/mailbox/sent/2026-07-15T00-49-37Z-coordinator-to-all-coordination.md -> route valid true with no blocking issues.",
+    "protocol doctor evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave 2 --route coordination/mailbox/sent/2026-07-15T00-49-37Z-coordinator-to-all-coordination.md -> PROTOCOL DOCTOR: PASS.",
+    "smoke OK evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py -> project smoke, ceremony, placeholder, GO-schema, and architecture-freshness checks pass.",
+    "handoff artifact: docs/HANDOFF-coordinator-2026-07-15-pipeline-level5-opus-receipt-corrective-closeout.md",
+    "next trigger: user explicitly authorizes local integration of retained reviewed head 4c49c43287a936d618bc5fcaa61a26b58b931fd0, after which coordinator opens a separate integration route; until then all five cycle packets remain done or excepted and no merge, cherry-pick, push, or cleanup occurs."
+  ],
+  "next_recipient": "coordinator",
+  "status": "done",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
   "scope_files": [
-    "scripts/verification_report_gate.py"
+    "coordination/capacity/packets/2026-07-15-pipeline-level5-opus-receipt-corrective-coordinator-join.json",
+    "coordination/capacity/packets/2026-07-15-pipeline-level5-opus-receipt-corrective-director2-implementation.json",
+    "coordination/capacity/packets/2026-07-15-pipeline-level5-opus-receipt-corrective-operator2-lanev.json",
+    "coordination/mailbox/sent/2026-07-14T21-47-44Z-coordinator-to-all-coordination.md",
+    "coordination/mailbox/sent/2026-07-15T00-00-08Z-operator2-to-all-verification-report.md",
+    "coordination/mailbox/sent/2026-07-15T00-49-37Z-coordinator-to-all-coordination.md",
+    "docs/HANDOFF-coordinator-2026-07-15-pipeline-level5-opus-receipt-corrective-closeout.md"
   ]
 }

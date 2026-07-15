@@ -28,12 +28,16 @@
     "At minimum run the focused RED/GREEN selectors, the full five-file regression suite, scripts/check_go_schema.py, scripts/check_doc_claims.py --sha-refs, scripts/ci_smoke.py, scripts/protocol_doctor.py --wave 2, provider-free structural resolution of the later verify-request trigger, and git diff --check for 63062315a738be1a7f3ff62f0388dc957339ad0c..reviewed-head.",
     "No provider invocation, old receipt or descriptor mutation, historical-baseline regeneration, gate weakening, manual approval change, credential entry, alternate transport, push, merge, cherry-pick, publication beyond the one verify-request, cursor consume, lock action, pod action, production generation, or unrelated cleanup."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Director2 landed reviewed head 4c49c43287a936d618bc5fcaa61a26b58b931fd0 directly on base 63062315a738be1a7f3ff62f0388dc957339ad0c with only the correction, focused regression, and descriptor 30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.",
+    "Director2 committed canonical verify-request coordination/mailbox/sent/2026-07-14T23-39-03Z-director2-to-operator2-verify-request.md at trigger 062b44851325905d54fb9059c01b2d5e0b982982, strictly after the reviewed head.",
+    "Operator2 verification-report GO coordination/mailbox/sent/2026-07-15T00-00-08Z-operator2-to-all-verification-report.md independently closes the implementation range 63062315a738be1a7f3ff62f0388dc957339ad0c..4c49c43287a936d618bc5fcaa61a26b58b931fd0."
+  ],
   "next_recipient": "operator2",
-  "status": "active",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-14T23-39-03Z-director2-to-operator2-verify-request.md",
+  "target_commit": "4c49c43287a936d618bc5fcaa61a26b58b931fd0",
+  "commit_range": "63062315a738be1a7f3ff62f0388dc957339ad0c..4c49c43287a936d618bc5fcaa61a26b58b931fd0",
   "scope_files": [
     "scripts/verification_report_gate.py",
     "tests/unit/test_verification_report_gate.py",
