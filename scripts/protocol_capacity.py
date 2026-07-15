@@ -10,7 +10,10 @@ import re
 from typing import Any
 
 
-import protocol_mailbox  # noqa: E402
+if __package__:
+    from scripts import protocol_mailbox  # noqa: E402
+else:
+    import protocol_mailbox  # noqa: E402
 
 # SEAT_ORDER = the standing capacity ACTORS the coverage gate (G1, :504) and WIP gate
 # (G2, :521) require to own exactly one packet per active cycle. coordinator is a

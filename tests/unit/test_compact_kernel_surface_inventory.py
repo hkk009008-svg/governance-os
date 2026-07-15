@@ -59,6 +59,14 @@ READ_ONLY_COMPONENT_IDS = {
     "legacy_lifecycle_mapping_contract",
     "live_v1_route_lineage_reader",
 }
+MAPPING_PRODUCER_DEPENDENCIES = {
+    "scripts/chatgpt_pro_consult.py",
+    "scripts/consume_reviewer_result.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/protocol_capacity.py",
+    "scripts/route_capability.py",
+}
 REQUIRED_PRODUCTION_MODULES = {
     "scripts/capability_reducer.py",
     "scripts/capability_v1_adapter.py",
@@ -138,6 +146,8 @@ REQUIRED_SURFACE_OWNERS: dict[str, str] = {
     "scripts/execute_threeway_cutover.sh": "signed_bus_event_and_cursor_runtime",
     ".github/workflows/ci.yml": "signed_bus_event_and_cursor_runtime",
     "scripts/mailbox_monitor.py": "live_v1_status_and_runtime_readers",
+    "scripts/check_coordination.py": "live_v1_status_and_runtime_readers",
+    "scripts/check_doc_claims.py": "live_v1_status_and_runtime_readers",
     "scripts/ledger_start_guard.py": "live_v1_status_and_runtime_readers",
     "scripts/codex_protocol_model.py": "live_v1_status_and_runtime_readers",
     "scripts/protocol_doctor.py": "live_v1_status_and_runtime_readers",
@@ -325,6 +335,16 @@ REQUIRED_SYMBOL_OVERRIDES: dict[str, tuple[str, str, str]] = {
         "cli_entrypoint",
         "keep_documented_cli",
     ),
+    "scripts.check_coordination.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.check_doc_claims.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
     "scripts.ledger_start_guard.main": (
         "live_v1_status_and_runtime_readers",
         "cli_entrypoint",
@@ -438,11 +458,31 @@ def _direct_repo_local_imports(path: str) -> set[str]:
     imports: set[str] = set()
     module_parts = list(Path(path).with_suffix("").parts)
     package_parts = module_parts[:-1]
+    top_level_package = (
+        package_parts[0]
+        if package_parts and package_parts[0] in {"scripts", "threeway"}
+        else None
+    )
+
+    def resolve(module_name: str, *, sibling_fallback: bool) -> str | None:
+        resolved = _resolve_repo_local_module(module_name)
+        if (
+            resolved is None
+            and sibling_fallback
+            and top_level_package is not None
+        ):
+            resolved = _resolve_repo_local_module(
+                f"{top_level_package}.{module_name}"
+            )
+        return resolved
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                resolved = _resolve_repo_local_module(alias.name)
+                resolved = resolve(
+                    alias.name,
+                    sibling_fallback=True,
+                )
                 if resolved is not None:
                     imports.add(resolved)
         elif isinstance(node, ast.ImportFrom):
@@ -456,18 +496,87 @@ def _direct_repo_local_imports(path: str) -> set[str]:
             if node.module:
                 base_parts.extend(node.module.split("."))
             base_name = ".".join(base_parts)
-            resolved_base = _resolve_repo_local_module(base_name)
+            resolved_base = resolve(
+                base_name,
+                sibling_fallback=node.level == 0,
+            )
             if resolved_base is not None:
                 imports.add(resolved_base)
             for alias in node.names:
                 if alias.name == "*":
                     continue
                 child_name = ".".join((*base_parts, alias.name))
-                resolved_child = _resolve_repo_local_module(child_name)
+                resolved_child = resolve(
+                    child_name,
+                    sibling_fallback=node.level == 0,
+                )
                 if resolved_child is not None:
                     imports.add(resolved_child)
 
     return imports
+
+
+def _direct_import_ownership_failures(
+    module_owners: dict[str, list[str]],
+) -> list[tuple[str, str, list[str]]]:
+    failures: list[tuple[str, str, list[str]]] = []
+    for importer in sorted(module_owners):
+        for imported in sorted(_direct_repo_local_imports(importer)):
+            owners = module_owners.get(imported, [])
+            if len(owners) != 1:
+                failures.append((importer, imported, owners))
+    return failures
+
+
+def test_mapping_direct_repo_local_imports_are_exact() -> None:
+    assert _direct_repo_local_imports(
+        "scripts/compact_state_mapping.py"
+    ) == MAPPING_PRODUCER_DEPENDENCIES
+
+
+def test_unknown_bare_local_import_is_an_ownership_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "synthetic_importer.py").write_text(
+        "import synthetic_dependency\n",
+        encoding="utf-8",
+    )
+    (scripts_dir / "synthetic_dependency.py").write_text(
+        "SENTINEL = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+
+    assert _direct_import_ownership_failures(
+        {"scripts/synthetic_importer.py": ["synthetic_owner"]}
+    ) == [
+        (
+            "scripts/synthetic_importer.py",
+            "scripts/synthetic_dependency.py",
+            [],
+        )
+    ]
+
+
+def test_live_status_reader_inventory_discloses_local_writers() -> None:
+    component = next(
+        item
+        for item in _load_inventory()["components"]
+        if item["id"] == "live_v1_status_and_runtime_readers"
+    )
+
+    assert component["authority_status"] == (
+        "live_v1_status_readers_with_explicit_local_writes"
+    )
+    assert set(component["writer_paths"]) == {
+        "scripts/check_doc_claims.py",
+        "scripts/status.py",
+    }
+    assert "status.py --write" in component["executor_boundary"]
+    assert "check_doc_claims.py --fix" in component["executor_boundary"]
+    assert "local writes" in component["executor_boundary"]
 
 
 def test_repository_paths_reject_noncanonical_module_aliases() -> None:
@@ -575,12 +684,7 @@ def test_classified_modules_close_over_direct_repo_local_imports() -> None:
         for rule in component["module_rules"]:
             module_owners.setdefault(rule["path"], []).append(component["id"])
 
-    ownership_failures: list[tuple[str, str, list[str]]] = []
-    for importer in sorted(module_owners):
-        for imported in sorted(_direct_repo_local_imports(importer)):
-            owners = module_owners.get(imported, [])
-            if len(owners) != 1:
-                ownership_failures.append((importer, imported, owners))
+    ownership_failures = _direct_import_ownership_failures(module_owners)
 
     assert not ownership_failures, (
         "classified modules have direct local imports without exactly one "
@@ -618,7 +722,9 @@ def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:
     }
 
     assert set(component["source_paths"]) == owned_paths
-    assert set(component["reader_paths"]) == owned_paths
+    assert set(component["reader_paths"]) == (
+        owned_paths | MAPPING_PRODUCER_DEPENDENCIES
+    )
     assert component["writer_paths"] == []
     assert component["default_helper_class"] == "telemetry"
     assert component["module_rules"] == [
@@ -631,6 +737,11 @@ def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:
             "disposition": "keep_documented_cli",
         }
     ]
+    assert "imported only for observation" in component["executor_boundary"]
+    assert (
+        "no provider, writer, or effect entrypoint is invoked"
+        in component["executor_boundary"]
+    )
 
 
 def test_compact_shadow_reducer_and_adapter_are_read_only_compatibility() -> None:
@@ -655,7 +766,11 @@ def test_compact_shadow_reducer_and_adapter_are_read_only_compatibility() -> Non
         "non_authoritative_read_only_shadow_compatibility"
     )
     assert set(component["source_paths"]) == source_paths
-    assert set(component["reader_paths"]) == source_paths | reader_fixtures
+    assert set(component["reader_paths"]) == (
+        source_paths
+        | reader_fixtures
+        | {"scripts/compact_state_mapping.py"}
+    )
     assert component["writer_paths"] == []
     assert component["default_helper_class"] == "historical_adapter"
     assert component["module_rules"] == [
@@ -672,6 +787,11 @@ def test_compact_shadow_reducer_and_adapter_are_read_only_compatibility() -> Non
             "disposition": "keep_documented_cli",
         }
     ]
+    assert "imported only for observation" in component["executor_boundary"]
+    assert (
+        "no provider, writer, or effect entrypoint is invoked"
+        in component["executor_boundary"]
+    )
 
     adapter_imports = _direct_repo_local_imports(
         "scripts/capability_v1_adapter.py"

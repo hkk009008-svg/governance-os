@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-16 @ be1488a*
+*Last verified: 2026-07-16 @ 9b9f590*
 
 ## 1. Purpose
 
@@ -57,15 +57,15 @@ Key directories:
 | `build_guard` | `scripts/ledger_start_guard.py:175` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
 | `load_kernel_mirror` | `scripts/target_binding.py:147` | Validates the declarative-only compact-kernel epoch/writer mirror without selecting runtime behavior. |
 | `resolve_target` | `scripts/target_binding.py:184` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
-| `_accepted_context_keys` | `scripts/compact_state_mapping.py:110` | Independently enumerates every finite producer-backed v1 mapping context for exact fixture and shadow-gate closure. |
+| `_accepted_context_keys` | `scripts/compact_state_mapping.py:120` | Independently enumerates every finite producer-backed v1 mapping context for exact fixture and shadow-gate closure. |
 | `reduce_protocol_state` | `scripts/capability_reducer.py:1230` | Produces one pure, deterministic, non-authoritative compact shadow report. |
-| `adapt_v1_history` | `scripts/capability_v1_adapter.py:2630` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
+| `adapt_v1_history` | `scripts/capability_v1_adapter.py:2650` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
-| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:544` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_r_independence` | `scripts/codex_protocol_model.py:770` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:854` | Renders guard guidance into readiness output. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:547` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_r_independence` | `scripts/codex_protocol_model.py:773` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:857` | Renders guard guidance into readiness output. |
 | `ReceiptStore` | `scripts/opus_review_receipts.py:1497` | Owns the shared-Git-common-directory receipt lifecycle and one-attempt scope conflict guard. |
-| `resolve_provider_authoritative_scope` | `scripts/opus_review_bridge.py:1823` | Resolves trigger-bound scope and verifies the descriptor-bound advisory prompt before receipt reservation. |
+| `resolve_provider_authoritative_scope` | `scripts/opus_review_bridge.py:1826` | Resolves trigger-bound scope and verifies the descriptor-bound advisory prompt before receipt reservation. |
 | `publish_candidate` | `scripts/verification_report_gate.py:2497` | Publishes one validated Lane-V report as a durable file-plus-stage-0-index transaction with explicit recovery. |
 
 ## 4. Runtime Invariants

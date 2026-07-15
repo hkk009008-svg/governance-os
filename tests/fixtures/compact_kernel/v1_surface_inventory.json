@@ -335,11 +335,17 @@
       ],
       "reader_paths": [
         "scripts/compact_state_mapping.py",
+        "scripts/chatgpt_pro_consult.py",
+        "scripts/consume_reviewer_result.py",
+        "scripts/opus_review_bridge.py",
+        "scripts/opus_review_receipts.py",
+        "scripts/protocol_capacity.py",
+        "scripts/route_capability.py",
         "tests/fixtures/compact_state_mapping/v1.json",
         "tests/fixtures/compact_kernel/v1_misuse_vectors.json"
       ],
       "writer_paths": [],
-      "executor_boundary": "The pure mapping helper and documented fixture-validation CLI observe current producer vocabularies only; they grant no authority, write no runtime state, and execute no effect.",
+      "executor_boundary": "Producer vocabularies and constants are imported only for observation; no provider, writer, or effect entrypoint is invoked. The pure mapping helper and documented fixture-validation CLI grant no authority and write no runtime state.",
       "default_helper_class": "telemetry",
       "module_rules": [
         {
@@ -396,13 +402,14 @@
         "scripts/capability_reducer.py",
         "schemas/route-v2.schema.json",
         "scripts/capability_v1_adapter.py",
+        "scripts/compact_state_mapping.py",
         "tests/fixtures/compact_kernel/v1_to_v2_replay.json",
         "tests/fixtures/compact_state_mapping/v1.json",
         "tests/fixtures/compact_kernel/v1_misuse_vectors.json",
         "tests/fixtures/compact_kernel/v2_replay_vectors.json"
       ],
       "writer_paths": [],
-      "executor_boundary": "The pure reducer and historical adapter expose only an epoch-0 read-only shadow compatibility surface; they write no runtime state, execute no effect, call no provider, and grant no route, activation, or version authority.",
+      "executor_boundary": "Mapping producer vocabularies and constants are imported only for observation; no provider, writer, or effect entrypoint is invoked. The pure reducer and historical adapter expose only an epoch-0 read-only shadow compatibility surface and grant no route, activation, or version authority or runtime-state write.",
       "default_helper_class": "historical_adapter",
       "module_rules": [
         {
@@ -689,9 +696,11 @@
     },
     {
       "id": "live_v1_status_and_runtime_readers",
-      "authority_status": "live_v1_status_readers_with_optional_local_output",
+      "authority_status": "live_v1_status_readers_with_explicit_local_writes",
       "source_paths": [
         "scripts/mailbox_monitor.py",
+        "scripts/check_coordination.py",
+        "scripts/check_doc_claims.py",
         "scripts/ledger_start_guard.py",
         "scripts/codex_protocol_model.py",
         "scripts/protocol_doctor.py",
@@ -702,6 +711,8 @@
       ],
       "reader_paths": [
         "scripts/mailbox_monitor.py",
+        "scripts/check_coordination.py",
+        "scripts/check_doc_claims.py",
         "scripts/ledger_start_guard.py",
         "scripts/codex_protocol_model.py",
         "scripts/protocol_doctor.py",
@@ -716,13 +727,20 @@
         "coordination/capacity/packets"
       ],
       "writer_paths": [
-        "scripts/status.py"
+        "scripts/status.py",
+        "scripts/check_doc_claims.py"
       ],
-      "executor_boundary": "These live-v1 readers inspect status, routes, mailbox cursors, locks, presence, capacity, and runtime doctrine without granting route authority or consuming state. Only the explicit status.py --write option may create or replace the optional local STATUS.md output; the component is therefore not classified as read-only.",
+      "executor_boundary": "These live-v1 readers inspect status, routes, mailbox cursors, locks, presence, capacity, and runtime doctrine without granting route authority or consuming state. Only explicit status.py --write may create or replace the optional local STATUS.md output, and explicit check_doc_claims.py --fix may repair selected documentation anchors in place. Those local writes grant no protocol authority and consume no state; the component is therefore not classified as read-only.",
       "default_helper_class": "telemetry",
       "module_rules": [
         {
           "path": "scripts/mailbox_monitor.py"
+        },
+        {
+          "path": "scripts/check_coordination.py"
+        },
+        {
+          "path": "scripts/check_doc_claims.py"
         },
         {
           "path": "scripts/ledger_start_guard.py",
@@ -751,6 +769,16 @@
       "symbol_overrides": [
         {
           "symbol": "scripts.mailbox_monitor.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.check_coordination.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.check_doc_claims.main",
           "helper_class": "cli_entrypoint",
           "disposition": "keep_documented_cli"
         },

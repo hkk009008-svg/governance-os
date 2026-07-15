@@ -1500,10 +1500,30 @@ def _golden_projection(row: dict[str, object]) -> dict[str, object]:
     return {"disposition": _v1_disposition(row), **expected}
 
 
+def _projection_is_valid(value: object) -> bool:
+    if type(value) is not dict or set(value) != _PROJECTION_FIELDS:
+        return False
+    string_fields = (
+        "disposition",
+        "compact",
+        "terminal_scope",
+        "next_action",
+        "effect_eligibility",
+    )
+    return (
+        all(type(value[field]) is str for field in string_fields)
+        and value["disposition"] in {"route_event", "no_route_event"}
+        and value["effect_eligibility"] in _EFFECT_ORDER
+        and type(value["advisory_only"]) is bool
+    )
+
+
 def _projection_kind(
     candidate: dict[str, object],
     golden: dict[str, object],
 ) -> str:
+    if not _projection_is_valid(candidate) or not _projection_is_valid(golden):
+        return "adapter_error"
     if candidate == golden:
         return "match"
     if candidate["disposition"] != golden["disposition"]:

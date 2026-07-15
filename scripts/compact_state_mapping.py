@@ -17,12 +17,22 @@ from pathlib import Path
 import sys
 from typing import Any
 
-import chatgpt_pro_consult
-import consume_reviewer_result
-import opus_review_bridge
-import opus_review_receipts
-import protocol_capacity
-import route_capability
+if __package__:
+    from scripts import (
+        chatgpt_pro_consult,
+        consume_reviewer_result,
+        opus_review_bridge,
+        opus_review_receipts,
+        protocol_capacity,
+        route_capability,
+    )
+else:
+    import chatgpt_pro_consult
+    import consume_reviewer_result
+    import opus_review_bridge
+    import opus_review_receipts
+    import protocol_capacity
+    import route_capability
 
 
 class StateMappingError(ValueError):

@@ -4,6 +4,7 @@ import ast
 import dataclasses
 import inspect
 import json
+import os
 import subprocess
 import sys
 from copy import deepcopy
@@ -1581,6 +1582,46 @@ def _mutate_projection(
     return corpus
 
 
+@pytest.mark.parametrize(
+    ("case_id", "integer_value"),
+    (
+        ("mapping:chatgpt-prepared", 1),
+        ("mapping:capacity-ready", 0),
+    ),
+)
+def test_advisory_only_projection_requires_exact_bool_type(
+    case_id: str,
+    integer_value: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    mapping_id = _case(corpus, case_id)["mapping_row_id"]
+    row = next(item for item in _mapping_rows() if item["id"] == mapping_id)
+    target_key = (
+        row["domain"],
+        row["value"],
+        tuple(sorted(row["context"].items())),
+    )
+    mutated_rules = tuple(
+        (
+            key,
+            dataclasses.replace(rule, advisory_only=integer_value)
+            if key == target_key
+            else rule,
+        )
+        for key, rule in adapter._ADAPTER_RULES
+    )
+    assert sum(key == target_key for key, _rule in mutated_rules) == 1
+    monkeypatch.setattr(adapter, "_ADAPTER_RULES", mutated_rules)
+
+    report = adapter._check_corpus(corpus)
+
+    assert (case_id, "adapter_error") in {
+        (item.case_id, item.kind) for item in report.divergences
+    }
+    assert adapter._report_is_gate_clean(report) is False
+
+
 def _make_compact_more_permissive(corpus: dict[str, object]) -> dict[str, object]:
     case = _case(corpus, "mapping:capability-issued")
     _mutate_projection(corpus, case["id"], disposition="route_event")
@@ -2142,6 +2183,47 @@ def test_script_entrypoint_runs_corpus_cli_from_repository_root() -> None:
     report = json.loads(completed.stdout)
     assert report["schema"] == "compact-kernel-v1-shadow-parity-report/v1"
     assert completed.stdout == canonicalize(report).decode("utf-8") + "\n"
+
+
+def test_package_import_runs_from_repository_root_without_pythonpath() -> None:
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+
+    completed = subprocess.run(
+        [sys.executable, "-c", "from scripts import capability_v1_adapter"],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
+
+
+def test_module_entrypoint_matches_parity_artifact_without_pythonpath() -> None:
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.capability_v1_adapter",
+            "--check-corpus",
+            str(CORPUS),
+        ],
+        cwd=ROOT,
+        env=environment,
+        check=False,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr.decode("utf-8")
+    assert completed.stderr == b""
+    assert completed.stdout == PARITY_ARTIFACT.read_bytes()
 
 
 def test_cli_fails_closed_on_changed_corpus_without_leaking(capsys, tmp_path) -> None:

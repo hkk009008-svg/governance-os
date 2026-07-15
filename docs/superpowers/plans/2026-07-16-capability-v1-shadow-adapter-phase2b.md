@@ -115,6 +115,16 @@ finding.
 | `docs/superpowers/plans/2026-07-16-capability-v1-shadow-adapter-phase2b.md` | This reviewed execution contract. |
 | `scripts/capability_reducer.py` | Existing pure reducer plus one real-caller transition cursor; no adapter import or I/O. |
 | `scripts/capability_v1_adapter.py` | Strict v1 record parser, route/work adapter, specialized-state dispositions, parity gate, and fixture-only CLI. |
+| `scripts/compact_state_mapping.py` | Pure mapping contract; imports six existing producer vocabularies/constants only for observation in package and direct-script modes. |
+| `scripts/chatgpt_pro_consult.py` | Existing ChatGPT vocabulary producer with a package/direct import edge to `codex_protocol_model`; no provider behavior change. |
+| `scripts/consume_reviewer_result.py` | Existing local-verdict vocabulary producer observed directly by the mapping contract; unchanged. |
+| `scripts/opus_review_bridge.py` | Existing provider-result vocabulary producer with a package/direct import edge to `opus_review_receipts`; no provider behavior change. |
+| `scripts/opus_review_receipts.py` | Existing receipt-state vocabulary producer observed directly by the mapping contract; unchanged. |
+| `scripts/protocol_capacity.py` | Existing capacity vocabulary producer with a package/direct import edge to `protocol_mailbox`; no scheduler behavior change. |
+| `scripts/route_capability.py` | Existing capability vocabulary producer with a package/direct import edge to `route_lineage`; no capability behavior change. |
+| `scripts/codex_protocol_model.py` | Existing protocol-model dependency with a package/direct import edge to `protocol_mailbox`; no rendered doctrine change. |
+| `scripts/protocol_mailbox.py`, `scripts/route_lineage.py` | Existing, already-owned transitive package-import dependencies; unchanged. |
+| `scripts/check_coordination.py`, `scripts/check_doc_claims.py` | Existing status-reader imports exposed by generic bare-local closure; `check_doc_claims.py --fix` retains its explicit local-document writer classification and both production files remain unchanged. |
 | `tests/fixtures/compact_kernel/v1_to_v2_replay.json` | Exact source/digest manifest, actor/scope fixtures, legacy records, case manifest, parity oracle, Phase-2 misuse set, Phase-3 deferred set, and reducer replay set. |
 | `tests/unit/test_capability_v1_adapter.py` | Adapter, completeness, parity, determinism, denial-asymmetry, and CLI tests. |
 | `tests/fixtures/compact_kernel/v1_surface_inventory.json` | Read-only historical-adapter and pure-reducer ownership classification. |
@@ -892,6 +902,80 @@ respectively, while the public error remains `legacy_ambiguous`. No reducer,
 public mapping, fixture, artifact, target binding, writer, epoch, or activation
 behavior changed. These correction facts do not close Task 4, authorize Phase
 3, or activate a writer.
+
+### Final-review evidence correction 7
+
+The fresh full-range review of
+`f17d14c684e1e1a6378e52ab8f151070fb710e07..9b9f5904c2ef99c0d5ffdbe2c2610206460e5b08`
+found no Critical finding, two Important gaps, and one adjacent low-cost Minor.
+Repository-root package import and `python -m` launch failed at the mapping
+contract's bare sibling imports; the inventory scanner ignored those same bare
+local edges; and Python bool/int equality allowed a selected rule's `True` or
+`False` `advisory_only` value to compare cleanly with integer `1` or `0`.
+
+Before any production or inventory-fixture edit, the focused command
+
+```sh
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q \
+  tests/unit/test_capability_v1_adapter.py::test_advisory_only_projection_requires_exact_bool_type \
+  tests/unit/test_capability_v1_adapter.py::test_package_import_runs_from_repository_root_without_pythonpath \
+  tests/unit/test_capability_v1_adapter.py::test_module_entrypoint_matches_parity_artifact_without_pythonpath \
+  tests/unit/test_compact_kernel_surface_inventory.py::test_mapping_direct_repo_local_imports_are_exact \
+  tests/unit/test_compact_kernel_surface_inventory.py::test_unknown_bare_local_import_is_an_ownership_failure \
+  tests/unit/test_compact_kernel_surface_inventory.py::test_mapping_contract_is_explicitly_read_only_telemetry \
+  tests/unit/test_compact_kernel_surface_inventory.py::test_compact_shadow_reducer_and_adapter_are_read_only_compatibility
+```
+
+produced `8 failed`: both integer rule mutations remained `match`/gate-clean;
+both clean package launches stopped at `ModuleNotFoundError: chatgpt_pro_consult`;
+mapping import edges were empty; the synthetic unknown
+bare local dependency escaped ownership failure; and both reader inventories
+lacked their semantic dependencies. The identical command then produced
+`8 passed` after the correction.
+
+The mapping contract now exposes exactly six direct reader edges:
+`scripts/chatgpt_pro_consult.py`, `scripts/consume_reviewer_result.py`,
+`scripts/opus_review_bridge.py`, `scripts/opus_review_receipts.py`,
+`scripts/protocol_capacity.py`, and `scripts/route_capability.py`. The scanner
+resolves an otherwise-unresolved absolute import only against the importer's
+top-level `scripts` or `threeway` package and only when the repository
+file/package exists. This generic correction truthfully exposed two existing
+status-reader edges, so `scripts/check_coordination.py` and
+`scripts/check_doc_claims.py` are classified under the existing
+`live_v1_status_and_runtime_readers` owner without either production file
+changing. The compact shadow reader adds only
+`scripts/compact_state_mapping.py`; producer modules stay under their existing
+owners and outside both components' source/module-rule sets.
+
+The bounded code-quality review caught that classifying
+`scripts/check_doc_claims.py` as a source/reader without also recording its
+existing explicit `--fix` path made the live-status component's writer boundary
+false. A focused inventory test first produced `1 failed`, then `1 passed`
+after that component added `scripts/check_doc_claims.py` beside
+`scripts/status.py` in `writer_paths` and disclosed both explicit local-write
+entrypoints. The mapping and shadow components' writer paths remain empty, and
+neither existing production helper changed.
+
+Conditional package/direct imports are restricted to the exact mapping chain:
+the mapping's six direct producer modules, ChatGPT guard to protocol model,
+protocol model and capacity to mailbox vocabulary, Opus bridge to receipt
+vocabulary, and capability to route lineage. Projection comparison now checks
+the exact six-field shape, exact string/bool runtime types, disposition, and
+effect-eligibility vocabulary before equality; both bool-as-int mutations
+become affected-case `adapter_error` findings and block the gate.
+
+The tracked correction boundary is exactly `scripts/compact_state_mapping.py`,
+`scripts/chatgpt_pro_consult.py`, `scripts/codex_protocol_model.py`,
+`scripts/opus_review_bridge.py`, `scripts/protocol_capacity.py`,
+`scripts/route_capability.py`, `scripts/capability_v1_adapter.py`,
+`tests/unit/test_capability_v1_adapter.py`,
+`tests/unit/test_compact_kernel_surface_inventory.py`,
+`tests/fixtures/compact_kernel/v1_surface_inventory.json`, this plan, and
+`ARCHITECTURE.md`. It changes no producer constant or callable behavior,
+reducer, canonical mapping/corpus/replay/misuse fixture, parity artifact,
+target binding, epoch, writer, provider/effect entrypoint, activation, mailbox,
+cursor, ref, or live state. These correction facts do not close Task 4,
+authorize Phase 3, or activate a writer.
 
 ## Task 4: Record reviewed Phase-2 closeout
 

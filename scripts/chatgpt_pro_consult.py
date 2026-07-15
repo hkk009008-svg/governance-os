@@ -20,10 +20,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from codex_protocol_model import (
-    CHATGPT_PRO_CONSULTATION_DEFAULT,
-    CHATGPT_PRO_CONSULTATION_MODES,
-)
+if __package__:
+    from scripts.codex_protocol_model import (
+        CHATGPT_PRO_CONSULTATION_DEFAULT,
+        CHATGPT_PRO_CONSULTATION_MODES,
+    )
+else:
+    from codex_protocol_model import (
+        CHATGPT_PRO_CONSULTATION_DEFAULT,
+        CHATGPT_PRO_CONSULTATION_MODES,
+    )
 
 REQUEST_SCHEMA_VERSION = "chatgpt-pro-consult-request/v1"
 RESPONSE_SCHEMA_VERSION = "chatgpt-pro-consult-response/v1"
