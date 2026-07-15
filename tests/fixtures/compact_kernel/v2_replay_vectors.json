@@ -1,0 +1,1274 @@
+{
+  "schema_version": "compact-kernel-replay/v2",
+  "actors": {
+    "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd": {
+      "binding_id": "actor-main",
+      "binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+      "repository": "owner/repository",
+      "principal": "user:principal",
+      "allowed_actions": [
+        "transition.apply"
+      ],
+      "user_authorized_actions": [
+        "transition.apply"
+      ],
+      "parent_binding_id": null,
+      "parent_allowed_actions": null,
+      "attested": true,
+      "expired": false,
+      "revoked": false
+    },
+    "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff": {
+      "binding_id": "actor-other",
+      "binding_digest": "sha256:9782f3d2d2d73d740bb167ed8db739e4ec8053ffd0b6328f75c76799767534a6",
+      "repository": "owner/repository",
+      "principal": "user:other",
+      "allowed_actions": [
+        "transition.apply"
+      ],
+      "user_authorized_actions": [
+        "transition.apply"
+      ],
+      "parent_binding_id": null,
+      "parent_allowed_actions": null,
+      "attested": true,
+      "expired": false,
+      "revoked": false
+    }
+  },
+  "scopes": {
+    "scope:unit-a": {
+      "repository": "owner/repository",
+      "paths": [
+        "src/a"
+      ],
+      "lock_domains": [
+        "lock:a"
+      ]
+    },
+    "scope:unit-b": {
+      "repository": "owner/repository",
+      "paths": [
+        "src/ab"
+      ],
+      "lock_domains": [
+        "lock:b"
+      ]
+    },
+    "scope:unit-a-child": {
+      "repository": "owner/repository",
+      "paths": [
+        "src/a/file.py"
+      ],
+      "lock_domains": [
+        "lock:c"
+      ]
+    },
+    "scope:unit-lock": {
+      "repository": "owner/repository",
+      "paths": [
+        "src/c"
+      ],
+      "lock_domains": [
+        "lock:a"
+      ]
+    },
+    "scope:unit-changed": {
+      "repository": "owner/repository",
+      "paths": [
+        "src/changed"
+      ],
+      "lock_domains": [
+        "lock:changed"
+      ]
+    },
+    "scope:null": {
+      "repository": "owner/repository",
+      "paths": [
+        "src/null"
+      ],
+      "lock_domains": [
+        "lock:null"
+      ]
+    },
+    "scope:named": {
+      "repository": "owner/repository",
+      "paths": [
+        "src/named"
+      ],
+      "lock_domains": [
+        "lock:named"
+      ]
+    }
+  },
+  "vectors": [
+    {
+      "id": "independent_order_a",
+      "events": {
+        "alpha": {
+          "schema": "governance.route/v2",
+          "work_id": "work-independent-a",
+          "transition_id": "independent-alpha",
+          "route_id": "route-alpha",
+          "work_revision": 1,
+          "unit_id": "unit-alpha",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:1c11431a9c1fabe7f9aeed20d4ec5f3ed39ca8bea1d8ce5e8cddd7cda8c6d435",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "beta": {
+          "schema": "governance.route/v2",
+          "work_id": "work-independent-b",
+          "transition_id": "independent-beta",
+          "route_id": "route-beta",
+          "work_revision": 1,
+          "unit_id": "unit-beta",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:a75d71954a3ff42636fc4cf303b1b154b2e9fcdad2e67bad3ceaa3ce83209562",
+          "mutable_scope_ref": "scope:unit-b",
+          "mutable_scope_digest": "sha256:2826674f4e4df17c1428f5315ac33fe9db6650b8245e896caa94d772b6fa441b",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "alpha",
+          "beta"
+        ]
+      ],
+      "expected": {
+        "applied_transition_ids": [
+          "independent-alpha",
+          "independent-beta"
+        ],
+        "idempotent_transition_ids": [],
+        "units": [
+          {
+            "work_id": "work-independent-a",
+            "unit_id": "unit-alpha",
+            "unit_version": 1
+          },
+          {
+            "work_id": "work-independent-b",
+            "unit_id": "unit-beta",
+            "unit_version": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "independent_order_b",
+      "events": {
+        "beta": {
+          "activation_epoch": 0,
+          "effect_reservation_refs": [],
+          "verification_ref": null,
+          "evidence_refs": [],
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "mutable_scope_digest": "sha256:2826674f4e4df17c1428f5315ac33fe9db6650b8245e896caa94d772b6fa441b",
+          "mutable_scope_ref": "scope:unit-b",
+          "precondition_digest": "sha256:a75d71954a3ff42636fc4cf303b1b154b2e9fcdad2e67bad3ceaa3ce83209562",
+          "expected_unit_version": 0,
+          "requested_transition": "START",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "unit_id": "unit-beta",
+          "work_revision": 1,
+          "route_id": "route-beta",
+          "transition_id": "independent-beta",
+          "work_id": "work-independent-b",
+          "schema": "governance.route/v2"
+        },
+        "alpha": {
+          "activation_epoch": 0,
+          "effect_reservation_refs": [],
+          "verification_ref": null,
+          "evidence_refs": [],
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "mutable_scope_ref": "scope:unit-a",
+          "precondition_digest": "sha256:1c11431a9c1fabe7f9aeed20d4ec5f3ed39ca8bea1d8ce5e8cddd7cda8c6d435",
+          "expected_unit_version": 0,
+          "requested_transition": "START",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "unit_id": "unit-alpha",
+          "work_revision": 1,
+          "route_id": "route-alpha",
+          "transition_id": "independent-alpha",
+          "work_id": "work-independent-a",
+          "schema": "governance.route/v2"
+        }
+      },
+      "permutations": [
+        [
+          "beta",
+          "alpha"
+        ]
+      ],
+      "expected": {
+        "applied_transition_ids": [
+          "independent-alpha",
+          "independent-beta"
+        ],
+        "idempotent_transition_ids": [],
+        "units": [
+          {
+            "work_id": "work-independent-a",
+            "unit_id": "unit-alpha",
+            "unit_version": 1
+          },
+          {
+            "work_id": "work-independent-b",
+            "unit_id": "unit-beta",
+            "unit_version": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "exact_duplicate_collapses",
+      "events": {
+        "event": {
+          "schema": "governance.route/v2",
+          "work_id": "work-exact",
+          "transition_id": "duplicate-exact",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-exact",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:4c51b8e725388e11b384f4fe8d326d47350917902a1e134f495958b5fde39f17",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "event",
+          "event"
+        ]
+      ],
+      "expected": {
+        "applied_transition_ids": [
+          "duplicate-exact"
+        ],
+        "idempotent_transition_ids": [
+          "duplicate-exact"
+        ],
+        "units": [
+          {
+            "work_id": "work-exact",
+            "unit_id": "unit-exact",
+            "unit_version": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "changed_duplicate_conflicts",
+      "events": {
+        "original": {
+          "schema": "governance.route/v2",
+          "work_id": "work-changed-duplicate",
+          "transition_id": "duplicate-changed",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-changed-duplicate",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:567ac5cacc5f0ec97fd4d4482cfe8e615d25e6708373f59f6b48db38ce7738f1",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "changed": {
+          "schema": "governance.route/v2",
+          "work_id": "work-changed-duplicate",
+          "transition_id": "duplicate-changed",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-changed-duplicate",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:567ac5cacc5f0ec97fd4d4482cfe8e615d25e6708373f59f6b48db38ce7738f1",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "original",
+          "changed"
+        ],
+        [
+          "changed",
+          "original"
+        ]
+      ],
+      "expected": {
+        "error_code": "transition_id_reuse"
+      }
+    },
+    {
+      "id": "stale_expected_version",
+      "events": {
+        "initial": {
+          "schema": "governance.route/v2",
+          "work_id": "work-stale",
+          "transition_id": "stale-start",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-stale",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:8a31eeb3f83a26631c246e7c217fb584cb944ece7f0ccb2f44d0669913a6cf82",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "stale": {
+          "schema": "governance.route/v2",
+          "work_id": "work-stale",
+          "transition_id": "stale-update",
+          "route_id": "route-main",
+          "work_revision": 2,
+          "unit_id": "unit-stale",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "UPDATE",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:63d64b6c60a8a19eed6925042b6c3471f5bb745e3b3708bb79919b4f778fd365",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "initial",
+          "stale"
+        ],
+        [
+          "stale",
+          "initial"
+        ]
+      ],
+      "expected": {
+        "error_code": "expected_version"
+      }
+    },
+    {
+      "id": "stale_activation_epoch",
+      "events": {
+        "stale_epoch": {
+          "schema": "governance.route/v2",
+          "work_id": "work-epoch",
+          "transition_id": "epoch-stale",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-epoch",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:1bf8856c954647d6b0cd7c3bb13413e6fd74c419cbd9abd5950b5c1a1a6d3a57",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 1
+        }
+      },
+      "permutations": [
+        [
+          "stale_epoch"
+        ]
+      ],
+      "expected": {
+        "error_code": "activation_epoch"
+      }
+    },
+    {
+      "id": "actor_cross_binding_replay",
+      "events": {
+        "cross_binding": {
+          "schema": "governance.route/v2",
+          "work_id": "work-cross-binding",
+          "transition_id": "cross-binding",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-cross-binding",
+          "actor_binding_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:a7d77ca69fd43e98f199c646012a20472a3629caf0050168b9fee1a40b566d1d",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "cross_binding"
+        ]
+      ],
+      "expected": {
+        "error_code": "actor_binding"
+      }
+    },
+    {
+      "id": "disjoint_scopes_merge",
+      "events": {
+        "alpha": {
+          "schema": "governance.route/v2",
+          "work_id": "work-merge-a",
+          "transition_id": "merge-alpha",
+          "route_id": "route-merge-a",
+          "work_revision": 1,
+          "unit_id": "unit-merge-a",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:ce616708295473aa0f51cbaa054b62742948e520d125917c70b80e36e0dee859",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "beta": {
+          "schema": "governance.route/v2",
+          "work_id": "work-merge-b",
+          "transition_id": "merge-beta",
+          "route_id": "route-merge-b",
+          "work_revision": 1,
+          "unit_id": "unit-merge-b",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:f97216a3c07a909e5a29804870161388da3fca24019fdc3b64e97f00a9d32016",
+          "mutable_scope_ref": "scope:unit-b",
+          "mutable_scope_digest": "sha256:2826674f4e4df17c1428f5315ac33fe9db6650b8245e896caa94d772b6fa441b",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "alpha",
+          "beta"
+        ],
+        [
+          "beta",
+          "alpha"
+        ]
+      ],
+      "expected": {
+        "applied_transition_ids": [
+          "merge-alpha",
+          "merge-beta"
+        ],
+        "idempotent_transition_ids": [],
+        "units": [
+          {
+            "work_id": "work-merge-a",
+            "unit_id": "unit-merge-a",
+            "unit_version": 1
+          },
+          {
+            "work_id": "work-merge-b",
+            "unit_id": "unit-merge-b",
+            "unit_version": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "ancestor_scope_overlap",
+      "events": {
+        "alpha": {
+          "schema": "governance.route/v2",
+          "work_id": "work-ancestor-a",
+          "transition_id": "ancestor-alpha",
+          "route_id": "route-ancestor-a",
+          "work_revision": 1,
+          "unit_id": "unit-ancestor-a",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:7dc9038e7dd851b78dff64bc4a2cfcb71da0b47882d4099188c4d3daf9a5dc31",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "beta": {
+          "schema": "governance.route/v2",
+          "work_id": "work-ancestor-b",
+          "transition_id": "ancestor-beta",
+          "route_id": "route-ancestor-b",
+          "work_revision": 1,
+          "unit_id": "unit-ancestor-b",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:51b0053384b0bd853e201890e4c96dfe8b51cbc8938c326566f1a8199b040543",
+          "mutable_scope_ref": "scope:unit-a-child",
+          "mutable_scope_digest": "sha256:77d3cb8925b6b7f849d63f9701c4e10c37cdeb660497df4a2926a3b777608562",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "alpha",
+          "beta"
+        ],
+        [
+          "beta",
+          "alpha"
+        ]
+      ],
+      "expected": {
+        "error_code": "scope_overlap"
+      }
+    },
+    {
+      "id": "lock_domain_overlap",
+      "events": {
+        "alpha": {
+          "schema": "governance.route/v2",
+          "work_id": "work-lock-a",
+          "transition_id": "lock-alpha",
+          "route_id": "route-lock-a",
+          "work_revision": 1,
+          "unit_id": "unit-lock-a",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:974513b73ee63cea8180b6f548767505d0566e0fa516c60f35783ec9a4b14c3b",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "beta": {
+          "schema": "governance.route/v2",
+          "work_id": "work-lock-b",
+          "transition_id": "lock-beta",
+          "route_id": "route-lock-b",
+          "work_revision": 1,
+          "unit_id": "unit-lock-b",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:9fda4b46a2dc6ee7e201f84828a370896731508040c2b1909fdaf28023b72208",
+          "mutable_scope_ref": "scope:unit-lock",
+          "mutable_scope_digest": "sha256:20b63465f161eb090d2a423bb9f241737c0957c38a10020bc6192af87320a418",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "alpha",
+          "beta"
+        ],
+        [
+          "beta",
+          "alpha"
+        ]
+      ],
+      "expected": {
+        "error_code": "scope_overlap"
+      }
+    },
+    {
+      "id": "scope_digest_mismatch",
+      "events": {
+        "mismatch": {
+          "schema": "governance.route/v2",
+          "work_id": "work-scope-mismatch",
+          "transition_id": "scope-mismatch",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-scope-mismatch",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:8c71c1dfd7559dbbeb0613b9450ce13f8b6978751cb66cf0d8905425eb1eef31",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "mismatch"
+        ]
+      ],
+      "expected": {
+        "error_code": "scope_digest"
+      }
+    },
+    {
+      "id": "same_unit_scope_change_conflicts",
+      "events": {
+        "initial": {
+          "schema": "governance.route/v2",
+          "work_id": "work-scope-change",
+          "transition_id": "scope-initial",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-scope-change",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:19621859131d50e3d693ff12e0ae0a15ef8c18cb9f3225025d38db61ea73c650",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "changed": {
+          "schema": "governance.route/v2",
+          "work_id": "work-scope-change",
+          "transition_id": "scope-changed",
+          "route_id": "route-main",
+          "work_revision": 2,
+          "unit_id": "unit-scope-change",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "UPDATE",
+          "expected_unit_version": 1,
+          "precondition_digest": "sha256:8bfb366f9544e28a1452c1b80a55854e316ce96f273f2e7cc140577db058afb9",
+          "mutable_scope_ref": "scope:unit-changed",
+          "mutable_scope_digest": "sha256:84fa257914180366c3ac8c1eff23800a92af2d242b77331ae14f0c4a418377c4",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "initial",
+          "changed"
+        ],
+        [
+          "changed",
+          "initial"
+        ]
+      ],
+      "expected": {
+        "error_code": "scope_invalid"
+      }
+    },
+    {
+      "id": "route_null_to_named_conflicts",
+      "events": {
+        "initial": {
+          "schema": "governance.route/v2",
+          "work_id": "work-route",
+          "transition_id": "route-initial",
+          "route_id": null,
+          "work_revision": 1,
+          "unit_id": "unit-route",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:e30aea196943f1600ec63cc500208c89db4943d984fca6ff798439f1fc9ff844",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "changed": {
+          "schema": "governance.route/v2",
+          "work_id": "work-route",
+          "transition_id": "route-changed",
+          "route_id": "route-named",
+          "work_revision": 2,
+          "unit_id": "unit-route",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "UPDATE",
+          "expected_unit_version": 1,
+          "precondition_digest": "sha256:aa0fa681012ebcbdf79b6f866e32333b37ae6b4fb9e18f4232d6ae6b1727bff7",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "initial",
+          "changed"
+        ],
+        [
+          "changed",
+          "initial"
+        ]
+      ],
+      "expected": {
+        "error_code": "route_ambiguity"
+      }
+    },
+    {
+      "id": "work_revision_gap",
+      "events": {
+        "initial": {
+          "schema": "governance.route/v2",
+          "work_id": "work-revision",
+          "transition_id": "revision-initial",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-revision",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:895a8d55ffd0eb9f88ad78b5b3d544d675d2c031752434b252773ed4babe6694",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "gap": {
+          "schema": "governance.route/v2",
+          "work_id": "work-revision",
+          "transition_id": "revision-gap",
+          "route_id": "route-main",
+          "work_revision": 3,
+          "unit_id": "unit-revision",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "UPDATE",
+          "expected_unit_version": 1,
+          "precondition_digest": "sha256:e5619781a3f4a6c33add1ece618a3f10fab73efe6b3bdfdba3b9a6dbdd483971",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "initial",
+          "gap"
+        ],
+        [
+          "gap",
+          "initial"
+        ]
+      ],
+      "expected": {
+        "error_code": "work_revision"
+      }
+    },
+    {
+      "id": "nullable_and_string_units_order",
+      "events": {
+        "null": {
+          "schema": "governance.route/v2",
+          "work_id": "work-nullable",
+          "transition_id": "nullable-null",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": null,
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:85506ed8e758feb2154f2e6a14934c8288af17b412201197a53d02c380fec350",
+          "mutable_scope_ref": "scope:null",
+          "mutable_scope_digest": "sha256:de1240753fa38c683841e1809737a6d672adfd9a8a69cb89736a90d8f2d66465",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "named": {
+          "schema": "governance.route/v2",
+          "work_id": "work-nullable",
+          "transition_id": "nullable-named",
+          "route_id": "route-main",
+          "work_revision": 2,
+          "unit_id": "unit-named",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:9451fc7bebad85e5650bcd709037832f1c87ebbc1ad7b096c1c99231e6597833",
+          "mutable_scope_ref": "scope:named",
+          "mutable_scope_digest": "sha256:92e7d04e0f519bdf0801742c96671373b4ec3e182d1551bdfddf7e6cb4ccdd7c",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "null",
+          "named"
+        ],
+        [
+          "named",
+          "null"
+        ]
+      ],
+      "expected": {
+        "applied_transition_ids": [
+          "nullable-named",
+          "nullable-null"
+        ],
+        "idempotent_transition_ids": [],
+        "units": [
+          {
+            "work_id": "work-nullable",
+            "unit_id": null,
+            "unit_version": 1
+          },
+          {
+            "work_id": "work-nullable",
+            "unit_id": "unit-named",
+            "unit_version": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "changed_dependency_bumps_version",
+      "events": {
+        "target_initial": {
+          "schema": "governance.route/v2",
+          "work_id": "work-dependency",
+          "transition_id": "dependency-target-initial",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "target",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:9676e824e54b95d99c86883a95ab09fbf3490fcbba24b6b63f2285c22a566903",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "other_initial": {
+          "schema": "governance.route/v2",
+          "work_id": "work-dependency",
+          "transition_id": "dependency-other-initial",
+          "route_id": "route-main",
+          "work_revision": 2,
+          "unit_id": "other",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:b951b99e7d2aef2ddd85d71c5271d05b209d71315206f65b8ba506be59f3f50d",
+          "mutable_scope_ref": "scope:unit-b",
+          "mutable_scope_digest": "sha256:2826674f4e4df17c1428f5315ac33fe9db6650b8245e896caa94d772b6fa441b",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "target_update": {
+          "schema": "governance.route/v2",
+          "work_id": "work-dependency",
+          "transition_id": "dependency-target-update",
+          "route_id": "route-main",
+          "work_revision": 3,
+          "unit_id": "target",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "UPDATE",
+          "expected_unit_version": 1,
+          "precondition_digest": "sha256:6c4ffa138088002d745b647bc9eb9fc40b7ba5480638b133fa9ff4e2bd446f61",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "target_initial",
+          "other_initial",
+          "target_update"
+        ],
+        [
+          "target_update",
+          "other_initial",
+          "target_initial"
+        ]
+      ],
+      "expected": {
+        "applied_transition_ids": [
+          "dependency-other-initial",
+          "dependency-target-initial",
+          "dependency-target-update"
+        ],
+        "idempotent_transition_ids": [],
+        "units": [
+          {
+            "work_id": "work-dependency",
+            "unit_id": "other",
+            "unit_version": 1
+          },
+          {
+            "work_id": "work-dependency",
+            "unit_id": "target",
+            "unit_version": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "equivalent_ref_order_normalizes",
+      "events": {
+        "original": {
+          "schema": "governance.route/v2",
+          "work_id": "work-refs",
+          "transition_id": "refs-equivalent",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-refs",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:61031e766dda4aafdf381558141a5ab34124b2f7e03617f3f59e4f79f56d8b14",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [
+            "artifact:two",
+            "artifact:one"
+          ],
+          "verification_ref": null,
+          "effect_reservation_refs": [
+            "reservation:two",
+            "reservation:one"
+          ],
+          "activation_epoch": 0
+        },
+        "reordered": {
+          "schema": "governance.route/v2",
+          "work_id": "work-refs",
+          "transition_id": "refs-equivalent",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-refs",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:61031e766dda4aafdf381558141a5ab34124b2f7e03617f3f59e4f79f56d8b14",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [
+            "artifact:one",
+            "artifact:two"
+          ],
+          "verification_ref": null,
+          "effect_reservation_refs": [
+            "reservation:one",
+            "reservation:two"
+          ],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "original",
+          "reordered"
+        ],
+        [
+          "reordered",
+          "original"
+        ]
+      ],
+      "expected": {
+        "applied_transition_ids": [
+          "refs-equivalent"
+        ],
+        "idempotent_transition_ids": [
+          "refs-equivalent"
+        ],
+        "units": [
+          {
+            "work_id": "work-refs",
+            "unit_id": "unit-refs",
+            "unit_version": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "web_research_observation",
+      "events": {
+        "initial": {
+          "schema": "governance.route/v2",
+          "work_id": "work-web",
+          "transition_id": "web-initial",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-web",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "START",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:348e3c09c8eaa5c51587caf48e3b4e57366a04fe43dfd22309310a3131afc38a",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        },
+        "web_update": {
+          "schema": "governance.route/v2",
+          "work_id": "work-web",
+          "transition_id": "web-update",
+          "route_id": "route-main",
+          "work_revision": 2,
+          "unit_id": "unit-web",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "UPDATE",
+          "expected_unit_version": 1,
+          "precondition_digest": "sha256:4c27d702e0bdbfcd396ae4320ea9ff822b6eac3a9a3b8cb10573d3fa79d9c366",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [
+            "web:https://example.test/source@2026-07-15"
+          ],
+          "verification_ref": null,
+          "effect_reservation_refs": [],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "initial",
+          "web_update"
+        ],
+        [
+          "web_update",
+          "initial"
+        ]
+      ],
+      "expected": {
+        "applied_transition_ids": [
+          "web-initial",
+          "web-update"
+        ],
+        "idempotent_transition_ids": [],
+        "units": [
+          {
+            "work_id": "work-web",
+            "unit_id": "unit-web",
+            "unit_version": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "request_close_is_observation",
+      "events": {
+        "request_close": {
+          "schema": "governance.route/v2",
+          "work_id": "work-request-close",
+          "transition_id": "request-close",
+          "route_id": "route-main",
+          "work_revision": 1,
+          "unit_id": "unit-request-close",
+          "actor_binding_digest": "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd",
+          "requested_transition": "REQUEST_CLOSE",
+          "expected_unit_version": 0,
+          "precondition_digest": "sha256:123b0620f0925bebdc0c7698af21ea82044cd3a97be7e294eade4327f47cc5a7",
+          "mutable_scope_ref": "scope:unit-a",
+          "mutable_scope_digest": "sha256:f697445556679a0abcca84335ff0f0080a14b37110f4721f8c0498945eee24c6",
+          "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "dependency_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "acceptance_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "evidence_refs": [],
+          "verification_ref": "verification:review-1",
+          "effect_reservation_refs": [
+            "reservation:one"
+          ],
+          "activation_epoch": 0
+        }
+      },
+      "permutations": [
+        [
+          "request_close"
+        ]
+      ],
+      "expected": {
+        "applied_transition_ids": [
+          "request-close"
+        ],
+        "idempotent_transition_ids": [],
+        "units": [
+          {
+            "work_id": "work-request-close",
+            "unit_id": "unit-request-close",
+            "unit_version": 1
+          }
+        ]
+      }
+    }
+  ]
+}
