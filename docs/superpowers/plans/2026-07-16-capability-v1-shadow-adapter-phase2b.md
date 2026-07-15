@@ -868,6 +868,31 @@ production or fixture change, then GREEN via
 blocking divergence or specialized event. These correction facts do not close
 Task 4, authorize Phase 3, or activate a writer.
 
+### Final-review evidence correction 6
+
+The fresh full-range review of
+`f17d14c684e1e1a6378e52ab8f151070fb710e07..be1488a41b6174b4503fb23f8885794fa37528fc`
+found no Critical findings and one remaining Important provenance gap. A valid,
+exact second scope from another repository preserved the successful `START`
+prefix and public `legacy_ambiguous` result while changing the raw reducer cause
+to `actor_binding`; the broad public error allowed the corpus gate to remain
+falsely clean.
+
+The focused command
+`env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q tests/unit/test_capability_v1_adapter.py::test_scope_ambiguity_rejects_exact_scope_from_other_repository tests/unit/test_capability_v1_adapter.py::test_canonical_ambiguity_cases_pin_raw_reducer_causes`
+produced `1 failed, 1 passed` before the production change, with the failure
+proving the mutated corpus still passed the gate. It then produced `2 passed`
+after the validated actor fixture map was threaded into the history relationship
+oracle. Route ambiguity, scope ambiguity, and
+overlapping-scope constructions now require every exact normalized record scope
+repository to equal the repository of the fixture actor selected by the equal
+actor-binding digest. A positive raw-cause regression pins the canonical
+prefix/full paths to `route_ambiguity`, `scope_invalid`, and `scope_overlap`,
+respectively, while the public error remains `legacy_ambiguous`. No reducer,
+public mapping, fixture, artifact, target binding, writer, epoch, or activation
+behavior changed. These correction facts do not close Task 4, authorize Phase
+3, or activate a writer.
+
 ## Task 4: Record reviewed Phase-2 closeout
 
 **Files:**

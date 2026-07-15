@@ -1202,6 +1202,72 @@ def test_scope_ambiguity_rejects_missing_second_scope_lookup() -> None:
     _assert_declared_error_construction_is_blocked(corpus, case_id)
 
 
+def test_scope_ambiguity_rejects_exact_scope_from_other_repository() -> None:
+    corpus = _load_strict(CORPUS)
+    case_id = "history:scope-ambiguity"
+    case = _case(corpus, case_id)
+    first, second = case["source_records"]
+    other_scope_ref = "scope:other-repository-unit"
+    other_scope = deepcopy(corpus["scopes"][second["mutable_scope_ref"]])
+    other_scope["repository"] = "other/repository"
+    corpus["scopes"][other_scope_ref] = other_scope
+    actors, scopes = adapter._fixture_runtime(corpus)
+    normalized = reducer._normalize_scope(scopes[other_scope_ref])
+    second["mutable_scope_ref"] = other_scope_ref
+    second["mutable_scope_digest"] = reducer._scope_digest(normalized)
+    _refresh_source_digest(second)
+
+    prefix = adapter.adapt_v1_history(
+        (first,),
+        resolve_actor=actors.__getitem__,
+        resolve_scope=scopes.__getitem__,
+    )
+    assert tuple(event.requested_transition for event in prefix) == ("START",)
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        adapter.adapt_v1_history(
+            case["source_records"],
+            resolve_actor=actors.__getitem__,
+            resolve_scope=scopes.__getitem__,
+        )
+    assert exc_info.value.code == "legacy_ambiguous"
+
+    _assert_corpus_blocks(corpus)
+
+
+def test_canonical_ambiguity_cases_pin_raw_reducer_causes(monkeypatch) -> None:
+    corpus = _load_strict(CORPUS)
+    actors, scopes = adapter._fixture_runtime(corpus)
+    real_map = adapter._mapped_reducer_error
+    raw_causes: list[str] = []
+
+    def capture_raw_cause(error: reducer.ReducerError) -> adapter.LegacyAdapterError:
+        raw_causes.append(error.code)
+        return real_map(error)
+
+    monkeypatch.setattr(adapter, "_mapped_reducer_error", capture_raw_cause)
+    for case_id, expected_raw_cause in (
+        ("history:route-ambiguity", "route_ambiguity"),
+        ("history:scope-ambiguity", "scope_invalid"),
+        ("history:overlapping-unit-scopes", "scope_overlap"),
+    ):
+        raw_causes.clear()
+        case = _case(corpus, case_id)
+        prefix = adapter.adapt_v1_history(
+            case["source_records"][:1],
+            resolve_actor=actors.__getitem__,
+            resolve_scope=scopes.__getitem__,
+        )
+        assert tuple(event.requested_transition for event in prefix) == ("START",)
+        with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+            adapter.adapt_v1_history(
+                case["source_records"],
+                resolve_actor=actors.__getitem__,
+                resolve_scope=scopes.__getitem__,
+            )
+        assert exc_info.value.code == "legacy_ambiguous"
+        assert raw_causes == [expected_raw_cause]
+
+
 def test_causal_error_histories_execute_prefix_then_full_history(
     monkeypatch,
 ) -> None:

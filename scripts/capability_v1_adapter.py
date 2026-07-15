@@ -1774,22 +1774,28 @@ def _oracle_scopes_overlap(
 
 def _oracle_record_scope_is_exact(
     record: _LegacyRecord,
+    actors: dict[str, capability_reducer.ActorContext],
     scopes: dict[str, capability_reducer.ResolvedScope],
 ) -> bool:
+    actor = actors.get(record.actor_binding_digest)
     scope = scopes.get(record.mutable_scope_ref)
-    if scope is None:
+    if actor is None or scope is None:
         return False
     try:
         normalized = capability_reducer._normalize_scope(scope)
         digest = capability_reducer._scope_digest(normalized)
     except capability_reducer.ReducerError:
         return False
-    return record.mutable_scope_digest == digest
+    return (
+        record.mutable_scope_digest == digest
+        and normalized.repository == actor.repository
+    )
 
 
 def _validate_history_relationship(
     case_id: str,
     records: tuple[_LegacyRecord, ...],
+    actors: dict[str, capability_reducer.ActorContext],
     scopes: dict[str, capability_reducer.ResolvedScope],
 ) -> None:
     revisions = tuple(record.work_revision for record in records)
@@ -1862,7 +1868,7 @@ def _validate_history_relationship(
             and first.mutable_scope_ref == second.mutable_scope_ref
             and first.mutable_scope_digest == second.mutable_scope_digest
             and all(
-                _oracle_record_scope_is_exact(record, scopes)
+                _oracle_record_scope_is_exact(record, actors, scopes)
                 for record in records
             )
             and first.route_id is None
@@ -1880,7 +1886,7 @@ def _validate_history_relationship(
             and first.mutable_scope_ref != second.mutable_scope_ref
             and first.mutable_scope_digest != second.mutable_scope_digest
             and all(
-                _oracle_record_scope_is_exact(record, scopes)
+                _oracle_record_scope_is_exact(record, actors, scopes)
                 for record in records
             )
         )
@@ -1898,7 +1904,7 @@ def _validate_history_relationship(
             and left_scope is not None
             and right_scope is not None
             and all(
-                _oracle_record_scope_is_exact(record, scopes)
+                _oracle_record_scope_is_exact(record, actors, scopes)
                 for record in records
             )
             and _oracle_scopes_overlap(left_scope, right_scope)
@@ -1953,6 +1959,7 @@ def _validate_history_case_oracle(
     records: list[dict[str, object]],
     normalized_orders: list[tuple[int, ...]],
     expected: dict[str, object],
+    actors: dict[str, capability_reducer.ActorContext],
     scopes: dict[str, capability_reducer.ResolvedScope],
 ) -> None:
     case_id = case["id"]
@@ -1971,7 +1978,7 @@ def _validate_history_case_oracle(
     ):
         raise _legacy_invalid()
     parsed = _oracle_parsed_history(case_id, records)
-    _validate_history_relationship(case_id, parsed, scopes)
+    _validate_history_relationship(case_id, parsed, actors, scopes)
 
 
 def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
@@ -2311,6 +2318,7 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
                 records,
                 normalized_orders,
                 expected,
+                actors,
                 scopes,
             )
 
