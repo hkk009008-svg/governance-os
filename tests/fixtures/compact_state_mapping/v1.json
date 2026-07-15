@@ -1,0 +1,357 @@
+{
+  "schema_version": "compact-state-mapping/v1",
+  "source_values": {
+    "capacity": ["active", "blocked", "done", "excepted", "ready"],
+    "capability": ["activated", "consumed", "expired", "failed", "issued", "revoked"],
+    "chatgpt": ["failed", "prepared", "received", "reconciled", "sending", "sent", "stale"],
+    "opus_receipt": ["published", "publishing", "reconciled", "reserved", "reviewed"],
+    "provider_result": ["issues", "pass", "unavailable"],
+    "local_verdict": ["FAIL", "GO", "NITS", "unable_to_verify"],
+    "work_result": ["cancelled", "failed", "outcome_unknown", "superseded"]
+  },
+  "rows": [
+    {
+      "id": "capacity-ready",
+      "domain": "capacity",
+      "value": "ready",
+      "context": {},
+      "expected": {"compact": "RUN", "terminal_scope": "nonterminal", "next_action": "continue", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capacity-active",
+      "domain": "capacity",
+      "value": "active",
+      "context": {},
+      "expected": {"compact": "RUN", "terminal_scope": "nonterminal", "next_action": "continue", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capacity-blocked-wait",
+      "domain": "capacity",
+      "value": "blocked",
+      "context": {"completion_evidence": false, "verification_required": false},
+      "expected": {"compact": "WAIT", "terminal_scope": "nonterminal", "next_action": "wait_for_named_condition", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capacity-blocked-review",
+      "domain": "capacity",
+      "value": "blocked",
+      "context": {"completion_evidence": true, "verification_required": true},
+      "expected": {"compact": "REVIEW", "terminal_scope": "nonterminal", "next_action": "obtain_review", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capacity-blocked-complete",
+      "domain": "capacity",
+      "value": "blocked",
+      "context": {"completion_evidence": true, "verification_required": false},
+      "expected": {"compact": "DONE", "terminal_scope": "unit_version", "next_action": "none", "effect_eligibility": "separate_current_grant", "advisory_only": false}
+    },
+    {
+      "id": "capacity-done-review",
+      "domain": "capacity",
+      "value": "done",
+      "context": {"verification_required": true, "verification_satisfied": false, "all_triggered_gates_met": false},
+      "expected": {"compact": "REVIEW", "terminal_scope": "nonterminal", "next_action": "obtain_review", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capacity-done-verified",
+      "domain": "capacity",
+      "value": "done",
+      "context": {"verification_required": true, "verification_satisfied": true, "all_triggered_gates_met": true},
+      "expected": {"compact": "DONE", "terminal_scope": "unit_version", "next_action": "none", "effect_eligibility": "separate_current_grant", "advisory_only": false}
+    },
+    {
+      "id": "capacity-done-no-review",
+      "domain": "capacity",
+      "value": "done",
+      "context": {"verification_required": false, "verification_satisfied": false, "all_triggered_gates_met": true},
+      "expected": {"compact": "DONE", "terminal_scope": "unit_version", "next_action": "none", "effect_eligibility": "separate_current_grant", "advisory_only": false}
+    },
+    {
+      "id": "capacity-excepted",
+      "domain": "capacity",
+      "value": "excepted",
+      "context": {},
+      "expected": {"compact": "DONE", "terminal_scope": "unit_version", "next_action": "new_unit_version", "effect_eligibility": "separate_current_grant", "advisory_only": false}
+    },
+    {
+      "id": "capability-issued",
+      "domain": "capability",
+      "value": "issued",
+      "context": {},
+      "expected": {"compact": "GRANT_AVAILABLE", "terminal_scope": "nonterminal", "next_action": "attempt_if_other_gates_pass", "effect_eligibility": "all_other_gates", "advisory_only": false}
+    },
+    {
+      "id": "capability-activated",
+      "domain": "capability",
+      "value": "activated",
+      "context": {},
+      "expected": {"compact": "GRANT_AVAILABLE", "terminal_scope": "nonterminal", "next_action": "attempt_if_other_gates_pass", "effect_eligibility": "all_other_gates", "advisory_only": false}
+    },
+    {
+      "id": "capability-consumed-ok",
+      "domain": "capability",
+      "value": "consumed",
+      "context": {"receipt_outcome": "ok"},
+      "expected": {"compact": "SUCCEEDED", "terminal_scope": "capability", "next_action": "none", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capability-consumed-failed",
+      "domain": "capability",
+      "value": "consumed",
+      "context": {"receipt_outcome": "failed"},
+      "expected": {"compact": "FAILED", "terminal_scope": "capability", "next_action": "no_new_attempt", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capability-consumed-absent",
+      "domain": "capability",
+      "value": "consumed",
+      "context": {"receipt_outcome": "absent"},
+      "expected": {"compact": "OUTCOME_UNKNOWN", "terminal_scope": "capability", "next_action": "reconcile_only", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capability-revoked",
+      "domain": "capability",
+      "value": "revoked",
+      "context": {},
+      "expected": {"compact": "REVOKED", "terminal_scope": "capability", "next_action": "no_new_attempt", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capability-expired",
+      "domain": "capability",
+      "value": "expired",
+      "context": {},
+      "expected": {"compact": "EXPIRED", "terminal_scope": "capability", "next_action": "no_new_attempt", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "capability-failed",
+      "domain": "capability",
+      "value": "failed",
+      "context": {},
+      "expected": {"compact": "FAILED", "terminal_scope": "capability", "next_action": "no_new_attempt", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "chatgpt-prepared",
+      "domain": "chatgpt",
+      "value": "prepared",
+      "context": {},
+      "expected": {"compact": "RESERVED", "terminal_scope": "nonterminal", "next_action": "send_once", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-sending",
+      "domain": "chatgpt",
+      "value": "sending",
+      "context": {},
+      "expected": {"compact": "ATTEMPTING", "terminal_scope": "nonterminal", "next_action": "complete_send_or_reconcile", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-sent",
+      "domain": "chatgpt",
+      "value": "sent",
+      "context": {},
+      "expected": {"compact": "AWAITING_RESPONSE", "terminal_scope": "nonterminal", "next_action": "accept_response_or_mark_stale", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-received",
+      "domain": "chatgpt",
+      "value": "received",
+      "context": {},
+      "expected": {"compact": "RESPONSE_RECEIVED", "terminal_scope": "nonterminal", "next_action": "reconcile_locally", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-reconciled",
+      "domain": "chatgpt",
+      "value": "reconciled",
+      "context": {},
+      "expected": {"compact": "RECONCILED", "terminal_scope": "consultation", "next_action": "none", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-partial-send",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "partial_send", "transport": "iab", "manual_resume_authorized": false},
+      "expected": {"compact": "OUTCOME_UNKNOWN", "terminal_scope": "consultation", "next_action": "reconcile_only", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-manual-resumable",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "network", "transport": "manual", "manual_resume_authorized": true},
+      "expected": {"compact": "FAILED", "terminal_scope": "nonterminal", "next_action": "resume_manual", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-manual-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "network", "transport": "manual", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-failed-iab-terminal",
+      "domain": "chatgpt",
+      "value": "failed",
+      "context": {"failure_class": "auth", "transport": "iab", "manual_resume_authorized": false},
+      "expected": {"compact": "FAILED", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "chatgpt-stale",
+      "domain": "chatgpt",
+      "value": "stale",
+      "context": {},
+      "expected": {"compact": "STALE", "terminal_scope": "consultation", "next_action": "no_retry", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-reserved-launch",
+      "domain": "opus_receipt",
+      "value": "reserved",
+      "context": {"reservation_action": "launch"},
+      "expected": {"compact": "RESERVED", "terminal_scope": "nonterminal", "next_action": "launch_once", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-reserved-return",
+      "domain": "opus_receipt",
+      "value": "reserved",
+      "context": {"reservation_action": "return"},
+      "expected": {"compact": "RESERVED", "terminal_scope": "nonterminal", "next_action": "return_without_launch", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-reserved-degrade-uncertain",
+      "domain": "opus_receipt",
+      "value": "reserved",
+      "context": {"reservation_action": "degrade_uncertain"},
+      "expected": {"compact": "OUTCOME_UNKNOWN", "terminal_scope": "attempt", "next_action": "reconcile_only", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-reviewed-pass",
+      "domain": "opus_receipt",
+      "value": "reviewed",
+      "context": {"provider_status": "pass"},
+      "expected": {"compact": "REVIEWED_PASS", "terminal_scope": "nonterminal", "next_action": "local_reconcile", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-reviewed-issues",
+      "domain": "opus_receipt",
+      "value": "reviewed",
+      "context": {"provider_status": "issues"},
+      "expected": {"compact": "REVIEWED_ISSUES", "terminal_scope": "nonterminal", "next_action": "local_reconcile", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-reviewed-unavailable",
+      "domain": "opus_receipt",
+      "value": "reviewed",
+      "context": {"provider_status": "unavailable"},
+      "expected": {"compact": "REVIEWED_UNAVAILABLE", "terminal_scope": "nonterminal", "next_action": "local_reconcile", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-reconciled-go",
+      "domain": "opus_receipt",
+      "value": "reconciled",
+      "context": {"disposition": "GO"},
+      "expected": {"compact": "RECONCILED_GO", "terminal_scope": "provider_review", "next_action": "consult_local_verdict", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-reconciled-nits",
+      "domain": "opus_receipt",
+      "value": "reconciled",
+      "context": {"disposition": "NITS"},
+      "expected": {"compact": "RECONCILED_NITS", "terminal_scope": "provider_review", "next_action": "consult_local_verdict", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-reconciled-fail",
+      "domain": "opus_receipt",
+      "value": "reconciled",
+      "context": {"disposition": "FAIL"},
+      "expected": {"compact": "RECONCILED_FAIL", "terminal_scope": "provider_review", "next_action": "consult_local_verdict", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-publishing",
+      "domain": "opus_receipt",
+      "value": "publishing",
+      "context": {},
+      "expected": {"compact": "PUBLISHING", "terminal_scope": "nonterminal", "next_action": "recover_publication", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "opus-published",
+      "domain": "opus_receipt",
+      "value": "published",
+      "context": {},
+      "expected": {"compact": "PUBLISHED", "terminal_scope": "publication_phase", "next_action": "none", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "provider-pass",
+      "domain": "provider_result",
+      "value": "pass",
+      "context": {},
+      "expected": {"compact": "PROVIDER_PASS", "terminal_scope": "none", "next_action": "local_reconcile", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "provider-issues",
+      "domain": "provider_result",
+      "value": "issues",
+      "context": {},
+      "expected": {"compact": "PROVIDER_ISSUES", "terminal_scope": "none", "next_action": "local_reconcile", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "provider-unavailable",
+      "domain": "provider_result",
+      "value": "unavailable",
+      "context": {},
+      "expected": {"compact": "PROVIDER_UNAVAILABLE", "terminal_scope": "none", "next_action": "continue_without_provider", "effect_eligibility": "never", "advisory_only": true}
+    },
+    {
+      "id": "local-go",
+      "domain": "local_verdict",
+      "value": "GO",
+      "context": {"verification_key_matches": true},
+      "expected": {"compact": "GO", "terminal_scope": "review", "next_action": "continue_effect_gates", "effect_eligibility": "all_other_gates", "advisory_only": false}
+    },
+    {
+      "id": "local-nits",
+      "domain": "local_verdict",
+      "value": "NITS",
+      "context": {},
+      "expected": {"compact": "NITS", "terminal_scope": "review", "next_action": "new_scoped_version", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "local-fail",
+      "domain": "local_verdict",
+      "value": "FAIL",
+      "context": {},
+      "expected": {"compact": "FAIL", "terminal_scope": "review", "next_action": "new_scoped_version", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "local-unable-to-verify",
+      "domain": "local_verdict",
+      "value": "unable_to_verify",
+      "context": {},
+      "expected": {"compact": "UNABLE_TO_VERIFY", "terminal_scope": "nonterminal", "next_action": "redispatch_or_escalate", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "work-cancelled",
+      "domain": "work_result",
+      "value": "cancelled",
+      "context": {},
+      "expected": {"compact": "CANCELLED", "terminal_scope": "work", "next_action": "new_work_id", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "work-failed",
+      "domain": "work_result",
+      "value": "failed",
+      "context": {},
+      "expected": {"compact": "FAILED", "terminal_scope": "attempt", "next_action": "new_transition_if_policy_allows", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "work-superseded",
+      "domain": "work_result",
+      "value": "superseded",
+      "context": {},
+      "expected": {"compact": "SUPERSEDED", "terminal_scope": "version", "next_action": "follow_successor", "effect_eligibility": "never", "advisory_only": false}
+    },
+    {
+      "id": "work-outcome-unknown",
+      "domain": "work_result",
+      "value": "outcome_unknown",
+      "context": {},
+      "expected": {"compact": "OUTCOME_UNKNOWN", "terminal_scope": "nonterminal", "next_action": "reconcile_only", "effect_eligibility": "never", "advisory_only": false}
+    }
+  ]
+}

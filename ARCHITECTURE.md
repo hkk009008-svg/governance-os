@@ -55,7 +55,8 @@ Key directories:
 | `classify_sha_ref_baseline` | `scripts/check_doc_claims.py:1768` | Classifies SHA-reference drift as reviewed baseline or new/changed drift. |
 | `collect_monitor_state` | `scripts/mailbox_monitor.py:175` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
 | `build_guard` | `scripts/ledger_start_guard.py:175` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
-| `resolve_target` | `scripts/target_binding.py:143` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
+| `load_kernel_mirror` | `scripts/target_binding.py:147` | Validates the declarative-only compact-kernel epoch/writer mirror without selecting runtime behavior. |
+| `resolve_target` | `scripts/target_binding.py:184` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:544` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_r_independence` | `scripts/codex_protocol_model.py:770` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
