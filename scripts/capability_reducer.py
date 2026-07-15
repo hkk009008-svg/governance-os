@@ -507,6 +507,15 @@ def _validate_actor(actor: object) -> tuple[ActorContext, bytes]:
         or actor.revoked
     ):
         raise ReducerError("actor_ineligible")
+    if (
+        "transition.apply" not in actor.allowed_actions
+        or "transition.apply" not in actor.user_authorized_actions
+        or (
+            actor.parent_allowed_actions is not None
+            and "transition.apply" not in actor.parent_allowed_actions
+        )
+    ):
+        raise ReducerError("actor_ineligible")
     if not actor.allowed_actions <= actor.user_authorized_actions:
         raise ReducerError("actor_ineligible")
     if actor.parent_binding_id is not None:
@@ -780,16 +789,27 @@ def _validate_state(value: object) -> KernelState:
                 if item.work_id == work.work_id
             )
         )
-        if revisions != tuple(range(1, work.work_revision + 1)):
+        if len(revisions) != work.work_revision:
             raise ReducerError(code)
+        for index, revision in enumerate(revisions, 1):
+            if revision != index:
+                raise ReducerError(code)
     for unit in value.units:
         results = tuple(
             item.resulting_unit_version
             for item in value.transitions
             if item.work_id == unit.work_id and item.unit_id == unit.unit_id
         )
-        if not results or results[-1] != unit.unit_version:
+        if (
+            not results
+            or results[0] != 1
+            or results[-1] != unit.unit_version
+        ):
             raise ReducerError(code)
+        for index, result in enumerate(results[1:], 1):
+            previous = results[index - 1]
+            if result not in (previous, previous + 1):
+                raise ReducerError(code)
 
     for index, unit in enumerate(value.units):
         for other in value.units[index + 1 :]:
@@ -846,21 +866,37 @@ def apply_transition(
         if item.transition_id == parsed.transition_id
     )
     if existing:
-        if existing[0].event_digest == event_digest:
-            return current
-        raise ReducerError("transition_id_reuse")
+        stored = existing[0]
+        if stored.event_digest != event_digest:
+            raise ReducerError("transition_id_reuse")
+        matching_work = tuple(
+            work for work in current.works if work.work_id == parsed.work_id
+        )
+        if (
+            stored.work_id != parsed.work_id
+            or stored.unit_id != parsed.unit_id
+            or stored.work_revision != parsed.work_revision
+            or stored.mutable_scope_digest != parsed.mutable_scope_digest
+            or len(matching_work) != 1
+            or matching_work[0].route_id != parsed.route_id
+        ):
+            raise ReducerError("state_invalid")
+        return current
 
     validated_actor, _actor_bytes = _validate_actor(actor)
     if parsed.actor_binding_digest != validated_actor.binding_digest:
         raise ReducerError("actor_binding")
 
     try:
-        first_scope = _normalize_scope(resolve_scope(parsed.mutable_scope_ref))
-        second_scope = _normalize_scope(resolve_scope(parsed.mutable_scope_ref))
-    except ReducerError:
-        raise
+        first_scope_value = resolve_scope(parsed.mutable_scope_ref)
     except Exception as exc:
         raise ReducerError("scope_invalid") from exc
+    first_scope = _normalize_scope(first_scope_value)
+    try:
+        second_scope_value = resolve_scope(parsed.mutable_scope_ref)
+    except Exception as exc:
+        raise ReducerError("scope_invalid") from exc
+    second_scope = _normalize_scope(second_scope_value)
     if first_scope != second_scope:
         raise ReducerError("scope_nondeterministic")
     scope = first_scope
@@ -1042,11 +1078,18 @@ def reduce_protocol_state(
     """Reduce a batch into one deterministic observational shadow report."""
 
     try:
-        parsed_events = tuple(parse_transition(event) for event in events)
-    except ReducerError:
-        raise
+        iterator = iter(events)
     except Exception as exc:
         raise ReducerError("invalid_envelope") from exc
+    parsed_events: tuple[TransitionEnvelope, ...] = ()
+    while True:
+        try:
+            event = next(iterator)
+        except StopIteration:
+            break
+        except Exception as exc:
+            raise ReducerError("invalid_envelope") from exc
+        parsed_events = parsed_events + (parse_transition(event),)
     active = _validate_activation(activation)
 
     unique_events: dict[str, tuple[TransitionEnvelope, str]] = {}
@@ -1071,25 +1114,41 @@ def reduce_protocol_state(
     for parsed in ordered_events:
         if parsed.actor_binding_digest not in actors:
             try:
-                first_actor, first_bytes = _validate_actor(
-                    resolve_actor(parsed.actor_binding_digest)
-                )
-                second_actor, second_bytes = _validate_actor(
-                    resolve_actor(parsed.actor_binding_digest)
-                )
-            except ReducerError:
-                raise
+                first_actor_value = resolve_actor(parsed.actor_binding_digest)
             except Exception as exc:
                 raise ReducerError("actor_binding") from exc
+            first_actor, first_bytes = _validate_actor(first_actor_value)
+            try:
+                second_actor_value = resolve_actor(parsed.actor_binding_digest)
+            except Exception as exc:
+                raise ReducerError("actor_binding") from exc
+            second_actor, second_bytes = _validate_actor(second_actor_value)
             if first_bytes != second_bytes:
                 raise ReducerError("actor_nondeterministic")
             actors[parsed.actor_binding_digest] = first_actor
+
+        try:
+            first_scope_value = resolve_scope(parsed.mutable_scope_ref)
+        except Exception as exc:
+            raise ReducerError("scope_invalid") from exc
+        first_resolved_scope = _normalize_scope(first_scope_value)
+        try:
+            second_scope_value = resolve_scope(parsed.mutable_scope_ref)
+        except Exception as exc:
+            raise ReducerError("scope_invalid") from exc
+        second_resolved_scope = _normalize_scope(second_scope_value)
+        if first_resolved_scope != second_resolved_scope:
+            raise ReducerError("scope_nondeterministic")
+
+        def resolved_scope(_ref: str) -> ResolvedScope:
+            return first_resolved_scope
+
         current = apply_transition(
             current,
             parsed,
             actor=actors[parsed.actor_binding_digest],
             activation=active,
-            resolve_scope=resolve_scope,
+            resolve_scope=resolved_scope,
         )
 
     return KernelReport(

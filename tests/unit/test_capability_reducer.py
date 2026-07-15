@@ -95,6 +95,34 @@ EXPECTED_TOP_LEVEL_FUNCTION_NAMES = (
     "apply_transition",
     "reduce_protocol_state",
 )
+EXPECTED_TOP_LEVEL_ASSIGNMENT_NAMES = (
+    "SCHEMA_ID",
+    "ID_PATTERN",
+    "REF_PATTERN",
+    "DIGEST_PATTERN",
+    "REPOSITORY_PATTERN",
+    "PRINCIPAL_PATTERN",
+    "ACTION_PATTERN",
+    "LOCK_DOMAIN_PATTERN",
+    "MAX_INT",
+    "MAX_COLLECTION_ITEMS",
+    "REQUESTED_TRANSITIONS",
+    "ENVELOPE_FIELDS",
+    "ZERO_DIGEST",
+    "ActorBindingResolver",
+    "ScopeResolver",
+)
+STRING_TOP_LEVEL_ASSIGNMENTS = (
+    "SCHEMA_ID",
+    "ID_PATTERN",
+    "REF_PATTERN",
+    "DIGEST_PATTERN",
+    "REPOSITORY_PATTERN",
+    "PRINCIPAL_PATTERN",
+    "ACTION_PATTERN",
+    "LOCK_DOMAIN_PATTERN",
+)
+TYPE_ALIAS_ASSIGNMENTS = ("ActorBindingResolver", "ScopeResolver")
 PERMITTED_NAME_CALLS = (
     "ActivationState",
     "ActorContext",
@@ -145,10 +173,11 @@ PERMITTED_NAME_CALLS = (
     "enumerate",
     "frozenset",
     "fullmatch",
+    "iter",
     "len",
     "list",
+    "next",
     "parse_transition",
-    "range",
     "set",
     "sha256",
     "sorted",
@@ -226,6 +255,60 @@ def _ast_purity_violations(source: str) -> list[str]:
             "top-level function definitions do not match literal contract"
         )
 
+    top_level_assignments: list[tuple[str, ast.AST]] = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            if (
+                len(node.targets) != 1
+                or not isinstance(node.targets[0], ast.Name)
+            ):
+                violations.append("top-level assignments must bind one literal name")
+            else:
+                top_level_assignments.append((node.targets[0].id, node.value))
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            violations.append("top-level assignments must use exact immutable shapes")
+    if tuple(name for name, _value in top_level_assignments) != (
+        EXPECTED_TOP_LEVEL_ASSIGNMENT_NAMES
+    ):
+        violations.append("top-level assignments do not match literal contract")
+
+    for name, value in top_level_assignments:
+        immutable = False
+        if name in STRING_TOP_LEVEL_ASSIGNMENTS:
+            immutable = isinstance(value, ast.Constant) and type(value.value) is str
+        elif name == "MAX_COLLECTION_ITEMS":
+            immutable = isinstance(value, ast.Constant) and type(value.value) is int
+        elif name in ("MAX_INT", "ZERO_DIGEST"):
+            immutable = isinstance(value, ast.BinOp)
+        elif name == "REQUESTED_TRANSITIONS":
+            immutable = (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == "frozenset"
+                and len(value.args) == 1
+                and not value.keywords
+                and isinstance(value.args[0], ast.Set)
+                and all(
+                    isinstance(item, ast.Constant) and type(item.value) is str
+                    for item in value.args[0].elts
+                )
+            )
+        elif name == "ENVELOPE_FIELDS":
+            immutable = isinstance(value, ast.Tuple) and all(
+                isinstance(item, ast.Constant) and type(item.value) is str
+                for item in value.elts
+            )
+        elif name in TYPE_ALIAS_ASSIGNMENTS:
+            immutable = (
+                isinstance(value, ast.Subscript)
+                and isinstance(value.value, ast.Name)
+                and value.value.id == "Callable"
+            )
+        if not immutable:
+            violations.append(
+                f"immutable top-level assignment shape is not permitted: {name}"
+            )
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -268,6 +351,20 @@ def _ast_purity_violations(source: str) -> list[str]:
             violations.append(
                 f"forbidden name reference is not permitted: {node.id}"
             )
+
+        if (
+            isinstance(node, ast.Name)
+            and isinstance(node.ctx, ast.Load)
+            and node.id in PERMITTED_INJECTED_CALL_NAMES
+        ):
+            parent = parents.get(node)
+            if not (
+                isinstance(parent, ast.Call)
+                and parent.func is node
+            ):
+                violations.append(
+                    f"injected resolver load is not a direct call: {node.id}"
+                )
 
         if (
             isinstance(node, ast.Name)
@@ -1754,3 +1851,341 @@ def test_web_research_reference_is_opaque_observation_only() -> None:
     assert report.units[0].evidence_digest == _evidence_digest((source,))
     assert source not in repr(report)
     assert report.mode == "shadow"
+
+
+@pytest.mark.parametrize(
+    "actor",
+    (
+        _actor_context(
+            allowed_actions=frozenset({"research.read"}),
+            user_authorized_actions=frozenset({"research.read"}),
+        ),
+        _actor_context(
+            binding_id="child-research",
+            allowed_actions=frozenset({"research.read"}),
+            user_authorized_actions=frozenset(
+                {"research.read", "research.plan", "transition.apply"}
+            ),
+            parent_binding_id="parent-research",
+            parent_allowed_actions=frozenset(
+                {"research.read", "research.plan"}
+            ),
+        ),
+    ),
+)
+def test_actor_requires_literal_transition_apply_capability(
+    actor: reducer.ActorContext,
+) -> None:
+    scope = _resolved_scope()
+    payload = _event_payload(actor=actor, scope=scope)
+    _assert_reducer_error(
+        "actor_ineligible",
+        lambda: _apply(
+            reducer.KernelState(), payload, actor=actor, scope=scope
+        ),
+    )
+
+
+def _state_with_unit_version(
+    state: reducer.KernelState,
+    version: int,
+    *,
+    transition_index: int,
+) -> reducer.KernelState:
+    unit = state.units[0]
+    updated_unit = replace(
+        unit,
+        unit_version=version,
+        precondition_digest=_precondition_digest(
+            work_id=unit.work_id,
+            unit_id=unit.unit_id,
+            unit_version=version,
+            mutable_scope_digest=unit.mutable_scope_digest,
+            content_digest=unit.content_digest,
+            dependency_digest=unit.dependency_digest,
+            acceptance_digest=unit.acceptance_digest,
+            evidence_digest=unit.evidence_digest,
+        ),
+    )
+    transitions = tuple(
+        replace(item, resulting_unit_version=version)
+        if index == transition_index
+        else item
+        for index, item in enumerate(state.transitions)
+    )
+    return replace(state, units=(updated_unit,), transitions=transitions)
+
+
+@pytest.mark.parametrize("forged_version", (2, 5))
+def test_state_history_rejects_forged_creation_version(
+    forged_version: int,
+) -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    payload = _event_payload(actor=actor, scope=scope)
+    state = _apply(reducer.KernelState(), payload, actor=actor, scope=scope)
+    forged = _state_with_unit_version(state, forged_version, transition_index=0)
+
+    _assert_reducer_error(
+        "state_invalid",
+        lambda: reducer.apply_transition(
+            forged,
+            payload,
+            actor=object(),
+            activation=reducer.ActivationState(epoch=0),
+            resolve_scope=lambda _ref: pytest.fail("scope resolver called"),
+        ),
+    )
+
+
+def test_state_history_rejects_forged_continuation_version_jump() -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    first = _event_payload(actor=actor, scope=scope)
+    state = _apply(reducer.KernelState(), first, actor=actor, scope=scope)
+    second = _second_payload(
+        state,
+        actor=actor,
+        scope=scope,
+        content_digest=_digest("a"),
+    )
+    state = _apply(state, second, actor=actor, scope=scope)
+    forged = _state_with_unit_version(state, 4, transition_index=1)
+
+    _assert_reducer_error(
+        "state_invalid",
+        lambda: reducer.apply_transition(
+            forged,
+            first,
+            actor=object(),
+            activation=reducer.ActivationState(epoch=0),
+            resolve_scope=lambda _ref: pytest.fail("scope resolver called"),
+        ),
+    )
+
+
+def _duplicate_binding_variants(
+    state: reducer.KernelState,
+) -> tuple[reducer.KernelState, ...]:
+    work = state.works[0]
+    unit = state.units[0]
+    item = state.transitions[0]
+
+    renamed_work_unit = replace(unit, work_id="work-renamed")
+    renamed_work_unit = replace(
+        renamed_work_unit,
+        precondition_digest=_precondition_digest(
+            work_id=renamed_work_unit.work_id,
+            unit_id=renamed_work_unit.unit_id,
+            unit_version=renamed_work_unit.unit_version,
+            mutable_scope_digest=renamed_work_unit.mutable_scope_digest,
+            content_digest=renamed_work_unit.content_digest,
+            dependency_digest=renamed_work_unit.dependency_digest,
+            acceptance_digest=renamed_work_unit.acceptance_digest,
+            evidence_digest=renamed_work_unit.evidence_digest,
+        ),
+    )
+    renamed_work = reducer.KernelState(
+        works=(replace(work, work_id="work-renamed"),),
+        units=(renamed_work_unit,),
+        transitions=(replace(item, work_id="work-renamed"),),
+    )
+
+    renamed_unit = replace(unit, unit_id="unit-renamed")
+    renamed_unit = replace(
+        renamed_unit,
+        precondition_digest=_precondition_digest(
+            work_id=renamed_unit.work_id,
+            unit_id=renamed_unit.unit_id,
+            unit_version=renamed_unit.unit_version,
+            mutable_scope_digest=renamed_unit.mutable_scope_digest,
+            content_digest=renamed_unit.content_digest,
+            dependency_digest=renamed_unit.dependency_digest,
+            acceptance_digest=renamed_unit.acceptance_digest,
+            evidence_digest=renamed_unit.evidence_digest,
+        ),
+    )
+    renamed_unit_state = replace(
+        state,
+        units=(renamed_unit,),
+        transitions=(replace(item, unit_id="unit-renamed"),),
+    )
+
+    prior = reducer.AppliedTransition(
+        transition_id="transition-prior",
+        event_digest=_digest("b"),
+        work_id=item.work_id,
+        unit_id=item.unit_id,
+        work_revision=1,
+        resulting_unit_version=1,
+        mutable_scope_digest=item.mutable_scope_digest,
+    )
+    later_revision = replace(
+        state,
+        works=(replace(work, work_revision=2),),
+        transitions=(prior, replace(item, work_revision=2)),
+    )
+
+    changed_scope = _resolved_scope(
+        paths=("src/changed",), lock_domains=("lock:changed",)
+    )
+    changed_scope_digest = _scope_digest(changed_scope)
+    changed_scope_unit = replace(
+        unit,
+        mutable_scope_ref="scope:changed",
+        scope_paths=changed_scope.paths,
+        scope_lock_domains=changed_scope.lock_domains,
+        mutable_scope_digest=changed_scope_digest,
+    )
+    changed_scope_unit = replace(
+        changed_scope_unit,
+        precondition_digest=_precondition_digest(
+            work_id=changed_scope_unit.work_id,
+            unit_id=changed_scope_unit.unit_id,
+            unit_version=changed_scope_unit.unit_version,
+            mutable_scope_digest=changed_scope_unit.mutable_scope_digest,
+            content_digest=changed_scope_unit.content_digest,
+            dependency_digest=changed_scope_unit.dependency_digest,
+            acceptance_digest=changed_scope_unit.acceptance_digest,
+            evidence_digest=changed_scope_unit.evidence_digest,
+        ),
+    )
+    changed_scope_state = replace(
+        state,
+        units=(changed_scope_unit,),
+        transitions=(
+            replace(item, mutable_scope_digest=changed_scope_digest),
+        ),
+    )
+    changed_route = replace(
+        state,
+        works=(replace(work, route_id="route-changed"),),
+    )
+    return (
+        renamed_work,
+        renamed_unit_state,
+        later_revision,
+        changed_scope_state,
+        changed_route,
+    )
+
+
+def test_exact_duplicate_binds_stored_transition_and_route_before_return() -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    payload = _event_payload(actor=actor, scope=scope)
+    state = _apply(reducer.KernelState(), payload, actor=actor, scope=scope)
+
+    for forged in _duplicate_binding_variants(state):
+        calls = 0
+
+        def forbidden_scope(_ref: str) -> reducer.ResolvedScope:
+            nonlocal calls
+            calls += 1
+            raise AssertionError("scope resolver called")
+
+        _assert_reducer_error(
+            "state_invalid",
+            lambda forged=forged: reducer.apply_transition(
+                forged,
+                payload,
+                actor=object(),
+                activation=reducer.ActivationState(epoch=0),
+                resolve_scope=forbidden_scope,
+            ),
+        )
+        assert calls == 0
+
+
+def test_sparse_max_revision_state_fails_without_revision_sized_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def guarded_range(*_args: object) -> object:
+        raise AssertionError("revision-sized range allocation attempted")
+
+    monkeypatch.setattr(reducer, "range", guarded_range, raising=False)
+    actor = _actor_context()
+    scope = _resolved_scope()
+    payload = _event_payload(actor=actor, scope=scope)
+    sparse = reducer.KernelState(
+        works=(
+            reducer.WorkSnapshot(
+                work_id="work-1",
+                route_id="route-1",
+                work_revision=reducer.MAX_INT,
+            ),
+        )
+    )
+    _assert_reducer_error(
+        "state_invalid",
+        lambda: reducer.apply_transition(
+            sparse,
+            payload,
+            actor=object(),
+            activation=reducer.ActivationState(epoch=0),
+            resolve_scope=lambda _ref: pytest.fail("scope resolver called"),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("boundary", "external_code", "expected_code"),
+    (
+        ("events", "GO", "invalid_envelope"),
+        ("actor", "DONE", "actor_binding"),
+        ("scope", "AUTHORIZED", "scope_invalid"),
+    ),
+)
+def test_external_exceptions_are_remapped_at_their_boundary(
+    boundary: str,
+    external_code: str,
+    expected_code: str,
+) -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    payload = _event_payload(actor=actor, scope=scope)
+
+    class RaisingEvents:
+        def __iter__(self) -> RaisingEvents:
+            return self
+
+        def __next__(self) -> object:
+            raise reducer.ReducerError(external_code)
+
+    def raising_actor(_digest: str) -> reducer.ActorContext:
+        raise reducer.ReducerError(external_code)
+
+    def raising_scope(_ref: str) -> reducer.ResolvedScope:
+        raise reducer.ReducerError(external_code)
+
+    events: object = RaisingEvents() if boundary == "events" else [payload]
+    resolve_actor = raising_actor if boundary == "actor" else lambda _digest: actor
+    resolve_scope = raising_scope if boundary == "scope" else lambda _ref: scope
+    _assert_reducer_error(
+        expected_code,
+        lambda: reducer.reduce_protocol_state(
+            events,
+            resolve_actor=resolve_actor,
+            resolve_scope=resolve_scope,
+            activation=reducer.ActivationState(epoch=0),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_violation"),
+    (
+        ("MUTABLE_CACHE = {}", "top-level assignments"),
+        ("ENVELOPE_FIELDS = []", "immutable top-level assignment"),
+        ("resolver_alias = resolve_actor", "injected resolver load"),
+        ("resolve_scope[0]", "injected resolver load"),
+    ),
+)
+def test_reducer_ast_rejects_mutable_globals_and_indirect_resolver_loads(
+    mutation: str,
+    expected_violation: str,
+) -> None:
+    source = Path(reducer.__file__).read_text(encoding="utf-8")
+    with pytest.raises(AssertionError) as exc_info:
+        _assert_reducer_ast_is_pure(source + "\n" + mutation + "\n")
+    assert expected_violation in str(exc_info.value)

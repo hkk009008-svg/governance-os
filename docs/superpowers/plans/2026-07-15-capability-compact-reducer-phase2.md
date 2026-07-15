@@ -509,6 +509,19 @@ reducer error codes.
 
   Expected: focused tests pass; the Task-1 contract remains green.
 
+#### Consolidated Task-2 review correction (required before Task 3)
+
+Ship one separate `fix: close shadow reducer review gaps` commit that proves and
+closes all six review reproductions: literal `transition.apply` actor
+capability; creation-at-1 and same-or-plus-1 stored unit history; full stored
+transition plus route binding before duplicate return; allocation-safe sparse
+revision validation; external iterator/resolver exception remapping without
+masking reducer validation errors; and exact immutable module assignments plus
+direct-call-only resolver loads in the AST guard. Run the focused reducer,
+schema-sync/canonical regression, smoke, and diff check before Task 3. Do not
+add an adapter, store, external call, mutable cache, activation path, or output
+field while correcting these enforcement gaps.
+
 ### Task 3: Deterministic replay and merge vectors
 
 **Files:**
