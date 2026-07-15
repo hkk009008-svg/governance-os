@@ -37,6 +37,7 @@ COMPONENT_IDS = {
     "codex_runtime_and_hook_adapter",
     "legacy_lifecycle_mapping_contract",
     "capability_baseline_runtime_collector",
+    "compact_shadow_reducer_and_v1_adapter",
 }
 AUTHORITY_CONTRACT = {
     "route_authority": "markdown_mailbox",
@@ -54,10 +55,13 @@ REQUIRED_ORPHANS = {
     "scripts.opus_review_bridge.probe_host_capabilities",
 }
 READ_ONLY_COMPONENT_IDS = {
+    "compact_shadow_reducer_and_v1_adapter",
     "legacy_lifecycle_mapping_contract",
     "live_v1_route_lineage_reader",
 }
-REQUIRED_PHASE1_PRODUCTION_MODULES = {
+REQUIRED_PRODUCTION_MODULES = {
+    "scripts/capability_reducer.py",
+    "scripts/capability_v1_adapter.py",
     "scripts/compact_state_mapping.py",
     "scripts/capability_baseline_runtime.py",
 }
@@ -88,6 +92,18 @@ REQUIRED_SURFACE_OWNERS: dict[str, str] = {
     "scripts/compact_state_mapping.py": "legacy_lifecycle_mapping_contract",
     "scripts/capability_baseline_runtime.py": (
         "capability_baseline_runtime_collector"
+    ),
+    "scripts/capability_reducer.py": (
+        "compact_shadow_reducer_and_v1_adapter"
+    ),
+    "schemas/route-v2.schema.json": (
+        "compact_shadow_reducer_and_v1_adapter"
+    ),
+    "scripts/capability_v1_adapter.py": (
+        "compact_shadow_reducer_and_v1_adapter"
+    ),
+    "tests/fixtures/compact_kernel/v1_to_v2_replay.json": (
+        "compact_shadow_reducer_and_v1_adapter"
     ),
     "scripts/route_lineage.py": "live_v1_route_lineage_reader",
     "threeway/refstore.py": "signed_bus_event_and_cursor_runtime",
@@ -236,6 +252,11 @@ REQUIRED_SYMBOL_OVERRIDES: dict[str, tuple[str, str, str]] = {
     ),
     "scripts.capability_baseline_runtime.main": (
         "capability_baseline_runtime_collector",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.capability_v1_adapter.main": (
+        "compact_shadow_reducer_and_v1_adapter",
         "cli_entrypoint",
         "keep_documented_cli",
     ),
@@ -507,14 +528,14 @@ def test_five_profile_baseline_is_read_only_effectiveness_telemetry() -> None:
     assert baseline not in {rule["path"] for rule in component["module_rules"]}
 
 
-def test_phase1_production_modules_have_explicit_inventory_owners() -> None:
+def test_required_production_modules_have_explicit_inventory_owners() -> None:
     declared_modules = {
         rule["path"]
         for component in _load_inventory()["components"]
         for rule in component["module_rules"]
     }
 
-    assert REQUIRED_PHASE1_PRODUCTION_MODULES <= declared_modules
+    assert REQUIRED_PRODUCTION_MODULES <= declared_modules
 
 
 @pytest.mark.parametrize(
@@ -610,6 +631,54 @@ def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:
             "disposition": "keep_documented_cli",
         }
     ]
+
+
+def test_compact_shadow_reducer_and_adapter_are_read_only_compatibility() -> None:
+    component = next(
+        item
+        for item in _load_inventory()["components"]
+        if item["id"] == "compact_shadow_reducer_and_v1_adapter"
+    )
+    source_paths = {
+        "scripts/capability_reducer.py",
+        "schemas/route-v2.schema.json",
+        "scripts/capability_v1_adapter.py",
+        "tests/fixtures/compact_kernel/v1_to_v2_replay.json",
+    }
+    reader_fixtures = {
+        "tests/fixtures/compact_state_mapping/v1.json",
+        "tests/fixtures/compact_kernel/v1_misuse_vectors.json",
+        "tests/fixtures/compact_kernel/v2_replay_vectors.json",
+    }
+
+    assert component["authority_status"] == (
+        "non_authoritative_read_only_shadow_compatibility"
+    )
+    assert set(component["source_paths"]) == source_paths
+    assert set(component["reader_paths"]) == source_paths | reader_fixtures
+    assert component["writer_paths"] == []
+    assert component["default_helper_class"] == "historical_adapter"
+    assert component["module_rules"] == [
+        {
+            "path": "scripts/capability_reducer.py",
+            "default_helper_class": "runtime_core",
+        },
+        {"path": "scripts/capability_v1_adapter.py"},
+    ]
+    assert component["symbol_overrides"] == [
+        {
+            "symbol": "scripts.capability_v1_adapter.main",
+            "helper_class": "cli_entrypoint",
+            "disposition": "keep_documented_cli",
+        }
+    ]
+
+    adapter_imports = _direct_repo_local_imports(
+        "scripts/capability_v1_adapter.py"
+    )
+    reducer_imports = _direct_repo_local_imports("scripts/capability_reducer.py")
+    assert "scripts/capability_reducer.py" in adapter_imports
+    assert "scripts/capability_v1_adapter.py" not in reducer_imports
 
 
 def test_runtime_collector_is_a_non_authoritative_benchmark_executor() -> None:

@@ -42,6 +42,7 @@ LEGACY_FIELDS = (
 )
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS = ROOT / "tests/fixtures/compact_kernel/v1_to_v2_replay.json"
+PARITY_ARTIFACT = ROOT / "logs/capability-first/phase2b-shadow-parity.json"
 MAPPING_FIXTURE = ROOT / "tests/fixtures/compact_state_mapping/v1.json"
 MISUSE_FIXTURE = ROOT / "tests/fixtures/compact_kernel/v1_misuse_vectors.json"
 REDUCER_REPLAY_FIXTURE = (
@@ -1251,6 +1252,14 @@ def test_cli_prints_one_canonical_sanitized_gate_report(capsys) -> None:
     assert "user:principal" not in output.out
     assert "web:" not in output.out
     assert "source_records" not in output.out
+
+
+def test_committed_parity_artifact_matches_fresh_canonical_report() -> None:
+    assert PARITY_ARTIFACT.is_file()
+    report = adapter._check_corpus(_load_strict(CORPUS))
+    rendered = canonicalize(adapter._report_mapping(report)) + b"\n"
+
+    assert PARITY_ARTIFACT.read_bytes() == rendered
 
 
 def test_script_entrypoint_runs_corpus_cli_from_repository_root() -> None:

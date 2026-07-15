@@ -384,6 +384,44 @@
       ]
     },
     {
+      "id": "compact_shadow_reducer_and_v1_adapter",
+      "authority_status": "non_authoritative_read_only_shadow_compatibility",
+      "source_paths": [
+        "scripts/capability_reducer.py",
+        "schemas/route-v2.schema.json",
+        "scripts/capability_v1_adapter.py",
+        "tests/fixtures/compact_kernel/v1_to_v2_replay.json"
+      ],
+      "reader_paths": [
+        "scripts/capability_reducer.py",
+        "schemas/route-v2.schema.json",
+        "scripts/capability_v1_adapter.py",
+        "tests/fixtures/compact_kernel/v1_to_v2_replay.json",
+        "tests/fixtures/compact_state_mapping/v1.json",
+        "tests/fixtures/compact_kernel/v1_misuse_vectors.json",
+        "tests/fixtures/compact_kernel/v2_replay_vectors.json"
+      ],
+      "writer_paths": [],
+      "executor_boundary": "The pure reducer and historical adapter expose only an epoch-0 read-only shadow compatibility surface; they write no runtime state, execute no effect, call no provider, and grant no route, activation, or version authority.",
+      "default_helper_class": "historical_adapter",
+      "module_rules": [
+        {
+          "path": "scripts/capability_reducer.py",
+          "default_helper_class": "runtime_core"
+        },
+        {
+          "path": "scripts/capability_v1_adapter.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.capability_v1_adapter.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
       "id": "live_v1_route_lineage_reader",
       "authority_status": "live_v1_read_only_authority_reader",
       "source_paths": [
