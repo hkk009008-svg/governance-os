@@ -1,0 +1,44 @@
+{
+  "id": "operator2-pipeline-opus-transport-first-recovery-stage-a-lanev",
+  "wave": 2,
+  "cycle": "pipeline-opus-transport-first-recovery-stage-a-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-transport-first-recovery-stage-a"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator2",
+  "packet_type": "operator-verification",
+  "allowed_paths": [
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_opus_review_receipts.py",
+    "coordination/verification/scopes/b8c59c86-2426-46cf-8975-7b075d75fc09.json",
+    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md",
+    "coordination/mailbox/sent/*operator2-to-all-verification-report.md"
+  ],
+  "dependencies": [
+    "director2-pipeline-opus-transport-first-recovery-stage-a-diagnostics"
+  ],
+  "acceptance": [
+    "Remain blocked until one canonical committed Director2-to-Operator2 verify-request resolves provider-free to descriptor b8c59c86-2426-46cf-8975-7b075d75fc09 and an exact shipping diagnostics base/head. Never reconstruct missing trigger fields or fall back to shipping-trigger authority.",
+    "Independently verify the exact Stage A diff against the ten abuse cases in the committed plan: legacy receipt readability, finite diagnostic codes, return-code/signal handling, one launch, process-group cleanup, fake HOME sandbox behavior, parsing/model identity, receipt finality, scope conflict, and sentinel-secret non-disclosure.",
+    "Run the complete provider-free bridge, receipt, and verification-report tests plus smoke and diff checks. Prove the real Claude executable was not invoked, no provider attempt or new receipt exists, retry counts remain zero, and transport/environment/sandbox behavior is unchanged except for diagnostics.",
+    "Return exactly one canonical GO, NITS, or FAIL for Stage A diagnostics only. GO must name the first proven failing boundary or the exact remaining two-layer ambiguity; it is not evidence that Opus is fixed and authorizes no canary.",
+    "Do not repair, invoke a provider, merge, push, amend, reset, consume, claim locks, edit receipts/runtime state, clean evidence, or alter unrelated root work."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_opus_review_receipts.py",
+    "coordination/verification/scopes/b8c59c86-2426-46cf-8975-7b075d75fc09.json"
+  ]
+}
