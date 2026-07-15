@@ -3,7 +3,7 @@
   "authority_contract": {
     "route_authority": "markdown_mailbox",
     "route_sidecar_role": "compatibility_only",
-    "signed_bus_role": "dormant_for_migration",
+    "signed_bus_role": "live_threeway_toolchain_not_compact_route_authority",
     "capability_consumption_role": "post_effect_evidence_only",
     "provider_output_role": "advisory_only"
   },
@@ -16,6 +16,7 @@
         "scripts/target_binding.py"
       ],
       "reader_paths": [
+        "governance.toml",
         "scripts/target_binding.py"
       ],
       "writer_paths": [
@@ -41,21 +42,32 @@
       "authority_status": "live_v1_route_authority",
       "source_paths": [
         "scripts/route_manifest.py",
+        "scripts/protocol_mailbox.py",
+        "coordination/bin/send-event",
+        "coordination/bin/consume-events",
         "coordination/mailbox/sent"
       ],
       "reader_paths": [
         "scripts/protocol_capacity.py",
-        "scripts/route_lineage.py"
+        "scripts/route_lineage.py",
+        "scripts/protocol_mailbox.py",
+        "coordination/mailbox/kinds.txt",
+        "coordination/mailbox/sent",
+        "coordination/mailbox/seen"
       ],
       "writer_paths": [
         "scripts/route_manifest.py",
-        "coordination/mailbox/sent"
+        "coordination/mailbox/sent",
+        "coordination/mailbox/seen"
       ],
-      "executor_boundary": "An authorized live seat or coordinator publishes the Markdown mailbox event; a paired JSON route sidecar is compatibility-only and never grants route authority.",
+      "executor_boundary": "An authorized live seat or coordinator may use send-event to publish and stage one Markdown mailbox event or consume-events to advance and stage one coordination/mailbox/seen cursor. protocol_mailbox provides shared runtime vocabulary; a paired JSON route sidecar is compatibility-only and never grants route authority.",
       "default_helper_class": "runtime_core",
       "module_rules": [
         {
           "path": "scripts/route_manifest.py"
+        },
+        {
+          "path": "scripts/protocol_mailbox.py"
         }
       ],
       "symbol_overrides": []
@@ -94,7 +106,8 @@
       "authority_status": "live_v1_route_gate_with_non_authoritative_telemetry",
       "source_paths": [
         "scripts/protocol_capacity.py",
-        "scripts/packet_state.py"
+        "scripts/packet_state.py",
+        "scripts/protocol_capacity_board.py"
       ],
       "reader_paths": [
         "scripts/protocol_capacity_board.py",
@@ -113,6 +126,9 @@
         {
           "path": "scripts/packet_state.py",
           "default_helper_class": "telemetry"
+        },
+        {
+          "path": "scripts/protocol_capacity_board.py"
         }
       ],
       "symbol_overrides": [
@@ -123,6 +139,11 @@
         },
         {
           "symbol": "scripts.packet_state.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.protocol_capacity_board.main",
           "helper_class": "cli_entrypoint",
           "disposition": "keep_documented_cli"
         }
@@ -190,21 +211,27 @@
       "id": "verification_authority_and_publication",
       "authority_status": "live_v1_verification_gate_and_publication_boundary",
       "source_paths": [
-        "scripts/verification_report_gate.py"
+        "scripts/verification_report_gate.py",
+        "scripts/consume_reviewer_result.py"
       ],
       "reader_paths": [
         "scripts/verification_report_gate.py",
+        "scripts/consume_reviewer_result.py",
+        "coordination/mailbox/sent",
         "coordination/verification/scopes"
       ],
       "writer_paths": [
         "scripts/verification_report_gate.py",
         "coordination/mailbox/sent"
       ],
-      "executor_boundary": "Only the guarded publication CLI may perform its scoped Git-index and mailbox publication transaction after live authority validation; parsing alone grants no GO.",
+      "executor_boundary": "Only the guarded publication CLI may perform its scoped Git-index and mailbox publication transaction after live authority validation. consume_reviewer_result validates advisory result blocks and may execute only its bounded verifier commands; parsing or provider output alone grants no GO.",
       "default_helper_class": "runtime_core",
       "module_rules": [
         {
           "path": "scripts/verification_report_gate.py"
+        },
+        {
+          "path": "scripts/consume_reviewer_result.py"
         }
       ],
       "symbol_overrides": [
@@ -220,6 +247,11 @@
         },
         {
           "symbol": "scripts.verification_report_gate.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.consume_reviewer_result.main",
           "helper_class": "cli_entrypoint",
           "disposition": "keep_documented_cli"
         }
@@ -350,30 +382,21 @@
       ]
     },
     {
-      "id": "dormant_signed_bus_ref_cas_substrate",
-      "authority_status": "dormant_non_authoritative_migration_substrate",
+      "id": "live_v1_route_lineage_reader",
+      "authority_status": "live_v1_read_only_authority_reader",
       "source_paths": [
-        "scripts/route_lineage.py",
-        "threeway/refstore.py"
+        "scripts/route_lineage.py"
       ],
       "reader_paths": [
         "scripts/route_lineage.py",
-        "scripts/consume_bus.py",
-        "threeway/refstore.py"
+        "coordination/mailbox/sent"
       ],
-      "writer_paths": [
-        "scripts/consume_bus.py",
-        "threeway/refstore.py"
-      ],
-      "executor_boundary": "The signed-bus ref store and CAS primitives remain dormant for this migration; this inventory neither activates them nor mutates refs or cursors.",
-      "default_helper_class": "historical_adapter",
+      "writer_paths": [],
+      "executor_boundary": "Route lineage is a read-only live-v1 authority reader used by ledger startup and capability-currency checks. It resolves committed Markdown route lineage but writes no state, grants no new authority, and executes no effect.",
+      "default_helper_class": "runtime_core",
       "module_rules": [
         {
-          "path": "scripts/route_lineage.py",
-          "default_helper_class": "runtime_core"
-        },
-        {
-          "path": "threeway/refstore.py"
+          "path": "scripts/route_lineage.py"
         }
       ],
       "symbol_overrides": [
@@ -384,6 +407,298 @@
         },
         {
           "symbol": "scripts.route_lineage.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "signed_bus_event_and_cursor_runtime",
+      "authority_status": "live_separate_threeway_toolchain_non_compact_route_authority",
+      "source_paths": [
+        "threeway/refstore.py",
+        "threeway/gate.py",
+        "threeway/cutover.py",
+        "scripts/seat_emit.py",
+        "scripts/chief_emit.py",
+        "scripts/overseer_emit.py",
+        "scripts/sign_ci_result.py",
+        "scripts/consume_bus.py",
+        "scripts/run_merge_gate.py",
+        "scripts/overseer_plan.py",
+        "scripts/agy_observer.py",
+        "scripts/bus_unread.py",
+        "scripts/execute_threeway_cutover.sh"
+      ],
+      "reader_paths": [
+        "threeway/refstore.py",
+        "threeway/gate.py",
+        "threeway/cutover.py",
+        "scripts/seat_emit.py",
+        "scripts/chief_emit.py",
+        "scripts/overseer_emit.py",
+        "scripts/sign_ci_result.py",
+        "scripts/consume_bus.py",
+        "scripts/run_merge_gate.py",
+        "scripts/overseer_plan.py",
+        "scripts/agy_observer.py",
+        "scripts/bus_unread.py",
+        "coordination/threeway/keys",
+        "coordination/mailbox/sent",
+        "coordination/mailbox/seen"
+      ],
+      "writer_paths": [
+        "threeway/refstore.py",
+        "threeway/cutover.py",
+        "coordination/threeway/keys",
+        "coordination/mailbox/seen"
+      ],
+      "executor_boundary": "These tools are live only for the separate three-way toolchain and grant no compact-kernel route authority. Guarded emit, consume, merge, and cutover executors may read or update refs/threeway/events and refs/threeway/cursors/*; an explicitly confirmed cutover may bridge legacy coordination/mailbox/sent and coordination/mailbox/seen. Signing keys and remote effects remain separately authorized.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "threeway/refstore.py"
+        },
+        {
+          "path": "threeway/gate.py"
+        },
+        {
+          "path": "threeway/cutover.py"
+        },
+        {
+          "path": "scripts/seat_emit.py"
+        },
+        {
+          "path": "scripts/chief_emit.py"
+        },
+        {
+          "path": "scripts/overseer_emit.py"
+        },
+        {
+          "path": "scripts/sign_ci_result.py"
+        },
+        {
+          "path": "scripts/consume_bus.py"
+        },
+        {
+          "path": "scripts/run_merge_gate.py"
+        },
+        {
+          "path": "scripts/overseer_plan.py"
+        },
+        {
+          "path": "scripts/agy_observer.py",
+          "default_helper_class": "telemetry"
+        },
+        {
+          "path": "scripts/bus_unread.py",
+          "default_helper_class": "telemetry"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "threeway.cutover.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.seat_emit.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.chief_emit.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.overseer_emit.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.sign_ci_result.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.consume_bus.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.run_merge_gate.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.overseer_plan.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.agy_observer.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "live_v1_status_and_runtime_readers",
+      "authority_status": "live_v1_status_readers_with_optional_local_output",
+      "source_paths": [
+        "scripts/mailbox_monitor.py",
+        "scripts/ledger_start_guard.py",
+        "scripts/codex_protocol_model.py",
+        "scripts/protocol_doctor.py",
+        "scripts/continuation_readiness.py",
+        ".agents/skills/four-seat-protocol/scripts/seat_status.py",
+        "scripts/status.py",
+        "scripts/latest_handoff.py"
+      ],
+      "reader_paths": [
+        "scripts/mailbox_monitor.py",
+        "scripts/ledger_start_guard.py",
+        "scripts/codex_protocol_model.py",
+        "scripts/protocol_doctor.py",
+        "scripts/continuation_readiness.py",
+        ".agents/skills/four-seat-protocol/scripts/seat_status.py",
+        "scripts/status.py",
+        "scripts/latest_handoff.py",
+        "coordination/mailbox/sent",
+        "coordination/mailbox/seen",
+        "coordination/locks",
+        "coordination/presence",
+        "coordination/capacity/packets"
+      ],
+      "writer_paths": [
+        "scripts/status.py"
+      ],
+      "executor_boundary": "These live-v1 readers inspect status, routes, mailbox cursors, locks, presence, capacity, and runtime doctrine without granting route authority or consuming state. Only the explicit status.py --write option may create or replace the optional local STATUS.md output; the component is therefore not classified as read-only.",
+      "default_helper_class": "telemetry",
+      "module_rules": [
+        {
+          "path": "scripts/mailbox_monitor.py"
+        },
+        {
+          "path": "scripts/ledger_start_guard.py",
+          "default_helper_class": "runtime_core"
+        },
+        {
+          "path": "scripts/codex_protocol_model.py",
+          "default_helper_class": "runtime_core"
+        },
+        {
+          "path": "scripts/protocol_doctor.py"
+        },
+        {
+          "path": "scripts/continuation_readiness.py"
+        },
+        {
+          "path": ".agents/skills/four-seat-protocol/scripts/seat_status.py"
+        },
+        {
+          "path": "scripts/status.py"
+        },
+        {
+          "path": "scripts/latest_handoff.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.mailbox_monitor.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.ledger_start_guard.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.codex_protocol_model.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.protocol_doctor.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.continuation_readiness.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": ".agents.skills.four-seat-protocol.scripts.seat_status.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.status.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        },
+        {
+          "symbol": "scripts.latest_handoff.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
+      "id": "coordination_lock_effects",
+      "authority_status": "live_v1_user_gated_lock_effects",
+      "source_paths": [
+        "coordination/bin/claim-lock",
+        "coordination/bin/release-lock"
+      ],
+      "reader_paths": [
+        "coordination/locks"
+      ],
+      "writer_paths": [
+        "coordination/locks"
+      ],
+      "executor_boundary": "claim-lock and release-lock may commit and push coordination/locks state only for an authorized live lock action. Their fetch, merge, commit, reset, and push effects remain user-gated and are not compact route authority.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [],
+      "symbol_overrides": []
+    },
+    {
+      "id": "codex_runtime_and_hook_adapter",
+      "authority_status": "runtime_adapter_without_seat_authority",
+      "source_paths": [
+        "coordination/bin/codex-seat",
+        "scripts/codex_seat_launcher.py",
+        ".codex/hooks.json",
+        ".codex/hooks/session-smoke.sh",
+        ".codex/hooks/guard-git-index.sh",
+        ".codex/hooks/update-state.sh"
+      ],
+      "reader_paths": [
+        "scripts/codex_seat_launcher.py",
+        ".codex/hooks.json",
+        ".codex/hooks/session-smoke.sh",
+        ".codex/hooks/guard-git-index.sh",
+        ".codex/hooks/update-state.sh",
+        "coordination/presence"
+      ],
+      "writer_paths": [
+        "scripts/codex_seat_launcher.py",
+        ".codex/hooks/update-state.sh",
+        "coordination/presence"
+      ],
+      "executor_boundary": "An explicit codex-seat launch binds one selected Codex model process to its concrete seat environment and dedicated <git-dir>/index-codex-<seat> index. Hooks may maintain that index, coordination/presence heartbeats, smoke cache markers, and the optional local STATE.md output. These adapters grant no mailbox, route, lock, push, provider-spend, or seat authority.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "scripts/codex_seat_launcher.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.codex_seat_launcher.main",
           "helper_class": "cli_entrypoint",
           "disposition": "keep_documented_cli"
         }

@@ -30,14 +30,18 @@ COMPONENT_IDS = {
     "verification_authority_and_publication",
     "chatgpt_guard_and_browser_executor",
     "opus_reservation_and_bridge",
-    "dormant_signed_bus_ref_cas_substrate",
+    "live_v1_route_lineage_reader",
+    "signed_bus_event_and_cursor_runtime",
+    "live_v1_status_and_runtime_readers",
+    "coordination_lock_effects",
+    "codex_runtime_and_hook_adapter",
     "legacy_lifecycle_mapping_contract",
     "capability_baseline_runtime_collector",
 }
 AUTHORITY_CONTRACT = {
     "route_authority": "markdown_mailbox",
     "route_sidecar_role": "compatibility_only",
-    "signed_bus_role": "dormant_for_migration",
+    "signed_bus_role": "live_threeway_toolchain_not_compact_route_authority",
     "capability_consumption_role": "post_effect_evidence_only",
     "provider_output_role": "advisory_only",
 }
@@ -49,10 +53,74 @@ REQUIRED_ORPHANS = {
     "scripts.verification_report_gate.publish_candidate",
     "scripts.opus_review_bridge.probe_host_capabilities",
 }
-READ_ONLY_COMPONENT_ID = "legacy_lifecycle_mapping_contract"
+READ_ONLY_COMPONENT_IDS = {
+    "legacy_lifecycle_mapping_contract",
+    "live_v1_route_lineage_reader",
+}
 REQUIRED_PHASE1_PRODUCTION_MODULES = {
     "scripts/compact_state_mapping.py",
     "scripts/capability_baseline_runtime.py",
+}
+REQUIRED_SURFACE_OWNERS: dict[str, str] = {
+    "governance.toml": "target_binding",
+    "scripts/target_binding.py": "target_binding",
+    "scripts/route_manifest.py": "markdown_routes_and_mailbox_writer",
+    "scripts/protocol_mailbox.py": "markdown_routes_and_mailbox_writer",
+    "coordination/bin/send-event": "markdown_routes_and_mailbox_writer",
+    "coordination/bin/consume-events": "markdown_routes_and_mailbox_writer",
+    "scripts/route_compat.py": "typed_route_compatibility_canary",
+    "scripts/protocol_capacity.py": "capacity_reducer_and_packet_state_telemetry",
+    "scripts/packet_state.py": "capacity_reducer_and_packet_state_telemetry",
+    "scripts/protocol_capacity_board.py": (
+        "capacity_reducer_and_packet_state_telemetry"
+    ),
+    "scripts/protocol_effectiveness_report.py": "effectiveness_telemetry",
+    "scripts/route_capability.py": "capability_receipt_recording",
+    "scripts/verification_report_gate.py": (
+        "verification_authority_and_publication"
+    ),
+    "scripts/consume_reviewer_result.py": (
+        "verification_authority_and_publication"
+    ),
+    "scripts/chatgpt_pro_consult.py": "chatgpt_guard_and_browser_executor",
+    "scripts/opus_review_receipts.py": "opus_reservation_and_bridge",
+    "scripts/opus_review_bridge.py": "opus_reservation_and_bridge",
+    "scripts/compact_state_mapping.py": "legacy_lifecycle_mapping_contract",
+    "scripts/capability_baseline_runtime.py": (
+        "capability_baseline_runtime_collector"
+    ),
+    "scripts/route_lineage.py": "live_v1_route_lineage_reader",
+    "threeway/refstore.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/gate.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/cutover.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/seat_emit.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/chief_emit.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/overseer_emit.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/sign_ci_result.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/consume_bus.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/run_merge_gate.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/overseer_plan.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/agy_observer.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/bus_unread.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/execute_threeway_cutover.sh": "signed_bus_event_and_cursor_runtime",
+    "scripts/mailbox_monitor.py": "live_v1_status_and_runtime_readers",
+    "scripts/ledger_start_guard.py": "live_v1_status_and_runtime_readers",
+    "scripts/codex_protocol_model.py": "live_v1_status_and_runtime_readers",
+    "scripts/protocol_doctor.py": "live_v1_status_and_runtime_readers",
+    "scripts/continuation_readiness.py": "live_v1_status_and_runtime_readers",
+    ".agents/skills/four-seat-protocol/scripts/seat_status.py": (
+        "live_v1_status_and_runtime_readers"
+    ),
+    "scripts/status.py": "live_v1_status_and_runtime_readers",
+    "scripts/latest_handoff.py": "live_v1_status_and_runtime_readers",
+    "coordination/bin/claim-lock": "coordination_lock_effects",
+    "coordination/bin/release-lock": "coordination_lock_effects",
+    "coordination/bin/codex-seat": "codex_runtime_and_hook_adapter",
+    "scripts/codex_seat_launcher.py": "codex_runtime_and_hook_adapter",
+    ".codex/hooks.json": "codex_runtime_and_hook_adapter",
+    ".codex/hooks/session-smoke.sh": "codex_runtime_and_hook_adapter",
+    ".codex/hooks/guard-git-index.sh": "codex_runtime_and_hook_adapter",
+    ".codex/hooks/update-state.sh": "codex_runtime_and_hook_adapter",
 }
 
 ROOT_KEYS = {"schema_version", "authority_contract", "components"}
@@ -120,7 +188,7 @@ def test_route_lineage_runtime_helpers_are_runtime_core() -> None:
     component = next(
         item
         for item in components
-        if item["id"] == "dormant_signed_bus_ref_cas_substrate"
+        if item["id"] == "live_v1_route_lineage_reader"
     )
     rule = next(
         item
@@ -175,13 +243,34 @@ def test_phase1_production_modules_have_explicit_inventory_owners() -> None:
     assert REQUIRED_PHASE1_PRODUCTION_MODULES <= declared_modules
 
 
+@pytest.mark.parametrize(
+    ("path", "expected_owner"),
+    sorted(REQUIRED_SURFACE_OWNERS.items()),
+)
+def test_required_surfaces_have_explicit_owner(path, expected_owner):
+    components = _load_inventory()["components"]
+    owners = [
+        component["id"]
+        for component in components
+        if path
+        in (
+            {rule["path"] for rule in component["module_rules"]}
+            if path.endswith(".py")
+            else set(component["source_paths"])
+        )
+    ]
+    assert owners == [expected_owner]
+
+
 def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:
     components = {
         component["id"]: component
         for component in _load_inventory()["components"]
     }
-    assert READ_ONLY_COMPONENT_ID in components
-    component = components[READ_ONLY_COMPONENT_ID]
+    component_id = "legacy_lifecycle_mapping_contract"
+    assert component_id in READ_ONLY_COMPONENT_IDS
+    assert component_id in components
+    component = components[component_id]
     owned_paths = {
         "scripts/compact_state_mapping.py",
         "tests/fixtures/compact_state_mapping/v1.json",
@@ -279,7 +368,7 @@ def test_inventory_schema_authority_and_paths() -> None:
         for field in ("source_paths", "reader_paths", "writer_paths"):
             paths = component[field]
             assert isinstance(paths, list), f"{component_id}.{field} is not a list"
-            if field == "writer_paths" and component_id == READ_ONLY_COMPONENT_ID:
+            if field == "writer_paths" and component_id in READ_ONLY_COMPONENT_IDS:
                 assert paths == [], f"{component_id}.{field} must be empty"
             else:
                 assert paths, f"{component_id}.{field} is empty"
@@ -288,7 +377,14 @@ def test_inventory_schema_authority_and_paths() -> None:
                 _assert_repo_path(path, f"{component_id}.{field}[{index}]")
 
         module_rules = component["module_rules"]
-        assert isinstance(module_rules, list) and module_rules
+        assert isinstance(module_rules, list)
+        python_sources = {
+            path for path in component["source_paths"] if path.endswith(".py")
+        }
+        if python_sources:
+            assert module_rules
+        else:
+            assert module_rules == []
         for rule in module_rules:
             assert isinstance(rule, dict)
             assert set(rule).issubset(MODULE_RULE_KEYS)
@@ -299,9 +395,6 @@ def test_inventory_schema_authority_and_paths() -> None:
                 assert rule["default_helper_class"] in HELPER_CLASSES
                 assert rule["default_helper_class"] != "orphan"
 
-        python_sources = {
-            path for path in component["source_paths"] if path.endswith(".py")
-        }
         rule_paths = {rule["path"] for rule in module_rules}
         assert rule_paths == python_sources, (
             f"{component_id} must have one module rule for every scoped Python source"
@@ -326,6 +419,7 @@ def test_every_scoped_public_function_is_classified() -> None:
     components = _load_inventory()["components"]
     module_owner: dict[str, str] = {}
     module_default: dict[str, str] = {}
+    module_paths_by_key: dict[str, str] = {}
     public_symbols: set[str] = set()
     overrides: dict[str, dict[str, str]] = {}
 
@@ -343,6 +437,8 @@ def test_every_scoped_public_function_is_classified() -> None:
                 "default_helper_class", component["default_helper_class"]
             )
             module_name = _module_name(path)
+            assert module_name not in module_paths_by_key
+            module_paths_by_key[module_name] = path
             owned_modules.add(module_name)
             public_symbols.update(
                 f"{module_name}.{function}" for function in _public_functions(path)
@@ -355,7 +451,7 @@ def test_every_scoped_public_function_is_classified() -> None:
             assert module_name in owned_modules, (
                 f"override belongs to an unowned module: {symbol}"
             )
-            module_path = module_name.replace(".", "/") + ".py"
+            module_path = module_paths_by_key[module_name]
             assert function_name in _public_functions(module_path), (
                 f"override names an unknown public function: {symbol}"
             )
