@@ -18,6 +18,7 @@
 - Never serialize raw stdout, raw stderr, prompts, repository content, credentials, tokens, unrestricted environment dumps, or session identifiers into Git, receipts, mailbox events, logs, or diagnostics.
 - Coordinator writes only plans, capacity packets, routes, handoffs, and reconciliation evidence. Director2 owns production/test changes; Operator2 owns GO, NITS, or FAIL.
 - Every ordinary Git and pytest command starts with `env -u GIT_INDEX_FILE`. Work occurs in an isolated worktree because the shared root contains unrelated live WIP.
+- Descriptor `verification_commands` contain only commands accepted by the bridge's trusted-Python allowlist. `env -u GIT_INDEX_FILE git diff --check` remains a mandatory local and Operator2 supplemental gate, but it is never serialized into the descriptor.
 
 ## R-INDEPENDENCE Abuse Cases And Coverage Targets
 
@@ -167,7 +168,24 @@ Commit the four implementation/test paths with subject `fix(opus): expose saniti
 
 - [ ] **Step 3: Bind descriptor `b8c59c86-2426-46cf-8975-7b075d75fc09`**
 
-Use the committed coordinator route as reviewed base and the shipping diagnostics commit as reviewed head. Set allowed roots to the exact shipping diff. Require this plan, the coordinator route, the prior terminal GO report, and the existing content-addressed Opus advisory prompt authority. Verification commands are the complete provider-free gate above. Commit the descriptor alone.
+Use the commit containing
+`coordination/mailbox/sent/2026-07-15T13-03-19Z-coordinator-to-all-coordination.md`
+as reviewed base and the shipping diagnostics commit as reviewed head. Set
+allowed roots to the exact shipping diff. Require this plan, the original Stage
+A route, the corrective route above, the prior terminal GO report, and the
+existing content-addressed Opus advisory prompt authority. Serialize exactly
+these two trusted-Python descriptor verification commands:
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_opus_review_bridge.py tests/unit/test_opus_review_receipts.py \
+  tests/unit/test_verification_report_gate.py -q
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+```
+
+Keep `env -u GIT_INDEX_FILE git diff --check` mandatory before the shipping,
+descriptor, and verify-request commits and during Operator2 verification, but
+do not serialize it into `verification_commands`. Commit the descriptor alone.
 
 - [ ] **Step 4: Send one canonical verify-request**
 
@@ -229,3 +247,4 @@ After binding GO and with no post-GO changes, the coordinator performs the local
 - Spec coverage: terminal receipt finality, zero-provider isolation, minimum diagnostics, fake clients, root-cause-only repair, one fresh canary, independent GO, local merge, and push order are each assigned to a task.
 - Placeholder scan: the plan contains no deferred implementation marker; later-route artifacts are explicitly gated deliverables rather than missing design.
 - Type consistency: `failure_detail` and `provider_returncode` are nullable only outside successful reviews; the same names flow through bridge serialization, receipt reading, tests, and Lane V evidence.
+- Descriptor-command consistency: the descriptor carries only the focused pytest and smoke commands accepted by `_validated_verification_rule`; `git diff --check` remains required supplemental evidence outside the descriptor.
