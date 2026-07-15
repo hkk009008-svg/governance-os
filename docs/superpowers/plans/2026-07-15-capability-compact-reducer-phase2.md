@@ -539,10 +539,11 @@ over every vector ID.
   The loader accepts exactly `schema_version`, `actors`, `scopes`, and
   `vectors`. Each vector accepts exactly `id`, `events`, `permutations`, and
   `expected`; expected is either a report summary (`applied_transition_ids`,
-  `idempotent_transition_ids`, and unit versions) or one `error_code`. Reject
-  unknown fixture/vector/expected fields so test data cannot smuggle authority.
-  Actor fixture objects use every canonical actor-context field and their
-  recomputed digest; scope fixture objects use every normalized scope field.
+  `idempotent_transition_ids`, unit versions, and a fixed `report_digest`
+  matching `DIGEST_PATTERN`) or exactly one `error_code`. Reject unknown
+  fixture/vector/expected fields so test data cannot smuggle authority. Actor
+  fixture objects use every canonical actor-context field and their recomputed
+  digest; scope fixture objects use every normalized scope field.
 
 - [ ] **Step 2: Run RED**
 
@@ -582,8 +583,9 @@ over every vector ID.
   Use only repository-relative fictional scopes and `sha256:` plus 64 lowercase
   hex characters. The test constructs in-memory resolvers from `actors` and
   `scopes`; it must not open any path named by a vector. For every permutation,
-  compare `canonicalize` over an explicit report mapping (never `asdict`); for
-  errors, compare only the stable code and assert no report was returned.
+  compare the prefixed SHA-256 of `canonicalize` over an explicit full report
+  mapping (never `asdict`) with the fixture's fixed `report_digest`; for errors,
+  compare only the stable code and assert no report was returned.
 
 - [ ] **Step 4: Run GREEN and commit**
 
@@ -599,6 +601,17 @@ over every vector ID.
   ```
 
   Expected: every vector and focused reducer test passes.
+
+#### Post-Task-3 oracle correction
+
+The first independent actual-diff review found three Important oracle gaps.
+The Task-3 correction closes them without changing production: every successful
+vector pins a full-report golden digest; mapping first requires the exact
+`KernelReport`/`UnitSnapshot` dataclass and instance surfaces and recursively
+rejects authority-shaped keys; and a literal test-owned 19-vector/31-permutation
+multiset pins exact permutation multiplicity, including repeated labels. Each
+guard has a non-vacuous mutation probe. Error expectations remain exactly one
+stable `error_code`.
 
 ## Final verification and review gate
 
