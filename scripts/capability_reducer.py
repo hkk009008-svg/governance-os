@@ -402,6 +402,49 @@ def transition_key(
     return (work, tag, unit, item.work_revision, item.transition_id)
 
 
+def transition_cursor(
+    state: object,
+    *,
+    work_id: object,
+    unit_id: object,
+) -> tuple[int, int, str]:
+    """Return the next work revision and exact unit's current cursor."""
+
+    current = _validate_state(state)
+    parsed_work_id = _require_string(work_id, ID_PATTERN)
+    parsed_unit_id = _require_nullable_string(unit_id, ID_PATTERN)
+
+    matching_work = tuple(
+        work for work in current.works if work.work_id == parsed_work_id
+    )
+    next_revision = (
+        1
+        if not matching_work
+        else _require_integer(matching_work[0].work_revision + 1, 1)
+    )
+
+    matching_unit = tuple(
+        unit
+        for unit in current.units
+        if unit.work_id == parsed_work_id and unit.unit_id == parsed_unit_id
+    )
+    if matching_unit:
+        unit = matching_unit[0]
+        return next_revision, unit.unit_version, unit.precondition_digest
+
+    precondition = _compute_precondition(
+        parsed_work_id,
+        parsed_unit_id,
+        0,
+        ZERO_DIGEST,
+        ZERO_DIGEST,
+        ZERO_DIGEST,
+        ZERO_DIGEST,
+        ZERO_DIGEST,
+    )
+    return next_revision, 0, precondition
+
+
 def _require_state_string(value: object, pattern: str, code: str) -> str:
     if type(value) is not str or fullmatch(pattern, value) is None:
         raise ReducerError(code)

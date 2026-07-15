@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import inspect
+import re
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -71,6 +72,7 @@ EXPECTED_TOP_LEVEL_FUNCTION_NAMES = (
     "transition_digest",
     "unit_key",
     "transition_key",
+    "transition_cursor",
     "_require_state_string",
     "_require_state_nullable_string",
     "_require_state_integer",
@@ -681,6 +683,95 @@ def _apply(
     )
 
 
+def test_transition_cursor_returns_only_next_revision_version_and_precondition(
+) -> None:
+    revision, version, precondition = reducer.transition_cursor(
+        reducer.KernelState(), work_id="work-1", unit_id=None
+    )
+
+    assert (revision, version) == (1, 0)
+    assert re.fullmatch(reducer.DIGEST_PATTERN, precondition)
+    assert precondition == _precondition_digest(
+        work_id="work-1",
+        unit_id=None,
+        unit_version=0,
+        mutable_scope_digest=reducer.ZERO_DIGEST,
+        content_digest=reducer.ZERO_DIGEST,
+        dependency_digest=reducer.ZERO_DIGEST,
+        acceptance_digest=reducer.ZERO_DIGEST,
+        evidence_digest=reducer.ZERO_DIGEST,
+    )
+
+
+@pytest.mark.parametrize("new_unit_id", (None, "unit-new"))
+def test_transition_cursor_keeps_work_and_exact_unit_axes_independent(
+    new_unit_id: str | None,
+) -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    payload = _event_payload(
+        actor=actor,
+        scope=scope,
+        unit_id="unit-existing",
+        mutable_scope_ref="scope:work-1/unit-existing",
+    )
+    state = _apply(reducer.KernelState(), payload, actor=actor, scope=scope)
+
+    revision, version, precondition = reducer.transition_cursor(
+        state, work_id="work-1", unit_id=new_unit_id
+    )
+
+    assert revision == 2
+    assert version == 0
+    assert precondition == _precondition_digest(
+        work_id="work-1",
+        unit_id=new_unit_id,
+        unit_version=0,
+        mutable_scope_digest=reducer.ZERO_DIGEST,
+        content_digest=reducer.ZERO_DIGEST,
+        dependency_digest=reducer.ZERO_DIGEST,
+        acceptance_digest=reducer.ZERO_DIGEST,
+        evidence_digest=reducer.ZERO_DIGEST,
+    )
+
+
+def test_transition_cursor_returns_the_exact_existing_unit_cursor() -> None:
+    actor = _actor_context()
+    scope = _resolved_scope()
+    payload = _event_payload(actor=actor, scope=scope)
+    state = _apply(reducer.KernelState(), payload, actor=actor, scope=scope)
+
+    revision, version, precondition = reducer.transition_cursor(
+        state, work_id="work-1", unit_id="unit-1"
+    )
+
+    assert revision == 2
+    assert version == state.units[0].unit_version
+    assert precondition == state.units[0].precondition_digest
+
+
+@pytest.mark.parametrize(
+    ("state", "work_id", "unit_id", "code"),
+    (
+        (object(), "work-1", None, "state_invalid"),
+        (reducer.KernelState(), "bad work", None, "invalid_envelope"),
+        (reducer.KernelState(), "work-1", False, "invalid_envelope"),
+    ),
+)
+def test_transition_cursor_reuses_existing_state_and_identifier_validation(
+    state: object,
+    work_id: object,
+    unit_id: object,
+    code: str,
+) -> None:
+    _assert_reducer_error(
+        code,
+        lambda: reducer.transition_cursor(
+            state, work_id=work_id, unit_id=unit_id
+        ),
+    )
+
+
 def _second_payload(
     state: reducer.KernelState,
     *,
@@ -995,6 +1086,10 @@ def test_reducer_ast_has_only_pure_import_and_call_boundaries() -> None:
         (
             'import hashlib\nhashlib.md5(b"payload")',
             ("ast.Import is not permitted", "attribute call is not permitted"),
+        ),
+        (
+            "import scripts.capability_v1_adapter",
+            ("ast.Import is not permitted: scripts.capability_v1_adapter",),
         ),
         (
             'getattr(__builtins__, "open")("secret")',
