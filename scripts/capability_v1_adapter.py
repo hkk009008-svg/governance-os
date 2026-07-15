@@ -1159,9 +1159,10 @@ def _adapt_parsed_history(
         try:
             first_actor = resolve_actor(record.actor_binding_digest)
             second_actor = resolve_actor(record.actor_binding_digest)
+            same_actor = bool(first_actor == second_actor)
         except Exception:
             raise _legacy_invalid() from None
-        if first_actor != second_actor:
+        if not same_actor:
             raise LegacyAdapterError("legacy_nondeterministic")
         try:
             state = capability_reducer.apply_transition(
@@ -1459,6 +1460,28 @@ def _case_resolvers(
     return resolve_actor, resolve_scope
 
 
+def _specialized_probe_record(
+    template: dict[str, object],
+    row: dict[str, object],
+) -> dict[str, object]:
+    probe = dict(template)
+    probe.update(
+        {
+            "source_id": f"specialized-probe:{row['id']}",
+            "work_id": f"work-specialized-probe-{row['id']}",
+            "domain": row["domain"],
+            "value": row["value"],
+            "context": {
+                key: item for key, item in sorted(row["context"].items())
+            },
+        }
+    )
+    probe["source_digest"] = _source_digest(
+        {key: value for key, value in probe.items() if key != "source_digest"}
+    )
+    return probe
+
+
 def _append_kind(
     findings: set[tuple[str, str]],
     case_id: str,
@@ -1503,7 +1526,11 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
 
     misuse_vectors = misuse_fixture.get("vectors")
     replay_vectors = replay_fixture.get("vectors")
-    if type(misuse_vectors) is not list or type(replay_vectors) is not list:
+    if (
+        type(misuse_vectors) is not list
+        or type(replay_vectors) is not list
+        or any(type(vector) is not dict for vector in replay_vectors)
+    ):
         raise _legacy_invalid()
     phase2_ids = {
         vector["id"]
@@ -1515,9 +1542,28 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         for vector in misuse_vectors
         if vector["enforcing_phase"] == 3
     }
-    replay_ids = [vector["id"] for vector in replay_vectors]
-    if len(replay_ids) != len(set(replay_ids)):
+    replay_ids = [vector.get("id") for vector in replay_vectors]
+    replay_misuse_ids = [
+        vector.get("misuse_vector_id") for vector in replay_vectors
+    ]
+    declared_replay_misuse_ids = [
+        misuse_id for misuse_id in replay_misuse_ids if misuse_id is not None
+    ]
+    if (
+        any(type(replay_id) is not str or not replay_id for replay_id in replay_ids)
+        or len(replay_ids) != len(set(replay_ids))
+        or any(
+            misuse_id is not None
+            and (type(misuse_id) is not str or not misuse_id)
+            for misuse_id in replay_misuse_ids
+        )
+        or len(declared_replay_misuse_ids)
+        != len(set(declared_replay_misuse_ids))
+        or not set(declared_replay_misuse_ids) <= phase2_ids
+        or set(declared_replay_misuse_ids) & phase3_ids
+    ):
         raise _legacy_invalid()
+    replay_by_id = dict(zip(replay_ids, replay_vectors, strict=True))
 
     cases = corpus["cases"]
     manifest = corpus["case_manifest"]
@@ -1536,6 +1582,17 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     mapping_cases = [item for item in cases if item["case_kind"] == "mapping"]
     if [item["mapping_row_id"] for item in mapping_cases] != mapping_ids:
         raise _legacy_invalid()
+    template_case = case_by_id.get("mapping:capacity-ready")
+    if type(template_case) is not dict:
+        raise _legacy_invalid()
+    template_records = template_case["source_records"]
+    if (
+        type(template_records) is not list
+        or len(template_records) != 1
+        or type(template_records[0]) is not dict
+    ):
+        raise _legacy_invalid()
+    specialized_probe_template = template_records[0]
 
     bindings = corpus["phase2_misuse_bindings"]
     deferred = corpus["deferred_phase3_misuse_ids"]
@@ -1551,6 +1608,7 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     ):
         raise _legacy_invalid()
     bound_targets: set[tuple[str, str]] = set()
+    replay_bound_misuse_ids: set[str] = set()
     for misuse_id, value in bindings.items():
         binding = _require_exact_object(
             value, frozenset({"target_kind", "target_id"})
@@ -1574,10 +1632,16 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
             ):
                 raise _legacy_invalid()
         elif target[0] == "reducer_replay":
-            if target[1] not in replay_ids:
+            if (
+                target[1] not in replay_by_id
+                or replay_by_id[target[1]]["misuse_vector_id"] != misuse_id
+            ):
                 raise _legacy_invalid()
+            replay_bound_misuse_ids.add(misuse_id)
         else:
             raise _legacy_invalid()
+    if replay_bound_misuse_ids != set(declared_replay_misuse_ids):
+        raise _legacy_invalid()
 
     actors, scopes = _fixture_runtime(corpus)
     findings: set[tuple[str, str]] = set()
@@ -1808,6 +1872,36 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         if not records:
             if expected_count != 0 or expected_transitions or expected_error:
                 _append_kind(findings, case_id, "adapter_error")
+            probe_rule = _rule_for_key(observation_keys[0])
+            if kind == "mapping" and probe_rule.requested_transition is None:
+                resolver_used = False
+
+                def reject_resolver(_value: str) -> object:
+                    nonlocal resolver_used
+                    resolver_used = True
+                    raise RuntimeError
+
+                probe = _specialized_probe_record(
+                    specialized_probe_template,
+                    mapping_by_id[mapping_id],
+                )
+                try:
+                    result = adapt_v1_history(
+                        (probe,),
+                        resolve_actor=reject_resolver,
+                        resolve_scope=reject_resolver,
+                    )
+                except LegacyAdapterError as error:
+                    if error.code != "legacy_unmapped":
+                        _append_kind(findings, case_id, "adapter_error")
+                except Exception:
+                    _append_kind(findings, case_id, "adapter_error")
+                else:
+                    _append_kind(findings, case_id, "adapter_error")
+                    if result:
+                        specialized_event_ids.add(case_id)
+                if resolver_used:
+                    _append_kind(findings, case_id, "adapter_error")
         else:
             for order in normalized_orders:
                 raw_history = tuple(records[index] for index in order)
@@ -1849,6 +1943,7 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     )
     set_counts = (
         ("mapping_rows", len(mapping_rows)),
+        ("mapping_domains", len({row["domain"] for row in mapping_rows})),
         ("phase2_misuse_vectors", len(phase2_ids)),
         ("deferred_phase3_misuse_vectors", len(phase3_ids)),
         ("reducer_replay_vectors", len(replay_ids)),

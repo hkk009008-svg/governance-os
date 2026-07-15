@@ -690,6 +690,22 @@ def test_corpus_guard_rejects_vacuous_or_shared_misuse_targets() -> None:
     _assert_corpus_error(shared, "legacy_invalid")
 
 
+def test_corpus_guard_rejects_semantically_swapped_replay_bindings() -> None:
+    corpus = _load_strict(CORPUS)
+    forged = corpus["phase2_misuse_bindings"][
+        "forged_self_asserted_principal"
+    ]
+    duplicate = corpus["phase2_misuse_bindings"][
+        "duplicate_transition_id_identical_payload"
+    ]
+    forged["target_id"], duplicate["target_id"] = (
+        duplicate["target_id"],
+        forged["target_id"],
+    )
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
 def test_corpus_guard_rejects_changed_source_digest() -> None:
     corpus = _load_strict(CORPUS)
     _case(corpus, "mapping:capacity-ready")["source_records"][0][
@@ -763,6 +779,13 @@ def test_complete_corpus_is_gate_clean_and_executes_every_case() -> None:
     assert set(report.executed_case_ids) == set(corpus["case_manifest"])
 
 
+def test_report_mapping_domain_count_is_derived_from_mapping_rows() -> None:
+    report = adapter._check_corpus(_load_strict(CORPUS))
+    expected_domains = {row["domain"] for row in _mapping_rows()}
+
+    assert dict(report.set_counts)["mapping_domains"] == len(expected_domains)
+
+
 def test_corpus_pins_every_required_history_dimension() -> None:
     corpus = _load_strict(CORPUS)
     required_cases = {
@@ -814,6 +837,71 @@ def test_corpus_pins_every_required_history_dimension() -> None:
 def test_specialized_states_never_emit_route_events() -> None:
     report = adapter._check_corpus(_load_strict(CORPUS))
     assert report.specialized_event_ids == ()
+
+
+def test_every_specialized_mapping_key_reaches_public_adapter_probe(
+    monkeypatch,
+) -> None:
+    expected_keys = {
+        key
+        for key, rule in adapter._ADAPTER_RULES
+        if rule.requested_transition is None
+    }
+    expected_domains = {key[0] for key in expected_keys}
+    observed_keys: set[
+        tuple[str, str, tuple[tuple[str, bool | str], ...]]
+    ] = set()
+    real_adapt = adapter.adapt_v1_history
+
+    def traced_adapt(raw_history, *, resolve_actor, resolve_scope):
+        records = tuple(raw_history)
+        if len(records) == 1:
+            record = records[0]
+            key = (
+                record["domain"],
+                record["value"],
+                tuple(sorted(record["context"].items())),
+            )
+            if key in expected_keys:
+                observed_keys.add(key)
+        return real_adapt(
+            records,
+            resolve_actor=resolve_actor,
+            resolve_scope=resolve_scope,
+        )
+
+    monkeypatch.setattr(adapter, "adapt_v1_history", traced_adapt)
+    report = adapter._check_corpus(_load_strict(CORPUS))
+
+    assert adapter._report_is_gate_clean(report) is True
+    assert observed_keys == expected_keys
+    assert {key[0] for key in observed_keys} == expected_domains
+
+
+def test_specialized_domain_fallback_success_blocks_gate(monkeypatch) -> None:
+    expected_event_ids = {
+        f"mapping:{row['id']}"
+        for row in _mapping_rows()
+        if row["domain"] == "capability"
+    }
+    real_adapt = adapter.adapt_v1_history
+
+    def capability_fallback(raw_history, *, resolve_actor, resolve_scope):
+        records = tuple(raw_history)
+        if records[0]["domain"] == "capability":
+            return (object(),)
+        return real_adapt(
+            records,
+            resolve_actor=resolve_actor,
+            resolve_scope=resolve_scope,
+        )
+
+    monkeypatch.setattr(adapter, "adapt_v1_history", capability_fallback)
+    report = adapter._check_corpus(_load_strict(CORPUS))
+
+    assert adapter._report_is_gate_clean(report) is False
+    assert set(report.specialized_event_ids) == expected_event_ids
+    assert "adapter_error" in {item.kind for item in report.divergences}
 
 
 def test_independent_input_orders_return_one_canonical_envelope_tuple() -> None:
@@ -1130,6 +1218,29 @@ def test_external_resolver_exception_is_sanitized() -> None:
 
     assert exc_info.value.code == "legacy_invalid"
     assert "raw resolver secret" not in str(exc_info.value)
+
+
+def test_actor_result_equality_exception_is_sanitized() -> None:
+    corpus = _load_strict(CORPUS)
+    record_value = _case(corpus, "mapping:capacity-ready")["source_records"]
+
+    class ExplosiveEquality:
+        def __eq__(self, _other: object) -> bool:
+            raise RuntimeError("raw-resolver-secret")
+
+    def resolve_actor(_digest: str) -> object:
+        return ExplosiveEquality()
+
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        adapter.adapt_v1_history(
+            record_value,
+            resolve_actor=resolve_actor,
+            resolve_scope=_scope_resolver(corpus),
+        )
+
+    assert exc_info.value.code == "legacy_invalid"
+    assert str(exc_info.value) == "legacy_invalid"
+    assert "raw-resolver-secret" not in str(exc_info.value)
 
 
 def test_opaque_web_evidence_changes_only_relevant_shadow_digests() -> None:

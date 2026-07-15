@@ -104,6 +104,7 @@
   "vectors": [
     {
       "id": "independent_order_a",
+      "misuse_vector_id": null,
       "events": {
         "alpha": {
           "schema": "governance.route/v2",
@@ -177,6 +178,7 @@
     },
     {
       "id": "independent_order_b",
+      "misuse_vector_id": null,
       "events": {
         "beta": {
           "activation_epoch": 0,
@@ -250,6 +252,7 @@
     },
     {
       "id": "exact_duplicate_collapses",
+      "misuse_vector_id": "duplicate_transition_id_identical_payload",
       "events": {
         "event": {
           "schema": "governance.route/v2",
@@ -298,6 +301,7 @@
     },
     {
       "id": "changed_duplicate_conflicts",
+      "misuse_vector_id": "duplicate_transition_id_changed_payload",
       "events": {
         "original": {
           "schema": "governance.route/v2",
@@ -358,6 +362,7 @@
     },
     {
       "id": "stale_expected_version",
+      "misuse_vector_id": "stale_unit_version",
       "events": {
         "initial": {
           "schema": "governance.route/v2",
@@ -418,6 +423,7 @@
     },
     {
       "id": "stale_activation_epoch",
+      "misuse_vector_id": "stale_activation_epoch",
       "events": {
         "stale_epoch": {
           "schema": "governance.route/v2",
@@ -452,6 +458,7 @@
     },
     {
       "id": "actor_cross_binding_replay",
+      "misuse_vector_id": "forged_self_asserted_principal",
       "events": {
         "cross_binding": {
           "schema": "governance.route/v2",
@@ -486,6 +493,7 @@
     },
     {
       "id": "disjoint_scopes_merge",
+      "misuse_vector_id": null,
       "events": {
         "alpha": {
           "schema": "governance.route/v2",
@@ -563,6 +571,7 @@
     },
     {
       "id": "ancestor_scope_overlap",
+      "misuse_vector_id": null,
       "events": {
         "alpha": {
           "schema": "governance.route/v2",
@@ -623,6 +632,7 @@
     },
     {
       "id": "lock_domain_overlap",
+      "misuse_vector_id": null,
       "events": {
         "alpha": {
           "schema": "governance.route/v2",
@@ -683,6 +693,7 @@
     },
     {
       "id": "scope_digest_mismatch",
+      "misuse_vector_id": null,
       "events": {
         "mismatch": {
           "schema": "governance.route/v2",
@@ -717,6 +728,7 @@
     },
     {
       "id": "same_unit_scope_change_conflicts",
+      "misuse_vector_id": null,
       "events": {
         "initial": {
           "schema": "governance.route/v2",
@@ -777,6 +789,7 @@
     },
     {
       "id": "route_null_to_named_conflicts",
+      "misuse_vector_id": null,
       "events": {
         "initial": {
           "schema": "governance.route/v2",
@@ -837,6 +850,7 @@
     },
     {
       "id": "work_revision_gap",
+      "misuse_vector_id": null,
       "events": {
         "initial": {
           "schema": "governance.route/v2",
@@ -897,6 +911,7 @@
     },
     {
       "id": "nullable_and_string_units_order",
+      "misuse_vector_id": null,
       "events": {
         "null": {
           "schema": "governance.route/v2",
@@ -974,6 +989,7 @@
     },
     {
       "id": "changed_dependency_bumps_version",
+      "misuse_vector_id": null,
       "events": {
         "target_initial": {
           "schema": "governance.route/v2",
@@ -1075,6 +1091,7 @@
     },
     {
       "id": "equivalent_ref_order_normalizes",
+      "misuse_vector_id": null,
       "events": {
         "original": {
           "schema": "governance.route/v2",
@@ -1160,6 +1177,7 @@
     },
     {
       "id": "web_research_observation",
+      "misuse_vector_id": null,
       "events": {
         "initial": {
           "schema": "governance.route/v2",
@@ -1234,6 +1252,7 @@
     },
     {
       "id": "request_close_is_observation",
+      "misuse_vector_id": null,
       "events": {
         "request_close": {
           "schema": "governance.route/v2",

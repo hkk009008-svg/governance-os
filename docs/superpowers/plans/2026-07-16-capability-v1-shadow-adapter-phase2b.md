@@ -210,13 +210,17 @@ schema literal.
 The adapter derives `transition_id`, `requested_transition`,
 `expected_unit_version`, `precondition_digest`, and `activation_epoch`; those
 keys are forbidden in input. `source_digest` is the canonical SHA-256 of the
-other exact record fields. `transition_id` is derived from stable `source_id`,
-not content or input order, so an identical replay is idempotent and changed
-content under the same source identity conflicts. After causal validation and
-in-memory application, returned envelopes are canonically sorted by
-`(work_id, nullable-unit tag, unit_id, work_revision, transition_id)`. Reversing
-independent input records therefore yields the same tuple; reversing a causal
-same-work history remains an error rather than being silently repaired.
+other exact record fields after context-key normalization and lexical
+normalization of the unique `evidence_refs` and `effect_reservation_refs`.
+Adding, removing, or changing a reference changes source identity; reordering
+the same unique references does not. `transition_id` is derived from stable
+`source_id`, not content or input order, so an identical replay is idempotent
+and changed content under the same source identity conflicts. After causal
+validation and in-memory application, returned envelopes are canonically
+sorted by `(work_id, nullable-unit tag, unit_id, work_revision,
+transition_id)`. Reversing independent input records therefore yields the same
+tuple; reversing a causal same-work history remains an error rather than being
+silently repaired.
 
 The route/work mapping is total and has no fallback:
 
@@ -599,11 +603,12 @@ use `authority_semantic_mismatch` instead of inventing a false total order.
 
 - [ ] **Step 5: Pin opaque web evidence and mixed-version behavior**
 
-Tests must prove that adding/removing/reordering a `web:` ref changes only the
-evidence/version/precondition digests; no URL is opened or parsed, and no
-verdict/effect field appears in reducer output. Reject v2 records in the v1
-adapter, future v1 schema, duplicate source IDs across versions, and nonzero
-epoch material.
+Tests must prove that adding, removing, or changing a `web:` ref changes only
+the evidence/version/precondition digests, while reordering the same unique
+references preserves source identity, envelopes, and reducer digests. No URL
+is opened or parsed, and no verdict/effect field appears in reducer output.
+Reject v2 records in the v1 adapter, future v1 schema, duplicate source IDs
+across versions, and nonzero epoch material.
 
 - [ ] **Step 6: Run GREEN and the complete Phase-2 corpus suite**
 

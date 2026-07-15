@@ -36,7 +36,9 @@ ACTOR_FIELDS = frozenset(
     }
 )
 SCOPE_FIELDS = frozenset({"repository", "paths", "lock_domains"})
-VECTOR_FIELDS = frozenset({"id", "events", "permutations", "expected"})
+VECTOR_FIELDS = frozenset(
+    {"id", "misuse_vector_id", "events", "permutations", "expected"}
+)
 REPORT_EXPECTED_FIELDS = frozenset(
     {
         "applied_transition_ids",
@@ -89,6 +91,13 @@ EXPECTED_VECTOR_IDS = frozenset(
         "request_close_is_observation",
     }
 )
+EXPECTED_MISUSE_BY_VECTOR = {
+    "exact_duplicate_collapses": "duplicate_transition_id_identical_payload",
+    "changed_duplicate_conflicts": "duplicate_transition_id_changed_payload",
+    "stale_expected_version": "stale_unit_version",
+    "stale_activation_epoch": "stale_activation_epoch",
+    "actor_cross_binding_replay": "forged_self_asserted_principal",
+}
 EXPECTED_PERMUTATION_MANIFEST = {
     "independent_order_a": (("alpha", "beta"),),
     "independent_order_b": (("beta", "alpha"),),
@@ -305,6 +314,9 @@ def _load_fixture(path: Path = FIXTURE_PATH) -> dict[str, object]:
         assert type(vector_id) is str and fullmatch(reducer.ID_PATTERN, vector_id)
         assert vector_id not in seen_ids, "vector IDs must be unique"
         seen_ids.add(vector_id)
+        assert vector["misuse_vector_id"] == EXPECTED_MISUSE_BY_VECTOR.get(
+            vector_id
+        ), f"{vector_id}.misuse_vector_id must name its exact source misuse"
 
         events = vector["events"]
         assert type(events) is dict and events, f"{vector_id}.events must be an object"

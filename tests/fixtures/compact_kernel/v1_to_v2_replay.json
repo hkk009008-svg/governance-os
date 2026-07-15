@@ -3,7 +3,7 @@
   "sources": {
     "tests/fixtures/compact_state_mapping/v1.json": "sha256:a93374962fa49e8a5e3de8573e7176fddfe7e32d3c9d7aff26709e8e35e474ee",
     "tests/fixtures/compact_kernel/v1_misuse_vectors.json": "sha256:993aca6a783d0c592db39e5cafb856f3f470d052051040481c2b0f4427325623",
-    "tests/fixtures/compact_kernel/v2_replay_vectors.json": "sha256:b0a98cebc83a593d64c85611ea2c97e4978bdaadcf6c9282f1fb5fdfc4bd4ff1"
+    "tests/fixtures/compact_kernel/v2_replay_vectors.json": "sha256:c1264f6278f7ce9af5e8d10210d4466b8069008f8c16b9e85d2107504992f510"
   },
   "actors": {
     "sha256:b07e4b5e96d84dd6b75359a2be7cb30ff77abba8449415d8dabf77243d4b32dd": {
