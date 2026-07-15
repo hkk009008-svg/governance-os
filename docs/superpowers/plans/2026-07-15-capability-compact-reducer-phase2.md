@@ -89,6 +89,8 @@ Phase-2A boundary: integer fields now stop at the RFC-8785/JavaScript safe
 maximum so every accepted envelope is canonicalizable; AST purity pins every
 permitted call shape and rejects dynamic callable resolution with mutation
 tests; and exact dataclass fields plus public signature kinds are test-pinned.
+Literal imports and top-level definitions bind those calls to their expected
+origins; protected names cannot be rebound, and dangerous introspection fails.
 
 ## File map
 

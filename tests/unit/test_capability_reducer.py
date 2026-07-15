@@ -31,6 +31,34 @@ PERMITTED_FROM_IMPORTS = (
     ("typing", ("Callable", "Iterable")),
     ("threeway.canon", ("canonicalize",)),
 )
+PERMITTED_IMPORT_BINDINGS = (
+    "annotations",
+    "dataclass",
+    "sha256",
+    "fullmatch",
+    "Callable",
+    "Iterable",
+    "canonicalize",
+)
+EXPECTED_TOP_LEVEL_CLASS_NAMES = ("ReducerError", "TransitionEnvelope")
+EXPECTED_TOP_LEVEL_FUNCTION_NAMES = (
+    "_string_schema",
+    "_nullable_string_schema",
+    "_integer_schema",
+    "_ref_array_schema",
+    "field_schemas",
+    "_unchecked_transition_mapping",
+    "_require_string",
+    "_require_nullable_string",
+    "_require_integer",
+    "_require_refs",
+    "parse_transition",
+    "transition_mapping",
+    "transition_bytes",
+    "transition_digest",
+    "apply_transition",
+    "reduce_protocol_state",
+)
 PERMITTED_NAME_CALLS = (
     "NotImplementedError",
     "ReducerError",
@@ -64,13 +92,65 @@ PERMITTED_ATTRIBUTE_CALLS = (
     ("ValueError", "__init__"),
     ("digest", "hexdigest"),
 )
+DANGEROUS_INTROSPECTION_ATTRIBUTES = (
+    "__globals__",
+    "__builtins__",
+    "__dict__",
+    "__subclasses__",
+)
+FORBIDDEN_NAME_REFERENCES = ("__import__", "compile", "eval", "exec", "open")
+
+
+def _is_exact_digest_assignment(
+    node: ast.Name, parents: dict[ast.AST, ast.AST]
+) -> bool:
+    parent = parents.get(node)
+    return (
+        isinstance(node.ctx, ast.Store)
+        and isinstance(parent, ast.Assign)
+        and len(parent.targets) == 1
+        and parent.targets[0] is node
+        and isinstance(parent.value, ast.Call)
+        and isinstance(parent.value.func, ast.Name)
+        and parent.value.func.id == "sha256"
+        and len(parent.value.args) == 1
+        and not parent.value.keywords
+        and isinstance(parent.value.args[0], ast.Call)
+        and isinstance(parent.value.args[0].func, ast.Name)
+        and parent.value.args[0].func.id == "transition_bytes"
+        and len(parent.value.args[0].args) == 1
+        and not parent.value.args[0].keywords
+        and isinstance(parent.value.args[0].args[0], ast.Name)
+        and parent.value.args[0].args[0].id == "value"
+    )
 
 
 def _ast_purity_violations(source: str) -> list[str]:
     tree = ast.parse(source)
     violations: list[str] = []
     actual_from_imports: list[tuple[str, tuple[str, ...]]] = []
+    actual_import_bindings: list[str] = []
     imported_names: set[str] = set()
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+
+    actual_class_names = tuple(
+        node.name for node in tree.body if isinstance(node, ast.ClassDef)
+    )
+    actual_function_names = tuple(
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+    if actual_class_names != EXPECTED_TOP_LEVEL_CLASS_NAMES:
+        violations.append("top-level class definitions do not match literal contract")
+    if actual_function_names != EXPECTED_TOP_LEVEL_FUNCTION_NAMES:
+        violations.append(
+            "top-level function definitions do not match literal contract"
+        )
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -82,7 +162,9 @@ def _ast_purity_violations(source: str) -> list[str]:
             module = node.module or ""
             names = tuple(alias.name for alias in node.names)
             actual_from_imports.append((module, names))
-            imported_names.update(alias.asname or alias.name for alias in node.names)
+            bindings = tuple(alias.asname or alias.name for alias in node.names)
+            actual_import_bindings.extend(bindings)
+            imported_names.update(bindings)
             if node.level != 0 or module not in PERMITTED_IMPORT_MODULES:
                 violations.append(f"from-import module is not permitted: {module}")
             if any(
@@ -92,10 +174,59 @@ def _ast_purity_violations(source: str) -> list[str]:
 
     if tuple(actual_from_imports) != PERMITTED_FROM_IMPORTS:
         violations.append("from-import shape does not match the literal contract")
+    if tuple(actual_import_bindings) != PERMITTED_IMPORT_BINDINGS:
+        violations.append("import bindings do not match the literal contract")
+
+    protected_names = (
+        set(PERMITTED_NAME_CALLS)
+        | set(PERMITTED_IMPORT_BINDINGS)
+        | {base for base, _attribute in PERMITTED_ATTRIBUTE_CALLS}
+    )
+    permitted_digest_assignments = 0
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and node.id == "__builtins__":
             violations.append("dynamic builtin namespace access is not permitted")
+        elif isinstance(node, ast.Name) and node.id in FORBIDDEN_NAME_REFERENCES:
+            violations.append(
+                f"forbidden name reference is not permitted: {node.id}"
+            )
+
+        if (
+            isinstance(node, ast.Name)
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and node.id in protected_names
+        ):
+            if node.id == "digest" and _is_exact_digest_assignment(node, parents):
+                permitted_digest_assignments += 1
+            else:
+                violations.append(
+                    f"protected name rebinding is not permitted: {node.id}"
+                )
+
+        if isinstance(node, ast.arg) and node.arg in protected_names:
+            violations.append(
+                f"protected name rebinding is not permitted: {node.arg}"
+            )
+
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node not in tree.body
+            and node.name in protected_names
+        ):
+            violations.append(
+                f"protected name rebinding is not permitted: {node.name}"
+            )
+
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr in DANGEROUS_INTROSPECTION_ATTRIBUTES
+        ):
+            violations.append(
+                "dangerous introspection attribute is not permitted: "
+                f"{node.attr}"
+            )
+
         if not isinstance(node, ast.Call):
             continue
 
@@ -128,6 +259,9 @@ def _ast_purity_violations(source: str) -> list[str]:
             violations.append(
                 f"callable AST shape is not permitted: {type(function).__name__}"
             )
+
+    if permitted_digest_assignments != 1:
+        violations.append("exact digest = sha256(...) assignment count must be one")
 
     return violations
 
@@ -465,6 +599,28 @@ def test_reducer_ast_has_only_pure_import_and_call_boundaries() -> None:
         (
             "callables[0]()",
             ("subscript callable resolution is not permitted",),
+        ),
+        (
+            'list = open\nlist("secret")',
+            (
+                "protected name rebinding is not permitted: list",
+                "forbidden name reference is not permitted: open",
+            ),
+        ),
+        (
+            'sha256 = __import__\nsha256("os")',
+            (
+                "protected name rebinding is not permitted: sha256",
+                "forbidden name reference is not permitted: __import__",
+            ),
+        ),
+        (
+            'canonicalize = dataclass.__globals__["sys"].modules["os"].getenv\n'
+            'canonicalize("HOME")',
+            (
+                "protected name rebinding is not permitted: canonicalize",
+                "dangerous introspection attribute is not permitted: __globals__",
+            ),
         ),
     ),
 )
