@@ -1,0 +1,40 @@
+{
+  "schema_version": "lane-v-scope/v1",
+  "task_id": "f70d24b0-767a-4a8c-98a4-f7114c50b34f",
+  "question_id": "opus-receipt-local-integration",
+  "trigger_kind": "verify-request",
+  "verification_mode": "codex-lane-v",
+  "verification_harness": "codex:lane-v-verifier",
+  "review_profile": "codex-lane-v",
+  "reviewed_base": {
+    "policy": "exact",
+    "commit": "3b9b5c9c47949624ca16f01d93ebfeac189ef457"
+  },
+  "requirement_paths": [
+    "coordination/mailbox/sent/2026-07-15T01-39-31Z-coordinator-to-all-coordination.md",
+    "coordination/mailbox/sent/2026-07-15T00-00-08Z-operator2-to-all-verification-report.md",
+    "coordination/mailbox/sent/2026-07-15T00-49-37Z-coordinator-to-all-coordination.md",
+    "scripts/prompts/opus_lane_v_advisory.authority.583cdcb5b5129b629ae4ada21627a4fc5bab1b9c.json"
+  ],
+  "allowed_path_roots": [
+    "ARCHITECTURE.md",
+    "coordination/bin/send-event",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
+    "coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json",
+    "coordination/verification/scopes/cc278e10-389d-484b-9d9b-84323fa76faa.json",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_verification_report_gate.py"
+  ],
+  "verification_commands": [
+    "env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_coordination_tooling.py tests/unit/test_check_go_schema.py tests/unit/test_opus_review_bridge.py tests/unit/test_opus_review_receipts.py tests/unit/test_verification_report_gate.py -q",
+    "env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_go_schema.py",
+    "env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/check_doc_claims.py --sha-refs",
+    "env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/ci_smoke.py"
+  ]
+}
