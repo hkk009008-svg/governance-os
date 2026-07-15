@@ -1,0 +1,38 @@
+{
+  "id": "coord-pipeline-level5-opus-receipt-integration-join",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-receipt-integration-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-receipt-integration"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*"
+  ],
+  "dependencies": [
+    "operator2-pipeline-level5-opus-receipt-integration-lanev"
+  ],
+  "acceptance": [
+    "Treat the user instruction authorizing local integration of reviewed head 4c49c43287a936d618bc5fcaa61a26b58b931fd0 as authority for the bounded local integration route only. It does not authorize remote publication or cleanup.",
+    "Remain blocked until Director2 creates the descriptor-bound merge, preserves the pre-existing root work exactly, advances local main through the merge, and emits one canonical verify-request; then require Operator2 to return one canonical GO, NITS, or FAIL for the integration-specific question.",
+    "On GO, refresh HEAD, mailbox, capacity, route, locks, smoke, protocol doctor, exact report evidence, retained worktrees, and root preservation evidence before closing this cycle. On NITS or FAIL, route only the bounded integration correction and keep the local state unpublished.",
+    "Do not treat the prior GO for reviewed head 4c49c43287a936d618bc5fcaa61a26b58b931fd0 as verification of the new merge topology or dirty-root preservation boundary. Do not author production behavior as coordinator."
+  ],
+  "done_evidence": [],
+  "next_recipient": "operator2",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-15-pipeline-level5-opus-receipt-integration-coordinator-join.json",
+    "coordination/capacity/packets/2026-07-15-pipeline-level5-opus-receipt-integration-director2-integration.json",
+    "coordination/capacity/packets/2026-07-15-pipeline-level5-opus-receipt-integration-operator2-lanev.json",
+    "coordination/mailbox/sent/2026-07-15T01-39-31Z-coordinator-to-all-coordination.md"
+  ]
+}

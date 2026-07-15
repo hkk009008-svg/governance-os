@@ -1,0 +1,61 @@
+{
+  "id": "director2-pipeline-level5-opus-receipt-integration-implementation",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-receipt-integration-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-receipt-integration"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "director2",
+  "packet_type": "director-implementation",
+  "allowed_paths": [
+    "ARCHITECTURE.md",
+    "coordination/bin/send-event",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
+    "coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json",
+    "coordination/verification/scopes/cc278e10-389d-484b-9d9b-84323fa76faa.json",
+    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_verification_report_gate.py"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Start only when local main equals the committed coordinator route that activates this packet, coordinator unread remains zero, Wave 2 remains MET, capacity and this route remain valid, locks remain empty, the shared index has no staged or unmerged entries, no Git operation marker exists, reviewed head 4c49c43287a936d618bc5fcaa61a26b58b931fd0 and its retained worktree remain unchanged and clean, and no replace, graft, sparse-checkout, case-folding, ignored-path, untracked-path, submodule, rename, deletion, or file-type contradiction appears.",
+    "Create a fresh branch and isolated integration worktree from the exact committed route head. Preserve branch codex/opus-unbound-candidate-director2-2026-07-15, worktree .worktrees/opus-unbound-candidate-director2-2026-07-15, reviewed head 4c49c43287a936d618bc5fcaa61a26b58b931fd0, trigger 062b44851325905d54fb9059c01b2d5e0b982982, all prior descriptors, reports, receipts, and runtime records unchanged.",
+    "Commit fresh descriptor coordination/verification/scopes/cc278e10-389d-484b-9d9b-84323fa76faa.json on the integration branch before the merge. Use trigger_kind verify-request, task_id cc278e10-389d-484b-9d9b-84323fa76faa, exact reviewed_base equal to the coordinator route commit, codex-lane-v verifier fields, requirement paths naming this route plus the prior binding GO and closeout, allowed roots equal to the twelve reviewed paths plus this descriptor, and exact env -u GIT_INDEX_FILE verification commands. This descriptor commit is mandatory Pipeline authority and must contain no production change.",
+    "From the descriptor commit D, construct exactly one no-fast-forward merge commit M in the clean integration worktree with first parent D and second parent 4c49c43287a936d618bc5fcaa61a26b58b931fd0. Use a fix subject and no Lane-V-Scope shipping trailer because authority is verify-request-only. Stop on any conflict or manual resolution. Prove D..M changes exactly the twelve reviewed paths, every reviewed-path blob and mode in M equals the reviewed head, every other M path equals D, and route-head..M changes only the descriptor plus those twelve paths.",
+    "Before updating root main, run the descriptor commands and focused integration checks against M in the clean integration worktree. Capture exact root tracked-WIP content, file type, Git mode, symlink target where applicable, xattr and ACL state when present, untracked inventory, ignored collision inventory, stash list, operation markers, and path hashes. Confirm ARCHITECTURE.md is the sole overlap with D..M and record its exact recovery identity.",
+    "For the one guarded root transition, keep local main at the exact route head, preserve the original ARCHITECTURE.md as a same-filesystem durable recovery object without patch conversion, temporarily restore only that path to the route-head version, and fast-forward local main to M with autostash explicitly disabled. Always restore the original ARCHITECTURE.md object exactly, including bytes and required metadata, before returning or stopping. All nonoverlapping user-work paths must remain untouched.",
+    "After the transition, require root HEAD and refs/heads/main to equal M; require M parents to remain D then 4c49c43287a936d618bc5fcaa61a26b58b931fd0; require the index tree to equal M with no staged or unmerged entries; require reviewed-path index blobs and modes to equal the reviewed head; require every pre-existing user-work path and inventory to equal its baseline; and require the stash namespace and Git operation-marker set to equal their baselines. ARCHITECTURE.md must remain the expected unstaged user modification against M.",
+    "Only after those postconditions pass, commit one canonical Director2-to-Operator2 verify-request directly after M on main with exactly one Event type, full Reviewed head M, full Reviewed base equal to the coordinator route commit, and the exact descriptor reference and digest. The neutral question is whether local integration faithfully imports the reviewed blobs while preserving main history and all pre-existing user work. Never fall back to shipping-trigger authority.",
+    "No provider invocation, old descriptor or receipt mutation, approval-mode change, push, remote publication, branch deletion, worktree removal, cursor consume, lock action, pod action, production generation, unrelated cleanup, or patch-based restoration. Stop and report the exact blocker if any precondition, test, merge invariant, compare-and-swap expectation, recovery step, or postcondition fails."
+  ],
+  "done_evidence": [],
+  "next_recipient": "operator2",
+  "status": "active",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "ARCHITECTURE.md",
+    "coordination/bin/send-event",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
+    "coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json",
+    "coordination/verification/scopes/cc278e10-389d-484b-9d9b-84323fa76faa.json",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_verification_report_gate.py"
+  ]
+}

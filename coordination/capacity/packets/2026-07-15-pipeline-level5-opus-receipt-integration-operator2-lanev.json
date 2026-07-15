@@ -1,0 +1,61 @@
+{
+  "id": "operator2-pipeline-level5-opus-receipt-integration-lanev",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-receipt-integration-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-receipt-integration"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator2",
+  "packet_type": "operator-verification",
+  "allowed_paths": [
+    "ARCHITECTURE.md",
+    "coordination/bin/send-event",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
+    "coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json",
+    "coordination/verification/scopes/cc278e10-389d-484b-9d9b-84323fa76faa.json",
+    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md",
+    "coordination/mailbox/sent/*operator2-to-all-verification-report.md",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_verification_report_gate.py"
+  ],
+  "dependencies": [
+    "director2-pipeline-level5-opus-receipt-integration-implementation"
+  ],
+  "acceptance": [
+    "Remain blocked until one canonical committed Director2-to-Operator2 verify-request strictly after merge head M binds the full coordinator route base and fresh descriptor cc278e10-389d-484b-9d9b-84323fa76faa with the exact digest. Validate verify-request authority only; never reconstruct fields or fall back to a shipping trigger.",
+    "Answer the distinct integration question, not the already-closed implementation question: prove M has first parent equal to the descriptor commit and second parent 4c49c43287a936d618bc5fcaa61a26b58b931fd0; prove descriptor-commit..M contains exactly the twelve reviewed paths with blob and mode equality to the reviewed head; prove route-base..M adds only the descriptor and those twelve paths; and prove all nonreviewed tracked content remains first-parent content.",
+    "Verify root main and HEAD reached M before the verify-request, the root index matches M, ARCHITECTURE.md remains only the expected unstaged overlapping user modification, every pre-existing tracked-WIP content and metadata hash matches its pre-transition witness, the untracked and ignored-collision inventories are preserved except any explicitly retained recovery evidence, the stash baseline is unchanged, and no merge, rebase, cherry-pick, sequencer, bisect, lock, or autostash residue remains.",
+    "Run every descriptor command plus at minimum bash -n coordination/bin/send-event; the five-file suite tests/unit/test_coordination_tooling.py tests/unit/test_check_go_schema.py tests/unit/test_opus_review_bridge.py tests/unit/test_opus_review_receipts.py tests/unit/test_verification_report_gate.py; scripts/check_go_schema.py; scripts/check_doc_claims.py --sha-refs; scripts/ci_smoke.py; scripts/protocol_doctor.py --wave 2 with this route; provider-free structural resolution of the verify-request; git diff --check for route-base..M; and exact topology, blob, mode, path, index, WIP, inventory, stash, and operation-state checks.",
+    "Because this is a new integration-specific adversarial boundary, resolve the fresh descriptor and make at most one standing-policy Opus attempt for this exact task, head, trigger, and scope. Keep every prior receipt terminal. On process_failed or transport unavailability, record explicit degraded evidence with zero retry or fallback; Opus remains advisory and never supplies the Operator2 verdict.",
+    "Return exactly one canonical lane-v-report/v2 GO, NITS, or FAIL. Any unresolved preservation, topology, authority, hook, path-collision, test, or provider finding blocks GO according to normal severity rules. Do not repair findings, merge, push, amend M, consume, claim locks, retry, clean branches or worktrees, remove recovery evidence, or alter unrelated user work."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "ARCHITECTURE.md",
+    "coordination/bin/send-event",
+    "coordination/verification/scopes/256b36e2-2fe4-43e8-b2e3-0a99a07e6229.json",
+    "coordination/verification/scopes/30f5c1d6-6da7-4d19-a70f-1ed1a2c103f9.json",
+    "coordination/verification/scopes/cc278e10-389d-484b-9d9b-84323fa76faa.json",
+    "scripts/check_go_schema.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/verification_report_gate.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_verification_report_gate.py"
+  ]
+}

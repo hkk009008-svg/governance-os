@@ -1,0 +1,27 @@
+{
+  "id": "director-pipeline-level5-opus-receipt-integration-standby",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-receipt-integration-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-receipt-integration"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "director",
+  "packet_type": "idle",
+  "allowed_paths": [],
+  "dependencies": [],
+  "acceptance": [
+    "Pair A Director is excepted because the integration has one shared local-main and user-WIP preservation boundary already owned by Director2. A parallel implementation would duplicate the same ref and working-tree side effects.",
+    "Do not implement, merge, create a descriptor or trigger, alter the root worktree, invoke a provider, consume, route, claim locks, or publish. Report only a contradiction, changed authority boundary, or newer durable state."
+  ],
+  "done_evidence": [
+    "Coordinator completed the bounded capacity and consultation preflight and assigned one executor for the indivisible local-main transition."
+  ],
+  "next_recipient": "coordinator",
+  "status": "excepted",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": []
+}
