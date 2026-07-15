@@ -123,7 +123,7 @@ Required helper defaults and overrides:
 - Shell/config/hook paths have no Python helper classification, but remain
   exact source/executor boundaries in their owning components.
 
-- [ ] **Step 1: Add the independent RED ownership test**
+- [x] **Step 1: Add the independent RED ownership test**
 
   Add `REQUIRED_SURFACE_OWNERS`, replace the singular read-only component ID
   with an explicit set, allow empty module rules only when no Python source is
@@ -151,7 +151,7 @@ Required helper defaults and overrides:
       assert owners == [expected_owner]
   ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
   Run:
 
@@ -163,7 +163,7 @@ Required helper defaults and overrides:
   Expected: failure naming the currently missing required owners; no syntax or
   fixture-parse error.
 
-- [ ] **Step 3: Extend the fixture minimally**
+- [x] **Step 3: Extend the fixture minimally**
 
   Add the exact source/reader/writer roots and helper rules above. Record
   `coordination/mailbox/seen`, `coordination/locks`, `coordination/presence`,
@@ -173,11 +173,11 @@ Required helper defaults and overrides:
   tools are compact route authority, and do not claim the status component is
   read-only.
 
-- [ ] **Step 4: Run the focused test and verify GREEN**
+- [x] **Step 4: Run the focused test and verify GREEN**
 
   Run the Step-2 command. Expected: all inventory tests pass.
 
-- [ ] **Step 5: Run changed-surface regressions**
+- [x] **Step 5: Run changed-surface regressions**
 
   ```sh
   env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python \
@@ -199,7 +199,7 @@ Required helper defaults and overrides:
 
   Expected: PASS with no xpass or warning-dependent success.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
   ```sh
   env -u GIT_INDEX_FILE git add \
@@ -217,20 +217,20 @@ Required helper defaults and overrides:
 - Modify: `.superpowers/sdd/phase1-task-5-report.md`
 - Modify: this plan
 
-- [ ] **Step 1: Mark Phase-1 truth, not aspiration**
+- [x] **Step 1: Mark Phase-1 truth, not aspiration**
 
   Mark all five Phase-1 guide items complete only after Task 1 is green. Add a
   compact closure note naming the independent owner oracle, total mappings,
   committed cohort, reporter contract, epoch-0/v1 mirror, and the exact Task-1
   test command/result.
 
-- [ ] **Step 2: Correct stale publication wording**
+- [x] **Step 2: Correct stale publication wording**
 
   Replace statements that the cohort/report are uncommitted with their actual
   commit `8149df28b45bd2b0b159b243923d0ab439c3d815` and integration merge
   `d07fc4d`. Keep the explicit statement that no activation occurred.
 
-- [ ] **Step 3: Mark this plan complete and verify documentation**
+- [x] **Step 3: Mark this plan complete and verify documentation**
 
   ```sh
   env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/ci_smoke.py
@@ -238,7 +238,7 @@ Required helper defaults and overrides:
   env -u GIT_INDEX_FILE git status --short
   ```
 
-- [ ] **Step 4: Commit Task 2**
+- [x] **Step 4: Commit Task 2**
 
   ```sh
   env -u GIT_INDEX_FILE git add \

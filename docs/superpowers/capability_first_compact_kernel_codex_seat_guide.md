@@ -297,13 +297,13 @@ Prune after cutover:
 **Surfaces:** `governance.toml`, the capacity/effectiveness/packet-state tools,
 existing route/verification/capability tests, and new golden replay fixtures.
 
-- [ ] Inventory every live authority source, reader, writer, effect executor,
+- [x] Inventory every live authority source, reader, writer, effect executor,
   provider adapter, and public helper; classify helpers under Section 7.
-- [ ] Encode both Section-4 tables as total parameterized mappings and commit
+- [x] Encode both Section-4 tables as total parameterized mappings and commit
   replay vectors for forged principals, duplicate IDs, stale versions,
   dependency changes, ambiguous effects, and provider dispatch. Phase 1 records
   these future controls without claiming enforcement; Phases 2-3 enforce them.
-- [ ] Benchmark the five Section-2 profiles five times on one host and persist
+- [x] Benchmark the five Section-2 profiles five times on one host and persist
   cohort, raw runs, medians, and immutable review identities under `logs/`.
   Measure with a monotonic clock from accepted input to first executable tool
   callback and from accepted route event to published GO; missing endpoints
@@ -325,12 +325,44 @@ existing route/verification/capability tests, and new golden replay fixtures.
   marker effects require `--authorize-local-markers`; no provider, mailbox,
   branch, push, or live protocol effect is authorized. The committed-byte
   preflight must pass before canary or collection.
-- [ ] Make the reporter declare protocol roots, accepted-result denominators,
+- [x] Make the reporter declare protocol roots, accepted-result denominators,
   and artifact classes. A standby artifact records only waiting, observing,
   utilization, or no-op readiness; duplicate reviews share exact
   `(base, head, scope digest, question digest)` identity, not reason text.
-- [ ] Add `[protocol.kernel]` epoch `0`/writer `v1` to `governance.toml` only as
+- [x] Add `[protocol.kernel]` epoch `0`/writer `v1` to `governance.toml` only as
   a declarative mirror, never the activation high-water mark.
+
+**Phase-1 closure evidence (2026-07-15):** `REQUIRED_SURFACE_OWNERS` is the
+independent ownership oracle; the committed compact-state fixture validates
+49 mappings across 7 domains; the 25-run cohort and report are committed at
+`8149df28b45bd2b0b159b243923d0ab439c3d815` and integrated by merge `d07fc4d`;
+the reporter's `VerifiedBaselineProvenance` contract binds the committed
+contract/observation digests, cohort, collector, source, Codex identity, and
+exactly 25 run-record digests before `operational_complete`; and the declarative
+kernel mirror remains epoch `0`/writer `v1`. No compact path was activated.
+Task 1 closed with the exact changed-surface command and result:
+
+```sh
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python \
+  -m pytest -q \
+  tests/unit/test_compact_kernel_surface_inventory.py \
+  tests/unit/test_protocol_mailbox.py \
+  tests/unit/test_governance_hardening.py \
+  tests/unit/test_codex_ledger_bridge.py \
+  tests/unit/test_protocol_prompt_sync.py \
+  tests/unit/test_protocol_capacity.py \
+  tests/unit/test_route_lineage.py \
+  tests/unit/test_seat_status_all.py \
+  tests/unit/test_status.py \
+  tests/unit/test_compact_state_mapping.py \
+  tests/unit/test_codex_seat_launcher.py \
+  tests/unit/test_threeway_activation_scripts.py \
+  tests/unit/test_threeway_constants.py
+```
+
+```text
+267 passed in 6.68s
+```
 
 **Gate:** current v1 behavior is frozen by golden replay and mapping tests; all
 public helpers are classified; no compact path is authoritative.

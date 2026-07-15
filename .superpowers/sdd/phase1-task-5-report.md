@@ -1,7 +1,8 @@
 # Phase 1 Task 5 Runtime Cohort Report
 
-Status: complete and operationally verified; no activation, commit, push, or
-merge was performed.
+Status: complete and operationally verified. Cohort evidence and this report
+were committed at `8149df28b45bd2b0b159b243923d0ab439c3d815` and integrated by
+merge `d07fc4d`; no activation occurred.
 
 ## Sealed identity
 
@@ -77,6 +78,7 @@ Fresh verification after collection produced:
   its sole Important finding was the missing report/stale plan state corrected
   by this closure update.
 
-Generated evidence and this report remain local and uncommitted pending a
-separate scoped commit decision. The compact kernel remains non-authoritative;
-this cohort does not activate it or change current v1 route/reducer semantics.
+Generated evidence and this report are committed at
+`8149df28b45bd2b0b159b243923d0ab439c3d815` and integrated by merge `d07fc4d`.
+The compact kernel remains non-authoritative; publication and integration did
+not activate it or change current v1 route/reducer semantics.

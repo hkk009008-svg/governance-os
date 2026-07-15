@@ -4,8 +4,9 @@
 > `superpowers:test-driven-development` for every behavior change and obtain an
 > independent task review before accepting the collector. The collector is
 > sealed at `01d77653d5b7257bcef7c2517d958824eb8ff8a9`; generated cohort evidence
-> and this closure update remain uncommitted. Do not commit without separate
-> user authority.
+> and the closure report were committed at
+> `8149df28b45bd2b0b159b243923d0ab439c3d815` and integrated by merge `d07fc4d`.
+> That publication did not activate a compact path; v1 remains authoritative.
 
 **Goal:** Collect one trusted, reproducible 25-run capability-first baseline
 without constraining model tool choice or mutating live protocol authority.
