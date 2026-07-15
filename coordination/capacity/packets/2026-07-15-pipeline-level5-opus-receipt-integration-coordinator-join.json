@@ -18,10 +18,10 @@
     "operator2-pipeline-level5-opus-receipt-integration-lanev"
   ],
   "acceptance": [
-    "Treat the user instruction authorizing local integration of reviewed head 4c49c43287a936d618bc5fcaa61a26b58b931fd0 as authority for the bounded local integration route only. It does not authorize remote publication or cleanup.",
-    "Remain blocked until Director2 creates the descriptor-bound merge, preserves the pre-existing root work exactly, advances local main through the merge, and emits one canonical verify-request; then require Operator2 to return one canonical GO, NITS, or FAIL for the integration-specific question.",
-    "On GO, refresh HEAD, mailbox, capacity, route, locks, smoke, protocol doctor, exact report evidence, retained worktrees, and root preservation evidence before closing this cycle. On NITS or FAIL, route only the bounded integration correction and keep the local state unpublished.",
-    "Do not treat the prior GO for reviewed head 4c49c43287a936d618bc5fcaa61a26b58b931fd0 as verification of the new merge topology or dirty-root preservation boundary. Do not author production behavior as coordinator."
+    "Treat blocker b0a8f91a61999b89ffac2efb3d90a8538e4631ca as proof that the first integration request was structurally invalid before provider state. Preserve merge M, the invalid descriptor and request, root recovery evidence, reviewed branch and worktree, and all user work unchanged.",
+    "This coordinator counter-refinement supersedes only the prior direct-after-M trigger topology. The old descriptor remains immutable invalid evidence; D2 is a fresh authority artifact rather than an amendment or addendum. Remain blocked until Director2 produces adjacent fresh D2 and T2 commits, provider-free validation passes before main moves, local main reaches T2 by guarded fast-forward with WIP unchanged, and Operator2 returns exactly one canonical integration-specific GO, NITS, or FAIL.",
+    "On GO, refresh HEAD, mailbox, capacity, route, locks, isolated clean-tree smoke, root smoke, protocol doctor, exact report evidence, retained worktrees, receipt state, and root-preservation witnesses before closing. On NITS or FAIL, route only the bounded correction and keep all local state unpublished.",
+    "Do not treat the earlier implementation GO, the merge pretests, this consultation, capacity validation, or the invalid request as verification of the corrected trigger or final integration boundary. Do not author production behavior as coordinator."
   ],
   "done_evidence": [],
   "next_recipient": "operator2",
@@ -33,6 +33,9 @@
     "coordination/capacity/packets/2026-07-15-pipeline-level5-opus-receipt-integration-coordinator-join.json",
     "coordination/capacity/packets/2026-07-15-pipeline-level5-opus-receipt-integration-director2-integration.json",
     "coordination/capacity/packets/2026-07-15-pipeline-level5-opus-receipt-integration-operator2-lanev.json",
-    "coordination/mailbox/sent/2026-07-15T01-39-31Z-coordinator-to-all-coordination.md"
+    "coordination/mailbox/sent/2026-07-15T01-39-31Z-coordinator-to-all-coordination.md",
+    "coordination/mailbox/sent/2026-07-15T02-14-41Z-director2-to-all-coordination.md",
+    "coordination/mailbox/sent/2026-07-15T03-43-57Z-coordinator-to-all-coordination.md",
+    "coordination/verification/scopes/f70d24b0-767a-4a8c-98a4-f7114c50b34f.json"
   ]
 }
