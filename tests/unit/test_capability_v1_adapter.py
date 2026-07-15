@@ -733,6 +733,16 @@ def test_corpus_guard_binds_history_case_to_final_observation() -> None:
     _assert_corpus_error(corpus, "legacy_invalid")
 
 
+def test_corpus_guard_binds_history_case_to_replay_terminal() -> None:
+    corpus = _load_strict(CORPUS)
+    case = _case(corpus, "history:sequential-update")
+    case["source_records"].reverse()
+    case["record_orders"] = [[1, 0]]
+    case["mapping_row_id"] = "capacity-ready"
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
 def test_corpus_guard_rejects_falsy_non_list_record_order() -> None:
     corpus = _load_strict(CORPUS)
     case = _case(corpus, "mapping:capability-issued")

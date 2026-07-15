@@ -1739,9 +1739,10 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
                 declared["value"],
                 tuple(sorted(declared["context"].items())),
             )
-            if (
-                observation_rows[-1] != declared
-                or observation_keys[-1] != declared_key
+            if any(
+                not order
+                or observation_keys[order[-1]] != declared_key
+                for order in normalized_orders
             ):
                 raise _legacy_invalid()
         if len(projections) != len(observation_rows):
