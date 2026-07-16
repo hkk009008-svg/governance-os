@@ -1,0 +1,41 @@
+{
+  "id": "coord-chatgpt-local-reprepare-task1-join",
+  "wave": 2,
+  "cycle": "chatgpt-local-reprepare-task1-singular-lanev-2026-07-16",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "allowed_paths": [
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-director-candidate.json",
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-operator-lanev.json",
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-director2-preflight.json",
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-operator2-preflight.json",
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-coordinator-join.json",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*chatgpt*.md"
+  ],
+  "dependencies": [
+    "operator-chatgpt-local-reprepare-task1-lanev"
+  ],
+  "acceptance": [
+    "Remain blocked while Director constructs exact review-only P..C from frozen heads 3dcff96948003d510451266b017895b42bd73c2e and 233ef8126bc75dc6a2a13adcb70810b619faa85c and while Pair-A Operator lacks a later activation route. Capacity or route validity is not correctness evidence.",
+    "After Director returns exact P/M1/C/D/T evidence, require the exact 22-path range, no conflict or contamination, immutable source heads, clean candidate, provider-free authority resolution, and zero provider process attempts and receipt mutations. Opus Stage A must terminally clear before authoring the later Operator activation token.",
+    "Close only from one schema-valid committed Pair-A Operator GO for exact P..C with completed and reconciled non-author Opus evidence. NITS, FAIL, unavailable, uncertain delivery, stale authority, or different range stops. The candidate is review-only and never an integration input; later integration merges only the original frozen heads.",
+    "On GO, resume the original approved integration plan subject to 22-path main-to-P equivalence. Do not merge candidate history, invoke ChatGPT Pro, open a browser, retry a provider, mutate receipts, push, publish, clean up, consume cursors, or alter the unrelated Opus lane. The next recipient remains coordinator until a lawful transition."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-director-candidate.json",
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-operator-lanev.json",
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-director2-preflight.json",
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-operator2-preflight.json",
+    "coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-coordinator-join.json"
+  ]
+}

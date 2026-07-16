@@ -1,0 +1,56 @@
+{
+  "id": "operator-chatgpt-local-reprepare-task1-lanev",
+  "wave": 2,
+  "cycle": "chatgpt-local-reprepare-task1-singular-lanev-2026-07-16",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "allowed_paths": [
+    "/Users/hyungkoookkim/Pipeline/.worktrees/chatgpt-task1-singular-lanev-candidate-2026-07-16/",
+    "coordination/verification/scopes/f1e1ad5f-cb1b-4650-93ad-bf8701069f32.json",
+    "coordination/mailbox/sent/*-director-to-operator-verify-request.md",
+    "coordination/mailbox/sent/*-operator-to-all-verification-report.md"
+  ],
+  "dependencies": [
+    "director-chatgpt-local-reprepare-task1-candidate"
+  ],
+  "acceptance": [
+    "Remain blocked after this route. Do not begin Lane V from candidate construction alone. A later coordinator activation must bind exact P/C/D/T, terminally clear Opus Stage A, absent prospective receipt and lock, one exact Operator executor token, and one canonical trigger-bound Opus command.",
+    "When later activated, independently re-prove frozen heads 3dcff96948003d510451266b017895b42bd73c2e and 233ef8126bc75dc6a2a13adcb70810b619faa85c, exact P..C 22-path status union, parent order, merge-tree OIDs, clean candidate, descriptor and request authority, all correction-design failure cases, and the accepted split unnamed-base64 residual. Any conflict, drift, contamination, or stale trigger is FAIL; never reconstruct authority or hand-resolve a merge.",
+    "The candidate is review-only and never an integration input. Provider process attempts and receipt mutations are zero until the later activation. Do not invoke ChatGPT Pro or open a browser. Any later Opus unavailable or uncertain result is visible, never retried, and blocks this independence gate absent a new user-authorized harness.",
+    "Issue exactly one GO, NITS, or FAIL only after the later activation and exact independent review. Return the committed report to coordinator; the next recipient is coordinator. Do not edit implementation, integrate, push, publish, clean up, consume a cursor, or act on the unrelated Opus Stage-A lane."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    ".agents/skills/chatgpt-pro-consultation/SKILL.md",
+    ".agents/skills/four-seat-protocol/SKILL.md",
+    ".agents/skills/seat-coordinator/SKILL.md",
+    ".agents/skills/seat-director/SKILL.md",
+    ".agents/skills/seat-operator/SKILL.md",
+    ".claude/skills/four-seat-protocol/SKILL.md",
+    ".claude/skills/seat-coordinator/SKILL.md",
+    ".claude/skills/seat-director/SKILL.md",
+    ".claude/skills/seat-operator/SKILL.md",
+    ".codex/agents/protocol-coordinator.toml",
+    ".codex/agents/protocol-director.toml",
+    ".codex/agents/protocol-operator.toml",
+    ".codex/agents/readiness-bridge.toml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/protocol/claude/continuation.md",
+    "docs/protocol/codex/continuation.md",
+    "docs/superpowers/plans/2026-07-15-chatgpt-local-reprepare-flexibility.md",
+    "scripts/chatgpt_pro_consult.py",
+    "scripts/codex_protocol_model.py",
+    "tests/unit/test_chatgpt_pro_consult.py",
+    "tests/unit/test_protocol_prompt_sync.py",
+    "coordination/verification/scopes/f1e1ad5f-cb1b-4650-93ad-bf8701069f32.json"
+  ]
+}
