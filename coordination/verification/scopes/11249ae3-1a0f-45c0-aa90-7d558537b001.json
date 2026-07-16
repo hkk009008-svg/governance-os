@@ -24,6 +24,8 @@
     "DECISIONS.md",
     "coordination/bin",
     "coordination/capacity/packets",
+    "coordination/mailbox/sent",
+    "docs/PROTOCOL-RULES-LOG.md",
     "docs/protocol",
     "logs/capability-first",
     "scripts",
