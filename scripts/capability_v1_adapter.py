@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, fields, replace
 from hashlib import sha256
 import json
 import os
@@ -129,6 +130,93 @@ _SOURCE_PATHS = (
 _MAPPING_SCHEMA = "compact-state-mapping/v1"
 _MISUSE_SCHEMA = "compact-kernel-misuse-vectors/v1"
 _REPLAY_SCHEMA = "compact-kernel-replay/v2"
+_REPLAY_VECTOR_FIELDS = frozenset(
+    {"id", "misuse_vector_id", "events", "permutations", "expected"}
+)
+_REPLAY_SUCCESS_FIELDS = frozenset(
+    {
+        "applied_transition_ids",
+        "idempotent_transition_ids",
+        "units",
+        "report_digest",
+    }
+)
+_REPLAY_ERROR_FIELDS = frozenset({"error_code"})
+_REPLAY_UNIT_FIELDS = frozenset({"work_id", "unit_id", "unit_version"})
+_REPLAY_REPORT_FIELDS = (
+    "mode",
+    "state_digest",
+    "applied_transition_ids",
+    "idempotent_transition_ids",
+    "units",
+)
+_REPLAY_REPORT_UNIT_FIELDS = (
+    "work_id",
+    "unit_id",
+    "unit_version",
+    "mutable_scope_ref",
+    "scope_repository",
+    "scope_paths",
+    "scope_lock_domains",
+    "mutable_scope_digest",
+    "content_digest",
+    "dependency_digest",
+    "acceptance_digest",
+    "evidence_digest",
+    "precondition_digest",
+)
+_REPLAY_MISUSE_ORACLE = {
+    "exact_duplicate_collapses": "duplicate_transition_id_identical_payload",
+    "changed_duplicate_conflicts": "duplicate_transition_id_changed_payload",
+    "stale_expected_version": "stale_unit_version",
+    "stale_activation_epoch": "stale_activation_epoch",
+    "actor_cross_binding_replay": "forged_self_asserted_principal",
+}
+_REPLAY_PERMUTATION_ORACLE = {
+    "independent_order_a": (("alpha", "beta"),),
+    "independent_order_b": (("beta", "alpha"),),
+    "exact_duplicate_collapses": (("event", "event"),),
+    "changed_duplicate_conflicts": (
+        ("original", "changed"),
+        ("changed", "original"),
+    ),
+    "stale_expected_version": (
+        ("initial", "stale"),
+        ("stale", "initial"),
+    ),
+    "stale_activation_epoch": (("stale_epoch",),),
+    "actor_cross_binding_replay": (("cross_binding",),),
+    "disjoint_scopes_merge": (("alpha", "beta"), ("beta", "alpha")),
+    "ancestor_scope_overlap": (("alpha", "beta"), ("beta", "alpha")),
+    "lock_domain_overlap": (("alpha", "beta"), ("beta", "alpha")),
+    "scope_digest_mismatch": (("mismatch",),),
+    "same_unit_scope_change_conflicts": (
+        ("initial", "changed"),
+        ("changed", "initial"),
+    ),
+    "route_null_to_named_conflicts": (
+        ("initial", "changed"),
+        ("changed", "initial"),
+    ),
+    "work_revision_gap": (("initial", "gap"), ("gap", "initial")),
+    "nullable_and_string_units_order": (
+        ("null", "named"),
+        ("named", "null"),
+    ),
+    "changed_dependency_bumps_version": (
+        ("target_initial", "other_initial", "target_update"),
+        ("target_update", "other_initial", "target_initial"),
+    ),
+    "equivalent_ref_order_normalizes": (
+        ("original", "reordered"),
+        ("reordered", "original"),
+    ),
+    "web_research_observation": (
+        ("initial", "web_update"),
+        ("web_update", "initial"),
+    ),
+    "request_close_is_observation": (("request_close",),),
+}
 _MISUSE_VECTOR_FIELDS = frozenset(
     {
         "id",
@@ -1520,6 +1608,261 @@ def _scope_from_fixture(value: object) -> capability_reducer.ResolvedScope:
     )
 
 
+def _replay_fixture_result(
+    value: object,
+) -> tuple[list[dict[str, object]], int]:
+    fixture = _require_exact_object(
+        value,
+        frozenset({"schema_version", "actors", "scopes", "vectors"}),
+    )
+    if fixture["schema_version"] != _REPLAY_SCHEMA:
+        raise _legacy_invalid()
+
+    actor_fields = frozenset(
+        {
+            "binding_id",
+            "binding_digest",
+            "repository",
+            "principal",
+            "allowed_actions",
+            "user_authorized_actions",
+            "parent_binding_id",
+            "parent_allowed_actions",
+            "attested",
+            "expired",
+            "revoked",
+        }
+    )
+    actor_values = fixture["actors"]
+    if type(actor_values) is not dict or not actor_values:
+        raise _legacy_invalid()
+    actors: dict[str, capability_reducer.ActorContext] = {}
+    for lookup, value in actor_values.items():
+        lookup = _require_string(lookup, capability_reducer.DIGEST_PATTERN)
+        raw = _require_exact_object(value, actor_fields)
+        for field_name in ("allowed_actions", "user_authorized_actions"):
+            items = _require_string_list(raw[field_name])
+            if items != sorted(items):
+                raise _legacy_invalid()
+        parent_actions = raw["parent_allowed_actions"]
+        if parent_actions is not None:
+            normalized_parent = _require_string_list(parent_actions)
+            if normalized_parent != sorted(normalized_parent):
+                raise _legacy_invalid()
+        try:
+            actor, _actor_bytes = capability_reducer._validate_actor(
+                _actor_from_fixture(raw)
+            )
+        except Exception:
+            raise _legacy_invalid() from None
+        actors[lookup] = actor
+
+    scope_values = fixture["scopes"]
+    if type(scope_values) is not dict or not scope_values:
+        raise _legacy_invalid()
+    scopes: dict[str, capability_reducer.ResolvedScope] = {}
+    for ref, value in scope_values.items():
+        ref = _require_string(ref, capability_reducer.REF_PATTERN)
+        raw = _require_exact_object(
+            value, frozenset({"repository", "paths", "lock_domains"})
+        )
+        for field_name in ("paths", "lock_domains"):
+            items = _require_string_list(raw[field_name])
+            if items != sorted(items):
+                raise _legacy_invalid()
+        try:
+            scopes[ref] = capability_reducer._normalize_scope(
+                _scope_from_fixture(raw)
+            )
+        except Exception:
+            raise _legacy_invalid() from None
+
+    vector_values = fixture["vectors"]
+    if type(vector_values) is not list or not vector_values:
+        raise _legacy_invalid()
+    vectors: list[dict[str, object]] = []
+    seen_ids: set[str] = set()
+    used_actor_lookups: set[str] = set()
+    used_scope_refs: set[str] = set()
+    permutation_count = 0
+    for value in vector_values:
+        vector = _require_exact_object(value, _REPLAY_VECTOR_FIELDS)
+        vector_id = _require_string(vector["id"], capability_reducer.ID_PATTERN)
+        if vector_id in seen_ids or vector_id not in _REPLAY_PERMUTATION_ORACLE:
+            raise _legacy_invalid()
+        seen_ids.add(vector_id)
+        if vector["misuse_vector_id"] != _REPLAY_MISUSE_ORACLE.get(vector_id):
+            raise _legacy_invalid()
+
+        event_values = vector["events"]
+        if type(event_values) is not dict or not event_values:
+            raise _legacy_invalid()
+        events: dict[str, capability_reducer.TransitionEnvelope] = {}
+        for label, event_value in event_values.items():
+            label = _require_string(label, capability_reducer.ID_PATTERN)
+            try:
+                event = capability_reducer.parse_transition(event_value)
+            except Exception:
+                raise _legacy_invalid() from None
+            events[label] = event
+            used_actor_lookups.add(event.actor_binding_digest)
+            used_scope_refs.add(event.mutable_scope_ref)
+
+        permutation_values = vector["permutations"]
+        if type(permutation_values) is not list or not permutation_values:
+            raise _legacy_invalid()
+        permutations: list[tuple[str, ...]] = []
+        for permutation_value in permutation_values:
+            if type(permutation_value) is not list or not permutation_value:
+                raise _legacy_invalid()
+            permutation = tuple(
+                _require_string(label, capability_reducer.ID_PATTERN)
+                for label in permutation_value
+            )
+            if any(label not in events for label in permutation):
+                raise _legacy_invalid()
+            if set(permutation) != set(events):
+                raise _legacy_invalid()
+            permutations.append(permutation)
+        if Counter(permutations) != Counter(_REPLAY_PERMUTATION_ORACLE[vector_id]):
+            raise _legacy_invalid()
+        permutation_count += len(permutations)
+
+        expected_value = vector["expected"]
+        if type(expected_value) is not dict:
+            raise _legacy_invalid()
+        expected_error: str | None = None
+        expected_applied: tuple[str, ...] = ()
+        expected_idempotent: tuple[str, ...] = ()
+        expected_units: list[dict[str, object]] = []
+        expected_report_digest: str | None = None
+        if set(expected_value) == _REPLAY_ERROR_FIELDS:
+            expected_error = _require_string(
+                expected_value["error_code"], capability_reducer.ID_PATTERN
+            )
+        else:
+            expected = _require_exact_object(
+                expected_value, _REPLAY_SUCCESS_FIELDS
+            )
+            expected_report_digest = _require_string(
+                expected["report_digest"], capability_reducer.DIGEST_PATTERN
+            )
+            normalized_identifiers: list[tuple[str, ...]] = []
+            for field_name in (
+                "applied_transition_ids",
+                "idempotent_transition_ids",
+            ):
+                identifiers = _require_string_list(expected[field_name])
+                if identifiers != sorted(identifiers):
+                    raise _legacy_invalid()
+                normalized_identifiers.append(
+                    tuple(
+                        _require_string(item, capability_reducer.ID_PATTERN)
+                        for item in identifiers
+                    )
+                )
+            expected_applied, expected_idempotent = normalized_identifiers
+            unit_values = expected["units"]
+            if type(unit_values) is not list:
+                raise _legacy_invalid()
+            unit_keys: list[tuple[str, int, str]] = []
+            for unit_value in unit_values:
+                unit = _require_exact_object(unit_value, _REPLAY_UNIT_FIELDS)
+                work_id = _require_string(
+                    unit["work_id"], capability_reducer.ID_PATTERN
+                )
+                unit_id = _require_nullable_string(
+                    unit["unit_id"], capability_reducer.ID_PATTERN
+                )
+                _require_integer(unit["unit_version"], 1)
+                unit_keys.append(capability_reducer.unit_key(work_id, unit_id))
+                expected_units.append(unit)
+            if unit_keys != sorted(unit_keys) or len(unit_keys) != len(set(unit_keys)):
+                raise _legacy_invalid()
+
+        for permutation in permutations:
+            try:
+                report = capability_reducer.reduce_protocol_state(
+                    tuple(events[label] for label in permutation),
+                    resolve_actor=actors.__getitem__,
+                    resolve_scope=scopes.__getitem__,
+                    activation=capability_reducer.ActivationState(epoch=0),
+                )
+            except capability_reducer.ReducerError as error:
+                if expected_error is not None and error.code == expected_error:
+                    continue
+                raise _legacy_invalid() from None
+            except Exception:
+                raise _legacy_invalid() from None
+            if expected_error is not None:
+                raise _legacy_invalid()
+            if (
+                type(report) is not capability_reducer.KernelReport
+                or tuple(field.name for field in fields(report))
+                != _REPLAY_REPORT_FIELDS
+                or type(report.units) is not tuple
+            ):
+                raise _legacy_invalid()
+            unit_mappings: list[dict[str, object]] = []
+            for unit in report.units:
+                if (
+                    type(unit) is not capability_reducer.UnitSnapshot
+                    or tuple(field.name for field in fields(unit))
+                    != _REPLAY_REPORT_UNIT_FIELDS
+                ):
+                    raise _legacy_invalid()
+                unit_mappings.append(
+                    {
+                        "work_id": unit.work_id,
+                        "unit_id": unit.unit_id,
+                        "unit_version": unit.unit_version,
+                        "mutable_scope_ref": unit.mutable_scope_ref,
+                        "scope_repository": unit.scope_repository,
+                        "scope_paths": list(unit.scope_paths),
+                        "scope_lock_domains": list(unit.scope_lock_domains),
+                        "mutable_scope_digest": unit.mutable_scope_digest,
+                        "content_digest": unit.content_digest,
+                        "dependency_digest": unit.dependency_digest,
+                        "acceptance_digest": unit.acceptance_digest,
+                        "evidence_digest": unit.evidence_digest,
+                        "precondition_digest": unit.precondition_digest,
+                    }
+                )
+            actual_units = [
+                {
+                    "work_id": unit.work_id,
+                    "unit_id": unit.unit_id,
+                    "unit_version": unit.unit_version,
+                }
+                for unit in report.units
+            ]
+            report_mapping = {
+                "mode": report.mode,
+                "state_digest": report.state_digest,
+                "applied_transition_ids": list(report.applied_transition_ids),
+                "idempotent_transition_ids": list(
+                    report.idempotent_transition_ids
+                ),
+                "units": unit_mappings,
+            }
+            if (
+                report.applied_transition_ids != expected_applied
+                or report.idempotent_transition_ids != expected_idempotent
+                or actual_units != expected_units
+                or _canonical_digest(report_mapping) != expected_report_digest
+            ):
+                raise _legacy_invalid()
+        vectors.append(vector)
+
+    if (
+        seen_ids != set(_REPLAY_PERMUTATION_ORACLE)
+        or used_actor_lookups != set(actors)
+        or used_scope_refs != set(scopes)
+    ):
+        raise _legacy_invalid()
+    return vectors, permutation_count
+
+
 def _fixture_runtime(
     corpus: dict[str, object],
 ) -> tuple[
@@ -2098,11 +2441,12 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     misuse_fixture = sources[_SOURCE_PATHS[1]]
     replay_fixture = sources[_SOURCE_PATHS[2]]
 
-    if (
-        set(mapping_fixture) != {"schema_version", "source_values", "rows"}
-        or mapping_fixture["schema_version"] != _MAPPING_SCHEMA
-    ):
-        raise _legacy_invalid()
+    try:
+        mapping_row_count, mapping_domain_count = (
+            compact_state_mapping._fixture_result(mapping_fixture)
+        )
+    except Exception:
+        raise _legacy_invalid() from None
     mapping_rows = mapping_fixture["rows"]
     if type(mapping_rows) is not list or not mapping_rows:
         raise _legacy_invalid()
@@ -2136,13 +2480,8 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         or misuse_fixture["schema_version"] != _MISUSE_SCHEMA
     ):
         raise _legacy_invalid()
-    if (
-        set(replay_fixture) != {"schema_version", "actors", "scopes", "vectors"}
-        or replay_fixture["schema_version"] != _REPLAY_SCHEMA
-    ):
-        raise _legacy_invalid()
     misuse_vectors = misuse_fixture["vectors"]
-    replay_vectors = replay_fixture["vectors"]
+    replay_vectors, permutation_count = _replay_fixture_result(replay_fixture)
     if (
         type(misuse_vectors) is not list
         or not misuse_vectors
@@ -2151,8 +2490,6 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
             or set(vector) != _MISUSE_VECTOR_FIELDS
             for vector in misuse_vectors
         )
-        or type(replay_vectors) is not list
-        or any(type(vector) is not dict for vector in replay_vectors)
     ):
         raise _legacy_invalid()
     misuse_ids = [vector["id"] for vector in misuse_vectors]
@@ -2711,12 +3048,9 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         if not any(item[0] == case_id for item in findings):
             findings.add((case_id, "match"))
 
-    permutation_count = sum(
-        len(vector["permutations"]) for vector in replay_vectors
-    )
     set_counts = (
-        ("mapping_rows", len(mapping_rows)),
-        ("mapping_domains", len({row["domain"] for row in mapping_rows})),
+        ("mapping_rows", mapping_row_count),
+        ("mapping_domains", mapping_domain_count),
         ("phase2_misuse_vectors", len(phase2_ids)),
         ("deferred_phase3_misuse_vectors", len(phase3_ids)),
         ("reducer_replay_vectors", len(replay_ids)),

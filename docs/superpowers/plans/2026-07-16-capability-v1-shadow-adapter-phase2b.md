@@ -1131,6 +1131,59 @@ The same bounded spec and code-quality reviewers then re-reviewed the settled
 four-path diff and each returned `APPROVED`, with no remaining Critical,
 Important, or Minor finding.
 
+### Final-review evidence correction 10
+
+The fresh full-range review of
+`f17d14c684e1e1a6378e52ab8f151070fb710e07..933871b721adf7378294f52b995486c504ae08a0`
+found one Important bound-fixture semantic-closure gap. After recanonicalizing a
+mutated mapping or reducer-replay source and refreshing only its declared source
+digest, the parity CLI still accepted empty mapping `source_values`, an extra
+mapping-row field, malformed replay object surfaces, changed successful replay
+expectations, a changed report digest, and a same-length duplicate permutation.
+A fixture association swap accompanied by the matching corpus-target swap also
+stayed self-consistently clean despite binding the wrong misuse semantics. The
+CLI additionally derived the declared permutation count without executing any
+replay permutation through the pure reducer.
+
+Before the production edit, the focused command
+
+```sh
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q \
+  tests/unit/test_capability_v1_adapter.py \
+  -k 'malformed_bound_mapping_contract or malformed_bound_replay_contract or executes_every_declared_replay_permutation'
+```
+
+produced `11 failed, 195 deselected in 0.77s`. All ten rebound-source mutations
+reached a clean 89-case report with the unchanged fixture-derived 31 replay
+permutations and failed as `DID NOT RAISE LegacyAdapterError`; the positive
+execution probe observed an empty reducer-call multiset. The identical selector
+then produced `11 passed, 195 deselected in 0.17s`.
+
+The adapter now calls the existing pure
+`compact_state_mapping._fixture_result()` contract on the descriptor-bound
+mapping object. One adapter-local pure replay oracle pins the exact vector-ID to
+permutation-label multiset and the five replay-to-Phase-2 misuse associations,
+validates exact actor, scope, vector, event, expected-result, and unit shapes,
+and executes every declared permutation through `reduce_protocol_state()` with
+epoch `0`. Error vectors must raise their exact declared reducer code; successful
+vectors must match their exact transition IDs, ordered work/unit/version
+summaries, and the full report digest across every report and unit field. The
+intentional cross-binding replay lookup remains distinct from the returned
+actor's internal binding digest.
+
+At the pre-review checkpoint, the complete adapter and independent reducer-
+replay files produced `217 passed in 2.35s`; the prescribed Phase-2B nine-file
+suite produced `552 passed in 3.10s`. Clean package import produced no output.
+Both mapping CLI forms reported `validated 69 mappings across 7 domains`; both
+adapter CLI forms reported 89 corpus cases and 31 replay permutations with all
+blocking/non-match and specialized lists empty, and both outputs were byte-
+identical to `logs/capability-first/phase2b-shadow-parity.json`. Target binding
+remained epoch `0`, writer `v1`, and declarative only. No canonical fixture,
+parity artifact, reducer, producer, inventory, target binding, epoch, writer,
+Task 4, Phase 3, activation surface, or external state changed. Bounded spec and
+code-quality review of this settled four-path correction each returned
+`APPROVED`, with no Critical, Important, or Minor finding.
+
 ## Task 4: Record reviewed Phase-2 closeout
 
 **Files:**

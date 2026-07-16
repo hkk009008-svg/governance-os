@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
 import dataclasses
 import inspect
 import json
@@ -746,6 +747,23 @@ def _replace_bound_source(
     return raw
 
 
+def _assert_bound_source_mutation_rejected(
+    corpus: dict[str, object],
+    *,
+    expected_replay_permutations: int,
+) -> None:
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        report = adapter._check_corpus(corpus)
+        assert adapter._report_is_gate_clean(report) is True
+        assert dict(report.set_counts)["corpus_cases"] == 89
+        assert (
+            dict(report.set_counts)["reducer_replay_permutations"]
+            == expected_replay_permutations
+        )
+    assert exc_info.value.code == "legacy_invalid"
+    assert str(exc_info.value) == "legacy_invalid"
+
+
 def test_bound_sources_parse_the_exact_bytes_from_one_path_read(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -939,6 +957,172 @@ def test_corpus_guard_rejects_extra_reducer_replay_root_field(
         assert dict(report.set_counts)["corpus_cases"] == 89
     assert exc_info.value.code == "legacy_invalid"
     assert str(exc_info.value) == "legacy_invalid"
+
+
+@pytest.mark.parametrize("mutation", ("empty_source_values", "extra_row_field"))
+def test_corpus_guard_rejects_malformed_bound_mapping_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    copied = _copy_bound_sources(tmp_path)
+    relative_path = adapter._SOURCE_PATHS[0]
+    fixture = adapter._strict_json_loads(copied[relative_path].decode("utf-8"))
+    assert type(fixture) is dict
+    if mutation == "empty_source_values":
+        fixture["source_values"] = {}
+    else:
+        rows = fixture["rows"]
+        assert type(rows) is list and type(rows[0]) is dict
+        rows[0]["future_extension"] = False
+    replay = _load_strict(REDUCER_REPLAY_FIXTURE)
+    replay_vectors = replay["vectors"]
+    assert type(replay_vectors) is list
+    permutation_count = sum(len(vector["permutations"]) for vector in replay_vectors)
+    _replace_bound_source(tmp_path, corpus, relative_path, fixture)
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    _assert_bound_source_mutation_rejected(
+        corpus,
+        expected_replay_permutations=permutation_count,
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "unknown_vector_field",
+        "malformed_actor_shape",
+        "malformed_scope_shape",
+        "extra_event_field",
+        "changed_success_result",
+        "changed_report_digest",
+        "duplicate_permutation",
+        "wrong_misuse_association",
+    ),
+)
+def test_corpus_guard_rejects_malformed_bound_replay_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    copied = _copy_bound_sources(tmp_path)
+    relative_path = adapter._SOURCE_PATHS[2]
+    fixture = adapter._strict_json_loads(copied[relative_path].decode("utf-8"))
+    assert type(fixture) is dict
+    vectors = fixture["vectors"]
+    actors = fixture["actors"]
+    scopes = fixture["scopes"]
+    assert type(vectors) is list and type(actors) is dict and type(scopes) is dict
+    vector_by_id = {vector["id"]: vector for vector in vectors}
+
+    if mutation == "unknown_vector_field":
+        vectors[0]["future_extension"] = False
+    elif mutation == "malformed_actor_shape":
+        actor = next(iter(actors.values()))
+        assert type(actor) is dict
+        actor["future_extension"] = False
+    elif mutation == "malformed_scope_shape":
+        scope = next(iter(scopes.values()))
+        assert type(scope) is dict
+        scope["future_extension"] = False
+    elif mutation == "extra_event_field":
+        event = next(iter(vectors[0]["events"].values()))
+        assert type(event) is dict
+        event["future_extension"] = False
+    elif mutation == "changed_success_result":
+        expected = vector_by_id["independent_order_a"]["expected"]
+        assert type(expected) is dict
+        expected["applied_transition_ids"] = ["independent-alpha"]
+    elif mutation == "changed_report_digest":
+        expected = vector_by_id["independent_order_a"]["expected"]
+        assert type(expected) is dict
+        expected["report_digest"] = "sha256:" + ("f" * 64)
+    elif mutation == "duplicate_permutation":
+        permutations = vector_by_id["disjoint_scopes_merge"]["permutations"]
+        assert type(permutations) is list and len(permutations) == 2
+        permutations[1] = deepcopy(permutations[0])
+    else:
+        exact = vector_by_id["exact_duplicate_collapses"]
+        changed = vector_by_id["changed_duplicate_conflicts"]
+        exact["misuse_vector_id"], changed["misuse_vector_id"] = (
+            changed["misuse_vector_id"],
+            exact["misuse_vector_id"],
+        )
+        bindings = corpus["phase2_misuse_bindings"]
+        assert type(bindings) is dict
+        exact_id = "duplicate_transition_id_identical_payload"
+        changed_id = "duplicate_transition_id_changed_payload"
+        bindings[exact_id]["target_id"], bindings[changed_id]["target_id"] = (
+            bindings[changed_id]["target_id"],
+            bindings[exact_id]["target_id"],
+        )
+
+    permutation_count = sum(len(vector["permutations"]) for vector in vectors)
+    _replace_bound_source(tmp_path, corpus, relative_path, fixture)
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    _assert_bound_source_mutation_rejected(
+        corpus,
+        expected_replay_permutations=permutation_count,
+    )
+
+
+def test_corpus_guard_executes_every_declared_replay_permutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    copied = _copy_bound_sources(tmp_path)
+    replay = adapter._strict_json_loads(
+        copied[adapter._SOURCE_PATHS[2]].decode("utf-8")
+    )
+    assert type(replay) is dict
+    vectors = replay["vectors"]
+    assert type(vectors) is list
+    expected_calls: Counter[tuple[str, ...]] = Counter()
+    for vector in vectors:
+        events = vector["events"]
+        permutations = vector["permutations"]
+        assert type(events) is dict and type(permutations) is list
+        expected_calls.update(
+            tuple(reducer.transition_digest(events[label]) for label in permutation)
+            for permutation in permutations
+        )
+
+    actual_calls: Counter[tuple[str, ...]] = Counter()
+    real_reduce = adapter.capability_reducer.reduce_protocol_state
+
+    def trace_reduce(events, *, resolve_actor, resolve_scope, activation):
+        batch = tuple(events)
+        actual_calls.update(
+            [tuple(reducer.transition_digest(event) for event in batch)]
+        )
+        return real_reduce(
+            batch,
+            resolve_actor=resolve_actor,
+            resolve_scope=resolve_scope,
+            activation=activation,
+        )
+
+    monkeypatch.setattr(
+        adapter.capability_reducer,
+        "reduce_protocol_state",
+        trace_reduce,
+    )
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    report = adapter._check_corpus(corpus)
+
+    assert adapter._report_is_gate_clean(report) is True
+    assert dict(report.set_counts)["corpus_cases"] == 89
+    assert (
+        dict(report.set_counts)["reducer_replay_permutations"]
+        == sum(expected_calls.values())
+    )
+    assert actual_calls == expected_calls
 
 
 def test_corpus_guard_rejects_source_id_owned_by_another_case_before_execution(
