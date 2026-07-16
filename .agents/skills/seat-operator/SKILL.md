@@ -11,27 +11,9 @@ The per-pair operator is the **independent post-commit verifier** for everything
 
 **REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/agents/director-operator.md` (Rule #9 cold-context, Lane V/D/S, current operator triggers, Rules #14/#15/#21); `docs/protocol/agents/orchestration.md`; spec §6a/§6c (impl≠verifier, lock-release-on-GO) + §6b (FAIL-cap); `docs/templates/agents/reviewer.md`.
 
-## ChatGPT Pro Advisory Consultation
+## External Advisory Tools
 
-This capability is always invocable in readiness, director, coordinator, and
-operator modes. The default is `auto`, which permits one guarded send per
-idempotency key through only the current runtime in-app Browser transport
-(`iab`); `manual` is an explicit legacy compatibility mode, and `off` fails
-closed. The auto transport order is `iab -> block`: there is no automatic
-Chrome, manual relay, API, retry, or workaround fallback. Raw
-prompts and responses stay out of Git, mailbox artifacts, normal logs,
-screenshots, command arguments, and transcript files. Output is advisory only
-and not the dual-chief order path; it grants no protocol or side-effect
-authority; subagents may prepare a bounded question but only the parent context
-may send or import a response. Follow the `chatgpt-pro-consultation` skill.
-
-If `iab` is unavailable, signed out, challenged, or ambiguous before send,
-transition the record to `failed` when safe to do so and block with zero send.
-Uncertain or partial delivery also blocks without retry or fallback.
-
-Operator consultation never replaces Lane V. Allow it only on explicit user
-request or for a distinct, pre-stated strategic question; it cannot contribute
-authority to GO, NITS, or FAIL.
+No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires a separately approved design and implementation; it grants no protocol or side-effect authority.
 
 ## Emergency Handling
 

@@ -30,7 +30,7 @@ flowchart TB
 
   subgraph Strategic["1. Strategic Loop (control plane, human-relayed)"]
     direction TB
-    Chief["Dual Chief<br/>Gemini Deep Think + ChatGPT Pro<br/>apps, no repo writes"]:::mech
+    Chief["Human-Relayed Strategic Advisory Apps<br/>no repo writes or protocol authority"]:::mech
     Agy["Antigravity (agy)<br/>NO Layer-1 seat<br/>optional relayed-strategy app<br/>same lane as chiefs, never the decider<br/>or read-only observer"]:::agy
     Human["Human Relay"]
     Overseer["Mechanical Overseer<br/>read-only on code, dispatcher + ledger<br/>SIGNS brief, assignment, cycle_go, release_order<br/>may NOT issue a verdict"]:::mech
@@ -125,9 +125,10 @@ flowchart TB
 4. **Two release triggers.** The gate fires only when **both** the coordinator's `release_requested`
    **and** the overseer's `release_order` exist (plus a PASS `ci_result`, the release GO, valid
    signatures, and an in-scope diff) — then promotes via exact-SHA compare-and-swap.
-5. **Antigravity is not the dual chief.** The chiefs are Gemini Deep Think + ChatGPT Pro. Antigravity
-   is an *optional* relayed-strategy app in the same lane (never the decider) or a read-only observer —
-   off the candidate branch, staging ref, and protected `main`.
+5. **Antigravity is not a protocol authority.** It is an *optional* relayed-strategy app (never the
+   decider) or a read-only observer — off the candidate branch, staging ref, and protected `main`.
+   No ChatGPT Pro consultation tool is installed in this repository; external advisory work needs
+   a separately approved design and implementation and grants no protocol or side-effect authority.
 6. **The strategic loop is a loop.** Results feed the overseer's data→info summary, which feeds the
    chiefs, which return orders via the human relay — not a one-way chain.
 
@@ -135,7 +136,7 @@ flowchart TB
 
 | # | Issue in a draft | Corrected here |
 |---|---|---|
-| 1 | agy labelled the chief node "Gemini/Antigravity" and called Antigravity "the Dual Chief" | Chief is Gemini Deep Think + ChatGPT Pro; Antigravity is a separate dashed advisory node feeding the human, never the chief |
+| 1 | agy labelled the chief node "Gemini/Antigravity" and called Antigravity "the Dual Chief" | Antigravity is a separate dashed advisory node feeding the human, never a protocol authority |
 | 2 | agy had the overseer "Evaluate CI+attestation" | Overseer only *signs* `release_order`; the **gate** evaluates |
 | 3 | both omitted the coordinator's `release_requested` | Both triggers shown; gate needs both |
 | 4 | both drew the strategic loop one-way | Feedback arc added (results → overseer → chief) |

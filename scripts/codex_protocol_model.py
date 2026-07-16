@@ -149,33 +149,6 @@ R_INDEPENDENCE_RULES = (
     "Canonical full rule: docs/protocol/claude/independence-first.md.",
 )
 
-CHATGPT_PRO_CONSULTATION_MODES = ("auto", "manual", "off")
-CHATGPT_PRO_CONSULTATION_DEFAULT = "auto"
-CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER = (
-    "iab",
-    "block",
-    # Terminal action, not another transport.
-)
-CHATGPT_PRO_CONSULTATION_TRIGGERS = (
-    "the user explicitly asks to consult ChatGPT Pro",
-    "an idea or plan has materially different approaches not settled by durable local evidence",
-    "a mailbox-oriented coordinator is about to synthesize a consequential cross-lane plan, reroute, or contradiction resolution",
-    "a design or plan changes an authority, security, external-input, parseable-context, schema-trust, or side-effect boundary",
-    "an approved design or plan needs a genuinely different adversarial challenge",
-)
-CHATGPT_PRO_CONSULTATION_RULES = (
-    "consultation is always invocable in readiness, director, coordinator, and operator modes",
-    "auto is the default and permits one guarded send per idempotency key through only the current runtime in-app Browser transport (iab); manual is an explicit legacy compatibility mode; off is the fail-closed kill switch",
-    "auto transport order is iab then block; there is no automatic Chrome, manual relay, API, retry, or workaround fallback",
-    "raw prompts and responses stay out of Git, mailbox artifacts, normal logs, screenshots, command arguments, and local transcript files",
-    "ChatGPT Pro output is advisory only and cannot grant protocol or side-effect authority",
-    "the consultation path is not the dual-chief order path and never emits signed-bus or mailbox facts",
-    "coordinator refreshes live state before send and before use; drift makes the response stale",
-    "operator Lane V is never replaced; only an explicit or genuinely distinct strategic question may be consulted",
-    "subagents may prepare a bounded question but only the parent context may send or import a response",
-    "an unchanged question and state are deduplicated; automatic retries are zero in V1",
-)
-
 HARNESS_COMPONENTS = (
     ("user", "User principal", "explicit instruction and consent"),
     ("harness", "Codex CLI harness", "readiness bridge or explicit live role"),
@@ -341,11 +314,6 @@ RUNTIME_ENV_VARIABLES = (
         "CODEX_SIDE_EFFECT_POLICY",
         "user-consent-required",
         "documents that push, lock-claim side effects, paid API spend, and pod spend require user consent outside env",
-    ),
-    (
-        "CODEX_CHATGPT_PRO_CONSULTATION",
-        "auto | manual | off",
-        "controls guarded ChatGPT Pro advisory transport; invalid values fail closed to off",
     ),
     (
         "GIT_INDEX_FILE",
@@ -578,7 +546,6 @@ CODEX_VERIFICATION_COMMANDS = (
     "tests/unit/test_protocol_capacity.py "
     "tests/unit/test_protocol_doc_integrity.py "
     "tests/unit/test_protocol_prompt_sync.py "
-    "tests/unit/test_chatgpt_pro_consult.py "
     "tests/unit/test_codex_ledger_bridge.py -q",
     "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py",
 )
@@ -777,18 +744,6 @@ def render_r_independence() -> str:
     return "\n".join(lines)
 
 
-def render_chatgpt_pro_consultation() -> str:
-    """Return the transport-independent ChatGPT Pro advisory contract."""
-    lines = [
-        "ChatGPT Pro Advisory Consultation:",
-        "- always invocable",
-        "- triggers: " + "; ".join(CHATGPT_PRO_CONSULTATION_TRIGGERS),
-        "- transport order: " + " -> ".join(CHATGPT_PRO_CONSULTATION_TRANSPORT_ORDER),
-    ]
-    lines.extend(f"- {rule}" for rule in CHATGPT_PRO_CONSULTATION_RULES)
-    return "\n".join(lines)
-
-
 def render_side_effect_executor_contract() -> str:
     """Return the single-executor contract for shared user-gated side effects."""
     lines = [
@@ -942,12 +897,6 @@ def _mode_from_seat(seat: str) -> str:
 def infer_runtime_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     """Infer the Codex runtime contract from an environment-like mapping."""
     env = environ or {}
-    consultation_mode = env.get(
-        "CODEX_CHATGPT_PRO_CONSULTATION",
-        CHATGPT_PRO_CONSULTATION_DEFAULT,
-    )
-    if consultation_mode not in CHATGPT_PRO_CONSULTATION_MODES:
-        consultation_mode = "off"
     seat = env.get("CODEX_SEAT", "")
     explicit_mode = env.get("CODEX_AGENT_MODE", "")
     explicit_role = env.get("CODEX_AGENT_ROLE", "")
@@ -1095,7 +1044,6 @@ def infer_runtime_env(environ: Mapping[str, str] | None = None) -> dict[str, str
         "CODEX_DECISION_BOUNDARY": decision_boundary,
         "CODEX_NEXT_ACTION_POLICY": next_action,
         "CODEX_SIDE_EFFECT_POLICY": "user-consent-required",
-        "CODEX_CHATGPT_PRO_CONSULTATION": consultation_mode,
         "GIT_INDEX_FILE": env.get("GIT_INDEX_FILE", "(unset)"),
     }
 
@@ -1165,7 +1113,6 @@ def render_start_session_inhabitance(agent_names: list[str] | tuple[str, ...] = 
     lines.append("core agent modules: " + ", ".join(CORE_AGENT_MODULES))
     lines.append(render_codex_execution_tiers())
     lines.append(render_r_independence())
-    lines.append(render_chatgpt_pro_consultation())
     lines.append(render_agent_extension_summary(agent_names))
     lines.append(render_agent_extension_routing_contract())
     return "\n".join(lines)
@@ -1238,7 +1185,6 @@ def render_surface_summary() -> str:
         "Cross-Model Opus Verification: every Codex Lane V pass attempts one blind Opus review",
         "Codex Risk-Tier Router: conversational and read-only work avoid implementation ceremony",
         "R-INDEPENDENCE: adversarial-surface work requires design-time enumeration and independent actual-diff verification",
-        render_chatgpt_pro_consultation(),
         "Side-Effect Executor Token: generic user approval is unit consent, not executor election",
         "Ledger CLI Bridge: Pipeline kernel -> evidence-ledger target via "
         + LEDGER_CLI_BRIDGE["doc_path"],
@@ -1249,255 +1195,6 @@ def render_surface_summary() -> str:
     ]
     lines.extend(f"- {path}: {purpose}" for path, purpose in CODEX_SURFACES)
     return "\n".join(lines)
-
-
-import hashlib
-import re
-import subprocess
-from pathlib import Path
-
-
-CHATGPT_PRO_GUARD_PATHS = (
-    ".agents/skills/chatgpt-pro-consultation/SKILL.md",
-    "docs/protocol/codex/chatgpt-pro-consultation-acceptance.md",
-    "scripts/chatgpt_pro_consult.py",
-    "scripts/codex_protocol_model.py",
-)
-CHATGPT_PRO_REQUIRED_PASS_PROFILES = {
-    "Desktop in-app": (
-        "pass",
-        "`prepared -> sending -> sent -> received -> reconciled`; tab finalized",
-        "pass; one send",
-        "pass; content-free snapshots match",
-        "none",
-    ),
-    "configured CLI browser": (
-        "pass",
-        "`prepared -> sending -> sent -> received -> reconciled`; tab finalized",
-        "pass; one send",
-        "pass; content-free snapshots match",
-        "none",
-    ),
-    "bare CLI manual relay": (
-        "pass",
-        "`prepared -> sending -> sent -> received -> reconciled`; manual relay finalized",
-        "pass; one relay",
-        "pass; content-free snapshots match",
-        "none",
-    ),
-    "fixture/disposable profile": (
-        "not applicable",
-        "seven-case fixture matrix failed closed; fixtures finalized",
-        "pass; no retry or fallback",
-        "pass; content-free snapshots match",
-        "none",
-    ),
-}
-
-
-class ChatGPTProActivationEvidenceError(ValueError):
-    """Raised when activation evidence cannot authorize automatic mode."""
-
-
-def _chatgpt_pro_git(repo_root: Path, *arguments: str) -> subprocess.CompletedProcess[bytes]:
-    environment = os.environ.copy()
-    environment.pop("GIT_INDEX_FILE", None)
-    return subprocess.run(
-        ("git", *arguments),
-        cwd=repo_root,
-        env=environment,
-        capture_output=True,
-        check=False,
-    )
-
-
-def _chatgpt_pro_field(text: str, label: str, pattern: str) -> str:
-    matches = re.findall(
-        rf"^- {re.escape(label)}: `({pattern})`$",
-        text,
-        flags=re.MULTILINE,
-    )
-    if len(matches) != 1:
-        raise ChatGPTProActivationEvidenceError(
-            f"expected one canonical {label} field"
-        )
-    return matches[0]
-
-
-def chatgpt_pro_guard_manifest_hash(repo_root: Path, commit: str) -> str:
-    if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
-        raise ChatGPTProActivationEvidenceError("Guard commit must be a full SHA")
-    commit_type = _chatgpt_pro_git(repo_root, "cat-file", "-t", commit)
-    if commit_type.returncode != 0 or commit_type.stdout.strip() != b"commit":
-        raise ChatGPTProActivationEvidenceError("Guard commit must exist as a commit")
-    manifest = _chatgpt_pro_git(
-        repo_root,
-        "ls-tree",
-        "-r",
-        "-z",
-        "--full-tree",
-        commit,
-        "--",
-        *CHATGPT_PRO_GUARD_PATHS,
-    )
-    if manifest.returncode != 0:
-        raise ChatGPTProActivationEvidenceError("Guard commit manifest is unavailable")
-    entries = [entry for entry in manifest.stdout.split(b"\0") if entry]
-    paths = {
-        entry.split(b"\t", 1)[1].decode("utf-8")
-        for entry in entries
-        if b"\t" in entry
-    }
-    if paths != set(CHATGPT_PRO_GUARD_PATHS):
-        raise ChatGPTProActivationEvidenceError("Guard commit manifest is incomplete")
-    return hashlib.sha256(manifest.stdout).hexdigest()
-
-
-def validate_chatgpt_pro_activation_evidence(
-    text: str,
-    *,
-    repo_root: Path,
-    reviewed_head: str | None = None,
-) -> str:
-    """Return ``auto`` only for complete, current, immutable guard evidence."""
-    if not isinstance(text, str):
-        raise ChatGPTProActivationEvidenceError("acceptance evidence must be text")
-    guard_commit = _chatgpt_pro_field(text, "Guard commit", r"[0-9a-f]{40}")
-    recorded_manifest = _chatgpt_pro_field(
-        text,
-        "Guard relevant paths hash",
-        r"[0-9a-f]{64}",
-    )
-    bound_head = _chatgpt_pro_field(text, "Bound HEAD", r"[0-9a-f]{40}")
-    if bound_head != guard_commit:
-        raise ChatGPTProActivationEvidenceError(
-            "Bound HEAD must equal the immutable Guard commit"
-        )
-    if reviewed_head is None:
-        head_result = _chatgpt_pro_git(repo_root, "rev-parse", "HEAD")
-        if head_result.returncode != 0:
-            raise ChatGPTProActivationEvidenceError("reviewed HEAD is unavailable")
-        reviewed_head = head_result.stdout.decode("ascii").strip()
-    if re.fullmatch(r"[0-9a-f]{40}", reviewed_head) is None:
-        raise ChatGPTProActivationEvidenceError("reviewed HEAD must be a full SHA")
-    reviewed_type = _chatgpt_pro_git(repo_root, "cat-file", "-t", reviewed_head)
-    if reviewed_type.returncode != 0 or reviewed_type.stdout.strip() != b"commit":
-        raise ChatGPTProActivationEvidenceError("reviewed HEAD must exist as a commit")
-    ancestor = _chatgpt_pro_git(
-        repo_root,
-        "merge-base",
-        "--is-ancestor",
-        guard_commit,
-        reviewed_head,
-    )
-    if ancestor.returncode != 0:
-        raise ChatGPTProActivationEvidenceError(
-            "Guard commit must be an ancestor of reviewed HEAD"
-        )
-    drift = _chatgpt_pro_git(
-        repo_root,
-        "diff",
-        "--quiet",
-        "--no-ext-diff",
-        "--no-textconv",
-        f"{guard_commit}..{reviewed_head}",
-        "--",
-        *CHATGPT_PRO_GUARD_PATHS,
-    )
-    if drift.returncode != 0:
-        raise ChatGPTProActivationEvidenceError(
-            "acceptance-relevant guard code changed after Guard commit"
-        )
-    guard_manifest = chatgpt_pro_guard_manifest_hash(repo_root, guard_commit)
-    reviewed_manifest = chatgpt_pro_guard_manifest_hash(repo_root, reviewed_head)
-    if recorded_manifest != guard_manifest or reviewed_manifest != guard_manifest:
-        raise ChatGPTProActivationEvidenceError(
-            "Guard relevant paths hash does not match reviewed guard code"
-        )
-
-    rows: dict[str, dict[int, list[str]]] = {
-        transport: {} for transport in CHATGPT_PRO_REQUIRED_PASS_PROFILES
-    }
-    for line in text.splitlines():
-        if not line.startswith("| T5-"):
-            continue
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 2 or cells[1] not in rows:
-            continue
-        if len(cells) != 8:
-            raise ChatGPTProActivationEvidenceError(
-                "authoritative result rows require eight columns"
-            )
-        revision_match = re.search(r"-r([1-9][0-9]*)\b", cells[0])
-        if revision_match is None:
-            raise ChatGPTProActivationEvidenceError(
-                f"required acceptance row lacks revision: {cells[1]}"
-            )
-        revision = int(revision_match.group(1))
-        if revision in rows[cells[1]]:
-            raise ChatGPTProActivationEvidenceError(
-                f"duplicate required acceptance revision: {cells[1]}"
-            )
-        rows[cells[1]][revision] = cells
-
-    for transport, profile in CHATGPT_PRO_REQUIRED_PASS_PROFILES.items():
-        transport_rows = rows[transport]
-        if not transport_rows:
-            raise ChatGPTProActivationEvidenceError(
-                f"required acceptance is missing: {transport}"
-            )
-        terminal = transport_rows[max(transport_rows)]
-        if terminal[2] != "pass":
-            raise ChatGPTProActivationEvidenceError(
-                f"required acceptance terminal result is not pass: {transport}"
-            )
-        if tuple(terminal[3:]) != profile:
-            raise ChatGPTProActivationEvidenceError(
-                f"required acceptance PASS evidence is incomplete: {transport}"
-            )
-
-    summary_labels = {
-        "Desktop in-app gate": "pass",
-        "Configured CLI browser gate": "pass",
-        "Bare CLI manual gate": "pass",
-        "Failure-fixture gate": "pass",
-        "Activation gate": "pass",
-        "Shipped default": "auto",
-        "Bounded blocker": "none",
-    }
-    for label, expected in summary_labels.items():
-        actual = _chatgpt_pro_field(text, label, r"[a-z_]+")
-        if actual != expected:
-            raise ChatGPTProActivationEvidenceError(
-                f"activation summary {label} must be {expected}"
-            )
-    return "auto"
-
-
-def chatgpt_pro_consultation_default(
-    *,
-    repo_root: Path | None = None,
-    evidence_text: str | None = None,
-    reviewed_head: str | None = None,
-) -> str:
-    root = Path(__file__).resolve().parents[1] if repo_root is None else Path(repo_root)
-    if evidence_text is None:
-        try:
-            evidence_text = (
-                root / "logs/chatgpt-pro-consultation-acceptance-2026-07-13.md"
-            ).read_text(encoding="utf-8")
-        except (OSError, UnicodeError):
-            return "manual"
-    try:
-        return validate_chatgpt_pro_activation_evidence(
-            evidence_text,
-            repo_root=root,
-            reviewed_head=reviewed_head,
-        )
-    except (ChatGPTProActivationEvidenceError, OSError, UnicodeError):
-        return "manual"
-
-
 
 def main() -> int:
     print("# Codex Harness Model")
@@ -1514,9 +1211,6 @@ def main() -> int:
     print()
     print("## R-INDEPENDENCE")
     print(render_r_independence())
-    print()
-    print("## ChatGPT Pro Advisory Consultation")
-    print(render_chatgpt_pro_consultation())
     print()
     print("## Pair Operating Contract")
     print(render_pair_operating_contract())

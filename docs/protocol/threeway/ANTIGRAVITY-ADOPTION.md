@@ -32,8 +32,8 @@ any path"; "Antigravity CLI as an autonomous seat" is an explicit non-goal, §2)
 - Antigravity is **not** `director`/`director2` (build), **not** `operator`/`operator2` (verify),
   **not** `coordinator`/`coordinator2` (integrate), **not** the `overseer`, and **not** the
   merge-gate.
-- The **overseer is a mechanical process**, not Antigravity. The **dual chiefs are Gemini Deep Think +
-  ChatGPT Pro used as apps** (human-relayed), not Antigravity.
+- The **overseer is a mechanical process**, not Antigravity. Strategic advisory apps are
+  human-relayed and hold no protocol authority.
 
 So "how does agy adopt the protocol?" has a precise answer: **by participating in one of two modes**. 
 Mode 1 is the **Multi-Model Three-Way Protocol**, where it plays non-seat roles (strategic reasoner or read-only observer) and honors the cross-provider boundary.
@@ -50,10 +50,12 @@ Mode 2 is the **Single-Model Autonomous Unit**, where Antigravity functions inde
 ## 2. The three roles Antigravity *may* play
 
 ### Role 1 — Human-relayed strategic reasoner (the chief axis)
-The strategic loop's dual chief is "an app, human-relayed" (spec §5.2, D11). If you use the
-Antigravity *app* to reason about strategy, it occupies the **same lane as Gemini Deep Think /
-ChatGPT Pro**: it produces analysis/orders as **prose a human carries to the mechanical overseer**. It
-never writes the bus, never signs, never touches code.
+The strategic loop's advisory input is "an app, human-relayed" (spec §5.2, D11). If you use the
+Antigravity *app* to reason about strategy, it produces analysis/orders as **prose a human carries
+to the mechanical overseer**. It never writes the bus, never signs, never touches code.
+
+No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires
+a separately approved design and implementation; it grants no protocol or side-effect authority.
 
 - Provenance discipline (spec §12, "chief-relay provenance"): when a human relays an Antigravity
   strategic result, record `{relaying_human, chief_model_label, prompt_or_bundle_digest,

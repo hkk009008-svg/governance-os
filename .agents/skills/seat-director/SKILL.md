@@ -12,26 +12,9 @@ The per-pair director owns the **strategic layer within its lane**: writes R-BRI
 **REQUIRED BACKGROUND:** the `four-seat-protocol` skill (authority, locks, lifecycle, co-sign tiers, git sharp edges). Sources: `docs/protocol/claude/director-operator.md` (Rules #7–#23, R-BRIEF, #12, #13, R-PID); spec §6a/§6c; `docs/templates/agents/implementer.md`; `docs/protocol/agents/orchestration.md` (R-ORCH). **R-SKILL:** before authoring/judging domain-specific subsystem code or configurations load the appropriate `<domain-skill>`; before pipeline-level design work load the pipeline `<domain-skill>`.
 <!-- TODO(<PROJECT>): add this project domain-skill triggers -->
 
-## ChatGPT Pro Advisory Consultation
+## External Advisory Tools
 
-This capability is always invocable in readiness, director, coordinator, and
-operator modes. The default is `auto`, which permits one guarded send per
-idempotency key through only the current runtime in-app Browser transport
-(`iab`); `manual` is an explicit legacy compatibility mode, and `off` fails
-closed. The auto transport order is `iab -> block`: there is no automatic
-Chrome, manual relay, API, retry, or workaround fallback. Raw
-prompts and responses stay out of Git, mailbox artifacts, normal logs,
-screenshots, command arguments, and transcript files. Output is advisory only
-and not the dual-chief order path; it grants no protocol or side-effect
-authority; subagents may prepare a bounded question but only the parent context
-may send or import a response. Follow the `chatgpt-pro-consultation` skill.
-
-If `iab` is unavailable, signed out, challenged, or ambiguous before send,
-transition the record to `failed` when safe to do so and block with zero send.
-Uncertain or partial delivery also blocks without retry or fallback.
-
-Director may consult design, brief, or plan tradeoffs, then verify every
-material claim locally before changing the brief, plan, or verify-request.
+No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires a separately approved design and implementation; it grants no protocol or side-effect authority.
 
 ## Emergency Handling
 
