@@ -2,8 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:test-driven-development` for every behavior change and obtain an
-> independent task review before accepting the collector. This working tree is
-> intentionally uncommitted; do not commit without separate user authority.
+> independent task review before accepting the collector. The collector is
+> sealed at `01d77653d5b7257bcef7c2517d958824eb8ff8a9`; generated cohort evidence
+> and the closure report were committed at
+> `8149df28b45bd2b0b159b243923d0ab439c3d815` and integrated by merge `d07fc4d`.
+> That publication did not activate a compact path; v1 remains authoritative.
 
 **Goal:** Collect one trusted, reproducible 25-run capability-first baseline
 without constraining model tool choice or mutating live protocol authority.
@@ -63,9 +66,10 @@ reporter and fixed five-profile contract.
   an interrupted cohort is terminal and a new cohort ID is required. Changed
   replay conflicts; uncertain effects reconcile from the marker and never retry.
 - Collector, reporter, contract, benchmark instructions, and source snapshot
-  must match committed blobs before a cohort may be called operational. Until
-  separate commit authorization exists, the executable collector can be
-  verified but the real cohort must stop at this preflight.
+  must match committed blobs before a cohort may be called operational. Before
+  the instrument commit and separate execution authorization existed, the real
+  cohort stopped at this preflight; the completed cohort below passed the same
+  committed-byte gate before and after collection.
 - Existing direct `--baseline-observations` input remains unable to set
   `operational_complete=true`.
 - All Git and pytest commands use `env -u GIT_INDEX_FILE`.
@@ -146,7 +150,7 @@ reporter and fixed five-profile contract.
   operational provenance.
 - [x] Add a dedicated non-authoritative benchmark-executor inventory component;
   classify collector `main` as CLI and all other public functions as telemetry.
-- [ ] Run collector, reporter, inventory, target-binding, and route/capability
+- [x] Run collector, reporter, inventory, target-binding, and route/capability
   regression tests; run smoke, py_compile, and `git diff --check`.
 
 ### Task 3: Canary, committed-instrument gate, and operational cohort
@@ -174,19 +178,24 @@ reporter and fixed five-profile contract.
 - [x] Refuse collection until the collector, reporter, contract, benchmark
   instructions, and source snapshot resolve to committed bytes. This is a hard
   user-authorization gate, not a test bypass.
-- Current execution status (2026-07-15): verified via
-  `$ env -u GIT_INDEX_FILE .venv/bin/python scripts/capability_baseline_runtime.py --preflight`
-  → exit `2`, with `commit-required` for the collector, reporter, and fixed
-  contract. No canary, model inference, or marker effect ran.
-- [ ] After separate commit authorization, run one guarded canary against the
+- Current execution status (2026-07-15): source HEAD
+  `01d77653d5b7257bcef7c2517d958824eb8ff8a9`, cohort
+  `phase1-01d7765-gpt56sol-max-20260715-v1`, model `gpt-5.6-sol`, reasoning
+  effort `max`. The one canary completed with record digest
+  `sha256:059d71368e30ffb7379394b2aaafa49c18103e13244464f69415764f056ffe82`
+  and no effect. Collection exited `0` with
+  `{"status":"complete","run_count":25}`. The exact evidence and verification
+  record is `.superpowers/sdd/phase1-task-5-report.md`.
+- [x] After the committed-instrument gate and separate execution authorization,
+  run one guarded canary against the
   pinned Codex version/model and verify hook/JSONL agreement.
-- [ ] Execute the 25 runs sequentially in interleaved order. Persist failures;
+- [x] Execute the 25 runs sequentially in interleaved order. Persist failures;
   do not retry, replace, or select only successful attempts.
-- [ ] Verify 25 unique completed run IDs, 25 unique accepted-result digests,
+- [x] Verify 25 unique completed run IDs, 25 unique accepted-result digests,
   ten and only ten effect attempts, required profile artifacts/reviews, zero
   standby artifacts, zero duplicate effect/provider attempts, and complete
   endpoints.
-- [ ] Generate the final baseline through the committed reporter, run the full
+- [x] Generate the final baseline through the committed reporter, run the full
   bounded verification suite, and record the exact result without activation.
 
 ## Stop conditions

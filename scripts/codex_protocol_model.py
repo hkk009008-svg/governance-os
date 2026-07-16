@@ -197,7 +197,10 @@ DURABLE_STATE_ARTIFACTS = (
     "Operator verification reports",
 )
 
-import protocol_mailbox  # noqa: E402
+if __package__:
+    from scripts import protocol_mailbox  # noqa: E402
+else:
+    import protocol_mailbox  # noqa: E402
 
 SEATS = protocol_mailbox.SEATS               # 4 real seats; coordinators are NOT pair seats
 DIRECTOR_SEATS = ("director", "director2")   # pair tuple — stays literal

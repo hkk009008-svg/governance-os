@@ -54,7 +54,7 @@
 | Unit | Exact source | Required disposition |
 |---|---|---|
 | `ROOT-CHATGPT` | Shared-root ChatGPT changes plus `docs/superpowers/plans/2026-07-15-chatgpt-local-reprepare-flexibility.md` | Exact preservation branch and owner handoff; no provider execution |
-| `ROOT-COMPACT` | Shared-root compact mirror, mappings, fixtures, tests, composite `ARCHITECTURE.md`, and `logs/capability-first/` | Exact preservation branch; map canonical blobs to Phase 2; retain distinct logs as evidence-only |
+| `ROOT-COMPACT` | Live dirty composite `ARCHITECTURE.md` and `logs/capability-first/`, plus clean comparison evidence from the compact mirror, mappings, fixtures, and tests | Preserve only the dirty doc/log roots; record four checkpoint matches and three contained-`main` advances; retain distinct logs as evidence-only |
 | `CAP-PHASE1` | Clean branch/worktree at `8149df28b45bd2b0b159b243923d0ab439c3d815` | Exact owner freeze and handoff |
 | `CAP-PHASE2` | Clean live head `2d5b23f819694f2abe39d4aed6cac318a4f9019d`; replay snapshot `bea4cb9fa6117d2c61e78ed05c2ce5a24f7a874a`; post-snapshot chain `ae24eff... -> 2d5b23f...` | Freeze the full live chain, name its owner and executed evidence, and exclude both post-snapshot commits from current replay pending revised allowlist and review |
 | `CONTROL-PLANE` | Dirty nine-path worktree based at `6983673db60bff0d21548a90ab1db2fcbbfa377a` | Freshly routed preservation branch and owner handoff; never merge wholesale |
@@ -319,17 +319,18 @@ Expected: the staged-name check shows one handoff path and the commit changes no
 
 **Files:**
 
-- Preserve on `codex/recovery-compact-root-wip-2026-07-16`: `ARCHITECTURE.md`, `governance.toml`, `scripts/target_binding.py`, `tests/unit/test_target_binding.py`
-- Preserve on the same branch: `scripts/compact_state_mapping.py`, `tests/fixtures/compact_kernel/v1_misuse_vectors.json`, `tests/fixtures/compact_state_mapping/v1.json`, `tests/unit/test_compact_state_mapping.py`
+- Preserve on `codex/recovery-compact-root-wip-2026-07-16`: `ARCHITECTURE.md`
 - Preserve on the same branch: `logs/capability-first/`
+- Compare only; do not stage or preserve: `governance.toml`, `scripts/target_binding.py`, `tests/unit/test_target_binding.py`, `tests/fixtures/compact_kernel/v1_misuse_vectors.json`
+- Compare only; do not stage or preserve: `scripts/compact_state_mapping.py`, `tests/fixtures/compact_state_mapping/v1.json`, `tests/unit/test_compact_state_mapping.py`
 - Create on `main`: `docs/HANDOFF-owner-2026-07-16-compact-root-wip.md`
 
 **Interfaces:**
 
-- Consumes: the exact compact root bytes remaining after Task 2 and the canonical root-blob comparison checkpoint `1306c157ac434389444e77935d24db8b3189ee2c`.
-- Produces: one preservation-only branch, a root clean of compact WIP, and a handoff proving which blobs already equal the canonical branch. Distinct root measurements remain preserved but do not become accepted Phase-1 evidence.
+- Consumes: the exact live dirty `ARCHITECTURE.md` and `logs/capability-first/` bytes remaining after Task 2, the canonical root-blob comparison checkpoint `1306c157ac434389444e77935d24db8b3189ee2c`, and the three contained-`main` advance commits named below.
+- Produces: one preservation-only branch containing only the dirty doc/log roots, a root clean of compact WIP, and a handoff proving four clean checkpoint matches plus three clean contained-history advances. Distinct root measurements remain preserved but do not become accepted Phase-1 evidence.
 
-- [ ] **Step 1: Prove the canonical overlap before extraction**
+- [ ] **Step 1: Prove the clean comparison set before extraction**
 
 Run:
 
@@ -338,19 +339,55 @@ for item_path in \
   governance.toml \
   scripts/target_binding.py \
   tests/unit/test_target_binding.py \
-  scripts/compact_state_mapping.py \
-  tests/fixtures/compact_kernel/v1_misuse_vectors.json \
-  tests/fixtures/compact_state_mapping/v1.json \
-  tests/unit/test_compact_state_mapping.py; do
+  tests/fixtures/compact_kernel/v1_misuse_vectors.json; do
   work_blob="$(env -u GIT_INDEX_FILE git hash-object "$item_path")"
-  canonical_blob="$(env -u GIT_INDEX_FILE git rev-parse \
+  checkpoint_blob="$(env -u GIT_INDEX_FILE git rev-parse \
     "1306c157ac434389444e77935d24db8b3189ee2c:$item_path")"
-  test "$work_blob" = "$canonical_blob" || exit 1
-  printf '%s %s\n' "$work_blob" "$item_path"
+  head_blob="$(env -u GIT_INDEX_FILE git rev-parse "HEAD:$item_path")"
+  test "$work_blob" = "$checkpoint_blob" || exit 1
+  test "$work_blob" = "$head_blob" || exit 1
+  printf 'checkpoint-match %s %s\n' "$work_blob" "$item_path"
 done
+
+check_contained_advance() {
+  local advance_commit="$1"
+  local item_path="$2"
+  local expected_blob="$3"
+  local work_blob
+  local head_blob
+  local advanced_blob
+  local checkpoint_blob
+  work_blob="$(env -u GIT_INDEX_FILE git hash-object "$item_path")"
+  head_blob="$(env -u GIT_INDEX_FILE git rev-parse "HEAD:$item_path")"
+  advanced_blob="$(env -u GIT_INDEX_FILE git rev-parse \
+    "$advance_commit:$item_path")"
+  checkpoint_blob="$(env -u GIT_INDEX_FILE git rev-parse \
+    "1306c157ac434389444e77935d24db8b3189ee2c:$item_path")"
+  test "$work_blob" = "$expected_blob" || return 1
+  test "$work_blob" = "$head_blob" || return 1
+  test "$work_blob" = "$advanced_blob" || return 1
+  test "$work_blob" != "$checkpoint_blob" || return 1
+  env -u GIT_INDEX_FILE git merge-base --is-ancestor \
+    "$advance_commit" HEAD || return 1
+  printf 'contained-main-advance %s %s %s\n' \
+    "$work_blob" "$advance_commit" "$item_path"
+}
+
+check_contained_advance \
+  484b16a27f45eb6f4b973894499ea1e5edf704c4 \
+  scripts/compact_state_mapping.py \
+  ff9118cbc509ae1a3e5a5f15816f907316f06218
+check_contained_advance \
+  be1488a41b6174b4503fb23f8885794fa37528fc \
+  tests/fixtures/compact_state_mapping/v1.json \
+  65e3bf1ec847c3b556f752198c00ba7647fd3a34
+check_contained_advance \
+  7151cee977693bcdf0dda262d68bd9e0253f7aa2 \
+  tests/unit/test_compact_state_mapping.py \
+  f9905658de63cce75f51a57414f5c211abdac665
 ```
 
-Expected: seven blob-ID/path lines and exit `0`. `ARCHITECTURE.md` is deliberately excluded because it contains a composite anchor refresh; preserve its exact blob but do not claim canonical equality.
+Expected: four `checkpoint-match` lines and three `contained-main-advance` lines with exit `0`. The checkpoint matches are `governance.toml` at `da0d444ceef156c577636b2bc7d0fc168cff66bd`, `scripts/target_binding.py` at `bc8a1a210e1b56d197282c61b6bb5d679368c55b`, `tests/unit/test_target_binding.py` at `0fba3865772e8905eec9c795baee86aea6cb842a`, and `tests/fixtures/compact_kernel/v1_misuse_vectors.json` at `2ed1c69a4700edd9e87f18b436f36f0573917a56`. The contained-history advances are `scripts/compact_state_mapping.py` at `ff9118cbc509ae1a3e5a5f15816f907316f06218` through `484b16a27f45eb6f4b973894499ea1e5edf704c4`, `tests/fixtures/compact_state_mapping/v1.json` at `65e3bf1ec847c3b556f752198c00ba7647fd3a34` through `be1488a41b6174b4503fb23f8885794fa37528fc`, and `tests/unit/test_compact_state_mapping.py` at `f9905658de63cce75f51a57414f5c211abdac665` through `7151cee977693bcdf0dda262d68bd9e0253f7aa2`. All seven paths are clean comparison evidence and must remain outside the preservation commit. `ARCHITECTURE.md` is deliberately excluded from comparison because it contains a composite anchor refresh; preserve its exact blob but do not claim canonical equality.
 
 - [ ] **Step 2: Switch the shared root to the compact preservation branch**
 
@@ -364,24 +401,19 @@ env -u GIT_INDEX_FILE git switch -c \
 
 Expected: the first command prints `main`; the second creates the preservation branch without changing any tracked or untracked compact byte.
 
-- [ ] **Step 3: Stage only compact code, fixtures, docs, and evidence**
+- [ ] **Step 3: Stage only the live dirty compact doc and evidence roots**
 
 Run:
 
 ```bash
 env -u GIT_INDEX_FILE git add -- \
-  ARCHITECTURE.md governance.toml \
-  scripts/target_binding.py scripts/compact_state_mapping.py \
-  tests/unit/test_target_binding.py \
-  tests/unit/test_compact_state_mapping.py \
-  tests/fixtures/compact_kernel/v1_misuse_vectors.json \
-  tests/fixtures/compact_state_mapping/v1.json \
+  ARCHITECTURE.md \
   logs/capability-first
 env -u GIT_INDEX_FILE git diff --cached --name-only
 env -u GIT_INDEX_FILE git diff --cached --check
 ```
 
-Expected: every staged path is one of the nine exact roots above; the ambient `.agents/`, `.codex/runtime/`, `ORIGINAL_REQUEST.md`, and `PROJECT.md` paths are absent. The check prints nothing.
+Expected: every staged path is exactly `ARCHITECTURE.md` or beneath `logs/capability-first/`. The seven clean comparison paths, ambient `.agents/`, `.codex/runtime/`, `ORIGINAL_REQUEST.md`, and `PROJECT.md` are absent. The check prints nothing.
 
 - [ ] **Step 4: Execute the focused compact preservation checks**
 
@@ -406,16 +438,11 @@ env -u GIT_INDEX_FILE git commit -m \
 env -u GIT_INDEX_FILE git rev-parse 'HEAD^{commit}'
 env -u GIT_INDEX_FILE git diff-tree --no-commit-id --name-only -r HEAD
 env -u GIT_INDEX_FILE git ls-tree -r HEAD -- \
-  ARCHITECTURE.md governance.toml \
-  scripts/target_binding.py scripts/compact_state_mapping.py \
-  tests/unit/test_target_binding.py \
-  tests/unit/test_compact_state_mapping.py \
-  tests/fixtures/compact_kernel/v1_misuse_vectors.json \
-  tests/fixtures/compact_state_mapping/v1.json \
+  ARCHITECTURE.md \
   logs/capability-first
 ```
 
-Expected: one full commit SHA and the exact preservation tree. No output is interpreted as integration or accepted measurement evidence.
+Expected: one full commit SHA and an exact preservation tree containing only `ARCHITECTURE.md` plus paths beneath `logs/capability-first/`. No clean compact code, fixture, or test path appears, and no output is interpreted as integration or accepted measurement evidence.
 
 - [ ] **Step 6: Return to `main` and prove the compact targets are clean**
 
@@ -433,15 +460,16 @@ env -u GIT_INDEX_FILE git status --short -- \
   logs/capability-first
 ```
 
-Expected: no output. This is branch extraction, not deletion: the exact bytes remain reachable from `codex/recovery-compact-root-wip-2026-07-16`.
+Expected: no output across both preserved roots and all seven clean comparison paths. This is branch extraction, not deletion: the exact dirty `ARCHITECTURE.md` and `logs/capability-first/` bytes remain reachable from `codex/recovery-compact-root-wip-2026-07-16`; the seven comparison paths remain supplied by contained `main` history.
 
 - [ ] **Step 7: Create and commit the compact root owner handoff**
 
 Create `docs/HANDOFF-owner-2026-07-16-compact-root-wip.md` with:
 
 - actual owner, full source base, full preservation head, and `Disposition: commit-and-handoff`;
-- all preserved roots and exact blob IDs;
-- the seven canonical-equality results from Step 1;
+- the preserved `ARCHITECTURE.md` and `logs/capability-first/` roots and exact blob IDs;
+- the four checkpoint-match results and the three contained-`main` advance results from Step 1, including every exact blob and advance commit;
+- an explicit finding that all seven clean code, fixture, and test paths were comparison evidence and are absent from the preservation commit;
 - a finding that the `ARCHITECTURE.md` snapshot is composite preservation and must be regenerated against whichever feature range is integrated;
 - a finding that the root `logs/capability-first/` cohorts are evidence-only until the Phase-1/2 integration plan explicitly accepts or supersedes them;
 - canonical implementation branch `codex/capability-phase2-shadow-2026-07-15`, clean live implementation head `2d5b23f819694f2abe39d4aed6cac318a4f9019d`, integration snapshot `bea4cb9fa6117d2c61e78ed05c2ce5a24f7a874a`, excluded post-snapshot chain `ae24effb8734cd92e418ae2f032724428d0df94a -> 2d5b23f819694f2abe39d4aed6cac318a4f9019d`, and root-blob comparison checkpoint `1306c157ac434389444e77935d24db8b3189ee2c`;
