@@ -22,10 +22,10 @@
   ],
   "done_evidence": [],
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "active",
   "verify_request": null,
-  "target_commit": "ed56f9b264d12a5ce835434707fd7eda5a46287e",
-  "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ed56f9b264d12a5ce835434707fd7eda5a46287e",
+  "target_commit": "03915a62b5230c213e4b90af706abac68ef07bd2",
+  "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..03915a62b5230c213e4b90af706abac68ef07bd2",
   "scope_files": [
     "coordination/mailbox/sent/*-director2-to-coordinator-findings.md",
     "coordination/mailbox/sent/*-operator2-to-coordinator-findings.md"
