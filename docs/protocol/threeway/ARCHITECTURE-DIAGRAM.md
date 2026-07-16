@@ -127,10 +127,15 @@ flowchart TB
    signatures, and an in-scope diff) — then promotes via exact-SHA compare-and-swap.
 5. **Antigravity is not a protocol authority.** It is an *optional* relayed-strategy app (never the
    decider) or a read-only observer — off the candidate branch, staging ref, and protected `main`.
-   No ChatGPT Pro consultation tool is installed in this repository; external advisory work needs
-   a separately approved design and implementation and grants no protocol or side-effect authority.
+   No external advisory provider tool is installed or authorized by this repository; any future
+   provider tool needs a separately approved design and implementation and grants no protocol or
+   side-effect authority.
 6. **The strategic loop is a loop.** Results feed the overseer's data→info summary, which feeds the
    chiefs, which return orders via the human relay — not a one-way chain.
+
+Lane V is independent verification by a non-author operator over one committed descriptor and
+lawful trigger. New reports use lane-v-report/v3 and publish atomically through
+TaskPublicationStore. Model or provider identity grants no authority.
 
 ## What this corrects (vs the two draft diagrams)
 

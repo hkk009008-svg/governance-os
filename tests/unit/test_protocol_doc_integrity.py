@@ -31,7 +31,14 @@ def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():
     assert "Sync the operative stub into `AGENTS.md`" not in text
     assert "Mechanize the cross-model requirement" not in text
     assert "## Mechanized enforcement and remaining follow-up" in text
-    assert "live receipt-backed advisory review/reconciliation" in text
+    assert "lane-v-report/v3" in text
+    assert "independent-lane-v" in text
+    assert "lane-v:independent-verifier" in text
+    assert "TaskPublicationStore" in text
+    assert "one committed descriptor and lawful trigger" in _compact(text)
+    assert "Model or provider identity grants no authority" in text
+    assert "live receipt-backed advisory review/reconciliation" not in text
+    assert "lane-v-report/v2" not in text
     assert "dispatch templates" in text
 
 

@@ -55,8 +55,13 @@ The strategic loop's advisory input is "an app, human-relayed" (spec §5.2, D11)
 Antigravity *app* to reason about strategy, it produces analysis/orders as **prose a human carries
 to the mechanical overseer**. It never writes the bus, never signs, never touches code.
 
-No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires
-a separately approved design and implementation; it grants no protocol or side-effect authority.
+No external advisory provider tool is installed or authorized by this repository. Any future
+provider tool requires a separately approved design and implementation and grants no protocol or
+side-effect authority.
+
+Lane V is independent verification by a non-author operator over one committed descriptor and
+lawful trigger. New reports use lane-v-report/v3 and publish atomically through
+TaskPublicationStore. Model or provider identity grants no authority.
 
 - Provenance discipline (spec §12, "chief-relay provenance"): when a human relays an Antigravity
   strategic result, record `{relaying_human, chief_model_label, prompt_or_bundle_digest,
@@ -93,7 +98,7 @@ own primitives (unified doc Part III). In particular:
 - **Verdict vocabulary** `pass | issues | unable_to_verify` (= GO/NITS/FAIL), the run-and-paste
   evidence preamble, mutation non-vacuity.
 - **Authority precedence** (user > git > coordination events > cache > default); **anti-ceremony**;
-  **user-gated side effects** (push/lock/paid-spend/pod-spend need explicit consent); **flag-before-burn**.
+  **user-gated side effects** (push/merge/lock/paid-spend/pod-spend need explicit consent); **flag-before-burn**.
 - **Session start:** run `scripts/ci_smoke.py` (the R-START tripwire) and orient from `git log` +
   `AGENTS.md` before non-trivial work; if there is no Antigravity hook surface, do this manually.
 

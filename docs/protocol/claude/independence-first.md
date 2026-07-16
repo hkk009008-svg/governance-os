@@ -102,10 +102,14 @@ different perspective saw them. Two structural lessons:
 ## Mechanized enforcement and remaining follow-up
 
 - Mechanized: `scripts/check_go_schema.py` and
-  `scripts/verification_report_gate.py` now require `lane-v-report/v2`, the
-  exact verification harness and trigger-bound descriptor fields, and, for
-  Codex Lane V, a live receipt-backed advisory review/reconciliation before
-  `coordination/bin/send-event` publishes the report. Exact historical reports
-  remain readable only through the committed path/raw-byte digest manifest.
+  `scripts/verification_report_gate.py` require `lane-v-report/v3`,
+  `independent-lane-v`, and `lane-v:independent-verifier`, with one committed
+  descriptor and lawful trigger bound exactly to the reviewed range. The
+  non-author operator remains the verifier and sole GO/NITS/FAIL authority.
+  `TaskPublicationStore` atomically publishes the task-bound report through
+  `coordination/bin/send-event`; direct mailbox writes and hooks grant no
+  publication authority. Model or provider identity grants no authority.
+  Exact historical reports remain readable only through the committed
+  path/raw-byte digest manifest.
 - Add the design-time enumeration step to the implementer/reviewer
   dispatch templates in `docs/templates/claude/`.

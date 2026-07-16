@@ -61,8 +61,13 @@ write path** (strategic reasoning becomes human-relayed apps; the overseer is a 
 | `overseer` | mechanical | strategy (control-plane; **read-only on code**) | author code; issue a verdict |
 | dual chief | two separately approved, human-relayed external advisory apps | strategy | write code or state directly |
 
-No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires
-a separately approved design and implementation; it grants no protocol or side-effect authority.
+No external advisory provider tool is installed or authorized by this repository. Any future
+provider tool requires a separately approved design and implementation and grants no protocol or
+side-effect authority.
+
+Lane V is independent verification by a non-author operator over one committed descriptor and
+lawful trigger. New reports use lane-v-report/v3 and publish atomically through
+TaskPublicationStore. Model or provider identity grants no authority.
 
 **Codex occupies:** `director` (Pair A builder), `operator2` (Pair B verifier), `coordinator2`
 (Pair B integrator). **Claude occupies:** `director2` (Pair B builder), `operator` (Pair A
@@ -307,7 +312,7 @@ III).
 - **Anti-ceremony / no theater.** A status, route, handoff, receipt, or no-op report is valid **only**
   when it preserves transfer state, changes enforcement, or cites executable evidence. Green-looking
   prose is not protocol proof.
-- **User-gated side effects.** Push, lock-claim side effects, paid-API spend, and pod/compute spend
+- **User-gated side effects.** Push, merge, lock-claim side effects, paid-API spend, and pod/compute spend
   **always require explicit user consent** — no environment variable or role authorizes them.
 - **Flag-before-burn.** Any script that spends clock-billed or per-call money gets a **non-author**
   review before its first execution (idempotency guard, spend-site enumeration, error propagation on

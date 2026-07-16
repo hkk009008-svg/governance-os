@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-16 @ 933871b*
+*Last verified: 2026-07-16 @ d97a6c4*
 
 ## 1. Purpose
 
@@ -57,16 +57,16 @@ Key directories:
 | `build_guard` | `scripts/ledger_start_guard.py:175` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
 | `load_kernel_mirror` | `scripts/target_binding.py:147` | Validates the declarative-only compact-kernel epoch/writer mirror without selecting runtime behavior. |
 | `resolve_target` | `scripts/target_binding.py:184` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
-| `_accepted_context_keys` | `scripts/compact_state_mapping.py:120` | Independently enumerates every finite producer-backed v1 mapping context for exact fixture and shadow-gate closure. |
+| `_accepted_context_keys` | `scripts/compact_state_mapping.py:98` | Independently enumerates every finite producer-backed v1 mapping context for exact fixture and shadow-gate closure. |
 | `reduce_protocol_state` | `scripts/capability_reducer.py:1230` | Produces one pure, deterministic, non-authoritative compact shadow report. |
-| `adapt_v1_history` | `scripts/capability_v1_adapter.py:3117` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
+| `adapt_v1_history` | `scripts/capability_v1_adapter.py:2844` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
-| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:547` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_r_independence` | `scripts/codex_protocol_model.py:773` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:857` | Renders guard guidance into readiness output. |
-| `ReceiptStore` | `scripts/opus_review_receipts.py:1497` | Owns the shared-Git-common-directory receipt lifecycle and one-attempt scope conflict guard. |
-| `resolve_provider_authoritative_scope` | `scripts/opus_review_bridge.py:1826` | Resolves trigger-bound scope and verifies the descriptor-bound advisory prompt before receipt reservation. |
-| `publish_candidate` | `scripts/verification_report_gate.py:2497` | Publishes one validated Lane-V report as a durable file-plus-stage-0-index transaction with explicit recovery. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:519` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_r_independence` | `scripts/codex_protocol_model.py:744` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:816` | Renders guard guidance into readiness output. |
+| `render_lane_v_v3` | `scripts/codex_protocol_model.py:1156` | Renders the provider-neutral Lane V v3 authority and publication contract. |
+| `TaskPublicationStore` | `scripts/verification_report_gate.py:1754` | Owns the atomic task-bound Lane V v3 publication state machine. |
+| `publish_candidate` | `scripts/verification_report_gate.py:3078` | Publishes one validated Lane V v3 report as a durable file-plus-stage-0-index transaction with explicit recovery. |
 
 ## 4. Runtime Invariants
 
@@ -83,73 +83,32 @@ Key directories:
 - Live seats start with `scripts/ledger_start_guard.py --seat <seat> --wave 2`
   from Pipeline before entering evidence-ledger.
 - Ordinary git and pytest commands use `env -u GIT_INDEX_FILE`.
-- Pushes, lock actions, cursor consumption, pod spend, target checkout refresh,
-  production generation, and paid API spend require explicit authorization or
-  a valid routed executor. The sole standing paid-call exception is
-  `standing-policy:codex-lane-v-opus-v1`, limited to one post-Lane-V Opus
-  attempt under the exact Pipeline `codex-lane-v` profile.
-- Codex Lane V attempts one verdict-blind Opus review through
-  `scripts/opus_review_bridge.py` after its primary analysis. Opus remains
-  advisory; the bridge proves Pipeline identity and the reviewed commits,
-  materializes a temporary snapshot at the reviewed HEAD, and resolves one
-  content-addressed prompt-authority requirement from the committed
-  `lane-v-scope/v1` descriptor. The authority filename binds its own Git blob
-  OID and precommits the dedicated provider prompt's path, blob OID, full/body
-  SHA-256 digests, and byte sizes. The bridge loads only that prompt blob from
-  the literal reviewed commit, proves every fact before receipt creation, and
-  passes the exact advisory body through `--append-system-prompt` separately
-  from the blind `-p` task scope. It has no base, first-parent, working-tree,
-  mirror, or frontmatter fallback. Raw prompt text is never persisted in
-  receipt/runtime state, provider output, or runtime logs; the dedicated prompt
-  source itself is intentionally committed.
-  Claude runs with `--safe-mode` and `--disable-slash-commands`. A
-  network-capable outer OS-enforced sandbox denies
-  source/snapshot and persistent-home writes. Exact verification commands use
-  one-shot broker tokens to enter a second default-deny sandbox outside the
-  inherited outer Seatbelt; that sandbox denies network, source and sensitive
-  reads, non-scratch writes, and unlisted executables. Sandbox failure is an
-  explicit degraded Codex-only fallback and never reaches the provider. The
-  provider and each verification command run in distinct process groups with
-  whole-group cleanup, and broker socket reads are time-bounded. The bridge
-  resolves the local Claude executable before sandbox launch, canonicalizes
-  reviewed SHAs to lowercase, disables Git textconv for patch rendering, and
-  applies the same bounded delimiter-safe finding-ID grammar in its JSON Schema
-  and Python parser. The Codex model applies R-INDEPENDENCE before
-  implementation: it classifies the four adversarial surfaces, requires a
-  durable independent design-time enumeration for triggered work, and requires
-  independent actual-diff verification before completion. Lane V requests
-  declare `codex-lane-v`; production scope is derived from a committed
-  `lane-v-scope/v1` descriptor named by either the reviewed shipping commit or
-  a committed `verify-request`, never from caller-selected path/command lists.
-  Requirement and authority blobs are bound to full commits, blob IDs, and
-  digests and rechecked in the isolated snapshot. After Pipeline identity,
-  commits, immutable scope, and command validation, an absent task source
-  resolves to `standing-policy:codex-lane-v-opus-v1`; malformed explicit
-  sources never fall back. Provider payloads use `opus-provider-review/v1`;
-  normalized evidence is `opus-review/v3`, persisted under the shared Git
-  common directory, and receipt-only reconciliation uses
-  `opus-reconciliation/v2`. The shared lifecycle is exactly
-  `reserved -> reviewed -> reconciled -> publishing -> published`. The complete
-  changed-path set, requirements,
-  descriptor/trigger facts, commands, authorization, and provider-prompt facts
-  contribute to the scope digest. One authoritative task/range launches at
-  most one provider process attempt and no automatic retry: exact replays reuse
-  the receipt, changed scope conflicts, and an abandoned durable reservation
-  becomes visibly `attempt_state_uncertain`. Provider stdout and stderr are
-  drained concurrently with a 131072-byte cap per stream; Seatbelt, AF_UNIX,
-  and Claude execution tests run only after an explicit host-capability probe,
-  while pure schema/scope/prompt tests always run.
-- New verification reports use `lane-v-report/v2` with 17 ordered attestation
-  fields. `coordination/bin/send-event` is the live publication boundary: it
-  validates committed descriptor authority and, for Codex, the exact shared
-  receipt/reconciliation before a no-replace publish. `publishing` retains the
-  candidate inode/digest plus exact stage-0 Git blob OID, mode `100644`, and
-  stage `0` until the final bytes, object, index entry, blob readback, and
-  durability checks agree; `resume` and read-only `status` are the only crash
-  recovery paths. Exact historical report path/raw-byte hashes remain accepted
-  through the committed legacy manifest. `.codex/hooks.json` is not the Lane-V
-  authority. Unavailability remains degraded and the operator retains
-  GO/NITS/FAIL authority.
+- Commit, push, merge, cursor consumption, lock actions, pod spend, target
+  checkout refresh, production generation, paid API spend, and every other side
+  effect are separate authorities. Each requires explicit authorization or a
+  valid routed executor; no model or provider identity grants authority.
+- Lane V is independent verification by a non-author operator over one
+  committed descriptor and lawful trigger. New reports use lane-v-report/v3
+  and publish atomically through TaskPublicationStore. Model or provider
+  identity grants no authority.
+- `scripts/verification_report_gate.py` binds the exact full reviewed range,
+  canonical `lane-v-scope/v1` descriptor, and one committed verify-request or
+  shipping trigger. Missing, duplicated, stale, mismatched, or reconstructed
+  authority fails closed. The operator alone issues GO/NITS/FAIL from executed
+  repository evidence.
+- `TaskPublicationStore` is the sole live publication state machine. Its
+  task-bound `publishing -> published` transaction retains the candidate
+  inode/digest and exact stage-0 Git blob facts until final bytes, object, index
+  entry, blob readback, and durability checks agree. `resume` and read-only
+  `status` are the crash-recovery paths. Direct mailbox writes and hooks are not
+  publication authority.
+- Exact pre-v3 report paths and raw-byte hashes remain accepted only through the
+  committed historical manifest. Local `.codex/runtime` residue is outside the
+  operative scan and is not mutated by protocol verification.
+- The Codex model applies R-INDEPENDENCE before implementation: it classifies
+  the four adversarial surfaces, requires a durable independent design-time
+  enumeration for triggered work, and requires independent actual-diff
+  verification before completion.
 
 ## 5. Mailbox And Capacity State
 
@@ -179,6 +138,12 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/check_doc_claims.py --sha-refs
 baseline is unchanged. A changed SHA-ref drift set is a hard failure. Run
 `scripts/check_doc_claims.py --sha-refs` for the full historical baseline
 audit report.
+
+The project-smoke block proves signed-bus imports/canonicalization, the
+load-bearing event-kind relationship, and the seat/mailbox registry. Lane V v3
+schema, trigger, publication, and provider-decommission claims are proved by the
+focused protocol tests; smoke does not substitute for those regressions or an
+operator GO.
 
 ## 7. Target-Repo Boundary
 

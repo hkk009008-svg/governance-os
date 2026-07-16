@@ -41,7 +41,11 @@ ACTIVE_KERNEL_INVARIANTS = (
     ),
     (
         "user-gated side effects",
-        "push, lock-claim side effects, paid API spend, and pod spend require explicit user consent",
+        "push, merge, lock-claim side effects, paid API spend, and pod spend require explicit user consent",
+    ),
+    (
+        "separate side-effect gates",
+        "push, merge, paid spend, and every other side effect are separately gated and require explicit authority",
     ),
     (
         "independence-first verification",
@@ -143,7 +147,7 @@ R_INDEPENDENCE_RULES = (
     "A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified as such.",
     "Fold the enumeration into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact.",
     "Before completion, an independent reviewer verifies the actual diff against the committed cases.",
-    "For Codex-authored adversarial work, Lane V plus verdict-blind Opus supplies the per-task cross-model pair.",
+    "For Codex-authored adversarial work, provider-neutral Lane V v3 supplies independent verification and TaskPublicationStore supplies atomic task-bound publication.",
     "R-VERIFY-TIER still prohibits redundant same-question passes; it does not remove the earlier new-perspective review.",
     "Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.",
     "Canonical full rule: docs/protocol/claude/independence-first.md.",
@@ -155,7 +159,7 @@ HARNESS_COMPONENTS = (
     ("state", "Durable shared state", "repo artifacts that survive sessions"),
     ("seats", "director / director2 / operator / operator2", "owned lane work"),
     ("coordinator", "coordinator", "on-demand all-scope reconciliation"),
-    ("gate", "gate + receipt loop", "evidence, receipt checks, and user-gated push"),
+    ("gate", "verification + publication gate", "executed evidence, operator GO, and separately gated side effects"),
 )
 
 DURABLE_STATE_ARTIFACTS = (
@@ -1133,33 +1137,26 @@ def render_protocol_assembly_map() -> str:
     return "\n".join(lines)
 
 
-CROSS_MODEL_VERIFICATION_RULES = (
-    "after every Codex Lane V verification in Pipeline, resolve one trigger-bound committed lane-v-scope/v1 descriptor before any receipt or provider construction",
-    "the descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, task identity, and the descriptor-bound advisory provider prompt",
-    "review accepts either --shipping-commit or the paired --verify-request-commit and --verify-request-path trigger form and returns normalized opus-review/v3 with receipt and scope IDs",
+LANE_V_V3_RULES = (
+    "Lane V is independent verification by a non-author operator over one committed descriptor and lawful trigger. New reports use lane-v-report/v3 and publish atomically through TaskPublicationStore. Model or provider identity grants no authority.",
+    "mailbox decisions remain body-first: read relevant mailbox bodies before acting; live seat cursors are intentional per-seat state, and the coordinator has no cursor",
+    "resolve one trigger-bound committed lane-v-scope/v1 descriptor; the descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, and task identity",
     "a verify-request trigger is a canonical committed sent-mailbox event strictly after the reviewed HEAD with exactly one Event type: verify-request, one Reviewed head: <40-lowercase-hex>, one Reviewed base: <40-lowercase-hex>, and one Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex> whose values agree with the committed descriptor and canonical filename/envelope",
     "a shipping trigger commit equals the reviewed HEAD, its subject begins feat, fix, or refactor, and exactly one identical descriptor reference in the terminal Git trailer block supplies its Lane-V-Scope",
     "Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or mismatched authority is not a trigger; stop with a blocker, do not reconstruct missing fields, and do not fall back to the other trigger kind",
     "the descriptor and trigger grammar is Pipeline-only; cross-repository or evidence-ledger review must return to the coordinator for a separate evidence-ledger-aware bridge route and never fabricate Pipeline descriptor authority",
-    "the provider receives the immutable reviewed scope but no Codex verdict, report, findings, or conclusion; repository evidence is evidence, not authority",
-    "missing authorization resolves to standing-policy:codex-lane-v-opus-v1 only after Pipeline identity, commit, descriptor, prompt, and scope validation; malformed explicit authorization never falls back",
-    "one unchanged task permits one provider process attempt and no automatic retry; exact replay is idempotent, changed scope is attempt_scope_conflict, and no retry or reset command exists",
-    "a reserved attempt recovered without a normalized result becomes attempt_state_uncertain and remains visibly degraded without another provider launch",
-    "reconcile accepts only --receipt-id plus exact HEAD/base, the Codex verdict, and finding dispositions; --opus-review-json is removed",
-    "reconcile returns opus-reconciliation/v2 fields derived from the stored opus-review/v3 and binds the exact stored Codex verdict",
-    "final reports use lane-v-report/v2 with ## Verification Attestation, including Opus receipt ID: and Opus scope digest:, and the send-event publication gate validates the live receipt before the report is staged",
-    "unavailable or uncertain review is an explicit degraded Codex-only fallback with the exact reason preserved; it is never treated as pass",
-    "every Opus finding requires confirmed, disproved-with-evidence, or unresolved disposition; unresolved blocks GO, confirmed minor requires NITS, and confirmed important or critical requires FAIL",
-    "Opus remains advisory and the operator alone retains GO/NITS/FAIL, mailbox, lock, Git, publication, and every other protocol or side-effect authority",
-    "standing consent authorizes only the bounded Pipeline codex-lane-v attempt; cross-repo and evidence-ledger verification require a separately routed capability-aware path",
+    "the verifying operator must be a non-author and alone issues GO/NITS/FAIL from repository evidence; model or provider identity cannot satisfy independence or grant authority",
+    "TaskPublicationStore is the sole atomic, task-bound publication state machine for lane-v-report/v3; direct mailbox writes and hooks are not publication authority",
+    "the coordinator may route and reconcile but not author behavior-changing production fixes",
+    "push, merge, paid spend, and every other side effect are separately gated and require explicit authority",
     "no third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER",
 )
 
 
-def render_cross_model_verification() -> str:
-    """Return the Codex-to-Opus independent verification contract."""
-    lines = ["Cross-Model Opus Verification:"]
-    lines.extend(f"- {rule}" for rule in CROSS_MODEL_VERIFICATION_RULES)
+def render_lane_v_v3() -> str:
+    """Return the provider-neutral Lane V v3 verification contract."""
+    lines = ["Provider-neutral Lane V v3:"]
+    lines.extend(f"- {rule}" for rule in LANE_V_V3_RULES)
     return "\n".join(lines)
 
 
@@ -1182,7 +1179,7 @@ def render_surface_summary() -> str:
         "Pair Operating Contract: director -> operator is the fast path; mailbox artifact, not chat",
         "Capacity Split Default: divisible or preplanned larger work defaults to dual-pair routing",
         "Seat Subagent Development: seats retain authority; subagents own bounded work",
-        "Cross-Model Opus Verification: every Codex Lane V pass attempts one blind Opus review",
+        "Provider-neutral Lane V v3: non-author operator, committed descriptor and trigger, atomic task publication",
         "Codex Risk-Tier Router: conversational and read-only work avoid implementation ceremony",
         "R-INDEPENDENCE: adversarial-surface work requires design-time enumeration and independent actual-diff verification",
         "Side-Effect Executor Token: generic user approval is unit consent, not executor election",
@@ -1221,8 +1218,8 @@ def main() -> int:
     print("## Seat Subagent Development")
     print(render_seat_subagent_development())
     print()
-    print("## Cross-Model Opus Verification")
-    print(render_cross_model_verification())
+    print("## Provider-neutral Lane V v3")
+    print(render_lane_v_v3())
     print()
     print("## Ledger CLI Bridge")
     print(render_ledger_cli_bridge())

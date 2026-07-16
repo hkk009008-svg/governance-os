@@ -18,7 +18,21 @@ green-looking coordinator activity from receipts or prose alone.
 
 ## External Advisory Tools
 
-No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires a separately approved design and implementation; it grants no protocol or side-effect authority.
+No external advisory provider tool is installed or authorized by this repository.
+Any future provider tool requires a separately approved design and implementation
+and grants no protocol or side-effect authority.
+
+Lane V is independent verification by a non-author operator over one committed
+descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
+atomically through TaskPublicationStore. Model or provider identity grants no
+authority.
+
+Mailbox decisions remain body-first: read relevant mailbox bodies before
+acting; live seat cursors are intentional per-seat state, and the coordinator
+has no cursor. The verifying operator must be a non-author and alone issues
+GO/NITS/FAIL from repository evidence. The coordinator may route and reconcile
+but not author behavior-changing production fixes. Push, merge, paid spend, and
+every other side effect are separately gated and require explicit authority.
 
 ## Emergency Handling
 
@@ -174,10 +188,10 @@ Coordinator may write only with explicit path scope:
 
 Production pipeline modules are outside coordinator write authority.
 
-## Push, lock, and spend gates
+## Push, merge, lock, and spend gates
 
-Side effects are `user-consent-required`: push, lock-claim side effects, paid
-API spend, and pod spend require explicit user consent. Prefer eligible
+Side effects are `user-consent-required`: push, merge, lock-claim side effects,
+paid API spend, and pod spend require explicit user consent. Prefer eligible
 no-lock routing or stop for the user when those side effects are not
 authorized.
 

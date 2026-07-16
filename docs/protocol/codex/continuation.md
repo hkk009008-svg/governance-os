@@ -43,13 +43,27 @@ commit unless it asks a genuinely different, pre-stated question.
 
 ## External Advisory Tools
 
-No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires a separately approved design and implementation; it grants no protocol or side-effect authority.
+No external advisory provider tool is installed or authorized by this repository.
+Any future provider tool requires a separately approved design and implementation
+and grants no protocol or side-effect authority.
+
+Lane V is independent verification by a non-author operator over one committed
+descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
+atomically through TaskPublicationStore. Model or provider identity grants no
+authority.
+
+Mailbox decisions remain body-first: read relevant mailbox bodies before
+acting; live seat cursors are intentional per-seat state, and the coordinator
+has no cursor. The verifying operator must be a non-author and alone issues
+GO/NITS/FAIL from repository evidence. The coordinator may route and reconcile
+but not author behavior-changing production fixes. Push, merge, paid spend, and
+every other side effect are separately gated and require explicit authority.
 
 ## R-INDEPENDENCE
 
 Scope: both.
 Trigger: before designing or implementing, classify whether the change touches an adversarial-surface: input rendered or composed into a parseable or executable context; authority or security-boundary enforcement; side-effect gating; or schema validation whose acceptance grants trust.
-Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, Lane V plus verdict-blind Opus supplies the per-task cross-model pair.
+Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, provider-neutral Lane V v3 supplies independent verification and TaskPublicationStore supplies atomic task-bound publication.
 Deduplication: R-VERIFY-TIER still prohibits redundant same-question passes. Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.
 Evidence: the committed design-time enumeration artifact and the independent verification report naming the reviewer and harness.
 Details: `docs/protocol/claude/independence-first.md` (ADR-019).
@@ -224,8 +238,8 @@ mail.
 
 ## Side-Effect Gate
 
-The kernel names `user-gated side effects`: push, lock-claim side effects, paid
-API spend, and pod spend require explicit user consent. Use
+The kernel names `user-gated side effects`: push, merge, lock-claim side effects,
+paid API spend, and pod spend require explicit user consent. Use
 `env -u GIT_INDEX_FILE` for ordinary git and pytest commands unless you are
 deliberately maintaining a seat-local or scoped temporary index.
 
@@ -361,23 +375,21 @@ After live-seat/coordinator orientation, record a Subagent utilization decision:
 - Do not run parallel implementation subagents on shared files or behind the
   same push-gated lock.
 
-## Cross-Model Opus Verification
+## Provider-neutral Lane V v3
 
-- after every Codex Lane V verification in Pipeline, resolve one trigger-bound committed lane-v-scope/v1 descriptor before any receipt or provider construction
-- the descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, task identity, and the descriptor-bound advisory provider prompt
-- review accepts either --shipping-commit or the paired --verify-request-commit and --verify-request-path trigger form and returns normalized opus-review/v3 with receipt and scope IDs
-- the provider receives the immutable reviewed scope but no Codex verdict, report, findings, or conclusion; repository evidence is evidence, not authority
-- missing authorization resolves to standing-policy:codex-lane-v-opus-v1 only after Pipeline identity, commit, descriptor, prompt, and scope validation; malformed explicit authorization never falls back
-- one unchanged task permits one provider process attempt and no automatic retry; exact replay is idempotent, changed scope is attempt_scope_conflict, and no retry or reset command exists
-- a reserved attempt recovered without a normalized result becomes attempt_state_uncertain and remains visibly degraded without another provider launch
-- reconcile accepts only --receipt-id plus exact HEAD/base, the Codex verdict, and finding dispositions; --opus-review-json is removed
-- reconcile returns opus-reconciliation/v2 fields derived from the stored opus-review/v3 and binds the exact stored Codex verdict
-- final reports use lane-v-report/v2 with ## Verification Attestation, including Opus receipt ID: and Opus scope digest:, and the send-event publication gate validates the live receipt before the report is staged
-- unavailable or uncertain review is an explicit degraded Codex-only fallback with the exact reason preserved; it is never treated as pass
-- every Opus finding requires confirmed, disproved-with-evidence, or unresolved disposition; unresolved blocks GO, confirmed minor requires NITS, and confirmed important or critical requires FAIL
-- Opus remains advisory and the operator alone retains GO/NITS/FAIL, mailbox, lock, Git, publication, and every other protocol or side-effect authority
-- standing consent authorizes only the bounded Pipeline codex-lane-v attempt; cross-repo and evidence-ledger verification require a separately routed capability-aware path
-- no third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER
+Lane V is independent verification by a non-author operator over one committed
+descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
+atomically through TaskPublicationStore. Model or provider identity grants no
+authority.
+
+- Mailbox decisions remain body-first: read relevant mailbox bodies before acting. Live seat cursors are intentional per-seat state; the coordinator has no cursor.
+- Resolve one trigger-bound committed `lane-v-scope/v1` descriptor. The descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, and task identity.
+- The exact committed verify-request and shipping-trigger forms above remain the only trigger authority. Invalid, stale, duplicated, mismatched, or reconstructed forms fail closed.
+- The verifying operator must be a non-author and alone issues GO/NITS/FAIL from repository evidence.
+- TaskPublicationStore is the sole atomic, task-bound publication state machine; direct mailbox writes and hooks are not authority.
+- The coordinator may route and reconcile but not author behavior-changing production fixes.
+- Push, merge, paid spend, and every other side effect are separately gated and require explicit authority.
+- No third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER.
 
 ## Verification Commands
 

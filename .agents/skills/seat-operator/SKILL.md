@@ -13,7 +13,21 @@ The per-pair operator is the **independent post-commit verifier** for everything
 
 ## External Advisory Tools
 
-No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires a separately approved design and implementation; it grants no protocol or side-effect authority.
+No external advisory provider tool is installed or authorized by this repository.
+Any future provider tool requires a separately approved design and implementation
+and grants no protocol or side-effect authority.
+
+Lane V is independent verification by a non-author operator over one committed
+descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
+atomically through TaskPublicationStore. Model or provider identity grants no
+authority.
+
+Mailbox decisions remain body-first: read relevant mailbox bodies before
+acting; live seat cursors are intentional per-seat state, and the coordinator
+has no cursor. The verifying operator must be a non-author and alone issues
+GO/NITS/FAIL from repository evidence. The coordinator may route and reconcile
+but not author behavior-changing production fixes. Push, merge, paid spend, and
+every other side effect are separately gated and require explicit authority.
 
 ## Emergency Handling
 
@@ -145,6 +159,7 @@ and never fabricate Pipeline descriptor authority.
 
 ## Provider-neutral Lane V verification
 
+- Lane V is independent verification by a non-author operator over one committed descriptor and lawful trigger. New reports use lane-v-report/v3 and publish atomically through TaskPublicationStore. Model or provider identity grants no authority.
 - Resolve one trigger-bound committed `lane-v-scope/v1` descriptor before verification.
 - The descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, and task identity.
 - Verify independently from repository evidence and run no provider command.
@@ -169,11 +184,11 @@ Live operator seats may choose bounded subagents at seat discretion; this does n
 Default behavior: every live seat and coordinator actively considers bounded subagents for non-trivial routed work and uses them when they add independent signal, capacity, or fresh verification. Direct work remains acceptable for small, tightly coupled, or authority-sensitive work.
 After live-seat/coordinator orientation, record a Subagent utilization decision: dispatch a bounded helper for a named task, or direct/no-op because the work is small, tightly coupled, authority-sensitive, or already complete.
 
-- For non-Codex Lane V, spawn read-only `lane-v-verifier` for ordinary landed diffs
-  only after the live operator validates lawful trigger authority and when a
-  cold context pass helps; spawn `money-gate-reviewer` for spend, budget,
-  cost-key, accumulator, or silent gate-degradation diffs. For Codex Lane V,
-  use an additional helper only for a different pre-stated specialist question.
+- Spawn read-only `lane-v-verifier` only after the live operator validates
+  lawful trigger authority and when a cold-context pass adds independent
+  signal. Spawn `money-gate-reviewer` for spend, budget, cost-key, accumulator,
+  or silent gate-degradation diffs. Use an additional helper only for a
+  different pre-stated specialist question.
 - Run specialist reviewers in parallel only when they answer different
   questions. Do not ask multiple agents to re-check the same already-converged
   fact unless R-VERIFY-TIER permits a distinct new question.

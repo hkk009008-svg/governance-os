@@ -4,17 +4,114 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
 
 import codex_protocol_model as model
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CHATGPT_DELETED_PATHS = (
+DELETED_PROVIDER_PATHS = (
     "scripts/chatgpt_pro_consult.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
     "tests/unit/test_chatgpt_pro_consult.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_opus_review_receipts.py",
     ".agents/skills/chatgpt-pro-consultation/SKILL.md",
     "docs/protocol/codex/chatgpt-pro-consultation-acceptance.md",
+    "scripts/prompts/opus_lane_v_advisory.md",
+    (
+        "scripts/prompts/"
+        "opus_lane_v_advisory.authority.583cdcb5b5129b629ae4ada21627a4fc5bab1b9c.json"
+    ),
 )
+FORBIDDEN_OPERATIVE_FRAGMENTS = (
+    "ChatGPT Pro",
+    "Opus",
+    "import chatgpt_pro_consult",
+    "import opus_review_bridge",
+    "import opus_review_receipts",
+    "render_chatgpt_pro_consultation(",
+    "chatgpt_pro_consultation_default(",
+    "CROSS_MODEL_VERIFICATION_RULES",
+    "render_cross_model_verification",
+    "opus-review/v3",
+    "opus-reconciliation/v2",
+    "lane-v-report/v2",
+    "--receipt-id",
+    "attempt_state_uncertain",
+    "standing-policy:codex-lane-v-opus-v1",
+    "scripts/prompts/opus_lane_v_advisory.md",
+    "one provider process attempt",
+    "degraded Codex-only fallback",
+)
+LANE_V_V3_STATEMENT = (
+    "Lane V is independent verification by a non-author operator over one "
+    "committed descriptor and lawful trigger. New reports use lane-v-report/v3 "
+    "and publish atomically through TaskPublicationStore. Model or provider "
+    "identity grants no authority."
+)
+LANE_V_V3_SURFACES = (
+    "AGENTS.md",
+    "docs/protocol/codex/continuation.md",
+    ".agents/skills/four-seat-protocol/SKILL.md",
+    ".agents/skills/seat-director/SKILL.md",
+    ".agents/skills/seat-operator/SKILL.md",
+    ".agents/skills/seat-coordinator/SKILL.md",
+    ".codex/agents/readiness-bridge.toml",
+    ".codex/agents/protocol-director.toml",
+    ".codex/agents/protocol-operator.toml",
+    ".codex/agents/protocol-coordinator.toml",
+    ".claude/agents/readiness-bridge.md",
+    "docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md",
+    "docs/protocol/threeway/ARCHITECTURE-DIAGRAM.md",
+    "docs/protocol/threeway/ONBOARDING.md",
+    "docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md",
+)
+LANE_V_V3_CORE_SURFACES = LANE_V_V3_SURFACES[:11]
+GENERIC_AUTHORITY_STATEMENTS = (
+    (
+        "Mailbox decisions remain body-first: read relevant mailbox bodies before "
+        "acting; live seat cursors are intentional per-seat state, and the "
+        "coordinator has no cursor."
+    ),
+    (
+        "The verifying operator must be a non-author and alone issues GO/NITS/FAIL "
+        "from repository evidence."
+    ),
+    (
+        "The coordinator may route and reconcile but not author behavior-changing "
+        "production fixes."
+    ),
+    (
+        "Push, merge, paid spend, and every other side effect are separately gated "
+        "and require explicit authority."
+    ),
+)
+DECOMMISSION_CYCLE = "provider-tools-targeted-decommission-2026-07-16"
+DECISIONS_PRE_TASK5_PREFIX_BYTES = 57_646
+DECISIONS_PRE_TASK5_PREFIX_SHA256 = (
+    "3f09b44a053200daf337d6227c9578907137bf1d17e41f5e18e13bb7686f63de"
+)
+DECOMMISSION_NEGATIVE_ACCEPTANCE = frozenset(
+    {
+        (
+            "No ChatGPT Pro, Claude, Opus, provider CLI, in-app browser, paid API, "
+            "provider retry, or provider receipt action is authorized."
+        ),
+        (
+            "Commit, push, merge, provider launch, runtime cleanup, and external "
+            "publication are separate authorities; this packet authorizes no push, "
+            "merge, provider call, or cleanup."
+        ),
+    }
+)
+DECOMMISSION_PROVIDER_SCOPE_PATHS = frozenset(DELETED_PROVIDER_PATHS) | {
+    ".claude/skills/seat-operator/verification-report-format.md",
+    ".claude/agents/lane-v-verifier.md",
+    "docs/protocol/claude/independence-first.md",
+    ".claude/agents/readiness-bridge.md",
+}
 REQUIRED_REVIEWER_TEMPLATE_HEADINGS = (
     "# Reviewer prompt template - agent-neutral",
     "## Canonical verdict vocabulary",
@@ -27,8 +124,8 @@ REQUIRED_REVIEWER_TEMPLATE_HEADINGS = (
 )
 
 
-def test_chatgpt_pro_executable_surface_is_deleted() -> None:
-    for relative in CHATGPT_DELETED_PATHS:
+def test_provider_executable_surfaces_are_deleted() -> None:
+    for relative in DELETED_PROVIDER_PATHS:
         assert not (ROOT / relative).exists(), relative
 
 
@@ -41,6 +138,129 @@ def test_protocol_model_has_no_chatgpt_consultation_contract() -> None:
         "chatgpt_pro_" "guard_manifest_hash",
     )
     assert all(token not in source for token in forbidden)
+
+
+def _operative_paths() -> tuple[Path, ...]:
+    paths = [
+        ROOT / "AGENTS.md",
+        ROOT / "ARCHITECTURE.md",
+        ROOT / "scripts/codex_protocol_model.py",
+        ROOT / "docs/protocol/claude/independence-first.md",
+        *sorted((ROOT / ".agents/skills").glob("**/*")),
+        *sorted((ROOT / ".codex/agents").glob("*.toml")),
+        *sorted((ROOT / ".claude/agents").glob("*.md")),
+        *sorted((ROOT / "docs/protocol/codex").glob("*.md")),
+        *sorted((ROOT / "docs/protocol/threeway").glob("*.md")),
+    ]
+    text_suffixes = {".md", ".py", ".toml", ".json", ".txt"}
+    return tuple(
+        path
+        for path in paths
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix in text_suffixes
+    )
+
+
+def test_provider_tools_are_absent_from_executable_and_operative_surfaces() -> None:
+    for path in _operative_paths():
+        assert ".codex/runtime" not in path.as_posix()
+        text = path.read_text(encoding="utf-8")
+        for fragment in FORBIDDEN_OPERATIVE_FRAGMENTS:
+            assert fragment not in text, (path, fragment)
+
+
+def _provider_sensitive(value: object) -> bool:
+    text = json.dumps(value, sort_keys=True).lower()
+    return any(
+        fragment in text
+        for fragment in (
+            "chatgpt",
+            "claude",
+            "opus",
+            "provider cli",
+            "provider retry",
+            "provider receipt",
+            "provider command",
+            "provider launch",
+            "provider process",
+            "provider call",
+            "--receipt-id",
+        )
+    )
+
+
+def _assert_launchable_packet_provider_free(path: Path, packet: dict[str, object]) -> None:
+    if packet["status"] not in {"ready", "active"}:
+        return
+    sensitive_fields = {
+        key for key, value in packet.items() if _provider_sensitive(value)
+    }
+    if not sensitive_fields:
+        return
+
+    assert packet["cycle"] == DECOMMISSION_CYCLE, path
+    for field in sensitive_fields:
+        value = packet[field]
+        if field in {"allowed_paths", "scope_files"}:
+            for relative in value:
+                if _provider_sensitive(relative):
+                    assert relative in DECOMMISSION_PROVIDER_SCOPE_PATHS, (
+                        path,
+                        field,
+                        relative,
+                    )
+            continue
+        if field in {"id", "cycle"}:
+            assert packet["cycle"] == DECOMMISSION_CYCLE, path
+            continue
+        if field == "acceptance":
+            for statement in value:
+                if _provider_sensitive(statement):
+                    assert statement in DECOMMISSION_NEGATIVE_ACCEPTANCE, (
+                        path,
+                        field,
+                        statement,
+                    )
+            continue
+        raise AssertionError((path, field, value))
+
+
+def test_launchable_capacity_packets_do_not_invoke_deleted_providers() -> None:
+    packet_root = ROOT / "coordination/capacity/packets"
+    for path in sorted(packet_root.glob("*.json")):
+        packet = json.loads(path.read_text(encoding="utf-8"))
+        _assert_launchable_packet_provider_free(path, packet)
+
+
+def test_launchable_capacity_gate_rejects_affirmative_provider_contradiction() -> None:
+    packet = json.loads(
+        (
+            ROOT
+            / "coordination/capacity/packets/"
+            "2026-07-16-provider-tools-decommission-director2-implementation.json"
+        ).read_text(encoding="utf-8")
+    )
+    packet["done_evidence"] = [
+        "Run claude -p 'review the diff' after the provider-neutral check"
+    ]
+
+    with pytest.raises(AssertionError, match="done_evidence"):
+        _assert_launchable_packet_provider_free(Path("synthetic.json"), packet)
+
+
+def test_launchable_capacity_gate_rejects_command_disguised_as_scope() -> None:
+    packet = json.loads(
+        (
+            ROOT
+            / "coordination/capacity/packets/"
+            "2026-07-16-provider-tools-decommission-director2-implementation.json"
+        ).read_text(encoding="utf-8")
+    )
+    packet["allowed_paths"].append("claude -p 'execute provider review'")
+
+    with pytest.raises(AssertionError, match="allowed_paths"):
+        _assert_launchable_packet_provider_free(Path("synthetic.json"), packet)
 
 
 def test_threeway_dual_chief_contract_remains_provider_neutral_and_two_input() -> None:
@@ -322,7 +542,8 @@ def test_r_independence_is_model_backed_and_surface_synced():
         "same-model independent reviewer is weaker",
         "committed plan or equivalent durable artifact",
         "independent reviewer verifies the actual diff",
-        "Lane V plus verdict-blind Opus",
+        "provider-neutral Lane V v3",
+        "TaskPublicationStore",
         "R-VERIFY-TIER",
         "docs/protocol/claude/independence-first.md",
     )
@@ -719,102 +940,40 @@ def test_reviewer_result_handling_contract_is_model_backed_and_synced():
             assert phrase in text
 
 
-def test_cross_model_opus_verification_is_model_backed_and_surface_synced():
-    rendered = model.render_cross_model_verification()
+def test_provider_neutral_lane_v_v3_is_model_backed_and_surface_synced():
+    rendered = model.render_lane_v_v3()
     required = (
+        LANE_V_V3_STATEMENT,
+        "mailbox bodies before acting",
+        "live seat cursors are intentional per-seat state",
+        "coordinator has no cursor",
         "lane-v-scope/v1",
-        "opus-review/v3",
-        "opus-reconciliation/v2",
-        "--shipping-commit",
-        "--verify-request-commit",
-        "--verify-request-path",
-        "--receipt-id",
-        "--opus-review-json is removed",
-        "attempt_state_uncertain",
-        "one provider process attempt and no automatic retry",
-        "lane-v-report/v2",
-        "## Verification Attestation",
-        "Opus receipt ID:",
-        "Opus scope digest:",
-        "exact stored Codex verdict",
+        "non-author",
+        "GO/NITS/FAIL",
+        "TaskPublicationStore",
+        "coordinator may route and reconcile but not author behavior-changing production fixes",
+        "push, merge, paid spend, and every other side effect are separately gated",
     )
     for phrase in required:
         assert phrase in rendered
 
-    for path in (
-        "docs/protocol/codex/continuation.md",
-        ".agents/skills/seat-operator/SKILL.md",
-        ".codex/agents/lane-v-verifier.toml",
-        ".codex/agents/protocol-operator.toml",
-    ):
-        text = _read(path).replace("`", "").lower()
-        for phrase in required:
-            assert phrase.lower() in text, (path, phrase)
-        for stale in (
-            "--requirement ",
-            "--allow-path",
-            "--verification-command",
-            "reconcile --opus-review-json",
-            "normalized opus-review/v2",
-        ):
-            assert stale not in text, (path, stale)
+    for path in LANE_V_V3_SURFACES:
+        assert LANE_V_V3_STATEMENT in _compact(_read(path)), path
 
-    report_fields = (
-        "Review profile:",
-        "Authorization identity:",
-        "Opus receipt ID:",
-        "Opus scope digest:",
-        "Cross-model review:",
-        "Effective Opus model:",
-        "Opus finding dispositions:",
-        "Reconciliation guard:",
-        "Degraded reason:",
-    )
-    for path in (
-        ".codex/agents/lane-v-verifier.toml",
-        ".codex/agents/protocol-operator.toml",
-    ):
-        prompt = _read(path)
-        for field in report_fields:
-            assert field in prompt, (path, field)
+    for path in LANE_V_V3_CORE_SURFACES:
+        text = _compact(_read(path)).lower()
+        for statement in GENERIC_AUTHORITY_STATEMENTS:
+            assert statement.lower() in text, (path, statement)
 
-    lane_v = _read(".codex/agents/lane-v-verifier.toml")
-    assert "scripts/opus_review_bridge.py review" in lane_v
-    assert "scripts/opus_review_bridge.py reconcile" in lane_v
+    invariants = dict(model.ACTIVE_KERNEL_INVARIANTS)
+    assert "merge" in invariants["user-gated side effects"]
+    assert "separately gated" in invariants["separate side-effect gates"]
 
-    protocol_operator = _read(".codex/agents/protocol-operator.toml")
-    for phrase in (
-        "exact stored Codex verdict",
-        "Opus receipt ID: exact stored reconcile field",
-        "Opus scope digest: exact stored reconcile field",
-        "send-event publication gate is authority, not a Codex hook",
-    ):
-        assert phrase in protocol_operator
+    source = _read("scripts/codex_protocol_model.py")
+    assert "CROSS_MODEL_VERIFICATION_RULES" not in source
+    assert "render_cross_model_verification" not in source
 
-    operator_skill = _read(".agents/skills/seat-operator/SKILL.md")
-    assert "For non-Codex Lane V" in operator_skill
-    assert "primary Codex analysis plus the blind Opus pass" in operator_skill
-    assert "Spawn read-only `lane-v-verifier` for ordinary landed diffs" not in operator_skill
-    assert (
-        "For non-Codex Lane V, spawn read-only `lane-v-verifier` for ordinary landed diffs"
-        in operator_skill
-    )
-    assert "Dispatch **cold-context** spec + code-quality reviewer subagents on every" not in operator_skill
-
-    continuation = _read("docs/protocol/codex/continuation.md")
-    assert (
-        "The generic implementer -> spec review -> quality review loop applies to "
-        "implementation delivery, not Codex Lane V same-question review."
-    ) in continuation
-    for path in (
-        "docs/protocol/codex/continuation.md",
-        ".agents/skills/seat-operator/SKILL.md",
-        ".codex/agents/lane-v-verifier.toml",
-        ".codex/agents/protocol-operator.toml",
-    ):
-        assert "send-event publication gate" in _read(path), path
     hooks = _read(".codex/hooks.json")
-    assert "opus_review_bridge" not in hooks
     assert "verification_report_gate" not in hooks
 
 
@@ -879,8 +1038,8 @@ def test_lane_v_trigger_renderers_include_every_task8_contract_category() -> Non
     rendered_outputs = (
         ("render_pair_operating_contract", model.render_pair_operating_contract()),
         (
-            "render_cross_model_verification",
-            model.render_cross_model_verification(),
+            "render_lane_v_v3",
+            model.render_lane_v_v3(),
         ),
     )
 
@@ -893,7 +1052,7 @@ def test_lane_v_trigger_renderers_include_every_task8_contract_category() -> Non
 
 def test_lane_v_active_surfaces_remove_commit_only_and_prose_only_substitutes() -> None:
     rendered_pair = model.render_pair_operating_contract()
-    rendered_cross_model = model.render_cross_model_verification()
+    rendered_lane_v = model.render_lane_v_v3()
     stale_model_phrases = (
         "operator verifies only that artifact or landed commit",
         "include commit/range, brief path",
@@ -901,7 +1060,7 @@ def test_lane_v_active_surfaces_remove_commit_only_and_prose_only_substitutes() 
     )
     for phrase in stale_model_phrases:
         assert phrase not in rendered_pair
-        assert phrase not in rendered_cross_model
+        assert phrase not in rendered_lane_v
 
     active_paths = (
         "AGENTS.md",
@@ -963,21 +1122,22 @@ def test_implementer_and_reviewer_templates_never_invent_trigger_authority() -> 
         assert "never invent trigger authority" in text, path
 
 
-def test_lane_v_trigger_guidance_pins_bridge_forms_and_pipeline_boundary() -> None:
-    bridge_paths = (
+def test_lane_v_trigger_guidance_pins_v3_report_and_pipeline_boundary() -> None:
+    report_paths = (
         ".codex/agents/lane-v-verifier.toml",
-        ".claude/agents/lane-v-verifier.md",
         ".agents/skills/seat-operator/verification-report-format.md",
         ".claude/skills/seat-operator/verification-report-format.md",
     )
-    for path in bridge_paths:
+    for path in report_paths:
         text = _read(path)
-        assert '--shipping-commit "$HEAD"' in text, path
-        assert '--verify-request-commit "$TRIGGER_COMMIT"' in text, path
-        assert '--verify-request-path "$TRIGGER_PATH"' in text, path
-        assert text.count(
-            "--transport-profile anthropic-claude-existing-session-v1"
-        ) == 2, path
+        assert "Verification schema: lane-v-report/v3" in text, path
+        assert "Verification mode: independent-lane-v" in text, path
+        assert "Verification harness: lane-v:independent-verifier" in text, path
+        assert "Scope authority:" in text, path
+        assert "Trigger identity:" in text, path
+        assert "Reviewer identity:" in text, path
+        assert "--receipt-id" not in text, path
+        assert "provider process" not in text, path
 
     pipeline_boundary_paths = (
         "scripts/codex_protocol_model.py",
@@ -1127,7 +1287,7 @@ def test_task8_scope_covers_the_exact_trigger_authority_generation() -> None:
     assert f"with amended digest `{current_digest}`" in _compact(final)
 
 
-def test_verification_report_format_mirrors_pin_the_v2_attestation_order():
+def test_verification_report_format_mirrors_pin_the_v3_attestation_order():
     agent_path = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
     claude_path = ROOT / ".claude/skills/seat-operator/verification-report-format.md"
     assert agent_path.read_bytes() == claude_path.read_bytes()
@@ -1150,58 +1310,28 @@ def test_verification_report_format_mirrors_pin_the_v2_attestation_order():
         "Reviewed head:",
         "Reviewed base:",
         "Review profile:",
-        "Authorization identity:",
-        "Opus receipt ID:",
-        "Opus scope digest:",
-        "Cross-model review:",
-        "Effective Opus model:",
-        "Opus finding dispositions:",
-        "Reconciliation guard:",
-        "Degraded reason:",
+        "Reviewer identity:",
     ]
 
 
-def test_cross_model_opus_bridge_is_mapped_in_architecture_and_decisions():
+def test_provider_tool_decommission_is_current_architecture_and_append_only_decision():
     architecture = _read("ARCHITECTURE.md")
-    compact_architecture = _compact(architecture)
-    decisions = _read("DECISIONS.md")
+    decisions = (ROOT / "DECISIONS.md").read_bytes()
 
-    assert "scripts/opus_review_bridge.py" in architecture
-    assert "verdict-blind Opus review" in architecture
-    assert "## ADR-020: Mandatory blind Opus review after Codex Lane V" in decisions
-    assert "degraded Codex-only fallback" in decisions
-    assert "operator retains GO/NITS/FAIL authority" in decisions
-    assert "--safe-mode" in architecture
-    assert "OS-enforced sandbox" in architecture
-    assert "literal reviewed commit" in architecture
-    assert "content-addressed prompt-authority requirement" in architecture
-    assert "dynamically injects" not in decisions
-    assert (
-        "## ADR-023: Make Codex R-INDEPENDENCE operative and authorize one standing Lane-V Opus attempt"
-        in decisions
-    )
-    assert "standing-policy:codex-lane-v-opus-v1" in architecture
-    assert "opus-review/v3" in architecture
-    assert "opus-reconciliation/v2" in architecture
-    assert (
-        "reserved -> reviewed -> reconciled -> publishing -> published"
-        in compact_architecture
-    )
-    assert "prompt source itself is intentionally committed" in compact_architecture
-    assert "raw prompt text is never persisted." not in architecture
+    prefix = decisions[:DECISIONS_PRE_TASK5_PREFIX_BYTES]
+    assert hashlib.sha256(prefix).hexdigest() == DECISIONS_PRE_TASK5_PREFIX_SHA256
+    appended = decisions[DECISIONS_PRE_TASK5_PREFIX_BYTES:].decode("utf-8")
+    assert "## Targeted decommission of Opus and ChatGPT Pro tools" in appended
+    assert "lane-v-report/v3" in appended
+    assert "TaskPublicationStore" in appended
+    assert "frozen historical" in appended
+    assert ".codex/runtime" in appended
+    assert "separate approval" in appended
+
+    assert LANE_V_V3_STATEMENT in _compact(architecture)
+    assert "TaskPublicationStore" in architecture
     assert "R-INDEPENDENCE" in architecture
-    assert "one provider process" in architecture
-
-    hardened_design = _read(
-        "docs/superpowers/specs/2026-07-13-opus-lanev-receipt-hardening-design.md"
-    )
-    compact_design = _compact(hardened_design)
-    assert "exact eight-field" in compact_design
-    assert "Candidate-only recovery" in compact_design
-    assert "Final-only recovery" in compact_design
-    assert "Final-plus-candidate" in compact_design
-    assert "only when both the stored final and candidate names are" in compact_design
-    assert "exact five-part" not in hardened_design
+    assert "lane-v-report/v2" not in architecture
 
 
 def test_cross_model_design_and_plan_match_safe_mode_system_prompt_boundary():

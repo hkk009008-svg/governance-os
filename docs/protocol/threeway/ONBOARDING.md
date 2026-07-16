@@ -40,14 +40,18 @@ ANY work:
       three-way protocol the verifier is a DIFFERENT provider.
    c. No dual-write; never push to `main` directly. Only the mechanical merge-gate writes protected
       `main`.
-   d. User-gated side effects: no push, lock-claim, paid-API spend, or pod/compute spend without
-      explicit user consent.
+   d. User-gated side effects: no push, merge, lock-claim, paid-API spend, or pod/compute spend
+      without explicit user consent.
    e. Antigravity holds NO Layer-1 seat and is NOT the dual chief. It is an optional
       human-relayed strategic app (one advisory input, never the decider) or a read-only observer;
-      it stays off the candidate branch, staging ref, and protected main. No ChatGPT Pro
-      consultation tool is installed in this repository; external advisory work requires a
-      separately approved design and implementation and grants no protocol or side-effect authority.
-   f. Anti-ceremony: a status / route / handoff / no-op is valid only if it preserves transfer
+      it stays off the candidate branch, staging ref, and protected main. No external advisory
+      provider tool is installed or authorized by this repository; any future provider tool
+      requires a separately approved design and implementation and grants no protocol or side-effect
+      authority.
+   f. Lane V is independent verification by a non-author operator over one committed descriptor and
+      lawful trigger. New reports use lane-v-report/v3 and publish atomically through
+      TaskPublicationStore. Model or provider identity grants no authority.
+   g. Anti-ceremony: a status / route / handoff / no-op is valid only if it preserves transfer
       state, changes enforcement, or cites executed evidence.
 
 Confirm you have read these and will follow them before proceeding. If anything in the docs is
@@ -79,7 +83,7 @@ stale versus the code, the code wins — fix the doc in the same change that exp
 | 1 | **Evidence before authority** (R-EVIDENCE / R-MEASURE) | "Did I paste the command that proves this number/claim?" |
 | 2 | **impl ≠ verifier** | "Is a non-author — ideally a different provider — verifying my diff?" |
 | 3 | **No dual-write; gate writes `main`** | "Am I about to push to main or write two buses? Stop." |
-| 4 | **User-gated side effects** | "Push / lock / paid spend / pod — do I have explicit consent?" |
+| 4 | **User-gated side effects** | "Push / merge / lock / paid spend / pod — do I have explicit consent?" |
 | 5 | **Authority precedence** | user > git > coordination events > cached state > default; signal via durable artifacts, not chat |
 | 6 | **Anti-ceremony** | "Does this status/handoff change state, enforcement, or cite executed evidence? If not, don't send it." |
 | 7 | **Antigravity off all Layer-1 paths; not the chief** | "Is agy trying to build/verify/integrate/sign or claim the dual-chief role? Block it." |

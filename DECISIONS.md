@@ -1019,3 +1019,38 @@ rights validly granted for versions obtained while MIT applied.
 - The proprietary-notice implementation commit remains local until a separate
   user-authorized push. Repository visibility and Git publication remain
   distinct side effects.
+
+## Targeted decommission of Opus and ChatGPT Pro tools
+
+**Date:** 2026-07-16
+**Status:** Accepted (user-approved targeted deletion)
+
+**Context:**
+The provider-specific consultation and review subsystems had become live
+authority-adjacent branches with their own launch, receipt, reconciliation,
+and recovery contracts. The user-principal approved deleting those executable
+tools while retaining generic independent verification and the exact historical
+record of prior decisions and reports.
+
+**Decision:**
+Delete the executable provider-specific tools and converge current operative
+surfaces on provider-neutral Lane V v3. Lane V is independent verification by
+a non-author operator over one committed descriptor and lawful trigger. New
+reports use `lane-v-report/v3` and publish atomically through
+`TaskPublicationStore`; model or provider identity grants no authority.
+
+Keep pre-v3 reports and prior provider decisions as frozen historical evidence,
+accepted only through their exact committed paths and byte digests. Preserve
+local `.codex/runtime` residue without scanning, rewriting, or deleting it.
+Any future provider tool requires separate approval, a new design and
+implementation, and its own explicitly authorized side effects.
+
+**Consequences:**
+- Mailbox/body-first decisions, intentional live-seat cursors, the absence of a
+  coordinator cursor, exact descriptor/trigger binding, non-author operator
+  independence, and GO/NITS/FAIL remain active.
+- Coordinator routing does not grant production-fix authority.
+- Commit, push, merge, spend, provider launch, runtime cleanup, and other side
+  effects remain separately gated.
+- Historical evidence stays byte-for-byte provenance; this decision supersedes
+  live provider behavior without rewriting earlier entries.

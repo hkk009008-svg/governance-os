@@ -99,7 +99,21 @@ commit unless it asks a genuinely different, pre-stated question.
 
 ## External Advisory Tools
 
-No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires a separately approved design and implementation; it grants no protocol or side-effect authority.
+No external advisory provider tool is installed or authorized by this repository.
+Any future provider tool requires a separately approved design and implementation
+and grants no protocol or side-effect authority.
+
+Lane V is independent verification by a non-author operator over one committed
+descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
+atomically through TaskPublicationStore. Model or provider identity grants no
+authority.
+
+Mailbox decisions remain body-first: read relevant mailbox bodies before
+acting; live seat cursors are intentional per-seat state, and the coordinator
+has no cursor. The verifying operator must be a non-author and alone issues
+GO/NITS/FAIL from repository evidence. The coordinator may route and reconcile
+but not author behavior-changing production fixes. Push, merge, paid spend, and
+every other side effect are separately gated and require explicit authority.
 
 **Antigravity specifically:** Antigravity ("agy", the Gemini-based agentic IDE)
 reads this file as its agent-agnostic source of truth and translates the
@@ -266,7 +280,7 @@ Details: docs/protocol/agents/core.md (R-VERIFY-TIER); origin = audit wf_6be2ee1
 # Independence-first verification (R-INDEPENDENCE)
 Scope: both.
 Trigger: before designing or implementing, classify whether the change touches an adversarial-surface: input rendered or composed into a parseable or executable context; authority or security-boundary enforcement; side-effect gating; or schema validation whose acceptance grants trust.
-Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, Lane V plus verdict-blind Opus supplies the per-task cross-model pair.
+Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, provider-neutral Lane V v3 supplies independent verification and TaskPublicationStore supplies atomic task-bound publication.
 Deduplication: R-VERIFY-TIER still prohibits redundant same-question passes. Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.
 Evidence: the committed design-time enumeration artifact and the independent verification report naming the reviewer and harness.
 Details: `docs/protocol/claude/independence-first.md` (ADR-019).
