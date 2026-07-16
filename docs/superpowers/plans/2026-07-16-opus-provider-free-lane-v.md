@@ -473,11 +473,13 @@ env -u GIT_INDEX_FILE ../../.venv/bin/python -m pytest \
   tests/unit/test_opus_review_bridge.py::test_extract_review_archive_blocks_preexisting_destination_symlink -q
 ```
 
-Expected: four parametrized failures. The first observes `None` instead of
-`tarfile.data_filter`; the two unavailable-filter cases extract instead of
-raising `invalid_scope`; the symlink case writes outside the destination instead
-of raising `OutsideDestinationError`.
-Run the unsafe-member test separately and expect all six cases to pass.
+Expected on the current Python 3.14 environment: three parametrized failures.
+The first observes `None` instead of `tarfile.data_filter`; the two
+unavailable-filter cases extract instead of raising `invalid_scope`. The
+symlink case is already green because Python 3.14 implicitly defaults to the
+data filter; Python 3.13's warning-as-error failure is separately captured by
+the hosted run and the direct reproduction command. Run the unsafe-member test
+separately and expect all six cases to pass.
 
 - [ ] **Step 4: Implement the minimal fail-closed repair**
 
