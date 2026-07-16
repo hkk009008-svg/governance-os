@@ -2945,7 +2945,7 @@ def resume_publication(
                             ):
                                 _fail(
                                     "receipt_mode_mismatch",
-                                    "receipt resume requires Codex mode",
+                                    "receipt resume requires receipt-backed mode",
                                 )
                             _validate_codex_record(root, report, authority, record)
 
@@ -2986,7 +2986,7 @@ def resume_publication(
                         ):
                             _fail(
                                 "task_mode_mismatch",
-                                "task resume requires non-Codex mode",
+                                "task resume requires task-backed mode",
                             )
                         digest = _task_authority_digest(root, report, authority)
                         _validate_non_codex_record(record, digest)

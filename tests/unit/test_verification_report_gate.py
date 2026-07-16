@@ -1066,8 +1066,26 @@ def test_provider_free_verify_request_recipient_is_enforced(tmp_path: Path) -> N
         _report_bytes(fields, head=head, envelope_sender="operator"),
     )
 
-    with pytest.raises(gate.ReportGateError, match="recipient"):
-        gate.validate_structural_authority(root, report)
+    backend_calls: list[str] = []
+
+    def bomb_receipt_store(_root: Path) -> receipts.ReceiptStore:
+        backend_calls.append("receipt")
+        raise AssertionError("recipient mismatch reached receipt state")
+
+    def bomb_task_store(_root: Path) -> gate.TaskPublicationStore:
+        backend_calls.append("task")
+        raise AssertionError("recipient mismatch reached task state")
+
+    with pytest.raises(gate.ReportGateError) as excinfo:
+        gate.validate_live_report(
+            root,
+            report,
+            receipt_store_factory=bomb_receipt_store,
+            task_store_factory=bomb_task_store,
+        )
+
+    assert "recipient" in excinfo.value.detail
+    assert backend_calls == []
 
 
 def test_provider_free_structural_authority_binds_committed_review_profile(
@@ -1674,11 +1692,13 @@ class _ProviderFreeFixture:
     receipt_state_root: Path
 
 
-def _provider_free_fixture(root: Path) -> _ProviderFreeFixture:
+def _provider_free_fixture(
+    root: Path, *, trigger_kind: str = "verify-request"
+) -> _ProviderFreeFixture:
     root, fields, report_path, head, _ = _authority_fixture(
         root,
         mode=receipts.CODEX_PROVIDER_FREE_MODE,
-        trigger_kind="verify-request",
+        trigger_kind=trigger_kind,
         recipient="operator2",
     )
     raw = _report_bytes(
@@ -1731,10 +1751,13 @@ def _candidate_path(root: Path, raw: bytes, name: str = ".report.candidate.tmp")
     return candidate
 
 
+@pytest.mark.parametrize("trigger_kind", ("shipping-commit", "verify-request"))
 def test_provider_free_hermetic_task_backed_publication_lifecycle(
-    tmp_path: Path,
+    tmp_path: Path, trigger_kind: str
 ) -> None:
-    fixture = _provider_free_fixture(tmp_path / "repo")
+    fixture = _provider_free_fixture(
+        tmp_path / "repo", trigger_kind=trigger_kind
+    )
 
     def bomb_receipt_store(_root: Path) -> receipts.ReceiptStore:
         raise AssertionError("provider-free mode touched receipt state")
@@ -1760,11 +1783,14 @@ def test_provider_free_hermetic_task_backed_publication_lifecycle(
     )
 
     assert validated == fixture.authority
+    assert validated.trigger_kind == trigger_kind
     assert published.read_bytes() == fixture.raw
     assert status["state"] == "published"
     assert not fixture.receipt_state_root.exists()
 
-    collision = _provider_free_fixture(tmp_path / "collision")
+    collision = _provider_free_fixture(
+        tmp_path / "collision", trigger_kind=trigger_kind
+    )
     with pytest.raises(gate.ReportGateError, match="task_authority_conflict"):
         gate.validate_live_report(
             collision.root,
@@ -1823,6 +1849,81 @@ def test_provider_free_interruption_resumes_by_task_id(
     assert published.read_bytes() == fixture.raw
     assert status["state"] == "published"
     assert not fixture.receipt_state_root.exists()
+
+
+@pytest.mark.parametrize(
+    ("backend", "reason", "detail"),
+    [
+        pytest.param(
+            "receipt",
+            "receipt_mode_mismatch",
+            "receipt resume requires receipt-backed mode",
+            id="receipt-backed",
+        ),
+        pytest.param(
+            "task",
+            "task_mode_mismatch",
+            "task resume requires task-backed mode",
+            id="task-backed",
+        ),
+    ],
+)
+def test_resume_mode_mismatch_diagnostics_name_backend_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    backend: str,
+    reason: str,
+    detail: str,
+) -> None:
+    if backend == "receipt":
+        fixture = _live_codex_fixture(tmp_path / "repo")
+        (fixture.root / "coordination" / "mailbox" / "sent").mkdir(
+            parents=True, exist_ok=True
+        )
+        fields = dict(fixture.report.fields)
+        fields["Verification mode"] = receipts.CODEX_PROVIDER_FREE_MODE
+        mismatched_report = _mutated_report(fixture.report, fields=fields)
+        resume_kwargs = {
+            "repo_root": fixture.root,
+            "receipt_id": fixture.reconciliation.receipt_id,
+            "receipt_store_factory": lambda _root: fixture.store,
+        }
+    else:
+        fixture = _provider_free_fixture(
+            tmp_path / "repo", trigger_kind="shipping-commit"
+        )
+
+        def bomb_receipt_store(_root: Path) -> receipts.ReceiptStore:
+            raise AssertionError("provider-free mode touched receipt state")
+
+        gate.validate_live_report(
+            fixture.root,
+            fixture.report,
+            receipt_store_factory=bomb_receipt_store,
+            task_store_factory=lambda _root: fixture.task_store,
+        )
+        fields = dict(fixture.report.fields)
+        fields["Verification mode"] = receipts.CODEX_MODE
+        mismatched_report = _mutated_report(fixture.report, fields=fields)
+        resume_kwargs = {
+            "repo_root": fixture.root,
+            "task_id": TASK_ID,
+            "task_store_factory": lambda _root: fixture.task_store,
+        }
+
+    def exercise_mode_check(**kwargs: object) -> Path:
+        validate_report = kwargs["validate_report"]
+        assert callable(validate_report)
+        validate_report(mismatched_report, fixture.authority)
+        raise AssertionError("mode mismatch was accepted")
+
+    monkeypatch.setattr(gate, "_resume_locked", exercise_mode_check)
+
+    with pytest.raises(gate.ReportGateError) as excinfo:
+        gate.resume_publication(**resume_kwargs)
+
+    assert excinfo.value.reason == reason
+    assert excinfo.value.detail == detail
 
 
 def test_provider_free_unknown_mode_reaches_neither_backend(tmp_path: Path) -> None:
