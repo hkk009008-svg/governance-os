@@ -65,6 +65,16 @@ REMOVED_PROVIDER_MODULES = {
     "scripts/opus_review_bridge.py",
     "scripts/opus_review_receipts.py",
 }
+TEMPORARY_UNOWNED_IMPORT_PAIRS = {
+    (
+        "scripts/verification_report_gate.py",
+        "scripts/opus_review_bridge.py",
+    ),
+    (
+        "scripts/verification_report_gate.py",
+        "scripts/opus_review_receipts.py",
+    ),
+}
 REQUIRED_PRODUCTION_MODULES = {
     "scripts/capability_reducer.py",
     "scripts/capability_v1_adapter.py",
@@ -525,7 +535,7 @@ def _direct_import_ownership_failures(
         for imported in sorted(_direct_repo_local_imports(importer)):
             # Their live owners are intentionally removed before the sequential
             # decommission deletes the remaining downstream imports.
-            if imported in REMOVED_PROVIDER_MODULES:
+            if (importer, imported) in TEMPORARY_UNOWNED_IMPORT_PAIRS:
                 continue
             owners = module_owners.get(imported, [])
             if len(owners) != 1:
@@ -589,6 +599,32 @@ def test_unknown_bare_local_import_is_an_ownership_failure(
         (
             "scripts/synthetic_importer.py",
             "scripts/synthetic_dependency.py",
+            [],
+        )
+    ]
+
+
+def test_removed_provider_import_from_unexpected_importer_is_an_ownership_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "synthetic_importer.py").write_text(
+        "import opus_review_receipts\n",
+        encoding="utf-8",
+    )
+    (scripts_dir / "opus_review_receipts.py").write_text(
+        "SENTINEL = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+
+    assert _direct_import_ownership_failures(
+        {"scripts/synthetic_importer.py": ["synthetic_owner"]}
+    ) == [
+        (
+            "scripts/synthetic_importer.py",
+            "scripts/opus_review_receipts.py",
             [],
         )
     ]
