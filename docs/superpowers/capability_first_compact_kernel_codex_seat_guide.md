@@ -434,13 +434,26 @@ activated.
 
 ### Phase 2: Compact reducer and non-authoritative shadow
 
-- [ ] Add `schemas/route-v2.schema.json`, `scripts/capability_reducer.py`, the
+- [x] Add `schemas/route-v2.schema.json`, `scripts/capability_reducer.py`, the
   Section-3 types/laws, and focused deterministic replay/merge tests.
-- [ ] Adapt v1 history read-only; never rewrite it. Shadow-reduce the same
+- [x] Adapt v1 history read-only; never rewrite it. Shadow-reduce the same
   accepted inputs and structurally prohibit shadow GO, DONE, and effects.
 
 **Gate:** zero authority/effect-eligibility divergence across the full replay
 corpus; deliberately injected divergence blocks the gate.
+
+**Phase-2 evidence (2026-07-16):** The exact implementation range is
+`f17d14c684e1e1a6378e52ab8f151070fb710e07..efa8731eae2e9d9fa020d95045e5b08ab6331ba3`.
+The committed corpus artifact
+`logs/capability-first/phase2b-shadow-parity.json` is byte-identical to fresh
+output from `env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/capability_v1_adapter.py --check-corpus tests/fixtures/compact_kernel/v1_to_v2_replay.json`
+and reports 89 cases and 31 executed replay permutations with every blocking,
+non-authority-only, and specialized-event list empty. The focused command
+`env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q tests/unit/test_capability_v1_adapter.py tests/unit/test_capability_reducer.py tests/unit/test_capability_reducer_replay.py tests/unit/test_route_v2_schema_sync.py tests/unit/test_compact_state_mapping.py tests/unit/test_compact_kernel_surface_inventory.py tests/unit/test_route_manifest.py tests/unit/test_route_schema_sync.py tests/unit/test_target_binding.py`
+reported `552 passed`; independent Review 11 of the exact range returned
+`APPROVED` with no Critical, Important, or Minor finding; and
+`scripts/target_binding.py --check` reports epoch `0`, writer `v1`, declarative
+only. Version 1 remains the sole authority; Phase 3 and activation remain open.
 
 ### Phase 3: Triggered boundaries and real callers
 

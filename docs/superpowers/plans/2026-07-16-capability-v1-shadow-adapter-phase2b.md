@@ -126,10 +126,14 @@ finding.
 | `scripts/protocol_mailbox.py`, `scripts/route_lineage.py` | Existing, already-owned transitive package-import dependencies; unchanged. |
 | `scripts/check_coordination.py`, `scripts/check_doc_claims.py` | Existing status-reader imports exposed by generic bare-local closure; `check_doc_claims.py --fix` retains its explicit local-document writer classification and both production files remain unchanged. |
 | `tests/fixtures/compact_kernel/v1_to_v2_replay.json` | Exact source/digest manifest, actor/scope fixtures, legacy records, case manifest, parity oracle, Phase-2 misuse set, Phase-3 deferred set, and reducer replay set. |
+| `tests/fixtures/compact_kernel/v2_replay_vectors.json` | Bound pure-reducer replay vectors, expected results, and executed permutation manifest. |
+| `tests/fixtures/compact_state_mapping/v1.json` | Bound v1 golden mapping rows and producer-vocabulary source values. |
 | `tests/unit/test_capability_v1_adapter.py` | Adapter, completeness, parity, determinism, denial-asymmetry, and CLI tests. |
 | `tests/fixtures/compact_kernel/v1_surface_inventory.json` | Read-only historical-adapter and pure-reducer ownership classification. |
 | `tests/unit/test_compact_kernel_surface_inventory.py` | Exact ownership, helper-class, no-writer, and import-closure assertions. |
 | `tests/unit/test_capability_reducer.py` | Transition-cursor boundary tests and reverse-import/non-vacuous purity probes. |
+| `tests/unit/test_capability_reducer_replay.py` | Exact reducer replay, permutation, error-code, and report-digest regression coverage. |
+| `tests/unit/test_compact_state_mapping.py` | Exact v1 mapping, producer-vocabulary, accepted-context, and misuse-fixture coverage. |
 | `docs/superpowers/capability_first_compact_kernel_codex_seat_guide.md` | Phase-2 completion evidence only after all gates pass. |
 | `ARCHITECTURE.md` | Current pure-reducer/adapter topology and non-authority invariant. |
 | `logs/capability-first/phase2b-shadow-parity.json` | Deterministic count/digest/divergence evidence produced from the committed gate. |
@@ -1184,6 +1188,28 @@ Task 4, Phase 3, activation surface, or external state changed. Bounded spec and
 code-quality review of this settled four-path correction each returned
 `APPROVED`, with no Critical, Important, or Minor finding.
 
+### Final independent review verdict
+
+Review 11 returned `APPROVED`, with no Critical, Important, or Minor finding,
+for the exact implementation range
+`f17d14c684e1e1a6378e52ab8f151070fb710e07..efa8731eae2e9d9fa020d95045e5b08ab6331ba3`.
+The locally reproduced `git diff --full-index` input for that range is 479234
+bytes with SHA-256
+`f9d0a1c77b2cce48237b90549356c1546330798d3778b62066a9bc86d8cf2b4e`.
+The correction commits reproduced from Git, in review order, are
+`2d5b23f819694f2abe39d4aed6cac318a4f9019d`,
+`d0fc91044948fccbe0c019a043389fb9f824c041`,
+`7cdcefaa10621dfca14d19a16b5faee7ed171d0f`,
+`c1a50dbcc4726d9abd91b54fd0fa15a14de7a754`,
+`be1488a41b6174b4503fb23f8885794fa37528fc`,
+`9b9f5904c2ef99c0d5ffdbe2c2610206460e5b08`,
+`484b16a27f45eb6f4b973894499ea1e5edf704c4`,
+`7151cee977693bcdf0dda262d68bd9e0253f7aa2`,
+`933871b721adf7378294f52b995486c504ae08a0`, and
+`efa8731eae2e9d9fa020d95045e5b08ab6331ba3`. This verdict authorizes only the
+documentation closeout below; it does not authorize push, merge, Phase 3, or
+activation.
+
 ## Task 4: Record reviewed Phase-2 closeout
 
 **Files:**
@@ -1195,7 +1221,7 @@ code-quality review of this settled four-path correction each returned
   Task-3 range.
 - Produces: truthful Phase-2 status and exact evidence; no behavior change.
 
-- [ ] **Step 1: Record only reproduced review facts**
+- [x] **Step 1: Record only reproduced review facts**
 
 In the capability guide, check both Phase-2 boxes and add one short evidence
 paragraph naming the exact implementation range, corpus artifact, focused test
@@ -1206,7 +1232,7 @@ In this plan's independent-review section, append the reviewer verdict, exact
 reviewed range, and any reproduced correction commits. Do not paste a raw
 review transcript or claim evidence that was not rerun locally.
 
-- [ ] **Step 2: Run final verification**
+- [x] **Step 2: Run final verification**
 
 ```sh
 env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q \
@@ -1233,7 +1259,7 @@ env -u GIT_INDEX_FILE git diff --name-only f17d14c684e1e1a6378e52ab8f151070fb710
 Expected: all gates remain green after the docs-only closeout edits; the range
 contains only the files in **File map**.
 
-- [ ] **Step 3: Commit Task 4**
+- [x] **Step 3: Commit Task 4**
 
 ```sh
 env -u GIT_INDEX_FILE git add \
