@@ -303,16 +303,34 @@ def test_scope_descriptor_rejects_mixed_provider_free_pair(harness, profile):
         receipts.ScopeDescriptor.from_mapping(value)
 
 
-def test_review_scope_rejects_provider_free_mode_before_receipt_state(tmp_path):
+def test_compute_attempt_key_rejects_provider_free_mode() -> None:
+    scope = dataclasses.replace(
+        _review_scope(),
+        verification_mode="codex-provider-free-lane-v",
+        review_profile="codex-provider-free-lane-v",
+    )
+    with pytest.raises(receipts.ReceiptContractError, match="invalid_review_scope"):
+        receipts.compute_attempt_key(scope)
+
+
+def test_lock_attempt_rejects_provider_free_mode_before_receipt_state(
+    tmp_path: Path,
+) -> None:
     scope = dataclasses.replace(
         _review_scope(),
         verification_mode="codex-provider-free-lane-v",
         review_profile="codex-provider-free-lane-v",
     )
     state_root = tmp_path / "state"
+    store = receipts.ReceiptStore(state_root)
+
     with pytest.raises(receipts.ReceiptContractError, match="invalid_review_scope"):
-        receipts.compute_attempt_key(scope)
+        with store.lock_attempt(scope, blocking=False):
+            pytest.fail("provider-free scope reached the receipt lock context")
+
     assert not state_root.exists()
+    assert tuple(tmp_path.rglob("*.lock")) == ()
+    assert tuple(tmp_path.rglob("*.json")) == ()
 
 
 def test_scope_descriptor_rejects_non_string_verifier_fields() -> None:
