@@ -67,13 +67,14 @@
     "Task 6 spec preservation correction eda82c34408f76369373459f38486b530f512e12 restored the implementation plan byte-for-byte and the refreshed spec review PASS is coordination/mailbox/sent/2026-07-16T14-36-31Z-director2-to-coordinator-findings.md.",
     "Task 6 quality correction ed56f9b264d12a5ce835434707fd7eda5a46287e enforces the published-task witness, restores non-vacuous ready-packet probes, and supplies both missing terminal triggers; verification remains owned by the refreshed Operator2 preflight.",
     "Task 6 fresh-clone correction 03915a62b5230c213e4b90af706abac68ef07bd2 accepts only exact sanitized-HEAD v3 bytes without private runtime and retains the published-task witness for non-HEAD reports; 439 focused tests passed.",
+    "Task 6 committed-report presence correction ee16bbe930c00c513415049b5d8ff84af5315ba2 rejects unstaged deletion of committed live v3 reports without duplicating pre-v3 manifest errors; 58 scoped tests passed.",
     "verification not needed at this intermediate Director2 and Operator2-preflight boundary; the approved cycle reserves one formal provider-neutral Operator Lane V pass for Task 7."
   ],
   "next_recipient": "operator2",
-  "status": "ready",
+  "status": "done",
   "verify_request": null,
-  "target_commit": "03915a62b5230c213e4b90af706abac68ef07bd2",
-  "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..03915a62b5230c213e4b90af706abac68ef07bd2",
+  "target_commit": "ee16bbe930c00c513415049b5d8ff84af5315ba2",
+  "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "scope_files": [
     "docs/superpowers/plans/2026-07-16-provider-tools-targeted-decommission.md",
     "coordination/mailbox/sent/2026-07-16T14-28-20Z-director2-to-coordinator-findings.md",
