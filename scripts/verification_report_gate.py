@@ -15,20 +15,21 @@ import stat
 import subprocess
 import sys
 import tempfile
-import threading
 import uuid
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Callable
 
-import opus_review_receipts as receipts
 
-
-REPORT_SCHEMA_VERSION = "lane-v-report/v2"
-LEGACY_MANIFEST_SCHEMA_VERSION = "lane-v-report-v1-baseline/v1"
+REPORT_SCHEMA_VERSION = "lane-v-report/v3"
+PRE_V3_MANIFEST_SCHEMA_VERSION = "lane-v-report-pre-v3-baseline/v1"
 TASK_PUBLICATION_SCHEMA_VERSION = "lane-v-task-publication/v1"
+SCOPE_SCHEMA_VERSION = "lane-v-scope/v1"
+VERIFICATION_MODE = "independent-lane-v"
+VERIFICATION_HARNESS = "lane-v:independent-verifier"
+REVIEW_PROFILE = "independent-lane-v"
 ATTESTATION_MAX_BYTES = 65_536
 ATTESTATION_LINE_MAX_BYTES = 49_152
 TASK_PUBLICATION_MAX_BYTES = 16_384
@@ -43,14 +44,7 @@ ATTESTATION_FIELDS = (
     "Reviewed head",
     "Reviewed base",
     "Review profile",
-    "Authorization identity",
-    "Opus receipt ID",
-    "Opus scope digest",
-    "Cross-model review",
-    "Effective Opus model",
-    "Opus finding dispositions",
-    "Reconciliation guard",
-    "Degraded reason",
+    "Reviewer identity",
 )
 
 _REPORT_BASENAME_RE = re.compile(
@@ -80,35 +74,69 @@ _VERDICT_CANDIDATE_RE = re.compile(
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _RAW_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_RECEIPT_ID_RE = re.compile(r"^opr1:[0-9a-f]{64}$")
 _GIT_OBJECT_ID_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
-_AUTHORIZATION_RE = re.compile(
-    r"^(?:user-task|verify-request):[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
-)
-_FINDING_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_QUESTION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _EXACT_H2_RE = re.compile(r"## [^#\s].*")
 _SHIPPING_SUBJECT_RE = re.compile(
     r"^(?:feat|fix|refactor)(?:\([^\n()]+\))?!?: .+"
 )
-_CODEX_UNAVAILABLE_REASONS = frozenset(
+_DESCRIPTOR_MAX_BYTES = 65_536
+_PATH_COLLECTION_MAX_ITEMS = 128
+_COMMAND_COLLECTION_MAX_ITEMS = 32
+_PATH_MAX_BYTES = 512
+_COMMAND_MAX_BYTES = 4_096
+_FORBIDDEN_COMMAND_CHARS = frozenset(";&|<>`$(){}\n\r\x00")
+_VERIFICATION_COMMAND_PREFIX = ("env", "-u", "GIT_INDEX_FILE")
+_DESCRIPTOR_FIELDS = frozenset(
     {
-        "authorization_missing",
-        "claude_not_found",
-        "authentication_failed",
-        "timeout",
-        "process_failed",
-        "invalid_json",
-        "invalid_schema",
-        "reviewed_scope_mismatch",
-        "effective_model_missing",
-        "effective_model_not_opus",
-        "sandbox_unavailable",
-        "output_limit",
-        "attempt_state_uncertain",
+        "schema_version",
+        "task_id",
+        "question_id",
+        "trigger_kind",
+        "verification_mode",
+        "verification_harness",
+        "review_profile",
+        "reviewed_base",
+        "requirement_paths",
+        "allowed_path_roots",
+        "verification_commands",
     }
 )
-_OPUS_SPECIFIC_FIELDS = ATTESTATION_FIELDS[8:]
-_BRIDGE_GIT_ADAPTER_LOCK = threading.Lock()
+_REVIEWED_BASE_FIELDS = frozenset({"policy", "commit"})
+_REQUIREMENT_FIELDS = frozenset({"path", "blob_id", "digest"})
+_CHANGED_PATH_FIELDS = frozenset({"status", "path"})
+_CHANGED_STATUSES = frozenset({"A", "D", "M", "T", "U", "X"})
+_REVIEW_SCOPE_FIELDS = frozenset(
+    {
+        "schema_version",
+        "repository_identity",
+        "task_id",
+        "question_id",
+        "trigger_kind",
+        "trigger_identity",
+        "trigger_commit",
+        "trigger_path",
+        "trigger_blob_id",
+        "descriptor_path",
+        "descriptor_digest",
+        "descriptor_blob_id",
+        "review_profile",
+        "verification_mode",
+        "verification_harness",
+        "reviewed_head",
+        "requested_base",
+        "effective_base",
+        "changed_paths",
+        "requirements",
+        "allowed_path_roots",
+        "verification_commands",
+    }
+)
+PIPELINE_MARKER_PATHS = (
+    "AGENTS.md",
+    "scripts/codex_protocol_model.py",
+    ".claude/agents/lane-v-verifier.md",
+)
 
 
 class ReportGateError(ValueError):
@@ -116,6 +144,730 @@ class ReportGateError(ValueError):
         super().__init__(f"{reason}: {detail}")
         self.reason = reason
         self.detail = detail
+
+
+class ScopeContractError(ValueError):
+    """Fail-closed provider-neutral scope or private-state contract error."""
+
+    def __init__(self, reason: str, detail: str) -> None:
+        super().__init__(f"{reason}: {detail}")
+        self.reason = reason
+        self.detail = detail
+
+
+def require_pipeline_root(repo_root: str | os.PathLike[str]) -> Path:
+    """Require the exact existing Pipeline marker boundary without invoking Git."""
+
+    root = Path(repo_root).resolve()
+    if not root.is_dir():
+        raise ScopeContractError("not_pipeline_repo", "repository root is missing")
+    for relative in PIPELINE_MARKER_PATHS:
+        marker = root / relative
+        try:
+            observed = os.lstat(marker)
+        except OSError as exc:
+            raise ScopeContractError(
+                "not_pipeline_repo", f"missing Pipeline marker: {relative}"
+            ) from exc
+        if not stat.S_ISREG(observed.st_mode):
+            raise ScopeContractError(
+                "not_pipeline_repo", f"invalid Pipeline marker: {relative}"
+            )
+    return root
+
+
+def _duplicate_checked_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ScopeContractError("duplicate_json_key", key)
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ScopeContractError("invalid_json", f"non-finite number {value!r}")
+
+
+def _bounded_json_loads(
+    raw: bytes, *, maximum_bytes: int, too_large_reason: str, label: str
+) -> Any:
+    if not isinstance(raw, bytes):
+        raise ScopeContractError("invalid_json", "input must be bytes")
+    if len(raw) > maximum_bytes:
+        raise ScopeContractError(
+            too_large_reason,
+            f"{label} exceeds {maximum_bytes} bytes",
+        )
+    try:
+        text = raw.decode("utf-8")
+        return json.loads(
+            text,
+            object_pairs_hook=_duplicate_checked_object,
+            parse_constant=_reject_json_constant,
+        )
+    except ScopeContractError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ScopeContractError("invalid_json", str(exc)) from exc
+
+
+def strict_json_loads(raw: bytes) -> Any:
+    """Decode bounded descriptor JSON while rejecting duplicate keys/constants."""
+
+    return _bounded_json_loads(
+        raw,
+        maximum_bytes=_DESCRIPTOR_MAX_BYTES,
+        too_large_reason="descriptor_too_large",
+        label="descriptor",
+    )
+
+
+def _require_exact_fields(
+    value: object, expected: frozenset[str], label: str
+) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or set(value) != expected:
+        actual = sorted(value) if isinstance(value, Mapping) else type(value).__name__
+        raise ScopeContractError(
+            "invalid_scope_descriptor",
+            f"{label} fields must be {sorted(expected)!r}, got {actual!r}",
+        )
+    return value
+
+
+def _required_string(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise ScopeContractError(
+            "invalid_scope_descriptor", f"{label} must be a string"
+        )
+    return value
+
+
+def _scope_full_sha(value: object, label: str, *, reason: str) -> str:
+    if not isinstance(value, str) or _FULL_SHA_RE.fullmatch(value) is None:
+        raise ScopeContractError(reason, f"{label} must be a lowercase full SHA")
+    return value
+
+
+def _scope_sha256(value: object, label: str, *, reason: str) -> str:
+    if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
+        raise ScopeContractError(reason, f"{label} must be a canonical SHA-256")
+    return value
+
+
+def _scope_uuid(value: object, *, reason: str) -> str:
+    if not isinstance(value, str):
+        raise ScopeContractError(reason, "task_id must be canonical UUID text")
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError) as exc:
+        raise ScopeContractError(
+            reason, "task_id must be canonical UUID text"
+        ) from exc
+    if str(parsed) != value:
+        raise ScopeContractError(reason, "task_id must be canonical UUID text")
+    return value
+
+
+def _normalize_repo_path(value: object, *, reason: str) -> str:
+    if not isinstance(value, str):
+        raise ScopeContractError(reason, "repository path must be a string")
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ScopeContractError(reason, "repository path must be valid UTF-8") from exc
+    components = value.split("/")
+    if (
+        not value
+        or len(encoded) > _PATH_MAX_BYTES
+        or value.startswith("/")
+        or value.endswith("/")
+        or "\\" in value
+        or "\x00" in value
+        or any(character in value for character in "*?[]")
+        or any(component in {"", ".", ".."} for component in components)
+    ):
+        raise ScopeContractError(reason, f"invalid repository path: {value!r}")
+    return value
+
+
+def normalize_repo_path(value: str) -> str:
+    return _normalize_repo_path(value, reason="invalid_repo_path")
+
+
+def _normalized_paths(
+    value: object,
+    label: str,
+    *,
+    reason: str,
+    require_json_list: bool,
+) -> tuple[str, ...]:
+    valid_container = isinstance(value, list) if require_json_list else isinstance(
+        value, (list, tuple)
+    )
+    if not valid_container:
+        raise ScopeContractError(reason, f"{label} must be an array")
+    items = list(value)
+    normalized = tuple(
+        sorted({_normalize_repo_path(item, reason=reason) for item in items})
+    )
+    if not 1 <= len(normalized) <= _PATH_COLLECTION_MAX_ITEMS:
+        raise ScopeContractError(
+            reason,
+            f"{label} must contain 1-{_PATH_COLLECTION_MAX_ITEMS} unique items",
+        )
+    return normalized
+
+
+def _validated_command(value: object, *, reason: str) -> str:
+    if not isinstance(value, str):
+        raise ScopeContractError(reason, "verification command must be a string")
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ScopeContractError(reason, "verification command must be UTF-8") from exc
+    if not value or len(encoded) > _COMMAND_MAX_BYTES:
+        raise ScopeContractError(reason, "verification command has invalid length")
+    if any(character in value for character in _FORBIDDEN_COMMAND_CHARS):
+        raise ScopeContractError(reason, "verification command contains shell syntax")
+    try:
+        words = shlex.split(value, posix=True)
+    except ValueError as exc:
+        raise ScopeContractError(reason, "verification command is not parseable") from exc
+    if tuple(words[:3]) != _VERIFICATION_COMMAND_PREFIX or len(words) < 5:
+        raise ScopeContractError(
+            reason, "verification command must start with env -u GIT_INDEX_FILE"
+        )
+    if any(any(character in word for character in "*?[]") for word in words):
+        raise ScopeContractError(reason, "verification command cannot contain globs")
+    return value
+
+
+def _normalized_commands(
+    value: object, *, reason: str, require_json_list: bool
+) -> tuple[str, ...]:
+    valid_container = isinstance(value, list) if require_json_list else isinstance(
+        value, (list, tuple)
+    )
+    if not valid_container:
+        raise ScopeContractError(reason, "verification_commands must be an array")
+    normalized = tuple(sorted({_validated_command(item, reason=reason) for item in value}))
+    if not 1 <= len(normalized) <= _COMMAND_COLLECTION_MAX_ITEMS:
+        raise ScopeContractError(
+            reason,
+            "verification_commands must contain 1-32 unique items",
+        )
+    return normalized
+
+
+def _validated_verifier(
+    mode: object, harness: object, profile: object, *, reason: str
+) -> tuple[str, str, str]:
+    values = (mode, harness, profile)
+    if not all(isinstance(item, str) for item in values):
+        raise ScopeContractError(reason, "verifier fields must be strings")
+    if values != (VERIFICATION_MODE, VERIFICATION_HARNESS, REVIEW_PROFILE):
+        raise ScopeContractError(reason, "unsupported verifier mode/harness/profile")
+    return VERIFICATION_MODE, VERIFICATION_HARNESS, REVIEW_PROFILE
+
+
+@dataclass(frozen=True)
+class ScopeDescriptor:
+    task_id: str
+    question_id: str
+    trigger_kind: str
+    verification_mode: str
+    verification_harness: str
+    review_profile: str
+    base_policy: str
+    base_commit: str
+    requirement_paths: tuple[str, ...]
+    allowed_path_roots: tuple[str, ...]
+    verification_commands: tuple[str, ...]
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, object]) -> ScopeDescriptor:
+        reason = "invalid_scope_descriptor"
+        mapping = _require_exact_fields(value, _DESCRIPTOR_FIELDS, "descriptor")
+        if mapping["schema_version"] != SCOPE_SCHEMA_VERSION:
+            raise ScopeContractError(reason, "unexpected schema_version")
+        task_id = _scope_uuid(mapping["task_id"], reason=reason)
+        question_id = _required_string(mapping["question_id"], "question_id")
+        if _QUESTION_ID_RE.fullmatch(question_id) is None:
+            raise ScopeContractError(reason, "invalid question_id")
+        trigger_kind = _required_string(mapping["trigger_kind"], "trigger_kind")
+        if trigger_kind not in {"shipping-commit", "verify-request"}:
+            raise ScopeContractError(reason, "unsupported trigger_kind")
+        mode, harness, profile = _validated_verifier(
+            mapping["verification_mode"],
+            mapping["verification_harness"],
+            mapping["review_profile"],
+            reason=reason,
+        )
+        reviewed_base = _require_exact_fields(
+            mapping["reviewed_base"], _REVIEWED_BASE_FIELDS, "reviewed_base"
+        )
+        if reviewed_base["policy"] != "exact":
+            raise ScopeContractError(reason, "reviewed_base policy must be 'exact'")
+        base_commit = _scope_full_sha(
+            reviewed_base["commit"], "reviewed_base.commit", reason=reason
+        )
+        return cls(
+            task_id=task_id,
+            question_id=question_id,
+            trigger_kind=trigger_kind,
+            verification_mode=mode,
+            verification_harness=harness,
+            review_profile=profile,
+            base_policy="exact",
+            base_commit=base_commit,
+            requirement_paths=_normalized_paths(
+                mapping["requirement_paths"],
+                "requirement_paths",
+                reason=reason,
+                require_json_list=True,
+            ),
+            allowed_path_roots=_normalized_paths(
+                mapping["allowed_path_roots"],
+                "allowed_path_roots",
+                reason=reason,
+                require_json_list=True,
+            ),
+            verification_commands=_normalized_commands(
+                mapping["verification_commands"],
+                reason=reason,
+                require_json_list=True,
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ScopeReference:
+    descriptor_path: str
+    descriptor_digest: str
+
+
+@dataclass(frozen=True, order=True)
+class ChangedPath:
+    status: str
+    path: str
+    path_bytes: bytes = field(compare=False, repr=False)
+
+
+@dataclass(frozen=True)
+class ReviewScope:
+    repository_identity: str
+    task_id: str
+    question_id: str
+    trigger_kind: str
+    trigger_identity: str
+    trigger_commit: str
+    trigger_path: str | None
+    trigger_blob_id: str | None
+    descriptor_path: str
+    descriptor_digest: str
+    descriptor_blob_id: str
+    review_profile: str
+    verification_mode: str
+    verification_harness: str
+    reviewed_head: str
+    requested_base: str | None
+    effective_base: str
+    changed_paths: tuple[ChangedPath, ...]
+    requirements: tuple[Mapping[str, str], ...]
+    allowed_path_roots: tuple[str, ...]
+    verification_commands: tuple[str, ...]
+
+    def to_mapping(self) -> dict[str, object]:
+        reason = "invalid_review_scope"
+        repository_identity = _scope_sha256(
+            self.repository_identity, "repository_identity", reason=reason
+        )
+        task_id = _scope_uuid(self.task_id, reason=reason)
+        if _QUESTION_ID_RE.fullmatch(self.question_id) is None:
+            raise ScopeContractError(reason, "invalid question_id")
+        mode, harness, profile = _validated_verifier(
+            self.verification_mode,
+            self.verification_harness,
+            self.review_profile,
+            reason=reason,
+        )
+        trigger_commit = _scope_full_sha(
+            self.trigger_commit, "trigger_commit", reason=reason
+        )
+        trigger_identity = canonical_trigger_identity(
+            self.trigger_kind, trigger_commit, self.trigger_path
+        )
+        if trigger_identity != self.trigger_identity:
+            raise ScopeContractError(reason, "trigger_identity does not match trigger")
+        if self.trigger_kind == "shipping-commit":
+            if self.trigger_blob_id is not None:
+                raise ScopeContractError(reason, "shipping trigger cannot have blob id")
+            trigger_path = None
+            trigger_blob_id = None
+        else:
+            trigger_path = _normalize_repo_path(self.trigger_path, reason=reason)
+            trigger_blob_id = _scope_full_sha(
+                self.trigger_blob_id, "trigger_blob_id", reason=reason
+            )
+        descriptor_path = _normalize_repo_path(self.descriptor_path, reason=reason)
+        descriptor_digest = _scope_sha256(
+            self.descriptor_digest, "descriptor_digest", reason=reason
+        )
+        descriptor_blob_id = _scope_full_sha(
+            self.descriptor_blob_id, "descriptor_blob_id", reason=reason
+        )
+        reviewed_head = _scope_full_sha(self.reviewed_head, "reviewed_head", reason=reason)
+        requested_base = (
+            _scope_full_sha(self.requested_base, "requested_base", reason=reason)
+            if self.requested_base is not None
+            else None
+        )
+        effective_base = _scope_full_sha(
+            self.effective_base, "effective_base", reason=reason
+        )
+        changed_paths: set[ChangedPath] = set()
+        for changed in self.changed_paths:
+            if not isinstance(changed, ChangedPath) or changed.status not in _CHANGED_STATUSES:
+                raise ScopeContractError(reason, "invalid changed path entry")
+            try:
+                encoded_path = changed.path.encode("utf-8")
+            except (AttributeError, UnicodeEncodeError) as exc:
+                raise ScopeContractError(reason, "invalid changed path text") from exc
+            if (
+                not changed.path
+                or not isinstance(changed.path_bytes, bytes)
+                or encoded_path != changed.path_bytes
+            ):
+                raise ScopeContractError(reason, "changed path bytes do not match text")
+            changed_paths.add(changed)
+        if not changed_paths:
+            raise ScopeContractError(reason, "changed_paths cannot be empty")
+        requirements: set[tuple[str, str, str]] = set()
+        for requirement in self.requirements:
+            if not isinstance(requirement, Mapping) or set(requirement) != _REQUIREMENT_FIELDS:
+                raise ScopeContractError(reason, "invalid requirement entry")
+            requirements.add(
+                (
+                    _normalize_repo_path(requirement["path"], reason=reason),
+                    _scope_full_sha(
+                        requirement["blob_id"], "requirement blob_id", reason=reason
+                    ),
+                    _scope_sha256(
+                        requirement["digest"], "requirement digest", reason=reason
+                    ),
+                )
+            )
+        if not requirements:
+            raise ScopeContractError(reason, "requirements cannot be empty")
+        return {
+            "schema_version": SCOPE_SCHEMA_VERSION,
+            "repository_identity": repository_identity,
+            "task_id": task_id,
+            "question_id": self.question_id,
+            "trigger_kind": self.trigger_kind,
+            "trigger_identity": trigger_identity,
+            "trigger_commit": trigger_commit,
+            "trigger_path": trigger_path,
+            "trigger_blob_id": trigger_blob_id,
+            "descriptor_path": descriptor_path,
+            "descriptor_digest": descriptor_digest,
+            "descriptor_blob_id": descriptor_blob_id,
+            "review_profile": profile,
+            "verification_mode": mode,
+            "verification_harness": harness,
+            "reviewed_head": reviewed_head,
+            "requested_base": requested_base,
+            "effective_base": effective_base,
+            "changed_paths": [
+                {"status": item.status, "path": item.path}
+                for item in sorted(changed_paths)
+            ],
+            "requirements": [
+                {"path": path, "blob_id": blob_id, "digest": digest}
+                for path, blob_id, digest in sorted(requirements)
+            ],
+            "allowed_path_roots": list(
+                _normalized_paths(
+                    self.allowed_path_roots,
+                    "allowed_path_roots",
+                    reason=reason,
+                    require_json_list=False,
+                )
+            ),
+            "verification_commands": list(
+                _normalized_commands(
+                    self.verification_commands,
+                    reason=reason,
+                    require_json_list=False,
+                )
+            ),
+        }
+
+
+def review_scope_from_mapping(value: Mapping[str, object]) -> ReviewScope:
+    reason = "invalid_review_scope"
+    if not isinstance(value, Mapping) or set(value) != _REVIEW_SCOPE_FIELDS:
+        raise ScopeContractError(reason, "review scope fields do not match")
+    changed_raw = value["changed_paths"]
+    if not isinstance(changed_raw, list):
+        raise ScopeContractError(reason, "changed_paths must be an array")
+    changed: list[ChangedPath] = []
+    for item in changed_raw:
+        if not isinstance(item, Mapping) or set(item) != _CHANGED_PATH_FIELDS:
+            raise ScopeContractError(reason, "invalid changed path entry")
+        path = _normalize_repo_path(item["path"], reason=reason)
+        status_value = item["status"]
+        if status_value not in _CHANGED_STATUSES:
+            raise ScopeContractError(reason, "invalid changed path status")
+        changed.append(ChangedPath(str(status_value), path, path.encode("utf-8")))
+    requirements_raw = value["requirements"]
+    if not isinstance(requirements_raw, list):
+        raise ScopeContractError(reason, "requirements must be an array")
+    scope = ReviewScope(
+        repository_identity=str(value["repository_identity"]),
+        task_id=str(value["task_id"]),
+        question_id=str(value["question_id"]),
+        trigger_kind=str(value["trigger_kind"]),
+        trigger_identity=str(value["trigger_identity"]),
+        trigger_commit=str(value["trigger_commit"]),
+        trigger_path=value["trigger_path"] if isinstance(value["trigger_path"], str) else None,
+        trigger_blob_id=(
+            value["trigger_blob_id"] if isinstance(value["trigger_blob_id"], str) else None
+        ),
+        descriptor_path=str(value["descriptor_path"]),
+        descriptor_digest=str(value["descriptor_digest"]),
+        descriptor_blob_id=str(value["descriptor_blob_id"]),
+        review_profile=str(value["review_profile"]),
+        verification_mode=str(value["verification_mode"]),
+        verification_harness=str(value["verification_harness"]),
+        reviewed_head=str(value["reviewed_head"]),
+        requested_base=(
+            value["requested_base"] if isinstance(value["requested_base"], str) else None
+        ),
+        effective_base=str(value["effective_base"]),
+        changed_paths=tuple(changed),
+        requirements=tuple(requirements_raw),
+        allowed_path_roots=tuple(value["allowed_path_roots"])
+        if isinstance(value["allowed_path_roots"], list)
+        else (),
+        verification_commands=tuple(value["verification_commands"])
+        if isinstance(value["verification_commands"], list)
+        else (),
+    )
+    if canonical_json_bytes(scope.to_mapping()) != canonical_json_bytes(dict(value)):
+        raise ScopeContractError(reason, "review scope is not canonical")
+    return scope
+
+
+def parse_scope_reference(value: str) -> ScopeReference:
+    reason = "invalid_scope_reference"
+    if not isinstance(value, str) or value.count("@") != 1:
+        raise ScopeContractError(reason, "scope reference must contain one @")
+    descriptor_path, descriptor_digest = value.split("@", 1)
+    path = _normalize_repo_path(descriptor_path, reason=reason)
+    digest = _scope_sha256(descriptor_digest, "descriptor_digest", reason=reason)
+    return ScopeReference(path, digest)
+
+
+def canonical_trigger_identity(
+    trigger_kind: str, trigger_commit: str, trigger_path: str | None = None
+) -> str:
+    reason = "invalid_trigger_identity"
+    commit = _scope_full_sha(trigger_commit, "trigger_commit", reason=reason)
+    if trigger_kind == "shipping-commit" and trigger_path is None:
+        return f"shipping-commit:{commit}"
+    if trigger_kind == "verify-request" and trigger_path is not None:
+        path = _normalize_repo_path(trigger_path, reason=reason)
+        return f"verify-request:{commit}:{path}"
+    raise ScopeContractError(reason, "trigger kind/path combination is invalid")
+
+
+def parse_name_status_z(raw: bytes) -> tuple[ChangedPath, ...]:
+    reason = "invalid_name_status"
+    if not isinstance(raw, bytes):
+        raise ScopeContractError(reason, "name-status payload must be bytes")
+    if not raw:
+        return ()
+    if not raw.endswith(b"\0"):
+        raise ScopeContractError(reason, "name-status payload must end in NUL")
+    values = raw[:-1].split(b"\0")
+    if len(values) % 2:
+        raise ScopeContractError(reason, "name-status records must be status/path pairs")
+    changed: list[ChangedPath] = []
+    for index in range(0, len(values), 2):
+        status_raw, path_raw = values[index : index + 2]
+        try:
+            status = status_raw.decode("ascii")
+            path = path_raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ScopeContractError(
+                "unsupported_git_path_encoding", "changed path is not strict UTF-8"
+            ) from exc
+        if status not in _CHANGED_STATUSES or not path_raw or path.encode("utf-8") != path_raw:
+            raise ScopeContractError(reason, "unsupported or malformed name-status record")
+        _normalize_repo_path(path, reason=reason)
+        changed.append(ChangedPath(status, path, path_raw))
+    return tuple(sorted(changed))
+
+
+def assert_changed_path_coverage(
+    changed_paths: Sequence[ChangedPath], allowed_path_roots: Sequence[str]
+) -> None:
+    reason = "changed_path_not_allowed"
+    if not changed_paths:
+        raise ScopeContractError("empty_changed_paths", "reviewed diff is empty")
+    roots = tuple(
+        _normalize_repo_path(root, reason=reason) for root in allowed_path_roots
+    )
+    for changed in changed_paths:
+        if not isinstance(changed, ChangedPath):
+            raise ScopeContractError(reason, "invalid changed path")
+        path_bytes = changed.path_bytes
+        if not any(
+            path_bytes == root.encode("utf-8")
+            or path_bytes.startswith(root.encode("utf-8") + b"/")
+            for root in roots
+        ):
+            raise ScopeContractError(reason, changed.path)
+
+
+def canonical_json_bytes(value: object) -> bytes:
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeEncodeError) as exc:
+        raise ScopeContractError("invalid_json", str(exc)) from exc
+
+
+def _publication_path(value: object) -> str:
+    normalized = _normalize_repo_path(value, reason="invalid_publication")
+    if _REPORT_BASENAME_RE.fullmatch(PurePosixPath(normalized).name) is None or not normalized.startswith(
+        "coordination/mailbox/sent/"
+    ):
+        raise ScopeContractError("invalid_publication", "invalid publication path")
+    return normalized
+
+
+def _publication_witness_from_values(
+    path: object,
+    candidate_digest: object,
+    candidate_name: object,
+    candidate_device: object,
+    candidate_inode: object,
+    index_blob_oid: object,
+    index_mode: object,
+    index_stage: object,
+) -> dict[str, object]:
+    reason = "invalid_publication"
+    normalized_path = _publication_path(path)
+    digest = _scope_sha256(candidate_digest, "candidate_digest", reason=reason)
+    if (
+        not isinstance(candidate_name, str)
+        or not candidate_name.startswith(".")
+        or "/" in candidate_name
+        or "\\" in candidate_name
+        or len(candidate_name.encode("utf-8")) > 255
+    ):
+        raise ScopeContractError(reason, "invalid candidate_name")
+    if (
+        isinstance(candidate_device, bool)
+        or not isinstance(candidate_device, int)
+        or candidate_device < 0
+        or isinstance(candidate_inode, bool)
+        or not isinstance(candidate_inode, int)
+        or candidate_inode <= 0
+    ):
+        raise ScopeContractError(reason, "invalid candidate inode witness")
+    if not isinstance(index_blob_oid, str) or _GIT_OBJECT_ID_RE.fullmatch(index_blob_oid) is None:
+        raise ScopeContractError(reason, "invalid index blob oid")
+    if index_mode != "100644" or isinstance(index_stage, bool) or index_stage != 0:
+        raise ScopeContractError(reason, "invalid index witness")
+    return {
+        "path": normalized_path,
+        "candidate_digest": digest,
+        "candidate_name": candidate_name,
+        "candidate_device": candidate_device,
+        "candidate_inode": candidate_inode,
+        "index_blob_oid": index_blob_oid,
+        "index_mode": index_mode,
+        "index_stage": index_stage,
+    }
+
+
+def _private_file_flags(base: int) -> int:
+    return base | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _ensure_private_directory(path: Path) -> int:
+    path = path.absolute()
+    try:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ScopeContractError("unsafe_private_directory", str(exc)) from exc
+    try:
+        observed = os.lstat(path)
+    except OSError as exc:
+        raise ScopeContractError("unsafe_private_directory", str(exc)) from exc
+    if (
+        not stat.S_ISDIR(observed.st_mode)
+        or stat.S_IMODE(observed.st_mode) != 0o700
+        or observed.st_uid != os.getuid()
+        or observed.st_nlink < 2
+    ):
+        raise ScopeContractError(
+            "unsafe_private_directory", "private state directory metadata is unsafe"
+        )
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        directory_fd = os.open(path, flags | getattr(os, "O_CLOEXEC", 0))
+    except OSError as exc:
+        raise ScopeContractError("unsafe_private_directory", str(exc)) from exc
+    checked = os.fstat(directory_fd)
+    if (
+        not stat.S_ISDIR(checked.st_mode)
+        or stat.S_IMODE(checked.st_mode) != 0o700
+        or checked.st_uid != os.getuid()
+        or (checked.st_dev, checked.st_ino) != (observed.st_dev, observed.st_ino)
+    ):
+        os.close(directory_fd)
+        raise ScopeContractError(
+            "unsafe_private_directory", "private state directory changed during open"
+        )
+    return directory_fd
+
+
+def _validate_private_file(
+    fd: int,
+    *,
+    label: str,
+    stat_fn: Callable[[int], os.stat_result] = os.fstat,
+) -> os.stat_result:
+    observed = stat_fn(fd)
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or stat.S_IMODE(observed.st_mode) != 0o600
+        or observed.st_uid != os.getuid()
+        or observed.st_nlink != 1
+    ):
+        raise ScopeContractError(
+            "unsafe_private_file", f"{label} metadata is unsafe"
+        )
+    return observed
+
+
+def _write_all(fd: int, raw: bytes) -> None:
+    view = memoryview(raw)
+    while view:
+        written = os.write(fd, view)
+        if written <= 0:
+            raise OSError(errno.EIO, "short write")
+        view = view[written:]
 
 
 @dataclass(frozen=True)
@@ -130,8 +882,8 @@ class LaneVReport:
 
 @dataclass(frozen=True)
 class StructuralAuthority:
-    descriptor: receipts.ScopeDescriptor
-    reference: receipts.ScopeReference
+    descriptor: ScopeDescriptor
+    reference: ScopeReference
     trigger_kind: str
     trigger_commit: str
     trigger_path: str | None
@@ -159,17 +911,6 @@ def _fail(reason: str, detail: str) -> None:
     raise ReportGateError(reason, detail)
 
 
-def _strict_json_value(value: str, label: str) -> Any:
-    try:
-        parsed = receipts.strict_json_loads(value.encode("utf-8"))
-        rendered = receipts.canonical_json_bytes(parsed).decode("utf-8")
-    except receipts.ReceiptContractError as exc:
-        raise ReportGateError("invalid_attestation_value", f"{label}: {exc}") from exc
-    if rendered != value:
-        _fail("noncanonical_attestation_json", label)
-    return parsed
-
-
 def _canonical_uuid(value: str) -> str:
     try:
         parsed = uuid.UUID(value)
@@ -183,13 +924,6 @@ def _canonical_uuid(value: str) -> str:
             "Verification task ID must be canonical UUID text",
         )
     return value
-
-
-def _canonical_receipt_id(value: str) -> str:
-    try:
-        return receipts.canonical_receipt_id(value)
-    except receipts.ReceiptContractError as exc:
-        raise ReportGateError(exc.reason, exc.detail) from exc
 
 
 def _full_sha(value: str, label: str, *, allow_none: bool = False) -> str:
@@ -210,18 +944,16 @@ def _validate_trigger_identity(value: str) -> None:
     try:
         if value.startswith("shipping-commit:"):
             commit = value.removeprefix("shipping-commit:")
-            canonical = receipts.canonical_trigger_identity("shipping-commit", commit)
+            canonical = canonical_trigger_identity("shipping-commit", commit)
         elif value.startswith("verify-request:"):
             remainder = value.removeprefix("verify-request:")
             commit, separator, path = remainder.partition(":")
             if not separator:
                 _fail("invalid_attestation_value", "Trigger identity is incomplete")
-            canonical = receipts.canonical_trigger_identity(
-                "verify-request", commit, path
-            )
+            canonical = canonical_trigger_identity("verify-request", commit, path)
         else:
             _fail("invalid_attestation_value", "unsupported Trigger identity")
-    except receipts.ReceiptContractError as exc:
+    except ScopeContractError as exc:
         raise ReportGateError("invalid_attestation_value", str(exc)) from exc
     if canonical != value:
         _fail("invalid_attestation_value", "Trigger identity is not canonical")
@@ -238,138 +970,28 @@ def _trigger_parts(value: str) -> tuple[str, str, str | None]:
     _fail("invalid_trigger_identity", "report trigger identity is malformed")
 
 
-def _validate_dispositions(value: str, status: str) -> None:
-    if value == "none":
-        if status == "issues":
-            _fail(
-                "invalid_attestation_value",
-                "issues requires Opus finding dispositions",
-            )
-        return
-    if status != "issues":
-        _fail(
-            "invalid_attestation_value",
-            "only issues may carry Opus finding dispositions",
-        )
-    parsed = _strict_json_value(value, "Opus finding dispositions")
-    if not isinstance(parsed, Mapping) or not parsed:
-        _fail(
-            "invalid_attestation_value",
-            "Opus finding dispositions must be a non-empty object",
-        )
-    for finding_id, disposition in parsed.items():
-        if not isinstance(finding_id, str) or _FINDING_ID_RE.fullmatch(finding_id) is None:
-            _fail("invalid_attestation_value", "invalid Opus finding ID")
-        if not isinstance(disposition, Mapping) or set(disposition) != {
-            "disposition",
-            "evidence",
-            "evidence_digest",
-        }:
-            _fail(
-                "invalid_attestation_value",
-                f"{finding_id} disposition fields are invalid",
-            )
-        disposition_value = disposition["disposition"]
-        evidence = disposition["evidence"]
-        evidence_digest = disposition["evidence_digest"]
-        if disposition_value not in {"confirmed", "disproved", "unresolved"}:
-            _fail("invalid_attestation_value", f"{finding_id} disposition is invalid")
-        if not isinstance(evidence, str) or not isinstance(evidence_digest, str):
-            _fail(
-                "invalid_attestation_value",
-                f"{finding_id} evidence values must be strings",
-            )
-        expected_digest = (
-            "none"
-            if not evidence
-            else "sha256:" + hashlib.sha256(evidence.encode("utf-8")).hexdigest()
-        )
-        if evidence_digest != expected_digest:
-            _fail(
-                "invalid_attestation_value",
-                f"{finding_id} evidence digest does not match",
-            )
-
-
-def _validate_guard(value: str) -> None:
-    parsed = _strict_json_value(value, "Reconciliation guard")
-    if (
-        not isinstance(parsed, Mapping)
-        or list(parsed) != ["digest", "go_allowed"]
-        or not isinstance(parsed.get("go_allowed"), bool)
-        or not isinstance(parsed.get("digest"), str)
-    ):
-        _fail(
-            "invalid_attestation_value",
-            "Reconciliation guard fields must be digest then go_allowed",
-        )
-    _sha256(parsed["digest"], "Reconciliation guard digest")
-
-
-def _validate_codex_fields(fields: Mapping[str, str]) -> None:
-    if fields["Verification harness"] != receipts.CODEX_HARNESS:
-        _fail("invalid_attestation_value", "Codex verification harness does not match")
-    if fields["Review profile"] != receipts.CODEX_MODE:
-        _fail("invalid_attestation_value", "Codex review profile does not match")
-    authorization = fields["Authorization identity"]
-    if authorization not in {
-        "standing-policy:codex-lane-v-opus-v1",
-        "missing",
-    } and _AUTHORIZATION_RE.fullmatch(authorization) is None:
-        _fail("invalid_attestation_value", "invalid Authorization identity")
-    if _RECEIPT_ID_RE.fullmatch(fields["Opus receipt ID"]) is None:
-        _fail("invalid_attestation_value", "invalid Opus receipt ID")
-    _sha256(fields["Opus scope digest"], "Opus scope digest")
-    status = fields["Cross-model review"]
-    if status not in {"pass", "issues", "unavailable"}:
-        _fail("invalid_attestation_value", "invalid Cross-model review status")
-    model = fields["Effective Opus model"]
-    reason = fields["Degraded reason"]
-    if status == "unavailable":
-        if model != "not-available" or reason not in _CODEX_UNAVAILABLE_REASONS:
-            _fail(
-                "invalid_attestation_value",
-                "unavailable requires not-available model and exact degraded reason",
-            )
-        if (reason == "authorization_missing") != (authorization == "missing"):
-            _fail(
-                "invalid_attestation_value",
-                "authorization_missing and missing identity must agree",
-            )
-    else:
-        if not (model == "opus" or model.startswith("claude-opus-")) or reason != "none":
-            _fail(
-                "invalid_attestation_value",
-                "pass/issues requires verified Opus model and no degraded reason",
-            )
-        if authorization == "missing":
-            _fail("invalid_attestation_value", "successful review cannot lack authorization")
-    _validate_dispositions(fields["Opus finding dispositions"], status)
-    _validate_guard(fields["Reconciliation guard"])
-
-
-def _validate_fields(fields: Mapping[str, str]) -> None:
+def _validate_fields(fields: Mapping[str, str], sender: str) -> None:
     if fields["Verification schema"] != REPORT_SCHEMA_VERSION:
         _fail("invalid_attestation_value", "unexpected Verification schema")
-    mode = fields["Verification mode"]
-    if mode not in {receipts.CODEX_MODE, receipts.CLAUDE_MODE}:
+    if fields["Verification mode"] != VERIFICATION_MODE:
         _fail("invalid_attestation_value", "unsupported Verification mode")
+    if fields["Verification harness"] != VERIFICATION_HARNESS:
+        _fail("invalid_attestation_value", "verification harness does not match")
+    if fields["Review profile"] != REVIEW_PROFILE:
+        _fail("invalid_attestation_value", "review profile does not match")
     _canonical_uuid(fields["Verification task ID"])
     try:
-        receipts.parse_scope_reference(fields["Scope authority"])
-    except receipts.ReceiptContractError as exc:
+        parse_scope_reference(fields["Scope authority"])
+    except ScopeContractError as exc:
         raise ReportGateError("invalid_attestation_value", str(exc)) from exc
     _validate_trigger_identity(fields["Trigger identity"])
     _full_sha(fields["Reviewed head"], "Reviewed head")
     _full_sha(fields["Reviewed base"], "Reviewed base", allow_none=True)
-    if mode == receipts.CODEX_MODE:
-        _validate_codex_fields(fields)
-        return
-    if fields["Verification harness"] != receipts.CLAUDE_HARNESS:
-        _fail("invalid_attestation_value", "Claude verification harness does not match")
-    for label in _OPUS_SPECIFIC_FIELDS:
-        if fields[label] != "not-applicable":
-            _fail("invalid_attestation_value", f"{label} must be not-applicable")
+    if sender not in {"operator", "operator2"} or fields["Reviewer identity"] != sender:
+        _fail(
+            "invalid_attestation_value",
+            "Reviewer identity must equal the canonical report sender",
+        )
 
 
 def parse_lane_v_report(
@@ -378,8 +1000,8 @@ def parse_lane_v_report(
     """Parse one report from strict raw bytes without consulting private state."""
 
     try:
-        normalized_path = receipts.normalize_repo_path(relative_path)
-    except receipts.ReceiptContractError as exc:
+        normalized_path = normalize_repo_path(relative_path)
+    except ScopeContractError as exc:
         raise ReportGateError("invalid_report_path", exc.detail) from exc
     pure_path = PurePosixPath(normalized_path)
     if pure_path.parent.as_posix() != "coordination/mailbox/sent":
@@ -486,7 +1108,7 @@ def parse_lane_v_report(
                 "attestation must end at EOF or before one exact H2",
             )
 
-    _validate_fields(parsed_fields)
+    _validate_fields(parsed_fields, sender)
     h1_head = h1.group("head")
     if h1_head != parsed_fields["Reviewed head"]:
         _fail("reviewed_head_mismatch", "H1 SHA does not equal Reviewed head")
@@ -536,8 +1158,8 @@ def _git_process(
 
 def _require_repository(root: Path) -> Path:
     try:
-        resolved = receipts.require_pipeline_root(root)
-    except receipts.ReceiptContractError as exc:
+        resolved = require_pipeline_root(root)
+    except ScopeContractError as exc:
         raise ReportGateError("invalid_repository", exc.detail) from exc
     if any(ord(character) < 0x20 or ord(character) == 0x7F for character in str(resolved)):
         _fail("invalid_repository", "root path contains control characters")
@@ -571,8 +1193,8 @@ def _committed_blob(
     root: Path, commit: str, path: str, label: str, *, maximum_bytes: int = 65_536
 ) -> bytes:
     try:
-        normalized = receipts.normalize_repo_path(path)
-    except receipts.ReceiptContractError as exc:
+        normalized = normalize_repo_path(path)
+    except ScopeContractError as exc:
         raise ReportGateError("invalid_structural_authority", exc.detail) from exc
     result = _git_process(root, "show", f"{commit}:{normalized}", text=False)
     if result.returncode != 0 or not isinstance(result.stdout, bytes):
@@ -603,7 +1225,7 @@ def _verify_request_scope(
     report: LaneVReport,
     trigger_commit: str,
     trigger_path: str,
-) -> tuple[receipts.ScopeReference, str]:
+) -> tuple[ScopeReference, str]:
     pure_path = PurePosixPath(trigger_path)
     if pure_path.parent.as_posix() != "coordination/mailbox/sent":
         _fail(
@@ -671,8 +1293,8 @@ def _verify_request_scope(
             "verify-request recipient must equal report sender",
         )
     try:
-        return receipts.parse_scope_reference(scope_text), recipient
-    except receipts.ReceiptContractError as exc:
+        return parse_scope_reference(scope_text), recipient
+    except ScopeContractError as exc:
         raise ReportGateError("invalid_verify_request", exc.detail) from exc
 
 
@@ -701,7 +1323,7 @@ def _terminal_git_trailers(message: str) -> tuple[str, ...]:
 
 def _shipping_scope(
     root: Path, report: LaneVReport, trigger_commit: str
-) -> receipts.ScopeReference:
+) -> ScopeReference:
     if trigger_commit != report.fields["Reviewed head"]:
         _fail(
             "invalid_shipping_trigger",
@@ -750,8 +1372,8 @@ def _shipping_scope(
             "shipping commit requires the report's exact Lane-V-Scope trailer",
         )
     try:
-        return receipts.parse_scope_reference(references[0])
-    except receipts.ReceiptContractError as exc:
+        return parse_scope_reference(references[0])
+    except ScopeContractError as exc:
         raise ReportGateError("invalid_shipping_trigger", exc.detail) from exc
 
 
@@ -801,11 +1423,11 @@ def validate_structural_authority(
             "committed descriptor digest does not agree",
         )
     try:
-        mapping = receipts.strict_json_loads(raw)
+        mapping = strict_json_loads(raw)
         if not isinstance(mapping, Mapping):
             _fail("invalid_scope_descriptor", "descriptor must be an object")
-        descriptor = receipts.ScopeDescriptor.from_mapping(mapping)
-    except receipts.ReceiptContractError as exc:
+        descriptor = ScopeDescriptor.from_mapping(mapping)
+    except ScopeContractError as exc:
         raise ReportGateError(exc.reason, exc.detail) from exc
     expected_path = f"coordination/verification/scopes/{descriptor.task_id}.json"
     if reference.descriptor_path != expected_path:
@@ -839,7 +1461,7 @@ def validate_structural_authority(
             "structural_authority_mismatch",
             "Scope authority is not canonical",
         )
-    expected_trigger = receipts.canonical_trigger_identity(
+    expected_trigger = canonical_trigger_identity(
         trigger_kind, trigger_commit, trigger_path
     )
     if report.fields["Trigger identity"] != expected_trigger:
@@ -865,120 +1487,6 @@ def _live_report_shape(report: LaneVReport) -> None:
         _fail("invalid_report_sender", "only operator seats may publish reports")
     if tuple(report.fields) != ATTESTATION_FIELDS:
         _fail("invalid_live_report", "report attestation fields are incomplete")
-
-
-def _validate_codex_record(
-    root: Path,
-    report: LaneVReport,
-    authority: StructuralAuthority,
-    record: receipts.ReceiptRecord,
-) -> None:
-    if record.state not in {"reconciled", "publishing", "published"}:
-        _fail(
-            "invalid_receipt_state",
-            "Codex receipt is not reconciled for report publication",
-        )
-    if (
-        record.receipt_id != report.fields["Opus receipt ID"]
-        or record.scope_digest != report.fields["Opus scope digest"]
-    ):
-        _fail("receipt_binding_mismatch", "report receipt identity does not match")
-
-    try:
-        scope = receipts.review_scope_from_mapping(record.scope)
-    except receipts.ReceiptContractError as exc:
-        raise ReportGateError(
-            "invalid_live_receipt", "stored receipt scope is malformed"
-        ) from exc
-    expected_scope = {
-        "repository_identity": _repository_identity(root),
-        "task_id": authority.descriptor.task_id,
-        "question_id": authority.descriptor.question_id,
-        "trigger_kind": authority.trigger_kind,
-        "trigger_identity": authority.trigger_identity,
-        "trigger_commit": authority.trigger_commit,
-        "trigger_path": authority.trigger_path,
-        "descriptor_path": authority.reference.descriptor_path,
-        "descriptor_digest": authority.reference.descriptor_digest,
-        "review_profile": authority.descriptor.review_profile,
-        "verification_mode": authority.descriptor.verification_mode,
-        "verification_harness": authority.descriptor.verification_harness,
-        "reviewed_head": report.fields["Reviewed head"],
-        "requested_base": report.fields["Reviewed base"],
-        "effective_base": report.fields["Reviewed base"],
-    }
-    for key, expected in expected_scope.items():
-        if getattr(scope, key) != expected:
-            _fail("receipt_scope_mismatch", f"stored receipt {key} does not match")
-
-    try:
-        # Deliberately lazy: publication is the only report-gate path that needs
-        # the provider bridge, and all three normalizers run while the receipt
-        # lock is held. Raw receipt mappings never authorize report prose.
-        import opus_review_bridge as bridge
-
-        stored_review = bridge.stored_review_from_record(record)
-        stored_reconciliation = bridge.stored_reconciliation_from_record(record)
-        # Task 5's public validator owns the scope semantics, while Task 6 owns
-        # the stronger child-process policy. Its private runner has the same
-        # call signature, so adapt it only for this bounded public call. The
-        # lock makes the temporary module binding process-thread safe.
-        with _BRIDGE_GIT_ADAPTER_LOCK:
-            original_git_process = bridge._git_process
-            bridge._git_process = _git_process
-            try:
-                scoped_reconciliation = bridge.validated_report_reconciliation_scope(
-                    root,
-                    record,
-                    report.fields["Reviewed head"],
-                    report.fields["Reviewed base"],
-                )
-            finally:
-                bridge._git_process = original_git_process
-    except Exception as exc:
-        reason = getattr(exc, "reason", "invalid_receipt")
-        raise ReportGateError(
-            "invalid_live_receipt", f"receipt normalization failed: {reason}"
-        ) from exc
-
-    if receipts.canonical_json_bytes(
-        stored_reconciliation.to_dict()
-    ) != receipts.canonical_json_bytes(scoped_reconciliation.to_dict()):
-        _fail("receipt_scope_mismatch", "scoped reconciliation changed authority")
-    if (
-        stored_review.authorization_source
-        != report.fields["Authorization identity"]
-    ):
-        _fail("receipt_binding_mismatch", "authorization identity does not match")
-
-    reconciliation = scoped_reconciliation.reconciliation
-    # The verdict check intentionally precedes every go_allowed check. A NITS
-    # or FAIL report may not substitute for the exact stored Codex verdict.
-    if report.verdict != reconciliation.codex_verdict:
-        _fail("verdict_mismatch", "report verdict does not match reconciliation")
-
-    for label in _OPUS_SPECIFIC_FIELDS:
-        if report.fields[label] != scoped_reconciliation.report_fields.get(label):
-            _fail("receipt_binding_mismatch", f"{label} does not match receipt")
-
-    guard = _strict_json_value(
-        report.fields["Reconciliation guard"], "Reconciliation guard"
-    )
-    assert isinstance(guard, Mapping)
-    report_go_allowed = guard.get("go_allowed")
-    if report_go_allowed != reconciliation.go_allowed:
-        _fail("go_allowed_mismatch", "report guard does not match reconciliation")
-    if (report.verdict == "GO") != report_go_allowed:
-        _fail("go_allowed_mismatch", "GO alone requires go_allowed true")
-
-    if (
-        authority.verify_request_recipient is not None
-        and report.sender != authority.verify_request_recipient
-    ):
-        _fail(
-            "verify_request_recipient_mismatch",
-            "report sender is not the verify-request operator recipient",
-        )
 
 
 _TASK_PUBLICATION_FIELDS = frozenset(
@@ -1041,7 +1549,7 @@ def _task_witness_from_values(
     index_stage: object,
 ) -> dict[str, object]:
     try:
-        return receipts._publication_witness_from_values(
+        return _publication_witness_from_values(
             path,
             candidate_digest,
             candidate_name,
@@ -1051,7 +1559,7 @@ def _task_witness_from_values(
             index_mode,
             index_stage,
         )
-    except receipts.ReceiptContractError as exc:
+    except ScopeContractError as exc:
         raise ReportGateError("invalid_task_publication", exc.detail) from exc
 
 
@@ -1059,8 +1567,8 @@ def _task_record_from_bytes(raw: bytes, expected_task_id: str) -> TaskPublicatio
     if len(raw) > TASK_PUBLICATION_MAX_BYTES:
         _fail("invalid_task_publication", "task publication record is too large")
     try:
-        value = receipts.strict_json_loads(raw)
-    except receipts.ReceiptContractError as exc:
+        value = strict_json_loads(raw)
+    except ScopeContractError as exc:
         raise ReportGateError("invalid_task_publication", exc.detail) from exc
     if not isinstance(value, Mapping) or set(value) != _TASK_PUBLICATION_FIELDS:
         _fail("invalid_task_publication", "task publication fields do not match")
@@ -1128,7 +1636,7 @@ class TaskPublicationStore:
             )
         else:
             publication_root = Path(state_root).absolute()
-        directory_fd = receipts._ensure_private_directory(publication_root)
+        directory_fd = _ensure_private_directory(publication_root)
         os.close(directory_fd)
         return cls(publication_root)
 
@@ -1152,16 +1660,16 @@ class LockedTask:
     def __enter__(self) -> LockedTask:
         if self._directory_fd is not None:
             _fail("task_lock_reentry", "task publication lock is already active")
-        directory_fd = receipts._ensure_private_directory(self._store.state_root)
+        directory_fd = _ensure_private_directory(self._store.state_root)
         try:
             lock_fd = os.open(
                 self._lock_name,
-                receipts._private_file_flags(os.O_CREAT | os.O_RDWR),
+                _private_file_flags(os.O_CREAT | os.O_RDWR),
                 0o600,
                 dir_fd=directory_fd,
             )
             try:
-                receipts._validate_private_file(
+                _validate_private_file(
                     lock_fd, label="task publication lock", stat_fn=os.fstat
                 )
                 operation = fcntl.LOCK_EX
@@ -1211,7 +1719,7 @@ class LockedTask:
         try:
             record_fd = os.open(
                 self._record_name,
-                receipts._private_file_flags(os.O_RDONLY | os.O_NONBLOCK),
+                _private_file_flags(os.O_RDONLY | os.O_NONBLOCK),
                 dir_fd=directory_fd,
             )
         except FileNotFoundError:
@@ -1221,7 +1729,7 @@ class LockedTask:
         except OSError as exc:
             raise ReportGateError("task_publication_open_failed", str(exc)) from exc
         try:
-            receipts._validate_private_file(
+            _validate_private_file(
                 record_fd, label="task publication record", stat_fn=os.fstat
             )
             chunks: list[bytes] = []
@@ -1247,14 +1755,14 @@ class LockedTask:
             _fail("task_publication_not_loaded", "task record must be loaded first")
         observed = self._read_record()
         assert observed is not None
-        if receipts.canonical_json_bytes(
+        if canonical_json_bytes(
             _task_record_mapping(observed)
-        ) != receipts.canonical_json_bytes(_task_record_mapping(self._current)):
+        ) != canonical_json_bytes(_task_record_mapping(self._current)):
             _fail("task_publication_conflict", "task record changed while locked")
         return observed
 
     def _atomic_replace(self, record: TaskPublicationRecord) -> None:
-        raw = receipts.canonical_json_bytes(_task_record_mapping(record))
+        raw = canonical_json_bytes(_task_record_mapping(record))
         if len(raw) > TASK_PUBLICATION_MAX_BYTES:
             _fail("invalid_task_publication", "task publication record is too large")
         directory_fd = self._require_locked()
@@ -1263,14 +1771,14 @@ class LockedTask:
         try:
             temporary_fd = os.open(
                 temporary_name,
-                receipts._private_file_flags(os.O_CREAT | os.O_EXCL | os.O_WRONLY),
+                _private_file_flags(os.O_CREAT | os.O_EXCL | os.O_WRONLY),
                 0o600,
                 dir_fd=directory_fd,
             )
-            receipts._validate_private_file(
+            _validate_private_file(
                 temporary_fd, label="temporary task record", stat_fn=os.fstat
             )
-            receipts._write_all(temporary_fd, raw)
+            _write_all(temporary_fd, raw)
             os.fsync(temporary_fd)
             os.close(temporary_fd)
             temporary_fd = None
@@ -1465,8 +1973,8 @@ class LockedTask:
         if current.state != "publishing":
             _fail("invalid_task_transition", "only publishing may recover")
         try:
-            normalized_path = receipts._publication_path(path)
-        except receipts.ReceiptContractError as exc:
+            normalized_path = _publication_path(path)
+        except ScopeContractError as exc:
             raise ReportGateError("invalid_task_publication", exc.detail) from exc
         if normalized_path != current.path:
             _fail("publication_replay_conflict", "recovery path changed")
@@ -1530,7 +2038,7 @@ def _task_authority_digest(
         "authorized_operator_recipient": report.sender,
     }
     return "sha256:" + hashlib.sha256(
-        receipts.canonical_json_bytes(authority_mapping)
+        canonical_json_bytes(authority_mapping)
     ).hexdigest()
 
 
@@ -1538,13 +2046,11 @@ def _publication_cli_command(
     root: Path,
     operation: str,
     *,
-    receipt_id: str | None = None,
-    task_id: str | None = None,
+    task_id: str,
 ) -> str:
-    if operation not in {"resume", "status"} or (receipt_id is None) == (
-        task_id is None
-    ):
+    if operation not in {"resume", "status"}:
         _fail("invalid_publication_command", "publication command is incomplete")
+    canonical_task_id = _canonical_uuid(task_id)
     common_result = _git_process(
         root, "rev-parse", "--path-format=absolute", "--git-common-dir"
     )
@@ -1566,13 +2072,13 @@ def _publication_cli_command(
         operation,
         "--repo-root",
         str(root),
-        "--receipt-id" if receipt_id is not None else "--task-id",
-        receipt_id if receipt_id is not None else str(task_id),
+        "--task-id",
+        canonical_task_id,
     ]
     return " ".join(shlex.quote(argument) for argument in argv)
 
 
-def _validate_non_codex_record(
+def _validate_task_record(
     record: TaskPublicationRecord,
     expected_authority_digest: str,
 ) -> None:
@@ -1586,48 +2092,37 @@ def validate_live_report(
     repo_root: str | os.PathLike[str],
     report: LaneVReport,
     *,
-    receipt_store_factory: Callable[[Path], receipts.ReceiptStore] = (
-        receipts.ReceiptStore.for_repo
+    task_store_factory: Callable[[Path], TaskPublicationStore] = (
+        TaskPublicationStore.for_repo
     ),
-    task_store_factory: Callable[[Path], object] | None = None,
-) -> StructuralAuthority:
+) -> TaskPublicationRecord:
     """Bind parsed report claims to committed authority and current private state."""
 
     _live_report_shape(report)
     root = _require_repository(Path(repo_root))
     authority = validate_structural_authority(root, report)
-    if report.fields["Verification mode"] != receipts.CODEX_MODE:
-        factory = task_store_factory or TaskPublicationStore.for_repo
-        try:
-            store = factory(root)
-            authority_digest = _task_authority_digest(root, report, authority)
-            with store.lock_task(
-                authority.descriptor.task_id, blocking=True
-            ) as task:
-                record = task.load_or_create(authority_digest)
-                _validate_non_codex_record(record, authority_digest)
-        except ReportGateError:
-            raise
-        except Exception as exc:
-            reason = getattr(exc, "reason", "task_publication_access_failed")
-            raise ReportGateError(
-                "invalid_task_publication", f"task state access failed: {reason}"
-            ) from exc
-        return authority
-    receipt_id = _canonical_receipt_id(report.fields["Opus receipt ID"])
+    if (
+        authority.verify_request_recipient is not None
+        and report.sender != authority.verify_request_recipient
+    ):
+        _fail(
+            "verify_request_recipient_mismatch",
+            "report sender is not the verify-request operator recipient",
+        )
     try:
-        store = receipt_store_factory(root)
-        with store.lock_receipt(receipt_id, blocking=True) as attempt:
-            record = attempt.load_existing()
-            _validate_codex_record(root, report, authority, record)
+        store = task_store_factory(root)
+        authority_digest = _task_authority_digest(root, report, authority)
+        with store.lock_task(authority.descriptor.task_id, blocking=True) as task:
+            record = task.load_or_create(authority_digest)
+            _validate_task_record(record, authority_digest)
     except ReportGateError:
         raise
     except Exception as exc:
-        reason = getattr(exc, "reason", "receipt_access_failed")
+        reason = getattr(exc, "reason", "task_publication_access_failed")
         raise ReportGateError(
-            "invalid_live_receipt", f"receipt access failed: {reason}"
+            "invalid_task_publication", f"task state access failed: {reason}"
         ) from exc
-    return authority
+    return record
 
 
 class _SanitizedGit:
@@ -1704,8 +2199,7 @@ class _CapturedCandidate:
 @dataclass(frozen=True)
 class _PublishedReportResult:
     path: Path
-    receipt_id: str | None
-    task_id: str | None
+    task_id: str
 
 
 def _publication_checkpoint(label: str) -> None:
@@ -2345,9 +2839,6 @@ def _publish_candidate_result(
     repo_root: str | os.PathLike[str],
     candidate_path: str | os.PathLike[str],
     final_relative: str,
-    receipt_store_factory: Callable[[Path], receipts.ReceiptStore] = (
-        receipts.ReceiptStore.for_repo
-    ),
     task_store_factory: Callable[[Path], TaskPublicationStore] = (
         TaskPublicationStore.for_repo
     ),
@@ -2373,64 +2864,13 @@ def _publish_candidate_result(
         authority = validate_structural_authority(root, report)
         with _SanitizedGit(root) as git:
             try:
-                if report.fields["Verification mode"] == receipts.CODEX_MODE:
-                    store = receipt_store_factory(root)
-                    with store.lock_receipt(
-                        report.fields["Opus receipt ID"], blocking=True
-                    ) as attempt:
-                        record = attempt.load_existing()
-                        _validate_codex_record(root, report, authority, record)
-                        preserve_unowned_candidate = _candidate_is_stored(record, candidate)
-                        try:
-                            published = _locked_publish_new(
-                                attempt=attempt,
-                                record=record,
-                                root=root,
-                                final_relative=final_relative,
-                                candidate=candidate,
-                                sent_fd=sent_fd,
-                                git=git,
-                                set_candidate_ownership=set_candidate_ownership,
-                            )
-                            return _PublishedReportResult(
-                                path=published,
-                                receipt_id=record.receipt_id,
-                                task_id=None,
-                            )
-                        except BaseException as exc:
-                            observed = attempt.load_existing()
-                            resume_instruction = _publication_cli_command(
-                                root, "resume", receipt_id=record.receipt_id
-                            )
-                            if record.state == "publishing":
-                                if isinstance(exc, ReportGateError):
-                                    raise ReportGateError(
-                                        exc.reason,
-                                        f"{exc.detail}; run: {resume_instruction}",
-                                    ) from exc
-                                raise
-                            if observed.state == "publishing":
-                                raise ReportGateError(
-                                    "publication_resumable",
-                                    f"publication interrupted; run: {resume_instruction}",
-                                ) from exc
-                            if observed.state == "published":
-                                status_instruction = _publication_cli_command(
-                                    root, "status", receipt_id=record.receipt_id
-                                )
-                                raise ReportGateError(
-                                    "publication_status_required",
-                                    "publication is already published; "
-                                    f"run: {status_instruction}",
-                                ) from exc
-                            raise
                 store = task_store_factory(root)
                 authority_digest = _task_authority_digest(root, report, authority)
                 with store.lock_task(
                     authority.descriptor.task_id, blocking=True
                 ) as task:
                     record = task.load_or_create(authority_digest)
-                    _validate_non_codex_record(record, authority_digest)
+                    _validate_task_record(record, authority_digest)
                     preserve_unowned_candidate = _candidate_is_stored(record, candidate)
                     try:
                         published = _locked_publish_new(
@@ -2445,7 +2885,6 @@ def _publish_candidate_result(
                         )
                         return _PublishedReportResult(
                             path=published,
-                            receipt_id=None,
                             task_id=record.task_id,
                         )
                     except BaseException as exc:
@@ -2499,9 +2938,6 @@ def publish_candidate(
     repo_root: str | os.PathLike[str],
     candidate_path: str | os.PathLike[str],
     final_relative: str,
-    receipt_store_factory: Callable[[Path], receipts.ReceiptStore] = (
-        receipts.ReceiptStore.for_repo
-    ),
     task_store_factory: Callable[[Path], TaskPublicationStore] = (
         TaskPublicationStore.for_repo
     ),
@@ -2512,7 +2948,6 @@ def publish_candidate(
         repo_root=repo_root,
         candidate_path=candidate_path,
         final_relative=final_relative,
-        receipt_store_factory=receipt_store_factory,
         task_store_factory=task_store_factory,
     ).path
 
@@ -2844,80 +3279,26 @@ def _resume_locked(
 def resume_publication(
     *,
     repo_root: str | os.PathLike[str],
-    receipt_id: str | None = None,
-    task_id: str | None = None,
-    receipt_store_factory: Callable[[Path], receipts.ReceiptStore] = (
-        receipts.ReceiptStore.for_repo
-    ),
+    task_id: str,
     task_store_factory: Callable[[Path], TaskPublicationStore] = (
         TaskPublicationStore.for_repo
     ),
 ) -> Path:
-    if (receipt_id is None) == (task_id is None):
-        _fail("invalid_resume_identifier", "choose exactly one receipt or task ID")
-    canonical_receipt_id = (
-        _canonical_receipt_id(receipt_id) if receipt_id is not None else None
-    )
+    canonical_task_id = _canonical_uuid(task_id)
     root = _require_repository(Path(repo_root))
     sent_fd = _open_sent_directory(root)
     try:
         with _SanitizedGit(root) as git:
             try:
-                if canonical_receipt_id is not None:
-                    store = receipt_store_factory(root)
-                    with store.lock_receipt(
-                        canonical_receipt_id, blocking=True
-                    ) as attempt:
-                        record = attempt.load_existing()
-
-                        def validate_codex(
-                            report: LaneVReport, authority: StructuralAuthority
-                        ) -> None:
-                            if report.fields["Verification mode"] != receipts.CODEX_MODE:
-                                _fail(
-                                    "receipt_mode_mismatch",
-                                    "receipt resume requires Codex mode",
-                                )
-                            _validate_codex_record(root, report, authority, record)
-
-                        try:
-                            return _resume_locked(
-                                attempt=attempt,
-                                record=record,
-                                root=root,
-                                sent_fd=sent_fd,
-                                git=git,
-                                validate_report=validate_codex,
-                            )
-                        except BaseException as exc:
-                            observed = attempt.load_existing()
-                            if record.state != "published" and observed.state == "published":
-                                status_instruction = _publication_cli_command(
-                                    root,
-                                    "status",
-                                    receipt_id=canonical_receipt_id,
-                                )
-                                raise ReportGateError(
-                                    "publication_status_required",
-                                    "publication completed before interruption; "
-                                    f"run: {status_instruction}",
-                                ) from exc
-                            raise
-                assert task_id is not None
                 store = task_store_factory(root)
-                with store.lock_task(task_id, blocking=True) as task:
+                with store.lock_task(canonical_task_id, blocking=True) as task:
                     record = task.load_existing()
 
                     def validate_task(
                         report: LaneVReport, authority: StructuralAuthority
                     ) -> None:
-                        if report.fields["Verification mode"] == receipts.CODEX_MODE:
-                            _fail(
-                                "task_mode_mismatch",
-                                "task resume requires non-Codex mode",
-                            )
                         digest = _task_authority_digest(root, report, authority)
-                        _validate_non_codex_record(record, digest)
+                        _validate_task_record(record, digest)
 
                     try:
                         return _resume_locked(
@@ -2932,7 +3313,7 @@ def resume_publication(
                         observed = task.load_existing()
                         if record.state != "published" and observed.state == "published":
                             status_instruction = _publication_cli_command(
-                                root, "status", task_id=task_id
+                                root, "status", task_id=canonical_task_id
                             )
                             raise ReportGateError(
                                 "publication_status_required",
@@ -3038,38 +3419,18 @@ def _status_locked(
 def publication_status(
     *,
     repo_root: str | os.PathLike[str],
-    receipt_id: str | None = None,
-    task_id: str | None = None,
-    receipt_store_factory: Callable[[Path], receipts.ReceiptStore] = (
-        receipts.ReceiptStore.for_repo
-    ),
+    task_id: str,
     task_store_factory: Callable[[Path], TaskPublicationStore] = (
         TaskPublicationStore.for_repo
     ),
 ) -> dict[str, object]:
-    if (receipt_id is None) == (task_id is None):
-        _fail("invalid_status_identifier", "choose exactly one receipt or task ID")
-    canonical_receipt_id = (
-        _canonical_receipt_id(receipt_id) if receipt_id is not None else None
-    )
+    canonical_task_id = _canonical_uuid(task_id)
     root = _require_repository(Path(repo_root))
     sent_fd: int | None = None
     try:
         with _SanitizedGit(root) as git:
-            if canonical_receipt_id is not None:
-                store = receipt_store_factory(root)
-                with store.lock_receipt(
-                    canonical_receipt_id, blocking=True
-                ) as attempt:
-                    record = attempt.load_existing()
-                    if record.state in {"publishing", "published"}:
-                        sent_fd = _open_sent_directory(root)
-                    return _status_locked(
-                        record=record, sent_fd=sent_fd, git=git
-                    )
-            assert task_id is not None
             store = task_store_factory(root)
-            with store.lock_task(task_id, blocking=True) as task:
+            with store.lock_task(canonical_task_id, blocking=True) as task:
                 record = task.load_existing()
                 if record.state in {"publishing", "published"}:
                     sent_fd = _open_sent_directory(root)
@@ -3086,12 +3447,6 @@ def publication_status(
             os.close(sent_fd)
 
 
-def _identifier_arguments(parser: argparse.ArgumentParser) -> None:
-    identifiers = parser.add_mutually_exclusive_group(required=True)
-    identifiers.add_argument("--receipt-id")
-    identifiers.add_argument("--task-id")
-
-
 def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="verification_report_gate.py")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -3101,10 +3456,10 @@ def _argument_parser() -> argparse.ArgumentParser:
     publish.add_argument("--final-relative", required=True)
     resume = commands.add_parser("resume")
     resume.add_argument("--repo-root", required=True)
-    _identifier_arguments(resume)
+    resume.add_argument("--task-id", required=True)
     status = commands.add_parser("status")
     status.add_argument("--repo-root", required=True)
-    _identifier_arguments(status)
+    status.add_argument("--task-id", required=True)
     return parser
 
 
@@ -3124,7 +3479,6 @@ def main(argv: list[str] | None = None) -> int:
             status_instruction = _publication_cli_command(
                 root,
                 "status",
-                receipt_id=result.receipt_id,
                 task_id=result.task_id,
             )
         elif arguments.command == "resume":
@@ -3132,22 +3486,19 @@ def main(argv: list[str] | None = None) -> int:
             status_instruction = _publication_cli_command(
                 root,
                 "status",
-                receipt_id=arguments.receipt_id,
                 task_id=arguments.task_id,
             )
             published = resume_publication(
                 repo_root=root,
-                receipt_id=arguments.receipt_id,
                 task_id=arguments.task_id,
             )
             output = published.relative_to(root).as_posix()
         else:
             result = publication_status(
                 repo_root=arguments.repo_root,
-                receipt_id=arguments.receipt_id,
                 task_id=arguments.task_id,
             )
-            output = receipts.canonical_json_bytes(result).decode("utf-8")
+            output = canonical_json_bytes(result).decode("utf-8")
     except ReportGateError as exc:
         print(f"verification-report-gate: {exc.reason}: {exc.detail}", file=sys.stderr)
         if exc.reason == "publication_resumable":
@@ -3171,27 +3522,27 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def legacy_manifest_violations(
+def pre_v3_manifest_violations(
     manifest: object, report_paths: list[str] | tuple[str, ...]
 ) -> list[str]:
-    """Validate the exact legacy manifest and report any missing history."""
+    """Validate the exact frozen pre-v3 manifest and report missing history."""
 
     violations: list[str] = []
     if not isinstance(manifest, Mapping) or set(manifest) != {
         "schema_version",
         "reports",
     }:
-        return ["legacy manifest: expected exact schema_version/reports fields"]
-    if manifest["schema_version"] != LEGACY_MANIFEST_SCHEMA_VERSION:
-        violations.append("legacy manifest: unexpected schema_version")
+        return ["pre-v3 manifest: expected exact schema_version/reports fields"]
+    if manifest["schema_version"] != PRE_V3_MANIFEST_SCHEMA_VERSION:
+        violations.append("pre-v3 manifest: unexpected schema_version")
     reports = manifest["reports"]
     if not isinstance(reports, list):
-        violations.append("legacy manifest: reports must be a list")
+        violations.append("pre-v3 manifest: reports must be a list")
         return violations
     paths: list[str] = []
     digests: list[str] = []
     for index, entry in enumerate(reports):
-        label = f"legacy manifest reports[{index}]"
+        label = f"pre-v3 manifest reports[{index}]"
         if not isinstance(entry, Mapping) or set(entry) != {"path", "sha256"}:
             violations.append(f"{label}: expected exact path/sha256 fields")
             continue
@@ -3201,8 +3552,8 @@ def legacy_manifest_violations(
             violations.append(f"{label}: path must be a string")
         else:
             try:
-                normalized = receipts.normalize_repo_path(path)
-            except receipts.ReceiptContractError:
+                normalized = normalize_repo_path(path)
+            except ScopeContractError:
                 violations.append(f"{label}: path is not canonical")
             else:
                 pure_path = PurePosixPath(normalized)
@@ -3219,16 +3570,16 @@ def legacy_manifest_violations(
         else:
             digests.append(digest)
     if len(set(paths)) != len(paths):
-        violations.append("legacy manifest: duplicate report path")
+        violations.append("pre-v3 manifest: duplicate report path")
     if len(set(digests)) != len(digests):
-        violations.append("legacy manifest: duplicate report digest")
+        violations.append("pre-v3 manifest: duplicate report digest")
     if paths != sorted(paths):
-        violations.append("legacy manifest: reports must be sorted by path")
+        violations.append("pre-v3 manifest: reports must be sorted by path")
     if violations:
         return violations
     try:
-        current_paths = {receipts.normalize_repo_path(path) for path in report_paths}
-    except receipts.ReceiptContractError as exc:
+        current_paths = {normalize_repo_path(path) for path in report_paths}
+    except ScopeContractError as exc:
         return [f"current report path: {exc.detail}"]
     for path in paths:
         if path not in current_paths:

@@ -1,4 +1,4 @@
-"""Strict Lane V report-v2 and committed-authority gate tests."""
+"""Strict provider-neutral Lane V v3 and committed-authority gate tests."""
 
 from __future__ import annotations
 
@@ -10,14 +10,12 @@ import multiprocessing
 import os
 import stat
 import subprocess
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-import opus_review_bridge as bridge
-import opus_review_receipts as receipts
 import verification_report_gate as gate
 
 
@@ -26,53 +24,26 @@ BASE = "b" * 40
 TASK_ID = "11111111-2222-4333-8444-555555555555"
 DESCRIPTOR_PATH = f"coordination/verification/scopes/{TASK_ID}.json"
 DESCRIPTOR_DIGEST = "sha256:" + "c" * 64
-RECEIPT_ID = "opr1:" + "d" * 64
-SCOPE_DIGEST = "sha256:" + "e" * 64
-GUARD_DIGEST = "sha256:" + "f" * 64
 REPORT_PATH = (
     "coordination/mailbox/sent/"
     "2026-07-13T05-00-00Z-operator-to-all-verification-report.md"
 )
-LEGACY_SCHEMA = "lane-v-report-v1-baseline/v1"
+PRE_V3_SCHEMA = "lane-v-report-pre-v3-baseline/v1"
 
 
-def _codex_fields() -> list[tuple[str, str]]:
+def _lane_v_fields(*, reviewer: str = "operator") -> list[tuple[str, str]]:
     return [
-        ("Verification schema", "lane-v-report/v2"),
-        ("Verification mode", "codex-lane-v"),
-        ("Verification harness", "codex:lane-v-verifier"),
+        ("Verification schema", "lane-v-report/v3"),
+        ("Verification mode", "independent-lane-v"),
+        ("Verification harness", "lane-v:independent-verifier"),
         ("Verification task ID", TASK_ID),
         ("Scope authority", f"{DESCRIPTOR_PATH}@{DESCRIPTOR_DIGEST}"),
         ("Trigger identity", f"shipping-commit:{HEAD}"),
         ("Reviewed head", HEAD),
         ("Reviewed base", BASE),
-        ("Review profile", "codex-lane-v"),
-        ("Authorization identity", "standing-policy:codex-lane-v-opus-v1"),
-        ("Opus receipt ID", RECEIPT_ID),
-        ("Opus scope digest", SCOPE_DIGEST),
-        ("Cross-model review", "pass"),
-        ("Effective Opus model", "claude-opus-4-7"),
-        ("Opus finding dispositions", "none"),
-        (
-            "Reconciliation guard",
-            json.dumps(
-                {"digest": GUARD_DIGEST, "go_allowed": True},
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
-        ),
-        ("Degraded reason", "none"),
+        ("Review profile", "independent-lane-v"),
+        ("Reviewer identity", reviewer),
     ]
-
-
-def _claude_fields() -> list[tuple[str, str]]:
-    fields = _codex_fields()
-    values = dict(fields)
-    values["Verification mode"] = "claude-lane-v"
-    values["Verification harness"] = "claude:lane-v-verifier"
-    for label in gate.ATTESTATION_FIELDS[8:]:
-        values[label] = "not-applicable"
-    return [(label, values[label]) for label in gate.ATTESTATION_FIELDS]
 
 
 def _report_bytes(
@@ -87,7 +58,7 @@ def _report_bytes(
     prefix: list[str] | None = None,
     suffix: list[str] | None = None,
 ) -> bytes:
-    field_lines = [f"{label}: {value}" for label, value in (fields or _codex_fields())]
+    field_lines = [f"{label}: {value}" for label, value in (fields or _lane_v_fields())]
     lines = [
         f"# {h1_sender} → {h1_recipient}: "
         f"Lane V verification report — commit `{head}`",
@@ -116,17 +87,231 @@ def _replace_field(
     return [(name, value if name == label else current) for name, current in fields]
 
 
-def test_parse_valid_codex_and_claude_reports() -> None:
-    codex = gate.parse_lane_v_report(REPORT_PATH, _report_bytes())
-    claude = gate.parse_lane_v_report(REPORT_PATH, _report_bytes(_claude_fields()))
+@pytest.mark.parametrize("verdict", ("GO", "NITS", "FAIL"))
+def test_parse_provider_neutral_v3_verdicts(verdict: str) -> None:
+    report = gate.parse_lane_v_report(
+        REPORT_PATH,
+        _report_bytes(_lane_v_fields(), verdict=f"VERDICT: {verdict}"),
+    )
 
-    assert codex.sender == "operator"
-    assert codex.verdict == "GO"
-    assert codex.h1_head == HEAD
-    assert tuple(codex.fields) == gate.ATTESTATION_FIELDS
-    assert codex.body_digest == "sha256:" + hashlib.sha256(_report_bytes()).hexdigest()
-    assert claude.fields["Verification mode"] == "claude-lane-v"
-    assert claude.fields["Opus receipt ID"] == "not-applicable"
+    assert report.verdict == verdict
+    assert tuple(report.fields) == gate.ATTESTATION_FIELDS
+
+
+@pytest.mark.parametrize(
+    "label",
+    (
+        "Authorization identity",
+        "Opus receipt ID",
+        "Opus scope digest",
+        "Cross-model review",
+        "Effective Opus model",
+        "Opus finding dispositions",
+        "Reconciliation guard",
+        "Degraded reason",
+        "Provider",
+        "Model",
+    ),
+)
+def test_v3_rejects_provider_and_receipt_fields(label: str) -> None:
+    with pytest.raises(gate.ReportGateError, match="invalid_attestation"):
+        gate.parse_lane_v_report(
+            REPORT_PATH,
+            _report_bytes([*_lane_v_fields(), (label, "forbidden")]),
+        )
+
+
+@pytest.mark.parametrize("reviewer", ("operator", "operator2"))
+def test_v3_reviewer_identity_matches_filename_and_envelope(reviewer: str) -> None:
+    path = REPORT_PATH.replace("-operator-to-", f"-{reviewer}-to-")
+    report = gate.parse_lane_v_report(
+        path,
+        _report_bytes(
+            _lane_v_fields(reviewer=reviewer),
+            h1_sender=reviewer.capitalize(),
+            envelope_sender=reviewer,
+        ),
+    )
+
+    assert report.sender == reviewer
+    assert report.fields["Reviewer identity"] == reviewer
+
+
+@pytest.mark.parametrize(
+    "reviewer",
+    ("", "director", "coordinator", "operator-online", "Operator", "operator2 "),
+)
+def test_v3_reviewer_identity_rejects_noncanonical_or_other_seat(
+    reviewer: str,
+) -> None:
+    with pytest.raises(gate.ReportGateError, match="invalid_attestation"):
+        gate.parse_lane_v_report(
+            REPORT_PATH,
+            _report_bytes(_lane_v_fields(reviewer=reviewer)),
+        )
+
+
+def _provider_neutral_descriptor_mapping() -> dict[str, object]:
+    return {
+        "schema_version": "lane-v-scope/v1",
+        "task_id": TASK_ID,
+        "question_id": "provider-neutral-lane-v",
+        "trigger_kind": "shipping-commit",
+        "verification_mode": "independent-lane-v",
+        "verification_harness": "lane-v:independent-verifier",
+        "review_profile": "independent-lane-v",
+        "reviewed_base": {"policy": "exact", "commit": BASE},
+        "requirement_paths": ["AGENTS.md", "docs/protocol"],
+        "allowed_path_roots": ["scripts", "tests/unit"],
+        "verification_commands": [
+            "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py"
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "raw",
+    (
+        b'{"outer":{"key":1,"key":2}}',
+        b'"bad-\xff"',
+        b'{"value":NaN}',
+        b" " * 65_537,
+    ),
+)
+def test_provider_neutral_strict_json_rejects_nested_duplicates_and_bad_bytes(
+    raw: bytes,
+) -> None:
+    with pytest.raises(gate.ScopeContractError):
+        gate.strict_json_loads(raw)
+
+
+def test_provider_neutral_canonical_json_is_compact_sorted_utf8() -> None:
+    assert gate.canonical_json_bytes({"z": 1, "é": "✓", "a": 2}) == (
+        '{"a":2,"z":1,"é":"✓"}'.encode()
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    (
+        "",
+        ".",
+        "./x",
+        "x/.",
+        "x/../y",
+        "/x",
+        "x/",
+        "x//y",
+        "x\\y",
+        "x*",
+        "x?",
+        "x[0]",
+        "é" * 257,
+    ),
+)
+def test_provider_neutral_repo_path_rejects_ambiguous_or_oversize_values(
+    bad: str,
+) -> None:
+    with pytest.raises(gate.ScopeContractError, match="invalid_repo_path"):
+        gate.normalize_repo_path(bad)
+
+
+def test_provider_neutral_repo_path_preserves_exact_utf8_spelling() -> None:
+    nfc = "docs/caf\u00e9.md"
+    nfd = "docs/cafe\u0301.md"
+    assert gate.normalize_repo_path("Docs/Case.md") == "Docs/Case.md"
+    assert gate.normalize_repo_path(nfc) == nfc
+    assert gate.normalize_repo_path(nfd) == nfd
+    assert gate.normalize_repo_path(nfc) != gate.normalize_repo_path(nfd)
+
+
+def test_provider_neutral_scope_reference_trigger_and_descriptor_are_exact() -> None:
+    reference = gate.parse_scope_reference(
+        f"{DESCRIPTOR_PATH}@{DESCRIPTOR_DIGEST}"
+    )
+    assert reference == gate.ScopeReference(DESCRIPTOR_PATH, DESCRIPTOR_DIGEST)
+    assert gate.canonical_trigger_identity("shipping-commit", HEAD) == (
+        f"shipping-commit:{HEAD}"
+    )
+    descriptor = gate.ScopeDescriptor.from_mapping(
+        _provider_neutral_descriptor_mapping()
+    )
+    assert descriptor.verification_mode == "independent-lane-v"
+    assert descriptor.verification_harness == "lane-v:independent-verifier"
+    assert descriptor.review_profile == "independent-lane-v"
+
+
+@pytest.mark.parametrize(
+    "reference",
+    (
+        DESCRIPTOR_PATH,
+        f"./{DESCRIPTOR_PATH}@{DESCRIPTOR_DIGEST}",
+        f"{DESCRIPTOR_PATH}@sha256:{'A' * 64}",
+        f"{DESCRIPTOR_PATH}@sha256:{'1' * 63}",
+    ),
+)
+def test_provider_neutral_scope_reference_rejects_noncanonical_values(
+    reference: str,
+) -> None:
+    with pytest.raises(gate.ScopeContractError, match="invalid_scope_reference"):
+        gate.parse_scope_reference(reference)
+
+
+@pytest.mark.parametrize(
+    ("kind", "commit", "path"),
+    (
+        ("shipping-commit", HEAD.upper(), None),
+        ("shipping-commit", HEAD, "event.md"),
+        ("verify-request", HEAD, None),
+        ("verify-request", HEAD, "./event.md"),
+        ("other", HEAD, None),
+    ),
+)
+def test_provider_neutral_trigger_identity_rejects_noncanonical_values(
+    kind: str, commit: str, path: str | None
+) -> None:
+    with pytest.raises(gate.ScopeContractError, match="invalid_trigger_identity"):
+        gate.canonical_trigger_identity(kind, commit, path)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "value"),
+    (
+        ("extra", True),
+        ("task_id", "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE"),
+        ("task_id", "11111111-2222-4333-8444-55555555555"),
+        ("verification_mode", "codex-lane-v"),
+        ("verification_harness", "claude:lane-v-verifier"),
+        ("review_profile", "claude-lane-v"),
+        ("trigger_kind", "other"),
+        ("question_id", "contains/slash"),
+        ("reviewed_base", {"policy": "exact", "commit": BASE.upper()}),
+        ("requirement_paths", []),
+        ("allowed_path_roots", ["../scripts"]),
+        ("verification_commands", ["pytest tests/unit"]),
+    ),
+)
+def test_provider_neutral_descriptor_rejects_exact_field_and_literal_abuse(
+    mutation: str, value: object
+) -> None:
+    mapping = _provider_neutral_descriptor_mapping()
+    mapping[mutation] = value
+    with pytest.raises(gate.ScopeContractError, match="invalid_scope_descriptor"):
+        gate.ScopeDescriptor.from_mapping(mapping)
+
+
+def test_provider_neutral_allowed_roots_are_byte_and_component_aware() -> None:
+    changed = gate.parse_name_status_z(
+        b"M\0scripts/foo.py\0D\0tests/unit/old.py\0"
+    )
+    gate.assert_changed_path_coverage(changed, ("scripts/foo.py", "tests/unit"))
+    with pytest.raises(gate.ScopeContractError, match="changed_path_not_allowed"):
+        gate.assert_changed_path_coverage(changed, ("scripts/foo", "tests/unit/old"))
+    with pytest.raises(gate.ScopeContractError, match="changed_path_not_allowed"):
+        gate.assert_changed_path_coverage(
+            gate.parse_name_status_z(b"M\0scripts/foobar/item.py\0"),
+            ("scripts/foo",),
+        )
 
 
 def test_verdict_literal_in_evidence_is_not_a_second_verdict() -> None:
@@ -166,24 +351,24 @@ def test_rejects_markdown_framed_second_verdict(framed_verdict: str) -> None:
             _report_bytes(prefix=["## Verification Attestation", ""]),
             id="duplicate-section",
         ),
-        pytest.param(_report_bytes(_codex_fields()[:-1]), id="missing-field"),
+        pytest.param(_report_bytes(_lane_v_fields()[:-1]), id="missing-field"),
         pytest.param(
-            _report_bytes(_codex_fields() + [_codex_fields()[-1]]),
+            _report_bytes(_lane_v_fields() + [_lane_v_fields()[-1]]),
             id="duplicate-field",
         ),
         pytest.param(
-            _report_bytes([_codex_fields()[1], _codex_fields()[0], *_codex_fields()[2:]]),
+            _report_bytes([_lane_v_fields()[1], _lane_v_fields()[0], *_lane_v_fields()[2:]]),
             id="reordered-field",
         ),
         pytest.param(
             _report_bytes(
-                [*_codex_fields()[:-1], ("Invented field", "value")]
+                [*_lane_v_fields()[:-1], ("Invented field", "value")]
             ),
             id="unknown-field",
         ),
         pytest.param(
             _report_bytes(
-                [("**Verification schema**", "lane-v-report/v2"), *_codex_fields()[1:]]
+                [("**Verification schema**", "lane-v-report/v3"), *_lane_v_fields()[1:]]
             ),
             id="decorated-label",
         ),
@@ -251,22 +436,20 @@ def test_rejects_sender_and_h1_mismatches(relative_path: str, raw: bytes) -> Non
             id="bad-uuid",
         ),
         pytest.param("Scope authority", f"{DESCRIPTOR_PATH}@sha256:{'A' * 64}", id="bad-scope-digest"),
-        pytest.param("Opus receipt ID", "opr1:" + "A" * 64, id="bad-receipt-id"),
-        pytest.param("Opus scope digest", "sha256:" + "A" * 64, id="bad-opus-digest"),
         pytest.param(
-            "Reconciliation guard",
-            '{"go_allowed":true,"digest":"' + GUARD_DIGEST + '"}',
-            id="noncanonical-json",
+            "Trigger identity",
+            f"shipping-commit:{HEAD.upper()}",
+            id="uppercase-trigger",
         ),
         pytest.param(
-            "Reconciliation guard",
-            '{"digest":"' + GUARD_DIGEST + '","digest":"' + GUARD_DIGEST + '","go_allowed":true}',
-            id="duplicate-json-key",
+            "Reviewer identity",
+            "director",
+            id="non-operator-reviewer",
         ),
     ],
 )
 def test_rejects_invalid_structural_values(label: str, value: str) -> None:
-    fields = _replace_field(_codex_fields(), label, value)
+    fields = _replace_field(_lane_v_fields(), label, value)
     with pytest.raises(gate.ReportGateError):
         gate.parse_lane_v_report(REPORT_PATH, _report_bytes(fields))
 
@@ -290,11 +473,11 @@ def test_rejects_invalid_utf8_carriage_return_nul_and_raw_caps() -> None:
     carriage_return = _report_bytes().replace(b"VERDICT: GO\n", b"VERDICT: GO\r\n")
     nul = _report_bytes().replace(b"None.\n", b"No\x00ne.\n")
     oversized_line = _replace_field(
-        _codex_fields(), "Opus finding dispositions", "x" * gate.ATTESTATION_LINE_MAX_BYTES
+        _lane_v_fields(), "Reviewer identity", "x" * gate.ATTESTATION_LINE_MAX_BYTES
     )
     oversized_section = _replace_field(
-        _replace_field(_codex_fields(), "Authorization identity", "x" * 33_000),
-        "Effective Opus model",
+        _replace_field(_lane_v_fields(), "Scope authority", "x" * 33_000),
+        "Trigger identity",
         "y" * 33_000,
     )
 
@@ -312,21 +495,13 @@ def test_rejects_invalid_utf8_carriage_return_nul_and_raw_caps() -> None:
 @pytest.mark.parametrize(
     ("label", "value"),
     [
-        pytest.param("Verification harness", "claude:lane-v-verifier", id="codex-harness"),
-        pytest.param("Review profile", "not-applicable", id="codex-profile"),
-        pytest.param("Cross-model review", "unknown", id="codex-status"),
-        pytest.param("Effective Opus model", "not-available", id="pass-model"),
-        pytest.param("Degraded reason", "timeout", id="pass-reason"),
+        pytest.param("Verification mode", "codex-lane-v", id="provider-mode"),
+        pytest.param("Verification harness", "claude:lane-v-verifier", id="provider-harness"),
+        pytest.param("Review profile", "not-applicable", id="provider-profile"),
     ],
 )
-def test_rejects_invalid_codex_mode_combinations(label: str, value: str) -> None:
-    fields = _replace_field(_codex_fields(), label, value)
-    with pytest.raises(gate.ReportGateError):
-        gate.parse_lane_v_report(REPORT_PATH, _report_bytes(fields))
-
-
-def test_rejects_claude_report_with_any_codex_specific_value() -> None:
-    fields = _replace_field(_claude_fields(), "Opus receipt ID", RECEIPT_ID)
+def test_rejects_invalid_verifier_literals(label: str, value: str) -> None:
+    fields = _replace_field(_lane_v_fields(), label, value)
     with pytest.raises(gate.ReportGateError):
         gate.parse_lane_v_report(REPORT_PATH, _report_bytes(fields))
 
@@ -366,7 +541,7 @@ def _git_object_exists(root: Path, object_name: str) -> bool:
 def _authority_fixture(
     root: Path,
     *,
-    mode: str = "codex-lane-v",
+    mode: str = "independent-lane-v",
     trigger_kind: str = "shipping-commit",
     recipient: str = "operator",
 ) -> tuple[Path, list[tuple[str, str]], str, str, str]:
@@ -385,11 +560,8 @@ def _authority_fixture(
     _git(root, "commit", "-q", "-m", "chore: base")
     base = _git(root, "rev-parse", "HEAD")
 
-    harness = (
-        "codex:lane-v-verifier"
-        if mode == "codex-lane-v"
-        else "claude:lane-v-verifier"
-    )
+    assert mode == "independent-lane-v"
+    harness = "lane-v:independent-verifier"
     descriptor = {
         "schema_version": "lane-v-scope/v1",
         "task_id": TASK_ID,
@@ -447,7 +619,7 @@ def _authority_fixture(
         _git(root, "commit", "-q", "-m", "coord: request verification")
         trigger_commit = _git(root, "rev-parse", "HEAD")
 
-    fields = _codex_fields() if mode == "codex-lane-v" else _claude_fields()
+    fields = _lane_v_fields(reviewer=recipient)
     updates = {
         "Verification mode": mode,
         "Verification harness": harness,
@@ -460,6 +632,8 @@ def _authority_fixture(
         ),
         "Reviewed head": head,
         "Reviewed base": base,
+        "Review profile": "independent-lane-v",
+        "Reviewer identity": recipient,
     }
     fields = [(label, updates.get(label, value)) for label, value in fields]
     report_path = REPORT_PATH.replace("-operator-to-", f"-{recipient}-to-")
@@ -491,20 +665,20 @@ def _validate_structural_fixture(
 
 
 @pytest.mark.parametrize(
-    ("mode", "trigger_kind", "recipient"),
+    ("trigger_kind", "recipient"),
     [
-        ("codex-lane-v", "shipping-commit", "operator"),
-        ("codex-lane-v", "verify-request", "operator"),
-        ("claude-lane-v", "shipping-commit", "operator2"),
-        ("claude-lane-v", "verify-request", "operator2"),
+        ("shipping-commit", "operator"),
+        ("verify-request", "operator"),
+        ("shipping-commit", "operator2"),
+        ("verify-request", "operator2"),
     ],
 )
 def test_structural_authority_accepts_committed_shipping_and_verify_request(
-    tmp_path: Path, mode: str, trigger_kind: str, recipient: str
+    tmp_path: Path, trigger_kind: str, recipient: str
 ) -> None:
     root, fields, report_path, head, _ = _authority_fixture(
         tmp_path / "repo",
-        mode=mode,
+        mode="independent-lane-v",
         trigger_kind=trigger_kind,
         recipient=recipient,
     )
@@ -520,14 +694,14 @@ def test_structural_authority_accepts_committed_shipping_and_verify_request(
     authority = gate.validate_structural_authority(root, report)
 
     assert isinstance(authority, gate.StructuralAuthority)
-    assert authority.descriptor.verification_mode == mode
+    assert authority.descriptor.verification_mode == "independent-lane-v"
     assert authority.trigger_kind == trigger_kind
     assert authority.verify_request_recipient == (
         recipient if trigger_kind == "verify-request" else None
     )
 
 
-@pytest.mark.parametrize("mode", ("codex-lane-v", "claude-lane-v"))
+@pytest.mark.parametrize("recipient", ("operator", "operator2"))
 @pytest.mark.parametrize(
     "malformation",
     (
@@ -544,13 +718,12 @@ def test_structural_authority_accepts_committed_shipping_and_verify_request(
 def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    mode: str,
+    recipient: str,
     malformation: str,
 ) -> None:
-    recipient = "operator" if mode == "codex-lane-v" else "operator2"
     root, lawful_fields, report_path, head, base = _authority_fixture(
         tmp_path / "repo",
-        mode=mode,
+        mode="independent-lane-v",
         trigger_kind="verify-request",
         recipient=recipient,
     )
@@ -725,7 +898,7 @@ def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
     assert lawful.trigger_commit == trigger_commit
 
 
-@pytest.mark.parametrize("mode", ("codex-lane-v", "claude-lane-v"))
+@pytest.mark.parametrize("recipient", ("operator", "operator2"))
 @pytest.mark.parametrize(
     "malformation",
     (
@@ -742,13 +915,12 @@ def test_verify_request_authority_rejections_flip_to_one_lawful_trigger(
 def test_shipping_authority_rejections_flip_to_one_lawful_trigger(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    mode: str,
+    recipient: str,
     malformation: str,
 ) -> None:
-    recipient = "operator" if mode == "codex-lane-v" else "operator2"
     root, lawful_fields, report_path, head, _ = _authority_fixture(
         tmp_path / "repo",
-        mode=mode,
+        mode="independent-lane-v",
         trigger_kind="shipping-commit",
         recipient=recipient,
     )
@@ -868,7 +1040,7 @@ def test_shipping_authority_rejections_flip_to_one_lawful_trigger(
             repo_root: Path,
             report: gate.LaneVReport,
             trigger_commit: str,
-        ) -> receipts.ScopeReference:
+        ) -> gate.ScopeReference:
             fields = MappingProxyType(
                 {**report.fields, "Reviewed head": trigger_commit}
             )
@@ -895,7 +1067,7 @@ def test_shipping_authority_rejections_flip_to_one_lawful_trigger(
 @pytest.mark.parametrize(
     "mismatch",
     [
-        "provider",
+        "verifier",
         "task",
         "scope-path",
         "scope-digest",
@@ -910,11 +1082,8 @@ def test_structural_authority_rejects_report_descriptor_trigger_mismatch(
     root, fields, report_path, head, base = _authority_fixture(tmp_path / "repo")
     values = dict(fields)
     h1_head = head
-    if mismatch == "provider":
-        values["Verification mode"] = "claude-lane-v"
-        values["Verification harness"] = "claude:lane-v-verifier"
-        for label in gate.ATTESTATION_FIELDS[8:]:
-            values[label] = "not-applicable"
+    if mismatch == "verifier":
+        values["Verification mode"] = "codex-lane-v"
     elif mismatch == "task":
         values["Verification task ID"] = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
     elif mismatch == "scope-path":
@@ -933,6 +1102,13 @@ def test_structural_authority_rejects_report_descriptor_trigger_mismatch(
     elif mismatch == "base":
         values["Reviewed base"] = head
     mutated = [(label, values[label]) for label in gate.ATTESTATION_FIELDS]
+    if mismatch == "verifier":
+        with pytest.raises(gate.ReportGateError, match="invalid_attestation_value"):
+            gate.parse_lane_v_report(
+                report_path,
+                _report_bytes(mutated, head=h1_head),
+            )
+        return
     report = gate.parse_lane_v_report(
         report_path,
         _report_bytes(mutated, head=h1_head),
@@ -946,13 +1122,14 @@ def test_verify_request_recipient_must_equal_report_sender(tmp_path: Path) -> No
     root, fields, _, head, _ = _authority_fixture(
         tmp_path / "repo", trigger_kind="verify-request", recipient="operator2"
     )
+    fields = _replace_field(fields, "Reviewer identity", "operator")
     report = gate.parse_lane_v_report(
         REPORT_PATH,
         _report_bytes(fields, head=head, envelope_sender="operator"),
     )
 
     with pytest.raises(gate.ReportGateError, match="recipient"):
-        gate.validate_structural_authority(root, report)
+        gate.validate_live_report(root, report)
 
 
 def test_structural_git_ignores_inherited_git_selectors(
@@ -1002,7 +1179,7 @@ def test_live_publication_git_uses_absolute_positive_environment(
         repo_root=fixture.root,
         candidate_path=candidate,
         final_relative=fixture.report.relative_path,
-        receipt_store_factory=lambda _root: fixture.store,
+        task_store_factory=lambda _root: fixture.store,
     )
 
     assert published.read_bytes() == fixture.raw
@@ -1053,466 +1230,59 @@ def _install_pipeline_markers(root: Path) -> None:
 
 
 @dataclasses.dataclass(frozen=True)
-class _LiveCodexFixture:
+class _LiveLaneVFixture:
     root: Path
     report: gate.LaneVReport
     authority: gate.StructuralAuthority
-    store: receipts.ReceiptStore
-    scope: receipts.ReviewScope
-    reconciliation: bridge.ReconciliationReceiptResult
+    store: gate.TaskPublicationStore
     raw: bytes
 
 
-def _live_codex_fixture(
+def _live_lane_v_fixture(
     root: Path,
     *,
-    status: str = "pass",
-    verdict: str = "GO",
-    unavailable_reason: str = "process_failed",
-    finding_severity: str = "minor",
-    recipient: str = "operator",
-    trigger_kind: str = "shipping-commit",
     default_store: bool = False,
-) -> _LiveCodexFixture:
-    root, fields, report_path, head, base = _authority_fixture(
+    recipient: str = "operator2",
+) -> _LiveLaneVFixture:
+    root, fields, report_path, head, _ = _authority_fixture(
         root,
-        trigger_kind=trigger_kind,
+        mode="independent-lane-v",
+        trigger_kind="verify-request",
         recipient=recipient,
     )
-    preliminary = gate.parse_lane_v_report(
-        report_path,
-        _report_bytes(
-            fields,
-            head=head,
-            h1_sender=recipient.capitalize(),
-            envelope_sender=recipient,
-        ),
-    )
-    authority = gate.validate_structural_authority(root, preliminary)
-    _install_pipeline_markers(root)
-
-    descriptor_blob = _git(
-        root,
-        "rev-parse",
-        f"{authority.trigger_commit}:{authority.reference.descriptor_path}",
-    )
-    requirement_path = "requirements/task.md"
-    requirement_raw = (root / requirement_path).read_bytes()
-    trigger_blob = (
-        _git(
-            root,
-            "rev-parse",
-            f"{authority.trigger_commit}:{authority.trigger_path}",
-        )
-        if authority.trigger_path is not None
-        else None
-    )
-    scope = receipts.ReviewScope(
-        repository_identity=_repository_identity(root),
-        task_id=authority.descriptor.task_id,
-        question_id=authority.descriptor.question_id,
-        trigger_kind=authority.trigger_kind,
-        trigger_identity=authority.trigger_identity,
-        trigger_commit=authority.trigger_commit,
-        trigger_path=authority.trigger_path,
-        trigger_blob_id=trigger_blob,
-        descriptor_path=authority.reference.descriptor_path,
-        descriptor_digest=authority.reference.descriptor_digest,
-        descriptor_blob_id=descriptor_blob,
-        review_profile=authority.descriptor.review_profile,
-        verification_mode=authority.descriptor.verification_mode,
-        verification_harness=authority.descriptor.verification_harness,
-        authorization_identity="standing-policy:codex-lane-v-opus-v1",
-        reviewed_head=head,
-        requested_base=base,
-        effective_base=base,
-        changed_paths=(
-            receipts.ChangedPath("M", "scripts/feature.py", b"scripts/feature.py"),
-        ),
-        requirements=(
-            {
-                "path": requirement_path,
-                "blob_id": _git(root, "rev-parse", f"{head}:{requirement_path}"),
-                "digest": "sha256:" + hashlib.sha256(requirement_raw).hexdigest(),
-            },
-        ),
-        allowed_path_roots=authority.descriptor.allowed_path_roots,
-        verification_commands=authority.descriptor.verification_commands,
-    )
-    store = receipts.ReceiptStore.for_repo(
-        root, state_root=None if default_store else root / ".receipt-state"
-    )
-    finding = bridge.Finding(
-        id="finding-1",
-        severity=finding_severity,
-        claim="fixture claim",
-        location="scripts/feature.py:1",
-        evidence="fixture evidence",
-        reproduction="fixture reproduction",
-    )
-    if status == "unavailable":
-        review = bridge.OpusReview.unavailable(
-            reviewed_head=head,
-            reviewed_base=base,
-            review_profile=receipts.CODEX_MODE,
-            authorization_source="standing-policy:codex-lane-v-opus-v1",
-            reason=unavailable_reason,
-        )
-        dispositions: tuple[bridge.FindingDisposition, ...] = ()
-    else:
-        review = bridge.OpusReview(
-            reviewed_head=head,
-            reviewed_base=base,
-            review_profile=receipts.CODEX_MODE,
-            effective_model="claude-opus-4-7",
-            status=status,
-            findings=(finding,) if status == "issues" else (),
-            authorization_source="standing-policy:codex-lane-v-opus-v1",
-            unavailable_reason=None,
-        )
-        dispositions = (
-            (bridge.FindingDisposition("finding-1", "confirmed", "confirmed"),)
-            if status == "issues"
-            else ()
-        )
-    with store.lock_attempt(scope, blocking=False) as attempt:
-        attempt.reserve_or_load(scope)
-        attempt.record_review(review.to_dict())
-    reconciliation = bridge.reconcile_receipt(
-        repo_root=root,
-        receipt_id=receipts.compute_attempt_key(scope),
-        expected_head=head,
-        expected_base=base,
-        codex_verdict=verdict,
-        dispositions=dispositions,
-        store_factory=lambda _root: store,
-    )
-    values = dict(fields)
-    values.update(reconciliation.report_fields)
-    bound_fields = [(label, values[label]) for label in gate.ATTESTATION_FIELDS]
+    fields = _replace_field(fields, "Reviewer identity", recipient)
     raw = _report_bytes(
-        bound_fields,
-        verdict=f"VERDICT: {verdict}",
+        fields,
         head=head,
         h1_sender=recipient.capitalize(),
         envelope_sender=recipient,
     )
     report = gate.parse_lane_v_report(report_path, raw)
-    return _LiveCodexFixture(
-        root=root,
-        report=report,
-        authority=authority,
-        store=store,
-        scope=scope,
-        reconciliation=reconciliation,
-        raw=raw,
-    )
-
-
-@pytest.mark.parametrize(
-    ("status", "verdict", "reason", "severity"),
-    [
-        ("pass", "GO", "process_failed", "minor"),
-        ("unavailable", "GO", "process_failed", "minor"),
-        ("issues", "NITS", "process_failed", "minor"),
-        ("issues", "FAIL", "process_failed", "critical"),
-    ],
-)
-def test_live_codex_binding_accepts_exact_reconciled_report(
-    tmp_path: Path,
-    status: str,
-    verdict: str,
-    reason: str,
-    severity: str,
-) -> None:
-    fixture = _live_codex_fixture(
-        tmp_path / "repo",
-        status=status,
-        verdict=verdict,
-        unavailable_reason=reason,
-        finding_severity=severity,
-    )
-
-    validated = gate.validate_live_report(
-        fixture.root,
-        fixture.report,
-        receipt_store_factory=lambda _root: fixture.store,
-    )
-
-    assert validated == fixture.authority
-
-
-def test_live_codex_rejects_malformed_receipt_id_before_store_initialization(
-    tmp_path: Path,
-) -> None:
-    fixture = _live_codex_fixture(tmp_path / "repo")
-    fields = dict(fixture.report.fields)
-    fields["Opus receipt ID"] = "opr1:not-canonical"
-    state_root = tmp_path / "malformed-receipt-state"
-    factory_calls = 0
-
-    def store_factory(repo_root: Path) -> receipts.ReceiptStore:
-        nonlocal factory_calls
-        factory_calls += 1
-        return receipts.ReceiptStore.for_repo(
-            repo_root,
-            state_root=state_root,
-        )
-
-    with pytest.raises(gate.ReportGateError) as excinfo:
-        gate.validate_live_report(
-            fixture.root,
-            _mutated_report(fixture.report, fields=fields),
-            receipt_store_factory=store_factory,
-        )
-
-    assert factory_calls == 0
-    assert not state_root.exists()
-    assert excinfo.value.reason == "invalid_receipt_id"
-
-
-def test_live_codex_binding_rejects_legacy_underclassified_reconciliation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    production_reconcile = bridge._reconcile_review
-
-    def legacy_permissive_reconcile(
-        codex_verdict: str,
-        review: bridge.OpusReview,
-        dispositions: Iterable[bridge.FindingDisposition],
-        *,
-        expected_head: str,
-        expected_base: str | None,
-    ) -> bridge.Reconciliation:
-        fail_result = production_reconcile(
-            "FAIL",
-            review,
-            dispositions,
-            expected_head=expected_head,
-            expected_base=expected_base,
-        )
-        return dataclasses.replace(
-            fail_result, codex_verdict=codex_verdict, go_allowed=False
-        )
-
-    with monkeypatch.context() as legacy:
-        legacy.setattr(
-            bridge, "_reconcile_review", legacy_permissive_reconcile
-        )
-        fixture = _live_codex_fixture(
-            tmp_path / "repo",
-            status="issues",
-            verdict="NITS",
-            finding_severity="important",
-        )
-
-    with pytest.raises(gate.ReportGateError, match="invalid_live_receipt"):
-        gate.validate_live_report(
-            fixture.root,
-            fixture.report,
-            receipt_store_factory=lambda _root: fixture.store,
-        )
-
-
-@pytest.mark.parametrize("mutation", ["unknown", "wrong-type"])
-def test_live_codex_binding_rejects_malformed_scope_before_comparison(
-    tmp_path: Path, mutation: str
-) -> None:
-    fixture = _live_codex_fixture(tmp_path / "repo")
-    record_path = next(fixture.store.state_root.glob("*.json"))
-    value = json.loads(record_path.read_text(encoding="utf-8"))
-    if mutation == "unknown":
-        value["scope"]["unknown"] = "field"
-    else:
-        value["scope"]["reviewed_head"] = 7
-    scope_digest = "sha256:" + hashlib.sha256(
-        receipts.canonical_json_bytes(value["scope"])
-    ).hexdigest()
-    value["scope_digest"] = scope_digest
-    record_path.write_bytes(receipts.canonical_json_bytes(value))
-    fields = dict(fixture.report.fields)
-    fields["Opus scope digest"] = scope_digest
-
-    with pytest.raises(gate.ReportGateError, match="invalid_live_receipt"):
-        gate.validate_live_report(
-            fixture.root,
-            _mutated_report(fixture.report, fields=fields),
-            receipt_store_factory=lambda _root: fixture.store,
-        )
-
-
-def _mutated_report(
-    report: gate.LaneVReport,
-    *,
-    fields: Mapping[str, str] | None = None,
-    **changes: object,
-) -> gate.LaneVReport:
-    if fields is not None:
-        changes["fields"] = MappingProxyType(dict(fields))
-    return dataclasses.replace(report, **changes)
-
-
-@pytest.mark.parametrize(
-    ("label", "value"),
-    [
-        ("Verification task ID", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"),
-        ("Verification harness", "claude:lane-v-verifier"),
-        ("Scope authority", f"{DESCRIPTOR_PATH}@sha256:" + "0" * 64),
-        ("Trigger identity", "shipping-commit:" + "0" * 40),
-        ("Reviewed head", "0" * 40),
-        ("Reviewed base", "1" * 40),
-        ("Review profile", "claude-lane-v"),
-        ("Authorization identity", "user-task:other"),
-        ("Opus receipt ID", "opr1:" + "0" * 64),
-        ("Opus scope digest", "sha256:" + "0" * 64),
-        ("Cross-model review", "unavailable"),
-        ("Effective Opus model", "claude-opus-4-8"),
-        ("Opus finding dispositions", "{}"),
-        (
-            "Reconciliation guard",
-            json.dumps(
-                {"digest": "sha256:" + "0" * 64, "go_allowed": True},
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
-        ),
-        ("Degraded reason", "timeout"),
-    ],
-)
-def test_live_codex_binding_rejects_each_changed_report_claim(
-    tmp_path: Path, label: str, value: str
-) -> None:
-    fixture = _live_codex_fixture(tmp_path / "repo")
-    fields = dict(fixture.report.fields)
-    fields[label] = value
-
-    with pytest.raises(gate.ReportGateError):
-        gate.validate_live_report(
-            fixture.root,
-            _mutated_report(fixture.report, fields=fields),
-            receipt_store_factory=lambda _root: fixture.store,
-        )
-
-
-@pytest.mark.parametrize("verdict", ["NITS", "FAIL"])
-def test_live_codex_binding_rejects_exact_stored_verdict_substitution(
-    tmp_path: Path, verdict: str
-) -> None:
-    stored_verdict = "FAIL" if verdict == "NITS" else "NITS"
-    fixture = _live_codex_fixture(
-        tmp_path / "repo", status="issues", verdict=stored_verdict
-    )
-
-    with pytest.raises(gate.ReportGateError, match="verdict"):
-        gate.validate_live_report(
-            fixture.root,
-            _mutated_report(fixture.report, verdict=verdict),
-            receipt_store_factory=lambda _root: fixture.store,
-        )
-
-
-def test_live_codex_checks_verdict_before_go_allowed_consistency(tmp_path: Path) -> None:
-    fixture = _live_codex_fixture(tmp_path / "repo")
-    fields = dict(fixture.report.fields)
-    guard = json.loads(fields["Reconciliation guard"])
-    guard["go_allowed"] = False
-    fields["Reconciliation guard"] = json.dumps(
-        guard, sort_keys=True, separators=(",", ":")
-    )
-
-    with pytest.raises(gate.ReportGateError, match="verdict_mismatch"):
-        gate.validate_live_report(
-            fixture.root,
-            _mutated_report(fixture.report, fields=fields, verdict="FAIL"),
-            receipt_store_factory=lambda _root: fixture.store,
-        )
-
-
-@pytest.mark.parametrize("sender", ["director", "coordinator", "operator3"])
-def test_live_report_sender_is_always_an_operator(tmp_path: Path, sender: str) -> None:
-    fixture = _live_codex_fixture(tmp_path / "repo")
-
-    with pytest.raises(gate.ReportGateError, match="sender"):
-        gate.validate_live_report(
-            fixture.root,
-            _mutated_report(fixture.report, sender=sender),
-            receipt_store_factory=lambda _root: fixture.store,
-        )
-
-
-@pytest.mark.parametrize("state", ["missing", "reserved", "reviewed"])
-def test_live_codex_binding_rejects_nonreconciled_receipt_state(
-    tmp_path: Path, state: str
-) -> None:
-    fixture = _live_codex_fixture(tmp_path / "repo")
-    other = receipts.ReceiptStore.for_repo(
-        fixture.root, state_root=fixture.root / f".{state}-state"
-    )
-    if state != "missing":
-        with other.lock_attempt(fixture.scope, blocking=False) as attempt:
-            attempt.reserve_or_load(fixture.scope)
-            if state == "reviewed":
-                with fixture.store.lock_receipt(
-                    fixture.reconciliation.receipt_id, blocking=False
-                ) as source:
-                    review = source.load_existing().review
-                assert review is not None
-                attempt.record_review(review)
-
-    with pytest.raises((gate.ReportGateError, receipts.ReceiptStateError)):
-        gate.validate_live_report(
-            fixture.root,
-            fixture.report,
-            receipt_store_factory=lambda _root: other,
-        )
-
-
-def test_live_verify_request_sender_must_equal_authorized_operator(tmp_path: Path) -> None:
-    fixture = _live_codex_fixture(
-        tmp_path / "repo",
-        recipient="operator2",
-        trigger_kind="verify-request",
-    )
-
-    gate.validate_live_report(
-        fixture.root,
-        fixture.report,
-        receipt_store_factory=lambda _root: fixture.store,
-    )
-    with pytest.raises(gate.ReportGateError, match="recipient"):
-        gate.validate_live_report(
-            fixture.root,
-            _mutated_report(fixture.report, sender="operator"),
-            receipt_store_factory=lambda _root: fixture.store,
-        )
-
-
-@dataclasses.dataclass(frozen=True)
-class _LiveClaudeFixture:
-    root: Path
-    report: gate.LaneVReport
-    authority: gate.StructuralAuthority
-    raw: bytes
-
-
-def _live_claude_fixture(root: Path) -> _LiveClaudeFixture:
-    root, fields, report_path, head, _ = _authority_fixture(
-        root,
-        mode=receipts.CLAUDE_MODE,
-        trigger_kind="verify-request",
-        recipient="operator2",
-    )
-    raw = _report_bytes(
-        fields,
-        head=head,
-        h1_sender="Operator2",
-        envelope_sender="operator2",
-    )
-    report = gate.parse_lane_v_report(report_path, raw)
     authority = gate.validate_structural_authority(root, report)
-    return _LiveClaudeFixture(root, report, authority, raw)
+    store = gate.TaskPublicationStore.for_repo(
+        root,
+        state_root=None if default_store else root / ".task-publications",
+    )
+    gate.validate_live_report(
+        root,
+        report,
+        task_store_factory=lambda _root: store,
+    )
+    return _LiveLaneVFixture(root, report, authority, store, raw)
 
 
+_LiveCodexFixture = _LiveLaneVFixture
+_LiveClaudeFixture = _LiveLaneVFixture
+
+
+def _live_codex_fixture(
+    root: Path, *, default_store: bool = False
+) -> _LiveLaneVFixture:
+    return _live_lane_v_fixture(root, default_store=default_store)
+
+
+def _live_claude_fixture(root: Path) -> _LiveLaneVFixture:
+    return _live_lane_v_fixture(root)
 def _candidate_path(root: Path, raw: bytes, name: str = ".report.candidate.tmp") -> Path:
     sent = root / "coordination" / "mailbox" / "sent"
     sent.mkdir(parents=True, exist_ok=True)
@@ -1522,7 +1292,7 @@ def _candidate_path(root: Path, raw: bytes, name: str = ".report.candidate.tmp")
     return candidate
 
 
-def test_non_codex_live_validation_creates_exact_ready_task_record(
+def test_live_validation_creates_exact_ready_task_record(
     tmp_path: Path,
 ) -> None:
     fixture = _live_claude_fixture(tmp_path / "repo")
@@ -1536,7 +1306,8 @@ def test_non_codex_live_validation_creates_exact_ready_task_record(
         task_store_factory=lambda _root: store,
     )
 
-    assert validated == fixture.authority
+    assert validated.state == "ready"
+    assert validated.task_id == TASK_ID
     with store.lock_task(TASK_ID) as task:
         record = task.load_existing()
     assert record.state == "ready"
@@ -1577,7 +1348,7 @@ def test_gate_rejects_missing_or_replaced_pipeline_marker_before_state_access(
     ).exists()
 
 
-def test_non_codex_publish_and_status_retain_exact_task_index_witness(
+def test_publish_and_status_retain_exact_task_index_witness(
     tmp_path: Path,
 ) -> None:
     fixture = _live_claude_fixture(tmp_path / "repo")
@@ -1692,6 +1463,114 @@ def test_task_publication_store_enforces_authority_and_exact_transitions(
             task.load_or_create("sha256:" + "9" * 64)
 
 
+def test_task_publication_store_creates_private_owned_root_lock_and_record(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "state"
+    store = gate.TaskPublicationStore.for_repo(tmp_path, state_root=state_root)
+    root_stat = state_root.stat()
+    assert stat.S_IMODE(root_stat.st_mode) == 0o700
+    assert root_stat.st_uid == os.getuid()
+
+    with store.lock_task(TASK_ID) as task:
+        task.load_or_create("sha256:" + "7" * 64)
+
+    for path in (
+        state_root / f"{TASK_ID}.lock",
+        state_root / f"{TASK_ID}.json",
+    ):
+        observed = path.stat()
+        assert stat.S_ISREG(observed.st_mode)
+        assert stat.S_IMODE(observed.st_mode) == 0o600
+        assert observed.st_uid == os.getuid()
+        assert observed.st_nlink == 1
+
+
+def _install_private_state_substitution(path: Path, kind: str) -> None:
+    if kind == "directory":
+        path.mkdir()
+    elif kind == "symlink":
+        backing = path.with_suffix(".backing")
+        backing.write_bytes(b"{}")
+        backing.chmod(0o600)
+        path.symlink_to(backing.name)
+    elif kind == "fifo":
+        os.mkfifo(path, 0o600)
+    elif kind == "hardlink":
+        backing = path.with_suffix(".backing")
+        backing.write_bytes(b"{}")
+        backing.chmod(0o600)
+        os.link(backing, path)
+    elif kind == "wrong-mode":
+        path.write_bytes(b"{}")
+        path.chmod(0o644)
+    elif kind == "wrong-owner":
+        path.write_bytes(b"{}")
+        path.chmod(0o600)
+    else:  # pragma: no cover - the parameter list is closed below
+        raise AssertionError(kind)
+
+
+@pytest.mark.parametrize(
+    "kind", ("directory", "symlink", "fifo", "hardlink", "wrong-mode", "wrong-owner")
+)
+@pytest.mark.parametrize("target", ("lock", "record"))
+def test_task_publication_store_rejects_private_state_substitutions_before_transition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    kind: str,
+) -> None:
+    state_root = tmp_path / f"state-{target}-{kind}"
+    store = gate.TaskPublicationStore.for_repo(tmp_path, state_root=state_root)
+    lock_path = state_root / f"{TASK_ID}.lock"
+    record_path = state_root / f"{TASK_ID}.json"
+    selected = lock_path if target == "lock" else record_path
+
+    real_fstat = gate.os.fstat
+
+    def wrong_owner(fd: int) -> object:
+        observed = real_fstat(fd)
+        return SimpleNamespace(
+            st_mode=observed.st_mode,
+            st_uid=os.getuid() + 1,
+            st_nlink=observed.st_nlink,
+        )
+
+    if target == "lock":
+        _install_private_state_substitution(selected, kind)
+        if kind == "wrong-owner":
+            monkeypatch.setattr(gate.os, "fstat", wrong_owner)
+        with pytest.raises((gate.ReportGateError, gate.ScopeContractError, OSError)):
+            with store.lock_task(TASK_ID):
+                pytest.fail("unsafe lock unexpectedly opened")
+    else:
+        with store.lock_task(TASK_ID) as task:
+            _install_private_state_substitution(selected, kind)
+            before = selected.lstat()
+            if kind == "wrong-owner":
+                monkeypatch.setattr(gate.os, "fstat", wrong_owner)
+            with pytest.raises((gate.ReportGateError, gate.ScopeContractError, OSError)):
+                task.load_or_create("sha256:" + "7" * 64)
+            after = selected.lstat()
+            assert (after.st_mode, after.st_ino) == (before.st_mode, before.st_ino)
+
+    assert not (tmp_path / "coordination" / "mailbox" / "sent").exists()
+
+
+def test_task_publication_store_rejects_wrong_mode_root_before_state_access(
+    tmp_path: Path,
+) -> None:
+    state_root = tmp_path / "state-root-mode"
+    store = gate.TaskPublicationStore.for_repo(tmp_path, state_root=state_root)
+    state_root.chmod(0o755)
+
+    with pytest.raises((gate.ReportGateError, gate.ScopeContractError, OSError)):
+        with store.lock_task(TASK_ID):
+            pytest.fail("unsafe private root unexpectedly opened")
+    assert not (state_root / f"{TASK_ID}.json").exists()
+
+
 def test_task_cancel_requires_exact_integer_generation_and_exact_witness(
     tmp_path: Path,
 ) -> None:
@@ -1794,7 +1673,7 @@ def test_task_publication_store_rejects_full_malformed_record_matrix(
             value["index_stage"] = False
         else:
             value["index_mode"] = 100644
-    record_path.write_bytes(receipts.canonical_json_bytes(value))
+    record_path.write_bytes(gate.canonical_json_bytes(value))
 
     with store.lock_task(TASK_ID) as task:
         with pytest.raises(gate.ReportGateError, match="invalid_task_publication"):
@@ -1858,7 +1737,7 @@ def test_task_publication_store_rejects_malformed_index_witness(
             "index_stage": False,
         }
     )
-    record_path.write_bytes(receipts.canonical_json_bytes(value))
+    record_path.write_bytes(gate.canonical_json_bytes(value))
 
     with store.lock_task(TASK_ID) as task:
         with pytest.raises(gate.ReportGateError, match="invalid_task_publication"):
@@ -1877,7 +1756,7 @@ def test_publish_candidate_creates_exact_no_replace_hard_link(
         repo_root=fixture.root,
         candidate_path=candidate,
         final_relative=fixture.report.relative_path,
-        receipt_store_factory=lambda _root: fixture.store,
+        task_store_factory=lambda _root: fixture.store,
     )
 
     assert published == fixture.root / fixture.report.relative_path
@@ -1889,13 +1768,13 @@ def test_publish_candidate_creates_exact_no_replace_hard_link(
         before.st_ino,
         1,
     )
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         record = attempt.load_existing()
     assert record.state == "published"
     expected_oid = _git_with_input(
         fixture.root, captured, "hash-object", "--no-filters", "--stdin"
     )
-    assert record.publication == {
+    assert {field: getattr(record, field) for field in gate._TASK_WITNESS_FIELDS} == {
         "path": fixture.report.relative_path,
         "candidate_digest": "sha256:" + hashlib.sha256(captured).hexdigest(),
         "candidate_name": ".report.candidate.tmp",
@@ -1922,11 +1801,11 @@ def test_publication_status_is_sanitized_and_published_resume_is_rejected(
     fixture = _live_codex_fixture(tmp_path / "repo")
     before = gate.publication_status(
         repo_root=fixture.root,
-        receipt_id=fixture.reconciliation.receipt_id,
-        receipt_store_factory=lambda _root: fixture.store,
+        task_id=TASK_ID,
+        task_store_factory=lambda _root: fixture.store,
     )
     assert before == {
-        "state": "reconciled",
+        "state": "ready",
         "path": None,
         "file_witness_match": False,
         "index_blob_oid": None,
@@ -1937,13 +1816,13 @@ def test_publication_status_is_sanitized_and_published_resume_is_rejected(
         repo_root=fixture.root,
         candidate_path=candidate,
         final_relative=fixture.report.relative_path,
-        receipt_store_factory=lambda _root: fixture.store,
+        task_store_factory=lambda _root: fixture.store,
     )
 
     status = gate.publication_status(
         repo_root=fixture.root,
-        receipt_id=fixture.reconciliation.receipt_id,
-        receipt_store_factory=lambda _root: fixture.store,
+        task_id=TASK_ID,
+        task_store_factory=lambda _root: fixture.store,
     )
 
     assert status["state"] == "published"
@@ -1961,8 +1840,8 @@ def test_publication_status_is_sanitized_and_published_resume_is_rejected(
     with pytest.raises(gate.ReportGateError, match="published state"):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
 
 
@@ -1982,12 +1861,12 @@ def test_status_and_resume_converge_already_correct_index_after_interruption(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_store_factory=lambda _root: fixture.store,
         )
     status = gate.publication_status(
         repo_root=fixture.root,
-        receipt_id=fixture.reconciliation.receipt_id,
-        receipt_store_factory=lambda _root: fixture.store,
+        task_id=TASK_ID,
+        task_store_factory=lambda _root: fixture.store,
     )
     assert status["state"] == "publishing"
     assert status["file_witness_match"] is True
@@ -1995,8 +1874,8 @@ def test_status_and_resume_converge_already_correct_index_after_interruption(
 
     published = gate.resume_publication(
         repo_root=fixture.root,
-        receipt_id=fixture.reconciliation.receipt_id,
-        receipt_store_factory=lambda _root: fixture.store,
+        task_id=TASK_ID,
+        task_store_factory=lambda _root: fixture.store,
     )
     assert published == fixture.root / fixture.report.relative_path
 
@@ -2021,11 +1900,11 @@ def test_fresh_cleanup_reproves_candidate_basename_before_unlink(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_store_factory=lambda _root: fixture.store,
         )
     assert candidate.read_bytes() == replacement
     assert saved.read_bytes() == fixture.raw
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2050,12 +1929,12 @@ def test_resume_cleanup_reproves_candidate_basename_before_unlink(
     with pytest.raises(gate.ReportGateError, match="candidate_changed"):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
     assert candidate.read_bytes() == replacement
     assert saved.read_bytes() == fixture.raw
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2079,7 +1958,7 @@ def test_fresh_link_reproves_candidate_basename_immediately_before_link(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_store_factory=lambda _root: fixture.store,
         )
 
     assert not (fixture.root / fixture.report.relative_path).exists()
@@ -2108,8 +1987,8 @@ def test_resume_link_reproves_candidate_basename_immediately_before_link(
     with pytest.raises(gate.ReportGateError):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
 
     assert not (fixture.root / fixture.report.relative_path).exists()
@@ -2126,15 +2005,15 @@ def test_published_status_rejects_surviving_candidate_and_two_link_final(
         repo_root=fixture.root,
         candidate_path=candidate,
         final_relative=fixture.report.relative_path,
-        receipt_store_factory=lambda _root: fixture.store,
+        task_store_factory=lambda _root: fixture.store,
     )
     os.link(published, candidate)
 
     with pytest.raises(gate.ReportGateError, match="published_witness_divergence"):
         gate.publication_status(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
 
 
@@ -2168,10 +2047,10 @@ def test_absent_resume_refuses_to_clear_any_staged_index_entry(
     with pytest.raises(gate.ReportGateError, match="index_entry_conflict"):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2196,14 +2075,14 @@ def test_absent_resume_clears_only_without_index_and_ignores_object_only_leftove
     with pytest.raises(gate.ReportGateError, match="reservation cleared"):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         record = attempt.load_existing()
-    assert record.state == "reconciled"
-    assert record.generation == 5
-    assert record.publication is None
+    assert record.state == "ready"
+    assert record.generation == 3
+    assert all(getattr(record, field) is None for field in gate._TASK_WITNESS_FIELDS)
 
 
 @pytest.mark.parametrize("appearance", ["candidate", "final", "index"])
@@ -2250,11 +2129,11 @@ def test_absent_resume_rechecks_names_and_index_immediately_before_clear(
     with pytest.raises(gate.ReportGateError):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
 
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2272,8 +2151,8 @@ def test_status_cli_emits_one_canonical_json_line(tmp_path: Path, capsys: pytest
             "status",
             "--repo-root",
             str(fixture.root),
-            "--receipt-id",
-            fixture.reconciliation.receipt_id,
+            "--task-id",
+            TASK_ID,
         ]
     )
 
@@ -2282,7 +2161,7 @@ def test_status_cli_emits_one_canonical_json_line(tmp_path: Path, capsys: pytest
     assert captured.err == ""
     assert captured.out.count("\n") == 1
     assert captured.out == (
-        receipts.canonical_json_bytes(json.loads(captured.out)).decode("utf-8") + "\n"
+        gate.canonical_json_bytes(json.loads(captured.out)).decode("utf-8") + "\n"
     )
     assert set(json.loads(captured.out)) == {
         "state",
@@ -2327,7 +2206,7 @@ def test_publish_cli_diagnostic_uses_locked_identity_after_final_swap(
             published.symlink_to(target)
         else:
             fields = _replace_field(
-                _claude_fields(), "Verification task ID", wrong_task_id
+                _lane_v_fields(reviewer="operator2"), "Verification task ID", wrong_task_id
             )
             fields = _replace_field(
                 fields,
@@ -2404,16 +2283,16 @@ def test_resume_cli_post_publish_failures_require_status_with_supplied_id(
             "resume",
             "--repo-root",
             str(fixture.root),
-            "--receipt-id",
-            fixture.reconciliation.receipt_id,
+            "--task-id",
+            TASK_ID,
         ]
     )
 
     captured = capsys.readouterr()
     assert result == 6
     assert "publication_status_required" in captured.err
-    assert f"--receipt-id {fixture.reconciliation.receipt_id}" in captured.err
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    assert f"--task-id {TASK_ID}" in captured.err
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "published"
 
 
@@ -2440,15 +2319,15 @@ def test_resume_cli_stdout_write_failure_requires_status_with_supplied_id(
             "resume",
             "--repo-root",
             str(fixture.root),
-            "--receipt-id",
-            fixture.reconciliation.receipt_id,
+            "--task-id",
+            TASK_ID,
         ]
     )
 
     captured = capsys.readouterr()
     assert result == 6
     assert "publication_status_required" in captured.err
-    assert f"--receipt-id {fixture.reconciliation.receipt_id}" in captured.err
+    assert f"--task-id {TASK_ID}" in captured.err
 
 
 def _mutate_last_publication_boundary(
@@ -2549,11 +2428,11 @@ def test_fresh_last_pre_publish_guard_rejects_mutation(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_store_factory=lambda _root: fixture.store,
         )
 
     _assert_last_boundary_mutation_applied(fixture, candidate, mutation)
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2579,12 +2458,12 @@ def test_resume_last_pre_publish_guard_rejects_mutation(
     with pytest.raises(gate.ReportGateError):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
 
     _assert_last_boundary_mutation_applied(fixture, candidate, mutation)
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2624,57 +2503,33 @@ def _expected_candidate_witness(
     }
 
 
-@pytest.mark.parametrize("publication_mode", ["receipt", "task"])
 @pytest.mark.parametrize("candidate_case", ["fresh", "substituted", "stored"])
 def test_existing_publishing_state_cleans_only_distinct_fresh_candidate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    publication_mode: str,
     candidate_case: str,
 ) -> None:
-    if publication_mode == "receipt":
-        fixture = _live_codex_fixture(tmp_path / "repo")
-        store = fixture.store
-        stored_candidate = _candidate_path(
-            fixture.root, fixture.raw, ".stored-witness.tmp"
+    fixture = _live_lane_v_fixture(tmp_path / "repo")
+    store = fixture.store
+    gate.validate_live_report(
+        fixture.root,
+        fixture.report,
+        task_store_factory=lambda _root: store,
+    )
+    stored_candidate = _candidate_path(
+        fixture.root, fixture.raw, ".stored-witness.tmp"
+    )
+    stored_witness = _expected_candidate_witness(
+        fixture.root,
+        stored_candidate,
+        fixture.raw,
+        fixture.report.relative_path,
+    )
+    with store.lock_task(TASK_ID) as attempt:
+        attempt.load_existing()
+        attempt.begin_publication(
+            *(stored_witness[field] for field in gate._TASK_WITNESS_FIELDS)
         )
-        _begin_interrupted_publication(
-            fixture, stored_candidate, fixture.report.relative_path
-        )
-        publish_kwargs = {
-            "receipt_store_factory": lambda _root: store,
-        }
-        with store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
-            stored_witness = gate._stored_publication_witness(
-                attempt.load_existing()
-            )
-    else:
-        fixture = _live_claude_fixture(tmp_path / "repo")
-        store = gate.TaskPublicationStore.for_repo(
-            fixture.root, state_root=fixture.root / ".task-publications"
-        )
-        gate.validate_live_report(
-            fixture.root,
-            fixture.report,
-            task_store_factory=lambda _root: store,
-        )
-        stored_candidate = _candidate_path(
-            fixture.root, fixture.raw, ".stored-witness.tmp"
-        )
-        stored_witness = _expected_candidate_witness(
-            fixture.root,
-            stored_candidate,
-            fixture.raw,
-            fixture.report.relative_path,
-        )
-        with store.lock_task(TASK_ID) as attempt:
-            attempt.load_existing()
-            attempt.begin_publication(
-                *(stored_witness[field] for field in gate._TASK_WITNESS_FIELDS)
-            )
-        publish_kwargs = {
-            "task_store_factory": lambda _root: store,
-        }
 
     stored_identity = (
         stored_candidate.stat().st_dev,
@@ -2709,17 +2564,13 @@ def test_existing_publishing_state_cleans_only_distinct_fresh_candidate(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            **publish_kwargs,
+            task_store_factory=lambda _root: store,
         )
 
     assert excinfo.value.reason == "publication_resume_required"
     assert cleanup_calls == (0 if candidate_case == "stored" else 1)
-    if publication_mode == "receipt":
-        with store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
-            observed = attempt.load_existing()
-    else:
-        with store.lock_task(TASK_ID) as attempt:
-            observed = attempt.load_existing()
+    with store.lock_task(TASK_ID) as attempt:
+        observed = attempt.load_existing()
     assert observed.state == "publishing"
     assert gate._stored_publication_witness(observed) == stored_witness
     assert (
@@ -2732,36 +2583,6 @@ def test_existing_publishing_state_cleans_only_distinct_fresh_candidate(
         assert not candidate.exists()
 
 
-def test_receipt_begin_post_replace_fsync_failure_retains_witnessed_candidate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fixture = _live_codex_fixture(tmp_path / "repo")
-    candidate = _candidate_path(fixture.root, fixture.raw)
-    expected = _expected_candidate_witness(
-        fixture.root, candidate, fixture.raw, fixture.report.relative_path
-    )
-    state_directory = fixture.store.state_root.stat()
-    injected = _inject_fsync_error(
-        monkeypatch,
-        lambda metadata: stat.S_ISDIR(metadata.st_mode)
-        and (metadata.st_dev, metadata.st_ino)
-        == (state_directory.st_dev, state_directory.st_ino),
-    )
-
-    with pytest.raises(gate.ReportGateError, match="publication_resumable"):
-        gate.publish_candidate(
-            repo_root=fixture.root,
-            candidate_path=candidate,
-            final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
-        )
-
-    assert injected["raised"] is True
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
-        record = attempt.load_existing()
-    assert record.state == "publishing"
-    assert gate._stored_publication_witness(record) == expected
-    assert candidate.exists()
 
 
 def test_task_begin_post_replace_fsync_failure_retains_witnessed_candidate(
@@ -2820,12 +2641,12 @@ def test_candidate_fsync_oserror_before_link_never_publishes(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_store_factory=lambda _root: fixture.store,
         )
 
     assert injected["raised"] is True
     assert not (fixture.root / fixture.report.relative_path).exists()
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2845,12 +2666,12 @@ def test_linked_final_fsync_oserror_after_link_never_publishes(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_store_factory=lambda _root: fixture.store,
         )
 
     assert injected["raised"] is True
     assert (fixture.root / fixture.report.relative_path).stat().st_nlink == 2
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2871,12 +2692,12 @@ def test_recovery_file_fsync_oserror_never_publishes(
     with pytest.raises(gate.ReportGateError):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
 
     assert injected["raised"] is True
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2900,12 +2721,12 @@ def test_absent_recovery_directory_fsync_oserror_never_clears_or_publishes(
     with pytest.raises(gate.ReportGateError):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
 
     assert injected["raised"] is True
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         assert attempt.load_existing().state == "publishing"
 
 
@@ -2963,12 +2784,12 @@ def test_publish_crash_matrix_never_grants_premature_published(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_store_factory=lambda _root: fixture.store,
         )
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         record = attempt.load_existing()
     expected_state = (
-        "reconciled"
+        "ready"
         if checkpoint == "before_publishing"
         else "published"
         if checkpoint == "after_published"
@@ -2980,15 +2801,15 @@ def test_publish_crash_matrix_never_grants_premature_published(
     if record.state == "publishing":
         published = gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
         assert published == fixture.root / fixture.report.relative_path
     elif record.state == "published":
         status = gate.publication_status(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
         assert status["file_witness_match"] is True
         assert status["staged_blob_match"] is True
@@ -3051,10 +2872,10 @@ def test_resume_crash_matrix_remains_idempotent(
     with pytest.raises(gate.ReportGateError):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         record = attempt.load_existing()
     expected_state = "published" if checkpoint == "resume_after_published" else "publishing"
     assert record.state == expected_state
@@ -3063,15 +2884,15 @@ def test_resume_crash_matrix_remains_idempotent(
     if record.state == "publishing":
         published = gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
         assert published == fixture.root / fixture.report.relative_path
     else:
         status = gate.publication_status(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
         assert status["state"] == "published"
 
@@ -3080,7 +2901,9 @@ def test_publish_candidate_rejects_validation_failure_before_state_or_final(
     tmp_path: Path,
 ) -> None:
     fixture = _live_codex_fixture(tmp_path / "repo")
-    invalid = fixture.raw.replace(b"VERDICT: GO", b"VERDICT: NITS")
+    invalid = fixture.raw.replace(
+        b"Reviewer identity: operator2", b"Reviewer identity: operator"
+    )
     candidate = _candidate_path(fixture.root, invalid)
 
     with pytest.raises(gate.ReportGateError):
@@ -3088,13 +2911,13 @@ def test_publish_candidate_rejects_validation_failure_before_state_or_final(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_store_factory=lambda _root: fixture.store,
         )
 
     assert not (fixture.root / fixture.report.relative_path).exists()
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         record = attempt.load_existing()
-    assert record.state == "reconciled"
+    assert record.state == "ready"
 
 
 def test_publish_candidate_public_replay_and_fresh_file_exists_cancel_fail(
@@ -3106,7 +2929,7 @@ def test_publish_candidate_public_replay_and_fresh_file_exists_cancel_fail(
         repo_root=replay.root,
         candidate_path=first,
         final_relative=replay.report.relative_path,
-        receipt_store_factory=lambda _root: replay.store,
+        task_store_factory=lambda _root: replay.store,
     )
     second = _candidate_path(replay.root, replay.raw, ".second.tmp")
     with pytest.raises(gate.ReportGateError, match="published"):
@@ -3114,7 +2937,7 @@ def test_publish_candidate_public_replay_and_fresh_file_exists_cancel_fail(
             repo_root=replay.root,
             candidate_path=second,
             final_relative=replay.report.relative_path,
-            receipt_store_factory=lambda _root: replay.store,
+            task_store_factory=lambda _root: replay.store,
         )
 
     collision = _live_codex_fixture(tmp_path / "collision")
@@ -3127,12 +2950,12 @@ def test_publish_candidate_public_replay_and_fresh_file_exists_cancel_fail(
             repo_root=collision.root,
             candidate_path=candidate,
             final_relative=collision.report.relative_path,
-            receipt_store_factory=lambda _root: collision.store,
+            task_store_factory=lambda _root: collision.store,
         )
-    with collision.store.lock_receipt(collision.reconciliation.receipt_id) as attempt:
+    with collision.store.lock_task(TASK_ID) as attempt:
         record = attempt.load_existing()
-    assert record.state == "reconciled"
-    assert record.generation == 5
+    assert record.state == "ready"
+    assert record.generation == 3
     assert final.read_bytes() == collision.raw
 
 
@@ -3140,14 +2963,19 @@ def _begin_interrupted_publication(
     fixture: _LiveCodexFixture,
     candidate: Path,
     relative: str,
-) -> receipts.ReceiptRecord:
+) -> gate.TaskPublicationRecord:
     observed = candidate.stat()
     raw = candidate.read_bytes()
     digest = "sha256:" + hashlib.sha256(raw).hexdigest()
     blob_oid = _git_with_input(
         fixture.root, raw, "hash-object", "--no-filters", "--stdin"
     )
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    gate.validate_live_report(
+        fixture.root,
+        fixture.report,
+        task_store_factory=lambda _root: fixture.store,
+    )
+    with fixture.store.lock_task(TASK_ID) as attempt:
         attempt.load_existing()
         return attempt.begin_publication(
             relative,
@@ -3173,12 +3001,12 @@ def test_public_publish_rejects_interruption_and_explicit_resume_converges(
             repo_root=absent.root,
             candidate_path=new_absent,
             final_relative=absent.report.relative_path,
-            receipt_store_factory=lambda _root: absent.store,
+            task_store_factory=lambda _root: absent.store,
         )
     published = gate.resume_publication(
         repo_root=absent.root,
-        receipt_id=absent.reconciliation.receipt_id,
-        receipt_store_factory=lambda _root: absent.store,
+        task_id=TASK_ID,
+        task_store_factory=lambda _root: absent.store,
     )
     assert published == absent.root / absent.report.relative_path
     assert not old_absent.exists()
@@ -3196,8 +3024,8 @@ def test_public_publish_rejects_interruption_and_explicit_resume_converges(
     os.link(old_exact, older_final)
     recovered = gate.resume_publication(
         repo_root=exact.root,
-        receipt_id=exact.reconciliation.receipt_id,
-        receipt_store_factory=lambda _root: exact.store,
+        task_id=TASK_ID,
+        task_store_factory=lambda _root: exact.store,
     )
     assert recovered == older_final
     assert recovered.stat().st_nlink == 1
@@ -3217,48 +3045,13 @@ def test_publish_candidate_recovery_rejects_equal_bytes_different_inode(
     with pytest.raises(gate.ReportGateError, match="recovery"):
         gate.resume_publication(
             repo_root=fixture.root,
-            receipt_id=fixture.reconciliation.receipt_id,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
         )
 
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
+    with fixture.store.lock_task(TASK_ID) as attempt:
         record = attempt.load_existing()
     assert record.state == "publishing"
-
-
-@pytest.mark.parametrize("operation", ["resume", "status"])
-def test_receipt_recovery_rejects_malformed_id_before_store_initialization(
-    tmp_path: Path,
-    operation: str,
-) -> None:
-    root, _, _, _, _ = _authority_fixture(tmp_path / "repo")
-    (root / "coordination" / "mailbox" / "sent").mkdir(parents=True)
-    state_root = tmp_path / "receipt-state"
-    factory_calls = 0
-
-    def store_factory(repo_root: Path) -> receipts.ReceiptStore:
-        nonlocal factory_calls
-        factory_calls += 1
-        return receipts.ReceiptStore.for_repo(
-            repo_root,
-            state_root=state_root,
-        )
-
-    function = (
-        gate.resume_publication
-        if operation == "resume"
-        else gate.publication_status
-    )
-    with pytest.raises(gate.ReportGateError) as excinfo:
-        function(
-            repo_root=root,
-            receipt_id="opr1:not-canonical",
-            receipt_store_factory=store_factory,
-        )
-
-    assert factory_calls == 0
-    assert not state_root.exists()
-    assert excinfo.value.reason == "invalid_receipt_id"
 
 
 @pytest.mark.parametrize(
@@ -3303,27 +3096,27 @@ def test_publish_candidate_rejects_unsafe_candidate_without_state_change(
             repo_root=fixture.root,
             candidate_path=candidate,
             final_relative=fixture.report.relative_path,
-            receipt_store_factory=lambda _root: fixture.store,
+            task_store_factory=lambda _root: fixture.store,
         )
     assert not (fixture.root / fixture.report.relative_path).exists()
-    with fixture.store.lock_receipt(fixture.reconciliation.receipt_id) as attempt:
-        assert attempt.load_existing().state == "reconciled"
+    with fixture.store.lock_task(TASK_ID) as attempt:
+        assert attempt.load_existing().state == "ready"
 
 
-def _legacy_manifest(*entries: tuple[str, str]) -> dict[str, object]:
+def _pre_v3_manifest(*entries: tuple[str, str]) -> dict[str, object]:
     return {
-        "schema_version": LEGACY_SCHEMA,
+        "schema_version": PRE_V3_SCHEMA,
         "reports": [
             {"path": path, "sha256": digest} for path, digest in entries
         ],
     }
 
 
-def test_legacy_manifest_accepts_exact_shape_and_defers_changed_digest() -> None:
+def test_pre_v3_manifest_accepts_exact_shape_and_defers_changed_digest() -> None:
     digest = hashlib.sha256(b"legacy body\n").hexdigest()
-    manifest = _legacy_manifest((REPORT_PATH, digest))
+    manifest = _pre_v3_manifest((REPORT_PATH, digest))
 
-    assert gate.legacy_manifest_violations(manifest, [REPORT_PATH]) == []
+    assert gate.pre_v3_manifest_violations(manifest, [REPORT_PATH]) == []
 
 
 @pytest.mark.parametrize(
@@ -3334,19 +3127,19 @@ def test_legacy_manifest_accepts_exact_shape_and_defers_changed_digest() -> None
             {"schema_version": "wrong", "reports": []}, id="wrong-schema"
         ),
         pytest.param(
-            {"schema_version": LEGACY_SCHEMA, "reports": "not-a-list"},
+            {"schema_version": PRE_V3_SCHEMA, "reports": "not-a-list"},
             id="reports-not-list",
         ),
         pytest.param(
             {
-                "schema_version": LEGACY_SCHEMA,
+                "schema_version": PRE_V3_SCHEMA,
                 "reports": [{"path": REPORT_PATH, "sha256": "A" * 64}],
             },
             id="uppercase-digest",
         ),
         pytest.param(
             {
-                "schema_version": LEGACY_SCHEMA,
+                "schema_version": PRE_V3_SCHEMA,
                 "reports": [
                     {"path": REPORT_PATH, "sha256": "1" * 64},
                     {"path": REPORT_PATH, "sha256": "2" * 64},
@@ -3356,7 +3149,7 @@ def test_legacy_manifest_accepts_exact_shape_and_defers_changed_digest() -> None
         ),
         pytest.param(
             {
-                "schema_version": LEGACY_SCHEMA,
+                "schema_version": PRE_V3_SCHEMA,
                 "reports": [
                     {"path": REPORT_PATH, "sha256": "1" * 64},
                     {
@@ -3369,17 +3162,17 @@ def test_legacy_manifest_accepts_exact_shape_and_defers_changed_digest() -> None
         ),
     ],
 )
-def test_legacy_manifest_rejects_invalid_shape_and_duplicates(
+def test_pre_v3_manifest_rejects_invalid_shape_and_duplicates(
     manifest: object,
 ) -> None:
-    assert gate.legacy_manifest_violations(manifest, [REPORT_PATH])
+    assert gate.pre_v3_manifest_violations(manifest, [REPORT_PATH])
 
 
-def test_legacy_manifest_reports_missing_paths_but_not_digest_drift() -> None:
-    manifest = _legacy_manifest((REPORT_PATH, "1" * 64))
+def test_pre_v3_manifest_reports_missing_paths_but_not_digest_drift() -> None:
+    manifest = _pre_v3_manifest((REPORT_PATH, "1" * 64))
 
-    missing = gate.legacy_manifest_violations(manifest, [])
-    present_with_changed_digest = gate.legacy_manifest_violations(
+    missing = gate.pre_v3_manifest_violations(manifest, [])
+    present_with_changed_digest = gate.pre_v3_manifest_violations(
         manifest, [REPORT_PATH]
     )
 

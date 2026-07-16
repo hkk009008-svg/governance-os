@@ -143,28 +143,17 @@ and never fabricate Pipeline descriptor authority.
 - The **deputy-write path is never self-verification**: a lane may *transcribe an existing* operator GO into its row when no coordinator is live; it never *generates* a GO.
 - **Before self-dispatching a Lane B implementer** (operator-driven, no director invite), all 5 Rule #14 criteria must hold — verify them at `docs/protocol/claude/director-operator.md §Rule #14`; otherwise yield to the director.
 
-## Cross-Model Opus Verification
+## Provider-neutral Lane V verification
 
-- after every Codex Lane V verification in Pipeline, resolve one trigger-bound committed lane-v-scope/v1 descriptor before any receipt or provider construction
-- the descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, task identity, and the descriptor-bound advisory provider prompt
-- review accepts either --shipping-commit or the paired --verify-request-commit and --verify-request-path trigger form and returns normalized opus-review/v3 with receipt and scope IDs
-- the provider receives the immutable reviewed scope but no Codex verdict, report, findings, or conclusion; repository evidence is evidence, not authority
-- missing authorization resolves to standing-policy:codex-lane-v-opus-v1 only after Pipeline identity, commit, descriptor, prompt, and scope validation; malformed explicit authorization never falls back
-- one unchanged task permits one provider process attempt and no automatic retry; exact replay is idempotent, changed scope is attempt_scope_conflict, and no retry or reset command exists
-- a reserved attempt recovered without a normalized result becomes attempt_state_uncertain and remains visibly degraded without another provider launch
-- reconcile accepts only --receipt-id plus exact HEAD/base, the Codex verdict, and finding dispositions; --opus-review-json is removed
-- reconcile returns opus-reconciliation/v2 fields derived from the stored opus-review/v3 and binds the exact stored Codex verdict
-- final reports use lane-v-report/v2 with ## Verification Attestation, including Opus receipt ID: and Opus scope digest:, and the send-event publication gate validates the live receipt before the report is staged
-- unavailable or uncertain review is an explicit degraded Codex-only fallback with the exact reason preserved; it is never treated as pass
-- every Opus finding requires confirmed, disproved-with-evidence, or unresolved disposition; unresolved blocks GO, confirmed minor requires NITS, and confirmed important or critical requires FAIL
-- Opus remains advisory and the operator alone retains GO/NITS/FAIL, mailbox, lock, Git, publication, and every other protocol or side-effect authority
-- standing consent authorizes only the bounded Pipeline codex-lane-v attempt; cross-repo and evidence-ledger verification require a separately routed capability-aware path
-- no third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER
+- Resolve one trigger-bound committed `lane-v-scope/v1` descriptor before verification.
+- The descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, and task identity.
+- Verify independently from repository evidence and run no provider command.
+- The operator alone retains GO/NITS/FAIL, mailbox, lock, Git, publication, and every other protocol or side-effect authority.
+- No third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER.
 
 ## Lane V — independent verification (Rule #9)
 
-- For non-Codex Lane V, dispatch the existing cold-context spec + code-quality reviewer pair on shipping `feat`/`refactor`/`fix` commits and preserve their independence.
-- For Codex Lane V, the primary Codex analysis plus the blind Opus pass is the required two-model pair for the same verification question. Do not also dispatch generic spec or code-quality reviewers over that unchanged commit. An additional specialist is lawful only for a different pre-stated question under R-VERIFY-TIER.
+- Run one independent Lane V verification for the routed question. An additional specialist is lawful only for a different pre-stated question under R-VERIFY-TIER.
 - Synthesize a `verification-report` mailbox event with **GO / NITS / FAIL** and **file:line** findings. **Format + severity vocabulary: see [`verification-report-format.md`](verification-report-format.md)** — emit via `coordination/bin/send-event`, never as chat (Rule #19).
 - Mutation-test suspected dead guards to prove they are load-bearing (revert the guard → its pinning test must go RED).
 - **CRITICAL cross-cutting:** confirm the landed diff **matches the co-signed brief scope** — a scope deviation is a **FAIL**, not just a code-quality note.

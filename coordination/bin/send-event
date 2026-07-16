@@ -2,7 +2,7 @@
 PATH=/usr/bin:/bin
 export PATH
 # send-event — write one protocol-v6.0 mailbox event and stage its exact path.
-# Verification reports use the receipt/task-bound Python publisher; other event
+# Verification reports use the task-bound Python publisher; other event
 # kinds retain the existing compose, move, and explicit-pathspec staging path.
 set -euo pipefail
 
@@ -134,7 +134,7 @@ if [ "$KIND" = "verification-report" ]; then
   TRUSTED_CODE=$(/usr/bin/mktemp -d "$ROOT/coordination/mailbox/sent/.trusted-code.XXXXXX")
   /bin/chmod 0700 "$TRUSTED_CODE"
   TREE_META=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.trusted-tree.XXXXXX.tmp")
-  for SOURCE in verification_report_gate.py opus_review_receipts.py opus_review_bridge.py; do
+  for SOURCE in verification_report_gate.py; do
     SOURCE_PATH="scripts/$SOURCE"
     : > "$TREE_META"
     git_clean -C "$PRIMARY_ROOT" ls-tree -z "$TRUSTED_HEAD" -- "$SOURCE_PATH" > "$TREE_META"

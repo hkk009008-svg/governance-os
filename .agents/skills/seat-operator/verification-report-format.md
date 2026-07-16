@@ -52,23 +52,16 @@ $ <command you ran>
 
 ## Verification Attestation
 
-Verification schema: lane-v-report/v2
-Verification mode: <codex-lane-v | claude-lane-v>
-Verification harness: <codex:lane-v-verifier | claude:lane-v-verifier>
+Verification schema: lane-v-report/v3
+Verification mode: independent-lane-v
+Verification harness: lane-v:independent-verifier
 Verification task ID: <canonical UUID>
 Scope authority: coordination/verification/scopes/<task-id>.json@sha256:<64-hex>
 Trigger identity: <shipping-commit:<sha> | verify-request:<sha>:<path>>
 Reviewed head: <40-lowercase-sha>
 Reviewed base: <40-lowercase-sha>
-Review profile: <codex-lane-v | not-applicable>
-Authorization identity: <stored identity | not-applicable>
-Opus receipt ID: <opr1:64-hex | not-applicable>
-Opus scope digest: <sha256:64-hex | not-applicable>
-Cross-model review: <pass | issues | unavailable | not-applicable>
-Effective Opus model: <stored model | unavailable | not-applicable>
-Opus finding dispositions: <exact reconcile field | not-applicable>
-Reconciliation guard: <exact reconcile field | not-applicable>
-Degraded reason: <exact reconcile field | not-applicable>
+Review profile: independent-lane-v
+Reviewer identity: <operator | operator2; must equal the envelope sender>
 
 ## Findings
 1. <severity> — `path/file.py:line` — <what + why> — <disposition>
@@ -83,29 +76,9 @@ Landed diff matches the co-signed R-BRIEF scope (defect <id>): <yes/where it dri
 Cursor at send: <ISO>                                              ← footer (auto)
 ```
 
-For Codex Lane V, obtain the nine Opus/reconciliation lines from the bridge's
-stored receipt. The trigger-bound descriptor supplies scope; callers do not
-repeat requirements, allowed paths, or verification commands:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
-  --repo-root . --head "$HEAD" --base "$BASE" --review-profile codex-lane-v \
-  --transport-profile anthropic-claude-existing-session-v1 \
-  --shipping-commit "$HEAD"
-env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
-  --repo-root . --head "$HEAD" --base "$BASE" --review-profile codex-lane-v \
-  --transport-profile anthropic-claude-existing-session-v1 \
-  --verify-request-commit "$TRIGGER_COMMIT" \
-  --verify-request-path "$TRIGGER_PATH"
-env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py reconcile \
-  --repo-root . --receipt-id "$RECEIPT_ID" --head "$HEAD" --base "$BASE" \
-  --codex-verdict GO
-```
-
-Finding dispositions and evidence remain repeated `--disposition ID=value`
-and `--evidence ID=value` flags. Copy the returned `report_fields` values
-exactly. For non-Codex Lane V, use `not-applicable` for every attestation line
-from `Review profile` through `Degraded reason`; never invent an Opus receipt.
+The trigger-bound descriptor supplies scope; callers do not repeat requirements,
+allowed paths, or verification commands. Lane V is provider-neutral and runs no
+provider command. Record the independent verifier seat in `Reviewer identity`.
 
 ## Verdict vocabulary
 
@@ -124,7 +97,7 @@ from `Review profile` through `Degraded reason`; never invent an Opus receipt.
 | **MINOR** | Fold-in or advisory. |
 | **INFORMATIONAL** | No-action acceptable; record for awareness. |
 
-## Worked Codex fragment (real shape)
+## Worked independent Lane V fragment (real shape)
 
 ```
 VERDICT: GO
@@ -135,23 +108,16 @@ $ grep -rn 'self\.spent_usd\s*=' --include='*.py' . | grep -v /tests/
 
 ## Verification Attestation
 
-Verification schema: lane-v-report/v2
-Verification mode: codex-lane-v
-Verification harness: codex:lane-v-verifier
+Verification schema: lane-v-report/v3
+Verification mode: independent-lane-v
+Verification harness: lane-v:independent-verifier
 Verification task ID: 11111111-2222-4333-8444-555555555555
 Scope authority: coordination/verification/scopes/11111111-2222-4333-8444-555555555555.json@sha256:<64-hex>
 Trigger identity: shipping-commit:<40-lowercase-sha>
 Reviewed head: <40-lowercase-sha>
 Reviewed base: <40-lowercase-sha>
-Review profile: codex-lane-v
-Authorization identity: standing-policy:codex-lane-v-opus-v1
-Opus receipt ID: opr1:<64-hex>
-Opus scope digest: sha256:<64-hex>
-Cross-model review: pass
-Effective Opus model: claude-opus-4-7
-Opus finding dispositions: none
-Reconciliation guard: {"digest":"sha256:<64-hex>","go_allowed":true}
-Degraded reason: none
+Review profile: independent-lane-v
+Reviewer identity: operator
 
 ## Findings
 1. INFORMATIONAL — `cost_tracker.py:224` — increment sits at the log() chokepoint;
@@ -159,30 +125,6 @@ Degraded reason: none
 
 ## Exact Next Trigger
 none — verification loop closed
-```
-
-## Worked non-Codex attestation block
-
-```
-## Verification Attestation
-
-Verification schema: lane-v-report/v2
-Verification mode: claude-lane-v
-Verification harness: claude:lane-v-verifier
-Verification task ID: 11111111-2222-4333-8444-555555555555
-Scope authority: coordination/verification/scopes/11111111-2222-4333-8444-555555555555.json@sha256:<64-hex>
-Trigger identity: shipping-commit:<40-lowercase-sha>
-Reviewed head: <40-lowercase-sha>
-Reviewed base: <40-lowercase-sha>
-Review profile: not-applicable
-Authorization identity: not-applicable
-Opus receipt ID: not-applicable
-Opus scope digest: not-applicable
-Cross-model review: not-applicable
-Effective Opus model: not-applicable
-Opus finding dispositions: not-applicable
-Reconciliation guard: not-applicable
-Degraded reason: not-applicable
 ```
 
 ## Three reminders that ride every report

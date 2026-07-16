@@ -2,7 +2,7 @@
 """Validate the exact Lane V report corpus and GO verification evidence.
 
 Every current filesystem verification report must either match the committed
-historical path/raw-byte digest manifest or satisfy ``lane-v-report/v2`` plus
+historical path/raw-byte digest manifest or satisfy ``lane-v-report/v3`` plus
 its committed structural authority.  The normal scan includes untracked files,
 while baseline generation hashes only NUL-delimited tracked ``HEAD`` blobs.
 
@@ -18,7 +18,7 @@ Sub-rule: a GO whose evidence references `wave_gate_check` and contains NO pytes
 regression-pin (`--runxfail`) output → FAIL.  wave_gate_check reads an inventory
 string; it does not execute tests, so it is not GO-grade evidence.
 
-NITS / FAIL verdicts still require exact legacy or v2 structure but skip only
+NITS / FAIL verdicts still require exact pre-v3 or live-v3 structure but skip only
 these GO-specific evidence rules (mirrors check_no_ceremony R6, which gates
 only the `pass` verdict).
 
@@ -28,10 +28,10 @@ Only the v6.0 `VERDICT: GO` shape is gated (canonical, per
 
 Usage:  .venv/bin/python scripts/check_go_schema.py [<dir>]
         .venv/bin/python scripts/check_go_schema.py \
-          --generate-baseline scripts/baselines/lane_v_report_v1.json
+          --generate-baseline scripts/baselines/lane_v_reports_pre_v3.json
 
 Exit codes:
-    0 — every report passes legacy/v2 structure and any GO evidence rules
+    0 — every report passes pre-v3/v3 structure and any GO evidence rules
     1 — report, manifest, generation, or GO evidence validation failed
 """
 from __future__ import annotations
@@ -39,7 +39,6 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
-import json
 import os
 import pathlib
 import re
@@ -51,16 +50,21 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-import opus_review_receipts as receipts
 import verification_report_gate as report_gate
+from verification_report_gate import (
+    ScopeContractError,
+    canonical_json_bytes,
+    normalize_repo_path,
+    strict_json_loads,
+)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Default scan directory (overridable by CLI argument for tests).
 DEFAULT_MAILBOX = ROOT / "coordination" / "mailbox" / "sent"
-DEFAULT_MANIFEST = ROOT / "scripts" / "baselines" / "lane_v_report_v1.json"
+DEFAULT_MANIFEST = ROOT / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
 _BASELINE_MAX_BYTES = 1_048_576
-_BASELINE_LOCK_NAME = "codex-lane-v-report-baseline.lock"
+_BASELINE_LOCK_NAME = "lane-v-reports-pre-v3-baseline.lock"
 
 # --- Patterns (v6.0 verification-report-format.md) --------------------------
 
@@ -178,13 +182,13 @@ def repository_report_violations(
     named_reports: list[RawReport],
     manifest: object,
 ) -> list[str]:
-    """Validate exact legacy accounting or full v2 structure for every report."""
+    """Validate exact pre-v3 accounting or full live-v3 structure per report."""
 
     report_paths = [report.relative_path for report in named_reports]
-    violations = report_gate.legacy_manifest_violations(manifest, report_paths)
+    violations = report_gate.pre_v3_manifest_violations(manifest, report_paths)
     if any(
-        item.startswith("legacy manifest:")
-        or item.startswith("legacy manifest reports[")
+        item.startswith("pre-v3 manifest:")
+        or item.startswith("pre-v3 manifest reports[")
         or item.startswith("current report path:")
         for item in violations
     ):
@@ -207,14 +211,14 @@ def repository_report_violations(
             violations.append("current reports: expected RawReport values")
             continue
         raw_digest = hashlib.sha256(named.raw).hexdigest()
+        if manifest_digests.get(named.relative_path) == raw_digest:
+            continue
         try:
             text = named.raw.decode("utf-8")
         except UnicodeDecodeError:
             violations.append(f"{named.relative_path}: report must be strict UTF-8")
             continue
         decoded_reports.append((named.relative_path, text))
-        if manifest_digests.get(named.relative_path) == raw_digest:
-            continue
         historical = named.relative_path in manifest_digests
         try:
             parsed = report_gate.parse_lane_v_report(
@@ -231,7 +235,7 @@ def repository_report_violations(
                 )
             else:
                 violations.append(
-                    f"{named.relative_path}: report is not an exact legacy baseline "
+                    f"{named.relative_path}: report is not an exact pre-v3 baseline "
                     f"and must satisfy {report_gate.REPORT_SCHEMA_VERSION}: {exc}"
                 )
 
@@ -480,8 +484,8 @@ def _tracked_head_reports(root: pathlib.Path) -> list[RawReport]:
     for raw_path in raw_paths.split(b"\x00")[:-1]:
         try:
             path = raw_path.decode("utf-8")
-            normalized = receipts.normalize_repo_path(path)
-        except (UnicodeDecodeError, receipts.ReceiptContractError) as exc:
+            normalized = normalize_repo_path(path)
+        except (UnicodeDecodeError, ScopeContractError) as exc:
             raise BaselineGenerationError(f"invalid tracked report path: {raw_path!r}") from exc
         pure = pathlib.PurePosixPath(normalized)
         if (
@@ -496,7 +500,7 @@ def _tracked_head_reports(root: pathlib.Path) -> list[RawReport]:
 
 def _baseline_mapping(reports: list[RawReport]) -> dict[str, object]:
     return {
-        "schema_version": report_gate.LEGACY_MANIFEST_SCHEMA_VERSION,
+        "schema_version": report_gate.PRE_V3_MANIFEST_SCHEMA_VERSION,
         "reports": [
             {
                 "path": report.relative_path,
@@ -508,28 +512,20 @@ def _baseline_mapping(reports: list[RawReport]) -> dict[str, object]:
 
 
 def _baseline_bytes(manifest: Mapping[str, object]) -> bytes:
-    return (
-        json.dumps(
-            manifest,
-            ensure_ascii=False,
-            indent=2,
-            allow_nan=False,
-        )
-        + "\n"
-    ).encode("utf-8")
+    return canonical_json_bytes(manifest) + b"\n"
 
 
 def _validated_baseline_manifest(raw: bytes) -> Mapping[str, object]:
     try:
-        value = receipts.strict_json_loads(raw)
-    except receipts.ReceiptContractError as exc:
+        value = strict_json_loads(raw)
+    except ScopeContractError as exc:
         raise BaselineGenerationError(f"valid existing manifest required: {exc}") from exc
     paths: list[str] = []
     if isinstance(value, Mapping) and isinstance(value.get("reports"), list):
         for entry in value["reports"]:
             if isinstance(entry, Mapping) and isinstance(entry.get("path"), str):
                 paths.append(entry["path"])
-    manifest_violations = report_gate.legacy_manifest_violations(value, paths)
+    manifest_violations = report_gate.pre_v3_manifest_violations(value, paths)
     if manifest_violations:
         raise BaselineGenerationError(
             "valid existing manifest required: " + "; ".join(manifest_violations)
@@ -670,69 +666,6 @@ def _durable_publish_manifest(
             pass
 
 
-def _replace_manifest_locked(
-    target: pathlib.Path,
-    raw: bytes,
-    generated_paths: set[str],
-) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        descriptor = os.open(target, _nofollow_read_flags())
-    except (OSError, BaselineGenerationError) as exc:
-        raise BaselineGenerationError(f"unsafe baseline target: {exc}") from exc
-    temporary: pathlib.Path | None = None
-    try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        opened = _regular_manifest_stat(
-            descriptor, error_prefix="unsafe baseline target"
-        )
-        _require_manifest_path_identity(
-            target,
-            opened,
-            error="baseline target changed during replacement",
-        )
-        existing_raw = _read_manifest_fd(
-            descriptor,
-            opened,
-            error="baseline target changed during replacement",
-        )
-        existing = _validated_baseline_manifest(existing_raw)
-        existing_paths = {
-            entry["path"] for entry in existing["reports"]  # type: ignore[index]
-        }
-        if existing_paths != generated_paths:
-            raise BaselineGenerationError(
-                "replacement must preserve the exact reviewed path set"
-            )
-
-        temporary_descriptor, temporary_name = tempfile.mkstemp(
-            prefix=f".{target.name}.", dir=target.parent
-        )
-        temporary = pathlib.Path(temporary_name)
-        with os.fdopen(temporary_descriptor, "wb") as stream:
-            stream.write(raw)
-            stream.flush()
-            os.fsync(stream.fileno())
-        _require_manifest_path_identity(
-            target,
-            opened,
-            error="baseline target changed during replacement",
-        )
-        os.replace(temporary, target)
-        temporary = None
-        _fsync_directory(target.parent)
-    finally:
-        if temporary is not None:
-            try:
-                temporary.unlink()
-            except FileNotFoundError:
-                pass
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-        finally:
-            os.close(descriptor)
-
-
 def generate_baseline(
     root: pathlib.Path,
     target: pathlib.Path,
@@ -741,11 +674,15 @@ def generate_baseline(
 ) -> Mapping[str, object]:
     """Generate the tracked-HEAD historical manifest with durable publication."""
 
+    if replace:
+        raise BaselineGenerationError(
+            "pre-v3 cutover manifest is frozen and one-shot; replacement is forbidden"
+        )
     resolved_root = root.resolve()
     with _baseline_generation_lock(resolved_root):
         reports = _tracked_head_reports(resolved_root)
         manifest = _baseline_mapping(reports)
-        manifest_violations = report_gate.legacy_manifest_violations(
+        manifest_violations = report_gate.pre_v3_manifest_violations(
             manifest, [report.relative_path for report in reports]
         )
         if manifest_violations:
@@ -753,13 +690,7 @@ def generate_baseline(
                 "invalid generated manifest: " + "; ".join(manifest_violations)
             )
         raw = _baseline_bytes(manifest)
-        if replace:
-            generated_paths = {
-                entry["path"] for entry in manifest["reports"]  # type: ignore[index]
-            }
-            _replace_manifest_locked(target, raw, generated_paths)
-        else:
-            _durable_publish_manifest(target, raw)
+        _durable_publish_manifest(target, raw)
         return manifest
 
 
@@ -835,7 +766,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(
         "GO-SCHEMA CHECK — PASS: "
-        f"{len(reports)} verification-report(s) passed legacy/v2 and GO evidence gates."
+        f"{len(reports)} verification-report(s) passed pre-v3/v3 and GO evidence gates."
     )
     return 0
 

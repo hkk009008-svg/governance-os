@@ -55,24 +55,11 @@ would make you the implementer and void the verification.
   evidence-ledger-aware bridge route and never fabricate Pipeline descriptor
   authority.
 
-Shipping review command shape:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
-  --repo-root . --head "$HEAD" --base "$BASE" --review-profile "$REVIEW_PROFILE" \
-  --transport-profile anthropic-claude-existing-session-v1 \
-  --shipping-commit "$HEAD"
-```
-
-Verify-request review command shape:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/opus_review_bridge.py review \
-  --repo-root . --head "$HEAD" --base "$BASE" --review-profile "$REVIEW_PROFILE" \
-  --transport-profile anthropic-claude-existing-session-v1 \
-  --verify-request-commit "$TRIGGER_COMMIT" \
-  --verify-request-path "$TRIGGER_PATH"
-```
+Lane V is provider-neutral. Resolve the descriptor, verify independently from
+repository evidence, and run no provider command. Reports use the exact
+`lane-v-report/v3` attestation with `independent-lane-v`,
+`lane-v:independent-verifier`, and a `Reviewer identity` that exactly matches
+the operator envelope sender.
 
 ## Protocol
 1. **Scope-match, not snippet-match.** Read

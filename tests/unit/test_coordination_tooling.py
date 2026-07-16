@@ -65,12 +65,9 @@ def _verification_shell_fixture(repo: Path, source_root: Path) -> tuple[str, str
     )
     scripts = repo / "scripts"
     scripts.mkdir()
-    for name in (
-        "verification_report_gate.py",
-        "opus_review_receipts.py",
-        "opus_review_bridge.py",
-    ):
-        (scripts / name).write_bytes((source_root / "scripts" / name).read_bytes())
+    (scripts / "verification_report_gate.py").write_bytes(
+        (source_root / "scripts" / "verification_report_gate.py").read_bytes()
+    )
     (scripts / "feature.py").write_text("VALUE = 'base'\n", encoding="utf-8")
     (repo / "AGENTS.md").write_text("# Pipeline fixture\n", encoding="utf-8")
     (scripts / "codex_protocol_model.py").write_text(
@@ -95,9 +92,9 @@ def _verification_shell_fixture(repo: Path, source_root: Path) -> tuple[str, str
         "task_id": task_id,
         "question_id": "send-event-shell-fixture",
         "trigger_kind": "verify-request",
-        "verification_mode": "claude-lane-v",
-        "verification_harness": "claude:lane-v-verifier",
-        "review_profile": "claude-lane-v",
+        "verification_mode": "independent-lane-v",
+        "verification_harness": "lane-v:independent-verifier",
+        "review_profile": "independent-lane-v",
         "reviewed_base": {"policy": "exact", "commit": base},
         "requirement_paths": ["requirements/task.md"],
         "allowed_path_roots": ["scripts"],
@@ -148,23 +145,16 @@ def _verification_shell_fixture(repo: Path, source_root: Path) -> tuple[str, str
             "",
             "## Verification Attestation",
             "",
-            "Verification schema: lane-v-report/v2",
-            "Verification mode: claude-lane-v",
-            "Verification harness: claude:lane-v-verifier",
+            "Verification schema: lane-v-report/v3",
+            "Verification mode: independent-lane-v",
+            "Verification harness: lane-v:independent-verifier",
             f"Verification task ID: {task_id}",
             f"Scope authority: {scope}",
             f"Trigger identity: verify-request:{trigger}:{trigger_path}",
             f"Reviewed head: {head}",
             f"Reviewed base: {base}",
-            "Review profile: not-applicable",
-            "Authorization identity: not-applicable",
-            "Opus receipt ID: not-applicable",
-            "Opus scope digest: not-applicable",
-            "Cross-model review: not-applicable",
-            "Effective Opus model: not-applicable",
-            "Opus finding dispositions: not-applicable",
-            "Reconciliation guard: not-applicable",
-            "Degraded reason: not-applicable",
+            "Review profile: independent-lane-v",
+            "Reviewer identity: operator2",
             "",
             "## Findings",
             "None.",
@@ -905,6 +895,49 @@ def test_verification_send_event_branch_contains_no_shell_git_add(repo_root: Pat
     assert source.index('add -f -- "$REL"') > source.index("else\n  [ ! -e \"$F\" ]")
 
 
+def test_provider_neutral_gate_and_send_event_have_task_only_source_cli_closure(
+    tmp_path: Path,
+    repo_root: Path,
+) -> None:
+    gate_path = repo_root / "scripts" / "verification_report_gate.py"
+    gate_source = gate_path.read_text(encoding="utf-8")
+    send_source = (repo_root / "coordination" / "bin" / "send-event").read_text(
+        encoding="utf-8"
+    )
+
+    rejected = _run(
+        [
+            sys.executable,
+            gate_path,
+            "status",
+            "--repo-root",
+            tmp_path,
+            "--task-id",
+            "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+            "--receipt-id",
+            "opr1:" + "1" * 64,
+        ],
+        repo_root,
+    )
+
+    assert rejected.returncode != 0
+    assert "unrecognized arguments: --receipt-id" in rejected.stderr
+    for forbidden in (
+        "ReceiptStore",
+        "ReceiptRecord",
+        "receipt_store_factory",
+        "opus_review_bridge",
+        "codex-lane-v",
+        "claude-lane-v",
+        "Opus receipt ID",
+        "Authorization identity",
+    ):
+        assert forbidden not in gate_source
+    assert "for SOURCE in verification_report_gate.py; do" in send_source
+    assert "opus_review_receipts.py" not in send_source
+    assert "opus_review_bridge.py" not in send_source
+
+
 def _assert_no_verification_publication(repo: Path) -> None:
     assert _git(repo, "diff", "--cached", "--name-only") == ""
     assert not list(
@@ -1080,7 +1113,7 @@ def test_publication_cli_rejects_noncanonical_candidate_locations(
 
 @pytest.mark.parametrize(
     "source_failure",
-    ["missing", "nonblob", "symlink", "import-failure", "missing-publish"],
+    ["missing", "nonblob", "symlink", "missing-publish"],
 )
 def test_verification_send_event_fails_closed_on_untrusted_bootstrap_source(
     tmp_path: Path,
@@ -1101,10 +1134,6 @@ def test_verification_send_event_fails_closed_on_untrusted_bootstrap_source(
     elif source_failure == "symlink":
         gate_path.unlink()
         gate_path.symlink_to("feature.py")
-    elif source_failure == "import-failure":
-        (repo / "scripts/opus_review_receipts.py").write_text(
-            "raise RuntimeError('injected import failure')\n", encoding="utf-8"
-        )
     else:
         gate_path.write_text("# publisher intentionally absent\n", encoding="utf-8")
     _git(repo, "add", "-A", "scripts")
@@ -1117,7 +1146,7 @@ def test_verification_send_event_fails_closed_on_untrusted_bootstrap_source(
     )
 
     assert result.returncode != 0
-    if source_failure in {"import-failure", "missing-publish"}:
+    if source_failure == "missing-publish":
         _assert_only_unowned_candidate_preserved(repo)
     else:
         _assert_no_verification_publication(repo)

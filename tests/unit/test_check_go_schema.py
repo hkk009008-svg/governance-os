@@ -10,7 +10,7 @@ Test cases mirror the brief:
   (b) GO missing the `→ output` line → FAIL, missing field named
   (c) GO whose only evidence cites `wave_gate_check`, no pin output → FAIL
 
-Additional cases cover the unchanged pure GO helper plus legacy/v2 repository
+Additional cases cover the unchanged pure GO helper plus pre-v3 repository
 validation, raw filesystem scanning, and durable baseline generation.
 """
 from __future__ import annotations
@@ -29,7 +29,6 @@ import time
 import pytest
 
 import check_go_schema as cgs
-import opus_review_receipts as receipts
 import verification_report_gate as report_gate
 
 
@@ -443,10 +442,10 @@ def test_main_on_live_mailbox():
 
 
 # ---------------------------------------------------------------------------
-# Repository-wide legacy/v2 report accounting
+# Repository-wide pre-v3/v3 report accounting
 # ---------------------------------------------------------------------------
 
-_BASELINE_SCHEMA = "lane-v-report-v1-baseline/v1"
+_BASELINE_SCHEMA = "lane-v-report-pre-v3-baseline/v1"
 _REPOSITORY_REPORT = (
     "coordination/mailbox/sent/"
     "2026-07-13T06-00-00Z-operator-to-all-verification-report.md"
@@ -474,7 +473,7 @@ def _git(root: pathlib.Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
-def _shipping_v2_fixture(
+def _shipping_v3_fixture(
     root: pathlib.Path,
 ) -> tuple[str, bytes, dict[str, object]]:
     root.mkdir()
@@ -483,7 +482,7 @@ def _shipping_v2_fixture(
         "Review the report gate.\n", encoding="utf-8"
     )
     (root / "scripts").mkdir()
-    for relative in receipts.PIPELINE_MARKER_PATHS:
+    for relative in report_gate.PIPELINE_MARKER_PATHS:
         marker = root / relative
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(f"synthetic Pipeline marker: {relative}\n", encoding="utf-8")
@@ -503,9 +502,9 @@ def _shipping_v2_fixture(
         "task_id": task_id,
         "question_id": "repository-report-fixture",
         "trigger_kind": "shipping-commit",
-        "verification_mode": "claude-lane-v",
-        "verification_harness": "claude:lane-v-verifier",
-        "review_profile": "claude-lane-v",
+        "verification_mode": "independent-lane-v",
+        "verification_harness": "lane-v:independent-verifier",
+        "review_profile": "independent-lane-v",
         "reviewed_base": {"policy": "exact", "commit": base},
         "requirement_paths": ["requirements/task.md"],
         "allowed_path_roots": ["scripts"],
@@ -535,15 +534,16 @@ def _shipping_v2_fixture(
     )
     head = _git(root, "rev-parse", "HEAD")
     fields = [
-        ("Verification schema", "lane-v-report/v2"),
-        ("Verification mode", "claude-lane-v"),
-        ("Verification harness", "claude:lane-v-verifier"),
+        ("Verification schema", "lane-v-report/v3"),
+        ("Verification mode", "independent-lane-v"),
+        ("Verification harness", "lane-v:independent-verifier"),
         ("Verification task ID", task_id),
         ("Scope authority", scope),
         ("Trigger identity", f"shipping-commit:{head}"),
         ("Reviewed head", head),
         ("Reviewed base", base),
-        *[(label, "not-applicable") for label in report_gate.ATTESTATION_FIELDS[8:]],
+        ("Review profile", "independent-lane-v"),
+        ("Reviewer identity", "operator"),
     ]
     raw = (
         f"# Operator → All: Lane V verification report — commit `{head}`\n\n"
@@ -574,7 +574,46 @@ def test_repository_reports_accept_exact_legacy_path_and_raw_digest(
     assert violations == []
 
 
-def test_repository_reports_detect_changed_deleted_and_new_non_v2_history(
+def test_pre_v3_report_requires_exact_manifest_path_and_digest(
+    tmp_path: pathlib.Path,
+) -> None:
+    raw = b"# historical\n\nVERDICT: FAIL\n"
+    path = _REPOSITORY_REPORT
+    manifest = _manifest((path, hashlib.sha256(raw).hexdigest()))
+
+    assert cgs.repository_report_violations(
+        tmp_path, [cgs.RawReport(path, raw)], manifest
+    ) == []
+    assert cgs.repository_report_violations(
+        tmp_path, [cgs.RawReport(path, raw + b"changed\n")], manifest
+    )
+    copied = path.replace("06-00-00", "06-00-01")
+    assert cgs.repository_report_violations(
+        tmp_path, [cgs.RawReport(copied, raw)], manifest
+    )
+
+
+def test_unlisted_pre_v3_report_fails_while_unlisted_v3_is_live_validated(
+    tmp_path: pathlib.Path,
+) -> None:
+    legacy = b"# historical\n\nVERDICT: FAIL\n"
+    legacy_path = _REPOSITORY_REPORT.replace("06-00-00", "06-00-01")
+    assert cgs.repository_report_violations(
+        tmp_path,
+        [cgs.RawReport(legacy_path, legacy)],
+        _manifest(),
+    )
+
+    path, raw, _ = _shipping_v3_fixture(tmp_path / "repo")
+    assert b"Verification schema: lane-v-report/v3" in raw
+    assert cgs.repository_report_violations(
+        tmp_path / "repo",
+        [cgs.RawReport(path, raw)],
+        _manifest(),
+    ) == []
+
+
+def test_repository_reports_detect_changed_deleted_and_new_non_v3_history(
     tmp_path: pathlib.Path,
 ) -> None:
     legacy = b"# historical report\n\nVERDICT: FAIL\n"
@@ -596,7 +635,7 @@ def test_repository_reports_detect_changed_deleted_and_new_non_v2_history(
 
     assert any("baseline drift" in item for item in changed)
     assert deleted == [f"{_REPOSITORY_REPORT}: missing historical baseline report"]
-    assert any("lane-v-report/v2" in item for item in new)
+    assert any("lane-v-report/v3" in item for item in new)
 
 
 def test_repository_reports_strictly_reject_invalid_utf8(tmp_path: pathlib.Path) -> None:
@@ -611,10 +650,10 @@ def test_repository_reports_strictly_reject_invalid_utf8(tmp_path: pathlib.Path)
     assert violations == [f"{path}: report must be strict UTF-8"]
 
 
-def test_modified_historical_report_is_accepted_only_after_full_v2_migration(
+def test_modified_historical_report_is_accepted_only_after_full_v3_migration(
     tmp_path: pathlib.Path,
 ) -> None:
-    root, raw, manifest = _shipping_v2_fixture(tmp_path / "repo")
+    root, raw, manifest = _shipping_v3_fixture(tmp_path / "repo")
 
     violations = cgs.repository_report_violations(
         tmp_path / "repo",
@@ -628,7 +667,7 @@ def test_modified_historical_report_is_accepted_only_after_full_v2_migration(
 def test_repository_scan_never_reads_private_receipts(
     tmp_path: pathlib.Path,
 ) -> None:
-    path, raw, manifest = _shipping_v2_fixture(tmp_path / "repo")
+    path, raw, manifest = _shipping_v3_fixture(tmp_path / "repo")
     private_runtime = tmp_path / "repo" / ".codex" / "runtime"
     private_runtime.mkdir(parents=True)
     private_runtime.chmod(0)
@@ -696,150 +735,6 @@ def _baseline_worker_environment() -> dict[str, str]:
     return environment
 
 
-def test_baseline_generation_serializes_across_target_replace(
-    tmp_path: pathlib.Path,
-) -> None:
-    root = tmp_path / "repo"
-    first, _ = _baseline_repo(root)
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
-    cgs.generate_baseline(root, target)
-    (root / first).write_bytes(b"# serialized update\n\nVERDICT: FAIL\n")
-    _git(root, "add", first)
-    _git(root, "commit", "-q", "-m", "docs: serialized baseline update")
-
-    a_replaced = tmp_path / "a-replaced"
-    a_release = tmp_path / "a-release"
-    a_result = tmp_path / "a-result.json"
-    b_started = tmp_path / "b-started"
-    b_entered = tmp_path / "b-entered-head-read"
-    b_result = tmp_path / "b-result.json"
-    writer_a = """
-import json
-import pathlib
-import time
-import sys
-import check_go_schema as cgs
-
-root, target, replaced, release, result = map(pathlib.Path, sys.argv[1:])
-original_replace = cgs.os.replace
-
-def pause_after_replace(source, destination):
-    original_replace(source, destination)
-    replaced.write_text("replaced", encoding="utf-8")
-    deadline = time.monotonic() + 20.0
-    while not release.exists():
-        if time.monotonic() >= deadline:
-            raise TimeoutError("writer A release timed out")
-        time.sleep(0.01)
-
-cgs.os.replace = pause_after_replace
-try:
-    manifest = cgs.generate_baseline(root, target, replace=True)
-    payload = {"status": "success", "reports": manifest["reports"]}
-except BaseException as exc:
-    payload = {"status": "error", "error": repr(exc)}
-result.write_text(json.dumps(payload), encoding="utf-8")
-"""
-    writer_b = """
-import json
-import pathlib
-import sys
-import check_go_schema as cgs
-
-root, target, started, entered, result = map(pathlib.Path, sys.argv[1:])
-original_tracked_head_reports = cgs._tracked_head_reports
-
-def observe_head_read(repo_root):
-    entered.write_text("entered", encoding="utf-8")
-    return original_tracked_head_reports(repo_root)
-
-cgs._tracked_head_reports = observe_head_read
-started.write_text("started", encoding="utf-8")
-try:
-    manifest = cgs.generate_baseline(root, target, replace=True)
-    payload = {"status": "success", "reports": manifest["reports"]}
-except BaseException as exc:
-    payload = {"status": "error", "error": repr(exc)}
-result.write_text(json.dumps(payload), encoding="utf-8")
-"""
-    environment = _baseline_worker_environment()
-    a = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            writer_a,
-            str(root),
-            str(target),
-            str(a_replaced),
-            str(a_release),
-            str(a_result),
-        ],
-        env=environment,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    b: subprocess.Popen[str] | None = None
-    blocked_before_release = False
-    no_early_success = False
-    try:
-        _wait_for_file(a_replaced)
-        b = subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                writer_b,
-                str(root),
-                str(target),
-                str(b_started),
-                str(b_entered),
-                str(b_result),
-            ],
-            env=environment,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        _wait_for_file(b_started)
-        deadline = time.monotonic() + 0.75
-        while time.monotonic() < deadline and not b_entered.exists():
-            if b.poll() is not None:
-                break
-            time.sleep(0.01)
-        blocked_before_release = not b_entered.exists() and b.poll() is None
-        no_early_success = not a_result.exists() and not b_result.exists()
-    finally:
-        a_release.write_text("release", encoding="utf-8")
-        a_stdout, a_stderr = a.communicate(timeout=10)
-        if b is not None:
-            b_stdout, b_stderr = b.communicate(timeout=10)
-        else:
-            b_stdout = b_stderr = "writer B did not start"
-
-    assert a.returncode == 0, (a_stdout, a_stderr)
-    assert b is not None and b.returncode == 0, (b_stdout, b_stderr)
-    assert blocked_before_release, "writer B entered HEAD enumeration before A released"
-    assert no_early_success, "a writer reported success before A released/fsynced"
-    a_payload = json.loads(a_result.read_text(encoding="utf-8"))
-    b_payload = json.loads(b_result.read_text(encoding="utf-8"))
-    assert a_payload["status"] == b_payload["status"] == "success"
-    expected_digest = hashlib.sha256(_git_blob(root, first)).hexdigest()
-    for payload in (a_payload, b_payload):
-        digests = {entry["path"]: entry["sha256"] for entry in payload["reports"]}
-        assert digests[first] == expected_digest
-    common_text = _git(root, "rev-parse", "--git-common-dir")
-    common = pathlib.Path(common_text)
-    if not common.is_absolute():
-        common = root / common
-    lock = common.resolve() / "codex-lane-v-report-baseline.lock"
-    lock_identity = os.stat(lock, follow_symlinks=False)
-    assert stat.S_ISREG(lock_identity.st_mode)
-    assert stat.S_IMODE(lock_identity.st_mode) == 0o600
-    assert lock_identity.st_uid == os.geteuid()
-    assert lock_identity.st_nlink == 1
-    assert "codex-lane-v-report-baseline.lock" not in _git(
-        root, "status", "--porcelain", "--untracked-files=all"
-    )
 
 
 @pytest.mark.parametrize(
@@ -854,7 +749,7 @@ def test_baseline_generation_rejects_unsafe_stable_lock_metadata(
     common = pathlib.Path(common_text)
     if not common.is_absolute():
         common = root / common
-    lock = common.resolve() / "codex-lane-v-report-baseline.lock"
+    lock = common.resolve() / "lane-v-reports-pre-v3-baseline.lock"
     if unsafe_kind == "symlink":
         target_file = common.resolve() / "attacker-lock-target"
         target_file.write_bytes(b"")
@@ -867,7 +762,7 @@ def test_baseline_generation_rejects_unsafe_stable_lock_metadata(
         lock.chmod(0o600 if unsafe_kind == "hardlink" else 0o644)
         if unsafe_kind == "hardlink":
             os.link(lock, common.resolve() / "attacker-lock-alias")
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
 
     with pytest.raises(cgs.BaselineGenerationError, match="unsafe baseline generation lock"):
         cgs.generate_baseline(root, target)
@@ -1033,7 +928,7 @@ def test_initial_baseline_uses_only_sorted_tracked_head_raw_blobs(
         "2026-07-13T06-12-00Z-operator-to-all-verification-report.md"
     )
     (root / untracked).write_bytes(b"# untracked report\n\nVERDICT: FAIL\n")
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
 
     manifest = cgs.generate_baseline(root, target)
 
@@ -1070,7 +965,7 @@ def test_baseline_pins_one_head_when_symbolic_head_moves_after_enumeration(
         return result
 
     monkeypatch.setattr(cgs, "_baseline_git", move_head_after_ls_tree)
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
 
     manifest = cgs.generate_baseline(root, target)
 
@@ -1091,7 +986,7 @@ def test_baseline_git_ignores_inherited_git_selectors(
     monkeypatch.setenv("GIT_WORK_TREE", str(tmp_path / "attacker-worktree"))
     monkeypatch.setenv("GIT_OBJECT_DIRECTORY", str(tmp_path / "attacker-objects"))
     monkeypatch.setenv("GIT_INDEX_FILE", str(tmp_path / "attacker-index"))
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
 
     manifest = cgs.generate_baseline(root, target)
 
@@ -1116,7 +1011,7 @@ def test_baseline_git_uses_literal_system_binary_under_hostile_path(
     shim.chmod(0o755)
     monkeypatch.setenv("BASELINE_GIT_SHIM_MARKER", str(marker))
     monkeypatch.setenv("PATH", str(shim_directory))
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
 
     manifest = cgs.generate_baseline(root, target)
 
@@ -1133,7 +1028,7 @@ def test_baseline_git_uses_literal_system_binary_when_path_has_no_git(
     no_git_directory = tmp_path / "no-git-bin"
     no_git_directory.mkdir()
     monkeypatch.setenv("PATH", str(no_git_directory))
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
 
     manifest = cgs.generate_baseline(root, target)
 
@@ -1159,7 +1054,7 @@ def test_baseline_git_ignores_replace_refs(tmp_path: pathlib.Path) -> None:
     ).stdout.strip()
     _git(root, "reset", "-q", "--hard", original_head)
     _git(root, "replace", original_head, attacker)
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
 
     manifest = cgs.generate_baseline(root, target)
 
@@ -1174,7 +1069,7 @@ def test_initial_baseline_publication_is_atomic_no_clobber(
 ) -> None:
     root = tmp_path / "repo"
     _baseline_repo(root)
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
     original_link = os.link
 
     def competing_link(source: object, destination: object) -> None:
@@ -1194,7 +1089,7 @@ def test_existing_baseline_is_unchanged_on_initial_generation_failure(
 ) -> None:
     root = tmp_path / "repo"
     _baseline_repo(root)
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
     cgs.generate_baseline(root, target)
     before = target.read_bytes()
 
@@ -1204,116 +1099,41 @@ def test_existing_baseline_is_unchanged_on_initial_generation_failure(
     assert target.read_bytes() == before
 
 
-def test_replace_baseline_preserves_exact_reviewed_path_set(
+def test_pre_v3_cutover_manifest_is_one_shot_for_api_and_cli(
     tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = tmp_path / "repo"
-    first, second = _baseline_repo(root)
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
-    initial = cgs.generate_baseline(root, target)
+    first, _ = _baseline_repo(root)
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
+    cgs.generate_baseline(root, target)
+    frozen = target.read_bytes()
 
-    (root / first).write_bytes(b"# reviewed digest update\n\nVERDICT: FAIL\n")
+    (root / first).write_bytes(b"# changed historical report\n\nVERDICT: FAIL\n")
     _git(root, "add", first)
-    _git(root, "commit", "-q", "-m", "docs: reviewed legacy update")
-    replaced = cgs.generate_baseline(root, target, replace=True)
-    assert [entry["path"] for entry in replaced["reports"]] == [first, second]
-    assert replaced != initial
+    _git(root, "commit", "-q", "-m", "docs: mutate frozen history")
 
-    added = (
-        "coordination/mailbox/sent/"
-        "2026-07-13T06-13-00Z-operator-to-all-verification-report.md"
+    with pytest.raises(cgs.BaselineGenerationError, match="frozen|one-shot"):
+        cgs.generate_baseline(root, target, replace=True)
+    assert target.read_bytes() == frozen
+
+    monkeypatch.setattr(cgs, "ROOT", root)
+    assert cgs.main(
+        [
+            "--generate-baseline",
+            "scripts/baselines/lane_v_reports_pre_v3.json",
+            "--replace-baseline",
+        ]
+    ) == 1
+    assert target.read_bytes() == frozen
+
+    manifest = cgs.load_baseline_manifest(target)
+    violations = cgs.repository_report_violations(
+        root, cgs.scan_repository_reports(root), manifest
     )
-    (root / added).write_bytes(b"# later report\n\nVERDICT: FAIL\n")
-    _git(root, "add", added)
-    _git(root, "commit", "-q", "-m", "test: add later report")
-    before_addition_failure = target.read_bytes()
-    with pytest.raises(cgs.BaselineGenerationError, match="path set"):
-        cgs.generate_baseline(root, target, replace=True)
-    assert target.read_bytes() == before_addition_failure
-
-    (root / added).unlink()
-    (root / second).unlink()
-    _git(root, "add", "-A")
-    _git(root, "commit", "-q", "-m", "test: remove historical paths")
-    before_missing_failure = target.read_bytes()
-    with pytest.raises(cgs.BaselineGenerationError, match="path set"):
-        cgs.generate_baseline(root, target, replace=True)
-    assert target.read_bytes() == before_missing_failure
-    persisted = json.loads(target.read_text(encoding="utf-8"))
-    assert second in {entry["path"] for entry in persisted["reports"]}
+    assert any(first in item and "baseline drift" in item for item in violations)
 
 
-def test_replace_baseline_rejects_competing_valid_manifest_after_validation(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = tmp_path / "repo"
-    _baseline_repo(root)
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
-    initial = cgs.generate_baseline(root, target)
-    competing = json.loads(cgs._baseline_bytes(initial))
-    for index, entry in enumerate(competing["reports"], start=1):
-        entry["sha256"] = f"{index}" * 64
-    competing_raw = cgs._baseline_bytes(competing)
-    original_mkstemp = cgs.tempfile.mkstemp
-    injected = False
-
-    def inject_competing_winner(*args: object, **kwargs: object) -> tuple[int, str]:
-        nonlocal injected
-        descriptor, name = original_mkstemp(*args, **kwargs)
-        if not injected:
-            injected = True
-            competing_temp = target.with_name(".competing-valid-manifest")
-            competing_temp.write_bytes(competing_raw)
-            os.replace(competing_temp, target)
-        return descriptor, name
-
-    monkeypatch.setattr(cgs.tempfile, "mkstemp", inject_competing_winner)
-
-    with pytest.raises(cgs.BaselineGenerationError, match="changed during replacement"):
-        cgs.generate_baseline(root, target, replace=True)
-
-    assert injected
-    assert target.read_bytes() == competing_raw
-
-
-@pytest.mark.parametrize("unsafe_kind", ["symlink", "hardlink"])
-def test_replace_baseline_rejects_unsafe_target_identity(
-    tmp_path: pathlib.Path, unsafe_kind: str
-) -> None:
-    root = tmp_path / "repo"
-    _baseline_repo(root)
-    real_target = root / "scripts" / "baselines" / "reviewed.json"
-    cgs.generate_baseline(root, real_target)
-    target = real_target.with_name("lane_v_report_v1.json")
-    if unsafe_kind == "symlink":
-        target.symlink_to(real_target.name)
-    else:
-        os.link(real_target, target)
-    before = real_target.read_bytes()
-
-    with pytest.raises(cgs.BaselineGenerationError, match="unsafe baseline target"):
-        cgs.generate_baseline(root, target, replace=True)
-
-    assert real_target.read_bytes() == before
-    if unsafe_kind == "symlink":
-        assert target.is_symlink()
-    else:
-        assert os.stat(target).st_ino == os.stat(real_target).st_ino
-
-
-def test_replace_requires_generate_and_valid_existing_manifest(
-    tmp_path: pathlib.Path,
-) -> None:
-    assert cgs.main(["--replace-baseline"]) == 1
-
-    root = tmp_path / "repo"
-    _baseline_repo(root)
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
-    target.parent.mkdir(parents=True)
-    target.write_bytes(b"not-json\n")
-
-    with pytest.raises(cgs.BaselineGenerationError, match="valid existing manifest"):
-        cgs.generate_baseline(root, target, replace=True)
 
 
 def test_untracked_report_is_not_grandfathered_by_generation(
@@ -1321,7 +1141,7 @@ def test_untracked_report_is_not_grandfathered_by_generation(
 ) -> None:
     root = tmp_path / "repo"
     _baseline_repo(root)
-    target = root / "scripts" / "baselines" / "lane_v_report_v1.json"
+    target = root / "scripts" / "baselines" / "lane_v_reports_pre_v3.json"
     manifest = cgs.generate_baseline(root, target)
     untracked = (
         "coordination/mailbox/sent/"
@@ -1335,7 +1155,7 @@ def test_untracked_report_is_not_grandfathered_by_generation(
         manifest,
     )
 
-    assert any(untracked in violation and "lane-v-report/v2" in violation for violation in violations)
+    assert any(untracked in violation and "lane-v-report/v3" in violation for violation in violations)
 
 
 def test_cli_and_smoke_call_the_same_public_repository_validator() -> None:

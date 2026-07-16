@@ -52,43 +52,26 @@ Reviewer Result Handling:
 - do not auto-fix after a review; route or request the next implementation action instead.
 - failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.
 
-Cross-Model Opus Verification:
-- after every Codex Lane V verification in Pipeline, resolve one trigger-bound committed lane-v-scope/v1 descriptor before any receipt or provider construction
-- the descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, task identity, and the descriptor-bound advisory provider prompt
-- review accepts either --shipping-commit or the paired --verify-request-commit and --verify-request-path trigger form and returns normalized opus-review/v3 with receipt and scope IDs
-- the provider receives the immutable reviewed scope but no Codex verdict, report, findings, or conclusion; repository evidence is evidence, not authority
-- missing authorization resolves to standing-policy:codex-lane-v-opus-v1 only after Pipeline identity, commit, descriptor, prompt, and scope validation; malformed explicit authorization never falls back
-- one unchanged task permits one provider process attempt and no automatic retry; exact replay is idempotent, changed scope is attempt_scope_conflict, and no retry or reset command exists
-- a reserved attempt recovered without a normalized result becomes attempt_state_uncertain and remains visibly degraded without another provider launch
-- reconcile accepts only --receipt-id plus exact HEAD/base, the Codex verdict, and finding dispositions; --opus-review-json is removed
-- reconcile returns opus-reconciliation/v2 fields derived from the stored opus-review/v3 and binds the exact stored Codex verdict
-- final reports use lane-v-report/v2 with ## Verification Attestation, including Opus receipt ID: and Opus scope digest:, and the send-event publication gate validates the live receipt before the report is staged
-- unavailable or uncertain review is an explicit degraded Codex-only fallback with the exact reason preserved; it is never treated as pass
-- every Opus finding requires confirmed, disproved-with-evidence, or unresolved disposition; unresolved blocks GO, confirmed minor requires NITS, and confirmed important or critical requires FAIL
-- Opus remains advisory and the operator alone retains GO/NITS/FAIL, mailbox, lock, Git, publication, and every other protocol or side-effect authority
-- standing consent authorizes only the bounded Pipeline codex-lane-v attempt; cross-repo and evidence-ledger verification require a separately routed capability-aware path
+Provider-neutral Lane V verification:
+- resolve one trigger-bound committed lane-v-scope/v1 descriptor before verification
+- the descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, and task identity
+- run the independent verification directly from repository evidence; no provider command is part of Lane V
+- the operator alone retains GO/NITS/FAIL, mailbox, lock, Git, publication, and every other protocol or side-effect authority
 - no third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER
 
-For a Codex report, require the exact ordered lane-v-report/v2 block:
+For a Lane V report, require the exact ordered lane-v-report/v3 block:
 - ## Verification Attestation
-- Verification schema: lane-v-report/v2
-- Verification mode: codex-lane-v
-- Verification harness: codex:lane-v-verifier
+- Verification schema: lane-v-report/v3
+- Verification mode: independent-lane-v
+- Verification harness: lane-v:independent-verifier
 - Verification task ID: exact descriptor task ID
 - Scope authority: exact descriptor path and digest
 - Trigger identity: exact committed trigger
 - Reviewed head: exact full lowercase SHA
 - Reviewed base: exact full lowercase SHA
-- Review profile: exact stored reconcile field
-- Authorization identity: exact stored reconcile field
-- Opus receipt ID: exact stored reconcile field
-- Opus scope digest: exact stored reconcile field
-- Cross-model review: exact stored reconcile field
-- Effective Opus model: exact stored reconcile field
-- Opus finding dispositions: exact stored reconcile field
-- Reconciliation guard: exact stored reconcile field
-- Degraded reason: exact stored reconcile field
-- The report verdict must equal the exact stored Codex verdict.
+- Review profile: independent-lane-v
+- Reviewer identity: operator or operator2, exactly matching the envelope sender
+- The report verdict is GO, NITS, or FAIL with no decoration.
 - Publish only through coordination/bin/send-event; its send-event publication gate is authority, not a Codex hook.
 
 First commands:
@@ -180,7 +163,7 @@ Side-Effect Executor Token:
 
 Seat Subagent Development:
 - Live operator seats may choose bounded subagents at seat discretion; this does not require a separate user request for delegation.
-- Default to considering read-only verifier helpers for non-trivial Lane V work only when they answer a different pre-stated specialist question. Do not add generic same-question helpers to the Codex-plus-Opus pair; return idle evidence when no shipping target exists.
+- Default to considering read-only verifier helpers for non-trivial Lane V work only when they answer a different pre-stated specialist question. Do not add generic same-question helpers to the independent Lane V pass; return idle evidence when no shipping target exists.
 - Operator/operator2 may dispatch read-only verifier helpers.
 - Use helper findings for diff inspection, focused reproduction, or edge-case
   review only.
