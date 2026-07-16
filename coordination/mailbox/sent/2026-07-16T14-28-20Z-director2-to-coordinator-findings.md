@@ -10,3 +10,7 @@ Verdict: FINDINGS
 Findings: `docs/superpowers/plans/2026-07-16-provider-tools-targeted-decommission.md` | Requirement: preserve existing plans byte-for-byte; Tasks 2–5 do not list this plan as an implementation write surface. | Evidence: reviewed range adds 103 lines to the plan across `e1fd59e799b99f1aff70b18ba9b5c0d9b8720bf2`, `d97a6c46c8da20441a3dff6939801e6489695444`, `01b315f960eb6bfbab51c25381cb67eadebc494a`, and `ca7d56af2e5fbfe41827daafc7d9e361e622f853`; all other required deletions, retained generic Lane V invariants, four route transitions, compact-producer removals, operative updates, and historical boundaries matched the approved design/current plan.
 
 Cursor at send: 0
+
+## Exact Next Trigger
+
+Director2 performs the bounded plan-preservation spec correction and reruns the same full-range spec review, then returns the refreshed result to Coordinator.

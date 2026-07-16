@@ -1682,6 +1682,106 @@ def test_publish_and_status_retain_exact_task_index_witness(
     assert status["staged_blob_match"] is True
 
 
+def _published_default_fixture(root: Path) -> _LiveLaneVFixture:
+    fixture = _live_lane_v_fixture(root, default_store=True)
+    candidate = _candidate_path(fixture.root, fixture.raw)
+    gate.publish_candidate(
+        repo_root=fixture.root,
+        candidate_path=candidate,
+        final_relative=fixture.report.relative_path,
+    )
+    return fixture
+
+
+def test_read_only_published_report_validation_accepts_exact_witness(
+    tmp_path: Path,
+) -> None:
+    fixture = _published_default_fixture(tmp_path / "repo")
+
+    record = gate.validate_published_report(fixture.root, fixture.report)
+
+    assert record.state == "published"
+    assert record.path == fixture.report.relative_path
+    assert record.candidate_digest == fixture.report.body_digest
+    assert record.index_mode == "100644"
+    assert record.index_stage == 0
+
+
+@pytest.mark.parametrize("state", ["ready", "publishing"])
+def test_read_only_published_report_validation_rejects_unfinished_state(
+    tmp_path: Path,
+    state: str,
+) -> None:
+    fixture = _live_lane_v_fixture(tmp_path / "repo", default_store=True)
+    if state == "publishing":
+        candidate = _candidate_path(fixture.root, fixture.raw)
+        _begin_interrupted_publication(
+            fixture, candidate, fixture.report.relative_path
+        )
+
+    with pytest.raises(gate.ReportGateError, match="task_publication_not_published"):
+        gate.validate_published_report(fixture.root, fixture.report)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["authority", "path", "raw-digest", "index-witness"],
+)
+def test_read_only_published_report_validation_rejects_wrong_witness(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    fixture = _published_default_fixture(tmp_path / "repo")
+    record_path = fixture.store.state_root / f"{TASK_ID}.json"
+    value = json.loads(record_path.read_text(encoding="utf-8"))
+    if mutation == "authority":
+        value["authority_digest"] = "sha256:" + "9" * 64
+    elif mutation == "path":
+        value["path"] = value["path"].replace("05-00-00Z", "05-00-01Z")
+    elif mutation == "raw-digest":
+        value["candidate_digest"] = "sha256:" + "9" * 64
+    else:
+        value["index_blob_oid"] = "9" * len(value["index_blob_oid"])
+    record_path.write_bytes(gate.canonical_json_bytes(value))
+
+    with pytest.raises(gate.ReportGateError):
+        gate.validate_published_report(fixture.root, fixture.report)
+
+
+@pytest.mark.parametrize("surface", ["root", "lock", "record"])
+def test_read_only_published_report_validation_rejects_unsafe_private_metadata(
+    tmp_path: Path,
+    surface: str,
+) -> None:
+    fixture = _published_default_fixture(tmp_path / "repo")
+    target = {
+        "root": fixture.store.state_root,
+        "lock": fixture.store.state_root / f"{TASK_ID}.lock",
+        "record": fixture.store.state_root / f"{TASK_ID}.json",
+    }[surface]
+    target.chmod(0o755 if surface == "root" else 0o644)
+
+    with pytest.raises(gate.ReportGateError, match="unsafe"):
+        gate.validate_published_report(fixture.root, fixture.report)
+
+
+@pytest.mark.parametrize("surface", ["lock", "record"])
+def test_read_only_published_report_validation_does_not_recreate_missing_state(
+    tmp_path: Path,
+    surface: str,
+) -> None:
+    fixture = _published_default_fixture(tmp_path / "repo")
+    target = fixture.store.state_root / f"{TASK_ID}.{surface}"
+    if surface == "record":
+        target = target.with_suffix(".json")
+    target.unlink()
+
+    with pytest.raises(gate.ReportGateError, match="task_publication_missing"):
+        gate.validate_published_report(fixture.root, fixture.report)
+
+    assert not target.exists()
+
+
 def _task_store_fixture(
     root: Path,
 ) -> tuple[

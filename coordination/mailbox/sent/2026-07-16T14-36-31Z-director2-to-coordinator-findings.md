@@ -10,3 +10,7 @@ Verdict: PASS
 Findings: none
 
 Cursor at send: 0
+
+## Exact Next Trigger
+
+Coordinator activates Operator2 for the bounded full-range quality preflight against the refreshed reviewed range.

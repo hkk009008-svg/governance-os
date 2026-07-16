@@ -393,6 +393,30 @@ def _provider_sensitive(value: object) -> bool:
     return "provider" in token_set and bool(token_set & provider_actions)
 
 
+def _done_evidence_invokes_provider(value: object) -> bool:
+    tokens = _match_tokens(value)
+    token_set = set(tokens)
+    normalized = " ".join(tokens)
+    if _contains_provider_reference_near_action(tokens):
+        return True
+    if "retry" in token_set and token_set & {"external", "advisory"}:
+        return True
+    if token_set & AFFIRMATIVE_ACTION_TOKENS and (
+        any(
+            phrase in normalized
+            for phrase in ("in app browser", "paid api", "receipt id")
+        )
+        or bool(token_set & {"receipt", "retry"})
+        or {"external", "advisory"}.issubset(token_set)
+        or (
+            "provider" in token_set
+            and bool(token_set & PROVIDER_MECHANISM_TOKENS)
+        )
+    ):
+        return True
+    return False
+
+
 def _assert_launchable_packet_provider_free(path: Path, packet: dict[str, object]) -> None:
     if packet["status"] not in {"ready", "active"}:
         return
@@ -426,7 +450,27 @@ def _assert_launchable_packet_provider_free(path: Path, packet: dict[str, object
                         statement,
                     )
             continue
+        if field == "done_evidence":
+            for statement in value:
+                assert not _done_evidence_invokes_provider(statement), (
+                    path,
+                    field,
+                    statement,
+                )
+            continue
         raise AssertionError((path, field, value))
+
+
+def _synthetic_ready_decommission_packet() -> dict[str, object]:
+    source = (
+        ROOT
+        / "coordination/capacity/packets/"
+        "2026-07-16-provider-tools-decommission-director-implementation.json"
+    )
+    packet = json.loads(source.read_text(encoding="utf-8"))
+    packet["status"] = "ready"
+    packet["done_evidence"] = []
+    return packet
 
 
 def test_launchable_capacity_packets_do_not_invoke_deleted_providers() -> None:
@@ -437,13 +481,7 @@ def test_launchable_capacity_packets_do_not_invoke_deleted_providers() -> None:
 
 
 def test_launchable_capacity_gate_rejects_affirmative_provider_contradiction() -> None:
-    packet = json.loads(
-        (
-            ROOT
-            / "coordination/capacity/packets/"
-            "2026-07-16-provider-tools-decommission-director2-implementation.json"
-        ).read_text(encoding="utf-8")
-    )
+    packet = _synthetic_ready_decommission_packet()
     packet["done_evidence"] = [
         "Run claude -p 'review the diff' after the provider-neutral check"
     ]
@@ -453,13 +491,7 @@ def test_launchable_capacity_gate_rejects_affirmative_provider_contradiction() -
 
 
 def test_launchable_capacity_gate_rejects_command_disguised_as_scope() -> None:
-    packet = json.loads(
-        (
-            ROOT
-            / "coordination/capacity/packets/"
-            "2026-07-16-provider-tools-decommission-director2-implementation.json"
-        ).read_text(encoding="utf-8")
-    )
+    packet = _synthetic_ready_decommission_packet()
     packet["allowed_paths"].append("claude -p 'execute provider review'")
 
     with pytest.raises(AssertionError, match="allowed_paths"):
@@ -482,13 +514,7 @@ def test_launchable_capacity_gate_rejects_alternate_provider_actions(
     field: str,
     affirmative_action: object,
 ) -> None:
-    packet = json.loads(
-        (
-            ROOT
-            / "coordination/capacity/packets/"
-            "2026-07-16-provider-tools-decommission-director2-implementation.json"
-        ).read_text(encoding="utf-8")
-    )
+    packet = _synthetic_ready_decommission_packet()
     packet[field] = affirmative_action
 
     with pytest.raises(AssertionError, match=field):
@@ -511,13 +537,7 @@ def test_launchable_capacity_gate_rejects_obfuscated_provider_actions(
     field: str,
     affirmative_action: object,
 ) -> None:
-    packet = json.loads(
-        (
-            ROOT
-            / "coordination/capacity/packets/"
-            "2026-07-16-provider-tools-decommission-director2-implementation.json"
-        ).read_text(encoding="utf-8")
-    )
+    packet = _synthetic_ready_decommission_packet()
     packet[field] = affirmative_action
 
     with pytest.raises(AssertionError, match=field):
@@ -528,7 +548,7 @@ def test_launchable_capacity_gate_accepts_exact_negative_decommission_packet() -
     path = (
         ROOT
         / "coordination/capacity/packets/"
-        "2026-07-16-provider-tools-decommission-director2-implementation.json"
+        "2026-07-16-provider-tools-decommission-director-implementation.json"
     )
     packet = json.loads(path.read_text(encoding="utf-8"))
 
@@ -604,13 +624,7 @@ def test_launchable_capacity_gate_rejects_known_provider_affirmative_actions(
     field: str,
     affirmative_action: str,
 ) -> None:
-    packet = json.loads(
-        (
-            ROOT
-            / "coordination/capacity/packets/"
-            "2026-07-16-provider-tools-decommission-director2-implementation.json"
-        ).read_text(encoding="utf-8")
-    )
+    packet = _synthetic_ready_decommission_packet()
     packet[field] = affirmative_action
 
     with pytest.raises(AssertionError, match=field):

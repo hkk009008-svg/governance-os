@@ -593,7 +593,7 @@ def test_pre_v3_report_requires_exact_manifest_path_and_digest(
     )
 
 
-def test_unlisted_pre_v3_report_fails_while_unlisted_v3_is_live_validated(
+def test_unlisted_pre_v3_report_fails(
     tmp_path: pathlib.Path,
 ) -> None:
     legacy = b"# historical\n\nVERDICT: FAIL\n"
@@ -604,10 +604,46 @@ def test_unlisted_pre_v3_report_fails_while_unlisted_v3_is_live_validated(
         _manifest(),
     )
 
-    path, raw, _ = _shipping_v3_fixture(tmp_path / "repo")
+
+def test_repository_scan_rejects_v3_without_published_task_witness(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "repo"
+    path, raw, _ = _shipping_v3_fixture(root)
+    publication_root = root / ".codex/runtime/lane-v-report-publications/v1"
+    sent = root / "coordination/mailbox/sent"
+
     assert b"Verification schema: lane-v-report/v3" in raw
+    violations = cgs.repository_report_violations(
+        root,
+        [cgs.RawReport(path, raw)],
+        _manifest(),
+    )
+
+    assert any("task_publication_missing" in item for item in violations)
+    assert not publication_root.exists()
+    assert not sent.exists()
+    assert _git(root, "ls-files", "--stage", "--", path) == ""
+
+
+def test_repository_scan_accepts_exact_published_task_witness(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "repo"
+    path, raw, _ = _shipping_v3_fixture(root)
+    sent = root / "coordination/mailbox/sent"
+    sent.mkdir(parents=True)
+    candidate = sent / ".repository-scan.candidate.tmp"
+    candidate.write_bytes(raw)
+    candidate.chmod(0o600)
+    report_gate.publish_candidate(
+        repo_root=root,
+        candidate_path=candidate,
+        final_relative=path,
+    )
+
     assert cgs.repository_report_violations(
-        tmp_path / "repo",
+        root,
         [cgs.RawReport(path, raw)],
         _manifest(),
     ) == []
@@ -667,18 +703,29 @@ def test_manifest_listed_report_rejects_valid_v3_replacement_as_baseline_drift(
 def test_repository_scan_never_reads_private_receipts(
     tmp_path: pathlib.Path,
 ) -> None:
-    path, raw, _ = _shipping_v3_fixture(tmp_path / "repo")
-    private_runtime = tmp_path / "repo" / ".codex" / "runtime"
-    private_runtime.mkdir(parents=True)
-    private_runtime.chmod(0)
+    root = tmp_path / "repo"
+    path, raw, _ = _shipping_v3_fixture(root)
+    sent = root / "coordination/mailbox/sent"
+    sent.mkdir(parents=True)
+    candidate = sent / ".private-receipt-probe.candidate.tmp"
+    candidate.write_bytes(raw)
+    candidate.chmod(0o600)
+    report_gate.publish_candidate(
+        repo_root=root,
+        candidate_path=candidate,
+        final_relative=path,
+    )
+    private_receipts = root / ".codex/runtime/private-receipts"
+    private_receipts.mkdir()
+    private_receipts.chmod(0)
     try:
         violations = cgs.repository_report_violations(
-            tmp_path / "repo",
+            root,
             [cgs.RawReport(path, raw)],
             _manifest(),
         )
     finally:
-        private_runtime.chmod(0o700)
+        private_receipts.chmod(0o700)
 
     assert violations == []
 

@@ -3094,6 +3094,234 @@ def publish_candidate(
     ).path
 
 
+def _open_existing_private_directory(path: Path) -> int:
+    """Open an existing private directory without creating any path component."""
+
+    path = path.absolute()
+    try:
+        observed = os.lstat(path)
+    except FileNotFoundError as exc:
+        raise ScopeContractError(
+            "task_publication_missing", "task publication root is missing"
+        ) from exc
+    except OSError as exc:
+        raise ScopeContractError("unsafe_private_directory", str(exc)) from exc
+    if (
+        not stat.S_ISDIR(observed.st_mode)
+        or stat.S_IMODE(observed.st_mode) != 0o700
+        or observed.st_uid != os.getuid()
+        or observed.st_nlink < 2
+    ):
+        raise ScopeContractError(
+            "unsafe_private_directory", "private state directory metadata is unsafe"
+        )
+    try:
+        directory_fd = os.open(path, _private_directory_flags())
+    except OSError as exc:
+        raise ScopeContractError("unsafe_private_directory", str(exc)) from exc
+    try:
+        checked = os.fstat(directory_fd)
+        current = os.stat(path, follow_symlinks=False)
+        if (
+            not stat.S_ISDIR(checked.st_mode)
+            or stat.S_IMODE(checked.st_mode) != 0o700
+            or checked.st_uid != os.getuid()
+            or not stat.S_ISDIR(current.st_mode)
+            or stat.S_IMODE(current.st_mode) != 0o700
+            or current.st_uid != os.getuid()
+            or (checked.st_dev, checked.st_ino)
+            != (observed.st_dev, observed.st_ino)
+            or (current.st_dev, current.st_ino)
+            != (checked.st_dev, checked.st_ino)
+        ):
+            raise ScopeContractError(
+                "unsafe_private_directory",
+                "private state directory changed during open",
+            )
+        return directory_fd
+    except BaseException:
+        os.close(directory_fd)
+        raise
+
+
+class _ExistingLockedTask(LockedTask):
+    """Read one task record while holding only its already-existing lock."""
+
+    def __enter__(self) -> _ExistingLockedTask:
+        if self._directory_fd is not None:
+            _fail("task_lock_reentry", "task publication lock is already active")
+        directory_fd = _open_existing_private_directory(self._store.state_root)
+        try:
+            lock_fd = os.open(
+                self._lock_name,
+                _private_file_flags(os.O_RDWR),
+                dir_fd=directory_fd,
+            )
+            try:
+                opened = _validate_private_file(
+                    lock_fd,
+                    label="task publication lock",
+                    stat_fn=self._store._stat_fn,
+                )
+                operation = fcntl.LOCK_EX
+                if not self._blocking:
+                    operation |= fcntl.LOCK_NB
+                fcntl.flock(lock_fd, operation)
+                current = os.stat(
+                    self._lock_name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    not stat.S_ISREG(current.st_mode)
+                    or stat.S_IMODE(current.st_mode) != 0o600
+                    or current.st_uid != os.getuid()
+                    or current.st_nlink != 1
+                    or (current.st_dev, current.st_ino)
+                    != (opened.st_dev, opened.st_ino)
+                ):
+                    raise ScopeContractError(
+                        "unsafe_private_file",
+                        "task publication lock identity is unsafe",
+                    )
+            except BaseException:
+                os.close(lock_fd)
+                raise
+        except FileNotFoundError as exc:
+            os.close(directory_fd)
+            raise ReportGateError(
+                "task_publication_missing", "task publication lock is missing"
+            ) from exc
+        except OSError as exc:
+            os.close(directory_fd)
+            if exc.errno in {errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK}:
+                raise ReportGateError(
+                    "task_publication_in_progress", "task lock is held"
+                ) from exc
+            raise ReportGateError("task_lock_failed", str(exc)) from exc
+        except BaseException:
+            os.close(directory_fd)
+            raise
+        self._directory_fd = directory_fd
+        self._lock_fd = lock_fd
+        return self
+
+    def load_existing(self) -> TaskPublicationRecord:
+        directory_fd = self._require_locked()
+        try:
+            record_fd = os.open(
+                self._record_name,
+                _private_file_flags(os.O_RDONLY | os.O_NONBLOCK),
+                dir_fd=directory_fd,
+            )
+        except FileNotFoundError:
+            _fail("task_publication_missing", "task publication record is missing")
+        except OSError as exc:
+            raise ReportGateError("task_publication_open_failed", str(exc)) from exc
+        try:
+            raw, opened = _read_regular_file(
+                record_fd,
+                expected_nlink=1,
+                label="task publication record",
+            )
+            current = os.stat(
+                self._record_name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISREG(current.st_mode)
+                or stat.S_IMODE(current.st_mode) != 0o600
+                or current.st_uid != os.getuid()
+                or current.st_nlink != 1
+                or (current.st_dev, current.st_ino)
+                != (opened.st_dev, opened.st_ino)
+            ):
+                raise ScopeContractError(
+                    "unsafe_private_file",
+                    "task publication record identity is unsafe",
+                )
+        finally:
+            os.close(record_fd)
+        current_record = _task_record_from_bytes(raw, self._task_id)
+        self._current = current_record
+        return current_record
+
+
+def _existing_task_store(root: Path) -> TaskPublicationStore:
+    result = _git_process(
+        root,
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-common-dir",
+    )
+    if result.returncode != 0 or not isinstance(result.stdout, str):
+        _fail("invalid_repository", "could not resolve Git common directory")
+    common = Path(result.stdout.strip()).resolve()
+    return TaskPublicationStore(
+        common.parent / ".codex/runtime/lane-v-report-publications/v1"
+    )
+
+
+def validate_published_report(
+    repo_root: str | os.PathLike[str],
+    report: LaneVReport,
+) -> TaskPublicationRecord:
+    """Read-only proof that one parsed v3 report is the exact published task."""
+
+    _live_report_shape(report)
+    root = _require_repository(Path(repo_root))
+    authority = validate_structural_authority(root, report)
+    if (
+        authority.verify_request_recipient is not None
+        and report.sender != authority.verify_request_recipient
+    ):
+        _fail(
+            "verify_request_recipient_mismatch",
+            "report sender is not the verify-request operator recipient",
+        )
+    sent_fd: int | None = None
+    try:
+        store = _existing_task_store(root)
+        authority_digest = _task_authority_digest(root, report, authority)
+        with _SanitizedGit(root) as git:
+            with _ExistingLockedTask(
+                store,
+                authority.descriptor.task_id,
+                blocking=True,
+            ) as task:
+                record = task.load_existing()
+                _validate_task_record(record, authority_digest)
+                if record.state != "published":
+                    _fail(
+                        "task_publication_not_published",
+                        "task publication record is not published",
+                    )
+                if (
+                    record.path != report.relative_path
+                    or record.candidate_digest != report.body_digest
+                ):
+                    _fail(
+                        "published_report_mismatch",
+                        "published task witness does not match parsed report",
+                    )
+                sent_fd = _open_sent_directory(root)
+                _status_locked(record=record, sent_fd=sent_fd, git=git)
+                return record
+    except (ReportGateError, ScopeContractError) as exc:
+        if isinstance(exc, ReportGateError):
+            raise
+        raise ReportGateError(exc.reason, exc.detail) from exc
+    except Exception as exc:
+        reason = getattr(exc, "reason", "task_publication_access_failed")
+        raise ReportGateError(
+            "invalid_task_publication", f"task state access failed: {reason}"
+        ) from exc
+    finally:
+        if sent_fd is not None:
+            os.close(sent_fd)
+
+
 def _candidate_is_stored(record: object, candidate: _CapturedCandidate) -> bool:
     """Match a captured file to the candidate fields of a valid stored witness."""
 

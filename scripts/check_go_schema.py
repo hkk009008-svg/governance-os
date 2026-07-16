@@ -231,7 +231,7 @@ def repository_report_violations(
                 named.raw,
                 decoded_text=text,
             )
-            report_gate.validate_structural_authority(root, parsed)
+            report_gate.validate_published_report(root, parsed)
         except report_gate.ReportGateError as exc:
             violations.append(
                 f"{named.relative_path}: report is not an exact pre-v3 baseline "
