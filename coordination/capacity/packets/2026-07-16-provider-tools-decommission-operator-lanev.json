@@ -26,8 +26,8 @@
   ],
   "done_evidence": [],
   "next_recipient": "coordinator",
-  "status": "blocked",
-  "verify_request": "coordination/mailbox/sent/2026-07-16T16-39-04Z-director2-to-operator-verify-request.md",
+  "status": "active",
+  "verify_request": "coordination/mailbox/sent/2026-07-16T16-46-08Z-director2-to-operator-verify-request.md",
   "target_commit": "ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "scope_files": [
