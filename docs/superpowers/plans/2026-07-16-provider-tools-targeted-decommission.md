@@ -424,11 +424,15 @@ Fresh spec review question: does the commit remove exactly the three provider do
 - Modify: `.agents/skills/seat-director/SKILL.md`
 - Modify: `.agents/skills/seat-operator/SKILL.md`
 - Modify: `.agents/skills/seat-coordinator/SKILL.md`
+- Modify: `.agents/skills/seat-operator/verification-report-format.md`
+- Modify: `.claude/skills/seat-operator/verification-report-format.md`
 - Modify: `.codex/agents/readiness-bridge.toml`
+- Modify: `.codex/agents/lane-v-verifier.toml`
 - Modify: `.codex/agents/protocol-director.toml`
 - Modify: `.codex/agents/protocol-operator.toml`
 - Modify: `.codex/agents/protocol-coordinator.toml`
 - Modify: `.claude/agents/readiness-bridge.md`
+- Modify: `.claude/agents/lane-v-verifier.md`
 - Modify: `docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md`
 - Modify: `docs/protocol/threeway/ARCHITECTURE-DIAGRAM.md`
 - Modify: `docs/protocol/threeway/ONBOARDING.md`
@@ -888,6 +892,28 @@ commit:
   `DECISIONS.md`. Operative scanning must exclude historical evidence and the
   real `.codex/runtime` residue; no Task-5 test or helper may traverse or mutate
   that runtime.
+
+**Binding post-implementation review correction:** Fresh spec and adversarial
+reviews of `d97a6c46c8da20441a3dff6939801e6489695444..6bc19e2745b9f381e6e1a710c231604d20661545`
+blocked Task-5 closure. Before re-review, a bounded correction must:
+
+- Rewrite the remaining live statements in
+  `docs/protocol/claude/independence-first.md` so a same-model independent
+  reviewer is weaker and identified, not categorically invalid, and no report
+  must attest to cross-model identity. Pin this in
+  `tests/unit/test_protocol_doc_integrity.py`.
+- Normalize operative provider matching case-insensitively and make the
+  launchable-packet gate reject affirmative ChatGPT, Claude, Opus, Gemini,
+  provider CLI/process/call/launch/retry/receipt, in-app browser, paid API, and
+  equivalent nested commands even when exact negative acceptance text is also
+  present. Add bypass regressions for lowercase and alternate-provider forms.
+- Add `merge` to both `render_runtime_env_contract()` and
+  `render_seat_contract()` and mutation-pin both executable renderers, not only
+  `ACTIVE_KERNEL_INVARIANTS` and `render_lane_v_v3()`.
+- Synchronize the exact provider-neutral v3 contract, including atomic
+  `TaskPublicationStore` publication and identity-no-authority, into both
+  verifier agent prompts and both verification-report format mirrors; include
+  all four in the positive sync surface set.
 
 - [ ] **Step 1: Add the failing operative-surface gate**
 
