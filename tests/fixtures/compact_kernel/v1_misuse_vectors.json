@@ -1,0 +1,339 @@
+{
+  "schema_version": "compact-kernel-misuse-vectors/v1",
+  "vectors": [
+    {
+      "id": "forged_self_asserted_principal",
+      "enforcing_phase": 2,
+      "expected_invariant": "Actor authority comes from the host-resolved binding, never from payload, prose, role labels, environment, or free CLI arguments.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API observes lifecycle meaning only and receives no actor binding or transition envelope to authenticate.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "transition.requested",
+          "facts": {
+            "transition_id": "tx-forged-001",
+            "host_principal": "principal:director",
+            "asserted_principal": "principal:operator",
+            "unit_version": 7,
+            "payload_digest": "digest:payload-a"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "rejected",
+        "transitions_applied": 0,
+        "effect_attempts": 0,
+        "provider_attempts": 0
+      }
+    },
+    {
+      "id": "duplicate_transition_id_identical_payload",
+      "enforcing_phase": 2,
+      "expected_invariant": "An exact duplicate transition ID and payload is idempotent and produces no second transition.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API is stateless and receives neither a transition ID nor a replay store.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "transition.requested",
+          "facts": {
+            "transition_id": "tx-identical-001",
+            "unit_version": 7,
+            "payload_digest": "digest:payload-a"
+          }
+        },
+        {
+          "step": 2,
+          "event_kind": "transition.requested",
+          "facts": {
+            "transition_id": "tx-identical-001",
+            "unit_version": 7,
+            "payload_digest": "digest:payload-a"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "idempotent",
+        "transitions_applied": 1,
+        "effect_attempts": 0,
+        "provider_attempts": 0
+      }
+    },
+    {
+      "id": "duplicate_transition_id_changed_payload",
+      "enforcing_phase": 2,
+      "expected_invariant": "A reused transition ID with changed payload fails closed.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API is stateless and cannot compare current transition content with a prior payload.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "transition.requested",
+          "facts": {
+            "transition_id": "tx-conflict-001",
+            "unit_version": 7,
+            "payload_digest": "digest:payload-a"
+          }
+        },
+        {
+          "step": 2,
+          "event_kind": "transition.requested",
+          "facts": {
+            "transition_id": "tx-conflict-001",
+            "unit_version": 7,
+            "payload_digest": "digest:payload-b"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "conflict",
+        "transitions_applied": 1,
+        "effect_attempts": 0,
+        "provider_attempts": 0
+      }
+    },
+    {
+      "id": "stale_unit_version",
+      "enforcing_phase": 2,
+      "expected_invariant": "A transition bound to an older unit version is rejected.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API receives one observed value without current unit identity or version lineage.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "transition.requested",
+          "facts": {
+            "transition_id": "tx-stale-unit-001",
+            "unit_id": "unit:alpha",
+            "event_unit_version": 6,
+            "current_unit_version": 7
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "rejected",
+        "transitions_applied": 0,
+        "effect_attempts": 0,
+        "provider_attempts": 0
+      }
+    },
+    {
+      "id": "stale_activation_epoch",
+      "enforcing_phase": 2,
+      "expected_invariant": "An event or writer bound to an older activation epoch is inert and rejected.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API has no activation ref, epoch store, or governed writer binding.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "transition.requested",
+          "facts": {
+            "transition_id": "tx-stale-epoch-001",
+            "event_epoch": 0,
+            "active_epoch": 1,
+            "writer": "compact"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "rejected",
+        "transitions_applied": 0,
+        "effect_attempts": 0,
+        "provider_attempts": 0
+      }
+    },
+    {
+      "id": "relevant_dependency_change",
+      "enforcing_phase": 2,
+      "expected_invariant": "A relevant dependency digest change invalidates the prior verification key.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API receives no verification key or dependency digest history.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "verification.dependency_changed",
+          "facts": {
+            "unit_id": "unit:alpha",
+            "unit_version": 7,
+            "verification_key": "verify:alpha-v7",
+            "prior_decision": "GO",
+            "prior_dependency_digest": "digest:dependency-a",
+            "current_dependency_digest": "digest:dependency-b"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "verification_invalidated",
+        "transitions_applied": 1,
+        "effect_attempts": 0,
+        "provider_attempts": 0
+      }
+    },
+    {
+      "id": "relevant_acceptance_change",
+      "enforcing_phase": 2,
+      "expected_invariant": "A relevant acceptance digest change invalidates the prior verification key.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API receives no verification key or acceptance digest history.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "verification.acceptance_changed",
+          "facts": {
+            "unit_id": "unit:alpha",
+            "unit_version": 7,
+            "verification_key": "verify:alpha-v7",
+            "prior_decision": "GO",
+            "prior_acceptance_digest": "digest:acceptance-a",
+            "current_acceptance_digest": "digest:acceptance-b"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "verification_invalidated",
+        "transitions_applied": 1,
+        "effect_attempts": 0,
+        "provider_attempts": 0
+      }
+    },
+    {
+      "id": "relevant_evidence_change",
+      "enforcing_phase": 2,
+      "expected_invariant": "A relevant evidence digest change invalidates the prior verification key.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API receives no verification key or evidence digest history.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "verification.evidence_changed",
+          "facts": {
+            "unit_id": "unit:alpha",
+            "unit_version": 7,
+            "verification_key": "verify:alpha-v7",
+            "prior_decision": "GO",
+            "prior_evidence_digest": "digest:evidence-a",
+            "current_evidence_digest": "digest:evidence-b"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "verification_invalidated",
+        "transitions_applied": 1,
+        "effect_attempts": 0,
+        "provider_attempts": 0
+      }
+    },
+    {
+      "id": "ambiguous_effect_outcome_retry",
+      "enforcing_phase": 3,
+      "expected_invariant": "An ambiguous external effect outcome enters reconciliation-only state and cannot retry or obtain a new effect attempt.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API can describe OUTCOME_UNKNOWN but has no executor, reservation store, or retry gate to block an effect.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "effect.attempt_reserved",
+          "facts": {
+            "effect_id": "effect:publish-001",
+            "executor_id": "executor:primary",
+            "idempotency_key": "effect-intent:publish-001",
+            "provider": "provider:external-a"
+          }
+        },
+        {
+          "step": 2,
+          "event_kind": "effect.outcome_unknown",
+          "facts": {
+            "effect_id": "effect:publish-001",
+            "provider": "provider:external-a",
+            "outcome": "unknown"
+          }
+        },
+        {
+          "step": 3,
+          "event_kind": "effect.retry_requested",
+          "facts": {
+            "effect_id": "effect:publish-001",
+            "idempotency_key": "effect-intent:publish-001"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "reconciliation_only",
+        "transitions_applied": 2,
+        "effect_attempts": 1,
+        "provider_attempts": 1
+      }
+    },
+    {
+      "id": "duplicate_advisory_dispatch",
+      "enforcing_phase": 3,
+      "expected_invariant": "An advisory request with an already-reserved intent key cannot dispatch a second provider attempt.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API observes provider lifecycle state but has no advisory dispatcher or reservation ledger.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "advisory.dispatch_requested",
+          "facts": {
+            "consultation_id": "consultation:duplicate-001",
+            "intent_key": "advisory-intent:duplicate-001",
+            "provider": "chatgpt",
+            "request_digest": "digest:advisory-a"
+          }
+        },
+        {
+          "step": 2,
+          "event_kind": "advisory.dispatch_requested",
+          "facts": {
+            "consultation_id": "consultation:duplicate-001",
+            "intent_key": "advisory-intent:duplicate-001",
+            "provider": "chatgpt",
+            "request_digest": "digest:advisory-a"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "idempotent",
+        "transitions_applied": 1,
+        "effect_attempts": 0,
+        "provider_attempts": 1
+      }
+    },
+    {
+      "id": "fallback_advisory_dispatch",
+      "enforcing_phase": 3,
+      "expected_invariant": "A failed, uncertain, or unavailable advisory transport cannot trigger an unreserved provider or transport fallback.",
+      "phase_1_non_enforcement_reason": "The Phase 1 mapping API selects no provider and executes no transport, so only a later guarded dispatcher can enforce this boundary.",
+      "stimulus": [
+        {
+          "step": 1,
+          "event_kind": "advisory.dispatch_requested",
+          "facts": {
+            "consultation_id": "consultation:fallback-001",
+            "intent_key": "advisory-intent:fallback-001",
+            "provider": "chatgpt",
+            "transport": "iab"
+          }
+        },
+        {
+          "step": 2,
+          "event_kind": "advisory.outcome_unknown",
+          "facts": {
+            "consultation_id": "consultation:fallback-001",
+            "intent_key": "advisory-intent:fallback-001",
+            "provider": "chatgpt",
+            "outcome": "unknown"
+          }
+        },
+        {
+          "step": 3,
+          "event_kind": "advisory.fallback_requested",
+          "facts": {
+            "consultation_id": "consultation:fallback-001",
+            "intent_key": "advisory-intent:fallback-001",
+            "provider": "claude",
+            "transport": "api"
+          }
+        }
+      ],
+      "expected_future_outcome": {
+        "decision": "fallback_blocked",
+        "transitions_applied": 2,
+        "effect_attempts": 0,
+        "provider_attempts": 1
+      }
+    }
+  ]
+}

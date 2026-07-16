@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "governance.route/v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "work_id",
+    "transition_id",
+    "route_id",
+    "work_revision",
+    "unit_id",
+    "actor_binding_digest",
+    "requested_transition",
+    "expected_unit_version",
+    "precondition_digest",
+    "mutable_scope_ref",
+    "mutable_scope_digest",
+    "content_digest",
+    "dependency_digest",
+    "acceptance_digest",
+    "evidence_refs",
+    "verification_ref",
+    "effect_reservation_refs",
+    "activation_epoch"
+  ],
+  "properties": {
+    "schema": {
+      "const": "governance.route/v2"
+    },
+    "work_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+    },
+    "transition_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+    },
+    "route_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "work_revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "unit_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "actor_binding_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "requested_transition": {
+      "type": "string",
+      "enum": [
+        "BLOCK",
+        "CANCEL",
+        "REQUEST_CLOSE",
+        "REQUEST_REVIEW",
+        "START",
+        "SUPERSEDE",
+        "UPDATE"
+      ]
+    },
+    "expected_unit_version": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "precondition_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "mutable_scope_ref": {
+      "type": "string",
+      "pattern": "^[\\x21-\\x7e]{1,512}$"
+    },
+    "mutable_scope_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "dependency_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "acceptance_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[\\x21-\\x7e]{1,512}$"
+      },
+      "uniqueItems": true,
+      "maxItems": 64
+    },
+    "verification_ref": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[\\x21-\\x7e]{1,512}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "effect_reservation_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[\\x21-\\x7e]{1,512}$"
+      },
+      "uniqueItems": true,
+      "maxItems": 64
+    },
+    "activation_epoch": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    }
+  }
+}

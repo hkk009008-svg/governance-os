@@ -24,11 +24,6 @@ from pathlib import Path, PurePosixPath
 from statistics import median
 from typing import Any
 
-from protocol_mailbox import COORDINATION_KINDS, SEATS
-from status import collect_mailbox
-from target_binding import BindingError, load_kernel_mirror
-import bus_unread  # de-degrade: real ref-bus unread for migrated (scalar) cursors
-
 INVENTORY_COLS = (
     "id",
     "subsystem",
@@ -972,6 +967,8 @@ def addressed_to(event: MailboxFilename, seat: str) -> bool:
 
 def parse_mailbox_event(filename: str, text: str) -> Classification:
     """Classify one mailbox event from filename + body text."""
+    from protocol_mailbox import COORDINATION_KINDS
+
     event = parse_mailbox_filename(filename)
     if event.parse_error:
         return Classification("unknown", "mailbox", event.filename, event.parse_error, "high")
@@ -1348,6 +1345,8 @@ def mailbox_cursor_unread(
     if cursor and cursor.strip().isdigit():
         if repo_root is None:
             return 0, []
+        import bus_unread
+
         evs = bus_unread.bus_unread_events(repo_root, seat)
         if evs is None:
             return 0, []
@@ -1572,6 +1571,9 @@ def duplicate_verification_count(classifications: list[Classification]) -> int:
 
 
 def collect_report(root: Path, wave: int, commit_limit: int, event_limit: int, gate_timeout: int) -> dict[str, Any]:
+    from protocol_mailbox import SEATS
+    from status import collect_mailbox
+
     generated = now_local()
     generated_at = generated.isoformat(timespec="seconds")
     code, head, _ = run(["git", "log", "-1", "--format=%h %s"], root)
@@ -1855,6 +1857,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         binding_error: str | None = None
         try:
+            from target_binding import BindingError, load_kernel_mirror
+
             loaded_mirror = load_kernel_mirror(root)
             mirror = {
                 "epoch": loaded_mirror.epoch,

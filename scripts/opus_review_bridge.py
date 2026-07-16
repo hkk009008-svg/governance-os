@@ -28,7 +28,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
-import opus_review_receipts as receipts
+if __package__:
+    from scripts import opus_review_receipts as receipts
+else:
+    import opus_review_receipts as receipts
 
 
 PROVIDER_SCHEMA_VERSION = "opus-provider-review/v1"

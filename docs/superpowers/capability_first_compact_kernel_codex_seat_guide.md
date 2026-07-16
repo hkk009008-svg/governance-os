@@ -10,9 +10,11 @@ external-effect failure.
   primitives behind one reducer; do not create a second operation store.
 - Direct work without coordination, independent-verification, or effect triggers
   creates no protocol artifact. Controls are risk-triggered, never seat-triggered.
-- Models may choose in-scope tools, subagents, worktrees, ChatGPT, or Claude from
-  runtime- and user-authorized options; unused capacity creates no record.
-- Provider output is advisory and grants no verdict or side-effect authority.
+- Models may choose in-scope tools, subagents, worktrees, read-only web
+  research, ChatGPT, or Claude from runtime- and user-authorized options;
+  unused capacity creates no record.
+- Web research and provider output are advisory and grant no verdict,
+  protocol-state, or side-effect authority.
 - Retain a public helper only when it has a non-test caller or documented CLI.
 - Version 1 stays authoritative until the user-approved Phase-4 activation;
   shadow state cannot grant GO, terminality, or effects.
@@ -77,6 +79,29 @@ independently testable work, a verifier only when triggered, and a serialized
 writer duty only for coordinated state. Duties may share productive seats; do
 not create standby, observer, Pair-B, utilization, join, receipt-only, or
 terminal-next-trigger artifacts.
+
+Every readiness bridge, director/director2, operator/operator2, and coordinator
+context may choose the runtime's read-only web-search tool whenever external,
+current, niche, or materially uncertain information would improve the work. A
+sanitized query over public information needs no route, reservation, approval
+artifact, or seat handoff. Prefer primary sources, cite the exact sources
+actually relied on, cross-check a consequential ambiguous source, and state the
+source date or freshness when it matters. For repository and protocol state,
+current local durable artifacts still outrank web material.
+
+The fast path ends at research. A query must not disclose private repository,
+mailbox, route, credential, token, personal, or proprietary content. Search
+does not authorize sign-in, credential entry, upload, form submission, paid
+API use, spend, or any downstream action. Results cannot grant GO/NITS/FAIL,
+directly mutate a route or authoritative/live reducer state, reserve an effect,
+or satisfy an independent verification requirement. A separately accepted
+transition may carry one sanitized citation as opaque `evidence_refs` input to
+non-authoritative shadow reduction only. If the runtime tool is unavailable,
+continue from local evidence or report the limitation. Stop and request
+direction when the missing fact would materially change scope, security,
+authority, cost, or an irreversible decision. Do not silently switch to an
+interactive browser, provider API, credentialed transport, or paid fallback,
+and do not download or execute software as part of research.
 
 ## 3. One reducer, no second authority store
 
@@ -238,7 +263,32 @@ For Git push, describe enforcement accurately:
 - otherwise `user-gated audited executor`, with exact refspec, expected remote
   OID, fixed argument vector, and postcheck. Do not claim structural prevention.
 
-## 6. Flexible ChatGPT and Claude use
+## 6. Flexible research, ChatGPT, and Claude use
+
+### Read-only web research
+
+Web search is a runtime research tool, not an advisory-provider dispatch and
+not an external-effect executor. A seat chooses it directly under Section 2's
+public/sanitized/read-only boundary. No consultation reservation is created
+for an ordinary query, and no result is imported as authority.
+
+When research contributes to durable work, record the minimum useful
+provenance: a direct source reference, publication or retrieval date when
+freshness matters, and the local conclusion it supports. Raw search result
+pages and copied private context do not belong in route or protocol state. The
+compact reducer may receive a sanitized durable citation identifier through
+`evidence_refs`; it treats that identifier as opaque evidence, never fetches
+it, judges its truth, or derives eligibility from it. Any action suggested by
+research passes through its ordinary authority and side-effect gates.
+
+Required abuse coverage for the live seat harness is: private query leakage;
+credential, sign-in, form, and upload attempts; paid or credentialed fallback;
+stale or uncited reliance; result-as-verdict or result-as-route confusion; and
+tool unavailability. The hermetic capability-baseline collector may disable
+web access to preserve benchmark comparability; that benchmark setting is not
+a general seat restriction.
+
+### Advisory model transports
 
 `scripts/advisory_dispatch.py` has exactly two callers: the ChatGPT guard and
 Claude bridge. It returns deterministic external eligibility and atomically
@@ -297,13 +347,13 @@ Prune after cutover:
 **Surfaces:** `governance.toml`, the capacity/effectiveness/packet-state tools,
 existing route/verification/capability tests, and new golden replay fixtures.
 
-- [ ] Inventory every live authority source, reader, writer, effect executor,
+- [x] Inventory every live authority source, reader, writer, effect executor,
   provider adapter, and public helper; classify helpers under Section 7.
-- [ ] Encode both Section-4 tables as total parameterized mappings and commit
+- [x] Encode both Section-4 tables as total parameterized mappings and commit
   replay vectors for forged principals, duplicate IDs, stale versions,
   dependency changes, ambiguous effects, and provider dispatch. Phase 1 records
   these future controls without claiming enforcement; Phases 2-3 enforce them.
-- [ ] Benchmark the five Section-2 profiles five times on one host and persist
+- [x] Benchmark the five Section-2 profiles five times on one host and persist
   cohort, raw runs, medians, and immutable review identities under `logs/`.
   Measure with a monotonic clock from accepted input to first executable tool
   callback and from accepted route event to published GO; missing endpoints
@@ -325,25 +375,85 @@ existing route/verification/capability tests, and new golden replay fixtures.
   marker effects require `--authorize-local-markers`; no provider, mailbox,
   branch, push, or live protocol effect is authorized. The committed-byte
   preflight must pass before canary or collection.
-- [ ] Make the reporter declare protocol roots, accepted-result denominators,
+- [x] Make the reporter declare protocol roots, accepted-result denominators,
   and artifact classes. A standby artifact records only waiting, observing,
   utilization, or no-op readiness; duplicate reviews share exact
   `(base, head, scope digest, question digest)` identity, not reason text.
-- [ ] Add `[protocol.kernel]` epoch `0`/writer `v1` to `governance.toml` only as
+- [x] Add `[protocol.kernel]` epoch `0`/writer `v1` to `governance.toml` only as
   a declarative mirror, never the activation high-water mark.
 
-**Gate:** current v1 behavior is frozen by golden replay and mapping tests; all
-public helpers are classified; no compact path is authoritative.
+**Phase-1 evidence (2026-07-15):** `REQUIRED_SURFACE_OWNERS` is the independent
+ownership oracle; the committed compact-state fixture validates
+49 mappings across 7 domains; the 25-run cohort and report are committed at
+`8149df28b45bd2b0b159b243923d0ab439c3d815` and integrated by merge `d07fc4d`;
+the reporter's `VerifiedBaselineProvenance` contract binds the committed
+contract/observation digests, cohort, collector, source, Codex identity, and
+exactly 25 run-record digests before `operational_complete`; and the declarative
+kernel mirror remains epoch `0`/writer `v1`. No compact path was activated.
+Task 1 closed with the exact changed-surface command and result:
+
+```sh
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python \
+  -m pytest -q \
+  tests/unit/test_compact_kernel_surface_inventory.py \
+  tests/unit/test_protocol_mailbox.py \
+  tests/unit/test_governance_hardening.py \
+  tests/unit/test_codex_ledger_bridge.py \
+  tests/unit/test_protocol_prompt_sync.py \
+  tests/unit/test_protocol_capacity.py \
+  tests/unit/test_route_lineage.py \
+  tests/unit/test_seat_status_all.py \
+  tests/unit/test_status.py \
+  tests/unit/test_compact_state_mapping.py \
+  tests/unit/test_codex_seat_launcher.py \
+  tests/unit/test_threeway_activation_scripts.py \
+  tests/unit/test_threeway_constants.py
+```
+
+```text
+267 passed in 6.68s
+```
+
+**Gate status:** reclosed by Task-3 commit
+`09d2e7f768a0324ace1a6de61afc483ce222dd52`. The focused RED was
+`34 failed, 59 passed`; the non-vacuous override mutation was
+`1 failed, 92 deselected` after temporarily removing
+`scripts.mailbox_monitor.main` and was restored before GREEN; the final focused
+suite was `93 passed`; and the exact 13-file changed-surface regression suite
+was `303 passed`. Project smoke was `OK`. A fresh read-only Codex subagent
+independently reviewed
+`1c3e5fdae3f072743155e2345e40cfe7b8b7df9d..09d2e7f768a0324ace1a6de61afc483ce222dd52`
+and returned `RESOLVED`, with no Critical or Important issue and
+`Ready to reclose: Yes`.
+
+The finite owner/import closure and independently pinned required overrides are
+now enforced. The original 49-mapping, committed 25-run cohort, reporter
+contract, and epoch `0`/writer `v1` declarative-mirror evidence above remains
+valid. Current v1 remains authoritative; no compact path is authoritative or
+activated.
 
 ### Phase 2: Compact reducer and non-authoritative shadow
 
-- [ ] Add `schemas/route-v2.schema.json`, `scripts/capability_reducer.py`, the
+- [x] Add `schemas/route-v2.schema.json`, `scripts/capability_reducer.py`, the
   Section-3 types/laws, and focused deterministic replay/merge tests.
-- [ ] Adapt v1 history read-only; never rewrite it. Shadow-reduce the same
+- [x] Adapt v1 history read-only; never rewrite it. Shadow-reduce the same
   accepted inputs and structurally prohibit shadow GO, DONE, and effects.
 
 **Gate:** zero authority/effect-eligibility divergence across the full replay
 corpus; deliberately injected divergence blocks the gate.
+
+**Phase-2 evidence (2026-07-16):** The exact implementation range is
+`f17d14c684e1e1a6378e52ab8f151070fb710e07..efa8731eae2e9d9fa020d95045e5b08ab6331ba3`.
+The committed corpus artifact
+`logs/capability-first/phase2b-shadow-parity.json` is byte-identical to fresh
+output from `env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/capability_v1_adapter.py --check-corpus tests/fixtures/compact_kernel/v1_to_v2_replay.json`
+and reports 89 cases and 31 executed replay permutations with every blocking,
+non-authority-only, and specialized-event list empty. The focused command
+`env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q tests/unit/test_capability_v1_adapter.py tests/unit/test_capability_reducer.py tests/unit/test_capability_reducer_replay.py tests/unit/test_route_v2_schema_sync.py tests/unit/test_compact_state_mapping.py tests/unit/test_compact_kernel_surface_inventory.py tests/unit/test_route_manifest.py tests/unit/test_route_schema_sync.py tests/unit/test_target_binding.py`
+reported `552 passed`; independent Review 11 of the exact range returned
+`APPROVED` with no Critical, Important, or Minor finding; and
+`scripts/target_binding.py --check` reports epoch `0`, writer `v1`, declarative
+only. Version 1 remains the sole authority; Phase 3 and activation remain open.
 
 ### Phase 3: Triggered boundaries and real callers
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import builtins
 import contextlib
 import hashlib
 import importlib.util
@@ -21,6 +22,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Callable, ContextManager, Mapping, NamedTuple, Sequence, TextIO
@@ -189,6 +191,8 @@ class CohortResult(NamedTuple):
 ProcessRunner = Callable[[Sequence[str], str, Path, Mapping[str, str], int], ProcessCapture]
 WorkspaceFactory = Callable[[CollectorConfig, str], ContextManager[Path]]
 _REPORTER_MODULE: object | None = None
+_REPORTER_MODULES: dict[tuple[str, str], object] = {}
+_REPORTER_ISOLATION_LOCK = threading.RLock()
 
 
 def _bytes(value: object) -> bytes:
@@ -977,6 +981,7 @@ def run_one(config: CollectorConfig, profile: str, ordinal: int, *, process_runn
     if profile not in PROFILES or ordinal not in range(1, 6): raise CollectorError("run outside fixed cohort")
     if profile in EFFECT_PROFILES and not config.local_markers_authorized: raise CollectorError("explicit local marker authorization is required")
     if process_runner is _process:
+        _reporter(config)
         _assert_codex_binary_identity(config)
         _assert_committed_runtime(config)
     contract = _load_contract(config.contract_path); run_id = f"{config.cohort_id}-{profile}-{ordinal}"
@@ -1060,7 +1065,265 @@ def run_one(config: CollectorConfig, profile: str, ordinal: int, *, process_runn
     return result
 
 
-def _reporter() -> object:
+def _repository_import_roots(repo_root: Path, source_head: str) -> frozenset[str]:
+    tree = _git(
+        repo_root,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--name-only",
+        source_head,
+        check=False,
+    )
+    if tree.returncode:
+        raise PreflightError("commit-required: repository import roots are unavailable")
+    roots: set[str] = set()
+    try:
+        paths = [
+            PurePosixPath(raw.decode("utf-8"))
+            for raw in tree.stdout.split(b"\0")
+            if raw
+        ]
+    except UnicodeDecodeError as exc:
+        raise PreflightError("commit-required: repository import roots are unavailable") from exc
+    for path in paths:
+        if path.suffix != ".py":
+            continue
+        roots.update(path.parts[:-1])
+        roots.add(path.stem)
+    return frozenset(roots)
+
+
+def _local_import_name(name: str, local_roots: frozenset[str]) -> bool:
+    return name.partition(".")[0] in local_roots
+
+
+def _path_within_repository(value: object, repo_root: Path) -> bool:
+    if not isinstance(value, (str, os.PathLike)) or not value:
+        return False
+    try:
+        path = Path(value)
+        if not path.is_absolute():
+            return False
+        path.resolve(strict=False).relative_to(repo_root)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    return True
+
+
+def _sys_path_exposes_repository(value: object, repo_root: Path) -> bool:
+    if not isinstance(value, (str, os.PathLike)):
+        return False
+    try:
+        path = Path(value or os.curdir).resolve(strict=False)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    return path == repo_root or path in repo_root.parents or repo_root in path.parents
+
+
+def _module_from_repository(module: object, repo_root: Path) -> bool:
+    origins: list[object] = [getattr(module, "__file__", None)]
+    spec = getattr(module, "__spec__", None)
+    origins.append(getattr(spec, "origin", None))
+    locations = getattr(spec, "submodule_search_locations", None)
+    if locations is not None:
+        try:
+            origins.extend(locations)
+        except TypeError:
+            pass
+    package_path = getattr(module, "__path__", None)
+    if package_path is not None:
+        if isinstance(package_path, (str, os.PathLike)):
+            origins.append(package_path)
+        else:
+            try:
+                origins.extend(package_path)
+            except TypeError:
+                pass
+    return any(_path_within_repository(origin, repo_root) for origin in origins)
+
+
+class _RepositoryImportBlocker:
+    def __init__(self, local_roots: frozenset[str]) -> None:
+        self.local_roots = local_roots
+
+    def find_spec(
+        self,
+        fullname: str,
+        path: object = None,
+        target: object = None,
+    ) -> None:
+        if _local_import_name(fullname, self.local_roots):
+            raise PreflightError(
+                f"commit-required: sealed reporter repository-local import rejected: {fullname}"
+            )
+        return None
+
+
+@contextlib.contextmanager
+def _repository_import_isolation(
+    repo_root: Path,
+    local_roots: frozenset[str],
+    *,
+    preserve_names: frozenset[str] = frozenset(),
+) -> object:
+    root = repo_root.resolve()
+
+    def quarantinable(name: str, module: object) -> bool:
+        return (
+            name not in preserve_names
+            and (
+                _local_import_name(name, local_roots)
+                or _module_from_repository(module, root)
+            )
+        )
+
+    with _REPORTER_ISOLATION_LOCK:
+        original_path = list(sys.path)
+        original_meta_path = list(sys.meta_path)
+        quarantined = {
+            name: module
+            for name, module in list(sys.modules.items())
+            if quarantinable(name, module)
+        }
+        for name in quarantined:
+            sys.modules.pop(name, None)
+        sys.path[:] = [
+            value
+            for value in original_path
+            if not _sys_path_exposes_repository(value, root)
+        ]
+        sys.meta_path.insert(0, _RepositoryImportBlocker(local_roots))
+        try:
+            yield
+        finally:
+            sys.meta_path[:] = original_meta_path
+            sys.path[:] = original_path
+            for name, module in list(sys.modules.items()):
+                if quarantinable(name, module):
+                    sys.modules.pop(name, None)
+            sys.modules.update(quarantined)
+
+
+def _evict_reporter(key: tuple[str, str], module: object) -> None:
+    with _REPORTER_ISOLATION_LOCK:
+        if _REPORTER_MODULES.get(key) is module:
+            _REPORTER_MODULES.pop(key, None)
+        name = getattr(module, "__name__", None)
+        if isinstance(name, str) and sys.modules.get(name) is module:
+            sys.modules.pop(name, None)
+
+
+def _sealed_reporter_under_lock(config: CollectorConfig) -> object:
+    expected = dict(config.runtime_blob_digests).get(REPORTER_RELATIVE_PATH)
+    if not isinstance(expected, str) or not DIGEST_RE.fullmatch(expected):
+        raise PreflightError("commit-required: sealed reporter blob is absent")
+    key = (config.source_head, expected)
+    cached = _REPORTER_MODULES.get(key)
+    if cached is not None:
+        name = getattr(cached, "__name__", None)
+        if isinstance(name, str) and sys.modules.get(name) is cached:
+            return cached
+        _evict_reporter(key, cached)
+    module_name = (
+        f"_capability_reporter_{config.source_head}_{expected.removeprefix('sha256:')}"
+    )
+    if module_name in sys.modules:
+        raise PreflightError("commit-required: sealed reporter module name collision")
+    blob = _git(
+        config.repo_root,
+        "show",
+        f"{config.source_head}:{REPORTER_RELATIVE_PATH}",
+        check=False,
+    )
+    actual = "sha256:" + hashlib.sha256(blob.stdout).hexdigest()
+    if blob.returncode or actual != expected:
+        raise PreflightError("commit-required: sealed reporter blob differs from source HEAD")
+
+    original_import = builtins.__import__
+    local_roots = _repository_import_roots(config.repo_root, config.source_head)
+
+    def guarded_import(
+        name: str,
+        globals: Mapping[str, object] | None = None,
+        locals: Mapping[str, object] | None = None,
+        fromlist: Sequence[str] = (),
+        level: int = 0,
+    ) -> object:
+        if level or _local_import_name(name, local_roots):
+            raise PreflightError(
+                f"commit-required: sealed reporter repository-local import rejected: {name}"
+            )
+        return original_import(name, globals, locals, fromlist, level)
+
+    module = types.ModuleType(module_name)
+    module.__file__ = str(config.repo_root / REPORTER_RELATIVE_PATH)
+    module.__package__ = ""
+    module.__dict__["__builtins__"] = {
+        **vars(builtins),
+        "__import__": guarded_import,
+    }
+    try:
+        with _repository_import_isolation(
+            config.repo_root,
+            local_roots,
+            preserve_names=frozenset({module_name}),
+        ):
+            sys.modules[module_name] = module
+            code = compile(
+                blob.stdout,
+                f"{config.source_head}:{REPORTER_RELATIVE_PATH}",
+                "exec",
+                dont_inherit=True,
+            )
+            exec(code, module.__dict__)
+        if not isinstance(getattr(module, "VerifiedBaselineProvenance", None), type):
+            raise PreflightError("commit-required: sealed reporter lacks provenance type")
+        aggregate = getattr(module, "_aggregate_baseline", None)
+        if not callable(aggregate):
+            raise PreflightError("commit-required: sealed reporter lacks aggregation entrypoint")
+    except PreflightError:
+        sys.modules.pop(module_name, None)
+        raise
+    except Exception as exc:
+        sys.modules.pop(module_name, None)
+        raise PreflightError("commit-required: sealed reporter load failed") from exc
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
+
+    def isolated_aggregate(*args: object, **kwargs: object) -> object:
+        try:
+            with _repository_import_isolation(
+                config.repo_root,
+                local_roots,
+                preserve_names=frozenset({module_name}),
+            ):
+                return aggregate(*args, **kwargs)
+        except BaseException:
+            _evict_reporter(key, module)
+            raise
+
+    isolated_aggregate.__name__ = getattr(aggregate, "__name__", "_aggregate_baseline")
+    isolated_aggregate.__qualname__ = getattr(
+        aggregate,
+        "__qualname__",
+        "_aggregate_baseline",
+    )
+    isolated_aggregate.__module__ = module_name
+    module._aggregate_baseline = isolated_aggregate
+    _REPORTER_MODULES[key] = module
+    return module
+
+
+def _sealed_reporter(config: CollectorConfig) -> object:
+    with _REPORTER_ISOLATION_LOCK:
+        return _sealed_reporter_under_lock(config)
+
+
+def _reporter(config: CollectorConfig | None = None) -> object:
+    if config is not None:
+        return _sealed_reporter(config)
     global _REPORTER_MODULE
     if _REPORTER_MODULE is not None: return _REPORTER_MODULE
     path = Path(__file__).resolve().with_name("protocol_effectiveness_report.py"); inserted = str(path.parent) not in sys.path
@@ -1073,8 +1336,14 @@ def _reporter() -> object:
         if inserted: sys.path.remove(str(path.parent))
 
 
-def run_cohort(config: CollectorConfig, *, process_runner: ProcessRunner = _process, workspace_factory: WorkspaceFactory = _workspace, monotonic_ns: Callable[[], int] = time.monotonic_ns) -> CohortResult:
+def run_cohort(config: CollectorConfig, *, process_runner: ProcessRunner = _process, workspace_factory: WorkspaceFactory = _workspace, monotonic_ns: Callable[[], int] = time.monotonic_ns, reporter_module: object | None = None) -> CohortResult:
     """Run ordinal-first/profile-inner, stopping without retry on first invalid run."""
+    if process_runner is _process:
+        reporter = _reporter(config)
+        if reporter_module is not None and reporter_module is not reporter:
+            raise CollectorError("sealed reporter module mismatch")
+    else:
+        reporter = reporter_module if reporter_module is not None else _reporter()
     if config.resume: raise CollectorError("resumed cohort cannot issue operational provenance")
     if not config.resume and (config.cohort_root.exists() or config.cohort_root.is_symlink()):
         if config.cohort_root.is_symlink() or not config.cohort_root.is_dir() or any(config.cohort_root.iterdir()):
@@ -1102,7 +1371,7 @@ def run_cohort(config: CollectorConfig, *, process_runner: ProcessRunner = _proc
         "instrumentation_identity": INSTRUMENTATION_IDENTITY, "runs": [record.observation for record in records],
     }
     if len({run["accepted_result_digest"] for run in observations["runs"]}) != 25: raise CollectorError("non-unique accepted results")
-    reporter = _reporter(); provenance_type = getattr(reporter, "VerifiedBaselineProvenance", None)
+    provenance_type = getattr(reporter, "VerifiedBaselineProvenance", None)
     if provenance_type is None: raise CollectorError("reporter lacks verified provenance")
     provenance = provenance_type(
         contract_digest=_digest_json(contract), observations_digest=_digest_json(observations),
@@ -1205,15 +1474,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             resume=False, local_markers_authorized=args.authorize_local_markers,
             runtime_blob_digests=runtime_blobs,
         )
+        reporter = _reporter(config)
         if args.canary:
             canary_id = _run_id(f"canary-{args.cohort_id}")
             canary_root = repo_root / "logs" / "capability-first" / ".canaries" / args.cohort_id
             _reject_symlink_components(canary_root)
             canary = replace(config, cohort_id=canary_id, cohort_root=canary_root, resume=False, local_markers_authorized=False)
             record = run_one(canary, "none", 1); print(json.dumps({"status": record.status, "record_digest": record.record_digest})); return 0 if record.status == "completed" else 2
-        result = run_cohort(config); reporter = _reporter()
+        result = run_cohort(config, reporter_module=reporter)
         artifact = reporter._aggregate_baseline(_load_contract(config.contract_path), result.observations, kernel_mirror={"epoch": 0, "writer": "v1", "authority": "declarative_only"}, repository_root=result.evidence_root, verified_provenance=result.provenance)
         if not artifact.get("operational_complete"): raise CollectorError("reporter rejected verified cohort")
+        _assert_committed_runtime(config)
         _write(config.cohort_root / "observations.json", result.observations); _write(config.cohort_root / "baseline.json", artifact)
         print(json.dumps({"status": "complete", "run_count": 25})); return 0
     except CollectorError as exc:

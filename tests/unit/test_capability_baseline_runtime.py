@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 from dataclasses import replace
 from pathlib import Path
 
@@ -20,6 +21,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = REPO_ROOT / "scripts/capability_baseline_runtime.py"
+REPORTER_PATH = REPO_ROOT / "scripts/protocol_effectiveness_report.py"
 MANIFEST_PATH = REPO_ROOT / "scripts/baselines/capability_first_five_profile_v1.json"
 PROMPT_TEXT = "sensitive prompt"
 
@@ -1211,6 +1213,453 @@ def _git(repo: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _sealed_reporter_fixture(
+    tmp_path: Path,
+    reporter_source: str,
+    *,
+    helper_source: str | None = None,
+    extra_sources: dict[str, str] | None = None,
+) -> tuple[Path, runtime.CollectorConfig]:
+    repo = tmp_path / "sealed-reporter-repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(repo, "config", "user.name", "Test")
+    sources = {
+        runtime.COLLECTOR_RELATIVE_PATH: "# sealed collector\n",
+        runtime.REPORTER_RELATIVE_PATH: reporter_source,
+        runtime.CONTRACT_RELATIVE_PATH: "{}\n",
+    }
+    if helper_source is not None:
+        sources["scripts/reporter_helper.py"] = helper_source
+    if extra_sources is not None:
+        sources.update(extra_sources)
+    for relative, source in sources.items():
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "sealed reporter fixture")
+    head = _git(repo, "rev-parse", "HEAD")
+    digests = tuple(
+        sorted(
+            (
+                relative,
+                "sha256:" + hashlib.sha256((repo / relative).read_bytes()).hexdigest(),
+            )
+            for relative in runtime.REQUIRED_COMMITTED_PATHS
+        )
+    )
+    config = _config(
+        tmp_path / "config",
+        repo_root=repo,
+        source_head=head,
+        contract_path=repo / runtime.CONTRACT_RELATIVE_PATH,
+        collector_identity=(
+            "capability-baseline-runtime@"
+            + dict(digests)[runtime.COLLECTOR_RELATIVE_PATH]
+        ),
+        runtime_blob_digests=digests,
+    )
+    cache = getattr(runtime, "_REPORTER_MODULES", None)
+    if isinstance(cache, dict):
+        for module in cache.values():
+            name = getattr(module, "__name__", None)
+            if isinstance(name, str) and sys.modules.get(name) is module:
+                sys.modules.pop(name, None)
+        cache.clear()
+    return repo, config
+
+
+_MINIMAL_REPORTER = """
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class VerifiedBaselineProvenance:
+    source_head: str
+
+def _aggregate_baseline(*, verified_provenance):
+    return {"same_type": type(verified_provenance) is VerifiedBaselineProvenance}
+"""
+
+
+def test_repository_path_requires_absolute_origin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    origin = repo / "scripts/reporter_helper.py"
+    origin.parent.mkdir(parents=True)
+    origin.write_text("VALUE = 'repo-local'\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    for sentinel in ("built-in", "frozen", "relative.py"):
+        assert not runtime._path_within_repository(sentinel, repo)
+    assert runtime._path_within_repository(origin, repo)
+
+
+def test_repository_import_matching_uses_only_first_component(tmp_path: Path) -> None:
+    repo, config = _sealed_reporter_fixture(
+        tmp_path,
+        _MINIMAL_REPORTER,
+        helper_source="VALUE = 'script helper'\n",
+        extra_sources={
+            "packages/deep/nested_helper.py": "VALUE = 'nested helper'\n",
+            "packages/utils.py": "VALUE = 'local basename'\n",
+        },
+    )
+    roots = runtime._repository_import_roots(repo, config.source_head)
+
+    assert not runtime._local_import_name("email.utils", roots)
+    for name in (
+        "nested_helper",
+        "deep.nested_helper",
+        "scripts.reporter_helper",
+    ):
+        assert runtime._local_import_name(name, roots)
+
+
+def test_sealed_reporter_rejects_exact_blob_digest_mismatch(tmp_path: Path) -> None:
+    _, config = _sealed_reporter_fixture(tmp_path, _MINIMAL_REPORTER)
+    mismatched = tuple(
+        (
+            relative,
+            "sha256:" + "f" * 64
+            if relative == runtime.REPORTER_RELATIVE_PATH
+            else digest,
+        )
+        for relative, digest in config.runtime_blob_digests
+    )
+
+    with pytest.raises(runtime.PreflightError, match="sealed reporter blob"):
+        runtime._reporter(replace(config, runtime_blob_digests=mismatched))
+
+
+def test_sealed_reporter_rejects_repository_import_during_module_load(
+    tmp_path: Path,
+) -> None:
+    source = "import reporter_helper\n" + _MINIMAL_REPORTER
+    _, config = _sealed_reporter_fixture(
+        tmp_path,
+        source,
+        helper_source="VALUE = 'ambient must not load'\n",
+    )
+
+    with pytest.raises(runtime.PreflightError, match="repository-local import"):
+        runtime._reporter(config)
+
+
+def test_sealed_reporter_rejects_importlib_repository_import_during_module_load(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = (
+        "import importlib\n"
+        "importlib.import_module('scripts.reporter_helper')\n"
+        + _MINIMAL_REPORTER
+    )
+    repo, config = _sealed_reporter_fixture(
+        tmp_path,
+        source,
+        helper_source="VALUE = 'ambient must not load'\n",
+    )
+    monkeypatch.syspath_prepend(str(repo))
+
+    with pytest.raises(runtime.PreflightError, match="repository-local import"):
+        runtime._reporter(config)
+
+
+def test_sealed_reporter_rejects_nested_local_basename_via_importlib(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = (
+        "import importlib\n"
+        "importlib.import_module('nested_helper')\n"
+        + _MINIMAL_REPORTER
+    )
+    _, config = _sealed_reporter_fixture(
+        tmp_path,
+        source,
+        extra_sources={"packages/deep/nested_helper.py": "VALUE = 'committed'\n"},
+    )
+    poisoned = types.ModuleType("nested_helper")
+    poisoned.VALUE = "prepoisoned"
+    monkeypatch.setitem(sys.modules, "nested_helper", poisoned)
+
+    with pytest.raises(runtime.PreflightError, match="repository-local import"):
+        runtime._reporter(config)
+
+
+def test_sealed_reporter_rejects_importlib_repository_import_during_aggregation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _MINIMAL_REPORTER.replace(
+        'return {"same_type": type(verified_provenance) is VerifiedBaselineProvenance}',
+        "import importlib\n"
+        "    helper = importlib.import_module('reporter_helper')\n"
+        "    return {'loaded': helper.VALUE}",
+    )
+    _, config = _sealed_reporter_fixture(
+        tmp_path,
+        source,
+        helper_source="VALUE = 'committed'\n",
+    )
+    poisoned = types.ModuleType("reporter_helper")
+    poisoned.VALUE = "prepoisoned"
+    monkeypatch.setitem(sys.modules, "reporter_helper", poisoned)
+
+    reporter = runtime._reporter(config)
+    provenance = reporter.VerifiedBaselineProvenance(config.source_head)
+    with pytest.raises(runtime.PreflightError, match="repository-local import"):
+        reporter._aggregate_baseline(verified_provenance=provenance)
+
+
+def test_sealed_reporter_quarantines_repo_origin_under_allowed_sys_modules_name(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _MINIMAL_REPORTER.replace(
+        'return {"same_type": type(verified_provenance) is VerifiedBaselineProvenance}',
+        "import sys\n"
+        "    return {'loaded': sys.modules['allowed_alias'].VALUE}",
+    )
+    repo, config = _sealed_reporter_fixture(
+        tmp_path,
+        source,
+        helper_source="VALUE = 'committed'\n",
+    )
+    poisoned = types.ModuleType("allowed_alias")
+    poisoned.__file__ = str(repo / "scripts/reporter_helper.py")
+    poisoned.VALUE = "prepoisoned"
+    monkeypatch.setitem(sys.modules, "allowed_alias", poisoned)
+
+    reporter = runtime._reporter(config)
+    provenance = reporter.VerifiedBaselineProvenance(config.source_head)
+    with pytest.raises(KeyError, match="allowed_alias"):
+        reporter._aggregate_baseline(verified_provenance=provenance)
+
+    key = (config.source_head, dict(config.runtime_blob_digests)[runtime.REPORTER_RELATIVE_PATH])
+    assert key not in runtime._REPORTER_MODULES
+    assert reporter.__name__ not in sys.modules
+    assert sys.modules["allowed_alias"] is poisoned
+
+
+def test_sealed_reporter_rejects_prepoisoned_repository_import_during_aggregation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _MINIMAL_REPORTER.replace(
+        'return {"same_type": type(verified_provenance) is VerifiedBaselineProvenance}',
+        "import reporter_helper\n    return {'loaded': reporter_helper.VALUE}",
+    )
+    repo, config = _sealed_reporter_fixture(
+        tmp_path,
+        source,
+        helper_source="VALUE = 'committed'\n",
+    )
+    (repo / "scripts/reporter_helper.py").unlink()
+    poisoned = types.ModuleType("reporter_helper")
+    poisoned.VALUE = "prepoisoned"
+    monkeypatch.setitem(sys.modules, "reporter_helper", poisoned)
+
+    reporter = runtime._reporter(config)
+    provenance = reporter.VerifiedBaselineProvenance(config.source_head)
+    with pytest.raises(runtime.PreflightError, match="repository-local import"):
+        reporter._aggregate_baseline(verified_provenance=provenance)
+
+
+def test_sealed_reporter_cache_is_keyed_by_source_head_and_digest(tmp_path: Path) -> None:
+    repo, first_config = _sealed_reporter_fixture(
+        tmp_path,
+        "TOKEN = 'first'\n" + _MINIMAL_REPORTER,
+    )
+    first = runtime._reporter(first_config)
+
+    reporter_path = repo / runtime.REPORTER_RELATIVE_PATH
+    reporter_path.write_text("TOKEN = 'second'\n" + _MINIMAL_REPORTER, encoding="utf-8")
+    _git(repo, "add", runtime.REPORTER_RELATIVE_PATH)
+    _git(repo, "commit", "-qm", "second reporter")
+    second_head = _git(repo, "rev-parse", "HEAD")
+    second_digests = tuple(
+        (
+            relative,
+            "sha256:" + hashlib.sha256((repo / relative).read_bytes()).hexdigest(),
+        )
+        for relative, _ in first_config.runtime_blob_digests
+    )
+    second_config = replace(
+        first_config,
+        source_head=second_head,
+        runtime_blob_digests=second_digests,
+    )
+
+    second = runtime._reporter(second_config)
+
+    assert first is runtime._reporter(first_config)
+    assert second is runtime._reporter(second_config)
+    assert first is not second
+    assert first.TOKEN == "first"
+    assert second.TOKEN == "second"
+
+
+def test_sealed_reporter_cache_hit_performs_zero_git_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, config = _sealed_reporter_fixture(tmp_path, _MINIMAL_REPORTER)
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    original_git = runtime._git
+
+    def counting_git(*args: object, **kwargs: object):
+        calls.append((args, kwargs))
+        return original_git(*args, **kwargs)
+
+    monkeypatch.setattr(runtime, "_git", counting_git)
+    reporter = runtime._reporter(config)
+    first_load_calls = list(calls)
+
+    assert runtime._reporter(config) is reporter
+    assert calls == first_load_calls
+    assert len(first_load_calls) == 2
+
+
+def test_sealed_reporter_concurrent_callers_share_one_serialized_load(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, config = _sealed_reporter_fixture(tmp_path, _MINIMAL_REPORTER)
+    calls: list[str] = []
+    calls_lock = threading.Lock()
+    first_show_started = threading.Event()
+    second_show_seen = threading.Event()
+    original_git = runtime._git
+
+    def coordinated_git(*args: object, **kwargs: object):
+        command = str(args[1])
+        with calls_lock:
+            calls.append(command)
+            show_number = calls.count("show")
+        if command == "show" and show_number == 1:
+            first_show_started.set()
+            second_show_seen.wait(0.5)
+        elif command == "show":
+            second_show_seen.set()
+        return original_git(*args, **kwargs)
+
+    monkeypatch.setattr(runtime, "_git", coordinated_git)
+    modules: list[object] = []
+    errors: list[BaseException] = []
+
+    def load() -> None:
+        try:
+            modules.append(runtime._reporter(config))
+        except BaseException as exc:
+            errors.append(exc)
+
+    first = threading.Thread(target=load)
+    second = threading.Thread(target=load)
+    first.start()
+    assert first_show_started.wait(2)
+    second.start()
+    first.join(3)
+    second.join(3)
+
+    assert not first.is_alive() and not second.is_alive()
+    assert errors == []
+    assert len(modules) == 2
+    assert modules[0] is modules[1]
+    assert calls.count("show") == 1
+    assert calls.count("ls-tree") == 1
+
+
+def test_sealed_reporter_system_exit_cleans_module_state(tmp_path: Path) -> None:
+    _, config = _sealed_reporter_fixture(tmp_path, "raise SystemExit(7)\n")
+    expected = dict(config.runtime_blob_digests)[runtime.REPORTER_RELATIVE_PATH]
+    key = (config.source_head, expected)
+    module_name = (
+        f"_capability_reporter_{config.source_head}_{expected.removeprefix('sha256:')}"
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        runtime._reporter(config)
+
+    assert raised.value.code == 7
+    assert key not in runtime._REPORTER_MODULES
+    assert module_name not in sys.modules
+
+
+def test_sealed_reporter_rejects_deterministic_module_name_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, config = _sealed_reporter_fixture(tmp_path, _MINIMAL_REPORTER)
+    expected = dict(config.runtime_blob_digests)[runtime.REPORTER_RELATIVE_PATH]
+    module_name = (
+        f"_capability_reporter_{config.source_head}_{expected.removeprefix('sha256:')}"
+    )
+    collision = types.ModuleType(module_name)
+    monkeypatch.setitem(sys.modules, module_name, collision)
+
+    with pytest.raises(runtime.PreflightError, match="module name collision"):
+        runtime._reporter(config)
+
+    assert sys.modules[module_name] is collision
+
+
+def test_sealed_reporter_aggregation_failure_evicts_and_reloads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _MINIMAL_REPORTER.replace(
+        "from dataclasses import dataclass",
+        "from dataclasses import dataclass\nimport os",
+    ).replace(
+        'return {"same_type": type(verified_provenance) is VerifiedBaselineProvenance}',
+        "if os.environ.pop('CAPABILITY_REPORTER_FAIL_ONCE', None):\n"
+        "        raise RuntimeError('transient aggregation failure')\n"
+        "    return {'same_type': type(verified_provenance) is VerifiedBaselineProvenance}",
+    )
+    _, config = _sealed_reporter_fixture(tmp_path, source)
+    monkeypatch.setenv("CAPABILITY_REPORTER_FAIL_ONCE", "1")
+    key = (config.source_head, dict(config.runtime_blob_digests)[runtime.REPORTER_RELATIVE_PATH])
+
+    first = runtime._reporter(config)
+    first_provenance = first.VerifiedBaselineProvenance(config.source_head)
+    with pytest.raises(RuntimeError, match="transient aggregation failure"):
+        first._aggregate_baseline(verified_provenance=first_provenance)
+
+    assert key not in runtime._REPORTER_MODULES
+    assert first.__name__ not in sys.modules
+    second = runtime._reporter(config)
+    second_provenance = second.VerifiedBaselineProvenance(config.source_head)
+    assert second is not first
+    assert second._aggregate_baseline(verified_provenance=second_provenance) == {
+        "same_type": True
+    }
+
+
+def test_sealed_reporter_creates_and_consumes_one_provenance_type(tmp_path: Path) -> None:
+    _, config = _sealed_reporter_fixture(tmp_path, _MINIMAL_REPORTER)
+
+    reporter = runtime._reporter(config)
+    provenance = reporter.VerifiedBaselineProvenance(config.source_head)
+    artifact = reporter._aggregate_baseline(verified_provenance=provenance)
+
+    assert artifact == {"same_type": True}
+
+
+def test_production_reporter_has_no_repository_import_on_sealed_load(
+    tmp_path: Path,
+) -> None:
+    _, config = _sealed_reporter_fixture(tmp_path, REPORTER_PATH.read_text(encoding="utf-8"))
+
+    reporter = runtime._reporter(config)
+
+    assert reporter.VerifiedBaselineProvenance.__module__.startswith("_capability_reporter_")
+
+
 def test_committed_instrument_preflight_accepts_exact_blob_then_refuses_dirty_bytes(
     tmp_path: Path,
 ) -> None:
@@ -1385,6 +1834,7 @@ def test_cli_derives_fixed_contract_identities_and_isolates_canary(
     repo = tmp_path / "repo"
     repo.mkdir()
     captured = []
+    order: list[str] = []
     monkeypatch.setattr(runtime, "REPOSITORY_ROOT", repo, raising=False)
     monkeypatch.setattr(
         runtime,
@@ -1402,8 +1852,14 @@ def test_cli_derives_fixed_contract_identities_and_isolates_canary(
     )
     monkeypatch.setattr(runtime, "_load_contract", lambda _path: json.loads(MANIFEST_PATH.read_text()))
     monkeypatch.setattr(runtime, "_derived_host_identity", lambda: "host@sha256:" + "f" * 64, raising=False)
+    monkeypatch.setattr(
+        runtime,
+        "_reporter",
+        lambda *_: order.append("reporter") or types.SimpleNamespace(),
+    )
 
     def fake_run_one(config, profile, ordinal):
+        order.append("spawn")
         captured.append((config, profile, ordinal))
         return runtime._record(
             f"{config.cohort_id}-{profile}-{ordinal}", runtime._digest_text("request"),
@@ -1418,6 +1874,7 @@ def test_cli_derives_fixed_contract_identities_and_isolates_canary(
     ])
 
     assert code == 0
+    assert order[0] == "reporter"
     config, profile, ordinal = captured[0]
     assert (profile, ordinal) == ("none", 1)
     assert config.contract_path == repo / "scripts/baselines/capability_first_five_profile_v1.json"
@@ -1461,6 +1918,78 @@ def test_collect_requires_marker_authorization_before_cohort(
 
     assert code == 2
     assert "marker authorization" in capsys.readouterr().err
+
+
+def test_collect_rechecks_runtime_bytes_after_aggregation_before_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(runtime, "REPOSITORY_ROOT", repo, raising=False)
+    monkeypatch.setattr(
+        runtime,
+        "_preflight_committed_paths",
+        lambda *_: {
+            "source_head": "a" * 40,
+            "blobs": {
+                path: "sha256:" + "c" * 64
+                for path in runtime.REQUIRED_COMMITTED_PATHS
+            },
+        },
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_approved_codex_runtime",
+        lambda _contract: (
+            Path("/real/codex"),
+            "codex-cli/9.9.9@sha256:" + "b" * 64,
+        ),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_load_contract",
+        lambda _path: json.loads(MANIFEST_PATH.read_text()),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_derived_host_identity",
+        lambda: "host@sha256:" + "f" * 64,
+    )
+    reporter = types.SimpleNamespace(
+        _aggregate_baseline=lambda *_args, **_kwargs: {"operational_complete": True},
+    )
+    monkeypatch.setattr(runtime, "_reporter", lambda *_: reporter)
+    monkeypatch.setattr(
+        runtime,
+        "run_cohort",
+        lambda *_args, **_kwargs: runtime.CohortResult(
+            {}, (), object(), repo / "evidence"
+        ),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_assert_committed_runtime",
+        lambda _config: (_ for _ in ()).throw(
+            runtime.PreflightError("commit-required: runtime bytes changed")
+        ),
+    )
+
+    code = runtime.main(
+        [
+            "--collect",
+            "--cohort-id",
+            "cohort-a",
+            "--model",
+            "gpt-test",
+            "--reasoning-effort",
+            "low",
+            "--authorize-local-markers",
+        ]
+    )
+
+    assert code == 2
+    assert not (repo / "logs/capability-first/cohort-a/baseline.json").exists()
 
 
 def test_cli_rejects_caller_controlled_manifest_and_identity_options() -> None:

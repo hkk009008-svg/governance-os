@@ -30,14 +30,19 @@ COMPONENT_IDS = {
     "verification_authority_and_publication",
     "chatgpt_guard_and_browser_executor",
     "opus_reservation_and_bridge",
-    "dormant_signed_bus_ref_cas_substrate",
+    "live_v1_route_lineage_reader",
+    "signed_bus_event_and_cursor_runtime",
+    "live_v1_status_and_runtime_readers",
+    "coordination_lock_effects",
+    "codex_runtime_and_hook_adapter",
     "legacy_lifecycle_mapping_contract",
     "capability_baseline_runtime_collector",
+    "compact_shadow_reducer_and_v1_adapter",
 }
 AUTHORITY_CONTRACT = {
     "route_authority": "markdown_mailbox",
     "route_sidecar_role": "compatibility_only",
-    "signed_bus_role": "dormant_for_migration",
+    "signed_bus_role": "live_threeway_toolchain_not_compact_route_authority",
     "capability_consumption_role": "post_effect_evidence_only",
     "provider_output_role": "advisory_only",
 }
@@ -49,10 +54,337 @@ REQUIRED_ORPHANS = {
     "scripts.verification_report_gate.publish_candidate",
     "scripts.opus_review_bridge.probe_host_capabilities",
 }
-READ_ONLY_COMPONENT_ID = "legacy_lifecycle_mapping_contract"
-REQUIRED_PHASE1_PRODUCTION_MODULES = {
+READ_ONLY_COMPONENT_IDS = {
+    "compact_shadow_reducer_and_v1_adapter",
+    "legacy_lifecycle_mapping_contract",
+    "live_v1_route_lineage_reader",
+}
+MAPPING_PRODUCER_DEPENDENCIES = {
+    "scripts/chatgpt_pro_consult.py",
+    "scripts/consume_reviewer_result.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "scripts/protocol_capacity.py",
+    "scripts/route_capability.py",
+}
+REQUIRED_PRODUCTION_MODULES = {
+    "scripts/capability_reducer.py",
+    "scripts/capability_v1_adapter.py",
     "scripts/compact_state_mapping.py",
     "scripts/capability_baseline_runtime.py",
+}
+REQUIRED_SURFACE_OWNERS: dict[str, str] = {
+    "governance.toml": "target_binding",
+    "scripts/target_binding.py": "target_binding",
+    "scripts/route_manifest.py": "markdown_routes_and_mailbox_writer",
+    "scripts/protocol_mailbox.py": "markdown_routes_and_mailbox_writer",
+    "coordination/bin/send-event": "markdown_routes_and_mailbox_writer",
+    "coordination/bin/consume-events": "markdown_routes_and_mailbox_writer",
+    "scripts/route_compat.py": "typed_route_compatibility_canary",
+    "scripts/protocol_capacity.py": "capacity_reducer_and_packet_state_telemetry",
+    "scripts/packet_state.py": "capacity_reducer_and_packet_state_telemetry",
+    "scripts/protocol_capacity_board.py": (
+        "capacity_reducer_and_packet_state_telemetry"
+    ),
+    "scripts/protocol_effectiveness_report.py": "effectiveness_telemetry",
+    "scripts/route_capability.py": "capability_receipt_recording",
+    "scripts/verification_report_gate.py": (
+        "verification_authority_and_publication"
+    ),
+    "scripts/consume_reviewer_result.py": (
+        "verification_authority_and_publication"
+    ),
+    "scripts/chatgpt_pro_consult.py": "chatgpt_guard_and_browser_executor",
+    "scripts/opus_review_receipts.py": "opus_reservation_and_bridge",
+    "scripts/opus_review_bridge.py": "opus_reservation_and_bridge",
+    "scripts/compact_state_mapping.py": "legacy_lifecycle_mapping_contract",
+    "scripts/capability_baseline_runtime.py": (
+        "capability_baseline_runtime_collector"
+    ),
+    "scripts/capability_reducer.py": (
+        "compact_shadow_reducer_and_v1_adapter"
+    ),
+    "schemas/route-v2.schema.json": (
+        "compact_shadow_reducer_and_v1_adapter"
+    ),
+    "scripts/capability_v1_adapter.py": (
+        "compact_shadow_reducer_and_v1_adapter"
+    ),
+    "tests/fixtures/compact_kernel/v1_to_v2_replay.json": (
+        "compact_shadow_reducer_and_v1_adapter"
+    ),
+    "scripts/route_lineage.py": "live_v1_route_lineage_reader",
+    "threeway/refstore.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/gate.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/cutover.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/keys_bootstrap.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/__init__.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/approval_authority.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/canon.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/cursor_backfill.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/envelope.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/gitcas.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/keys.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/legacy_projector.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/loop.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/policy.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/predicate.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/reducer.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/rework.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/store.py": "signed_bus_event_and_cursor_runtime",
+    "threeway/tier.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/seat_emit.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/chief_emit.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/overseer_emit.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/sign_ci_result.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/consume_bus.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/run_merge_gate.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/run_merge_gate.sh": "signed_bus_event_and_cursor_runtime",
+    "scripts/overseer_plan.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/agy_observer.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/bus_unread.py": "signed_bus_event_and_cursor_runtime",
+    "scripts/execute_threeway_cutover.sh": "signed_bus_event_and_cursor_runtime",
+    ".github/workflows/ci.yml": "signed_bus_event_and_cursor_runtime",
+    "scripts/mailbox_monitor.py": "live_v1_status_and_runtime_readers",
+    "scripts/check_coordination.py": "live_v1_status_and_runtime_readers",
+    "scripts/check_doc_claims.py": "live_v1_status_and_runtime_readers",
+    "scripts/ledger_start_guard.py": "live_v1_status_and_runtime_readers",
+    "scripts/codex_protocol_model.py": "live_v1_status_and_runtime_readers",
+    "scripts/protocol_doctor.py": "live_v1_status_and_runtime_readers",
+    "scripts/continuation_readiness.py": "live_v1_status_and_runtime_readers",
+    ".agents/skills/four-seat-protocol/scripts/seat_status.py": (
+        "live_v1_status_and_runtime_readers"
+    ),
+    "scripts/status.py": "live_v1_status_and_runtime_readers",
+    "scripts/latest_handoff.py": "live_v1_status_and_runtime_readers",
+    "coordination/bin/claim-lock": "coordination_lock_effects",
+    "coordination/bin/release-lock": "coordination_lock_effects",
+    "coordination/bin/codex-seat": "codex_runtime_and_hook_adapter",
+    "scripts/codex_seat_launcher.py": "codex_runtime_and_hook_adapter",
+    ".codex/hooks.json": "codex_runtime_and_hook_adapter",
+    ".codex/hooks/session-smoke.sh": "codex_runtime_and_hook_adapter",
+    ".codex/hooks/guard-git-index.sh": "codex_runtime_and_hook_adapter",
+    ".codex/hooks/update-state.sh": "codex_runtime_and_hook_adapter",
+}
+REQUIRED_WRITER_SURFACES = {
+    "threeway/refstore.py",
+    "threeway/gate.py",
+    "threeway/cutover.py",
+    "threeway/gitcas.py",
+    "threeway/cursor_backfill.py",
+    "threeway/keys_bootstrap.py",
+    "scripts/seat_emit.py",
+    "scripts/chief_emit.py",
+    "scripts/overseer_emit.py",
+    "scripts/sign_ci_result.py",
+    "scripts/consume_bus.py",
+    "scripts/run_merge_gate.py",
+    "scripts/run_merge_gate.sh",
+    "scripts/overseer_plan.py",
+    "scripts/execute_threeway_cutover.sh",
+    ".github/workflows/ci.yml",
+}
+REQUIRED_SYMBOL_OVERRIDES: dict[str, tuple[str, str, str]] = {
+    "scripts.target_binding.main": (
+        "target_binding",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.route_compat.main": (
+        "typed_route_compatibility_canary",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.packet_state.is_valid_work_transition": (
+        "capacity_reducer_and_packet_state_telemetry",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.packet_state.main": (
+        "capacity_reducer_and_packet_state_telemetry",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.protocol_capacity_board.main": (
+        "capacity_reducer_and_packet_state_telemetry",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.protocol_effectiveness_report.main": (
+        "effectiveness_telemetry",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.route_capability.main": (
+        "capability_receipt_recording",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.verification_report_gate.validate_live_report": (
+        "verification_authority_and_publication",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.verification_report_gate.publish_candidate": (
+        "verification_authority_and_publication",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.verification_report_gate.main": (
+        "verification_authority_and_publication",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.consume_reviewer_result.main": (
+        "verification_authority_and_publication",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.chatgpt_pro_consult.main": (
+        "chatgpt_guard_and_browser_executor",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.opus_review_bridge.probe_host_capabilities": (
+        "opus_reservation_and_bridge",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.opus_review_bridge.main": (
+        "opus_reservation_and_bridge",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.compact_state_mapping.main": (
+        "legacy_lifecycle_mapping_contract",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.capability_baseline_runtime.main": (
+        "capability_baseline_runtime_collector",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.capability_v1_adapter.main": (
+        "compact_shadow_reducer_and_v1_adapter",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.route_lineage.check_cas": (
+        "live_v1_route_lineage_reader",
+        "orphan",
+        "integrate_or_delete_before_cutover",
+    ),
+    "scripts.route_lineage.main": (
+        "live_v1_route_lineage_reader",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "threeway.cutover.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "threeway.keys_bootstrap.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.seat_emit.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.chief_emit.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.overseer_emit.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.sign_ci_result.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.consume_bus.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.run_merge_gate.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.overseer_plan.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.agy_observer.main": (
+        "signed_bus_event_and_cursor_runtime",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.mailbox_monitor.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.check_coordination.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.check_doc_claims.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.ledger_start_guard.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.codex_protocol_model.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.protocol_doctor.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.continuation_readiness.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    ".agents.skills.four-seat-protocol.scripts.seat_status.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.status.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.latest_handoff.main": (
+        "live_v1_status_and_runtime_readers",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.codex_seat_launcher.main": (
+        "codex_runtime_and_hook_adapter",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
 }
 
 ROOT_KEYS = {"schema_version", "authority_contract", "components"}
@@ -107,6 +439,267 @@ def _public_functions(path: str) -> set[str]:
     }
 
 
+_EXPLICIT_BARE_IMPORT_ROOTS = {
+    ".agents/skills/four-seat-protocol/scripts/seat_status.py": ("scripts",),
+}
+
+
+def _resolve_repo_local_module(module_name: str) -> set[str]:
+    parts = module_name.split(".")
+    if (
+        not parts
+        or any(not part for part in parts)
+        or parts[0] not in {"scripts", "threeway"}
+    ):
+        return set()
+
+    module_path = REPO_ROOT.joinpath(*parts).with_suffix(".py")
+    package_path = REPO_ROOT.joinpath(*parts, "__init__.py")
+    target = (
+        package_path
+        if package_path.is_file()
+        else module_path if module_path.is_file() else None
+    )
+    if target is None:
+        return set()
+
+    resolved = {target.relative_to(REPO_ROOT).as_posix()}
+    for depth in range(1, len(parts)):
+        initializer = REPO_ROOT.joinpath(*parts[:depth], "__init__.py")
+        if initializer.is_file():
+            resolved.add(initializer.relative_to(REPO_ROOT).as_posix())
+    return resolved
+
+
+def _direct_repo_local_imports(path: str) -> set[str]:
+    source = (REPO_ROOT / path).read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=path)
+    imports: set[str] = set()
+    module_parts = list(Path(path).with_suffix("").parts)
+    package_parts = module_parts[:-1]
+    direct_root = (
+        module_parts[0]
+        if len(module_parts) == 2
+        and module_parts[0] in {"scripts", "threeway"}
+        else None
+    )
+    bare_import_roots = tuple(
+        dict.fromkeys(
+            (
+                *((direct_root,) if direct_root is not None else ()),
+                *_EXPLICIT_BARE_IMPORT_ROOTS.get(path, ()),
+            )
+        )
+    )
+
+    def resolve(module_name: str, *, bare_fallback: bool) -> set[str]:
+        resolved = _resolve_repo_local_module(module_name)
+        if resolved or not bare_fallback:
+            return resolved
+        for root in bare_import_roots:
+            resolved.update(_resolve_repo_local_module(f"{root}.{module_name}"))
+        return resolved
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                resolved = resolve(
+                    alias.name,
+                    bare_fallback=True,
+                )
+                imports.update(resolved)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                parent_count = len(package_parts) - node.level + 1
+                if parent_count < 1:
+                    continue
+                base_parts = package_parts[:parent_count]
+            else:
+                base_parts = []
+            if node.module:
+                base_parts.extend(node.module.split("."))
+            base_name = ".".join(base_parts)
+            resolved_base = resolve(
+                base_name,
+                bare_fallback=node.level == 0,
+            )
+            imports.update(resolved_base)
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                child_name = ".".join((*base_parts, alias.name))
+                resolved_child = resolve(
+                    child_name,
+                    bare_fallback=node.level == 0,
+                )
+                imports.update(resolved_child)
+
+    return imports
+
+
+def _direct_import_ownership_failures(
+    module_owners: dict[str, list[str]],
+) -> list[tuple[str, str, list[str]]]:
+    failures: list[tuple[str, str, list[str]]] = []
+    for importer in sorted(module_owners):
+        for imported in sorted(_direct_repo_local_imports(importer)):
+            owners = module_owners.get(imported, [])
+            if len(owners) != 1:
+                failures.append((importer, imported, owners))
+    return failures
+
+
+def test_mapping_direct_repo_local_imports_are_exact() -> None:
+    assert _direct_repo_local_imports(
+        "scripts/compact_state_mapping.py"
+    ) == MAPPING_PRODUCER_DEPENDENCIES
+
+
+def test_seat_status_direct_repo_local_imports_are_exact() -> None:
+    assert _direct_repo_local_imports(
+        ".agents/skills/four-seat-protocol/scripts/seat_status.py"
+    ) == {
+        "scripts/bus_unread.py",
+        "scripts/codex_protocol_model.py",
+        "scripts/latest_handoff.py",
+        "scripts/protocol_mailbox.py",
+    }
+
+
+def test_unknown_bare_local_import_is_an_ownership_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "synthetic_importer.py").write_text(
+        "import synthetic_dependency\n",
+        encoding="utf-8",
+    )
+    (scripts_dir / "synthetic_dependency.py").write_text(
+        "SENTINEL = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+
+    assert _direct_import_ownership_failures(
+        {"scripts/synthetic_importer.py": ["synthetic_owner"]}
+    ) == [
+        (
+            "scripts/synthetic_importer.py",
+            "scripts/synthetic_dependency.py",
+            [],
+        )
+    ]
+
+
+def test_nested_seat_status_bare_aliased_import_is_an_ownership_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    importer_path = (
+        ".agents/skills/four-seat-protocol/scripts/seat_status.py"
+    )
+    importer = tmp_path / importer_path
+    importer.parent.mkdir(parents=True)
+    importer.write_text(
+        "def load():\n"
+        "    import synthetic_dependency as alias\n"
+        "    return alias.SENTINEL\n",
+        encoding="utf-8",
+    )
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "synthetic_dependency.py").write_text(
+        "SENTINEL = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+
+    assert _direct_import_ownership_failures(
+        {importer_path: ["synthetic_owner"]}
+    ) == [
+        (
+            importer_path,
+            "scripts/synthetic_dependency.py",
+            [],
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "import scripts.pkg.child as alias\n",
+        "from scripts.pkg import child as alias\n",
+    ),
+    ids=("import", "import-from"),
+)
+def test_dotted_imports_include_executable_package_initializers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    statement: str,
+) -> None:
+    scripts_dir = tmp_path / "scripts"
+    package_dir = scripts_dir / "pkg"
+    package_dir.mkdir(parents=True)
+    (scripts_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "child.py").write_text("SENTINEL = True\n", encoding="utf-8")
+    importer_path = "scripts/synthetic_importer.py"
+    (tmp_path / importer_path).write_text(statement, encoding="utf-8")
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+
+    assert _direct_repo_local_imports(importer_path) == {
+        "scripts/__init__.py",
+        "scripts/pkg/__init__.py",
+        "scripts/pkg/child.py",
+    }
+    assert _direct_import_ownership_failures(
+        {
+            importer_path: ["synthetic_owner"],
+            "scripts/pkg/child.py": ["child_owner"],
+        }
+    ) == [
+        (importer_path, "scripts/__init__.py", []),
+        (importer_path, "scripts/pkg/__init__.py", []),
+    ]
+
+
+def test_package_initializer_precedes_same_named_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scripts_dir = tmp_path / "scripts"
+    package_dir = scripts_dir / "pkg"
+    package_dir.mkdir(parents=True)
+    (scripts_dir / "__init__.py").write_text("", encoding="utf-8")
+    (scripts_dir / "pkg.py").write_text("MODULE = True\n", encoding="utf-8")
+    (package_dir / "__init__.py").write_text("PACKAGE = True\n", encoding="utf-8")
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+
+    assert _resolve_repo_local_module("scripts.pkg") == {
+        "scripts/__init__.py",
+        "scripts/pkg/__init__.py",
+    }
+
+
+def test_live_status_reader_inventory_discloses_local_writers() -> None:
+    component = next(
+        item
+        for item in _load_inventory()["components"]
+        if item["id"] == "live_v1_status_and_runtime_readers"
+    )
+
+    assert component["authority_status"] == (
+        "live_v1_status_readers_with_explicit_local_writes"
+    )
+    assert set(component["writer_paths"]) == {
+        "scripts/check_doc_claims.py",
+        "scripts/status.py",
+    }
+    assert "status.py --write" in component["executor_boundary"]
+    assert "check_doc_claims.py --fix" in component["executor_boundary"]
+    assert "local writes" in component["executor_boundary"]
+
+
 def test_repository_paths_reject_noncanonical_module_aliases() -> None:
     with pytest.raises(AssertionError, match="canonical"):
         _assert_repo_path(
@@ -120,7 +713,7 @@ def test_route_lineage_runtime_helpers_are_runtime_core() -> None:
     component = next(
         item
         for item in components
-        if item["id"] == "dormant_signed_bus_ref_cas_substrate"
+        if item["id"] == "live_v1_route_lineage_reader"
     )
     rule = next(
         item
@@ -165,14 +758,73 @@ def test_five_profile_baseline_is_read_only_effectiveness_telemetry() -> None:
     assert baseline not in {rule["path"] for rule in component["module_rules"]}
 
 
-def test_phase1_production_modules_have_explicit_inventory_owners() -> None:
+def test_required_production_modules_have_explicit_inventory_owners() -> None:
     declared_modules = {
         rule["path"]
         for component in _load_inventory()["components"]
         for rule in component["module_rules"]
     }
 
-    assert REQUIRED_PHASE1_PRODUCTION_MODULES <= declared_modules
+    assert REQUIRED_PRODUCTION_MODULES <= declared_modules
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_owner"),
+    sorted(REQUIRED_SURFACE_OWNERS.items()),
+)
+def test_required_surfaces_have_explicit_owner(path, expected_owner):
+    components = _load_inventory()["components"]
+    owners = [
+        component["id"]
+        for component in components
+        if path
+        in (
+            {rule["path"] for rule in component["module_rules"]}
+            if path.endswith(".py")
+            else set(component["source_paths"])
+        )
+    ]
+    assert owners == [expected_owner]
+
+
+@pytest.mark.parametrize("path", sorted(REQUIRED_WRITER_SURFACES))
+def test_required_writer_surfaces_have_signed_bus_owner(path: str) -> None:
+    owners = [
+        component["id"]
+        for component in _load_inventory()["components"]
+        if path in component["writer_paths"]
+    ]
+
+    assert owners == ["signed_bus_event_and_cursor_runtime"]
+
+
+def test_classified_modules_close_over_direct_repo_local_imports() -> None:
+    components = _load_inventory()["components"]
+    module_owners: dict[str, list[str]] = {}
+    for component in components:
+        for rule in component["module_rules"]:
+            module_owners.setdefault(rule["path"], []).append(component["id"])
+
+    ownership_failures = _direct_import_ownership_failures(module_owners)
+
+    assert not ownership_failures, (
+        "classified modules have direct local imports without exactly one "
+        f"module-rule owner: {ownership_failures}"
+    )
+
+
+def test_required_symbol_overrides_are_exactly_pinned() -> None:
+    actual = {
+        override["symbol"]: (
+            component["id"],
+            override["helper_class"],
+            override["disposition"],
+        )
+        for component in _load_inventory()["components"]
+        for override in component["symbol_overrides"]
+    }
+
+    assert actual == REQUIRED_SYMBOL_OVERRIDES
 
 
 def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:
@@ -180,8 +832,10 @@ def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:
         component["id"]: component
         for component in _load_inventory()["components"]
     }
-    assert READ_ONLY_COMPONENT_ID in components
-    component = components[READ_ONLY_COMPONENT_ID]
+    component_id = "legacy_lifecycle_mapping_contract"
+    assert component_id in READ_ONLY_COMPONENT_IDS
+    assert component_id in components
+    component = components[component_id]
     owned_paths = {
         "scripts/compact_state_mapping.py",
         "tests/fixtures/compact_state_mapping/v1.json",
@@ -189,7 +843,9 @@ def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:
     }
 
     assert set(component["source_paths"]) == owned_paths
-    assert set(component["reader_paths"]) == owned_paths
+    assert set(component["reader_paths"]) == (
+        owned_paths | MAPPING_PRODUCER_DEPENDENCIES
+    )
     assert component["writer_paths"] == []
     assert component["default_helper_class"] == "telemetry"
     assert component["module_rules"] == [
@@ -202,6 +858,68 @@ def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:
             "disposition": "keep_documented_cli",
         }
     ]
+    assert "imported only for observation" in component["executor_boundary"]
+    assert (
+        "no provider, writer, or effect entrypoint is invoked"
+        in component["executor_boundary"]
+    )
+
+
+def test_compact_shadow_reducer_and_adapter_are_read_only_compatibility() -> None:
+    component = next(
+        item
+        for item in _load_inventory()["components"]
+        if item["id"] == "compact_shadow_reducer_and_v1_adapter"
+    )
+    source_paths = {
+        "scripts/capability_reducer.py",
+        "schemas/route-v2.schema.json",
+        "scripts/capability_v1_adapter.py",
+        "tests/fixtures/compact_kernel/v1_to_v2_replay.json",
+    }
+    reader_fixtures = {
+        "tests/fixtures/compact_state_mapping/v1.json",
+        "tests/fixtures/compact_kernel/v1_misuse_vectors.json",
+        "tests/fixtures/compact_kernel/v2_replay_vectors.json",
+    }
+
+    assert component["authority_status"] == (
+        "non_authoritative_read_only_shadow_compatibility"
+    )
+    assert set(component["source_paths"]) == source_paths
+    assert set(component["reader_paths"]) == (
+        source_paths
+        | reader_fixtures
+        | {"scripts/compact_state_mapping.py"}
+    )
+    assert component["writer_paths"] == []
+    assert component["default_helper_class"] == "historical_adapter"
+    assert component["module_rules"] == [
+        {
+            "path": "scripts/capability_reducer.py",
+            "default_helper_class": "runtime_core",
+        },
+        {"path": "scripts/capability_v1_adapter.py"},
+    ]
+    assert component["symbol_overrides"] == [
+        {
+            "symbol": "scripts.capability_v1_adapter.main",
+            "helper_class": "cli_entrypoint",
+            "disposition": "keep_documented_cli",
+        }
+    ]
+    assert "imported only for observation" in component["executor_boundary"]
+    assert (
+        "no provider, writer, or effect entrypoint is invoked"
+        in component["executor_boundary"]
+    )
+
+    adapter_imports = _direct_repo_local_imports(
+        "scripts/capability_v1_adapter.py"
+    )
+    reducer_imports = _direct_repo_local_imports("scripts/capability_reducer.py")
+    assert "scripts/capability_reducer.py" in adapter_imports
+    assert "scripts/capability_v1_adapter.py" not in reducer_imports
 
 
 def test_runtime_collector_is_a_non_authoritative_benchmark_executor() -> None:
@@ -279,7 +997,7 @@ def test_inventory_schema_authority_and_paths() -> None:
         for field in ("source_paths", "reader_paths", "writer_paths"):
             paths = component[field]
             assert isinstance(paths, list), f"{component_id}.{field} is not a list"
-            if field == "writer_paths" and component_id == READ_ONLY_COMPONENT_ID:
+            if field == "writer_paths" and component_id in READ_ONLY_COMPONENT_IDS:
                 assert paths == [], f"{component_id}.{field} must be empty"
             else:
                 assert paths, f"{component_id}.{field} is empty"
@@ -288,7 +1006,14 @@ def test_inventory_schema_authority_and_paths() -> None:
                 _assert_repo_path(path, f"{component_id}.{field}[{index}]")
 
         module_rules = component["module_rules"]
-        assert isinstance(module_rules, list) and module_rules
+        assert isinstance(module_rules, list)
+        python_sources = {
+            path for path in component["source_paths"] if path.endswith(".py")
+        }
+        if python_sources:
+            assert module_rules
+        else:
+            assert module_rules == []
         for rule in module_rules:
             assert isinstance(rule, dict)
             assert set(rule).issubset(MODULE_RULE_KEYS)
@@ -299,9 +1024,6 @@ def test_inventory_schema_authority_and_paths() -> None:
                 assert rule["default_helper_class"] in HELPER_CLASSES
                 assert rule["default_helper_class"] != "orphan"
 
-        python_sources = {
-            path for path in component["source_paths"] if path.endswith(".py")
-        }
         rule_paths = {rule["path"] for rule in module_rules}
         assert rule_paths == python_sources, (
             f"{component_id} must have one module rule for every scoped Python source"
@@ -326,6 +1048,7 @@ def test_every_scoped_public_function_is_classified() -> None:
     components = _load_inventory()["components"]
     module_owner: dict[str, str] = {}
     module_default: dict[str, str] = {}
+    module_paths_by_key: dict[str, str] = {}
     public_symbols: set[str] = set()
     overrides: dict[str, dict[str, str]] = {}
 
@@ -343,6 +1066,8 @@ def test_every_scoped_public_function_is_classified() -> None:
                 "default_helper_class", component["default_helper_class"]
             )
             module_name = _module_name(path)
+            assert module_name not in module_paths_by_key
+            module_paths_by_key[module_name] = path
             owned_modules.add(module_name)
             public_symbols.update(
                 f"{module_name}.{function}" for function in _public_functions(path)
@@ -355,7 +1080,7 @@ def test_every_scoped_public_function_is_classified() -> None:
             assert module_name in owned_modules, (
                 f"override belongs to an unowned module: {symbol}"
             )
-            module_path = module_name.replace(".", "/") + ".py"
+            module_path = module_paths_by_key[module_name]
             assert function_name in _public_functions(module_path), (
                 f"override names an unknown public function: {symbol}"
             )

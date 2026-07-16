@@ -32,7 +32,10 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from threeway.canon import canonicalize  # noqa: E402
-import route_lineage  # noqa: E402  — read-only: LineageRoute for supersession currency
+if __package__:
+    from scripts import route_lineage  # noqa: E402
+else:
+    import route_lineage  # noqa: E402
 
 SCHEMA_ID = "governance.capability/v1"
 

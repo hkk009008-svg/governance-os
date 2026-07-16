@@ -12,6 +12,10 @@
 [kernel]
 repository = "hkk009008-svg/governance-os"
 
+[protocol.kernel]
+epoch = 0
+writer = "v1"
+
 [binding]
 default_target = "evidence-ledger"
 
