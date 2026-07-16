@@ -20,9 +20,11 @@
     "Commit, push, merge, provider launch, runtime cleanup, and external publication are separate authorities; this packet authorizes no push, merge, provider call, or cleanup.",
     "Perform only Task 6's bounded, non-repairing full-range quality question and return a canonical findings event."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Task 6 quality PASS: coordination/mailbox/sent/2026-07-16T16-37-09Z-operator2-to-coordinator-findings.md; reviewed range 0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2; 913 tests passed; check_go_schema.py and ci_smoke.py passed."
+  ],
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": null,
   "target_commit": "ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2",

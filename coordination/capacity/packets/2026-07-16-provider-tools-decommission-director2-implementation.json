@@ -9,6 +9,8 @@
   "packet_type": "director-implementation",
   "allowed_paths": [
     "docs/superpowers/plans/2026-07-16-provider-tools-targeted-decommission.md",
+    "coordination/verification/scopes/11249ae3-1a0f-45c0-aa90-7d558537b001.json",
+    "coordination/mailbox/sent/*-director2-to-operator-verify-request.md",
     "coordination/mailbox/sent/2026-07-16T14-28-20Z-director2-to-coordinator-findings.md",
     "coordination/mailbox/sent/2026-07-16T14-36-31Z-director2-to-coordinator-findings.md",
     "scripts/baselines/lane_v_reports_pre_v3.json",
@@ -59,7 +61,8 @@
     "Historical evidence and ignored local runtime evidence are read-only and outside the write set.",
     "Commit, push, merge, provider launch, runtime cleanup, and external publication are separate authorities; this packet authorizes no push, merge, provider call, or cleanup.",
     "Complete Tasks 4-5 as bounded implementation commits with required independent task reviews; only committed plan or review corrections may add commits, after the Director packet is terminally done.",
-    "Task 6 correction is limited to F1 published-task witness enforcement, F2 non-vacuous ready-packet probes, F3 terminal Exact Next Trigger sections in the two named findings events, F4 fresh-clone validation of exact committed v3 bytes without private runtime while retaining the live witness for uncommitted reports, and F5 presence accounting for committed unlisted verification-report paths."
+    "Task 6 correction is limited to F1 published-task witness enforcement, F2 non-vacuous ready-packet probes, F3 terminal Exact Next Trigger sections in the two named findings events, F4 fresh-clone validation of exact committed v3 bytes without private runtime while retaining the live witness for uncommitted reports, and F5 presence accounting for committed unlisted verification-report paths.",
+    "Task 7 authority construction is limited to the fixed descriptor and one canonical committed Director2-to-Operator verify-request bound to the final Task 6 PASS range."
   ],
   "done_evidence": [
     "Task 4 provider-neutral Lane V and Opus deletion: d3f360511814979ea742c45099a43b1afd8e20d1 plus authority correction 72c9eeb34f7a73ade3f0e9fec1ae4f10e4401b32; 466 focused tests passed and both task reviews PASS.",
@@ -68,15 +71,18 @@
     "Task 6 quality correction ed56f9b264d12a5ce835434707fd7eda5a46287e enforces the published-task witness, restores non-vacuous ready-packet probes, and supplies both missing terminal triggers; verification remains owned by the refreshed Operator2 preflight.",
     "Task 6 fresh-clone correction 03915a62b5230c213e4b90af706abac68ef07bd2 accepts only exact sanitized-HEAD v3 bytes without private runtime and retains the published-task witness for non-HEAD reports; 439 focused tests passed.",
     "Task 6 committed-report presence correction ee16bbe930c00c513415049b5d8ff84af5315ba2 rejects unstaged deletion of committed live v3 reports without duplicating pre-v3 manifest errors; 58 scoped tests passed.",
+    "Task 6 quality PASS is coordination/mailbox/sent/2026-07-16T16-37-09Z-operator2-to-coordinator-findings.md for exact range 0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2 after 913 tests.",
     "verification not needed at this intermediate Director2 and Operator2-preflight boundary; the approved cycle reserves one formal provider-neutral Operator Lane V pass for Task 7."
   ],
-  "next_recipient": "operator2",
-  "status": "done",
+  "next_recipient": "operator",
+  "status": "ready",
   "verify_request": null,
   "target_commit": "ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "scope_files": [
     "docs/superpowers/plans/2026-07-16-provider-tools-targeted-decommission.md",
+    "coordination/verification/scopes/11249ae3-1a0f-45c0-aa90-7d558537b001.json",
+    "coordination/mailbox/sent/*-director2-to-operator-verify-request.md",
     "coordination/mailbox/sent/2026-07-16T14-28-20Z-director2-to-coordinator-findings.md",
     "coordination/mailbox/sent/2026-07-16T14-36-31Z-director2-to-coordinator-findings.md",
     "scripts/baselines/lane_v_reports_pre_v3.json",
