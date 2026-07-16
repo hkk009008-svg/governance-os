@@ -564,6 +564,42 @@ Mark the Director packet `done` only after fresh spec and quality reviews return
 - Consumes: Tasks 2-3, every tracked pre-v3 verification-report byte, the current structural authority parser, and the existing `TaskPublicationStore` transaction.
 - Produces: `parse_lane_v_report(relative_path: str, raw: bytes) -> LaneVReport`, `validate_structural_authority(root: Path, report: LaneVReport) -> StructuralAuthority`, `validate_live_report(root: Path, report: LaneVReport, *, task_store_factory=TaskPublicationStore.for_repo) -> TaskPublicationRecord`, and one task-ID-only publish/resume/status CLI.
 
+**Binding independence-first correction:** A fresh independent design-time
+preflight at `b459327addaf0e18a6c1e62b062bcad84b986cee` blocked implementation
+before any Task-4 code edit. The following acceptance criteria are additions to
+Steps 1-8 and must be implemented and tested before the Task-4 commit:
+
+- The new default `scripts/baselines/lane_v_reports_pre_v3.json` is a one-shot
+  frozen cutover manifest. Once it exists, neither `--replace-baseline` nor the
+  Python generation API may change it. A regression must alter historical
+  report bytes, attempt replacement, prove the command/API fails without
+  changing manifest bytes, and prove validation still reports digest drift.
+- Port the complete provider-neutral abuse matrix for the moved JSON, canonical
+  encoding, repository-path, scope-reference, trigger, and descriptor
+  primitives into `test_verification_report_gate.py` before deleting the Opus
+  test modules. Coverage includes duplicate keys at nested levels, invalid
+  UTF-8, non-finite values, size limits, exact descriptor fields and literals,
+  canonical UUID/SHA/digest forms, absolute/dot/dot-dot/empty/trailing-slash/
+  backslash/glob/oversize paths, and byte/component-aware allowed roots.
+- Exercise private `TaskPublicationStore` state directly: root mode `0700` and
+  current ownership; lock/record mode `0600`, regular-file type, current
+  ownership, and single-link count; symlink, directory, FIFO, hard-link,
+  wrong-mode, and wrong-owner substitutions must fail before any record
+  transition or report publication.
+- Bind `Reviewer identity` to the filename/envelope sender with positive
+  canonical `operator` and `operator2` reports and negative other-seat,
+  non-operator, empty, decorated, and case-changed identities. Rejection occurs
+  during parsing before task-state access.
+- Add a source/CLI closure test proving the live gate has only task-ID
+  publication, rejects `--receipt-id`, contains no receipt store/record,
+  provider-mode, lazy-bridge, or provider-field branch, and that `send-event`
+  extracts only `verification_report_gate.py` as trusted report source.
+
+The preflight found the existing structural-authority, no-replace publication,
+crash/fsync/staged-index recovery, hostile-Git, and exact historical path/digest
+coverage adequate if retained. No criterion above authorizes Opus, receipt, or
+local-runtime access.
+
 - [ ] **Step 1: Rewrite parser tests for the exact v3 contract**
 
 Replace `_codex_fields()` and `_claude_fields()` with one helper:
