@@ -26,6 +26,7 @@ REVIEW_SCHEMA_VERSION = "opus-review/v3"
 RECONCILIATION_SCHEMA_VERSION = "opus-reconciliation/v2"
 CODEX_MODE = "codex-lane-v"
 CODEX_HARNESS = "codex:lane-v-verifier"
+CODEX_PROVIDER_FREE_MODE = "codex-provider-free-lane-v"
 CLAUDE_MODE = "claude-lane-v"
 CLAUDE_HARNESS = "claude:lane-v-verifier"
 PIPELINE_MARKER_PATHS = (
@@ -99,7 +100,14 @@ _REVIEW_SCOPE_FIELDS = frozenset(
         "verification_commands",
     }
 )
-_SUPPORTED_VERIFIERS = frozenset(
+_DESCRIPTOR_SUPPORTED_VERIFIERS = frozenset(
+    {
+        (CODEX_MODE, CODEX_HARNESS, CODEX_MODE),
+        (CODEX_PROVIDER_FREE_MODE, CODEX_HARNESS, CODEX_PROVIDER_FREE_MODE),
+        (CLAUDE_MODE, CLAUDE_HARNESS, CLAUDE_MODE),
+    }
+)
+_REVIEW_SCOPE_SUPPORTED_VERIFIERS = frozenset(
     {
         (CODEX_MODE, CODEX_HARNESS, CODEX_MODE),
         (CLAUDE_MODE, CLAUDE_HARNESS, CLAUDE_MODE),
@@ -424,7 +432,12 @@ def _normalized_commands(
 
 
 def _validated_verifier(
-    mode: object, harness: object, profile: object, *, reason: str
+    mode: object,
+    harness: object,
+    profile: object,
+    *,
+    supported: frozenset[tuple[str, str, str]],
+    reason: str,
 ) -> tuple[str, str, str]:
     if (
         not isinstance(mode, str)
@@ -436,7 +449,7 @@ def _validated_verifier(
             "verification mode, harness, and review profile must be strings",
         )
     values = (mode, harness, profile)
-    if values not in _SUPPORTED_VERIFIERS:
+    if values not in supported:
         raise ReceiptContractError(
             reason,
             "unsupported verification mode, harness, and review profile",
@@ -692,6 +705,7 @@ class ScopeDescriptor:
             mapping["verification_mode"],
             mapping["verification_harness"],
             mapping["review_profile"],
+            supported=_DESCRIPTOR_SUPPORTED_VERIFIERS,
             reason=reason,
         )
         reviewed_base = _require_exact_fields(
@@ -782,6 +796,7 @@ class ReviewScope:
             self.verification_mode,
             self.verification_harness,
             self.review_profile,
+            supported=_REVIEW_SCOPE_SUPPORTED_VERIFIERS,
             reason=reason,
         )
         trigger_commit = _full_sha(
@@ -1118,6 +1133,13 @@ def canonical_json_bytes(value: object) -> bytes:
 
 
 def compute_attempt_key(scope: ReviewScope) -> str:
+    _validated_verifier(
+        scope.verification_mode,
+        scope.verification_harness,
+        scope.review_profile,
+        supported=_REVIEW_SCOPE_SUPPORTED_VERIFIERS,
+        reason="invalid_review_scope",
+    )
     mapping = {
         "schema_version": _ATTEMPT_KEY_SCHEMA_VERSION,
         "repository_identity": scope.repository_identity,

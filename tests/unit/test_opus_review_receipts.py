@@ -273,6 +273,48 @@ def test_scope_descriptor_accepts_supported_claude_pair() -> None:
     assert descriptor.verification_mode == "claude-lane-v"
 
 
+def test_scope_descriptor_accepts_provider_free_codex_pair() -> None:
+    value = _descriptor_mapping()
+    value.update(
+        verification_mode="codex-provider-free-lane-v",
+        verification_harness="codex:lane-v-verifier",
+        review_profile="codex-provider-free-lane-v",
+    )
+    descriptor = receipts.ScopeDescriptor.from_mapping(value)
+    assert descriptor.verification_mode == receipts.CODEX_PROVIDER_FREE_MODE
+
+
+@pytest.mark.parametrize(
+    ("harness", "profile"),
+    [
+        ("claude:lane-v-verifier", "codex-provider-free-lane-v"),
+        ("codex:lane-v-verifier", "codex-lane-v"),
+        ("codex:lane-v-verifier", "claude-lane-v"),
+    ],
+)
+def test_scope_descriptor_rejects_mixed_provider_free_pair(harness, profile):
+    value = _descriptor_mapping()
+    value.update(
+        verification_mode="codex-provider-free-lane-v",
+        verification_harness=harness,
+        review_profile=profile,
+    )
+    with pytest.raises(receipts.ReceiptContractError):
+        receipts.ScopeDescriptor.from_mapping(value)
+
+
+def test_review_scope_rejects_provider_free_mode_before_receipt_state(tmp_path):
+    scope = dataclasses.replace(
+        _review_scope(),
+        verification_mode="codex-provider-free-lane-v",
+        review_profile="codex-provider-free-lane-v",
+    )
+    state_root = tmp_path / "state"
+    with pytest.raises(receipts.ReceiptContractError, match="invalid_review_scope"):
+        receipts.compute_attempt_key(scope)
+    assert not state_root.exists()
+
+
 def test_scope_descriptor_rejects_non_string_verifier_fields() -> None:
     value = _descriptor_mapping()
     value["verification_mode"] = []
