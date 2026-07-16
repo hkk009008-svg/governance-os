@@ -1,0 +1,37 @@
+{
+  "id": "operator-provider-tools-decommission-lanev",
+  "wave": 2,
+  "cycle": "provider-tools-targeted-decommission-2026-07-16",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": "docs/HANDOFF-owner-2026-07-16-provider-tool-decommission.md",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "allowed_paths": [
+    "coordination/verification/scopes/11249ae3-1a0f-45c0-aa90-7d558537b001.json",
+    "coordination/mailbox/sent/*-director2-to-operator-verify-request.md",
+    "coordination/capacity/packets/2026-07-16-provider-tools-decommission-operator-lanev.json",
+    "coordination/mailbox/sent/*-operator-to-all-verification-report.md"
+  ],
+  "dependencies": [
+    "operator2-provider-tools-decommission-quality-preflight"
+  ],
+  "acceptance": [
+    "No ChatGPT Pro, Claude, Opus, provider CLI, in-app browser, paid API, provider retry, or provider receipt action is authorized.",
+    "Historical evidence and ignored local runtime evidence are read-only and outside the write set.",
+    "Commit, push, merge, provider launch, runtime cleanup, and external publication are separate authorities; this packet authorizes no push, merge, provider call, or cleanup.",
+    "Remain blocked until the fixed descriptor and one canonical verify-request are committed, then perform Task 7's provider-neutral Lane V pass without repair."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/verification/scopes/11249ae3-1a0f-45c0-aa90-7d558537b001.json",
+    "coordination/mailbox/sent/*-director2-to-operator-verify-request.md",
+    "coordination/capacity/packets/2026-07-16-provider-tools-decommission-operator-lanev.json",
+    "coordination/mailbox/sent/*-operator-to-all-verification-report.md"
+  ]
+}

@@ -25,9 +25,14 @@
     "Close only from one schema-valid committed Pair-A Operator GO for exact P..C with completed and reconciled non-author Opus evidence. NITS, FAIL, unavailable, uncertain delivery, stale authority, or different range stops. The candidate is review-only and never an integration input; later integration merges only the original frozen heads.",
     "On GO, resume the original approved integration plan subject to 22-path main-to-P equivalence. Do not merge candidate history, invoke ChatGPT Pro, open a browser, retry a provider, mutate receipts, push, publish, clean up, consume cursors, or alter the unrelated Opus lane. The next recipient remains coordinator until a lawful transition."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-16T09-59-01Z-coordinator-to-all-coordination.md at the metadata-only retirement commit; user-principal decommission supersedes this provider-dependent cycle",
+    "capacity board evidence: wave-2 capacity board valid at the metadata-only retirement commit",
+    "smoke OK evidence: scripts/ci_smoke.py passed at the metadata-only retirement commit",
+    "next trigger: Director starts Task 2 only after the decommission route commit validates"
+  ],
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

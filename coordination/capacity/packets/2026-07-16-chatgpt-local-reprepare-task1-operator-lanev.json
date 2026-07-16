@@ -22,9 +22,11 @@
     "The candidate is review-only and never an integration input. Provider process attempts and receipt mutations are zero until the later activation. Do not invoke ChatGPT Pro or open a browser. Any later Opus unavailable or uncertain result is visible, never retried, and blocks this independence gate absent a new user-authorized harness.",
     "Issue exactly one GO, NITS, or FAIL only after the later activation and exact independent review. Return the committed report to coordinator; the next recipient is coordinator. Do not edit implementation, integrate, push, publish, clean up, consume a cursor, or act on the unrelated Opus Stage-A lane."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-16T09-59-01Z-coordinator-to-all-coordination.md at the metadata-only retirement commit; user-principal decommission supersedes this provider-dependent cycle"
+  ],
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

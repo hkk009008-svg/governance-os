@@ -30,9 +30,11 @@
     "Return exactly one canonical GO, NITS, or FAIL for exact R..Q2 Stage A diagnostics only. GO proves the bounded provider-free correction and lawful authority chain; it is not evidence that Opus transport is restored and authorizes no canary, integration, external publication, or retry. NITS or FAIL grants no Q3. Do not repair, invoke a provider, merge, publish, amend, reset, consume, claim locks, edit runtime state, clean evidence, or alter unrelated root work.",
     "Operator2 blocker 59eb9d4a19bc200d372b6aa489df6d53a0c08d14 found the committed receipt-manifest anchor absent and the provider-free Lane-V report contract incompatible with mandatory Opus receipt fields. Do not repeat verification from unchanged T=eb05da5004b5ab8a3ce12187ec2eec12bdf98f15. Coordinator must route both authority corrections without changing R..Q2 before a new canonical trigger can reactivate this packet."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-16T09-59-01Z-coordinator-to-all-coordination.md at the metadata-only retirement commit; user-principal decommission supersedes this provider-dependent cycle"
+  ],
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": "coordination/mailbox/sent/2026-07-15T21-40-25Z-director2-to-operator2-verify-request.md",
   "target_commit": "804aac46f969a5a39acef47832ff53989ea3031b",
   "commit_range": "40fd0a5e43c6b28330ced9ddffe01483cde42b65..804aac46f969a5a39acef47832ff53989ea3031b",

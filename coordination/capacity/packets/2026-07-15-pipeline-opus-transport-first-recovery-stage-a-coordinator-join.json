@@ -25,9 +25,14 @@
     "On Stage A GO, refresh HEAD, mailbox bodies, capacity, locks, shared WIP, exact report evidence, receipt state, provider-attempt count, final-T trigger identity, and manifest equality. Then open the existing recovery plan's Stage B route only for the proven root boundary. On NITS or FAIL, stop and route only the bounded disposition permitted by the correction plan; no Q3, new descriptor, or later request correction is implicit.",
     "Stage C remains one separately authorized fresh canary after Stage B GO and requires a distinct named executor and side-effect token. Local integration, post-integration verification, external publication, retry, fallback, cleanup, receipt mutation, and target-repo work each remain separately gated. Coordinator owns metadata/route/join work only and never authors the production fix."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-16T09-59-01Z-coordinator-to-all-coordination.md at the metadata-only retirement commit; user-principal decommission supersedes this provider-dependent cycle",
+    "capacity board evidence: wave-2 capacity board valid at the metadata-only retirement commit",
+    "smoke OK evidence: scripts/ci_smoke.py passed at the metadata-only retirement commit",
+    "next trigger: Director starts Task 2 only after the decommission route commit validates"
+  ],
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

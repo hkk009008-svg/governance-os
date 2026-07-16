@@ -1,0 +1,33 @@
+{
+  "id": "operator2-provider-tools-decommission-quality-preflight",
+  "wave": 2,
+  "cycle": "provider-tools-targeted-decommission-2026-07-16",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": "docs/HANDOFF-owner-2026-07-16-provider-tool-decommission.md",
+  "owner": "operator2",
+  "packet_type": "operator-preflight",
+  "allowed_paths": [
+    "coordination/mailbox/sent/*-director2-to-coordinator-findings.md",
+    "coordination/mailbox/sent/*-operator2-to-coordinator-findings.md"
+  ],
+  "dependencies": [
+    "director2-provider-tools-decommission-implementation"
+  ],
+  "acceptance": [
+    "No ChatGPT Pro, Claude, Opus, provider CLI, in-app browser, paid API, provider retry, or provider receipt action is authorized.",
+    "Historical evidence and ignored local runtime evidence are read-only and outside the write set.",
+    "Commit, push, merge, provider launch, runtime cleanup, and external publication are separate authorities; this packet authorizes no push, merge, provider call, or cleanup.",
+    "Perform only Task 6's bounded, non-repairing full-range quality question and return a canonical findings event."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/*-director2-to-coordinator-findings.md",
+    "coordination/mailbox/sent/*-operator2-to-coordinator-findings.md"
+  ]
+}
