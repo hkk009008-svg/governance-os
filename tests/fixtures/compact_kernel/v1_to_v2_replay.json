@@ -1,8 +1,8 @@
 {
   "schema_version": "compact-kernel-v1-shadow-replay/v1",
   "sources": {
-    "tests/fixtures/compact_state_mapping/v1.json": "sha256:30493af3d4ec792b3945ac077c85d15c70418a6da7b60720e07a28c8a8b224e5",
-    "tests/fixtures/compact_kernel/v1_misuse_vectors.json": "sha256:993aca6a783d0c592db39e5cafb856f3f470d052051040481c2b0f4427325623",
+    "tests/fixtures/compact_state_mapping/v1.json": "sha256:6803286b690d7dec2068a9ea9bbc5047418ac73a547cbd7f28f1dd73372466cc",
+    "tests/fixtures/compact_kernel/v1_misuse_vectors.json": "sha256:786d8132a3f9394c3c27f7c7f7b4cd64c2581a0b7ed7a11fadf68f4199dbeb22",
     "tests/fixtures/compact_kernel/v2_replay_vectors.json": "sha256:c1264f6278f7ce9af5e8d10210d4466b8069008f8c16b9e85d2107504992f510"
   },
   "actors": {
@@ -105,49 +105,6 @@
     "mapping:capability-revoked",
     "mapping:capability-expired",
     "mapping:capability-failed",
-    "mapping:chatgpt-prepared",
-    "mapping:chatgpt-sending",
-    "mapping:chatgpt-sent",
-    "mapping:chatgpt-received",
-    "mapping:chatgpt-reconciled",
-    "mapping:chatgpt-failed-partial-send",
-    "mapping:chatgpt-failed-manual-resumable",
-    "mapping:chatgpt-failed-manual-terminal",
-    "mapping:chatgpt-failed-iab-terminal",
-    "mapping:chatgpt-failed-auth-chrome-terminal",
-    "mapping:chatgpt-failed-auth-manual-terminal",
-    "mapping:chatgpt-failed-auth-manual-resumable",
-    "mapping:chatgpt-failed-challenge-chrome-terminal",
-    "mapping:chatgpt-failed-challenge-iab-terminal",
-    "mapping:chatgpt-failed-challenge-manual-terminal",
-    "mapping:chatgpt-failed-challenge-manual-resumable",
-    "mapping:chatgpt-failed-malformed-chrome-terminal",
-    "mapping:chatgpt-failed-malformed-iab-terminal",
-    "mapping:chatgpt-failed-malformed-manual-terminal",
-    "mapping:chatgpt-failed-malformed-manual-resumable",
-    "mapping:chatgpt-failed-network-chrome-terminal",
-    "mapping:chatgpt-failed-network-iab-terminal",
-    "mapping:chatgpt-failed-partial-send-chrome",
-    "mapping:chatgpt-failed-partial-send-manual",
-    "mapping:chatgpt-failed-unavailable-chrome-terminal",
-    "mapping:chatgpt-failed-unavailable-iab-terminal",
-    "mapping:chatgpt-failed-unavailable-manual-terminal",
-    "mapping:chatgpt-failed-unavailable-manual-resumable",
-    "mapping:chatgpt-stale",
-    "mapping:opus-reserved-launch",
-    "mapping:opus-reserved-return",
-    "mapping:opus-reserved-degrade-uncertain",
-    "mapping:opus-reviewed-pass",
-    "mapping:opus-reviewed-issues",
-    "mapping:opus-reviewed-unavailable",
-    "mapping:opus-reconciled-go",
-    "mapping:opus-reconciled-nits",
-    "mapping:opus-reconciled-fail",
-    "mapping:opus-publishing",
-    "mapping:opus-published",
-    "mapping:provider-pass",
-    "mapping:provider-issues",
-    "mapping:provider-unavailable",
     "mapping:local-go",
     "mapping:local-nits",
     "mapping:local-fail",
@@ -187,9 +144,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:capacity-ready",
-      "source_digest": "sha256:9c42cdeabb736cb0d8e53bff6239d19fe96103d11901150d12ff60a2607556d1",
-      "work_id": "work-map-capacity-ready",
+          "source_id": "mapping:capacity-ready",
+          "source_digest": "sha256:9c42cdeabb736cb0d8e53bff6239d19fe96103d11901150d12ff60a2607556d1",
+          "work_id": "work-map-capacity-ready",
           "route_id": null,
           "work_revision": 1,
           "unit_id": null,
@@ -243,9 +200,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:capacity-active",
-      "source_digest": "sha256:cd219972db88b7a3f2c3f2b372f02411505960577e509c63a147dd3832de3605",
-      "work_id": "work-map-capacity-active",
+          "source_id": "mapping:capacity-active",
+          "source_digest": "sha256:cd219972db88b7a3f2c3f2b372f02411505960577e509c63a147dd3832de3605",
+          "work_id": "work-map-capacity-active",
           "route_id": "route-map-capacity-active",
           "work_revision": 1,
           "unit_id": "unit-map-capacity-active",
@@ -298,9 +255,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:capacity-blocked-wait",
-      "source_digest": "sha256:3684c49ce7d1bdece3c0acccafdd3be93da292215b5edad4b833c1d2d9c6ea23",
-      "work_id": "work-map-capacity-blocked-wait",
+          "source_id": "mapping:capacity-blocked-wait",
+          "source_digest": "sha256:3684c49ce7d1bdece3c0acccafdd3be93da292215b5edad4b833c1d2d9c6ea23",
+          "work_id": "work-map-capacity-blocked-wait",
           "route_id": "route-map-capacity-blocked-wait",
           "work_revision": 1,
           "unit_id": "unit-map-capacity-blocked-wait",
@@ -414,9 +371,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:capacity-blocked-review",
-      "source_digest": "sha256:d4832d06b3d5ad5a877833d35bc57e21d7139c6a67b3a1c2f240019a65e298f3",
-      "work_id": "work-map-capacity-blocked-review",
+          "source_id": "mapping:capacity-blocked-review",
+          "source_digest": "sha256:d4832d06b3d5ad5a877833d35bc57e21d7139c6a67b3a1c2f240019a65e298f3",
+          "work_id": "work-map-capacity-blocked-review",
           "route_id": "route-map-capacity-blocked-review",
           "work_revision": 1,
           "unit_id": "unit-map-capacity-blocked-review",
@@ -472,9 +429,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:capacity-blocked-complete",
-      "source_digest": "sha256:13676f52cd9985d07daaa2aa2d954a90b555f34ec041131b76e02bd49092207d",
-      "work_id": "work-map-capacity-blocked-complete",
+          "source_id": "mapping:capacity-blocked-complete",
+          "source_digest": "sha256:13676f52cd9985d07daaa2aa2d954a90b555f34ec041131b76e02bd49092207d",
+          "work_id": "work-map-capacity-blocked-complete",
           "route_id": "route-map-capacity-blocked-complete",
           "work_revision": 1,
           "unit_id": "unit-map-capacity-blocked-complete",
@@ -530,9 +487,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:capacity-done-review",
-      "source_digest": "sha256:1114a41b271dd04603f5829df1e4c7f9de759378e25e3010fe054d4f81ca474e",
-      "work_id": "work-map-capacity-done-review",
+          "source_id": "mapping:capacity-done-review",
+          "source_digest": "sha256:1114a41b271dd04603f5829df1e4c7f9de759378e25e3010fe054d4f81ca474e",
+          "work_id": "work-map-capacity-done-review",
           "route_id": "route-map-capacity-done-review",
           "work_revision": 1,
           "unit_id": "unit-map-capacity-done-review",
@@ -589,9 +546,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:capacity-done-verified",
-      "source_digest": "sha256:a1384e152f125a80ccdce8b5a20c23dd2b0c9c1acf6e05a56ef76794548748dc",
-      "work_id": "work-map-capacity-done-verified",
+          "source_id": "mapping:capacity-done-verified",
+          "source_digest": "sha256:a1384e152f125a80ccdce8b5a20c23dd2b0c9c1acf6e05a56ef76794548748dc",
+          "work_id": "work-map-capacity-done-verified",
           "route_id": "route-map-capacity-done-verified",
           "work_revision": 1,
           "unit_id": "unit-map-capacity-done-verified",
@@ -648,9 +605,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:capacity-done-no-review",
-      "source_digest": "sha256:02dc90ff07a1cbd9d95c85e062567b29e8c65aeb72c2d5241989eedb034a659c",
-      "work_id": "work-map-capacity-done-no-review",
+          "source_id": "mapping:capacity-done-no-review",
+          "source_digest": "sha256:02dc90ff07a1cbd9d95c85e062567b29e8c65aeb72c2d5241989eedb034a659c",
+          "work_id": "work-map-capacity-done-no-review",
           "route_id": "route-map-capacity-done-no-review",
           "work_revision": 1,
           "unit_id": "unit-map-capacity-done-no-review",
@@ -707,9 +664,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:capacity-excepted",
-      "source_digest": "sha256:0cec477ff588b67ed87be43ee46a42dd5f16786a8b2481b82d40ce31ca1728e9",
-      "work_id": "work-map-capacity-excepted",
+          "source_id": "mapping:capacity-excepted",
+          "source_digest": "sha256:0cec477ff588b67ed87be43ee46a42dd5f16786a8b2481b82d40ce31ca1728e9",
+          "work_id": "work-map-capacity-excepted",
           "route_id": "route-map-capacity-excepted",
           "work_revision": 1,
           "unit_id": "unit-map-capacity-excepted",
@@ -970,1167 +927,6 @@
       }
     },
     {
-      "id": "mapping:chatgpt-prepared",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-prepared",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "RESERVED",
-            "terminal_scope": "nonterminal",
-            "next_action": "send_once",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-sending",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-sending",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "ATTEMPTING",
-            "terminal_scope": "nonterminal",
-            "next_action": "complete_send_or_reconcile",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-sent",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-sent",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "AWAITING_RESPONSE",
-            "terminal_scope": "nonterminal",
-            "next_action": "accept_response_or_mark_stale",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-received",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-received",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "RESPONSE_RECEIVED",
-            "terminal_scope": "nonterminal",
-            "next_action": "reconcile_locally",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-reconciled",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-reconciled",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "RECONCILED",
-            "terminal_scope": "consultation",
-            "next_action": "none",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-partial-send",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-partial-send",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "OUTCOME_UNKNOWN",
-            "terminal_scope": "consultation",
-            "next_action": "reconcile_only",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-manual-resumable",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-manual-resumable",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "nonterminal",
-            "next_action": "resume_manual",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-manual-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-manual-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-iab-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-iab-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-auth-chrome-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-auth-chrome-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-auth-manual-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-auth-manual-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-auth-manual-resumable",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-auth-manual-resumable",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "nonterminal",
-            "next_action": "resume_manual",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-challenge-chrome-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-challenge-chrome-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-challenge-iab-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-challenge-iab-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-challenge-manual-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-challenge-manual-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-challenge-manual-resumable",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-challenge-manual-resumable",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "nonterminal",
-            "next_action": "resume_manual",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-malformed-chrome-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-malformed-chrome-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-malformed-iab-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-malformed-iab-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-malformed-manual-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-malformed-manual-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-malformed-manual-resumable",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-malformed-manual-resumable",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "nonterminal",
-            "next_action": "resume_manual",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-network-chrome-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-network-chrome-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-network-iab-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-network-iab-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-partial-send-chrome",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-partial-send-chrome",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "OUTCOME_UNKNOWN",
-            "terminal_scope": "consultation",
-            "next_action": "reconcile_only",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-partial-send-manual",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-partial-send-manual",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "OUTCOME_UNKNOWN",
-            "terminal_scope": "consultation",
-            "next_action": "reconcile_only",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-unavailable-chrome-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-unavailable-chrome-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-unavailable-iab-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-unavailable-iab-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-unavailable-manual-terminal",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-unavailable-manual-terminal",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-failed-unavailable-manual-resumable",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-failed-unavailable-manual-resumable",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "FAILED",
-            "terminal_scope": "nonterminal",
-            "next_action": "resume_manual",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:chatgpt-stale",
-      "case_kind": "mapping",
-      "mapping_row_id": "chatgpt-stale",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "STALE",
-            "terminal_scope": "consultation",
-            "next_action": "no_retry",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-reserved-launch",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-reserved-launch",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "RESERVED",
-            "terminal_scope": "nonterminal",
-            "next_action": "launch_once",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-reserved-return",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-reserved-return",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "RESERVED",
-            "terminal_scope": "nonterminal",
-            "next_action": "return_without_launch",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-reserved-degrade-uncertain",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-reserved-degrade-uncertain",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "OUTCOME_UNKNOWN",
-            "terminal_scope": "attempt",
-            "next_action": "reconcile_only",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-reviewed-pass",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-reviewed-pass",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "REVIEWED_PASS",
-            "terminal_scope": "nonterminal",
-            "next_action": "local_reconcile",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-reviewed-issues",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-reviewed-issues",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "REVIEWED_ISSUES",
-            "terminal_scope": "nonterminal",
-            "next_action": "local_reconcile",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-reviewed-unavailable",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-reviewed-unavailable",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "REVIEWED_UNAVAILABLE",
-            "terminal_scope": "nonterminal",
-            "next_action": "local_reconcile",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-reconciled-go",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-reconciled-go",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "RECONCILED_GO",
-            "terminal_scope": "provider_review",
-            "next_action": "consult_local_verdict",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-reconciled-nits",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-reconciled-nits",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "RECONCILED_NITS",
-            "terminal_scope": "provider_review",
-            "next_action": "consult_local_verdict",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-reconciled-fail",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-reconciled-fail",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "RECONCILED_FAIL",
-            "terminal_scope": "provider_review",
-            "next_action": "consult_local_verdict",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-publishing",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-publishing",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "PUBLISHING",
-            "terminal_scope": "nonterminal",
-            "next_action": "recover_publication",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:opus-published",
-      "case_kind": "mapping",
-      "mapping_row_id": "opus-published",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "PUBLISHED",
-            "terminal_scope": "publication_phase",
-            "next_action": "none",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:provider-pass",
-      "case_kind": "mapping",
-      "mapping_row_id": "provider-pass",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "PROVIDER_PASS",
-            "terminal_scope": "none",
-            "next_action": "local_reconcile",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:provider-issues",
-      "case_kind": "mapping",
-      "mapping_row_id": "provider-issues",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "PROVIDER_ISSUES",
-            "terminal_scope": "none",
-            "next_action": "local_reconcile",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
-      "id": "mapping:provider-unavailable",
-      "case_kind": "mapping",
-      "mapping_row_id": "provider-unavailable",
-      "misuse_vector_id": null,
-      "disposition": "no_route_event",
-      "source_records": [],
-      "record_orders": [
-        []
-      ],
-      "resolver_mode": "stable",
-      "expected": {
-        "projections": [
-          {
-            "disposition": "no_route_event",
-            "compact": "PROVIDER_UNAVAILABLE",
-            "terminal_scope": "none",
-            "next_action": "continue_without_provider",
-            "effect_eligibility": "never",
-            "advisory_only": true
-          }
-        ],
-        "envelope_count": 0,
-        "requested_transitions": [],
-        "error_code": null
-      }
-    },
-    {
       "id": "mapping:local-go",
       "case_kind": "mapping",
       "mapping_row_id": "local-go",
@@ -2247,9 +1043,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:work-cancelled",
-      "source_digest": "sha256:c8386d66a23188fc3bf4b6812eae3f4d4a13caa6bb4ed519a9010ee4b4d8251a",
-      "work_id": "work-map-work-cancelled",
+          "source_id": "mapping:work-cancelled",
+          "source_digest": "sha256:c8386d66a23188fc3bf4b6812eae3f4d4a13caa6bb4ed519a9010ee4b4d8251a",
+          "work_id": "work-map-work-cancelled",
           "route_id": null,
           "work_revision": 1,
           "unit_id": null,
@@ -2329,9 +1125,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "mapping:work-superseded",
-      "source_digest": "sha256:078085ee122cf9e0104036cb5967d79f8dd712f25e9e2399fd21ee063417d45b",
-      "work_id": "work-map-work-superseded",
+          "source_id": "mapping:work-superseded",
+          "source_digest": "sha256:078085ee122cf9e0104036cb5967d79f8dd712f25e9e2399fd21ee063417d45b",
+          "work_id": "work-map-work-superseded",
           "route_id": "route-map-work-superseded",
           "work_revision": 1,
           "unit_id": "unit-map-work-superseded",
@@ -2411,9 +1207,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:sequential:1",
-      "source_digest": "sha256:7a3c113b6577505e8d62519f59db466436d6350aab7910490cec77137c2922fd",
-      "work_id": "work-sequential",
+          "source_id": "history:sequential:1",
+          "source_digest": "sha256:7a3c113b6577505e8d62519f59db466436d6350aab7910490cec77137c2922fd",
+          "work_id": "work-sequential",
           "route_id": "route-sequential",
           "work_revision": 1,
           "unit_id": "unit-sequential",
@@ -2434,9 +1230,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:sequential:2",
-      "source_digest": "sha256:bce8523393bbed9cf6e2e18996376d1673e30a3b890c583ea5e11d807dacedc0",
-      "work_id": "work-sequential",
+          "source_id": "history:sequential:2",
+          "source_digest": "sha256:bce8523393bbed9cf6e2e18996376d1673e30a3b890c583ea5e11d807dacedc0",
+          "work_id": "work-sequential",
           "route_id": "route-sequential",
           "work_revision": 2,
           "unit_id": "unit-sequential",
@@ -2499,9 +1295,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:duplicate:exact",
-      "source_digest": "sha256:d6aa9a0a3da06db9cfc9f94c80f37ae4fbc7f2f1a60a9a3147b32ef8500bd943",
-      "work_id": "work-duplicate-exact",
+          "source_id": "history:duplicate:exact",
+          "source_digest": "sha256:d6aa9a0a3da06db9cfc9f94c80f37ae4fbc7f2f1a60a9a3147b32ef8500bd943",
+          "work_id": "work-duplicate-exact",
           "route_id": "route-duplicate",
           "work_revision": 1,
           "unit_id": "unit-duplicate",
@@ -2556,9 +1352,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:duplicate:changed",
-      "source_digest": "sha256:ce1fa5f5d7081f5f171f019f8d436424e7805eaa48c84f2497dd1174b54c1142",
-      "work_id": "work-duplicate-changed",
+          "source_id": "history:duplicate:changed",
+          "source_digest": "sha256:ce1fa5f5d7081f5f171f019f8d436424e7805eaa48c84f2497dd1174b54c1142",
+          "work_id": "work-duplicate-changed",
           "route_id": "route-duplicate",
           "work_revision": 1,
           "unit_id": "unit-duplicate",
@@ -2579,9 +1375,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:duplicate:changed",
-      "source_digest": "sha256:58d2a934a6d4f81ced4b9b1f0b7bf299bfbdadbac248fadf3762d55ad75d0c32",
-      "work_id": "work-duplicate-changed",
+          "source_id": "history:duplicate:changed",
+          "source_digest": "sha256:58d2a934a6d4f81ced4b9b1f0b7bf299bfbdadbac248fadf3762d55ad75d0c32",
+          "work_id": "work-duplicate-changed",
           "route_id": "route-duplicate",
           "work_revision": 1,
           "unit_id": "unit-duplicate",
@@ -2641,9 +1437,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:independent:a",
-      "source_digest": "sha256:9e54ba6e1074f39c8fc690f4afd98e75f6413a0d6ec3fe97dc8ad7d40ef54e51",
-      "work_id": "work-independent-a",
+          "source_id": "history:independent:a",
+          "source_digest": "sha256:9e54ba6e1074f39c8fc690f4afd98e75f6413a0d6ec3fe97dc8ad7d40ef54e51",
+          "work_id": "work-independent-a",
           "route_id": "route-independent-a",
           "work_revision": 1,
           "unit_id": "unit-independent-a",
@@ -2664,9 +1460,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:independent:b",
-      "source_digest": "sha256:05426e9e5f5821730b3acf856893e76ec8b71b73f39b4eb3028b66d4b27b5ce4",
-      "work_id": "work-independent-b",
+          "source_id": "history:independent:b",
+          "source_digest": "sha256:05426e9e5f5821730b3acf856893e76ec8b71b73f39b4eb3028b66d4b27b5ce4",
+          "work_id": "work-independent-b",
           "route_id": "route-independent-b",
           "work_revision": 1,
           "unit_id": "unit-independent-b",
@@ -2818,9 +1614,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:gap:1",
-      "source_digest": "sha256:431250904acd8026914592f44d74906a71dc1878d3d3710bf5d643db2a5d7a9e",
-      "work_id": "work-gap",
+          "source_id": "history:gap:1",
+          "source_digest": "sha256:431250904acd8026914592f44d74906a71dc1878d3d3710bf5d643db2a5d7a9e",
+          "work_id": "work-gap",
           "route_id": "route-gap",
           "work_revision": 1,
           "unit_id": "unit-gap",
@@ -2841,9 +1637,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:gap:3",
-      "source_digest": "sha256:0979346257a2a16683ac4d0d6b60cdeb17cca7d4fbf220a3e7641d08d7fc3418",
-      "work_id": "work-gap",
+          "source_id": "history:gap:3",
+          "source_digest": "sha256:0979346257a2a16683ac4d0d6b60cdeb17cca7d4fbf220a3e7641d08d7fc3418",
+          "work_id": "work-gap",
           "route_id": "route-gap",
           "work_revision": 3,
           "unit_id": "unit-gap",
@@ -2903,9 +1699,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:actor:drift",
-      "source_digest": "sha256:a5ef892dc345c307e7d33890e20640f4c394bc63aadfb58a04cb831b78fbbed6",
-      "work_id": "work-actor-drift",
+          "source_id": "history:actor:drift",
+          "source_digest": "sha256:a5ef892dc345c307e7d33890e20640f4c394bc63aadfb58a04cb831b78fbbed6",
+          "work_id": "work-actor-drift",
           "route_id": "route-actor",
           "work_revision": 1,
           "unit_id": "unit-actor",
@@ -2956,9 +1752,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:scope:drift",
-      "source_digest": "sha256:8ef734179580362ed73c03f2bcaa435bde2f50ba78b0deb58987c1401bc911e0",
-      "work_id": "work-scope-drift",
+          "source_id": "history:scope:drift",
+          "source_digest": "sha256:8ef734179580362ed73c03f2bcaa435bde2f50ba78b0deb58987c1401bc911e0",
+          "work_id": "work-scope-drift",
           "route_id": "route-scope",
           "work_revision": 1,
           "unit_id": "unit-scope",
@@ -3009,9 +1805,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:route:1",
-      "source_digest": "sha256:d44faecd9266310ee63332b18820f0b78c9fa2ba2d48bb3ea99b0c783a8f865a",
-      "work_id": "work-route-ambiguity",
+          "source_id": "history:route:1",
+          "source_digest": "sha256:d44faecd9266310ee63332b18820f0b78c9fa2ba2d48bb3ea99b0c783a8f865a",
+          "work_id": "work-route-ambiguity",
           "route_id": null,
           "work_revision": 1,
           "unit_id": "unit-route",
@@ -3032,9 +1828,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:route:2",
-      "source_digest": "sha256:3931b23ec3e9ed761aace11be700ede2a657a670e6d624a5d00251bc959ba079",
-      "work_id": "work-route-ambiguity",
+          "source_id": "history:route:2",
+          "source_digest": "sha256:3931b23ec3e9ed761aace11be700ede2a657a670e6d624a5d00251bc959ba079",
+          "work_id": "work-route-ambiguity",
           "route_id": "route-late",
           "work_revision": 2,
           "unit_id": "unit-route",
@@ -3094,9 +1890,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:scope-change:1",
-      "source_digest": "sha256:c69fa081a7d8c2681164070d320a82dec2bb11c00a735950a81fd8035e55bee2",
-      "work_id": "work-scope-change",
+          "source_id": "history:scope-change:1",
+          "source_digest": "sha256:c69fa081a7d8c2681164070d320a82dec2bb11c00a735950a81fd8035e55bee2",
+          "work_id": "work-scope-change",
           "route_id": "route-scope-change",
           "work_revision": 1,
           "unit_id": "unit-scope-change",
@@ -3117,9 +1913,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:scope-change:2",
-      "source_digest": "sha256:c635ed803bbe3c58ccbaad3a52813a0ce41930b5763ce90a3a55b0c49438b3e2",
-      "work_id": "work-scope-change",
+          "source_id": "history:scope-change:2",
+          "source_digest": "sha256:c635ed803bbe3c58ccbaad3a52813a0ce41930b5763ce90a3a55b0c49438b3e2",
+          "work_id": "work-scope-change",
           "route_id": "route-scope-change",
           "work_revision": 2,
           "unit_id": "unit-scope-change",
@@ -3179,9 +1975,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:overlap:1",
-      "source_digest": "sha256:f687755d1a93867493a40412865ab30e973ac9a9125516632a9eb65cc3a737a3",
-      "work_id": "work-overlap",
+          "source_id": "history:overlap:1",
+          "source_digest": "sha256:f687755d1a93867493a40412865ab30e973ac9a9125516632a9eb65cc3a737a3",
+          "work_id": "work-overlap",
           "route_id": "route-overlap",
           "work_revision": 1,
           "unit_id": "unit-overlap-a",
@@ -3202,9 +1998,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:overlap:2",
-      "source_digest": "sha256:362e3023bf903610e19962194137ec33975abe7e37515f972a74d48271cdf6dc",
-      "work_id": "work-overlap",
+          "source_id": "history:overlap:2",
+          "source_digest": "sha256:362e3023bf903610e19962194137ec33975abe7e37515f972a74d48271cdf6dc",
+          "work_id": "work-overlap",
           "route_id": "route-overlap",
           "work_revision": 2,
           "unit_id": "unit-overlap-b",
@@ -3264,9 +2060,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "misuse:dependency-change:1",
-      "source_digest": "sha256:59d9f670febb6fe64e32b5430b13d42c5dc6644c118d6bbf56807aa02db540e1",
-      "work_id": "work-misuse:dependency-change",
+          "source_id": "misuse:dependency-change:1",
+          "source_digest": "sha256:59d9f670febb6fe64e32b5430b13d42c5dc6644c118d6bbf56807aa02db540e1",
+          "work_id": "work-misuse:dependency-change",
           "route_id": "route-misuse:dependency-change",
           "work_revision": 1,
           "unit_id": "unit-misuse:dependency-change",
@@ -3287,9 +2083,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "misuse:dependency-change:2",
-      "source_digest": "sha256:0c99e5f117074ea9939191ffaecd4e0984a51266e5ae333202a4b0c846e90c15",
-      "work_id": "work-misuse:dependency-change",
+          "source_id": "misuse:dependency-change:2",
+          "source_digest": "sha256:0c99e5f117074ea9939191ffaecd4e0984a51266e5ae333202a4b0c846e90c15",
+          "work_id": "work-misuse:dependency-change",
           "route_id": "route-misuse:dependency-change",
           "work_revision": 2,
           "unit_id": "unit-misuse:dependency-change",
@@ -3352,9 +2148,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "misuse:acceptance-change:1",
-      "source_digest": "sha256:1af78c7c4e3df7dc8926bb3cb40f105156c7ebe40358b50f639fb3e4ea1ec144",
-      "work_id": "work-misuse:acceptance-change",
+          "source_id": "misuse:acceptance-change:1",
+          "source_digest": "sha256:1af78c7c4e3df7dc8926bb3cb40f105156c7ebe40358b50f639fb3e4ea1ec144",
+          "work_id": "work-misuse:acceptance-change",
           "route_id": "route-misuse:acceptance-change",
           "work_revision": 1,
           "unit_id": "unit-misuse:acceptance-change",
@@ -3375,9 +2171,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "misuse:acceptance-change:2",
-      "source_digest": "sha256:9ab21aa893a3409c47afdeed1a73d7afbb69b4ab56f34c29b4815f9dc66261dc",
-      "work_id": "work-misuse:acceptance-change",
+          "source_id": "misuse:acceptance-change:2",
+          "source_digest": "sha256:9ab21aa893a3409c47afdeed1a73d7afbb69b4ab56f34c29b4815f9dc66261dc",
+          "work_id": "work-misuse:acceptance-change",
           "route_id": "route-misuse:acceptance-change",
           "work_revision": 2,
           "unit_id": "unit-misuse:acceptance-change",
@@ -3440,9 +2236,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "misuse:evidence-change:1",
-      "source_digest": "sha256:dc5343708c7771be854b6712ae321a41810d403cc20fe9296134cfa996fbd056",
-      "work_id": "work-misuse:evidence-change",
+          "source_id": "misuse:evidence-change:1",
+          "source_digest": "sha256:dc5343708c7771be854b6712ae321a41810d403cc20fe9296134cfa996fbd056",
+          "work_id": "work-misuse:evidence-change",
           "route_id": "route-misuse:evidence-change",
           "work_revision": 1,
           "unit_id": "unit-misuse:evidence-change",
@@ -3463,9 +2259,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "misuse:evidence-change:2",
-      "source_digest": "sha256:04baf56f0019ab8974491ebd941874b0877ce615d2f593d5d80b4f646c539135",
-      "work_id": "work-misuse:evidence-change",
+          "source_id": "misuse:evidence-change:2",
+          "source_digest": "sha256:04baf56f0019ab8974491ebd941874b0877ce615d2f593d5d80b4f646c539135",
+          "work_id": "work-misuse:evidence-change",
           "route_id": "route-misuse:evidence-change",
           "work_revision": 2,
           "unit_id": "unit-misuse:evidence-change",
@@ -3529,9 +2325,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:content-change:1",
-      "source_digest": "sha256:3e60e448997f9a1989e10394de83e64ec3be00c6237b2d6f639d0948ad3f1e86",
-      "work_id": "work-history:content-change",
+          "source_id": "history:content-change:1",
+          "source_digest": "sha256:3e60e448997f9a1989e10394de83e64ec3be00c6237b2d6f639d0948ad3f1e86",
+          "work_id": "work-history:content-change",
           "route_id": "route-history:content-change",
           "work_revision": 1,
           "unit_id": "unit-history:content-change",
@@ -3552,9 +2348,9 @@
         },
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:content-change:2",
-      "source_digest": "sha256:a4c05ca2d21c5844975a9e304155e9a80963bffb6087811be6e28a4cc6407f4b",
-      "work_id": "work-history:content-change",
+          "source_id": "history:content-change:2",
+          "source_digest": "sha256:a4c05ca2d21c5844975a9e304155e9a80963bffb6087811be6e28a4cc6407f4b",
+          "work_id": "work-history:content-change",
           "route_id": "route-history:content-change",
           "work_revision": 2,
           "unit_id": "unit-history:content-change",
@@ -3617,9 +2413,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:absolute-scope",
-      "source_digest": "sha256:846fbeeddc25b82d56290f0ceb3d3cf1077df75ba91f7ad5deea8cb328ead3ae",
-      "work_id": "work-absolute-scope",
+          "source_id": "history:absolute-scope",
+          "source_digest": "sha256:846fbeeddc25b82d56290f0ceb3d3cf1077df75ba91f7ad5deea8cb328ead3ae",
+          "work_id": "work-absolute-scope",
           "route_id": "route-absolute",
           "work_revision": 1,
           "unit_id": "unit-absolute",
@@ -3670,9 +2466,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:redundant-scope",
-      "source_digest": "sha256:29a88e8356862e457d9bc4ba8208d73c0be2d3d87ea3bb1c298b00b383f0f674",
-      "work_id": "work-redundant-scope",
+          "source_id": "history:redundant-scope",
+          "source_digest": "sha256:29a88e8356862e457d9bc4ba8208d73c0be2d3d87ea3bb1c298b00b383f0f674",
+          "work_id": "work-redundant-scope",
           "route_id": "route-redundant",
           "work_revision": 1,
           "unit_id": "unit-redundant",
@@ -3723,9 +2519,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:mixed:v1",
-      "source_digest": "sha256:31e4cc68d83d8d658ac662b3099b518680bc413fed38bc26faca94299699e5f4",
-      "work_id": "work-mixed",
+          "source_id": "history:mixed:v1",
+          "source_digest": "sha256:31e4cc68d83d8d658ac662b3099b518680bc413fed38bc26faca94299699e5f4",
+          "work_id": "work-mixed",
           "route_id": "route-mixed",
           "work_revision": 1,
           "unit_id": "unit-mixed",
@@ -3748,7 +2544,7 @@
           "schema": "governance.route/v2",
           "source_id": "history:mixed:v1",
           "source_digest": "sha256:42021c42824d6e978a89011fabdbed0abadffbc8278d281675cd2c67a8e27aac",
-      "work_id": "work-mixed",
+          "work_id": "work-mixed",
           "route_id": "route-mixed",
           "work_revision": 2,
           "unit_id": "unit-mixed",
@@ -3808,9 +2604,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v9",
-      "source_id": "history:future-schema",
-      "source_digest": "sha256:700e59431616e63a533b050a0ce79f975d6bdeb0a114c2bdfd23c92f607e4d9e",
-      "work_id": "work-future",
+          "source_id": "history:future-schema",
+          "source_digest": "sha256:700e59431616e63a533b050a0ce79f975d6bdeb0a114c2bdfd23c92f607e4d9e",
+          "work_id": "work-future",
           "route_id": "route-future",
           "work_revision": 1,
           "unit_id": "unit-future",
@@ -3861,9 +2657,9 @@
       "source_records": [
         {
           "schema": "compact-kernel-legacy-observation/v1",
-      "source_id": "history:epoch-material",
-      "source_digest": "sha256:685fd748a6dc46d86dd07de3334b6e528be57df33b938574c07787599f840bdd",
-      "work_id": "work-epoch-material",
+          "source_id": "history:epoch-material",
+          "source_digest": "sha256:685fd748a6dc46d86dd07de3334b6e528be57df33b938574c07787599f840bdd",
+          "work_id": "work-epoch-material",
           "route_id": "route-epoch",
           "work_revision": 1,
           "unit_id": "unit-epoch",
@@ -3942,9 +2738,7 @@
     }
   },
   "deferred_phase3_misuse_ids": [
-    "ambiguous_effect_outcome_retry",
-    "duplicate_advisory_dispatch",
-    "fallback_advisory_dispatch"
+    "ambiguous_effect_outcome_retry"
   ],
   "reducer_replay_ids": [
     "independent_order_a",

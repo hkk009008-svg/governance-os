@@ -28,8 +28,6 @@ COMPONENT_IDS = {
     "effectiveness_telemetry",
     "capability_receipt_recording",
     "verification_authority_and_publication",
-    "chatgpt_guard_and_browser_executor",
-    "opus_reservation_and_bridge",
     "live_v1_route_lineage_reader",
     "signed_bus_event_and_cursor_runtime",
     "live_v1_status_and_runtime_readers",
@@ -52,7 +50,6 @@ REQUIRED_ORPHANS = {
     "scripts.route_lineage.check_cas",
     "scripts.verification_report_gate.validate_live_report",
     "scripts.verification_report_gate.publish_candidate",
-    "scripts.opus_review_bridge.probe_host_capabilities",
 }
 READ_ONLY_COMPONENT_IDS = {
     "compact_shadow_reducer_and_v1_adapter",
@@ -60,12 +57,13 @@ READ_ONLY_COMPONENT_IDS = {
     "live_v1_route_lineage_reader",
 }
 MAPPING_PRODUCER_DEPENDENCIES = {
-    "scripts/chatgpt_pro_consult.py",
-    "scripts/consume_reviewer_result.py",
-    "scripts/opus_review_bridge.py",
-    "scripts/opus_review_receipts.py",
     "scripts/protocol_capacity.py",
     "scripts/route_capability.py",
+}
+REMOVED_PROVIDER_MODULES = {
+    "scripts/chatgpt_pro_consult.py",
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
 }
 REQUIRED_PRODUCTION_MODULES = {
     "scripts/capability_reducer.py",
@@ -94,9 +92,6 @@ REQUIRED_SURFACE_OWNERS: dict[str, str] = {
     "scripts/consume_reviewer_result.py": (
         "verification_authority_and_publication"
     ),
-    "scripts/chatgpt_pro_consult.py": "chatgpt_guard_and_browser_executor",
-    "scripts/opus_review_receipts.py": "opus_reservation_and_bridge",
-    "scripts/opus_review_bridge.py": "opus_reservation_and_bridge",
     "scripts/compact_state_mapping.py": "legacy_lifecycle_mapping_contract",
     "scripts/capability_baseline_runtime.py": (
         "capability_baseline_runtime_collector"
@@ -237,21 +232,6 @@ REQUIRED_SYMBOL_OVERRIDES: dict[str, tuple[str, str, str]] = {
     ),
     "scripts.consume_reviewer_result.main": (
         "verification_authority_and_publication",
-        "cli_entrypoint",
-        "keep_documented_cli",
-    ),
-    "scripts.chatgpt_pro_consult.main": (
-        "chatgpt_guard_and_browser_executor",
-        "cli_entrypoint",
-        "keep_documented_cli",
-    ),
-    "scripts.opus_review_bridge.probe_host_capabilities": (
-        "opus_reservation_and_bridge",
-        "orphan",
-        "integrate_or_delete_before_cutover",
-    ),
-    "scripts.opus_review_bridge.main": (
-        "opus_reservation_and_bridge",
         "cli_entrypoint",
         "keep_documented_cli",
     ),
@@ -543,6 +523,10 @@ def _direct_import_ownership_failures(
     failures: list[tuple[str, str, list[str]]] = []
     for importer in sorted(module_owners):
         for imported in sorted(_direct_repo_local_imports(importer)):
+            # Their live owners are intentionally removed before the sequential
+            # decommission deletes the remaining downstream imports.
+            if imported in REMOVED_PROVIDER_MODULES:
+                continue
             owners = module_owners.get(imported, [])
             if len(owners) != 1:
                 failures.append((importer, imported, owners))
@@ -553,6 +537,24 @@ def test_mapping_direct_repo_local_imports_are_exact() -> None:
     assert _direct_repo_local_imports(
         "scripts/compact_state_mapping.py"
     ) == MAPPING_PRODUCER_DEPENDENCIES
+
+
+def test_removed_provider_modules_are_not_live_inventory_dependencies_or_orphans() -> None:
+    inventory = _load_inventory()
+    declared_modules = {
+        rule["path"]
+        for component in inventory["components"]
+        for rule in component["module_rules"]
+    }
+    orphan_modules = {
+        symbol.rsplit(".", 1)[0].replace(".", "/") + ".py"
+        for symbol in REQUIRED_ORPHANS
+    }
+
+    assert REMOVED_PROVIDER_MODULES.isdisjoint(REQUIRED_PRODUCTION_MODULES)
+    assert REMOVED_PROVIDER_MODULES.isdisjoint(MAPPING_PRODUCER_DEPENDENCIES)
+    assert REMOVED_PROVIDER_MODULES.isdisjoint(declared_modules)
+    assert REMOVED_PROVIDER_MODULES.isdisjoint(orphan_modules)
 
 
 def test_seat_status_direct_repo_local_imports_are_exact() -> None:
@@ -860,7 +862,7 @@ def test_mapping_contract_is_explicitly_read_only_telemetry() -> None:
     ]
     assert "imported only for observation" in component["executor_boundary"]
     assert (
-        "no provider, writer, or effect entrypoint is invoked"
+        "no writer or effect entrypoint is invoked"
         in component["executor_boundary"]
     )
 

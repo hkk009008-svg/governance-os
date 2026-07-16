@@ -9,11 +9,7 @@ import re
 
 import pytest
 
-import chatgpt_pro_consult
 import compact_state_mapping
-import consume_reviewer_result
-import opus_review_bridge
-import opus_review_receipts
 import protocol_capacity
 import route_capability
 
@@ -31,25 +27,22 @@ EXPECTED_MISUSE_IDS = {
     "relevant_acceptance_change",
     "relevant_evidence_change",
     "ambiguous_effect_outcome_retry",
-    "duplicate_advisory_dispatch",
-    "fallback_advisory_dispatch",
 }
 EXPECTED_FUTURE_DECISIONS = {
     "conflict",
-    "fallback_blocked",
     "idempotent",
     "reconciliation_only",
     "rejected",
     "verification_invalidated",
 }
-UNCONCLUDED_LOCAL_VERDICTS = (
-    set(consume_reviewer_result.VERDICTS)
-    - set(opus_review_bridge.VALID_STATUSES)
-)
-EXPECTED_LOCAL_VERDICTS = (
-    set(opus_review_bridge.VALID_CODEX_VERDICTS)
-    | UNCONCLUDED_LOCAL_VERDICTS
-)
+EXPECTED_LOCAL_VERDICTS = {"GO", "NITS", "FAIL", "unable_to_verify"}
+EXPECTED_SOURCE_DOMAINS = {
+    "capacity",
+    "capability",
+    "local_verdict",
+    "work_result",
+}
+REMOVED_SOURCE_DOMAINS = {"chatgpt", "opus_receipt", "provider_result"}
 
 
 def _context_key(
@@ -64,9 +57,6 @@ def _producer_values() -> dict[str, list[str]]:
     return {
         "capacity": sorted(protocol_capacity.STATUSES),
         "capability": sorted(route_capability.LIFECYCLE_STATES),
-        "chatgpt": sorted(chatgpt_pro_consult.ALLOWED_TRANSITIONS),
-        "opus_receipt": sorted(opus_review_receipts.RECEIPT_STATES),
-        "provider_result": sorted(opus_review_bridge.VALID_STATUSES),
         "local_verdict": sorted(EXPECTED_LOCAL_VERDICTS),
         "work_result": ["cancelled", "failed", "outcome_unknown", "superseded"],
     }
@@ -99,34 +89,6 @@ def _finite_context_candidates(
         return tuple(
             {"receipt_outcome": outcome}
             for outcome in ("ok", "failed", "absent")
-        )
-    if domain == "chatgpt" and value == "failed":
-        return tuple(
-            {
-                "failure_class": failure_class,
-                "transport": transport,
-                "manual_resume_authorized": resume_authorized,
-            }
-            for failure_class, transport, resume_authorized in product(
-                sorted(chatgpt_pro_consult.FAILURE_CLASSES),
-                sorted(chatgpt_pro_consult.TRANSPORTS),
-                (False, True),
-            )
-        )
-    if domain == "opus_receipt" and value == "reserved":
-        return tuple(
-            {"reservation_action": action}
-            for action in opus_review_receipts.RESERVATION_ACTIONS
-        )
-    if domain == "opus_receipt" and value == "reviewed":
-        return tuple(
-            {"provider_status": status}
-            for status in sorted(opus_review_bridge.VALID_STATUSES)
-        )
-    if domain == "opus_receipt" and value == "reconciled":
-        return tuple(
-            {"disposition": disposition}
-            for disposition in sorted(opus_review_bridge.VALID_CODEX_VERDICTS)
         )
     if domain == "local_verdict" and value == "GO":
         return (
@@ -176,12 +138,24 @@ def test_fixture_source_values_match_current_producer_constants_exactly():
     assert fixture["source_values"] == {
         "capacity": sorted(protocol_capacity.STATUSES),
         "capability": sorted(route_capability.LIFECYCLE_STATES),
-        "chatgpt": sorted(chatgpt_pro_consult.ALLOWED_TRANSITIONS),
-        "opus_receipt": sorted(opus_review_receipts.RECEIPT_STATES),
-        "provider_result": sorted(opus_review_bridge.VALID_STATUSES),
         "local_verdict": sorted(EXPECTED_LOCAL_VERDICTS),
         "work_result": ["cancelled", "failed", "outcome_unknown", "superseded"],
     }
+
+
+def test_fixture_contains_only_live_provider_neutral_domains() -> None:
+    fixture = _load(FIXTURE_PATH)
+    assert set(fixture["source_values"]) == EXPECTED_SOURCE_DOMAINS
+    assert {row["domain"] for row in fixture["rows"]} == EXPECTED_SOURCE_DOMAINS
+
+
+@pytest.mark.parametrize("domain", sorted(REMOVED_SOURCE_DOMAINS))
+def test_removed_provider_domain_fails_closed(domain: str) -> None:
+    with pytest.raises(
+        compact_state_mapping.StateMappingError,
+        match="unknown domain",
+    ):
+        compact_state_mapping.meaning_for(domain, "removed", context={})
 
 
 def test_fixture_is_a_total_row_oracle():
@@ -249,8 +223,7 @@ def test_effect_eligibility_vocabulary_is_closed():
     }
 
 
-def test_unable_to_verify_is_a_producer_backed_nonterminal_local_verdict():
-    assert "unable_to_verify" in consume_reviewer_result.VERDICTS
+def test_unable_to_verify_is_a_provider_neutral_nonterminal_local_verdict():
     assert compact_state_mapping.meaning_for(
         "local_verdict", "unable_to_verify", context={}
     ) == compact_state_mapping.StateMeaning(
@@ -260,14 +233,6 @@ def test_unable_to_verify_is_a_producer_backed_nonterminal_local_verdict():
         effect_eligibility="never",
         advisory_only=False,
     )
-
-
-def test_unconcluded_local_verdict_is_one_derived_producer_value():
-    assert len(UNCONCLUDED_LOCAL_VERDICTS) == 1
-    assert compact_state_mapping._UNCONCLUDED_LOCAL_VERDICT == next(
-        iter(UNCONCLUDED_LOCAL_VERDICTS)
-    )
-
 
 @pytest.mark.parametrize(
     ("domain", "value", "context"),
@@ -313,36 +278,6 @@ def test_unconcluded_local_verdict_is_one_derived_producer_value():
         ),
         ("capability", "consumed", {}),
         ("capability", "consumed", {"receipt_outcome": "unknown"}),
-        (
-            "chatgpt",
-            "failed",
-            {
-                "failure_class": "partial_send",
-                "transport": "manual",
-                "manual_resume_authorized": True,
-            },
-        ),
-        (
-            "chatgpt",
-            "failed",
-            {
-                "failure_class": "auth",
-                "transport": "iab",
-                "manual_resume_authorized": True,
-            },
-        ),
-        (
-            "chatgpt",
-            "failed",
-            {
-                "failure_class": "not-a-class",
-                "transport": "manual",
-                "manual_resume_authorized": False,
-            },
-        ),
-        ("opus_receipt", "reserved", {"reservation_action": "retry"}),
-        ("opus_receipt", "reviewed", {"provider_status": "GO"}),
-        ("opus_receipt", "reconciled", {"disposition": "pass"}),
         ("local_verdict", "GO", {"verification_key_matches": False}),
     ],
 )
@@ -398,7 +333,7 @@ def test_misuse_vectors_are_replay_shaped_without_claiming_enforcement():
     assert fixture["schema_version"] == "compact-kernel-misuse-vectors/v1"
     vectors = fixture["vectors"]
     vector_ids = [row["id"] for row in vectors]
-    assert len(vector_ids) == 11
+    assert len(vector_ids) == 9
     assert len(vector_ids) == len(set(vector_ids))
     assert set(vector_ids) == EXPECTED_MISUSE_IDS
     for row in vectors:
@@ -503,24 +438,6 @@ def test_misuse_vectors_pin_future_replay_semantics():
             1,
             1,
         ),
-        "duplicate_advisory_dispatch": (
-            ["advisory.dispatch_requested", "advisory.dispatch_requested"],
-            "idempotent",
-            1,
-            0,
-            1,
-        ),
-        "fallback_advisory_dispatch": (
-            [
-                "advisory.dispatch_requested",
-                "advisory.outcome_unknown",
-                "advisory.fallback_requested",
-            ],
-            "fallback_blocked",
-            2,
-            0,
-            1,
-        ),
     }
     for vector_id, (events, decision, transitions, effects, providers) in expected.items():
         vector = vectors[vector_id]
@@ -562,10 +479,3 @@ def test_misuse_vectors_encode_the_adversarial_facts_needed_for_replay():
     ambiguous = vectors["ambiguous_effect_outcome_retry"]["stimulus"]
     assert ambiguous[1]["facts"]["outcome"] == "unknown"
     assert ambiguous[2]["facts"]["effect_id"] == ambiguous[0]["facts"]["effect_id"]
-
-    duplicate = vectors["duplicate_advisory_dispatch"]["stimulus"]
-    assert duplicate[0]["facts"]["intent_key"] == duplicate[1]["facts"]["intent_key"]
-    fallback = vectors["fallback_advisory_dispatch"]["stimulus"]
-    assert fallback[1]["facts"]["outcome"] == "unknown"
-    assert fallback[2]["facts"]["intent_key"] == fallback[0]["facts"]["intent_key"]
-    assert fallback[2]["facts"]["provider"] != fallback[0]["facts"]["provider"]

@@ -50,6 +50,11 @@ MISUSE_FIXTURE = ROOT / "tests/fixtures/compact_kernel/v1_misuse_vectors.json"
 REDUCER_REPLAY_FIXTURE = (
     ROOT / "tests/fixtures/compact_kernel/v2_replay_vectors.json"
 )
+REMOVED_MAPPING_CASE_PREFIXES = (
+    "mapping:chatgpt-",
+    "mapping:opus-",
+    "mapping:provider-",
+)
 CORPUS_FIELDS = frozenset(
     {
         "schema_version",
@@ -548,6 +553,23 @@ def _case(corpus: dict[str, object], case_id: str) -> dict[str, object]:
     return next(item for item in cases if item["id"] == case_id)
 
 
+def test_replay_and_parity_contain_no_removed_provider_case_ids() -> None:
+    corpus = _load_strict(CORPUS)
+    parity = _load_strict(PARITY_ARTIFACT)
+    replay_case_ids = tuple(corpus["case_manifest"])
+    parity_case_ids = tuple(
+        case_id
+        for case_ids in parity["case_ids_by_divergence_class"].values()
+        for case_id in case_ids
+    )
+
+    for case_ids in (replay_case_ids, parity_case_ids):
+        assert not any(
+            case_id.startswith(REMOVED_MAPPING_CASE_PREFIXES)
+            for case_id in case_ids
+        )
+
+
 def _actor_from_corpus(corpus: dict[str, object]) -> reducer.ActorContext:
     actors = corpus["actors"]
     assert type(actors) is dict and len(actors) == 1
@@ -755,7 +777,7 @@ def _assert_bound_source_mutation_rejected(
     with pytest.raises(adapter.LegacyAdapterError) as exc_info:
         report = adapter._check_corpus(corpus)
         assert adapter._report_is_gate_clean(report) is True
-        assert dict(report.set_counts)["corpus_cases"] == 89
+        assert dict(report.set_counts)["corpus_cases"] == 46
         assert (
             dict(report.set_counts)["reducer_replay_permutations"]
             == expected_replay_permutations
@@ -836,7 +858,7 @@ def test_bound_sources_assemble_short_descriptor_reads_without_reopening(
     report = adapter._check_corpus(corpus)
 
     assert adapter._report_is_gate_clean(report) is True
-    assert dict(report.set_counts)["corpus_cases"] == 89
+    assert dict(report.set_counts)["corpus_cases"] == 46
     assert observed_lengths.count(0) == len(adapter._SOURCE_PATHS)
     assert len([size for size in observed_lengths if size]) > len(
         adapter._SOURCE_PATHS
@@ -858,7 +880,7 @@ def test_corpus_guard_rejects_bound_source_symlink_outside_adapter_root(
     with pytest.raises(adapter.LegacyAdapterError) as exc_info:
         report = adapter._check_corpus(corpus)
         assert adapter._report_is_gate_clean(report) is True
-        assert dict(report.set_counts)["corpus_cases"] == 89
+        assert dict(report.set_counts)["corpus_cases"] == 46
     assert exc_info.value.code == "legacy_invalid"
     assert str(exc_info.value) == "legacy_invalid"
 
@@ -933,7 +955,7 @@ def test_corpus_guard_rejects_future_bound_source_schema(
     with pytest.raises(adapter.LegacyAdapterError) as exc_info:
         report = adapter._check_corpus(corpus)
         assert adapter._report_is_gate_clean(report) is True
-        assert dict(report.set_counts)["corpus_cases"] == 89
+        assert dict(report.set_counts)["corpus_cases"] == 46
     assert exc_info.value.code == "legacy_invalid"
     assert str(exc_info.value) == "legacy_invalid"
 
@@ -954,7 +976,7 @@ def test_corpus_guard_rejects_extra_reducer_replay_root_field(
     with pytest.raises(adapter.LegacyAdapterError) as exc_info:
         report = adapter._check_corpus(corpus)
         assert adapter._report_is_gate_clean(report) is True
-        assert dict(report.set_counts)["corpus_cases"] == 89
+        assert dict(report.set_counts)["corpus_cases"] == 46
     assert exc_info.value.code == "legacy_invalid"
     assert str(exc_info.value) == "legacy_invalid"
 
@@ -1117,7 +1139,7 @@ def test_corpus_guard_executes_every_declared_replay_permutation(
     report = adapter._check_corpus(corpus)
 
     assert adapter._report_is_gate_clean(report) is True
-    assert dict(report.set_counts)["corpus_cases"] == 89
+    assert dict(report.set_counts)["corpus_cases"] == 46
     assert (
         dict(report.set_counts)["reducer_replay_permutations"]
         == sum(expected_calls.values())
@@ -1602,8 +1624,8 @@ def test_causal_revision_error_rejects_second_valid_actor_identity(
     with pytest.raises(adapter.LegacyAdapterError) as exc_info:
         report = adapter._check_corpus(corpus)
         assert adapter._report_is_gate_clean(report) is True
-        assert dict(report.set_counts)["corpus_cases"] == 89
-        assert len(report.executed_case_ids) == 89
+        assert dict(report.set_counts)["corpus_cases"] == 46
+        assert len(report.executed_case_ids) == 46
     assert exc_info.value.code == "legacy_invalid"
     assert str(exc_info.value) == "legacy_invalid"
 
@@ -1880,8 +1902,8 @@ def test_corpus_guard_rejects_duplicate_bound_misuse_vector_id(
     assert selected["enforcing_phase"] == enforcing_phase
     vectors.append(deepcopy(selected))
     vector_ids = [vector["id"] for vector in vectors]
-    assert len(vector_ids) == 12
-    assert len(set(vector_ids)) == 11
+    assert len(vector_ids) == 10
+    assert len(set(vector_ids)) == 9
 
     raw = (
         json.dumps(misuse_fixture, sort_keys=True, separators=(",", ":")) + "\n"
@@ -1901,8 +1923,8 @@ def test_corpus_guard_rejects_duplicate_bound_misuse_vector_id(
         set_counts = dict(report.set_counts)
         assert adapter._report_is_gate_clean(report) is True
         assert set_counts["phase2_misuse_vectors"] == 8
-        assert set_counts["deferred_phase3_misuse_vectors"] == 3
-        assert set_counts["corpus_cases"] == 89
+        assert set_counts["deferred_phase3_misuse_vectors"] == 1
+        assert set_counts["corpus_cases"] == 46
     assert exc_info.value.code == "legacy_invalid"
     assert str(exc_info.value) == "legacy_invalid"
 
@@ -2058,41 +2080,6 @@ def test_specialized_domain_fallback_success_blocks_gate(monkeypatch) -> None:
     assert "adapter_error" in {item.kind for item in report.divergences}
 
 
-def test_named_specialized_fallback_success_blocks_gate(monkeypatch) -> None:
-    target_key = ("provider_result", "pass", ())
-    target_event_id = "mapping:provider-pass"
-    real_adapt = adapter.adapt_v1_history
-
-    def named_provider_fallback(raw_history, *, resolve_actor, resolve_scope):
-        records = tuple(raw_history)
-        record = records[0]
-        key = (
-            record["domain"],
-            record["value"],
-            tuple(sorted(record["context"].items())),
-        )
-        if (
-            key == target_key
-            and record["route_id"] is not None
-            and record["unit_id"] is not None
-        ):
-            return (object(),)
-        return real_adapt(
-            records,
-            resolve_actor=resolve_actor,
-            resolve_scope=resolve_scope,
-        )
-
-    monkeypatch.setattr(adapter, "adapt_v1_history", named_provider_fallback)
-    report = adapter._check_corpus(_load_strict(CORPUS))
-
-    assert adapter._report_is_gate_clean(report) is False
-    assert target_event_id in report.specialized_event_ids
-    assert (target_event_id, "adapter_error") in {
-        (item.case_id, item.kind) for item in report.divergences
-    }
-
-
 def test_independent_input_orders_return_one_canonical_envelope_tuple() -> None:
     corpus = _load_strict(CORPUS)
     case = _case(corpus, "history:disjoint-order-permutations")
@@ -2120,7 +2107,6 @@ def _mutate_projection(
 @pytest.mark.parametrize(
     ("case_id", "integer_value"),
     (
-        ("mapping:chatgpt-prepared", 1),
         ("mapping:capacity-ready", 0),
     ),
 )
@@ -2272,31 +2258,6 @@ def test_gate_blocks_one_valid_adapter_rule_omission(monkeypatch) -> None:
     )
 
     _assert_corpus_blocks(_load_strict(CORPUS))
-
-
-def test_chatgpt_failure_rules_are_producer_derived_and_oracle_independent() -> None:
-    source = inspect.getsource(adapter._chatgpt_failure_rules)
-    tree = ast.parse(source)
-    names = {
-        node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
-    }
-    attributes = {
-        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
-    }
-    generated_keys = {
-        key for key, _rule in adapter._chatgpt_failure_rules()
-    }
-    accepted_failure_keys = {
-        key
-        for key in compact_state_mapping._accepted_context_keys()
-        if key[:2] == ("chatgpt", "failed")
-    }
-
-    assert "meaning_for" not in source
-    forbidden_reads = {"open", "load", "loads", "read_text", "read_bytes"}
-    assert not (forbidden_reads & names)
-    assert not (forbidden_reads & attributes)
-    assert generated_keys == accepted_failure_keys
 
 
 def test_compact_projection_is_independent_of_v1_oracle_and_fixtures() -> None:

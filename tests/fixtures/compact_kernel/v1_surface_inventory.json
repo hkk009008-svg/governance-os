@@ -260,72 +260,6 @@
       ]
     },
     {
-      "id": "chatgpt_guard_and_browser_executor",
-      "authority_status": "advisory_only_guard_with_external_browser_executor",
-      "source_paths": [
-        "scripts/chatgpt_pro_consult.py",
-        ".agents/skills/chatgpt-pro-consultation/SKILL.md"
-      ],
-      "reader_paths": [
-        "scripts/chatgpt_pro_consult.py",
-        ".agents/skills/chatgpt-pro-consultation/SKILL.md"
-      ],
-      "writer_paths": [
-        "scripts/chatgpt_pro_consult.py"
-      ],
-      "executor_boundary": "The guard validates and reserves one sanitized attempt; only the current-runtime in-app Browser executor may send after reservation, and its response remains advisory.",
-      "default_helper_class": "runtime_core",
-      "module_rules": [
-        {
-          "path": "scripts/chatgpt_pro_consult.py"
-        }
-      ],
-      "symbol_overrides": [
-        {
-          "symbol": "scripts.chatgpt_pro_consult.main",
-          "helper_class": "cli_entrypoint",
-          "disposition": "keep_documented_cli"
-        }
-      ]
-    },
-    {
-      "id": "opus_reservation_and_bridge",
-      "authority_status": "advisory_only_reserved_provider_bridge",
-      "source_paths": [
-        "scripts/opus_review_receipts.py",
-        "scripts/opus_review_bridge.py"
-      ],
-      "reader_paths": [
-        "scripts/opus_review_receipts.py",
-        "scripts/opus_review_bridge.py"
-      ],
-      "writer_paths": [
-        "scripts/opus_review_receipts.py"
-      ],
-      "executor_boundary": "The bridge may launch one Claude process only through a valid immutable reservation and spend grant; provider output is advisory and cannot publish a verdict.",
-      "default_helper_class": "runtime_core",
-      "module_rules": [
-        {
-          "path": "scripts/opus_review_receipts.py"
-        },
-        {
-          "path": "scripts/opus_review_bridge.py"
-        }
-      ],
-      "symbol_overrides": [
-        {
-          "symbol": "scripts.opus_review_bridge.probe_host_capabilities",
-          "helper_class": "orphan",
-          "disposition": "integrate_or_delete_before_cutover"
-        },
-        {
-          "symbol": "scripts.opus_review_bridge.main",
-          "helper_class": "cli_entrypoint",
-          "disposition": "keep_documented_cli"
-        }
-      ]
-    },
-    {
       "id": "legacy_lifecycle_mapping_contract",
       "authority_status": "non_authoritative_read_only_compatibility_telemetry",
       "source_paths": [
@@ -335,17 +269,13 @@
       ],
       "reader_paths": [
         "scripts/compact_state_mapping.py",
-        "scripts/chatgpt_pro_consult.py",
-        "scripts/consume_reviewer_result.py",
-        "scripts/opus_review_bridge.py",
-        "scripts/opus_review_receipts.py",
         "scripts/protocol_capacity.py",
         "scripts/route_capability.py",
         "tests/fixtures/compact_state_mapping/v1.json",
         "tests/fixtures/compact_kernel/v1_misuse_vectors.json"
       ],
       "writer_paths": [],
-      "executor_boundary": "Producer vocabularies and constants are imported only for observation; no provider, writer, or effect entrypoint is invoked. The pure mapping helper and documented fixture-validation CLI grant no authority and write no runtime state.",
+      "executor_boundary": "Producer vocabularies and constants are imported only for observation; no writer or effect entrypoint is invoked. The pure mapping helper and documented fixture-validation CLI grant no authority and write no runtime state.",
       "default_helper_class": "telemetry",
       "module_rules": [
         {

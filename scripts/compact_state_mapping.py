@@ -19,18 +19,10 @@ from typing import Any
 
 if __package__:
     from scripts import (
-        chatgpt_pro_consult,
-        consume_reviewer_result,
-        opus_review_bridge,
-        opus_review_receipts,
         protocol_capacity,
         route_capability,
     )
 else:
-    import chatgpt_pro_consult
-    import consume_reviewer_result
-    import opus_review_bridge
-    import opus_review_receipts
     import protocol_capacity
     import route_capability
 
@@ -46,18 +38,7 @@ _WORK_RESULTS = frozenset(
 _EFFECT_ELIGIBILITY = frozenset(
     {"never", "separate_current_grant", "all_other_gates"}
 )
-_UNCONCLUDED_LOCAL_VERDICTS = (
-    frozenset(consume_reviewer_result.VERDICTS)
-    - frozenset(opus_review_bridge.VALID_STATUSES)
-)
-if len(_UNCONCLUDED_LOCAL_VERDICTS) != 1:
-    raise StateMappingError(
-        "expected exactly one producer-backed unconcluded local verdict"
-    )
-_UNCONCLUDED_LOCAL_VERDICT = next(iter(_UNCONCLUDED_LOCAL_VERDICTS))
-_LOCAL_VERDICTS = frozenset(opus_review_bridge.VALID_CODEX_VERDICTS) | {
-    _UNCONCLUDED_LOCAL_VERDICT
-}
+_LOCAL_VERDICTS = frozenset({"GO", "NITS", "FAIL", "unable_to_verify"})
 
 
 @dataclass(frozen=True)
@@ -102,9 +83,6 @@ def _source_values() -> dict[str, list[str]]:
     return {
         "capacity": sorted(protocol_capacity.STATUSES),
         "capability": sorted(route_capability.LIFECYCLE_STATES),
-        "chatgpt": sorted(chatgpt_pro_consult.ALLOWED_TRANSITIONS),
-        "opus_receipt": sorted(opus_review_receipts.RECEIPT_STATES),
-        "provider_result": sorted(opus_review_bridge.VALID_STATUSES),
         "local_verdict": sorted(_LOCAL_VERDICTS),
         "work_result": sorted(_WORK_RESULTS),
     }
@@ -175,48 +153,6 @@ def _accepted_context_keys() -> tuple[_ContextKey, ...]:
     for outcome in ("ok", "failed", "absent"):
         add("capability", "consumed", {"receipt_outcome": outcome})
 
-    chatgpt_values = set(sources["chatgpt"])
-    if "failed" not in chatgpt_values:
-        raise StateMappingError("ChatGPT producer vocabulary lacks failed")
-    for value in chatgpt_values - {"failed"}:
-        add("chatgpt", value, {})
-    for failure_class in sorted(chatgpt_pro_consult.FAILURE_CLASSES):
-        for transport in sorted(chatgpt_pro_consult.TRANSPORTS):
-            for resume_authorized in (False, True):
-                if failure_class == "partial_send" and resume_authorized:
-                    continue
-                if resume_authorized and transport != "manual":
-                    continue
-                add(
-                    "chatgpt",
-                    "failed",
-                    {
-                        "failure_class": failure_class,
-                        "transport": transport,
-                        "manual_resume_authorized": resume_authorized,
-                    },
-                )
-
-    receipt_values = set(sources["opus_receipt"])
-    if receipt_values != {
-        "reserved",
-        "reviewed",
-        "reconciled",
-        "publishing",
-        "published",
-    }:
-        raise StateMappingError("Opus receipt producer vocabulary is not classified")
-    for action in opus_review_receipts.RESERVATION_ACTIONS:
-        add("opus_receipt", "reserved", {"reservation_action": action})
-    for status in sorted(opus_review_bridge.VALID_STATUSES):
-        add("opus_receipt", "reviewed", {"provider_status": status})
-    for disposition in sorted(opus_review_bridge.VALID_CODEX_VERDICTS):
-        add("opus_receipt", "reconciled", {"disposition": disposition})
-    for value in ("publishing", "published"):
-        add("opus_receipt", value, {})
-
-    for value in sources["provider_result"]:
-        add("provider_result", value, {})
     for value in sources["local_verdict"]:
         context = {"verification_key_matches": True} if value == "GO" else {}
         add("local_verdict", value, context)
@@ -347,151 +283,10 @@ def _capability_meaning(
     raise StateMappingError(f"unsupported capability value {value!r}")
 
 
-_CHATGPT_SIMPLE = {
-    "prepared": _meaning(
-        "RESERVED", "nonterminal", "send_once", "never", True
-    ),
-    "sending": _meaning(
-        "ATTEMPTING", "nonterminal", "complete_send_or_reconcile", "never", True
-    ),
-    "sent": _meaning(
-        "AWAITING_RESPONSE",
-        "nonterminal",
-        "accept_response_or_mark_stale",
-        "never",
-        True,
-    ),
-    "received": _meaning(
-        "RESPONSE_RECEIVED", "nonterminal", "reconcile_locally", "never", True
-    ),
-    "reconciled": _meaning(
-        "RECONCILED", "consultation", "none", "never", True
-    ),
-    "stale": _meaning(
-        "STALE", "consultation", "no_retry", "never", True
-    ),
-}
-
-
-def _chatgpt_meaning(value: str, context: Mapping[str, object]) -> StateMeaning:
-    if value in _CHATGPT_SIMPLE:
-        _strict_context(context, frozenset())
-        return _CHATGPT_SIMPLE[value]
-    if value != "failed":
-        raise StateMappingError(f"unsupported ChatGPT value {value!r}")
-
-    _strict_context(
-        context,
-        frozenset({"failure_class", "transport", "manual_resume_authorized"}),
-    )
-    failure_class = _enum(
-        context, "failure_class", chatgpt_pro_consult.FAILURE_CLASSES
-    )
-    transport = _enum(context, "transport", chatgpt_pro_consult.TRANSPORTS)
-    resume_authorized = _bool(context, "manual_resume_authorized")
-    if failure_class == "partial_send":
-        if resume_authorized:
-            raise StateMappingError(
-                "ambiguous partial_send cannot authorize resume or retry"
-            )
-        return _meaning(
-            "OUTCOME_UNKNOWN", "consultation", "reconcile_only", "never", True
-        )
-    if resume_authorized:
-        if transport != "manual":
-            raise StateMappingError(
-                "manual resume authority requires manual-origin transport"
-            )
-        return _meaning(
-            "FAILED", "nonterminal", "resume_manual", "never", True
-        )
-    return _meaning(
-        "FAILED", "consultation", "no_retry", "never", True
-    )
-
-
-def _opus_receipt_meaning(
-    value: str, context: Mapping[str, object]
-) -> StateMeaning:
-    if value == "reserved":
-        _strict_context(context, frozenset({"reservation_action"}))
-        action = _enum(
-            context,
-            "reservation_action",
-            frozenset(opus_review_receipts.RESERVATION_ACTIONS),
-        )
-        if action == "launch":
-            return _meaning(
-                "RESERVED", "nonterminal", "launch_once", "never", True
-            )
-        if action == "return":
-            return _meaning(
-                "RESERVED",
-                "nonterminal",
-                "return_without_launch",
-                "never",
-                True,
-            )
-        return _meaning(
-            "OUTCOME_UNKNOWN", "attempt", "reconcile_only", "never", True
-        )
-    if value == "reviewed":
-        _strict_context(context, frozenset({"provider_status"}))
-        status = _enum(
-            context, "provider_status", opus_review_bridge.VALID_STATUSES
-        )
-        return _meaning(
-            f"REVIEWED_{status.upper()}",
-            "nonterminal",
-            "local_reconcile",
-            "never",
-            True,
-        )
-    if value == "reconciled":
-        _strict_context(context, frozenset({"disposition"}))
-        disposition = _enum(
-            context, "disposition", opus_review_bridge.VALID_CODEX_VERDICTS
-        )
-        return _meaning(
-            f"RECONCILED_{disposition}",
-            "provider_review",
-            "consult_local_verdict",
-            "never",
-            True,
-        )
-    if value == "publishing":
-        _strict_context(context, frozenset())
-        return _meaning(
-            "PUBLISHING",
-            "nonterminal",
-            "recover_publication",
-            "never",
-            True,
-        )
-    if value == "published":
-        _strict_context(context, frozenset())
-        return _meaning(
-            "PUBLISHED", "publication_phase", "none", "never", True
-        )
-    raise StateMappingError(f"unsupported Opus receipt value {value!r}")
-
-
-def _provider_result_meaning(
-    value: str, context: Mapping[str, object]
-) -> StateMeaning:
-    _strict_context(context, frozenset())
-    next_action = (
-        "continue_without_provider" if value == "unavailable" else "local_reconcile"
-    )
-    return _meaning(
-        f"PROVIDER_{value.upper()}", "none", next_action, "never", True
-    )
-
-
 def _local_verdict_meaning(
     value: str, context: Mapping[str, object]
 ) -> StateMeaning:
-    if value == _UNCONCLUDED_LOCAL_VERDICT:
+    if value == "unable_to_verify":
         _strict_context(context, frozenset())
         return _meaning(
             "UNABLE_TO_VERIFY",
@@ -507,6 +302,8 @@ def _local_verdict_meaning(
         return _meaning(
             "GO", "review", "continue_effect_gates", "all_other_gates", False
         )
+    if value not in {"NITS", "FAIL"}:
+        raise StateMappingError(f"unsupported local verdict value {value!r}")
     _strict_context(context, frozenset())
     return _meaning(
         value, "review", "new_scoped_version", "never", False
@@ -533,42 +330,39 @@ _WORK_MEANINGS = {
 }
 
 
-def meaning_for(
-    domain: str, value: str, *, context: Mapping[str, object]
-) -> StateMeaning:
-    """Return the fail-closed observational meaning for one current v1 value."""
-
-    if not isinstance(domain, str):
-        raise StateMappingError("domain must be a string")
-    if not isinstance(value, str):
-        raise StateMappingError("value must be a string")
+def _context(context: Mapping[str, object] | None) -> Mapping[str, object]:
+    if context is None:
+        return {}
     if not isinstance(context, Mapping):
         raise StateMappingError("context must be a mapping")
+    return context
 
-    sources = _source_values()
-    if domain not in sources:
-        raise StateMappingError(f"unknown state domain {domain!r}")
-    if value not in sources[domain]:
-        raise StateMappingError(
-            f"unknown value {value!r} for state domain {domain!r}"
-        )
 
+def _work_result_meaning(
+    value: str, context: Mapping[str, object]
+) -> StateMeaning:
+    if value not in _WORK_MEANINGS:
+        raise StateMappingError(f"unsupported work result value {value!r}")
+    _strict_context(context, frozenset())
+    return _WORK_MEANINGS[value]
+
+
+def meaning_for(
+    domain: str,
+    value: str,
+    *,
+    context: Mapping[str, object] | None = None,
+) -> StateMeaning:
+    normalized_context = _context(context)
     if domain == "capacity":
-        return _capacity_meaning(value, context)
+        return _capacity_meaning(value, normalized_context)
     if domain == "capability":
-        return _capability_meaning(value, context)
-    if domain == "chatgpt":
-        return _chatgpt_meaning(value, context)
-    if domain == "opus_receipt":
-        return _opus_receipt_meaning(value, context)
-    if domain == "provider_result":
-        return _provider_result_meaning(value, context)
+        return _capability_meaning(value, normalized_context)
     if domain == "local_verdict":
-        return _local_verdict_meaning(value, context)
+        return _local_verdict_meaning(value, normalized_context)
     if domain == "work_result":
-        _strict_context(context, frozenset())
-        return _WORK_MEANINGS[value]
-    raise StateMappingError(f"unknown state domain {domain!r}")
+        return _work_result_meaning(value, normalized_context)
+    raise StateMappingError("unknown domain")
 
 
 def _fixture_result(value: object) -> tuple[int, int]:
