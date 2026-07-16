@@ -124,6 +124,17 @@ _SOURCE_PATHS = (
     "tests/fixtures/compact_kernel/v1_misuse_vectors.json",
     "tests/fixtures/compact_kernel/v2_replay_vectors.json",
 )
+_MISUSE_SCHEMA = "compact-kernel-misuse-vectors/v1"
+_MISUSE_VECTOR_FIELDS = frozenset(
+    {
+        "id",
+        "enforcing_phase",
+        "expected_invariant",
+        "phase_1_non_enforcement_reason",
+        "stimulus",
+        "expected_future_outcome",
+    }
+)
 _CASE_BOUND_MISUSE_DELTA_ORACLE = (
     (
         "relevant_dependency_change",
@@ -2039,12 +2050,34 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     ):
         raise _legacy_invalid()
 
-    misuse_vectors = misuse_fixture.get("vectors")
+    if (
+        set(misuse_fixture) != {"schema_version", "vectors"}
+        or misuse_fixture["schema_version"] != _MISUSE_SCHEMA
+    ):
+        raise _legacy_invalid()
+    misuse_vectors = misuse_fixture["vectors"]
     replay_vectors = replay_fixture.get("vectors")
     if (
         type(misuse_vectors) is not list
+        or not misuse_vectors
+        or any(
+            type(vector) is not dict
+            or set(vector) != _MISUSE_VECTOR_FIELDS
+            for vector in misuse_vectors
+        )
         or type(replay_vectors) is not list
         or any(type(vector) is not dict for vector in replay_vectors)
+    ):
+        raise _legacy_invalid()
+    misuse_ids = [vector["id"] for vector in misuse_vectors]
+    if (
+        any(type(misuse_id) is not str or not misuse_id for misuse_id in misuse_ids)
+        or len(misuse_ids) != len(set(misuse_ids))
+        or any(
+            type(vector["enforcing_phase"]) is not int
+            or vector["enforcing_phase"] not in {2, 3}
+            for vector in misuse_vectors
+        )
     ):
         raise _legacy_invalid()
     phase2_ids = {

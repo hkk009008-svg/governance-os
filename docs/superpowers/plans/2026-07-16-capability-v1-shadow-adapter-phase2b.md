@@ -977,6 +977,56 @@ target binding, epoch, writer, provider/effect entrypoint, activation, mailbox,
 cursor, ref, or live state. These correction facts do not close Task 4,
 authorize Phase 3, or activate a writer.
 
+### Final-review evidence correction 8
+
+The fresh full-range review of
+`f17d14c684e1e1a6378e52ab8f151070fb710e07..484b16a27f45eb6f4b973894499ea1e5edf704c4`
+found two Important closure gaps. The bound misuse source was converted directly
+to Phase-2 and Phase-3 sets without first validating exact source identities, so
+an exact duplicate row yielded 12 rows but 11 unique IDs while the gate remained
+clean and continued to report 8 Phase-2 vectors, 3 deferred Phase-3 vectors, and
+89 corpus cases. The inventory scanner also omitted the four bare repository
+imports used by the nested seat-status script and returned a dotted child module
+without every executable package initializer on its qualified import path.
+
+Before any adapter or scanner edit, the focused command
+
+```sh
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q \
+  tests/unit/test_capability_v1_adapter.py::test_corpus_guard_rejects_duplicate_bound_misuse_vector_id \
+  tests/unit/test_compact_state_mapping.py::test_misuse_vectors_are_replay_shaped_without_claiming_enforcement \
+  tests/unit/test_compact_kernel_surface_inventory.py::test_seat_status_direct_repo_local_imports_are_exact \
+  tests/unit/test_compact_kernel_surface_inventory.py::test_nested_seat_status_bare_aliased_import_is_an_ownership_failure \
+  tests/unit/test_compact_kernel_surface_inventory.py::test_dotted_imports_include_executable_package_initializers
+```
+
+produced `6 failed, 1 passed`. Both duplicate probes reached a clean 8/3/89
+report instead of raising `legacy_invalid`; seat-status returned no local edges;
+the nested aliased bare dependency escaped ownership failure; dotted `Import`
+returned only the child; and dotted `ImportFrom` omitted the root package
+initializer. The canonical fixture cardinality and uniqueness contract passed.
+The identical command then produced `7 passed`. A controller challenge made
+both dotted statements explicitly aliased and added a module/package name
+collision probe; that focused selector produced `1 failed` because the package
+initializer target was omitted, then the expanded focused command produced
+`8 passed`. The distinct quality review then found that conservatively retaining
+both collision targets was a false ownership edge: Python selects the executable
+package initializer before the same-named module file. The revised
+package-precedence regression produced `1 failed` because `scripts/pkg.py`
+remained in the result, then the settled focused command produced `8 passed`.
+The final three complete affected test files produced `326 passed`.
+
+The adapter now validates the exact misuse root/schema, non-empty exact row
+shape, exact non-empty string IDs, exact integer phase values, and list identity
+uniqueness before phase-set construction. The compact scanner gives only the
+known nested seat-status importer an explicit `scripts` bare-import root, keeps
+qualified and relative resolution deterministic, unions configured-root hits,
+and returns each actually selected target plus existing executable `__init__.py`
+ancestors; an executable package initializer takes precedence over a same-named
+module file. No canonical fixture, package initializer, seat-status script,
+reducer, producer, parity artifact, target binding, epoch, writer, Task 4,
+Phase 3, or activation surface changed.
+
 ## Task 4: Record reviewed Phase-2 closeout
 
 **Files:**

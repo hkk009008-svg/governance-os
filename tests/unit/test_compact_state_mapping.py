@@ -397,7 +397,10 @@ def test_misuse_vectors_are_replay_shaped_without_claiming_enforcement():
     assert set(fixture) == {"schema_version", "vectors"}
     assert fixture["schema_version"] == "compact-kernel-misuse-vectors/v1"
     vectors = fixture["vectors"]
-    assert {row["id"] for row in vectors} == EXPECTED_MISUSE_IDS
+    vector_ids = [row["id"] for row in vectors]
+    assert len(vector_ids) == 11
+    assert len(vector_ids) == len(set(vector_ids))
+    assert set(vector_ids) == EXPECTED_MISUSE_IDS
     for row in vectors:
         assert set(row) == {
             "id",

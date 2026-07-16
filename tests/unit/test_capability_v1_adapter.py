@@ -1372,6 +1372,62 @@ def test_complete_corpus_is_gate_clean_and_executes_every_case() -> None:
     assert set(report.executed_case_ids) == set(corpus["case_manifest"])
 
 
+@pytest.mark.parametrize(
+    ("misuse_id", "enforcing_phase"),
+    (
+        ("forged_self_asserted_principal", 2),
+        ("ambiguous_effect_outcome_retry", 3),
+    ),
+)
+def test_corpus_guard_rejects_duplicate_bound_misuse_vector_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    misuse_id: str,
+    enforcing_phase: int,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    for relative_path in adapter._SOURCE_PATHS:
+        source = ROOT / relative_path
+        destination = tmp_path / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+
+    misuse_relative_path = adapter._SOURCE_PATHS[1]
+    misuse_path = tmp_path / misuse_relative_path
+    misuse_fixture = _load_strict(misuse_path)
+    vectors = misuse_fixture["vectors"]
+    assert type(vectors) is list
+    selected = next(vector for vector in vectors if vector["id"] == misuse_id)
+    assert selected["enforcing_phase"] == enforcing_phase
+    vectors.append(deepcopy(selected))
+    vector_ids = [vector["id"] for vector in vectors]
+    assert len(vector_ids) == 12
+    assert len(set(vector_ids)) == 11
+
+    raw = (
+        json.dumps(misuse_fixture, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    misuse_path.write_bytes(raw)
+    sources = corpus["sources"]
+    assert type(sources) is dict
+    original_sources = dict(sources)
+    sources[misuse_relative_path] = "sha256:" + sha256(raw).hexdigest()
+    assert {
+        path for path in sources if sources[path] != original_sources[path]
+    } == {misuse_relative_path}
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        report = adapter._check_corpus(corpus)
+        set_counts = dict(report.set_counts)
+        assert adapter._report_is_gate_clean(report) is True
+        assert set_counts["phase2_misuse_vectors"] == 8
+        assert set_counts["deferred_phase3_misuse_vectors"] == 3
+        assert set_counts["corpus_cases"] == 89
+    assert exc_info.value.code == "legacy_invalid"
+    assert str(exc_info.value) == "legacy_invalid"
+
+
 def test_report_mapping_domain_count_is_derived_from_mapping_rows() -> None:
     report = adapter._check_corpus(_load_strict(CORPUS))
     expected_domains = {row["domain"] for row in _mapping_rows()}

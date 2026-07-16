@@ -439,17 +439,36 @@ def _public_functions(path: str) -> set[str]:
     }
 
 
-def _resolve_repo_local_module(module_name: str) -> str | None:
+_EXPLICIT_BARE_IMPORT_ROOTS = {
+    ".agents/skills/four-seat-protocol/scripts/seat_status.py": ("scripts",),
+}
+
+
+def _resolve_repo_local_module(module_name: str) -> set[str]:
     parts = module_name.split(".")
-    if not parts or parts[0] not in {"scripts", "threeway"}:
-        return None
+    if (
+        not parts
+        or any(not part for part in parts)
+        or parts[0] not in {"scripts", "threeway"}
+    ):
+        return set()
 
     module_path = REPO_ROOT.joinpath(*parts).with_suffix(".py")
     package_path = REPO_ROOT.joinpath(*parts, "__init__.py")
-    for candidate in (module_path, package_path):
-        if candidate.is_file():
-            return candidate.relative_to(REPO_ROOT).as_posix()
-    return None
+    target = (
+        package_path
+        if package_path.is_file()
+        else module_path if module_path.is_file() else None
+    )
+    if target is None:
+        return set()
+
+    resolved = {target.relative_to(REPO_ROOT).as_posix()}
+    for depth in range(1, len(parts)):
+        initializer = REPO_ROOT.joinpath(*parts[:depth], "__init__.py")
+        if initializer.is_file():
+            resolved.add(initializer.relative_to(REPO_ROOT).as_posix())
+    return resolved
 
 
 def _direct_repo_local_imports(path: str) -> set[str]:
@@ -458,22 +477,27 @@ def _direct_repo_local_imports(path: str) -> set[str]:
     imports: set[str] = set()
     module_parts = list(Path(path).with_suffix("").parts)
     package_parts = module_parts[:-1]
-    top_level_package = (
-        package_parts[0]
-        if package_parts and package_parts[0] in {"scripts", "threeway"}
+    direct_root = (
+        module_parts[0]
+        if len(module_parts) == 2
+        and module_parts[0] in {"scripts", "threeway"}
         else None
     )
-
-    def resolve(module_name: str, *, sibling_fallback: bool) -> str | None:
-        resolved = _resolve_repo_local_module(module_name)
-        if (
-            resolved is None
-            and sibling_fallback
-            and top_level_package is not None
-        ):
-            resolved = _resolve_repo_local_module(
-                f"{top_level_package}.{module_name}"
+    bare_import_roots = tuple(
+        dict.fromkeys(
+            (
+                *((direct_root,) if direct_root is not None else ()),
+                *_EXPLICIT_BARE_IMPORT_ROOTS.get(path, ()),
             )
+        )
+    )
+
+    def resolve(module_name: str, *, bare_fallback: bool) -> set[str]:
+        resolved = _resolve_repo_local_module(module_name)
+        if resolved or not bare_fallback:
+            return resolved
+        for root in bare_import_roots:
+            resolved.update(_resolve_repo_local_module(f"{root}.{module_name}"))
         return resolved
 
     for node in ast.walk(tree):
@@ -481,10 +505,9 @@ def _direct_repo_local_imports(path: str) -> set[str]:
             for alias in node.names:
                 resolved = resolve(
                     alias.name,
-                    sibling_fallback=True,
+                    bare_fallback=True,
                 )
-                if resolved is not None:
-                    imports.add(resolved)
+                imports.update(resolved)
         elif isinstance(node, ast.ImportFrom):
             if node.level:
                 parent_count = len(package_parts) - node.level + 1
@@ -498,20 +521,18 @@ def _direct_repo_local_imports(path: str) -> set[str]:
             base_name = ".".join(base_parts)
             resolved_base = resolve(
                 base_name,
-                sibling_fallback=node.level == 0,
+                bare_fallback=node.level == 0,
             )
-            if resolved_base is not None:
-                imports.add(resolved_base)
+            imports.update(resolved_base)
             for alias in node.names:
                 if alias.name == "*":
                     continue
                 child_name = ".".join((*base_parts, alias.name))
                 resolved_child = resolve(
                     child_name,
-                    sibling_fallback=node.level == 0,
+                    bare_fallback=node.level == 0,
                 )
-                if resolved_child is not None:
-                    imports.add(resolved_child)
+                imports.update(resolved_child)
 
     return imports
 
@@ -532,6 +553,17 @@ def test_mapping_direct_repo_local_imports_are_exact() -> None:
     assert _direct_repo_local_imports(
         "scripts/compact_state_mapping.py"
     ) == MAPPING_PRODUCER_DEPENDENCIES
+
+
+def test_seat_status_direct_repo_local_imports_are_exact() -> None:
+    assert _direct_repo_local_imports(
+        ".agents/skills/four-seat-protocol/scripts/seat_status.py"
+    ) == {
+        "scripts/bus_unread.py",
+        "scripts/codex_protocol_model.py",
+        "scripts/latest_handoff.py",
+        "scripts/protocol_mailbox.py",
+    }
 
 
 def test_unknown_bare_local_import_is_an_ownership_failure(
@@ -558,6 +590,95 @@ def test_unknown_bare_local_import_is_an_ownership_failure(
             [],
         )
     ]
+
+
+def test_nested_seat_status_bare_aliased_import_is_an_ownership_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    importer_path = (
+        ".agents/skills/four-seat-protocol/scripts/seat_status.py"
+    )
+    importer = tmp_path / importer_path
+    importer.parent.mkdir(parents=True)
+    importer.write_text(
+        "def load():\n"
+        "    import synthetic_dependency as alias\n"
+        "    return alias.SENTINEL\n",
+        encoding="utf-8",
+    )
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "synthetic_dependency.py").write_text(
+        "SENTINEL = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+
+    assert _direct_import_ownership_failures(
+        {importer_path: ["synthetic_owner"]}
+    ) == [
+        (
+            importer_path,
+            "scripts/synthetic_dependency.py",
+            [],
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "import scripts.pkg.child as alias\n",
+        "from scripts.pkg import child as alias\n",
+    ),
+    ids=("import", "import-from"),
+)
+def test_dotted_imports_include_executable_package_initializers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    statement: str,
+) -> None:
+    scripts_dir = tmp_path / "scripts"
+    package_dir = scripts_dir / "pkg"
+    package_dir.mkdir(parents=True)
+    (scripts_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+    (package_dir / "child.py").write_text("SENTINEL = True\n", encoding="utf-8")
+    importer_path = "scripts/synthetic_importer.py"
+    (tmp_path / importer_path).write_text(statement, encoding="utf-8")
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+
+    assert _direct_repo_local_imports(importer_path) == {
+        "scripts/__init__.py",
+        "scripts/pkg/__init__.py",
+        "scripts/pkg/child.py",
+    }
+    assert _direct_import_ownership_failures(
+        {
+            importer_path: ["synthetic_owner"],
+            "scripts/pkg/child.py": ["child_owner"],
+        }
+    ) == [
+        (importer_path, "scripts/__init__.py", []),
+        (importer_path, "scripts/pkg/__init__.py", []),
+    ]
+
+
+def test_package_initializer_precedes_same_named_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scripts_dir = tmp_path / "scripts"
+    package_dir = scripts_dir / "pkg"
+    package_dir.mkdir(parents=True)
+    (scripts_dir / "__init__.py").write_text("", encoding="utf-8")
+    (scripts_dir / "pkg.py").write_text("MODULE = True\n", encoding="utf-8")
+    (package_dir / "__init__.py").write_text("PACKAGE = True\n", encoding="utf-8")
+    monkeypatch.setitem(globals(), "REPO_ROOT", tmp_path)
+
+    assert _resolve_repo_local_module("scripts.pkg") == {
+        "scripts/__init__.py",
+        "scripts/pkg/__init__.py",
+    }
 
 
 def test_live_status_reader_inventory_discloses_local_writers() -> None:
