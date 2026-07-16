@@ -133,6 +133,16 @@ REQUIRED_REVIEWER_TEMPLATE_HEADINGS = (
 )
 
 
+def test_decommission_plan_matches_authoritative_base_bytes() -> None:
+    plan = (
+        ROOT
+        / "docs/superpowers/plans/2026-07-16-provider-tools-targeted-decommission.md"
+    ).read_bytes()
+    assert hashlib.sha256(plan).hexdigest() == (
+        "0e4b4940f3d193f1d9b8c183dbfa67023583d4621210c343cb3366034b161422"
+    )
+
+
 def test_provider_executable_surfaces_are_deleted() -> None:
     for relative in DELETED_PROVIDER_PATHS:
         assert not (ROOT / relative).exists(), relative
