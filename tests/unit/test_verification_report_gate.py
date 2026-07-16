@@ -10,7 +10,7 @@ import multiprocessing
 import os
 import stat
 import subprocess
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from types import MappingProxyType
 
@@ -63,6 +63,15 @@ def _codex_fields() -> list[tuple[str, str]]:
         ),
         ("Degraded reason", "none"),
     ]
+
+
+def _provider_free_fields() -> list[tuple[str, str]]:
+    values = dict(_codex_fields())
+    values["Verification mode"] = receipts.CODEX_PROVIDER_FREE_MODE
+    values["Review profile"] = receipts.CODEX_PROVIDER_FREE_MODE
+    for label in gate.ATTESTATION_FIELDS[9:]:
+        values[label] = "not-applicable"
+    return [(label, values[label]) for label in gate.ATTESTATION_FIELDS]
 
 
 def _claude_fields() -> list[tuple[str, str]]:
@@ -127,6 +136,54 @@ def test_parse_valid_codex_and_claude_reports() -> None:
     assert codex.body_digest == "sha256:" + hashlib.sha256(_report_bytes()).hexdigest()
     assert claude.fields["Verification mode"] == "claude-lane-v"
     assert claude.fields["Opus receipt ID"] == "not-applicable"
+
+
+def test_provider_free_report_parses_exact_codex_shape() -> None:
+    report = gate.parse_lane_v_report(
+        REPORT_PATH, _report_bytes(_provider_free_fields())
+    )
+
+    assert report.fields["Verification mode"] == receipts.CODEX_PROVIDER_FREE_MODE
+    assert report.fields["Verification harness"] == receipts.CODEX_HARNESS
+    assert report.fields["Review profile"] == receipts.CODEX_PROVIDER_FREE_MODE
+    assert all(
+        report.fields[label] == "not-applicable"
+        for label in gate.ATTESTATION_FIELDS[9:]
+    )
+
+
+@pytest.mark.parametrize("label", gate.ATTESTATION_FIELDS[9:])
+def test_provider_free_report_rejects_each_provider_field(label: str) -> None:
+    fields = _replace_field(
+        _provider_free_fields(), label, dict(_codex_fields())[label]
+    )
+
+    with pytest.raises(gate.ReportGateError, match="must be not-applicable"):
+        gate.parse_lane_v_report(REPORT_PATH, _report_bytes(fields))
+
+
+@pytest.mark.parametrize("label", gate.ATTESTATION_FIELDS[9:])
+def test_provider_free_support_does_not_relax_codex_receipt_fields(label: str) -> None:
+    fields = _replace_field(_codex_fields(), label, "not-applicable")
+
+    with pytest.raises(gate.ReportGateError):
+        gate.parse_lane_v_report(REPORT_PATH, _report_bytes(fields))
+
+
+@pytest.mark.parametrize(
+    ("label", "value"),
+    [
+        ("Verification harness", receipts.CLAUDE_HARNESS),
+        ("Review profile", receipts.CODEX_MODE),
+    ],
+)
+def test_provider_free_report_rejects_mismatched_codex_identity(
+    label: str, value: str
+) -> None:
+    fields = _replace_field(_provider_free_fields(), label, value)
+
+    with pytest.raises(gate.ReportGateError):
+        gate.parse_lane_v_report(REPORT_PATH, _report_bytes(fields))
 
 
 def test_verdict_literal_in_evidence_is_not_a_second_verdict() -> None:
@@ -386,9 +443,9 @@ def _authority_fixture(
     base = _git(root, "rev-parse", "HEAD")
 
     harness = (
-        "codex:lane-v-verifier"
-        if mode == "codex-lane-v"
-        else "claude:lane-v-verifier"
+        receipts.CODEX_HARNESS
+        if mode in {receipts.CODEX_MODE, receipts.CODEX_PROVIDER_FREE_MODE}
+        else receipts.CLAUDE_HARNESS
     )
     descriptor = {
         "schema_version": "lane-v-scope/v1",
@@ -447,7 +504,12 @@ def _authority_fixture(
         _git(root, "commit", "-q", "-m", "coord: request verification")
         trigger_commit = _git(root, "rev-parse", "HEAD")
 
-    fields = _codex_fields() if mode == "codex-lane-v" else _claude_fields()
+    if mode == receipts.CODEX_MODE:
+        fields = _codex_fields()
+    elif mode == receipts.CODEX_PROVIDER_FREE_MODE:
+        fields = _provider_free_fields()
+    else:
+        fields = _claude_fields()
     updates = {
         "Verification mode": mode,
         "Verification harness": harness,
@@ -495,6 +557,8 @@ def _validate_structural_fixture(
     [
         ("codex-lane-v", "shipping-commit", "operator"),
         ("codex-lane-v", "verify-request", "operator"),
+        (receipts.CODEX_PROVIDER_FREE_MODE, "shipping-commit", "operator"),
+        (receipts.CODEX_PROVIDER_FREE_MODE, "verify-request", "operator"),
         ("claude-lane-v", "shipping-commit", "operator2"),
         ("claude-lane-v", "verify-request", "operator2"),
     ],
@@ -940,6 +1004,110 @@ def test_structural_authority_rejects_report_descriptor_trigger_mismatch(
 
     with pytest.raises(gate.ReportGateError):
         gate.validate_structural_authority(root, report)
+
+
+@pytest.mark.parametrize("trigger_kind", ("shipping-commit", "verify-request"))
+@pytest.mark.parametrize(
+    ("descriptor_mode", "report_fields"),
+    [
+        pytest.param(
+            receipts.CODEX_PROVIDER_FREE_MODE,
+            _codex_fields,
+            id="provider-free-descriptor-codex-report",
+        ),
+        pytest.param(
+            receipts.CODEX_MODE,
+            _provider_free_fields,
+            id="codex-descriptor-provider-free-report",
+        ),
+    ],
+)
+def test_provider_free_structural_authority_rejects_mode_mismatch_for_each_trigger(
+    tmp_path: Path,
+    trigger_kind: str,
+    descriptor_mode: str,
+    report_fields: Callable[[], list[tuple[str, str]]],
+) -> None:
+    root, descriptor_fields, report_path, head, _ = _authority_fixture(
+        tmp_path / "repo",
+        mode=descriptor_mode,
+        trigger_kind=trigger_kind,
+        recipient="operator",
+    )
+    descriptor_values = dict(descriptor_fields)
+    values = dict(report_fields())
+    for label in (
+        "Verification task ID",
+        "Scope authority",
+        "Trigger identity",
+        "Reviewed head",
+        "Reviewed base",
+    ):
+        values[label] = descriptor_values[label]
+    fields = [(label, values[label]) for label in gate.ATTESTATION_FIELDS]
+    report = gate.parse_lane_v_report(
+        report_path,
+        _report_bytes(fields, head=head),
+    )
+
+    with pytest.raises(gate.ReportGateError, match="structural_authority_mismatch"):
+        gate.validate_structural_authority(root, report)
+
+
+def test_provider_free_verify_request_recipient_is_enforced(tmp_path: Path) -> None:
+    root, fields, _, head, _ = _authority_fixture(
+        tmp_path / "repo",
+        mode=receipts.CODEX_PROVIDER_FREE_MODE,
+        trigger_kind="verify-request",
+        recipient="operator2",
+    )
+    report = gate.parse_lane_v_report(
+        REPORT_PATH,
+        _report_bytes(fields, head=head, envelope_sender="operator"),
+    )
+
+    with pytest.raises(gate.ReportGateError, match="recipient"):
+        gate.validate_structural_authority(root, report)
+
+
+def test_provider_free_structural_authority_binds_committed_review_profile(
+    tmp_path: Path,
+) -> None:
+    root, fields, report_path, _, _ = _authority_fixture(
+        tmp_path / "repo",
+        mode=receipts.CODEX_PROVIDER_FREE_MODE,
+    )
+    report = _structural_report(fields, report_path)
+    changed = dict(report.fields)
+    changed["Review profile"] = receipts.CODEX_MODE
+
+    with pytest.raises(gate.ReportGateError, match="review profile"):
+        gate.validate_structural_authority(
+            root,
+            _mutated_report(report, fields=changed),
+        )
+
+
+def test_claude_structural_authority_projects_committed_review_profile(
+    tmp_path: Path,
+) -> None:
+    root, fields, report_path, _, _ = _authority_fixture(
+        tmp_path / "repo",
+        mode=receipts.CLAUDE_MODE,
+    )
+    report = _structural_report(fields, report_path)
+
+    authority = gate.validate_structural_authority(root, report)
+
+    assert authority.descriptor.review_profile == receipts.CLAUDE_MODE
+    assert report.fields["Review profile"] == "not-applicable"
+    changed = dict(report.fields)
+    changed["Review profile"] = receipts.CLAUDE_MODE
+    with pytest.raises(gate.ReportGateError, match="review profile"):
+        gate.validate_structural_authority(
+            root,
+            _mutated_report(report, fields=changed),
+        )
 
 
 def test_verify_request_recipient_must_equal_report_sender(tmp_path: Path) -> None:
@@ -1495,6 +1663,47 @@ class _LiveClaudeFixture:
     raw: bytes
 
 
+@dataclasses.dataclass(frozen=True)
+class _ProviderFreeFixture:
+    root: Path
+    report: gate.LaneVReport
+    authority: gate.StructuralAuthority
+    raw: bytes
+    candidate: Path
+    task_store: gate.TaskPublicationStore
+    receipt_state_root: Path
+
+
+def _provider_free_fixture(root: Path) -> _ProviderFreeFixture:
+    root, fields, report_path, head, _ = _authority_fixture(
+        root,
+        mode=receipts.CODEX_PROVIDER_FREE_MODE,
+        trigger_kind="verify-request",
+        recipient="operator2",
+    )
+    raw = _report_bytes(
+        fields,
+        head=head,
+        h1_sender="Operator2",
+        envelope_sender="operator2",
+    )
+    report = gate.parse_lane_v_report(report_path, raw)
+    authority = gate.validate_structural_authority(root, report)
+    candidate = _candidate_path(root, raw)
+    task_store = gate.TaskPublicationStore.for_repo(
+        root, state_root=root / ".task-publications"
+    )
+    return _ProviderFreeFixture(
+        root=root,
+        report=report,
+        authority=authority,
+        raw=raw,
+        candidate=candidate,
+        task_store=task_store,
+        receipt_state_root=root / ".receipt-state",
+    )
+
+
 def _live_claude_fixture(root: Path) -> _LiveClaudeFixture:
     root, fields, report_path, head, _ = _authority_fixture(
         root,
@@ -1520,6 +1729,140 @@ def _candidate_path(root: Path, raw: bytes, name: str = ".report.candidate.tmp")
     candidate.write_bytes(raw)
     candidate.chmod(0o600)
     return candidate
+
+
+def test_provider_free_hermetic_task_backed_publication_lifecycle(
+    tmp_path: Path,
+) -> None:
+    fixture = _provider_free_fixture(tmp_path / "repo")
+
+    def bomb_receipt_store(_root: Path) -> receipts.ReceiptStore:
+        raise AssertionError("provider-free mode touched receipt state")
+
+    validated = gate.validate_live_report(
+        fixture.root,
+        fixture.report,
+        receipt_store_factory=bomb_receipt_store,
+        task_store_factory=lambda _root: fixture.task_store,
+    )
+    published = gate.publish_candidate(
+        repo_root=fixture.root,
+        candidate_path=fixture.candidate,
+        final_relative=fixture.report.relative_path,
+        receipt_store_factory=bomb_receipt_store,
+        task_store_factory=lambda _root: fixture.task_store,
+    )
+    status = gate.publication_status(
+        repo_root=fixture.root,
+        task_id=TASK_ID,
+        receipt_store_factory=bomb_receipt_store,
+        task_store_factory=lambda _root: fixture.task_store,
+    )
+
+    assert validated == fixture.authority
+    assert published.read_bytes() == fixture.raw
+    assert status["state"] == "published"
+    assert not fixture.receipt_state_root.exists()
+
+    collision = _provider_free_fixture(tmp_path / "collision")
+    with pytest.raises(gate.ReportGateError, match="task_authority_conflict"):
+        gate.validate_live_report(
+            collision.root,
+            collision.report,
+            receipt_store_factory=bomb_receipt_store,
+            task_store_factory=lambda _root: fixture.task_store,
+        )
+    assert not collision.receipt_state_root.exists()
+
+
+def test_provider_free_interruption_resumes_by_task_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _provider_free_fixture(tmp_path / "repo")
+
+    def bomb_receipt_store(_root: Path) -> receipts.ReceiptStore:
+        raise AssertionError("provider-free mode touched receipt state")
+
+    gate.validate_live_report(
+        fixture.root,
+        fixture.report,
+        receipt_store_factory=bomb_receipt_store,
+        task_store_factory=lambda _root: fixture.task_store,
+    )
+
+    def interrupt(label: str) -> None:
+        if label == "after_publishing":
+            raise RuntimeError("injected provider-free publication interruption")
+
+    monkeypatch.setattr(gate, "_publication_checkpoint", interrupt)
+    with pytest.raises(gate.ReportGateError, match="publication_resumable"):
+        gate.publish_candidate(
+            repo_root=fixture.root,
+            candidate_path=fixture.candidate,
+            final_relative=fixture.report.relative_path,
+            receipt_store_factory=bomb_receipt_store,
+            task_store_factory=lambda _root: fixture.task_store,
+        )
+    with fixture.task_store.lock_task(TASK_ID) as task:
+        assert task.load_existing().state == "publishing"
+
+    monkeypatch.setattr(gate, "_publication_checkpoint", lambda _label: None)
+    published = gate.resume_publication(
+        repo_root=fixture.root,
+        task_id=TASK_ID,
+        receipt_store_factory=bomb_receipt_store,
+        task_store_factory=lambda _root: fixture.task_store,
+    )
+    status = gate.publication_status(
+        repo_root=fixture.root,
+        task_id=TASK_ID,
+        receipt_store_factory=bomb_receipt_store,
+        task_store_factory=lambda _root: fixture.task_store,
+    )
+
+    assert published.read_bytes() == fixture.raw
+    assert status["state"] == "published"
+    assert not fixture.receipt_state_root.exists()
+
+
+def test_provider_free_unknown_mode_reaches_neither_backend(tmp_path: Path) -> None:
+    fixture = _provider_free_fixture(tmp_path / "repo")
+    backend_calls: list[str] = []
+
+    def receipt_store(_root: Path) -> receipts.ReceiptStore:
+        backend_calls.append("receipt")
+        raise AssertionError("unknown mode reached receipt state")
+
+    def task_store(_root: Path) -> gate.TaskPublicationStore:
+        backend_calls.append("task")
+        raise AssertionError("unknown mode reached task state")
+
+    fields = dict(fixture.report.fields)
+    fields["Verification mode"] = "unknown-lane-v"
+    unknown_report = _mutated_report(fixture.report, fields=fields)
+    with pytest.raises(gate.ReportGateError):
+        gate.validate_live_report(
+            fixture.root,
+            unknown_report,
+            receipt_store_factory=receipt_store,
+            task_store_factory=task_store,
+        )
+
+    unknown_raw = fixture.raw.replace(
+        f"Verification mode: {receipts.CODEX_PROVIDER_FREE_MODE}".encode(),
+        b"Verification mode: unknown-lane-v",
+    )
+    candidate = _candidate_path(fixture.root, unknown_raw, ".unknown-mode.tmp")
+    with pytest.raises(gate.ReportGateError):
+        gate.publish_candidate(
+            repo_root=fixture.root,
+            candidate_path=candidate,
+            final_relative=fixture.report.relative_path,
+            receipt_store_factory=receipt_store,
+            task_store_factory=task_store,
+        )
+
+    assert backend_calls == []
 
 
 def test_non_codex_live_validation_creates_exact_ready_task_record(

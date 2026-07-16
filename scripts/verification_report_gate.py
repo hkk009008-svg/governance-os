@@ -108,6 +108,12 @@ _CODEX_UNAVAILABLE_REASONS = frozenset(
     }
 )
 _OPUS_SPECIFIC_FIELDS = ATTESTATION_FIELDS[8:]
+_RECEIPT_BACKEND = "receipt"
+_TASK_BACKEND = "task"
+_RECEIPT_BACKED_MODES = frozenset({receipts.CODEX_MODE})
+_TASK_BACKED_MODES = frozenset(
+    {receipts.CLAUDE_MODE, receipts.CODEX_PROVIDER_FREE_MODE}
+)
 _BRIDGE_GIT_ADAPTER_LOCK = threading.Lock()
 
 
@@ -348,12 +354,56 @@ def _validate_codex_fields(fields: Mapping[str, str]) -> None:
     _validate_guard(fields["Reconciliation guard"])
 
 
+def _validate_provider_free_codex_fields(fields: Mapping[str, str]) -> None:
+    if fields["Verification harness"] != receipts.CODEX_HARNESS:
+        _fail(
+            "invalid_attestation_value",
+            "provider-free Codex harness does not match",
+        )
+    if fields["Review profile"] != receipts.CODEX_PROVIDER_FREE_MODE:
+        _fail(
+            "invalid_attestation_value",
+            "provider-free Codex profile does not match",
+        )
+    for label in ATTESTATION_FIELDS[9:]:
+        if fields[label] != "not-applicable":
+            _fail("invalid_attestation_value", f"{label} must be not-applicable")
+
+
+def _publication_backend(mode: str) -> str:
+    if mode in _RECEIPT_BACKED_MODES:
+        return _RECEIPT_BACKEND
+    if mode in _TASK_BACKED_MODES:
+        return _TASK_BACKEND
+    _fail("invalid_attestation_value", "unsupported Verification mode")
+
+
+def _identifier_backend(
+    receipt_id: str | None,
+    task_id: str | None,
+    *,
+    reason: str,
+) -> str:
+    if (receipt_id is None) == (task_id is None):
+        _fail(reason, "choose exactly one receipt or task ID")
+    return _RECEIPT_BACKEND if receipt_id is not None else _TASK_BACKEND
+
+
+def _committed_report_profile(descriptor: receipts.ScopeDescriptor) -> str:
+    mode = descriptor.verification_mode
+    _publication_backend(mode)
+    if mode == receipts.CLAUDE_MODE:
+        return "not-applicable"
+    if mode in {receipts.CODEX_MODE, receipts.CODEX_PROVIDER_FREE_MODE}:
+        return descriptor.review_profile
+    _fail("invalid_scope_descriptor", "unsupported committed review profile")
+
+
 def _validate_fields(fields: Mapping[str, str]) -> None:
     if fields["Verification schema"] != REPORT_SCHEMA_VERSION:
         _fail("invalid_attestation_value", "unexpected Verification schema")
     mode = fields["Verification mode"]
-    if mode not in {receipts.CODEX_MODE, receipts.CLAUDE_MODE}:
-        _fail("invalid_attestation_value", "unsupported Verification mode")
+    _publication_backend(mode)
     _canonical_uuid(fields["Verification task ID"])
     try:
         receipts.parse_scope_reference(fields["Scope authority"])
@@ -365,6 +415,10 @@ def _validate_fields(fields: Mapping[str, str]) -> None:
     if mode == receipts.CODEX_MODE:
         _validate_codex_fields(fields)
         return
+    if mode == receipts.CODEX_PROVIDER_FREE_MODE:
+        _validate_provider_free_codex_fields(fields)
+        return
+    assert mode == receipts.CLAUDE_MODE
     if fields["Verification harness"] != receipts.CLAUDE_HARNESS:
         _fail("invalid_attestation_value", "Claude verification harness does not match")
     for label in _OPUS_SPECIFIC_FIELDS:
@@ -819,6 +873,10 @@ def validate_structural_authority(
         "verification harness": (
             descriptor.verification_harness,
             report.fields["Verification harness"],
+        ),
+        "review profile": (
+            _committed_report_profile(descriptor),
+            report.fields["Review profile"],
         ),
         "verification task ID": (
             descriptor.task_id,
@@ -1595,8 +1653,9 @@ def validate_live_report(
 
     _live_report_shape(report)
     root = _require_repository(Path(repo_root))
+    backend = _publication_backend(report.fields["Verification mode"])
     authority = validate_structural_authority(root, report)
-    if report.fields["Verification mode"] != receipts.CODEX_MODE:
+    if backend == _TASK_BACKEND:
         factory = task_store_factory or TaskPublicationStore.for_repo
         try:
             store = factory(root)
@@ -2370,10 +2429,11 @@ def _publish_candidate_result(
         if report.relative_path != final_relative:
             _fail("invalid_publication_path", "final report path is not canonical")
         _live_report_shape(report)
+        backend = _publication_backend(report.fields["Verification mode"])
         authority = validate_structural_authority(root, report)
         with _SanitizedGit(root) as git:
             try:
-                if report.fields["Verification mode"] == receipts.CODEX_MODE:
+                if backend == _RECEIPT_BACKEND:
                     store = receipt_store_factory(root)
                     with store.lock_receipt(
                         report.fields["Opus receipt ID"], blocking=True
@@ -2853,8 +2913,11 @@ def resume_publication(
         TaskPublicationStore.for_repo
     ),
 ) -> Path:
-    if (receipt_id is None) == (task_id is None):
-        _fail("invalid_resume_identifier", "choose exactly one receipt or task ID")
+    backend = _identifier_backend(
+        receipt_id,
+        task_id,
+        reason="invalid_resume_identifier",
+    )
     canonical_receipt_id = (
         _canonical_receipt_id(receipt_id) if receipt_id is not None else None
     )
@@ -2863,7 +2926,8 @@ def resume_publication(
     try:
         with _SanitizedGit(root) as git:
             try:
-                if canonical_receipt_id is not None:
+                if backend == _RECEIPT_BACKEND:
+                    assert canonical_receipt_id is not None
                     store = receipt_store_factory(root)
                     with store.lock_receipt(
                         canonical_receipt_id, blocking=True
@@ -2873,7 +2937,12 @@ def resume_publication(
                         def validate_codex(
                             report: LaneVReport, authority: StructuralAuthority
                         ) -> None:
-                            if report.fields["Verification mode"] != receipts.CODEX_MODE:
+                            if (
+                                _publication_backend(
+                                    report.fields["Verification mode"]
+                                )
+                                != _RECEIPT_BACKEND
+                            ):
                                 _fail(
                                     "receipt_mode_mismatch",
                                     "receipt resume requires Codex mode",
@@ -2911,7 +2980,10 @@ def resume_publication(
                     def validate_task(
                         report: LaneVReport, authority: StructuralAuthority
                     ) -> None:
-                        if report.fields["Verification mode"] == receipts.CODEX_MODE:
+                        if (
+                            _publication_backend(report.fields["Verification mode"])
+                            != _TASK_BACKEND
+                        ):
                             _fail(
                                 "task_mode_mismatch",
                                 "task resume requires non-Codex mode",
@@ -3047,8 +3119,11 @@ def publication_status(
         TaskPublicationStore.for_repo
     ),
 ) -> dict[str, object]:
-    if (receipt_id is None) == (task_id is None):
-        _fail("invalid_status_identifier", "choose exactly one receipt or task ID")
+    backend = _identifier_backend(
+        receipt_id,
+        task_id,
+        reason="invalid_status_identifier",
+    )
     canonical_receipt_id = (
         _canonical_receipt_id(receipt_id) if receipt_id is not None else None
     )
@@ -3056,7 +3131,8 @@ def publication_status(
     sent_fd: int | None = None
     try:
         with _SanitizedGit(root) as git:
-            if canonical_receipt_id is not None:
+            if backend == _RECEIPT_BACKEND:
+                assert canonical_receipt_id is not None
                 store = receipt_store_factory(root)
                 with store.lock_receipt(
                     canonical_receipt_id, blocking=True
