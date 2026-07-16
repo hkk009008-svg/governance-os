@@ -22,7 +22,7 @@
   ],
   "done_evidence": [],
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "blocked",
   "verify_request": null,
   "target_commit": "eda82c34408f76369373459f38486b530f512e12",
   "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..eda82c34408f76369373459f38486b530f512e12",
