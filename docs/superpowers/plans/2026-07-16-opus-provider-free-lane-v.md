@@ -6,14 +6,14 @@
 
 **Architecture:** Split descriptor-supported verifier tuples from receipt-capable review-scope tuples. Add exact `codex-provider-free-lane-v` report validation and route only that mode plus Claude mode through the existing task-publication transaction; ordinary `codex-lane-v` remains receipt-backed.
 
-**Tech Stack:** Python 3.14, pytest, Git-backed authority fixtures, private receipt/task state stores.
+**Tech Stack:** Python 3.11/3.13/3.14, pytest, `tarfile.data_filter`, Git-backed authority fixtures, private receipt/task state stores.
 
 ## Global Constraints
 
 - Work only in `/Users/hyungkoookkim/Pipeline/.worktrees/opus-provider-free-lane-v` on branch `codex/opus-provider-free-lane-v`.
 - Prefix every ordinary Git and pytest command with `env -u GIT_INDEX_FILE`.
 - Do not invoke Opus or any other provider; provider attempts and receipt mutations remain zero.
-- Do not write mailbox events, consume cursors, mutate routes/capacity, integrate into `main`, push, publish externally, or touch the separate shared-tree WIP.
+- Do not write mailbox events, consume cursors, mutate routes/capacity, integrate into `main`, force-push, merge, publish externally, or touch the separate shared-tree WIP. The post-integration Task 4 permits exactly one normal push to `codex/opus-provider-free-lane-v` after both append-only commits are verified.
 - Preserve ordinary `codex-lane-v` and `claude-lane-v` behavior byte-for-byte unless a new regression test proves a required shared hardening.
 - Commit each task separately with strict pathspec staging.
 
@@ -320,3 +320,218 @@ Request one read-only reviewer for exact `acc29ba..HEAD`. The reviewer must veri
 - [ ] **Step 5: Return coordinator evidence**
 
 Report the isolated branch, exact base/head range, commits, changed paths, fresh test outputs, smoke output, independent verdict, and remaining coordinator action: add the standalone manifest line and issue a fresh provider-free descriptor plus canonical verify-request without changing `R..Q2`.
+
+---
+
+### Task 4: Repair Python 3.13 archive extraction after hosted E2E
+
+**Files:**
+- Modify: `scripts/opus_review_bridge.py:1845-1860`
+- Modify: `tests/unit/test_opus_review_bridge.py`
+- Test: `tests/unit/test_opus_review_bridge.py`
+
+**Interfaces:**
+- Consumes: `_extract_review_archive(archive: bytes, destination: Path) -> None`, exact `git archive` bytes, and the existing all-members-first safety checks.
+- Produces: extraction through the exact `tarfile.data_filter` callable, a stable fail-closed `invalid_scope` error when that callable is unavailable, and multi-version regression evidence.
+
+- [ ] **Step 1: Add an archive fixture helper and focused failing tests**
+
+Add `io` and `tarfile` imports, then add this helper and the filter tests near
+`test_snapshot_fetches_later_trigger_and_reverifies_bound_blobs`:
+
+```python
+def _review_archive(member: tarfile.TarInfo, payload: bytes = b"") -> bytes:
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w") as bundle:
+        if member.isfile():
+            member.size = len(payload)
+            bundle.addfile(member, io.BytesIO(payload))
+        else:
+            bundle.addfile(member)
+    return raw.getvalue()
+
+
+def test_extract_review_archive_passes_exact_data_filter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    member = tarfile.TarInfo("bin/reviewer")
+    member.mode = 0o755
+    archive = _review_archive(member, b"reviewer\n")
+    destination = tmp_path / "snapshot"
+    observed_filters: list[object] = []
+    original_extractall = bridge.tarfile.TarFile.extractall
+
+    def capture_extractall(
+        bundle,
+        path=".",
+        members=None,
+        *,
+        numeric_owner=False,
+        filter=None,
+    ):
+        observed_filters.append(filter)
+        return original_extractall(
+            bundle,
+            path,
+            members,
+            numeric_owner=numeric_owner,
+            filter=filter,
+        )
+
+    monkeypatch.setattr(bridge.tarfile.TarFile, "extractall", capture_extractall)
+    bridge._extract_review_archive(archive, destination)
+
+    extracted = destination / "bin" / "reviewer"
+    assert observed_filters == [bridge.tarfile.data_filter]
+    assert extracted.read_bytes() == b"reviewer\n"
+    assert extracted.stat().st_mode & stat.S_IXUSR
+
+
+@pytest.mark.parametrize("condition", ("missing", "not-callable"))
+def test_extract_review_archive_fails_closed_without_callable_data_filter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, condition: str
+) -> None:
+    member = tarfile.TarInfo("safe.txt")
+    archive = _review_archive(member, b"safe\n")
+    destination = tmp_path / "snapshot"
+    if condition == "missing":
+        monkeypatch.delattr(bridge.tarfile, "data_filter")
+    else:
+        monkeypatch.setattr(bridge.tarfile, "data_filter", None)
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge._extract_review_archive(archive, destination)
+
+    assert excinfo.value.reason == "invalid_scope"
+    assert excinfo.value.detail == "safe tar data filter is unavailable"
+    assert not destination.exists()
+```
+
+- [ ] **Step 2: Pin the existing unsafe-member boundary**
+
+Add this parametrized characterization test. It must remain green before and
+after the production repair because the existing manual validation is retained:
+
+```python
+@pytest.mark.parametrize(
+    ("name", "member_type", "linkname"),
+    [
+        ("/absolute", tarfile.REGTYPE, ""),
+        ("../escape", tarfile.REGTYPE, ""),
+        (".git/config", tarfile.REGTYPE, ""),
+        ("symlink", tarfile.SYMTYPE, "target"),
+        ("hardlink", tarfile.LNKTYPE, "target"),
+        ("fifo", tarfile.FIFOTYPE, ""),
+    ],
+)
+def test_extract_review_archive_rejects_unsafe_members(
+    tmp_path: Path, name: str, member_type: bytes, linkname: str
+) -> None:
+    member = tarfile.TarInfo(name)
+    member.type = member_type
+    member.linkname = linkname
+    payload = b"unsafe\n" if member.isfile() else b""
+    destination = tmp_path / "snapshot"
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge._extract_review_archive(_review_archive(member, payload), destination)
+
+    assert excinfo.value.reason == "invalid_scope"
+    assert not destination.exists()
+```
+
+Add a defense-in-depth case for the realpath containment supplied by
+`tarfile.data_filter`:
+
+```python
+def test_extract_review_archive_blocks_preexisting_destination_symlink(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    destination = tmp_path / "snapshot"
+    destination.mkdir()
+    (destination / "pivot").symlink_to(outside, target_is_directory=True)
+    member = tarfile.TarInfo("pivot/escaped.txt")
+
+    with pytest.raises(tarfile.OutsideDestinationError):
+        bridge._extract_review_archive(
+            _review_archive(member, b"blocked\n"), destination
+        )
+
+    assert not (outside / "escaped.txt").exists()
+```
+
+- [ ] **Step 3: Run the new behavior tests and verify RED**
+
+Run:
+
+```sh
+env -u GIT_INDEX_FILE ../../.venv/bin/python -m pytest \
+  tests/unit/test_opus_review_bridge.py::test_extract_review_archive_passes_exact_data_filter \
+  tests/unit/test_opus_review_bridge.py::test_extract_review_archive_fails_closed_without_callable_data_filter \
+  tests/unit/test_opus_review_bridge.py::test_extract_review_archive_blocks_preexisting_destination_symlink -q
+```
+
+Expected: four parametrized failures. The first observes `None` instead of
+`tarfile.data_filter`; the two unavailable-filter cases extract instead of
+raising `invalid_scope`; the symlink case writes outside the destination instead
+of raising `OutsideDestinationError`.
+Run the unsafe-member test separately and expect all six cases to pass.
+
+- [ ] **Step 4: Implement the minimal fail-closed repair**
+
+Keep every existing member check and replace only the unfiltered extraction:
+
+```python
+        try:
+            data_filter = tarfile.data_filter
+        except AttributeError as exc:
+            raise ReviewContractError(
+                "invalid_scope", "safe tar data filter is unavailable"
+            ) from exc
+        if not callable(data_filter):
+            raise ReviewContractError(
+                "invalid_scope", "safe tar data filter is unavailable"
+            )
+        bundle.extractall(destination, members=members, filter=data_filter)
+```
+
+- [ ] **Step 5: Verify GREEN on every supported Python runtime**
+
+Create temporary Python 3.11 and 3.13 virtual environments outside the
+repository, install `requirements-dev.txt`, and run the four new test names
+under Python 3.11, 3.13, and 3.14. Expected: ten parametrized cases pass on
+each runtime with no warnings. Then run all of
+`tests/unit/test_opus_review_bridge.py` under Python 3.13.
+
+- [ ] **Step 6: Run complete local and hermetic hosted-shape verification**
+
+Run the complete unit suite under Python 3.13. Also create a temporary
+single-branch, non-local clone of the feature branch and run with a runner-like
+home so local-only Git objects and user paths cannot mask the four excluded
+failures. Expected: the 36 Opus failures are absent; only the two ledger-path
+and two missing-trigger-object/smoke failures remain. Run `scripts/ci_smoke.py`,
+recording its known missing-trigger-object result in the hermetic clone.
+
+- [ ] **Step 7: Review and commit the implementation**
+
+Obtain an independent diff review against this Task 4 acceptance criteria.
+Stage only the bridge and bridge-test paths, verify the staged diff, and commit:
+
+```sh
+env -u GIT_INDEX_FILE git add -- \
+  scripts/opus_review_bridge.py \
+  tests/unit/test_opus_review_bridge.py
+env -u GIT_INDEX_FILE git diff --cached --check
+env -u GIT_INDEX_FILE git commit -m "fix(opus): use safe archive extraction filter"
+```
+
+- [ ] **Step 8: Push once and rerun hosted CI**
+
+After a fresh remote-ref and PR preflight, perform one normal push to
+`codex/opus-provider-free-lane-v`. Do not force-push, push `main`, or merge.
+Monitor the automatically triggered hosted CI run. Success means its unit
+summary changes from `40 failed` to `4 failed`, with no Opus bridge failures;
+the four remaining failures must be the two ledger-path assertions and the two
+missing-trigger-object/smoke assertions. Do not modify those excluded surfaces.

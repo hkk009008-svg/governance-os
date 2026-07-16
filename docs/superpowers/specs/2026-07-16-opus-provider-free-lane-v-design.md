@@ -108,6 +108,35 @@ Provider-free mode creates no provider attempt, receipt, or receipt lock.
 Unknown modes, mixed verifier tuples, receipt-bearing provider-free reports,
 and descriptor/report mismatches fail before publication.
 
+## Post-Integration Hosted E2E Amendment
+
+The first hosted run after integrating `main` exposed one Opus-owned Python
+3.13 compatibility defect. The repository config promotes warnings to errors,
+while `_extract_review_archive()` called `TarFile.extractall()` without an
+explicit filter. Python 3.13 therefore raised its archive-filter
+`DeprecationWarning`. That single defect produced 36 Opus bridge failures: 35
+direct warning failures and one provider result normalized to `unavailable`.
+
+An independent security review traced the archive to exact local `git archive`
+output and confirmed that the existing all-members-first validation must stay.
+It rejects absolute paths, any `..` component, `.git` members, symlinks,
+hardlinks, and special entries before extraction. The narrow repair passes the
+exact `tarfile.data_filter` callable to `extractall()`. The data filter adds
+destination-realpath containment and safe permission/ownership normalization;
+it does not replace the stricter existing checks.
+
+The bridge must fail closed with `ReviewContractError(reason="invalid_scope")`
+before extraction if `tarfile.data_filter` is absent or not callable. Warning
+suppression, `fully_trusted`, a CI Python-version change, and a broader archive
+refactor are forbidden.
+
+The repair must preserve regular-file bytes and the owner executable bit, pin
+unsafe-member rejection, and execute focused coverage under Python 3.11, 3.13,
+and 3.14. Hosted success is exact: the 36 Opus failures disappear while the
+four unrelated unit failures remain unchanged (two ledger-path assertions and
+two missing-trigger-object/smoke assertions). The CI workflow, ledger paths,
+trigger objects, xfail policy, mailbox, receipts, and `main` remain untouched.
+
 ## Required Coverage
 
 1. Accept the exact provider-free descriptor tuple.
@@ -126,18 +155,33 @@ and descriptor/report mismatches fail before publication.
 11. Exercise task publication, resume, status, and authority-collision paths.
 12. Prove unknown future modes never default to task publication.
 13. Prove repository GO-schema validation accepts the new canonical shape.
+14. Prove archive extraction receives the exact `tarfile.data_filter` callable
+    and preserves regular-file bytes plus the owner executable bit.
+15. Fail closed with `invalid_scope` before extraction when
+    `tarfile.data_filter` is unavailable or not callable.
+16. Reject absolute, `..`, `.git`, symlink, hardlink, and FIFO archive members
+    without writing the destination.
+17. Prove the data filter blocks a write through a pre-existing destination
+    symlink and leaves the outside target unchanged.
+18. Run the focused archive coverage under Python 3.11, 3.13, and 3.14, then
+    confirm hosted CI removes exactly the 36 Opus failures.
 
 ## Files In Scope
 
 - `scripts/opus_review_receipts.py`
+- `scripts/opus_review_bridge.py` only for the post-integration explicit safe
+  archive-filter repair
 - `scripts/verification_report_gate.py`
+- `tests/unit/test_opus_review_bridge.py` only for the archive-filter and
+  unsafe-member coverage
 - `tests/unit/test_opus_review_receipts.py`
 - `tests/unit/test_verification_report_gate.py`
-- `tests/unit/test_go_schema.py` only if repository-level shape coverage cannot
+- `tests/unit/test_check_go_schema.py` only if repository-level shape coverage cannot
   be expressed through the existing report-gate tests
 - `ARCHITECTURE.md` for the new verified publication invariant
 
-No Opus provider bridge execution behavior, prompt, sandbox, receipt lifecycle,
+Except for the post-integration archive-filter amendment above, no Opus
+provider bridge execution behavior, prompt, sandbox, receipt lifecycle,
 mailbox event, capacity packet, descriptor instance, or reviewed Stage-A code
 belongs in this implementation diff.
 
@@ -147,7 +191,9 @@ belongs in this implementation diff.
 - No receipt or receipt-lock mutation.
 - No mailbox write, cursor consumption, route mutation, or verification verdict.
 - No Stage-A descriptor or verify-request creation by the bridge.
-- No integration into `main`, push, publication, or deployment.
+- No integration into `main`, force-push, publication, deployment, or merge.
+  One normal push to `codex/opus-provider-free-lane-v` is authorized only after
+  the append-only documentation and implementation commits are verified.
 - No changes to `R..Q2` or the separate dirty control-plane work.
 
 The bridge returns an isolated committed implementation range and verification
