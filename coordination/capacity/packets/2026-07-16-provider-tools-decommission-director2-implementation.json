@@ -56,7 +56,7 @@
   ],
   "done_evidence": [],
   "next_recipient": "operator2",
-  "status": "blocked",
+  "status": "ready",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
