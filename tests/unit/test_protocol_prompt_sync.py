@@ -173,11 +173,68 @@ def test_provider_tools_are_absent_from_executable_and_operative_surfaces() -> N
         _assert_no_forbidden_operative_fragments(path)
 
 
+KNOWN_PROVIDER_NAMES = ("chatgpt", "claude", "opus", "gemini", "anthropic")
+
+
+def _match_tokens(value: object) -> tuple[str, ...]:
+    serialized = json.dumps(value, sort_keys=True).casefold()
+    return tuple(re.findall(r"[a-z0-9]+", serialized))
+
+
+def _tokens_contain_compound_name(
+    tokens: tuple[str, ...],
+    name: str,
+    *,
+    split_only: bool = False,
+) -> bool:
+    for start in range(len(tokens)):
+        candidate = ""
+        for end in range(start, len(tokens)):
+            candidate += tokens[end]
+            if len(candidate) > len(name) or not name.startswith(candidate):
+                break
+            if candidate == name:
+                return not split_only or end > start
+    return False
+
+
+def _contains_provider_name(
+    tokens: tuple[str, ...],
+    names: tuple[str, ...] = KNOWN_PROVIDER_NAMES,
+    *,
+    split_only: bool = False,
+) -> bool:
+    return any(
+        _tokens_contain_compound_name(tokens, name, split_only=split_only)
+        for name in names
+    )
+
+
+def _operative_provider_action_sensitive(line: str) -> bool:
+    tokens = _match_tokens(line)
+    token_set = set(tokens)
+    if _contains_provider_name(tokens, ("opus",)):
+        return True
+    if _contains_provider_name(tokens, ("chatgpt",)) and "pro" in token_set:
+        return True
+    if _contains_provider_name(tokens, ("anthropic",)) and "api" in token_set:
+        return True
+    if _contains_provider_name(tokens, ("claude", "gemini"), split_only=True):
+        return True
+    if {"query", "provider"}.issubset(token_set):
+        return True
+    if "retry" in token_set and token_set & {"external", "advisory"}:
+        return True
+    return {"review", "receipt", "dispatch"}.issubset(token_set)
+
+
 def _assert_no_forbidden_operative_fragments(path: Path) -> None:
     text = path.read_text(encoding="utf-8").casefold()
     for fragment in FORBIDDEN_OPERATIVE_FRAGMENTS:
         normalized_fragment = fragment.casefold()
         assert normalized_fragment not in text, (path, normalized_fragment)
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        assert not _operative_provider_action_sensitive(line), (path, line_number, line)
 
 
 def test_operative_provider_scan_rejects_lowercase_chatgpt_pro(tmp_path: Path) -> None:
@@ -188,23 +245,57 @@ def test_operative_provider_scan_rejects_lowercase_chatgpt_pro(tmp_path: Path) -
         _assert_no_forbidden_operative_fragments(operative)
 
 
+@pytest.mark.parametrize(
+    ("case_name", "affirmative_action"),
+    (
+        ("chatgpt_separators", "Launch Chat-GPT Pro for review"),
+        ("claude_separators", "Run C-L-A-U-D-E against the diff"),
+        ("anthropic_api", "Call the Anthropic API"),
+        ("query_provider", "query-provider for external feedback"),
+        ("external_advisory_retry", "retry external advisory"),
+        ("review_receipt", "review receipt after dispatch"),
+        ("split_name_json", {"binary_parts": ["clau", "de"]}),
+    ),
+)
+def test_operative_provider_scan_rejects_obfuscated_provider_actions(
+    tmp_path: Path,
+    case_name: str,
+    affirmative_action: object,
+) -> None:
+    operative = tmp_path / f"{case_name}.md"
+    text = (
+        affirmative_action
+        if isinstance(affirmative_action, str)
+        else json.dumps(affirmative_action, sort_keys=True)
+    )
+    operative.write_text(f"{text}\n", encoding="utf-8")
+
+    with pytest.raises(AssertionError):
+        _assert_no_forbidden_operative_fragments(operative)
+
+
 def _provider_sensitive(value: object) -> bool:
-    serialized = json.dumps(value, sort_keys=True).casefold()
-    normalized = " ".join(re.sub(r"[^a-z0-9]+", " ", serialized).split())
+    tokens = _match_tokens(value)
+    normalized = " ".join(tokens)
     phrases = (
-        "chatgpt",
-        "claude",
-        "opus",
-        "gemini",
         "in app browser",
         "paid api",
         "receipt id",
     )
-    if any(phrase in normalized for phrase in phrases):
+    if _contains_provider_name(tokens) or any(
+        phrase in normalized for phrase in phrases
+    ):
         return True
 
-    tokens = set(normalized.split())
+    token_set = set(tokens)
+    if token_set & {"receipt", "retry"}:
+        return True
+    if {"external", "advisory"}.issubset(token_set):
+        return True
+
     provider_actions = {
+        "advisory",
+        "api",
         "call",
         "cli",
         "command",
@@ -214,11 +305,12 @@ def _provider_sensitive(value: object) -> bool:
         "invocation",
         "launch",
         "process",
+        "query",
         "receipt",
         "retry",
         "run",
     }
-    return "provider" in tokens and bool(tokens & provider_actions)
+    return "provider" in token_set and bool(token_set & provider_actions)
 
 
 def _assert_launchable_packet_provider_free(path: Path, packet: dict[str, object]) -> None:
@@ -321,6 +413,47 @@ def test_launchable_capacity_gate_rejects_alternate_provider_actions(
 
     with pytest.raises(AssertionError, match=field):
         _assert_launchable_packet_provider_free(Path("synthetic.json"), packet)
+
+
+@pytest.mark.parametrize(
+    ("field", "affirmative_action"),
+    (
+        ("chatgpt_separators", "Launch Chat-GPT Pro for review"),
+        ("claude_separators", "Run C-L-A-U-D-E against the diff"),
+        ("anthropic_api", "Call the Anthropic API"),
+        ("query_provider", "query-provider for external feedback"),
+        ("external_advisory_retry", "retry external advisory"),
+        ("review_receipt", "review receipt after dispatch"),
+        ("split_name_json", {"binary_parts": ["clau", "de"]}),
+    ),
+)
+def test_launchable_capacity_gate_rejects_obfuscated_provider_actions(
+    field: str,
+    affirmative_action: object,
+) -> None:
+    packet = json.loads(
+        (
+            ROOT
+            / "coordination/capacity/packets/"
+            "2026-07-16-provider-tools-decommission-director2-implementation.json"
+        ).read_text(encoding="utf-8")
+    )
+    packet[field] = affirmative_action
+
+    with pytest.raises(AssertionError, match=field):
+        _assert_launchable_packet_provider_free(Path("synthetic.json"), packet)
+
+
+def test_launchable_capacity_gate_accepts_exact_negative_decommission_packet() -> None:
+    path = (
+        ROOT
+        / "coordination/capacity/packets/"
+        "2026-07-16-provider-tools-decommission-director2-implementation.json"
+    )
+    packet = json.loads(path.read_text(encoding="utf-8"))
+
+    assert DECOMMISSION_NEGATIVE_ACCEPTANCE.issubset(set(packet["acceptance"]))
+    _assert_launchable_packet_provider_free(path, packet)
 
 
 def test_threeway_dual_chief_contract_remains_provider_neutral_and_two_input() -> None:
