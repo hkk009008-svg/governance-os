@@ -37,8 +37,16 @@ def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():
     assert "TaskPublicationStore" in text
     assert "one committed descriptor and lawful trigger" in _compact(text)
     assert "Model or provider identity grants no authority" in text
+    assert (
+        "A different model or harness is preferred; a same-model independent "
+        "reviewer is weaker and must be identified as such."
+    ) in _compact(text)
     assert "live receipt-backed advisory review/reconciliation" not in text
     assert "lane-v-report/v2" not in text
+    assert "same-model reviewer does not discharge it" not in text
+    assert "does not replace the preferred cross-model per-task verification" not in text
+    assert "that it was cross-model" not in text
+    assert "citing the reviewer's identity and harness" in _compact(text)
     assert "dispatch templates" in text
 
 

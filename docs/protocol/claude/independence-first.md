@@ -28,19 +28,21 @@ change that:
    class"). The enumeration is a committed artifact.
 
 2. **Per-task (before "done").** An **independent** reviewer verifies the actual
-   diff against those enumerated cases. For an adversarial surface this SHOULD
-   be **cross-model** — a same-model reviewer does not discharge it, because
-   correlated blind spots make same-model review near-vacuous on exactly these
-   surfaces (see "Why", below). This is stronger than the standing
-   operator-GO (ADR-001): it fires *per task*, and it prefers a *different
-   perspective*, not merely a different seat running the same model.
+   diff against those enumerated cases. A different model or harness is
+   preferred; a same-model independent reviewer is weaker and must be
+   identified as such. This is stronger than the standing operator-GO
+   (ADR-001): it fires *per task*, and it prefers a *different perspective*,
+   not merely a different seat running the same model.
 
 ## What "independent" means here
 
 - Strongest: a **different model/harness** (cross-model). In this repo that is
   typically a Codex `Lane-V` pass (`codex exec --sandbox read-only`) reviewing
   a Claude seat's diff, or a Claude seat reviewing a Codex seat's diff.
-- Weaker: a different seat or cold-context reviewer of the same model with a genuinely adversarial prompt. For adversarial design-time enumeration this must be identified as weaker evidence; it does not replace the preferred cross-model per-task verification.
+- Weaker: a different seat or cold-context reviewer of the same model with a
+  genuinely adversarial prompt. This remains independent evidence when the
+  reviewer is not the author, and the report identifies the reviewer and
+  harness as weaker evidence.
 - **Not** independent: the author reviewing its own plan or implementation, even under a renamed role.
 
 ## Why (the empirical origin)
@@ -97,7 +99,7 @@ different perspective saw them. Two structural lessons:
 - the committed design-time enumeration artifact (the independent reviewer's
   abuse/coverage list);
 - the per-task independent verification report, citing the reviewer's identity
-  and — for an adversarial surface — that it was cross-model.
+  and harness.
 
 ## Mechanized enforcement and remaining follow-up
 

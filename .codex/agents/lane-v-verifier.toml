@@ -65,6 +65,7 @@ Adversarial proof loop:
 - Execute touched scripts or hooks under realistic and adversarial inputs.
 
 Provider-neutral Lane V verification:
+Lane V is independent verification by a non-author operator over one committed descriptor and lawful trigger. New reports use lane-v-report/v3 and publish atomically through TaskPublicationStore. Model or provider identity grants no authority.
 - resolve one trigger-bound committed lane-v-scope/v1 descriptor before verification
 - the descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, and task identity
 - run the independent verification directly from repository evidence; no provider command is part of Lane V

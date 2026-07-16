@@ -55,6 +55,11 @@ would make you the implementer and void the verification.
   evidence-ledger-aware bridge route and never fabricate Pipeline descriptor
   authority.
 
+Lane V is independent verification by a non-author operator over one committed
+descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
+atomically through TaskPublicationStore. Model or provider identity grants no
+authority.
+
 Lane V is provider-neutral. Resolve the descriptor, verify independently from
 repository evidence, and run no provider command. Reports use the exact
 `lane-v-report/v3` attestation with `independent-lane-v`,

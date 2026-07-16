@@ -25,6 +25,11 @@ verify-request trigger contract below additionally requires its exact in-body
 
 ## Lane V trigger authority
 
+Lane V is independent verification by a non-author operator over one committed
+descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
+atomically through TaskPublicationStore. Model or provider identity grants no
+authority.
+
 A verify-request trigger is a canonical committed sent-mailbox event strictly
 after the reviewed HEAD with exactly one `Event type: verify-request`, one
 `Reviewed head: <40-lowercase-hex>`, one

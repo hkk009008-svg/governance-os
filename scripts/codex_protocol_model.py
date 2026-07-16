@@ -317,7 +317,7 @@ RUNTIME_ENV_VARIABLES = (
     (
         "CODEX_SIDE_EFFECT_POLICY",
         "user-consent-required",
-        "documents that push, lock-claim side effects, paid API spend, and pod spend require user consent outside env",
+        "documents that push, merge, lock-claim side effects, paid API spend, and pod spend are separately gated and require user consent outside env",
     ),
     (
         "GIT_INDEX_FILE",
@@ -1073,8 +1073,8 @@ def render_runtime_env_contract(environ: Mapping[str, str] | None = None) -> str
             "- fresh/transplanted live seat first finds the newest same-seat handoff under docs/HANDOFF-<concrete-seat>-*.md; coordinator uses docs/HANDOFF-coordinator-*.md.",
             "- always check mail before protocol decisions and state-asserting writes; read bodies, not counts alone.",
             "- coordinator remains unpinned; no coordinator cursor is consumed.",
-            "- env does not authorize push, lock-claim side effects, paid API spend, or pod spend; user consent still gates them.",
-            "- CODEX_SIDE_EFFECT_POLICY is always user-consent-required for push, lock-claim side effects, paid API spend, and pod spend.",
+            "- env does not authorize push, merge, lock-claim side effects, paid API spend, or pod spend; these side effects are separately gated and user consent still gates them.",
+            "- CODEX_SIDE_EFFECT_POLICY is always user-consent-required for separately gated push, merge, lock-claim side effects, paid API spend, and pod spend.",
         )
     )
     return "\n".join(lines)
@@ -1101,7 +1101,7 @@ def render_seat_contract(
         f"S-VERIFY: {verification}",
         f"S-DONE: {done}",
         "source order: user > git > mailbox > handoff > defaults",
-        "side effects: push, lock, paid API spend, and pod spend require user consent",
+        "side effects: push, merge, lock, paid API spend, and pod spend are separately gated and require user consent",
     ]
     return "\n".join(lines)
 

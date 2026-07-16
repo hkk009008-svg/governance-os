@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -63,6 +64,10 @@ LANE_V_V3_SURFACES = (
     ".codex/agents/protocol-operator.toml",
     ".codex/agents/protocol-coordinator.toml",
     ".claude/agents/readiness-bridge.md",
+    ".agents/skills/seat-operator/verification-report-format.md",
+    ".claude/skills/seat-operator/verification-report-format.md",
+    ".codex/agents/lane-v-verifier.toml",
+    ".claude/agents/lane-v-verifier.md",
     "docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md",
     "docs/protocol/threeway/ARCHITECTURE-DIAGRAM.md",
     "docs/protocol/threeway/ONBOARDING.md",
@@ -165,29 +170,55 @@ def _operative_paths() -> tuple[Path, ...]:
 def test_provider_tools_are_absent_from_executable_and_operative_surfaces() -> None:
     for path in _operative_paths():
         assert ".codex/runtime" not in path.as_posix()
-        text = path.read_text(encoding="utf-8")
-        for fragment in FORBIDDEN_OPERATIVE_FRAGMENTS:
-            assert fragment not in text, (path, fragment)
+        _assert_no_forbidden_operative_fragments(path)
+
+
+def _assert_no_forbidden_operative_fragments(path: Path) -> None:
+    text = path.read_text(encoding="utf-8").casefold()
+    for fragment in FORBIDDEN_OPERATIVE_FRAGMENTS:
+        normalized_fragment = fragment.casefold()
+        assert normalized_fragment not in text, (path, normalized_fragment)
+
+
+def test_operative_provider_scan_rejects_lowercase_chatgpt_pro(tmp_path: Path) -> None:
+    operative = tmp_path / "operative.md"
+    operative.write_text("launch chatgpt pro for review\n", encoding="utf-8")
+
+    with pytest.raises(AssertionError, match="chatgpt pro"):
+        _assert_no_forbidden_operative_fragments(operative)
 
 
 def _provider_sensitive(value: object) -> bool:
-    text = json.dumps(value, sort_keys=True).lower()
-    return any(
-        fragment in text
-        for fragment in (
-            "chatgpt",
-            "claude",
-            "opus",
-            "provider cli",
-            "provider retry",
-            "provider receipt",
-            "provider command",
-            "provider launch",
-            "provider process",
-            "provider call",
-            "--receipt-id",
-        )
+    serialized = json.dumps(value, sort_keys=True).casefold()
+    normalized = " ".join(re.sub(r"[^a-z0-9]+", " ", serialized).split())
+    phrases = (
+        "chatgpt",
+        "claude",
+        "opus",
+        "gemini",
+        "in app browser",
+        "paid api",
+        "receipt id",
     )
+    if any(phrase in normalized for phrase in phrases):
+        return True
+
+    tokens = set(normalized.split())
+    provider_actions = {
+        "call",
+        "cli",
+        "command",
+        "execute",
+        "execution",
+        "invoke",
+        "invocation",
+        "launch",
+        "process",
+        "receipt",
+        "retry",
+        "run",
+    }
+    return "provider" in tokens and bool(tokens & provider_actions)
 
 
 def _assert_launchable_packet_provider_free(path: Path, packet: dict[str, object]) -> None:
@@ -260,6 +291,35 @@ def test_launchable_capacity_gate_rejects_command_disguised_as_scope() -> None:
     packet["allowed_paths"].append("claude -p 'execute provider review'")
 
     with pytest.raises(AssertionError, match="allowed_paths"):
+        _assert_launchable_packet_provider_free(Path("synthetic.json"), packet)
+
+
+@pytest.mark.parametrize(
+    ("field", "affirmative_action"),
+    (
+        ("gemini_action", "Run Gemini CLI against the candidate"),
+        ("browser_action", "Open the in-app browser for review"),
+        ("api_action", "Use a paid API for verification"),
+        (
+            "nested_action",
+            {"provider": {"command": "review the candidate"}},
+        ),
+    ),
+)
+def test_launchable_capacity_gate_rejects_alternate_provider_actions(
+    field: str,
+    affirmative_action: object,
+) -> None:
+    packet = json.loads(
+        (
+            ROOT
+            / "coordination/capacity/packets/"
+            "2026-07-16-provider-tools-decommission-director2-implementation.json"
+        ).read_text(encoding="utf-8")
+    )
+    packet[field] = affirmative_action
+
+    with pytest.raises(AssertionError, match=field):
         _assert_launchable_packet_provider_free(Path("synthetic.json"), packet)
 
 
@@ -975,6 +1035,23 @@ def test_provider_neutral_lane_v_v3_is_model_backed_and_surface_synced():
 
     hooks = _read(".codex/hooks.json")
     assert "verification_report_gate" not in hooks
+
+
+@pytest.mark.parametrize(
+    ("renderer_name", "rendered"),
+    (
+        ("render_runtime_env_contract", model.render_runtime_env_contract({})),
+        ("render_seat_contract", model.render_seat_contract({})),
+    ),
+)
+def test_executable_contract_renderers_separately_gate_merge(
+    renderer_name: str,
+    rendered: str,
+) -> None:
+    normalized = rendered.lower()
+    assert "merge" in normalized, renderer_name
+    assert "separately gated" in normalized, renderer_name
+    assert "user consent" in normalized, renderer_name
 
 
 def test_lane_v_trigger_producer_contract_is_surface_synced() -> None:
