@@ -92,8 +92,10 @@ anything else
 ```
 
 No generic “not Codex means task publication” fallback remains. The task
-authority digest continues to bind descriptor digest, trigger identity,
-reviewed range, verification mode, harness, task ID, sender, and report body.
+authority digest binds repository identity, descriptor path and digest, trigger
+identity, reviewed range, verification mode, harness, task ID, and the
+authorized operator recipient; it does not include the report body. Exact
+report bytes are bound later by the publication witness's candidate digest.
 Provider-free publication must never call a receipt-store factory.
 
 ## Failure And Recovery

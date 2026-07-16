@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-15 @ a9991b2*
+*Last verified: 2026-07-16 @ b1e63c2*
 
 ## 1. Purpose
 
@@ -140,9 +140,10 @@ Key directories:
   receipt-backed and retains the exact shared receipt/reconciliation checks.
 - New verification reports use `lane-v-report/v2` with 17 ordered attestation
   fields. `coordination/bin/send-event` is the live publication boundary: it
-  validates committed descriptor authority and, for Codex, the exact shared
-  receipt/reconciliation before a no-replace publish. `publishing` retains the
-  candidate inode/digest plus exact stage-0 Git blob OID, mode `100644`, and
+  validates committed descriptor authority and, for ordinary `codex-lane-v`,
+  the exact shared receipt/reconciliation before a no-replace publish;
+  `publishing` retains the candidate inode/digest plus exact stage-0 Git blob
+  OID, mode `100644`, and
   stage `0` until the final bytes, object, index entry, blob readback, and
   durability checks agree; `resume` and read-only `status` are the only crash
   recovery paths. Exact historical report path/raw-byte hashes remain accepted
