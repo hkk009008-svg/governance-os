@@ -75,11 +75,12 @@
     "Task 6 quality PASS is coordination/mailbox/sent/2026-07-16T16-37-09Z-operator2-to-coordinator-findings.md for exact range 0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2 after 913 tests.",
     "Task 7 authority: descriptor commit 600838bd468d0c664faa715b3a656a080642247b and verify-request commit 88759b921645311881f937bcf54b1630cb248505 at coordination/mailbox/sent/2026-07-16T16-39-04Z-director2-to-operator-verify-request.md bind the exact final range.",
     "Task 7 first authority attempt failed closed before report publication: descriptor changed-path coverage omitted six reviewed paths and the request lacked a terminal Exact Next Trigger section.",
+    "Task 7 corrected authority: descriptor correction 77d4708a063c0a334cfdfaa2606ce2cd6d129f38 covers all 61 reviewed paths; invalid request correction 2e8f2bc402b83d3b6b9a6956bf086cb1f8560780 is terminally superseded; corrected verify-request c5526b333532f86fe4a84a2c376ddc8ad6ca9014 is coordination/mailbox/sent/2026-07-16T16-46-08Z-director2-to-operator-verify-request.md.",
     "verification not needed at this intermediate Director2 and Operator2-preflight boundary; the approved cycle reserves one formal provider-neutral Operator Lane V pass for Task 7."
   ],
   "next_recipient": "operator",
-  "status": "ready",
-  "verify_request": "coordination/mailbox/sent/2026-07-16T16-39-04Z-director2-to-operator-verify-request.md",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-16T16-46-08Z-director2-to-operator-verify-request.md",
   "target_commit": "ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "scope_files": [
