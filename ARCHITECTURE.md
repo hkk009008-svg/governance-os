@@ -60,9 +60,9 @@ Key directories:
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:544` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_r_independence` | `scripts/codex_protocol_model.py:770` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:854` | Renders guard guidance into readiness output. |
-| `ReceiptStore` | `scripts/opus_review_receipts.py:1497` | Owns the shared-Git-common-directory receipt lifecycle and one-attempt scope conflict guard. |
+| `ReceiptStore` | `scripts/opus_review_receipts.py:1519` | Owns the shared-Git-common-directory receipt lifecycle and one-attempt scope conflict guard. |
 | `resolve_provider_authoritative_scope` | `scripts/opus_review_bridge.py:1823` | Resolves trigger-bound scope and verifies the descriptor-bound advisory prompt before receipt reservation. |
-| `publish_candidate` | `scripts/verification_report_gate.py:2497` | Publishes one validated Lane-V report as a durable file-plus-stage-0-index transaction with explicit recovery. |
+| `publish_candidate` | `scripts/verification_report_gate.py:2557` | Publishes one validated Lane-V report as a durable file-plus-stage-0-index transaction with explicit recovery. |
 
 ## 4. Runtime Invariants
 
@@ -107,8 +107,8 @@ Key directories:
   and Python parser. The Codex model applies R-INDEPENDENCE before
   implementation: it classifies the four adversarial surfaces, requires a
   durable independent design-time enumeration for triggered work, and requires
-  independent actual-diff verification before completion. Lane V requests
-  declare `codex-lane-v`; production scope is derived from a committed
+  independent actual-diff verification before completion. Ordinary Codex Lane V
+  requests declare `codex-lane-v`; production scope is derived from a committed
   `lane-v-scope/v1` descriptor named by either the reviewed shipping commit or
   a committed `verify-request`, never from caller-selected path/command lists.
   Requirement and authority blobs are bound to full commits, blob IDs, and
@@ -129,6 +129,15 @@ Key directories:
   drained concurrently with a 131072-byte cap per stream; Seatbelt, AF_UNIX,
   and Claude execution tests run only after an explicit host-capability probe,
   while pure schema/scope/prompt tests always run.
+- Provider-prohibited Codex verification uses the committed descriptor-only
+  `codex-provider-free-lane-v` mode with the Codex verifier harness. Its
+  `lane-v-report/v2` attestation keeps every provider and receipt field from
+  `Authorization identity` through `Degraded reason` at `not-applicable`, and
+  report publication is bound to `lane-v-task-publication/v1` task state.
+  Provider-free mode is valid in the committed `lane-v-scope/v1` descriptor but
+  is deliberately excluded from receipt-capable `ReviewScope`, so it cannot
+  create an Opus receipt or receipt lock. Ordinary `codex-lane-v` remains
+  receipt-backed and retains the exact shared receipt/reconciliation checks.
 - New verification reports use `lane-v-report/v2` with 17 ordered attestation
   fields. `coordination/bin/send-event` is the live publication boundary: it
   validates committed descriptor authority and, for Codex, the exact shared
