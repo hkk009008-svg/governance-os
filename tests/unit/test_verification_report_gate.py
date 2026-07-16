@@ -1707,6 +1707,37 @@ def test_read_only_published_report_validation_accepts_exact_witness(
     assert record.index_stage == 0
 
 
+def test_repository_report_validation_ignores_replace_refs_for_exact_head_blob(
+    tmp_path: Path,
+) -> None:
+    fixture = _live_lane_v_fixture(tmp_path / "repo")
+    report_file = fixture.root / fixture.report.relative_path
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    report_file.write_bytes(fixture.raw)
+    _git(fixture.root, "add", fixture.report.relative_path)
+    _git(fixture.root, "commit", "-q", "-m", "docs: commit Lane V report")
+    exact_head = _git(fixture.root, "rev-parse", "HEAD")
+    report_file.write_bytes(fixture.raw.replace(b"VERDICT: GO", b"VERDICT: NITS"))
+    _git(fixture.root, "add", fixture.report.relative_path)
+    attacker_tree = _git(fixture.root, "write-tree")
+    attacker = subprocess.run(
+        ["/usr/bin/git", "commit-tree", attacker_tree, "-p", f"{exact_head}^"],
+        cwd=fixture.root,
+        input="docs: replacement report\n",
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    _git(fixture.root, "reset", "-q", "--hard", exact_head)
+    _git(fixture.root, "replace", exact_head, attacker)
+
+    gate.validate_repository_report(fixture.root, fixture.report)
+
+    assert not (
+        fixture.root / ".codex/runtime/lane-v-report-publications/v1"
+    ).exists()
+
+
 @pytest.mark.parametrize("state", ["ready", "publishing"])
 def test_read_only_published_report_validation_rejects_unfinished_state(
     tmp_path: Path,

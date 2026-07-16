@@ -626,6 +626,58 @@ def test_repository_scan_rejects_v3_without_published_task_witness(
     assert _git(root, "ls-files", "--stage", "--", path) == ""
 
 
+def test_repository_scan_accepts_committed_v3_in_fresh_clone_without_private_runtime(
+    tmp_path: pathlib.Path,
+) -> None:
+    source = tmp_path / "source"
+    path, raw, _ = _shipping_v3_fixture(source)
+    report_file = source / path
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    report_file.write_bytes(raw)
+    _git(source, "add", path)
+    _git(source, "commit", "-q", "-m", "docs: commit Lane V report")
+    clone = tmp_path / "clone"
+    subprocess.run(
+        ["/usr/bin/git", "clone", "-q", "--no-local", str(source), str(clone)],
+        check=True,
+        capture_output=True,
+    )
+    publication_root = clone / ".codex/runtime/lane-v-report-publications/v1"
+
+    reports = cgs.scan_repository_reports(clone)
+
+    assert reports == [cgs.RawReport(path, raw)]
+    assert not publication_root.exists()
+    assert cgs.repository_report_violations(clone, reports, _manifest()) == []
+    assert not publication_root.exists()
+
+
+def test_repository_scan_rejects_worktree_v3_different_from_head_without_live_witness(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "repo"
+    path, raw, _ = _shipping_v3_fixture(root)
+    report_file = root / path
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    report_file.write_bytes(raw)
+    _git(root, "add", path)
+    _git(root, "commit", "-q", "-m", "docs: commit Lane V report")
+    changed = raw.replace(b"\xe2\x86\x92 OK\n", b"\xe2\x86\x92 changed worktree bytes\n")
+    assert changed != raw
+    report_file.write_bytes(changed)
+
+    violations = cgs.repository_report_violations(
+        root,
+        [cgs.RawReport(path, changed)],
+        _manifest(),
+    )
+
+    assert any("task_publication_missing" in item for item in violations)
+    assert _git_blob(root, path) == raw
+    assert report_file.read_bytes() == changed
+    assert not (root / ".codex/runtime/lane-v-report-publications/v1").exists()
+
+
 def test_repository_scan_accepts_exact_published_task_witness(
     tmp_path: pathlib.Path,
 ) -> None:

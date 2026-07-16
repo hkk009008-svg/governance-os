@@ -3263,6 +3263,52 @@ def _existing_task_store(root: Path) -> TaskPublicationStore:
     )
 
 
+def _report_matches_current_head(root: Path, report: LaneVReport) -> bool:
+    """Prove that the parsed report bytes equal one blob at pinned current HEAD."""
+
+    head_result = _git_process(root, "rev-parse", "--verify", "HEAD^{commit}")
+    if (
+        head_result.returncode != 0
+        or not isinstance(head_result.stdout, str)
+        or _FULL_SHA_RE.fullmatch(head_result.stdout.strip()) is None
+    ):
+        _fail("invalid_repository", "could not resolve current HEAD")
+    head = head_result.stdout.strip()
+    present = _git_process(root, "cat-file", "-e", f"{head}:{report.relative_path}")
+    if present.returncode != 0:
+        return False
+    blob = _committed_blob_facts(
+        root,
+        head,
+        report.relative_path,
+        "repository report",
+        maximum_bytes=None,
+    )
+    return blob.digest == report.body_digest
+
+
+def validate_repository_report(
+    repo_root: str | os.PathLike[str],
+    report: LaneVReport,
+) -> None:
+    """Accept an exact HEAD report or require its live published-task witness."""
+
+    _live_report_shape(report)
+    root = _require_repository(Path(repo_root))
+    authority = validate_structural_authority(root, report)
+    if (
+        authority.verify_request_recipient is not None
+        and report.sender != authority.verify_request_recipient
+    ):
+        _fail(
+            "verify_request_recipient_mismatch",
+            "report sender is not the verify-request operator recipient",
+        )
+    if _report_matches_current_head(root, report):
+        return
+    validate_published_report(root, report)
+
+
 def validate_published_report(
     repo_root: str | os.PathLike[str],
     report: LaneVReport,
