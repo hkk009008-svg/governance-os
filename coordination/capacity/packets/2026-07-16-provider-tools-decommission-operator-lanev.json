@@ -24,9 +24,12 @@
     "Remain blocked until the fixed descriptor and one canonical verify-request are committed, then perform Task 7's provider-neutral Lane V pass without repair.",
     "If trigger authority is invalid, return one canonical findings event and do not publish a verification report."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Independent Operator verification: structural authority covered 61 paths and two Git requirements; full unit suite 1759 passed and 1 xfailed; 45 named negative cases passed; coordination, capacity, doctor, SHA baseline, schema, smoke, and diff gates passed.",
+    "Terminal GO: coordination/mailbox/sent/2026-07-16T17-07-43Z-operator-to-all-verification-report.md at 95cb1fbb62a292420396c97b9a5e04ff312ac506; spec PASS coordination/mailbox/sent/2026-07-16T14-36-31Z-director2-to-coordinator-findings.md; quality PASS coordination/mailbox/sent/2026-07-16T16-37-09Z-operator2-to-coordinator-findings.md; descriptor 77d4708a063c0a334cfdfaa2606ce2cd6d129f38; request c5526b333532f86fe4a84a2c376ddc8ad6ca9014."
+  ],
   "next_recipient": "coordinator",
-  "status": "active",
+  "status": "done",
   "verify_request": "coordination/mailbox/sent/2026-07-16T16-46-08Z-director2-to-operator-verify-request.md",
   "target_commit": "ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2",

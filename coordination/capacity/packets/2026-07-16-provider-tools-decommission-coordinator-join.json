@@ -21,12 +21,19 @@
     "Commit, push, merge, provider launch, runtime cleanup, and external publication are separate authorities; this packet authorizes no push, merge, provider call, or cleanup.",
     "Close only after the Operator packet has one schema-valid provider-neutral GO and Task 8's capacity, coordination, smoke, and residue postchecks pass."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Implementing range: 0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2; Task 2 b1470d67f7b71b212eb12b712c7cde79285d86d9/79b3f012a68155249aa4b3f2c8b3ed7c7330227e; Task 3 a354c8b4a6ba68a8a0b9caeb0d88c5a92c8c50df/ea9b18615576b693524a0fde1896be0c040c1f01; Task 4 d3f360511814979ea742c45099a43b1afd8e20d1/72c9eeb34f7a73ade3f0e9fec1ae4f10e4401b32; Task 5 6bc19e2745b9f381e6e1a710c231604d20661545 through c16a08b137b28b38f7ac154b9d1fde09aeb251bc; Task 6 corrections ed56f9b264d12a5ce835434707fd7eda5a46287e/03915a62b5230c213e4b90af706abac68ef07bd2/ee16bbe930c00c513415049b5d8ff84af5315ba2.",
+    "Review and authority evidence: spec PASS coordination/mailbox/sent/2026-07-16T14-36-31Z-director2-to-coordinator-findings.md; quality PASS coordination/mailbox/sent/2026-07-16T16-37-09Z-operator2-to-coordinator-findings.md; descriptor coordination/verification/scopes/11249ae3-1a0f-45c0-aa90-7d558537b001.json at 77d4708a063c0a334cfdfaa2606ce2cd6d129f38; request coordination/mailbox/sent/2026-07-16T16-46-08Z-director2-to-operator-verify-request.md at c5526b333532f86fe4a84a2c376ddc8ad6ca9014; Operator GO coordination/mailbox/sent/2026-07-16T17-07-43Z-operator-to-all-verification-report.md at 95cb1fbb62a292420396c97b9a5e04ff312ac506.",
+    "capacity board evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 validates the five terminal decommission packets with no blocking issues after this closeout evidence is present.",
+    "smoke OK evidence: formal Operator descriptor execution completed scripts/ci_smoke.py with OK; Task 8 also requires and records one fresh post-closeout rerun before commit.",
+    "handoff artifact: docs/HANDOFF-coordinator-2026-07-16-provider-tools-decommission-closeout.md",
+    "next trigger: none; decommission is terminal unless the user separately authorizes a future provider-tool design."
+  ],
   "next_recipient": "coordinator",
-  "status": "blocked",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-16T16-46-08Z-director2-to-operator-verify-request.md",
+  "target_commit": "ee16bbe930c00c513415049b5d8ff84af5315ba2",
+  "commit_range": "0d3fa72f9f17f82ed29687ddc09490f25b3ac3a2..ee16bbe930c00c513415049b5d8ff84af5315ba2",
   "scope_files": [
     "coordination/capacity/packets/2026-07-16-provider-tools-decommission-*.json",
     "docs/HANDOFF-coordinator-2026-07-16-provider-tools-decommission-closeout.md",
