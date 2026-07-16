@@ -1857,7 +1857,17 @@ def _extract_review_archive(archive: bytes, destination: Path) -> None:
                 raise ReviewContractError(
                     "invalid_scope", f"unsafe snapshot member: {member.name!r}"
                 )
-        bundle.extractall(destination, members=members)
+        try:
+            data_filter = tarfile.data_filter
+        except AttributeError as exc:
+            raise ReviewContractError(
+                "invalid_scope", "safe tar data filter is unavailable"
+            ) from exc
+        if not callable(data_filter):
+            raise ReviewContractError(
+                "invalid_scope", "safe tar data filter is unavailable"
+            )
+        bundle.extractall(destination, members=members, filter=data_filter)
 
 
 def _set_tree_writable(root: Path, *, writable: bool) -> None:

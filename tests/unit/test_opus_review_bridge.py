@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import io
 import inspect
 import json
 import multiprocessing
@@ -13,6 +14,7 @@ import socket
 import stat
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -1851,6 +1853,118 @@ def test_every_printed_immutable_blob_command_has_an_exact_allowed_rule(
         "broker_client.py" in rule
         for rule in allowed_rules[-len(broker_commands) :]
     )
+
+
+def _review_archive(member: tarfile.TarInfo, payload: bytes = b"") -> bytes:
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w") as bundle:
+        if member.isfile():
+            member.size = len(payload)
+            bundle.addfile(member, io.BytesIO(payload))
+        else:
+            bundle.addfile(member)
+    return raw.getvalue()
+
+
+def test_extract_review_archive_passes_exact_data_filter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    member = tarfile.TarInfo("bin/reviewer")
+    member.mode = 0o755
+    archive = _review_archive(member, b"reviewer\n")
+    destination = tmp_path / "snapshot"
+    observed_filters: list[object] = []
+    original_extractall = bridge.tarfile.TarFile.extractall
+
+    def capture_extractall(
+        bundle,
+        path=".",
+        members=None,
+        *,
+        numeric_owner=False,
+        filter=None,
+    ):
+        observed_filters.append(filter)
+        return original_extractall(
+            bundle,
+            path,
+            members,
+            numeric_owner=numeric_owner,
+            filter=filter,
+        )
+
+    monkeypatch.setattr(bridge.tarfile.TarFile, "extractall", capture_extractall)
+    bridge._extract_review_archive(archive, destination)
+
+    extracted = destination / "bin" / "reviewer"
+    assert observed_filters == [bridge.tarfile.data_filter]
+    assert extracted.read_bytes() == b"reviewer\n"
+    assert extracted.stat().st_mode & stat.S_IXUSR
+
+
+@pytest.mark.parametrize("condition", ("missing", "not-callable"))
+def test_extract_review_archive_fails_closed_without_callable_data_filter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, condition: str
+) -> None:
+    member = tarfile.TarInfo("safe.txt")
+    archive = _review_archive(member, b"safe\n")
+    destination = tmp_path / "snapshot"
+    if condition == "missing":
+        monkeypatch.delattr(bridge.tarfile, "data_filter")
+    else:
+        monkeypatch.setattr(bridge.tarfile, "data_filter", None)
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge._extract_review_archive(archive, destination)
+
+    assert excinfo.value.reason == "invalid_scope"
+    assert excinfo.value.detail == "safe tar data filter is unavailable"
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize(
+    ("name", "member_type", "linkname"),
+    [
+        ("/absolute", tarfile.REGTYPE, ""),
+        ("../escape", tarfile.REGTYPE, ""),
+        (".git/config", tarfile.REGTYPE, ""),
+        ("symlink", tarfile.SYMTYPE, "target"),
+        ("hardlink", tarfile.LNKTYPE, "target"),
+        ("fifo", tarfile.FIFOTYPE, ""),
+    ],
+)
+def test_extract_review_archive_rejects_unsafe_members(
+    tmp_path: Path, name: str, member_type: bytes, linkname: str
+) -> None:
+    member = tarfile.TarInfo(name)
+    member.type = member_type
+    member.linkname = linkname
+    payload = b"unsafe\n" if member.isfile() else b""
+    destination = tmp_path / "snapshot"
+
+    with pytest.raises(bridge.ReviewContractError) as excinfo:
+        bridge._extract_review_archive(_review_archive(member, payload), destination)
+
+    assert excinfo.value.reason == "invalid_scope"
+    assert not destination.exists()
+
+
+def test_extract_review_archive_blocks_preexisting_destination_symlink(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    destination = tmp_path / "snapshot"
+    destination.mkdir()
+    (destination / "pivot").symlink_to(outside, target_is_directory=True)
+    member = tarfile.TarInfo("pivot/escaped.txt")
+
+    with pytest.raises(tarfile.OutsideDestinationError):
+        bridge._extract_review_archive(
+            _review_archive(member, b"blocked\n"), destination
+        )
+
+    assert not (outside / "escaped.txt").exists()
 
 
 def test_snapshot_fetches_later_trigger_and_reverifies_bound_blobs(
