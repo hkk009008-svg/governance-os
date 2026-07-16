@@ -43,6 +43,24 @@ def test_protocol_model_has_no_chatgpt_consultation_contract() -> None:
     assert all(token not in source for token in forbidden)
 
 
+def test_threeway_dual_chief_contract_remains_provider_neutral_and_two_input() -> None:
+    doctrine = _read("docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md")
+    adoption = _read("docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md")
+    diagram = _read("docs/protocol/threeway/ARCHITECTURE-DIAGRAM.md")
+    onboarding = _read("docs/protocol/threeway/ONBOARDING.md")
+
+    assert (
+        "| dual chief | two separately approved, human-relayed external "
+        "advisory apps |"
+    ) in doctrine
+    assert "The dual chief comprises two separately approved" in adoption
+    assert "Dual Chief<br/>Two Separately Approved External Advisory Apps" in diagram
+    assert "Antigravity holds NO Layer-1 seat and is NOT the dual chief" in onboarding
+
+    for text in (doctrine, adoption, diagram, onboarding):
+        assert "Gemini Deep Think + ChatGPT Pro" not in text
+
+
 def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 

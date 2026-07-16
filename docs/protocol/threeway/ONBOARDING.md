@@ -42,11 +42,11 @@ ANY work:
       `main`.
    d. User-gated side effects: no push, lock-claim, paid-API spend, or pod/compute spend without
       explicit user consent.
-   e. Antigravity holds NO Layer-1 seat and no protocol authority. It is an optional
-      human-relayed strategic app (never the decider) or a read-only observer; it stays off the
-      candidate branch, staging ref, and protected main. No ChatGPT Pro consultation tool is
-      installed in this repository; external advisory work requires a separately approved design
-      and implementation and grants no protocol or side-effect authority.
+   e. Antigravity holds NO Layer-1 seat and is NOT the dual chief. It is an optional
+      human-relayed strategic app (one advisory input, never the decider) or a read-only observer;
+      it stays off the candidate branch, staging ref, and protected main. No ChatGPT Pro
+      consultation tool is installed in this repository; external advisory work requires a
+      separately approved design and implementation and grants no protocol or side-effect authority.
    f. Anti-ceremony: a status / route / handoff / no-op is valid only if it preserves transfer
       state, changes enforcement, or cites executed evidence.
 

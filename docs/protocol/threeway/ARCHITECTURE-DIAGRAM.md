@@ -30,7 +30,7 @@ flowchart TB
 
   subgraph Strategic["1. Strategic Loop (control plane, human-relayed)"]
     direction TB
-    Chief["Human-Relayed Strategic Advisory Apps<br/>no repo writes or protocol authority"]:::mech
+    Chief["Dual Chief<br/>Two Separately Approved External Advisory Apps<br/>human-relayed, no repo writes"]:::mech
     Agy["Antigravity (agy)<br/>NO Layer-1 seat<br/>optional relayed-strategy app<br/>same lane as chiefs, never the decider<br/>or read-only observer"]:::agy
     Human["Human Relay"]
     Overseer["Mechanical Overseer<br/>read-only on code, dispatcher + ledger<br/>SIGNS brief, assignment, cycle_go, release_order<br/>may NOT issue a verdict"]:::mech

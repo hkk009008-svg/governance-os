@@ -59,7 +59,7 @@ write path** (strategic reasoning becomes human-relayed apps; the overseer is a 
 | `coordinator2` (Pair B) | **Codex** | integrate (staging refs only) | write `main`; semantic code edits |
 | **merge-gate** | mechanical | release (**sole writer of protected `main`**) | run candidate code |
 | `overseer` | mechanical | strategy (control-plane; **read-only on code**) | author code; issue a verdict |
-| external advisory apps | separately approved, human-relayed | strategy | write code or state directly |
+| dual chief | two separately approved, human-relayed external advisory apps | strategy | write code or state directly |
 
 No ChatGPT Pro consultation tool is installed in this repository. External advisory work requires
 a separately approved design and implementation; it grants no protocol or side-effect authority.

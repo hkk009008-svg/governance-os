@@ -50,6 +50,7 @@ Mode 2 is the **Single-Model Autonomous Unit**, where Antigravity functions inde
 ## 2. The three roles Antigravity *may* play
 
 ### Role 1 — Human-relayed strategic reasoner (the chief axis)
+The dual chief comprises two separately approved, human-relayed external advisory apps.
 The strategic loop's advisory input is "an app, human-relayed" (spec §5.2, D11). If you use the
 Antigravity *app* to reason about strategy, it produces analysis/orders as **prose a human carries
 to the mechanical overseer**. It never writes the bus, never signs, never touches code.
