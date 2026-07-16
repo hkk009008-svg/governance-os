@@ -83,6 +83,10 @@ receipt-backed Opus bridge, and the lane-v-report/v2 publisher.
 - Create:
   `coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-operator-lanev.json`
 - Create:
+  `coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-director2-preflight.json`
+- Create:
+  `coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-operator2-preflight.json`
+- Create:
   `coordination/capacity/packets/2026-07-16-chatgpt-local-reprepare-task1-coordinator-join.json`
 - Create: one canonical coordinator route under `coordination/mailbox/sent/`
 
@@ -124,7 +128,7 @@ test ! -e /Users/hyungkoookkim/Pipeline/.worktrees/chatgpt-task1-singular-lanev-
 Expected: all commands exit zero; there is no branch, worktree, descriptor, or
 prior use of this task ID.
 
-- [ ] **Step 3: Create the three capacity packets.**
+- [ ] **Step 3: Create the five capacity packets.**
 
 Use `apply_patch` to create the exact packet paths named above with cycle
 `chatgpt-local-reprepare-task1-singular-lanev-2026-07-16`, Wave 2, empty lock
@@ -138,9 +142,15 @@ and remediation-row lists, and these initial states:
 - Operator packet: owner `operator`, type `operator-verification`, status
   `blocked`, dependency on the Director packet, `verify_request: null`,
   `target_commit: null`, and `commit_range: null`.
+- Director2 packet: owner `director2`, type `director-preflight`, status
+  `excepted`, citing the already committed bounded design-time review and
+  prohibiting a redundant third review of the same question.
+- Operator2 packet: owner `operator2`, type `operator-preflight`, status
+  `excepted`, citing Operator2's exclusive active Opus Stage-A assignment and
+  prohibiting duplicate ChatGPT review.
 - Coordinator packet: owner `coordinator`, type `coordinator-join`, status
   `blocked`, dependency on the Operator packet, allowed paths limited to the
-  three packets, routes, and the terminal ChatGPT disposition handoff.
+  five packets, routes, and the terminal ChatGPT disposition handoff.
 
 Each packet's acceptance text must repeat the immutable heads, exact 22-path
 range, no-conflict rule, candidate-not-integration rule, zero-provider boundary,
@@ -160,7 +170,7 @@ Receipt mutations authorized: 0
 ```
 
 `Candidate base` is runtime-bound: construct the route on the current parent
-`P`, commit the three packets plus the one route, then prove the committed
+`P`, commit the five packets plus the one route, then prove the committed
 value equals `git rev-parse R^`. The route's Side-Effect Executor Token names
 Director and authorizes only one candidate branch/worktree, the two mechanical
 merge commits, focused tests, descriptor-only `D`, request-only `T`, and
@@ -183,7 +193,7 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py \
 env -u GIT_INDEX_FILE git diff --check "${R_SHA}^1" "$R_SHA"
 ```
 
-Expected: all validators pass; `R` changes only the three packets and one
+Expected: all validators pass; `R` changes only the five packets and one
 route; its parent is `P`; no candidate/ref/provider/receipt effect occurred.
 
 ### Task 2: Construct deterministic review candidate `P..C` (`director`)
