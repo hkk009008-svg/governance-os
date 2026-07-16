@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import builtins
 import hashlib
+import inspect
 import json
 import multiprocessing
 import os
@@ -144,11 +145,19 @@ def test_v3_reviewer_identity_matches_filename_and_envelope(reviewer: str) -> No
 def test_v3_reviewer_identity_rejects_noncanonical_or_other_seat(
     reviewer: str,
 ) -> None:
-    with pytest.raises(gate.ReportGateError, match="invalid_attestation"):
+    state_accessed = False
+
+    def parse_then_access_state() -> None:
+        nonlocal state_accessed
         gate.parse_lane_v_report(
             REPORT_PATH,
             _report_bytes(_lane_v_fields(reviewer=reviewer)),
         )
+        state_accessed = True
+
+    with pytest.raises(gate.ReportGateError, match="invalid_attestation"):
+        parse_then_access_state()
+    assert state_accessed is False
 
 
 def _provider_neutral_descriptor_mapping() -> dict[str, object]:
@@ -183,6 +192,11 @@ def test_provider_neutral_strict_json_rejects_nested_duplicates_and_bad_bytes(
 ) -> None:
     with pytest.raises(gate.ScopeContractError):
         gate.strict_json_loads(raw)
+
+
+def test_provider_neutral_strict_json_rejects_top_level_duplicate_keys() -> None:
+    with pytest.raises(gate.ScopeContractError, match="duplicate_json_key"):
+        gate.strict_json_loads(b'{"task_id":"first","task_id":"second"}')
 
 
 def test_provider_neutral_canonical_json_is_compact_sorted_utf8() -> None:
@@ -300,6 +314,123 @@ def test_provider_neutral_descriptor_rejects_exact_field_and_literal_abuse(
         gate.ScopeDescriptor.from_mapping(mapping)
 
 
+@pytest.mark.parametrize(
+    ("mutation", "value"),
+    (
+        ("missing", None),
+        ("schema_version", 1),
+        ("task_id", 1),
+        ("question_id", 1),
+        ("trigger_kind", 1),
+        ("verification_mode", []),
+        ("verification_harness", {}),
+        ("review_profile", False),
+        ("reviewed_base", []),
+        ("requirement_paths", "AGENTS.md"),
+        ("allowed_path_roots", "scripts"),
+        ("verification_commands", "pytest"),
+    ),
+)
+def test_provider_neutral_descriptor_rejects_missing_and_wrong_typed_fields(
+    mutation: str, value: object
+) -> None:
+    mapping = _provider_neutral_descriptor_mapping()
+    if mutation == "missing":
+        mapping.pop("question_id")
+    else:
+        mapping[mutation] = value
+    with pytest.raises(gate.ScopeContractError, match="invalid_scope_descriptor"):
+        gate.ScopeDescriptor.from_mapping(mapping)
+
+
+@pytest.mark.parametrize(
+    "reviewed_base",
+    (
+        {"policy": "exact"},
+        {"commit": BASE},
+        {"policy": "exact", "commit": BASE, "extra": True},
+        {"policy": "first-parent", "commit": BASE},
+        {"policy": "exact", "commit": BASE.upper()},
+        {"policy": "exact", "commit": 7},
+    ),
+)
+def test_provider_neutral_descriptor_requires_exact_nested_reviewed_base(
+    reviewed_base: dict[str, object],
+) -> None:
+    mapping = _provider_neutral_descriptor_mapping()
+    mapping["reviewed_base"] = reviewed_base
+    with pytest.raises(gate.ScopeContractError, match="invalid_scope_descriptor"):
+        gate.ScopeDescriptor.from_mapping(mapping)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("requirement_paths", []),
+        ("requirement_paths", [f"docs/{index}" for index in range(129)]),
+        ("allowed_path_roots", []),
+        ("allowed_path_roots", [f"allowed/{index}" for index in range(129)]),
+        ("verification_commands", []),
+        (
+            "verification_commands",
+            [
+                f"env -u GIT_INDEX_FILE .venv/bin/python scripts/check_{index}.py"
+                for index in range(33)
+            ],
+        ),
+        ("requirement_paths", ["é" * 257]),
+        ("allowed_path_roots", ["é" * 257]),
+        (
+            "verification_commands",
+            ["env -u GIT_INDEX_FILE .venv/bin/python " + "a" * 4_097],
+        ),
+    ),
+)
+def test_provider_neutral_descriptor_enforces_collection_and_item_limits(
+    field: str, value: list[str]
+) -> None:
+    mapping = _provider_neutral_descriptor_mapping()
+    mapping[field] = value
+    with pytest.raises(gate.ScopeContractError, match="invalid_scope_descriptor"):
+        gate.ScopeDescriptor.from_mapping(mapping)
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "",
+        " pytest tests/unit",
+        "pytest tests/unit",
+        "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py ",
+        "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py; echo bad",
+        "env -u GIT_INDEX_FILE .venv/bin/python tests/*.py",
+        "env -u GIT_INDEX_FILE .venv/bin/python 'unterminated",
+    ),
+)
+def test_provider_neutral_descriptor_rejects_unsafe_commands(command: str) -> None:
+    mapping = _provider_neutral_descriptor_mapping()
+    mapping["verification_commands"] = [command]
+    with pytest.raises(gate.ScopeContractError, match="invalid_scope_descriptor"):
+        gate.ScopeDescriptor.from_mapping(mapping)
+
+
+def test_provider_neutral_descriptor_deduplicates_before_limits() -> None:
+    mapping = _provider_neutral_descriptor_mapping()
+    mapping["requirement_paths"] = ["AGENTS.md"] * 129
+    mapping["allowed_path_roots"] = ["scripts"] * 129
+    mapping["verification_commands"] = [
+        "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py"
+    ] * 33
+
+    descriptor = gate.ScopeDescriptor.from_mapping(mapping)
+
+    assert descriptor.requirement_paths == ("AGENTS.md",)
+    assert descriptor.allowed_path_roots == ("scripts",)
+    assert descriptor.verification_commands == (
+        "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py",
+    )
+
+
 def test_provider_neutral_allowed_roots_are_byte_and_component_aware() -> None:
     changed = gate.parse_name_status_z(
         b"M\0scripts/foo.py\0D\0tests/unit/old.py\0"
@@ -312,6 +443,54 @@ def test_provider_neutral_allowed_roots_are_byte_and_component_aware() -> None:
             gate.parse_name_status_z(b"M\0scripts/foobar/item.py\0"),
             ("scripts/foo",),
         )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    (
+        b"M\0scripts/x.py",
+        b"M\0",
+        b"\0scripts/x.py\0",
+        b"M\0\0",
+        b"MM\0scripts/x.py\0",
+        b"R\0old.py\0new.py\0",
+        b"C\0source.py\0copy.py\0",
+        b"Z\0scripts/x.py\0",
+    ),
+)
+def test_provider_neutral_name_status_rejects_malformed_records(raw: bytes) -> None:
+    with pytest.raises(gate.ScopeContractError, match="invalid_name_status"):
+        gate.parse_name_status_z(raw)
+
+
+def test_provider_neutral_name_status_rejects_invalid_utf8() -> None:
+    with pytest.raises(gate.ScopeContractError, match="unsupported_git_path_encoding"):
+        gate.parse_name_status_z(b"A\0bad-\xff.py\0")
+
+
+def test_provider_neutral_changed_paths_preserve_case_and_unicode_bytes() -> None:
+    nfc = "docs/caf\u00e9.md"
+    nfd = "docs/cafe\u0301.md"
+    raw = (
+        b"A\0Scripts/example.py\0A\0scripts/example.py\0A\0"
+        + nfc.encode()
+        + b"\0A\0"
+        + nfd.encode()
+        + b"\0"
+    )
+    changed = gate.parse_name_status_z(raw)
+
+    assert {item.path for item in changed} == {
+        "Scripts/example.py",
+        "scripts/example.py",
+        nfc,
+        nfd,
+    }
+    unicode_entries = {item.path: item.path_bytes for item in changed if item.path.startswith("docs/")}
+    assert unicode_entries[nfc] != unicode_entries[nfd]
+    with pytest.raises(gate.ScopeContractError, match="changed_path_not_allowed"):
+        gate.assert_changed_path_coverage(changed, ("scripts", nfc))
+    gate.assert_changed_path_coverage(changed, ("Scripts", "scripts", nfc, nfd))
 
 
 def test_verdict_literal_in_evidence_is_not_a_second_verdict() -> None:
@@ -406,6 +585,15 @@ def test_rejects_section_field_and_verdict_shape(raw: bytes) -> None:
             REPORT_PATH,
             _report_bytes(envelope_sender="operator2"),
             id="filename-envelope-sender-mismatch",
+        ),
+        pytest.param(
+            REPORT_PATH.replace("-operator-to-", "-operator2-to-"),
+            _report_bytes(
+                _lane_v_fields(reviewer="operator2"),
+                h1_sender="Operator2",
+                envelope_sender="operator",
+            ),
+            id="operator2-filename-envelope-sender-mismatch",
         ),
         pytest.param(REPORT_PATH, _report_bytes(head=HEAD[:12]), id="abbreviated-h1"),
         pytest.param(REPORT_PATH, _report_bytes(head=HEAD.upper()), id="uppercase-h1"),
@@ -572,7 +760,7 @@ def _authority_fixture(
         "review_profile": mode,
         "reviewed_base": {"policy": "exact", "commit": base},
         "requirement_paths": ["requirements/task.md"],
-        "allowed_path_roots": ["scripts"],
+        "allowed_path_roots": ["coordination/verification/scopes", "scripts"],
         "verification_commands": [
             "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py"
         ],
@@ -699,6 +887,117 @@ def test_structural_authority_accepts_committed_shipping_and_verify_request(
     assert authority.verify_request_recipient == (
         recipient if trigger_kind == "verify-request" else None
     )
+    assert authority.scope.reviewed_head == head
+    assert authority.scope.changed_paths
+    assert authority.scope.requirements == (
+        {
+            "path": "requirements/task.md",
+            "blob_id": _git(root, "rev-parse", f"{head}:requirements/task.md"),
+            "digest": "sha256:"
+            + hashlib.sha256(b"Review the committed feature.\n").hexdigest(),
+        },
+    )
+
+
+def _advance_shipping_fixture(
+    root: Path,
+    fields: list[tuple[str, str]],
+    *paths: str,
+) -> tuple[list[tuple[str, str]], str]:
+    scope = dict(fields)["Scope authority"]
+    _git(root, "add", *paths)
+    _git(
+        root,
+        "commit",
+        "-q",
+        "-m",
+        "feat: advance reviewed fixture",
+        "-m",
+        f"Lane-V-Scope: {scope}",
+    )
+    head = _git(root, "rev-parse", "HEAD")
+    advanced = _replace_field(fields, "Reviewed head", head)
+    advanced = _replace_field(advanced, "Trigger identity", f"shipping-commit:{head}")
+    return advanced, head
+
+
+def test_structural_authority_rejects_unrelated_changed_path_before_state_access(
+    tmp_path: Path,
+) -> None:
+    root, fields, report_path, _, _ = _authority_fixture(tmp_path / "repo")
+    unrelated = root / "outside-scope.txt"
+    unrelated.write_text("not authorized\n", encoding="utf-8")
+    fields, head = _advance_shipping_fixture(root, fields, "outside-scope.txt")
+    report = _structural_report(fields, report_path)
+    state_accessed = False
+
+    def forbidden_store(_root: Path) -> object:
+        nonlocal state_accessed
+        state_accessed = True
+        raise AssertionError("task state was accessed before scope rejection")
+
+    with pytest.raises(gate.ReportGateError, match="changed_path_not_allowed"):
+        gate.validate_live_report(root, report, task_store_factory=forbidden_store)
+
+    assert report.h1_head == head
+    assert state_accessed is False
+
+
+def test_structural_authority_rejects_requirement_blob_mismatch_before_state_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, fields, report_path, head, _ = _authority_fixture(tmp_path / "repo")
+    report = _structural_report(fields, report_path)
+    feature_oid = _git(root, "rev-parse", f"{head}:scripts/feature.py")
+    original = gate._git_process
+    state_accessed = False
+
+    def mismatched_requirement_blob(
+        called_root: Path, *args: str, text: bool = True
+    ) -> subprocess.CompletedProcess[object]:
+        if args == ("rev-parse", f"{head}:requirements/task.md"):
+            return subprocess.CompletedProcess(args, 0, stdout=feature_oid + "\n", stderr="")
+        return original(called_root, *args, text=text)
+
+    def forbidden_store(_root: Path) -> object:
+        nonlocal state_accessed
+        state_accessed = True
+        raise AssertionError("task state was accessed before blob rejection")
+
+    monkeypatch.setattr(gate, "_git_process", mismatched_requirement_blob)
+    with pytest.raises(gate.ReportGateError, match="requirement_blob_mismatch"):
+        gate.validate_live_report(root, report, task_store_factory=forbidden_store)
+
+    assert state_accessed is False
+
+
+def test_structural_authority_rejects_malformed_name_status_before_state_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, fields, report_path, _, _ = _authority_fixture(tmp_path / "repo")
+    report = _structural_report(fields, report_path)
+    original = gate._git_process
+    state_accessed = False
+
+    def malformed_diff(
+        called_root: Path, *args: str, text: bool = True
+    ) -> subprocess.CompletedProcess[object]:
+        if "--name-status" in args:
+            return subprocess.CompletedProcess(
+                args, 0, stdout=b"M\0scripts/feature.py", stderr=b""
+            )
+        return original(called_root, *args, text=text)
+
+    def forbidden_store(_root: Path) -> object:
+        nonlocal state_accessed
+        state_accessed = True
+        raise AssertionError("task state was accessed before malformed diff rejection")
+
+    monkeypatch.setattr(gate, "_git_process", malformed_diff)
+    with pytest.raises(gate.ReportGateError, match="invalid_name_status"):
+        gate.validate_live_report(root, report, task_store_factory=forbidden_store)
+
+    assert state_accessed is False
 
 
 @pytest.mark.parametrize("recipient", ("operator", "operator2"))
@@ -1569,6 +1868,123 @@ def test_task_publication_store_rejects_wrong_mode_root_before_state_access(
         with store.lock_task(TASK_ID):
             pytest.fail("unsafe private root unexpectedly opened")
     assert not (state_root / f"{TASK_ID}.json").exists()
+
+
+@pytest.mark.parametrize("mutation", ("wrong-owner", "wrong-mode", "wrong-type"))
+def test_task_publication_store_rejects_unsafe_root_metadata_before_state_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    state_root = tmp_path / f"state-root-{mutation}"
+    state_root.mkdir(mode=0o700)
+    real_fstat = gate.os.fstat
+
+    def unsafe_root(fd: int) -> object:
+        observed = real_fstat(fd)
+        mode = observed.st_mode
+        owner = observed.st_uid
+        if mutation == "wrong-owner":
+            owner += 1
+        elif mutation == "wrong-mode":
+            mode = stat.S_IFDIR | 0o755
+        else:
+            mode = stat.S_IFREG | 0o700
+        return SimpleNamespace(
+            st_mode=mode,
+            st_uid=owner,
+            st_nlink=observed.st_nlink,
+            st_dev=observed.st_dev,
+            st_ino=observed.st_ino,
+        )
+
+    monkeypatch.setattr(gate.os, "fstat", unsafe_root)
+    with pytest.raises(gate.ScopeContractError, match="unsafe_private_directory"):
+        gate._ensure_private_directory(state_root)
+
+    assert not (state_root / f"{TASK_ID}.json").exists()
+
+
+@pytest.mark.parametrize("kind", ("file", "symlink"))
+def test_task_publication_store_rejects_non_directory_root_before_state_access(
+    tmp_path: Path, kind: str
+) -> None:
+    state_root = tmp_path / f"state-root-{kind}"
+    if kind == "file":
+        state_root.write_text("not a directory\n", encoding="utf-8")
+    else:
+        backing = tmp_path / "backing-root"
+        backing.mkdir(mode=0o700)
+        state_root.symlink_to(backing, target_is_directory=True)
+
+    with pytest.raises(gate.ScopeContractError, match="unsafe_private_directory"):
+        gate._ensure_private_directory(state_root)
+
+
+def test_private_directory_rejects_symlink_swap_to_same_observed_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_root = tmp_path / "state-root-race"
+    state_root.mkdir(mode=0o700)
+    displaced = tmp_path / "state-root-observed"
+    original_open = gate.os.open
+    swapped = False
+
+    def swap_before_open(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        nonlocal swapped
+        if not swapped and os.fspath(path) == os.fspath(state_root):
+            swapped = True
+            state_root.rename(displaced)
+            state_root.symlink_to(displaced, target_is_directory=True)
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(gate.os, "open", swap_before_open)
+    opened: int | None = None
+    try:
+        with pytest.raises(gate.ScopeContractError, match="unsafe_private_directory"):
+            opened = gate._ensure_private_directory(state_root)
+    finally:
+        if opened is not None:
+            os.close(opened)
+
+    assert swapped is True
+
+
+@pytest.mark.parametrize("target", ("lock", "record"))
+@pytest.mark.parametrize("mutation", ("wrong-owner", "nlink"))
+def test_task_publication_store_uses_injected_metadata_check_for_each_private_file(
+    tmp_path: Path,
+    target: str,
+    mutation: str,
+) -> None:
+    state_root = tmp_path / f"state-injected-{target}-{mutation}"
+    store = gate.TaskPublicationStore.for_repo(tmp_path, state_root=state_root)
+    with store.lock_task(TASK_ID) as task:
+        task.load_or_create("sha256:" + "7" * 64)
+    record_path = state_root / f"{TASK_ID}.json"
+    before = record_path.read_bytes()
+    real_fstat = os.fstat
+
+    def unsafe_file(fd: int) -> object:
+        observed = real_fstat(fd)
+        return SimpleNamespace(
+            st_mode=observed.st_mode,
+            st_uid=(os.getuid() + 1 if mutation == "wrong-owner" else observed.st_uid),
+            st_nlink=(2 if mutation == "nlink" else observed.st_nlink),
+        )
+
+    unsafe_store = dataclasses.replace(store, _stat_fn=unsafe_file)
+    if target == "lock":
+        with pytest.raises(gate.ScopeContractError, match="unsafe_private_file"):
+            with unsafe_store.lock_task(TASK_ID):
+                pytest.fail("unsafe lock unexpectedly opened")
+    else:
+        with store.lock_task(TASK_ID) as task:
+            task._store = unsafe_store
+            with pytest.raises(gate.ScopeContractError, match="unsafe_private_file"):
+                task.load_existing()
+
+    assert record_path.read_bytes() == before
 
 
 def test_task_cancel_requires_exact_integer_generation_and_exact_witness(
@@ -3178,3 +3594,49 @@ def test_pre_v3_manifest_reports_missing_paths_but_not_digest_drift() -> None:
 
     assert missing == [f"{REPORT_PATH}: missing historical baseline report"]
     assert present_with_changed_digest == []
+
+
+def test_task_publisher_and_status_reject_injected_legacy_reconciled_state(
+    tmp_path: Path,
+) -> None:
+    legacy = SimpleNamespace(state="reconciled")
+
+    with pytest.raises(gate.ReportGateError, match="invalid_publication_state"):
+        gate._locked_publish_new(
+            attempt=SimpleNamespace(),
+            record=legacy,
+            root=tmp_path,
+            final_relative=REPORT_PATH,
+            candidate=SimpleNamespace(raw=b"must not be read"),
+            sent_fd=-1,
+            git=SimpleNamespace(),
+            set_candidate_ownership=lambda _owned: None,
+        )
+    with pytest.raises(gate.ReportGateError, match="invalid_publication_state"):
+        gate._status_locked(record=legacy, sent_fd=None, git=SimpleNamespace())
+
+
+def test_task_record_validation_rejects_direct_legacy_state_injection() -> None:
+    record = gate.TaskPublicationRecord(
+        task_id=TASK_ID,
+        authority_digest="sha256:" + "7" * 64,
+        state="reconciled",
+        generation=1,
+        path=None,
+        candidate_digest=None,
+        candidate_name=None,
+        candidate_device=None,
+        candidate_inode=None,
+        index_blob_oid=None,
+        index_mode=None,
+        index_stage=None,
+    )
+
+    with pytest.raises(gate.ReportGateError, match="invalid_task_publication"):
+        gate._validate_task_record(record, record.authority_digest)
+
+
+def test_task4_gate_source_has_no_legacy_reconciled_state_acceptance() -> None:
+    source = inspect.getsource(gate)
+
+    assert '"reconciled"' not in source

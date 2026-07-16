@@ -97,7 +97,7 @@ def _verification_shell_fixture(repo: Path, source_root: Path) -> tuple[str, str
         "review_profile": "independent-lane-v",
         "reviewed_base": {"policy": "exact", "commit": base},
         "requirement_paths": ["requirements/task.md"],
-        "allowed_path_roots": ["scripts"],
+        "allowed_path_roots": ["coordination/verification/scopes", "scripts"],
         "verification_commands": [
             "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py"
         ],
@@ -926,6 +926,7 @@ def test_provider_neutral_gate_and_send_event_have_task_only_source_cli_closure(
         "ReceiptStore",
         "ReceiptRecord",
         "receipt_store_factory",
+        '"reconciled"',
         "opus_review_bridge",
         "codex-lane-v",
         "claude-lane-v",

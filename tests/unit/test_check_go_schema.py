@@ -507,7 +507,7 @@ def _shipping_v3_fixture(
         "review_profile": "independent-lane-v",
         "reviewed_base": {"policy": "exact", "commit": base},
         "requirement_paths": ["requirements/task.md"],
-        "allowed_path_roots": ["scripts"],
+        "allowed_path_roots": ["coordination/verification/scopes", "scripts"],
         "verification_commands": [
             "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py"
         ],
@@ -650,24 +650,24 @@ def test_repository_reports_strictly_reject_invalid_utf8(tmp_path: pathlib.Path)
     assert violations == [f"{path}: report must be strict UTF-8"]
 
 
-def test_modified_historical_report_is_accepted_only_after_full_v3_migration(
+def test_manifest_listed_report_rejects_valid_v3_replacement_as_baseline_drift(
     tmp_path: pathlib.Path,
 ) -> None:
-    root, raw, manifest = _shipping_v3_fixture(tmp_path / "repo")
+    path, raw, manifest = _shipping_v3_fixture(tmp_path / "repo")
 
     violations = cgs.repository_report_violations(
         tmp_path / "repo",
-        [cgs.RawReport(root, raw)],
+        [cgs.RawReport(path, raw)],
         manifest,
     )
 
-    assert violations == []
+    assert violations == [f"{path}: baseline drift; raw digest does not match manifest"]
 
 
 def test_repository_scan_never_reads_private_receipts(
     tmp_path: pathlib.Path,
 ) -> None:
-    path, raw, manifest = _shipping_v3_fixture(tmp_path / "repo")
+    path, raw, _ = _shipping_v3_fixture(tmp_path / "repo")
     private_runtime = tmp_path / "repo" / ".codex" / "runtime"
     private_runtime.mkdir(parents=True)
     private_runtime.chmod(0)
@@ -675,7 +675,7 @@ def test_repository_scan_never_reads_private_receipts(
         violations = cgs.repository_report_violations(
             tmp_path / "repo",
             [cgs.RawReport(path, raw)],
-            manifest,
+            _manifest(),
         )
     finally:
         private_runtime.chmod(0o700)

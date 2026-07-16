@@ -326,7 +326,7 @@ def _validated_command(value: object, *, reason: str) -> str:
         encoded = value.encode("utf-8")
     except UnicodeEncodeError as exc:
         raise ScopeContractError(reason, "verification command must be UTF-8") from exc
-    if not value or len(encoded) > _COMMAND_MAX_BYTES:
+    if not value or value != value.strip() or len(encoded) > _COMMAND_MAX_BYTES:
         raise ScopeContractError(reason, "verification command has invalid length")
     if any(character in value for character in _FORBIDDEN_COMMAND_CHARS):
         raise ScopeContractError(reason, "verification command contains shell syntax")
@@ -804,12 +804,39 @@ def _private_file_flags(base: int) -> int:
     return base | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
 
 
+def _private_directory_flags() -> int:
+    return (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+
+
 def _ensure_private_directory(path: Path) -> int:
     path = path.absolute()
-    try:
-        path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    except OSError as exc:
-        raise ScopeContractError("unsafe_private_directory", str(exc)) from exc
+    missing: list[Path] = []
+    cursor = path
+    while True:
+        try:
+            os.lstat(cursor)
+            break
+        except FileNotFoundError:
+            missing.append(cursor)
+            if cursor.parent == cursor:
+                raise ScopeContractError(
+                    "unsafe_private_directory", f"cannot create {path}"
+                )
+            cursor = cursor.parent
+        except OSError as exc:
+            raise ScopeContractError("unsafe_private_directory", str(exc)) from exc
+    for directory in reversed(missing):
+        try:
+            os.mkdir(directory, 0o700)
+        except FileExistsError:
+            pass
+        except OSError as exc:
+            raise ScopeContractError("unsafe_private_directory", str(exc)) from exc
     try:
         observed = os.lstat(path)
     except OSError as exc:
@@ -823,9 +850,8 @@ def _ensure_private_directory(path: Path) -> int:
         raise ScopeContractError(
             "unsafe_private_directory", "private state directory metadata is unsafe"
         )
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     try:
-        directory_fd = os.open(path, flags | getattr(os, "O_CLOEXEC", 0))
+        directory_fd = os.open(path, _private_directory_flags())
     except OSError as exc:
         raise ScopeContractError("unsafe_private_directory", str(exc)) from exc
     checked = os.fstat(directory_fd)
@@ -884,6 +910,7 @@ class LaneVReport:
 class StructuralAuthority:
     descriptor: ScopeDescriptor
     reference: ScopeReference
+    scope: ReviewScope
     trigger_kind: str
     trigger_commit: str
     trigger_path: str | None
@@ -1189,25 +1216,66 @@ def _require_strict_ancestor(root: Path, base: str, head: str, label: str) -> No
         _fail("invalid_structural_authority", f"{label} must be an ancestor")
 
 
-def _committed_blob(
-    root: Path, commit: str, path: str, label: str, *, maximum_bytes: int = 65_536
-) -> bytes:
+@dataclass(frozen=True)
+class _CommittedGitBlob:
+    path: str
+    blob_id: str
+    digest: str
+    raw: bytes = field(repr=False, compare=False)
+
+
+def _committed_blob_facts(
+    root: Path,
+    commit: str,
+    path: str,
+    label: str,
+    *,
+    maximum_bytes: int | None = 65_536,
+) -> _CommittedGitBlob:
     try:
         normalized = normalize_repo_path(path)
     except ScopeContractError as exc:
         raise ReportGateError("invalid_structural_authority", exc.detail) from exc
-    result = _git_process(root, "show", f"{commit}:{normalized}", text=False)
-    if result.returncode != 0 or not isinstance(result.stdout, bytes):
+    shown = _git_process(root, "show", f"{commit}:{normalized}", text=False)
+    if shown.returncode != 0 or not isinstance(shown.stdout, bytes):
         _fail(
             "invalid_structural_authority",
             f"committed {label} is missing at {commit}:{normalized}",
         )
-    if len(result.stdout) > maximum_bytes:
+    if maximum_bytes is not None and len(shown.stdout) > maximum_bytes:
         _fail(
             "authority_blob_too_large",
             f"committed {label} exceeds {maximum_bytes} bytes",
         )
-    return result.stdout
+    resolved = _git_process(root, "rev-parse", f"{commit}:{normalized}")
+    if (
+        resolved.returncode != 0
+        or not isinstance(resolved.stdout, str)
+        or _FULL_SHA_RE.fullmatch(resolved.stdout.strip()) is None
+    ):
+        _fail(
+            "invalid_structural_authority",
+            f"could not resolve committed {label} blob",
+        )
+    blob_id = resolved.stdout.strip()
+    checked = _git_process(root, "cat-file", "blob", blob_id, text=False)
+    if (
+        checked.returncode != 0
+        or not isinstance(checked.stdout, bytes)
+        or checked.stdout != shown.stdout
+    ):
+        reason = (
+            "requirement_blob_mismatch"
+            if label == "review requirement"
+            else "authority_blob_mismatch"
+        )
+        _fail(reason, f"committed {label} blob does not match resolved bytes")
+    return _CommittedGitBlob(
+        path=normalized,
+        blob_id=blob_id,
+        digest="sha256:" + hashlib.sha256(shown.stdout).hexdigest(),
+        raw=shown.stdout,
+    )
 
 
 def _one_prefixed_value(lines: list[str], prefix: str, label: str) -> str:
@@ -1225,7 +1293,7 @@ def _verify_request_scope(
     report: LaneVReport,
     trigger_commit: str,
     trigger_path: str,
-) -> tuple[ScopeReference, str]:
+) -> tuple[ScopeReference, str, _CommittedGitBlob]:
     pure_path = PurePosixPath(trigger_path)
     if pure_path.parent.as_posix() != "coordination/mailbox/sent":
         _fail(
@@ -1235,9 +1303,10 @@ def _verify_request_scope(
     filename = _VERIFY_REQUEST_BASENAME_RE.fullmatch(pure_path.name)
     if filename is None:
         _fail("invalid_verify_request", "verify-request filename is not canonical")
-    raw = _committed_blob(
+    event_blob = _committed_blob_facts(
         root, trigger_commit, trigger_path, "verify-request"
     )
+    raw = event_blob.raw
     if b"\r" in raw or b"\x00" in raw:
         _fail("invalid_verify_request", "verify-request contains forbidden bytes")
     try:
@@ -1293,7 +1362,7 @@ def _verify_request_scope(
             "verify-request recipient must equal report sender",
         )
     try:
-        return parse_scope_reference(scope_text), recipient
+        return parse_scope_reference(scope_text), recipient, event_blob
     except ScopeContractError as exc:
         raise ReportGateError("invalid_verify_request", exc.detail) from exc
 
@@ -1402,28 +1471,28 @@ def validate_structural_authority(
     if trigger_kind == "shipping-commit":
         reference = _shipping_scope(root, report, trigger_commit)
         recipient = None
+        trigger_blob = None
     else:
         assert trigger_path is not None
         _require_strict_ancestor(
             root, head, trigger_commit, "verify-request trigger commit"
         )
-        reference, recipient = _verify_request_scope(
+        reference, recipient, trigger_blob = _verify_request_scope(
             root, report, trigger_commit, trigger_path
         )
-    raw = _committed_blob(
+    descriptor_blob = _committed_blob_facts(
         root,
         trigger_commit,
         reference.descriptor_path,
         "scope descriptor",
     )
-    actual_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
-    if actual_digest != reference.descriptor_digest:
+    if descriptor_blob.digest != reference.descriptor_digest:
         _fail(
             "scope_digest_mismatch",
             "committed descriptor digest does not agree",
         )
     try:
-        mapping = strict_json_loads(raw)
+        mapping = strict_json_loads(descriptor_blob.raw)
         if not isinstance(mapping, Mapping):
             _fail("invalid_scope_descriptor", "descriptor must be an object")
         descriptor = ScopeDescriptor.from_mapping(mapping)
@@ -1469,9 +1538,81 @@ def validate_structural_authority(
             "structural_authority_mismatch",
             "Trigger identity does not equal committed trigger",
         )
+    changed = _git_process(
+        root,
+        "-c",
+        "core.quotepath=false",
+        "-c",
+        "diff.renames=false",
+        "diff",
+        "--name-status",
+        "-z",
+        "--no-renames",
+        "--no-ext-diff",
+        "--no-textconv",
+        base,
+        head,
+        "--",
+        text=False,
+    )
+    if changed.returncode != 0 or not isinstance(changed.stdout, bytes):
+        _fail(
+            "invalid_structural_authority",
+            "could not compute authoritative changed paths",
+        )
+    try:
+        changed_paths = parse_name_status_z(changed.stdout)
+        assert_changed_path_coverage(changed_paths, descriptor.allowed_path_roots)
+    except ScopeContractError as exc:
+        raise ReportGateError(exc.reason, exc.detail) from exc
+    requirements = tuple(
+        _committed_blob_facts(
+            root,
+            head,
+            path,
+            "review requirement",
+            maximum_bytes=None,
+        )
+        for path in descriptor.requirement_paths
+    )
+    scope = ReviewScope(
+        repository_identity=_repository_identity(root),
+        task_id=descriptor.task_id,
+        question_id=descriptor.question_id,
+        trigger_kind=trigger_kind,
+        trigger_identity=expected_trigger,
+        trigger_commit=trigger_commit,
+        trigger_path=trigger_path,
+        trigger_blob_id=(trigger_blob.blob_id if trigger_blob is not None else None),
+        descriptor_path=reference.descriptor_path,
+        descriptor_digest=reference.descriptor_digest,
+        descriptor_blob_id=descriptor_blob.blob_id,
+        review_profile=descriptor.review_profile,
+        verification_mode=descriptor.verification_mode,
+        verification_harness=descriptor.verification_harness,
+        reviewed_head=head,
+        requested_base=base,
+        effective_base=base,
+        changed_paths=changed_paths,
+        requirements=tuple(
+            {
+                "path": blob.path,
+                "blob_id": blob.blob_id,
+                "digest": blob.digest,
+            }
+            for blob in requirements
+        ),
+        allowed_path_roots=descriptor.allowed_path_roots,
+        verification_commands=descriptor.verification_commands,
+    )
+    try:
+        scope.to_mapping()
+    except ScopeContractError as exc:
+        raise ReportGateError(exc.reason, exc.detail) from exc
     return StructuralAuthority(
         descriptor=descriptor,
         reference=reference,
+        scope=scope,
         trigger_kind=trigger_kind,
         trigger_commit=trigger_commit,
         trigger_path=trigger_path,
@@ -1612,6 +1753,9 @@ def _task_record_from_bytes(raw: bytes, expected_task_id: str) -> TaskPublicatio
 @dataclass(frozen=True)
 class TaskPublicationStore:
     state_root: Path
+    _stat_fn: Callable[[int], os.stat_result] = field(
+        default=os.fstat, repr=False, compare=False
+    )
 
     @classmethod
     def for_repo(
@@ -1670,7 +1814,9 @@ class LockedTask:
             )
             try:
                 _validate_private_file(
-                    lock_fd, label="task publication lock", stat_fn=os.fstat
+                    lock_fd,
+                    label="task publication lock",
+                    stat_fn=self._store._stat_fn,
                 )
                 operation = fcntl.LOCK_EX
                 if not self._blocking:
@@ -1730,7 +1876,9 @@ class LockedTask:
             raise ReportGateError("task_publication_open_failed", str(exc)) from exc
         try:
             _validate_private_file(
-                record_fd, label="task publication record", stat_fn=os.fstat
+                record_fd,
+                label="task publication record",
+                stat_fn=self._store._stat_fn,
             )
             chunks: list[bytes] = []
             remaining = TASK_PUBLICATION_MAX_BYTES + 1
@@ -1776,7 +1924,9 @@ class LockedTask:
                 dir_fd=directory_fd,
             )
             _validate_private_file(
-                temporary_fd, label="temporary task record", stat_fn=os.fstat
+                temporary_fd,
+                label="temporary task record",
+                stat_fn=self._store._stat_fn,
             )
             _write_all(temporary_fd, raw)
             os.fsync(temporary_fd)
@@ -2026,15 +2176,7 @@ def _task_authority_digest(
     root: Path, report: LaneVReport, authority: StructuralAuthority
 ) -> str:
     authority_mapping = {
-        "repository_identity": _repository_identity(root),
-        "task_id": authority.descriptor.task_id,
-        "verification_mode": report.fields["Verification mode"],
-        "verification_harness": report.fields["Verification harness"],
-        "descriptor_path": authority.reference.descriptor_path,
-        "descriptor_digest": authority.reference.descriptor_digest,
-        "trigger_identity": authority.trigger_identity,
-        "reviewed_head": report.fields["Reviewed head"],
-        "reviewed_base": report.fields["Reviewed base"],
+        "review_scope": authority.scope.to_mapping(),
         "authorized_operator_recipient": report.sender,
     }
     return "sha256:" + hashlib.sha256(
@@ -2640,7 +2782,7 @@ def _locked_publish_new(
             "publication_resume_required",
             "interrupted publication requires explicit resume by stored identifier",
         )
-    if state not in {"reconciled", "ready"}:
+    if state != "ready":
         _fail("invalid_publication_state", "task is not ready to publish")
 
     expected_oid = _expected_blob_oid(git, candidate.raw)
@@ -3337,7 +3479,7 @@ def _status_locked(
     git: _SanitizedGit,
 ) -> dict[str, object]:
     state = getattr(record, "state", None)
-    if state in {"ready", "reconciled"}:
+    if state == "ready":
         return {
             "state": state,
             "path": None,

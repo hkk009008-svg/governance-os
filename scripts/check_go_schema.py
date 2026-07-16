@@ -211,7 +211,13 @@ def repository_report_violations(
             violations.append("current reports: expected RawReport values")
             continue
         raw_digest = hashlib.sha256(named.raw).hexdigest()
-        if manifest_digests.get(named.relative_path) == raw_digest:
+        expected_digest = manifest_digests.get(named.relative_path)
+        if expected_digest is not None:
+            if expected_digest != raw_digest:
+                violations.append(
+                    f"{named.relative_path}: baseline drift; "
+                    "raw digest does not match manifest"
+                )
             continue
         try:
             text = named.raw.decode("utf-8")
@@ -219,7 +225,6 @@ def repository_report_violations(
             violations.append(f"{named.relative_path}: report must be strict UTF-8")
             continue
         decoded_reports.append((named.relative_path, text))
-        historical = named.relative_path in manifest_digests
         try:
             parsed = report_gate.parse_lane_v_report(
                 named.relative_path,
@@ -228,16 +233,10 @@ def repository_report_violations(
             )
             report_gate.validate_structural_authority(root, parsed)
         except report_gate.ReportGateError as exc:
-            if historical:
-                violations.append(
-                    f"{named.relative_path}: baseline drift; full "
-                    f"{report_gate.REPORT_SCHEMA_VERSION} validation failed: {exc}"
-                )
-            else:
-                violations.append(
-                    f"{named.relative_path}: report is not an exact pre-v3 baseline "
-                    f"and must satisfy {report_gate.REPORT_SCHEMA_VERSION}: {exc}"
-                )
+            violations.append(
+                f"{named.relative_path}: report is not an exact pre-v3 baseline "
+                f"and must satisfy {report_gate.REPORT_SCHEMA_VERSION}: {exc}"
+            )
 
     violations.extend(go_report_violations(decoded_reports))
     return violations
