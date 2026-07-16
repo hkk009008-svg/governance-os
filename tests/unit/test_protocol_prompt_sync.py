@@ -173,7 +173,48 @@ def test_provider_tools_are_absent_from_executable_and_operative_surfaces() -> N
         _assert_no_forbidden_operative_fragments(path)
 
 
-KNOWN_PROVIDER_NAMES = ("chatgpt", "claude", "opus", "gemini", "anthropic")
+KNOWN_PROVIDER_NAMES = (
+    "chatgpt",
+    "claude",
+    "opus",
+    "gemini",
+    "anthropic",
+    "openai",
+    "gpt",
+)
+AFFIRMATIVE_ACTION_TOKENS = frozenset(
+    {
+        "run",
+        "launch",
+        "send",
+        "review",
+        "invoke",
+        "query",
+        "call",
+        "execute",
+        "use",
+        "open",
+        "dispatch",
+    }
+)
+NEGATION_TOKENS = frozenset({"no", "not", "never", "without"})
+PROVIDER_ACTION_TOKEN_RADIUS = 3
+PROVIDER_MECHANISM_TOKENS = frozenset(
+    {
+        "advisory",
+        "api",
+        "cli",
+        "command",
+        "execution",
+        "invocation",
+        "process",
+        "receipt",
+        "retry",
+    }
+)
+NEUTRAL_UNIFIED_TOPOLOGY_TOKENS = frozenset(
+    {"codex", "claude", "antigravity", "unified", "system", "cross", "provider", "protocol"}
+)
 
 
 def _match_tokens(value: object) -> tuple[str, ...]:
@@ -210,9 +251,36 @@ def _contains_provider_name(
     )
 
 
+def _contains_provider_reference_near_action(tokens: tuple[str, ...]) -> bool:
+    for index, token in enumerate(tokens):
+        if token not in AFFIRMATIVE_ACTION_TOKENS:
+            continue
+        start = max(0, index - PROVIDER_ACTION_TOKEN_RADIUS)
+        end = index + PROVIDER_ACTION_TOKEN_RADIUS + 1
+        nearby = tokens[start:end]
+        if (
+            not set(nearby) & NEGATION_TOKENS
+            and ("provider" in nearby or _contains_provider_name(nearby))
+        ):
+            return True
+    return False
+
+
+def _is_neutral_unified_topology_line(line: str, token_set: set[str]) -> bool:
+    return line.lstrip().startswith("|") and NEUTRAL_UNIFIED_TOPOLOGY_TOKENS.issubset(
+        token_set
+    )
+
+
 def _operative_provider_action_sensitive(line: str) -> bool:
     tokens = _match_tokens(line)
     token_set = set(tokens)
+    neutral_unified_topology = _is_neutral_unified_topology_line(line, token_set)
+    if (
+        _contains_provider_reference_near_action(tokens)
+        and not neutral_unified_topology
+    ):
+        return True
     if _contains_provider_name(tokens, ("opus",)):
         return True
     if _contains_provider_name(tokens, ("chatgpt",)) and "pro" in token_set:
@@ -220,8 +288,6 @@ def _operative_provider_action_sensitive(line: str) -> bool:
     if _contains_provider_name(tokens, ("anthropic",)) and "api" in token_set:
         return True
     if _contains_provider_name(tokens, ("claude", "gemini"), split_only=True):
-        return True
-    if {"query", "provider"}.issubset(token_set):
         return True
     if "retry" in token_set and token_set & {"external", "advisory"}:
         return True
@@ -234,7 +300,10 @@ def _assert_no_forbidden_operative_fragments(path: Path) -> None:
         normalized_fragment = fragment.casefold()
         assert normalized_fragment not in text, (path, normalized_fragment)
     for line_number, line in enumerate(text.splitlines(), start=1):
-        assert not _operative_provider_action_sensitive(line), (path, line_number, line)
+        statements = re.split(r"(?<=[.!?])\s+", line)
+        assert not any(
+            _operative_provider_action_sensitive(statement) for statement in statements
+        ), (path, line_number, line)
 
 
 def test_operative_provider_scan_rejects_lowercase_chatgpt_pro(tmp_path: Path) -> None:
@@ -293,23 +362,7 @@ def _provider_sensitive(value: object) -> bool:
     if {"external", "advisory"}.issubset(token_set):
         return True
 
-    provider_actions = {
-        "advisory",
-        "api",
-        "call",
-        "cli",
-        "command",
-        "execute",
-        "execution",
-        "invoke",
-        "invocation",
-        "launch",
-        "process",
-        "query",
-        "receipt",
-        "retry",
-        "run",
-    }
+    provider_actions = AFFIRMATIVE_ACTION_TOKENS | PROVIDER_MECHANISM_TOKENS
     return "provider" in token_set and bool(token_set & provider_actions)
 
 
@@ -454,6 +507,68 @@ def test_launchable_capacity_gate_accepts_exact_negative_decommission_packet() -
 
     assert DECOMMISSION_NEGATIVE_ACCEPTANCE.issubset(set(packet["acceptance"]))
     _assert_launchable_packet_provider_free(path, packet)
+
+
+AFFIRMATIVE_PROVIDER_ACTION_PROBES = (
+    ("claude_run", "Run Claude -p review now"),
+    ("gemini_launch", "Launch Gemini CLI against the candidate"),
+    ("provider_send", "Send candidate to provider for review"),
+    ("provider_review", "Review with provider now"),
+    ("openai_api", "Send candidate to OpenAI API"),
+    ("gpt5_review", "Invoke GPT-5 for review"),
+)
+
+
+@pytest.mark.parametrize(
+    ("case_name", "affirmative_action"), AFFIRMATIVE_PROVIDER_ACTION_PROBES
+)
+def test_operative_provider_scan_rejects_known_provider_affirmative_actions(
+    tmp_path: Path,
+    case_name: str,
+    affirmative_action: str,
+) -> None:
+    operative = tmp_path / f"{case_name}.md"
+    operative.write_text(f"{affirmative_action}\n", encoding="utf-8")
+
+    with pytest.raises(AssertionError):
+        _assert_no_forbidden_operative_fragments(operative)
+
+
+@pytest.mark.parametrize(
+    ("field", "affirmative_action"), AFFIRMATIVE_PROVIDER_ACTION_PROBES
+)
+def test_launchable_capacity_gate_rejects_known_provider_affirmative_actions(
+    field: str,
+    affirmative_action: str,
+) -> None:
+    packet = json.loads(
+        (
+            ROOT
+            / "coordination/capacity/packets/"
+            "2026-07-16-provider-tools-decommission-director2-implementation.json"
+        ).read_text(encoding="utf-8")
+    )
+    packet[field] = affirmative_action
+
+    with pytest.raises(AssertionError, match=field):
+        _assert_launchable_packet_provider_free(Path("synthetic.json"), packet)
+
+
+@pytest.mark.parametrize(
+    "neutral_topology",
+    (
+        "Claude and Gemini are provider names in this topology.",
+        "OpenAI and GPT-5 are model/provider labels.",
+    ),
+)
+def test_operative_provider_scan_allows_neutral_provider_topology(
+    tmp_path: Path,
+    neutral_topology: str,
+) -> None:
+    operative = tmp_path / "topology.md"
+    operative.write_text(f"{neutral_topology}\n", encoding="utf-8")
+
+    _assert_no_forbidden_operative_fragments(operative)
 
 
 def test_threeway_dual_chief_contract_remains_provider_neutral_and_two_input() -> None:
