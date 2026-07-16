@@ -217,10 +217,15 @@ def _validate_provider_free_codex_fields(fields: Mapping[str, str]) -> None:
         _fail("invalid_attestation_value", "provider-free Codex harness does not match")
     if fields["Review profile"] != receipts.CODEX_PROVIDER_FREE_MODE:
         _fail("invalid_attestation_value", "provider-free Codex profile does not match")
-    for label in _OPUS_SPECIFIC_FIELDS:
+    for label in ATTESTATION_FIELDS[9:]:
         if fields[label] != "not-applicable":
             _fail("invalid_attestation_value", f"{label} must be not-applicable")
 ```
+
+`_OPUS_SPECIFIC_FIELDS` starts at `Review profile` and therefore must not be
+used for this loop: the dedicated provider-free review profile remains
+`codex-provider-free-lane-v`; only provider/receipt fields beginning with
+`Authorization identity` are `not-applicable`.
 
 Classify only the three supported modes. Compare the committed descriptor profile to the report profile in `validate_structural_authority()`. Introduce explicit helpers or exact-set membership so:
 
