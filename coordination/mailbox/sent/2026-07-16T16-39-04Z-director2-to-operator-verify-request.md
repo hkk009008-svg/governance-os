@@ -10,3 +10,7 @@ Lane-V-Scope: coordination/verification/scopes/11249ae3-1a0f-45c0-aa90-7d558537b
 Exact Next Trigger: Operator independently verifies the exact range and publishes one lane-v-report/v3 GO, NITS, or FAIL through the task-bound trusted publisher; no provider or receipt action is permitted.
 
 Cursor at send: 0
+
+## Exact Next Trigger
+
+Superseded by a corrected descriptor and a new canonical verify-request; Operator must not use this request as Lane V authority.
