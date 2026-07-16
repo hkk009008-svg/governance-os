@@ -33,6 +33,8 @@
     "DECISIONS.md",
     "scripts/codex_protocol_model.py",
     "docs/protocol/codex/continuation.md",
+    "docs/protocol/claude/independence-first.md",
+    "docs/PROTOCOL-RULES-LOG.md",
     ".agents/skills/four-seat-protocol/SKILL.md",
     ".agents/skills/seat-director/SKILL.md",
     ".agents/skills/seat-coordinator/SKILL.md",
@@ -44,7 +46,8 @@
     "docs/protocol/threeway/ARCHITECTURE-DIAGRAM.md",
     "docs/protocol/threeway/ONBOARDING.md",
     "docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md",
-    "tests/unit/test_protocol_prompt_sync.py"
+    "tests/unit/test_protocol_prompt_sync.py",
+    "tests/unit/test_protocol_doc_integrity.py"
   ],
   "dependencies": [
     "director-provider-tools-decommission-implementation"
@@ -53,7 +56,7 @@
     "No ChatGPT Pro, Claude, Opus, provider CLI, in-app browser, paid API, provider retry, or provider receipt action is authorized.",
     "Historical evidence and ignored local runtime evidence are read-only and outside the write set.",
     "Commit, push, merge, provider launch, runtime cleanup, and external publication are separate authorities; this packet authorizes no push, merge, provider call, or cleanup.",
-    "Complete Tasks 4-5 as two bounded commits with their required independent task reviews, after the Director packet is terminally done."
+    "Complete Tasks 4-5 as bounded implementation commits with required independent task reviews; only committed plan or review corrections may add commits, after the Director packet is terminally done."
   ],
   "done_evidence": [],
   "next_recipient": "operator2",
@@ -87,6 +90,8 @@
     "DECISIONS.md",
     "scripts/codex_protocol_model.py",
     "docs/protocol/codex/continuation.md",
+    "docs/protocol/claude/independence-first.md",
+    "docs/PROTOCOL-RULES-LOG.md",
     ".agents/skills/four-seat-protocol/SKILL.md",
     ".agents/skills/seat-director/SKILL.md",
     ".agents/skills/seat-coordinator/SKILL.md",
@@ -98,6 +103,7 @@
     "docs/protocol/threeway/ARCHITECTURE-DIAGRAM.md",
     "docs/protocol/threeway/ONBOARDING.md",
     "docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md",
-    "tests/unit/test_protocol_prompt_sync.py"
+    "tests/unit/test_protocol_prompt_sync.py",
+    "tests/unit/test_protocol_doc_integrity.py"
   ]
 }

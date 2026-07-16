@@ -828,6 +828,8 @@ Fresh spec review question: does v3 retain every generic Lane V authority/public
 - Modify: `DECISIONS.md`
 - Modify: `scripts/codex_protocol_model.py`
 - Modify: `docs/protocol/codex/continuation.md`
+- Modify: `docs/protocol/claude/independence-first.md`
+- Modify: `docs/PROTOCOL-RULES-LOG.md`
 - Modify: `.agents/skills/four-seat-protocol/SKILL.md`
 - Modify: `.agents/skills/seat-director/SKILL.md`
 - Modify: `.agents/skills/seat-operator/SKILL.md`
@@ -842,11 +844,50 @@ Fresh spec review question: does v3 retain every generic Lane V authority/public
 - Modify: `docs/protocol/threeway/ONBOARDING.md`
 - Modify: `docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md`
 - Modify: `tests/unit/test_protocol_prompt_sync.py`
+- Modify: `tests/unit/test_protocol_doc_integrity.py`
 
 **Interfaces:**
 
 - Consumes: the Task 3 ChatGPT deletion and Task 4 provider-neutral Lane V implementation.
 - Produces: one synchronized operative doctrine with no provider launch contract, one append-only superseding decision, and a regression test that keeps executable/launchable surfaces provider-free.
+
+**Binding independence-first correction:** A fresh independent design-time
+preflight at `72c9eeb34f7a73ade3f0e9fec1ae4f10e4401b32` blocked implementation
+before any Task-5 code or doctrine edit. The following acceptance criteria are
+additions to Steps 1-5 and must be implemented and tested before the Task-5
+commit:
+
+- Converge `docs/protocol/claude/independence-first.md`, its positive pin in
+  `tests/unit/test_protocol_doc_integrity.py`, and the current R-GATE-EVIDENCE
+  enforcement description in `docs/PROTOCOL-RULES-LOG.md` from live v2/receipt
+  behavior to v3 and `TaskPublicationStore`. Preserve rule provenance and run
+  the doc-integrity test in the focused suite.
+- Replace `CROSS_MODEL_VERIFICATION_RULES` and
+  `render_cross_model_verification()` with a named provider-neutral Lane-V v3
+  contract used by model output, summaries, continuation, skills, and prompts.
+  Adapt rather than delete the exact trigger/descriptor tests. The negative
+  operative scan must also reject `verdict-blind Opus`, `opus-review/v3`,
+  `opus-reconciliation/v2`, `lane-v-report/v2`, `--receipt-id`,
+  `attempt_state_uncertain`, `Opus scope digest`, standing provider policy,
+  provider retry/degradation/process branches, and the removed renderer.
+- Add positive synchronization coverage for mailbox/body-first decisions,
+  intentional seat cursors and no coordinator cursor, exact committed trigger
+  and descriptor binding with fail-closed invalid forms, non-author operator
+  independence, GO/NITS/FAIL, atomic task-bound v3 publication, coordinator
+  no-production-fix authority, and separately gated push, merge, spend, and
+  other side effects. Add merge to `ACTIVE_KERNEL_INVARIANTS`; provider-text
+  deletion must not erase these generic boundaries.
+- Make the launchable-capacity assertion field-aware. Provider names or deleted
+  paths may occur only in this decommission cycle's identity/scope and exact
+  negative prohibitions; any executable provider command, receipt/retry
+  instruction, or contradictory affirmative action in a `ready` or `active`
+  packet must fail even when the packet also contains the expected negative
+  acceptance text.
+- Preserve the existing provider-neutral two-input dual-chief regression, the
+  Task-4 frozen historical path/digest tests, and append-only history in
+  `DECISIONS.md`. Operative scanning must exclude historical evidence and the
+  real `.codex/runtime` residue; no Task-5 test or helper may traverse or mutate
+  that runtime.
 
 - [ ] **Step 1: Add the failing operative-surface gate**
 
