@@ -42,12 +42,18 @@
     "Create only descriptor f1e1ad5f-cb1b-4650-93ad-bf8701069f32 as direct child D of C and one canonical Director-to-Operator request as direct child T of D. Run only provider-free and state-free authority resolution. Provider process attempts and receipt mutations remain zero; do not call review(), create receipt storage, invoke ChatGPT Pro, open a browser, invoke Opus, or issue a verdict.",
     "The P..C lineage is review-only and never an integration input. Later integration may merge only the immutable frozen source heads. Return exact P/M1/C/D/T, descriptor, request, tree, path, test, attempt-key, prompt-authority, and zero-state evidence to coordinator; T is the sole baton and the next recipient is coordinator."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Exact review-only topology is P=15027cfdacadd6bb68d7ee3aa554a1836c6f38f1 -> M1=ed4774d9ecb4ca75d4bb71520fc9523990b34210 -> C=2361f5be52b810291ea955c7826e49c4aba80d3d -> D=04e10abc6d62cf868ac42f2e53757c1d6d33c612 -> T=57ccbf67b0e520f11e6e9c95f2af4dec9cac2cb3. M1 parents P plus frozen Codex 3dcff96948003d510451266b017895b42bd73c2e; C parents M1 plus frozen Claude 233ef8126bc75dc6a2a13adcb70810b619faa85c. Both actual trees equal their precomputed merge-tree OIDs 4f1d55465bbdfd9c9f96da73723ad4510df03274 and 201174e4d7e45ab517dda41182367a1c200379b2.",
+    "The normalized source-parent status union is exactly 22 P..C entries with digest sha256:55c51c158c768d61f350d9561e392a542c588b21aa76345069aca8e52c92fdf3. The candidate worktree is clean and the two focused files pass 309 tests.",
+    "D changes only coordination/verification/scopes/f1e1ad5f-cb1b-4650-93ad-bf8701069f32.json at sha256:8918adaf1c48741283fc448c66050a92619dfcc33ea9f6ec2455cc77003802d3. T changes only canonical request coordination/mailbox/sent/2026-07-16T08-42-18Z-director-to-operator-verify-request.md at blob f63589622fae64cb41daad5c232c7b4586c7011f.",
+    "State-free structural and prompt authority resolution binds exact P/C/T, seven requirements, two authority blobs, 22 changed paths, prompt authority blob 583cdcb5b5129b629ae4ada21627a4fc5bab1b9c, attempt key opr1:6fe8a0957f9387452ae624a7e691b19364a0a113f9fbf4edd6d1144b2eef381e, and provider scope digest sha256:0c51fe11b8ceeae4d327daa08da024f2c932d8aa706a6f4ac6d54e8f9fb53fe3. Its prospective receipt and lock are absent; provider process attempts and receipt mutations remain zero.",
+    "Shared root remains on main at route R=70c6b3e6ead43aab9a5b7a73591be925b00f0f35. Candidate history remains review-only and is not an integration input. Pair-A Operator remains blocked pending terminal Opus Stage-A clearance and a separate coordinator activation route."
+  ],
   "next_recipient": "coordinator",
-  "status": "active",
-  "verify_request": null,
-  "target_commit": null,
-  "commit_range": null,
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-16T08-42-18Z-director-to-operator-verify-request.md",
+  "target_commit": "2361f5be52b810291ea955c7826e49c4aba80d3d",
+  "commit_range": "15027cfdacadd6bb68d7ee3aa554a1836c6f38f1..2361f5be52b810291ea955c7826e49c4aba80d3d",
   "scope_files": [
     ".agents/skills/chatgpt-pro-consultation/SKILL.md",
     ".agents/skills/four-seat-protocol/SKILL.md",
