@@ -111,6 +111,10 @@ DECOMMISSION_NEGATIVE_ACCEPTANCE = frozenset(
         ),
     }
 )
+OPERATIVE_NEGATIVE_PROVIDER_SENTENCES = DECOMMISSION_NEGATIVE_ACCEPTANCE | {
+    "Verify independently from repository evidence and run no provider command.",
+    "repository evidence, and run no provider command.",
+}
 DECOMMISSION_PROVIDER_SCOPE_PATHS = frozenset(DELETED_PROVIDER_PATHS) | {
     ".claude/skills/seat-operator/verification-report-format.md",
     ".claude/agents/lane-v-verifier.md",
@@ -197,7 +201,6 @@ AFFIRMATIVE_ACTION_TOKENS = frozenset(
         "dispatch",
     }
 )
-NEGATION_TOKENS = frozenset({"no", "not", "never", "without"})
 PROVIDER_ACTION_TOKEN_RADIUS = 3
 PROVIDER_MECHANISM_TOKENS = frozenset(
     {
@@ -220,6 +223,12 @@ NEUTRAL_UNIFIED_TOPOLOGY_TOKENS = frozenset(
 def _match_tokens(value: object) -> tuple[str, ...]:
     serialized = json.dumps(value, sort_keys=True).casefold()
     return tuple(re.findall(r"[a-z0-9]+", serialized))
+
+
+NORMALIZED_OPERATIVE_NEGATIVE_PROVIDER_SENTENCES = frozenset(
+    " ".join(_match_tokens(sentence))
+    for sentence in OPERATIVE_NEGATIVE_PROVIDER_SENTENCES
+)
 
 
 def _tokens_contain_compound_name(
@@ -258,10 +267,7 @@ def _contains_provider_reference_near_action(tokens: tuple[str, ...]) -> bool:
         start = max(0, index - PROVIDER_ACTION_TOKEN_RADIUS)
         end = index + PROVIDER_ACTION_TOKEN_RADIUS + 1
         nearby = tokens[start:end]
-        if (
-            not set(nearby) & NEGATION_TOKENS
-            and ("provider" in nearby or _contains_provider_name(nearby))
-        ):
+        if "provider" in nearby or _contains_provider_name(nearby):
             return True
     return False
 
@@ -296,14 +302,25 @@ def _operative_provider_action_sensitive(line: str) -> bool:
 
 def _assert_no_forbidden_operative_fragments(path: Path) -> None:
     text = path.read_text(encoding="utf-8").casefold()
-    for fragment in FORBIDDEN_OPERATIVE_FRAGMENTS:
-        normalized_fragment = fragment.casefold()
-        assert normalized_fragment not in text, (path, normalized_fragment)
     for line_number, line in enumerate(text.splitlines(), start=1):
         statements = re.split(r"(?<=[.!?])\s+", line)
-        assert not any(
-            _operative_provider_action_sensitive(statement) for statement in statements
-        ), (path, line_number, line)
+        for statement in statements:
+            if (
+                " ".join(_match_tokens(statement))
+                in NORMALIZED_OPERATIVE_NEGATIVE_PROVIDER_SENTENCES
+            ):
+                continue
+            for fragment in FORBIDDEN_OPERATIVE_FRAGMENTS:
+                normalized_fragment = fragment.casefold()
+                assert normalized_fragment not in statement, (
+                    path,
+                    normalized_fragment,
+                )
+            assert not _operative_provider_action_sensitive(statement), (
+                path,
+                line_number,
+                line,
+            )
 
 
 def test_operative_provider_scan_rejects_lowercase_chatgpt_pro(tmp_path: Path) -> None:
@@ -518,6 +535,13 @@ AFFIRMATIVE_PROVIDER_ACTION_PROBES = (
     ("gpt5_review", "Invoke GPT-5 for review"),
 )
 
+NEGATED_PREFIX_AFFIRMATIVE_PROVIDER_ACTION_PROBES = (
+    ("claude_execute", "Do not delay; execute Claude -p now."),
+    ("gpt5_invoke", "Never wait; invoke GPT-5 now."),
+    ("openai_send", "Do not defer; send to OpenAI now."),
+    ("anthropic_call", "Without delay, call Anthropic now."),
+)
+
 
 @pytest.mark.parametrize(
     ("case_name", "affirmative_action"), AFFIRMATIVE_PROVIDER_ACTION_PROBES
@@ -532,6 +556,35 @@ def test_operative_provider_scan_rejects_known_provider_affirmative_actions(
 
     with pytest.raises(AssertionError):
         _assert_no_forbidden_operative_fragments(operative)
+
+
+@pytest.mark.parametrize(
+    ("case_name", "affirmative_action"),
+    NEGATED_PREFIX_AFFIRMATIVE_PROVIDER_ACTION_PROBES,
+)
+def test_operative_provider_scan_rejects_affirmative_actions_after_negated_prefixes(
+    tmp_path: Path,
+    case_name: str,
+    affirmative_action: str,
+) -> None:
+    operative = tmp_path / f"{case_name}.md"
+    operative.write_text(f"{affirmative_action}\n", encoding="utf-8")
+
+    with pytest.raises(AssertionError):
+        _assert_no_forbidden_operative_fragments(operative)
+
+
+@pytest.mark.parametrize(
+    "negative_acceptance", sorted(DECOMMISSION_NEGATIVE_ACCEPTANCE)
+)
+def test_operative_provider_scan_accepts_exact_negative_decommission_sentences(
+    tmp_path: Path,
+    negative_acceptance: str,
+) -> None:
+    operative = tmp_path / "negative-acceptance.md"
+    operative.write_text(f"{negative_acceptance}\n", encoding="utf-8")
+
+    _assert_no_forbidden_operative_fragments(operative)
 
 
 @pytest.mark.parametrize(
