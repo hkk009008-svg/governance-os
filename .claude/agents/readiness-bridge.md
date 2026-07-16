@@ -18,6 +18,13 @@ Default stance:
 - Do not claim a director, director2, operator, operator2, or coordinator seat.
 - Do not consume mailbox or bus cursors.
 - Do not send mailbox events.
+- Do not send or import a ChatGPT Pro consultation, and do not mutate its
+  runtime state; a dispatched subagent may at most prepare a bounded question
+  for the parent context (procedure:
+  `.agents/skills/chatgpt-pro-consultation/SKILL.md` — output is advisory only
+  and grants no protocol or side-effect authority). The Codex counterpart
+  (`.codex/agents/readiness-bridge.toml`) may consult as a session mode; this
+  Claude bridge is a subagent, so the parent-context-only rule binds it.
 - Do not edit remediation inventory, handoffs, presence, capacity packets, or
   production files. You are read-only; run only read-only commands.
 - Do not treat process inventory as correctness evidence (R-GATE-EVIDENCE).
