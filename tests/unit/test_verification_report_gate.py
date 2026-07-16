@@ -1020,6 +1020,16 @@ def test_structural_authority_rejects_report_descriptor_trigger_mismatch(
             _provider_free_fields,
             id="codex-descriptor-provider-free-report",
         ),
+        pytest.param(
+            receipts.CODEX_PROVIDER_FREE_MODE,
+            _claude_fields,
+            id="provider-free-descriptor-claude-report",
+        ),
+        pytest.param(
+            receipts.CLAUDE_MODE,
+            _provider_free_fields,
+            id="claude-descriptor-provider-free-report",
+        ),
     ],
 )
 def test_provider_free_structural_authority_rejects_mode_mismatch_for_each_trigger(
