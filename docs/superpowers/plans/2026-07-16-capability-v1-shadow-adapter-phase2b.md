@@ -1027,6 +1027,110 @@ module file. No canonical fixture, package initializer, seat-status script,
 reducer, producer, parity artifact, target binding, epoch, writer, Task 4,
 Phase 3, or activation surface changed.
 
+### Final-review evidence correction 9
+
+The fresh full-range review of
+`f17d14c684e1e1a6378e52ab8f151070fb710e07..7151cee977693bcdf0dda262d68bd9e0253f7aa2`
+found four Important evidence-identity gaps. Bound source bytes were hashed and
+then parsed through a second path read, while an otherwise digest-identical
+symlink could resolve outside the adapter root. The stale/gapped causal identity
+tuple omitted `actor_binding_digest`. Declared `source_id` ownership was local to
+each adapter call rather than closed across corpus cases. Finally, the mapping
+and reducer-replay sources did not enforce their exact supported schema versions,
+and the replay root accepted extra fields.
+
+Before the production edit, the focused command
+
+```sh
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q \
+  tests/unit/test_capability_v1_adapter.py \
+  -k 'bound_sources_parse_the_exact_bytes_from_one_path_read or bound_source_symlink_outside_adapter_root or causal_revision_error_rejects_second_valid_actor_identity or source_id_owned_by_another_case or future_bound_source_schema or extra_reducer_replay_root_field or causal_error_histories_execute_prefix_then_full_history or stale_history_executes_accepted_prefix_before_rejection'
+```
+
+produced `8 failed, 2 passed, 182 deselected`. The one-read probe stopped at the
+path-reopening parser. The repository-external symlink, future mapping schema,
+future replay schema, extra replay-root field, cross-case `source_id`, and both
+stale/gapped second-valid-actor mutations all stayed gate-clean with the same 89
+cases and therefore failed as `DID NOT RAISE`. Both canonical accepted-prefix
+execution pins passed. The identical selector then produced
+`10 passed, 182 deselected` after the correction. The complete adapter file
+produced `192 passed`; the prescribed Phase-2B nine-file suite produced
+`538 passed`.
+
+The adapter now resolves `_ADAPTER_ROOT` once to its physical directory, accepts
+only the exact regular non-symlink source paths beneath it, reads each accepted
+source once, hashes those raw bytes, and strictly UTF-8 decodes the same bytes for
+duplicate-key-safe JSON parsing. Mapping and replay roots are exact and
+require `compact-state-mapping/v1` and `compact-kernel-replay/v2`. The causal
+identity tuple includes `actor_binding_digest`, and one compact
+`source_id -> case_id` map rejects cross-case reuse while retaining intentional
+same-case duplicate deliveries and mixed-version constructions. No transition
+ID, reducer/runtime semantic, producer, canonical fixture, or case order changed.
+
+Clean package import produced no output. Direct and `python -m` mapping CLIs each
+reported `validated 69 mappings across 7 domains`; both adapter CLI forms
+reported 89 corpus cases with every blocking/non-match and specialized list
+empty, and their bytes were identical to the committed parity artifact. Target
+binding remained epoch `0`, writer `v1`, declarative only, and project smoke was
+green. The correction boundary is exactly `scripts/capability_v1_adapter.py`,
+`tests/unit/test_capability_v1_adapter.py`, this plan, and `ARCHITECTURE.md`.
+These correction facts do not close Task 4, authorize Phase 3, activate a writer,
+or permit push/merge or any provider, browser, mailbox, cursor, or ref effect.
+
+The first bounded spec and code-quality reviews each requested one Important
+correction and reported no Critical or Minor finding. The ownership probe
+observed `adapt_calls_before_rejection=230`, proving that the first owner map was
+inside the case-execution loop rather than a pre-execution corpus prepass. The
+provenance probe replaced a checked regular leaf with an external symlink during
+the check/open gap; the path-based reader followed it and remained gate-clean
+with 89 cases.
+
+Before the review corrections, the focused command
+
+```sh
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q \
+  tests/unit/test_capability_v1_adapter.py \
+  -k 'bound_sources_parse_the_exact_bytes_from_one_path_read or leaf_swapped_to_symlink_before_descriptor_open or symlinked_intermediate_source_directory or source_id_owned_by_another_case_before_execution or bound_source_symlink_outside_adapter_root'
+```
+
+produced `3 failed, 2 passed, 189 deselected`: the one-read probe rejected the
+path-based content read, the leaf-swap hook was never reached and the gate stayed
+clean, and cross-case ownership rejected only after exactly 230 public adapter
+calls. Stable leaf-symlink and intermediate-directory-symlink rejection remained
+green. The identical selector then produced `5 passed, 189 deselected`.
+
+The settled ownership map now scans every declared case record immediately after
+exact case/manifest validation and before any public adapter execution; same-case
+reuse remains legal. Bound sources now open the resolved physical adapter-root
+directory once, traverse every directory component relative to held descriptors
+with `O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC`, open each leaf relative to its
+parent with `O_RDONLY | O_NOFOLLOW | O_CLOEXEC`, require `fstat` regular-file
+identity, and assemble bounded reads from that one descriptor through EOF or
+`st_size + 1`. That one assembled byte string supplies both SHA-256 and strict
+JSON decoding, and every opened descriptor is closed on success or failure. At
+that review checkpoint the complete adapter file produced `194 passed`; the
+prescribed nine-file suite produced `540 passed`.
+
+The controller then identified one adjacent regular-file correctness risk: one
+`os.read(fd, st_size + 1)` syscall may lawfully return fewer bytes without EOF,
+which would falsely reject an unchanged valid source. Before the correction,
+
+```sh
+env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q \
+  tests/unit/test_capability_v1_adapter.py::test_bound_sources_assemble_short_descriptor_reads_without_reopening
+```
+
+produced `1 failed` when each descriptor read was capped at 97 bytes, then
+produced `1 passed`. The reader now loops on the same opened descriptor until
+EOF or the `st_size + 1` bound and still requires the assembled length to equal
+the original `fstat` size. The expanded descriptor/prepass selector produced
+`6 passed`; the complete adapter file produced `195 passed`; and the prescribed
+nine-file suite produced `541 passed`.
+
+The same bounded spec and code-quality reviewers then re-reviewed the settled
+four-path diff and each returned `APPROVED`, with no remaining Critical,
+Important, or Minor finding.
+
 ## Task 4: Record reviewed Phase-2 closeout
 
 **Files:**

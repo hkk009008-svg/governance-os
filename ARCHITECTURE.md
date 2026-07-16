@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-16 @ 484b16a*
+*Last verified: 2026-07-16 @ 7151cee*
 
 ## 1. Purpose
 
@@ -59,7 +59,7 @@ Key directories:
 | `resolve_target` | `scripts/target_binding.py:184` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
 | `_accepted_context_keys` | `scripts/compact_state_mapping.py:120` | Independently enumerates every finite producer-backed v1 mapping context for exact fixture and shadow-gate closure. |
 | `reduce_protocol_state` | `scripts/capability_reducer.py:1230` | Produces one pure, deterministic, non-authoritative compact shadow report. |
-| `adapt_v1_history` | `scripts/capability_v1_adapter.py:2683` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
+| `adapt_v1_history` | `scripts/capability_v1_adapter.py:2783` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:547` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_r_independence` | `scripts/codex_protocol_model.py:773` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |

@@ -721,6 +721,252 @@ def _canonical_file_digest(path: Path) -> str:
     return "sha256:" + sha256(path.read_bytes()).hexdigest()
 
 
+def _copy_bound_sources(root: Path) -> dict[str, bytes]:
+    copied: dict[str, bytes] = {}
+    for relative_path in adapter._SOURCE_PATHS:
+        raw = (ROOT / relative_path).read_bytes()
+        destination = root / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(raw)
+        copied[relative_path] = raw
+    return copied
+
+
+def _replace_bound_source(
+    root: Path,
+    corpus: dict[str, object],
+    relative_path: str,
+    value: dict[str, object],
+) -> bytes:
+    raw = canonicalize(value) + b"\n"
+    (root / relative_path).write_bytes(raw)
+    sources = corpus["sources"]
+    assert type(sources) is dict
+    sources[relative_path] = "sha256:" + sha256(raw).hexdigest()
+    return raw
+
+
+def test_bound_sources_parse_the_exact_bytes_from_one_path_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    copied = _copy_bound_sources(tmp_path)
+    descriptor_reads: list[bytes] = []
+    decoded_inputs: list[str] = []
+    real_os_read = os.read
+    real_strict_loads = adapter._strict_json_loads
+
+    def capture_descriptor_read(descriptor: int, size: int) -> bytes:
+        raw = real_os_read(descriptor, size)
+        descriptor_reads.append(raw)
+        return raw
+
+    def reject_path_read(_path: Path) -> bytes:
+        raise AssertionError("bound source used a path-based content read")
+
+    def reject_path_reopen(_path: Path, *args: object, **kwargs: object) -> str:
+        raise AssertionError("bound source parsing reopened its path")
+
+    def capture_strict_input(value: object) -> object:
+        assert type(value) is str
+        decoded_inputs.append(value)
+        return real_strict_loads(value)
+
+    monkeypatch.setattr(os, "read", capture_descriptor_read)
+    monkeypatch.setattr(Path, "read_bytes", reject_path_read)
+    monkeypatch.setattr(Path, "read_text", reject_path_reopen)
+    monkeypatch.setattr(adapter, "_strict_json_loads", capture_strict_input)
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    source_digests, bound = adapter._bound_sources(corpus)
+
+    assert b"".join(descriptor_reads) == b"".join(
+        copied[relative_path] for relative_path in adapter._SOURCE_PATHS
+    )
+    assert decoded_inputs == [
+        copied[relative_path].decode("utf-8")
+        for relative_path in adapter._SOURCE_PATHS
+    ]
+    assert source_digests == tuple(
+        (
+            relative_path,
+            "sha256:" + sha256(copied[relative_path]).hexdigest(),
+        )
+        for relative_path in adapter._SOURCE_PATHS
+    )
+    assert set(bound) == set(adapter._SOURCE_PATHS)
+
+
+def test_bound_sources_assemble_short_descriptor_reads_without_reopening(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    _copy_bound_sources(tmp_path)
+    real_os_read = os.read
+    observed_lengths: list[int] = []
+
+    def short_read(descriptor: int, size: int) -> bytes:
+        raw = real_os_read(descriptor, min(size, 97))
+        observed_lengths.append(len(raw))
+        return raw
+
+    monkeypatch.setattr(os, "read", short_read)
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    report = adapter._check_corpus(corpus)
+
+    assert adapter._report_is_gate_clean(report) is True
+    assert dict(report.set_counts)["corpus_cases"] == 89
+    assert observed_lengths.count(0) == len(adapter._SOURCE_PATHS)
+    assert len([size for size in observed_lengths if size]) > len(
+        adapter._SOURCE_PATHS
+    )
+    assert max(observed_lengths) <= 97
+
+
+def test_corpus_guard_rejects_bound_source_symlink_outside_adapter_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    _copy_bound_sources(tmp_path)
+    mapping_path = tmp_path / adapter._SOURCE_PATHS[0]
+    mapping_path.unlink()
+    mapping_path.symlink_to(MAPPING_FIXTURE)
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        report = adapter._check_corpus(corpus)
+        assert adapter._report_is_gate_clean(report) is True
+        assert dict(report.set_counts)["corpus_cases"] == 89
+    assert exc_info.value.code == "legacy_invalid"
+    assert str(exc_info.value) == "legacy_invalid"
+
+
+def test_corpus_guard_rejects_leaf_swapped_to_symlink_before_descriptor_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    _copy_bound_sources(tmp_path)
+    mapping_path = tmp_path / adapter._SOURCE_PATHS[0]
+    real_os_open = os.open
+    swapped = False
+
+    def swap_before_leaf_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if path == mapping_path.name and dir_fd is not None and not swapped:
+            mapping_path.unlink()
+            mapping_path.symlink_to(MAPPING_FIXTURE)
+            swapped = True
+        return real_os_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", swap_before_leaf_open)
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+    assert swapped is True
+
+
+def test_corpus_guard_rejects_symlinked_intermediate_source_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    _copy_bound_sources(tmp_path)
+    mapping_directory = (tmp_path / adapter._SOURCE_PATHS[0]).parent
+    (mapping_directory / "v1.json").unlink()
+    mapping_directory.rmdir()
+    mapping_directory.symlink_to(MAPPING_FIXTURE.parent, target_is_directory=True)
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "future_schema"),
+    (
+        (adapter._SOURCE_PATHS[0], "compact-state-mapping/v99"),
+        (adapter._SOURCE_PATHS[2], "compact-kernel-replay/v99"),
+    ),
+)
+def test_corpus_guard_rejects_future_bound_source_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relative_path: str,
+    future_schema: str,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    copied = _copy_bound_sources(tmp_path)
+    fixture = adapter._strict_json_loads(copied[relative_path].decode("utf-8"))
+    assert type(fixture) is dict
+    fixture["schema_version"] = future_schema
+    _replace_bound_source(tmp_path, corpus, relative_path, fixture)
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        report = adapter._check_corpus(corpus)
+        assert adapter._report_is_gate_clean(report) is True
+        assert dict(report.set_counts)["corpus_cases"] == 89
+    assert exc_info.value.code == "legacy_invalid"
+    assert str(exc_info.value) == "legacy_invalid"
+
+
+def test_corpus_guard_rejects_extra_reducer_replay_root_field(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    copied = _copy_bound_sources(tmp_path)
+    relative_path = adapter._SOURCE_PATHS[2]
+    fixture = adapter._strict_json_loads(copied[relative_path].decode("utf-8"))
+    assert type(fixture) is dict
+    fixture["future_extension"] = []
+    _replace_bound_source(tmp_path, corpus, relative_path, fixture)
+    monkeypatch.setattr(adapter, "_ADAPTER_ROOT", tmp_path)
+
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        report = adapter._check_corpus(corpus)
+        assert adapter._report_is_gate_clean(report) is True
+        assert dict(report.set_counts)["corpus_cases"] == 89
+    assert exc_info.value.code == "legacy_invalid"
+    assert str(exc_info.value) == "legacy_invalid"
+
+
+def test_corpus_guard_rejects_source_id_owned_by_another_case_before_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    first = _case(corpus, "mapping:capacity-ready")["source_records"][0]
+    second = _case(corpus, "mapping:work-cancelled")["source_records"][0]
+    second["source_id"] = first["source_id"]
+    _refresh_source_digest(second)
+    adapt_calls = 0
+    real_adapt = adapter.adapt_v1_history
+
+    def count_adapt_calls(raw_history, *, resolve_actor, resolve_scope):
+        nonlocal adapt_calls
+        adapt_calls += 1
+        return real_adapt(
+            raw_history,
+            resolve_actor=resolve_actor,
+            resolve_scope=resolve_scope,
+        )
+
+    monkeypatch.setattr(adapter, "adapt_v1_history", count_adapt_calls)
+
+    _assert_corpus_error(corpus, "legacy_invalid")
+    assert adapt_calls == 0
+
+
 def test_corpus_guard_rejects_missing_extra_or_unmanifested_cases() -> None:
     missing = _load_strict(CORPUS)
     missing["cases"].pop()
@@ -1052,13 +1298,16 @@ def _valid_wrong_scope_digest(
     raise AssertionError("fixture lacks a distinct valid scope digest")
 
 
-def _add_actor_bound_to_another_repository(
+def _add_valid_actor(
     corpus: dict[str, object],
+    *,
+    binding_id: str,
+    repository: str,
 ) -> reducer.ActorContext:
     actor = dataclasses.replace(
         _actor_from_corpus(corpus),
-        binding_id="actor-other-repository",
-        repository="other/repository",
+        binding_id=binding_id,
+        repository=repository,
     )
     actor = dataclasses.replace(
         actor,
@@ -1082,6 +1331,27 @@ def _add_actor_bound_to_another_repository(
         "revoked": actor.revoked,
     }
     return actor
+
+
+def _add_actor_bound_to_another_repository(
+    corpus: dict[str, object],
+) -> reducer.ActorContext:
+    return _add_valid_actor(
+        corpus,
+        binding_id="actor-other-repository",
+        repository="other/repository",
+    )
+
+
+def _add_actor_bound_to_same_repository(
+    corpus: dict[str, object],
+) -> reducer.ActorContext:
+    repository = _actor_from_corpus(corpus).repository
+    return _add_valid_actor(
+        corpus,
+        binding_id="actor-second-valid",
+        repository=repository,
+    )
 
 
 @pytest.mark.parametrize(
@@ -1127,6 +1397,31 @@ def test_stale_and_gap_histories_pin_distinct_revision_constructions() -> None:
     assert tuple(
         record["work_revision"] for record in gap["source_records"]
     ) == (1, 3)
+
+
+@pytest.mark.parametrize(
+    "case_id",
+    (
+        "history:stale-work-revision",
+        "history:gapped-work-revision",
+    ),
+)
+def test_causal_revision_error_rejects_second_valid_actor_identity(
+    case_id: str,
+) -> None:
+    corpus = _load_strict(CORPUS)
+    second_actor = _add_actor_bound_to_same_repository(corpus)
+    second = _case(corpus, case_id)["source_records"][1]
+    second["actor_binding_digest"] = second_actor.binding_digest
+    _refresh_source_digest(second)
+
+    with pytest.raises(adapter.LegacyAdapterError) as exc_info:
+        report = adapter._check_corpus(corpus)
+        assert adapter._report_is_gate_clean(report) is True
+        assert dict(report.set_counts)["corpus_cases"] == 89
+        assert len(report.executed_case_ids) == 89
+    assert exc_info.value.code == "legacy_invalid"
+    assert str(exc_info.value) == "legacy_invalid"
 
 
 @pytest.mark.parametrize("case_id", SCOPE_BOUND_AMBIGUITY_CASE_IDS)

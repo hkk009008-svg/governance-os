@@ -7,8 +7,10 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 from re import fullmatch
+import stat
 import sys
 
 # A direct `python scripts/capability_v1_adapter.py` launch otherwise exposes
@@ -124,7 +126,9 @@ _SOURCE_PATHS = (
     "tests/fixtures/compact_kernel/v1_misuse_vectors.json",
     "tests/fixtures/compact_kernel/v2_replay_vectors.json",
 )
+_MAPPING_SCHEMA = "compact-state-mapping/v1"
 _MISUSE_SCHEMA = "compact-kernel-misuse-vectors/v1"
+_REPLAY_SCHEMA = "compact-kernel-replay/v2"
 _MISUSE_VECTOR_FIELDS = frozenset(
     {
         "id",
@@ -1326,9 +1330,11 @@ def _require_string_list(value: object) -> list[str]:
     return value
 
 
-def _load_json_path(path: Path) -> dict[str, object]:
+def _load_json_bytes(raw: object) -> dict[str, object]:
+    if type(raw) is not bytes:
+        raise _legacy_invalid()
     try:
-        parsed = _strict_json_loads(path.read_text(encoding="utf-8"))
+        parsed = _strict_json_loads(raw.decode("utf-8"))
     except LegacyAdapterError:
         raise
     except Exception:
@@ -1336,6 +1342,65 @@ def _load_json_path(path: Path) -> dict[str, object]:
     if type(parsed) is not dict:
         raise _legacy_invalid()
     return parsed
+
+
+def _read_bound_source(root_fd: int, relative_path: str) -> bytes:
+    components = relative_path.split("/")
+    if (
+        not components
+        or any(not item or item in {".", ".."} for item in components)
+    ):
+        raise _legacy_invalid()
+    directory_flags = (
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    leaf_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+    opened_directories: list[int] = []
+    leaf_fd: int | None = None
+    try:
+        directory_fd = root_fd
+        for component in components[:-1]:
+            directory_fd = os.open(
+                component,
+                directory_flags,
+                dir_fd=directory_fd,
+            )
+            opened_directories.append(directory_fd)
+        leaf_fd = os.open(
+            components[-1],
+            leaf_flags,
+            dir_fd=directory_fd,
+        )
+        source_stat = os.fstat(leaf_fd)
+        if not stat.S_ISREG(source_stat.st_mode):
+            raise _legacy_invalid()
+        limit = source_stat.st_size + 1
+        chunks: list[bytes] = []
+        read_size = 0
+        while read_size < limit:
+            chunk = os.read(leaf_fd, limit - read_size)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            read_size += len(chunk)
+        raw = b"".join(chunks)
+        if len(raw) != source_stat.st_size:
+            raise _legacy_invalid()
+        return raw
+    finally:
+        descriptors = (
+            ([] if leaf_fd is None else [leaf_fd])
+            + list(reversed(opened_directories))
+        )
+        close_error: OSError | None = None
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except OSError as error:
+                if close_error is None:
+                    close_error = error
+        if close_error is not None:
+            raise close_error
 
 
 def _bound_sources(
@@ -1351,25 +1416,37 @@ def _bound_sources(
         or set(sources) != set(_SOURCE_PATHS)
     ):
         raise _legacy_invalid()
+    try:
+        root = _ADAPTER_ROOT.resolve(strict=True)
+        root_fd = os.open(
+            root,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        )
+    except Exception:
+        raise _legacy_invalid() from None
 
     bound: dict[str, dict[str, object]] = {}
     digests: list[tuple[str, str]] = []
-    for relative_path in _SOURCE_PATHS:
-        expected = sources[relative_path]
-        if type(expected) is not str or fullmatch(
-            capability_reducer.DIGEST_PATTERN, expected
-        ) is None:
-            raise _legacy_invalid()
-        path = _ADAPTER_ROOT / relative_path
-        try:
-            raw = path.read_bytes()
-        except Exception:
-            raise _legacy_invalid() from None
-        actual = "sha256:" + sha256(raw).hexdigest()
-        if actual != expected:
-            raise _legacy_invalid()
-        bound[relative_path] = _load_json_path(path)
-        digests.append((relative_path, actual))
+    try:
+        for relative_path in _SOURCE_PATHS:
+            expected = sources[relative_path]
+            if type(expected) is not str or fullmatch(
+                capability_reducer.DIGEST_PATTERN, expected
+            ) is None:
+                raise _legacy_invalid()
+            try:
+                raw = _read_bound_source(root_fd, relative_path)
+            except LegacyAdapterError:
+                raise
+            except Exception:
+                raise _legacy_invalid() from None
+            actual = "sha256:" + sha256(raw).hexdigest()
+            if actual != expected:
+                raise _legacy_invalid()
+            bound[relative_path] = _load_json_bytes(raw)
+            digests.append((relative_path, actual))
+    finally:
+        os.close(root_fd)
     return tuple(digests), bound
 
 
@@ -1722,6 +1799,7 @@ _HISTORY_CAUSAL_IDENTITY_FIELDS = (
     "work_id",
     "route_id",
     "unit_id",
+    "actor_binding_digest",
     "mutable_scope_ref",
     "mutable_scope_digest",
 )
@@ -2020,7 +2098,10 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     misuse_fixture = sources[_SOURCE_PATHS[1]]
     replay_fixture = sources[_SOURCE_PATHS[2]]
 
-    if set(mapping_fixture) != {"schema_version", "source_values", "rows"}:
+    if (
+        set(mapping_fixture) != {"schema_version", "source_values", "rows"}
+        or mapping_fixture["schema_version"] != _MAPPING_SCHEMA
+    ):
         raise _legacy_invalid()
     mapping_rows = mapping_fixture["rows"]
     if type(mapping_rows) is not list or not mapping_rows:
@@ -2055,8 +2136,13 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         or misuse_fixture["schema_version"] != _MISUSE_SCHEMA
     ):
         raise _legacy_invalid()
+    if (
+        set(replay_fixture) != {"schema_version", "actors", "scopes", "vectors"}
+        or replay_fixture["schema_version"] != _REPLAY_SCHEMA
+    ):
+        raise _legacy_invalid()
     misuse_vectors = misuse_fixture["vectors"]
-    replay_vectors = replay_fixture.get("vectors")
+    replay_vectors = replay_fixture["vectors"]
     if (
         type(misuse_vectors) is not list
         or not misuse_vectors
@@ -2127,6 +2213,20 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     ):
         raise _legacy_invalid()
     case_by_id = dict(zip(case_ids, cases, strict=True))
+    source_owners: dict[str, str] = {}
+    for case in cases:
+        records = case["source_records"]
+        if type(records) is not list:
+            raise _legacy_invalid()
+        for record in records:
+            if type(record) is not dict:
+                raise _legacy_invalid()
+            source_id = _require_string(
+                record.get("source_id"), capability_reducer.ID_PATTERN
+            )
+            owner = source_owners.setdefault(source_id, case["id"])
+            if owner != case["id"]:
+                raise _legacy_invalid()
     history_case_ids = {
         item["id"] for item in cases if item["case_kind"] == "history"
     }
