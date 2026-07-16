@@ -1,0 +1,41 @@
+{
+  "id": "operator-compact-phase3-alignment-lanev",
+  "wave": 2,
+  "cycle": "compact-phase3-corpus-live-alignment-2026-07-17",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "allowed_paths": [
+    "coordination/verification/scopes/*.json",
+    "coordination/mailbox/sent/*-director-to-operator-verify-request.md",
+    "coordination/mailbox/sent/*-operator-to-all-verification-report.md",
+    "coordination/mailbox/sent/*-operator-to-coordinator-findings.md",
+    "coordination/capacity/packets/2026-07-17-compact-phase3-alignment-operator-verification.json"
+  ],
+  "dependencies": [
+    "director-compact-phase3-alignment-implementation",
+    "director2-compact-phase3-alignment-live-boundary-preflight",
+    "operator2-compact-phase3-alignment-red-gate-preflight"
+  ],
+  "acceptance": [
+    "Remain blocked until the three dependencies are terminal and a behavior-changing diff has one lawful canonical verify-request.",
+    "For a behavior-changing diff, perform one cold non-author-model verification and alone issue GO/NITS/FAIL.",
+    "If the final diff is corpus, test, or proof alignment only, do not manufacture Lane V; wait for coordinator to record the verification-not-needed reason and except this packet.",
+    "Do not repair the implementation, reconstruct missing trigger fields, or fall back to another trigger kind."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "tests/fixtures/compact_kernel/v1_to_v2_replay.json",
+    "scripts/capability_v1_adapter.py",
+    "tests/unit/test_capability_v1_adapter.py",
+    "tests/unit/test_capability_baseline_runtime.py",
+    "logs/capability-first/phase2b-shadow-parity.json"
+  ]
+}

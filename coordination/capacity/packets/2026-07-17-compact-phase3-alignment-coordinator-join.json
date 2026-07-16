@@ -1,0 +1,38 @@
+{
+  "id": "coord-compact-phase3-alignment-join",
+  "wave": 2,
+  "cycle": "compact-phase3-corpus-live-alignment-2026-07-17",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-17-compact-phase3-closeout.md",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "allowed_paths": [
+    "coordination/capacity/packets/2026-07-17-compact-phase3-alignment-*.json",
+    "docs/HANDOFF-coordinator-2026-07-17-compact-phase3-closeout.md",
+    "coordination/mailbox/sent/*-coordinator-to-all-convergence.md"
+  ],
+  "dependencies": [
+    "director-compact-phase3-alignment-implementation",
+    "director2-compact-phase3-alignment-live-boundary-preflight",
+    "operator-compact-phase3-alignment-lanev",
+    "operator2-compact-phase3-alignment-red-gate-preflight"
+  ],
+  "acceptance": [
+    "The invalid coordinator-to-director route at commit 3f3342f9864bf6eea318dd43d93c70a753059dfe is historical only and grants no execution authority.",
+    "Director is the only implementation writer; Director2 and Operator2 remain read-only preflight seats.",
+    "If the Director diff changes production behavior, close only after one lawful non-author Operator GO/NITS/FAIL report; otherwise record the verification-not-needed reason and except the unopened Operator packet.",
+    "Close only after the capacity board, route validator, coordination checker, smoke, and exact-scope checks pass."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-17-compact-phase3-alignment-*.json",
+    "docs/HANDOFF-coordinator-2026-07-17-compact-phase3-closeout.md",
+    "coordination/mailbox/sent/*-coordinator-to-all-convergence.md"
+  ]
+}
