@@ -254,7 +254,7 @@ Run:
 env -u GIT_INDEX_FILE ../../.venv/bin/python -m pytest \
   tests/unit/test_opus_review_receipts.py \
   tests/unit/test_verification_report_gate.py \
-  tests/unit/test_go_schema.py -q
+  tests/unit/test_check_go_schema.py -q
 env -u GIT_INDEX_FILE ../../.venv/bin/python scripts/check_go_schema.py
 ```
 
@@ -266,12 +266,12 @@ Expected: all tests pass and the repository report schema reports zero violation
 env -u GIT_INDEX_FILE git add -- \
   scripts/verification_report_gate.py \
   tests/unit/test_verification_report_gate.py \
-  tests/unit/test_go_schema.py
+  tests/unit/test_check_go_schema.py
 env -u GIT_INDEX_FILE git diff --cached --check
 env -u GIT_INDEX_FILE git commit -m "fix(opus): publish provider-free Codex reports"
 ```
 
-Stage `tests/unit/test_go_schema.py` only if it changed.
+Stage `tests/unit/test_check_go_schema.py` only if it changed.
 
 ---
 
@@ -297,7 +297,7 @@ Run:
 env -u GIT_INDEX_FILE ../../.venv/bin/python -m pytest \
   tests/unit/test_opus_review_receipts.py \
   tests/unit/test_verification_report_gate.py \
-  tests/unit/test_go_schema.py -q
+  tests/unit/test_check_go_schema.py -q
 env -u GIT_INDEX_FILE ../../.venv/bin/python scripts/ci_smoke.py
 env -u GIT_INDEX_FILE git diff --check acc29ba..HEAD
 env -u GIT_INDEX_FILE git status --short
