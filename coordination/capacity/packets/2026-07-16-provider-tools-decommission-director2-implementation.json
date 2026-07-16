@@ -8,6 +8,7 @@
   "owner": "director2",
   "packet_type": "director-implementation",
   "allowed_paths": [
+    "docs/superpowers/plans/2026-07-16-provider-tools-targeted-decommission.md",
     "scripts/baselines/lane_v_reports_pre_v3.json",
     "scripts/verification_report_gate.py",
     "scripts/check_go_schema.py",
@@ -61,6 +62,7 @@
   "target_commit": null,
   "commit_range": null,
   "scope_files": [
+    "docs/superpowers/plans/2026-07-16-provider-tools-targeted-decommission.md",
     "scripts/baselines/lane_v_reports_pre_v3.json",
     "scripts/verification_report_gate.py",
     "scripts/check_go_schema.py",
