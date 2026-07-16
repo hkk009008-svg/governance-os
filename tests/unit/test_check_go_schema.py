@@ -652,6 +652,49 @@ def test_repository_scan_accepts_committed_v3_in_fresh_clone_without_private_run
     assert not publication_root.exists()
 
 
+def test_repository_scan_rejects_committed_v3_deleted_from_worktree(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "repo"
+    path, raw, _ = _shipping_v3_fixture(root)
+    report_file = root / path
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    report_file.write_bytes(raw)
+    _git(root, "add", path)
+    _git(root, "commit", "-q", "-m", "docs: commit Lane V report")
+    report_file.unlink()
+
+    reports = cgs.scan_repository_reports(root)
+    violations = cgs.repository_report_violations(root, reports, _manifest())
+
+    assert reports == []
+    assert violations == [f"{path}: missing committed live v3 report"]
+    assert not (root / ".codex/runtime/lane-v-report-publications/v1").exists()
+
+
+def test_repository_scan_does_not_duplicate_missing_manifest_listed_pre_v3_report(
+    tmp_path: pathlib.Path,
+) -> None:
+    root = tmp_path / "repo"
+    path, _, _ = _shipping_v3_fixture(root)
+    raw = b"# historical report\n\nVERDICT: FAIL\n"
+    report_file = root / path
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    report_file.write_bytes(raw)
+    _git(root, "add", path)
+    _git(root, "commit", "-q", "-m", "docs: commit historical report")
+    report_file.unlink()
+    manifest = _manifest((path, hashlib.sha256(raw).hexdigest()))
+
+    violations = cgs.repository_report_violations(
+        root,
+        cgs.scan_repository_reports(root),
+        manifest,
+    )
+
+    assert violations == [f"{path}: missing historical baseline report"]
+
+
 def test_repository_scan_rejects_worktree_v3_different_from_head_without_live_witness(
     tmp_path: pathlib.Path,
 ) -> None:

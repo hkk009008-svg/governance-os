@@ -205,6 +205,20 @@ def repository_report_violations(
         violations.append("current reports: duplicate repository-relative path")
         return violations
 
+    try:
+        pipeline_root = report_gate.require_pipeline_root(root)
+    except ScopeContractError:
+        committed_paths: set[str] = set()
+    else:
+        committed_paths = {
+            report.relative_path for report in _tracked_head_reports(pipeline_root)
+        }
+    current_paths = set(report_paths)
+    for missing_path in sorted(
+        committed_paths - set(manifest_digests) - current_paths
+    ):
+        violations.append(f"{missing_path}: missing committed live v3 report")
+
     decoded_reports: list[tuple[str, str]] = []
     for named in named_reports:
         if not isinstance(named, RawReport) or not isinstance(named.raw, bytes):
