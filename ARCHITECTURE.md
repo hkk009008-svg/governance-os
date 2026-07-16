@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-16 @ 933871b*
+*Last verified: 2026-07-16 @ dea9f8b*
 
 ## 1. Purpose
 
