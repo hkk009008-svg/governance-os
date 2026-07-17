@@ -9,18 +9,8 @@ description: Use when operating as a per-pair DIRECTOR seat (Pair-A director or 
 
 The per-pair director owns the **strategic layer within its lane**: writes R-BRIEFs, sets priority, decides implementation mode, claims locks, and Tier-A co-signs the other lane. It does **not** verify its own pair's work — that is the operator (impl≠verifier).
 
-Lane V trigger authority: a verify-request trigger is a canonical committed
-sent-mailbox event strictly after the reviewed HEAD with exactly one
-`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
-`Reviewed base: <40-lowercase-hex>`, and one
-`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
-whose values agree with the committed descriptor and canonical
-filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
-subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
-reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
-Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
-mismatched authority is not a trigger: stop with a blocker, do not reconstruct
-missing fields, and do not fall back to the other trigger kind.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 **REQUIRED BACKGROUND:** the `four-seat-protocol` skill (authority, locks, lifecycle, co-sign tiers, git sharp edges) and `docs/protocol/claude/continuation.md` (live-kernel adapter: runtime modes, pair contract, capacity split, side-effect tokens). Sources: `docs/protocol/claude/director-operator.md` (Rules #7–#23, R-BRIEF, #12, #13, R-PID); `docs/templates/claude/implementer.md`; `docs/protocol/claude/orchestration.md` (R-ORCH). **R-SKILL:** in Pipeline, protocol/seat work loads the matching `.claude/skills/` skill; work routed to the evidence-ledger target repo loads that repo's own instructions first (ledger bridge in the continuation adapter).
 

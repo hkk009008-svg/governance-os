@@ -31,12 +31,10 @@ def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():
     assert "Sync the operative stub into `AGENTS.md`" not in text
     assert "Mechanize the cross-model requirement" not in text
     assert "## Mechanized enforcement and remaining follow-up" in text
-    assert "lane-v-report/v3" in text
-    assert "independent-lane-v" in text
-    assert "lane-v:independent-verifier" in text
-    assert "TaskPublicationStore" in text
-    assert "one committed descriptor and lawful trigger" in _compact(text)
-    assert "Model or provider identity grants no authority" in text
+    assert "Compact Pair Invariant" in text
+    assert "fixed mailbox writer" in text
+    assert "one committed verify-request" in _compact(text)
+    assert "Model or provider identity grants no authority" in _compact(text)
     assert (
         "A different model or harness is preferred; a same-model independent "
         "reviewer is weaker and must be identified as such."
@@ -152,6 +150,6 @@ def test_operator_phase_taxonomy_uses_current_codex_triggers():
         text = _read(path)
         compact = _compact(text)
 
-        assert "operator waits for a fresh verify-request or shipping commit" in compact.lower()
+        assert "operator waits for one assigned committed verify-request" in compact.lower()
         assert "in-chat \"Dispatching X\" narration" not in text
         assert "implicit git-log poll" not in text

@@ -103,14 +103,13 @@ different perspective saw them. Two structural lessons:
 
 ## Mechanized enforcement and remaining follow-up
 
-- Mechanized: `scripts/check_go_schema.py` and
-  `scripts/verification_report_gate.py` require `lane-v-report/v3`,
-  `independent-lane-v`, and `lane-v:independent-verifier`, with one committed
-  descriptor and lawful trigger bound exactly to the reviewed range. The
-  non-author operator remains the verifier and sole GO/NITS/FAIL authority.
-  `TaskPublicationStore` atomically publishes the task-bound report through
-  `coordination/bin/send-event`; direct mailbox writes and hooks grant no
-  publication authority. Model or provider identity grants no authority.
+- Mechanized: `scripts/compact_pair_loop.py` and `scripts/check_go_schema.py`
+  enforce the Canonical Compact Pair Invariant: one committed verify-request
+  binds the reviewed range, author identity, assigned non-author Operator,
+  question, scope, and commands. The assigned Operator remains the sole
+  GO/NITS/FAIL authority. `coordination/bin/send-event` publishes every mailbox
+  kind through the same fixed mailbox writer. Model or provider identity grants
+  no authority.
   Exact historical reports remain readable only through the committed
   path/raw-byte digest manifest.
 - Add the design-time enumeration step to the implementer/reviewer

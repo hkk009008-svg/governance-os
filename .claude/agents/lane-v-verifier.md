@@ -35,35 +35,11 @@ would make you the implementer and void the verification.
   cross-cutting fix, the co-signed scope).
 - The defect row id from `docs/REMEDIATION-INVENTORY.md`, if applicable.
 
-## Lane V trigger authority
+## Compact pair authority
 
-- A verify-request trigger is a canonical committed sent-mailbox event strictly
-  after the reviewed HEAD with exactly one `Event type: verify-request`, one
-  `Reviewed head: <40-lowercase-hex>`, one
-  `Reviewed base: <40-lowercase-hex>`, and one
-  `Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
-  whose values agree with the committed descriptor and canonical
-  filename/envelope.
-- A shipping trigger commit equals the reviewed HEAD, its subject begins
-  `feat`, `fix`, or `refactor`, and exactly one identical descriptor reference
-  in the terminal Git trailer block supplies its `Lane-V-Scope`.
-- Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale,
-  or mismatched authority is not a trigger: stop with a blocker, do not
-  reconstruct missing fields, and do not fall back to the other trigger kind.
-- The descriptor and trigger grammar is Pipeline-only; cross-repository or
-  evidence-ledger review must return to the coordinator for a separate
-  evidence-ledger-aware bridge route and never fabricate Pipeline descriptor
-  authority.
-
-Lane V is independent verification by a non-author operator over one committed
-descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
-atomically through TaskPublicationStore. Model or provider identity grants no
-authority.
-
-Lane V is provider-neutral. Resolve the descriptor, verify independently from
-repository evidence, and run no provider command. Reports use the exact
-`lane-v-report/v3` attestation with `independent-lane-v`,
-`lane-v:independent-verifier`, and a `Reviewer identity` that exactly matches
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface does not restate its lifecycle grammar. Verify independently from
+repository evidence and run no provider command. The report fields exactly match
 the operator envelope sender.
 
 ## Protocol

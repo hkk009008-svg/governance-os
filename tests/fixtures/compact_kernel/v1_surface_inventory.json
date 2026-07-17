@@ -242,48 +242,31 @@
       ]
     },
     {
-      "id": "verification_authority_and_publication",
-      "authority_status": "live_v1_verification_gate_and_publication_boundary",
+      "id": "compact_pair_verification",
+      "authority_status": "live_v1_compact_pair_validation_boundary",
       "source_paths": [
-        "scripts/verification_report_gate.py",
+        "scripts/compact_pair_loop.py",
         "scripts/consume_reviewer_result.py"
       ],
       "reader_paths": [
-        "scripts/verification_report_gate.py",
+        "scripts/compact_pair_loop.py",
         "scripts/consume_reviewer_result.py",
-        "coordination/mailbox/sent",
-        "coordination/verification/scopes"
-      ],
-      "writer_paths": [
-        "scripts/verification_report_gate.py",
         "coordination/mailbox/sent"
       ],
-      "executor_boundary": "Only the guarded publication CLI may perform its scoped Git-index and mailbox publication transaction after live authority validation. consume_reviewer_result validates advisory result blocks and may execute only its bounded verifier commands; parsing or provider output alone grants no GO.",
+      "writer_paths": [
+        "coordination/bin/send-event"
+      ],
+      "executor_boundary": "The assigned non-author Operator alone issues GO/NITS/FAIL; send-event publishes it through the same fixed mailbox finalizer as ordinary events. compact_pair_loop validates exact request, range, identity, and scope bindings; parsing or advisory output alone grants no GO.",
       "default_helper_class": "runtime_core",
       "module_rules": [
         {
-          "path": "scripts/verification_report_gate.py"
+          "path": "scripts/compact_pair_loop.py"
         },
         {
           "path": "scripts/consume_reviewer_result.py"
         }
       ],
       "symbol_overrides": [
-        {
-          "symbol": "scripts.verification_report_gate.validate_live_report",
-          "helper_class": "orphan",
-          "disposition": "integrate_or_delete_before_cutover"
-        },
-        {
-          "symbol": "scripts.verification_report_gate.publish_candidate",
-          "helper_class": "orphan",
-          "disposition": "integrate_or_delete_before_cutover"
-        },
-        {
-          "symbol": "scripts.verification_report_gate.main",
-          "helper_class": "cli_entrypoint",
-          "disposition": "keep_documented_cli"
-        },
         {
           "symbol": "scripts.consume_reviewer_result.main",
           "helper_class": "cli_entrypoint",

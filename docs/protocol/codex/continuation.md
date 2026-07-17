@@ -47,10 +47,8 @@ No external advisory provider tool is installed or authorized by this repository
 Any future provider tool requires a separately approved design and implementation
 and grants no protocol or side-effect authority.
 
-Lane V is independent verification by a non-author operator over one committed
-descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
-atomically through TaskPublicationStore. Model or provider identity grants no
-authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 Mailbox decisions remain body-first: read relevant mailbox bodies before
 acting; live seat cursors are intentional per-seat state, and the coordinator
@@ -63,7 +61,7 @@ every other side effect are separately gated and require explicit authority.
 
 Scope: both.
 Trigger: before designing or implementing, classify whether the change touches an adversarial-surface: input rendered or composed into a parseable or executable context; authority or security-boundary enforcement; side-effect gating; or schema validation whose acceptance grants trust.
-Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, provider-neutral Lane V v3 supplies independent verification and TaskPublicationStore supplies atomic task-bound publication.
+Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, the compact pair supplies independent verification and the fixed mailbox writer supplies publication.
 Deduplication: R-VERIFY-TIER still prohibits redundant same-question passes. Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.
 Evidence: the committed design-time enumeration artifact and the independent verification report naming the reviewer and harness.
 Details: `docs/protocol/claude/independence-first.md` (ADR-019).
@@ -297,21 +295,8 @@ evidence, not row-correctness proof.
   coordinator closes; gate scripts never substitute for operator
   verification-report GO.
 
-Lane V trigger authority: a verify-request trigger is a canonical committed
-sent-mailbox event strictly after the reviewed HEAD with exactly one
-`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
-`Reviewed base: <40-lowercase-hex>`, and one
-`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
-whose values agree with the committed descriptor and canonical
-filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
-subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
-reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
-Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
-mismatched authority is not a trigger: stop with a blocker, do not reconstruct
-missing fields, and do not fall back to the other trigger kind. The descriptor
-and trigger grammar is Pipeline-only; cross-repository or evidence-ledger review
-must return to the coordinator for a separate evidence-ledger-aware bridge route
-and never fabricate Pipeline descriptor authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 ## Capacity Split Default:
 
@@ -377,16 +362,12 @@ After live-seat/coordinator orientation, record a Subagent utilization decision:
 
 ## Provider-neutral Lane V v3
 
-Lane V is independent verification by a non-author operator over one committed
-descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
-atomically through TaskPublicationStore. Model or provider identity grants no
-authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 - Mailbox decisions remain body-first: read relevant mailbox bodies before acting. Live seat cursors are intentional per-seat state; the coordinator has no cursor.
-- Resolve one trigger-bound committed `lane-v-scope/v1` descriptor. The descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, and task identity.
-- The exact committed verify-request and shipping-trigger forms above remain the only trigger authority. Invalid, stale, duplicated, mismatched, or reconstructed forms fail closed.
-- The verifying operator must be a non-author and alone issues GO/NITS/FAIL from repository evidence.
-- TaskPublicationStore is the sole atomic, task-bound publication state machine; direct mailbox writes and hooks are not authority.
+- The assigned Operator must be a non-author and alone issues GO/NITS/FAIL from repository evidence.
+- The fixed mailbox writer publishes ordinary events and Operator reports through the same finalizer.
 - The coordinator may route and reconcile but not author behavior-changing production fixes.
 - Push, merge, paid spend, and every other side effect are separately gated and require explicit authority.
 - No third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER.

@@ -205,11 +205,9 @@ def test_capacity_board_renders_structural_lane_v_trigger_authority_for_active_p
             "(director-implementation, active)",
             "  deps: -",
             "  next: implement the named scope inside allowed paths",
-            "  stop: send one canonical committed verify-request strictly after "
-            "reviewed HEAD with exactly one Event type: verify-request, one full "
-            "lowercase Reviewed head, one full lowercase Reviewed base, and one "
-            "canonical Lane-V-Scope descriptor reference; include tests and "
-            "exclusions without substituting them for authority",
+            "  stop: send one committed verify-request naming full reviewed "
+            "base/head, author seat/model, assigned Operator, question, allowed "
+            "paths, and commands",
         )
     )
     operator_block = "\n".join(
@@ -220,20 +218,35 @@ def test_capacity_board_renders_structural_lane_v_trigger_authority_for_active_p
             "  packet: operator-capacity-split-chunk-a "
             "(operator-verification, active)",
             "  deps: -",
-            "  next: verify only a lawful trigger: that canonical verify-request "
-            "or a shipping commit equal to reviewed HEAD with a feat/fix/refactor "
-            "subject and one identical Lane-V-Scope reference in the terminal Git "
-            "trailer block",
-            "  stop: send verification-report GO/NITS/FAIL; never reconstruct "
-            "missing trigger fields or fall back; do not author production fixes "
-            "by default",
+            "  next: verify only the assigned committed verify-request as a "
+            "non-author; bind the exact request, range, and allowed paths",
+            "  stop: send one directly publishable verification-report "
+            "GO/NITS/FAIL through the fixed mailbox writer; no descriptor, "
+            "shipping trigger, task publication state, or recovery path",
         )
     )
 
     assert director_block in rendered
     assert operator_block in rendered
     assert "commit/range, tests, and exclusions" not in rendered
-    assert "named verify-request or shipping commit/range" not in rendered
+    assert "Lane-V-Scope" not in rendered
+    assert "shipping commit" not in rendered
+
+
+def test_capacity_board_keeps_authorized_pair_chain_internal_until_real_boundary(
+    tmp_path: Path,
+) -> None:
+    _write_capacity_split_cycle(tmp_path)
+    report = protocol_capacity.collect_capacity_report(tmp_path, 2)
+    rendered = protocol_capacity.render_capacity_board(report)
+
+    assert (
+        "internally continue an already-authorized Director→Operator chain" in rendered
+    )
+    assert (
+        "return to the user only at completion, a genuine blocker, scope expansion, "
+        "or a separately gated side effect" in rendered
+    )
 
 
 def test_capacity_board_renders_blocked_operator_trigger_stop(tmp_path: Path) -> None:
@@ -250,9 +263,8 @@ def test_capacity_board_renders_blocked_operator_trigger_stop(tmp_path: Path) ->
             "(operator-verification, blocked)",
             "  deps: -",
             "  next: wait on named dependency or report the concrete blocker",
-            "  stop: wait for a lawful authority-bearing trigger/dependency or "
-            "report FAIL/NITS with evidence; never reconstruct missing trigger "
-            "fields or fall back",
+            "  stop: wait for the assigned committed verify-request/dependency "
+            "or report FAIL/NITS with evidence; never reconstruct missing fields",
         )
     )
 

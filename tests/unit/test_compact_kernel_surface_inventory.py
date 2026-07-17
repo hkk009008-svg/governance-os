@@ -28,7 +28,7 @@ COMPONENT_IDS = {
     "capacity_reducer_and_packet_state_telemetry",
     "effectiveness_telemetry",
     "capability_receipt_recording",
-    "verification_authority_and_publication",
+    "compact_pair_verification",
     "live_v1_route_lineage_reader",
     "signed_bus_event_and_cursor_runtime",
     "live_v1_status_and_runtime_readers",
@@ -49,8 +49,6 @@ ORPHAN_DISPOSITION = "integrate_or_delete_before_cutover"
 REQUIRED_ORPHANS = {
     "scripts.packet_state.is_valid_work_transition",
     "scripts.route_lineage.check_cas",
-    "scripts.verification_report_gate.validate_live_report",
-    "scripts.verification_report_gate.publish_candidate",
 }
 READ_ONLY_COMPONENT_IDS = {
     "compact_shadow_reducer_and_v1_adapter",
@@ -66,22 +64,14 @@ REMOVED_PROVIDER_MODULES = {
     "scripts/opus_review_bridge.py",
     "scripts/opus_review_receipts.py",
 }
-TEMPORARY_UNOWNED_IMPORT_PAIRS = {
-    (
-        "scripts/verification_report_gate.py",
-        "scripts/opus_review_bridge.py",
-    ),
-    (
-        "scripts/verification_report_gate.py",
-        "scripts/opus_review_receipts.py",
-    ),
-}
+TEMPORARY_UNOWNED_IMPORT_PAIRS: set[tuple[str, str]] = set()
 REQUIRED_PRODUCTION_MODULES = {
     "scripts/capability_reducer.py",
     "scripts/capability_v1_adapter.py",
     "scripts/compact_state_mapping.py",
     "scripts/capability_baseline_runtime.py",
     "scripts/kernel_activation.py",
+    "scripts/compact_pair_loop.py",
 }
 REQUIRED_SURFACE_OWNERS: dict[str, str] = {
     "governance.toml": "target_binding",
@@ -99,11 +89,11 @@ REQUIRED_SURFACE_OWNERS: dict[str, str] = {
     ),
     "scripts/protocol_effectiveness_report.py": "effectiveness_telemetry",
     "scripts/route_capability.py": "capability_receipt_recording",
-    "scripts/verification_report_gate.py": (
-        "verification_authority_and_publication"
+    "scripts/compact_pair_loop.py": (
+        "compact_pair_verification"
     ),
     "scripts/consume_reviewer_result.py": (
-        "verification_authority_and_publication"
+        "compact_pair_verification"
     ),
     "scripts/compact_state_mapping.py": "legacy_lifecycle_mapping_contract",
     "scripts/capability_baseline_runtime.py": (
@@ -233,23 +223,8 @@ REQUIRED_SYMBOL_OVERRIDES: dict[str, tuple[str, str, str]] = {
         "cli_entrypoint",
         "keep_documented_cli",
     ),
-    "scripts.verification_report_gate.validate_live_report": (
-        "verification_authority_and_publication",
-        "orphan",
-        "integrate_or_delete_before_cutover",
-    ),
-    "scripts.verification_report_gate.publish_candidate": (
-        "verification_authority_and_publication",
-        "orphan",
-        "integrate_or_delete_before_cutover",
-    ),
-    "scripts.verification_report_gate.main": (
-        "verification_authority_and_publication",
-        "cli_entrypoint",
-        "keep_documented_cli",
-    ),
     "scripts.consume_reviewer_result.main": (
-        "verification_authority_and_publication",
+        "compact_pair_verification",
         "cli_entrypoint",
         "keep_documented_cli",
     ),

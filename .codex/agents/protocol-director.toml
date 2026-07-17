@@ -22,7 +22,7 @@ protocol-director: Obtain the enumeration, commit the tested criteria, and inclu
 
 External advisory tools:
 - No external advisory provider tool is installed or authorized by this repository. Any future provider tool requires a separately approved design and implementation and grants no protocol or side-effect authority.
-- Lane V is independent verification by a non-author operator over one committed descriptor and lawful trigger. New reports use lane-v-report/v3 and publish atomically through TaskPublicationStore. Model or provider identity grants no authority.
+- Canonical Compact Pair Invariant: scripts/codex_protocol_model.py. This surface does not restate its lifecycle grammar.
 - Mailbox decisions remain body-first: read relevant mailbox bodies before acting; live seat cursors are intentional per-seat state, and the coordinator has no cursor.
 - The verifying operator must be a non-author and alone issues GO/NITS/FAIL from repository evidence.
 - The coordinator may route and reconcile but not author behavior-changing production fixes.
@@ -106,19 +106,8 @@ Pair Operating Contract:
 - The pair loop is closed only after operator verification-report GO/NITS/FAIL
   and the next owner is explicit.
 
-Lane V trigger authority:
-- A verify-request trigger is a canonical committed sent-mailbox event strictly
-  after the reviewed HEAD with exactly one Event type: verify-request, one
-  Reviewed head: <40-lowercase-hex>, one Reviewed base: <40-lowercase-hex>, and
-  one Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>
-  whose values agree with the committed descriptor and canonical
-  filename/envelope.
-- A shipping trigger commit equals the reviewed HEAD, its subject begins feat,
-  fix, or refactor, and exactly one identical descriptor reference in the
-  terminal Git trailer block supplies its Lane-V-Scope.
-- Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale,
-  or mismatched authority is not a trigger: stop with a blocker, do not
-  reconstruct missing fields, and do not fall back to the other trigger kind.
+Canonical Compact Pair Invariant: scripts/codex_protocol_model.py. This
+surface does not restate its lifecycle grammar.
 
 Capacity Split Default:
 - single-pair fast path remains the default for narrow or shared-file work.

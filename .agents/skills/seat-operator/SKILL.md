@@ -17,10 +17,8 @@ No external advisory provider tool is installed or authorized by this repository
 Any future provider tool requires a separately approved design and implementation
 and grants no protocol or side-effect authority.
 
-Lane V is independent verification by a non-author operator over one committed
-descriptor and lawful trigger. New reports use lane-v-report/v3 and publish
-atomically through TaskPublicationStore. Model or provider identity grants no
-authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 Mailbox decisions remain body-first: read relevant mailbox bodies before
 acting; live seat cursors are intentional per-seat state, and the coordinator
@@ -74,14 +72,13 @@ It is strictly read-only — it never stages or advances a cursor (that's `consu
 ## Operator triggers — when a verification pass is lawful
 
 The operator's hardest discipline is *not* verifying everything. Operator waits
-for a fresh verify-request or shipping commit only when it satisfies the exact
-structural trigger contract below; no duplicate Lane V for docs-only,
+for one assigned committed verify-request satisfying the canonical compact-pair
+contract; no duplicate Lane V for docs-only,
 status-only, or handoff-only commits.
 
 | Trigger | Operator action |
 |---|---|
-| Canonical committed verify-request strictly after reviewed HEAD with every exact authority field | Lane V on the descriptor-bound reviewed artifact; send `verification-report` GO/NITS/FAIL |
-| Shipping commit equal to reviewed HEAD with a shipping subject and exactly one identical terminal `Lane-V-Scope` trailer | Lane V only after refreshing mailbox and `git log`; cite the structural trigger |
+| Assigned committed verify-request with every exact compact-pair field | Lane V on the request-bound reviewed artifact; send `verification-report` GO/NITS/FAIL |
 | Cross-cutting shipping diff | Lane V plus lock/co-sign/scope checks before any GO |
 | Docs/status/handoff-only commit | No Lane V; perform doc-sync only if explicitly routed |
 | Missing or malformed trigger authority | Stop with a blocker; do not reconstruct or switch trigger kinds |
@@ -123,21 +120,8 @@ git state.
   coordinator closes; gate scripts never substitute for operator
   verification-report GO.
 
-Lane V trigger authority: a verify-request trigger is a canonical committed
-sent-mailbox event strictly after the reviewed HEAD with exactly one
-`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
-`Reviewed base: <40-lowercase-hex>`, and one
-`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
-whose values agree with the committed descriptor and canonical
-filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
-subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
-reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
-Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
-mismatched authority is not a trigger: stop with a blocker, do not reconstruct
-missing fields, and do not fall back to the other trigger kind. The descriptor
-and trigger grammar is Pipeline-only; cross-repository or evidence-ledger review
-must return to the coordinator for a separate evidence-ledger-aware bridge route
-and never fabricate Pipeline descriptor authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 ## Capacity Split Default:
 
@@ -157,11 +141,9 @@ and never fabricate Pipeline descriptor authority.
 - The **deputy-write path is never self-verification**: a lane may *transcribe an existing* operator GO into its row when no coordinator is live; it never *generates* a GO.
 - **Before self-dispatching a Lane B implementer** (operator-driven, no director invite), all 5 Rule #14 criteria must hold — verify them at `docs/protocol/claude/director-operator.md §Rule #14`; otherwise yield to the director.
 
-## Provider-neutral Lane V verification
+## Compact pair verification
 
-- Lane V is independent verification by a non-author operator over one committed descriptor and lawful trigger. New reports use lane-v-report/v3 and publish atomically through TaskPublicationStore. Model or provider identity grants no authority.
-- Resolve one trigger-bound committed `lane-v-scope/v1` descriptor before verification.
-- The descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, and task identity.
+- Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`.
 - Verify independently from repository evidence and run no provider command.
 - The operator alone retains GO/NITS/FAIL, mailbox, lock, Git, publication, and every other protocol or side-effect authority.
 - No third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER.

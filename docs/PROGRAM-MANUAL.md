@@ -66,18 +66,8 @@ Successful run output:
 - For coordination: a route, closeout, or no-op artifact that changes real
   ownership or preserves evidence.
 
-Lane V trigger authority: a verify-request trigger is a canonical committed
-sent-mailbox event strictly after the reviewed HEAD with exactly one
-`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
-`Reviewed base: <40-lowercase-hex>`, and one
-`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
-whose values agree with the committed descriptor and canonical
-filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
-subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
-reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
-Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
-mismatched authority is not a trigger: stop with a blocker, do not reconstruct
-missing fields, and do not fall back to the other trigger kind.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+manual intentionally does not restate its lifecycle grammar.
 
 Known failure modes:
 - Stale route prose is trusted over newer mailbox/git evidence. Fix by

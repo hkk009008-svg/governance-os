@@ -12,6 +12,16 @@ from collections.abc import Mapping
 
 MODEL_SOURCE = "scripts/codex_protocol_model.py"
 CENTRAL_INVARIANT = "durable shared state beats chat memory"
+COMPACT_PAIR_REFERENCE = "Canonical Compact Pair Invariant: scripts/codex_protocol_model.py"
+COMPACT_PAIR_INVARIANT = (
+    "Compact Pair Invariant: one committed verify-request names the full reviewed "
+    "base/head, author seat/model, assigned Operator, question, allowed paths, and "
+    "commands; only that assigned non-author Operator issues one GO/NITS/FAIL report "
+    "bound to the exact request, range, and allowed paths through the fixed mailbox "
+    "writer. Missing, duplicated, abbreviated, uppercase, uncommitted, or mismatched "
+    "fields are not authority: stop with a blocker. There is no descriptor, "
+    "shipping-trigger alternative, task publication state, or recovery path."
+)
 
 ACTIVE_KERNEL_INVARIANTS = (
     (
@@ -147,7 +157,7 @@ R_INDEPENDENCE_RULES = (
     "A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified as such.",
     "Fold the enumeration into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact.",
     "Before completion, an independent reviewer verifies the actual diff against the committed cases.",
-    "For Codex-authored adversarial work, provider-neutral Lane V v3 supplies independent verification and TaskPublicationStore supplies atomic task-bound publication.",
+    "For Codex-authored adversarial work, the compact pair supplies independent verification and the fixed mailbox writer supplies publication.",
     "R-VERIFY-TIER still prohibits redundant same-question passes; it does not remove the earlier new-perspective review.",
     "Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.",
     "Canonical full rule: docs/protocol/claude/independence-first.md.",
@@ -370,15 +380,12 @@ PLANNING_RELAY_RULES = (
 )
 
 PAIR_OPERATING_RULES = (
-    "director -> operator is the fast path inside each pair: director scopes and sends the smallest sufficient artifact; operator starts Lane V only from lawful trigger authority.",
+    "director -> operator is the fast path inside each pair: director scopes and sends the smallest sufficient artifact; operator starts verification only from its assigned committed verify-request.",
     "Every baton handoff is a mailbox artifact, not chat: brief, verify-request, verification-report, or handoff with commit/range, paths, tests, exclusions, and exact next trigger.",
     "Every live-seat/coordinator turn ends with an `Exact Next Trigger` section naming the next lawful prompt, seat event, standby condition, or blocker.",
-    "A verify-request trigger is a canonical committed sent-mailbox event strictly after the reviewed HEAD with exactly one `Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one `Reviewed base: <40-lowercase-hex>`, and one `Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>` whose values agree with the committed descriptor and canonical filename/envelope.",
-    "A shipping trigger commit equals the reviewed HEAD, its subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor reference in the terminal Git trailer block supplies its `Lane-V-Scope`.",
-    "Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or mismatched authority is not a trigger; stop with a blocker, do not reconstruct missing fields, and do not fall back to the other trigger kind.",
-    "The descriptor and trigger grammar is Pipeline-only; cross-repository or evidence-ledger review must return to the coordinator for a separate evidence-ledger-aware bridge route and never fabricate Pipeline descriptor authority.",
-    "Director sends one canonical committed verify-request per implementation or brief once scope is stable; include paths, tests, evidence commands, known exclusions, and expected verdict without substituting them for the authority fields.",
-    "Operator waits for one of those lawful triggers; no duplicate Lane V for docs-only, status-only, or handoff-only commits, and no speculative verification when phase is ambiguous.",
+    COMPACT_PAIR_INVARIANT,
+    "Director sends one committed verify-request per implementation once scope is stable.",
+    "Operator waits for one assigned committed verify-request; no duplicate verification for docs-only, status-only, or handoff-only commits.",
     "No receipt/status churn: send mail only when it changes ownership, preserves evidence, requests verification, returns GO/NITS/FAIL, or blocks on user-gated side effects.",
     "When both seats are active, do not edit the same files or rerun the same task; first commit to land wins and the other seat narrows or stands down after git/mailbox refresh.",
     "At boundaries, stop with exact next trigger and durable handoff only when context is transferring; avoid broad recaps when mailbox/gate state already proves standby.",
@@ -1138,15 +1145,10 @@ def render_protocol_assembly_map() -> str:
 
 
 LANE_V_V3_RULES = (
-    "Lane V is independent verification by a non-author operator over one committed descriptor and lawful trigger. New reports use lane-v-report/v3 and publish atomically through TaskPublicationStore. Model or provider identity grants no authority.",
+    COMPACT_PAIR_INVARIANT,
     "mailbox decisions remain body-first: read relevant mailbox bodies before acting; live seat cursors are intentional per-seat state, and the coordinator has no cursor",
-    "resolve one trigger-bound committed lane-v-scope/v1 descriptor; the descriptor, not caller arguments, defines requirements, allowed path roots, exact verification commands, reviewed base, and task identity",
-    "a verify-request trigger is a canonical committed sent-mailbox event strictly after the reviewed HEAD with exactly one Event type: verify-request, one Reviewed head: <40-lowercase-hex>, one Reviewed base: <40-lowercase-hex>, and one Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex> whose values agree with the committed descriptor and canonical filename/envelope",
-    "a shipping trigger commit equals the reviewed HEAD, its subject begins feat, fix, or refactor, and exactly one identical descriptor reference in the terminal Git trailer block supplies its Lane-V-Scope",
-    "Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or mismatched authority is not a trigger; stop with a blocker, do not reconstruct missing fields, and do not fall back to the other trigger kind",
-    "the descriptor and trigger grammar is Pipeline-only; cross-repository or evidence-ledger review must return to the coordinator for a separate evidence-ledger-aware bridge route and never fabricate Pipeline descriptor authority",
-    "the verifying operator must be a non-author and alone issues GO/NITS/FAIL from repository evidence; model or provider identity cannot satisfy independence or grant authority",
-    "TaskPublicationStore is the sole atomic, task-bound publication state machine for lane-v-report/v3; direct mailbox writes and hooks are not publication authority",
+    "the verifying operator must be the assigned non-author and alone issues GO/NITS/FAIL from repository evidence; model or provider identity grants no authority",
+    "the fixed mailbox writer publishes ordinary events and Operator verification reports through the same finalizer",
     "the coordinator may route and reconcile but not author behavior-changing production fixes",
     "push, merge, paid spend, and every other side effect are separately gated and require explicit authority",
     "no third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER",
@@ -1179,7 +1181,7 @@ def render_surface_summary() -> str:
         "Pair Operating Contract: director -> operator is the fast path; mailbox artifact, not chat",
         "Capacity Split Default: divisible or preplanned larger work defaults to dual-pair routing",
         "Seat Subagent Development: seats retain authority; subagents own bounded work",
-        "Provider-neutral Lane V v3: non-author operator, committed descriptor and trigger, atomic task publication",
+        "Compact Pair Invariant: assigned non-author Operator, committed verify-request, fixed mailbox writer",
         "Codex Risk-Tier Router: conversational and read-only work avoid implementation ceremony",
         "R-INDEPENDENCE: adversarial-surface work requires design-time enumeration and independent actual-diff verification",
         "Side-Effect Executor Token: generic user approval is unit consent, not executor election",

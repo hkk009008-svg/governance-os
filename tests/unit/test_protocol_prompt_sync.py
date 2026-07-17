@@ -46,13 +46,10 @@ FORBIDDEN_OPERATIVE_FRAGMENTS = (
     "one provider process attempt",
     "degraded Codex-only fallback",
 )
-LANE_V_V3_STATEMENT = (
-    "Lane V is independent verification by a non-author operator over one "
-    "committed descriptor and lawful trigger. New reports use lane-v-report/v3 "
-    "and publish atomically through TaskPublicationStore. Model or provider "
-    "identity grants no authority."
+COMPACT_PAIR_REFERENCE = (
+    "Canonical Compact Pair Invariant: scripts/codex_protocol_model.py"
 )
-LANE_V_V3_SURFACES = (
+COMPACT_PAIR_SURFACES = (
     "AGENTS.md",
     "docs/protocol/codex/continuation.md",
     ".agents/skills/four-seat-protocol/SKILL.md",
@@ -63,17 +60,12 @@ LANE_V_V3_SURFACES = (
     ".codex/agents/protocol-director.toml",
     ".codex/agents/protocol-operator.toml",
     ".codex/agents/protocol-coordinator.toml",
-    ".claude/agents/readiness-bridge.md",
     ".agents/skills/seat-operator/verification-report-format.md",
     ".claude/skills/seat-operator/verification-report-format.md",
     ".codex/agents/lane-v-verifier.toml",
     ".claude/agents/lane-v-verifier.md",
-    "docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md",
-    "docs/protocol/threeway/ARCHITECTURE-DIAGRAM.md",
-    "docs/protocol/threeway/ONBOARDING.md",
-    "docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md",
 )
-LANE_V_V3_CORE_SURFACES = LANE_V_V3_SURFACES[:11]
+COMPACT_PAIR_CORE_SURFACES = COMPACT_PAIR_SURFACES[:10]
 GENERIC_AUTHORITY_STATEMENTS = (
     (
         "Mailbox decisions remain body-first: read relevant mailbox bodies before "
@@ -679,44 +671,22 @@ def _trigger_contract_text(path: str) -> str:
 
 
 VERIFY_REQUEST_TRIGGER_FRAGMENTS = (
-    "canonical committed sent-mailbox event",
-    "strictly after the reviewed HEAD",
-    "Event type: verify-request",
-    "Reviewed head: <40-lowercase-hex>",
-    "Reviewed base: <40-lowercase-hex>",
-    (
-        "Lane-V-Scope: coordination/verification/scopes/"
-        "<uuid>.json@sha256:<64-lowercase-hex>"
-    ),
-)
-SHIPPING_TRIGGER_FRAGMENTS = (
-    "shipping trigger commit equals the reviewed HEAD",
-    "subject begins feat, fix, or refactor",
-    "exactly one identical descriptor reference in the terminal Git trailer block",
+    "one committed verify-request",
+    "full reviewed base/head",
+    "author seat/model",
+    "assigned Operator",
+    "question",
+    "allowed paths",
+    "commands",
 )
 INVALID_TRIGGER_FRAGMENTS = (
-    (
-        "Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, "
-        "stale, or mismatched authority is not a trigger"
-    ),
+    "Missing, duplicated, abbreviated, uppercase, uncommitted, or mismatched",
+    "not authority",
     "stop with a blocker",
-    "do not reconstruct missing fields",
-    "do not fall back to the other trigger kind",
-)
-PIPELINE_ONLY_EXECUTION_BOUNDARY_FRAGMENTS = (
-    "descriptor and trigger grammar is Pipeline-only",
-    "return to the coordinator",
-    "separate evidence-ledger-aware bridge route",
-    "never fabricate Pipeline descriptor authority",
 )
 TASK8_TRIGGER_FRAGMENT_CATEGORIES = (
     ("lawful verify-request production", VERIFY_REQUEST_TRIGGER_FRAGMENTS),
-    ("lawful shipping production", SHIPPING_TRIGGER_FRAGMENTS),
     ("invalid-trigger fail-closed", INVALID_TRIGGER_FRAGMENTS),
-    (
-        "Pipeline-only execution boundary",
-        PIPELINE_ONLY_EXECUTION_BOUNDARY_FRAGMENTS,
-    ),
 )
 
 
@@ -927,8 +897,8 @@ def test_r_independence_is_model_backed_and_surface_synced():
         "same-model independent reviewer is weaker",
         "committed plan or equivalent durable artifact",
         "independent reviewer verifies the actual diff",
-        "provider-neutral Lane V v3",
-        "TaskPublicationStore",
+        "compact pair",
+        "fixed mailbox writer",
         "R-VERIFY-TIER",
         "docs/protocol/claude/independence-first.md",
     )
@@ -1325,27 +1295,34 @@ def test_reviewer_result_handling_contract_is_model_backed_and_synced():
             assert phrase in text
 
 
-def test_provider_neutral_lane_v_v3_is_model_backed_and_surface_synced():
+def test_compact_pair_is_model_backed_and_surface_synced():
     rendered = model.render_lane_v_v3()
     required = (
-        LANE_V_V3_STATEMENT,
+        "Compact Pair Invariant",
+        "one committed verify-request",
+        "full reviewed base/head",
+        "author seat/model",
+        "assigned Operator",
+        "question",
+        "allowed paths",
+        "commands",
         "mailbox bodies before acting",
         "live seat cursors are intentional per-seat state",
         "coordinator has no cursor",
-        "lane-v-scope/v1",
         "non-author",
         "GO/NITS/FAIL",
-        "TaskPublicationStore",
+        "fixed mailbox writer",
+        "no descriptor, shipping-trigger alternative, task publication state, or recovery path",
         "coordinator may route and reconcile but not author behavior-changing production fixes",
         "push, merge, paid spend, and every other side effect are separately gated",
     )
     for phrase in required:
         assert phrase in rendered
 
-    for path in LANE_V_V3_SURFACES:
-        assert LANE_V_V3_STATEMENT in _compact(_read(path)), path
+    for path in COMPACT_PAIR_SURFACES:
+        assert COMPACT_PAIR_REFERENCE in _compact(_read(path).replace("`", "")), path
 
-    for path in LANE_V_V3_CORE_SURFACES:
+    for path in COMPACT_PAIR_CORE_SURFACES:
         text = _compact(_read(path)).lower()
         for statement in GENERIC_AUTHORITY_STATEMENTS:
             assert statement.lower() in text, (path, statement)
@@ -1383,7 +1360,6 @@ def test_lane_v_trigger_producer_contract_is_surface_synced() -> None:
     producer_paths = (
         "AGENTS.md",
         "RUNBOOK-DAILY.md",
-        "coordination/README.md",
         "docs/PROGRAM-MANUAL.md",
         "scripts/codex_protocol_model.py",
         "docs/protocol/agents/director-operator.md",
@@ -1398,12 +1374,7 @@ def test_lane_v_trigger_producer_contract_is_surface_synced() -> None:
 
     for path in producer_paths:
         text = _trigger_contract_text(path)
-        for fragment in (
-            *VERIFY_REQUEST_TRIGGER_FRAGMENTS,
-            *SHIPPING_TRIGGER_FRAGMENTS,
-            *INVALID_TRIGGER_FRAGMENTS,
-        ):
-            assert fragment in text, (path, fragment)
+        assert COMPACT_PAIR_REFERENCE in text, path
 
 
 def test_lane_v_trigger_consumer_contract_is_surface_synced() -> None:
@@ -1428,12 +1399,7 @@ def test_lane_v_trigger_consumer_contract_is_surface_synced() -> None:
 
     for path in consumer_paths:
         text = _trigger_contract_text(path)
-        for fragment in (
-            *VERIFY_REQUEST_TRIGGER_FRAGMENTS,
-            *SHIPPING_TRIGGER_FRAGMENTS,
-            *INVALID_TRIGGER_FRAGMENTS,
-        ):
-            assert fragment in text, (path, fragment)
+        assert COMPACT_PAIR_REFERENCE in text, path
 
 
 def test_lane_v_trigger_renderers_include_every_task8_contract_category() -> None:
@@ -1459,6 +1425,8 @@ def test_lane_v_active_surfaces_remove_commit_only_and_prose_only_substitutes() 
         "operator verifies only that artifact or landed commit",
         "include commit/range, brief path",
         "Operator waits for a fresh verify-request or shipping commit",
+        "Lane-V-Scope",
+        "TaskPublicationStore",
     )
     for phrase in stale_model_phrases:
         assert phrase not in rendered_pair
@@ -1467,7 +1435,6 @@ def test_lane_v_active_surfaces_remove_commit_only_and_prose_only_substitutes() 
     active_paths = (
         "AGENTS.md",
         "RUNBOOK-DAILY.md",
-        "coordination/README.md",
         "docs/PROGRAM-MANUAL.md",
         "docs/protocol/agents/director-operator.md",
         "docs/protocol/claude/director-operator.md",
@@ -1487,6 +1454,8 @@ def test_lane_v_active_surfaces_remove_commit_only_and_prose_only_substitutes() 
         "send one verify-request to operator with commit/range, tests, and exclusions",
         "verify only the named verify-request or shipping commit/range",
         "Fresh verify-request naming a commit/range, scope",
+        "Lane-V-Scope",
+        "TaskPublicationStore",
     )
     for path in active_paths:
         text = _trigger_contract_text(path)
@@ -1509,13 +1478,8 @@ def test_implementer_and_reviewer_templates_never_invent_trigger_authority() -> 
         "docs/templates/agents/reviewer.md",
         "docs/templates/claude/reviewer.md",
     )
-    conditional_rule = (
-        "emit a shipping Lane-V-Scope trailer only when the parent explicitly "
-        "authorizes that commit and supplies the exact descriptor reference"
-    )
     for path in implementer_paths:
         text = _trigger_contract_text(path)
-        assert conditional_rule in text, path
         assert "never invent trigger authority" in text, path
 
     for path in reviewer_paths:
@@ -1524,40 +1488,25 @@ def test_implementer_and_reviewer_templates_never_invent_trigger_authority() -> 
         assert "never invent trigger authority" in text, path
 
 
-def test_lane_v_trigger_guidance_pins_v3_report_and_pipeline_boundary() -> None:
+def test_lane_v_trigger_guidance_pins_compact_report_and_pipeline_boundary() -> None:
     report_paths = (
-        ".codex/agents/lane-v-verifier.toml",
         ".agents/skills/seat-operator/verification-report-format.md",
         ".claude/skills/seat-operator/verification-report-format.md",
     )
     for path in report_paths:
         text = _read(path)
-        assert "Verification schema: lane-v-report/v3" in text, path
-        assert "Verification mode: independent-lane-v" in text, path
-        assert "Verification harness: lane-v:independent-verifier" in text, path
-        assert "Scope authority:" in text, path
-        assert "Trigger identity:" in text, path
-        assert "Reviewer identity:" in text, path
+        assert "Verification request:" in text, path
+        assert "Reviewer seat:" in text, path
+        assert "Reviewer model:" in text, path
+        assert "Verification harness:" in text, path
+        assert "Verification context:" in text, path
+        assert "## Allowed Paths" in text, path
         assert "--receipt-id" not in text, path
         assert "provider process" not in text, path
 
-    pipeline_boundary_paths = (
-        "scripts/codex_protocol_model.py",
-        "docs/protocol/agents/director-operator.md",
-        "docs/protocol/claude/director-operator.md",
-        "docs/protocol/claude/continuation.md",
-        "docs/protocol/codex/continuation.md",
-        ".agents/skills/four-seat-protocol/SKILL.md",
-        ".agents/skills/seat-operator/SKILL.md",
-        ".claude/skills/seat-operator/SKILL.md",
-        ".codex/agents/protocol-operator.toml",
-        ".codex/agents/lane-v-verifier.toml",
-        ".claude/agents/lane-v-verifier.md",
-    )
-    for path in pipeline_boundary_paths:
-        text = _trigger_contract_text(path)
-        for fragment in PIPELINE_ONLY_EXECUTION_BOUNDARY_FRAGMENTS:
-            assert fragment in text, (path, fragment)
+    verifier = _trigger_contract_text(".codex/agents/lane-v-verifier.toml")
+    assert COMPACT_PAIR_REFERENCE in verifier
+    assert "--receipt-id" not in verifier
 
     agent_report = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
     claude_report = ROOT / ".claude/skills/seat-operator/verification-report-format.md"
@@ -1689,30 +1638,28 @@ def test_task8_scope_covers_the_exact_trigger_authority_generation() -> None:
     assert f"with amended digest `{current_digest}`" in _compact(final)
 
 
-def test_verification_report_format_mirrors_pin_the_v3_attestation_order():
+def test_verification_report_format_mirrors_pin_the_compact_binding_order():
     agent_path = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
     claude_path = ROOT / ".claude/skills/seat-operator/verification-report-format.md"
     assert agent_path.read_bytes() == claude_path.read_bytes()
 
     text = agent_path.read_text(encoding="utf-8")
-    start = text.index("## Verification Attestation\n", text.index("## Body skeleton"))
+    start = text.index("VERDICT:", text.index("## Body skeleton"))
     end = text.index("\n\n## Findings", start)
     field_lines = [
         line.split(":", 1)[0] + ":"
         for line in text[start:end].splitlines()
-        if line and not line.startswith("## ")
+        if line and ":" in line and not line.startswith("## ")
     ]
     assert field_lines == [
-        "Verification schema:",
-        "Verification mode:",
-        "Verification harness:",
-        "Verification task ID:",
-        "Scope authority:",
-        "Trigger identity:",
+        "VERDICT:",
+        "Verification request:",
         "Reviewed head:",
         "Reviewed base:",
-        "Review profile:",
-        "Reviewer identity:",
+        "Reviewer seat:",
+        "Reviewer model:",
+        "Verification harness:",
+        "Verification context:",
     ]
 
 
@@ -1730,8 +1677,8 @@ def test_provider_tool_decommission_is_current_architecture_and_append_only_deci
     assert ".codex/runtime" in appended
     assert "separate approval" in appended
 
-    assert LANE_V_V3_STATEMENT in _compact(architecture)
-    assert "TaskPublicationStore" in architecture
+    assert COMPACT_PAIR_REFERENCE in _compact(architecture.replace("`", ""))
+    assert "TaskPublicationStore" not in architecture
     assert "R-INDEPENDENCE" in architecture
     assert "lane-v-report/v2" not in architecture
 

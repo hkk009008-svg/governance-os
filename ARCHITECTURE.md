@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-17 @ c96c4a1*
+*Last verified: 2026-07-17 @ a546f05*
 
 ## 1. Purpose
 
@@ -63,12 +63,12 @@ Key directories:
 | `reduce_protocol_state` | `scripts/capability_reducer.py:1230` | Produces one pure, deterministic, non-authoritative compact shadow report. |
 | `adapt_v1_history` | `scripts/capability_v1_adapter.py:2826` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
 | `main` | `scripts/protocol_capacity_board.py:17` | Renders and validates active capacity packets for a wave. |
-| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:519` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_r_independence` | `scripts/codex_protocol_model.py:744` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:816` | Renders guard guidance into readiness output. |
-| `render_lane_v_v3` | `scripts/codex_protocol_model.py:1156` | Renders the provider-neutral Lane V v3 authority and publication contract. |
-| `TaskPublicationStore` | `scripts/verification_report_gate.py:1756` | Owns the atomic task-bound Lane V v3 publication state machine. |
-| `publish_candidate` | `scripts/verification_report_gate.py:3094` | Publishes one validated Lane V v3 report as a durable file-plus-stage-0-index transaction with explicit recovery. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:526` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_r_independence` | `scripts/codex_protocol_model.py:751` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:823` | Renders guard guidance into readiness output. |
+| `render_lane_v_v3` | `scripts/codex_protocol_model.py` | Renders the canonical Compact Pair Invariant. |
+| `parse_verify_request` | `scripts/compact_pair_loop.py` | Validates one committed Director verify-request and its exact reviewed range. |
+| `validate_report` | `scripts/compact_pair_loop.py` | Binds one assigned non-author Operator verdict to that exact request, range, and scope. |
 
 ## 4. Runtime Invariants
 
@@ -76,8 +76,8 @@ Key directories:
 - evidence-ledger is the bound product target for current ledger-routed work.
 - An absent compact-kernel selector ref is valid only with the exact epoch
   `0`/writer `v1` governance mirror. The declared live-v1 reader CLIs refuse
-  any other selection; non-verification mailbox writers and direct Lane V
-  publication/resume reread that selection under the shared writer fence. The
+  any other selection; every mailbox writer rereads that selection under the
+  shared writer fence. The
   read-only historical adapter imports the pure reducer; the reducer does not
   import the adapter. Neither shadow surface activates or writes runtime state.
 - The shadow parity gate requires exact accepted-context key equality across
@@ -92,21 +92,21 @@ Key directories:
   checkout refresh, production generation, paid API spend, and every other side
   effect are separate authorities. Each requires explicit authorization or a
   valid routed executor; no model or provider identity grants authority.
-- Lane V is independent verification by a non-author operator over one
-  committed descriptor and lawful trigger. New reports use lane-v-report/v3
-  and publish atomically through TaskPublicationStore. Model or provider
-  identity grants no authority.
-- `scripts/verification_report_gate.py` binds the exact full reviewed range,
-  canonical `lane-v-scope/v1` descriptor, and one committed verify-request or
-  shipping trigger. Missing, duplicated, stale, mismatched, or reconstructed
-  authority fails closed. The operator alone issues GO/NITS/FAIL from executed
-  repository evidence.
-- `TaskPublicationStore` is the sole live publication state machine. Its
-  task-bound `publishing -> published` transaction retains the candidate
-  inode/digest and exact stage-0 Git blob facts until final bytes, object, index
-  entry, blob readback, and durability checks agree. `resume` and read-only
-  `status` are the crash-recovery paths. Direct mailbox writes and hooks are not
-  publication authority.
+- Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+  truth layer intentionally does not restate its lifecycle grammar.
+- `coordination/bin/send-event` permits verification reports only from Operator
+  seats, then sends every mailbox kind through the unchanged fixed finalizer in
+  `scripts/kernel_activation.py`.
+
+
+
+
+
+
+
+
+
+
 - Exact pre-v3 report paths and raw-byte hashes remain accepted only through the
   committed historical manifest. Local `.codex/runtime` residue is outside the
   operative scan and is not mutated by protocol verification.

@@ -9,21 +9,8 @@ description: Use when operating as a per-pair OPERATOR seat (Pair-A or Pair-B) i
 
 The per-pair operator is the **independent post-commit verifier** for everything the director (or a dispatched implementer) ships. Prime directive: **no fix reaches `verified` without a non-author reading the actual diff — impl≠verifier ALWAYS.** It dispatches cold-context reviewers (Lane V), writes the `verification-report` (GO/NITS/FAIL), releases locks on GO, doc-syncs (Lane D), and mutation-tests guards.
 
-Lane V trigger authority: a verify-request trigger is a canonical committed
-sent-mailbox event strictly after the reviewed HEAD with exactly one
-`Event type: verify-request`, one `Reviewed head: <40-lowercase-hex>`, one
-`Reviewed base: <40-lowercase-hex>`, and one
-`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
-whose values agree with the committed descriptor and canonical
-filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
-subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
-reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
-Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
-mismatched authority is not a trigger: stop with a blocker, do not reconstruct
-missing fields, and do not fall back to the other trigger kind. The descriptor
-and trigger grammar is Pipeline-only; cross-repository or evidence-ledger review
-must return to the coordinator for a separate evidence-ledger-aware bridge route
-and never fabricate Pipeline descriptor authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 **REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, git sharp edges) and `docs/protocol/claude/continuation.md` (live-kernel adapter: runtime modes, pair contract, capacity split, side-effect tokens). Sources: `docs/protocol/claude/director-operator.md` (Rule #9 cold-context, Lane V/D/S, phase taxonomy, Rules #14/#15/#21); impl≠verifier + lock-release-on-GO + the 3-FAIL cap (§6a/§6b/§6c — carried by the `four-seat-protocol` skill); `docs/templates/claude/reviewer.md` (canonical `pass | issues | unable_to_verify` reviewer vocabulary).
 
@@ -46,12 +33,12 @@ The operator's hardest discipline is *not* verifying everything. Firing Lane V o
 |---|---|---|
 | Pre-dispatch (writing the brief) | `dispatch-claim` event, no commit | Lane S (scout/prep) or silent — nothing exists to verify yet |
 | Subagent active (implementer running) | `dispatch-claim`, still no commit | **SILENT. No `.py` writes** — don't collide with the in-flight fix |
-| Lawful shipping trigger | reviewed-HEAD `feat`/`refactor`/`fix` commit with one exact terminal `Lane-V-Scope` trailer | **Lane V** — this is the core job |
+| Assigned committed verify-request | exact compact-pair fields bound to the reviewed range | **Lane V** — this is the core job |
 | Post-commit touch of a cross-cutting module | commit touches a cross-cutting module (see `four-seat-protocol` skill for the project's list) | Lane V **plus** confirm the lock was held + the diff matches the co-signed scope |
 | Post-commit `chore`/`docs`/`test`/`style` | commit of that type | Lane D (doc-sync if warranted) or ignore — **not** Lane V |
 | Idle (no signal ~10 min) | quiet | Adjacent useful work (mutation-test prep, NITS bounce) — not invented verification |
 
-**When the phase is ambiguous, default to inaction** — a speculative Lane V on a non-shipping commit burns tokens and signal; return idle evidence or wait for lawful structural trigger authority. (Full taxonomy + exit signals: `docs/protocol/claude/director-operator.md` "Phase taxonomy".) Under the Pair Operating Contract you wait for a canonical committed verify-request or a structurally valid shipping trigger — no duplicate Lane V for docs-only, status-only, or handoff-only commits. End every live-seat turn with an **Exact Next Trigger** section naming the next lawful prompt, seat event, standby condition, or blocker.
+**When the phase is ambiguous, default to inaction** — speculative Lane V burns tokens and signal; return idle evidence or wait for the assigned committed verify-request. (Full taxonomy + exit signals: `docs/protocol/claude/director-operator.md` "Phase taxonomy".) No duplicate Lane V for docs-only, status-only, or handoff-only commits. End every live-seat turn with an **Exact Next Trigger** section naming the next lawful prompt, seat event, standby condition, or blocker.
 
 ## impl≠verifier is about NON-AUTHORSHIP, not seat identity
 

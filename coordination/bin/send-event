@@ -1,29 +1,18 @@
 #!/bin/bash -p
 PATH=/usr/bin:/bin
 export PATH
-# send-event — write one protocol-v6.0 mailbox event and stage its exact path.
-# Verification reports use the task-bound Python publisher; other event
-# kinds retain the existing compose, move, and explicit-pathspec staging path.
+# send-event — compose one mailbox event and hand every kind to the fixed writer.
 set -euo pipefail
 
 TMP=""
-TRUSTED_CODE=""
-PYCACHE_PREFIX=""
 PUBLISHED_OUT=""
-TREE_META=""
 GIT_ENV_ROOT=""
-PRESERVE_TMP=0
 
 cleanup_partial() {
   cleanup_status=$?
   trap - EXIT
-  if [ -n "$TMP" ] && [ "$PRESERVE_TMP" -eq 0 ]; then
-    /bin/rm -f -- "$TMP"
-  fi
+  [ -z "$TMP" ] || /bin/rm -f -- "$TMP"
   [ -z "$PUBLISHED_OUT" ] || /bin/rm -f -- "$PUBLISHED_OUT"
-  [ -z "$TREE_META" ] || /bin/rm -f -- "$TREE_META"
-  [ -z "$TRUSTED_CODE" ] || /bin/rm -rf -- "$TRUSTED_CODE"
-  [ -z "$PYCACHE_PREFIX" ] || /bin/rm -rf -- "$PYCACHE_PREFIX"
   [ -z "$GIT_ENV_ROOT" ] || /bin/rm -rf -- "$GIT_ENV_ROOT"
   exit "$cleanup_status"
 }
@@ -60,21 +49,6 @@ TO=$2
 KIND=$3
 shift 3
 SUBJECT="$*"
-ROOT=$(git_clean rev-parse --show-toplevel)
-COMMON=$(git_clean -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)
-PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
-TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
-SCRIPT_DIR=$(/usr/bin/dirname "${BASH_SOURCE[0]:-$0}")
-TOOL_ROOT=$(cd "$SCRIPT_DIR/../.." && /bin/pwd -P)
-KERNEL_FINALIZER="$TOOL_ROOT/scripts/kernel_activation.py"
-if [ ! -x "$TRUSTED_PYTHON" ]; then
-  echo "send-event: trusted Pipeline Python unavailable" >&2
-  exit 4
-fi
-if [ ! -f "$KERNEL_FINALIZER" ]; then
-  echo "send-event: trusted Pipeline finalizer unavailable" >&2
-  exit 4
-fi
 
 case "$FROM" in
   director|director2|operator|operator2|coordinator|coordinator2) ;;
@@ -92,6 +66,22 @@ case "$TO" in
 esac
 [ "$FROM" != "$TO" ] || { echo "send-event: refusing self-addressed event" >&2; exit 2; }
 
+ROOT=$(git_clean rev-parse --show-toplevel)
+COMMON=$(git_clean -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)
+PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
+TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
+SCRIPT_DIR=$(/usr/bin/dirname "${BASH_SOURCE[0]:-$0}")
+TOOL_ROOT=$(cd "$SCRIPT_DIR/../.." && /bin/pwd -P)
+KERNEL_FINALIZER="$TOOL_ROOT/scripts/kernel_activation.py"
+if [ ! -x "$TRUSTED_PYTHON" ]; then
+  echo "send-event: trusted Pipeline Python unavailable" >&2
+  exit 4
+fi
+if [ ! -f "$KERNEL_FINALIZER" ]; then
+  echo "send-event: trusted Pipeline finalizer unavailable" >&2
+  exit 4
+fi
+
 KIND_FILE="$ROOT/coordination/mailbox/kinds.txt"
 if [ ! -f "$KIND_FILE" ]; then
   echo "send-event: missing mailbox kind registry: $KIND_FILE" >&2
@@ -101,12 +91,19 @@ if ! /usr/bin/grep -Fxq -- "$KIND" "$KIND_FILE"; then
   echo "send-event: unknown kind '$KIND' (see $KIND_FILE)" >&2
   exit 2
 fi
+if [ "$KIND" = "verification-report" ]; then
+  case "$FROM" in
+    operator|operator2) ;;
+    *)
+      echo "send-event: only operator seats may publish verification-report" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 TS_DASH=$(/bin/date -u +%Y-%m-%dT%H-%M-%SZ)
 TS_COLON="${TS_DASH:0:11}$(printf '%s' "${TS_DASH:11:8}" | /usr/bin/tr '-' ':')Z"
 REL="coordination/mailbox/sent/$TS_DASH-$FROM-to-$TO-$KIND.md"
-F="$ROOT/$REL"
-
 FROM_TITLE="$(printf '%s' "${FROM:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${FROM:1}"
 TO_TITLE="$(printf '%s' "${TO:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${TO:1}"
 CURSOR=$(/usr/bin/head -1 "$ROOT/coordination/mailbox/seen/$FROM.txt" 2>/dev/null || echo "unknown")
@@ -123,108 +120,25 @@ TMP=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.${TS_DASH}-${FROM}-to-${
 } > "$TMP"
 /bin/chmod 0600 "$TMP"
 
-if [ "$KIND" = "verification-report" ]; then
-  PRIMARY_TOP=$(git_clean -C "$PRIMARY_ROOT" rev-parse --show-toplevel)
-  PRIMARY_COMMON=$(git_clean -C "$PRIMARY_ROOT" rev-parse --path-format=absolute --git-common-dir)
-  PRIMARY_GIT_DIR=$(git_clean -C "$PRIMARY_ROOT" rev-parse --path-format=absolute --git-dir)
-  if [ "$PRIMARY_TOP" != "$PRIMARY_ROOT" ] || [ "$PRIMARY_COMMON" != "$COMMON" ] || \
-     [ "$PRIMARY_GIT_DIR" != "$COMMON" ]; then
-    echo "send-event: Git common directory does not identify a primary Pipeline checkout" >&2
+PUBLISHED_OUT=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.published.XXXXXX.tmp")
+/bin/chmod 0600 "$PUBLISHED_OUT"
+/usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
+  "$TRUSTED_PYTHON" -E -s -S -B "$KERNEL_FINALIZER" \
+  send-event-finalize --repo-root "$ROOT" --candidate "$TMP" --final-relative "$REL" \
+  > "$PUBLISHED_OUT"
+RESULT=$(LC_ALL=C /usr/bin/sed -n '1p' "$PUBLISHED_OUT")
+case "$RESULT" in
+  staged:"$REL") ;;
+  unstaged:"$REL")
+    TMP=""
+    echo "send-event: git add failed; kept $REL (not staged; commit with explicit pathspec)" >&2
+    echo "created $REL (not staged; git add failed)"
+    exit 0
+    ;;
+  *)
+    echo "send-event: finalizer output is invalid" >&2
     exit 4
-  fi
-  TRUSTED_HEAD=$(git_clean -C "$PRIMARY_ROOT" rev-parse 'HEAD^{commit}')
-  case "$TRUSTED_HEAD" in
-    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
-    *) echo "send-event: primary HEAD is not a literal full commit" >&2; exit 4 ;;
-  esac
-
-  TRUSTED_CODE=$(/usr/bin/mktemp -d "$ROOT/coordination/mailbox/sent/.trusted-code.XXXXXX")
-  /bin/chmod 0700 "$TRUSTED_CODE"
-  TREE_META=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.trusted-tree.XXXXXX.tmp")
-  for SOURCE in verification_report_gate.py kernel_activation.py; do
-    SOURCE_PATH="scripts/$SOURCE"
-    : > "$TREE_META"
-    git_clean -C "$PRIMARY_ROOT" ls-tree -z "$TRUSTED_HEAD" -- "$SOURCE_PATH" > "$TREE_META"
-    exec 3< "$TREE_META"
-    TREE_ENTRY=""
-    IFS= read -r -d '' TREE_ENTRY <&3 || true
-    EXTRA_ENTRY=""
-    if IFS= read -r -d '' EXTRA_ENTRY <&3; then
-      exec 3<&-
-      echo "send-event: trusted source tree entry is ambiguous" >&2
-      exit 4
-    fi
-    exec 3<&-
-    TREE_META_PART=${TREE_ENTRY%%$'\t'*}
-    TREE_PATH_PART=${TREE_ENTRY#*$'\t'}
-    TREE_MODE=${TREE_META_PART%% *}
-    TREE_REMAINDER=${TREE_META_PART#* }
-    TREE_TYPE=${TREE_REMAINDER%% *}
-    TREE_OID=${TREE_REMAINDER#* }
-    if { [ "$TREE_MODE" != "100644" ] && [ "$TREE_MODE" != "100755" ]; } || \
-       [ "$TREE_TYPE" != "blob" ] || [ "$TREE_PATH_PART" != "$SOURCE_PATH" ] || \
-       [ -z "$TREE_OID" ]; then
-      echo "send-event: trusted source is not one exact regular Git blob: $SOURCE_PATH" >&2
-      exit 4
-    fi
-    git_clean -C "$PRIMARY_ROOT" cat-file blob "$TREE_OID" > "$TRUSTED_CODE/$SOURCE"
-    /bin/chmod 0600 "$TRUSTED_CODE/$SOURCE"
-  done
-  /bin/rm -f -- "$TREE_META"
-  TREE_META=""
-
-  PYCACHE_PREFIX=$(/usr/bin/mktemp -d "$ROOT/coordination/mailbox/sent/.pycache.XXXXXX")
-  /bin/chmod 0700 "$PYCACHE_PREFIX"
-  PUBLISHED_OUT=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.published.XXXXXX.tmp")
-  /bin/chmod 0600 "$PUBLISHED_OUT"
-  # From this boundary onward, only the identity-aware publisher may clean up.
-  PRESERVE_TMP=1
-  set +e
-  /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
-    "$TRUSTED_PYTHON" -E -s -S -B -X "pycache_prefix=$PYCACHE_PREFIX" \
-    "$TRUSTED_CODE/verification_report_gate.py" \
-    publish --repo-root "$ROOT" --candidate "$TMP" --final-relative "$REL" \
-    > "$PUBLISHED_OUT"
-  PUBLISH_STATUS=$?
-  set -e
-  if [ "$PUBLISH_STATUS" -ne 0 ]; then
-    if [ "$PUBLISH_STATUS" -eq 5 ]; then
-      echo "send-event: publication remains recoverable; use the resume command above" >&2
-    fi
-    exit "$PUBLISH_STATUS"
-  fi
-  PUBLISHED_REL=$(LC_ALL=C /usr/bin/sed -n '1p' "$PUBLISHED_OUT")
-  printf '%s\n' "$PUBLISHED_REL" | /usr/bin/cmp -s - "$PUBLISHED_OUT" || {
-    echo "send-event: publisher output is not one exact path" >&2
-    exit 4
-  }
-  printf '%s\n' "$PUBLISHED_REL" | LC_ALL=C /usr/bin/grep -Eq \
-    '^coordination/mailbox/sent/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-operator2?-to-[a-z][a-z0-9]*-verification-report\.md$' || {
-    echo "send-event: publisher returned a noncanonical path" >&2
-    exit 4
-  }
-  TMP=""
-  REL=$PUBLISHED_REL
-  F="$ROOT/$REL"
-else
-  PUBLISHED_OUT=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.published.XXXXXX.tmp")
-  /bin/chmod 0600 "$PUBLISHED_OUT"
-  /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
-    "$TRUSTED_PYTHON" -E -s -S -B "$KERNEL_FINALIZER" \
-    send-event-finalize --repo-root "$ROOT" --candidate "$TMP" --final-relative "$REL" \
-    > "$PUBLISHED_OUT"
-  RESULT=$(LC_ALL=C /usr/bin/sed -n '1p' "$PUBLISHED_OUT")
-  case "$RESULT" in
-    staged:"$REL") ;;
-    unstaged:"$REL")
-      TMP=""
-      echo "send-event: git add failed; kept $REL (not staged; commit with explicit pathspec)" >&2
-      echo "created $REL (not staged; git add failed)"
-      exit 0
-      ;;
-    *) echo "send-event: finalizer output is invalid" >&2; exit 4 ;;
-  esac
-  TMP=""
-fi
-
+    ;;
+esac
+TMP=""
 echo "created $REL (staged; commit with explicit pathspec)"

@@ -692,13 +692,13 @@ def _packet_action_text(owner: str, packet: Packet) -> tuple[str, str]:
         )
     if owner == "coordinator" or packet.packet_type.startswith("coordinator-"):
         return (
-            "reconcile capacity/mailbox/gate state; route or close only from durable evidence",
-            "one consolidated route/no-op/handoff with Exact Next Trigger; no production fix",
+            "reconcile capacity/mailbox/gate state and internally continue an already-authorized Director→Operator chain",
+            "return to the user only at completion, a genuine blocker, scope expansion, or a separately gated side effect; no production fix",
         )
     if packet.packet_type == "director-implementation":
         return (
             "implement the named scope inside allowed paths",
-            "send one canonical committed verify-request strictly after reviewed HEAD with exactly one Event type: verify-request, one full lowercase Reviewed head, one full lowercase Reviewed base, and one canonical Lane-V-Scope descriptor reference; include tests and exclusions without substituting them for authority",
+            "send one committed verify-request naming full reviewed base/head, author seat/model, assigned Operator, question, allowed paths, and commands",
         )
     if packet.packet_type in {"director-brief", "director-cosign", "director-preflight"}:
         return (
@@ -707,8 +707,8 @@ def _packet_action_text(owner: str, packet: Packet) -> tuple[str, str]:
         )
     if packet.packet_type == "operator-verification":
         return (
-            "verify only a lawful trigger: that canonical verify-request or a shipping commit equal to reviewed HEAD with a feat/fix/refactor subject and one identical Lane-V-Scope reference in the terminal Git trailer block",
-            "send verification-report GO/NITS/FAIL; never reconstruct missing trigger fields or fall back; do not author production fixes by default",
+            "verify only the assigned committed verify-request as a non-author; bind the exact request, range, and allowed paths",
+            "send one directly publishable verification-report GO/NITS/FAIL through the fixed mailbox writer; no descriptor, shipping trigger, task publication state, or recovery path",
         )
     if packet.packet_type in {"operator-doc-sync", "operator-preflight"}:
         return (
@@ -730,7 +730,7 @@ def _blocked_stop_condition(owner: str, packet: Packet) -> str:
     if packet.packet_type in {"director-brief", "director-cosign", "director-preflight"}:
         return "report bounded planning/preflight evidence to coordinator; no production fix or GO"
     if packet.packet_type in {"operator-verification", "operator-doc-sync", "operator-preflight"}:
-        return "wait for a lawful authority-bearing trigger/dependency or report FAIL/NITS with evidence; never reconstruct missing trigger fields or fall back"
+        return "wait for the assigned committed verify-request/dependency or report FAIL/NITS with evidence; never reconstruct missing fields"
     if owner == "coordinator":
         return "route blocker or no-op with exact next trigger; no production fix"
     return "preserve blocker evidence and await the named dependency"
