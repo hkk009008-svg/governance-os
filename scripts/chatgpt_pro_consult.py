@@ -43,12 +43,12 @@ def _secret(text: str) -> bool:
     original = unicodedata.normalize("NFKC", text)
     views = (original, " ".join(original.split()), "".join(original.split()))
     named = (
-        r"-----BEGIN\s*PRIVATE\s*KEY-----",
-        r"authorization\s*:\s*bearer\s*[A-Za-z0-9._~+/-]{16,}",
-        r"api[_-]?key\s*[:=]\s*[A-Za-z0-9._~+/-]{16,}",
-        r"AKIA[A-Z0-9]{16}",
-        r"ghp_[A-Za-z0-9]{20,}",
-        r"sk-proj-[A-Za-z0-9_-]{20,}",
+        r"-----BEGIN(?:RSA|EC|OPENSSH)?PRIVATEKEY-----",
+        r"authorization:(?:basic|bearer|token|digest)?[A-Za-z0-9._~+/=-]+",
+        r"(?:password|secret|token|api[_-]?key)[:=][\"']?[A-Za-z0-9._~+/=-]+",
+        r"(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{20,}|ya29\.[A-Za-z0-9_-]{20,}",
+        r"gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}",
+        r"sk-(?:proj-)?[A-Za-z0-9_-]{20,}|xox[a-z]-[A-Za-z0-9-]{10,}",
     )
     if any(re.search(pattern, view, re.IGNORECASE) for pattern in named for view in views):
         return True
@@ -66,8 +66,7 @@ def _normalize(raw: bytes) -> tuple[str, str]:
     if not question.strip():
         raise ConsultError("invalid_question")
     normalized = {"key": key, "question": question, "context": context}
-    canonical = json.dumps(normalized, ensure_ascii=False, sort_keys=True,
-                           separators=(",", ":")).encode("utf-8")
+    canonical = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     if len(canonical) > MAX_CANONICAL_BYTES:
         raise ConsultError("payload_too_large")
     if any(_secret(item) for item in (key, question, context)):
@@ -99,17 +98,19 @@ def _fixed(path: Path):
     if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o600:
         raise ConsultError("state_path_invalid")
     return metadata
+def _bound(fd, expected, path):
+    opened, current = os.fstat(fd), path.lstat()
+    identity = opened.st_dev, opened.st_ino
+    return (stat.S_ISREG(opened.st_mode) and stat.S_IMODE(opened.st_mode) == 0o600 and
+            identity == (current.st_dev, current.st_ino) and (expected is None or identity == (expected.st_dev, expected.st_ino)))
 def _read(path: Path) -> dict[str, dict[str, str]]:
     expected = _fixed(path)
     if expected is None:
         return {}
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        opened = os.fstat(fd)
-        if (not stat.S_ISREG(opened.st_mode) or stat.S_IMODE(opened.st_mode) != 0o600
-                or (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino)):
-            os.close(fd)
-            raise ConsultError("state_path_invalid")
+        if not _bound(fd, expected, path):
+            os.close(fd); raise ConsultError("state_path_invalid")
         with os.fdopen(fd, "rb") as stream:
             value = _loads(stream.read())
     except ConsultError as exc:
@@ -168,13 +169,12 @@ def _write(common: Path, state: dict[str, dict[str, str]]) -> None:
                 pass
 def _locked(common: Path, action):
     lock_path, lock_fd = common / LOCK_NAME, -1
-    _fixed(lock_path)
+    expected = _fixed(lock_path)
     try:
-        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-        os.fchmod(lock_fd, 0o600)
-        metadata = os.fstat(lock_fd)
-        if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o600:
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        if not _bound(lock_fd, expected, lock_path):
             raise ConsultError("state_path_invalid")
+        os.fchmod(lock_fd, 0o600)
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
     except ConsultError:
         if lock_fd >= 0:

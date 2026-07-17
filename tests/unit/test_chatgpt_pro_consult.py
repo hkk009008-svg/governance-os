@@ -28,6 +28,32 @@ SECRET_CASES = (
     "sk-proj-abcdefghijklmnopqrstuvwxyz123456",
 )
 
+REQUIRED_SECRET_FAMILIES = SECRET_CASES + (
+    "-----BEGIN RSA PRIVATE KEY-----",
+    "-----BEGIN EC PRIVATE KEY-----",
+    "-----BEGIN OPENSSH PRIVATE KEY-----",
+    "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
+    "Authorization: Digest abcdefghijklmnopqrstuvwxyz",
+    "Authorization: Foo x",
+    "password = hunter2",
+    "secret: shh",
+    "token = tiny",
+    "api-key: short",
+    "ASIAABCDEFGHIJKLMNOP",
+    "gho_abcdefghijklmnopqrstuvwxyz123456",
+    "ghu_abcdefghijklmnopqrstuvwxyz123456",
+    "ghs_abcdefghijklmnopqrstuvwxyz123456",
+    "ghr_abcdefghijklmnopqrstuvwxyz123456",
+    "github_pat_abcdefghijklmnopqrstuvwxyz123456",
+    "sk-abcdefghijklmnopqrstuvwxyz123456",
+    "AIzaabcdefghijklmnopqrstuvwxyz123456789",
+    "xoxa-abcdefghijklmnopqrstuvwxyz123456",
+    "xoxb-abcdefghijklmnopqrstuvwxyz123456",
+    "xoxp-abcdefghijklmnopqrstuvwxyz123456",
+    "xoxr-abcdefghijklmnopqrstuvwxyz123456",
+    "xoxs-abcdefghijklmnopqrstuvwxyz123456",
+)
+
 SCRIPT = Path(__file__).parents[2] / "scripts" / "chatgpt_pro_consult.py"
 
 
@@ -154,6 +180,37 @@ def test_named_secrets_are_rejected_in_original_collapsed_and_compact_views(
     _error(repo, _request(context=text), "secret_detected")
 
 
+@pytest.mark.parametrize("secret", REQUIRED_SECRET_FAMILIES)
+@pytest.mark.parametrize("view", ("original", "split", "nfkc_fullwidth"))
+def test_required_secret_families_are_rejected_in_every_named_view(
+    tmp_path: Path, secret: str, view: str
+):
+    if view == "split":
+        secret = " \t".join(secret)
+    elif view == "nfkc_fullwidth":
+        secret = "".join(
+            "\u3000" if char == " " else chr(ord(char) + 0xFEE0)
+            if "!" <= char <= "~"
+            else char
+            for char in secret
+        )
+    _error(tmp_path, _request(context=secret), "secret_detected")
+
+
+@pytest.mark.parametrize(
+    ("field", "secret"),
+    (
+        ("key", "token:abcdefghijklmnopqrstuvwxyz"),
+        ("question", "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="),
+        ("context", "github_pat_abcdefghijklmnopqrstuvwxyz123456"),
+    ),
+)
+def test_named_secret_scan_covers_each_request_string(
+    tmp_path: Path, field: str, secret: str
+):
+    _error(tmp_path, _request(**{field: secret}), "secret_detected")
+
+
 def test_generic_long_token_scans_original_and_collapsed_but_not_compact_view(
     repo: Path,
 ):
@@ -226,6 +283,44 @@ def test_state_replacement_between_lstat_and_open_is_rejected_before_read(
     with pytest.raises(consult.ConsultError, match="^state_path_invalid$"):
         consult.reserve(repo, _raw(VALID))
     assert swapped is True
+
+
+@pytest.mark.parametrize("replacement", ("fifo", "wrong_mode", "same_mode_new_inode"))
+def test_lock_replacement_between_lstat_and_open_is_rejected_before_flock(
+    repo: Path, monkeypatch, replacement: str
+):
+    consult.reserve(repo, _raw(VALID))
+    _, lock_path = _paths(repo)
+    real_open = consult.os.open
+    swapped = False
+
+    def swap_open(path: object, flags: int, mode: int = 0o777) -> int:
+        nonlocal swapped
+        if Path(path) == lock_path and flags & os.O_CREAT:
+            assert flags & os.O_NONBLOCK, "lock open must not block before fstat"
+            lock_path.unlink()
+            if replacement == "fifo":
+                os.mkfifo(lock_path, 0o600)
+            else:
+                lock_path.write_bytes(b"substituted")
+                lock_path.chmod(0o600 if replacement == "same_mode_new_inode" else 0o644)
+            swapped = True
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(consult.os, "open", swap_open)
+    monkeypatch.setattr(
+        consult.fcntl,
+        "flock",
+        lambda *_args, **_kwargs: pytest.fail("substituted lock reached flock"),
+    )
+
+    with pytest.raises(consult.ConsultError, match="^state_path_invalid$"):
+        consult.reserve(repo, _raw(VALID))
+    assert swapped is True
+    if replacement != "fifo":
+        assert lock_path.read_bytes() == b"substituted"
+        expected_mode = 0o600 if replacement == "same_mode_new_inode" else 0o644
+        assert stat.S_IMODE(lock_path.lstat().st_mode) == expected_mode
 
 
 @pytest.mark.parametrize(
