@@ -18,9 +18,9 @@
 - Never run state-changing git (add/commit/checkout/stash/restore/read-tree
   without explicit instruction). Read-only git (show/log/diff A..B/grep/
   rev-parse/ls-tree) plus the prefix is always safe.
-- For Lane V trigger authority, emit a shipping `Lane-V-Scope` trailer only
-  when the parent explicitly authorizes that commit and supplies the exact
-  descriptor reference; never invent trigger authority.
+- For Lane V trigger authority, rely on the committed compact-pair verify-request
+  (Canonical Compact Pair Invariant, `scripts/codex_protocol_model.py`) — there is
+  no scope descriptor and no shipping trailer to emit; never invent trigger authority.
 
 ## Prompt template (for Lane B implementers)
 
