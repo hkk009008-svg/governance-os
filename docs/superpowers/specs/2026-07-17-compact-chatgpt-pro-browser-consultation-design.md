@@ -1,7 +1,7 @@
 # Compact ChatGPT Pro Browser Consultation Design
 
 **Date:** 2026-07-17
-**Status:** Written design for user review
+**Status:** Approved for implementation by the user on 2026-07-17
 **Supersedes:** `2026-07-13-chatgpt-pro-browser-consultation-design.md`
 
 ## 1. Goal
