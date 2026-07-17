@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import protocol_mailbox
 import bus_unread  # de-degrade: real ref-bus unread for migrated (scalar) cursors
+from kernel_activation import _reader_guard
 
 SEATS = protocol_mailbox.RECEIVING_SEATS
 MODE = "read-only-no-consume"
@@ -409,6 +410,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = Path(args.root)
+    if not _reader_guard(_REPO_ROOT, "mailbox-monitor"):
+        return 2
     if not args.watch:
         _emit(
             collect_monitor_state(

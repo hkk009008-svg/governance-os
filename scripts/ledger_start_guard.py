@@ -10,6 +10,7 @@ from pathlib import Path
 
 import route_lineage
 import target_binding
+from kernel_activation import _reader_guard
 
 # The kernel is wherever this script lives; the target repo and forbidden
 # roots come from the governance.toml binding registry (ADR-013), so future
@@ -263,6 +264,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--kernel", default=str(PIPELINE_KERNEL), help=argparse.SUPPRESS)
     parser.add_argument("--binding-root", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if not _reader_guard(PIPELINE_KERNEL, "ledger-start-guard"):
+        return 2
 
     result = build_guard(
         seat=args.seat,

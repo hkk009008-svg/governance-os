@@ -18,6 +18,7 @@ import argparse
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from kernel_activation import _reader_guard
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -205,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
         help="report the authoritative route and fail on lineage inconsistency (the default and only action)",
     )
     args = parser.parse_args(argv)
+    if not _reader_guard(_REPO_ROOT, "route-lineage"):
+        return 2
 
     resolution = resolve_authoritative(load_routes(Path(args.root)))
     if resolution.mode == "legacy":

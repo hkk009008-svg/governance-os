@@ -22,6 +22,8 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Callable
 
+from kernel_activation import writer_fence
+
 
 REPORT_SCHEMA_VERSION = "lane-v-report/v3"
 PRE_V3_MANIFEST_SCHEMA_VERSION = "lane-v-report-pre-v3-baseline/v1"
@@ -2976,7 +2978,7 @@ def _locked_publish_new(
     return root / final_relative
 
 
-def _publish_candidate_result(
+def _publish_candidate_result_fenced(
     *,
     repo_root: str | os.PathLike[str],
     candidate_path: str | os.PathLike[str],
@@ -3073,6 +3075,20 @@ def _publish_candidate_result(
         if candidate is not None:
             os.close(candidate.fd)
         os.close(sent_fd)
+
+
+def _publish_candidate_result(
+    *, repo_root, candidate_path, final_relative,
+    task_store_factory=TaskPublicationStore.for_repo,
+) -> _PublishedReportResult:
+    root = _require_repository(Path(repo_root))
+    with writer_fence(root, 0, "v1"):
+        return _publish_candidate_result_fenced(
+            repo_root=root,
+            candidate_path=candidate_path,
+            final_relative=final_relative,
+            task_store_factory=task_store_factory,
+        )
 
 
 def publish_candidate(
@@ -3692,7 +3708,7 @@ def _resume_locked(
             os.close(candidate_opened[0])
 
 
-def resume_publication(
+def _resume_publication_fenced(
     *,
     repo_root: str | os.PathLike[str],
     task_id: str,
@@ -3744,6 +3760,18 @@ def resume_publication(
                 raise ReportGateError("publication_resume_failed", str(reason)) from exc
     finally:
         os.close(sent_fd)
+
+
+def resume_publication(
+    *, repo_root, task_id, task_store_factory=TaskPublicationStore.for_repo,
+) -> Path:
+    root = _require_repository(Path(repo_root))
+    with writer_fence(root, 0, "v1"):
+        return _resume_publication_fenced(
+            repo_root=root,
+            task_id=task_id,
+            task_store_factory=task_store_factory,
+        )
 
 
 def _status_locked(

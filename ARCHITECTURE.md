@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-17 @ 2dc95ad*
+*Last verified: 2026-07-17 @ c96c4a1*
 
 ## 1. Purpose
 
@@ -53,28 +53,33 @@ Key directories:
 | `run` | `scripts/check_placeholders.py:103` | Scans for adoption-placeholder tokens outside the allowlist. |
 | `check_sha_refs` | `scripts/check_doc_claims.py:1706` | Reports stale or mismatched commit-SHA citations. |
 | `classify_sha_ref_baseline` | `scripts/check_doc_claims.py:1768` | Classifies SHA-reference drift as reviewed baseline or new/changed drift. |
-| `collect_monitor_state` | `scripts/mailbox_monitor.py:175` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
-| `build_guard` | `scripts/ledger_start_guard.py:175` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
+| `collect_monitor_state` | `scripts/mailbox_monitor.py:176` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
+| `build_guard` | `scripts/ledger_start_guard.py:176` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
 | `load_kernel_mirror` | `scripts/target_binding.py:147` | Validates the declarative-only compact-kernel epoch/writer mirror without selecting runtime behavior. |
 | `resolve_target` | `scripts/target_binding.py:184` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
+| `read_selection` | `scripts/kernel_activation.py:106` | Reads the canonical activation-ref blob and cross-checks it exactly against the governance mirror; an absent ref is valid only for epoch `0` writer `v1`. |
+| `writer_fence` | `scripts/kernel_activation.py:159` | Serializes v1 writer entry with one Git-common-dir lock and rereads the exact selector after acquisition. |
 | `_accepted_context_keys` | `scripts/compact_state_mapping.py:98` | Independently enumerates every finite producer-backed v1 mapping context for exact fixture and shadow-gate closure. |
 | `reduce_protocol_state` | `scripts/capability_reducer.py:1230` | Produces one pure, deterministic, non-authoritative compact shadow report. |
 | `adapt_v1_history` | `scripts/capability_v1_adapter.py:2826` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
-| `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
+| `main` | `scripts/protocol_capacity_board.py:17` | Renders and validates active capacity packets for a wave. |
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:519` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_r_independence` | `scripts/codex_protocol_model.py:744` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:816` | Renders guard guidance into readiness output. |
 | `render_lane_v_v3` | `scripts/codex_protocol_model.py:1156` | Renders the provider-neutral Lane V v3 authority and publication contract. |
-| `TaskPublicationStore` | `scripts/verification_report_gate.py:1754` | Owns the atomic task-bound Lane V v3 publication state machine. |
-| `publish_candidate` | `scripts/verification_report_gate.py:3078` | Publishes one validated Lane V v3 report as a durable file-plus-stage-0-index transaction with explicit recovery. |
+| `TaskPublicationStore` | `scripts/verification_report_gate.py:1756` | Owns the atomic task-bound Lane V v3 publication state machine. |
+| `publish_candidate` | `scripts/verification_report_gate.py:3094` | Publishes one validated Lane V v3 report as a durable file-plus-stage-0-index transaction with explicit recovery. |
 
 ## 4. Runtime Invariants
 
 - Pipeline remains the Codex four-seat governance kernel.
 - evidence-ledger is the bound product target for current ledger-routed work.
-- Compact-kernel v1 remains the only authority at epoch `0`. The read-only
-  historical adapter imports the pure reducer; the reducer does not import the
-  adapter. Neither shadow surface activates or writes runtime state.
+- An absent compact-kernel selector ref is valid only with the exact epoch
+  `0`/writer `v1` governance mirror. The declared live-v1 reader CLIs refuse
+  any other selection; non-verification mailbox writers and direct Lane V
+  publication/resume reread that selection under the shared writer fence. The
+  read-only historical adapter imports the pure reducer; the reducer does not
+  import the adapter. Neither shadow surface activates or writes runtime state.
 - The shadow parity gate requires exact accepted-context key equality across
   producer-derived manifest, mapping fixture, adapter rules, and corpus cases;
   specialized lifecycle contexts remain explicit `no_route_event` evidence.

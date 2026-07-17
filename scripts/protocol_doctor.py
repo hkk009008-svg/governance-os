@@ -11,6 +11,7 @@ import sys
 import codex_protocol_model as protocol_model
 from dataclasses import dataclass
 from pathlib import Path
+from kernel_activation import _reader_guard
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -84,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = Path(args.root)
+    if not _reader_guard(ROOT, "protocol-doctor"):
+        return 2
     py = _python()
     commands = base_commands(py, args.wave)
     if args.route or args.final_claim:

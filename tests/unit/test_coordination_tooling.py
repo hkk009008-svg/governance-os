@@ -49,6 +49,45 @@ def _init_repo(repo: Path) -> None:
     _git(repo, "init", "-q")
     _git(repo, "config", "user.email", "test@example.com")
     _git(repo, "config", "user.name", "Test User")
+    venv = repo / ".venv" / "bin"
+    venv.mkdir(parents=True, exist_ok=True)
+    if not (venv / "python").exists():
+        (venv / "python").symlink_to(sys.executable)
+    (repo / "governance.toml").write_text(
+        '[protocol.kernel]\nepoch = 0\nwriter = "v1"\n', encoding="utf-8"
+    )
+
+
+def _install_compact_selector(repo: Path, source_root: Path) -> None:
+    scripts = repo / "scripts"
+    scripts.mkdir(exist_ok=True)
+    (scripts / "kernel_activation.py").write_bytes(
+        (source_root / "scripts" / "kernel_activation.py").read_bytes()
+    )
+    (repo / "governance.toml").write_text(
+        '[protocol.kernel]\nepoch = 1\nwriter = "compact"\n',
+        encoding="utf-8",
+    )
+    selector = (
+        json.dumps(
+            {
+                "epoch": 1,
+                "schema": "protocol-kernel-selection/v1",
+                "writer": "compact",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    )
+    result = subprocess.run(
+        ["/usr/bin/git", "-C", str(repo), "hash-object", "-w", "--stdin"],
+        input=selector.encode(),
+        capture_output=True,
+        check=True,
+    )
+    oid = result.stdout.decode().strip()
+    _git(repo, "update-ref", "refs/protocol/kernel-activation", oid)
 
 
 def _verification_shell_fixture(repo: Path, source_root: Path) -> tuple[str, str]:
@@ -67,6 +106,12 @@ def _verification_shell_fixture(repo: Path, source_root: Path) -> tuple[str, str
     scripts.mkdir()
     (scripts / "verification_report_gate.py").write_bytes(
         (source_root / "scripts" / "verification_report_gate.py").read_bytes()
+    )
+    (scripts / "kernel_activation.py").write_bytes(
+        (source_root / "scripts" / "kernel_activation.py").read_bytes()
+    )
+    (repo / "governance.toml").write_text(
+        '[protocol.kernel]\nepoch = 0\nwriter = "v1"\n', encoding="utf-8"
     )
     (scripts / "feature.py").write_text("VALUE = 'base'\n", encoding="utf-8")
     (repo / "AGENTS.md").write_text("# Pipeline fixture\n", encoding="utf-8")
@@ -133,8 +178,9 @@ def _verification_shell_fixture(repo: Path, source_root: Path) -> tuple[str, str
     trigger = _git(repo, "rev-parse", "HEAD")
 
     venv = repo / ".venv" / "bin"
-    venv.mkdir(parents=True)
-    (venv / "python").symlink_to(sys.executable)
+    venv.mkdir(parents=True, exist_ok=True)
+    if not (venv / "python").exists():
+        (venv / "python").symlink_to(sys.executable)
     body = "\n".join(
         [
             "VERDICT: GO",
@@ -223,6 +269,67 @@ def test_send_event_force_stages_ignored_mailbox_event(tmp_path: Path, repo_root
     staged = _git(repo, "diff", "--cached", "--name-only")
     assert "coordination/mailbox/sent/" in staged
     assert staged.endswith("-director-to-operator-status.md")
+
+
+def test_send_event_selector_denial_precedes_final_file_and_index_mutation(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    mailbox = repo / "coordination" / "mailbox"
+    (mailbox / "sent").mkdir(parents=True)
+    (mailbox / "seen").mkdir()
+    (mailbox / "kinds.txt").write_text("status\n", encoding="utf-8")
+    (mailbox / "seen" / "director.txt").write_text("0\n", encoding="utf-8")
+    (mailbox / "sent" / ".gitkeep").write_text("", encoding="utf-8")
+    _install_compact_selector(repo, repo_root)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "chore: compact selector fixture")
+
+    result = _run(
+        [
+            repo_root / "coordination/bin/send-event",
+            "director",
+            "operator",
+            "status",
+            "must be fenced",
+        ],
+        repo,
+        input_text="body\n",
+    )
+
+    assert result.returncode != 0
+    assert list((mailbox / "sent").glob("*-director-to-operator-status.md")) == []
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_consume_events_selector_denial_precedes_cursor_and_index_mutation(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    mailbox = repo / "coordination" / "mailbox"
+    (mailbox / "sent").mkdir(parents=True)
+    (mailbox / "seen").mkdir()
+    cursor = mailbox / "seen" / "director.txt"
+    cursor.write_text("2026-07-16T00:00:00Z\n", encoding="utf-8")
+    (mailbox / "sent" / "2026-07-16T00-01-00Z-operator-to-director-status.md").write_text(
+        "# fixture\n", encoding="utf-8"
+    )
+    _install_compact_selector(repo, repo_root)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "chore: compact cursor fixture")
+
+    result = _run(
+        [repo_root / "coordination/bin/consume-events", "director"],
+        repo,
+    )
+
+    assert result.returncode != 0
+    assert cursor.read_text(encoding="utf-8") == "2026-07-16T00:00:00Z\n"
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
 
 
 @pytest.mark.parametrize(
@@ -891,8 +998,8 @@ def test_verification_send_event_lost_stdout_uses_status_not_republish(
 def test_verification_send_event_branch_contains_no_shell_git_add(repo_root: Path) -> None:
     source = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
     assert source.startswith("#!/bin/bash -p\nPATH=/usr/bin:/bin\n")
-    assert source.count('add -f -- "$REL"') == 1
-    assert source.index('add -f -- "$REL"') > source.index("else\n  [ ! -e \"$F\" ]")
+    assert 'add -f -- "$REL"' not in source
+    assert "send-event-finalize" in source
 
 
 def test_provider_neutral_gate_and_send_event_have_task_only_source_cli_closure(
@@ -934,7 +1041,7 @@ def test_provider_neutral_gate_and_send_event_have_task_only_source_cli_closure(
         "Authorization identity",
     ):
         assert forbidden not in gate_source
-    assert "for SOURCE in verification_report_gate.py; do" in send_source
+    assert "for SOURCE in verification_report_gate.py kernel_activation.py; do" in send_source
     assert "opus_review_receipts.py" not in send_source
     assert "opus_review_bridge.py" not in send_source
 
@@ -1224,7 +1331,7 @@ def test_verification_send_event_rejects_common_parent_that_is_linked_worktree(
     )
     marker = tmp_path / "forged-python-ran"
     forged_python = evil_root / ".venv/bin/python"
-    forged_python.parent.mkdir(parents=True)
+    forged_python.parent.mkdir(parents=True, exist_ok=True)
     forged_python.write_text(
         f"#!/bin/sh\n/usr/bin/touch {marker}\nexit 99\n", encoding="utf-8"
     )

@@ -38,6 +38,38 @@
       ]
     },
     {
+      "id": "kernel_activation_selector_and_writer_fence",
+      "authority_status": "live_v1_selector_and_fenced_writer_boundary",
+      "source_paths": [
+        "scripts/kernel_activation.py"
+      ],
+      "reader_paths": [
+        "scripts/kernel_activation.py",
+        "governance.toml",
+        "coordination/mailbox/kinds.txt",
+        "coordination/mailbox/sent",
+        "coordination/mailbox/seen"
+      ],
+      "writer_paths": [
+        "coordination/mailbox/sent",
+        "coordination/mailbox/seen"
+      ],
+      "executor_boundary": "The selector strictly cross-checks the read-only Git activation ref with governance.toml. One common-dir flock serializes legacy v1 writer entry. This module owns the fixed send-event and consume-events finalizers; the separately owned Lane V publish/resume path invokes the same fence. This module exposes no activation or selector-update operation.",
+      "default_helper_class": "runtime_core",
+      "module_rules": [
+        {
+          "path": "scripts/kernel_activation.py"
+        }
+      ],
+      "symbol_overrides": [
+        {
+          "symbol": "scripts.kernel_activation.main",
+          "helper_class": "cli_entrypoint",
+          "disposition": "keep_documented_cli"
+        }
+      ]
+    },
+    {
       "id": "markdown_routes_and_mailbox_writer",
       "authority_status": "live_v1_route_authority",
       "source_paths": [

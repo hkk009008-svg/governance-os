@@ -22,6 +22,7 @@ HELPER_CLASSES = {
 }
 COMPONENT_IDS = {
     "target_binding",
+    "kernel_activation_selector_and_writer_fence",
     "markdown_routes_and_mailbox_writer",
     "typed_route_compatibility_canary",
     "capacity_reducer_and_packet_state_telemetry",
@@ -80,10 +81,12 @@ REQUIRED_PRODUCTION_MODULES = {
     "scripts/capability_v1_adapter.py",
     "scripts/compact_state_mapping.py",
     "scripts/capability_baseline_runtime.py",
+    "scripts/kernel_activation.py",
 }
 REQUIRED_SURFACE_OWNERS: dict[str, str] = {
     "governance.toml": "target_binding",
     "scripts/target_binding.py": "target_binding",
+    "scripts/kernel_activation.py": "kernel_activation_selector_and_writer_fence",
     "scripts/route_manifest.py": "markdown_routes_and_mailbox_writer",
     "scripts/protocol_mailbox.py": "markdown_routes_and_mailbox_writer",
     "coordination/bin/send-event": "markdown_routes_and_mailbox_writer",
@@ -192,6 +195,11 @@ REQUIRED_WRITER_SURFACES = {
 REQUIRED_SYMBOL_OVERRIDES: dict[str, tuple[str, str, str]] = {
     "scripts.target_binding.main": (
         "target_binding",
+        "cli_entrypoint",
+        "keep_documented_cli",
+    ),
+    "scripts.kernel_activation.main": (
+        "kernel_activation_selector_and_writer_fence",
         "cli_entrypoint",
         "keep_documented_cli",
     ),
@@ -573,6 +581,7 @@ def test_seat_status_direct_repo_local_imports_are_exact() -> None:
     ) == {
         "scripts/bus_unread.py",
         "scripts/codex_protocol_model.py",
+        "scripts/kernel_activation.py",
         "scripts/latest_handoff.py",
         "scripts/protocol_mailbox.py",
     }

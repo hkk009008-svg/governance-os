@@ -28,6 +28,7 @@ from codex_protocol_model import (
 )
 import bus_unread
 import protocol_mailbox
+from kernel_activation import _reader_guard
 from status import collect_mailbox
 
 SEATS = protocol_mailbox.RECEIVING_SEATS
@@ -200,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = repo_root()
+    if not _reader_guard(Path(__file__).resolve().parent.parent, "continuation-readiness"):
+        return 2
     print("# Continuation Readiness Bridge")
     print(f"repo: {root}")
     print("role: readiness bridge; no seat claim, cursor consumption, mailbox send, or inventory edit")

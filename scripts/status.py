@@ -30,6 +30,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from kernel_activation import _reader_guard
 
 
 # ---------------------------------------------------------------------------
@@ -519,6 +520,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     repo_root = _REPO_ROOT
+    if not _reader_guard(repo_root, "status"):
+        return 2
 
     # Focused subcommand: print just one seat's LIVE unread count and exit.
     # Reuses the canonical count_unread (via collect_mailbox) — one source of

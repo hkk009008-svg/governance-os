@@ -61,6 +61,20 @@ KIND=$3
 shift 3
 SUBJECT="$*"
 ROOT=$(git_clean rev-parse --show-toplevel)
+COMMON=$(git_clean -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)
+PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
+TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
+SCRIPT_DIR=$(/usr/bin/dirname "${BASH_SOURCE[0]:-$0}")
+TOOL_ROOT=$(cd "$SCRIPT_DIR/../.." && /bin/pwd -P)
+KERNEL_FINALIZER="$TOOL_ROOT/scripts/kernel_activation.py"
+if [ ! -x "$TRUSTED_PYTHON" ]; then
+  echo "send-event: trusted Pipeline Python unavailable" >&2
+  exit 4
+fi
+if [ ! -f "$KERNEL_FINALIZER" ]; then
+  echo "send-event: trusted Pipeline finalizer unavailable" >&2
+  exit 4
+fi
 
 case "$FROM" in
   director|director2|operator|operator2|coordinator|coordinator2) ;;
@@ -110,19 +124,12 @@ TMP=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.${TS_DASH}-${FROM}-to-${
 /bin/chmod 0600 "$TMP"
 
 if [ "$KIND" = "verification-report" ]; then
-  COMMON=$(git_clean -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)
-  PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
   PRIMARY_TOP=$(git_clean -C "$PRIMARY_ROOT" rev-parse --show-toplevel)
   PRIMARY_COMMON=$(git_clean -C "$PRIMARY_ROOT" rev-parse --path-format=absolute --git-common-dir)
   PRIMARY_GIT_DIR=$(git_clean -C "$PRIMARY_ROOT" rev-parse --path-format=absolute --git-dir)
   if [ "$PRIMARY_TOP" != "$PRIMARY_ROOT" ] || [ "$PRIMARY_COMMON" != "$COMMON" ] || \
      [ "$PRIMARY_GIT_DIR" != "$COMMON" ]; then
     echo "send-event: Git common directory does not identify a primary Pipeline checkout" >&2
-    exit 4
-  fi
-  TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
-  if [ ! -x "$TRUSTED_PYTHON" ]; then
-    echo "send-event: trusted Pipeline Python unavailable" >&2
     exit 4
   fi
   TRUSTED_HEAD=$(git_clean -C "$PRIMARY_ROOT" rev-parse 'HEAD^{commit}')
@@ -134,7 +141,7 @@ if [ "$KIND" = "verification-report" ]; then
   TRUSTED_CODE=$(/usr/bin/mktemp -d "$ROOT/coordination/mailbox/sent/.trusted-code.XXXXXX")
   /bin/chmod 0700 "$TRUSTED_CODE"
   TREE_META=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.trusted-tree.XXXXXX.tmp")
-  for SOURCE in verification_report_gate.py; do
+  for SOURCE in verification_report_gate.py kernel_activation.py; do
     SOURCE_PATH="scripts/$SOURCE"
     : > "$TREE_META"
     git_clean -C "$PRIMARY_ROOT" ls-tree -z "$TRUSTED_HEAD" -- "$SOURCE_PATH" > "$TREE_META"
@@ -200,17 +207,24 @@ if [ "$KIND" = "verification-report" ]; then
   REL=$PUBLISHED_REL
   F="$ROOT/$REL"
 else
-  [ ! -e "$F" ] || {
-    echo "send-event: $REL already exists (same-second collision) — retry" >&2
-    exit 3
-  }
-  /bin/mv "$TMP" "$F"
+  PUBLISHED_OUT=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.published.XXXXXX.tmp")
+  /bin/chmod 0600 "$PUBLISHED_OUT"
+  /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
+    "$TRUSTED_PYTHON" -E -s -S -B "$KERNEL_FINALIZER" \
+    send-event-finalize --repo-root "$ROOT" --candidate "$TMP" --final-relative "$REL" \
+    > "$PUBLISHED_OUT"
+  RESULT=$(LC_ALL=C /usr/bin/sed -n '1p' "$PUBLISHED_OUT")
+  case "$RESULT" in
+    staged:"$REL") ;;
+    unstaged:"$REL")
+      TMP=""
+      echo "send-event: git add failed; kept $REL (not staged; commit with explicit pathspec)" >&2
+      echo "created $REL (not staged; git add failed)"
+      exit 0
+      ;;
+    *) echo "send-event: finalizer output is invalid" >&2; exit 4 ;;
+  esac
   TMP=""
-  if ! git_clean -C "$ROOT" add -f -- "$REL"; then
-    echo "send-event: git add failed; kept $REL (not staged; commit with explicit pathspec)" >&2
-    echo "created $REL (not staged; git add failed)"
-    exit 0
-  fi
 fi
 
 echo "created $REL (staged; commit with explicit pathspec)"

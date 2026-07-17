@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import builtins
+import contextlib
 import hashlib
 import inspect
 import json
@@ -18,6 +19,7 @@ from types import MappingProxyType, SimpleNamespace
 import pytest
 
 import verification_report_gate as gate
+import kernel_activation
 
 
 HEAD = "a" * 40
@@ -1520,6 +1522,9 @@ def _repository_identity(root: Path) -> str:
 
 def _install_pipeline_markers(root: Path) -> None:
     (root / "AGENTS.md").write_text("fixture\n", encoding="utf-8")
+    (root / "governance.toml").write_text(
+        '[protocol.kernel]\nepoch = 0\nwriter = "v1"\n', encoding="utf-8"
+    )
     (root / "scripts" / "codex_protocol_model.py").write_text(
         "# fixture\n", encoding="utf-8"
     )
@@ -1680,6 +1685,64 @@ def test_publish_and_status_retain_exact_task_index_witness(
     assert status["state"] == "published"
     assert status["file_witness_match"] is True
     assert status["staged_blob_match"] is True
+
+
+def test_publish_writer_fence_denial_precedes_task_final_and_index_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _live_claude_fixture(tmp_path / "repo")
+    candidate = _candidate_path(fixture.root, fixture.raw)
+    with fixture.store.lock_task(TASK_ID) as task:
+        before = task.load_existing()
+
+    @contextlib.contextmanager
+    def deny(*_args: object, **_kwargs: object):
+        raise kernel_activation.KernelSelectionError("wrong writer")
+        yield
+
+    monkeypatch.setattr(gate, "writer_fence", deny)
+    with pytest.raises(kernel_activation.KernelSelectionError, match="wrong writer"):
+        gate.publish_candidate(
+            repo_root=fixture.root,
+            candidate_path=candidate,
+            final_relative=fixture.report.relative_path,
+            task_store_factory=lambda _root: fixture.store,
+        )
+
+    with fixture.store.lock_task(TASK_ID) as task:
+        assert task.load_existing() == before
+    assert candidate.exists()
+    assert not (fixture.root / fixture.report.relative_path).exists()
+    assert _git(fixture.root, "ls-files", "--stage", "--", fixture.report.relative_path) == ""
+
+
+def test_resume_writer_fence_denial_precedes_task_final_and_index_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _live_claude_fixture(tmp_path / "repo")
+    candidate = _candidate_path(fixture.root, fixture.raw, ".interrupted.tmp")
+    _begin_interrupted_publication(fixture, candidate, fixture.report.relative_path)
+    with fixture.store.lock_task(TASK_ID) as task:
+        before = task.load_existing()
+
+    @contextlib.contextmanager
+    def deny(*_args: object, **_kwargs: object):
+        raise kernel_activation.KernelSelectionError("wrong writer")
+        yield
+
+    monkeypatch.setattr(gate, "writer_fence", deny)
+    with pytest.raises(kernel_activation.KernelSelectionError, match="wrong writer"):
+        gate.resume_publication(
+            repo_root=fixture.root,
+            task_id=TASK_ID,
+            task_store_factory=lambda _root: fixture.store,
+        )
+
+    with fixture.store.lock_task(TASK_ID) as task:
+        assert task.load_existing() == before
+    assert candidate.exists()
+    assert not (fixture.root / fixture.report.relative_path).exists()
+    assert _git(fixture.root, "ls-files", "--stage", "--", fixture.report.relative_path) == ""
 
 
 def _published_default_fixture(root: Path) -> _LiveLaneVFixture:

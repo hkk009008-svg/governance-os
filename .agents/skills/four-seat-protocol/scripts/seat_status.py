@@ -40,6 +40,7 @@ import bus_unread  # de-degrade: real ref-bus unread for migrated (scalar) curso
 import latest_handoff
 import protocol_mailbox
 from codex_protocol_model import CENTRAL_INVARIANT, MODEL_SOURCE
+from kernel_activation import _reader_guard
 
 SEATS = protocol_mailbox.RECEIVING_SEATS
 
@@ -343,6 +344,8 @@ def main(argv=None):
     if args.all == (args.seat is not None):
         ap.error("choose exactly one of <seat> or --all")
 
+    if not _reader_guard(_REPO_ROOT, "seat-status"):
+        return 2
     root = repo_root()
     if args.all:
         render_all_status(root, args)
