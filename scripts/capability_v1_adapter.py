@@ -34,8 +34,8 @@ __all__ = ("LegacyAdapterError", "adapt_v1_history", "main")
 
 _LEGACY_SCHEMA = "compact-kernel-legacy-observation/v1"
 _FUTURE_LEGACY_SCHEMA = "compact-kernel-legacy-observation/v9"
-_CORPUS_SCHEMA = "compact-kernel-v1-shadow-replay/v1"
-_REPORT_SCHEMA = "compact-kernel-v1-shadow-parity-report/v1"
+_CORPUS_SCHEMA = "compact-kernel-v1-shadow-replay/v2"
+_REPORT_SCHEMA = "compact-kernel-v1-shadow-parity-report/v2"
 _LEGACY_RECORD_FIELDS = (
     "schema",
     "source_id",
@@ -92,7 +92,6 @@ _CORPUS_FIELDS = frozenset(
         "case_manifest",
         "cases",
         "phase2_misuse_bindings",
-        "deferred_phase3_misuse_ids",
         "reducer_replay_ids",
     }
 )
@@ -305,7 +304,6 @@ class _CorpusReport:
     corpus_digest: str
     divergences: tuple[_Divergence, ...]
     specialized_event_ids: tuple[str, ...]
-    deferred_phase3_misuse_ids: tuple[str, ...]
     executed_case_ids: tuple[str, ...]
 
 
@@ -2225,7 +2223,7 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         or len(misuse_ids) != len(set(misuse_ids))
         or any(
             type(vector["enforcing_phase"]) is not int
-            or vector["enforcing_phase"] not in {2, 3}
+            or vector["enforcing_phase"] != 2
             for vector in misuse_vectors
         )
     ):
@@ -2234,11 +2232,6 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         vector["id"]
         for vector in misuse_vectors
         if vector["enforcing_phase"] == 2
-    }
-    phase3_ids = {
-        vector["id"]
-        for vector in misuse_vectors
-        if vector["enforcing_phase"] == 3
     }
     replay_ids = [vector.get("id") for vector in replay_vectors]
     replay_misuse_ids = [
@@ -2258,7 +2251,6 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         or len(declared_replay_misuse_ids)
         != len(set(declared_replay_misuse_ids))
         or not set(declared_replay_misuse_ids) <= phase2_ids
-        or set(declared_replay_misuse_ids) & phase3_ids
     ):
         raise _legacy_invalid()
     replay_by_id = dict(zip(replay_ids, replay_vectors, strict=True))
@@ -2355,15 +2347,10 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
     )
 
     bindings = corpus["phase2_misuse_bindings"]
-    deferred = corpus["deferred_phase3_misuse_ids"]
     corpus_replays = corpus["reducer_replay_ids"]
     if (
         type(bindings) is not dict
         or set(bindings) != phase2_ids
-        or type(deferred) is not list
-        or len(deferred) != len(set(deferred))
-        or set(deferred) != phase3_ids
-        or set(bindings) & set(deferred)
         or corpus_replays != replay_ids
     ):
         raise _legacy_invalid()
@@ -2779,7 +2766,6 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
         ("mapping_rows", mapping_row_count),
         ("mapping_domains", mapping_domain_count),
         ("phase2_misuse_vectors", len(phase2_ids)),
-        ("deferred_phase3_misuse_vectors", len(phase3_ids)),
         ("reducer_replay_vectors", len(replay_ids)),
         ("reducer_replay_permutations", permutation_count),
         ("corpus_cases", len(cases)),
@@ -2793,7 +2779,6 @@ def _check_corpus_impl(corpus: dict[str, object]) -> _CorpusReport:
             for case_id, kind in sorted(findings)
         ),
         specialized_event_ids=tuple(sorted(specialized_event_ids)),
-        deferred_phase3_misuse_ids=tuple(sorted(phase3_ids)),
         executed_case_ids=tuple(executed_case_ids),
     )
 
@@ -2834,9 +2819,6 @@ def _report_mapping(report: _CorpusReport) -> dict[str, object]:
         "corpus_digest": report.corpus_digest,
         "case_ids_by_divergence_class": by_kind,
         "specialized_event_ids": list(report.specialized_event_ids),
-        "deferred_phase3_misuse_ids": list(
-            report.deferred_phase3_misuse_ids
-        ),
     }
     return {**body, "report_digest": _canonical_digest(body)}
 

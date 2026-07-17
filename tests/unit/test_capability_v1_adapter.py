@@ -64,7 +64,6 @@ CORPUS_FIELDS = frozenset(
         "case_manifest",
         "cases",
         "phase2_misuse_bindings",
-        "deferred_phase3_misuse_ids",
         "reducer_replay_ids",
     }
 )
@@ -665,10 +664,24 @@ def _declare_expected_error(case: dict[str, object], code: str) -> None:
     expected["error_code"] = code
 
 
+def test_phase3_corpus_and_report_bookkeeping_is_retired() -> None:
+    corpus = _load_strict(CORPUS)
+    misuse_fixture = _load_strict(MISUSE_FIXTURE)
+    report = adapter._report_mapping(adapter._check_corpus(corpus))
+
+    assert "deferred_phase3_misuse_ids" not in corpus
+    assert "deferred_phase3_misuse_ids" not in report
+    assert "deferred_phase3_misuse_vectors" not in report["set_counts"]
+    assert all(
+        vector["enforcing_phase"] != 3
+        for vector in misuse_fixture["vectors"]
+    )
+
+
 def test_corpus_has_no_missing_extra_duplicate_or_silently_skipped_case() -> None:
     corpus = _load_strict(CORPUS)
     assert set(corpus) == CORPUS_FIELDS
-    assert corpus["schema_version"] == "compact-kernel-v1-shadow-replay/v1"
+    assert corpus["schema_version"] == "compact-kernel-v1-shadow-replay/v2"
 
     sources = corpus["sources"]
     assert type(sources) is dict
@@ -721,7 +734,6 @@ def test_corpus_has_no_missing_extra_duplicate_or_silently_skipped_case() -> Non
     bindings = corpus["phase2_misuse_bindings"]
     assert type(bindings) is dict
     assert set(bindings) == _misuse_ids(2)
-    assert not (set(bindings) & set(corpus["deferred_phase3_misuse_ids"]))
     targets: list[tuple[str, str]] = []
     for binding in bindings.values():
         assert type(binding) is dict
@@ -736,7 +748,6 @@ def test_corpus_has_no_missing_extra_duplicate_or_silently_skipped_case() -> Non
             assert binding["target_kind"] == "reducer_replay"
             assert binding["target_id"] in corpus["reducer_replay_ids"]
     assert len(targets) == len(set(targets))
-    assert set(corpus["deferred_phase3_misuse_ids"]) == _misuse_ids(3)
     assert corpus["reducer_replay_ids"] == _reducer_replay_ids()
 
 
@@ -1875,10 +1886,7 @@ def test_complete_corpus_is_gate_clean_and_executes_every_case() -> None:
 
 @pytest.mark.parametrize(
     ("misuse_id", "enforcing_phase"),
-    (
-        ("forged_self_asserted_principal", 2),
-        ("ambiguous_effect_outcome_retry", 3),
-    ),
+    (("forged_self_asserted_principal", 2),),
 )
 def test_corpus_guard_rejects_duplicate_bound_misuse_vector_id(
     tmp_path: Path,
@@ -1902,8 +1910,8 @@ def test_corpus_guard_rejects_duplicate_bound_misuse_vector_id(
     assert selected["enforcing_phase"] == enforcing_phase
     vectors.append(deepcopy(selected))
     vector_ids = [vector["id"] for vector in vectors]
-    assert len(vector_ids) == 10
-    assert len(set(vector_ids)) == 9
+    assert len(vector_ids) == 9
+    assert len(set(vector_ids)) == 8
 
     raw = (
         json.dumps(misuse_fixture, sort_keys=True, separators=(",", ":")) + "\n"
@@ -1923,7 +1931,6 @@ def test_corpus_guard_rejects_duplicate_bound_misuse_vector_id(
         set_counts = dict(report.set_counts)
         assert adapter._report_is_gate_clean(report) is True
         assert set_counts["phase2_misuse_vectors"] == 8
-        assert set_counts["deferred_phase3_misuse_vectors"] == 1
         assert set_counts["corpus_cases"] == 46
     assert exc_info.value.code == "legacy_invalid"
     assert str(exc_info.value) == "legacy_invalid"
@@ -2639,9 +2646,8 @@ def test_cli_prints_one_canonical_sanitized_gate_report(capsys) -> None:
         "report_digest",
         "case_ids_by_divergence_class",
         "specialized_event_ids",
-        "deferred_phase3_misuse_ids",
     }
-    assert report["schema"] == "compact-kernel-v1-shadow-parity-report/v1"
+    assert report["schema"] == "compact-kernel-v1-shadow-parity-report/v2"
     assert report["mode"] == "shadow"
     assert all(
         report["case_ids_by_divergence_class"][kind] == []
@@ -2677,7 +2683,7 @@ def test_script_entrypoint_runs_corpus_cli_from_repository_root() -> None:
     assert completed.returncode == 0
     assert completed.stderr == ""
     report = json.loads(completed.stdout)
-    assert report["schema"] == "compact-kernel-v1-shadow-parity-report/v1"
+    assert report["schema"] == "compact-kernel-v1-shadow-parity-report/v2"
     assert completed.stdout == canonicalize(report).decode("utf-8") + "\n"
 
 

@@ -23,6 +23,13 @@ These apply only after a separate user-approved design and implementation plan.
 8. Token boundaries: named secret formats may use whitespace-stripped views, but generic long-token detection may not; compact generic scans previously rejected benign prose.
 9. Triggered consultation: consult only for an unsettled material tradeoff, authority/security-boundary change, genuinely distinct adversarial challenge, or explicit user request; default consultation previously created cost and delay without new authority.
 
+## External Effect Invariant
+
+At a real authorized external-effect boundary, an unknown outcome is
+reconciliation-only and is never automatically retried. Enforce this rule at
+that boundary; shadow corpora and benchmark executors do not claim live effect
+authority.
+
 ## Shape Constraints
 
 10. One canonical rule: other surfaces link here instead of copying lifecycle prose; mirrored rules previously required hand edits across many files.
@@ -46,7 +53,7 @@ These apply only after a separate user-approved design and implementation plan.
 | Target-aware bridge | Removed | None. |
 | PPL correction | Removed | None. |
 | Phase 1-2 | Conditional | Current-state proof, then one narrow gap only. |
-| Phase 3 | Conditional | Live-caller check, one narrow change, one verdict. |
+| Phase 3 | Retired | None. |
 | Phase 4 | User-gated | Selector/fence, rehearsal/review, one activation. |
 | Final reconciliation | Conditional | No-op, or one truth update and one closeout. |
 

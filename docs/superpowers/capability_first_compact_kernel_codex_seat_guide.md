@@ -290,32 +290,10 @@ a general seat restriction.
 
 ### Advisory model transports
 
-`scripts/advisory_dispatch.py` has exactly two callers: the ChatGPT guard and
-Claude bridge. It returns deterministic external eligibility and atomically
-reserves one content-free, provider-independent intent key binding purpose,
-question digest, repository/state, scope, request hash, selected transport,
-executor, and grant. Provider stores retain delivery/results. Exact replay
-returns the same choice; changed or competing claims fail. A crash between the
-shared and provider reservations resumes only that provider. Local reasoning is
-not a transport, bypasses reservation, and creates no artifact.
-
-| Runtime/transport | Eligible when | Behavior |
-|---|---|---|
-| ChatGPT in-app Browser | The current app runtime actually exposes a signed-in approved origin and standing approval covers one sanitized send. | Guard, reserve, send once, reconcile. |
-| ChatGPT manual relay | Bare CLI/manual mode, user is present, and the guarded relay is explicitly enabled. | Reserve one manual consultation; user relays exact prompt/response. |
-| Claude CLI | Executable, sandbox, exact model/profile, privacy scope, and a standing or one-time spend grant all pass. | Reserve before launch; one process attempt; reconcile stored result. |
-
-Rules:
-
-- Bare Codex CLI must not pretend in-app Browser transport exists.
-- Installed Claude is capability evidence, not general spend authority; the
-  Lane-V grant does not authorize planning.
-- The model may choose any eligible external transport before reservation.
-- After reservation, provider/transport are immutable: no switch, retry, or
-  fallback; uncertain delivery reconciles first.
-- Multi-provider review is a separately pre-authorized fan-out with named child
-  reservations and a spend ceiling, never an automatic fallback.
-- Subscription and paid API access remain distinct; this plan adds no API spend.
+No advisory transport or provider adapter is implemented by this guide. The
+former Phase 3 promises for `scripts/advisory_dispatch.py`, effect adapters, and
+provider adapters are retired. Any future provider tool requires separate user
+authorization and a new design.
 
 ## 7. Function and ceremony pruning rule
 
@@ -350,9 +328,9 @@ existing route/verification/capability tests, and new golden replay fixtures.
 - [x] Inventory every live authority source, reader, writer, effect executor,
   provider adapter, and public helper; classify helpers under Section 7.
 - [x] Encode both Section-4 tables as total parameterized mappings and commit
-  replay vectors for forged principals, duplicate IDs, stale versions,
-  dependency changes, ambiguous effects, and provider dispatch. Phase 1 records
-  these future controls without claiming enforcement; Phases 2-3 enforce them.
+  replay vectors for forged principals, duplicate IDs, stale versions, and
+  dependency, acceptance, and evidence changes. Phase 2 checks their current
+  shadow parity; external effects and providers carry no corpus promise.
 - [x] Benchmark the five Section-2 profiles five times on one host and persist
   cohort, raw runs, medians, and immutable review identities under `logs/`.
   Measure with a monotonic clock from accepted input to first executable tool
@@ -447,31 +425,20 @@ corpus; deliberately injected divergence blocks the gate.
 The committed corpus artifact
 `logs/capability-first/phase2b-shadow-parity.json` is byte-identical to fresh
 output from `env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/capability_v1_adapter.py --check-corpus tests/fixtures/compact_kernel/v1_to_v2_replay.json`
-and reports 89 cases and 31 executed replay permutations with every blocking,
+and reports 46 cases and 31 executed replay permutations with every blocking,
 non-authority-only, and specialized-event list empty. The focused command
 `env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest -q tests/unit/test_capability_v1_adapter.py tests/unit/test_capability_reducer.py tests/unit/test_capability_reducer_replay.py tests/unit/test_route_v2_schema_sync.py tests/unit/test_compact_state_mapping.py tests/unit/test_compact_kernel_surface_inventory.py tests/unit/test_route_manifest.py tests/unit/test_route_schema_sync.py tests/unit/test_target_binding.py`
 reported `552 passed`; independent Review 11 of the exact range returned
 `APPROVED` with no Critical, Important, or Minor finding; and
 `scripts/target_binding.py --check` reports epoch `0`, writer `v1`, declarative
-only. Version 1 remains the sole authority; Phase 3 and activation remain open.
+only. Version 1 remains the sole authority; Phase 3 is retired, and Phase 4
+remains inactive and separately user-gated.
 
-### Phase 3: Triggered boundaries and real callers
+### Phase 3: Retired
 
-Modify the event sender, verification/effect/provider adapters, and Codex model;
-add `scripts/advisory_dispatch.py` with exactly the two callers in Section 6.
-Everything remains behind the inactive epoch or an isolated shadow/test context;
-live v1 semantics do not change.
-
-- [ ] Route authority-bearing entrypoints through host-issued binding checks,
-  expiry/revocation, child narrowing, and `unattested` fail-closed behavior.
-- [ ] Add inactive compact paths for scoped verification, effect
-  reservation/recovery, and runtime-aware atomic advisory dispatch; preserve
-  v1 behavior and advisory-only provider output.
-- [ ] Migrate each helper to a real caller or delete it in the same task.
-
-**Gate:** principal-spoofing, stale-GO, duplicate-delivery, ambiguous-effect,
-duplicate-spend, and unavailable-provider tests all fail closed; direct work
-still creates zero protocol artifacts.
+No executable task remains. The speculative corpus/report bookkeeping and the
+effect/provider implementation promises were removed because no authoritative
+live caller justified them. Historical evidence remains in Git history.
 
 ### Phase 4: Reader migration, activation, and pruning
 

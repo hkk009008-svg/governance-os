@@ -1,8 +1,8 @@
 {
-  "schema_version": "compact-kernel-v1-shadow-replay/v1",
+  "schema_version": "compact-kernel-v1-shadow-replay/v2",
   "sources": {
     "tests/fixtures/compact_state_mapping/v1.json": "sha256:6803286b690d7dec2068a9ea9bbc5047418ac73a547cbd7f28f1dd73372466cc",
-    "tests/fixtures/compact_kernel/v1_misuse_vectors.json": "sha256:786d8132a3f9394c3c27f7c7f7b4cd64c2581a0b7ed7a11fadf68f4199dbeb22",
+    "tests/fixtures/compact_kernel/v1_misuse_vectors.json": "sha256:f6c7eb267eed5801ea342940f02330ed5bf53b4cc24d6bf854fea991c33ef7e5",
     "tests/fixtures/compact_kernel/v2_replay_vectors.json": "sha256:c1264f6278f7ce9af5e8d10210d4466b8069008f8c16b9e85d2107504992f510"
   },
   "actors": {
@@ -2737,9 +2737,6 @@
       "target_id": "misuse:evidence-change"
     }
   },
-  "deferred_phase3_misuse_ids": [
-    "ambiguous_effect_outcome_retry"
-  ],
   "reducer_replay_ids": [
     "independent_order_a",
     "independent_order_b",

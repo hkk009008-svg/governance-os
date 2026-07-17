@@ -215,47 +215,6 @@
         "effect_attempts": 0,
         "provider_attempts": 0
       }
-    },
-    {
-      "id": "ambiguous_effect_outcome_retry",
-      "enforcing_phase": 3,
-      "expected_invariant": "An ambiguous external effect outcome enters reconciliation-only state and cannot retry or obtain a new effect attempt.",
-      "phase_1_non_enforcement_reason": "The Phase 1 mapping API can describe OUTCOME_UNKNOWN but has no executor, reservation store, or retry gate to block an effect.",
-      "stimulus": [
-        {
-          "step": 1,
-          "event_kind": "effect.attempt_reserved",
-          "facts": {
-            "effect_id": "effect:publish-001",
-            "executor_id": "executor:primary",
-            "idempotency_key": "effect-intent:publish-001",
-            "provider": "provider:external-a"
-          }
-        },
-        {
-          "step": 2,
-          "event_kind": "effect.outcome_unknown",
-          "facts": {
-            "effect_id": "effect:publish-001",
-            "provider": "provider:external-a",
-            "outcome": "unknown"
-          }
-        },
-        {
-          "step": 3,
-          "event_kind": "effect.retry_requested",
-          "facts": {
-            "effect_id": "effect:publish-001",
-            "idempotency_key": "effect-intent:publish-001"
-          }
-        }
-      ],
-      "expected_future_outcome": {
-        "decision": "reconciliation_only",
-        "transitions_applied": 2,
-        "effect_attempts": 1,
-        "provider_attempts": 1
-      }
     }
   ]
 }

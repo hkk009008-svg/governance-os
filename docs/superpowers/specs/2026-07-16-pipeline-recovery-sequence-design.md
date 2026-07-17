@@ -26,7 +26,7 @@ Future provider work requires separate user authorization. This sequence grants 
 | 3 | Target-aware evidence-ledger bridge | Removed; no target work. |
 | 4 | PPL publication-race correction | Removed; no target work. |
 | 5 | Compact kernel Phase 1-2 | Prove current state; fix one demonstrated gap at most. |
-| 6 | Compact control-plane Phase 3 | Live callers, one narrow behavior change at most, one verdict. |
+| 6 | Compact control-plane Phase 3 | Retired; no executable task. |
 | 7 | Compact kernel Phase 4 | One selector/fence, one rehearsal/review, separately authorized activation. |
 | 8 | Retirement/publication reconciliation | No-op unless later compact work creates descriptive drift. |
 

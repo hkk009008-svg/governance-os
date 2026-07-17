@@ -26,12 +26,10 @@ EXPECTED_MISUSE_IDS = {
     "relevant_dependency_change",
     "relevant_acceptance_change",
     "relevant_evidence_change",
-    "ambiguous_effect_outcome_retry",
 }
 EXPECTED_FUTURE_DECISIONS = {
     "conflict",
     "idempotent",
-    "reconciliation_only",
     "rejected",
     "verification_invalidated",
 }
@@ -333,7 +331,7 @@ def test_misuse_vectors_are_replay_shaped_without_claiming_enforcement():
     assert fixture["schema_version"] == "compact-kernel-misuse-vectors/v1"
     vectors = fixture["vectors"]
     vector_ids = [row["id"] for row in vectors]
-    assert len(vector_ids) == 9
+    assert len(vector_ids) == 8
     assert len(vector_ids) == len(set(vector_ids))
     assert set(vector_ids) == EXPECTED_MISUSE_IDS
     for row in vectors:
@@ -345,7 +343,7 @@ def test_misuse_vectors_are_replay_shaped_without_claiming_enforcement():
             "stimulus",
             "expected_future_outcome",
         }
-        assert row["enforcing_phase"] in {2, 3}
+        assert row["enforcing_phase"] == 2
         assert row["expected_invariant"].strip()
         assert "Phase 1" in row["phase_1_non_enforcement_reason"]
         assert "mapping API" in row["phase_1_non_enforcement_reason"]
@@ -427,17 +425,6 @@ def test_misuse_vectors_pin_future_replay_semantics():
             0,
             0,
         ),
-        "ambiguous_effect_outcome_retry": (
-            [
-                "effect.attempt_reserved",
-                "effect.outcome_unknown",
-                "effect.retry_requested",
-            ],
-            "reconciliation_only",
-            2,
-            1,
-            1,
-        ),
     }
     for vector_id, (events, decision, transitions, effects, providers) in expected.items():
         vector = vectors[vector_id]
@@ -475,7 +462,3 @@ def test_misuse_vectors_encode_the_adversarial_facts_needed_for_replay():
         facts = vectors[vector_id]["stimulus"][0]["facts"]
         assert facts["prior_decision"] == "GO"
         assert facts[f"prior_{digest_name}"] != facts[f"current_{digest_name}"]
-
-    ambiguous = vectors["ambiguous_effect_outcome_retry"]["stimulus"]
-    assert ambiguous[1]["facts"]["outcome"] == "unknown"
-    assert ambiguous[2]["facts"]["effect_id"] == ambiguous[0]["facts"]["effect_id"]

@@ -1,6 +1,6 @@
 # Compact Kernel Phase 4 Activation Plan
 
-**Status:** Blocked until Phase 3 GO and separate user authorization to activate.
+**Status:** Inactive; separate user authorization is required to activate.
 
 **Goal:** Move Pipeline through one small, fail-closed cutover while preserving one writer.
 
