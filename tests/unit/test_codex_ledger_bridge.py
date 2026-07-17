@@ -226,19 +226,26 @@ def test_readiness_render_codex_surfaces_ledger_bridge():
 
 def test_ledger_start_guard_cli_rejects_content_kernel():
     import ledger_start_guard
+    import target_binding
 
+    forbidden = target_binding.forbidden_roots()[0]
     result = ledger_start_guard.build_guard(
         seat="operator2",
-        root=Path("/Users/hyungkoookkim/Content"),
-        kernel=Path("/Users/hyungkoookkim/Pipeline"),
+        root=forbidden,
+        kernel=ledger_start_guard.PIPELINE_KERNEL,
     )
 
     assert not result.ok
-    assert "Refusing `/Users/hyungkoookkim/Content`" in "\n".join(result.errors)
+    assert f"Refusing `{forbidden.as_posix()}` for ledger work." in "\n".join(result.errors)
 
 
-def test_ledger_start_guard_cli_prints_route_and_first_commands(tmp_path, capsys):
+def test_ledger_start_guard_cli_prints_route_and_first_commands(tmp_path, capsys, monkeypatch):
     import ledger_start_guard
+    import target_binding
+
+    ledger = tmp_path / "evidence-ledger"
+    ledger.mkdir()
+    monkeypatch.setenv("GOVERNANCE_TARGET_PATH", str(ledger))
 
     sent = tmp_path / "coordination" / "mailbox" / "sent"
     sent.mkdir(parents=True)
@@ -246,7 +253,7 @@ def test_ledger_start_guard_cli_prints_route_and_first_commands(tmp_path, capsys
     route.write_text(
         "# Coordinator -> All: ledger alignment task-board\n\n"
         "Task-board: ledger-t14-align-2026-07-07\n"
-        "Target repo: /Users/hyungkoookkim/evidence-ledger\n",
+        f"Target repo: {ledger}\n",
         encoding="utf-8",
     )
 
@@ -264,11 +271,12 @@ def test_ledger_start_guard_cli_prints_route_and_first_commands(tmp_path, capsys
     )
 
     out = capsys.readouterr().out
+    target = target_binding.resolve_target()
     assert rc == 0
     assert "Ledger seat start guard: PASS" in out
     assert "Active route: coordination/mailbox/sent/2026-07-07T09-36-23Z-coordinator-to-all-coordination.md" in out
     assert "env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py operator2 --wave 2" in out
-    assert "env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger status --short --branch" in out
+    assert f"env -u GIT_INDEX_FILE git -C {target.path.as_posix()} status --short --branch" in out
 
 
 def test_ledger_start_guard_surfaces_route_base_and_worktree_before_normal_checkout(tmp_path, capsys):
