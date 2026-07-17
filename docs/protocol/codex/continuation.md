@@ -1,173 +1,67 @@
-# Codex Continuation Adapter
+# Codex continuation adapter
 
-This is the short Codex adapter for the executable harness kernel in
-`scripts/codex_protocol_model.py`. The active invariant is: durable shared state beats chat memory. Read git, signed ref-bus facts, mailbox bodies, cursors, locks, logs, gate evidence, and operator reports before trusting stale prose.
+This file translates Pipeline doctrine into Codex-native runtime actions. It is
+an adapter, not a second protocol specification. Lifecycle grammar and triggered
+contracts live in `scripts/codex_protocol_model.py`; shared policy lives under
+`docs/protocol/agents/`.
 
-The signed three-way ref-bus is the load-bearing state source for three-way
-facts. The free-form mailbox remains the human coordination channel and must
-still be checked before four-seat protocol decisions.
+## Source order
 
-All Codex seats, including coordinator, must actively eliminate ceremony and
-theater behavior. Status notes, routes, handoffs, receipts, and no-op reports
-are valid only when they preserve real transfer state, change enforcement, or
-cite executable evidence; green-looking prose is not protocol proof.
+Use the newest applicable source in this order:
 
-For folder ownership, use `docs/protocol/protocol-assembly-map.md`. For full
-agent-neutral governance, use `docs/protocol/agents/`. This file only maps the
-kernel onto Codex commands and runtime choices.
+1. Explicit user instruction and authorization.
+2. Current code, Git commits, and signed ref-bus facts when a three-way route is
+   active.
+3. Relevant committed mailbox bodies and the concrete seat's cursor.
+4. Current locks, gate output, logs, and operator reports.
+5. Same-seat handoff and `STATE.md` as orientation aids, never overrides.
+6. Defaults in this adapter.
 
-## Codex Risk-Tier Router
+Read bodies and files, not counts or chat summaries. Refresh HEAD and mailbox
+state immediately before a protocol write or decision.
 
-- `tier-0-conversational`: a self-contained answer. Use no repo orientation,
-  implementation skills, mailbox checks, smoke, worktree, or verification
-  commands.
-- `tier-1-read-only`: repository inspection or an evidence-backed report. Use
-  the smallest scoped read commands. Brainstorming, TDD, worktree,
-  plan-writing, implementation-review, and completion-verification skills do
-  not apply unless the user changes the task into design or mutation work.
-  Live-seat checks require an explicit seat, mailbox, route, wave, handoff, or
-  protocol-decision trigger.
-- `tier-2-local-mutation`: an ordinary code, test, config, or documentation
-  edit. Use impact analysis, task-relevant implementation discipline, focused
-  tests, and one fresh completion verification pass.
-- `tier-3-governed-side-effect`: a live-seat decision, shared protocol state,
-  or external side effect. Apply the exact mailbox, capacity,
-  independent-verification, and user-authorization gates for that action.
+## Mode selection
 
-Deterministic artifact evidence may be reused against an unchanged HEAD and
-unchanged relevant paths. Tier 3 requires fresh signed-bus, mailbox/cursor,
-lock, approval, and external-state checks; reuse never relaxes a triggered
-guard.
-Do not launch another generic reviewer or repeat Lane V for the same unchanged
-commit unless it asks a genuinely different, pre-stated question.
+- **Readiness bridge** is the default. Inspect and report durable state; do not
+  consume cursors, send mail, claim a lock, route work, publish a verdict, push,
+  spend, or author production changes.
+- **Live seat** requires an explicit `director`, `director2`, `operator`, or
+  `operator2` assignment. Use the concrete seat for handoff, mailbox, cursor,
+  event addressing, and Git-index identity.
+- **Coordinator** requires an explicit reconciliation, routing, capacity, or
+  gate assignment. It has all-scope read access and no cursor; it does not
+  author behavior-changing production fixes.
+- **Subagent** is bounded by its parent prompt and returns evidence to the
+  parent. It does not become a seat.
 
-## External Advisory Tools
+Behavior sources are separate from concrete identities:
+`director -> director`, `director2 -> director`, `operator -> operator2`, and
+`operator2 -> operator2`.
 
-Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
-
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-surface intentionally does not restate its lifecycle grammar.
-
-Mailbox decisions remain body-first: read relevant mailbox bodies before
-acting; live seat cursors are intentional per-seat state, and the coordinator
-has no cursor. The verifying operator must be a non-author and alone issues
-GO/NITS/FAIL from repository evidence. The coordinator may route and reconcile
-but not author behavior-changing production fixes. Push, merge, paid spend, and
-every other side effect are separately gated and require explicit authority.
-
-## R-INDEPENDENCE
-
-Scope: both.
-Trigger: before designing or implementing, classify whether the change touches an adversarial-surface: input rendered or composed into a parseable or executable context; authority or security-boundary enforcement; side-effect gating; or schema validation whose acceptance grants trust.
-Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, the compact pair supplies independent verification and the fixed mailbox writer supplies publication.
-Deduplication: R-VERIFY-TIER still prohibits redundant same-question passes. Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.
-Evidence: the committed design-time enumeration artifact and the independent verification report naming the reviewer and harness.
-Details: `docs/protocol/claude/independence-first.md` (ADR-019).
+The root risk tiers in `AGENTS.md` decide whether this adapter is needed at all.
+Ordinary conversation and read-only inspection do not become live-seat work.
 
 ## Claude Function Harmonization:
 
-- core stance: adapt Claude functions to Codex-native primitives; do not transplant Claude-only mechanics.
-- AskUserQuestion discipline: ask only for cross-cutting, policy, or
-  hard-to-reverse choices; use repo convention and durable state for ordinary
-  file, naming, and routing choices.
-- background work discipline: let long verification run in an exec session
-  while independent read-only context gathering continues, then read the result
-  before claiming status.
-- dispatch-template minimalism: give subagents only the relevant rule IDs,
-  allowed paths, evidence checks, side-effect limits, and env-u git hygiene
-  instead of inherited doctrine.
-- reviewer evidence rigor: reviewers use `pass | issues | unable_to_verify`,
-  U1-U5 unverifiable reasons, reviewed-head checks, clean-tree checks, and
-  command evidence.
-- adversarial verification: verification agents actively try to make the gate
-  or proof fail with non-vacuous RED, `--runxfail`, sibling, and
-  touched-script/hook checks.
+Adapt Claude functions to Codex-native primitives; do not transplant
+Claude-only mechanics.
 
-## Emergency Handling
+- **User questions:** ask only for policy, cross-cutting, or hard-to-reverse
+  choices; recover ordinary choices from repo convention and durable state.
+- **Background work:** keep long verification in an exec session while doing
+  independent reads, then collect its result before claiming status.
+- **Dispatch:** send only role, scope, allowed paths, acceptance evidence,
+  forbidden effects, and Git hygiene. Do not forward inherited doctrine.
+- **Review:** preserve findings, verdict, uncertainty, reviewed HEAD, and
+  command evidence. An incomplete reviewer result is not substitute evidence.
+- **Adversarial work:** enumerate abuse cases before implementation and test the
+  actual diff against them; do not add redundant same-question reviewers.
 
-- Emergency scope is exactly four categories: Production-affecting OR user-data-integrity issue, Security-critical, Active bleed-rate, and External time-pressure.
-- Events outside those four categories use normal role partition and proposal cycles, even when they feel urgent.
-- The first-noticer claims initial response with a `dispatch-claim` mailbox event carrying `urgency: emergency`.
-- Triage discipline is stop-the-bleed first: use the smallest mitigation before root-cause analysis.
-- Cross-seat temporary authority applies only during transplant or context exhaustion, and the commit body must include `acting under v5 §E temporary authority`.
-- The coordinator no-production-code boundary remains in force during emergency routing and reconciliation.
-- Within one session of resolution, write a post-incident note in `docs/INCIDENT-LOG.md` and review protocol gaps.
+## Start commands
 
-## Disagreement Handling
-
-- States the disagreement explicitly in the next-cycle revision.
-- Provides project-data-grounded evidence for the disputed item.
-- Chooses exactly one resolution path: counter-refinement, defer to v(N+1), or acceptance criterion.
-- silent-accept is the receiver's own acceptance, not permission inferred from peer silence.
-- Re-REPLY is allowed for a live objection, but the 2-cycle escalation limit sends persistent disagreement to the user-principal.
-
-## Blocked-Wave And Acting-Coordinator Handling
-
-- Require wave-gate evidence before asserting blocked.
-- Trigger immediate pod-off when a director gate-request is unserviced.
-- Send one consolidated mailbox event naming blocker, owner, and SLA.
-- If the owning coordinator is absent, escalate to user with the acting-coordinator path.
-- Use a pre-brief skeleton only until the blocked owner or user direction confirms scope.
-- Use no gate-relaxing or suppressive pins to make a blocked wave look green.
-- A blocked-wave transition is verified only from operator GO, not route prose or a gate script alone.
-
-## Reviewer Result Handling
-
-- Use findings-first ordering by severity for review output and verification reports.
-- When relaying reviewer or verifier output, preserve verdict, findings, and next steps.
-- separate uncertainty, inference, and follow-up so readers can tell evidence from hypothesis.
-- do not auto-fix after a review; route or request the next implementation action instead.
-- failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.
-
-## Ledger CLI Adoption Bridge
-
-For work routed to `/Users/hyungkoookkim/evidence-ledger`, use
-`docs/protocol/codex/ledger-cli-adoption.md` before entering the target repo.
-Pipeline remains the Codex four-seat governance kernel; evidence-ledger owns
-product-local truth. Cross-repo git and pytest commands use
-`env -u GIT_INDEX_FILE` so Pipeline seat indexes do not leak into ledger work.
-Do not start ledger work from `/Users/hyungkoookkim/Content`. Start from
-`/Users/hyungkoookkim/Pipeline` and run
-`env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`
-before target-repo inspection.
-
-## Runtime modes
-
-- Readiness bridge: default mode. Report current durable state and blockers.
-  Do not consume cursors, send mailbox, claim locks, push, spend, edit
-  inventory, or author production changes.
-- Live seat: only when the user or parent prompt explicitly names `director`,
-  `director2`, `operator`, or `operator2`. Work inside that seat's authority.
-- Coordinator: only when explicitly asked to reconcile, route, gate, or operate
-  cross-seat state. The coordinator is unpinned and never consumes a
-  coordinator cursor.
-- Subagent: bounded by the parent prompt. Subagents never inherit live-seat or
-  coordinator authority. The parent seat may assign bounded work, but the seat
-  keeps mailbox, cursor, GO/NITS/FAIL, route, lock, push, and spend authority.
-
-## Live-Seat Behavior Sources
-
-Concrete live-seat identity and canonical behavior source are separate.
-Behavior source map: `director -> director`, `director2 -> director`, `operator -> operator2`, `operator2 -> operator2`.
-
-Mailbox, cursor, heartbeat, event-addressing, and git-index operations use the concrete seat, not the behavior source.
-For example, `CODEX_SEAT=operator` uses operator mailbox/cursor/index paths
-while following the `operator2` behavior source.
-
-## Same-Seat Handoff First
-
-On a fresh/transplanted instance, if the user or parent prompt names a live
-seat or coordinator, locate the newest handoff from that same concrete role
-before ordinary orientation:
-
-- Live seat: newest `docs/HANDOFF-<concrete-seat>-*.md`.
-- Coordinator: newest `docs/HANDOFF-coordinator-*.md`.
-
-Use the concrete seat, not the behavior source. For example, `director` reads
-`HANDOFF-director-*`, not `HANDOFF-director2-*`. If no same-seat handoff exists,
-state that and continue with the first commands below.
-
-## First Commands
+For a fresh or transplanted named seat, first locate the newest
+`docs/HANDOFF-<concrete-seat>-*.md`. A coordinator first locates the newest
+`docs/HANDOFF-coordinator-*.md`. If none exists, say so and continue.
 
 Readiness bridge:
 
@@ -179,205 +73,155 @@ env -u GIT_INDEX_FILE git log --oneline -5
 Live seat:
 
 ```bash
-.venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
+.venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave <wave>
 env -u GIT_INDEX_FILE git log --oneline -5
 ```
 
 Coordinator:
 
 ```bash
-.venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
+.venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave <wave>
 env -u GIT_INDEX_FILE git log --oneline -5
-.venv/bin/python scripts/wave_gate_check.py 2
-.venv/bin/python scripts/ci_smoke.py
 ```
 
-Before committing an active coordinator task-board route, render the hard-gated
-capacity board and validate the draft route:
+Run `scripts/wave_gate_check.py <wave>` only for an actual wave, inventory, or
+gate claim. Run `scripts/ci_smoke.py` only when the task touches runtime/topology
+invariants or its completion profile requires full project smoke.
+
+Before an active coordinator task-board route:
 
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave>
 env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md
 ```
 
-For a strict read-only protocol validation bundle, run the protocol doctor:
+Use the capacity board only for an actual multi-seat route. A narrow or
+shared-file task stays on the single-pair fast path.
 
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave>
-env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave> --route coordination/mailbox/sent/<event>.md
-```
+For evidence-ledger work, remain in `/Users/hyungkoookkim/Pipeline` until
+`docs/protocol/codex/ledger-cli-adoption.md` directs the transition. Run its
+ledger start guard before entering the target repo; do not start from Content.
 
-Closed-cycle coordinator-join packets are also hard-gated: standby, idle,
-closeout, transfer, or transplant evidence must cite a durable
-`docs/HANDOFF-*.md` artifact instead of ending on a chat-only or generic
-next-authority sentence.
+## Mailbox and cursor boundary
 
-Use `<wave>` when the active wave is not 2:
+Before a live-seat or coordinator protocol decision, route, handoff, or
+state-asserting write:
 
-```bash
-.venv/bin/python scripts/wave_gate_check.py <wave>
-```
+1. Refresh seat status and recent Git history.
+2. Identify relevant sent events.
+3. Read their bodies and referenced artifacts.
+4. Apply the newest binding event before acting.
 
-## Mailbox-First Rule
-
-mailbox-first decisions: always check mail before protocol decisions or
-state-asserting writes. Counts are not enough: read the relevant
-`coordination/mailbox/sent/*.md` bodies and let the newest binding event shape
-the decision. Cursor consumption is a separate live-seat mutation:
+Only the concrete live seat may deliberately consume its cursor:
 
 ```bash
 coordination/bin/consume-events <seat>
 ```
 
-Do not run that command from readiness bridge mode. Do not consume coordinator
-mail.
+Readiness bridges and subagents do not consume. Coordinators have no cursor and
+never consume coordinator mail. Send one consolidated route when cross-seat
+coordination is actually needed; do not create receipt or status churn.
 
-## Side-Effect Gate
+Authority-bearing events use the fixed writer:
 
-The kernel names `user-gated side effects`: push, merge, lock-claim side effects,
-paid API spend, and pod spend require explicit user consent. Use
-`env -u GIT_INDEX_FILE` for ordinary git and pytest commands unless you are
-deliberately maintaining a seat-local or scoped temporary index.
+```bash
+coordination/bin/send-event <from> <to|all> <kind> <subject...>
+```
 
-Side-Effect Executor Token:
-- Required fields: `side_effect_id`, `executor`, `target`,
-  `allowed_command_class`, `preflight`,
-  `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`,
-  `observer_seats`, `final_closeout_owner`, and `non_goals`.
-- generic user approval is unit consent, not executor election.
-- shared user-gated side effects need exactly one named executor before mutation unless the user directly names the executing seat in the same prompt.
-- side effects covered: remote-ref update, force update, lock action, paid-service spend, pod action, production generation, target-repo checkout refresh, cursor consume, and route mutation.
-- observer seats default to observer mode: read live state only, do not repeat
-  the side effect, and report only contradiction, missing required evidence,
-  changed safety boundary, or explicit coordinator request.
-- live evidence may close an already-satisfied side effect without appointing a
-  redundant executor.
-- multiple same-target side-effect success claims need a common side_effect_id; otherwise route validation fails.
-- report only contradiction, missing required evidence, changed safety boundary, or explicit coordinator request.
+The body arrives on standard input. This command creates and stages a mailbox
+event, so only an authorized live seat or coordinator runs it and then inspects
+the staged path. Only operator seats may publish `verification-report`.
 
-The coordinator may route and reconcile but does not author behavior-changing
-production fixes. A verified inventory transition still needs an operator
-`verification-report` GO plus executed evidence; a gate script is process
-evidence, not row-correctness proof.
+## Git and shared-tree boundary
 
-## Pair Operating Contract
+Prefix ordinary Git and pytest commands with `env -u GIT_INDEX_FILE`. Use a
+seat-local or temporary index only when deliberately maintaining it. Refresh
+`git log --oneline -3` and scoped status immediately before writes because
+another seat may move HEAD.
 
-- director -> operator is the fast path inside each pair: director scopes and
-  sends the smallest sufficient artifact; operator starts Lane V only from
-  lawful trigger authority.
-- Every baton handoff is a mailbox artifact, not chat: brief, verify-request,
-  verification-report, or handoff with commit/range, paths, tests, and
-  exclusions.
-- Coordinator and seat chains continue internally and stop only at completion,
-  a genuine blocker, scope expansion, or a separately user-gated effect.
-- Director sends one canonical committed verify-request per implementation or
-  brief once structural scope authority is stable; include paths, tests,
-  evidence commands, known exclusions, and expected verdict without
-  substituting them for authority.
-- Operator waits for a lawful authority-bearing trigger; no duplicate Lane V for
-  docs-only, status-only, or handoff-only commits, and no speculative
-  verification when phase is ambiguous.
-- No receipt/status churn: send mail only when it changes ownership, preserves
-  evidence, requests verification, returns GO/NITS/FAIL, or blocks on
-  user-gated side effects.
-- When both seats are active, do not edit the same files or rerun the same
-  task; first commit to land wins and the other seat narrows or stands down
-  after git/mailbox refresh.
-- At a real stop, state the blocking boundary or plain next authority without a
-  prescribed heading or returning seat commands to the user.
-- Effectiveness means a closed loop: director artifact -> operator
-  verification-report GO/NITS/FAIL -> director consumes the report or
-  coordinator closes; gate scripts never substitute for operator
-  verification-report GO.
+Preserve unrelated dirty files. Use explicit pathspecs and do not run broad
+auto-fix or staging over peer work. A commit, push, merge, cursor consume, lock,
+route mutation, and paid action are separate authority boundaries.
 
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-surface intentionally does not restate its lifecycle grammar.
+## Authority and side effects
 
-## Capacity Split Default:
+Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
 
-- single-pair fast path remains the default for narrow or shared-file work.
-- divisible or preplanned larger work defaults to dual-pair routing.
-- Coordinator promotion question: can this route produce two independently reviewable deliverables?
-- If yes: director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.
-- If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.
-- The two active chunks must name disjoint write sets, explicit interfaces, focused tests, forbidden side effects, and separate verify-request/verification-report loops.
-- Pair B preflight packets use `director-preflight` and `operator-preflight` packet types.
-- coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.
+Mailbox decisions remain body-first: read relevant mailbox bodies before
+acting; live seat cursors are intentional per-seat state, and the coordinator
+has no cursor. The verifying operator must be a non-author and alone issues
+GO/NITS/FAIL from repository evidence. The coordinator may route and reconcile
+but not author behavior-changing production fixes. Push, merge, paid spend, and
+every other side effect are separately gated and require explicit authority.
 
-## Optional Tools
+The executable model owns the complete pair lifecycle, capacity split,
+emergency/disagreement handling, blocked-wave rules, reviewer-result handling,
+and side-effect executor contract. Apply those details when their trigger
+fires; do not recreate them here.
 
-- `scripts/mailbox_monitor.py --once` or `--watch --interval 5`: read-only
-  mailbox awareness without claiming a seat.
-- `scripts/draft_handoff.py <seat> --wave 2 --smoke --output`: draft a
-  handoff evidence scaffold; refresh live state before finalizing it.
-- `scripts/protocol_capacity_board.py --wave <wave>`: read-only hard-gated
-  capacity board; use `--validate-route coordination/mailbox/sent/<event>.md`
-  before active coordinator task-board route commits.
-- `scripts/protocol_doctor.py --wave <wave>`: strict read-only protocol bundle;
-  use `--route coordination/mailbox/sent/<event>.md` when validating an active
-  coordinator task-board route. It is evidence, not an operator GO substitute.
-- `.codex/agents/agentNN.toml`: optional guardrail extensions. They do not
-  replace seat authority, mailbox cursor rules, or user-gated push.
+Generic user consent for a shared effect does not elect multiple executors.
+Use the model's single-executor contract or close the action from fresh evidence
+when the target is already satisfied. Gate output is process evidence, not an
+operator correctness verdict.
 
 ## Subagents
 
-Use project role agents only when the parent prompt asks for that role:
+Subagents never inherit live-seat or coordinator authority. Subagents do not
+consume cursors, send mailbox events, issue GO, route coordinator work, claim
+locks, push, start pods, or spend paid budget.
+
+Use a bounded helper only when it adds independent signal or parallel capacity.
+The parent keeps synthesis and every authority-bearing action. Do not run
+parallel implementers on shared files or behind one push-gated lock. Direct work
+requires no utilization report or no-op artifact.
+
+Project roles are available for bounded assignments:
 `protocol-director`, `protocol-operator`, `protocol-coordinator`,
-`lane-v-verifier`, or `money-gate-reviewer`. A live seat or coordinator may
-create that parent prompt at seat discretion when bounded subagent work would
-add signal; this does not require a separate user request for delegation. Keep
-the parent responsible for final synthesis and for any user-gated action.
+`lane-v-verifier`, and `money-gate-reviewer`.
 
-## Seat Subagent Development
+## Optional read-only tools
 
-Core rule: seats retain authority; subagents own bounded work.
-Live seats and coordinator may choose bounded subagents at seat discretion; this does not require a separate user request for delegation.
-Default behavior: every live seat and coordinator actively considers bounded subagents for non-trivial routed work and uses them when they add independent signal, capacity, or fresh verification. Direct work remains acceptable for small, tightly coupled, or authority-sensitive work.
-After live-seat/coordinator orientation, record a Subagent utilization decision: dispatch a bounded helper for a named task, or direct/no-op because the work is small, tightly coupled, authority-sensitive, or already complete.
+- `scripts/mailbox_monitor.py --once` or `--watch --interval 5`: mailbox
+  awareness without claiming a seat.
+- `scripts/draft_handoff.py <seat> --wave <wave> --smoke --output`: draft a
+  transfer scaffold; refresh live state before using it.
+- `scripts/protocol_capacity_board.py --wave <wave>`: capacity evidence and
+  route validation for an active coordinator route.
+- `scripts/protocol_doctor.py --wave <wave>`: strict protocol diagnostics; add
+  `--route coordination/mailbox/sent/<event>.md` for a specific route.
+- `.codex/agents/agentNN.toml`: optional guardrail extensions. They never
+  replace seat authority, cursors, or user-gated effects.
 
-- Director/director2 may dispatch bounded implementer subagents for independent
-  implementation slices, but the director seat still owns the brief,
-  acceptance evidence, final synthesis, and verify-request.
-- Operator/operator2 may dispatch read-only verifier helpers for diff
-  inspection, focused reproduction, or edge-case review, but the operator seat
-  still owns the GO/NITS/FAIL report.
-- Coordinator may dispatch read-only reconciliation helpers for inventory,
-  mailbox, lock, gate, or plan-readiness checks, but the coordinator still
-  owns the consolidated route or no-op report.
-- Required loop: implementer -> spec review -> quality review -> seat synthesis.
-- The generic implementer -> spec review -> quality review loop applies to implementation delivery, not Codex Lane V same-question review.
-- Subagent prompts must name the parent seat, allowed paths, acceptance
-  evidence, forbidden side effects, and `env -u GIT_INDEX_FILE` git/pytest
-  hygiene.
-- Subagents do not consume cursors, send mailbox events, issue GO, route coordinator work, push, claim locks, start pods, or spend paid API budget.
-- Do not run parallel implementation subagents on shared files or behind the
-  same push-gated lock.
+Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
 
-## Provider-neutral Lane V v3
+## Stop and transfer
 
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-surface intentionally does not restate its lifecycle grammar.
+Coordinator and seat chains continue internally until completion, a genuine
+blocker, scope expansion, or a separately user-gated effect. Write a narrow
+handoff only at a real transfer/context boundary or when explicitly requested.
+At a stop, state the actual boundary or next authority in plain language; do
+not impose a terminal heading or return seat commands to the user.
 
-- Mailbox decisions remain body-first: read relevant mailbox bodies before acting. Live seat cursors are intentional per-seat state; the coordinator has no cursor.
-- The assigned Operator must be a non-author and alone issues GO/NITS/FAIL from repository evidence.
-- The fixed mailbox writer publishes ordinary events and Operator reports through the same finalizer.
-- The coordinator may route and reconcile but not author behavior-changing production fixes.
-- Push, merge, paid spend, and every other side effect are separately gated and require explicit authority.
-- No third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER.
+## Verification
 
-## Verification Commands
-
-Run the narrow command that proves the current claim:
+Run the narrow command that proves the current claim. For protocol-surface
+changes, the usual closeout is:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_imports_smoke.py tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_coordination_tooling.py tests/unit/test_ceremony_gates.py tests/unit/test_protocol_capacity.py tests/unit/test_protocol_doc_integrity.py tests/unit/test_protocol_prompt_sync.py tests/unit/test_codex_ledger_bridge.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_prompt_sync.py tests/unit/test_protocol_doc_integrity.py tests/unit/test_codex_ledger_bridge.py -q
+env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave>
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-.venv/bin/python scripts/wave_gate_check.py 2
+env -u GIT_INDEX_FILE git diff --check
 ```
 
-For a commit or handoff, also inspect scope:
+These commands do not grant GO, push, merge, or other side-effect authority.
 
-```bash
-env -u GIT_INDEX_FILE git status --short
-env -u GIT_INDEX_FILE git diff --stat
-```
+## Related files
+
+- `.agents/skills/four-seat-protocol/SKILL.md`: triggered orientation.
+- `.agents/skills/seat-director/SKILL.md`: director delta.
+- `.agents/skills/seat-operator/SKILL.md`: operator delta.
+- `.agents/skills/seat-coordinator/SKILL.md`: coordinator delta.
+- `docs/protocol/codex/ledger-cli-adoption.md`: evidence-ledger transition.
+- `docs/protocol/agents/director-operator.md`: universal seat doctrine.
+- `scripts/codex_protocol_model.py`: executable lifecycle and invariant source.

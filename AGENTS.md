@@ -1,468 +1,193 @@
-# About this document
+# Pipeline agent guide
 
-This file is the **agent-agnostic root** for AI coding tools working in this
-repo (Cursor, Aider, Copilot, Continue, Claude Code, Codex, Antigravity, etc.).
-Everything below is the agent-agnostic project guide — canonical project
-facts plus the discipline that ships clean code here.
+This is the always-loaded, agent-agnostic router for AI tools in this repo. It
+keeps only rules needed before the task is known. Load task-specific doctrine
+from the linked source when its trigger fires.
 
-**Claude Code specifically:** `CLAUDE.md` is the Claude-specific companion.
-It mirrors this file's discipline section using Claude's actual tool
-syntax (`Agent` subagent dispatch, `subagent_type` values, prompt
-templates, `Skill` invocation, `TaskCreate`/`TaskUpdate`,
-`AskUserQuestion`, the `superpowers:subagent-driven-development` skill,
-etc.). Claude Code agents read **both** files; this one defines the
-principles, `CLAUDE.md` defines the mechanics.
+`ARCHITECTURE.md` is factual truth; this file is process guidance. Current code
+wins when either document drifts. Fix a stale claim in the same scoped change
+that exposes it.
 
-**Codex specifically:** Codex reads this file directly, then uses the
-executable harness model in `scripts/codex_protocol_model.py`,
-`docs/protocol/codex/continuation.md`, plus the repo skill
-`.agents/skills/four-seat-protocol/SKILL.md` for Codex-native mechanics
-(`update_plan`, Codex subagents, `.codex/agents`, `.codex/hooks.json`, and
-`apply_patch`). Codex agents are readiness bridges by default; they become
-director/operator/coordinator seats only on explicit user instruction. The
-kernel owns the active invariant set: durable shared state beats chat memory,
-mailbox-first decisions, explicit mode, env-u git policy, user-gated side
-effects, coordinator no-production-fix authority, and operator GO requirements.
-Use the continuation adapter for first commands, optional tools, and the narrow
-handoff rule at real transfer boundaries.
+Provider mechanics live in their own surfaces:
 
-Codex start-session inhabitance: fresh sessions inhabit the Codex harness as a
-readiness bridge unless the user or parent prompt names a live seat or
-coordinator. The six built-in `.codex/agents/*.toml` role agents remain the
-core modules; optional `.codex/agents/agentNN.toml` files are self-codified
-guardrail extensions and do not replace seat authority, mailbox cursor rules,
-or user-gated push.
-User-principal authorization: live director/operator seats and the coordinator
-may choose bounded subagents at seat discretion; this does not require a separate user request for delegation.
-Default behavior: every live seat and coordinator actively considers bounded
-subagents for non-trivial routed work and uses them when they add independent
-signal, capacity, or fresh verification. Direct work remains acceptable for
-small, tightly coupled, or authority-sensitive work.
-Subagents remain advisory helpers and do not inherit mailbox, cursor, GO,
-coordinator-route, lock, push, pod-spend, or paid-API-spend authority.
-When a fresh or transplanted Codex instance is assigned a live seat or
-coordinator, its first seat-specific action is to locate the newest same-kind
-handoff for that concrete role (`docs/HANDOFF-<seat>-*.md` or
-`docs/HANDOFF-coordinator-*.md`) before ordinary orientation. Concrete seat
-identity wins over behavior source: `director` resumes from `HANDOFF-director-*`
-and `operator2` resumes from `HANDOFF-operator2-*`.
+- Claude Code: `CLAUDE.md`, then `docs/protocol/claude/` and `.claude/`.
+- Codex: `docs/protocol/codex/continuation.md`, then the triggered skill under
+  `.agents/skills/` and role module under `.codex/agents/`.
+- Antigravity and cross-provider work: `docs/protocol/threeway/`.
+- Artifact ownership: `docs/protocol/protocol-assembly-map.md`.
 
-Codex live protocol rules are codified in
-`scripts/codex_protocol_model.py`, adapted in
-`docs/protocol/codex/continuation.md`, and mirrored as checklists in
-`.agents/skills/`.
-In short: always check mail before protocol decisions or state-asserting
-writes; read the relevant mailbox bodies instead of deciding from counts alone,
-do not consume coordinator mail, route cross-seat work with one consolidated
-coordinator event, verify broadcast receipt seat-by-seat, use
-`env -u GIT_INDEX_FILE` for ordinary git/pytest, use a scoped temporary index
-for coordinator-only commits when the shared index is dirty, and prefer
-eligible no-lock work when push/lock side effects are not user-authorized.
-Active coordinator task-board routes must first pass the hard-gated capacity
-board:
-`env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave>`
-and
-`env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md`.
+For Claude Code, explicit user instructions outrank `CLAUDE.md`, which outranks
+this universal guide. Other tools translate these principles into their native
+mechanics without copying provider-specific ceremony.
 
-Ledger-routed Codex seats start from `/Users/hyungkoookkim/Pipeline`, not
-`/Users/hyungkoookkim/Content`. Before any seat enters
-`/Users/hyungkoookkim/evidence-ledger`, run
-`env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`
-from Pipeline and read the active coordinator route it reports.
+## Codex mode and risk tier
 
-## Codex risk-tier router
+Codex starts as a readiness bridge. It becomes `director`, `director2`,
+`operator`, `operator2`, or coordinator only when the user or parent prompt
+names that role or explicitly requests a protocol decision. A skill's presence
+alone is not a trigger.
 
-Use one tier before selecting tools or skills. This is the user-principal's
-project-level applicability rule; a skill's existence alone is not a trigger.
+Choose the smallest applicable tier before loading tools or skills:
 
-- `tier-0-conversational`: a self-contained answer. Use no repo orientation,
-  implementation skills, mailbox checks, smoke, worktree, or verification
-  commands.
-- `tier-1-read-only`: repository inspection or an evidence-backed report. Use
-  the smallest scoped read commands. Do not invoke brainstorming, TDD,
-  worktree, plan-writing, implementation-review, or completion-verification
-  skills, and do not run live-seat checks without an explicit seat, mailbox,
-  route, wave, handoff, or protocol-decision trigger.
-- `tier-2-local-mutation`: an ordinary code, test, config, or documentation
-  edit. Use impact analysis, task-relevant implementation discipline, focused
-  tests, and one fresh completion verification pass.
-- `tier-3-governed-side-effect`: a live-seat decision, shared protocol state,
-  or external side effect. Apply the exact mailbox, capacity,
-  independent-verification, and user-authorization gates for that action.
+- `tier-0-conversational`: answer from the supplied context. No repo startup,
+  mailbox, smoke, worktree, planning, or verification commands.
+- `tier-1-read-only`: inspect only the evidence needed for the report. Do not
+  invoke implementation workflow or live-seat checks without an explicit seat,
+  mailbox, route, wave, handoff, or protocol-decision trigger.
+- `tier-2-local-mutation`: make the ordinary code, test, config, or Markdown
+  change with impact analysis, focused checks, and one fresh completion pass.
+- `tier-3-governed-side-effect`: for live-seat decisions, shared protocol
+  state, or external effects, apply the exact mailbox, capacity, independent
+  verification, and user-authorization gates for that action.
 
-Deterministic artifact evidence may be reused against an unchanged HEAD and
-unchanged relevant paths. Tier 3 requires fresh signed-bus, mailbox/cursor,
-lock, approval, and external-state checks; reuse never relaxes a triggered
-guard.
-Do not launch another generic reviewer or repeat Lane V for the same unchanged
-commit unless it asks a genuinely different, pre-stated question.
+Deterministic evidence may be reused only when HEAD and relevant paths are
+unchanged. Tier 3 always refreshes live bus/mailbox, cursor, lock, approval, and
+external state. Do not repeat the same generic verification on the same commit
+unless the new review has a different, stated question.
 
-## External Advisory Tools
+## Start only what the task requires
 
-Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
+For tier 2 work, inspect scoped status/history and run the focused check that
+matches the change:
 
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-surface intentionally does not restate its lifecycle grammar.
+```bash
+env -u GIT_INDEX_FILE git status --short --branch
+env -u GIT_INDEX_FILE git log --oneline -5 -- <relevant-paths>
+```
 
+Run `scripts/ci_smoke.py` and re-check `ARCHITECTURE.md` section 2 when the task
+touches governance/runtime topology, depends on a documented invariant, or the
+task's completion profile requires the project smoke. Tier 3 loads the
+four-seat skill and follows its triggered startup. Tier 0 and ordinary tier 1
+work pay none of this startup cost.
 
+Read linked docs on demand, not as a session-start bundle. In particular,
+`docs/PROGRAM-MANUAL.md` is pull-on-demand through
+`docs/protocol/program-manual-guide.md`.
 
-Mailbox decisions remain body-first: read relevant mailbox bodies before
-acting; live seat cursors are intentional per-seat state, and the coordinator
-has no cursor. The verifying operator must be a non-author and alone issues
-GO/NITS/FAIL from repository evidence. The coordinator may route and reconcile
-but not author behavior-changing production fixes. Push, merge, paid spend, and
-every other side effect are separately gated and require explicit authority.
+## Project sources
 
-**Antigravity specifically:** Antigravity ("agy", the Gemini-based agentic IDE)
-reads this file as its agent-agnostic source of truth and translates the
-principles into its own mechanisms. It operates in one of two modes:
-1. **Multi-Model Three-Way Protocol** (`docs/protocol/threeway/`): It holds **no seat** by design — it is off every build / verify / integrate / bus-write path — and participates only as a human-relayed strategic-reasoner (the dual-chief app axis) or a read-only observer. 
-2. **Single-Model Autonomous Unit**: It functions independently as a full 5-seat unit, occupying director, operator, and coordinator seats via the legacy mailbox.
-
-For any work an Antigravity session does, it follows the same operating
-discipline as every other tool here. Its adoption manual + the per-provider
-capability mapping are in
-`docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md`; note that the Antigravity-specific
-protocol harness is fully codified in the `.agents/skills/antigravity-harness/SKILL.md` skill,
-which maps the unified doctrine strictly to Antigravity's tool primitives.
-
-**Running all three providers as one system:** Claude + Codex + Antigravity share
-one operating doctrine. The unified statement of the shared rules, the Layer-1
-(cross-provider protocol) vs Layer-2 (portable doctrine) split, and the
-per-provider capability map live in
-[`docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md`](docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md).
-This file remains the principle root; that doc folds in the signed-bus protocol
-and Antigravity.
-
-**Non-Claude agents:** read this file as your source of truth. Translate
-the principles ("fresh context per task", "two-stage review",
-"verify-before-acting") into your tool's analogous mechanisms (new chat
-session, manual diff review, `git grep` for verification, etc.).
-
-# Session-start protocol (read me first)
-
-**Truth lives in `ARCHITECTURE.md` at the repo root.** This file (AGENTS.md)
-is the *process layer* — agent-agnostic principles (multi-task
-orchestration, session discipline) shared by all AI coding tools.
-`ARCHITECTURE.md` is the *truth layer* — verified facts about the project,
-with file:line references and a project smoke test. When they disagree about
-facts, `ARCHITECTURE.md` wins.
-
-Both files drift from the actual code between sessions. Before doing any
-non-trivial work, verify against current source. If a claim is stale,
-**fix the relevant file in the same change** that exposes the staleness —
-don't let a wrong claim survive your session.
-
-Trust the code; update the prose when it diverges.
-
-## Load policy (how to use this file)
-
-This file is an **operative router**: it holds only what must be active *before
-you know the task*. Everything task-specific lives in linked docs, pulled on demand.
-
-- Do NOT read linked protocol docs at session start.
-- Read a linked doc only when its trigger fires.
-- When dispatching a subagent, include only the relevant rule IDs + template
-  slice — never inherited doctrine. Every dispatch includes the templates'
-  **Git hygiene** block (subagents prefix all git with `env -u GIT_INDEX_FILE`
-  — seat-index corruption vector, 2026-06-12).
-- `docs/PROGRAM-MANUAL.md` is pull-on-demand only — read
-  `docs/protocol/program-manual-guide.md` before using/maintaining it; never load
-  the full manual at session start.
-
-## R-START — session-start checklist
-Scope: both
-Trigger: start of every session, before non-trivial work.
-Action: (1) Run the project smoke block (`scripts/ci_smoke.py`); if
-it fails, the doc is stale OR the working tree is broken — fix one before proceeding.
-(2) Skim `ARCHITECTURE.md` §2 topology; spot-check the governance-OS smoke
-invariants implemented in `scripts/ci_smoke.py` `_project_smoke()`. (3) `git log --oneline -20`; if a commit touched a module
-documented in `ARCHITECTURE.md` since its `*Last verified:*` footer, re-read that
-section against the code. (4) If you find a stale claim, fix `ARCHITECTURE.md` first,
-in the same commit (or a `docs:` prep commit right before) the task lands.
-Evidence: smoke output captured; the fixing commit when a claim was stale.
-Details: docs/protocol/agents/core.md
-
-# The user-principal's intent for this program (read PROGRAM-MANUAL.md)
-
-**The user-principal has designated [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md)
-as the canonical
-expression of their intent for this program.** Read it early to internalize *what we
-build* (manual §1–§2) — and *how the user wants it driven*: to realize the
-program's **full capability** (manual §5 is the capability-maximization playbook;
-§3/§4/§6 show how the machine interconnects). When a decision trades off against
-realizing that full capability, **surface it rather than silently making the call.**
-Keep the manual true as the code evolves (same staleness discipline as `ARCHITECTURE.md`).
-
-# Repo doc map
-
-| Need to | Read |
+| Need | Source |
 |---|---|
-| Get oriented (purpose + quick start) | [README.md](README.md) |
-| Understand the code (verified truth — what's where, what does what) | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Learn the whole program + how to operate it for maximum capability | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
-| Run / configure / troubleshoot | [OPERATIONS.md](OPERATIONS.md) |
-| See WHY the architecture is shaped this way (ADR log) | [DECISIONS.md](DECISIONS.md) |
-| Full process detail (core / orchestration / director-operator / failure-modes) | [docs/protocol/agents/](docs/protocol/agents/) |
-| Place protocol artifacts in the right folder | [docs/protocol/protocol-assembly-map.md](docs/protocol/protocol-assembly-map.md) |
-| Continue the four-seat process from Codex | [docs/protocol/codex/continuation.md](docs/protocol/codex/continuation.md) |
-| Work on evidence-ledger from Codex CLI as a four-seat unit | [docs/protocol/codex/ledger-cli-adoption.md](docs/protocol/codex/ledger-cli-adoption.md) |
-| Run Codex/Claude/Antigravity as one unified system on the cross-provider protocol | [docs/protocol/threeway/](docs/protocol/threeway/) |
-| Sub-task / implementer prompt body | [docs/templates/agents/](docs/templates/agents/) |
-| Rule provenance (codified SHAs, empirical basis, beneficiary/consent) | [docs/PROTOCOL-RULES-LOG.md](docs/PROTOCOL-RULES-LOG.md) |
-| The CLAUDE/AGENTS operative-split map | [docs/protocol/migration-map-claudemd-split.md](docs/protocol/migration-map-claudemd-split.md) |
-| Execute a governance-hardening session (operator manual, why + how + acceptance) | [docs/HANDOFF-governance-hardening-2026-06-30.md](docs/HANDOFF-governance-hardening-2026-06-30.md) |
-| See the common daily loop (director brief → operator verify → push) | [RUNBOOK-DAILY.md](RUNBOOK-DAILY.md) |
+| Purpose and quick start | `README.md` |
+| Verified topology and smoke | `ARCHITECTURE.md` |
+| User intent and capability goals | `docs/PROGRAM-MANUAL.md` |
+| Run, configure, troubleshoot | `OPERATIONS.md` |
+| Decision history | `DECISIONS.md` |
+| Universal protocol doctrine | `docs/protocol/agents/` |
+| Codex continuation | `docs/protocol/codex/continuation.md` |
+| Codex four-seat entrypoint | `.agents/skills/four-seat-protocol/SKILL.md` |
+| Evidence-ledger bridge | `docs/protocol/codex/ledger-cli-adoption.md` |
+| Daily pair loop | `RUNBOOK-DAILY.md` |
+| Prompt templates | `docs/templates/agents/` |
+| Rule provenance | `docs/PROTOCOL-RULES-LOG.md` |
 
-Don't duplicate ARCHITECTURE.md content here. Record load-bearing subsystem facts in
-`ARCHITECTURE.md`; for decisions (with rationale), append to `DECISIONS.md` — never
-edit prior entries.
+Keep subsystem facts in `ARCHITECTURE.md`. Append decisions with rationale to
+`DECISIONS.md`; never rewrite earlier decision entries.
 
-# Impact analysis before editing
+## Universal implementation discipline
 
-Before modifying a function, class, or method, gauge its blast radius with
-grep + Read (the de-facto method across every session to date):
+### Impact
 
-- `grep -rn 'symbolName' --include='*.py' .` to find the definition + callers;
-  Read the call sites; grep imports for cross-file references.
-- Report the direct callers + risk to the user before editing a high-fanout
-  symbol.
-- Before committing, run `git show --stat` / `git diff` to confirm the changed
-  scope matches intent.
+Before changing a symbol, use `rg` to find its definition, writes, callers,
+imports, string references, and relevant siblings. Read those sites before
+editing. High-fanout changes require a stated caller and risk summary. For a
+rename, re-run the search after editing and confirm no obsolete site remains.
 
-For renames / extracts / splits: grep the symbol across the repo first
-(callers, imports, string references), update every site, then re-grep to
-confirm none remain. Don't find-and-replace blind to the call graph.
+Before handoff, compare the actual diff and changed paths with the requested
+scope. Preserve unrelated user or peer work.
 
-# Verification discipline (R-EVIDENCE)
-Scope: both
-Trigger: making any specific factual/inventory claim — "N files", "Y functions",
-"Z tests", "N LOC", "present in <path>", "absent from <path>", "X is unused".
-Action: cite the producing command's output in the same change (paste command +
-output, or `verified via $ <cmd> → <result>`). A command scoped to one path proves
-only that path — re-run at the wider scope before making a wider claim. If you
-cannot run the verifying command, label the claim **unverified** rather than
-asserting it. Never apply authority-voice over an unverified factual claim.
-Evidence: the command + its output, in the doc/commit body (cite or don't claim).
-Details: docs/protocol/agents/core.md (ADR-013; the 24-vs-1 origin story).
+### Evidence and measurement
 
-# Measurement-as-artifact (R-MEASURE)
-Scope: both
-Trigger: recording a number that backs a GO/NO-GO verdict, a gate threshold,
-or a spec/record claim (arc scores, VRAM peaks, prices, durations, counts).
-Action: the number must be produced by a COMMITTED script/command and
-persisted to (or directly citable from) a `logs/` artifact in the same change
-that records it. Ad-hoc runtime measurements may be recorded only when
-explicitly labeled estimate / runtime-unreproducible. Extends R-EVIDENCE from
-"cite the command" to "commit the instrument".
-Evidence: script path + `logs/` artifact cited next to the number.
-Details: docs/PROTOCOL-RULES-LOG.md (R-MEASURE entry; origin = the 2026-06-11
-half-crop numbers that backed S2/S3 verdicts from REPL-only measurement).
+- **R-EVIDENCE:** A factual inventory claim must cite the command and result
+  that proves that exact scope. Otherwise label it unverified.
+- **R-MEASURE:** A number that controls a gate or recorded verdict comes from a
+  committed instrument and a citable `logs/` artifact. Label ad-hoc runtime
+  observations as estimates or runtime-unreproducible.
+- Tests and gate scripts prove only what they execute. A wave gate is not a
+  correctness verdict; cite the regression evidence or formal operator GO.
 
-# Verification tiering (R-VERIFY-TIER)
-Scope: both
-Trigger: about to launch a 3rd+ independent verification pass on a claim two seats
-already confirmed; OR confirming a code defect you are NOT fixing this session.
-Action: (A) For doc-only notes about an already-known/deferred defect, convergence =
-TWO independent seats confirming the same file:line claims (a Rule #23 co-sign counts
-as one). A 3rd pass is allowed ONLY for a genuinely different question, stated before
-launch. Does NOT relax per-commit production-code verification (Lane V / Rule #9).
-(B) An agent-confirmed defect left unfixed this session must ship a
-`pytest.mark.xfail(strict=True, reason=...)` pin in the same session, or be labeled
-`test-infeasible` with a one-line reason in the handoff — so CI, not the next
-session's agents, re-verifies.
-Evidence: the stated new question for any 3rd pass; the xfail pin (or test-infeasible label).
-Details: docs/protocol/agents/core.md (R-VERIFY-TIER); origin = audit wf_6be2ee18-f4b
-(the §8.5 char-landscape note drew ~25-31 agent-runs across 4 passes for one doc paragraph).
+### Verification tiering
 
-# Independence-first verification (R-INDEPENDENCE)
-Scope: both.
-Trigger: before designing or implementing, classify whether the change touches an adversarial-surface: input rendered or composed into a parseable or executable context; authority or security-boundary enforcement; side-effect gating; or schema validation whose acceptance grants trust.
-Action: triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation. A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified. Fold the result into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact. Before completion, an independent reviewer must verify the actual diff against those cases. For Codex-authored adversarial work, the compact pair supplies independent verification and the fixed mailbox writer supplies publication.
-Deduplication: R-VERIFY-TIER still prohibits redundant same-question passes. Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.
-Evidence: the committed design-time enumeration artifact and the independent verification report naming the reviewer and harness.
-Details: `docs/protocol/claude/independence-first.md` (ADR-019).
+- Use the smallest sufficient verification profile.
+- Do not launch a third same-question pass after two independent confirmations
+  unless the new question is stated first.
+- A confirmed defect deferred from the current session needs a strict xfail
+  regression pin or a `test-infeasible` reason in the handoff.
+- Never push production code before the required operator GO.
 
-# Multi-task orchestration (R-ORCH)
-Scope: both
-Trigger: a plan with ≥5 independent sub-tasks OR ≥800 LOC of total change; or a
-user-referenced plan file under `docs/superpowers/plans/`.
-Action: orchestrate — do NOT implement in main context. Main holds the plan + task
-state + a short summary per task; a fresh-context implementer (new subagent / new
-chat session) does each task, then a spec review + a code-quality review of the
-actual diff per task. **Never run two implementers in parallel on shared files**
-(sequential only); reviews go after implementation. A single change OR
-tightly-coupled work → stay in main context.
-Evidence: one commit per task (clean BASE..HEAD range); task state.
-Details: docs/protocol/agents/orchestration.md; prompt body in docs/templates/agents/.
+### Independence first
 
-# Implementation safety rules (specific, repeatedly useful — tied to prior CRITICALs)
+Before implementation, classify whether the change touches an adversarial
+surface: parseable/executable composition, authority or security enforcement,
+side-effect gating, or trust-granting schema validation. If triggered, capture
+an independent design-time abuse/edge-case enumeration in durable acceptance
+criteria and have an independent reviewer test the actual diff against it.
+R-VERIFY-TIER still prevents redundant review. Non-adversarial, read-only, and
+hermetic work uses the smallest sufficient profile. Full doctrine:
+`docs/protocol/claude/independence-first.md`.
 
-## R-BRIEF — brief-pattern adherence
-Scope: both
-Trigger: a brief says "mirror pattern X at file:line" or "use the existing _foo_-style endpoint".
-Action: verify the FULL shape of X (signature, route path, scope params, error
-handling, lock guards) before implementing — brief-pattern references are implicit
-specs. If the reference names a canonical site/SHA, brief-pattern references are
-runtime claims when they cite canonical sites: verify the named symbol exists at
-the cited SHA and verify the cited SHA exhibits the named sub-pattern. If the
-named helper doesn't exist or the wording is ambiguous, report the divergence
-BEFORE implementing.
-Details: docs/protocol/agents/director-operator.md (composes with Rule #12).
+### Orchestration
 
-## R-PID — pid-scope endpoint check
-Scope: both
-Trigger: adding/touching an HTTP endpoint on a project-scoped resource (any domain entity keyed by project ID).
-Action: verify the route takes `<pid>` explicitly. Do NOT scan a list-all to find a
-matching resource — IDs collide across projects. Inspect a sibling endpoint to
-confirm route shape + scoping.
-Details: docs/protocol/agents/director-operator.md (Rule #13).
+Orchestrate when a plan has at least five independent tasks or at least 800
+lines of expected change. A user-referenced plan requires plan-driven execution
+and checkpoints, but does not force delegation when its work is tightly
+coupled. Use fresh bounded implementers only for independently testable slices;
+never run concurrent implementers on shared files. Keep a single tightly
+coupled change in the main context. Details:
+`docs/protocol/agents/orchestration.md`.
 
-## R-SKILL — project-skill load triggers
-Scope: both
-Trigger: about to author, modify, review, or debug domain-specific graph/pipeline code or an external-API client for a major project subsystem.
-Action: invoke the matching project skill BEFORE writing or judging the code. When a skill prior shapes a verdict, name it in the work product.
-Details: use the relevant `.agents/skills/*/SKILL.md`; for ledger-routed
-target work, load `docs/protocol/codex/ledger-cli-adoption.md` and the target
-repo's local instructions before product edits.
+Use a subagent only when it adds independent signal or genuinely parallel
+capacity. Give it the relevant rules, allowed paths, acceptance evidence,
+forbidden effects, and `env -u GIT_INDEX_FILE` hygiene. Direct work needs no
+recorded non-use decision.
 
-## Rule #12 — grep-the-writes
-Scope: both
-Trigger: a brief names a schema field / dict key / mutator / write-path as a target of new code.
-Action: grep the production WRITE site (not just the type declaration) to prove the
-symbol is populated at runtime — type-declaration is not write-evidence. Cite the grep.
-For canonical pattern references, verify the named symbol exists at the cited
-SHA and verify the cited SHA exhibits the named sub-pattern.
-Details: docs/protocol/agents/director-operator.md (Rule #12).
+### Repeated safety checks
 
-## Rule #13 — symmetric-endpoint audit
-Scope: both
-Trigger: adding/modifying an endpoint that bypasses a fence, gates on a persistent
-flag, or touches shared state other endpoints touch.
-Action: audit ALL sibling endpoints on the same fence/flag/state for parallel checks
-the new one should mirror — and for checks the existing ones may be missing; fold the
-fix or document the exemption. audit-completeness is not audit-disposition:
-enumerating siblings is incomplete until you state the disposition for each
-sibling as mirror / defer / document / exempt.
-Details: docs/protocol/agents/director-operator.md (Rule #13).
+- **R-BRIEF:** When a brief says to mirror a pattern, verify the full signature,
+  path, scope, error handling, and guards. A canonical site/SHA is a runtime
+  claim: verify the symbol and named sub-pattern at that SHA.
+- **R-PID:** A project-scoped HTTP resource takes `<pid>` explicitly; never
+  recover it by scanning a global list. Check all sibling endpoints.
+- **R-SKILL:** Load the matching project skill before authoring, reviewing, or
+  debugging domain graph/pipeline code or a major external-API client.
+- **Rule 12, grep the writes:** A declaration is not runtime evidence. Find and
+  cite the production mutator/write site for each targeted field or key.
+- **Rule 13, symmetric endpoints:** Enumerate every sibling sharing the same
+  fence, flag, or state, then classify each as mirror, defer, document, or
+  exempt. Enumeration without disposition is incomplete.
 
-# Director–Operator concurrent operation (minimal model)
+## Four-seat protocol trigger
 
-Four agent sessions (two pairs) run in parallel by design — **director-seats** (strategy, briefs,
-ADRs, push decisions) and **operator-seats** (independent post-commit verification,
-doc-sync, mailbox reports). Four seats / two pairs of one team; specialization, not hierarchy;
-all serve the user-principal. A `coordinator` pseudo-seat is spawned **on demand** at
-multi-pair-wrap boundaries for read-only cross-pair audit — not a standing concurrent
-seat (see `docs/protocol/agents/four-seat-extension.md`). Load-bearing invariants:
+Do not run four-seat startup for ordinary feature or documentation work. When
+a seat, mailbox, route, wave, handoff, continuation, or protocol decision is
+explicitly in scope, load `.agents/skills/four-seat-protocol/SKILL.md` and the
+concrete seat skill. For evidence-ledger work, start in Pipeline and load
+`docs/protocol/codex/ledger-cli-adoption.md` before entering the target repo.
 
-- **User is principal.** User direct instructions override everything.
-- **Authority precedence:** user > git commits (durable record) > mailbox `sent/`
-  events (bind the receiving seat — Rule #8) > STATE.md (stale cache) > default.
-- **Git is the tiebreaker.** Before acting on a shared task, run `git log --oneline -3`;
-  the first commit to land wins.
-- **Signal via artifacts** (mailbox event / presence file), not chat alone.
-- **Codex mailbox freshness:** always check mail before a Codex
-  live-seat/coordinator handoff, routing event, protocol decision, or
-  state-asserting protocol write. Read live mailbox state from the relevant
-  `seat_status.py ... --wave <N>` command and recent
-  `coordination/mailbox/sent/` entries, then read the relevant mailbox bodies
-  instead of deciding from counts alone. A bare `handoff` request means a narrow
-  state-transfer artifact unless the user explicitly asks for implementation or
-  verification.
+Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
 
-Full governance — Rules #7–#23, the disagreement protocol, emergency handling, phase
-taxonomy, and mailbox protocol — lives in **docs/protocol/agents/director-operator.md**;
-read it only when coordinating with the other seat. Rule provenance (codified SHAs,
-empirical basis, beneficiary/consent) is in docs/PROTOCOL-RULES-LOG.md.
+The live authority block and Codex commands are owned by
+`docs/protocol/codex/continuation.md`; the umbrella and concrete seat skills add
+only their local consequences. The executable model owns lifecycle, capacity,
+emergency, disagreement, blocked-wave, review-result, and shared
+side-effect-executor details. Do not copy those bodies into this router.
 
-- **Pair Operating Contract:** efficient pair work is the short director ->
-  operator artifact loop. Director scopes the smallest sufficient
-  brief/fix and produces one lawful authority-bearing trigger; operator verifies
-  only from that trigger; all baton passes are a mailbox artifact, not chat; no
-  duplicate Lane V for docs/status/handoff-only commits; No receipt/status churn unless it
-  changes ownership, preserves evidence, requests verification, returns
-  GO/NITS/FAIL, or blocks on user-gated side effects; first commit to land wins
-  after git/mailbox refresh; close the loop with an operator verification-report
-  GO/NITS/FAIL and an exact next trigger.
+## Hot shared tree
 
-  Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-  surface intentionally does not restate its lifecycle grammar.
+- Refresh `git log --oneline -3` and scoped status immediately before every
+  write or gate decision; a peer may have moved HEAD.
+- If an unrelated file is dirty, preserve it. Never run broad auto-fix or broad
+  staging over peer WIP. Use `env -u GIT_INDEX_FILE` and explicit pathspecs.
+- First landed commit wins on shared work. After a refresh, narrow or stand
+  down instead of recreating the same change.
+- Local edit, stage, commit, push, merge, mailbox consume, lock, and spend are
+  distinct actions. Do not infer authority for one from authority for another.
 
+## Provider coordination
 
-
-
-
-
-
-
-
-
-
-
-- **Capacity Split Default:** single-pair fast path remains the default for
-  narrow or shared-file work. divisible or preplanned larger work defaults to
-  dual-pair routing when the coordinator can name two independently reviewable
-  deliverables: director owns Chunk A and operator verifies Chunk A; director2
-  owns Chunk B and operator2 verifies Chunk B. If not divisible, one pair
-  implements while Pair B performs bounded planning or preflight instead of idle
-  standby. Pair B preflight packets use `director-preflight` and
-  `operator-preflight` packet types. coordinator owns convergence: capacity
-  packets, one consolidated route, join condition, conflict handling, and final
-  closeout evidence.
-
-- **Rule #23 co-sign is TIERED** (Lever #7, audit `wf_6be2ee18-f4b`; body in
-  `docs/protocol/agents/director-operator.md`). Classifier: *would the
-  co-signer's verification change which files/sites the implementation touches?*
-  **Tier A** (yes) = co-signer lands a mailbox `verification-report` BEFORE dispatch
-  (async-OK via workflow+mailbox, no session restart). **Tier B** (no) = awareness
-  heads-up, 48h proceed-if-no-objection. Unsure → Tier A.
-
-# Protocol Optimizations & Session Lessons (ADR-027)
-
-The following optimizations and guardrails emerged from real session forensics (Session-12 / ADR-027) to resolve friction in multi-seat concurrent loops. Apply these continuously:
-
-## R-HOT-TREE (Re-verify on Hot Shared Tree)
-Scope: both
-Trigger: acting on a repository where peer seats are concurrently active.
-Action: Never trust a refs snapshot older than your last step. The HEAD can move multiple times during a single burst of work. Always execute `git log --oneline -3` and check the latest mailbox events right before writing your commit or making a gate decision.
-
-## R-WIP-POLLUTION (Live Peer WIP in Working Tree)
-Scope: both
-Trigger: observing uncommitted changes to shared files (e.g., `ARCHITECTURE.md`, the main orchestrator module) that you did not author.
-Action: Do NOT run auto-fix scripts (like `check_doc_claims.py --fix`) mid-burst over a peer's WIP. The lane owner is strictly responsible for fixing anchors upon touch (R-START). To avoid accidental pollution, always use `env -u GIT_INDEX_FILE` and strict pathspecs when staging commits.
-
-## R-GATE-EVIDENCE (Gate Met ≠ Correctness Proof)
-Scope: coordinator
-Trigger: determining if a Wave Gate has been met.
-Action: Do not cite `wave_gate_check` output alone as `R-EVIDENCE`. The gate script reads the inventory string, it does not execute tests. To claim correctness, you MUST cite the underlying executed regression pins or the operator's formal GO event.
-
-## R-VERIFY-THEN-PUSH
-Scope: director / coordinator
-Trigger: deciding whether to push production code to origin.
-Action: Never push pre-GO. Pushing unverified fixes risks NITS arriving directly on the remote origin, fracturing the verification history. Always wait for the operator's verification GO before executing the push.
-
-# Coordinating with CLAUDE.md
-
-This file (`AGENTS.md`) and `CLAUDE.md` are sibling documents. They share
-the Architecture Preamble. They diverge on tooling specifics:
-
-| Topic | This file (AGENTS.md) | CLAUDE.md |
-|---|---|---|
-| Architecture + invariants | ✓ (canonical) | ✓ (canonical, identical) |
-| Multi-task discipline | ✓ Universal principles | ✓ Same principles + Claude tool syntax |
-| Lane A/B/C heuristic | ✓ Universal | ✓ Same |
-| Prompt templates | ✓ Universal skeleton | ✓ Same + Claude-specific examples |
-| Tool syntax (`Agent`, `Skill`, `TaskCreate`) | — | ✓ Claude Code only |
-| `superpowers:*` skill invocation | — | ✓ Claude Code only |
-| `AskUserQuestion` discipline | — | ✓ Claude Code only |
-
-**If a Claude Code agent reads both files** and the guidance differs, the
-order of precedence is:
-1. The user-principal's explicit instructions (highest)
-2. `CLAUDE.md` Claude-specific extensions
-3. This file's universal principles
-4. The model's default behavior (lowest)
-
-**If a non-Claude agent reads only this file:** the universal principles
-above are complete and standalone. Apply them with your tool's analogous
-mechanisms. The `CLAUDE.md` references are optional reading.
+`CLAUDE.md` may add Claude-only mechanics but must not replace the universal
+authority boundaries here. Codex adapts those functions to native tools through
+`docs/protocol/codex/continuation.md`; it does not transplant Claude-only tool
+syntax. Cross-provider ownership and synchronization rules live in
+`docs/protocol/protocol-assembly-map.md`.
