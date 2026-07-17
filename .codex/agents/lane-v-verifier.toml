@@ -82,6 +82,6 @@ Report exactly:
 - Verification harness and Verification context: actual independent method and fresh context
 - ## Allowed Paths exactly matching the request
 - ## Evidence with command and output
-- ## Findings and ## Exact Next Trigger
+- ## Findings; an optional ## Boundary is used only for completion, a genuine blocker, scope expansion, or a separately user-gated effect, states plain authority, and never returns a seat command to the user
 - coordination/bin/send-event is the only publisher; direct mailbox writes and hooks are not authority
 """

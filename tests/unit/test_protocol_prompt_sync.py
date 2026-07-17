@@ -1551,6 +1551,8 @@ def test_active_surfaces_continue_internally_without_terminal_heading_ceremony()
         ".agents/skills/seat-director/SKILL.md",
         ".agents/skills/seat-operator/SKILL.md",
         ".agents/skills/seat-coordinator/SKILL.md",
+        ".claude/skills/seat-director/SKILL.md",
+        ".claude/skills/seat-operator/SKILL.md",
         ".claude/skills/seat-coordinator/SKILL.md",
     )
     required = (
@@ -1569,6 +1571,35 @@ def test_active_surfaces_continue_internally_without_terminal_heading_ceremony()
             assert phrase in text, (path, phrase)
         for phrase in retired:
             assert phrase not in text, (path, phrase)
+
+
+def test_active_protocol_surfaces_have_no_exact_next_trigger_prescription() -> None:
+    roots = (
+        ROOT / ".agents",
+        ROOT / ".claude",
+        ROOT / ".codex",
+        ROOT / "docs/protocol",
+        ROOT / "scripts",
+    )
+    active_paths = [ROOT / "docs/PROGRAM-MANUAL.md"]
+    for root in roots:
+        active_paths.extend(
+            path
+            for path in root.rglob("*")
+            if path.is_file() and path.suffix in {".md", ".toml", ".py"}
+        )
+
+    matches = {
+        path.relative_to(ROOT).as_posix(): [
+            line_number
+            for line_number, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            )
+            if "Exact Next Trigger" in line
+        ]
+        for path in active_paths
+    }
+    assert not {path: lines for path, lines in matches.items() if lines}
 
 
 def test_task8_scope_covers_the_exact_trigger_authority_generation() -> None:

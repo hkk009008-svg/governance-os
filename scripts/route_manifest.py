@@ -343,7 +343,8 @@ def render_markdown(
     The output is engineered to satisfy the legacy prose validator
     (protocol_capacity._validate_route_file): task-board marker, full packet
     enumeration, capacity-split phrases, one-line prohibitions, dash-list
-    side-effect token, join-condition line, terminal Exact Next Trigger.
+    side-effect token, join-condition line, and a plain boundary projection of
+    the existing next_trigger field.
     """
     issues = validate_route_object(route)
     if issues:
@@ -405,7 +406,7 @@ def render_markdown(
             lines.append(f"- {field}: {route['side_effect_token'][field]}")
 
     lines.extend(["", f"Join condition: {route['join_condition']}"])
-    lines.extend(["", "## Exact Next Trigger", "", route["next_trigger"], ""])
+    lines.extend(["", "## Boundary", "", route["next_trigger"], ""])
     return "\n".join(lines) + "\n"
 
 

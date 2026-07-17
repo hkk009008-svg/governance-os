@@ -40,14 +40,19 @@ $ <executed command>
 
 None.
 
-## Exact Next Trigger
+## Boundary
 
-<next lawful owner/action or blocker>
+<optional: completion, blocker, scope expansion, or separately user-gated effect>
 ```
 
 GO requires command and output evidence plus a commit in the generated subject
 or a `logs/` artifact. Truthful NITS and FAIL remain directly publishable even
 when a command or external tool is unavailable.
+
+The `Boundary` section is optional and used only for completion, a genuine
+blocker, scope expansion, or a separately user-gated effect. Omit it otherwise;
+when present, state the plain boundary or authority and never return a seat
+command to the user.
 
 Findings are ordered CRITICAL, MAJOR, MINOR, INFORMATIONAL and name file:line
 when applicable. Separate evidence, inference, uncertainty, and follow-up.

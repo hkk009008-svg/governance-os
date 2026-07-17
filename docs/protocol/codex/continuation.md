@@ -212,7 +212,7 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave> 
 Closed-cycle coordinator-join packets are also hard-gated: standby, idle,
 closeout, transfer, or transplant evidence must cite a durable
 `docs/HANDOFF-*.md` artifact instead of ending on a chat-only or generic
-`Exact Next Trigger`.
+next-authority sentence.
 
 Use `<wave>` when the active wave is not 2:
 

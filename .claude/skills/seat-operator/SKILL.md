@@ -38,7 +38,9 @@ The operator's hardest discipline is *not* verifying everything. Firing Lane V o
 | Post-commit `chore`/`docs`/`test`/`style` | commit of that type | Lane D (doc-sync if warranted) or ignore — **not** Lane V |
 | Idle (no signal ~10 min) | quiet | Adjacent useful work (mutation-test prep, NITS bounce) — not invented verification |
 
-**When the phase is ambiguous, default to inaction** — speculative Lane V burns tokens and signal; return idle evidence or wait for the assigned committed verify-request. (Full taxonomy + exit signals: `docs/protocol/claude/director-operator.md` "Phase taxonomy".) No duplicate Lane V for docs-only, status-only, or handoff-only commits. End every live-seat turn with an **Exact Next Trigger** section naming the next lawful prompt, seat event, standby condition, or blocker.
+**When the phase is ambiguous, default to inaction** — speculative Lane V burns tokens and signal; return idle evidence or wait for the assigned committed verify-request. (Full taxonomy + exit signals: `docs/protocol/claude/director-operator.md` "Phase taxonomy".) No duplicate Lane V for docs-only, status-only, or handoff-only commits.
+
+Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect. At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user.
 
 ## impl≠verifier is about NON-AUTHORSHIP, not seat identity
 

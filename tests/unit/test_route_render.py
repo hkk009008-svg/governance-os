@@ -110,6 +110,15 @@ def test_renderer_refuses_invalid_route(tmp_path):
         )
 
 
+def test_renderer_labels_next_trigger_as_plain_boundary():
+    route = _route(next_trigger="Coordinator records the real stop boundary.")
+
+    body = route_manifest.render_markdown(route, title="t")
+
+    assert "\n## Boundary\n\nCoordinator records the real stop boundary.\n" in body
+    assert "Exact Next Trigger" not in body
+
+
 def test_rendered_projection_passes_legacy_validator(tmp_path):
     _write_packets(tmp_path)
     md_path = _pair(tmp_path, _route())

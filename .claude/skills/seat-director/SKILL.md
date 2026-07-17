@@ -62,7 +62,8 @@ The brief gates the fix: the co-signer reads it, the implementer obeys it. Autho
   include paths, tests, evidence commands, known exclusions, and expected
   verdict without substituting them for authority. No receipt/status churn.
 - The loop closes only on your operator's `verification-report` GO/NITS/FAIL — a gate script's PASS never substitutes (R-GATE-EVIDENCE); **no push before GO** (R-VERIFY-THEN-PUSH; push stays user-gated).
-- End every live-seat turn with an **Exact Next Trigger** section naming the next lawful prompt, seat event, standby condition, or blocker.
+- Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect.
+- At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user.
 - Under a capacity split, own only your chunk's disjoint write set; the other pair's chunk gets its own verify loop (full text: continuation adapter).
 
 ## Tier-A co-sign is a HARD gate (the rule baselines break under pressure)
