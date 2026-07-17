@@ -34,12 +34,10 @@ def _nonfinite(_value):
     raise ConsultError("invalid_json")
 def _loads(raw: bytes):
     try:
-        return json.loads(
-            raw.decode("utf-8"), object_pairs_hook=_pairs, parse_constant=_nonfinite
-        )
+        return json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs, parse_constant=_nonfinite)
     except ConsultError:
         raise
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ConsultError("invalid_json") from exc
 def _secret(text: str) -> bool:
     original = unicodedata.normalize("NFKC", text)
@@ -68,9 +66,8 @@ def _normalize(raw: bytes) -> tuple[str, str]:
     if not question.strip():
         raise ConsultError("invalid_question")
     normalized = {"key": key, "question": question, "context": context}
-    canonical = json.dumps(
-        normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    canonical = json.dumps(normalized, ensure_ascii=False, sort_keys=True,
+                           separators=(",", ":")).encode("utf-8")
     if len(canonical) > MAX_CANONICAL_BYTES:
         raise ConsultError("payload_too_large")
     if any(_secret(item) for item in (key, question, context)):
@@ -103,10 +100,16 @@ def _fixed(path: Path):
         raise ConsultError("state_path_invalid")
     return metadata
 def _read(path: Path) -> dict[str, dict[str, str]]:
-    if _fixed(path) is None:
+    expected = _fixed(path)
+    if expected is None:
         return {}
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        opened = os.fstat(fd)
+        if (not stat.S_ISREG(opened.st_mode) or stat.S_IMODE(opened.st_mode) != 0o600
+                or (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino)):
+            os.close(fd)
+            raise ConsultError("state_path_invalid")
         with os.fdopen(fd, "rb") as stream:
             value = _loads(stream.read())
     except ConsultError as exc:

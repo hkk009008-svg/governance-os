@@ -194,6 +194,40 @@ def test_state_and_lock_symlinks_are_rejected_without_mutation(
     assert target.read_bytes() == b"preserve-this"
 
 
+@pytest.mark.parametrize("replacement", ("fifo", "wrong_mode", "same_mode_new_inode"))
+def test_state_replacement_between_lstat_and_open_is_rejected_before_read(
+    repo: Path, monkeypatch, replacement: str
+):
+    consult.reserve(repo, _raw(VALID))
+    state_path, _ = _paths(repo)
+    real_open = consult.os.open
+    swapped = False
+
+    def swap_open(path: object, flags: int, mode: int = 0o777) -> int:
+        nonlocal swapped
+        if Path(path) == state_path and not flags & os.O_CREAT:
+            assert flags & os.O_NONBLOCK, "state open must not block before fstat"
+            state_path.unlink()
+            if replacement == "fifo":
+                os.mkfifo(state_path, 0o600)
+            else:
+                state_path.write_bytes(b"substituted")
+                state_path.chmod(0o600 if replacement == "same_mode_new_inode" else 0o644)
+            swapped = True
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(consult.os, "open", swap_open)
+    monkeypatch.setattr(
+        consult.os,
+        "fdopen",
+        lambda *_args, **_kwargs: pytest.fail("substituted state was opened for read"),
+    )
+
+    with pytest.raises(consult.ConsultError, match="^state_path_invalid$"):
+        consult.reserve(repo, _raw(VALID))
+    assert swapped is True
+
+
 @pytest.mark.parametrize(
     "corrupt",
     (
@@ -302,6 +336,29 @@ def test_two_processes_reserving_same_key_create_exactly_one_record(repo: Path):
     assert all(stderr == b"" for _, stderr in results)
     state_path, _ = _paths(repo)
     assert list(json.loads(state_path.read_bytes())) == [VALID["key"]]
+
+
+@pytest.mark.parametrize("surface", ("api", "cli"))
+def test_oversized_integer_is_content_free_invalid_json_in_api_and_cli(
+    repo: Path, surface: str
+):
+    raw = (
+        b'{"context":'
+        + b"9" * 5000
+        + b',"key":"design:compact-consult/v1","question":"safe"}'
+    )
+    if surface == "api":
+        _error(repo, raw, "invalid_json")
+        return
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "reserve", "--repo-root", str(repo)],
+        input=raw,
+        capture_output=True,
+    )
+    assert result.returncode == 2
+    assert json.loads(result.stdout) == {"ok": False, "error": "invalid_json"}
+    assert result.stderr == b""
 
 
 def test_cli_errors_are_json_and_do_not_echo_rejected_content(repo: Path):
