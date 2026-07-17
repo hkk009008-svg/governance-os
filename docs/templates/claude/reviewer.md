@@ -120,9 +120,7 @@ defects against an unverified tree, and do NOT run the independent pass.
    "files inspected via `git show <SHA>:…` — provenance = reviewed commit".
 5. **Commit trailer (W4)** — `env -u GIT_INDEX_FILE git show -s --format=%(trailers) <SHA>` →
    record the literal trailer block into `commit_trailer.observed`; `expected` is the
-   standard `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` line. A
-   parent-authorized shipping commit may also carry the exact `Lane-V-Scope`
-   trailer; the reviewer never creates it.
+   standard `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` line.
    **Absent ≠ unreadable**: a missing trailer is `present:false`; an unreadable commit is U5.
 6. **Tests** — run exactly the dispatch's mandated `… pytest … -q`; paste the LITERAL summary
    line (`N passed[, M failed][, K skipped][, J xfailed]`) and the pytest EXIT CODE. Any
@@ -217,8 +215,7 @@ In addition to standard concerns, check:
 - <task-specific concern 2> (e.g., public API stability if refactor)
 - defects beyond the listed concerns: do one independent pass and report any you find (or none).
 - Commit trailer: the `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` line is present
-  and well-formed. A parent-authorized shipping commit may also carry its exact
-  `Lane-V-Scope` trailer; the reviewer never creates it.
+  and well-formed.
 
 Report: Strengths, Issues (Critical / Important / Minor), Assessment.
 If verification could not run (U1–U5), report Assessment = unable_to_verify with the failing
