@@ -13,7 +13,7 @@ flowchart TD
     Policy["docs/protocol/"]
     Skills[".agents/skills/"]
     Codex[".codex/agents/ + .codex/hooks/"]
-    Scope["coordination/verification/scopes/"]
+    Scope["coordination/verification/scopes/ (frozen historical)"]
     Ledger["coordination/"]
     Board["docs/REMEDIATION-INVENTORY.md"]
     Work["docs/superpowers/"]
@@ -43,7 +43,7 @@ flowchart TD
 | Live seat checklists | `.agents/skills/` | `.agents/skills/seat-operator/SKILL.md` | Seat actions are reusable runtime instructions with clear trigger rules. |
 | Spawnable Codex roles | `.codex/agents/*.toml` | `.codex/agents/protocol-operator.toml` | Role prompts are executable agent modules and should stay near Codex agent configuration. |
 | Session guardrails | `.codex/hooks.json` and `.codex/hooks/` | `guard-git-index.sh`, `session-smoke.sh` | Hooks are lifecycle/tool boundaries, not protocol prose or mailbox state. |
-| Lane-V scope authority | `coordination/verification/scopes/` | `<task-uuid>.json` | A trigger-bound descriptor commits one pre-stated review question, exact base, requirements, complete path roots, commands, and prompt authority; it is not mailbox, cursor, lock, verdict, or side-effect authority. |
+| Lane-V trigger authority | `coordination/mailbox/sent/` (compact-pair verify-request) | `*-director-to-operator-verify-request.md` | The committed compact-pair verify-request is the sole Lane-V trigger authority (Canonical Compact Pair Invariant, `scripts/codex_protocol_model.py`). `coordination/verification/scopes/` retains only frozen historical descriptors (e.g. `<task-uuid>.json`) — no longer a live authority. |
 | Mailbox events | `coordination/mailbox/sent/` | `*-operator2-to-all-verification-report.md` | Inter-seat protocol speech must be durable and commit-addressable. |
 | Mailbox read cursors | `coordination/mailbox/seen/` | `coordination/mailbox/seen/director.txt` | Per-seat consumed-up-to timestamps are the single read-state truth. |
 | Shared-file locks | `coordination/locks/` | `2-<entrypoint>.py.lock` when active | Locks are temporary ownership claims over shared implementation surfaces. |
@@ -66,7 +66,7 @@ Target-repo start guard?    -> scripts/ledger_start_guard.py
 Seat action checklist?      -> .agents/skills/
 Spawnable role prompt?      -> .codex/agents/
 Lifecycle/index guardrail?  -> .codex/hooks*
-Pre-stated Lane-V question? -> coordination/verification/scopes/
+Lane-V trigger authority?   -> coordination/mailbox/sent/ (compact-pair verify-request)
 Actual protocol event?      -> coordination/mailbox/sent/
 Read cursor?                -> coordination/mailbox/seen/
 Lock/ownership state?       -> coordination/locks/
