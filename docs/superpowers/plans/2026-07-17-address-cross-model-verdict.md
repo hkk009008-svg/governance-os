@@ -45,15 +45,32 @@ pushed (`origin/main == main`, 0/0). Three facts override the original premises:
    discipline (defer to first-writer; complement disjoint paths only), the Claude
    side does NOT repair AGENTS.md / `.agents/skills` / codex continuation.md.
 
-**Sequencing consequence:** the shared / CI / test-touching tasks (1, 2, 3, 6)
-land on a GREEN baseline — they cannot be cleanly verified while `main` is red,
-so they wait until either the Codex seat forward-fixes the surface/test desync or
-`75fde1d` is reverted to the GO'd `9766e7c`. The **exception** is a purely
-Claude-side doc-sync whose correctness does NOT depend on the suite being green:
-its safety can be shown by a *differential* (the failing set is byte-identical
-before/after the edit). The Task-0 doc edits below met that bar and landed early
-as commit `32c8564` (differential-verified: 16 failed / 656 passed unchanged;
-not pushed). **Priority 0 (below) is not ours to execute; it gates the rest.**
+**Sequencing consequence (FINAL):** every task that could be cleanly
+*differential-verified* against the red baseline landed early rather than waiting
+for green — the 16 pre-existing Codex prompt-sync failures are orthogonal to
+these diffs, so "the failing set is unchanged before/after" is a sound safety
+signal even on a red tree. Landed this session (local `main`, 5 commits ahead of
+origin, **not pushed**):
+
+- Task 0 (Claude-side doc sync) → `16410e4`
+- Task 1 (bridge env-independence) → `dbf36d9`
+- Task 2 (delete `--runxfail` step + R4; `.github` staleness) → `341aa95`
+- Task 3 (retire descriptor in assembly map) → `ea7cdf4`
+- Task 6 (delete dormant route/v1 machinery) → `06e796c`
+
+Independent verification over the whole range `75fde1d..06e796c`: a fresh-context
+Lane-V pass returned **GO** (no NITS), and an adversarial pass found **no defects**
+in the gate removal, the route deletion, or the bridge-test rewrite (it proved a
+strict XPASS still hard-fails the normal run, that no config suppresses it, that
+`route_lineage`'s live consumers still import, and that the bridge assertions are
+non-vacuous). Suite throughout: 16 failed / 550 passed / 0 xfailed — the 16 are
+the Codex desync only.
+
+Still open: **Task 4** (ref-bus wording) is Codex-lane (their executable model;
+the Claude side is already conditional). **Task 5** (push) is user-gated and
+additionally blocked on Priority 0. The DECISIONS terminal-cleanup closeout
+(separate from the route/v1 ADR added here) remains for the coordinator.
+**Priority 0 (below) is not ours to execute; it gates the push.**
 
 ### Priority 0 (Codex lane / user-coordinated): repair `main` to green
 
@@ -436,7 +453,9 @@ mailbox for the range, explicit user push authorization ("fix X" ≠ push-auth).
 
 ---
 
-### Task 6: DECISION — delete the dormant route/v1 typed machinery (needs user approval)
+### Task 6: DONE — deleted the dormant route/v1 typed machinery (`06e796c`)
+
+**User-approved and executed** (both verifiers clean). Original recommendation retained below.
 
 **Recommendation: delete.** Zero `.route.json` sidecars exist, `route_manifest`
 has zero production callers (only the ADR-014 comparator, itself run only by its
