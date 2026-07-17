@@ -24,9 +24,11 @@
     "Run the exact RED-to-GREEN gate, focused live-enforcement tests, the Phase 3 suite, ci_smoke.py, and git diff --check.",
     "Commit one smallest local change or return one concrete blocker; classify whether the diff changes production behavior before handing off."
   ],
-  "done_evidence": [],
-  "next_recipient": "operator",
-  "status": "ready",
+  "done_evidence": [
+    "Excepted unopened by the coordinator no-op convergence: Director2's committed boundary trace found no authoritative live caller that the routed five-path write set could honestly align, and the plan requires a no-op when no concrete behavior gap remains. No production, test, corpus, or proof artifact was changed."
+  ],
+  "next_recipient": "coordinator",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

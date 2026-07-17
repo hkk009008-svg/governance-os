@@ -4,7 +4,7 @@
   "cycle": "compact-phase3-corpus-live-alignment-2026-07-17",
   "row_ids": [],
   "lock_keys": [],
-  "handoff_artifact": null,
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-16T19-18-08Z-director2-to-coordinator-findings.md",
   "owner": "director2",
   "packet_type": "director-preflight",
   "allowed_paths": [
@@ -16,9 +16,11 @@
     "Answer only whether the routed five-path write boundary can honestly bind the corpus case to existing live enforcement without reducer or runtime behavior expansion.",
     "Return one bounded findings event naming any contradiction or scope gap; do not edit production, tests, fixtures, packets, or route state."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-16T19-18-08Z-director2-to-coordinator-findings.md records the completed read-only preflight and its bounded BLOCKED disposition: the five-path route cannot honestly clear the full external-effect misuse vector from a non-authoritative benchmark-only caller."
+  ],
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "done",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

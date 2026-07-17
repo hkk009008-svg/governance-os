@@ -25,9 +25,11 @@
     "If the final diff is corpus, test, or proof alignment only, do not manufacture Lane V; wait for coordinator to record the verification-not-needed reason and except this packet.",
     "Do not repair the implementation, reconstruct missing trigger fields, or fall back to another trigger kind."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Excepted unopened: the coordinator selected the plan's no-op stop condition, no behavior-changing diff exists, and no canonical verify-request was created. Manufacturing Lane V would add ceremony without a reviewed production change."
+  ],
   "next_recipient": "coordinator",
-  "status": "blocked",
+  "status": "excepted",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,
