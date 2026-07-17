@@ -59,9 +59,8 @@ No external advisory provider tool is installed or authorized by this repository
 provider tool requires a separately approved design and implementation and grants no protocol or
 side-effect authority.
 
-Lane V is independent verification by a non-author operator over one committed descriptor and
-lawful trigger. New reports use lane-v-report/v3 and publish atomically through
-TaskPublicationStore. Model or provider identity grants no authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 - Provenance discipline (spec §12, "chief-relay provenance"): when a human relays an Antigravity
   strategic result, record `{relaying_human, chief_model_label, prompt_or_bundle_digest,

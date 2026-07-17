@@ -72,14 +72,14 @@ PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
 TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
 SCRIPT_DIR=$(/usr/bin/dirname "${BASH_SOURCE[0]:-$0}")
 TOOL_ROOT=$(cd "$SCRIPT_DIR/../.." && /bin/pwd -P)
-KERNEL_FINALIZER="$TOOL_ROOT/scripts/kernel_activation.py"
+MAILBOX_WRITER="$TOOL_ROOT/scripts/mailbox_writer.py"
 COMPACT_VALIDATOR="$TOOL_ROOT/scripts/compact_pair_loop.py"
 if [ ! -x "$TRUSTED_PYTHON" ]; then
   echo "send-event: trusted Pipeline Python unavailable" >&2
   exit 4
 fi
-if [ ! -f "$KERNEL_FINALIZER" ]; then
-  echo "send-event: trusted Pipeline finalizer unavailable" >&2
+if [ ! -f "$MAILBOX_WRITER" ]; then
+  echo "send-event: trusted Pipeline mailbox writer unavailable" >&2
   exit 4
 fi
 if [ ! -f "$COMPACT_VALIDATOR" ]; then
@@ -135,7 +135,7 @@ fi
 PUBLISHED_OUT=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.published.XXXXXX.tmp")
 /bin/chmod 0600 "$PUBLISHED_OUT"
 /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
-  "$TRUSTED_PYTHON" -E -s -S -B "$KERNEL_FINALIZER" \
+  "$TRUSTED_PYTHON" -E -s -S -B "$MAILBOX_WRITER" \
   send-event-finalize --repo-root "$ROOT" --candidate "$TMP" --final-relative "$REL" \
   > "$PUBLISHED_OUT"
 RESULT=$(LC_ALL=C /usr/bin/sed -n '1p' "$PUBLISHED_OUT")

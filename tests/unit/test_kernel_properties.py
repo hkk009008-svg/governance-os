@@ -13,11 +13,9 @@ from pathlib import Path
 from hypothesis import HealthCheck, given, settings, strategies as st
 
 import packet_state
-import route_capability
 import route_lineage
 import route_manifest
 import test_route_manifest as tr  # sibling test module: reusable valid-baseline builders
-import test_route_capability as tc  # sibling test module: reusable valid capability baseline
 
 settings.register_profile("ci", settings(derandomize=True, max_examples=200,
                                          deadline=None,
@@ -196,50 +194,6 @@ def test_check_cas_fail_closed(pair):
         and proposed.lineage.generation == current.lineage.generation + 1
     )
     assert res.ok is expected
-
-
-# ---- route_capability.validate_capability ----
-@given(st.dictionaries(st.text(max_size=10), _arb, max_size=12))
-def test_validate_capability_never_crashes_and_no_mutation(obj):
-    snap = copy.deepcopy(obj)
-    issues = route_capability.validate_capability(obj)
-    assert isinstance(issues, list)
-    assert obj == snap
-
-
-# DEEP validation is exercised, fail-closed. As with the route validator, the
-# arbitrary-dict property above only ever hits the "unsupported schema" early
-# return. These start from the KNOWN-VALID capability baseline and corrupt one
-# field to an invalid value that trips a DEEP (post-schema, post-missing) check:
-# each MUST yield a non-empty issues list. This is exactly the property that the
-# Codex mutant — validate_capability rewritten to accept every schema-correct
-# object — fails (see slice5-fix-report.md for the confirmed mutant-catch).
-_CAP_DEEP_CORRUPTIONS = [
-    ("subject", "intern"),                       # not a known seat
-    ("bound_generation", "x"),                   # not an integer
-    ("bound_generation", True),                  # bool is not a valid integer
-    ("expires_on", {"event": "never"}),          # wrong expiry shape
-    ("capability_id", "nope"),                    # fails ^cap-… pattern
-    ("allowed_command_class", ""),               # empty token string
-    ("target", "x\ny"),                          # control char (deep scan)
-]
-
-
-def test_capability_baseline_is_valid_positive_control():
-    # Positive control: the UNcorrupted baseline validates clean, so the
-    # corruption properties below are meaningful (only the corruption fails it).
-    assert route_capability.validate_capability(tc._cap()) == []
-
-
-@given(pair=st.sampled_from(_CAP_DEEP_CORRUPTIONS))
-def test_corrupted_capability_field_reaches_deep_validation_fail_closed(pair):
-    field, bad = pair
-    cap = tc._cap()
-    cap[field] = copy.deepcopy(bad)
-    snap = copy.deepcopy(cap)
-    issues = route_capability.validate_capability(cap)
-    assert issues, f"deep check did not fire for corrupted {field}={bad!r}"
-    assert cap == snap  # deep validation must not mutate the input
 
 
 # ---- packet_state.derive_* ----

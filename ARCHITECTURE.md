@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-17 @ a546f05*
+*Last verified: 2026-07-17 @ d434a0d*
 
 ## 1. Purpose
 
@@ -53,36 +53,23 @@ Key directories:
 | `run` | `scripts/check_placeholders.py:103` | Scans for adoption-placeholder tokens outside the allowlist. |
 | `check_sha_refs` | `scripts/check_doc_claims.py:1706` | Reports stale or mismatched commit-SHA citations. |
 | `classify_sha_ref_baseline` | `scripts/check_doc_claims.py:1768` | Classifies SHA-reference drift as reviewed baseline or new/changed drift. |
-| `collect_monitor_state` | `scripts/mailbox_monitor.py:176` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
-| `build_guard` | `scripts/ledger_start_guard.py:176` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
-| `load_kernel_mirror` | `scripts/target_binding.py:147` | Validates the declarative-only compact-kernel epoch/writer mirror without selecting runtime behavior. |
-| `resolve_target` | `scripts/target_binding.py:184` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
-| `read_selection` | `scripts/kernel_activation.py:106` | Reads the canonical activation-ref blob and cross-checks it exactly against the governance mirror; an absent ref is valid only for epoch `0` writer `v1`. |
-| `writer_fence` | `scripts/kernel_activation.py:159` | Serializes v1 writer entry with one Git-common-dir lock and rereads the exact selector after acquisition. |
-| `_accepted_context_keys` | `scripts/compact_state_mapping.py:98` | Independently enumerates every finite producer-backed v1 mapping context for exact fixture and shadow-gate closure. |
-| `reduce_protocol_state` | `scripts/capability_reducer.py:1230` | Produces one pure, deterministic, non-authoritative compact shadow report. |
-| `adapt_v1_history` | `scripts/capability_v1_adapter.py:2826` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
-| `main` | `scripts/protocol_capacity_board.py:17` | Renders and validates active capacity packets for a wave. |
+| `collect_monitor_state` | `scripts/mailbox_monitor.py:175` | Builds a read-only snapshot of mailbox, receipt, and heartbeat state. |
+| `build_guard` | `scripts/ledger_start_guard.py:175` | Enforces Pipeline-first startup for target-routed seats; paths come from the binding registry. |
+| `resolve_target` | `scripts/target_binding.py:143` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
+| `writer_fence` | `scripts/mailbox_writer.py:62` | Serializes fixed mailbox-event and cursor finalizers with one Git-common-dir lock. |
+| `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:527` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_r_independence` | `scripts/codex_protocol_model.py:752` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:824` | Renders guard guidance into readiness output. |
-| `render_lane_v_v3` | `scripts/codex_protocol_model.py` | Renders the canonical Compact Pair Invariant. |
-| `parse_verify_request` | `scripts/compact_pair_loop.py` | Validates one committed Director verify-request and its exact reviewed range. |
-| `validate_report` | `scripts/compact_pair_loop.py` | Binds one assigned non-author Operator verdict to that exact request, range, and scope. |
+| `parse_verify_request` | `scripts/compact_pair_loop.py:215` | Validates one committed Director verify-request and its exact reviewed range. |
+| `validate_report` | `scripts/compact_pair_loop.py:369` | Binds one assigned non-author Operator verdict to that exact request, range, and scope. |
 
 ## 4. Runtime Invariants
 
 - Pipeline remains the Codex four-seat governance kernel.
 - evidence-ledger is the bound product target for current ledger-routed work.
-- An absent compact-kernel selector ref is valid only with the exact epoch
-  `0`/writer `v1` governance mirror. The declared live-v1 reader CLIs refuse
-  any other selection; every mailbox writer rereads that selection under the
-  shared writer fence. The
-  read-only historical adapter imports the pure reducer; the reducer does not
-  import the adapter. Neither shadow surface activates or writes runtime state.
-- The shadow parity gate requires exact accepted-context key equality across
-  producer-derived manifest, mapping fixture, adapter rules, and corpus cases;
-  specialized lifecycle contexts remain explicit `no_route_event` evidence.
+- The fixed mailbox writer serializes event and cursor publication with one
+  Git-common-dir lock. No activation selector or alternate writer exists.
 - Durable shared state beats chat memory: git commits, mailbox bodies, capacity
   packets, cursor state, and verification reports are authoritative.
 - Live seats start with `scripts/ledger_start_guard.py --seat <seat> --wave 2`
@@ -96,7 +83,7 @@ Key directories:
   truth layer intentionally does not restate its lifecycle grammar.
 - `coordination/bin/send-event` permits verification reports only from Operator
   seats, then sends every mailbox kind through the unchanged fixed finalizer in
-  `scripts/kernel_activation.py`.
+  `scripts/mailbox_writer.py`.
 
 
 
@@ -107,9 +94,9 @@ Key directories:
 
 
 
-- Exact pre-v3 report paths and raw-byte hashes remain accepted only through the
-  committed historical manifest. Local `.codex/runtime` residue is outside the
-  operative scan and is not mutated by protocol verification.
+- Historical report paths remain immutable evidence and grant no current
+  publication authority. Local `.codex/runtime` residue is outside the operative
+  scan and is not mutated by protocol verification.
 - The Codex model applies R-INDEPENDENCE before implementation: it classifies
   the four adversarial surfaces, requires a durable independent design-time
   enumeration for triggered work, and requires independent actual-diff
@@ -145,10 +132,9 @@ baseline is unchanged. A changed SHA-ref drift set is a hard failure. Run
 audit report.
 
 The project-smoke block proves signed-bus imports/canonicalization, the
-load-bearing event-kind relationship, and the seat/mailbox registry. Lane V v3
-schema, trigger, publication, and provider-decommission claims are proved by the
-focused protocol tests; smoke does not substitute for those regressions or an
-operator GO.
+load-bearing event-kind relationship, and the seat/mailbox registry. Compact-pair
+request/report binding is proved by focused protocol tests; smoke does not
+substitute for those regressions or an Operator GO.
 
 ## 7. Target-Repo Boundary
 

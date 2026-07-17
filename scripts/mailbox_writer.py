@@ -1,24 +1,19 @@
 #!/usr/bin/env python3
-"""Fail-closed compact-kernel selector and shared v1 writer fence."""
+"""Fixed, fail-closed mailbox event and cursor writer."""
 
 from __future__ import annotations
 
 import argparse
 import contextlib
 import fcntl
-import json
 import os
 import re
 import stat
 import subprocess
 import sys
-import tomllib
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Iterator
 
-_REF = "refs/protocol/kernel-activation"
-_SCHEMA = "protocol-kernel-selection/v1"
 _LOCK_NAME = "protocol-kernel-writer.lock"
 _EVENT_RE = re.compile(
     r"^(?P<stamp>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-"
@@ -42,19 +37,12 @@ _GIT_ENV = {
 }
 
 
-class KernelSelectionError(RuntimeError):
-    """The selector, its mirror, or the repository boundary is invalid."""
+class MailboxWriterError(RuntimeError):
+    """The fixed mailbox writer or repository boundary is invalid."""
 
 
-@dataclass(frozen=True)
-class KernelSelection:
-    epoch: int
-    writer: Literal["v1", "compact"]
-    selector_oid: str | None
-
-
-def _git_result(root: Path, *arguments: str, input_bytes: bytes | None = None):
-    return subprocess.run(
+def _git(root: Path, *arguments: str, input_bytes: bytes | None = None) -> bytes:
+    completed = subprocess.run(
         [
             "/usr/bin/git", "--no-replace-objects", "--literal-pathspecs",
             "-C", str(root), *arguments,
@@ -64,108 +52,15 @@ def _git_result(root: Path, *arguments: str, input_bytes: bytes | None = None):
         check=False,
         env=_GIT_ENV,
     )
-
-
-def _git(root: Path, *arguments: str, input_bytes: bytes | None = None) -> bytes:
-    completed = _git_result(root, *arguments, input_bytes=input_bytes)
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip()
-        raise KernelSelectionError(f"sanitized Git failed: {detail or arguments[0]}")
+        raise MailboxWriterError(f"sanitized Git failed: {detail or arguments[0]}")
     return completed.stdout
 
 
-def _mirror(root: Path) -> tuple[int, Literal["v1", "compact"]]:
-    try:
-        parsed = tomllib.loads((root / "governance.toml").read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
-        raise KernelSelectionError(f"kernel mirror is unavailable: {exc}") from exc
-    protocol = parsed.get("protocol")
-    table = protocol.get("kernel") if isinstance(protocol, dict) else None
-    if not isinstance(table, dict) or set(table) != {"epoch", "writer"}:
-        raise KernelSelectionError("kernel mirror must contain only epoch and writer")
-    epoch, writer = table["epoch"], table["writer"]
-    if type(epoch) is not int or epoch < 0:
-        raise KernelSelectionError("kernel mirror epoch must be a non-negative integer")
-    if writer not in {"v1", "compact"}:
-        raise KernelSelectionError("kernel mirror writer must be v1 or compact")
-    return epoch, writer
-
-
-def _selector_oid(root: Path) -> str | None:
-    completed = _git_result(root, "rev-parse", "--verify", "--quiet", _REF)
-    if completed.returncode == 1 and not completed.stdout:
-        return None
-    if completed.returncode != 0:
-        raise KernelSelectionError("cannot resolve kernel activation ref")
-    oid = completed.stdout.decode("ascii", "strict").strip()
-    if not oid or any(character not in "0123456789abcdef" for character in oid):
-        raise KernelSelectionError("kernel activation ref did not resolve to one object")
-    return oid
-
-
-def read_selection(repo_root: Path | str) -> KernelSelection:
-    """Read and strictly cross-check the authoritative selector and TOML mirror."""
-    root = Path(repo_root).resolve(strict=True)
-    mirror_epoch, mirror_writer = _mirror(root)
-    oid = _selector_oid(root)
-    if oid is None:
-        if (mirror_epoch, mirror_writer) != (0, "v1"):
-            raise KernelSelectionError("missing selector requires mirror epoch 0 writer v1")
-        return KernelSelection(0, "v1", None)
-    object_type = _git(root, "cat-file", "-t", oid).decode("ascii", "strict").strip()
-    if object_type != "blob":
-        raise KernelSelectionError("kernel activation ref must name one Git blob")
-    raw = _git(root, "cat-file", "blob", oid)
-    try:
-        value = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise KernelSelectionError("kernel activation blob is not canonical JSON") from exc
-    if not isinstance(value, dict) or set(value) != {"schema", "epoch", "writer"}:
-        raise KernelSelectionError("kernel activation blob has an invalid schema shape")
-    epoch, writer = value["epoch"], value["writer"]
-    if value["schema"] != _SCHEMA:
-        raise KernelSelectionError("kernel activation schema is unsupported")
-    if type(epoch) is not int or epoch <= 0:
-        raise KernelSelectionError("present selector epoch must be a positive integer")
-    if writer not in {"v1", "compact"}:
-        raise KernelSelectionError("kernel activation writer must be v1 or compact")
-    canonical = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
-    if raw != canonical:
-        raise KernelSelectionError("kernel activation blob is not canonical JSON")
-    if (epoch, writer) != (mirror_epoch, mirror_writer):
-        raise KernelSelectionError("kernel activation selector and mirror disagree")
-    return KernelSelection(epoch, writer, oid)
-
-
-def _require_v1_reader(repo_root: Path | str) -> KernelSelection:
-    selection = read_selection(repo_root)
-    if (selection.epoch, selection.writer) != (0, "v1"):
-        raise KernelSelectionError(
-            f"reader requires selector 0/v1, observed {selection.epoch}/{selection.writer}"
-        )
-    return selection
-
-
-def _reader_guard(repo_root: Path | str, label: str) -> bool:
-    try:
-        _require_v1_reader(repo_root)
-        return True
-    except KernelSelectionError as exc:
-        print(f"{label}: kernel selector: {exc}", file=sys.stderr)
-        return False
-
-
 @contextlib.contextmanager
-def writer_fence(
-    repo_root: Path | str,
-    expected_epoch: int,
-    expected_writer: Literal["v1", "compact"],
-) -> Iterator[KernelSelection]:
-    """Hold the Git-common-dir writer lock and then reread the exact selector."""
-    if type(expected_epoch) is not int or expected_epoch < 0:
-        raise KernelSelectionError("expected epoch must be a non-negative integer")
-    if expected_writer not in {"v1", "compact"}:
-        raise KernelSelectionError("expected writer must be v1 or compact")
+def writer_fence(repo_root: Path | str) -> Iterator[None]:
+    """Serialize mailbox writers through the repository's Git-common-dir lock."""
     root = Path(repo_root).resolve(strict=True)
     common_raw = _git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
     common = Path(common_raw.decode("utf-8", "strict").strip()).resolve(strict=True)
@@ -173,20 +68,15 @@ def writer_fence(
         os.O_CREAT | os.O_RDWR | getattr(os, "O_CLOEXEC", 0)
         | getattr(os, "O_NOFOLLOW", 0)
     )
+    # Keep the established lock filename so old and new worktree shims cannot
+    # split the writer lock during the local cutover.
     fd = os.open(common / _LOCK_NAME, flags, 0o600)
     try:
         os.fchmod(fd, 0o600)
         if not stat.S_ISREG(os.fstat(fd).st_mode):
-            raise KernelSelectionError("writer lock is not a regular file")
+            raise MailboxWriterError("writer lock is not a regular file")
         fcntl.flock(fd, fcntl.LOCK_EX)
-        selection = read_selection(root)
-        if (selection.epoch, selection.writer) != (expected_epoch, expected_writer):
-            raise KernelSelectionError(
-                "writer fence expected "
-                f"{expected_epoch}/{expected_writer}, observed "
-                f"{selection.epoch}/{selection.writer}"
-            )
-        yield selection
+        yield
     finally:
         os.close(fd)
 
@@ -208,10 +98,10 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
         or not candidate.name.startswith(f".{Path(relative).stem}.")
         or not candidate.name.endswith(".tmp")
     ):
-        raise KernelSelectionError("send-event finalizer received a noncanonical path")
+        raise MailboxWriterError("send-event finalizer received a noncanonical path")
     observed = candidate.lstat()
     if not stat.S_ISREG(observed.st_mode) or stat.S_IMODE(observed.st_mode) != 0o600:
-        raise KernelSelectionError("send-event candidate must be one mode-0600 regular file")
+        raise MailboxWriterError("send-event candidate must be one mode-0600 regular file")
     lines = candidate.read_text(encoding="utf-8").splitlines()
     sender, recipient = match.group("sender"), match.group("recipient")
     stamp = _colon(match.group("stamp"))
@@ -229,9 +119,9 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
         or lines[2] != f"**When:** {stamp} · **From:** {sender} (online)"
         or not lines[-1].startswith("Cursor at send: ")
     ):
-        raise KernelSelectionError("send-event candidate envelope does not match filename")
+        raise MailboxWriterError("send-event candidate envelope does not match filename")
     final = root / relative
-    with writer_fence(root, 0, "v1"):
+    with writer_fence(root):
         directory_fd = os.open(sent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
         try:
             os.link(
@@ -255,7 +145,7 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
             os.fsync(directory_fd)
             try:
                 _stage(root, relative, force=True)
-            except KernelSelectionError:
+            except MailboxWriterError:
                 return False
         finally:
             os.close(directory_fd)
@@ -272,19 +162,19 @@ def _colon(value: str) -> str:
 
 def _consume_events_finalize(root: Path, role: str, target: str | None) -> str:
     if role not in _ROLES:
-        raise KernelSelectionError("consume-events role is invalid")
+        raise MailboxWriterError("consume-events role is invalid")
     sent = root / "coordination" / "mailbox" / "sent"
     seen = root / "coordination" / "mailbox" / "seen"
     cursor = seen / f"{role}.txt"
-    with writer_fence(root, 0, "v1"):
+    with writer_fence(root):
         current_raw = cursor.read_bytes()
         if current_raw.count(b"\n") != 1 or not current_raw.endswith(b"\n"):
-            raise KernelSelectionError("consume-events cursor is not one canonical line")
+            raise MailboxWriterError("consume-events cursor is not one canonical line")
         current = current_raw[:-1].decode("ascii", "strict")
         if current.isdigit():
-            raise KernelSelectionError(f"{role} is migrated to the signed ref-bus")
+            raise MailboxWriterError(f"{role} is migrated to the signed ref-bus")
         if _COLON_ISO_RE.fullmatch(current) is None:
-            raise KernelSelectionError("consume-events current cursor is not colon ISO")
+            raise MailboxWriterError("consume-events current cursor is not colon ISO")
         current_dash = _dash(current)
         addressed = sorted(
             path.name
@@ -301,14 +191,14 @@ def _consume_events_finalize(root: Path, role: str, target: str | None) -> str:
             if not (
                 _COLON_ISO_RE.fullmatch(target) or _DASH_ISO_RE.fullmatch(target)
             ):
-                raise KernelSelectionError("consume-events target is not an ISO timestamp")
+                raise MailboxWriterError("consume-events target is not an ISO timestamp")
             target_dash = _dash(target)
             if not any(name.startswith(target_dash + "-") for name in addressed):
-                raise KernelSelectionError("consume-events target names no addressed event")
+                raise MailboxWriterError("consume-events target names no addressed event")
         if target_dash == current_dash:
             return f"cursor {role}: already at {_colon(target_dash)} (no-op)"
         if target_dash < current_dash:
-            raise KernelSelectionError("consume-events refuses cursor regression")
+            raise MailboxWriterError("consume-events refuses cursor regression")
         updated = (_colon(target_dash) + "\n").encode("ascii")
         temporary = seen / f".{role}.{os.getpid()}.tmp"
         flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
@@ -337,7 +227,7 @@ def _consume_events_finalize(root: Path, role: str, target: str | None) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="kernel_activation.py")
+    parser = argparse.ArgumentParser(prog="mailbox_writer.py")
     commands = parser.add_subparsers(dest="command", required=True)
     send = commands.add_parser("send-event-finalize")
     send.add_argument("--repo-root", required=True)
@@ -357,8 +247,8 @@ def main(argv: list[str] | None = None) -> int:
             output = ("staged:" if staged else "unstaged:") + arguments.final_relative
         else:
             output = _consume_events_finalize(root, arguments.role, arguments.to)
-    except (KernelSelectionError, OSError, UnicodeError) as exc:
-        print(f"kernel-activation: {exc}", file=sys.stderr)
+    except (MailboxWriterError, OSError, UnicodeError) as exc:
+        print(f"mailbox-writer: {exc}", file=sys.stderr)
         return 4
     print(output)
     return 0

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -47,11 +46,8 @@ def _init_repo(repo: Path, repo_root: Path) -> None:
     (venv / "python").symlink_to(sys.executable)
     scripts = repo / "scripts"
     scripts.mkdir()
-    (scripts / "kernel_activation.py").write_bytes(
-        (repo_root / "scripts/kernel_activation.py").read_bytes()
-    )
-    (repo / "governance.toml").write_text(
-        '[protocol.kernel]\nepoch = 0\nwriter = "v1"\n', encoding="utf-8"
+    (scripts / "mailbox_writer.py").write_bytes(
+        (repo_root / "scripts/mailbox_writer.py").read_bytes()
     )
     mailbox = repo / "coordination/mailbox"
     (mailbox / "sent").mkdir(parents=True)
@@ -147,27 +143,6 @@ Verification context: fresh non-author Operator context
 
 None.
 """
-
-
-def _install_compact_selector(repo: Path) -> None:
-    (repo / "governance.toml").write_text(
-        '[protocol.kernel]\nepoch = 1\nwriter = "compact"\n', encoding="utf-8"
-    )
-    selector = (
-        json.dumps(
-            {"epoch": 1, "schema": "protocol-kernel-selection/v1", "writer": "compact"},
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n"
-    )
-    oid = subprocess.run(
-        ["/usr/bin/git", "-C", str(repo), "hash-object", "-w", "--stdin"],
-        input=selector.encode(),
-        capture_output=True,
-        check=True,
-    ).stdout.decode().strip()
-    _git(repo, "update-ref", "refs/protocol/kernel-activation", oid)
 
 
 def test_send_event_stages_ordinary_event_through_fixed_finalizer(
@@ -281,52 +256,6 @@ def test_non_operator_fails_before_verification_report_publication(
     assert "only operator seats" in result.stderr
     assert not list((repo / "coordination/mailbox/sent").glob("*verification-report.md"))
     assert not list((repo / "coordination/mailbox/sent").glob(".*.tmp"))
-    assert _git(repo, "diff", "--cached", "--name-only") == ""
-
-
-def test_send_event_selector_denial_precedes_final_file_and_index_mutation(
-    tmp_path: Path, repo_root: Path
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_repo(repo, repo_root)
-    base, head, request_path, trigger = _prepare_verify_request(repo)
-    _install_compact_selector(repo)
-    _git(repo, "add", "governance.toml")
-    _git(repo, "commit", "-q", "-m", "chore: activate compact fixture")
-
-    result = _run(
-        [repo_root / "coordination/bin/send-event", "operator", "all", "verification-report", "fenced"],
-        repo,
-        input_text=_report_body(
-            base, head, request_path, trigger, verdict="FAIL"
-        ),
-    )
-
-    assert result.returncode != 0
-    assert not list((repo / "coordination/mailbox/sent").glob("*verification-report.md"))
-    assert _git(repo, "diff", "--cached", "--name-only") == ""
-
-
-def test_consume_events_selector_denial_precedes_cursor_and_index_mutation(
-    tmp_path: Path, repo_root: Path
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_repo(repo, repo_root)
-    cursor = repo / "coordination/mailbox/seen/director.txt"
-    cursor.write_text("2026-07-16T00:00:00Z\n", encoding="utf-8")
-    (repo / "coordination/mailbox/sent/2026-07-16T00-01-00Z-operator-to-director-status.md").write_text(
-        "# fixture\n", encoding="utf-8"
-    )
-    _install_compact_selector(repo)
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-q", "-m", "chore: compact cursor fixture")
-
-    result = _run([repo_root / "coordination/bin/consume-events", "director"], repo)
-
-    assert result.returncode != 0
-    assert cursor.read_text(encoding="utf-8") == "2026-07-16T00:00:00Z\n"
     assert _git(repo, "diff", "--cached", "--name-only") == ""
 
 

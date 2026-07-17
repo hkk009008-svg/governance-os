@@ -47,18 +47,6 @@ class TargetBinding:
     source: str = "governance.toml"
 
 
-@dataclass(frozen=True)
-class KernelMirror:
-    """Non-authoritative observation of the declared compact-kernel epoch."""
-
-    epoch: int
-    writer: str
-    authority: str = "declarative_only"
-    provenance: str = (
-        "governance.toml [protocol.kernel] mirror; never activation high-water mark"
-    )
-
-
 def _resolve_path(raw: str) -> Path:
     # Path expansion/resolution can raise non-BindingError exceptions on
     # otherwise-typed inputs (a null byte -> ValueError 'embedded null
@@ -144,35 +132,6 @@ def _binding_from_table(name: str, table: dict, *, source: str) -> TargetBinding
     )
 
 
-def load_kernel_mirror(root: Path | str | None = None) -> KernelMirror:
-    """Load the inert ``[protocol.kernel]`` mirror without selecting behavior."""
-    config = load_config(root)
-    protocol = config.get("protocol")
-    table = protocol.get("kernel") if isinstance(protocol, dict) else None
-    if not isinstance(table, dict):
-        raise BindingError("[protocol.kernel] table is required for mirror validation")
-
-    required = {"epoch", "writer"}
-    missing = sorted(required - set(table))
-    unknown = sorted(set(table) - required)
-    if missing:
-        raise BindingError(
-            "[protocol.kernel] missing required key(s): " + ", ".join(missing)
-        )
-    if unknown:
-        raise BindingError(
-            "[protocol.kernel] has unknown key(s): " + ", ".join(unknown)
-        )
-
-    epoch = table["epoch"]
-    if type(epoch) is not int or epoch < 0:
-        raise BindingError("[protocol.kernel].epoch must be a non-negative integer")
-    writer = table["writer"]
-    if not isinstance(writer, str) or writer not in {"v1", "compact"}:
-        raise BindingError("[protocol.kernel].writer must be one of: v1, compact")
-    return KernelMirror(epoch=epoch, writer=writer)
-
-
 def list_targets(root: Path | str | None = None) -> tuple[TargetBinding, ...]:
     config = load_config(root)
     return tuple(
@@ -236,7 +195,6 @@ def main(argv: list[str] | None = None) -> int:
         config = load_config(args.root)
         targets = list_targets(args.root)
         roots = forbidden_roots(args.root)
-        mirror = load_kernel_mirror(args.root)
     except BindingError as exc:
         print("TARGET BINDING — FAIL")
         print(f"- {exc}")
@@ -252,10 +210,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"    route_keywords: {', '.join(target.route_keywords)}")
     if roots:
         print("- forbidden roots: " + ", ".join(item.as_posix() for item in roots))
-    print(
-        f"- kernel mirror: epoch {mirror.epoch}; writer {mirror.writer}; "
-        "declarative only"
-    )
     return 0
 
 

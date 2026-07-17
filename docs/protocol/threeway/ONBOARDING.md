@@ -48,9 +48,8 @@ ANY work:
       provider tool is installed or authorized by this repository; any future provider tool
       requires a separately approved design and implementation and grants no protocol or side-effect
       authority.
-   f. Lane V is independent verification by a non-author operator over one committed descriptor and
-      lawful trigger. New reports use lane-v-report/v3 and publish atomically through
-      TaskPublicationStore. Model or provider identity grants no authority.
+   f. Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+      surface intentionally does not restate its lifecycle grammar.
    g. Anti-ceremony: a status / route / handoff / no-op is valid only if it preserves transfer
       state, changes enforcement, or cites executed evidence.
 

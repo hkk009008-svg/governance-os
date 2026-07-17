@@ -1,6 +1,6 @@
 #!/bin/bash -p
-# Fixed shim for the v1 mailbox cursor writer. The trusted Python operation
-# owns argument validation, selector fencing, durable replacement, and staging.
+# Fixed shim for the mailbox cursor writer. The trusted Python operation owns
+# argument validation, writer fencing, durable replacement, and staging.
 set -euo pipefail
 
 ROOT=$(
@@ -16,13 +16,13 @@ PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
 TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
 SCRIPT_DIR=$(/usr/bin/dirname "${BASH_SOURCE[0]:-$0}")
 TOOL_ROOT=$(cd "$SCRIPT_DIR/../.." && /bin/pwd -P)
-KERNEL_FINALIZER="$TOOL_ROOT/scripts/kernel_activation.py"
+MAILBOX_WRITER="$TOOL_ROOT/scripts/mailbox_writer.py"
 
-if [ ! -x "$TRUSTED_PYTHON" ] || [ ! -f "$KERNEL_FINALIZER" ]; then
-  echo "consume-events: trusted Pipeline finalizer unavailable" >&2
+if [ ! -x "$TRUSTED_PYTHON" ] || [ ! -f "$MAILBOX_WRITER" ]; then
+  echo "consume-events: trusted Pipeline mailbox writer unavailable" >&2
   exit 4
 fi
 
 exec /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
-  "$TRUSTED_PYTHON" -E -s -S -B "$KERNEL_FINALIZER" \
+  "$TRUSTED_PYTHON" -E -s -S -B "$MAILBOX_WRITER" \
   consume-events "$@" --repo-root "$ROOT"

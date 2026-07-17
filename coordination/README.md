@@ -37,8 +37,7 @@ for the full discipline (Rules #7–#23).
   resolution, retraction, findings) stays a `sent/` event file; a bare "received"
   ACK that adds nothing beyond the cursor should be a cursor advance only.
 - `mailbox/kinds.txt` — canonical mailbox kind vocabulary, one kind per line.
-  `bin/send-event`, `scripts/check_coordination.py`, and
-  `scripts/protocol_effectiveness_report.py` load this registry through
+  `bin/send-event` and `scripts/check_coordination.py` load this registry through
   `scripts/protocol_mailbox.py` (`wc -l coordination/mailbox/kinds.txt` → 25,
   2026-06-18).
 - `scripts/check_coordination.py` (repo root) — lints all of the above (cursor
@@ -228,19 +227,11 @@ an authority-bearing verify-request also carries the exact in-body event type
 and fields below. The current accepted vocabulary is
 `coordination/mailbox/kinds.txt`.
 
-For Lane V, the filename kind alone is not authority. A verify-request trigger
-is a canonical committed sent-mailbox event strictly after the reviewed HEAD
-with exactly one `Event type: verify-request`, one
-`Reviewed head: <40-lowercase-hex>`, one
-`Reviewed base: <40-lowercase-hex>`, and one
-`Lane-V-Scope: coordination/verification/scopes/<uuid>.json@sha256:<64-lowercase-hex>`
-whose values agree with the committed descriptor and canonical
-filename/envelope. A shipping trigger commit equals the reviewed HEAD, its
-subject begins `feat`, `fix`, or `refactor`, and exactly one identical descriptor
-reference in the terminal Git trailer block supplies its `Lane-V-Scope`.
-Missing, duplicated, abbreviated, uppercase, misplaced, uncommitted, stale, or
-mismatched authority is not a trigger: stop with a blocker, do not reconstruct
-missing fields, and do not fall back to the other trigger kind.
+For compact-pair verification, the filename kind alone is not authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar. The fixed mailbox
+writer publishes the event only after `coordination/bin/send-event` validates
+the committed request/report binding and Operator-only verdict authority.
 
 **Kind registry (current):**
 
@@ -258,27 +249,6 @@ missing fields, and do not fall back to the other trigger kind.
   `coordination` | `discussion` | `fyi` | `measurement-report` | `proposal` |
   `proposal-reply` | `reply` | `verify-addendum` | `verify-readiness` |
   `verify-readiness-converged` | `wrap`
-
-`verification-report` event format (per Rule #9 Lane V):
-
-```markdown
----
-from: operator
-to: director
-kind: verification-report
-related-commits: <SHA being reviewed>
-related-rules: 9
----
-
-**Status:** ✅ clean / ⚠️ minor / ❌ critical
-**Disposition:** fold / advisory
-
-**Findings:**
-- <file:line> — <finding>
-- ...
-
-<optional narrative body>
-```
 
 **Filename convention:** `<UTC-ISO-timestamp>-<from>-to-<to>-<kind>.md`.
 Timestamp ensures lexicographic ordering matches chronological. Example:

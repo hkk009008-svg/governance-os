@@ -312,8 +312,6 @@ surface intentionally does not restate its lifecycle grammar.
   mailbox awareness without claiming a seat.
 - `scripts/draft_handoff.py <seat> --wave 2 --smoke --output`: draft a
   handoff evidence scaffold; refresh live state before finalizing it.
-- `scripts/protocol_effectiveness_report.py`: read-only diagnostics. It does
-  not route work, consume mail, or decide inventory state.
 - `scripts/protocol_capacity_board.py --wave <wave>`: read-only hard-gated
   capacity board; use `--validate-route coordination/mailbox/sent/<event>.md`
   before active coordinator task-board route commits.

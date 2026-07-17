@@ -133,9 +133,8 @@ flowchart TB
 6. **The strategic loop is a loop.** Results feed the overseer's data→info summary, which feeds the
    chiefs, which return orders via the human relay — not a one-way chain.
 
-Lane V is independent verification by a non-author operator over one committed descriptor and
-lawful trigger. New reports use lane-v-report/v3 and publish atomically through
-TaskPublicationStore. Model or provider identity grants no authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 ## What this corrects (vs the two draft diagrams)
 

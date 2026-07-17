@@ -65,9 +65,8 @@ No external advisory provider tool is installed or authorized by this repository
 provider tool requires a separately approved design and implementation and grants no protocol or
 side-effect authority.
 
-Lane V is independent verification by a non-author operator over one committed descriptor and
-lawful trigger. New reports use lane-v-report/v3 and publish atomically through
-TaskPublicationStore. Model or provider identity grants no authority.
+Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+surface intentionally does not restate its lifecycle grammar.
 
 **Codex occupies:** `director` (Pair A builder), `operator2` (Pair B verifier), `coordinator2`
 (Pair B integrator). **Claude occupies:** `director2` (Pair B builder), `operator` (Pair A

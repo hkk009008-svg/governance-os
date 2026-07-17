@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 import protocol_capacity
-from kernel_activation import _reader_guard
 
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -32,9 +31,6 @@ def main(argv: list[str] | None = None) -> int:
         help="exit nonzero when a wave has no capacity packets",
     )
     args = parser.parse_args(argv)
-    if not _reader_guard(_REPO_ROOT, "protocol-capacity-board"):
-        return 2
-
     if args.validate_route:
         result = protocol_capacity.validate_route(
             Path(args.root),

@@ -130,14 +130,9 @@ def test_cas_rejects_non_incremented_generation():
 
 # --- Cross-model part-#4: check_cas must enforce int-only generations ---------
 #
-# Rule #13 symmetric-endpoint gap: the sibling currency gate
-# route_capability.capability_is_current enforces `type(...) is int` ("a boolean
-# grant must never ride an int-1 route into current"), but check_cas — the
-# CAS-acceptance gate — did not. Because `True == 1 == 0 + 1`, a bool generation
-# rode the successor arithmetic. Defense-in-depth (check_cas has no prod caller
-# today, and parse_lineage only ever emits real ints), but the two gates must
-# agree so a future JSON/TOML source (where `true` parses to bool) cannot slip
-# a bool generation through one gate but not the other.
+# Bool is an int subclass, so the CAS boundary must require exact int types.
+# This prevents a future JSON/TOML boolean generation from satisfying successor
+# arithmetic even though True == 1.
 
 def test_cas_rejects_bool_generation_int_only():
     # 0 -> True is the numeric successor (True == 1 == 0 + 1), so ONLY the type,

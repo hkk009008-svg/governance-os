@@ -6,7 +6,6 @@ stays the default target (ADR-008 continuity), and future works register a new
 """
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -23,10 +22,6 @@ def _write_config(root: Path, body: str) -> Path:
 DEMO_CONFIG = """
 [kernel]
 repository = "example/governance-os"
-
-[protocol.kernel]
-epoch = 0
-writer = "v1"
 
 [binding]
 default_target = "demo-app"
@@ -56,15 +51,6 @@ def _demo_root(tmp_path: Path) -> Path:
         ),
     )
     return tmp_path
-
-
-def _replace_kernel_mirror(root: Path, body: str | None) -> None:
-    path = root / "governance.toml"
-    original = path.read_text(encoding="utf-8")
-    block = '[protocol.kernel]\nepoch = 0\nwriter = "v1"\n'
-    replacement = "" if body is None else f"[protocol.kernel]\n{body.rstrip()}\n"
-    assert block in original
-    path.write_text(original.replace(block, replacement), encoding="utf-8")
 
 
 # --- registry loading -------------------------------------------------------
@@ -113,81 +99,6 @@ def test_unknown_target_key_fails_closed(tmp_path):
     with pytest.raises(target_binding.BindingError) as excinfo:
         target_binding.resolve_target(tmp_path, env={})
     assert "surprise" in str(excinfo.value)
-
-
-# --- inert compact-kernel mirror -------------------------------------------
-
-
-def test_load_kernel_mirror_accepts_demo_config_as_declarative_only(tmp_path):
-    mirror = target_binding.load_kernel_mirror(_demo_root(tmp_path))
-
-    assert mirror.epoch == 0
-    assert mirror.writer == "v1"
-    assert mirror.authority == "declarative_only"
-    assert "never activation high-water mark" in mirror.provenance
-    with pytest.raises(FrozenInstanceError):
-        mirror.writer = "compact"
-
-
-def test_repo_config_declares_inert_v1_kernel_mirror(repo_root):
-    mirror = target_binding.load_kernel_mirror(repo_root)
-
-    assert (mirror.epoch, mirror.writer) == (0, "v1")
-    assert mirror.authority == "declarative_only"
-
-
-def test_kernel_mirror_missing_table_fails_closed(tmp_path):
-    root = _demo_root(tmp_path)
-    _replace_kernel_mirror(root, None)
-
-    with pytest.raises(target_binding.BindingError, match=r"\[protocol\.kernel\]"):
-        target_binding.load_kernel_mirror(root)
-
-
-@pytest.mark.parametrize(
-    ("body", "expected"),
-    [
-        ('writer = "v1"', "epoch"),
-        ("epoch = 0", "writer"),
-        ('epoch = 0\nwriter = "v1"\nsurprise = true', "surprise"),
-    ],
-)
-def test_kernel_mirror_requires_exact_keys(tmp_path, body, expected):
-    root = _demo_root(tmp_path)
-    _replace_kernel_mirror(root, body)
-
-    with pytest.raises(target_binding.BindingError, match=expected):
-        target_binding.load_kernel_mirror(root)
-
-
-@pytest.mark.parametrize("epoch_literal", ["true", "-1", '"0"', "0.0"])
-def test_kernel_mirror_rejects_invalid_epoch(tmp_path, epoch_literal):
-    root = _demo_root(tmp_path)
-    _replace_kernel_mirror(root, f'epoch = {epoch_literal}\nwriter = "v1"')
-
-    with pytest.raises(target_binding.BindingError, match="epoch"):
-        target_binding.load_kernel_mirror(root)
-
-
-@pytest.mark.parametrize("writer_literal", ['"future"', "1"])
-def test_kernel_mirror_rejects_invalid_writer(tmp_path, writer_literal):
-    root = _demo_root(tmp_path)
-    _replace_kernel_mirror(root, f"epoch = 0\nwriter = {writer_literal}")
-
-    with pytest.raises(target_binding.BindingError, match="writer"):
-        target_binding.load_kernel_mirror(root)
-
-
-def test_compact_mirror_never_changes_resolved_target_binding(tmp_path):
-    root = _demo_root(tmp_path)
-    before = target_binding.resolve_target(root, env={})
-    _replace_kernel_mirror(root, 'epoch = 0\nwriter = "compact"')
-
-    mirror = target_binding.load_kernel_mirror(root)
-    after = target_binding.resolve_target(root, env={})
-
-    assert mirror.writer == "compact"
-    assert after == before
 
 
 # --- resolution order -------------------------------------------------------
@@ -289,9 +200,6 @@ def test_check_cli_reports_all_targets(tmp_path, capsys):
     assert rc == 0
     assert "demo-app" in out and "beta-app" in out
     assert "default" in out.lower()
-    assert "epoch 0" in out
-    assert "writer v1" in out
-    assert "declarative only" in out
 
 
 def test_check_cli_fails_closed_on_structural_error(tmp_path, capsys):
