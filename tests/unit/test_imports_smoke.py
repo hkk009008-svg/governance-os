@@ -12,6 +12,7 @@ def test_threeway_package_imports():
 
 
 def test_scripts_modules_import_by_bare_name():
+    import chatgpt_pro_consult  # noqa: F401
     import protocol_mailbox
     import status  # noqa: F401
     import check_no_ceremony  # noqa: F401
