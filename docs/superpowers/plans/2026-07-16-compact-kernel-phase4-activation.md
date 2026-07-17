@@ -10,9 +10,9 @@
 
 ## Task 1: Small Cutover Boundary
 
-- [ ] Put current live readers and writers behind one activation selector and one shared writer fence.
-- [ ] Keep the default at epoch `0` / writer `v1`.
-- [ ] Add focused denial and single-writer tests.
+- [x] Put current live readers and writers behind one activation selector and one shared writer fence.
+- [x] Keep the default at epoch `0` / writer `v1`.
+- [x] Add focused denial and single-writer tests.
 
 ## Task 2: Rehearse and Review
 
