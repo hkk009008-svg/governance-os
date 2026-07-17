@@ -6,7 +6,7 @@
 
 ## Test plan
 - [ ] `.venv/bin/python scripts/ci_smoke.py` passes locally
-- [ ] `.venv/bin/python -m pytest tests/unit/ -q` clean (current governance baseline: **234 passed / 0 failed**)
+- [ ] `.venv/bin/python -m pytest tests/unit/ -q` clean — paste the literal summary line under Verification output
 - [ ] CI (`.github/workflows/ci.yml`) is green on this PR
 - [ ] ARCHITECTURE.md updated if a documented governance or protocol subsystem was touched
 - [ ] [DECISIONS.md](../DECISIONS.md) appended (new ADR) if this is an architectural decision

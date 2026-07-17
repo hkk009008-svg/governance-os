@@ -58,7 +58,10 @@ def test_root_and_pr_docs_do_not_reference_stale_architecture_sections():
 def test_pr_template_matches_current_governance_repo_surfaces():
     text = _read(".github/pull_request_template.md")
 
-    assert "234 passed" in text
+    # Drift-proof: the checklist cites the command + asks for the literal summary
+    # line, never a frozen pass count (which always re-stales — the 234/478 drift).
+    assert "paste the literal summary line" in text
+    assert "234 passed" not in text
     assert "478 pass" not in text
     assert "cd web" not in text
     assert "docs/STRATEGIC_REVIEW-2026-05-24.md" not in text

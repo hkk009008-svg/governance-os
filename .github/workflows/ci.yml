@@ -12,7 +12,7 @@
 #   - Anti-ceremony (check_no_ceremony; hard-fail local + CI)
 #   - Reviewer-result schema (consume_reviewer_result smoke_check)
 #   - Adoption-placeholder (check_placeholders; hard-fail local + CI — ADR-002)
-#   - Lane-V report-v2 + exact legacy-hash validator (check_go_schema; hard-fail local + CI)
+#   - Frozen historical report bytes + current compact-pair reports (check_go_schema; hard-fail local + CI)
 #   - ARCHITECTURE Last-verified (check_arch_freshness; inert unless ARCHITECTURE.md
 #     changed vs merge-base; fetch-depth: 0 already set for merge-base resolution)
 #
@@ -128,12 +128,6 @@ jobs:
 
       - name: Run unit tests
         run: python -m pytest tests/unit --tb=short -q
-
-      - name: Execute strict-xfail regression pins (--runxfail)
-        # ADR-027 FIX-2: run any strict-xfail regression pins with --runxfail so a
-        # landed fix (XPASS) fails CI rather than passing silently. The suite has no
-        # pins yet; this wires the gate so the FIRST pin added is executed, not declared.
-        run: python -m pytest tests/unit --runxfail -q
 
       - name: Run no-ceremony detector (ADR-028)
         run: python scripts/check_no_ceremony.py

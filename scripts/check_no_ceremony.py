@@ -4,20 +4,23 @@
 CEREMONY = anything that produces the APPEARANCE of verification/enforcement
 WITHOUT the substance: a green/PASS/verified signal that is NOT backed by
 actually executing the check it claims to perform. The archetype (DECISIONS.md
-ADR-027): wave_gate_check.py READS the inventory `status` string and runs zero
-tests, so "GATE MET" proves only that a ceremony was logged.
+ADR-027): a gate that READ an inventory `status` string and ran zero tests, so
+"GATE MET" proved only that a ceremony was logged. FIX-1 has since landed — R3
+now verifies wave_gate_check.py executes the pins.
 
 This detector is the enforcement arm of ADR-028. It hard-fails (exit 1) on the
 ceremony patterns it can detect with high precision, so new ceremony cannot be
-introduced and the existing systemic ceremony stays RED until the routed fixes
-(FIX-1 = gate executes pins; FIX-2 = CI runs --runxfail) land.
+introduced. FIX-1 (gate executes pins) has landed — see R3. FIX-2, a suite-wide
+`--runxfail` CI step, was withdrawn as logically backwards: the normal strict
+run already fails an unexpected XPASS, whereas a suite-wide --runxfail instead
+fails deliberately-deferred pins by design. Targeted pin execution lives in
+wave_gate_check.py.
 
 Rules:
   R1  xfail-strictness     every pytest.mark.xfail must be strict=True + reason=  (AST; prevention)
   R2  invisible-green      importorskip/skipif in a campaign *xfail*.py pin file that would
                            SKIP (dep genuinely absent) -> hard; dep present -> WARN (latent)
   R3  gate-executes-pins   scripts/wave_gate_check.py must EXECUTE the pins, not read status  [FIX-1]
-  R4  ci-runs-runxfail     a CI workflow must run the pin suite with --runxfail               [FIX-2]
   R5  utv-not-a-row-status  `unable_to_verify` is a reviewer/operator VERDICT, never an inventory
                            row `status` — else it bypasses wave_gate_check blocking (ADR-027)  [ADR-032]
   R6  report-cites-exec-pin  a verification-report whose verdict is `pass` must cite an executed
@@ -143,18 +146,6 @@ def rule_gate_executes() -> tuple[str, list[str]]:
     return "FAIL", [
         "scripts/wave_gate_check.py reads the inventory `status` string and executes ZERO tests "
         "(ADR-027). 'GATE MET' is not a correctness claim. [FIX-1: rewrite to run the pins via --runxfail]"
-    ]
-
-
-def rule_ci_runs_runxfail() -> tuple[str, list[str]]:
-    """R4 — a CI workflow must run the pin suite with --runxfail (catches XPASS / landed-fix regressions)."""
-    wf_dir = ROOT / ".github" / "workflows"
-    yamls = list(wf_dir.glob("*.yml")) + list(wf_dir.glob("*.yaml")) if wf_dir.exists() else []
-    if any("--runxfail" in y.read_text() for y in yamls):
-        return "PASS", ["a CI workflow runs --runxfail"]
-    return "FAIL", [
-        ".github/workflows/* never runs pytest with --runxfail, so the 70+ strict-xfail pins are "
-        "never executed as a gate — they are CI-ceremony. [FIX-2: add a --runxfail pin-execution step]"
     ]
 
 
@@ -293,10 +284,6 @@ def main() -> int:
     print(f"R3 gate-executes-pins ..... {r3_status}  {r3[0]}")
     hard_fail |= r3_status == "FAIL"
 
-    r4_status, r4 = rule_ci_runs_runxfail()
-    print(f"R4 ci-runs-runxfail ....... {r4_status}  {r4[0]}")
-    hard_fail |= r4_status == "FAIL"
-
     r5_status, r5 = rule_utv_not_a_row_status()
     print(f"R5 utv-not-a-row-status ... {r5_status}  {r5[0]}")
     for v in r5[1:]:
@@ -312,7 +299,6 @@ def main() -> int:
     print()
     if hard_fail:
         print("RESULT: HARD ceremony violation(s) present — the verification core is not fully self-executing.")
-        print("        R3/R4 are the known systemic ceremony tracked by ADR-027 FIX-1/FIX-2 (routed to a director).")
         return 1
     print("RESULT: no ceremony detected — every relied-on green is backed by execution.")
     return 0
