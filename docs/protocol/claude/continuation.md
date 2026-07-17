@@ -405,7 +405,7 @@ stale seat index can turn a real violation into a false PASS).
 - Unified three-way doctrine: `docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md`
 - Seat status: `.claude/skills/four-seat-protocol/scripts/seat_status.py`
 - Shared governance references (provider-neutral): `docs/protocol/packet-state.md`
-  (ADR-017 derivation) · `docs/protocol/route-v1.md` (typed route manifests)
+  (ADR-017 derivation)
 - Daily loop: `RUNBOOK-DAILY.md` · Program intent: `docs/PROGRAM-MANUAL.md`
 - Verified truth: `ARCHITECTURE.md` · Folder intent:
   `docs/protocol/protocol-assembly-map.md`

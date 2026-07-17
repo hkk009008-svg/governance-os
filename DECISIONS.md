@@ -1081,3 +1081,49 @@ no retry or alternate transport. The canonical procedure is
   spend, or other side-effect authority.
 - If the kernel and skill exceed 350 combined lines or require migration,
   recovery, adapters, schemas, or rollout phases, stop and reduce the design.
+
+## Delete the dormant typed route/v1 machinery
+
+**Date:** 2026-07-18
+**Status:** Accepted (user-approved deletion)
+
+**Context:**
+The typed route/v1 stack (`scripts/route_manifest.py`, `scripts/route_compat.py`,
+`schemas/route-v1.schema.json`, `docs/protocol/route-v1.md`, the
+`tests/fixtures/route_compat/` corpus, and five `tests/unit/test_route_*` files)
+was built as a structured alternative to prose route authority (ADR-014/015). It
+never became live: zero `.route.json` sidecars exist, `route_manifest` has zero
+production callers, and Markdown prose validated by
+`protocol_capacity.validate_route` plus `route_lineage`'s regex parser remained
+the sole live route authority. The capability/v1 stack a typed enforcement
+cutover would have depended on was deleted in `411c2af`, so "wire a real typed
+path instead" no longer has a foundation. Dormant typed machinery beside a live
+prose parser is drift surface, not capability.
+
+**Decision:**
+Delete the dormant route/v1 typed machinery and keep prose as the live route
+authority. Removed: `route_manifest.py`, `route_compat.py`,
+`route-v1.schema.json`, `docs/protocol/route-v1.md`,
+`logs/route-compat-report.json`, the `tests/fixtures/route_compat/` corpus, and
+`test_route_manifest`, `test_route_render`, `test_route_render_invariance`,
+`test_route_compat`, `test_route_schema_sync`. The `route_manifest` property
+section of `test_kernel_properties.py` was removed; its `route_lineage` and
+`packet_state` sections stay. `scripts/route_lineage.py` and
+`tests/unit/test_route_lineage.py` are retained — the prose lineage parser is
+live (consumed by `ledger_start_guard.py` and `protocol_doctor.py`).
+
+This supersedes the LIVE-machinery aspects of ADR-014 (typed route authority
+slice-1) and ADR-015 (route-lineage CAS) without rewriting them; their
+implementation history and the frozen historical descriptors under
+`coordination/verification/scopes/` remain intact as provenance.
+
+**Consequences:**
+- `rfc8785` / `threeway.canon.canonicalize` becomes used only by the signed
+  three-way ref-bus; the dependency is retained (the bus still uses it) — not
+  removed by this decision.
+- Deleting `test_route_render_invariance.py` removes the suite's only
+  strict-xfail regression pin; the deferred defect it pinned is moot because its
+  subject (the route renderer) is deleted. The suite's xfail count goes to zero.
+- Any future typed route enforcement requires a fresh design, its own schema, and
+  a real live cutover with `.route.json` sidecars in production — not a revival
+  of this dormant island.
