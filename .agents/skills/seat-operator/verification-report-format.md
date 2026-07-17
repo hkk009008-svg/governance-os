@@ -17,6 +17,7 @@ timestamp/from envelope, and cursor footer.
 ## Body skeleton
 
 ```markdown
+Event type: verification-report
 VERDICT: GO | NITS | FAIL
 Verification request: coordination/mailbox/sent/<canonical-verify-request>.md@<40-lowercase-request-commit>
 Reviewed head: <40-lowercase-hex>

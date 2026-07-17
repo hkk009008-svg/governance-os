@@ -1495,6 +1495,7 @@ def test_lane_v_trigger_guidance_pins_compact_report_and_pipeline_boundary() -> 
     )
     for path in report_paths:
         text = _read(path)
+        assert "Event type: verification-report" in text, path
         assert "Verification request:" in text, path
         assert "Reviewer seat:" in text, path
         assert "Reviewer model:" in text, path
@@ -1506,6 +1507,7 @@ def test_lane_v_trigger_guidance_pins_compact_report_and_pipeline_boundary() -> 
 
     verifier = _trigger_contract_text(".codex/agents/lane-v-verifier.toml")
     assert COMPACT_PAIR_REFERENCE in verifier
+    assert "Event type: verification-report" in verifier
     assert "--receipt-id" not in verifier
 
     agent_report = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
@@ -1644,7 +1646,7 @@ def test_verification_report_format_mirrors_pin_the_compact_binding_order():
     assert agent_path.read_bytes() == claude_path.read_bytes()
 
     text = agent_path.read_text(encoding="utf-8")
-    start = text.index("VERDICT:", text.index("## Body skeleton"))
+    start = text.index("Event type:", text.index("## Body skeleton"))
     end = text.index("\n\n## Findings", start)
     field_lines = [
         line.split(":", 1)[0] + ":"
@@ -1652,6 +1654,7 @@ def test_verification_report_format_mirrors_pin_the_compact_binding_order():
         if line and ":" in line and not line.startswith("## ")
     ]
     assert field_lines == [
+        "Event type:",
         "VERDICT:",
         "Verification request:",
         "Reviewed head:",

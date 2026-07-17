@@ -84,6 +84,7 @@ $ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_feature.py -q
 
 **When:** 2026-07-17T08:10:00Z · **From:** operator (online)
 
+Event type: verification-report
 VERDICT: {verdict}
 Verification request: {request_path}@{trigger}
 Reviewed head: {head}
@@ -173,6 +174,29 @@ def test_valid_request_and_report_bind_exact_commits_scope_and_independence(
     )
     assert report.verdict == "GO"
     assert pair.validate_report(root, report) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        lambda text: text.replace("Event type: verification-report\n", ""),
+        lambda text: text.replace(
+            "Event type: verification-report\n",
+            "Event type: verification-report\nEvent type: verification-report\n",
+        ),
+    ),
+)
+def test_report_requires_exactly_one_verification_report_event_marker(
+    tmp_path: Path, mutation
+) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    report = root / REPORT_PATH
+    report.write_text(
+        mutation(_report_text(base, head, trigger)), encoding="utf-8"
+    )
+
+    with pytest.raises(pair.CompactPairError, match="Event type: verification-report"):
+        pair.parse_verification_report(root, report)
 
 
 @pytest.mark.parametrize(

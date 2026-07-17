@@ -65,6 +65,90 @@ def _init_repo(repo: Path, repo_root: Path) -> None:
     _git(repo, "commit", "-q", "-m", "chore: fixture")
 
 
+def _prepare_verify_request(repo: Path) -> tuple[str, str, str, str]:
+    base = _git(repo, "rev-parse", "HEAD")
+    (repo / "scripts/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "scripts/feature.py")
+    _git(repo, "commit", "-q", "-m", "feat: candidate")
+    head = _git(repo, "rev-parse", "HEAD")
+    request_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T08-00-00Z-director-to-operator-verify-request.md"
+    )
+    (repo / request_path).write_text(
+        f"""\
+# Director → Operator: verify compact pair candidate
+
+**When:** 2026-07-17T08:00:00Z · **From:** director (online)
+
+Event type: verify-request
+Reviewed head: {head}
+Reviewed base: {base}
+Author seat: director
+Author model: gpt-5.6-sol
+Assigned operator: operator
+
+## Acceptance Question
+
+Does the exact candidate satisfy the compact pair contract?
+
+## Allowed Paths
+
+- scripts/
+
+## Verification Commands
+
+$ env -u GIT_INDEX_FILE python -m pytest tests/unit/test_feature.py -q
+
+Cursor at send: 0
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", request_path)
+    _git(repo, "commit", "-q", "-m", "coord(director): request verification")
+    return base, head, request_path, _git(repo, "rev-parse", "HEAD")
+
+
+def _report_body(
+    base: str,
+    head: str,
+    request_path: str,
+    trigger: str,
+    *,
+    verdict: str,
+    reviewer_seat: str = "operator",
+) -> str:
+    evidence = ""
+    if verdict == "GO":
+        evidence = """\
+
+## Evidence
+
+$ env -u GIT_INDEX_FILE python -m pytest tests/unit/test_feature.py -q
+→ 1 passed
+"""
+    return f"""\
+Event type: verification-report
+VERDICT: {verdict}
+Verification request: {request_path}@{trigger}
+Reviewed head: {head}
+Reviewed base: {base}
+Reviewer seat: {reviewer_seat}
+Reviewer model: gpt-5.6-terra
+Verification harness: pytest plus independent actual-diff review
+Verification context: fresh non-author Operator context
+
+## Allowed Paths
+
+- scripts/
+{evidence}
+
+## Findings
+
+None.
+"""
+
+
 def _install_compact_selector(repo: Path) -> None:
     (repo / "governance.toml").write_text(
         '[protocol.kernel]\nepoch = 1\nwriter = "compact"\n', encoding="utf-8"
@@ -104,12 +188,15 @@ def test_send_event_stages_ordinary_event_through_fixed_finalizer(
     assert staged.endswith("-director-to-operator-status.md")
 
 
-def test_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
-    tmp_path: Path, repo_root: Path
+@pytest.mark.parametrize("verdict", ("GO", "NITS", "FAIL"))
+def test_valid_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
+    tmp_path: Path, repo_root: Path, verdict: str
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo, repo_root)
+    base, head, request_path, trigger = _prepare_verify_request(repo)
+    subject = f"truthful {verdict} commit `{head}`" if verdict == "GO" else f"truthful {verdict}"
 
     result = _run(
         [
@@ -117,10 +204,12 @@ def test_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
             "operator",
             "all",
             "verification-report",
-            "truthful FAIL",
+            subject,
         ],
         repo,
-        input_text="VERDICT: FAIL\n",
+        input_text=_report_body(
+            base, head, request_path, trigger, verdict=verdict
+        ),
     )
 
     assert result.returncode == 0, result.stderr
@@ -131,6 +220,41 @@ def test_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
     assert "verification_report_gate" not in source
     assert "TRUSTED_CODE" not in source
     assert "recover" not in source.lower()
+
+
+def test_misassigned_verification_report_fails_before_finalization(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo, repo_root)
+    base, head, request_path, trigger = _prepare_verify_request(repo)
+
+    result = _run(
+        [
+            repo_root / "coordination/bin/send-event",
+            "operator",
+            "all",
+            "verification-report",
+            "misassigned",
+        ],
+        repo,
+        input_text=_report_body(
+            base,
+            head,
+            request_path,
+            trigger,
+            verdict="FAIL",
+            reviewer_seat="operator2",
+        ),
+    )
+
+    assert result.returncode != 0
+    assert "assigned Operator" in result.stderr
+    assert not list((repo / "coordination/mailbox/sent").glob("*verification-report.md"))
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    source = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
+    assert source.index("validate-candidate") < source.index("send-event-finalize")
 
 
 @pytest.mark.parametrize("sender", ("director", "director2", "coordinator"))
@@ -166,6 +290,7 @@ def test_send_event_selector_denial_precedes_final_file_and_index_mutation(
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo, repo_root)
+    base, head, request_path, trigger = _prepare_verify_request(repo)
     _install_compact_selector(repo)
     _git(repo, "add", "governance.toml")
     _git(repo, "commit", "-q", "-m", "chore: activate compact fixture")
@@ -173,7 +298,9 @@ def test_send_event_selector_denial_precedes_final_file_and_index_mutation(
     result = _run(
         [repo_root / "coordination/bin/send-event", "operator", "all", "verification-report", "fenced"],
         repo,
-        input_text="VERDICT: FAIL\n",
+        input_text=_report_body(
+            base, head, request_path, trigger, verdict="FAIL"
+        ),
     )
 
     assert result.returncode != 0
@@ -209,13 +336,20 @@ def test_send_event_keeps_final_event_when_index_is_locked(
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo, repo_root)
+    base, head, request_path, trigger = _prepare_verify_request(repo)
     lock = repo / ".git/index.lock"
     lock.write_text("locked\n", encoding="utf-8")
     try:
         result = _run(
-            [repo_root / "coordination/bin/send-event", "operator2", "all", "verification-report", "blocked index"],
+            [repo_root / "coordination/bin/send-event", "operator", "all", "verification-report", "blocked index"],
             repo,
-            input_text="VERDICT: NITS\n",
+            input_text=_report_body(
+                base,
+                head,
+                request_path,
+                trigger,
+                verdict="NITS",
+            ),
         )
     finally:
         lock.unlink()

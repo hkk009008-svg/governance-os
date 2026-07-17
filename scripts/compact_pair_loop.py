@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import stat
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -291,16 +293,18 @@ def _read_regular(root: Path, path: str) -> bytes:
         os.close(descriptor)
 
 
-def parse_verification_report(
-    root: Path, report_path: str | os.PathLike[str]
+def _parse_verification_report_bytes(
+    root: Path, path: str, raw: bytes
 ) -> VerificationReport:
-    root = root.resolve()
-    path = _repo_path(root, report_path)
     match = REPORT_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verification-report path is not canonical Operator output")
-    text = _decode(_read_regular(root, path), "verification-report")
+    text = _decode(raw, "verification-report")
     lines = text.splitlines()
+    if lines.count("Event type: verification-report") != 1:
+        raise CompactPairError(
+            "missing or duplicate Event type: verification-report"
+        )
     verdict = _one(lines, "VERDICT: ", "VERDICT")
     if verdict not in {"GO", "NITS", "FAIL"}:
         raise CompactPairError("VERDICT must be GO, NITS, or FAIL")
@@ -332,6 +336,26 @@ def parse_verification_report(
         filename_reviewer=match.group("reviewer"),
         envelope_sender=_envelope_sender(text),
     )
+
+
+def parse_verification_report(
+    root: Path, report_path: str | os.PathLike[str]
+) -> VerificationReport:
+    root = root.resolve()
+    path = _repo_path(root, report_path)
+    return _parse_verification_report_bytes(root, path, _read_regular(root, path))
+
+
+def parse_verification_report_candidate(
+    root: Path,
+    candidate_path: str | os.PathLike[str],
+    final_path: str | os.PathLike[str],
+) -> VerificationReport:
+    """Parse candidate bytes using the intended final path as identity authority."""
+    root = root.resolve()
+    candidate = _repo_path(root, candidate_path)
+    final = _repo_path(root, final_path)
+    return _parse_verification_report_bytes(root, final, _read_regular(root, candidate))
 
 
 def _path_allowed(path: str, allowed_paths: tuple[str, ...]) -> bool:
@@ -381,3 +405,31 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
         if outside:
             violations.append("reviewed range contains paths outside allowed paths: " + ", ".join(outside))
     return violations
+
+
+def _main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="compact_pair_loop.py")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    candidate = subparsers.add_parser("validate-candidate")
+    candidate.add_argument("--repo-root", required=True, type=Path)
+    candidate.add_argument("--candidate", required=True)
+    candidate.add_argument("--final-relative", required=True)
+    arguments = parser.parse_args(argv)
+    try:
+        report = parse_verification_report_candidate(
+            arguments.repo_root,
+            arguments.candidate,
+            arguments.final_relative,
+        )
+        violations = validate_report(arguments.repo_root, report)
+        if violations:
+            raise CompactPairError("; ".join(violations))
+    except (CompactPairError, OSError) as exc:
+        print(f"compact-pair validation failed: {exc}", file=sys.stderr)
+        return 1
+    print("compact-pair validation passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(_main())

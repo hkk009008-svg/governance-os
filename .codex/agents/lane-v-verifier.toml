@@ -75,19 +75,15 @@ surface does not restate its lifecycle grammar.
 
 Report exactly:
 - H1 subject names the full lowercase 40-character reviewed SHA
+- Event type: verification-report exactly once
 - VERDICT: GO / NITS / FAIL with no decoration
+- Verification request: canonical committed request path@full request commit
+- Reviewed head and Reviewed base: exact full lowercase SHAs from the request
+- Reviewer seat: operator or operator2, exactly matching the envelope sender and assignment
+- Reviewer model: actual model identity, different from the author model
+- Verification harness and Verification context: actual independent method and fresh context
+- ## Allowed Paths exactly matching the request
 - ## Evidence with command and output
-- ## Verification Attestation
-- Verification schema: lane-v-report/v3
-- Verification mode: independent-lane-v
-- Verification harness: lane-v:independent-verifier
-- Verification task ID: exact descriptor task ID
-- Scope authority: exact descriptor path and digest
-- Trigger identity: exact committed trigger
-- Reviewed head: exact full lowercase SHA
-- Reviewed base: exact full lowercase SHA
-- Review profile: independent-lane-v
-- Reviewer identity: operator or operator2, exactly matching the envelope sender
 - ## Findings and ## Exact Next Trigger
 - coordination/bin/send-event is the only publisher; direct mailbox writes and hooks are not authority
 """
