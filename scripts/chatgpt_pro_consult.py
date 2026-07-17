@@ -43,9 +43,9 @@ def _secret(text: str) -> bool:
     original = unicodedata.normalize("NFKC", text)
     views = (original, " ".join(original.split()), "".join(original.split()))
     named = (
-        r"-----BEGIN(?:RSA|EC|OPENSSH)?PRIVATEKEY-----",
-        r"authorization:(?:basic|bearer|token|digest)?[A-Za-z0-9._~+/=-]+",
-        r"(?:password|secret|token|api[_-]?key)[:=][\"']?[A-Za-z0-9._~+/=-]+",
+        r"-----BEGIN.*PRIVATEKEY-----",
+        r"authorization\s*:\s*\S",
+        r"(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S",
         r"(?:AKIA|ASIA)[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{20,}|ya29\.[A-Za-z0-9_-]{20,}",
         r"gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}",
         r"sk-(?:proj-)?[A-Za-z0-9_-]{20,}|xox[a-z]-[A-Za-z0-9-]{10,}",

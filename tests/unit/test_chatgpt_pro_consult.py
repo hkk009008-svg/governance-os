@@ -32,13 +32,17 @@ REQUIRED_SECRET_FAMILIES = SECRET_CASES + (
     "-----BEGIN RSA PRIVATE KEY-----",
     "-----BEGIN EC PRIVATE KEY-----",
     "-----BEGIN OPENSSH PRIVATE KEY-----",
+    "-----BEGIN ENCRYPTED PRIVATE KEY-----",
+    "-----BEGIN DSA PRIVATE KEY-----",
     "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
     "Authorization: Digest abcdefghijklmnopqrstuvwxyz",
     "Authorization: Foo x",
-    "password = hunter2",
-    "secret: shh",
-    "token = tiny",
-    "api-key: short",
+    "Authorization: @x",
+    "password = @hunter2",
+    "passwd: #tiny",
+    "secret: $shh",
+    "token = !tiny",
+    "api-key: %short",
     "ASIAABCDEFGHIJKLMNOP",
     "gho_abcdefghijklmnopqrstuvwxyz123456",
     "ghu_abcdefghijklmnopqrstuvwxyz123456",
@@ -108,6 +112,19 @@ def _state(key: str, request_hash: str, status: str, **extra: object) -> bytes:
     record: dict[str, object] = {"hash": request_hash, "status": status}
     record.update(extra)
     return _raw({key: record}) + b"\n"
+
+
+def _named_view(text: str, view: str) -> str:
+    if view == "split":
+        return " \t".join(text)
+    if view == "nfkc_fullwidth":
+        return "".join(
+            "\u3000" if char == " " else chr(ord(char) + 0xFEE0)
+            if "!" <= char <= "~"
+            else char
+            for char in text
+        )
+    return text
 
 
 def test_reserve_accepts_exact_request_and_hashes_exact_strings(repo: Path):
@@ -185,24 +202,27 @@ def test_named_secrets_are_rejected_in_original_collapsed_and_compact_views(
 def test_required_secret_families_are_rejected_in_every_named_view(
     tmp_path: Path, secret: str, view: str
 ):
-    if view == "split":
-        secret = " \t".join(secret)
-    elif view == "nfkc_fullwidth":
-        secret = "".join(
-            "\u3000" if char == " " else chr(ord(char) + 0xFEE0)
-            if "!" <= char <= "~"
-            else char
-            for char in secret
-        )
-    _error(tmp_path, _request(context=secret), "secret_detected")
+    _error(tmp_path, _request(context=_named_view(secret, view)), "secret_detected")
+
+
+@pytest.mark.parametrize("view", ("original", "split", "nfkc_fullwidth"))
+def test_public_key_armor_is_not_a_named_secret(repo: Path, view: str):
+    result = consult.reserve(
+        repo,
+        _request(
+            key=f"design:public-key/{view}",
+            context=_named_view("-----BEGIN PUBLIC KEY-----", view),
+        ),
+    )
+    assert result["created"] is True
 
 
 @pytest.mark.parametrize(
     ("field", "secret"),
     (
-        ("key", "token:abcdefghijklmnopqrstuvwxyz"),
-        ("question", "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="),
-        ("context", "github_pat_abcdefghijklmnopqrstuvwxyz123456"),
+        ("key", "passwd:/hunter2"),
+        ("question", "password=@hunter2"),
+        ("context", "token=!tiny"),
     ),
 )
 def test_named_secret_scan_covers_each_request_string(
