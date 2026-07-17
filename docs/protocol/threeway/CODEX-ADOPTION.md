@@ -108,8 +108,9 @@ Set `THREEWAY_KEYSTORE` to point at the seat-local keystore; Codex loads its key
 ## 4. The adoption path (sequenced — there is no switch to flip)
 
 Per the unified doc §I.5, the `threeway/` package is **built, hardened, and test-green**. The signed
-ref-bus is now the load-bearing state source for three-way facts, and the free-form mailbox remains the
-human coordination channel. T1/T2/T3 principal-safe emitters are available as local CLIs and are proved
+ref-bus is the load-bearing state source for three-way facts once `refs/threeway/*` is live (the
+liveness oracle at step 3 below; while it returns no refs, the mailbox stays authoritative), and the
+free-form mailbox remains the human coordination channel. T1/T2/T3 principal-safe emitters are available as local CLIs and are proved
 against `refs/threeway/test-main`; protected `refs/heads/main` remains fail-closed without deployment
 controls. Verified via `env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_t2_t3_emitters_e2e.py -q` -> 6 passed in 41.34s. The design **forbids dual-write** (spec §8 item 8 +
 Slice-2.5 design spec §D2, audited). So adoption is the deployment path, in order:

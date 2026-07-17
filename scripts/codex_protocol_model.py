@@ -30,7 +30,7 @@ ACTIVE_KERNEL_INVARIANTS = (
     ),
     (
         "threeway signed ref-bus is load-bearing",
-        "the signed three-way ref-bus is the load-bearing state source for three-way facts; free-form mailbox remains the human coordination channel",
+        "the signed three-way ref-bus is the load-bearing state source for three-way facts once refs/threeway/* is live (git for-each-ref refs/threeway/ is the oracle; until then the mailbox stays authoritative); free-form mailbox remains the human coordination channel",
     ),
     (
         "mailbox-first decisions",
@@ -351,7 +351,7 @@ START_SESSION_STEPS = (
     "the newest docs/HANDOFF-<seat-or-coordinator>-*.md from that same concrete "
     "role before seat_status.py or git log; if none exists, state that and continue.",
     "Run scripts/continuation_readiness.py to load the Codex Harness Model.",
-    "Treat the signed three-way ref-bus as the load-bearing state source for three-way facts; the free-form mailbox remains the human coordination channel.",
+    "Treat the signed three-way ref-bus as the load-bearing state source for three-way facts once refs/threeway/* is live (git for-each-ref refs/threeway/ is the oracle; until then the mailbox stays authoritative); the free-form mailbox remains the human coordination channel.",
     "Always check mail before protocol decisions: refresh live mailbox state "
     "and read relevant mailbox bodies before acting or writing state.",
     "Use durable shared state first: git commits, signed ref-bus facts, mailbox bodies, cursors, locks, logs, and gate evidence.",
