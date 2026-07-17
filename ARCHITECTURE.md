@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-17 @ d434a0d*
+*Last verified: 2026-07-17 @ 94f9416*
 
 ## 1. Purpose
 
@@ -61,6 +61,7 @@ Key directories:
 | `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:527` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
 | `render_r_independence` | `scripts/codex_protocol_model.py:752` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:824` | Renders guard guidance into readiness output. |
+| `chatgpt_pro_consult.reserve` | `scripts/chatgpt_pro_consult.py:195` | Reserves one parent-owned consultation key in the shared Git-common-dir record. |
 | `parse_verify_request` | `scripts/compact_pair_loop.py:215` | Validates one committed Director verify-request and its exact reviewed range. |
 | `validate_report` | `scripts/compact_pair_loop.py:369` | Binds one assigned non-author Operator verdict to that exact request, range, and scope. |
 
@@ -81,6 +82,9 @@ Key directories:
   valid routed executor; no model or provider identity grants authority.
 - Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
   truth layer intentionally does not restate its lifecycle grammar.
+- The optional parent-owned ChatGPT Pro tool uses one Git-common-dir
+  `reserved|sent|failed` record, one Browser send, no retry or fallback, and
+  grants no protocol or side-effect authority.
 - `coordination/bin/send-event` permits verification reports only from Operator
   seats, then sends every mailbox kind through the unchanged fixed finalizer in
   `scripts/mailbox_writer.py`.

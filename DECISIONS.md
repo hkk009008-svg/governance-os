@@ -1054,3 +1054,30 @@ implementation, and its own explicitly authorized side effects.
   effects remain separately gated.
 - Historical evidence stays byte-for-byte provenance; this decision supersedes
   live provider behavior without rewriting earlier entries.
+
+## Compact ChatGPT Pro browser consultation
+
+**Date:** 2026-07-17
+**Status:** Accepted (user-approved design `701a323`)
+
+**Context:**
+The provider-specific tools were correctly deleted because receipts,
+transports, lifecycle states, and recovery machinery had become an
+authority-adjacent framework. The user later approved restoring only the useful
+ChatGPT Pro advisory capability in a deliberately compact form.
+
+**Decision:**
+Install one parent-owned, advisory-only Browser procedure backed by one local
+Git-common-dir reservation file. It accepts only an explicit bounded question
+and optional caller context, permits one send per key, treats every
+post-reservation outcome as terminal, persists no prompt or response, and has
+no retry or alternate transport. The canonical procedure is
+`.agents/skills/chatgpt-pro-consultation/SKILL.md`.
+
+**Consequences:**
+- The 2026-07-16 decommission decision remains true for Opus receipts and the
+  deleted provider framework; historical artifacts are unchanged.
+- ChatGPT Pro advice grants no route, verdict, mailbox, commit, push, merge,
+  spend, or other side-effect authority.
+- If the kernel and skill exceed 350 combined lines or require migration,
+  recovery, adapters, schemas, or rollout phases, stop and reduce the design.

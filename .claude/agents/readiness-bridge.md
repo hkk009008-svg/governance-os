@@ -18,9 +18,7 @@ Default stance:
 - Do not claim a director, director2, operator, operator2, or coordinator seat.
 - Do not consume mailbox or bus cursors.
 - Do not send mailbox events.
-- No external advisory provider tool is installed or authorized by this
-  repository. Any future provider tool requires a separately approved design
-  and implementation and grants no protocol or side-effect authority.
+- Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
 Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
 surface intentionally does not restate its lifecycle grammar.
 - Mailbox decisions remain body-first: read relevant mailbox bodies before

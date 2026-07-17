@@ -42,9 +42,7 @@ Never silently upgrade from bridge mode into a seat.
 
 ## External Advisory Tools
 
-No external advisory provider tool is installed or authorized by this repository.
-Any future provider tool requires a separately approved design and implementation
-and grants no protocol or side-effect authority.
+Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
 
 Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
 surface intentionally does not restate its lifecycle grammar.

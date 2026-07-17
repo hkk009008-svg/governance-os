@@ -55,9 +55,7 @@ The strategic loop's advisory input is "an app, human-relayed" (spec §5.2, D11)
 Antigravity *app* to reason about strategy, it produces analysis/orders as **prose a human carries
 to the mechanical overseer**. It never writes the bus, never signs, never touches code.
 
-No external advisory provider tool is installed or authorized by this repository. Any future
-provider tool requires a separately approved design and implementation and grants no protocol or
-side-effect authority.
+Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
 
 Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
 surface intentionally does not restate its lifecycle grammar.

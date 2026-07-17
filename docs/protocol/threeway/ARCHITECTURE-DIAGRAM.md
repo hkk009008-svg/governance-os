@@ -127,9 +127,7 @@ flowchart TB
    signatures, and an in-scope diff) — then promotes via exact-SHA compare-and-swap.
 5. **Antigravity is not a protocol authority.** It is an *optional* relayed-strategy app (never the
    decider) or a read-only observer — off the candidate branch, staging ref, and protected `main`.
-   No external advisory provider tool is installed or authorized by this repository; any future
-   provider tool needs a separately approved design and implementation and grants no protocol or
-   side-effect authority.
+   Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
 6. **The strategic loop is a loop.** Results feed the overseer's data→info summary, which feeds the
    chiefs, which return orders via the human relay — not a one-way chain.
 
