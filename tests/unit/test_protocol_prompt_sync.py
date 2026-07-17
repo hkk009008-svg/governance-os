@@ -1515,6 +1515,32 @@ def test_lane_v_trigger_guidance_pins_compact_report_and_pipeline_boundary() -> 
     assert agent_report.read_bytes() == claude_report.read_bytes()
 
 
+def test_active_codex_operator_prompts_drop_descriptor_v3_contract() -> None:
+    operator = _trigger_contract_text(".codex/agents/protocol-operator.toml")
+    verifier_raw = _read(".codex/agents/lane-v-verifier.toml")
+    verifier = _trigger_contract_text(".codex/agents/lane-v-verifier.toml")
+
+    assert "resolve one trigger-bound committed lane-v-scope/v1 descriptor" not in operator
+    assert "require the exact ordered lane-v-report/v3 block" not in operator
+    assert "against the descriptor" not in verifier_raw
+    assert verifier.count(COMPACT_PAIR_REFERENCE) == 1
+
+    required = (
+        "one assigned committed verify-request",
+        "Verification request: canonical committed request path@full request commit",
+        "Reviewed head and Reviewed base: exact full lowercase SHAs from the request",
+        "assigned non-author Operator seat",
+        "Reviewer model: actual model identity, different from the author model",
+        "Verification harness and Verification context",
+        "Allowed Paths exactly matching the request",
+        "GO / NITS / FAIL",
+        "coordination/bin/send-event",
+    )
+    for phrase in required:
+        assert phrase in operator, phrase
+        assert phrase in verifier, phrase
+
+
 def test_task8_scope_covers_the_exact_trigger_authority_generation() -> None:
     descriptor_path = (
         "coordination/verification/scopes/"

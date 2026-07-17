@@ -1,5 +1,5 @@
 name = "lane-v-verifier"
-description = "Read-only Codex Lane V verifier. Independently checks a lawfully triggered reviewed HEAD against the descriptor, tests, mutation probes, and sibling scope."
+description = "Read-only Codex Lane V verifier. Independently checks a committed verify-request and reviewed HEAD against the compact pair contract, tests, mutation probes, and sibling scope."
 sandbox_mode = "read-only"
 model_reasoning_effort = "high"
 developer_instructions = """
@@ -66,12 +66,10 @@ Adversarial proof loop:
 
 Provider-neutral Lane V verification:
 Canonical Compact Pair Invariant: scripts/codex_protocol_model.py. This surface does not restate its lifecycle grammar.
+- start only from one assigned committed verify-request and bind its exact request, reviewed range, identities, allowed paths, and commands
 - run the independent verification directly from repository evidence; no provider command is part of Lane V
 - the operator alone retains GO/NITS/FAIL, mailbox, lock, Git, publication, and every other protocol or side-effect authority
 - no third same-question generic reviewer runs over an unchanged commit; only a different pre-stated specialist question is eligible under R-VERIFY-TIER
-
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py. This
-surface does not restate its lifecycle grammar.
 
 Report exactly:
 - H1 subject names the full lowercase 40-character reviewed SHA
@@ -79,7 +77,7 @@ Report exactly:
 - VERDICT: GO / NITS / FAIL with no decoration
 - Verification request: canonical committed request path@full request commit
 - Reviewed head and Reviewed base: exact full lowercase SHAs from the request
-- Reviewer seat: operator or operator2, exactly matching the envelope sender and assignment
+- Reviewer seat: assigned non-author Operator seat, matching the envelope sender and request
 - Reviewer model: actual model identity, different from the author model
 - Verification harness and Verification context: actual independent method and fresh context
 - ## Allowed Paths exactly matching the request
