@@ -128,12 +128,12 @@ gate's result by relaxing the gate.
 ## Pair Operating Contract
 
 - Every baton handoff is a mailbox artifact, not chat: brief, verify-request,
-  verification-report, or handoff with commit/range, paths, tests, exclusions,
-  and exact next trigger.
-- Every live-seat/coordinator turn ends with an `Exact Next Trigger` section
-  naming the next lawful prompt, seat event, standby condition, or blocker; make
-  it the final user-facing section as well as the terminal mailbox/handoff
-  section.
+  verification-report, or handoff with commit/range, paths, tests, and
+  exclusions.
+- Coordinator and seat chains continue internally and stop only at completion,
+  a genuine blocker, scope expansion, or a separately user-gated effect.
+- At a real stop, state the blocking boundary or plain next authority without a
+  prescribed heading or returning seat commands to the user.
 
 ## No-op fast path
 

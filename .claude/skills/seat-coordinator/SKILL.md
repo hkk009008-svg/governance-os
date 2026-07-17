@@ -37,7 +37,7 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave> 
 
 The doctor is evidence, not an operator-GO substitute.
 
-Closed-cycle coordinator-join packets are hard-gated too: standby, idle, closeout, transfer, or transplant evidence must cite a durable `docs/HANDOFF-*.md` artifact, and every coordinator turn ends with an **Exact Next Trigger** section. (`coordinator2` exists as an on-demand cross-check owner — it is not a standing coverage actor.)
+Closed-cycle coordinator-join packets are hard-gated too: standby, idle, closeout, transfer, or transplant evidence must cite a durable `docs/HANDOFF-*.md` artifact. Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect. At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user. (`coordinator2` exists as an on-demand cross-check owner — it is not a standing coverage actor.)
 
 The coordinator never consumes its cursor (`seen/coordinator.txt` exists only as a migration sentinel) — do **not** run `consume-events coordinator` or `consume_bus.py coordinator`; it reconciles at the §6f triggers (session-start, wave-boundary gate, a director's gate-request), not via a watermark.
 

@@ -1541,6 +1541,36 @@ def test_active_codex_operator_prompts_drop_descriptor_v3_contract() -> None:
         assert phrase in verifier, phrase
 
 
+def test_active_surfaces_continue_internally_without_terminal_heading_ceremony() -> None:
+    active_paths = (
+        "scripts/codex_protocol_model.py",
+        "docs/PROGRAM-MANUAL.md",
+        "docs/protocol/codex/continuation.md",
+        "docs/protocol/claude/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+        ".claude/skills/seat-coordinator/SKILL.md",
+    )
+    required = (
+        "Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect.",
+        "At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user.",
+    )
+    retired = (
+        "Every live-seat/coordinator turn ends with",
+        "Before ending any live-seat/coordinator turn",
+        "every coordinator turn ends with",
+        "must end with Exact Next Trigger",
+    )
+    for path in active_paths:
+        text = _compact(_read(path))
+        for phrase in required:
+            assert phrase in text, (path, phrase)
+        for phrase in retired:
+            assert phrase not in text, (path, phrase)
+
+
 def test_task8_scope_covers_the_exact_trigger_authority_generation() -> None:
     descriptor_path = (
         "coordination/verification/scopes/"

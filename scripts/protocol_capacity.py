@@ -58,15 +58,7 @@ HANDOFF_REQUIRED_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
-_END_TRIGGER_HEADING_RE = re.compile(
-    r"(?im)^(?:#{1,6}\s*)?Exact Next Trigger\s*:?\s*$"
-)
 _MARKDOWN_HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S")
-_CURSOR_AT_SEND_RE = re.compile(r"(?im)^Cursor at send:\s*\d+\s*$")
-_WEAK_TRIGGER_RE = re.compile(
-    r"^(?:none|n/a|not applicable|to be decided|no trigger|same as above)$",
-    re.IGNORECASE,
-)
 SIDE_EFFECT_TOKEN_HEADING_RE = re.compile(
     r"(?im)^(?:#{1,6}\s*)?Side-Effect Executor Token\s*:?\s*$"
 )
@@ -732,7 +724,7 @@ def _blocked_stop_condition(owner: str, packet: Packet) -> str:
     if packet.packet_type in {"operator-verification", "operator-doc-sync", "operator-preflight"}:
         return "wait for the assigned committed verify-request/dependency or report FAIL/NITS with evidence; never reconstruct missing fields"
     if owner == "coordinator":
-        return "route blocker or no-op with exact next trigger; no production fix"
+        return "route blocker or no-op with the blocking boundary or plain next authority; no production fix"
     return "preserve blocker evidence and await the named dependency"
 
 
@@ -1093,9 +1085,6 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
         issues.append(_issue("G7", f"{name}: route must be coordinator-to-all"))
     if "task-board" not in body.lower():
         issues.append(_issue("G7", f"{name}: route is missing task-board marker"))
-    if not _has_terminal_next_trigger(body):
-        issues.append(_issue("G7", f"{name}: route must end with Exact Next Trigger"))
-
     expected_ids = {packet.id for packet in report.packets}
     if not expected_ids:
         issues.append(_issue("G7", f"no capacity packets for wave {report.wave}"))
@@ -1197,31 +1186,6 @@ def _active_cycles(packets: list[Packet]) -> list[str]:
             if packet.is_active_wip
         }
     )
-
-
-def _has_terminal_next_trigger(text: str) -> bool:
-    matches = list(_END_TRIGGER_HEADING_RE.finditer(text))
-    if not matches:
-        return False
-    trigger = matches[-1]
-    later_headings = [
-        match for match in _MARKDOWN_HEADING_RE.finditer(text)
-        if match.start() > trigger.start()
-    ]
-    if later_headings:
-        return False
-    tail_lines = text[trigger.end():].splitlines()
-    content_lines = []
-    for line in tail_lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if _CURSOR_AT_SEND_RE.fullmatch(stripped):
-            continue
-        content_lines.append(stripped.lstrip("-* ").strip())
-    if not content_lines:
-        return False
-    return not all(_WEAK_TRIGGER_RE.fullmatch(line) for line in content_lines)
 
 
 def _forbidden_side_effects(body: str) -> list[str]:

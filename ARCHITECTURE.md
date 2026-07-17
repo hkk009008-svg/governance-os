@@ -49,7 +49,7 @@ Key directories:
 |---|---|---|
 | `_project_smoke` | `scripts/ci_smoke.py:53` | Verifies governance-OS runtime invariants before governance gates run. |
 | `main` | `scripts/ci_smoke.py:100` | Runs the full smoke gate sequence. |
-| `run` | `scripts/check_coordination.py:346` | Validates mailbox event filenames, cursors, kinds, and coordination hygiene. |
+| `run` | `scripts/check_coordination.py:287` | Validates mailbox event filenames, cursors, kinds, and coordination hygiene. |
 | `run` | `scripts/check_placeholders.py:103` | Scans for adoption-placeholder tokens outside the allowlist. |
 | `check_sha_refs` | `scripts/check_doc_claims.py:1706` | Reports stale or mismatched commit-SHA citations. |
 | `classify_sha_ref_baseline` | `scripts/check_doc_claims.py:1768` | Classifies SHA-reference drift as reviewed baseline or new/changed drift. |
@@ -63,9 +63,9 @@ Key directories:
 | `reduce_protocol_state` | `scripts/capability_reducer.py:1230` | Produces one pure, deterministic, non-authoritative compact shadow report. |
 | `adapt_v1_history` | `scripts/capability_v1_adapter.py:2826` | Strictly adapts host-normalized v1 history into reducer-accepted epoch-0 shadow envelopes. |
 | `main` | `scripts/protocol_capacity_board.py:17` | Renders and validates active capacity packets for a wave. |
-| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:526` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_r_independence` | `scripts/codex_protocol_model.py:751` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:823` | Renders guard guidance into readiness output. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:527` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_r_independence` | `scripts/codex_protocol_model.py:752` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:824` | Renders guard guidance into readiness output. |
 | `render_lane_v_v3` | `scripts/codex_protocol_model.py` | Renders the canonical Compact Pair Invariant. |
 | `parse_verify_request` | `scripts/compact_pair_loop.py` | Validates one committed Director verify-request and its exact reviewed range. |
 | `validate_report` | `scripts/compact_pair_loop.py` | Binds one assigned non-author Operator verdict to that exact request, range, and scope. |

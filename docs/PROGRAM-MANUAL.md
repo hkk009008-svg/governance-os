@@ -107,5 +107,7 @@ artifacts.
 Coordinator reconciles route, lock, mailbox, capacity, and closeout state.
 Coordinator must not author behavior-changing product fixes.
 
-Every live-seat/coordinator turn ends with an Exact Next Trigger that names the
-next lawful prompt, seat event, standby condition, or blocker.
+Coordinator and seat chains continue internally and stop only at completion, a
+genuine blocker, scope expansion, or a separately user-gated effect. At a real
+stop, state the blocking boundary or plain next authority without a prescribed
+heading or returning seat commands to the user.

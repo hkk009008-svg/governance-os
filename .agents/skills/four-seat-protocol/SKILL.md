@@ -252,12 +252,10 @@ Side-Effect Executor Token:
   sends the smallest sufficient artifact; operator starts Lane V only from
   lawful trigger authority.
 - Every baton handoff is a mailbox artifact, not chat: brief, verify-request,
-  verification-report, or handoff with commit/range, paths, tests, exclusions,
-  and exact next trigger.
-- Every live-seat/coordinator turn ends with an `Exact Next Trigger` section
-  naming the next lawful prompt, seat event, standby condition, or blocker; make
-  it the final user-facing section as well as the terminal mailbox/handoff
-  section.
+  verification-report, or handoff with commit/range, paths, tests, and
+  exclusions.
+- Coordinator and seat chains continue internally and stop only at completion,
+  a genuine blocker, scope expansion, or a separately user-gated effect.
 - Director sends one canonical committed verify-request per implementation or
   brief once structural scope authority is stable; include paths, tests,
   evidence commands, known exclusions, and expected verdict without
@@ -271,9 +269,8 @@ Side-Effect Executor Token:
 - When both seats are active, do not edit the same files or rerun the same
   task; first commit to land wins and the other seat narrows or stands down
   after git/mailbox refresh.
-- At boundaries, stop with exact next trigger and durable handoff only when
-  context is transferring; avoid broad recaps when mailbox/gate state already
-  proves standby.
+- At a real stop, state the blocking boundary or plain next authority without a
+  prescribed heading or returning seat commands to the user.
 - Effectiveness means a closed loop: director artifact -> operator
   verification-report GO/NITS/FAIL -> director consumes the report or
   coordinator closes; gate scripts never substitute for operator

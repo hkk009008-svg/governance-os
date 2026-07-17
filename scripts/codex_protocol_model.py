@@ -381,14 +381,14 @@ PLANNING_RELAY_RULES = (
 
 PAIR_OPERATING_RULES = (
     "director -> operator is the fast path inside each pair: director scopes and sends the smallest sufficient artifact; operator starts verification only from its assigned committed verify-request.",
-    "Every baton handoff is a mailbox artifact, not chat: brief, verify-request, verification-report, or handoff with commit/range, paths, tests, exclusions, and exact next trigger.",
-    "Every live-seat/coordinator turn ends with an `Exact Next Trigger` section naming the next lawful prompt, seat event, standby condition, or blocker.",
+    "Every baton handoff is a mailbox artifact, not chat: brief, verify-request, verification-report, or handoff with commit/range, paths, tests, and exclusions.",
+    "Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect.",
     COMPACT_PAIR_INVARIANT,
     "Director sends one committed verify-request per implementation once scope is stable.",
     "Operator waits for one assigned committed verify-request; no duplicate verification for docs-only, status-only, or handoff-only commits.",
     "No receipt/status churn: send mail only when it changes ownership, preserves evidence, requests verification, returns GO/NITS/FAIL, or blocks on user-gated side effects.",
     "When both seats are active, do not edit the same files or rerun the same task; first commit to land wins and the other seat narrows or stands down after git/mailbox refresh.",
-    "At boundaries, stop with exact next trigger and durable handoff only when context is transferring; avoid broad recaps when mailbox/gate state already proves standby.",
+    "At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user.",
     "Effectiveness means a closed loop: director artifact -> operator verification-report GO/NITS/FAIL -> director consumes the report or coordinator closes; gate scripts never substitute for operator verification-report GO.",
 )
 
@@ -518,8 +518,9 @@ LIVE_LOOP_STEPS = (
     "Run gate scripts and smoke commands only as evidence, not as operator GO.",
     "Before any active coordinator task-board route, run `scripts/protocol_capacity_board.py --wave <wave>` and validate the draft with `scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md`; fix named gate failures before committing the route.",
     "Send one coordinator-to-all route if needed, then verify receipt seat-by-seat.",
-    "When a full coordinator/live-seat cycle reaches a real completion boundary and assigned tasks are complete, write a durable handoff before transplant or context switch, including fresh git/mailbox/gate/smoke state and the exact next trigger.",
-    "Before ending any live-seat/coordinator turn, output `Exact Next Trigger` as the final section in the mailbox artifact and user-facing final response.",
+    "When a full coordinator/live-seat cycle reaches a real completion boundary and assigned tasks are complete, write a durable handoff before transplant or context switch, including fresh git/mailbox/gate/smoke state.",
+    "Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect.",
+    "At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user.",
     "Push remains user-gated; locks, paid spend, and pod spend require explicit consent.",
 )
 

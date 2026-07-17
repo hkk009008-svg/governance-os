@@ -477,6 +477,32 @@ def test_route_validation_allows_single_pair_with_pair_b_preflight_decision(
     assert result.valid
 
 
+def test_route_validation_accepts_internal_continuation_without_terminal_heading(
+    tmp_path: Path,
+):
+    _write_capacity_split_cycle(tmp_path)
+    body = _capacity_split_route_body(
+        "## Capacity Split Default\n\n"
+        "- single-pair fast path remains the default for narrow or shared-file work.\n"
+        "- If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.\n"
+        "- coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.\n"
+    ).replace(
+        "\n\n## Exact Next Trigger\n\n"
+        "Director continues Chunk A; Pair B follows the capacity split decision.\n",
+        "\n",
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-09T00-07-00Z-coordinator-to-all-coordination.md",
+        body,
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert not any("Exact Next Trigger" in issue["message"] for issue in result.route_issues)
+
+
 def test_route_validation_requires_chunk_labels_for_dual_pair_route(
     tmp_path: Path,
 ):
