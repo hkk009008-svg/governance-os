@@ -1127,3 +1127,41 @@ implementation history and the frozen historical descriptors under
 - Any future typed route enforcement requires a fresh design, its own schema, and
   a real live cutover with `.route.json` sidecars in production — not a revival
   of this dormant island.
+
+## Live-caller-only terminal cleanup of the compact/capability kernel
+
+**Date:** 2026-07-17
+**Status:** Accepted (planned, verified, and implemented)
+
+**Context:**
+The compact-kernel / capability-v1 program built an extensive stack — a
+capability adapter and reducer, `kernel_activation`, `route_capability`,
+`compact_state_mapping`, a route-v2 schema, and multi-phase activation plans — to
+carry typed capability tokens through a compacted control plane. The 2026-07-17
+terminal-cleanup review
+(`docs/superpowers/plans/2026-07-17-live-caller-only-terminal-cleanup.md`) found
+the whole stack live-caller-free: the capability stack implemented but unused, its
+activation machinery implemented but never activated, and the Phase-4 reader
+migration / mixed-version operation / observation / pruning planned but never
+implemented. A well-tested control plane that no live path invokes protects
+nothing; it is standing drift surface.
+
+**Decision:**
+Delete the dormant compact/capability kernel and keep the live compact-pair loop
+(`scripts/codex_protocol_model.py`, `scripts/wave_gate_check.py`,
+`scripts/check_go_schema.py`) as the operative machinery. Implemented in `411c2af`
+("refactor(protocol): remove dormant compact machinery"): 79 files, −34,957 lines;
+planned by `d434a0d`; verified by a non-author operator GO
+(`coordination/mailbox/sent/2026-07-17T11-03-28Z-operator-to-all-verification-report.md`,
+reviewed head `411c2af`, VERDICT GO — 555 passed / 1 xfailed, protocol-doctor
+PASS). This entry is the architectural closeout that the plan and GO already
+evidence; it does not rewrite the append-only prior entries, which stand as
+time-bound records.
+
+**Consequences:**
+- The retained live authority is the compact-pair verify-request loop; the
+  multi-target registry, the fixed mailbox writer, and `route_lineage` are
+  retained (all have live callers).
+- Any future capability kernel or provider tool requires a fresh design and its
+  own separately-authorized side effects.
+- Commit, push, merge, paid spend, and runtime cleanup remain separately gated.
