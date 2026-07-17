@@ -18,7 +18,7 @@
 
 - [x] Run one disposable local cutover rehearsal.
 - [x] Prove failed or partial activation leaves the normal state authoritative.
-- [ ] Obtain one cold non-author-model Operator verdict over the exact diff and rehearsal evidence.
+- [x] Obtain one cold non-author-model Operator verdict over the exact diff and rehearsal evidence.
 
 ## Task 3: Separately Authorized Activation
 
