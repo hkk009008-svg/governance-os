@@ -748,7 +748,7 @@ def _packet_action_text(owner: str, packet: Packet) -> tuple[str, str]:
     if packet.packet_type == "director-implementation":
         return (
             "implement the named scope inside allowed paths",
-            "send one committed verify-request naming full reviewed base/head, author seat/model, assigned Operator, question, allowed paths, and commands",
+            "send one committed verify-request naming full reviewed base/head or range, outcome, author seat/model, assigned Operator, and immutable finding refs",
         )
     if packet.packet_type in {"director-brief", "director-cosign", "director-preflight"}:
         return (

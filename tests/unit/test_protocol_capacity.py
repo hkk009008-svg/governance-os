@@ -652,8 +652,8 @@ def test_capacity_board_renders_structural_lane_v_trigger_authority_for_active_p
             "  deps: -",
             "  next: implement the named scope inside allowed paths",
             "  stop: send one committed verify-request naming full reviewed "
-            "base/head, author seat/model, assigned Operator, question, allowed "
-            "paths, and commands",
+            "base/head or range, outcome, author seat/model, assigned Operator, "
+            "and immutable finding refs",
         )
     )
     operator_block = "\n".join(
