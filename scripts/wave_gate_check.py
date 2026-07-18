@@ -38,17 +38,29 @@ PytestRunner = Callable[[list[str]], dict]
 
 def _parse_rows(inventory_path: Path) -> list[dict]:
     rows: list[dict] = []
+    malformed: list[str] = []
     for line in inventory_path.read_text().splitlines():
         line = line.strip()
         if not line.startswith("|"):
             continue
         cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) != len(_COLS):           # header / separator / malformed / pipe-in-value
+        if len(cells) != len(_COLS):
+            # Header/separator rows are exempt; a DATA row with a drifted column
+            # count must fail closed — silently dropping it would let a schema
+            # drift erase rows from the gate.
+            if cells and (cells[0] == "id" or set("".join(cells)) <= set("-: ")):
+                continue
+            malformed.append(line[:80])
             continue
         row = dict(zip(_COLS, cells))
         if row["id"] in ("id", "----", "") or set(row["id"]) <= {"-"}:
             continue
         rows.append(row)
+    if malformed:
+        raise ValueError(
+            f"{inventory_path.name}: {len(malformed)} data row(s) with a drifted "
+            f"column count (expected {len(_COLS)}): " + " ; ".join(malformed[:3])
+        )
     return rows
 
 def _dedupe(values: list[str]) -> list[str]:
@@ -312,7 +324,11 @@ def main(argv: list[str] | None = None) -> int:
     if not args.inventory.exists():
         print(f"inventory not found: {args.inventory}", file=sys.stderr)
         return 2
-    rep = gate_report(args.inventory, args.wave)
+    try:
+        rep = gate_report(args.inventory, args.wave)
+    except ValueError as exc:
+        print(f"inventory schema drift — gate fails closed: {exc}", file=sys.stderr)
+        return 2
     print(f"Wave {rep['wave']} gate: {rep['verdict']}  counts={rep['counts']}")
     print(f"  gate rows: {len(rep['gate_rows'])}; executable selectors: {len(rep['selectors'])}")
     for b in rep["blockers"]:
