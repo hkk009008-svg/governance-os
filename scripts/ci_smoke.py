@@ -157,21 +157,32 @@ def main() -> int:
     if _sha_drifts:
         _sha_status = _cdc.classify_sha_ref_baseline(_sha_drifts, _repo_root)
         if not _sha_status.matches_baseline:
-            print("SHA-REF BASELINE CHECK — FAIL")
-            print(_sha_status.warning_line)
-            print(
-                "Run: .venv/bin/python scripts/check_doc_claims.py --sha-refs "
-                "and update the reviewed baseline only after a bounded cleanup "
-                "or explicit owner decision."
-            )
-            for _sd in _sha_drifts[:20]:
+            _sha_is_repo, _sha_shallow = _cdc._repo_state(_repo_root)
+            if _sha_shallow:
+                # A shallow clone cannot resolve historical protocol-provenance
+                # SHAs beyond its boundary, so the baseline is not evaluable here.
+                # CI uses fetch-depth: 0 (full clone), which still gates this; warn
+                # rather than hard-fail so a shallow local checkout is not bricked.
                 print(
-                    f"  [{_sd.kind}] {Path(_sd.doc_path).name}:{_sd.doc_line}"
-                    f" (sha: {_sd.symbol}) — {_sd.message}"
+                    "SHA-REF BASELINE CHECK — WARN (shallow clone; baseline not "
+                    "evaluable; use fetch-depth: 0 to gate SHA-ref drift)."
                 )
-            if len(_sha_drifts) > 20:
-                print(f"  ... and {len(_sha_drifts) - 20} more")
-            return 1
+            else:
+                print("SHA-REF BASELINE CHECK — FAIL")
+                print(_sha_status.warning_line)
+                print(
+                    "Run: .venv/bin/python scripts/check_doc_claims.py --sha-refs "
+                    "and update the reviewed baseline only after a bounded cleanup "
+                    "or explicit owner decision."
+                )
+                for _sd in _sha_drifts[:20]:
+                    print(
+                        f"  [{_sd.kind}] {Path(_sd.doc_path).name}:{_sd.doc_line}"
+                        f" (sha: {_sd.symbol}) — {_sd.message}"
+                    )
+                if len(_sha_drifts) > 20:
+                    print(f"  ... and {len(_sha_drifts) - 20} more")
+                return 1
 
     # Coordination-state gate (protocol v6.0, check_coordination).
     # FATAL (broken cursor / filename-convention violation) hard-fails locally,
