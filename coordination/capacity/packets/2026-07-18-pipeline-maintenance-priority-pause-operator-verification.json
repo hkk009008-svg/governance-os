@@ -20,7 +20,7 @@
   ],
   "acceptance": [
     "Remain blocked until Director publishes one committed canonical verify-request containing exact immutable base/head, author seat/model, assigned Operator, four paths, commands, and adversarial question. Never reconstruct missing fields.",
-    "Independently inspect the complete two-commit range and rerun every plan Task-5 and Task-6 command. Prove from actual tests and diff that mtime, commit timestamps, filename-day order, dirty or untracked bytes, symlinks, malformed metadata, same-commit ties, Git failure, and coordinator aliasing are handled exactly as routed.",
+    "Independently inspect the complete two-commit range and rerun every corrected plan Task-5 and Task-6 command. Prove from actual tests and diff that copy-lineage following, mtime, commit time, incidental traversal order, incomparable branches, filename-day order, deleted, dirty or untracked bytes, symlinks, every invalid metadata class, same-commit ties, per-candidate Git failure, warning propagation, and coordinator aliasing are handled exactly as routed.",
     "Confirm both cleanup edits are behavior-neutral, warning visibility remains intact, no obsolete st_mtime_ns selector remains, exact four-path scope holds, and the tree, protocol doctor, coordination checker, and smoke are clean.",
     "Publish the only GO/NITS/FAIL verification-report bound to the exact request and range. Do not repair code, edit packets, consume cursors, claim or release locks, update refs, push, merge, deploy, modify evidence-ledger, or broaden scope."
   ],

@@ -19,9 +19,9 @@
     "director2-pipeline-maintenance-handoff-contract-preflight"
   ],
   "acceptance": [
-    "Remain blocked until Director2 publishes a committed CLEAR findings event for the exact routed HEAD. Then execute plan Tasks 3 through 5 sequentially under TDD and the corrected design at 5598b4b.",
+    "Remain blocked until Director2 publishes a fresh committed CLEAR findings event for coordinator correction cc7e7a0 and the exact correction route. Then execute plan Tasks 3 through 5 sequentially under TDD and the design/plan at cc7e7a0.",
     "Produce exactly two sequential implementation commits: the behavior-neutral scripts/bus_unread.py plus tests/unit/test_keys.py cleanup, then the scripts/latest_handoff.py plus tests/unit/test_latest_handoff.py deterministic HEAD-backed selector change.",
-    "Preserve canonical public signatures and seat aliasing; use introducing-commit topological rank as primary chronology, bounded When/Created/Date metadata only for same-introduction ties, basename only as the final visible-warning tie, and no mtime, commit-time, filename-day, dirty, untracked, or symlink fallback.",
+    "Preserve canonical public signatures and seat aliasing; use exact-current-path addition ancestry as primary chronology, treat incomparable introductions as an explicit metadata tie, use bounded When/Created/Date metadata only within the ancestry-maximal set, and basename only as the final visible-warning tie. Do not use --follow, mtime, commit-time, traversal order, filename-day, dirty, untracked, deleted, or symlink fallback.",
     "Run every focused, integration, doctor, smoke, diff, and scope command in plan Task 5. Send one committed canonical verify-request to the non-author Operator binding exact base/head, author seat/model, assigned Operator, four-path manifest, commands, adversarial question, and exclusions.",
     "Do not modify coordination/bin/send-event, packets, route state, handoff artifacts, evidence-ledger, cursors, locks, remote refs, dependencies, providers, or external state; no push, merge, reset, rebase, amend, cleanup, or scope widening."
   ],
@@ -29,7 +29,7 @@
   "next_recipient": "operator",
   "status": "blocked",
   "verify_request": null,
-  "target_commit": null,
+  "target_commit": "cc7e7a0",
   "commit_range": null,
   "scope_files": [
     "scripts/bus_unread.py",

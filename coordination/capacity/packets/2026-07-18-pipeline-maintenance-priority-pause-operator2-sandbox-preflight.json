@@ -4,7 +4,7 @@
   "cycle": "pipeline-maintenance-priority-pause-2026-07-18",
   "row_ids": [],
   "lock_keys": [],
-  "handoff_artifact": null,
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-18T03-49-51Z-operator2-to-coordinator-findings.md",
   "owner": "operator2",
   "packet_type": "operator-preflight",
   "allowed_paths": [
@@ -17,9 +17,12 @@
     "Classify exactly repository-defect, environment-policy, or unable-to-verify. A repository-defect finding blocks ledger resume and requests a separate security-sensitive writer design and route; it does not authorize a source change here. TMPDIR injection and blanket sandbox bypass are rejected as remedies.",
     "Publish one committed findings event. Do not edit coordination/bin/send-event, tests, conftest, packets, route state, evidence-ledger, cursors, locks, refs, or external state; do not issue GO/NITS/FAIL."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Terminal environment-policy classification at coordination/mailbox/sent/2026-07-18T03-49-51Z-operator2-to-coordinator-findings.md / c75627692f3f2b3f2bcae331ed5484e899d5b191: exact selector 1 passed, full writer file 9 passed, managed real-checkout writer failed only at .git/protocol-kernel-writer.lock with EPERM, and the unchanged supported-profile writer published the findings event.",
+    "No repository defect was proven; no writer source change, TMPDIR injection, sandbox weakening, or repeat preflight is routed at unchanged evidence."
+  ],
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "done",
   "verify_request": null,
   "target_commit": "f5556ca",
   "commit_range": null,

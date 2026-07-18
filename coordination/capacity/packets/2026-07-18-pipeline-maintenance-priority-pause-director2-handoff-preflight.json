@@ -12,16 +12,19 @@
   ],
   "dependencies": [],
   "acceptance": [
-    "Start in Pipeline at the committed maintenance route, read design commit 5598b4b and plan commit f5556ca, and perform only the plan Task-1 adversarial handoff preflight. Inventory the complete canonical HANDOFF corpus, its When/Created/Date grammar, introducing commits, and same-commit ties.",
-    "Bind the exact acceptance tests and non-vacuous mutations named in plan Task 1, including topology versus mtime, legacy metadata, filename disagreement, dirty and untracked candidates, symlinks, Git failure, coordinator aliasing, basename tie warnings, and CLI warning visibility.",
+    "Start in Pipeline at the committed coordinator correction route, read corrected design and plan commit cc7e7a0, and perform one fresh plan Task-1 adversarial handoff preflight. Reuse the unchanged metadata corpus inventory from 9a046b6, but recheck the exact-current-path addition inventory without --follow and the corrected ancestry contract.",
+    "Bind all twenty exact acceptance tests and non-vacuous mutations named in corrected plan Task 1, including copy lineage, ancestry versus mtime, equal mtimes, incomparable merged branches without commit-time order, full/date precision, every invalid metadata class, deleted/dirty/untracked/symlink candidates, per-candidate Git failure, cross-seat isolation, basename tie warnings, and complete CLI/seat_status warning visibility.",
     "Publish one committed findings event with routed HEAD, commands, results, corpus evidence, abuse cases, excluded effects, and disposition CLEAR or BLOCKED. Any legitimate unmodeled metadata grammar is BLOCKED, not an inferred implementation rule.",
     "Do not edit production, tests, packets, route state, handoffs, evidence-ledger, cursors, locks, refs, or external state; do not implement a fix or issue GO/NITS/FAIL."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Initial preflight BLOCKED at coordination/mailbox/sent/2026-07-18T03-56-07Z-director2-to-coordinator-findings.md / 9a046b6 because --follow violated exact-path chronology and the suite omitted required cases.",
+    "Coordinator correction cc7e7a0 resolves the two reported plan/design contradictions; a fresh CLEAR/BLOCKED event remains required."
+  ],
   "next_recipient": "coordinator",
   "status": "ready",
   "verify_request": null,
-  "target_commit": "f5556ca",
+  "target_commit": "cc7e7a0",
   "commit_range": null,
   "scope_files": [
     "scripts/latest_handoff.py",

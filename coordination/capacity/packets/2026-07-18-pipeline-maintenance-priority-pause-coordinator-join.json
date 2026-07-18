@@ -21,17 +21,21 @@
     "operator-pipeline-maintenance-handoff-selector-verification"
   ],
   "acceptance": [
-    "Reconcile Director2 CLEAR/BLOCKED, Operator2 repository-defect/environment-policy/unable-to-verify, Director's canonical request, and the non-author Operator's exact GO/NITS/FAIL without authoring production behavior.",
+    "Reconcile Director2 CLEAR/BLOCKED, Operator2 repository-defect/environment-policy/unable-to-verify, Director's canonical request, and the non-author Operator's exact GO/NITS/FAIL without authoring production behavior. The first convergence pass records Operator2 environment-policy at c756276 and Director2 BLOCKED at 9a046b6; correction commit cc7e7a0 requires exactly one fresh Director2 preflight.",
     "A repository-defect sandbox classification creates a separate security-sensitive writer design and route before ledger resume. Environment-policy closes with evidence and no writer change. Unable-to-verify keeps the ledger parked on the exact missing comparison authority or evidence.",
     "GO plus a terminal no-code sandbox branch permits maintenance closeout only after fresh capacity, route, doctor, coordination, smoke, exact-scope, mailbox, and Git checks. NITS, FAIL, BLOCKED, changed HEAD, or scope drift routes only the smallest correction and keeps the ledger parked.",
     "Resume the ledger only after rechecking target HEAD a93d07196dd8622d753cdd5f8617af7df29eb1cf, the preserved untracked web/ inventory, and the excluded normal checkout. Restore original states Director ready, Director2 ready, Operator blocked on Director, Operator2 ready, and coordinator blocked on all four; do not claim ledger correctness or completion.",
     "No production fix, cursor consume, lock action, remote-ref update, push, merge, dependency install, provider action, paid spend, target mutation, cleanup, or external side effect is authorized."
   ],
-  "done_evidence": [],
+  "done_evidence": [
+    "Operator2 terminal environment-policy findings: coordination/mailbox/sent/2026-07-18T03-49-51Z-operator2-to-coordinator-findings.md at c75627692f3f2b3f2bcae331ed5484e899d5b191; no writer branch opened.",
+    "Director2 BLOCKED findings: coordination/mailbox/sent/2026-07-18T03-56-07Z-director2-to-coordinator-findings.md at 9a046b6; Director never activated.",
+    "Coordinator design/plan correction: cc7e7a0 corrects exact-path chronology and binds the expanded adversarial suite; ledger remains parked pending fresh Director2 CLEAR, Director implementation/request, and Operator verdict."
+  ],
   "next_recipient": "coordinator",
   "status": "blocked",
   "verify_request": null,
-  "target_commit": null,
+  "target_commit": "cc7e7a0",
   "commit_range": null,
   "scope_files": [
     "coordination/capacity/packets/2026-07-18-pipeline-maintenance-priority-pause-*.json",
