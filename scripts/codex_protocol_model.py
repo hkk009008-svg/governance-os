@@ -98,8 +98,8 @@ ACTIVE_KERNEL_INVARIANTS = (
         "cross-seat awareness uses one coordinator event when routing is warranted",
     ),
     (
-        "capacity-board route validation",
-        "active coordinator task-board routes run protocol_capacity_board.py and --validate-route before commit",
+        "capacity diagnostics",
+        "capacity boards and packet reports remain available as optional diagnostic evidence; route authority comes from route and hard-boundary validation",
     ),
 )
 
@@ -169,7 +169,7 @@ R_INDEPENDENCE_RULES = (
     "Before implementation, classify whether the change touches an adversarial-surface: "
     + "; ".join(R_INDEPENDENCE_TRIGGER_SURFACES)
     + ".",
-    "The owner explicitly assesses plausible abuse classes, edge cases, and coverage targets and preserves every material independent finding.",
+    "The owner explicitly assesses plausible abuse classes, edge cases, and coverage targets and preserves material independent findings.",
     "An independent design-time enumeration may be used as advisory input when it adds signal; it is not a universal gate.",
     "The owner and actual-diff Operator choose proportional review depth; early independent review is encouraged when it adds signal, but it is advisory and no universal pre-implementation CLEAR gate exists.",
     "Before acceptance, a distinct non-author Operator seat using a different system-visible model reviews the actual diff or range and issues GO/NITS/FAIL through the fixed mailbox writer.",
@@ -377,7 +377,6 @@ COORDINATOR_INVARIANTS = (
     "never consume coordinator cursor",
     "always check coordinator/all-scope mailbox bodies before routing claims",
     "one coordinator-to-all route if needed",
-    "capacity-board route validation before any active coordinator task-board route",
     "route from durable evidence, not chat memory",
     "do not author production fixes",
 )
@@ -431,7 +430,7 @@ LIVE_LOOP_STEPS = (
     "Classify the live role: readiness bridge, named seat, or coordinator.",
     "Name concrete evidence before acting: mailbox bodies, gate output, smoke output, and diff scope.",
     "Run gate scripts and smoke commands only as evidence, not as operator GO.",
-    "Before any active coordinator task-board route, run `scripts/protocol_capacity_board.py --wave <wave>` and validate the draft with `scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md`; fix named gate failures before committing the route.",
+    "Capacity boards and packet reports remain available as optional diagnostic evidence; route authority comes from route and hard-boundary validation.",
     "Send one coordinator-to-all route if needed, then verify receipt seat-by-seat.",
     "When a full coordinator/live-seat cycle reaches a real completion boundary and assigned tasks are complete, write a durable handoff before transplant or context switch, including fresh git/mailbox/gate/smoke state.",
     "Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect.",

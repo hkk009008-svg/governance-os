@@ -219,6 +219,52 @@ def test_active_seat_adapter_line_budgets_prevent_protocol_regrowth() -> None:
         assert len(_read(path).splitlines()) <= maximum, path
 
 
+def test_r_independence_truth_is_owner_assessment_plus_actual_diff_review() -> None:
+    architecture = _compact(_read("ARCHITECTURE.md"))
+    rendered = model.render_r_independence()
+
+    for text in (architecture, rendered):
+        assert "owner" in text.casefold()
+        assert "plausible abuse classes" in text
+        assert "material independent findings" in text
+        assert "actual-diff" in text
+        assert "distinct" in text
+        assert "different" in text
+        assert "Operator" in text
+
+    assert "requires a durable independent design-time enumeration" not in architecture
+    assert "early independent" in architecture.casefold()
+    assert "advisory" in architecture.casefold()
+    assert "not a universal requirement or CLEAR gate" in architecture
+
+
+def test_capacity_board_is_optional_diagnostic_not_route_authority() -> None:
+    architecture = _compact(_read("ARCHITECTURE.md"))
+    source = _read("scripts/codex_protocol_model.py")
+    coordinator = " ".join(model.COORDINATOR_INVARIANTS)
+    live_loop = " ".join(model.LIVE_LOOP_STEPS)
+    summary = model.render_surface_summary()
+
+    required = "optional diagnostic evidence"
+    assert required in architecture
+    assert required in dict(model.ACTIVE_KERNEL_INVARIANTS)["capacity diagnostics"]
+    assert "route and hard-boundary validation" in architecture
+
+    forbidden = (
+        "capacity-board route validation before any active coordinator task-board route",
+        "Before any active coordinator task-board route",
+        "fix named gate failures before committing the route",
+        "route is valid only when",
+    )
+    for phrase in forbidden:
+        assert phrase not in coordinator
+        assert phrase not in live_loop
+        assert phrase not in summary
+        assert phrase not in architecture
+
+    assert "protocol_capacity_board.py --wave <wave> --validate-route" not in source
+
+
 def test_compact_production_line_budget():
     kernel_lines = _read("scripts/chatgpt_pro_consult.py").splitlines()
     skill_lines = _read(

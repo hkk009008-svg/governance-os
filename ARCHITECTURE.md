@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-18 @ aa5ead7*
+*Last verified: 2026-07-18 @ 3dfbe24*
 
 ## 1. Purpose
 
@@ -58,9 +58,9 @@ Key directories:
 | `resolve_target` | `scripts/target_binding.py:143` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
 | `writer_fence` | `scripts/mailbox_writer.py:62` | Serializes fixed mailbox-event and cursor finalizers with one Git-common-dir lock. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
-| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:442` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_r_independence` | `scripts/codex_protocol_model.py:663` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:697` | Renders guard guidance into readiness output. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:441` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_r_independence` | `scripts/codex_protocol_model.py:662` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:696` | Renders guard guidance into readiness output. |
 | `chatgpt_pro_consult.reserve` | `scripts/chatgpt_pro_consult.py:195` | Reserves one parent-owned consultation key in the shared Git-common-dir record. |
 | `parse_verify_request` | `scripts/compact_pair_loop.py:215` | Validates one committed Director verify-request and its exact reviewed range. |
 | `validate_report` | `scripts/compact_pair_loop.py:369` | Binds one assigned non-author Operator verdict to that exact request, range, and scope. |
@@ -91,10 +91,10 @@ Key directories:
 - Historical report paths remain immutable evidence and grant no current
   publication authority. Local `.codex/runtime` residue is outside the operative
   scan and is not mutated by protocol verification.
-- The Codex model applies R-INDEPENDENCE before implementation: it classifies
-  the four adversarial surfaces, requires a durable independent design-time
-  enumeration for triggered work, and requires independent actual-diff
-  verification before completion.
+- For adversarial surfaces, the owner assesses plausible abuse classes before
+  implementation and preserves material independent findings. Early independent
+  enumeration is advisory when useful, not a universal requirement or CLEAR
+  gate; actual-diff review by a distinct-seat, different-model non-author Operator remains mandatory.
 
 ## 5. Mailbox And Capacity State
 
@@ -102,9 +102,9 @@ Mailbox events live under `coordination/mailbox/sent/`; read cursors live under
 `coordination/mailbox/seen/`. The receiving roster comes from
 `scripts/protocol_mailbox.py:11` and `scripts/protocol_mailbox.py:17`.
 
-Capacity packets live under `coordination/capacity/packets/`. A coordinator
-route is valid only when `scripts/protocol_capacity_board.py --wave <wave>` and
-the route-validation form both accept the packet set.
+Capacity boards and packets remain available as optional diagnostic evidence;
+they keep capacity issues visible but do not grant route authority. Coordinator
+route validity comes from route and hard-boundary validation.
 
 Unknown coordinator broadcast receipt is not delivery proof. It is an unproved
 receipt state surfaced by `scripts/mailbox_monitor.py`.
