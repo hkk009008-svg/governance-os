@@ -315,14 +315,27 @@ def test_retained_new_owner_must_publish_its_own_acceptance(event_repo: Path):
     )
 
 
-def _takeover_change(repo: Path, *, task_id: str = "task-1", fresh: str = "none", lock: str = "none") -> model.OwnershipChange:
-    observed = "2026-07-18T07:10:00Z"
+def _takeover_change(
+    repo: Path,
+    *,
+    task_id: str = "task-1",
+    fresh: str = "no fresh work",
+    lock: str = "no active lock",
+    corroborator: str | None = "operator",
+    confirmation_task_id: str | None = None,
+    confirmation_claim_ref: str | None = None,
+    confirmation_observed: str | None = None,
+) -> model.OwnershipChange:
+    sequence = int(_git(repo, "rev-list", "--all", "--count"))
+    claim_minute = 10 + sequence
+    confirmation_minute = claim_minute + 1
+    observed = f"2026-07-18T07:{claim_minute:02d}:00Z"
     evidence_ref = _event(
         repo,
         sender="director2",
         recipient="all",
         kind="dispatch-claim",
-        timestamp="2026-07-18T07-10-00Z",
+        timestamp=f"2026-07-18T07-{claim_minute:02d}-00Z",
         body="\n".join(
             (
                 f"Task ID: {task_id}",
@@ -336,6 +349,31 @@ def _takeover_change(repo: Path, *, task_id: str = "task-1", fresh: str = "none"
         ),
     )
     evidence = protocol_mailbox.load_takeover_evidence_statement(repo, evidence_ref)
+    confirmations = ()
+    if corroborator is not None:
+        confirmation_ref = _event(
+            repo,
+            sender=corroborator,
+            recipient="director2",
+            kind="acknowledgement",
+            timestamp=f"2026-07-18T07-{confirmation_minute:02d}-00Z",
+            body="\n".join(
+                (
+                    f"Task ID: {confirmation_task_id or task_id}",
+                    f"Parent contract: {PARENT}",
+                    "Contract revision: 2",
+                    "Proposed owner: director2",
+                    f"Takeover claim ref: {confirmation_claim_ref or evidence_ref}",
+                    f"Observed at: {confirmation_observed or observed}",
+                    f"Finding refs: {FINDING_A}, {FINDING_B}",
+                )
+            ),
+        )
+        confirmations = (
+            protocol_mailbox.load_takeover_confirmation_statement(
+                repo, confirmation_ref
+            ),
+        )
     return model.OwnershipChange(
         task_id="task-1",
         parent_contract_ref=PARENT,
@@ -347,14 +385,81 @@ def _takeover_change(repo: Path, *, task_id: str = "task-1", fresh: str = "none"
         finding_refs=(FINDING_A, FINDING_B),
         abandoned_takeover=True,
         takeover_evidence=evidence,
+        takeover_confirmations=confirmations,
     )
 
 
-def test_abandoned_takeover_fails_closed_without_system_derived_evidence(event_repo: Path):
+def test_peer_corroborated_takeover_is_effective(event_repo: Path):
     change = _takeover_change(event_repo)
-    assert not model.ownership_change_is_effective(
+    assert model.ownership_change_is_effective(
         _contract(), change, root=event_repo
     )
+
+
+def test_takeover_requires_exactly_one_distinct_pair_seat_corroborator(event_repo: Path):
+    missing = _takeover_change(event_repo, corroborator=None)
+    assert not model.ownership_change_is_effective(
+        _contract(), missing, root=event_repo
+    )
+    same_seat = _takeover_change(event_repo, corroborator="director2")
+    assert not model.ownership_change_is_effective(
+        _contract(), same_seat, root=event_repo
+    )
+    coordinator = _takeover_change(event_repo, corroborator="coordinator")
+    assert not model.ownership_change_is_effective(
+        _contract(), coordinator, root=event_repo
+    )
+    valid = _takeover_change(event_repo)
+    assert not model.ownership_change_is_effective(
+        _contract(),
+        replace(
+            valid,
+            takeover_confirmations=(
+                valid.takeover_confirmations[0],
+                valid.takeover_confirmations[0],
+            ),
+        ),
+        root=event_repo,
+    )
+
+
+def test_takeover_rejects_forged_stale_or_mutated_corroboration(event_repo: Path):
+    stale_task = _takeover_change(event_repo, confirmation_task_id="other-task")
+    assert not model.ownership_change_is_effective(
+        _contract(), stale_task, root=event_repo
+    )
+    wrong_ref = _takeover_change(event_repo, confirmation_claim_ref=FINDING_A)
+    assert not model.ownership_change_is_effective(
+        _contract(), wrong_ref, root=event_repo
+    )
+    stale_observation = _takeover_change(
+        event_repo, confirmation_observed="2026-07-18T07:09:00Z"
+    )
+    assert not model.ownership_change_is_effective(
+        _contract(), stale_observation, root=event_repo
+    )
+
+    valid = _takeover_change(event_repo)
+    confirmation = valid.takeover_confirmations[0]
+    replaced_claim = replace(confirmation, takeover_claim_ref=FINDING_A)
+    assert not model.ownership_change_is_effective(
+        _contract(),
+        replace(valid, takeover_confirmations=(replaced_claim,)),
+        root=event_repo,
+    )
+    replaced_body = replace(
+        confirmation,
+        event=replace(confirmation.event, text="forged corroboration body\n"),
+    )
+    assert not model.ownership_change_is_effective(
+        _contract(),
+        replace(valid, takeover_confirmations=(replaced_body,)),
+        root=event_repo,
+    )
+
+
+def test_takeover_rejects_forged_claim_ref(event_repo: Path):
+    change = _takeover_change(event_repo)
     forged_ref = replace(
         change.takeover_evidence,
         event=replace(change.takeover_evidence.event, ref=FINDING_A),
@@ -427,6 +532,14 @@ def test_review_rejects_equal_seat_or_equal_model():
     )
     assert not model.review_accepts_outcome(
         contract, _review(reviewer_model=" GPT-AUTHOR ")
+    )
+
+
+@pytest.mark.parametrize("field", ["reviewed_base", "reviewed_head"])
+@pytest.mark.parametrize("value", [None, 123])
+def test_review_non_string_range_endpoints_fail_closed(field: str, value: object):
+    assert not model.review_accepts_outcome(
+        _contract(), _review(**{field: value})
     )
 
 

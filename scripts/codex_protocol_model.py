@@ -1226,6 +1226,9 @@ class OwnershipChange:
     outcome: str | None = None
     abandoned_takeover: bool = False
     takeover_evidence: protocol_mailbox.TakeoverEvidenceStatement | None = None
+    takeover_confirmations: tuple[
+        protocol_mailbox.TakeoverConfirmationStatement, ...
+    ] = ()
 
 
 @dataclass(frozen=True)
@@ -1354,7 +1357,11 @@ def _normal_ownership_change_is_effective(
     root: os.PathLike[str] | str,
 ) -> bool:
     proposal = change.proposal
-    if proposal is None or change.takeover_evidence is not None:
+    if (
+        proposal is None
+        or change.takeover_evidence is not None
+        or change.takeover_confirmations
+    ):
         return False
     try:
         committed_proposal = protocol_mailbox.load_ownership_proposal_statement(
@@ -1413,10 +1420,55 @@ def _abandoned_takeover_is_effective(
     change: OwnershipChange,
     root: os.PathLike[str] | str,
 ) -> bool:
-    """Fail closed until fresh-work and lock state have system-derived evidence."""
+    """Require a body-bound claim plus one distinct pair-seat corroboration."""
 
-    del contract, change, root
-    return False
+    evidence = change.takeover_evidence
+    if (
+        change.proposal is not None
+        or change.acceptances
+        or evidence is None
+        or len(change.new_owners) != 1
+        or change.new_owners[0] in contract.owners
+        or change.outcome is not None
+        or len(change.takeover_confirmations) != 1
+    ):
+        return False
+    confirmation = change.takeover_confirmations[0]
+    try:
+        committed_evidence = protocol_mailbox.load_takeover_evidence_statement(
+            root, evidence.event.ref
+        )
+        committed_confirmation = (
+            protocol_mailbox.load_takeover_confirmation_statement(
+                root, confirmation.event.ref
+            )
+        )
+    except (OSError, ValueError):
+        return False
+    if committed_evidence != evidence or committed_confirmation != confirmation:
+        return False
+
+    claimant = change.new_owners[0]
+    corroborator = confirmation.event.sender
+    return bool(
+        evidence.event.sender == claimant
+        and evidence.task_id == contract.task_id
+        and evidence.parent_ref == contract.contract_ref
+        and evidence.revision == change.revision
+        and evidence.finding_refs == contract.finding_refs
+        and evidence.fresh_work_state.casefold() == "no fresh work"
+        and evidence.lock_state.casefold() == "no active lock"
+        and corroborator in SEATS
+        and corroborator != claimant
+        and confirmation.event.recipient == claimant
+        and confirmation.task_id == contract.task_id
+        and confirmation.parent_ref == contract.contract_ref
+        and confirmation.revision == change.revision
+        and confirmation.proposed_owner == claimant
+        and confirmation.takeover_claim_ref == evidence.event.ref
+        and confirmation.observed_at == evidence.observed_at
+        and confirmation.finding_refs == contract.finding_refs
+    )
 
 
 def ownership_change_is_effective(
@@ -1477,6 +1529,8 @@ def review_accepts_outcome(contract: OutcomeContract, decision: ReviewDecision) 
         and _nonblank(decision.reviewer_model)
         and decision.author_model.strip().casefold()
         != decision.reviewer_model.strip().casefold()
+        and isinstance(decision.reviewed_base, str)
+        and isinstance(decision.reviewed_head, str)
         and _FULL_SHA_RE.fullmatch(decision.reviewed_base)
         and _FULL_SHA_RE.fullmatch(decision.reviewed_head)
         and decision.reviewed_base != decision.reviewed_head

@@ -105,6 +105,18 @@ class TakeoverEvidenceStatement:
     finding_refs: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class TakeoverConfirmationStatement:
+    event: CommittedEventRef
+    task_id: str
+    parent_ref: str
+    revision: int
+    proposed_owner: str
+    takeover_claim_ref: str
+    observed_at: str
+    finding_refs: tuple[str, ...]
+
+
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     clean_env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     clean_env.update({"LANG": "C", "LC_ALL": "C"})
@@ -280,5 +292,31 @@ def load_takeover_evidence_statement(root: Path, value: str) -> TakeoverEvidence
         observed_at=observed_at,
         fresh_work_state=_single_body_field(event, "Fresh work state"),
         lock_state=_single_body_field(event, "Lock state"),
+        finding_refs=_finding_refs(event),
+    )
+
+
+def load_takeover_confirmation_statement(
+    root: Path, value: str
+) -> TakeoverConfirmationStatement:
+    event = load_committed_event_ref(root, value)
+    _require_kind(event, "acknowledgement")
+    proposed_owner = _single_body_field(event, "Proposed owner")
+    if proposed_owner not in SEATS:
+        raise ValueError("takeover confirmation proposed owner must be a pair seat")
+    takeover_claim_ref = _single_body_field(event, "Takeover claim ref")
+    if not immutable_reference_is_canonical(takeover_claim_ref):
+        raise ValueError("takeover confirmation requires an immutable claim ref")
+    observed_at = _single_body_field(event, "Observed at")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", observed_at):
+        raise ValueError("takeover confirmation observation must be ISO UTC")
+    return TakeoverConfirmationStatement(
+        event=event,
+        task_id=_single_body_field(event, "Task ID"),
+        parent_ref=_single_body_field(event, "Parent contract"),
+        revision=_revision(event),
+        proposed_owner=proposed_owner,
+        takeover_claim_ref=takeover_claim_ref,
+        observed_at=observed_at,
         finding_refs=_finding_refs(event),
     )
