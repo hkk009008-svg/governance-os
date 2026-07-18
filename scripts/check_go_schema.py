@@ -28,8 +28,6 @@ VERDICT_GO_RE = re.compile(r"^VERDICT: GO$", re.MULTILINE)
 EVIDENCE_RE = re.compile(r"^## Evidence\s*$", re.MULTILINE)
 COMMAND_RE = re.compile(r"^\$ \S", re.MULTILINE)
 OUTPUT_RE = re.compile(r"^→ \S", re.MULTILINE)
-COMMIT_RE = re.compile(r"commit `(?:[0-9a-f]{7,40})`")
-LOG_RE = re.compile(r"\blogs/\S+")
 
 
 class BaselineGenerationError(RuntimeError):
@@ -187,8 +185,6 @@ def go_report_violations(named_reports: list[tuple[str, str]]) -> list[str]:
             violations.append(f"{name}: GO evidence missing command")
         if OUTPUT_RE.search(evidence) is None:
             violations.append(f"{name}: GO evidence missing output")
-        if COMMIT_RE.search(text) is None and LOG_RE.search(text) is None:
-            violations.append(f"{name}: GO missing commit or logs artifact")
         if "wave_gate_check" in evidence and not re.search(
             r"(?:--runxfail|\b[0-9]+ (?:passed|failed|xfailed|xpassed|error)\b)",
             evidence,

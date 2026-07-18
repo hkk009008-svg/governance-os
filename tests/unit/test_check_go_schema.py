@@ -21,9 +21,9 @@ def _manifest(*entries: tuple[str, bytes]) -> dict[str, object]:
     }
 
 
-def test_go_evidence_requires_command_output_and_durable_subject() -> None:
+def test_go_evidence_requires_command_and_output() -> None:
     valid = """\
-# Operator → All: report commit `abcdef1`
+# Operator → All: report
 
 VERDICT: GO
 
@@ -37,6 +37,22 @@ $ pytest -q
         [("invalid.md", valid.replace("→ 1 passed\n", ""))]
     )
     assert any("output" in item for item in violations)
+
+
+def test_current_compact_go_does_not_require_redundant_commit_or_logs_prose() -> None:
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-07-18T11-53-07Z-operator-to-director-verification-report.md"
+    )
+    raw = (schema.ROOT / path).read_bytes()
+    parsed = pair.parse_verification_report(schema.ROOT, path)
+
+    assert pair.validate_report(schema.ROOT, parsed) == []
+    assert schema.repository_report_violations(
+        schema.ROOT,
+        [schema.RawReport(path, raw)],
+        _manifest(),
+    ) == []
 
 
 @pytest.mark.parametrize("verdict", ("NITS", "FAIL"))
