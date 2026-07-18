@@ -68,6 +68,7 @@ _MARKDOWN_HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S")
 SIDE_EFFECT_TOKEN_HEADING_RE = re.compile(
     r"(?im)^(?:#{1,6}\s*)?Side-Effect Executor Token\s*:?\s*$"
 )
+_DUPLICATE_TOKEN_FIELDS_KEY = "__duplicate_fields__"
 SIDE_EFFECT_TOKEN_FIELD_ALIASES = {
     "effect": "effect",
     "effect kind": "effect",
@@ -1229,6 +1230,13 @@ def _side_effect_executor_issues(body: str) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     token_results = structural_external_effect_token_results(body)
     for token, result in zip(tokens, token_results, strict=True):
+        for field in _duplicate_token_fields(token):
+            issues.append(
+                _issue(
+                    "G7",
+                    f"duplicate side-effect executor token field: {field}",
+                )
+            )
         fields = _token_shape_fields(token)
         missing = [
             field
@@ -1251,6 +1259,8 @@ def _side_effect_executor_issues(body: str) -> list[dict[str, Any]]:
                 )
             )
         for field in result.issues:
+            if field.startswith("duplicate:"):
+                continue
             if field in missing:
                 continue
             if field == "executor" and token.get("executor"):
@@ -1278,11 +1288,42 @@ def _side_effect_executor_issues(body: str) -> list[dict[str, Any]]:
             )
         )
     elif side_effect_requests:
-        uncovered = [
-            request
-            for request in side_effect_requests
-            if not any(_token_covers_side_effect(token, request) for token in complete_tokens)
-        ]
+        uncovered: list[dict[str, Any]] = []
+        for request in side_effect_requests:
+            covering = [
+                token
+                for token in complete_tokens
+                if _token_covers_effect_target_scope(token, request)
+            ]
+            if not covering:
+                uncovered.append(request)
+                continue
+            if len(covering) > 1:
+                exact_tuples = [_token_exact_tuple(token) for token in covering]
+                executors = {item[1].casefold() for item in exact_tuples}
+                target = request.get("target", "")
+                scope = request.get("scope", ())
+                suffix = f" target={target}" if target else ""
+                if scope:
+                    suffix += " scope=" + ",".join(scope)
+                if len(set(exact_tuples)) < len(exact_tuples):
+                    message = "duplicate side-effect executor tokens cover"
+                elif len(executors) > 1:
+                    message = (
+                        "multiple side-effect executor tokens cover"
+                        " with different executors"
+                    )
+                else:
+                    message = "multiple side-effect executor tokens cover"
+                issues.append(
+                    _issue(
+                        "G7",
+                        f"{message} {request['label']}{suffix}; exactly one is required",
+                    )
+                )
+                continue
+            if not _token_executor_matches(covering[0], request):
+                uncovered.append(request)
         if uncovered:
             labels = ", ".join(
                 sorted(
@@ -1308,6 +1349,11 @@ def _executor_seats(value: str) -> list[str]:
         r"\b(?:coordinator2|coordinator|director2|director|operator2|operator)\b",
         value.lower(),
     )
+
+
+def _duplicate_token_fields(token: dict[str, str]) -> tuple[str, ...]:
+    value = token.get(_DUPLICATE_TOKEN_FIELDS_KEY, "")
+    return tuple(field for field in value.split(",") if field)
 
 
 def _token_is_structurally_complete(token: dict[str, str]) -> bool:
@@ -1391,11 +1437,16 @@ def structural_external_effect_token_results(
     for raw, parsed in zip(raw_tokens, parsed_tokens, strict=True):
         fields = _token_shape_fields(raw)
         missing = tuple(field for field in fields if not raw.get(field))
+        duplicates = tuple(
+            f"duplicate:{field}" for field in _duplicate_token_fields(raw)
+        )
         shape = model.external_effect_token_is_complete(parsed)
-        result_issues = tuple(dict.fromkeys((*shape.issues, *missing)))
+        result_issues = tuple(
+            dict.fromkeys((*shape.issues, *missing, *duplicates))
+        )
         results.append(
             model.ExternalEffectTokenResult(
-                complete=shape.complete and not missing,
+                complete=shape.complete and not missing and not duplicates,
                 issues=result_issues,
                 explicit_external_user_authorization_required=True,
                 execution_authorized=False,
@@ -1412,12 +1463,26 @@ def _canonical_effect_kind(value: str) -> str:
     return normalized
 
 
-def _token_covers_side_effect(token: dict[str, str], request: dict[str, str]) -> bool:
+def _canonical_scope(items: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(" ".join(item.split()).casefold() for item in items)
+
+
+def _token_covers_effect_target_scope(
+    token: dict[str, str],
+    request: dict[str, Any],
+) -> bool:
     if _canonical_effect_kind(_canonical_effect(token)) != request["label"].casefold():
         return False
     target = request.get("target", "").strip().casefold()
     if target and target != token.get("target", "").strip().casefold():
         return False
+    scope = request.get("scope", ())
+    if scope and _canonical_scope(scope) != _canonical_scope(_scope_items(token)):
+        return False
+    return True
+
+
+def _token_executor_matches(token: dict[str, str], request: dict[str, Any]) -> bool:
     executor = request.get("executor", "").strip().casefold()
     if executor and executor != token.get("executor", "").strip().casefold():
         return False
@@ -1449,7 +1514,14 @@ def _side_effect_executor_tokens(body: str) -> list[dict[str, str]]:
                 raw_key = field_match.group(1).strip().lower().replace("-", " ")
                 normalized = SIDE_EFFECT_TOKEN_FIELD_ALIASES.get(raw_key)
                 if normalized:
-                    token[normalized] = field_match.group(2).strip()
+                    if normalized in token:
+                        duplicates = set(_duplicate_token_fields(token))
+                        duplicates.add(normalized)
+                        token[_DUPLICATE_TOKEN_FIELDS_KEY] = ",".join(
+                            sorted(duplicates)
+                        )
+                    else:
+                        token[normalized] = field_match.group(2).strip()
             index += 1
         tokens.append(token)
     return tokens
@@ -1459,12 +1531,17 @@ def _shared_side_effect_directives(body: str) -> list[str]:
     return sorted({request["label"] for request in _shared_side_effect_requests(body)})
 
 
-def _shared_side_effect_requests(body: str) -> list[dict[str, str]]:
-    requests: list[dict[str, str]] = []
-    seen: set[tuple[str, str, str]] = set()
+def _shared_side_effect_requests(body: str) -> list[dict[str, Any]]:
+    requests: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, tuple[str, ...]]] = set()
     for line in body.splitlines():
         lowered = line.lower()
         normalized = lowered.strip().lstrip("-* ").strip()
+        field_match = re.match(r"^([^:]+?)\s*:\s*(.+?)\s*$", normalized)
+        if field_match:
+            raw_key = field_match.group(1).strip().replace("-", " ")
+            if raw_key in SIDE_EFFECT_TOKEN_FIELD_ALIASES:
+                continue
         if normalized.startswith("no "):
             continue
         if _is_negative_side_effect_boundary(normalized):
@@ -1477,13 +1554,30 @@ def _shared_side_effect_requests(body: str) -> list[dict[str, str]]:
             target = _side_effect_target(label, lowered)
             executors = _executor_seats(lowered)
             executor = executors[0] if len(executors) == 1 else ""
-            key = (label, executor, target)
+            scope = _side_effect_scope(lowered)
+            key = (label, executor, target, scope)
             if key not in seen:
                 seen.add(key)
                 requests.append(
-                    {"label": label, "executor": executor, "target": target}
+                    {
+                        "label": label,
+                        "executor": executor,
+                        "target": target,
+                        "scope": scope,
+                    }
                 )
     return requests
+
+
+def _side_effect_scope(line: str) -> tuple[str, ...]:
+    match = re.search(r"\bscope\s*=\s*(?P<scope>.+?)\s*$", line)
+    if match is None:
+        return ()
+    return tuple(
+        item.strip()
+        for item in match.group("scope").split(",")
+        if item.strip()
+    )
 
 
 def _side_effect_target(label: str, line: str) -> str:

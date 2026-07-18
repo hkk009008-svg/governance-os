@@ -152,13 +152,18 @@ def _autonomous_route_body(extra: str = "") -> str:
     )
 
 
-def _compact_token_body(*, target: str = "origin/main") -> str:
+def _compact_token_body(
+    *,
+    executor: str = "director",
+    target: str = "origin/main",
+    scope: str = "commit:abc123, ref:refs/heads/main",
+) -> str:
     return (
         "\n## Side-Effect Executor Token\n\n"
         "- effect: git push\n"
-        "- executor: director\n"
+        f"- executor: {executor}\n"
         f"- target: {target}\n"
-        "- scope: commit:abc123, ref:refs/heads/main\n"
+        f"- scope: {scope}\n"
     )
 
 
@@ -330,6 +335,163 @@ def test_route_validator_never_returns_execution_authorized(tmp_path: Path):
 
     assert result.execution_authorized is False
     assert result.to_dict()["execution_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("effect", "git push"),
+        ("executor", "director"),
+        ("target", "origin/main"),
+        ("scope", "commit:abc123, ref:refs/heads/main"),
+    ),
+)
+def test_repeated_canonical_token_field_is_rejected(
+    tmp_path: Path,
+    field: str,
+    value: str,
+):
+    token = _compact_token_body().replace(
+        f"- {field}: {value}\n",
+        f"- {field}: {value}\n- {field}: {value}\n",
+    )
+    route = _write_route(
+        tmp_path,
+        f"2026-07-18T10-06-1{len(field)}Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            token
+            + "\nDirector may push origin/main after green tests "
+            "scope=commit:abc123,ref:refs/heads/main\n"
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert not result.token_results[0].complete
+    assert any(
+        f"duplicate side-effect executor token field: {field}" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "alias", "value"),
+    (
+        ("effect", "effect kind", "git push"),
+        ("executor", "executor seat", "director"),
+        ("target", "target resource", "origin/main"),
+        ("scope", "bounded scope", "commit:abc123, ref:refs/heads/main"),
+    ),
+)
+def test_canonical_and_alias_duplicate_token_field_is_rejected(
+    tmp_path: Path,
+    field: str,
+    alias: str,
+    value: str,
+):
+    token = _compact_token_body().replace(
+        f"- {field}: {value}\n",
+        f"- {field}: {value}\n- {alias}: {value}\n",
+    )
+    route = _write_route(
+        tmp_path,
+        f"2026-07-18T10-06-2{len(field)}Z-director-to-all-coordination.md",
+        _autonomous_route_body(token),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert not result.token_results[0].complete
+    assert any(
+        f"duplicate side-effect executor token field: {field}" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_two_matching_tokens_with_different_executors_are_rejected(tmp_path: Path):
+    body = _autonomous_route_body(
+        _compact_token_body(executor="director")
+        + _compact_token_body(executor="operator")
+        + "\nDirector may push origin/main after green tests "
+        "scope=commit:abc123,ref:refs/heads/main\n"
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-06-30Z-director-to-all-coordination.md",
+        body,
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "multiple side-effect executor tokens cover" in issue["message"]
+        and "different executors" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_duplicate_matching_tokens_are_rejected(tmp_path: Path):
+    token = _compact_token_body()
+    body = _autonomous_route_body(
+        token
+        + token
+        + "\nDirector may push origin/main after green tests "
+        "scope=commit:abc123,ref:refs/heads/main\n"
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-06-40Z-director-to-all-coordination.md",
+        body,
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "duplicate side-effect executor tokens cover" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_exactly_one_covering_token_is_valid(tmp_path: Path):
+    body = _autonomous_route_body(
+        _compact_token_body()
+        + "\nDirector may push origin/main after green tests "
+        "scope=commit:abc123,ref:refs/heads/main\n"
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-06-50Z-director-to-all-coordination.md",
+        body,
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert len(result.token_results) == 1
+    assert result.token_results[0].complete
+    assert result.execution_authorized is False
+
+
+def test_nonmatching_scope_token_does_not_create_executor_ambiguity(tmp_path: Path):
+    body = _autonomous_route_body(
+        _compact_token_body(executor="director")
+        + _compact_token_body(executor="operator", scope="commit:def456")
+        + "\nDirector may push origin/main after green tests "
+        "scope=commit:abc123,ref:refs/heads/main\n"
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-06-60Z-director-to-all-coordination.md",
+        body,
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
 
 
 def test_side_effect_target_match_is_exact_not_substring(tmp_path: Path):
