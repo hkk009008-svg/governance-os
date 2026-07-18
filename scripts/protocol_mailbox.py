@@ -52,8 +52,6 @@ _ENVELOPE_RE = re.compile(
     re.MULTILINE,
 )
 _DIGEST_REF_RE = re.compile(r"sha256:[0-9a-f]{64}")
-_COMMITTED_EVENT_MARKER = object()
-_TYPED_STATEMENT_MARKER = object()
 
 
 @dataclass(frozen=True)
@@ -68,7 +66,6 @@ class CommittedEventRef:
     kind: str
     when: str
     text: str
-    _validated: object | None = None
 
 
 @dataclass(frozen=True)
@@ -81,7 +78,6 @@ class OwnershipProposalStatement:
     proposed_owners: tuple[str, ...]
     outcome: str
     finding_refs: tuple[str, ...]
-    _validated: object | None = None
 
 
 @dataclass(frozen=True)
@@ -95,7 +91,6 @@ class OwnershipAcceptanceStatement:
     proposal_ref: str
     outcome: str
     finding_refs: tuple[str, ...]
-    _validated: object | None = None
 
 
 @dataclass(frozen=True)
@@ -108,7 +103,6 @@ class TakeoverEvidenceStatement:
     fresh_work_state: str
     lock_state: str
     finding_refs: tuple[str, ...]
-    _validated: object | None = None
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -180,29 +174,6 @@ def load_committed_event_ref(root: Path, value: str) -> CommittedEventRef:
         kind=kind,
         when=when,
         text=text,
-        _validated=_COMMITTED_EVENT_MARKER,
-    )
-
-
-def committed_event_ref_is_validated(value: object) -> bool:
-    return (
-        isinstance(value, CommittedEventRef)
-        and value._validated is _COMMITTED_EVENT_MARKER
-    )
-
-
-def ownership_statement_is_validated(value: object) -> bool:
-    return (
-        isinstance(
-            value,
-            (
-                OwnershipProposalStatement,
-                OwnershipAcceptanceStatement,
-                TakeoverEvidenceStatement,
-            ),
-        )
-        and value._validated is _TYPED_STATEMENT_MARKER
-        and committed_event_ref_is_validated(value.event)
     )
 
 
@@ -276,7 +247,6 @@ def load_ownership_proposal_statement(root: Path, value: str) -> OwnershipPropos
         proposed_owners=_owners(event, "Proposed owners"),
         outcome=_single_body_field(event, "Outcome"),
         finding_refs=_finding_refs(event),
-        _validated=_TYPED_STATEMENT_MARKER,
     )
 
 
@@ -293,7 +263,6 @@ def load_ownership_acceptance_statement(root: Path, value: str) -> OwnershipAcce
         proposal_ref=_single_body_field(event, "Proposal ref"),
         outcome=_single_body_field(event, "Outcome"),
         finding_refs=_finding_refs(event),
-        _validated=_TYPED_STATEMENT_MARKER,
     )
 
 
@@ -312,5 +281,4 @@ def load_takeover_evidence_statement(root: Path, value: str) -> TakeoverEvidence
         fresh_work_state=_single_body_field(event, "Fresh work state"),
         lock_state=_single_body_field(event, "Lock state"),
         finding_refs=_finding_refs(event),
-        _validated=_TYPED_STATEMENT_MARKER,
     )

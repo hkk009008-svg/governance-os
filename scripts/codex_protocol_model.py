@@ -1349,12 +1349,20 @@ def _change_envelope_matches(contract: OutcomeContract, change: OwnershipChange)
 
 
 def _normal_ownership_change_is_effective(
-    contract: OutcomeContract, change: OwnershipChange
+    contract: OutcomeContract,
+    change: OwnershipChange,
+    root: os.PathLike[str] | str,
 ) -> bool:
     proposal = change.proposal
     if proposal is None or change.takeover_evidence is not None:
         return False
-    if not protocol_mailbox.ownership_statement_is_validated(proposal):
+    try:
+        committed_proposal = protocol_mailbox.load_ownership_proposal_statement(
+            root, proposal.event.ref
+        )
+    except (OSError, ValueError):
+        return False
+    if committed_proposal != proposal:
         return False
     expected_outcome = change.outcome or contract.outcome
     if not (
@@ -1369,70 +1377,70 @@ def _normal_ownership_change_is_effective(
     ):
         return False
 
-    entering = set(change.new_owners) - set(contract.owners)
-    departing = set(contract.owners) - set(change.new_owners) - {proposal.event.sender}
-    required_acceptors = entering | departing
+    required_acceptors = set(change.new_owners)
     if {acceptance.event.sender for acceptance in change.acceptances} != required_acceptors:
         return False
     if len(change.acceptances) != len(required_acceptors):
         return False
-    return all(
-        protocol_mailbox.ownership_statement_is_validated(acceptance)
-        and acceptance.event.sender in required_acceptors
-        and acceptance.task_id == contract.task_id
-        and acceptance.parent_ref == contract.contract_ref
-        and acceptance.revision == change.revision
-        and acceptance.previous_owners == contract.owners
-        and acceptance.proposed_owners == change.new_owners
-        and acceptance.proposal_ref == proposal.event.ref
-        and acceptance.outcome == expected_outcome
-        and acceptance.finding_refs == contract.finding_refs
-        for acceptance in change.acceptances
-    )
+    for acceptance in change.acceptances:
+        try:
+            committed_acceptance = (
+                protocol_mailbox.load_ownership_acceptance_statement(
+                    root, acceptance.event.ref
+                )
+            )
+        except (OSError, ValueError):
+            return False
+        if committed_acceptance != acceptance:
+            return False
+        if not (
+            acceptance.event.sender in required_acceptors
+            and acceptance.task_id == contract.task_id
+            and acceptance.parent_ref == contract.contract_ref
+            and acceptance.revision == change.revision
+            and acceptance.previous_owners == contract.owners
+            and acceptance.proposed_owners == change.new_owners
+            and acceptance.proposal_ref == proposal.event.ref
+            and acceptance.outcome == expected_outcome
+            and acceptance.finding_refs == contract.finding_refs
+        ):
+            return False
+    return True
 
 
 def _abandoned_takeover_is_effective(
-    contract: OutcomeContract, change: OwnershipChange
+    contract: OutcomeContract,
+    change: OwnershipChange,
+    root: os.PathLike[str] | str,
 ) -> bool:
-    evidence = change.takeover_evidence
-    if (
-        change.proposal is not None
-        or change.acceptances
-        or evidence is None
-        or len(change.new_owners) != 1
-        or change.new_owners[0] in contract.owners
-        or change.outcome is not None
-    ):
-        return False
-    claimant = change.new_owners[0]
-    return bool(
-        protocol_mailbox.ownership_statement_is_validated(evidence)
-        and evidence.event.sender == claimant
-        and evidence.task_id == contract.task_id
-        and evidence.parent_ref == contract.contract_ref
-        and evidence.revision == change.revision
-        and evidence.finding_refs == contract.finding_refs
-        and evidence.fresh_work_state.casefold() in {"none", "no fresh work"}
-        and evidence.lock_state.casefold() in {"none", "no active lock"}
-    )
+    """Fail closed until fresh-work and lock state have system-derived evidence."""
+
+    del contract, change, root
+    return False
 
 
 def ownership_change_is_effective(
-    contract: OutcomeContract, change: OwnershipChange
+    contract: OutcomeContract,
+    change: OwnershipChange,
+    *,
+    root: os.PathLike[str] | str = protocol_mailbox.ROOT,
 ) -> bool:
     """Require exact lineage and body-bound consent for an ownership successor."""
 
     if not _change_envelope_matches(contract, change):
         return False
     if change.abandoned_takeover:
-        return _abandoned_takeover_is_effective(contract, change)
-    return _normal_ownership_change_is_effective(contract, change)
+        return _abandoned_takeover_is_effective(contract, change, root)
+    return _normal_ownership_change_is_effective(contract, change, root)
 
 
 def apply_ownership_change(
-    contract: OutcomeContract, change: OwnershipChange
+    contract: OutcomeContract,
+    change: OwnershipChange,
+    *,
+    root: os.PathLike[str] | str = protocol_mailbox.ROOT,
 ) -> OutcomeContract:
-    if not ownership_change_is_effective(contract, change):
+    if not ownership_change_is_effective(contract, change, root=root):
         raise ValueError("ownership change is not effective")
     if change.abandoned_takeover:
         assert change.takeover_evidence is not None
@@ -1475,6 +1483,14 @@ def review_accepts_outcome(contract: OutcomeContract, decision: ReviewDecision) 
         and decision.verdict == "GO"
         and decision.finding_refs == contract.finding_refs
         and _canonical_unique_refs(decision.finding_refs)
+    ):
+        return False
+    if not isinstance(decision.finding_dispositions, tuple) or not all(
+        isinstance(entry, tuple)
+        and len(entry) == 2
+        and isinstance(entry[0], str)
+        and isinstance(entry[1], str)
+        for entry in decision.finding_dispositions
     ):
         return False
     if len(decision.finding_dispositions) != len(contract.finding_refs):

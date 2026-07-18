@@ -129,6 +129,7 @@ def _contract(*, owners: tuple[str, ...] = ("director",)) -> model.OutcomeContra
 def _normal_change(
     repo: Path,
     *,
+    previous: str = "director",
     proposed: str = "operator",
     acceptance_senders: tuple[str, ...] = ("operator",),
 ) -> model.OwnershipChange:
@@ -138,7 +139,7 @@ def _normal_change(
         recipient="all",
         kind="proposal",
         timestamp="2026-07-18T07-00-00Z",
-        body=_proposal_body(proposed=proposed),
+        body=_proposal_body(previous=previous, proposed=proposed),
     )
     proposal = protocol_mailbox.load_ownership_proposal_statement(repo, proposal_ref)
     acceptances = []
@@ -149,14 +150,18 @@ def _normal_change(
             recipient="director",
             kind="proposal-reply",
             timestamp=f"2026-07-18T07-0{offset}-00Z",
-            body=_acceptance_body(proposal_ref, proposed=proposed),
+            body=_acceptance_body(
+                proposal_ref,
+                previous=previous,
+                proposed=proposed,
+            ),
         )
         acceptances.append(protocol_mailbox.load_ownership_acceptance_statement(repo, ref))
     return model.OwnershipChange(
         task_id="task-1",
         parent_contract_ref=PARENT,
         revision=2,
-        previous_owners=("director",),
+        previous_owners=tuple(part.strip() for part in previous.split(",")),
         new_owners=tuple(part.strip() for part in proposed.split(",")),
         proposal=proposal,
         acceptances=tuple(acceptances),
@@ -168,8 +173,8 @@ def test_transfer_binds_current_parent_and_recipient_authored_acceptance(event_r
     contract = _contract()
     change = _normal_change(event_repo)
 
-    assert model.ownership_change_is_effective(contract, change)
-    updated = model.apply_ownership_change(contract, change)
+    assert model.ownership_change_is_effective(contract, change, root=event_repo)
+    updated = model.apply_ownership_change(contract, change, root=event_repo)
     assert updated.owners == ("operator",)
     assert updated.revision == 2
     assert updated.parent_ref == PARENT
@@ -191,7 +196,22 @@ def test_unrelated_old_correct_sender_event_is_not_acceptance(event_repo: Path):
     )
 
     assert not model.ownership_change_is_effective(
-        _contract(), replace(change, acceptances=(unrelated,))
+        _contract(), replace(change, acceptances=(unrelated,)), root=event_repo
+    )
+
+    forged = replace(
+        unrelated,
+        task_id=change.task_id,
+        parent_ref=change.parent_contract_ref,
+        revision=change.revision,
+        previous_owners=change.previous_owners,
+        proposed_owners=change.new_owners,
+        proposal_ref=change.proposal.event.ref,
+        outcome=change.proposal.outcome,
+        finding_refs=change.finding_refs,
+    )
+    assert not model.ownership_change_is_effective(
+        _contract(), replace(change, acceptances=(forged,)), root=event_repo
     )
 
 
@@ -199,22 +219,41 @@ def test_stale_parent_forged_acceptance_and_active_incumbent_self_claim_fail(eve
     contract = _contract()
     change = _normal_change(event_repo)
     assert not model.ownership_change_is_effective(
-        contract, replace(change, parent_contract_ref=PARENT.replace("c", "d"))
+        contract,
+        replace(change, parent_contract_ref=PARENT.replace("c", "d")),
+        root=event_repo,
     )
     forged = replace(change.acceptances[0], event=replace(change.acceptances[0].event, sender="director2"))
     assert not model.ownership_change_is_effective(
-        contract, replace(change, acceptances=(forged,))
+        contract, replace(change, acceptances=(forged,)), root=event_repo
     )
     wrong_proposal = replace(change.acceptances[0], proposal_ref=FINDING_A)
     assert not model.ownership_change_is_effective(
-        contract, replace(change, acceptances=(wrong_proposal,))
+        contract, replace(change, acceptances=(wrong_proposal,)), root=event_repo
     )
-    caller_invented = replace(change.acceptances[0], _validated=None)
+    caller_invented = replace(
+        change.acceptances[0],
+        event=replace(change.acceptances[0].event, text="forged committed body\n"),
+    )
     assert not model.ownership_change_is_effective(
-        contract, replace(change, acceptances=(caller_invented,))
+        contract, replace(change, acceptances=(caller_invented,)), root=event_repo
+    )
+    forged_event_ref = replace(
+        change.acceptances[0],
+        event=replace(change.acceptances[0].event, ref=FINDING_A),
+    )
+    assert not model.ownership_change_is_effective(
+        contract, replace(change, acceptances=(forged_event_ref,)), root=event_repo
+    )
+    forged_proposal_event = replace(
+        change.proposal,
+        event=replace(change.proposal.event, text="forged proposal body\n"),
+    )
+    assert not model.ownership_change_is_effective(
+        contract, replace(change, proposal=forged_proposal_event), root=event_repo
     )
     self_claim = replace(change, proposal=replace(change.proposal, event=replace(change.proposal.event, sender="operator")))
-    assert not model.ownership_change_is_effective(contract, self_claim)
+    assert not model.ownership_change_is_effective(contract, self_claim, root=event_repo)
 
 
 def test_split_exchange_waits_for_every_new_owner(event_repo: Path):
@@ -223,7 +262,7 @@ def test_split_exchange_waits_for_every_new_owner(event_repo: Path):
         proposed="operator, operator2",
         acceptance_senders=("operator",),
     )
-    assert not model.ownership_change_is_effective(_contract(), change)
+    assert not model.ownership_change_is_effective(_contract(), change, root=event_repo)
 
     second_ref = _event(
         event_repo,
@@ -235,7 +274,44 @@ def test_split_exchange_waits_for_every_new_owner(event_repo: Path):
     )
     second = protocol_mailbox.load_ownership_acceptance_statement(event_repo, second_ref)
     assert model.ownership_change_is_effective(
-        _contract(), replace(change, acceptances=(*change.acceptances, second))
+        _contract(),
+        replace(change, acceptances=(*change.acceptances, second)),
+        root=event_repo,
+    )
+
+
+def test_retained_new_owner_must_publish_its_own_acceptance(event_repo: Path):
+    contract = _contract(owners=("director", "director2"))
+    change = _normal_change(
+        event_repo,
+        previous="director, director2",
+        proposed="director, operator",
+        acceptance_senders=("operator", "director2"),
+    )
+    assert not model.ownership_change_is_effective(contract, change, root=event_repo)
+
+    director_ref = _event(
+        event_repo,
+        sender="director",
+        recipient="operator",
+        kind="proposal-reply",
+        timestamp="2026-07-18T07-04-00Z",
+        body=_acceptance_body(
+            change.proposal.event.ref,
+            previous="director, director2",
+            proposed="director, operator",
+        ),
+    )
+    director_acceptance = protocol_mailbox.load_ownership_acceptance_statement(
+        event_repo, director_ref
+    )
+    assert model.ownership_change_is_effective(
+        contract,
+        replace(
+            change,
+            acceptances=(change.acceptances[0], director_acceptance),
+        ),
+        root=event_repo,
     )
 
 
@@ -274,34 +350,50 @@ def _takeover_change(repo: Path, *, task_id: str = "task-1", fresh: str = "none"
     )
 
 
-def test_abandoned_takeover_needs_fresh_work_and_lock_event_refs(event_repo: Path):
-    assert model.ownership_change_is_effective(_contract(), _takeover_change(event_repo))
+def test_abandoned_takeover_fails_closed_without_system_derived_evidence(event_repo: Path):
+    change = _takeover_change(event_repo)
+    assert not model.ownership_change_is_effective(
+        _contract(), change, root=event_repo
+    )
+    forged_ref = replace(
+        change.takeover_evidence,
+        event=replace(change.takeover_evidence.event, ref=FINDING_A),
+    )
+    assert not model.ownership_change_is_effective(
+        _contract(),
+        replace(change, takeover_evidence=forged_ref),
+        root=event_repo,
+    )
 
 
 def test_stale_or_unrelated_work_and_lock_evidence_is_rejected(event_repo: Path):
     contract = _contract()
     assert not model.ownership_change_is_effective(
-        contract, _takeover_change(event_repo, task_id="other-task")
+        contract,
+        _takeover_change(event_repo, task_id="other-task"),
+        root=event_repo,
     )
     assert not model.ownership_change_is_effective(
-        contract, _takeover_change(event_repo, fresh="present")
+        contract, _takeover_change(event_repo, fresh="present"), root=event_repo
     )
     assert not model.ownership_change_is_effective(
-        contract, _takeover_change(event_repo, lock="active")
+        contract, _takeover_change(event_repo, lock="active"), root=event_repo
     )
 
 
 def test_ownership_change_cannot_drop_or_reorder_finding_refs(event_repo: Path):
     change = _normal_change(event_repo)
     assert not model.ownership_change_is_effective(
-        _contract(), replace(change, finding_refs=(FINDING_A,))
+        _contract(), replace(change, finding_refs=(FINDING_A,)), root=event_repo
     )
     assert not model.ownership_change_is_effective(
-        _contract(), replace(change, finding_refs=(FINDING_B, FINDING_A))
+        _contract(),
+        replace(change, finding_refs=(FINDING_B, FINDING_A)),
+        root=event_repo,
     )
     reordered_proposal = replace(change.proposal, finding_refs=(FINDING_B, FINDING_A))
     assert not model.ownership_change_is_effective(
-        _contract(), replace(change, proposal=reordered_proposal)
+        _contract(), replace(change, proposal=reordered_proposal), root=event_repo
     )
 
 
@@ -361,6 +453,23 @@ def test_review_requires_exact_range_and_every_finding_disposition():
     assert not model.review_accepts_outcome(
         contract,
         _review(finding_dispositions=((FINDING_B, "accepted"), (FINDING_A, "addressed"))),
+    )
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        None,
+        [(FINDING_A, "addressed"), (FINDING_B, "addressed")],
+        (FINDING_A, FINDING_B),
+        ((FINDING_A,), (FINDING_B, "addressed")),
+        ((FINDING_A, "addressed", "extra"), (FINDING_B, "addressed")),
+        ((FINDING_A, 1), (FINDING_B, "addressed")),
+    ],
+)
+def test_review_malformed_finding_dispositions_fail_closed(malformed: object):
+    assert not model.review_accepts_outcome(
+        _contract(), _review(finding_dispositions=malformed)
     )
 
 
