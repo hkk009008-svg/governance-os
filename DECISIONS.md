@@ -1196,3 +1196,33 @@ writer defines its rules fresh.
   the derive-based checks. No enforcement existed before, so none is lost.
 - The int-only-generation lesson from the CAS boundary (a bool must never ride
   an int successor) is preserved in history and this entry for any future writer.
+
+## ADR-035: Restore ADR numbering; assign numbers to the five title-only entries
+
+**Date:** 2026-07-18
+**Status:** Accepted (user decision: "use numbering")
+
+**Context:**
+The five entries after ADR-025 were appended with title-only headings, breaking
+the `## ADR-NNN:` convention. The log is append-only (prior headings are never
+edited), and several numbers are already taken as ORIGIN-repo provenance
+citations that must not collide (verified by repo-wide grep: ADR-027, ADR-028,
+ADR-032, ADR-034 are cited; ADR-026/029/030/031/033 have zero references).
+
+**Decision:**
+Numbering is the convention: every future entry uses `## ADR-NNN: <title>`,
+skipping any number already cited as origin-repo provenance. The five title-only
+entries are assigned, in file order (headings stay unedited; this note is the
+authoritative mapping):
+
+- ADR-026 = "Targeted decommission of Opus and ChatGPT Pro tools" (2026-07-16)
+- ADR-029 = "Compact ChatGPT Pro browser consultation" (2026-07-17)
+- ADR-030 = "Delete the dormant typed route/v1 machinery" (2026-07-18)
+- ADR-031 = "Live-caller-only terminal cleanup of the compact/capability kernel" (2026-07-17)
+- ADR-033 = "Delete the two unwired validators (check_cas, work-state transition table)" (2026-07-18)
+
+**Consequences:**
+- Cross-references may cite these numbers; a reader resolves them via this note.
+- The next free local number after this entry is ADR-036 — but ADR-036–041 are
+  also origin-cited in `docs/protocol/threeway/`; verify with a grep before
+  assigning any new number.
