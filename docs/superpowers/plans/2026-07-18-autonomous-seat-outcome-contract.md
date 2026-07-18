@@ -12,14 +12,29 @@
 
 - Source specification: `docs/superpowers/specs/2026-07-18-autonomous-seat-outcome-contract-design.md` at commit `5d0185c`.
 - Durable repository and mailbox evidence outranks chat summaries and stale prose.
-- An author cannot approve its own behavior-changing work; a non-author Operator supplies GO/NITS/FAIL for the actual committed change.
-- External or difficult-to-reverse effects require explicit user authority, one executor, a target, and authorized scope.
-- Known material findings remain visible through reviewer or ownership changes.
+- An author cannot approve its own behavior-changing work; request and report
+  preserve durable seat plus model or actor-context identity, and the reviewer
+  identity must differ even when the seats differ. A truthful distinct cold
+  context is acceptable only when durably stated; a distinct model is stronger.
+- Every ownership event binds task ID, exact current contract or route,
+  immutable parent/revision, previous owners, recipient-authored acceptance
+  references from every new owner, and all known finding references.
+- Any stale/dangling parent, fork, conflicting same-task tip, forged acceptance,
+  or unsupported takeover makes only the overlapping task non-actionable.
+- External or difficult-to-reverse effects require durable explicit user-
+  authority provenance plus an exact canonical effect, one executor, exact
+  target, and bounded scope. Structural token completeness is not execution
+  authorization.
+- Known material `finding_refs` remain immutable through outcome, ownership,
+  request, report, reviewer, and owner changes; reports explicitly disposition
+  every carried reference.
 - Ordinary internal ownership changes require neither coordinator approval nor separate user authorization after cutover.
 - The coordinator does not author behavior-changing production work unless the user explicitly assigns that model a director seat.
 - Tasks 1–6 are authored by a user-named `director` or `director2`; the current coordinator may route, observe, and reconcile but does not implement them.
 - Until Task 6 receives GO, the current R-INDEPENDENCE rule remains binding. Task 0 satisfies its design-time requirement once, without creating a preflight `CLEAR` gate.
-- Historical mailbox events and capacity packets remain immutable evidence.
+- Historical mailbox events and capacity packets remain immutable evidence;
+  legacy coordinator Task-board `coordination`, `status`, and `decision` event
+  kinds and pre-v3/v3/current report forms remain corpus-readable.
 - The current maintenance route remains binding until Task 7 publishes and commits the transition event.
 - Task 7 authorizes only a local mailbox transition event and local metadata commit when execution reaches that task; it does not authorize ledger resume, push, merge, lock, cursor consumption, target mutation, paid spend, or any remote effect.
 - Use `env -u GIT_INDEX_FILE` for ordinary Git and pytest commands.
@@ -28,12 +43,21 @@
 
 ## File Structure
 
-- `scripts/codex_protocol_model.py`: canonical semantic model for outcomes, ownership, work states, review independence, and external-effect authority.
-- `scripts/route_lineage.py`: recognizes both legacy coordinator routes and autonomous seat outcome-contract events.
-- `scripts/ledger_start_guard.py`: selects the authoritative compatible event for a bound target.
+- `scripts/protocol_mailbox.py`: loads committed `path@commit` event references
+  and derives immutable sender identity from repository evidence.
+- `scripts/codex_protocol_model.py`: canonical semantic model for outcomes,
+  ownership, work states, durable review identity, finding propagation, and
+  exact external-effect authority.
+- `scripts/route_lineage.py`: recognizes legacy coordinator Task-board kinds and
+  conflict-free autonomous parent/revision lineages per task.
+- `scripts/ledger_start_guard.py`: selects an authoritative compatible event for
+  a bound target and fails closed when that task's route lineage is ambiguous.
 - `scripts/protocol_capacity.py`: retains capacity observability while limiting route blocking to structural and hard-boundary failures.
 - `scripts/compact_pair_loop.py`: validates a minimal outcome-bound request/report instead of prescribing author tests and allowed paths.
-- `tests/unit/test_autonomous_seat_contract.py`: focused semantic contract tests.
+- `tests/unit/test_protocol_mailbox.py`: committed event-reference and sender
+  provenance tests.
+- `tests/unit/test_autonomous_seat_contract.py`: focused semantic contract,
+  immutable finding, actor-identity, and exact user-authority tests.
 - `tests/unit/test_route_lineage.py`: route compatibility and autonomous selection tests.
 - `tests/unit/test_protocol_capacity.py`: advisory diagnostics and compact external-effect authorization tests.
 - `tests/unit/test_compact_pair_loop.py`: minimal request/report and non-author verification tests.
@@ -53,7 +77,10 @@
 
 **Interfaces:**
 - Consumes: approved design spec at `5d0185c`, this plan, and the current R-INDEPENDENCE rule.
-- Produces: a durable independent abuse-case enumeration that the authoring Director carries into Tasks 1–6.
+- Produces: the durable Task 0 findings ref
+  `coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe3`
+  that the authoring Director carries with the existing Director2 maintenance
+  findings ref into Tasks 1–6.
 
 - [ ] **Step 1: Establish the authoring seat**
 
@@ -76,7 +103,15 @@ The request does not ask whether the plan is exhaustive and does not require `CL
 
 - [ ] **Step 3: Preserve the independent findings**
 
-The reviewer publishes with `coordination/bin/send-event <operator-seat> <director-seat> findings "autonomous outcome contract design findings"` and commits the generated event. The author adds every material finding to the Task 6 verification outcome and converts each feasible abuse case into a semantic test; when a test is infeasible, the plan records the exact repository evidence the actual-diff Operator must inspect. A hard-boundary contradiction must be resolved before implementation; ordinary edge cases remain acceptance evidence for the actual-diff review. This is a single current-law bridge, not a recurring preflight convergence loop.
+The reviewer publishes with `coordination/bin/send-event <operator-seat> <director-seat> findings "autonomous outcome contract design findings"` and commits the generated event. The committed result is
+`coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe3`.
+The author adds every material finding to the Task 6 verification outcome and
+converts each feasible abuse case into semantic coverage; when a test is
+infeasible, the plan records the exact repository evidence the actual-diff
+Operator must inspect. A hard-boundary contradiction must be resolved before
+implementation; ordinary edge cases remain acceptance evidence for the actual-
+diff review. This is a single current-law bridge, not a recurring preflight
+convergence loop or `CLEAR` gate.
 
 - [ ] **Step 4: Confirm no implementation mutation occurred under coordinator authority**
 
@@ -87,219 +122,159 @@ env -u GIT_INDEX_FILE git diff --name-only
 
 Expected: only the two fixed-writer mailbox events and their commits were created before the authoring Director begins Task 1.
 
-### Task 1: Add the semantic outcome and ownership model
+### Task 1: Add provenance-backed outcome and ownership semantics
 
 **Files:**
+- Modify: `scripts/protocol_mailbox.py`
 - Modify: `scripts/codex_protocol_model.py`
+- Modify: `tests/unit/test_protocol_mailbox.py`
 - Create: `tests/unit/test_autonomous_seat_contract.py`
 
 **Interfaces:**
-- Consumes: `protocol_mailbox.RECEIVING_SEATS` and existing `OPERATOR_SEATS`.
-- Produces: `OutcomeContract`, `OwnershipChange`, `ReviewDecision`, `ExternalEffectAuthorization`, `claim_outcome()`, `ownership_change_is_effective()`, `apply_ownership_change()`, `work_is_blocked()`, `review_accepts_outcome()`, and `external_effect_is_authorized()`.
+- Consumes: Git-committed fixed-writer events, the existing
+  `protocol_mailbox.RECEIVING_SEATS`, and existing `OPERATOR_SEATS`.
+- Produces: `protocol_mailbox.CommittedEventRef`,
+  `load_committed_event_ref(root, ref)`, `OutcomeContract`, `OwnershipChange`,
+  `ReviewDecision`, `UserAuthorityGrant`, `ExternalEffectAuthorization`,
+  `claim_outcome()`, `ownership_change_is_effective(contract, change)`,
+  `apply_ownership_change()`, `review_accepts_outcome()`,
+  `external_effect_token_is_complete()`, and
+  `external_effect_is_authorized(token, grant, used_authority_refs=())`.
 
-- [ ] **Step 1: Write the semantic contract tests**
+- [ ] **Step 1: Write committed-event provenance tests**
 
-Create `tests/unit/test_autonomous_seat_contract.py`:
+Extend `tests/unit/test_protocol_mailbox.py` with a temporary Git repository
+fixture and tests that prove `load_committed_event_ref()` accepts only
+`coordination/mailbox/sent/<event>.md@<40-hex>` when that exact commit contains
+that exact path and the filename sender equals the fixed-writer envelope sender.
+The same tests reject a missing commit, a path not present at the commit, a
+non-mailbox path, a filename/envelope sender mismatch, and a mutable working-tree
+file. Use a real `git commit` in the fixture so the sender fact is repository-
+derived rather than caller-supplied.
+
+- [ ] **Step 2: Write semantic contract tests**
+
+Create `tests/unit/test_autonomous_seat_contract.py`. Its fixtures must obtain
+proposal, acceptance, finding, takeover-evidence, and authority references via
+`load_committed_event_ref()`; do not instantiate trusted refs from free-form
+body fields. Cover these assertions:
 
 ```python
-from __future__ import annotations
-
-from dataclasses import replace
-
-import pytest
-
-import codex_protocol_model as model
-
-
-def _contract() -> model.OutcomeContract:
-    return model.claim_outcome(
-        task_id="maintenance-handoff-chronology",
-        outcome="Select the newest durable same-seat handoff without mtime authority.",
-        claimant="director",
-        evidence_bar=("focused regression evidence", "non-author Operator review"),
-        hard_boundaries=model.AUTONOMOUS_HARD_BOUNDARIES,
-    )
-
-
-def test_claim_creates_five_fact_outcome_contract() -> None:
-    contract = _contract()
-    assert contract.owners == ("director",)
-    assert contract.external_effect is None
-    assert contract.outcome.startswith("Select the newest")
-    assert contract.evidence_bar == (
-        "focused regression evidence",
-        "non-author Operator review",
-    )
-
-
-def test_transfer_requires_receiving_owner_acceptance() -> None:
-    contract = _contract()
-    proposed = model.OwnershipChange(
-        task_id=contract.task_id,
-        previous_owners=("director",),
-        new_owners=("director2",),
-        accepted_by=(),
-    )
-    assert not model.ownership_change_is_effective(proposed)
-    with pytest.raises(ValueError, match="not effective"):
-        model.apply_ownership_change(contract, proposed)
-
-    accepted = model.OwnershipChange(
-        task_id=contract.task_id,
-        previous_owners=("director",),
-        new_owners=("director2",),
-        accepted_by=("director2",),
-    )
-    assert model.apply_ownership_change(contract, accepted).owners == ("director2",)
-
-
-def test_split_merge_and_exchange_need_no_coordinator() -> None:
-    contract = _contract()
-    split = model.OwnershipChange(
-        task_id=contract.task_id,
-        previous_owners=("director",),
-        new_owners=("director", "operator2"),
-        accepted_by=("director", "operator2"),
-    )
-    changed = model.apply_ownership_change(contract, split)
-    assert changed.owners == ("director", "operator2")
-    assert "coordinator" not in split.accepted_by
-
-
-def test_abandoned_takeover_requires_fresh_work_and_lock_checks() -> None:
-    contract = _contract()
-    incomplete = model.OwnershipChange(
-        task_id=contract.task_id,
-        previous_owners=("director",),
-        new_owners=("director2",),
-        accepted_by=(),
-        abandoned_takeover=True,
-        fresh_work_checked=True,
-        active_lock_checked=False,
-    )
-    assert not model.ownership_change_is_effective(incomplete)
-
-    complete = model.OwnershipChange(
-        task_id=contract.task_id,
-        previous_owners=("director",),
-        new_owners=("director2",),
-        accepted_by=(),
-        abandoned_takeover=True,
-        fresh_work_checked=True,
-        active_lock_checked=True,
-    )
-    assert model.apply_ownership_change(contract, complete).owners == ("director2",)
-
-
-def test_finding_alone_is_not_blocked() -> None:
-    assert not model.work_is_blocked()
-    assert model.work_is_blocked(new_authority_required=True)
-    assert model.work_is_blocked(external_state_unavailable=True)
-    assert model.work_is_blocked(hard_boundary_violation=True)
-
-
-def test_only_non_author_operator_go_accepts_actual_revision() -> None:
-    accepted = model.ReviewDecision(
-        task_id="maintenance-handoff-chronology",
-        author="director",
-        operator="operator",
-        reviewed_revision="a" * 40,
-        verdict="GO",
-        material_findings=(),
-    )
-    assert model.review_accepts_outcome(accepted)
-    assert not model.review_accepts_outcome(
-        replace(accepted, operator="director")
-    )
-    assert not model.review_accepts_outcome(
-        replace(accepted, verdict="NITS")
-    )
-
-
-def test_external_effect_requires_one_known_executor_target_and_scope() -> None:
-    authorization = model.ExternalEffectAuthorization(
-        effect="git push",
-        executor="director",
-        target="origin/main",
-        scope=("fast-forward only",),
-    )
-    assert model.external_effect_is_authorized(authorization)
-    assert not model.external_effect_is_authorized(
-        model.ExternalEffectAuthorization(
-            effect="git push",
-            executor="director, operator",
-            target="origin/main",
-            scope=("fast-forward only",),
-        )
-    )
+def test_transfer_binds_current_parent_and_recipient_authored_acceptance(): ...
+def test_stale_parent_forged_acceptance_and_active_incumbent_self_claim_fail(): ...
+def test_split_exchange_waits_for_every_new_owner(): ...
+def test_abandoned_takeover_needs_fresh_work_and_lock_event_refs(): ...
+def test_ownership_change_cannot_drop_or_reorder_finding_refs(): ...
+def test_finding_is_advisory_unless_hard_boundary_is_unresolved(): ...
+def test_review_rejects_equal_seat_or_equal_actor_identity(): ...
+def test_operator_to_operator2_identity_collapse_is_rejected(): ...
+def test_review_requires_exact_range_and_every_finding_disposition(): ...
+def test_external_token_completeness_does_not_create_authority(): ...
+def test_external_authority_requires_exact_effect_executor_target_and_scope(): ...
+def test_external_authority_rejects_substring_replay_and_second_executor(): ...
 ```
 
-- [ ] **Step 2: Run the new tests and confirm RED**
+The positive review case uses different seats and durable unequal identities.
+The positive external-effect case passes a separate trusted
+`UserAuthorityGrant`; the same route token with `grant=None` fails.
 
-Run:
+- [ ] **Step 3: Run the new selectors and confirm RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_autonomous_seat_contract.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_protocol_mailbox.py \
+  tests/unit/test_autonomous_seat_contract.py -q
 ```
 
-Expected: collection fails because the new dataclasses and functions do not exist.
+Expected: collection or focused assertions fail because the provenance loader
+and amended semantic types do not exist.
 
-- [ ] **Step 3: Implement the semantic model**
+- [ ] **Step 4: Implement immutable event-reference loading**
 
-Add `dataclass` and `replace` imports to `scripts/codex_protocol_model.py`, then add this block after the seat tuples:
+Add to `scripts/protocol_mailbox.py`:
 
 ```python
-from dataclasses import dataclass, replace
+@dataclass(frozen=True)
+class CommittedEventRef:
+    ref: str
+    path: str
+    commit: str
+    sender: str
 
 
-AUTONOMOUS_WORK_STATES = (
-    "WORKING",
-    "NEEDS_PEER",
-    "FINDING",
-    "BLOCKED",
-    "READY_FOR_REVIEW",
-    "ACCEPTED",
-)
+def load_committed_event_ref(root: Path, value: str) -> CommittedEventRef:
+    """Load sender identity from an exact committed fixed-writer event.
 
-AUTONOMOUS_HARD_BOUNDARIES = (
-    "durable evidence outranks chat and stale prose",
-    "an author cannot approve its own behavior-changing work",
-    "external effects require explicit authority, one executor, target, and scope",
-    "known material evidence cannot be concealed",
-    "coordinator does not author behavior-changing production work",
-)
+    Split on the final ``@``, require a full lowercase commit, normalize the
+    relative mailbox path, prove ``commit:path`` exists with ``git cat-file``,
+    and require filename sender == ``**From:**`` envelope sender. Never fall
+    back to the working tree and never accept a sender supplied by the caller.
+    """
+```
 
+Use the module's existing roster constants. Add explicit standard-library
+imports for `dataclass`, `Path`, `re`, and `subprocess` as needed.
 
+- [ ] **Step 5: Implement the semantic dataclasses and guards**
+
+In `scripts/codex_protocol_model.py`, add `dataclass` and `replace` imports and
+**retain the existing explicit `protocol_mailbox` import**. The plan previously
+used `protocol_mailbox` implicitly; the implementation must keep this visible
+import block before the new definitions:
+
+```python
+try:
+    from scripts import protocol_mailbox
+except ImportError:  # direct script execution
+    import protocol_mailbox
+```
+
+Add these fields and signatures after the seat tuples:
+
+```python
 @dataclass(frozen=True)
 class OutcomeContract:
     task_id: str
+    contract_ref: str
+    parent_ref: str | None
+    revision: int
     outcome: str
     owners: tuple[str, ...]
     evidence_bar: tuple[str, ...]
     hard_boundaries: tuple[str, ...]
+    finding_refs: tuple[str, ...]
     external_effect: str | None = None
 
 
 @dataclass(frozen=True)
 class OwnershipChange:
     task_id: str
+    parent_contract_ref: str
+    revision: int
     previous_owners: tuple[str, ...]
     new_owners: tuple[str, ...]
-    accepted_by: tuple[str, ...]
+    proposal_ref: protocol_mailbox.CommittedEventRef
+    acceptance_refs: tuple[protocol_mailbox.CommittedEventRef, ...]
+    finding_refs: tuple[str, ...]
     outcome: str | None = None
     abandoned_takeover: bool = False
-    fresh_work_checked: bool = False
-    active_lock_checked: bool = False
+    fresh_work_ref: protocol_mailbox.CommittedEventRef | None = None
+    lock_state_ref: protocol_mailbox.CommittedEventRef | None = None
 
 
 @dataclass(frozen=True)
 class ReviewDecision:
     task_id: str
-    author: str
-    operator: str
-    reviewed_revision: str
+    author_seat: str
+    author_identity: str
+    reviewer_seat: str
+    reviewer_identity: str
+    reviewer_identity_kind: str
+    reviewed_base: str
+    reviewed_head: str
     verdict: str
-    material_findings: tuple[str, ...]
+    finding_refs: tuple[str, ...]
+    finding_dispositions: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -308,369 +283,256 @@ class ExternalEffectAuthorization:
     executor: str
     target: str
     scope: tuple[str, ...]
+    user_authority_ref: str
 
 
-def claim_outcome(
-    *,
-    task_id: str,
-    outcome: str,
-    claimant: str,
-    evidence_bar: tuple[str, ...],
-    hard_boundaries: tuple[str, ...],
-    external_effect: str | None = None,
-) -> OutcomeContract:
-    if claimant not in protocol_mailbox.RECEIVING_SEATS:
-        raise ValueError(f"unknown claimant: {claimant}")
-    if not task_id.strip() or not outcome.strip() or not evidence_bar:
-        raise ValueError("outcome claim requires task, outcome, and evidence")
-    return OutcomeContract(
-        task_id=task_id,
-        outcome=outcome,
-        owners=(claimant,),
-        evidence_bar=evidence_bar,
-        hard_boundaries=hard_boundaries,
-        external_effect=external_effect,
-    )
-
-
-def ownership_change_is_effective(change: OwnershipChange) -> bool:
-    if not change.new_owners or any(
-        owner not in protocol_mailbox.RECEIVING_SEATS for owner in change.new_owners
-    ):
-        return False
-    if change.abandoned_takeover:
-        return change.fresh_work_checked and change.active_lock_checked
-    return set(change.new_owners).issubset(change.accepted_by)
-
-
-def apply_ownership_change(
-    contract: OutcomeContract,
-    change: OwnershipChange,
-) -> OutcomeContract:
-    if change.task_id != contract.task_id:
-        raise ValueError("ownership change targets another task")
-    if change.previous_owners != contract.owners:
-        raise ValueError("ownership change does not match current owners")
-    if not ownership_change_is_effective(change):
-        raise ValueError("ownership change is not effective")
-    return replace(
-        contract,
-        owners=change.new_owners,
-        outcome=change.outcome or contract.outcome,
-    )
-
-
-def work_is_blocked(
-    *,
-    new_authority_required: bool = False,
-    external_state_unavailable: bool = False,
-    hard_boundary_violation: bool = False,
-) -> bool:
-    return any(
-        (new_authority_required, external_state_unavailable, hard_boundary_violation)
-    )
-
-
-def review_accepts_outcome(decision: ReviewDecision) -> bool:
-    return (
-        decision.operator in OPERATOR_SEATS
-        and decision.operator != decision.author
-        and len(decision.reviewed_revision) == 40
-        and decision.verdict == "GO"
-    )
-
-
-def external_effect_is_authorized(
-    authorization: ExternalEffectAuthorization,
-) -> bool:
-    return (
-        bool(authorization.effect.strip())
-        and authorization.executor in protocol_mailbox.RECEIVING_SEATS
-        and bool(authorization.target.strip())
-        and bool(authorization.scope)
-        and all(item.strip() for item in authorization.scope)
-    )
+@dataclass(frozen=True)
+class UserAuthorityGrant:
+    provenance_ref: str
+    effect: str
+    executor: str
+    target: str
+    scope: tuple[str, ...]
 ```
 
-- [ ] **Step 4: Run the focused tests and confirm GREEN**
+`claim_outcome()` requires `contract_ref`, `revision`, and canonical unique
+`finding_refs`. `ownership_change_is_effective(contract, change)` requires the
+same task, exact current `contract_ref`, `revision == contract.revision + 1`,
+exact previous owners, unchanged complete finding refs, a proposal authored by
+an incumbent, and acceptance-ref senders exactly equal to every new owner. For
+an abandoned takeover only, the proposal may be authored by a new owner, but
+both fresh-work and lock-state committed refs are mandatory. Caller booleans are
+not accepted by the API.
 
-Run:
+`review_accepts_outcome()` requires an Operator reviewer, unequal seats,
+nonblank unequal case-folded actor identities, `reviewer_identity_kind` in
+`{"model", "cold-context"}`, an exact 40-hex base/head pair, GO, unique
+canonical finding refs, and exactly one nonblank disposition for every ref.
+An ordinary finding does not itself imply `BLOCKED`; an unresolved hard-
+boundary finding does.
+
+`external_effect_token_is_complete()` validates only shape. The execution gate
+accepts a separately supplied `UserAuthorityGrant`, rejects `None`, wildcard or
+blank targets, unknown/multiple executors, any non-exact canonical tuple,
+authority refs already present in `used_authority_refs`, and any second
+executor. It compares canonical effect and target values for equality, never
+substring containment. No route parser may construct `UserAuthorityGrant` from
+seat-authored token text.
+
+- [ ] **Step 6: Run focused tests and confirm GREEN**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_autonomous_seat_contract.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_protocol_mailbox.py \
+  tests/unit/test_autonomous_seat_contract.py -q
 ```
 
-Expected: `7 passed`.
+Expected: all committed-event, ownership, review-identity, finding-propagation,
+and exact-authority cases pass.
 
-- [ ] **Step 5: Commit Task 1**
+- [ ] **Step 7: Commit Task 1**
 
 ```bash
-env -u GIT_INDEX_FILE git add -- scripts/codex_protocol_model.py tests/unit/test_autonomous_seat_contract.py
+env -u GIT_INDEX_FILE git add -- \
+  scripts/protocol_mailbox.py \
+  scripts/codex_protocol_model.py \
+  tests/unit/test_protocol_mailbox.py \
+  tests/unit/test_autonomous_seat_contract.py
 env -u GIT_INDEX_FILE git diff --cached --check
-env -u GIT_INDEX_FILE git commit -m "feat(protocol): model autonomous seat outcomes"
+env -u GIT_INDEX_FILE git commit -m "feat(protocol): model provenance-backed outcomes"
 ```
 
-### Task 2: Let any seat publish an authoritative outcome-contract route
+### Task 2: Resolve autonomous routes by immutable per-task lineage
 
 **Files:**
 - Modify: `scripts/route_lineage.py`
 - Modify: `scripts/ledger_start_guard.py`
 - Modify: `tests/unit/test_route_lineage.py`
+- Modify: `tests/unit/test_target_binding.py`
 
 **Interfaces:**
-- Consumes: legacy coordinator route filenames and `Outcome contract:` markers.
-- Produces: `route_lineage.is_route_event(path, body) -> bool` and `route_lineage.load_route_paths(root) -> list[Path]`.
+- Consumes: committed-event refs from Task 1; legacy coordinator Task-board
+  `coordination`, `status`, and `decision` events; autonomous `Outcome contract:`
+  events with task, parent, revision, previous-owner, owner, acceptance, and
+  finding bindings.
+- Produces: `route_lineage.is_route_event(path, body) -> bool`,
+  `load_route_paths(root) -> list[Path]`,
+  `resolve_task_routes(routes, task_id) -> Resolution`, and a guard that returns
+  no actionable route when the selected task has any lineage conflict.
 
-- [ ] **Step 1: Add autonomous route-selection tests**
+- [ ] **Step 1: Add autonomous lineage and legacy-corpus tests**
 
-Append to `tests/unit/test_route_lineage.py`:
+Extend `tests/unit/test_route_lineage.py` with committed Git fixtures and these
+cases:
 
 ```python
-def test_director_outcome_contract_can_supersede_legacy_coordinator_route(tmp_path):
-    import ledger_start_guard
-
-    legacy = _write_route(
-        tmp_path,
-        "2026-07-18T04-37-59Z-coordinator-to-all-coordination.md",
-        "Task-board: evidence-ledger-maintenance\nThis routes ledger work.\n",
-    )
-    autonomous = _write_route(
-        tmp_path,
-        "2026-07-18T06-00-00Z-director-to-all-coordination.md",
-        "Task-board: evidence-ledger-maintenance\n"
-        "Outcome contract:\n"
-        "Outcome: implement and verify the maintenance selector\n"
-        "Owner: director\n"
-        f"Supersedes route: {legacy.as_posix()}\n",
-    )
-
-    assert route_lineage.is_route_event(autonomous, autonomous.read_text())
-    assert ledger_start_guard.find_latest_ledger_route(tmp_path) == autonomous
-
-
-def test_unmarked_seat_coordination_does_not_become_a_route(tmp_path):
-    unmarked = _write_route(
-        tmp_path,
-        "2026-07-18T06-00-00Z-director2-to-all-coordination.md",
-        "Task-board: evidence-ledger-maintenance\nThis is advisory only.\n",
-    )
-    assert not route_lineage.is_route_event(unmarked, unmarked.read_text())
-
-
-def test_load_routes_includes_marked_operator_authored_outcome(tmp_path):
-    route = _write_route(
-        tmp_path,
-        "2026-07-18T06-10-00Z-operator2-to-all-coordination.md",
-        "Task-board: evidence-ledger-maintenance\n"
-        "Outcome contract:\n"
-        "Owner: operator2\n"
-        "Route generation: 1\n",
-    )
-    assert [item.route_id for item in route_lineage.load_routes(tmp_path)] == [
-        route_lineage.route_id_of(route.name)
-    ]
-
-
-def test_seat_cannot_assign_an_unwilling_owner_by_route(tmp_path):
-    route = _write_route(
-        tmp_path,
-        "2026-07-18T06-20-00Z-director-to-all-coordination.md",
-        "Task-board: evidence-ledger-maintenance\n"
-        "Outcome contract:\n"
-        "Owner: operator2\n",
-    )
-    assert not route_lineage.is_route_event(route, route.read_text())
+def test_recipient_authored_route_accepts_exact_incumbent_proposal(): ...
+def test_incumbent_proposal_alone_does_not_transfer(): ...
+def test_stale_or_dangling_parent_has_no_authoritative_route(): ...
+def test_same_revision_tips_fail_closed_in_both_input_orders(): ...
+def test_different_seat_same_timestamp_fails_closed(): ...
+def test_unsuperseded_tips_at_different_revisions_fail_closed(): ...
+def test_forged_acceptance_and_active_incumbent_self_claim_fail(): ...
+def test_split_exchange_requires_each_recipient_authored_ref(): ...
+def test_unrelated_task_continues_when_another_task_forks(): ...
+def test_unmarked_seat_coordination_is_not_a_route(): ...
+def test_legacy_task_board_coordination_status_and_decision_are_readable(): ...
 ```
 
-- [ ] **Step 2: Run the focused tests and confirm RED**
+The legacy test reads these committed corpus paths without rewriting them:
+
+```text
+coordination/mailbox/sent/2026-07-07T09-36-23Z-coordinator-to-all-coordination.md
+coordination/mailbox/sent/2026-07-07T16-52-18Z-coordinator-to-all-status.md
+coordination/mailbox/sent/2026-07-07T17-12-12Z-coordinator-to-all-decision.md
+```
+
+Record each legacy kind's disposition: readable and eligible for legacy route
+interpretation when it carries `Task-board:`; new autonomous publication uses
+`coordination` only.
+
+- [ ] **Step 2: Add the real-consumer fail-closed tests**
+
+Extend `tests/unit/test_target_binding.py` so `find_latest_ledger_route()` and
+`build_guard()` reject a fork, stale parent, dangling parent, same-revision tips,
+and conflicting live tips for the selected ledger task. Assert the error names
+the task and lineage issue and does not return a deterministic filename winner.
+Add a second unrelated task and prove its guard still resolves.
+
+- [ ] **Step 3: Run the new selectors and confirm RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_route_lineage.py -k "outcome_contract or unmarked_seat or operator_authored or unwilling_owner" -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_route_lineage.py \
+  tests/unit/test_target_binding.py \
+  -k "outcome or parent or fork or tip or acceptance or legacy_kind" -q
 ```
 
-Expected: failures because direct seat route events are not recognized.
+Expected: the current resolver still returns a lexicographic winner with fork
+issues and direct-seat events lack the required parent/acceptance parser.
 
-- [ ] **Step 3: Centralize compatible route discovery**
+- [ ] **Step 4: Implement compatible discovery and immutable route fields**
 
-Add to `scripts/route_lineage.py`:
+In `scripts/route_lineage.py`, extend `LineageRoute` with `task_id`,
+`route_ref`, `parent_ref`, `revision`, `previous_owners`, `owners`,
+`acceptance_refs`, and `finding_refs`. Autonomous bodies require exactly one of
+each scalar field and canonical unique lists:
 
-```python
-_OUTCOME_CONTRACT_RE = re.compile(
-    r"^\s*Outcome contract:\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-_DIRECT_SEAT_ROUTE_RE = re.compile(
-    r"Z-(?P<sender>director2?|operator2?)-to-all-coordination\.md$"
-)
-_OWNER_RE = re.compile(r"^\s*Owner:\s*(?P<value>[a-z0-9]+)\s*$", re.MULTILINE)
-
-
-def is_route_event(path: Path, body: str) -> bool:
-    name = path.name
-    if not name.endswith("-to-all-coordination.md") or "Task-board:" not in body:
-        return False
-    if "-coordinator-to-all-" in name or "-coordinator2-to-all-" in name:
-        return True
-    match = _DIRECT_SEAT_ROUTE_RE.search(name)
-    owners = _OWNER_RE.findall(body)
-    return (
-        match is not None
-        and _OUTCOME_CONTRACT_RE.search(body) is not None
-        and len(owners) == 1
-        and owners[0] == match.group("sender")
-    )
-
-
-def load_route_paths(root: Path) -> list[Path]:
-    sent = root / "coordination" / "mailbox" / "sent"
-    if not sent.exists():
-        return []
-    paths: list[Path] = []
-    for path in sorted(sent.glob("*-to-all-coordination.md")):
-        try:
-            body = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        if is_route_event(path, body):
-            paths.append(path)
-    return paths
+```text
+Task ID: <stable task id>
+Outcome contract:
+Parent contract: <path@commit>
+Contract revision: <positive integer>
+Previous owners: <comma-separated seats or none>
+Owners: <comma-separated seats>
+Proposal ref: <path@commit or self>
+Acceptance refs: <comma-separated path@commit refs; the committed route itself may satisfy its sender>
+Finding refs: <comma-separated path@commit refs or none>
 ```
 
-Replace `load_routes()` with:
+`is_route_event()` recognizes two disjoint forms:
 
-```python
-def load_routes(root: Path) -> list[LineageRoute]:
-    routes: list[LineageRoute] = []
-    for path in load_route_paths(root):
-        body = path.read_text(encoding="utf-8", errors="replace")
-        routes.append(LineageRoute(route_id_of(path.name), parse_lineage(body)))
-    return routes
-```
+1. existing coordinator/coordinator2 `*-to-all-(coordination|status|decision).md`
+   events carrying `Task-board:`; and
+2. direct-seat `*-to-all-coordination.md` events carrying the complete
+   autonomous form.
 
-In `scripts/ledger_start_guard.py`, replace the coordinator-only glob loop with:
+Iterate all regular mailbox files rather than globbing only coordination
+filenames. Load every referenced acceptance through
+`protocol_mailbox.load_committed_event_ref()`. The route's own committed ref is
+derived from Git and may count only for its actual fixed-writer sender. Build an
+`OwnershipChange` and call Task 1's semantic guard; never trust an `accepted_by`
+string or a declared sender.
 
-```python
-    candidates: list[Path] = []
-    for path in sorted(route_lineage.load_route_paths(root), reverse=True):
-        try:
-            body = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        body_lower = body.lower()
-        if any(keyword in body_lower for keyword in target.route_keywords) or (
-            target.path.as_posix() in body
-        ):
-            candidates.append(path)
-```
+- [ ] **Step 5: Make resolution per-task and fail closed**
 
-Update its docstrings and user-facing error from “coordinator route” to “outcome-contract route”.
+Implement `resolve_task_routes(routes, task_id)` so a valid next autonomous
+revision must point to the unique current tip. Return
+`Resolution(authoritative=None, issues=...)` for a fork, stale/dangling parent,
+same-revision tips, conflicting unsuperseded tips at different revisions, or
+any ineffective ownership change. Do not sort conflicting tips into a winner.
+Legacy-only history retains its existing compatible selection until a valid
+autonomous child names the exact legacy parent. Resolution issues for another
+task do not affect the requested task.
 
-For a direct-seat route, the fixed-writer sender must be the declared owner. Publishing the superseding event is therefore the receiving owner's durable acceptance; an incumbent may propose a transfer but cannot assign an unwilling seat. A split or exchange becomes a set of recipient-authored outcome events for the accepted child outcomes. Seats pause only overlapping writes if competing claims appear.
+In `scripts/ledger_start_guard.py`, discover candidates through
+`load_route_paths()`, filter by the bound target/task, call
+`resolve_task_routes()`, and fail closed if `authoritative is None` or issues are
+present. Update user-facing text from “coordinator route” to “outcome-contract
+route” without changing the ledger guard's existing target binding.
 
-- [ ] **Step 4: Run route and guard tests**
+- [ ] **Step 6: Run route, corpus, and guard tests**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_route_lineage.py tests/unit/test_target_binding.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_route_lineage.py \
+  tests/unit/test_target_binding.py -q
 ```
 
-Expected: all pass, including legacy fallback and the four new autonomous cases.
+Expected: autonomous lineage cases, all three committed legacy kinds, and the
+real ledger consumer pass; no conflict case returns a winner.
 
-- [ ] **Step 5: Commit Task 2**
+- [ ] **Step 7: Commit Task 2**
 
 ```bash
-env -u GIT_INDEX_FILE git add -- scripts/route_lineage.py scripts/ledger_start_guard.py tests/unit/test_route_lineage.py
+env -u GIT_INDEX_FILE git add -- \
+  scripts/route_lineage.py \
+  scripts/ledger_start_guard.py \
+  tests/unit/test_route_lineage.py \
+  tests/unit/test_target_binding.py
 env -u GIT_INDEX_FILE git diff --cached --check
-env -u GIT_INDEX_FILE git commit -m "feat(protocol): accept seat-owned outcome routes"
+env -u GIT_INDEX_FILE git commit -m "feat(protocol): resolve seat routes by immutable lineage"
 ```
 
-### Task 3: Demote capacity rules and compact external-effect authorization
+### Task 3: Demote capacity rules and separate effect token shape from authority
 
 **Files:**
 - Modify: `scripts/protocol_capacity.py`
 - Modify: `tests/unit/test_protocol_capacity.py`
 
 **Interfaces:**
-- Consumes: `route_lineage.is_route_event()` and legacy ten-field side-effect tokens.
-- Produces: four-field compact authorization, advisory capacity findings, and hard-boundary-only route validity.
+- Consumes: `route_lineage.is_route_event()`, Task 1's exact authority model,
+  compact tokens, legacy ten-field tokens, and a separately trusted
+  `UserAuthorityGrant` supplied by the execution caller.
+- Produces: structural token diagnostics,
+  `validate_external_effect_execution(token, grant, used_authority_refs)`,
+  advisory capacity findings, and hard-boundary-only route validity. Route
+  parsing never creates a user grant.
 
-- [ ] **Step 1: Write focused route and authorization tests**
+- [ ] **Step 1: Write focused route and execution-authority tests**
 
-Append to `tests/unit/test_protocol_capacity.py`:
+Extend `tests/unit/test_protocol_capacity.py` with valid committed autonomous
+route fixtures from Task 2 and these cases:
 
 ```python
-def test_autonomous_outcome_route_needs_no_packets_join_or_capacity_split(tmp_path: Path):
-    route = _write_route(
-        tmp_path,
-        "2026-07-18T06-00-00Z-director-to-all-coordination.md",
-        "Task-board: maintenance\n"
-        "Outcome contract:\n"
-        "Outcome: deliver the reviewed maintenance selector\n"
-        "Owner: director\n"
-        "Evidence bar: focused tests and non-author GO\n"
-        "Hard boundaries: no external effect\n",
-    )
-    result = protocol_capacity.validate_route(tmp_path, 2, route)
-    assert result.valid
-    assert result.blocking_issues == []
-    assert any("no capacity packets" in item["message"] for item in result.advisories)
-
-
-def test_internal_outcome_route_is_not_a_shared_external_effect(tmp_path: Path):
-    route = _write_route(
-        tmp_path,
-        "2026-07-18T06-01-00Z-director2-to-all-coordination.md",
-        "Task-board: maintenance\n"
-        "Outcome contract:\n"
-        "Owner: director2\n"
-        "Ownership change: director -> director2, accepted by director2\n",
-    )
-    assert protocol_capacity.validate_route(tmp_path, 2, route).valid
-
-
-def test_compact_external_effect_authorization_is_sufficient(tmp_path: Path):
-    route = _write_route(
-        tmp_path,
-        "2026-07-18T06-02-00Z-director-to-all-coordination.md",
-        "Task-board: publish\n"
-        "Outcome contract:\n"
-        "Owner: director\n"
-        "This route authorizes director to push origin/main.\n\n"
-        "## Side-Effect Executor Token\n\n"
-        "- effect: git push\n"
-        "- executor: director\n"
-        "- target: origin/main\n"
-        "- authorized_scope: fast-forward only\n",
-    )
-    assert protocol_capacity.validate_route(tmp_path, 2, route).valid
-
-
-def test_compact_external_effect_authorization_requires_scope(tmp_path: Path):
-    route = _write_route(
-        tmp_path,
-        "2026-07-18T06-03-00Z-director-to-all-coordination.md",
-        "Task-board: publish\n"
-        "Outcome contract:\n"
-        "Owner: director\n"
-        "This route authorizes director to push origin/main.\n\n"
-        "## Side-Effect Executor Token\n\n"
-        "- effect: git push\n"
-        "- executor: director\n"
-        "- target: origin/main\n",
-    )
-    result = protocol_capacity.validate_route(tmp_path, 2, route)
-    assert not result.valid
-    assert "authorized_scope" in "\n".join(
-        item["message"] for item in result.blocking_issues
-    )
+def test_autonomous_route_needs_no_packets_join_or_capacity_split(): ...
+def test_internal_ownership_event_is_not_an_external_effect(): ...
+def test_complete_compact_token_is_only_structural_without_user_grant(): ...
+def test_legacy_token_is_readable_but_still_needs_separate_user_grant(): ...
+def test_execution_rejects_absent_user_authority(): ...
+def test_execution_rejects_unknown_or_multiple_executor(): ...
+def test_execution_rejects_blank_wildcard_or_substring_target(): ...
+def test_origin_main_does_not_match_evil_origin_main_backup(): ...
+def test_execution_rejects_blank_or_broadened_scope_and_effect_mismatch(): ...
+def test_execution_rejects_cross_target_replay_and_used_authority_ref(): ...
+def test_execution_rejects_second_executor(): ...
+def test_exact_compact_and_legacy_tuples_pass_with_matching_user_grant(): ...
 ```
+
+The positive cases pass `UserAuthorityGrant` as a separate function argument.
+No route body or token fixture is allowed to manufacture that object.
 
 - [ ] **Step 2: Run the new tests and confirm RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_capacity.py -k "autonomous_outcome or internal_outcome or compact_external" -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_protocol_capacity.py \
+  -k "autonomous_outcome or internal_outcome or external or authority or target" -q
 ```
 
-Expected: failures from coordinator-only validation, capacity coupling, and the legacy ten-field token requirement.
+Expected: failures from coordinator-only validation, capacity coupling,
+substring target coverage, and the absence of a separate execution-authority
+gate.
 
 - [ ] **Step 3: Make capacity findings advisory for route validity**
 
@@ -730,7 +592,7 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
 
 Delete `_capacity_split_route_issues()` and its direct tests. Preserve capacity-board packet reporting tests; only route gating is demoted.
 
-- [ ] **Step 4: Accept compact and legacy external-effect tokens**
+- [ ] **Step 4: Parse compact and legacy tokens without minting authority**
 
 Replace the token constants with:
 
@@ -740,6 +602,7 @@ REQUIRED_SIDE_EFFECT_TOKEN_FIELDS = (
     "executor",
     "target",
     "authorized_scope",
+    "user_authority_ref",
 )
 LEGACY_SIDE_EFFECT_TOKEN_FIELDS = (
     "side_effect_id",
@@ -755,37 +618,75 @@ LEGACY_SIDE_EFFECT_TOKEN_FIELDS = (
 )
 ```
 
-Add aliases for `effect`, `authorized_scope`, `authorized scope`, and `scope`. Remove `route mutation` from `SHARED_SIDE_EFFECT_PATTERNS`; internal mailbox ownership events are not external effects.
+Add aliases for `effect`, `authorized_scope`, `authorized scope`, `scope`, and
+`user_authority_ref`. Remove `route mutation` from
+`SHARED_SIDE_EFFECT_PATTERNS`; internal mailbox ownership events are not
+external effects. Legacy tokens remain structurally readable even though they
+do not contain user provenance; the caller must supply the separate grant.
 
 Add:
 
 ```python
-def _token_is_complete(token: dict[str, str]) -> bool:
+def _token_is_structurally_complete(token: dict[str, str]) -> bool:
     compact = all(token.get(field) for field in REQUIRED_SIDE_EFFECT_TOKEN_FIELDS)
     legacy = all(token.get(field) for field in LEGACY_SIDE_EFFECT_TOKEN_FIELDS)
     return compact or legacy
 ```
 
-Use `_token_is_complete()` wherever completeness is currently calculated. In `_token_covers_side_effect()`, build token text from `effect` when present and otherwise `allowed_command_class`:
+Use `_token_is_structurally_complete()` only for structural diagnostics. Replace
+`_token_covers_side_effect()` substring construction with canonical field
+extraction:
 
 ```python
-    effect = token.get("effect") or token.get("allowed_command_class", "")
-    token_text = f"{effect} {token.get('target', '')}".lower()
+def _canonical_effect(token: dict[str, str]) -> str:
+    return " ".join(
+        (token.get("effect") or token.get("allowed_command_class", "")).split()
+    ).casefold()
+
+
+def _token_exact_tuple(token: dict[str, str]) -> tuple[str, str, str, tuple[str, ...]]:
+    return (
+        _canonical_effect(token),
+        token.get("executor", "").strip(),
+        token.get("target", "").strip(),
+        tuple(item.strip() for item in _scope_items(token) if item.strip()),
+    )
 ```
 
-Keep the existing exactly-one-executor check and legacy-token positive test.
+Keep the exactly-one-executor structural check. Target and effect comparisons
+use equality; no concatenated token text or `in` test remains.
 
-The four-field token is structural evidence of the separately granted authorization; route validity does not create user authority. Keep the hard-boundary text and tests explicit that an executor may act only after the user has authorized that effect, target, and scope.
+- [ ] **Step 5: Implement the execution gate**
 
-- [ ] **Step 5: Run the capacity tests**
+Add:
+
+```python
+def validate_external_effect_execution(
+    token: dict[str, str],
+    grant: model.UserAuthorityGrant | None,
+    used_authority_refs: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Validate exact authority supplied by the trusted execution caller."""
+```
+
+Delegate the semantic decision to Task 1's
+`external_effect_is_authorized()`. Reject missing provenance, blank/wildcard
+target, noncanonical or multiple executors, effect/target/scope inequality,
+cross-target replay, a provenance ref already used, and a second executor. This
+function may receive a grant from a user-prompt/signed-bus adapter; it must never
+parse one from the route. `validate_route()` reports token structure only and
+must not describe a complete token as execution-authorized.
+
+- [ ] **Step 6: Run the capacity and exact-authority tests**
 
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_protocol_capacity.py -q
 ```
 
-Expected: all pass after deleting or rewriting the coordinator-only and capacity-split route assertions.
+Expected: all pass after rewriting coordinator-only/capacity-split assertions;
+both compact and legacy tokens require the same separate exact user grant.
 
-- [ ] **Step 6: Commit Task 3**
+- [ ] **Step 7: Commit Task 3**
 
 ```bash
 env -u GIT_INDEX_FILE git add -- scripts/protocol_capacity.py tests/unit/test_protocol_capacity.py
@@ -793,7 +694,7 @@ env -u GIT_INDEX_FILE git diff --cached --check
 env -u GIT_INDEX_FILE git commit -m "refactor(protocol): make capacity routing advisory"
 ```
 
-### Task 4: Reduce compact-pair authority to outcome and independent review
+### Task 4: Bind compact-pair review to durable identity and findings
 
 **Files:**
 - Modify: `scripts/compact_pair_loop.py`
@@ -804,95 +705,60 @@ env -u GIT_INDEX_FILE git commit -m "refactor(protocol): make capacity routing a
 - Modify: `.claude/skills/seat-operator/verification-report-format.md`
 
 **Interfaces:**
-- Consumes: existing committed verify-request/report envelopes and historical verbose fields.
-- Produces: minimal request authority `(reviewed base/head, outcome, author seat, assigned non-author Operator)` and report authority `(request binding, reviewed range, reviewer seat, verdict, evidence)`.
+- Consumes: existing committed request/report envelopes, historical verbose
+  identity fields, immutable `finding_refs`, and frozen report manifests.
+- Produces: request authority `(range, outcome, author seat, author identity,
+  assigned Operator, finding_refs)` and report authority `(request, range,
+  reviewer seat, unequal reviewer identity, verdict, evidence, finding
+  dispositions)`.
 
-- [ ] **Step 1: Rewrite fixtures to prove the minimal contract**
+- [ ] **Step 1: Rewrite fixtures and add independence/finding tests**
 
-Change `_request_text()` in `tests/unit/test_compact_pair_loop.py` to:
+The minimal request fixture contains:
 
-```python
-def _request_text(base: str, head: str) -> str:
-    return f"""\
-# Director → Operator: verify outcome
-
-**When:** 2026-07-17T08:00:00Z · **From:** director (online)
-
+```markdown
 Event type: verify-request
-Reviewed head: {head}
-Reviewed base: {base}
+Reviewed head: <40-hex>
+Reviewed base: <40-hex>
 Author seat: director
+Author identity: codex-director-context-a
+Author identity kind: cold-context
 Assigned operator: operator
 
 ## Outcome
 
 The committed change satisfies the routed maintenance outcome.
 
-Cursor at send: 0
-"""
+## Finding Refs
+
+- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe3
 ```
 
-Remove `allowed` arguments and assertions. Keep exact commit/range, request-commit, envelope, and non-author tests. Update the writer fixture in `tests/unit/test_coordination_tooling.py` to emit the same minimal request/report shapes. Add:
-
-```python
-def test_request_needs_outcome_but_not_prescribed_paths_or_commands(tmp_path: Path) -> None:
-    root, base, head, trigger = _repo(tmp_path)
-    request = pair.parse_verify_request(root, REQUEST_PATH, trigger)
-    assert request.outcome == "The committed change satisfies the routed maintenance outcome."
-    assert request.reviewed_base == base
-    assert request.reviewed_head == head
-
-
-def test_operator_authored_change_can_be_reviewed_by_operator2(tmp_path: Path) -> None:
-    path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
-    root, _, _, trigger = _repo(
-        tmp_path,
-        request_path=path,
-        request_transform=lambda text: text.replace(
-            "**From:** director", "**From:** operator"
-        ).replace("Author seat: director", "Author seat: operator").replace(
-            "Assigned operator: operator", "Assigned operator: operator2"
-        ),
-    )
-    assert pair.parse_verify_request(root, path, trigger).assigned_operator == "operator2"
-
-
-def test_author_cannot_assign_itself_as_reviewer(tmp_path: Path) -> None:
-    path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator")
-    root, _, _, trigger = _repo(
-        tmp_path,
-        request_path=path,
-        request_transform=lambda text: text.replace(
-            "**From:** director", "**From:** operator"
-        ).replace("Author seat: director", "Author seat: operator"),
-    )
-    with pytest.raises(pair.CompactPairError, match="non-author"):
-        pair.parse_verify_request(root, path, trigger)
-```
-
-Update `_repo()` to accept `request_path` and `request_transform` explicitly. Add a GO-without-evidence rejection while retaining truthful NITS/FAIL without success evidence. Extend `tests/unit/test_check_go_schema.py` so a structurally valid current GO report with `## Evidence` passes and the same report with an empty evidence section fails.
+Remove prescribed path/command assertions but retain exact range, request-
+commit, envelope, and non-author assertions. Add tests for: same seat; different
+seats with equal identity including `operator -> operator2`; missing or blank
+identity; accepted unequal `model` and truthful `cold-context` identities;
+dropped, duplicate, and reordered finding refs; missing disposition; GO without
+evidence; and truthful NITS/FAIL with preserved refs. Extend
+`test_check_go_schema.py` across frozen pre-v3, historical v3, current verbose,
+and new compact reports.
 
 - [ ] **Step 2: Run compact-pair tests and confirm RED**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_compact_pair_loop.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_compact_pair_loop.py \
+  tests/unit/test_coordination_tooling.py \
+  tests/unit/test_check_go_schema.py -q
 ```
 
-Expected: failures because paths, commands, author model, and the old author-role regex are still mandatory.
+Expected: failures because paths/commands are still mandatory and the reduced
+shape does not yet preserve actor identity or finding refs.
 
-- [ ] **Step 3: Implement the minimal compatible parser**
+- [ ] **Step 3: Implement the compatible parser**
 
-Change `REQUEST_RE` so the author may be any pair seat while the reviewer remains an Operator:
-
-```python
-REQUEST_RE = re.compile(
-    r"coordination/mailbox/sent/"
-    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
-    r"(?P<author>director2?|operator2?)-to-(?P<operator>operator2?)-verify-request\.md"
-)
-```
-
-Replace `VerifyRequest` with:
+Allow any pair seat as request author while keeping only Operator seats as
+reviewers. Replace request/report dataclasses with:
 
 ```python
 @dataclass(frozen=True)
@@ -902,13 +768,13 @@ class VerifyRequest:
     reviewed_head: str
     reviewed_base: str
     author_seat: str
+    author_identity: str
+    author_identity_kind: str
     assigned_operator: str
     outcome: str
-```
+    finding_refs: tuple[str, ...]
 
-Replace `VerificationReport` with:
 
-```python
 @dataclass(frozen=True)
 class VerificationReport:
     path: str
@@ -918,86 +784,69 @@ class VerificationReport:
     reviewed_head: str
     reviewed_base: str
     reviewer_seat: str
+    reviewer_identity: str
+    reviewer_identity_kind: str
     evidence: tuple[str, ...]
+    finding_refs: tuple[str, ...]
+    finding_dispositions: tuple[tuple[str, str], ...]
     filename_reviewer: str
     envelope_sender: str
 ```
 
-Add an optional section helper that still rejects duplicates:
+Keep exact Git, envelope, assignment, and ancestry checks. Parse `Author
+identity`/`Reviewer identity` plus kind `model | cold-context`; map legacy
+`Author model`/`Reviewer model` to kind `model`. Require nonblank identities and
+reject case-folded equality even across different seats. Parse canonical unique
+`path@commit` lines under `## Finding Refs`. Reports require exactly the same
+refs and one nonblank disposition per ref under `## Finding Dispositions`.
 
-```python
-def _section_optional(lines: list[str], heading: str) -> list[str] | None:
-    positions = [index for index, line in enumerate(lines) if line == heading]
-    if not positions:
-        return None
-    if len(positions) != 1:
-        raise CompactPairError(f"duplicate {heading}")
-    return _section(lines, heading)
-```
+Delete only allowed-path equality and requested-command enforcement. Retain the
+Git range-existence check, seat inequality, actor-identity inequality, request
+binding, assigned reviewer, exact base/head, and GO evidence requirement.
 
-In `parse_verify_request()`, keep the exact Git, envelope, author, assigned-operator, and ancestry checks. Reject `assigned == author` with `Assigned operator must be a non-author`. Replace model/question/path/command parsing with:
-
-```python
-    outcome_lines = _section_optional(lines, "## Outcome")
-    if outcome_lines is None:
-        outcome_lines = _section(lines, "## Acceptance Question")
-    outcome = "\n".join(outcome_lines).strip()
-    if not outcome:
-        raise CompactPairError("Outcome must be nonempty")
-    return VerifyRequest(
-        path=path,
-        trigger_commit=trigger,
-        reviewed_head=head,
-        reviewed_base=base,
-        author_seat=author,
-        assigned_operator=assigned,
-        outcome=outcome,
-    )
-```
-
-In report parsing, require the existing binding/range/reviewer fields, parse `## Evidence` lines when present, and ignore legacy model/harness/context/allowed-path fields:
-
-```python
-    evidence_lines = _section_optional(lines, "## Evidence")
-    evidence = tuple(line for line in (evidence_lines or ()) if line)
-    if verdict == "GO" and not evidence:
-        raise CompactPairError("GO requires material evidence")
-```
-
-Return the reduced dataclass. In `validate_report()`, retain request validity, reviewer envelope/path matching, assigned reviewer, reviewer-not-author, and reviewed base/head equality. Delete author-model equality, allowed-path equality, and requested-command enforcement. Still run a Git diff of the reviewed range solely to prove the range exists; do not use it to enforce a predeclared path allowlist.
-
-Replace both report-format mirrors with this minimal body skeleton while keeping their bytes identical:
+- [ ] **Step 4: Update both byte-identical report mirrors**
 
 ```markdown
 Event type: verification-report
 VERDICT: GO | NITS | FAIL
-Verification request: coordination/mailbox/sent/<verify-request>.md@<40-lowercase-request-commit>
-Reviewed head: <40-lowercase-hex>
-Reviewed base: <40-lowercase-hex>
+Verification request: coordination/mailbox/sent/<request>.md@<request-commit>
+Reviewed head: <40-hex>
+Reviewed base: <40-hex>
 Reviewer seat: operator | operator2
+Reviewer identity: <durable model or truthful cold-context identity>
+Reviewer identity kind: model | cold-context
+
+## Finding Refs
+
+- <immutable-path@commit>
+
+## Finding Dispositions
+
+- <immutable-path@commit>: addressed | counter-evidence | ordinary-risk | unresolved-hard-boundary
 
 ## Evidence
 
 $ <reviewer-chosen command or inspection>
 → <observed result>
-
-## Findings
-
-None.
 ```
 
-GO requires material evidence. NITS and FAIL remain publishable when evidence is unavailable, provided the report states the limitation truthfully.
+GO requires evidence, unequal durable identity, and no unresolved hard-boundary
+disposition. NITS/FAIL may state unavailable evidence but must still preserve
+and disposition every ref.
 
-- [ ] **Step 4: Run compact-pair and writer integration tests**
+- [ ] **Step 5: Run compact-pair and corpus compatibility tests**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_compact_pair_loop.py tests/unit/test_coordination_tooling.py -q
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_check_go_schema.py -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_compact_pair_loop.py \
+  tests/unit/test_coordination_tooling.py \
+  tests/unit/test_check_go_schema.py -q
 ```
 
-Expected: all pass, including legacy verbose request/report compatibility.
+Expected: all new independence/finding cases and all frozen pre-v3,
+historical-v3, and current verbose compatibility cases pass.
 
-- [ ] **Step 5: Commit Task 4**
+- [ ] **Step 6: Commit Task 4**
 
 ```bash
 env -u GIT_INDEX_FILE git add -- \
@@ -1008,7 +857,7 @@ env -u GIT_INDEX_FILE git add -- \
   .agents/skills/seat-operator/verification-report-format.md \
   .claude/skills/seat-operator/verification-report-format.md
 env -u GIT_INDEX_FILE git diff --cached --check
-env -u GIT_INDEX_FILE git commit -m "refactor(protocol): bind reviews to outcomes"
+env -u GIT_INDEX_FILE git commit -m "refactor(protocol): bind reviews to identity and findings"
 ```
 
 ### Task 5: Consolidate the protocol model and thin every active seat adapter
@@ -1087,6 +936,9 @@ def test_autonomous_contract_is_model_backed_and_adapters_are_thin() -> None:
         "without coordinator approval",
         "FINDING is not BLOCKED",
         "non-author Operator GO",
+        "distinct actor identity",
+        "immutable parent and revision",
+        "finding refs",
         "external effect",
     ):
         assert phrase.casefold() in rendered.casefold()
@@ -1144,12 +996,13 @@ AUTONOMOUS_SEAT_REFERENCE = (
 )
 AUTONOMOUS_SEAT_RULES = (
     "Own the outcome, choose the method, and show credible evidence.",
-    "Any seat may claim, split, merge, transfer, exchange, or reroute work without coordinator approval; a receiving owner must accept a normal transfer.",
+    "Any seat may claim, split, merge, transfer, exchange, or reroute work without coordinator approval; every new owner accepts through its own durable event bound to the exact task, parent contract, revision, and previous owners.",
+    "A route fork, stale or dangling parent, or conflicting same-task tip makes only that task non-actionable; unrelated tasks continue.",
     "WORKING means meaningful progress remains; NEEDS_PEER requests help; FINDING is not BLOCKED; BLOCKED means no lawful path exists without new authority, unavailable external state, or hard-boundary resolution.",
     "Preflight is advisory and preserves material findings; it does not require CLEAR before implementation.",
-    "Behavior-changing work is accepted only by non-author Operator GO on the actual reviewed commit or range.",
-    "External effects require explicit user authority, one executor, target, and authorized scope.",
-    "Known material evidence remains visible through ownership or reviewer changes.",
+    "Behavior-changing work is accepted only by non-author Operator GO with a distinct durable actor identity on the actual reviewed commit or range.",
+    "External effects require durable explicit user authority and an exact canonical effect, one executor, exact target, and bounded scope; token completeness is not execution authority.",
+    "Known material finding refs remain immutable through ownership and reviewer changes and receive explicit report dispositions.",
     "Coordinator observes and facilitates but is not the mandatory route author or convergence gate and does not author behavior-changing production work.",
 )
 
@@ -1160,7 +1013,16 @@ def render_autonomous_seat_contract() -> str:
     )
 ```
 
-Revise `COMPACT_PAIR_INVARIANT` to require only the committed reviewed base/head, outcome, author seat, assigned non-author Operator, and one bound report. Revise R-INDEPENDENCE in the model, `CLAUDE.md`, and `docs/protocol/claude/independence-first.md`: an adversarial-surface owner explicitly assesses plausible abuse classes and preserves material independent findings, while the owner and actual-diff Operator choose proportional review depth. Early independent review is encouraged when it adds signal; it is not a universal pre-implementation `CLEAR` gate. Non-author actual-diff GO remains mandatory.
+Revise `COMPACT_PAIR_INVARIANT` to require the committed reviewed base/head,
+outcome, author seat and durable actor identity, assigned non-author Operator,
+immutable finding refs, and one bound report with unequal reviewer identity and
+explicit dispositions. Revise R-INDEPENDENCE in the model, `CLAUDE.md`, and
+`docs/protocol/claude/independence-first.md`: an adversarial-surface owner
+explicitly assesses plausible abuse classes and preserves material independent
+findings, while the owner and actual-diff Operator choose proportional review
+depth. Early independent review is encouraged when it adds signal; it is not a
+universal pre-implementation `CLEAR` gate. Distinct-identity non-author actual-
+diff GO remains mandatory.
 
 Keep runtime identity, ledger bridge, mailbox, signed-bus, environment, and optional consultation renderers that still have production consumers. Delete renderer calls and constants used only by the retired copied capsules. Add `render_autonomous_seat_contract()` once to `render_surface_summary()` and `main()`.
 
@@ -1181,7 +1043,9 @@ Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
 Own the routed outcome and choose the method. Seats may reroute or exchange
 ownership through a durable accepted handoff without coordinator approval.
 Preserve material findings, require non-author Operator GO for behavior-changing
-work, and keep external effects separately user-authorized.
+work with distinct durable actor identity, bind autonomous ownership to an
+immutable parent/revision, preserve immutable finding refs, and keep external
+effects separately user-authorized for the exact effect/executor/target/scope.
 ```
 
 Role-local consequences:
@@ -1208,6 +1072,7 @@ Remove mandatory Capacity Split Default sections, exact R-BRIEF checklists, exac
 
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_protocol_mailbox.py \
   tests/unit/test_autonomous_seat_contract.py \
   tests/unit/test_protocol_prompt_sync.py \
   tests/unit/test_protocol_doc_integrity.py \
@@ -1270,11 +1135,15 @@ user or parent prompt
   -> active outcome contract + durable owner
   -> seat-chosen implementation, collaboration, or ownership exchange
   -> committed actual change + outcome-bound verify-request
-  -> non-author Operator GO/NITS/FAIL
-  -> separately authorized external effect, if any
+  -> distinct-identity non-author Operator GO/NITS/FAIL with finding dispositions
+  -> separately user-authorized exact external-effect tuple, if any
 ```
 
-Update section 4 to state that autonomous seat events may supersede legacy coordinator routes, capacity tools are diagnostics, preflight is advisory, and actual-diff non-author GO remains the acceptance gate.
+Update section 4 to state that conflict-free autonomous seat events may
+supersede legacy coordinator routes by exact parent/revision, capacity tools are
+diagnostics, preflight is advisory, actor identity cannot collapse across seats,
+finding refs remain immutable, exact user authority is separate from token
+shape, and actual-diff non-author GO remains the acceptance gate.
 
 - [ ] **Step 2: Append the decision record**
 
@@ -1321,6 +1190,7 @@ Expected: no active normative claim contradicts the new model. Historical specs,
 
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
+  tests/unit/test_protocol_mailbox.py \
   tests/unit/test_autonomous_seat_contract.py \
   tests/unit/test_route_lineage.py \
   tests/unit/test_target_binding.py \
@@ -1338,6 +1208,13 @@ env -u GIT_INDEX_FILE git diff --check
 
 Expected: all pytest tests pass, coordination check passes, smoke ends `OK`, and diff check prints nothing.
 
+This profile must include the Task 0 coverage targets: equal actor identity
+across seats; recipient-authored acceptance, stale/forged/self claims and
+takeover evidence; same-time/same-revision forks in both orders plus ledger
+consumer fail-closed behavior; committed legacy coordination/status/decision
+routes and pre-v3/v3/current reports; absent/exact/replayed effect authority;
+and dropped/reordered/dispositioned finding refs.
+
 - [ ] **Step 5: Commit docs and publish the actual-diff verify-request**
 
 ```bash
@@ -1354,28 +1231,44 @@ Event type: verify-request
 Reviewed head: <full Task-6 HEAD>
 Reviewed base: <full parent before Task-1>
 Author seat: <authoring director seat>
+Author identity: <durable model or truthful cold-context identity>
+Author identity kind: model | cold-context
 Assigned operator: <eligible non-author operator seat>
+
+## Finding Refs
+
+- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe3
+- coordination/mailbox/sent/2026-07-18T04-55-26Z-director2-to-coordinator-findings.md@6c11193
 
 ## Outcome
 
 The reviewed range implements the approved autonomous seat outcome contract,
-preserves legacy route readability, keeps material findings visible, requires
-non-author actual-diff GO, and retains explicit external-effect authority.
+preserves legacy coordination/status/decision route and historical report
+readability, fails closed on overlapping route lineage conflicts, preserves and
+dispositions immutable material finding refs, requires distinct-identity non-
+author actual-diff GO, and retains exact separately granted external-effect
+authority.
 ```
 
 Commit only the generated verify-request. No push, merge, route transition, cursor consumption, or ledger action is authorized by this step.
 
 - [ ] **Step 6: Stop for non-author Operator verdict**
 
-The assigned Operator independently reads the complete Task-1-through-Task-6 range, chooses sufficient tests, and issues GO/NITS/FAIL. Task 7 must not begin on NITS, FAIL, unable-to-verify, an uncommitted report, or a report bound to another range.
+The assigned Operator independently reads the complete Task-1-through-Task-6
+range, receives both required finding refs, chooses sufficient tests, and
+issues GO/NITS/FAIL with an explicit disposition for every ref. Task 7 must not
+begin on NITS, FAIL, unable-to-verify, an uncommitted report, equal actor
+identity, missing finding disposition, or a report bound to another range.
 
 ### Task 7: Transition the blocked maintenance task to an autonomous outcome
 
 **Files:**
-- Create through fixed writer: `coordination/mailbox/sent/<timestamp>-coordinator-to-all-coordination.md`
+- Create through fixed writer: `coordination/mailbox/sent/<timestamp>-director-to-all-coordination.md`
 
 **Interfaces:**
-- Consumes: Task 6 non-author GO, current route `coordination/mailbox/sent/2026-07-18T04-37-59Z-coordinator-to-all-coordination.md`, and Director2 findings `coordination/mailbox/sent/2026-07-18T04-55-26Z-director2-to-coordinator-findings.md` at `6c11193`.
+- Consumes: Task 6 distinct-identity non-author GO, exact parent route
+  `coordination/mailbox/sent/2026-07-18T04-37-59Z-coordinator-to-all-coordination.md`,
+  Task 0 findings at `fedfbe3`, and Director2 findings at `6c11193`.
 - Produces: the authoritative maintenance outcome contract selected by `ledger_start_guard.py`.
 
 - [ ] **Step 1: Reconfirm the transition gate**
@@ -1392,12 +1285,22 @@ Read the committed Task 6 Operator GO body and confirm its reviewed head equals 
 
 - [ ] **Step 2: Publish the minimal transition event**
 
-Use `coordination/bin/send-event coordinator all coordination "maintenance autonomous outcome transition"` with this sender-supplied body. The writer adds the H1, timestamp/from envelope, cursor footer, and filename:
+The already named owner `director` publishes its own acceptance; coordinator
+approval is neither requested nor inferred. Use `coordination/bin/send-event
+director all coordination "maintenance autonomous outcome transition"` with
+this sender-supplied body:
 
 ```markdown
 Task-board: pipeline-maintenance-priority-pause-2026-07-18
+Task ID: pipeline-maintenance-priority-pause-2026-07-18
 Outcome contract:
-Supersedes route: coordination/mailbox/sent/2026-07-18T04-37-59Z-coordinator-to-all-coordination.md
+Parent contract: coordination/mailbox/sent/2026-07-18T04-37-59Z-coordinator-to-all-coordination.md@f752c88
+Contract revision: 1
+Previous owners: director
+Owners: director
+Proposal ref: self
+Acceptance refs: self
+Finding refs: coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe3, coordination/mailbox/sent/2026-07-18T04-55-26Z-director2-to-coordinator-findings.md@6c11193
 
 ## Outcome
 
@@ -1406,13 +1309,11 @@ durable same-seat handoff without filesystem-mtime, copy-lineage, commit-time,
 or uncommitted-content authority; preserves visible warnings; and remains safe
 through the CLI and seat-status consumers.
 
-Owner: director
-
 Evidence bar: focused regression evidence chosen by the owner, complete actual
 diff inspection, and non-author Operator GO on the delivered commit or range.
 
-Hard boundaries: preserve both Director2 chronology findings as material risk
-evidence; no self-approval; no evidence suppression; no external effect.
+Hard boundaries: preserve both immutable finding refs; no self-approval or
+actor-identity collapse; no evidence suppression; no external effect.
 
 External effect authority: none.
 
@@ -1511,4 +1412,8 @@ env -u GIT_INDEX_FILE git diff --check
 env -u GIT_INDEX_FILE git status --short --branch
 ```
 
-Expected: focused pytest profile passes, coordination check passes, doctor reports no hard-boundary failure, smoke ends `OK`, diff check is silent, and the worktree is clean. Diagnostics may report historical or capacity advisories, but they do not override an exact current Operator verdict or ownership event.
+Expected: focused pytest passes all Task 0 corpus/consumer cases, coordination
+check passes, doctor reports no hard-boundary failure, smoke ends `OK`, diff
+check is silent, and the worktree is clean. Diagnostics may report historical
+or capacity advisories, but they do not override an exact current Operator
+verdict or conflict-free ownership event.

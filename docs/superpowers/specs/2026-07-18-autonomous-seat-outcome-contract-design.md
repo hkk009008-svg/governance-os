@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-18
 
-**Status:** User-approved design; implementation not yet authorized by this document
+**Status:** User-approved design, amended to resolve the one-time independent
+hard-boundary findings; implementation not yet authorized by this document
 
 **Scope:** Pipeline four-seat ownership, routing, convergence, verification, and
 protocol surfaces
@@ -43,23 +44,31 @@ Only these boundaries remain mandatory:
 
 1. Durable repository and mailbox evidence outranks chat summaries and stale
    prose.
-2. An author cannot approve its own behavior-changing work. A non-author
-   Operator supplies the acceptance verdict for the actual committed change.
-3. External or difficult-to-reverse effects require explicit user authority,
-   an identified executor, a target, and authorized scope.
-4. Known material evidence cannot be concealed or silently discarded.
+2. An author cannot approve its own behavior-changing work. The request and
+   report retain durable seat and actor-context identity. A non-author Operator
+   with a distinct truthful identity supplies the verdict for the actual
+   committed change; changing seat labels cannot manufacture independence.
+3. External or difficult-to-reverse effects require durable explicit user
+   authority provenance bound to a canonical effect, exactly one executor, an
+   exact target, and bounded scope. A seat-authored route cannot mint authority.
+4. Known material evidence cannot be concealed or silently discarded. Its
+   immutable `path@commit` or digest references travel through outcome,
+   ownership, request, and report artifacts until explicitly dispositioned.
 5. A coordinator remains a facilitator and system-wide observer. It does not
    author behavior-changing production work unless the user explicitly assigns
    that model a director seat.
 
-No other process step becomes a universal invariant merely because it appears
-in a template, diagnostic, preflight, plan, or earlier route. A live outcome
-contract remains binding until a durable ownership or transition event
+An autonomous route also carries an immutable parent and revision. A stale or
+dangling parent, fork, or conflicting same-task tip makes only that overlapping
+task non-actionable until a durable successor resolves it; unrelated tasks
+continue. No other process step becomes a universal invariant merely because it
+appears in a template, diagnostic, preflight, plan, or earlier route. A live
+outcome contract remains binding until a durable ownership or transition event
 supersedes it.
 
 ## 4. Outcome Contract
 
-Each active task carries five binding facts:
+Each active task carries six binding facts:
 
 1. **Outcome:** the observable result to achieve.
 2. **Owner:** the seat or accepted collaborating seats currently responsible.
@@ -67,8 +76,14 @@ Each active task carries five binding facts:
    outcome, without prescribing exact commands or test names.
 4. **Hard boundaries:** the applicable constraints from section 3 and any
    task-specific prohibition.
-5. **External effect authority:** any separately authorized effect, or an
-   explicit statement that none is authorized.
+5. **Finding references:** the immutable references for every known material
+   finding, including an empty tuple when none is known.
+6. **External effect authority:** the durable user-authority reference and
+   exact authorized tuple, or an explicit statement that none is authorized.
+
+The contract envelope also binds the task identifier, immutable contract or
+route reference, parent reference, and monotonic revision. These are
+concurrency and provenance facts, not new engineering ceremony.
 
 The owner may revise its working approach, tests, task decomposition, and
 collaborators without rewriting the outcome contract. A material outcome or
@@ -82,22 +97,29 @@ ownership, choose a verifier, or reroute work without coordinator approval.
 These internal ownership changes require no separate user authorization and are
 not treated as external effects.
 
-Ownership uses a minimal durable handshake:
+Ownership uses a minimal durable handshake bound to the exact current contract:
 
 - The first durable claim owns unowned work.
-- A transfer is effective when the receiving seat accepts it.
+- Every proposal identifies the task, exact parent contract or route, its
+  revision, previous owners, proposed new owners, outcome disposition, and all
+  known finding references.
+- A normal transfer is effective only when every new owner publishes a
+  recipient-authored durable acceptance referencing that exact proposal and
+  parent. Caller-supplied booleans or prose naming another seat do not count.
 - An exchange is effective when all affected seats acknowledge the same
-  exchange.
+  parent and revision through their own committed events.
 - The incumbent remains responsible until acceptance, so a proposal cannot
   orphan work or assign it to an unwilling seat.
-- An ownership event identifies the task, prior owner, accepted new owner, and
-  unchanged or revised outcome.
+- A stale-parent proposal, forged acceptance, or self-claim against an active
+  incumbent is ineffective.
 
 If an owner is inactive, another seat may take over after checking for fresh
-work and active locks and durably recording the takeover assumption. No fixed
-timeout is imposed; the claiming seat uses current evidence and judgment. If
-overlapping claims appear, seats pause only the overlapping writes and resolve
-ownership directly. Unrelated work continues.
+work and active locks and durably recording the exact evidence references. A
+claimant assertion without the referenced fresh-work and lock evidence is
+ineffective. No fixed timeout is imposed; the claiming seat uses current
+evidence and judgment. If overlapping claims or route forks appear, the
+resolver returns no actionable owner for that task until a later durable event
+resolves the lineage. Unrelated work continues.
 
 The coordinator may observe, suggest, claim eligible non-production work, or
 mediate a collision. It is not an approval gate for ordinary ownership changes.
@@ -108,14 +130,16 @@ The operative states are intentionally small:
 
 - **WORKING:** the owner can still make meaningful progress.
 - **NEEDS_PEER:** help, review, or an ownership exchange would improve progress.
-- **FINDING:** evidence of risk that the owner must consider; it does not
-  automatically stop work.
+- **FINDING:** referenced evidence of risk that the owner must consider; it
+  does not automatically stop work unless it identifies an unresolved hard-
+  boundary violation.
 - **BLOCKED:** no lawful path exists without new authority, unavailable
   external state, or resolution of a hard-boundary violation.
 - **READY_FOR_REVIEW:** the owner presents a committed change and evidence to a
   chosen non-author Operator.
-- **ACCEPTED:** a non-author Operator issues GO for the reviewed commit or
-  range.
+- **ACCEPTED:** a non-author Operator with distinct durable actor-context
+  identity issues GO for the reviewed commit or range and dispositions every
+  carried material finding.
 
 The normal cycle is:
 
@@ -149,8 +173,12 @@ test strategy are not sufficient by themselves.
 
 The author may revise the change, provide counter-evidence, narrow the outcome,
 exchange ownership, or request another independent review. Any later reviewer
-must receive the earlier material findings; changing reviewers cannot erase
-evidence. Only a non-author GO accepts behavior-changing work.
+must receive the immutable references for earlier material findings; changing
+reviewers cannot erase evidence. The verification report preserves each
+reference and records an explicit disposition. Only a non-author GO from a
+distinct durable actor context accepts behavior-changing work. A distinct
+model is strongest; a truthful distinct cold-context identity is acceptable
+only when durably stated and unequal to the author identity.
 
 ## 8. Failure and Disagreement
 
@@ -181,13 +209,18 @@ preserve a real transfer, record executed evidence, or state an actual blocker.
 
 The minimum useful forms are:
 
-- **Outcome assignment:** outcome, owner, evidence bar, hard boundaries.
-- **Ownership change:** task identity, prior owner, accepted new owner, outcome
-  disposition.
-- **Verification request:** reviewed commit or range, outcome, author, chosen
-  non-author verifier.
-- **Verification report:** verdict, material evidence, actionable findings.
-- **External-effect authorization:** effect, executor, target, authorized scope.
+- **Outcome assignment:** task and contract identity, parent/revision, outcome,
+  owner, evidence bar, hard boundaries, and finding references.
+- **Ownership change:** task, exact parent contract, previous owners, proposed
+  new owners, recipient-authored acceptance references, outcome disposition,
+  and carried finding references.
+- **Verification request:** reviewed commit or range, outcome, author seat and
+  actor-context identity, chosen non-author verifier, and finding references.
+- **Verification report:** verdict, reviewer seat and actor-context identity,
+  material evidence, preserved finding references, and one explicit
+  disposition per reference.
+- **External-effect authorization:** durable user-authority provenance plus the
+  canonical effect, exactly one executor, exact target, and bounded scope.
 
 These are semantic contents, not rigid prose templates. Exact headings, field
 order, repeated receipts, and prescribed test names are not authority.
@@ -221,36 +254,48 @@ them.
 
 ## 11. External Effects
 
-External effects remain separately authorized. The durable authorization needs
-only:
+External effects remain separately authorized. A compact token may prove
+structural completeness, but it is not execution authority. Execution requires
+one durable user-authority artifact whose authorized tuple matches exactly:
 
-- the effect;
-- one executor;
-- the target; and
-- the authorized scope.
+- a canonical effect;
+- exactly one known executor;
+- an exact canonical target; and
+- bounded scope.
 
 The executor chooses appropriate prechecks, stop conditions, and postchecks
 using current evidence. It may recover from a failure within the authorized
 scope, but it may not silently broaden the target, effect, spend, or authority.
 Other seats observe and must not repeat the same effect unless ownership is
-durably transferred.
+durably transferred and the user authority covers the replacement executor.
+Substring target matching, wildcard targets, cross-target replay, scope
+broadening, and a second executor fail closed.
 
 ## 12. Verification Strategy
 
 Protocol tests protect semantic outcomes and authority boundaries rather than
 exact wording or prescribed reasoning. They will prove that:
 
-- an author cannot approve its own behavior-changing work;
-- an external effect cannot proceed without explicit scope and one executor;
+- an author cannot approve its own behavior-changing work, including equal
+  actor identity across different seats;
+- ownership changes bind the exact task, parent contract, revision, previous
+  owners, and recipient-authored acceptances from every new owner;
+- stale parents, forks, conflicting tips, forged acceptance, and unsupported
+  takeover claims produce no actionable owner for only the overlapping task;
+- an external effect cannot proceed without durable user authority and an
+  exact effect/executor/target/scope tuple;
 - seats can claim, transfer, exchange, split, and merge ownership without
   coordinator approval;
 - an accepted transfer cannot assign work to an unwilling seat;
 - a preflight finding remains visible without automatically blocking
   implementation;
 - only actual-diff non-author GO satisfies independent verification;
-- prior material findings remain visible to a later reviewer;
-- legacy routes remain readable while newer autonomous ownership events can
-  supersede them; and
+- prior material finding references survive ownership and reviewer changes and
+  receive explicit report dispositions;
+- committed legacy Task-board `coordination`, `status`, and `decision` events,
+  frozen pre-v3 reports, historical v3 reports, and current verbose reports
+  remain readable without byte rewriting while valid autonomous ownership
+  events can supersede them; and
 - diagnostics report inconsistencies without controlling model judgment.
 
 Tests should use semantic assertions against the compact model. They should not
@@ -275,14 +320,23 @@ Migration is incremental and preserves durable history:
 8. After one successful autonomous cycle, remove remaining duplicated or
    obsolete protocol machinery exposed by that cycle.
 
-Existing artifacts remain readable and are not rewritten retroactively. A new
-ownership or transition event supersedes an older route only when it says so
-durably. Until that transition is implemented, the currently committed route
-and its Director2 `BLOCKED` prerequisite remain binding live state.
+Existing artifacts remain readable and are not rewritten retroactively. Legacy
+route discovery continues to recognize committed coordinator Task-board event
+kinds present in the corpus (`coordination`, `status`, and `decision`), even
+when a kind is excluded from new autonomous publication. A new ownership or
+transition event supersedes an older route only when it names the exact parent
+and next revision and has conflict-free lineage. Until that transition is
+implemented, the currently committed route and its Director2 `BLOCKED`
+prerequisite remain binding live state.
 
 ## 14. Current Maintenance Route Application
 
-The two Director2 findings remain technically useful:
+The existing Director2 findings at
+`coordination/mailbox/sent/2026-07-18T04-55-26Z-director2-to-coordinator-findings.md@6c11193`
+and the Task 0 Operator findings at
+`coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe3`
+are immutable inputs to the cutover. The two maintenance-specific Director2
+findings remain technically useful:
 
 - fail-closed Git chronology behavior should cover both merge-base failure
   sites; and
@@ -326,7 +380,10 @@ The design succeeds when:
 - routes specify outcomes and evidence rather than implementation recipes;
 - models choose sufficient methods, tests, and collaborators;
 - findings remain visible without automatically becoming blockers;
-- independent actual-diff approval and external-effect authority remain
+- independent actual-diff approval retains durable non-author identity;
+- ownership lineage fails closed for overlapping forks without blocking
+  unrelated tasks;
+- exact external-effect authority and immutable finding propagation remain
   enforceable;
 - protocol policy has one compact source instead of duplicated capsules; and
 - the maintenance route progresses to implementation, Operator review, and the
