@@ -89,7 +89,9 @@ def test_default_rules_classify_representative_paths():
         "scripts/ci_smoke.py": "T2",
         "scripts/wave_gate_check.py": "T2",
         "scripts/check_no_ceremony.py": "T2",
-        "requirements.txt": "T2",
+        "requirements-dev.txt": "T2",
+        "requirements-governance.txt": "T2",
+        "pyproject.toml": "T2",
         "package-lock.json": "T2",
         "threeway/policy.py": "T2",
         "threeway/predicate.py": "T2",
@@ -102,9 +104,9 @@ def test_default_rules_classify_representative_paths():
 
 def test_exact_prefix_string_match_classifies():
     # tier.py:15 matches "path == prefix" as well as startswith; the bare rule key
-    # "requirements.txt" should classify when passed exactly.
+    # "requirements-dev.txt" should classify when passed exactly.
     pol = default_policy()
-    assert tier.classify_diff(["requirements.txt"], pol) == "T2"
+    assert tier.classify_diff(["requirements-dev.txt"], pol) == "T2"
 
 
 # --- policy_digest determinism + acceptance ------------------------------------
