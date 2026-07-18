@@ -57,7 +57,7 @@ concurrency:
 jobs:
   smoke:
     name: ci_smoke (governance gates + runtime invariants)
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 15
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
@@ -94,7 +94,7 @@ jobs:
 
   pytest-unit:
     name: pytest tests/unit
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 15
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
@@ -134,7 +134,7 @@ jobs:
 
   threeway-ci-result:
     name: Emit threeway ci_result
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 10
     needs: [smoke, pytest-unit]
     if: github.event_name == 'workflow_dispatch' && vars.THREEWAY_BUS_LIVE == 'true' && github.ref == 'refs/heads/main'
