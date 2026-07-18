@@ -2,9 +2,8 @@
 """Route lineage: generation + parent + compare-and-swap authority (ADR-015).
 
 Route currency stops depending on filename timestamp sort. A route carries a
-monotone ``Route generation:`` and a ``Supersedes route:`` parent pointer (both
-already emitted by route/v1 render_markdown; the parent form is used by live
-coordinator routes). The authoritative route is the lineage TIP: the
+monotone ``Route generation:`` and a ``Supersedes route:`` parent pointer,
+emitted by live coordinator routes. The authoritative route is the lineage TIP: the
 highest-generation route that no other route supersedes. A proposed route is
 accepted only when its parent is the current tip and its generation is
 current+1 (compare-and-swap); otherwise a structured stale_parent result is
