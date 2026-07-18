@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-18 @ 3dfbe24*
+*Last verified: 2026-07-18 @ b879481*
 
 ## 1. Purpose
 
@@ -24,12 +24,12 @@ Primary control flow:
 
 ```text
 user or parent prompt
-  -> Pipeline seat startup guard
-  -> seat status and mailbox route body
-  -> capacity packet scope
-  -> implementation or verification command
-  -> mailbox verify-request / verification-report
-  -> coordinator closeout or reroute
+  -> readiness or named-seat orientation
+  -> active outcome contract + durable owner
+  -> seat-chosen implementation, collaboration, or ownership exchange
+  -> committed actual change + outcome-bound verify-request
+  -> distinct-identity non-author Operator GO/NITS/FAIL with finding dispositions
+  -> separately user-authorized exact external-effect tuple, if any
 ```
 
 Key directories:
@@ -73,13 +73,25 @@ Key directories:
   Git-common-dir lock. No activation selector or alternate writer exists.
 - Durable shared state beats chat memory: git commits, mailbox bodies, capacity
   packets, cursor state, and verification reports are authoritative.
+- A conflict-free autonomous seat event may supersede a legacy coordinator route
+  only when it binds the exact current parent and next revision. Stale or
+  dangling parents, forks, and conflicting same-task tips leave only the
+  overlapping task non-actionable until a durable successor resolves them.
+- Capacity tools are diagnostics, and preflight is advisory; neither grants
+  route authority nor substitutes for review of the actual committed change.
 - Live seats start with `scripts/ledger_start_guard.py --seat <seat> --wave 2`
   from Pipeline before entering evidence-ledger.
 - Ordinary git and pytest commands use `env -u GIT_INDEX_FILE`.
 - Commit, push, merge, cursor consumption, lock actions, pod spend, target
   checkout refresh, production generation, paid API spend, and every other side
-  effect are separate authorities. Each requires explicit authorization or a
-  valid routed executor; no model or provider identity grants authority.
+  effect are separate authorities. Each requires separately granted user
+  authority for the exact effect, executor, target, and scope; a structurally
+  complete seat token and any model or provider identity grant no authority.
+- Material finding references remain immutable through ownership and review,
+  and every accepted report dispositions each carried reference explicitly.
+- Behavior-changing acceptance requires actual-diff GO from an assigned
+  non-author Operator using both a distinct Operator seat and a different
+  system-visible model; changing seats cannot let the same model self-approve.
 - Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
   truth layer intentionally does not restate its lifecycle grammar.
 - The optional parent-owned ChatGPT Pro tool uses one Git-common-dir

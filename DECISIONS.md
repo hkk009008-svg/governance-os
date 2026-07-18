@@ -1226,3 +1226,24 @@ authoritative mapping):
 - The next free local number after this entry is ADR-036 — but ADR-036–041 are
   also origin-cited in `docs/protocol/threeway/`; verify with a grep before
   assigning any new number.
+
+## ADR-063: Autonomous seat outcome contract replaces coordinator-centered routing ceremony (2026-07-18)
+
+**Decision.** Seats may claim, split, transfer, exchange, and reroute work through
+durable accepted ownership events without coordinator approval. Routes bind an
+outcome, owner, evidence bar, hard boundaries, and external-effect authority;
+models choose the method and sufficient tests. Preflight is advisory. A
+non-author Operator GO on the actual committed change remains required for
+behavior-changing acceptance, and external effects remain separately
+user-authorized.
+
+**Why.** The maintenance chronology route repeatedly blocked implementation on
+new omissions in a prescriptive preflight plan. The findings were useful, but
+category-by-category plan closure became an unbounded convergence mechanism.
+Outcome ownership plus actual-diff review preserves evidence and independence
+while letting capable models choose the right engineering path.
+
+**Compatibility.** Historical coordinator routes and capacity packets remain
+immutable evidence. New outcome-contract events can supersede them explicitly.
+Capacity boards and doctors remain diagnostics rather than discretionary route
+authority.
