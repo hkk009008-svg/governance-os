@@ -8,6 +8,9 @@ uses tmp_path for the loader-with-custom-root path.
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+
+import pytest
 
 import protocol_mailbox
 
@@ -116,3 +119,140 @@ def test_load_known_kinds_with_custom_root(tmp_path):
 def test_load_known_kinds_default_root_matches_module_constant():
     # Calling with no root reproduces the module-level KNOWN_KINDS.
     assert protocol_mailbox.load_known_kinds() == protocol_mailbox.KNOWN_KINDS
+
+
+# --- Immutable fixed-writer event references ---------------------------------
+
+
+def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=check,
+    )
+
+
+def _init_repo(repo: Path) -> None:
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.name", "Protocol Test")
+    _git(repo, "config", "user.email", "protocol@example.test")
+
+
+def _commit_event(
+    repo: Path,
+    *,
+    sender: str = "director",
+    envelope_sender: str | None = None,
+    recipient: str = "operator",
+    kind: str = "proposal",
+    timestamp: str = "2026-07-18T06-30-00Z",
+) -> tuple[Path, str]:
+    sent = repo / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True, exist_ok=True)
+    path = sent / f"{timestamp}-{sender}-to-{recipient}-{kind}.md"
+    iso_timestamp = timestamp[:11] + timestamp[11:19].replace("-", ":") + "Z"
+    path.write_text(
+        "# Director → Operator: immutable event\n\n"
+        f"**When:** {iso_timestamp} · **From:** {envelope_sender or sender} (online)\n\n"
+        "Task ID: task-1\n",
+        encoding="utf-8",
+    )
+    rel = path.relative_to(repo).as_posix()
+    _git(repo, "add", "--", rel)
+    _git(repo, "commit", "-q", "-m", "event")
+    commit = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    return path, commit
+
+
+def test_load_committed_event_ref_uses_exact_committed_fixed_writer_blob(tmp_path: Path):
+    _init_repo(tmp_path)
+    path, commit = _commit_event(tmp_path)
+    rel = path.relative_to(tmp_path).as_posix()
+
+    loaded = protocol_mailbox.load_committed_event_ref(tmp_path, f"{rel}@{commit}")
+
+    assert loaded.path == rel
+    assert loaded.commit == commit
+    assert loaded.sender == "director"
+    assert loaded.recipient == "operator"
+    assert loaded.kind == "proposal"
+    assert loaded.ref == f"{rel}@{commit}"
+
+    # The loader is pinned to commit:path, not to later working-tree bytes.
+    path.write_text("mutable working tree replacement\n", encoding="utf-8")
+    assert protocol_mailbox.load_committed_event_ref(tmp_path, f"{rel}@{commit}") == loaded
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "coordination/mailbox/sent/missing.md@" + "0" * 40,
+        "docs/not-mail.md@" + "0" * 40,
+        "coordination/mailbox/sent/event.md@abcdef0",
+        "coordination/mailbox/sent/../event.md@" + "0" * 40,
+    ],
+)
+def test_load_committed_event_ref_rejects_missing_nonmailbox_or_nonfull_refs(
+    tmp_path: Path, reference: str
+):
+    _init_repo(tmp_path)
+    with pytest.raises(ValueError):
+        protocol_mailbox.load_committed_event_ref(tmp_path, reference)
+
+
+def test_load_committed_event_ref_rejects_filename_envelope_sender_mismatch(tmp_path: Path):
+    _init_repo(tmp_path)
+    path, commit = _commit_event(tmp_path, sender="director", envelope_sender="operator")
+    ref = f"{path.relative_to(tmp_path).as_posix()}@{commit}"
+
+    with pytest.raises(ValueError, match="sender"):
+        protocol_mailbox.load_committed_event_ref(tmp_path, ref)
+
+
+def test_load_committed_event_ref_rejects_uncommitted_working_tree_event(tmp_path: Path):
+    _init_repo(tmp_path)
+    tracked, _ = _commit_event(tmp_path)
+    uncommitted = tracked.with_name(
+        "2026-07-18T06-31-00Z-director-to-operator-proposal.md"
+    )
+    uncommitted.write_text(tracked.read_text(encoding="utf-8"), encoding="utf-8")
+    commit = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+
+    with pytest.raises(ValueError):
+        protocol_mailbox.load_committed_event_ref(
+            tmp_path,
+            f"{uncommitted.relative_to(tmp_path).as_posix()}@{commit}",
+        )
+
+
+def test_load_committed_event_ref_rejects_path_not_present_in_named_commit(tmp_path: Path):
+    _init_repo(tmp_path)
+    first_path, first_commit = _commit_event(tmp_path)
+    second_path, _ = _commit_event(
+        tmp_path,
+        timestamp="2026-07-18T06-32-00Z",
+        kind="proposal-reply",
+        sender="operator",
+        recipient="director",
+    )
+    assert first_path.exists()
+
+    with pytest.raises(ValueError):
+        protocol_mailbox.load_committed_event_ref(
+            tmp_path,
+            f"{second_path.relative_to(tmp_path).as_posix()}@{first_commit}",
+        )
+
+
+def test_load_committed_event_ref_rejects_tree_object_instead_of_commit(tmp_path: Path):
+    _init_repo(tmp_path)
+    path, _ = _commit_event(tmp_path)
+    tree = _git(tmp_path, "rev-parse", "HEAD^{tree}").stdout.strip()
+
+    with pytest.raises(ValueError, match="commit object"):
+        protocol_mailbox.load_committed_event_ref(
+            tmp_path,
+            f"{path.relative_to(tmp_path).as_posix()}@{tree}",
+        )

@@ -8,7 +8,9 @@ without touching mailbox state, locks, git indexes, or production pipeline code.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
+from dataclasses import dataclass, replace
 
 MODEL_SOURCE = "scripts/codex_protocol_model.py"
 CENTRAL_INVARIANT = "durable shared state beats chat memory"
@@ -199,8 +201,6 @@ SEAT_BEHAVIOR_SOURCE = {
     "operator": "operator2",
     "operator2": "operator2",
 }
-
-
 def behavior_source_for_seat(seat: str) -> str | None:
     """Return the canonical behavior source for a concrete live seat."""
     return SEAT_BEHAVIOR_SOURCE.get(seat)
@@ -1195,6 +1195,318 @@ def render_surface_summary() -> str:
     ]
     lines.extend(f"- {path}: {purpose}" for path, purpose in CODEX_SURFACES)
     return "\n".join(lines)
+
+_FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
+
+
+@dataclass(frozen=True)
+class OutcomeContract:
+    task_id: str
+    contract_ref: str
+    parent_ref: str | None
+    revision: int
+    outcome: str
+    owners: tuple[str, ...]
+    evidence_bar: tuple[str, ...]
+    hard_boundaries: tuple[str, ...]
+    finding_refs: tuple[str, ...]
+    external_effect: str | None = None
+
+
+@dataclass(frozen=True)
+class OwnershipChange:
+    task_id: str
+    parent_contract_ref: str
+    revision: int
+    previous_owners: tuple[str, ...]
+    new_owners: tuple[str, ...]
+    proposal: protocol_mailbox.OwnershipProposalStatement | None
+    acceptances: tuple[protocol_mailbox.OwnershipAcceptanceStatement, ...]
+    finding_refs: tuple[str, ...]
+    outcome: str | None = None
+    abandoned_takeover: bool = False
+    takeover_evidence: protocol_mailbox.TakeoverEvidenceStatement | None = None
+
+
+@dataclass(frozen=True)
+class ReviewDecision:
+    task_id: str
+    author_seat: str
+    author_model: str
+    reviewer_seat: str
+    reviewer_model: str
+    reviewed_base: str
+    reviewed_head: str
+    verdict: str
+    finding_refs: tuple[str, ...]
+    finding_dispositions: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class ExternalEffectToken:
+    effect: str
+    executor: str
+    target: str
+    scope: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ExternalEffectTokenResult:
+    complete: bool
+    issues: tuple[str, ...]
+    explicit_external_user_authorization_required: bool = True
+    execution_authorized: bool = False
+
+
+def _nonblank(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _canonical_unique_refs(values: tuple[str, ...]) -> bool:
+    return (
+        isinstance(values, tuple)
+        and len(values) == len(set(values))
+        and all(
+            protocol_mailbox.immutable_reference_is_canonical(value) for value in values
+        )
+    )
+
+
+def _canonical_seats(values: tuple[str, ...]) -> bool:
+    return (
+        isinstance(values, tuple)
+        and bool(values)
+        and len(values) == len(set(values))
+        and all(value in protocol_mailbox.RECEIVING_SEATS for value in values)
+    )
+
+
+def _nonblank_tuple(values: tuple[str, ...]) -> bool:
+    return (
+        isinstance(values, tuple)
+        and bool(values)
+        and all(_nonblank(value) for value in values)
+    )
+
+
+def claim_outcome(
+    *,
+    task_id: str,
+    contract_ref: str,
+    parent_ref: str | None,
+    revision: int,
+    outcome: str,
+    owners: tuple[str, ...],
+    evidence_bar: tuple[str, ...],
+    hard_boundaries: tuple[str, ...],
+    finding_refs: tuple[str, ...],
+    external_effect: str | None = None,
+) -> OutcomeContract:
+    """Create a validated immutable outcome contract or reject its shape."""
+
+    if not _nonblank(task_id) or not protocol_mailbox.immutable_reference_is_canonical(
+        contract_ref
+    ):
+        raise ValueError("outcome contract requires a task and immutable contract ref")
+    if parent_ref is not None and not protocol_mailbox.immutable_reference_is_canonical(parent_ref):
+        raise ValueError("parent ref must be immutable when present")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
+        raise ValueError("revision must be a nonnegative integer")
+    if not _nonblank(outcome) or not _canonical_seats(owners):
+        raise ValueError("outcome and known unique owners are required")
+    if not _nonblank_tuple(evidence_bar) or not _nonblank_tuple(hard_boundaries):
+        raise ValueError("evidence bar and hard boundaries must be nonblank")
+    if not _canonical_unique_refs(finding_refs):
+        raise ValueError("finding refs must be canonical, unique, and ordered")
+    if external_effect is not None and not _nonblank(external_effect):
+        raise ValueError("external effect must be nonblank when present")
+    return OutcomeContract(
+        task_id=task_id.strip(),
+        contract_ref=contract_ref,
+        parent_ref=parent_ref,
+        revision=revision,
+        outcome=outcome.strip(),
+        owners=owners,
+        evidence_bar=evidence_bar,
+        hard_boundaries=hard_boundaries,
+        finding_refs=finding_refs,
+        external_effect=external_effect.strip() if external_effect is not None else None,
+    )
+
+
+def _change_envelope_matches(contract: OutcomeContract, change: OwnershipChange) -> bool:
+    return (
+        change.task_id == contract.task_id
+        and change.parent_contract_ref == contract.contract_ref
+        and change.revision == contract.revision + 1
+        and change.previous_owners == contract.owners
+        and _canonical_seats(change.new_owners)
+        and change.new_owners != contract.owners
+        and change.finding_refs == contract.finding_refs
+        and _canonical_unique_refs(change.finding_refs)
+        and (change.outcome is None or _nonblank(change.outcome))
+    )
+
+
+def _normal_ownership_change_is_effective(
+    contract: OutcomeContract, change: OwnershipChange
+) -> bool:
+    proposal = change.proposal
+    if proposal is None or change.takeover_evidence is not None:
+        return False
+    if not protocol_mailbox.ownership_statement_is_validated(proposal):
+        return False
+    expected_outcome = change.outcome or contract.outcome
+    if not (
+        proposal.event.sender in contract.owners
+        and proposal.task_id == contract.task_id
+        and proposal.parent_ref == contract.contract_ref
+        and proposal.revision == change.revision
+        and proposal.previous_owners == contract.owners
+        and proposal.proposed_owners == change.new_owners
+        and proposal.outcome == expected_outcome
+        and proposal.finding_refs == contract.finding_refs
+    ):
+        return False
+
+    entering = set(change.new_owners) - set(contract.owners)
+    departing = set(contract.owners) - set(change.new_owners) - {proposal.event.sender}
+    required_acceptors = entering | departing
+    if {acceptance.event.sender for acceptance in change.acceptances} != required_acceptors:
+        return False
+    if len(change.acceptances) != len(required_acceptors):
+        return False
+    return all(
+        protocol_mailbox.ownership_statement_is_validated(acceptance)
+        and acceptance.event.sender in required_acceptors
+        and acceptance.task_id == contract.task_id
+        and acceptance.parent_ref == contract.contract_ref
+        and acceptance.revision == change.revision
+        and acceptance.previous_owners == contract.owners
+        and acceptance.proposed_owners == change.new_owners
+        and acceptance.proposal_ref == proposal.event.ref
+        and acceptance.outcome == expected_outcome
+        and acceptance.finding_refs == contract.finding_refs
+        for acceptance in change.acceptances
+    )
+
+
+def _abandoned_takeover_is_effective(
+    contract: OutcomeContract, change: OwnershipChange
+) -> bool:
+    evidence = change.takeover_evidence
+    if (
+        change.proposal is not None
+        or change.acceptances
+        or evidence is None
+        or len(change.new_owners) != 1
+        or change.new_owners[0] in contract.owners
+        or change.outcome is not None
+    ):
+        return False
+    claimant = change.new_owners[0]
+    return bool(
+        protocol_mailbox.ownership_statement_is_validated(evidence)
+        and evidence.event.sender == claimant
+        and evidence.task_id == contract.task_id
+        and evidence.parent_ref == contract.contract_ref
+        and evidence.revision == change.revision
+        and evidence.finding_refs == contract.finding_refs
+        and evidence.fresh_work_state.casefold() in {"none", "no fresh work"}
+        and evidence.lock_state.casefold() in {"none", "no active lock"}
+    )
+
+
+def ownership_change_is_effective(
+    contract: OutcomeContract, change: OwnershipChange
+) -> bool:
+    """Require exact lineage and body-bound consent for an ownership successor."""
+
+    if not _change_envelope_matches(contract, change):
+        return False
+    if change.abandoned_takeover:
+        return _abandoned_takeover_is_effective(contract, change)
+    return _normal_ownership_change_is_effective(contract, change)
+
+
+def apply_ownership_change(
+    contract: OutcomeContract, change: OwnershipChange
+) -> OutcomeContract:
+    if not ownership_change_is_effective(contract, change):
+        raise ValueError("ownership change is not effective")
+    if change.abandoned_takeover:
+        assert change.takeover_evidence is not None
+        successor_ref = change.takeover_evidence.event.ref
+    else:
+        assert change.proposal is not None
+        successor_ref = change.proposal.event.ref
+    return replace(
+        contract,
+        contract_ref=successor_ref,
+        parent_ref=contract.contract_ref,
+        revision=change.revision,
+        outcome=change.outcome or contract.outcome,
+        owners=change.new_owners,
+    )
+
+
+def finding_state(*, hard_boundary_unresolved: bool) -> str:
+    """Keep ordinary findings advisory while hard-boundary violations block."""
+
+    return "BLOCKED" if hard_boundary_unresolved else "FINDING"
+
+
+def review_accepts_outcome(contract: OutcomeContract, decision: ReviewDecision) -> bool:
+    """Return whether exact-range non-author Operator GO accepts the outcome."""
+
+    if not (
+        decision.task_id == contract.task_id
+        and decision.author_seat in contract.owners
+        and decision.author_seat in SEATS
+        and decision.reviewer_seat in OPERATOR_SEATS
+        and decision.author_seat != decision.reviewer_seat
+        and _nonblank(decision.author_model)
+        and _nonblank(decision.reviewer_model)
+        and decision.author_model.strip().casefold()
+        != decision.reviewer_model.strip().casefold()
+        and _FULL_SHA_RE.fullmatch(decision.reviewed_base)
+        and _FULL_SHA_RE.fullmatch(decision.reviewed_head)
+        and decision.reviewed_base != decision.reviewed_head
+        and decision.verdict == "GO"
+        and decision.finding_refs == contract.finding_refs
+        and _canonical_unique_refs(decision.finding_refs)
+    ):
+        return False
+    if len(decision.finding_dispositions) != len(contract.finding_refs):
+        return False
+    return (
+        tuple(ref for ref, _ in decision.finding_dispositions) == contract.finding_refs
+        and all(
+            _nonblank(disposition) for _, disposition in decision.finding_dispositions
+        )
+    )
+
+
+def external_effect_token_is_complete(
+    token: ExternalEffectToken,
+) -> ExternalEffectTokenResult:
+    """Validate descriptive shape without ever granting execution authority."""
+
+    issues = []
+    if not _nonblank(token.effect):
+        issues.append("effect")
+    if token.executor not in protocol_mailbox.RECEIVING_SEATS:
+        issues.append("executor")
+    if not _nonblank(token.target) or token.target.strip() in {"*", "all"}:
+        issues.append("target")
+    if not isinstance(token.scope, tuple) or not token.scope or any(
+        not _nonblank(item) or item.strip() == "*" for item in token.scope
+    ):
+        issues.append("scope")
+    elif len(token.scope) != len(set(token.scope)):
+        issues.append("scope")
+    return ExternalEffectTokenResult(complete=not issues, issues=tuple(issues))
+
 
 def main() -> int:
     print("# Codex Harness Model")
