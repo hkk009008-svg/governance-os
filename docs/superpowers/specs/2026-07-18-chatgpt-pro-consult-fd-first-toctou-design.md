@@ -121,9 +121,11 @@ filesystem-allocation-dependent case.
 4. Retain the existing symlink, corruption-without-rewrite, terminal-transition,
    same-key concurrency, linked-worktree, CLI, and content-free-error tests.
 
-The RED proof for the new post-open and post-flock cases must fail against the
-pre-repair implementation for the intended reason. No test may force a fake
-inode value merely to make the old pre-open contract appear portable.
+The RED proof for FD-first ordering and the new post-flock rebind must fail
+against the pre-repair implementation for the intended reason. Post-open
+binding is retained regression coverage: the pre-repair implementation already
+rejects that timing when the old FD remains live. No test may force a fake inode
+value merely to make the old pre-open contract appear portable.
 
 ## 6. Independent abuse cases and acceptance criteria
 
