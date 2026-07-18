@@ -255,16 +255,46 @@ def main() -> int:
         print(f"\nGO-SCHEMA CHECK — FAIL: {_go_error}")
         return 1
     if _go_violations:
+        # Report SHA bindings cannot resolve on a shallow clone (same failure
+        # class the SHA-ref baseline gate guards above); warn there instead of
+        # bricking. CI uses fetch-depth: 0, so the full-clone hard gate holds.
+        _go_is_repo, _go_shallow = _cdc._repo_state(_repo_root)
+        if _go_shallow:
+            print(
+                "GO-SCHEMA CHECK — WARN (shallow clone; report SHA bindings not "
+                "evaluable; use fetch-depth: 0 to gate)."
+            )
+        else:
+            print(
+                f"\nGO-SCHEMA CHECK — FAIL: {len(_go_violations)} violation(s)\n"
+            )
+            for _v in _go_violations:
+                print(f"  ! {_v}")
+            return 1
+    else:
         print(
-            f"\nGO-SCHEMA CHECK — FAIL: {len(_go_violations)} violation(s)\n"
+            "GO-SCHEMA CHECK — PASS "
+            f"({len(_go_reports)} verification-report(s) validated; zero violations)."
         )
-        for _v in _go_violations:
-            print(f"  ! {_v}")
+
+    # Threeway mechanism ledger: the committed MECHANISM-LEDGER.md must match the
+    # generator, and every cited test/emitter file must exist (anti-fabrication —
+    # the 2026-07-18 audit found citations to test files that never existed).
+    import threeway_mechanism_ledger as _tml
+
+    try:
+        _tml_text = _tml.render_markdown(_tml.collect_mechanisms())
+    except AssertionError as _tml_error:
+        print(f"MECHANISM-LEDGER CHECK — FAIL: {_tml_error}")
         return 1
-    print(
-        "GO-SCHEMA CHECK — PASS "
-        f"({len(_go_reports)} verification-report(s) validated; zero violations)."
-    )
+    _tml_path = _repo_root / "docs/protocol/threeway/MECHANISM-LEDGER.md"
+    if (_tml_path.read_text(encoding="utf-8") if _tml_path.exists() else "") != _tml_text:
+        print(
+            "MECHANISM-LEDGER CHECK — FAIL: docs/protocol/threeway/MECHANISM-LEDGER.md "
+            "is stale; rerender with scripts/threeway_mechanism_ledger.py"
+        )
+        return 1
+    print("MECHANISM-LEDGER CHECK — PASS (rendered ledger matches; cited files exist).")
 
     # ARCHITECTURE Last-verified gate (check_arch_freshness). Inert unless
     # ARCHITECTURE.md changed vs merge-base; self-degrades if git/base unavailable.
