@@ -8,13 +8,23 @@ import pytest
 import compact_pair_loop as pair
 
 
+FINDING_A = (
+    "coordination/mailbox/sent/"
+    "2026-07-18T06-05-32Z-operator-to-director-findings.md@"
+    "fedfbe37f042045e844c2a7de90437445ccd6e0e"
+)
+FINDING_B = (
+    "coordination/mailbox/sent/"
+    "2026-07-18T04-55-26Z-director2-to-coordinator-findings.md@"
+    "6c11193d3ca5eb2a7214147309754241d5b884f3"
+)
 REQUEST_PATH = (
     "coordination/mailbox/sent/"
-    "2026-07-17T08-00-00Z-director-to-operator-verify-request.md"
+    "2026-07-18T08-00-00Z-director-to-operator-verify-request.md"
 )
 REPORT_PATH = (
     "coordination/mailbox/sent/"
-    "2026-07-17T08-10-00Z-operator-to-all-verification-report.md"
+    "2026-07-18T08-10-00Z-operator-to-all-verification-report.md"
 )
 
 
@@ -29,31 +39,37 @@ def _git(root: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
-def _request_text(base: str, head: str, *, allowed: str = "scripts/") -> str:
-    return f"""\
-# Director → Operator: verify compact pair candidate
+def _bullet_section(heading: str, values: tuple[str, ...]) -> str:
+    body = "\n".join(f"- {value}" for value in values)
+    return f"## {heading}\n\n{body}\n"
 
-**When:** 2026-07-17T08:00:00Z · **From:** director (online)
+
+def _request_text(
+    base: str,
+    head: str,
+    *,
+    author_seat: str = "director",
+    author_model: str = "gpt-5.6-sol",
+    assigned_operator: str = "operator",
+    finding_refs: tuple[str, ...] = (FINDING_A,),
+) -> str:
+    return f"""\
+# Pair seat -> Operator: verify outcome
+
+**When:** 2026-07-18T08:00:00Z · **From:** {author_seat} (online)
 
 Event type: verify-request
 Reviewed head: {head}
 Reviewed base: {base}
-Author seat: director
-Author model: gpt-5.6-sol
-Assigned operator: operator
+Author seat: {author_seat}
+Author model: {author_model}
+Assigned operator: {assigned_operator}
 
-## Acceptance Question
+## Outcome
 
-Does the exact candidate satisfy the compact pair contract?
+The committed change satisfies the routed maintenance outcome.
 
-## Allowed Paths
-
-- {allowed}
-
-## Verification Commands
-
-$ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_feature.py -q
-
+{_bullet_section("Finding Refs", finding_refs)}
 Cursor at send: 0
 """
 
@@ -67,7 +83,8 @@ def _report_text(
     request_path: str = REQUEST_PATH,
     reviewer_seat: str = "operator",
     reviewer_model: str = "gpt-5.6-terra",
-    allowed: str = "scripts/",
+    finding_refs: tuple[str, ...] = (FINDING_A,),
+    dispositions: tuple[tuple[str, str], ...] = ((FINDING_A, "addressed"),),
     evidence: bool = True,
 ) -> str:
     evidence_block = ""
@@ -76,13 +93,14 @@ def _report_text(
 
 ## Evidence
 
-$ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_feature.py -q
-→ 1 passed
+$ independent actual-diff inspection
+→ reviewed range satisfies the outcome
 """
+    disposition_lines = tuple(f"{ref}: {value}" for ref, value in dispositions)
     return f"""\
-# Operator → All: compact pair verification
+# Operator -> Pair seat: outcome verification
 
-**When:** 2026-07-17T08:10:00Z · **From:** operator (online)
+**When:** 2026-07-18T08:10:00Z · **From:** {reviewer_seat} (online)
 
 Event type: verification-report
 VERDICT: {verdict}
@@ -91,12 +109,9 @@ Reviewed head: {head}
 Reviewed base: {base}
 Reviewer seat: {reviewer_seat}
 Reviewer model: {reviewer_model}
-Verification harness: pytest plus independent actual-diff review
-Verification context: fresh non-author Operator context
 
-## Allowed Paths
-
-- {allowed}
+{_bullet_section("Finding Refs", finding_refs)}
+{_bullet_section("Finding Dispositions", disposition_lines)}
 {evidence_block}
 
 ## Findings
@@ -110,8 +125,12 @@ Cursor at send: 0
 def _repo(
     tmp_path: Path,
     *,
+    request_path: str = REQUEST_PATH,
+    author_seat: str = "director",
+    author_model: str = "gpt-5.6-sol",
+    assigned_operator: str = "operator",
+    finding_refs: tuple[str, ...] = (FINDING_A,),
     transform_request=lambda text: text,
-    allowed: str = "scripts/",
 ) -> tuple[Path, str, str, str]:
     root = tmp_path / "repo"
     root.mkdir()
@@ -129,16 +148,24 @@ def _repo(
     _git(root, "commit", "-q", "-m", "feat: candidate")
     head = _git(root, "rev-parse", "HEAD")
 
-    request = root / REQUEST_PATH
+    request = root / request_path
     request.parent.mkdir(parents=True)
     request.write_text(
-        transform_request(_request_text(base, head, allowed=allowed)),
+        transform_request(
+            _request_text(
+                base,
+                head,
+                author_seat=author_seat,
+                author_model=author_model,
+                assigned_operator=assigned_operator,
+                finding_refs=finding_refs,
+            )
+        ),
         encoding="utf-8",
     )
-    _git(root, "add", REQUEST_PATH)
-    _git(root, "commit", "-q", "-m", "coord(director): request verification")
-    trigger = _git(root, "rev-parse", "HEAD")
-    return root, base, head, trigger
+    _git(root, "add", request_path)
+    _git(root, "commit", "-q", "-m", "coord(pair): request verification")
+    return root, base, head, _git(root, "rev-parse", "HEAD")
 
 
 def _write_report(
@@ -146,9 +173,11 @@ def _write_report(
     base: str,
     head: str,
     trigger: str,
+    *,
+    report_path: str = REPORT_PATH,
     **overrides: object,
 ) -> Path:
-    report = root / REPORT_PATH
+    report = root / report_path
     report.write_text(
         _report_text(base, head, trigger, **overrides),
         encoding="utf-8",
@@ -156,7 +185,7 @@ def _write_report(
     return report
 
 
-def test_valid_request_and_report_bind_exact_commits_scope_and_independence(
+def test_minimal_request_and_report_bind_range_identity_outcome_and_findings(
     tmp_path: Path,
 ) -> None:
     root, base, head, trigger = _repo(tmp_path)
@@ -167,121 +196,259 @@ def test_valid_request_and_report_bind_exact_commits_scope_and_independence(
 
     assert request.reviewed_base == base
     assert request.reviewed_head == head
-    assert request.allowed_paths == ("scripts/",)
-    assert request.commands == (
-        "env -u GIT_INDEX_FILE .venv/bin/python -m pytest "
-        "tests/unit/test_feature.py -q",
-    )
-    assert report.verdict == "GO"
+    assert request.outcome == "The committed change satisfies the routed maintenance outcome."
+    assert request.finding_refs == (FINDING_A,)
+    assert report.evidence
+    assert report.finding_refs == request.finding_refs
+    assert report.finding_dispositions == ((FINDING_A, "addressed"),)
     assert pair.validate_report(root, report) == []
 
 
-@pytest.mark.parametrize(
-    "mutation",
-    (
-        lambda text: text.replace("Event type: verification-report\n", ""),
-        lambda text: text.replace(
-            "Event type: verification-report\n",
-            "Event type: verification-report\nEvent type: verification-report\n",
-        ),
-    ),
-)
-def test_report_requires_exactly_one_verification_report_event_marker(
-    tmp_path: Path, mutation
-) -> None:
-    root, base, head, trigger = _repo(tmp_path)
-    report = root / REPORT_PATH
-    report.write_text(
-        mutation(_report_text(base, head, trigger)), encoding="utf-8"
-    )
-
-    with pytest.raises(pair.CompactPairError, match="Event type: verification-report"):
-        pair.parse_verification_report(root, report)
-
-
-@pytest.mark.parametrize(
-    ("mutation", "reason"),
-    (
-        (lambda text: text.replace("Reviewed head:", "Missing head:"), "Reviewed head"),
-        (
-            lambda text: text.replace(
-                "Reviewed head:", "Reviewed head: " + "a" * 40 + "\nReviewed head:", 1
-            ),
-            "duplicate",
-        ),
-        (
-            lambda text: text.replace(
-                next(line for line in text.splitlines() if line.startswith("Reviewed head: ")),
-                "Reviewed head: deadbee",
-            ),
-            "full lowercase",
-        ),
-        (
-            lambda text: text.replace(
-                next(line for line in text.splitlines() if line.startswith("Reviewed head: ")),
-                "Reviewed head: " + "A" * 40,
-            ),
-            "full lowercase",
-        ),
-        (
-            lambda text: text.replace(
-                next(line for line in text.splitlines() if line.startswith("Reviewed head: ")),
-                "Reviewed head: " + "f" * 40,
-            ),
-            "commit",
-        ),
-    ),
-)
-def test_request_rejects_missing_duplicate_abbreviated_uppercase_or_mismatched_sha(
-    tmp_path: Path, mutation, reason: str
-) -> None:
-    root, _, _, trigger = _repo(tmp_path, transform_request=mutation)
-
-    with pytest.raises(pair.CompactPairError, match=reason):
-        pair.parse_verify_request(root, REQUEST_PATH, trigger)
-
-
-def test_request_rejects_path_commit_mismatch(tmp_path: Path) -> None:
-    root, _, head, _ = _repo(tmp_path)
-
-    with pytest.raises(pair.CompactPairError, match="added by trigger commit"):
-        pair.parse_verify_request(root, REQUEST_PATH, head)
-
-
-@pytest.mark.parametrize(
-    ("overrides", "expected"),
-    (
-        ({"reviewer_seat": "operator2"}, "assigned Operator"),
-        ({"reviewer_seat": "director"}, "author seat"),
-        ({"reviewer_model": "gpt-5.6-sol"}, "author model"),
-        ({"request_path": REQUEST_PATH.replace("08-00-00", "08-00-01")}, "request"),
-        ({"allowed": "docs/"}, "allowed paths"),
-    ),
-)
-def test_report_rejects_wrong_identity_binding_or_changed_scope(
-    tmp_path: Path, overrides: dict[str, str], expected: str
-) -> None:
-    root, base, head, trigger = _repo(tmp_path)
-    report = pair.parse_verification_report(
-        root, _write_report(root, base, head, trigger, **overrides)
-    )
-
-    assert any(expected in violation for violation in pair.validate_report(root, report))
-
-
-def test_report_rejects_request_commit_and_reviewed_range_mismatch(
+def test_operator_can_author_request_for_distinct_operator2_reviewer(
     tmp_path: Path,
 ) -> None:
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        assigned_operator="operator2",
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+        ),
+    )
+
+    assert pair.validate_report(root, report) == []
+
+
+@pytest.mark.parametrize("label", ("Author model", "Reviewer model"))
+@pytest.mark.parametrize("replacement", ("", "   "))
+def test_system_visible_model_fields_must_be_nonblank(
+    tmp_path: Path, label: str, replacement: str
+) -> None:
+    if label == "Author model":
+        root, _, _, trigger = _repo(
+            tmp_path,
+            transform_request=lambda text: text.replace(
+                "Author model: gpt-5.6-sol", f"Author model: {replacement}"
+            ),
+        )
+        with pytest.raises(pair.CompactPairError, match="Author model"):
+            pair.parse_verify_request(root, REQUEST_PATH, trigger)
+    else:
+        root, base, head, trigger = _repo(tmp_path)
+        with pytest.raises(pair.CompactPairError, match="Reviewer model"):
+            pair.parse_verification_report(
+                root,
+                _write_report(
+                    root, base, head, trigger, reviewer_model=replacement
+                ),
+            )
+
+
+@pytest.mark.parametrize("label", ("Author model", "Reviewer model"))
+def test_system_visible_model_fields_cannot_be_omitted(
+    tmp_path: Path, label: str
+) -> None:
+    if label == "Author model":
+        root, _, _, trigger = _repo(
+            tmp_path,
+            transform_request=lambda text: text.replace(
+                "Author model: gpt-5.6-sol\n", ""
+            ),
+        )
+        with pytest.raises(pair.CompactPairError, match="Author model"):
+            pair.parse_verify_request(root, REQUEST_PATH, trigger)
+    else:
+        root, base, head, trigger = _repo(tmp_path)
+        report_path = _write_report(root, base, head, trigger)
+        report_path.write_text(
+            report_path.read_text(encoding="utf-8").replace(
+                "Reviewer model: gpt-5.6-terra\n", ""
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(pair.CompactPairError, match="Reviewer model"):
+            pair.parse_verification_report(root, report_path)
+
+
+def test_explicit_empty_finding_ref_sections_are_valid(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path, finding_refs=())
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            finding_refs=(),
+            dispositions=(),
+        ),
+    )
+
+    assert report.finding_refs == ()
+    assert report.finding_dispositions == ()
+    assert pair.validate_report(root, report) == []
+
+
+def test_same_seat_cannot_approve_its_own_work(tmp_path: Path) -> None:
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        assigned_operator="operator",
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(root, base, head, trigger, request_path=request_path),
+    )
+
+    assert "reviewer seat equals author seat" in pair.validate_report(root, report)
+
+
+def test_same_model_across_operator_seats_is_not_independent(tmp_path: Path) -> None:
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        author_model="GPT-5.6-SOL",
+        assigned_operator="operator2",
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+            reviewer_model="gpt-5.6-sol",
+        ),
+    )
+
+    assert "reviewer model equals author model" in pair.validate_report(root, report)
+
+
+@pytest.mark.parametrize(
+    ("finding_refs", "dispositions", "expected"),
+    (
+        ((), (), "finding refs changed"),
+        ((FINDING_A, FINDING_A), ((FINDING_A, "addressed"),), "unique"),
+        (
+            (FINDING_B, FINDING_A),
+            ((FINDING_B, "addressed"), (FINDING_A, "addressed")),
+            "finding refs changed",
+        ),
+    ),
+)
+def test_report_cannot_drop_duplicate_or_reorder_finding_refs(
+    tmp_path: Path,
+    finding_refs: tuple[str, ...],
+    dispositions: tuple[tuple[str, str], ...],
+    expected: str,
+) -> None:
+    root, base, head, trigger = _repo(
+        tmp_path, finding_refs=(FINDING_A, FINDING_B)
+    )
+    report_path = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        finding_refs=finding_refs,
+        dispositions=dispositions,
+    )
+    if expected == "unique":
+        with pytest.raises(pair.CompactPairError, match=expected):
+            pair.parse_verification_report(root, report_path)
+    else:
+        report = pair.parse_verification_report(root, report_path)
+        assert any(expected in item for item in pair.validate_report(root, report))
+
+
+def test_report_requires_exactly_one_disposition_for_each_ref(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(
+        tmp_path, finding_refs=(FINDING_A, FINDING_B)
+    )
+    report_path = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        finding_refs=(FINDING_A, FINDING_B),
+        dispositions=((FINDING_A, "addressed"),),
+    )
+
+    with pytest.raises(pair.CompactPairError, match="exactly one disposition"):
+        pair.parse_verification_report(root, report_path)
+
+
+def test_new_report_cannot_omit_finding_disposition_section(tmp_path: Path) -> None:
     root, base, head, trigger = _repo(tmp_path)
-    report_path = _write_report(root, base, base, head)
+    report_path = _write_report(root, base, head, trigger)
+    text = report_path.read_text(encoding="utf-8")
+    disposition_section = _bullet_section(
+        "Finding Dispositions", (f"{FINDING_A}: addressed",)
+    )
+    report_path.write_text(text.replace(disposition_section, ""), encoding="utf-8")
+
+    with pytest.raises(pair.CompactPairError, match="Finding Dispositions"):
+        pair.parse_verification_report(root, report_path)
+
+
+def test_go_requires_evidence_and_resolved_hard_boundaries(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    no_evidence = pair.parse_verification_report(
+        root, _write_report(root, base, head, trigger, evidence=False)
+    )
+    unresolved = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            dispositions=((FINDING_A, "unresolved-hard-boundary"),),
+        ),
+    )
+
+    assert "GO requires evidence" in pair.validate_report(root, no_evidence)
+    assert "GO cannot carry unresolved hard-boundary findings" in pair.validate_report(
+        root, unresolved
+    )
+
+
+def test_go_evidence_requires_observation_and_result_lines(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    report_path = _write_report(root, base, head, trigger)
+    text = report_path.read_text(encoding="utf-8")
+    text = text.replace(
+        "$ independent actual-diff inspection\n→ reviewed range satisfies the outcome",
+        "Reviewed it.",
+    )
+    report_path.write_text(text, encoding="utf-8")
     report = pair.parse_verification_report(root, report_path)
 
-    violations = pair.validate_report(root, report)
-    assert any("request binding" in item for item in violations)
+    assert "GO requires evidence" in pair.validate_report(root, report)
 
 
 @pytest.mark.parametrize("verdict", ("NITS", "FAIL"))
-def test_truthful_non_go_verdict_needs_no_successful_command_or_external_tool(
+def test_truthful_non_go_preserves_findings_without_success_evidence(
     tmp_path: Path, verdict: str
 ) -> None:
     root, base, head, trigger = _repo(tmp_path)
@@ -294,33 +461,74 @@ def test_truthful_non_go_verdict_needs_no_successful_command_or_external_tool(
             trigger,
             verdict=verdict,
             evidence=False,
+            dispositions=((FINDING_A, "unresolved-hard-boundary"),),
         ),
     )
 
     assert pair.validate_report(root, report) == []
 
 
-def test_request_scope_must_cover_every_reviewed_path(tmp_path: Path) -> None:
-    root, base, head, trigger = _repo(tmp_path, allowed="docs/")
-    report = pair.parse_verification_report(
-        root,
-        _write_report(root, base, head, trigger, allowed="docs/"),
-    )
-
-    assert any("outside allowed paths" in item for item in pair.validate_report(root, report))
-
-
-def test_report_parser_rejects_non_operator_filename_and_malformed_sha(
-    tmp_path: Path,
-) -> None:
+def test_report_rejects_wrong_assignment_request_and_range(tmp_path: Path) -> None:
     root, base, head, trigger = _repo(tmp_path)
-    director_path = root / REPORT_PATH.replace("-operator-to-", "-director-to-")
-    director_path.write_text(
-        _report_text(base, head, trigger).replace(
-            f"Reviewed head: {head}", "Reviewed head: DEADBEEF"
+    wrong_assignment = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=REPORT_PATH.replace("operator-to-all", "operator2-to-all"),
+            reviewer_seat="operator2",
         ),
-        encoding="utf-8",
     )
+    wrong_range = pair.parse_verification_report(
+        root, _write_report(root, base, base, trigger)
+    )
+
+    assert any("assigned Operator" in item for item in pair.validate_report(root, wrong_assignment))
+    assert any("Reviewed head" in item for item in pair.validate_report(root, wrong_range))
+
+
+def test_request_requires_exact_committed_path_and_strict_range(tmp_path: Path) -> None:
+    root, _, head, trigger = _repo(tmp_path)
+    request = pair.parse_verify_request(root, REQUEST_PATH, trigger)
+    assert request.trigger_commit == trigger
+    with pytest.raises(pair.CompactPairError, match="added by trigger commit"):
+        pair.parse_verify_request(root, REQUEST_PATH, head)
+
+
+def test_report_parser_accepts_only_operator_output_paths(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    director_path = REPORT_PATH.replace("-operator-to-", "-director-to-")
+    path = root / director_path
+    path.write_text(_report_text(base, head, trigger), encoding="utf-8")
 
     with pytest.raises(pair.CompactPairError, match="canonical Operator"):
-        pair.parse_verification_report(root, director_path)
+        pair.parse_verification_report(root, path)
+
+
+def test_already_committed_verbose_report_has_narrow_empty_ref_compatibility(
+    repo_root: Path,
+) -> None:
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T13-17-10Z-operator-to-director-verification-report.md"
+    )
+    report = pair.parse_verification_report(repo_root, path)
+
+    assert report.finding_refs == ()
+    assert report.finding_dispositions == ()
+    assert pair.validate_report(repo_root, report) == []
+
+
+def test_legacy_compatibility_does_not_accept_mutated_verbose_bytes(
+    repo_root: Path,
+) -> None:
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T13-17-10Z-operator-to-director-verification-report.md"
+    )
+    raw = (repo_root / path).read_bytes().replace(b"VERDICT: GO", b"VERDICT: NITS")
+
+    with pytest.raises(pair.CompactPairError, match="Finding Refs"):
+        pair._parse_verification_report_bytes(repo_root, path, raw)

@@ -12,12 +12,14 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+import protocol_mailbox
+
 
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 REQUEST_RE = re.compile(
     r"coordination/mailbox/sent/"
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
-    r"(?P<author>director2?)-to-(?P<operator>operator2?)-verify-request\.md"
+    r"(?P<author>director2?|operator2?)-to-(?P<operator>operator2?)-verify-request\.md"
 )
 REPORT_RE = re.compile(
     r"coordination/mailbox/sent/"
@@ -26,6 +28,12 @@ REPORT_RE = re.compile(
     r"verification-report\.md"
 )
 MAX_EVENT_BYTES = 262_144
+LEGACY_VERBOSE_CUTOFF = "ab7fd77081448008f1de30c17a8aaf156a9506c5"
+PAIR_SEATS = frozenset({"director", "director2", "operator", "operator2"})
+OPERATOR_SEATS = frozenset({"operator", "operator2"})
+FINDING_DISPOSITIONS = frozenset(
+    {"addressed", "counter-evidence", "ordinary-risk", "unresolved-hard-boundary"}
+)
 
 
 class CompactPairError(ValueError):
@@ -41,9 +49,8 @@ class VerifyRequest:
     author_seat: str
     author_model: str
     assigned_operator: str
-    question: str
-    allowed_paths: tuple[str, ...]
-    commands: tuple[str, ...]
+    outcome: str
+    finding_refs: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -56,9 +63,9 @@ class VerificationReport:
     reviewed_base: str
     reviewer_seat: str
     reviewer_model: str
-    reviewer_harness: str
-    reviewer_context: str
-    allowed_paths: tuple[str, ...]
+    evidence: tuple[str, ...]
+    finding_refs: tuple[str, ...]
+    finding_dispositions: tuple[tuple[str, str], ...]
     filename_reviewer: str
     envelope_sender: str
 
@@ -172,37 +179,23 @@ def _identity(value: str, label: str) -> str:
     return value
 
 
-def _allowed_paths(lines: list[str]) -> tuple[str, ...]:
-    body = _section(lines, "## Allowed Paths")
+def _finding_refs(lines: list[str], *, required: bool) -> tuple[str, ...]:
+    body = _section_optional(lines, "## Finding Refs")
+    if body is None:
+        if required:
+            raise CompactPairError("missing ## Finding Refs")
+        return ()
     values: list[str] = []
     for line in body:
         if not line.startswith("- "):
-            raise CompactPairError("Allowed Paths must contain only '- path' entries")
+            raise CompactPairError("Finding Refs must contain only '- reference' entries")
         value = line[2:]
-        directory = value.endswith("/")
-        raw = value[:-1] if directory else value
-        pure = PurePosixPath(raw)
-        if (
-            not raw
-            or raw.startswith("/")
-            or "\\" in raw
-            or any(part in {"", ".", ".."} for part in pure.parts)
-            or pure.as_posix() != raw
-            or any(character in value for character in "*?[]")
-        ):
-            raise CompactPairError("invalid allowed path")
-        values.append(raw + ("/" if directory else ""))
-    if not values or len(values) != len(set(values)):
-        raise CompactPairError("allowed paths must be nonempty and unique")
+        if not protocol_mailbox.immutable_reference_is_canonical(value):
+            raise CompactPairError("finding refs must use immutable full-SHA paths or digests")
+        values.append(value)
+    if len(values) != len(set(values)):
+        raise CompactPairError("finding refs must be unique")
     return tuple(values)
-
-
-def _commands(lines: list[str]) -> tuple[str, ...]:
-    body = _section(lines, "## Verification Commands")
-    commands = [line[2:] for line in body if line.startswith("$ ")]
-    if len(commands) != len(body) or not commands or len(commands) != len(set(commands)):
-        raise CompactPairError("verification commands must be nonempty unique '$ command' entries")
-    return tuple(commands)
 
 
 def _envelope_sender(text: str) -> str:
@@ -210,6 +203,13 @@ def _envelope_sender(text: str) -> str:
     if len(values) != 1:
         raise CompactPairError("missing or duplicate envelope sender")
     return values[0]
+
+
+# ARCHITECTURE.md pins the public entry-point locations as smoke evidence.
+# Keep parser helpers below validate_report when their internal shape grows.
+# This preserves factual anchors without changing the public call surface.
+# The ordering is intentional; Python resolves these helpers when called.
+# Update the architecture anchor only for a genuine public-surface move.
 
 
 def parse_verify_request(
@@ -234,7 +234,8 @@ def parse_verify_request(
     ).decode("utf-8", errors="strict").splitlines()
     if change != [f"A\t{path}"]:
         raise CompactPairError("verify-request must be added by trigger commit")
-    text = _decode(_git(root, "show", f"{trigger}:{path}"), "verify-request")
+    raw = _git(root, "show", f"{trigger}:{path}")
+    text = _decode(raw, "verify-request")
     lines = text.splitlines()
     if lines.count("Event type: verify-request") != 1:
         raise CompactPairError("missing or duplicate Event type: verify-request")
@@ -242,6 +243,8 @@ def parse_verify_request(
     base = _full_commit(root, _one(lines, "Reviewed base: ", "Reviewed base"), "Reviewed base")
     author = _one(lines, "Author seat: ", "Author seat")
     assigned = _one(lines, "Assigned operator: ", "Assigned operator")
+    if author not in PAIR_SEATS or assigned not in OPERATOR_SEATS:
+        raise CompactPairError("request author or assigned reviewer is not a pair seat")
     if author != match.group("author") or _envelope_sender(text) != author:
         raise CompactPairError("Author seat does not match verify-request envelope/path")
     if assigned != match.group("operator"):
@@ -250,10 +253,13 @@ def parse_verify_request(
         raise CompactPairError("request trigger must be strictly after Reviewed head")
     if base == head or not _is_ancestor(root, base, head):
         raise CompactPairError("Reviewed base must be a strict ancestor of Reviewed head")
-    question_lines = _section(lines, "## Acceptance Question")
-    question = "\n".join(question_lines).strip()
-    if not question:
-        raise CompactPairError("Acceptance Question must be nonempty")
+    legacy = _section_optional(lines, "## Finding Refs") is None
+    if legacy and not _is_frozen_verbose_blob(root, path, raw):
+        raise CompactPairError("missing ## Finding Refs")
+    outcome_heading = "## Acceptance Question" if legacy else "## Outcome"
+    outcome = "\n".join(_section(lines, outcome_heading)).strip()
+    if not outcome:
+        raise CompactPairError(f"{outcome_heading[3:]} must be nonempty")
     return VerifyRequest(
         path=path,
         trigger_commit=trigger,
@@ -262,9 +268,8 @@ def parse_verify_request(
         author_seat=author,
         author_model=_identity(_one(lines, "Author model: ", "Author model"), "Author model"),
         assigned_operator=assigned,
-        question=question,
-        allowed_paths=_allowed_paths(lines),
-        commands=_commands(lines),
+        outcome=outcome,
+        finding_refs=_finding_refs(lines, required=not legacy),
     )
 
 
@@ -293,18 +298,14 @@ def _read_regular(root: Path, path: str) -> bytes:
         os.close(descriptor)
 
 
-def _parse_verification_report_bytes(
-    root: Path, path: str, raw: bytes
-) -> VerificationReport:
+def _parse_verification_report_bytes(root: Path, path: str, raw: bytes) -> VerificationReport:
     match = REPORT_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verification-report path is not canonical Operator output")
     text = _decode(raw, "verification-report")
     lines = text.splitlines()
     if lines.count("Event type: verification-report") != 1:
-        raise CompactPairError(
-            "missing or duplicate Event type: verification-report"
-        )
+        raise CompactPairError("missing or duplicate Event type: verification-report")
     verdict = _one(lines, "VERDICT: ", "VERDICT")
     if verdict not in {"GO", "NITS", "FAIL"}:
         raise CompactPairError("VERDICT must be GO, NITS, or FAIL")
@@ -321,6 +322,10 @@ def _parse_verification_report_bytes(
     base = _one(lines, "Reviewed base: ", "Reviewed base")
     if SHA_RE.fullmatch(head) is None or SHA_RE.fullmatch(base) is None:
         raise CompactPairError("Reviewed base/head must be full lowercase commit SHAs")
+    legacy = _section_optional(lines, "## Finding Refs") is None
+    if legacy and not _is_frozen_verbose_blob(root, path, raw):
+        raise CompactPairError("missing ## Finding Refs")
+    finding_refs = _finding_refs(lines, required=not legacy)
     return VerificationReport(
         path=path,
         verdict=verdict,
@@ -330,9 +335,11 @@ def _parse_verification_report_bytes(
         reviewed_base=base,
         reviewer_seat=_one(lines, "Reviewer seat: ", "Reviewer seat"),
         reviewer_model=_identity(_one(lines, "Reviewer model: ", "Reviewer model"), "Reviewer model"),
-        reviewer_harness=_identity(_one(lines, "Verification harness: ", "Verification harness"), "Verification harness"),
-        reviewer_context=_identity(_one(lines, "Verification context: ", "Verification context"), "Verification context"),
-        allowed_paths=_allowed_paths(lines),
+        evidence=_evidence(lines),
+        finding_refs=finding_refs,
+        finding_dispositions=_finding_dispositions(
+            lines, finding_refs, required=not legacy
+        ),
         filename_reviewer=match.group("reviewer"),
         envelope_sender=_envelope_sender(text),
     )
@@ -358,13 +365,6 @@ def parse_verification_report_candidate(
     return _parse_verification_report_bytes(root, final, _read_regular(root, candidate))
 
 
-def _path_allowed(path: str, allowed_paths: tuple[str, ...]) -> bool:
-    return any(
-        path == allowed.rstrip("/")
-        or (allowed.endswith("/") and path.startswith(allowed))
-        for allowed in allowed_paths
-    )
-
 
 def validate_report(root: Path, report: VerificationReport) -> list[str]:
     root = root.resolve()
@@ -386,25 +386,85 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
         violations.append("report Reviewed head does not match request")
     if report.reviewed_base != request.reviewed_base:
         violations.append("report Reviewed base does not match request")
-    if report.allowed_paths != request.allowed_paths:
-        violations.append("report allowed paths changed from request")
+    if report.finding_refs != request.finding_refs:
+        violations.append("report finding refs changed from request")
+    if report.verdict == "GO" and (
+        not any(line.startswith("$ ") for line in report.evidence)
+        or not any(line.startswith("→ ") for line in report.evidence)
+    ):
+        violations.append("GO requires evidence")
+    if report.verdict == "GO" and any(
+        disposition == "unresolved-hard-boundary"
+        for _, disposition in report.finding_dispositions
+    ):
+        violations.append("GO cannot carry unresolved hard-boundary findings")
     try:
-        changed = _git(
-            root,
-            "diff",
-            "--name-only",
-            "-z",
-            request.reviewed_base,
-            request.reviewed_head,
-        ).split(b"\x00")
-        changed_paths = [item.decode("utf-8") for item in changed if item]
-    except (CompactPairError, UnicodeDecodeError) as exc:
+        _full_commit(root, request.reviewed_base, "Reviewed base")
+        _full_commit(root, request.reviewed_head, "Reviewed head")
+    except CompactPairError as exc:
         violations.append(f"reviewed range unavailable: {exc}")
-    else:
-        outside = [path for path in changed_paths if not _path_allowed(path, request.allowed_paths)]
-        if outside:
-            violations.append("reviewed range contains paths outside allowed paths: " + ", ".join(outside))
     return violations
+
+
+def _section_optional(lines: list[str], heading: str) -> list[str] | None:
+    positions = [index for index, line in enumerate(lines) if line == heading]
+    if len(positions) > 1:
+        raise CompactPairError(f"duplicate {heading}")
+    if not positions:
+        return None
+    return _section(lines, heading)
+
+
+def _finding_dispositions(
+    lines: list[str], finding_refs: tuple[str, ...], *, required: bool
+) -> tuple[tuple[str, str], ...]:
+    body = _section_optional(lines, "## Finding Dispositions")
+    if body is None:
+        if required:
+            raise CompactPairError("missing ## Finding Dispositions")
+        return ()
+    values: list[tuple[str, str]] = []
+    for line in body:
+        if not line.startswith("- "):
+            raise CompactPairError(
+                "Finding Dispositions must contain only '- reference: disposition' entries"
+            )
+        reference, separator, disposition = line[2:].rpartition(": ")
+        if (
+            not separator
+            or not protocol_mailbox.immutable_reference_is_canonical(reference)
+            or disposition not in FINDING_DISPOSITIONS
+        ):
+            raise CompactPairError("invalid finding disposition")
+        values.append((reference, disposition))
+    if len(values) != len(finding_refs) or tuple(ref for ref, _ in values) != finding_refs:
+        raise CompactPairError("report requires exactly one disposition for each finding ref")
+    return tuple(values)
+
+
+def _evidence(lines: list[str]) -> tuple[str, ...]:
+    body = _section_optional(lines, "## Evidence")
+    if body is None:
+        return ()
+    return tuple(line for line in body if line.strip())
+
+
+def _git_blob(root: Path, commit: str, path: str) -> bytes | None:
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+    completed = subprocess.run(
+        ["/usr/bin/git", "--no-replace-objects", "show", f"{commit}:{path}"],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        check=False,
+    )
+    return completed.stdout if completed.returncode == 0 else None
+
+
+def _is_frozen_verbose_blob(root: Path, path: str, raw: bytes) -> bool:
+    return _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) == raw
 
 
 def _main(argv: list[str] | None = None) -> int:

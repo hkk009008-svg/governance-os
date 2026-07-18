@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import check_go_schema as schema
+import compact_pair_loop as pair
 
 
 def _manifest(*entries: tuple[str, bytes]) -> dict[str, object]:
@@ -112,6 +113,43 @@ def test_live_mailbox_is_valid_against_frozen_history_and_compact_current_rules(
     manifest = schema.load_baseline_manifest(schema.DEFAULT_MANIFEST)
 
     assert schema.repository_report_violations(schema.ROOT, reports, manifest) == []
+
+
+def test_report_compatibility_is_narrow_across_each_frozen_generation() -> None:
+    pre_v3_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-07T09-52-13Z-operator-to-all-verification-report.md"
+    )
+    historical_v3_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T04-59-08Z-operator-to-all-verification-report.md"
+    )
+    verbose_compact_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T13-17-10Z-operator-to-director-verification-report.md"
+    )
+    pre_v3 = (schema.ROOT / pre_v3_path).read_bytes()
+    historical_v3 = (schema.ROOT / historical_v3_path).read_bytes()
+    verbose_compact = (schema.ROOT / verbose_compact_path).read_bytes()
+
+    assert schema.repository_report_violations(
+        schema.ROOT,
+        [schema.RawReport(pre_v3_path, pre_v3)],
+        _manifest((pre_v3_path, pre_v3)),
+    ) == []
+    assert schema.repository_report_violations(
+        schema.ROOT,
+        [schema.RawReport(historical_v3_path, historical_v3)],
+        _manifest(),
+    ) == []
+    assert schema.repository_report_violations(
+        schema.ROOT,
+        [schema.RawReport(verbose_compact_path, verbose_compact)],
+        _manifest(),
+    ) == []
+    parsed = pair.parse_verification_report(schema.ROOT, verbose_compact_path)
+    assert parsed.finding_refs == ()
+    assert parsed.finding_dispositions == ()
 
 
 def test_baseline_generation_surface_is_retired() -> None:

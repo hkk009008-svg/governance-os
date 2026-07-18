@@ -1,9 +1,8 @@
-# verification-report — compact format and severity reference
+# verification-report — outcome evidence reference
 
 Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. Only the
-assigned non-author Operator emits GO, NITS, or FAIL. `send-event` publishes all
-three verdicts through the same fixed mailbox finalizer; it has no receipt,
-resume, retry, or recovery path.
+assigned non-author Operator emits GO, NITS, or FAIL. The fixed mailbox writer
+supplies the H1, timestamp/from envelope, and cursor footer.
 
 ```bash
 coordination/bin/send-event <operator|operator2> <recipient> verification-report "<subject>" <<'EOF'
@@ -11,48 +10,50 @@ coordination/bin/send-event <operator|operator2> <recipient> verification-report
 EOF
 ```
 
-The sender supplies only the body below. The mailbox writer supplies the H1,
-timestamp/from envelope, and cursor footer.
-
 ## Body skeleton
 
 ```markdown
 Event type: verification-report
 VERDICT: GO | NITS | FAIL
-Verification request: coordination/mailbox/sent/<canonical-verify-request>.md@<40-lowercase-request-commit>
+Verification request: coordination/mailbox/sent/<request>.md@<40-lowercase-request-commit>
 Reviewed head: <40-lowercase-hex>
 Reviewed base: <40-lowercase-hex>
 Reviewer seat: operator | operator2
-Reviewer model: <model identity>
-Verification harness: <actual harness and method>
-Verification context: <fresh non-author context>
+Reviewer model: <system-visible model different from Author model>
+Verification harness: <optional evidence note; not authority>
+Verification context: <optional evidence note; not identity proof>
 
 ## Allowed Paths
 
-- <exact path or directory/>
-
-## Evidence
-
-$ <executed command>
-→ <observed result>
+- <optional advisory request context; not compliance authority>
 
 ## Findings
 
-None.
+<findings ordered by severity, or None.>
 
-## Boundary
+## Finding Refs
 
-<optional: completion, blocker, scope expansion, or separately user-gated effect>
+- <immutable-path@commit>
+
+## Finding Dispositions
+
+- <immutable-path@commit>: addressed | counter-evidence | ordinary-risk | unresolved-hard-boundary
+
+## Evidence
+
+$ <reviewer-chosen command or inspection>
+→ <observed result>
 ```
 
-GO requires command and output evidence plus a commit in the generated subject
-or a `logs/` artifact. Truthful NITS and FAIL remain directly publishable even
-when a command or external tool is unavailable.
+Preserve the request's finding references in their original order and give
+each exactly one disposition. GO requires evidence, a distinct author/reviewer
+seat, a different system-visible model, and no `unresolved-hard-boundary`
+disposition. NITS and FAIL remain publishable without successful evidence, but
+they still preserve and disposition every reference.
 
-The `Boundary` section is optional and used only for completion, a genuine
-blocker, scope expansion, or a separately user-gated effect. Omit it otherwise;
-when present, state the plain boundary or authority and never return a seat
-command to the user.
+The Operator judges the actual committed outcome and applicable hard
+boundaries. Request-listed paths, commands, free-form harness names, and
+context labels do not prove compliance or independence.
 
 Findings are ordered CRITICAL, MAJOR, MINOR, INFORMATIONAL and name file:line
 when applicable. Separate evidence, inference, uncertainty, and follow-up.

@@ -84,17 +84,13 @@ Author seat: director
 Author model: gpt-5.6-sol
 Assigned operator: operator
 
-## Acceptance Question
+## Outcome
 
-Does the exact candidate satisfy the compact pair contract?
+The committed change satisfies the routed maintenance outcome.
 
-## Allowed Paths
+## Finding Refs
 
-- scripts/
-
-## Verification Commands
-
-$ env -u GIT_INDEX_FILE python -m pytest tests/unit/test_feature.py -q
+- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe37f042045e844c2a7de90437445ccd6e0e
 
 Cursor at send: 0
 """,
@@ -131,12 +127,14 @@ Reviewed head: {head}
 Reviewed base: {base}
 Reviewer seat: {reviewer_seat}
 Reviewer model: gpt-5.6-terra
-Verification harness: pytest plus independent actual-diff review
-Verification context: fresh non-author Operator context
 
-## Allowed Paths
+## Finding Refs
 
-- scripts/
+- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe37f042045e844c2a7de90437445ccd6e0e
+
+## Finding Dispositions
+
+- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe37f042045e844c2a7de90437445ccd6e0e: addressed
 {evidence}
 
 ## Findings
