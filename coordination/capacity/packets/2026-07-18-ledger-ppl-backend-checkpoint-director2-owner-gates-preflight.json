@@ -14,11 +14,12 @@
   "acceptance": [
     "Read-only inspect the exact milestone plan, Task-3 and Task-4 child plans, frozen API, and binding designs at target HEAD a93d07196dd8622d753cdd5f8617af7df29eb1cf.",
     "Prepare one concise owner-decision preflight for Gates B/C/D: enumerate the exact choices and confirmations the two active owners must supply, distinguish public-safe decision shape from private values/receipts, identify which choice unlocks Task 3B or selects Task 4 skip-versus-import, and name every stop condition that prevents an implementer from inferring a ruling.",
-    "Return one bounded findings event to Coordinator. Do not solicit, invent, record, or approve owner values or receipts; do not edit target files, policy, data, packets, or route state; do not authorize Task 3B/4 or issue GO/NITS/FAIL."
+    "Return one bounded findings event to Coordinator. Do not solicit, invent, record, or approve owner values or receipts; do not edit target files, policy, data, packets, or route state; do not authorize Task 3B/4 or issue GO/NITS/FAIL.",
+    "USER-PRIORITY PARK: this packet was ready before the Pipeline-maintenance pause. It is now blocked without completion evidence and may return to ready only after the maintenance join authorizes restoration and fresh target preservation checks pass."
   ],
   "done_evidence": [],
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "blocked",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

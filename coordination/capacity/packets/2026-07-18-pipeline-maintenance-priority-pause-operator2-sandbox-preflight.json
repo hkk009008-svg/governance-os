@@ -1,0 +1,32 @@
+{
+  "id": "operator2-pipeline-maintenance-sandbox-reproduction-preflight",
+  "wave": 2,
+  "cycle": "pipeline-maintenance-priority-pause-2026-07-18",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator2",
+  "packet_type": "operator-preflight",
+  "allowed_paths": [
+    "coordination/mailbox/sent/*-operator2-to-coordinator-findings.md"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Start in Pipeline at the committed maintenance route and run only plan Task 2. Record routed HEAD, clean tracked state, OS, Python, Git, shell, and managed permission-profile identity.",
+    "Run the exact selector tests/unit/test_coordination_tooling.py::test_send_event_stages_ordinary_event_through_fixed_finalizer and then the complete tests/unit/test_coordination_tooling.py file with env -u GIT_INDEX_FILE and no pytest cache. Record literal outputs, exit statuses, failing syscall, path, and errno.",
+    "Classify exactly repository-defect, environment-policy, or unable-to-verify. A repository-defect finding blocks ledger resume and requests a separate security-sensitive writer design and route; it does not authorize a source change here. TMPDIR injection and blanket sandbox bypass are rejected as remedies.",
+    "Publish one committed findings event. Do not edit coordination/bin/send-event, tests, conftest, packets, route state, evidence-ledger, cursors, locks, refs, or external state; do not issue GO/NITS/FAIL."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": "f5556ca",
+  "commit_range": null,
+  "scope_files": [
+    "coordination/bin/send-event",
+    "tests/unit/test_coordination_tooling.py",
+    "docs/superpowers/specs/2026-07-18-pipeline-maintenance-priority-pause-design.md",
+    "docs/superpowers/plans/2026-07-18-pipeline-maintenance-priority-pause.md"
+  ]
+}

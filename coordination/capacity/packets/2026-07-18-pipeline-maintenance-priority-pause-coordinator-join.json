@@ -1,0 +1,42 @@
+{
+  "id": "coord-pipeline-maintenance-priority-pause-join",
+  "wave": 2,
+  "cycle": "pipeline-maintenance-priority-pause-2026-07-18",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "allowed_paths": [
+    "coordination/capacity/packets/2026-07-18-pipeline-maintenance-priority-pause-*.json",
+    "coordination/capacity/packets/2026-07-18-ledger-ppl-backend-checkpoint-*.json",
+    "coordination/mailbox/sent/*-coordinator-to-all-coordination.md",
+    "coordination/mailbox/sent/*-coordinator-to-all-convergence.md",
+    "docs/HANDOFF-coordinator-2026-07-18-pipeline-maintenance*.md"
+  ],
+  "dependencies": [
+    "director2-pipeline-maintenance-handoff-contract-preflight",
+    "operator2-pipeline-maintenance-sandbox-reproduction-preflight",
+    "director-pipeline-maintenance-handoff-selector-implementation",
+    "operator-pipeline-maintenance-handoff-selector-verification"
+  ],
+  "acceptance": [
+    "Reconcile Director2 CLEAR/BLOCKED, Operator2 repository-defect/environment-policy/unable-to-verify, Director's canonical request, and the non-author Operator's exact GO/NITS/FAIL without authoring production behavior.",
+    "A repository-defect sandbox classification creates a separate security-sensitive writer design and route before ledger resume. Environment-policy closes with evidence and no writer change. Unable-to-verify keeps the ledger parked on the exact missing comparison authority or evidence.",
+    "GO plus a terminal no-code sandbox branch permits maintenance closeout only after fresh capacity, route, doctor, coordination, smoke, exact-scope, mailbox, and Git checks. NITS, FAIL, BLOCKED, changed HEAD, or scope drift routes only the smallest correction and keeps the ledger parked.",
+    "Resume the ledger only after rechecking target HEAD a93d07196dd8622d753cdd5f8617af7df29eb1cf, the preserved untracked web/ inventory, and the excluded normal checkout. Restore original states Director ready, Director2 ready, Operator blocked on Director, Operator2 ready, and coordinator blocked on all four; do not claim ledger correctness or completion.",
+    "No production fix, cursor consume, lock action, remote-ref update, push, merge, dependency install, provider action, paid spend, target mutation, cleanup, or external side effect is authorized."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-18-pipeline-maintenance-priority-pause-*.json",
+    "coordination/capacity/packets/2026-07-18-ledger-ppl-backend-checkpoint-*.json",
+    "coordination/mailbox/sent/*-coordinator-to-all-*.md",
+    "docs/HANDOFF-coordinator-2026-07-18-pipeline-maintenance*.md"
+  ]
+}

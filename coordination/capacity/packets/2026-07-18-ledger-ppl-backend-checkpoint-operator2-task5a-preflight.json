@@ -14,11 +14,12 @@
   "acceptance": [
     "Read-only inspect Task-5A's child plan and the pre-existing untracked web/ setup at exact target HEAD a93d07196dd8622d753cdd5f8617af7df29eb1cf. Inventory all web/ files including dotfiles, current package manifest/scripts, Node/npm version constraints, lockfile absence, and the exact local versus registry-dependent validation commands.",
     "Determine whether Task 5A can lawfully resume without registry access. If a lockfile or downloaded dependency graph is required, report the smallest future dependency-acquisition authority and preservation preflight; do not claim readiness from package.json alone.",
-    "Return one bounded findings event to Coordinator. Do not run npm install/ci, access the network, generate a lockfile, edit or delete web/, stage or commit target files, start/stop services, mutate data, issue GO/NITS/FAIL, or broaden into Task 5B."
+    "Return one bounded findings event to Coordinator. Do not run npm install/ci, access the network, generate a lockfile, edit or delete web/, stage or commit target files, start/stop services, mutate data, issue GO/NITS/FAIL, or broaden into Task 5B.",
+    "USER-PRIORITY PARK: this packet was ready before the Pipeline-maintenance pause. It is now blocked without completion evidence and may return to ready only after the maintenance join authorizes restoration and fresh target preservation checks pass."
   ],
   "done_evidence": [],
   "next_recipient": "coordinator",
-  "status": "ready",
+  "status": "blocked",
   "verify_request": null,
   "target_commit": null,
   "commit_range": null,

@@ -1,0 +1,39 @@
+{
+  "id": "operator-pipeline-maintenance-handoff-selector-verification",
+  "wave": 2,
+  "cycle": "pipeline-maintenance-priority-pause-2026-07-18",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "allowed_paths": [
+    "scripts/bus_unread.py",
+    "scripts/latest_handoff.py",
+    "tests/unit/test_keys.py",
+    "tests/unit/test_latest_handoff.py",
+    "coordination/mailbox/sent/*-director-to-operator-verify-request.md",
+    "coordination/mailbox/sent/*-operator-to-all-verification-report.md"
+  ],
+  "dependencies": [
+    "director-pipeline-maintenance-handoff-selector-implementation"
+  ],
+  "acceptance": [
+    "Remain blocked until Director publishes one committed canonical verify-request containing exact immutable base/head, author seat/model, assigned Operator, four paths, commands, and adversarial question. Never reconstruct missing fields.",
+    "Independently inspect the complete two-commit range and rerun every plan Task-5 and Task-6 command. Prove from actual tests and diff that mtime, commit timestamps, filename-day order, dirty or untracked bytes, symlinks, malformed metadata, same-commit ties, Git failure, and coordinator aliasing are handled exactly as routed.",
+    "Confirm both cleanup edits are behavior-neutral, warning visibility remains intact, no obsolete st_mtime_ns selector remains, exact four-path scope holds, and the tree, protocol doctor, coordination checker, and smoke are clean.",
+    "Publish the only GO/NITS/FAIL verification-report bound to the exact request and range. Do not repair code, edit packets, consume cursors, claim or release locks, update refs, push, merge, deploy, modify evidence-ledger, or broaden scope."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "scripts/bus_unread.py",
+    "scripts/latest_handoff.py",
+    "tests/unit/test_keys.py",
+    "tests/unit/test_latest_handoff.py"
+  ]
+}

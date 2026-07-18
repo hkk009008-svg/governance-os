@@ -1,0 +1,33 @@
+{
+  "id": "director2-pipeline-maintenance-handoff-contract-preflight",
+  "wave": 2,
+  "cycle": "pipeline-maintenance-priority-pause-2026-07-18",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "director2",
+  "packet_type": "director-preflight",
+  "allowed_paths": [
+    "coordination/mailbox/sent/*-director2-to-coordinator-findings.md"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Start in Pipeline at the committed maintenance route, read design commit 5598b4b and plan commit f5556ca, and perform only the plan Task-1 adversarial handoff preflight. Inventory the complete canonical HANDOFF corpus, its When/Created/Date grammar, introducing commits, and same-commit ties.",
+    "Bind the exact acceptance tests and non-vacuous mutations named in plan Task 1, including topology versus mtime, legacy metadata, filename disagreement, dirty and untracked candidates, symlinks, Git failure, coordinator aliasing, basename tie warnings, and CLI warning visibility.",
+    "Publish one committed findings event with routed HEAD, commands, results, corpus evidence, abuse cases, excluded effects, and disposition CLEAR or BLOCKED. Any legitimate unmodeled metadata grammar is BLOCKED, not an inferred implementation rule.",
+    "Do not edit production, tests, packets, route state, handoffs, evidence-ledger, cursors, locks, refs, or external state; do not implement a fix or issue GO/NITS/FAIL."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "ready",
+  "verify_request": null,
+  "target_commit": "f5556ca",
+  "commit_range": null,
+  "scope_files": [
+    "scripts/latest_handoff.py",
+    "tests/unit/test_latest_handoff.py",
+    "docs/HANDOFF-*.md",
+    "docs/superpowers/specs/2026-07-18-pipeline-maintenance-priority-pause-design.md",
+    "docs/superpowers/plans/2026-07-18-pipeline-maintenance-priority-pause.md"
+  ]
+}
