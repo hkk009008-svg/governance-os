@@ -45,12 +45,13 @@ Only these boundaries remain mandatory:
 1. Durable repository and mailbox evidence outranks chat summaries and stale
    prose.
 2. An author cannot approve its own behavior-changing work. The request and
-   report retain durable seat and actor-context identity. A non-author Operator
-   with a distinct truthful identity supplies the verdict for the actual
-   committed change; changing seat labels cannot manufacture independence.
-3. External or difficult-to-reverse effects require durable explicit user
-   authority provenance bound to a canonical effect, exactly one executor, an
-   exact target, and bounded scope. A seat-authored route cannot mint authority.
+   report retain the current system-visible model field and seat identity. A
+   non-author Operator must use both a distinct Operator seat and a different
+   model; changing seat labels or writing a different free-form context name
+   cannot manufacture independence.
+3. External or difficult-to-reverse effects remain outside this cutover and
+   separately user-gated. A seat-authored token is structural description only
+   and cannot mint or imply execution permission.
 4. Known material evidence cannot be concealed or silently discarded. Its
    immutable `path@commit` or digest references travel through outcome,
    ownership, request, and report artifacts until explicitly dispositioned.
@@ -105,7 +106,9 @@ Ownership uses a minimal durable handshake bound to the exact current contract:
   known finding references.
 - A normal transfer is effective only when every new owner publishes a
   recipient-authored durable acceptance referencing that exact proposal and
-  parent. Caller-supplied booleans or prose naming another seat do not count.
+  parent. The committed acceptance body must itself state the exact task,
+  parent/revision, previous and proposed owners, and proposal ref; an unrelated
+  older event from the correct sender does not count.
 - An exchange is effective when all affected seats acknowledge the same
   parent and revision through their own committed events.
 - The incumbent remains responsible until acceptance, so a proposal cannot
@@ -114,9 +117,10 @@ Ownership uses a minimal durable handshake bound to the exact current contract:
   incumbent is ineffective.
 
 If an owner is inactive, another seat may take over after checking for fresh
-work and active locks and durably recording the exact evidence references. A
-claimant assertion without the referenced fresh-work and lock evidence is
-ineffective. No fixed timeout is imposed; the claiming seat uses current
+work and active locks and durably recording evidence bodies that state the
+exact task, observed parent/revision, observation time, fresh-work state, and
+lock state. Stale or unrelated evidence is ineffective. No fixed timeout is
+imposed; the claiming seat uses current
 evidence and judgment. If overlapping claims or route forks appear, the
 resolver returns no actionable owner for that task until a later durable event
 resolves the lineage. Unrelated work continues.
@@ -137,8 +141,8 @@ The operative states are intentionally small:
   external state, or resolution of a hard-boundary violation.
 - **READY_FOR_REVIEW:** the owner presents a committed change and evidence to a
   chosen non-author Operator.
-- **ACCEPTED:** a non-author Operator with distinct durable actor-context
-  identity issues GO for the reviewed commit or range and dispositions every
+- **ACCEPTED:** a non-author Operator from a distinct seat and different
+  system-visible model issues GO for the reviewed commit or range and dispositions every
   carried material finding.
 
 The normal cycle is:
@@ -176,9 +180,8 @@ exchange ownership, or request another independent review. Any later reviewer
 must receive the immutable references for earlier material findings; changing
 reviewers cannot erase evidence. The verification report preserves each
 reference and records an explicit disposition. Only a non-author GO from a
-distinct durable actor context accepts behavior-changing work. A distinct
-model is strongest; a truthful distinct cold-context identity is acceptable
-only when durably stated and unequal to the author identity.
+different model and distinct Operator seat accepts behavior-changing work.
+Self-attested context labels are evidence notes, not proof of independence.
 
 ## 8. Failure and Disagreement
 
@@ -215,8 +218,8 @@ The minimum useful forms are:
   new owners, recipient-authored acceptance references, outcome disposition,
   and carried finding references.
 - **Verification request:** reviewed commit or range, outcome, author seat and
-  actor-context identity, chosen non-author verifier, and finding references.
-- **Verification report:** verdict, reviewer seat and actor-context identity,
+  system-visible model, chosen non-author verifier, and finding references.
+- **Verification report:** verdict, reviewer seat and different system-visible model,
   material evidence, preserved finding references, and one explicit
   disposition per reference.
 - **External-effect authorization:** durable user-authority provenance plus the
@@ -254,36 +257,27 @@ them.
 
 ## 11. External Effects
 
-External effects remain separately authorized. A compact token may prove
-structural completeness, but it is not execution authority. Execution requires
-one durable user-authority artifact whose authorized tuple matches exactly:
-
-- a canonical effect;
-- exactly one known executor;
-- an exact canonical target; and
-- bounded scope.
-
-The executor chooses appropriate prechecks, stop conditions, and postchecks
-using current evidence. It may recover from a failure within the authorized
-scope, but it may not silently broaden the target, effect, spend, or authority.
-Other seats observe and must not repeat the same effect unless ownership is
-durably transferred and the user authority covers the replacement executor.
-Substring target matching, wildcard targets, cross-target replay, scope
-broadening, and a second executor fail closed.
+External effects remain separately authorized by the existing user-approval and
+executor boundary, which this cutover does not replace. A compact route token
+may be checked for structural completeness, but every result must say that
+explicit external user authorization is still required. No seat or ordinary
+caller can turn that structural result into execution permission. Because this
+cutover authorizes no external effect, it adds no new authority-grant or replay
+store machinery.
 
 ## 12. Verification Strategy
 
 Protocol tests protect semantic outcomes and authority boundaries rather than
 exact wording or prescribed reasoning. They will prove that:
 
-- an author cannot approve its own behavior-changing work, including equal
-  actor identity across different seats;
+- an author cannot approve its own behavior-changing work, including the same
+  model across different seats;
 - ownership changes bind the exact task, parent contract, revision, previous
   owners, and recipient-authored acceptances from every new owner;
 - stale parents, forks, conflicting tips, forged acceptance, and unsupported
   takeover claims produce no actionable owner for only the overlapping task;
-- an external effect cannot proceed without durable user authority and an
-  exact effect/executor/target/scope tuple;
+- a structurally complete seat-authored effect token still cannot authorize
+  execution;
 - seats can claim, transfer, exchange, split, and merge ownership without
   coordinator approval;
 - an accepted transfer cannot assign work to an unwilling seat;
@@ -329,12 +323,18 @@ and next revision and has conflict-free lineage. Until that transition is
 implemented, the currently committed route and its Director2 `BLOCKED`
 prerequisite remain binding live state.
 
+Frozen legacy reports that predate finding references retain immutable empty
+`finding_refs`; new v3 outcome-contract requests and reports require the section
+and dispositions. Candidate route bodies may be checked structurally while
+staged, but ownership becomes effective only after the fixed-writer event is
+committed and its exact body claims pass immutable provenance validation.
+
 ## 14. Current Maintenance Route Application
 
 The existing Director2 findings at
-`coordination/mailbox/sent/2026-07-18T04-55-26Z-director2-to-coordinator-findings.md@6c11193`
+`coordination/mailbox/sent/2026-07-18T04-55-26Z-director2-to-coordinator-findings.md@6c11193d3ca5eb2a7214147309754241d5b884f3`
 and the Task 0 Operator findings at
-`coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe3`
+`coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe37f042045e844c2a7de90437445ccd6e0e`
 are immutable inputs to the cutover. The two maintenance-specific Director2
 findings remain technically useful:
 
