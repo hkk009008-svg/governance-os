@@ -137,6 +137,220 @@ def _capacity_split_route_body(extra: str = "") -> str:
     )
 
 
+def _autonomous_route_body(extra: str = "") -> str:
+    return (
+        "Task ID: autonomous-capacity-test\n"
+        "Outcome contract: seats can deliver the routed outcome\n"
+        "Parent contract: none\n"
+        "Contract revision: 0\n"
+        "Previous owners: none\n"
+        "Owners: director\n"
+        "Proposal ref: self-candidate\n"
+        "Acceptance refs: self-candidate\n"
+        "Finding refs: none\n"
+        f"{extra}"
+    )
+
+
+def _compact_token_body(*, target: str = "origin/main") -> str:
+    return (
+        "\n## Side-Effect Executor Token\n\n"
+        "- effect: git push\n"
+        "- executor: director\n"
+        f"- target: {target}\n"
+        "- scope: commit:abc123, ref:refs/heads/main\n"
+    )
+
+
+def _legacy_token_body(*, target: str = "origin/main") -> str:
+    return (
+        "\n## Side-Effect Executor Token\n\n"
+        "- side_effect_id: publish-main-2026-07-18\n"
+        "- executor: director\n"
+        f"- target: {target}\n"
+        "- allowed_command_class: git push\n"
+        "- preflight: git status plus divergence check\n"
+        "- stop_if_newer_mail_or_live_target_satisfied: re-read mailbox and ls-remote\n"
+        "- postcheck: git ls-remote origin refs/heads/main\n"
+        "- observer_seats: operator, director2, operator2\n"
+        "- final_closeout_owner: coordinator\n"
+        "- non_goals: no force-push\n"
+    )
+
+
+def test_autonomous_route_needs_no_packets_join_or_capacity_split(tmp_path: Path):
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-00-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert result.route_issues == ()
+    assert result.advisories == []
+
+
+def test_capacity_findings_are_advisory_to_autonomous_route_validity(tmp_path: Path):
+    packet_dir = tmp_path / "coordination" / "capacity" / "packets"
+    packet_dir.mkdir(parents=True)
+    (packet_dir / "malformed.json").write_text("{", encoding="utf-8")
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-01-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert result.blocking_issues == []
+    assert result.advisories
+    assert result.to_dict()["advisories"] == result.advisories
+
+
+def test_internal_ownership_event_is_not_an_external_effect(tmp_path: Path):
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-02-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            "Director may send-event an ownership proposal to exchange the route.\n"
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert not any(
+        "side-effect executor token" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_complete_compact_token_is_only_structural_without_user_grant(
+    tmp_path: Path,
+):
+    body = _autonomous_route_body(_compact_token_body())
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-03-00Z-director-to-all-coordination.md",
+        body,
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+    tokens = protocol_capacity.structural_external_effect_tokens(body)
+
+    assert result.valid
+    assert len(tokens) == 1
+    assert tokens[0].effect == "git push"
+    assert tokens[0].executor == "director"
+    assert tokens[0].target == "origin/main"
+    assert tokens[0].scope == ("commit:abc123", "ref:refs/heads/main")
+    assert len(result.token_results) == 1
+    assert result.token_results[0].complete
+    assert result.token_results[0].explicit_external_user_authorization_required
+    assert result.token_results[0].execution_authorized is False
+
+
+def test_legacy_token_is_readable_but_still_needs_separate_user_grant(
+    tmp_path: Path,
+):
+    body = _autonomous_route_body(_legacy_token_body())
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-04-00Z-director-to-all-coordination.md",
+        body,
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+    tokens = protocol_capacity.structural_external_effect_tokens(body)
+
+    assert result.valid
+    assert len(tokens) == 1
+    assert tokens[0].effect == "git push"
+    assert tokens[0].executor == "director"
+    assert tokens[0].target == "origin/main"
+    assert tokens[0].scope
+    assert result.token_results[0].complete
+    assert result.token_results[0].explicit_external_user_authorization_required
+    assert result.token_results[0].execution_authorized is False
+
+
+def test_incomplete_legacy_token_result_stays_structurally_incomplete(
+    tmp_path: Path,
+):
+    body = _autonomous_route_body(
+        _legacy_token_body().replace("- observer_seats: operator, director2, operator2\n", "")
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-04-30Z-director-to-all-coordination.md",
+        body,
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.token_results[0].complete
+    assert "observer_seats" in result.token_results[0].issues
+    assert result.token_results[0].execution_authorized is False
+
+
+def test_structurally_complete_token_reports_explicit_user_authority_required(
+    tmp_path: Path,
+):
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-05-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(_compact_token_body()),
+    )
+
+    rendered = protocol_capacity.validate_route(tmp_path, 2, route).to_dict()
+
+    assert rendered["explicit_external_user_authorization_required"] is True
+    assert rendered["execution_authorized"] is False
+    assert rendered["structural_token_results"] == [
+        {
+            "complete": True,
+            "issues": [],
+            "explicit_external_user_authorization_required": True,
+            "execution_authorized": False,
+        }
+    ]
+
+
+def test_route_validator_never_returns_execution_authorized(tmp_path: Path):
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-06-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(_compact_token_body()),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.execution_authorized is False
+    assert result.to_dict()["execution_authorized"] is False
+
+
+def test_side_effect_target_match_is_exact_not_substring(tmp_path: Path):
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-07-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            _legacy_token_body(target="evil-origin/main-backup")
+            + "\nDirector may push origin/main after green tests.\n"
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "target/command mismatch" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
 def test_require_packets_flags_empty_final_claim(tmp_path: Path):
     report = protocol_capacity.collect_capacity_report(tmp_path, 2)
 
@@ -443,7 +657,7 @@ def test_active_cycle_coverage_prefers_done_replacement_over_idle_observer(
     assert rows["operator2"]["packet_ids"] == ["operator2-preflight"]
 
 
-def test_route_validation_requires_capacity_split_decision(tmp_path: Path):
+def test_capacity_split_decision_is_not_a_route_validity_gate(tmp_path: Path):
     _write_capacity_split_cycle(tmp_path)
     route = _write_route(
         tmp_path,
@@ -453,8 +667,8 @@ def test_route_validation_requires_capacity_split_decision(tmp_path: Path):
 
     result = protocol_capacity.validate_route(tmp_path, 2, route)
 
-    messages = "\n".join(issue["message"] for issue in result.route_issues)
-    assert "missing Capacity Split Default decision" in messages
+    assert result.valid
+    assert result.route_issues == ()
 
 
 def test_route_validation_allows_single_pair_with_pair_b_preflight_decision(
@@ -503,7 +717,7 @@ def test_route_validation_accepts_internal_continuation_without_terminal_heading
     assert not any("Exact Next Trigger" in issue["message"] for issue in result.route_issues)
 
 
-def test_route_validation_requires_chunk_labels_for_dual_pair_route(
+def test_dual_pair_chunk_labels_are_not_a_route_validity_gate(
     tmp_path: Path,
 ):
     _write_capacity_split_cycle(
@@ -522,9 +736,8 @@ def test_route_validation_requires_chunk_labels_for_dual_pair_route(
 
     result = protocol_capacity.validate_route(tmp_path, 2, route)
 
-    messages = "\n".join(issue["message"] for issue in result.route_issues)
-    assert "dual-pair route missing" in messages
-    assert "chunk b" in messages
+    assert result.valid
+    assert result.route_issues == ()
 
 
 def test_route_validation_allows_dual_pair_route_with_chunk_labels(

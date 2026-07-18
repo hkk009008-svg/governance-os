@@ -9,6 +9,12 @@ from pathlib import Path
 import re
 from typing import Any
 
+try:
+    from scripts import codex_protocol_model as model
+    from scripts import route_lineage
+except ImportError:  # direct script execution
+    import codex_protocol_model as model
+    import route_lineage
 
 if __package__:
     from scripts import protocol_mailbox  # noqa: E402
@@ -63,6 +69,8 @@ SIDE_EFFECT_TOKEN_HEADING_RE = re.compile(
     r"(?im)^(?:#{1,6}\s*)?Side-Effect Executor Token\s*:?\s*$"
 )
 SIDE_EFFECT_TOKEN_FIELD_ALIASES = {
+    "effect": "effect",
+    "effect kind": "effect",
     "side_effect_id": "side_effect_id",
     "side effect id": "side_effect_id",
     "executor": "executor",
@@ -70,6 +78,8 @@ SIDE_EFFECT_TOKEN_FIELD_ALIASES = {
     "target": "target",
     "target repo": "target",
     "target resource": "target",
+    "scope": "scope",
+    "bounded scope": "scope",
     "allowed_command_class": "allowed_command_class",
     "allowed command class": "allowed_command_class",
     "allowed command": "allowed_command_class",
@@ -88,6 +98,12 @@ SIDE_EFFECT_TOKEN_FIELD_ALIASES = {
     "non-goals": "non_goals",
 }
 REQUIRED_SIDE_EFFECT_TOKEN_FIELDS = (
+    "effect",
+    "executor",
+    "target",
+    "scope",
+)
+LEGACY_SIDE_EFFECT_TOKEN_FIELDS = (
     "side_effect_id",
     "executor",
     "target",
@@ -108,7 +124,6 @@ SHARED_SIDE_EFFECT_PATTERNS = {
     "production generation": r"\bproduction generation\b",
     "target-repo checkout refresh": r"\btarget-repo checkout refresh\b|\bcheckout refresh\b|\bgit fetch\b|\bgit pull\b",
     "cursor consume": r"\bcursor consume\b|\bconsume-events?\b",
-    "route mutation": r"\broute mutation\b|\bsend-event\b|\bwrite(?:s)?\s+(?:a\s+)?route\b|\bcreate(?:s)?\s+(?:a\s+)?route\b",
 }
 SIDE_EFFECT_DIRECTIVE_RE = re.compile(
     r"\b(authorizes?|authorized|allows?|grants?|executes?|execute|runs?|run|"
@@ -282,14 +297,27 @@ class RouteValidation:
     route_path: str
     report: CapacityReport
     route_issues: tuple[dict[str, Any], ...]
+    token_results: tuple[model.ExternalEffectTokenResult, ...]
 
     @property
     def blocking_issues(self) -> list[dict[str, Any]]:
-        return [*self.report.blocking_issues, *self.route_issues]
+        return list(self.route_issues)
+
+    @property
+    def advisories(self) -> list[dict[str, Any]]:
+        return list(self.report.blocking_issues)
 
     @property
     def valid(self) -> bool:
         return not self.blocking_issues
+
+    @property
+    def explicit_external_user_authorization_required(self) -> bool:
+        return True
+
+    @property
+    def execution_authorized(self) -> bool:
+        return False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -298,6 +326,22 @@ class RouteValidation:
             "valid": self.valid,
             "route_issues": list(self.route_issues),
             "blocking_issues": self.blocking_issues,
+            "advisories": self.advisories,
+            "structural_token_results": [
+                {
+                    "complete": result.complete,
+                    "issues": list(result.issues),
+                    "explicit_external_user_authorization_required": (
+                        result.explicit_external_user_authorization_required
+                    ),
+                    "execution_authorized": result.execution_authorized,
+                }
+                for result in self.token_results
+            ],
+            "explicit_external_user_authorization_required": (
+                self.explicit_external_user_authorization_required
+            ),
+            "execution_authorized": self.execution_authorized,
             "board": self.report.to_dict(),
         }
 
@@ -327,10 +371,17 @@ def validate_route(root: Path | str, wave: int, route_path: Path | str) -> Route
     blocking_route_issues = [
         issue for issue in route_issues if not issue.get("excepted_by")
     ]
+    try:
+        body = path.read_text(encoding="utf-8")
+    except OSError:
+        token_results: tuple[model.ExternalEffectTokenResult, ...] = ()
+    else:
+        token_results = structural_external_effect_token_results(body)
     return RouteValidation(
         route_path=str(path),
         report=report,
         route_issues=tuple(blocking_route_issues),
+        token_results=token_results,
     )
 
 
@@ -407,6 +458,12 @@ def render_route_validation(result: RouteValidation) -> str:
             lines.append(f"- {issue['gate']}: {issue['message']}")
     else:
         lines.append("BLOCKING ISSUES")
+        lines.append("- none")
+    lines.extend(["", "ADVISORIES"])
+    if result.advisories:
+        for issue in result.advisories:
+            lines.append(f"- {issue['gate']}: {issue['message']}")
+    else:
         lines.append("- none")
     return "\n".join(lines) + "\n"
 
@@ -1068,39 +1125,25 @@ def _apply_exceptions(
 
 
 def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, Any]]:
+    del report
     try:
         body = path.read_text(encoding="utf-8")
     except OSError as exc:
         return [_issue("G7", f"{path.name}: unreadable route ({exc})")]
 
     issues: list[dict[str, Any]] = []
-    name = path.name
     route_posix = path.as_posix()
     if not (
         route_posix.startswith("coordination/mailbox/sent/")
         or "/coordination/mailbox/sent/" in route_posix
     ):
-        issues.append(_issue("G7", f"{name}: route path must be under coordination/mailbox/sent/"))
-    if "-coordinator-to-all-" not in name:
-        issues.append(_issue("G7", f"{name}: route must be coordinator-to-all"))
-    if "task-board" not in body.lower():
-        issues.append(_issue("G7", f"{name}: route is missing task-board marker"))
-    expected_ids = {packet.id for packet in report.packets}
-    if not expected_ids:
-        issues.append(_issue("G7", f"no capacity packets for wave {report.wave}"))
-    named_ids = {packet_id for packet_id in expected_ids if packet_id in body}
-    missing = sorted(expected_ids - named_ids)
-    if missing:
         issues.append(
-            _issue(
-                "G7",
-                "missing packet ids: " + ", ".join(missing),
-                packet_ids=missing,
-            )
+            _issue("G7", f"{path.name}: route path must be under coordination/mailbox/sent/")
         )
-
-    if not re.search(r"(?im)^join condition\s*:", body):
-        issues.append(_issue("G7", f"{name}: missing join condition"))
+    if not route_lineage.is_route_event(path, body):
+        issues.append(
+            _issue("G7", f"{path.name}: not a recognized outcome-contract route")
+        )
 
     forbidden = _forbidden_side_effects(body)
     subagent_forbidden = [label for label in forbidden if label.startswith("subagent ")]
@@ -1113,68 +1156,6 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
         )
     issues.extend(_side_effect_executor_issues(body))
     issues.extend(_side_effect_success_claim_issues(body))
-    issues.extend(_capacity_split_route_issues(body, report))
-    return issues
-
-
-def _capacity_split_route_issues(body: str, report: CapacityReport) -> list[dict[str, Any]]:
-    issues: list[dict[str, Any]] = []
-    for cycle in _active_cycles(list(report.packets)):
-        current = [
-            packet
-            for packet in report.packets
-            if packet.cycle == cycle and packet.is_current
-        ]
-        if not any(packet.owner in protocol_mailbox.SEATS for packet in current):
-            continue
-        body_lower = body.lower()
-        if "capacity split default" not in body_lower:
-            issues.append(
-                _issue(
-                    "G10",
-                    f"cycle {cycle}: missing Capacity Split Default decision",
-                    packet_ids=[packet.id for packet in current],
-                    row_ids=_merged(current, "row_ids"),
-                )
-            )
-            continue
-
-        director2_impl = any(
-            packet.owner == "director2"
-            and packet.packet_type == "director-implementation"
-            and packet.is_current
-            for packet in current
-        )
-        if director2_impl:
-            missing = [
-                phrase
-                for phrase in ("dual-pair routing", "chunk a", "chunk b")
-                if phrase not in body_lower
-            ]
-            if missing:
-                issues.append(
-                    _issue(
-                        "G10",
-                        f"cycle {cycle}: dual-pair route missing " + ", ".join(missing),
-                        packet_ids=[packet.id for packet in current],
-                        row_ids=_merged(current, "row_ids"),
-                    )
-                )
-        else:
-            missing = [
-                phrase
-                for phrase in ("single-pair fast path", "bounded planning or preflight")
-                if phrase not in body_lower
-            ]
-            if missing:
-                issues.append(
-                    _issue(
-                        "G10",
-                        f"cycle {cycle}: single-pair route missing " + ", ".join(missing),
-                        packet_ids=[packet.id for packet in current],
-                        row_ids=_merged(current, "row_ids"),
-                    )
-                )
     return issues
 
 
@@ -1246,10 +1227,12 @@ def _forbidden_side_effects(body: str) -> list[str]:
 def _side_effect_executor_issues(body: str) -> list[dict[str, Any]]:
     tokens = _side_effect_executor_tokens(body)
     issues: list[dict[str, Any]] = []
-    for token in tokens:
+    token_results = structural_external_effect_token_results(body)
+    for token, result in zip(tokens, token_results, strict=True):
+        fields = _token_shape_fields(token)
         missing = [
             field
-            for field in REQUIRED_SIDE_EFFECT_TOKEN_FIELDS
+            for field in fields
             if not token.get(field)
         ]
         if missing:
@@ -1267,13 +1250,24 @@ def _side_effect_executor_issues(body: str) -> list[dict[str, Any]]:
                     "side-effect executor token must name exactly one executor",
                 )
             )
+        for field in result.issues:
+            if field in missing:
+                continue
+            if field == "executor" and token.get("executor"):
+                continue
+            issues.append(
+                _issue(
+                    "G7",
+                    f"side-effect executor token has invalid {field}",
+                )
+            )
 
     side_effect_requests = _shared_side_effect_requests(body)
     side_effect_labels = sorted({request["label"] for request in side_effect_requests})
     complete_tokens = [
         token
-        for token in tokens
-        if all(token.get(field) for field in REQUIRED_SIDE_EFFECT_TOKEN_FIELDS)
+        for token, result in zip(tokens, token_results, strict=True)
+        if _token_is_structurally_complete(token) and result.complete
     ]
     if side_effect_labels and not complete_tokens:
         issues.append(
@@ -1316,13 +1310,116 @@ def _executor_seats(value: str) -> list[str]:
     )
 
 
+def _token_is_structurally_complete(token: dict[str, str]) -> bool:
+    compact = all(token.get(field) for field in REQUIRED_SIDE_EFFECT_TOKEN_FIELDS)
+    legacy = all(token.get(field) for field in LEGACY_SIDE_EFFECT_TOKEN_FIELDS)
+    return compact or legacy
+
+
+def _token_shape_fields(token: dict[str, str]) -> tuple[str, ...]:
+    legacy_only_fields = set(LEGACY_SIDE_EFFECT_TOKEN_FIELDS) - set(
+        REQUIRED_SIDE_EFFECT_TOKEN_FIELDS
+    )
+    if any(token.get(field) for field in legacy_only_fields):
+        return LEGACY_SIDE_EFFECT_TOKEN_FIELDS
+    return REQUIRED_SIDE_EFFECT_TOKEN_FIELDS
+
+
+def _scope_items(token: dict[str, str]) -> tuple[str, ...]:
+    compact_scope = token.get("scope", "").strip()
+    if compact_scope:
+        return tuple(
+            item.strip()
+            for item in compact_scope.split(",")
+            if item.strip()
+        )
+    legacy_scope_fields = (
+        "side_effect_id",
+        "preflight",
+        "stop_if_newer_mail_or_live_target_satisfied",
+        "postcheck",
+        "observer_seats",
+        "final_closeout_owner",
+        "non_goals",
+    )
+    return tuple(
+        f"{field}:{token[field].strip()}"
+        for field in legacy_scope_fields
+        if token.get(field, "").strip()
+    )
+
+
+def _canonical_effect(token: dict[str, str]) -> str:
+    return " ".join(
+        (token.get("effect") or token.get("allowed_command_class", "")).split()
+    ).casefold()
+
+
+def _token_exact_tuple(token: dict[str, str]) -> tuple[str, str, str, tuple[str, ...]]:
+    return (
+        _canonical_effect(token),
+        token.get("executor", "").strip(),
+        token.get("target", "").strip(),
+        tuple(item.strip() for item in _scope_items(token) if item.strip()),
+    )
+
+
+def structural_external_effect_tokens(body: str) -> tuple[model.ExternalEffectToken, ...]:
+    """Parse descriptive token shapes without creating execution authority."""
+
+    return tuple(
+        model.ExternalEffectToken(
+            effect=effect,
+            executor=executor,
+            target=target,
+            scope=scope,
+        )
+        for effect, executor, target, scope in (
+            _token_exact_tuple(token) for token in _side_effect_executor_tokens(body)
+        )
+    )
+
+
+def structural_external_effect_token_results(
+    body: str,
+) -> tuple[model.ExternalEffectTokenResult, ...]:
+    """Return fail-closed shape results that can never authorize execution."""
+
+    raw_tokens = _side_effect_executor_tokens(body)
+    parsed_tokens = structural_external_effect_tokens(body)
+    results: list[model.ExternalEffectTokenResult] = []
+    for raw, parsed in zip(raw_tokens, parsed_tokens, strict=True):
+        fields = _token_shape_fields(raw)
+        missing = tuple(field for field in fields if not raw.get(field))
+        shape = model.external_effect_token_is_complete(parsed)
+        result_issues = tuple(dict.fromkeys((*shape.issues, *missing)))
+        results.append(
+            model.ExternalEffectTokenResult(
+                complete=shape.complete and not missing,
+                issues=result_issues,
+                explicit_external_user_authorization_required=True,
+                execution_authorized=False,
+            )
+        )
+    return tuple(results)
+
+
+def _canonical_effect_kind(value: str) -> str:
+    normalized = " ".join(value.split()).casefold()
+    for label, pattern in SHARED_SIDE_EFFECT_PATTERNS.items():
+        if re.fullmatch(pattern, normalized):
+            return label.casefold()
+    return normalized
+
+
 def _token_covers_side_effect(token: dict[str, str], request: dict[str, str]) -> bool:
-    label = request["label"]
-    token_text = f"{token.get('allowed_command_class', '')} {token.get('target', '')}".lower()
-    if not re.search(SHARED_SIDE_EFFECT_PATTERNS[label], token_text):
+    if _canonical_effect_kind(_canonical_effect(token)) != request["label"].casefold():
         return False
-    target = request.get("target", "")
-    if target and target not in token.get("target", "").lower():
+    target = request.get("target", "").strip().casefold()
+    if target and target != token.get("target", "").strip().casefold():
+        return False
+    executor = request.get("executor", "").strip().casefold()
+    if executor and executor != token.get("executor", "").strip().casefold():
         return False
     return True
 
@@ -1364,7 +1461,7 @@ def _shared_side_effect_directives(body: str) -> list[str]:
 
 def _shared_side_effect_requests(body: str) -> list[dict[str, str]]:
     requests: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str, str]] = set()
     for line in body.splitlines():
         lowered = line.lower()
         normalized = lowered.strip().lstrip("-* ").strip()
@@ -1378,10 +1475,14 @@ def _shared_side_effect_requests(body: str) -> list[dict[str, str]]:
             if not re.search(pattern, lowered):
                 continue
             target = _side_effect_target(label, lowered)
-            key = (label, target)
+            executors = _executor_seats(lowered)
+            executor = executors[0] if len(executors) == 1 else ""
+            key = (label, executor, target)
             if key not in seen:
                 seen.add(key)
-                requests.append({"label": label, "target": target})
+                requests.append(
+                    {"label": label, "executor": executor, "target": target}
+                )
     return requests
 
 
