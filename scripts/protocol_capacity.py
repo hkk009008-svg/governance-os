@@ -1279,6 +1279,7 @@ def _side_effect_executor_issues(body: str) -> list[dict[str, Any]]:
         for token, result in zip(tokens, token_results, strict=True)
         if _token_is_structurally_complete(token) and result.complete
     ]
+    issues.extend(_token_group_cardinality_issues(complete_tokens))
     if side_effect_labels and not complete_tokens:
         issues.append(
             _issue(
@@ -1465,6 +1466,45 @@ def _canonical_effect_kind(value: str) -> str:
 
 def _canonical_scope(items: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(" ".join(item.split()).casefold() for item in items)
+
+
+def _token_group_key(token: dict[str, str]) -> tuple[str, str, tuple[str, ...]]:
+    return (
+        _canonical_effect_kind(_canonical_effect(token)),
+        token.get("target", "").strip().casefold(),
+        _canonical_scope(_scope_items(token)),
+    )
+
+
+def _token_group_cardinality_issues(
+    tokens: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str, tuple[str, ...]], list[dict[str, str]]] = {}
+    for token in tokens:
+        groups.setdefault(_token_group_key(token), []).append(token)
+
+    issues: list[dict[str, Any]] = []
+    for (effect, target, scope), group in sorted(groups.items()):
+        if len(group) == 1:
+            continue
+        executors = {
+            token.get("executor", "").strip().casefold() for token in group
+        }
+        suffix = f" effect={effect} target={target}"
+        if scope:
+            suffix += " scope=" + ",".join(scope)
+        if len(executors) > 1:
+            message = "multiple side-effect executor tokens define"
+            suffix += " with different executors"
+        else:
+            message = "duplicate side-effect executor tokens define"
+        issues.append(
+            _issue(
+                "G7",
+                f"{message}{suffix}; exactly one token and executor are required",
+            )
+        )
+    return issues
 
 
 def _token_covers_effect_target_scope(

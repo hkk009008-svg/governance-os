@@ -494,6 +494,76 @@ def test_nonmatching_scope_token_does_not_create_executor_ambiguity(tmp_path: Pa
     assert result.valid
 
 
+def test_token_only_group_with_different_executors_is_rejected(tmp_path: Path):
+    body = _autonomous_route_body(
+        _compact_token_body(executor="director")
+        + _compact_token_body(executor="operator")
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-06-70Z-director-to-all-coordination.md",
+        body,
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "multiple side-effect executor tokens define" in issue["message"]
+        and "different executors" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_token_only_exact_duplicate_group_is_rejected(tmp_path: Path):
+    token = _compact_token_body()
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-06-71Z-director-to-all-coordination.md",
+        _autonomous_route_body(token + token),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "duplicate side-effect executor tokens define" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_token_only_nonoverlapping_exact_scopes_are_valid(tmp_path: Path):
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-06-72Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            _compact_token_body(executor="director", scope="commit:abc123")
+            + _compact_token_body(executor="operator", scope="commit:def456")
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert all(token.complete for token in result.token_results)
+    assert result.execution_authorized is False
+
+
+def test_token_only_single_complete_token_is_valid(tmp_path: Path):
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-06-73Z-director-to-all-coordination.md",
+        _autonomous_route_body(_compact_token_body()),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert len(result.token_results) == 1
+    assert result.token_results[0].complete
+    assert result.execution_authorized is False
+
+
 def test_side_effect_target_match_is_exact_not_substring(tmp_path: Path):
     route = _write_route(
         tmp_path,
