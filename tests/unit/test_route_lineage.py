@@ -505,3 +505,28 @@ def test_legacy_task_board_coordination_status_and_decision_are_readable(repo_ro
     )
     discovered = {path.name for path in route_lineage.load_route_paths(repo_root)}
     assert set(paths) <= discovered
+
+
+def test_delete_readd_same_filename_binds_current_tree_blob(tmp_path):
+    _init_event_repo(tmp_path)
+    path, original_ref = _root_contract(tmp_path, task="demo-good")
+    rel = path.relative_to(tmp_path).as_posix()
+    _git(tmp_path, "rm", "-q", "--", rel)
+    _git(tmp_path, "commit", "-q", "-m", "delete original route")
+    _, readd_ref = _commit_event(
+        tmp_path,
+        sender="director",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T08-00-00Z",
+        body=_autonomous_body(task="demo-evil", owners="operator"),
+    )
+
+    routes = route_lineage.load_routes(tmp_path)
+
+    assert len(routes) == 1
+    assert routes[0].route_ref == readd_ref
+    assert routes[0].route_ref != original_ref
+    assert routes[0].task_id == "demo-evil"
+    assert not routes[0].effective
+    assert any("self-candidate" in issue for issue in routes[0].issues)

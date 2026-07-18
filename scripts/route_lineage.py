@@ -96,6 +96,7 @@ class LineageRoute:
     effective: bool = True
     legacy: bool = True
     issues: tuple[str, ...] = field(default_factory=tuple)
+    body: str | None = None
 
 
 @dataclass(frozen=True)
@@ -270,10 +271,11 @@ def validate_route_candidate_structure(path: Path, body: str) -> LineageRoute:
         path=path,
         effective=False,
         legacy=False,
+        body=body,
     )
 
 
-def _git(root: Path, *args: str) -> str:
+def _git_output(root: Path, *args: str) -> str:
     env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     env.update({"LANG": "C", "LC_ALL": "C"})
     result = subprocess.run(
@@ -284,18 +286,63 @@ def _git(root: Path, *args: str) -> str:
         check=True,
         env=env,
     )
-    return result.stdout.strip()
+    return result.stdout
+
+
+def _git(root: Path, *args: str) -> str:
+    return _git_output(root, *args).strip()
+
+
+def _is_git_repo(root: Path) -> bool:
+    try:
+        return _git(root, "rev-parse", "--is-inside-work-tree") == "true"
+    except (OSError, subprocess.CalledProcessError, UnicodeError):
+        return False
+
+
+def current_committed_route_body(root: Path, path: Path) -> str:
+    """Return current HEAD's exact route blob, or filesystem bytes outside Git."""
+
+    if _is_git_repo(root):
+        relative = path.relative_to(root).as_posix()
+        try:
+            return _git_output(root, "show", f"HEAD:{relative}")
+        except (OSError, subprocess.CalledProcessError, UnicodeError) as exc:
+            raise ValueError("route path is absent from the current committed tree") from exc
+    return path.read_text(encoding="utf-8")
+
+
+def worktree_matches_committed_route(root: Path, route: LineageRoute) -> bool:
+    """Check that a returned Path still exposes the validated committed bytes."""
+
+    if route.path is None or route.body is None:
+        return False
+    try:
+        return (
+            current_committed_route_body(root, route.path) == route.body
+            and route.path.read_text(encoding="utf-8") == route.body
+        )
+    except (OSError, UnicodeError, ValueError):
+        return False
 
 
 def _committed_ref_for_path(root: Path, path: Path) -> str | None:
     try:
         relative = path.relative_to(root).as_posix()
-        commits = _git(root, "log", "--diff-filter=A", "--format=%H", "--", relative).splitlines()
+        current_blob = _git(root, "rev-parse", f"HEAD:{relative}")
+        commits = _git(
+            root, "log", "--full-history", "--format=%H", "--", relative
+        ).splitlines()
     except (OSError, ValueError, subprocess.CalledProcessError, UnicodeError):
         return None
-    if not commits:
-        return None
-    return f"{relative}@{commits[-1]}"
+    for commit in commits:
+        try:
+            candidate_blob = _git(root, "rev-parse", f"{commit}:{relative}")
+        except (OSError, subprocess.CalledProcessError, UnicodeError):
+            continue
+        if candidate_blob == current_blob:
+            return f"{relative}@{commit}"
+    return None
 
 
 def _legacy_route(root: Path, path: Path, body: str) -> LineageRoute:
@@ -309,6 +356,7 @@ def _legacy_route(root: Path, path: Path, body: str) -> LineageRoute:
         path=path,
         effective=True,
         legacy=True,
+        body=body,
     )
 
 
@@ -443,6 +491,35 @@ def load_route_paths(root: Path) -> list[Path]:
     """Discover all regular legacy or autonomous route events in the mailbox."""
 
     sent = root / "coordination" / "mailbox" / "sent"
+    if _is_git_repo(root):
+        try:
+            entries = _git_output(
+                root,
+                "ls-tree",
+                "-r",
+                "-z",
+                "HEAD",
+                "--",
+                "coordination/mailbox/sent",
+            ).split("\0")
+        except (OSError, subprocess.CalledProcessError, UnicodeError):
+            return []
+        paths: list[Path] = []
+        for entry in entries:
+            if not entry:
+                continue
+            metadata, relative = entry.split("\t", 1)
+            mode, object_type, _blob = metadata.split(" ", 2)
+            if mode != "100644" or object_type != "blob":
+                continue
+            path = root / relative
+            try:
+                body = current_committed_route_body(root, path)
+            except (OSError, UnicodeError, ValueError):
+                continue
+            if is_route_event(path, body):
+                paths.append(path)
+        return sorted(paths)
     if not sent.exists():
         return []
     paths: list[Path] = []
@@ -463,7 +540,7 @@ def load_routes(root: Path) -> list[LineageRoute]:
 
     routes: list[LineageRoute] = []
     for path in load_route_paths(root):
-        body = path.read_text(encoding="utf-8", errors="replace")
+        body = current_committed_route_body(root, path)
         match = _ROUTE_NAME_RE.fullmatch(path.name)
         assert match is not None
         if match.group("sender") in {"coordinator", "coordinator2"}:
@@ -480,7 +557,10 @@ def load_routes(root: Path) -> list[LineageRoute]:
             )
             continue
         try:
-            routes.append(validate_committed_route_effectiveness(root, route_ref))
+            validated = validate_committed_route_effectiveness(root, route_ref)
+            if validated.body != body:
+                raise ValueError("validated event blob differs from current committed tree blob")
+            routes.append(validated)
         except (OSError, ValueError) as exc:
             routes.append(
                 replace(

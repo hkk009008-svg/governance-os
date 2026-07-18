@@ -7,9 +7,11 @@ stays the default target (ADR-008 continuity), and future works register a new
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 import pytest
 
+import route_lineage
 import target_binding
 
 
@@ -412,3 +414,93 @@ def test_build_guard_reports_selected_task_lineage_failure(tmp_path):
     assert not result.ok
     assert any("demo-route" in error for error in result.errors)
     assert any("dangling parent" in error for error in result.errors)
+
+
+def _route_git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=repo, text=True, capture_output=True, check=True
+    ).stdout.strip()
+
+
+def _init_committed_demo_root(root: Path) -> None:
+    _route_git(root, "init", "-q")
+    _route_git(root, "config", "user.name", "Guard Test")
+    _route_git(root, "config", "user.email", "guard@example.test")
+    _route_git(root, "add", "--", "governance.toml")
+    _route_git(root, "commit", "-q", "-m", "governance")
+
+
+def _commit_autonomous_demo_route(
+    root: Path,
+    *,
+    task: str = "demo-route",
+    owners: str = "director",
+) -> Path:
+    sent = root / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True, exist_ok=True)
+    path = sent / "2026-07-18T11-00-00Z-director-to-all-coordination.md"
+    path.write_text(
+        "# director -> all: autonomous route\n\n"
+        "**When:** 2026-07-18T11:00:00Z · **From:** director (online)\n\n"
+        f"Task ID: {task}\n"
+        "Outcome contract: deliver demo behavior\n"
+        "Parent contract: (none)\n"
+        "Contract revision: 0\n"
+        "Previous owners: (none)\n"
+        f"Owners: {owners}\n"
+        "Proposal ref: self-candidate\n"
+        "Acceptance refs: self-candidate\n"
+        "Finding refs: (none)\n\n"
+        "Cursor at send: 0\n",
+        encoding="utf-8",
+    )
+    rel = path.relative_to(root).as_posix()
+    _route_git(root, "add", "--", rel)
+    _route_git(root, "commit", "-q", "-m", "autonomous route")
+    return path
+
+
+def test_find_latest_route_rejects_worktree_replacement_after_validation(tmp_path):
+    import ledger_start_guard
+
+    root = _demo_root(tmp_path)
+    _init_committed_demo_root(root)
+    path = _commit_autonomous_demo_route(root)
+    loaded = route_lineage.load_routes(root)
+    assert loaded[0].effective
+    path.write_text(path.read_text(encoding="utf-8").replace("demo-route", "demo-evil"), encoding="utf-8")
+    target = target_binding.resolve_target(root, env={})
+
+    with pytest.raises(ledger_start_guard.RouteResolutionError, match="working tree"):
+        ledger_start_guard.find_latest_ledger_route(root, target)
+
+    result = ledger_start_guard.build_guard(
+        seat="director", root=root, kernel=root, binding_root=root
+    )
+    assert not result.ok
+    assert any("working tree" in error for error in result.errors)
+
+
+def test_guard_delete_readd_same_filename_never_uses_old_valid_blob(tmp_path):
+    import ledger_start_guard
+
+    root = _demo_root(tmp_path)
+    _init_committed_demo_root(root)
+    path = _commit_autonomous_demo_route(root)
+    rel = path.relative_to(root).as_posix()
+    original_commit = _route_git(root, "rev-parse", "HEAD")
+    _route_git(root, "rm", "-q", "--", rel)
+    _route_git(root, "commit", "-q", "-m", "delete route")
+    _commit_autonomous_demo_route(root, owners="operator")
+    readd_commit = _route_git(root, "rev-parse", "HEAD")
+    assert readd_commit != original_commit
+    target = target_binding.resolve_target(root, env={})
+
+    with pytest.raises(ledger_start_guard.RouteResolutionError, match="ineffective"):
+        ledger_start_guard.find_latest_ledger_route(root, target)
+
+    result = ledger_start_guard.build_guard(
+        seat="director", root=root, kernel=root, binding_root=root
+    )
+    assert not result.ok
+    assert any("ineffective" in error for error in result.errors)

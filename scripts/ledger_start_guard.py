@@ -66,11 +66,8 @@ def find_latest_ledger_route(
     candidates: list[route_lineage.LineageRoute] = []
     for route in routes:
         path = route.path
-        if path is None:
-            continue
-        try:
-            body = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        body = route.body
+        if path is None or body is None:
             continue
         body_lower = body.lower()
         task_lower = (route.task_id or "").lower()
@@ -85,29 +82,32 @@ def find_latest_ledger_route(
         legacy_resolution = route_lineage.resolve_authoritative(candidates)
         if legacy_resolution.mode == "lineage":
             if legacy_resolution.issues or legacy_resolution.authoritative is None:
-                selected_task = max(candidates, key=lambda route: route.route_id).task_id
+                selected_task = max(
+                    candidates, key=lambda route: route.route_id,
+                ).task_id
                 detail = "; ".join(legacy_resolution.issues)
                 raise RouteResolutionError(
                     f"Outcome-contract route for task {selected_task!r} is non-actionable: {detail}"
                 )
-            return legacy_resolution.authoritative.path
-        return max(candidates, key=lambda route: route.route_id).path
+            return _actionable_path(root, legacy_resolution.authoritative)
+        return _actionable_path(
+            root, max(candidates, key=lambda route: route.route_id),
+        )
     selected = max(candidates, key=lambda route: route.route_id)
     if selected.task_id is None:
-        return selected.path
+        return _actionable_path(root, selected)
     resolution = route_lineage.resolve_task_routes(routes, selected.task_id)
     if resolution.issues or resolution.authoritative is None:
         detail = "; ".join(resolution.issues) or "no authoritative route"
-        raise RouteResolutionError(f"Outcome-contract route for task {selected.task_id!r} is non-actionable: {detail}")
-    return resolution.authoritative.path
+        raise RouteResolutionError(
+            f"Outcome-contract route for task {selected.task_id!r} is non-actionable: {detail}"
+        )
+    return _actionable_path(root, resolution.authoritative)
 
 
 def route_guidance(route: Path) -> RouteGuidance:
     """Extract optional route base/worktree hints from a coordinator route."""
-    try:
-        body = route.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return RouteGuidance()
+    body = _validated_route_guidance_body(route)
     base_match = _ROUTE_BASE_RE.search(body)
     worktree_match = _ROUTE_WORKTREE_RE.search(body)
     return RouteGuidance(
@@ -255,6 +255,30 @@ def build_guard(
 
 class RouteResolutionError(RuntimeError):
     """The selected target task has no conflict-free authoritative route."""
+
+
+def _actionable_path(root: Path, route: route_lineage.LineageRoute) -> Path:
+    if not route_lineage.worktree_matches_committed_route(root, route):
+        raise RouteResolutionError(
+            f"Outcome-contract route {route.route_id!r} working tree bytes differ "
+            "from the validated current committed blob"
+        )
+    assert route.path is not None
+    return route.path
+
+
+def _validated_route_guidance_body(route: Path) -> str:
+    root = route.parents[3]
+    body = route_lineage.current_committed_route_body(root, route)
+    try:
+        worktree_body = route.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise RouteResolutionError("outcome-contract route is not readable") from exc
+    if worktree_body != body:
+        raise RouteResolutionError(
+            "outcome-contract route working tree bytes differ from committed blob"
+        )
+    return body
 
 
 def main(argv: list[str] | None = None) -> int:
