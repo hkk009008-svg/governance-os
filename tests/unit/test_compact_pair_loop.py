@@ -282,6 +282,78 @@ def test_system_visible_model_fields_cannot_be_omitted(
             pair.parse_verification_report(root, report_path)
 
 
+@pytest.mark.parametrize(
+    "duplicate",
+    (
+        "Reviewer model:\n",
+        " Reviewer model :   \n",
+        "reviewer MODEL: spoofed\n",
+    ),
+)
+def test_reviewer_model_rejects_blank_malformed_or_whitespace_duplicate(
+    tmp_path: Path, duplicate: str
+) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    report_path = _write_report(root, base, head, trigger)
+    report_path.write_text(
+        report_path.read_text(encoding="utf-8").replace(
+            "Reviewer model: gpt-5.6-terra\n",
+            duplicate + "Reviewer model: gpt-5.6-terra\n",
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(pair.CompactPairError, match="Reviewer model"):
+        pair.parse_verification_report(root, report_path)
+
+
+@pytest.mark.parametrize(
+    "duplicate",
+    (
+        "Author model:\n",
+        " Author model :   \n",
+        "author MODEL: spoofed\n",
+    ),
+)
+def test_author_model_rejects_blank_malformed_or_whitespace_duplicate(
+    tmp_path: Path, duplicate: str
+) -> None:
+    root, _, _, trigger = _repo(
+        tmp_path,
+        transform_request=lambda text: text.replace(
+            "Author model: gpt-5.6-sol\n",
+            duplicate + "Author model: gpt-5.6-sol\n",
+        ),
+    )
+
+    with pytest.raises(pair.CompactPairError, match="Author model"):
+        pair.parse_verify_request(root, REQUEST_PATH, trigger)
+
+
+@pytest.mark.parametrize(
+    ("heading", "duplicate"),
+    (
+        ("Finding Refs", "## Finding Refs \n"),
+        ("Finding Refs", "### finding refs\n"),
+        ("Finding Dispositions", " ## FINDING   DISPOSITIONS : \n"),
+    ),
+)
+def test_finding_sections_reject_normalized_or_malformed_duplicate_headings(
+    tmp_path: Path, heading: str, duplicate: str
+) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    report_path = _write_report(root, base, head, trigger)
+    report_path.write_text(
+        report_path.read_text(encoding="utf-8").replace(
+            f"## {heading}\n", duplicate + f"## {heading}\n"
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(pair.CompactPairError, match=heading):
+        pair.parse_verification_report(root, report_path)
+
+
 def test_explicit_empty_finding_ref_sections_are_valid(tmp_path: Path) -> None:
     root, base, head, trigger = _repo(tmp_path, finding_refs=())
     report = pair.parse_verification_report(
@@ -447,6 +519,20 @@ def test_go_evidence_requires_observation_and_result_lines(tmp_path: Path) -> No
     assert "GO requires evidence" in pair.validate_report(root, report)
 
 
+def test_go_evidence_rejects_bare_command_and_result_markers(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    report_path = _write_report(root, base, head, trigger)
+    text = report_path.read_text(encoding="utf-8")
+    text = text.replace(
+        "$ independent actual-diff inspection\n→ reviewed range satisfies the outcome",
+        "$ \n→ ",
+    )
+    report_path.write_text(text, encoding="utf-8")
+    report = pair.parse_verification_report(root, report_path)
+
+    assert "GO requires evidence" in pair.validate_report(root, report)
+
+
 @pytest.mark.parametrize("verdict", ("NITS", "FAIL"))
 def test_truthful_non_go_preserves_findings_without_success_evidence(
     tmp_path: Path, verdict: str
@@ -532,3 +618,41 @@ def test_legacy_compatibility_does_not_accept_mutated_verbose_bytes(
 
     with pytest.raises(pair.CompactPairError, match="Finding Refs"):
         pair._parse_verification_report_bytes(repo_root, path, raw)
+
+
+def test_real_verbose_request_retains_empty_ref_compatibility(repo_root: Path) -> None:
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T09-18-33Z-director-to-operator-verify-request.md"
+    )
+    trigger = "d62808f62f9e93dbfe8d235db2550749cf94fb6a"
+
+    request = pair.parse_verify_request(repo_root, path, trigger)
+
+    assert request.finding_refs == ()
+
+
+def test_recommitted_identical_verbose_request_loses_legacy_compatibility(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    clone = tmp_path / "clone"
+    subprocess.run(
+        ["git", "clone", "-q", "--no-hardlinks", str(repo_root), str(clone)],
+        check=True,
+    )
+    _git(clone, "config", "user.name", "Compact Pair Test")
+    _git(clone, "config", "user.email", "compact-pair@example.invalid")
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T09-18-33Z-director-to-operator-verify-request.md"
+    )
+    raw = (clone / path).read_bytes()
+    _git(clone, "rm", "-q", "--", path)
+    _git(clone, "commit", "-q", "-m", "test: remove historical request")
+    (clone / path).write_bytes(raw)
+    _git(clone, "add", "-f", "--", path)
+    _git(clone, "commit", "-q", "-m", "test: replay historical request")
+    replay_trigger = _git(clone, "rev-parse", "HEAD")
+
+    with pytest.raises(pair.CompactPairError, match="historical provenance"):
+        pair.parse_verify_request(clone, path, replay_trigger)

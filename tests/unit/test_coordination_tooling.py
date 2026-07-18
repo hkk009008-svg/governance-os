@@ -230,6 +230,38 @@ def test_misassigned_verification_report_fails_before_finalization(
     assert source.index("validate-candidate") < source.index("send-event-finalize")
 
 
+def test_go_with_bare_evidence_markers_fails_before_staging(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo, repo_root)
+    base, head, request_path, trigger = _prepare_verify_request(repo)
+    body = _report_body(
+        base, head, request_path, trigger, verdict="GO"
+    ).replace(
+        "$ env -u GIT_INDEX_FILE python -m pytest tests/unit/test_feature.py -q\n"
+        "→ 1 passed",
+        "$ \n→ ",
+    )
+
+    result = _run(
+        [
+            repo_root / "coordination/bin/send-event",
+            "operator",
+            "all",
+            "verification-report",
+            f"bare evidence commit `{head}`",
+        ],
+        repo,
+        input_text=body,
+    )
+
+    assert result.returncode != 0
+    assert "GO requires evidence" in result.stderr
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+
 @pytest.mark.parametrize("sender", ("director", "director2", "coordinator"))
 def test_non_operator_fails_before_verification_report_publication(
     tmp_path: Path, repo_root: Path, sender: str

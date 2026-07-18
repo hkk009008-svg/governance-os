@@ -146,24 +146,29 @@ def _decode(raw: bytes, label: str) -> str:
 
 
 def _one(lines: list[str], prefix: str, label: str) -> str:
-    values = [line[len(prefix) :] for line in lines if line.startswith(prefix)]
-    if len(values) != 1:
-        state = "missing" if not values else "duplicate"
+    occurrences = _normalized_field_occurrences(lines, label)
+    if len(occurrences) != 1:
+        state = "missing" if not occurrences else "duplicate"
         raise CompactPairError(f"{state} {label}")
-    value = values[0]
+    line = occurrences[0]
+    if not line.startswith(prefix):
+        raise CompactPairError(f"invalid {label}")
+    value = line[len(prefix) :]
     if not value or value != value.strip():
         raise CompactPairError(f"invalid {label}")
     return value
 
 
 def _section(lines: list[str], heading: str) -> list[str]:
-    positions = [index for index, line in enumerate(lines) if line == heading]
+    positions = _normalized_heading_occurrences(lines, heading)
     if len(positions) != 1:
         state = "missing" if not positions else "duplicate"
         raise CompactPairError(f"{state} {heading}")
+    if lines[positions[0]] != heading:
+        raise CompactPairError(f"invalid {heading}")
     body: list[str] = []
     for line in lines[positions[0] + 1 :]:
-        if line.startswith("## ") or line.startswith("Cursor at send:"):
+        if re.match(r"^\s*#{2,6}\s+\S", line) or line.startswith("Cursor at send:"):
             break
         body.append(line)
     while body and not body[0]:
@@ -205,13 +210,8 @@ def _envelope_sender(text: str) -> str:
     return values[0]
 
 
-# ARCHITECTURE.md pins the public entry-point locations as smoke evidence.
-# Keep parser helpers below validate_report when their internal shape grows.
-# This preserves factual anchors without changing the public call surface.
-# The ordering is intentional; Python resolves these helpers when called.
-# Update the architecture anchor only for a genuine public-surface move.
-
-
+# Public parser locations are stable architecture smoke anchors.
+# Internal helper definitions intentionally follow validate_report.
 def parse_verify_request(
     root: Path, request_path: str | os.PathLike[str], trigger_commit: str
 ) -> VerifyRequest:
@@ -237,7 +237,7 @@ def parse_verify_request(
     raw = _git(root, "show", f"{trigger}:{path}")
     text = _decode(raw, "verify-request")
     lines = text.splitlines()
-    if lines.count("Event type: verify-request") != 1:
+    if _one(lines, "Event type: ", "Event type") != "verify-request":
         raise CompactPairError("missing or duplicate Event type: verify-request")
     head = _full_commit(root, _one(lines, "Reviewed head: ", "Reviewed head"), "Reviewed head")
     base = _full_commit(root, _one(lines, "Reviewed base: ", "Reviewed base"), "Reviewed base")
@@ -254,8 +254,8 @@ def parse_verify_request(
     if base == head or not _is_ancestor(root, base, head):
         raise CompactPairError("Reviewed base must be a strict ancestor of Reviewed head")
     legacy = _section_optional(lines, "## Finding Refs") is None
-    if legacy and not _is_frozen_verbose_blob(root, path, raw):
-        raise CompactPairError("missing ## Finding Refs")
+    if legacy and not _is_frozen_verbose_request(root, path, raw, trigger):
+        raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
     outcome_heading = "## Acceptance Question" if legacy else "## Outcome"
     outcome = "\n".join(_section(lines, outcome_heading)).strip()
     if not outcome:
@@ -304,7 +304,7 @@ def _parse_verification_report_bytes(root: Path, path: str, raw: bytes) -> Verif
         raise CompactPairError("verification-report path is not canonical Operator output")
     text = _decode(raw, "verification-report")
     lines = text.splitlines()
-    if lines.count("Event type: verification-report") != 1:
+    if _one(lines, "Event type: ", "Event type") != "verification-report":
         raise CompactPairError("missing or duplicate Event type: verification-report")
     verdict = _one(lines, "VERDICT: ", "VERDICT")
     if verdict not in {"GO", "NITS", "FAIL"}:
@@ -323,8 +323,8 @@ def _parse_verification_report_bytes(root: Path, path: str, raw: bytes) -> Verif
     if SHA_RE.fullmatch(head) is None or SHA_RE.fullmatch(base) is None:
         raise CompactPairError("Reviewed base/head must be full lowercase commit SHAs")
     legacy = _section_optional(lines, "## Finding Refs") is None
-    if legacy and not _is_frozen_verbose_blob(root, path, raw):
-        raise CompactPairError("missing ## Finding Refs")
+    if legacy and not _is_frozen_verbose_report(root, path, raw):
+        raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
     finding_refs = _finding_refs(lines, required=not legacy)
     return VerificationReport(
         path=path,
@@ -389,8 +389,8 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
     if report.finding_refs != request.finding_refs:
         violations.append("report finding refs changed from request")
     if report.verdict == "GO" and (
-        not any(line.startswith("$ ") for line in report.evidence)
-        or not any(line.startswith("→ ") for line in report.evidence)
+        not any(line.startswith("$ ") and line[2:].strip() for line in report.evidence)
+        or not any(line.startswith("→ ") and line[2:].strip() for line in report.evidence)
     ):
         violations.append("GO requires evidence")
     if report.verdict == "GO" and any(
@@ -407,12 +407,27 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
 
 
 def _section_optional(lines: list[str], heading: str) -> list[str] | None:
-    positions = [index for index, line in enumerate(lines) if line == heading]
+    positions = _normalized_heading_occurrences(lines, heading)
     if len(positions) > 1:
         raise CompactPairError(f"duplicate {heading}")
     if not positions:
         return None
+    if lines[positions[0]] != heading:
+        raise CompactPairError(f"invalid {heading}")
     return _section(lines, heading)
+
+
+def _normalized_field_occurrences(lines: list[str], label: str) -> list[str]:
+    words = r"\s+".join(re.escape(word) for word in label.split())
+    pattern = re.compile(rf"^\s*{words}\s*(?::.*)?\s*$", re.IGNORECASE)
+    return [line for line in lines if pattern.fullmatch(line)]
+
+
+def _normalized_heading_occurrences(lines: list[str], heading: str) -> list[int]:
+    title = heading.removeprefix("## ")
+    words = r"\s+".join(re.escape(word) for word in title.split())
+    pattern = re.compile(rf"^\s*#{{2,6}}\s*{words}\s*:?\s*$", re.IGNORECASE)
+    return [index for index, line in enumerate(lines) if pattern.fullmatch(line)]
 
 
 def _finding_dispositions(
@@ -463,8 +478,20 @@ def _git_blob(root: Path, commit: str, path: str) -> bytes | None:
     return completed.stdout if completed.returncode == 0 else None
 
 
-def _is_frozen_verbose_blob(root: Path, path: str, raw: bytes) -> bool:
-    return _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) == raw
+def _is_frozen_verbose_request(
+    root: Path, path: str, raw: bytes, trigger: str
+) -> bool:
+    return (
+        _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) == raw
+        and _is_ancestor(root, trigger, LEGACY_VERBOSE_CUTOFF)
+    )
+
+
+def _is_frozen_verbose_report(root: Path, path: str, raw: bytes) -> bool:
+    if _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) != raw:
+        return False
+    latest = _git(root, "log", "-1", "--format=%H", "HEAD", "--", path).decode().strip()
+    return bool(SHA_RE.fullmatch(latest) and _is_ancestor(root, latest, LEGACY_VERBOSE_CUTOFF))
 
 
 def _main(argv: list[str] | None = None) -> int:
