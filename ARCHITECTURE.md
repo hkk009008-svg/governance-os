@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-18 @ 3c955e3*
+*Last verified: 2026-07-18 @ aa5ead7*
 
 ## 1. Purpose
 
@@ -58,9 +58,9 @@ Key directories:
 | `resolve_target` | `scripts/target_binding.py:143` | Resolves the active product-target binding from `governance.toml` (ADR-013); fail-closed on unknown targets. |
 | `writer_fence` | `scripts/mailbox_writer.py:62` | Serializes fixed mailbox-event and cursor finalizers with one Git-common-dir lock. |
 | `main` | `scripts/protocol_capacity_board.py:16` | Renders and validates active capacity packets for a wave. |
-| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:527` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
-| `render_r_independence` | `scripts/codex_protocol_model.py:752` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
-| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:824` | Renders guard guidance into readiness output. |
+| `LEDGER_CLI_BRIDGE` | `scripts/codex_protocol_model.py:442` | Executable model data for Pipeline-to-evidence-ledger Codex startup. |
+| `render_r_independence` | `scripts/codex_protocol_model.py:663` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
+| `render_ledger_start_guard` | `scripts/codex_protocol_model.py:697` | Renders guard guidance into readiness output. |
 | `chatgpt_pro_consult.reserve` | `scripts/chatgpt_pro_consult.py:195` | Reserves one parent-owned consultation key in the shared Git-common-dir record. |
 | `parse_verify_request` | `scripts/compact_pair_loop.py:215` | Validates one committed Director verify-request and its exact reviewed range. |
 | `validate_report` | `scripts/compact_pair_loop.py:369` | Binds one assigned non-author Operator verdict to that exact request, range, and scope. |

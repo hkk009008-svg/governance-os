@@ -1,111 +1,35 @@
 ---
 name: seat-director
-description: Use when operating as a per-pair DIRECTOR seat (Pair-A director or Pair-B director2) in this repo's 4-seat program-hardening campaign — authoring an R-BRIEF (with Rule #12 grep-the-writes + Rule #13 sibling-audit evidence), setting defect priority, claiming a cross-cutting lock, deciding implement-directly vs orchestrate-an-implementer, naming the right specialist reviewer for a dispatch, Tier-A co-signing the other lane's CRITICAL cross-cutting brief, or escalating a push.
+description: Use for explicit Claude director/director2 ownership and implementation.
 ---
 
 # Seat: Director
 
-## Overview
+Load the Claude four-seat skill first.
 
-The per-pair director owns the **strategic layer within its lane**: writes R-BRIEFs, sets priority, decides implementation mode, claims locks, and Tier-A co-signs the other lane. It does **not** verify its own pair's work — that is the operator (impl≠verifier).
+Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
+Own the routed outcome and choose the method. Seats may reroute or exchange
+ownership through a durable accepted handoff without coordinator approval.
+Preflight is advisory. Preserve material findings, require non-author Operator
+GO for behavior-changing work with a distinct Operator seat and different
+model, bind autonomous ownership to an immutable parent/revision, preserve
+immutable finding refs, and keep external effects separately user-authorized
+for the exact effect/executor/target/scope. An Operator cannot verify anything
+it authored. Durable events use the fixed mailbox writer.
 
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-surface intentionally does not restate its lifecycle grammar.
+Director/director2 may implement, split, transfer, or exchange accepted work;
+submit the actual commit/range and outcome for independent review. Read the
+same-seat handoff, current outcome, relevant mail bodies, and scoped Git state.
+Preflight is advisory. Assess abuse classes proportionally and preserve material
+findings.
 
-**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (authority, locks, lifecycle, co-sign tiers, git sharp edges) and `docs/protocol/claude/continuation.md` (live-kernel adapter: runtime modes, pair contract, capacity split, side-effect tokens). Sources: `docs/protocol/claude/director-operator.md` (Rules #7–#23, R-BRIEF, #12, #13, R-PID); `docs/templates/claude/implementer.md`; `docs/protocol/claude/orchestration.md` (R-ORCH). **R-SKILL:** in Pipeline, protocol/seat work loads the matching `.claude/skills/` skill; work routed to the evidence-ledger target repo loads that repo's own instructions first (ledger bridge in the continuation adapter).
+Use `env -u GIT_INDEX_FILE` for ordinary Git/pytest and explicit pathspecs.
+Publish ownership changes and verify-requests only through
+`coordination/bin/send-event`.
 
-## Session-start orientation (do this first)
+Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
 
-**Fresh/transplanted instance: same-seat handoff first** — locate the newest `docs/HANDOFF-<your-concrete-seat>-*.md` before ordinary orientation; if none exists, say so. Then get your bearings in **one shot** — HEAD + ahead/behind, recent commits, **your** live unread mailbox, peer ONLINE/STALE state, and the wave gate:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py director --wave 2
-#   (use director2 if you are the Pair-B director; this is the shared umbrella tool)
-```
-
-Read-only — it never stages or commits. **Rule #8:** if it reports unread > 0, surface that count in your FIRST user-facing turn, then consume: `coordination/bin/consume-events director` for a legacy ISO cursor, `env -u GIT_INDEX_FILE .venv/bin/python scripts/consume_bus.py director` for a migrated scalar cursor (the script tells you which). Check your capacity packet (`coordination/capacity/packets/`) for the route's `allowed_paths`, acceptance contract, and next recipient before writing anything.
-
-## First question: is this CROSS-CUTTING? (answer before reaching for the lock)
-
-Locks exist for **contended shared modules**. In Pipeline the route's write-fence is primarily its **capacity packet** (`allowed_paths` + `lock_keys`); claim a lock only when your route names a lock key or you genuinely contend with another seat on a shared module. If your fix touches neither, it is **lane-only → claim NO lock**; go straight to the brief. Size, severity, and "this feels important/risky" are irrelevant — lane-only files take no lock. (A change that reaches into the *other pair's* lane is a **co-sign** question, not a lock question — see Tier-A below.)
-
-## The lifecycle is an ordered chain — do not stop at the lock (§6c)
-
-```
-1. [cross-cutting ONLY] claim-lock FIRST (before a single line of code; loser abandons) — lane-only fixes skip to step 2
-2. Write the R-BRIEF — full-shape pattern refs + Rule #12 grep-the-writes + Rule #13 sibling audit + priority
-3. [CRITICAL cross-cutting] OTHER lane director Tier-A co-signs the R-BRIEF -> their verification-report in the mailbox BEFORE DISPATCH
-4. Implement directly (small) OR orchestrate an implementer subagent (R-ORCH: >=5 subtasks or >=800 LOC)
-5. Operator independently verifies (you do NOT verify your own pair's fix)
-```
-
-A "ready to commit" fix on a contended shared module is **not** evaluable until you confirm the lock was held **before** the code work. If you can't confirm it, stop and check.
-
-## Authoring the R-BRIEF — where evidence is produced (the highest-leverage thing you do)
-
-The brief gates the fix: the co-signer reads it, the implementer obeys it. Author it from the bundled template so you fill evidence slots instead of re-deriving the shape: **[`r-brief-template.md`](r-brief-template.md)**. The bar that makes it dispatch-ready:
-
-- **Rule #12 — grep-the-writes:** when the brief names a field/dict-key/mutator/write-path as a target, paste the **production WRITE-site grep output** under it. Type-declaration is *not* write-evidence; a symbol without its grep is a type-level claim, not a runtime claim. Mixed-shape symbols (typed attr AND raw-dict) → grep BOTH surfaces.
-- **Rule #13 — symmetric audit:** name the sibling endpoints/sites on the same fence/flag/state you checked, and fold-or-defer each under-defended one. The brief carries the one-liner.
-- **Full-shape pattern refs:** "mirror X at file:line" means the implementer inherits X's *full* shape — signature, route, **pid-scope (R-PID: take `<pid>` explicitly, never scan `list_projects()` — IDs collide)**, error handling, lock guards. If the named helper doesn't exist or is ambiguous, say so in the brief before dispatch.
-
-## Implement directly vs orchestrate — and name the right reviewer
-
-- **Small / tightly-coupled** → implement directly (you author; your operator verifies).
-- **≥5 independent sub-tasks OR ≥800 LOC** → **orchestrate** (R-ORCH): one fresh implementer per task, **sequential on shared files**, reviewers after — never two implementers in parallel on shared files (`docs/protocol/claude/orchestration.md`). Dispatch with the `docs/templates/claude/implementer.md` body incl. its **Git-hygiene block** (`env -u GIT_INDEX_FILE`) + items 4–5.
-- **Name the specialist reviewer in the brief** when the lane has one — real dispatch targets: a **money/cost-gate** fix → the **`money-gate-reviewer`** agent (gate-source-mismatch + silent-gate-degradation families); your operator runs post-commit verification via the **`lane-v-verifier`** agent. You do NOT verify your own pair's fix.
-
-## Close the loop like a director (Pair Operating Contract)
-
-- Once scope is stable, send **one canonical committed verify-request per
-  implementation or brief** with every exact structural authority field;
-  include paths, tests, evidence commands, known exclusions, and expected
-  verdict without substituting them for authority. No receipt/status churn.
-- The loop closes only on your operator's `verification-report` GO/NITS/FAIL — a gate script's PASS never substitutes (R-GATE-EVIDENCE); **no push before GO** (R-VERIFY-THEN-PUSH; push stays user-gated).
-- Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect.
-- At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user.
-- Under a capacity split, own only your chunk's disjoint write set; the other pair's chunk gets its own verify loop (full text: continuation adapter).
-
-## Tier-A co-sign is a HARD gate (the rule baselines break under pressure)
-
-- **Tier-A timing is BEFORE DISPATCH — there is no soft reading.** Dispatching (or self-implementing) a CRITICAL cross-cutting fix without the co-sign `verification-report` already in the mailbox is itself the violation, regardless of whether the *commit* later waits. A scope-blind implementer must never start.
-- **40 minutes of silence is NOT a green light.** This overrides the async-OK convenience and binds a director-as-implementer too (no self-commit ahead of the co-sign).
-- **Escalation is heartbeat-gated:** check `coordination/presence/director2-heartbeat.ts` (online vs stale) → if online, send a follow-up mailbox ping → only if stale, escalate to the user-principal. Co-sign is fulfillable async via a workflow + mailbox report — not a hard serialization blocker.
-- When you co-sign the *other* lane's brief: verify the **full change-set scope at the source** (not brief-trust); the other operator later confirms the landed diff matches your co-signed scope (drift = FAIL).
-
-## When you lose a lock
-
-The loser **abandons** — `claim-lock` exit 1 means you never had a valid claim, so there is no in-flight fix to keep. Consult the **inventory header first-mover sequence** for the next row (do not improvise row order). Surface unread mailbox (Rule #8) before resuming — the winner likely sent a lane-claim event that binds you.
-
-## Always-owed discipline
-
-- **Rule #7 (pre-commit re-verify):** before EVERY state-asserting commit — `git log --oneline -5` AND read `coordination/mailbox/sent/` for events newer than your Write-start.
-- **Rule #8 (mailbox surface):** at session-start AND every mid-session restart of substantive work.
-- **Push is user-gated** — decide/escalate via the coordinator; never push unilaterally.
-- **Dispatch hygiene:** every subagent prefixes git with `env -u GIT_INDEX_FILE`; include the implementer template's Git-hygiene block. A dispatch prompt names: your concrete seat, current HEAD, unread count, lane scope, allowed write set, the mailbox-consumption decision, and the expected output shape.
-- **Bounded exploration subagents** are fair game for Rule #12/#13 evidence gathering and call-graph checks — but never paste an unreviewed subagent report as the brief, and a specialist review's output informs YOUR decision; it is not an operator GO.
-
-## Rationalizations — STOP
-
-| Rationalization | Reality |
-|---|---|
-| "No reply in 40 min, my fix is solid — I'll land it." | Tier-A is a hard gate. Wait + heartbeat-gated escalate. |
-| "I'm the implementer, async-OK lets me self-commit." | §6c forbids it for CRITICAL cross-cutting. Co-sign first. |
-| "I'll dispatch now; the co-sign can arrive before I *commit*." | Wrong timing. The gate is before DISPATCH — dispatching scope-blind IS the violation. |
-| "The brief names the symbol; the type says it exists." | Type-declaration ≠ write-evidence. Grep the write site (Rule #12) or label it a type-level claim. |
-| "New guard added; the brief is done." | Did you audit the siblings on the same fence (Rule #13)? An un-audited sibling is the next defect. |
-| "I'll commit, the brief can follow." | The R-BRIEF precedes implementation — it is what the co-signer reads. |
-| "I verified the fix myself, it's fine." | impl≠verifier — your operator verifies, not you. |
-| "Lock-claim sequence is the whole corrected protocol." | §6b is the primitive; the full §6c chain (brief, co-sign, verify) still applies. |
-| "This fix is big/important/risky — I'll lock it to be safe." | Locks are ONLY for capacity-packet lock keys / genuinely contended shared modules. Lane-only files take NO lock — size/severity is irrelevant. |
-
-## Red flags (self-check)
-
-- Editing a cross-cutting module without a held lock → §6b.
-- Claiming a lock for a lane-only module → over-lock; locks are only for capacity-packet lock keys / genuinely contended shared modules.
-- About to dispatch/commit a CRITICAL cross-cutting fix with no Tier-A report in the mailbox → §6c.
-- Brief names a write-target with no grep output under it → Rule #12 hole.
-- New endpoint/guard with no sibling audit → Rule #13 hole; check `r-brief-template.md`.
-- A money/cost-gate fix dispatched without naming `money-gate-reviewer` in the brief → missing the specialist pass.
-- Writing domain-specific subsystem or target-repo code without loading the matching project skill / target-repo instructions → R-SKILL.
-- About to verify your own pair's fix → that's the operator's job.
+Only an assigned distinct-seat, different-model non-author Operator issues the
+verdict. The director does not self-approve. Helpers do not inherit seat or
+side-effect authority. Push, merge, locks, consume, provider launch, ledger
+resume, and spend remain separately authorized.

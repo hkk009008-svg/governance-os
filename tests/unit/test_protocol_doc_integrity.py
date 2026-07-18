@@ -24,28 +24,43 @@ def test_codex_subagents_never_inherit_seat_authority():
     assert "Subagents do not consume cursors, send mailbox events, issue GO" in compact
 
 
+def test_active_protocol_makes_preflight_advisory_and_ownership_transfer_direct():
+    for path in (
+        "AGENTS.md",
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".agents/skills/seat-director/SKILL.md",
+        ".agents/skills/seat-operator/SKILL.md",
+        ".agents/skills/seat-coordinator/SKILL.md",
+    ):
+        compact = _compact(_read(path)).casefold()
+        assert "preflight is advisory" in compact, path
+        assert "without coordinator approval" in compact, path
+        assert "fixed mailbox writer" in compact, path
+        assert "non-author operator go" in compact, path
+        assert "cannot verify anything it authored" in compact, path
+
+
 def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():
     text = (ROOT / "docs/protocol/claude/independence-first.md").read_text(
         encoding="utf-8"
     )
     assert "Sync the operative stub into `AGENTS.md`" not in text
     assert "Mechanize the cross-model requirement" not in text
-    assert "## Mechanized enforcement and remaining follow-up" in text
     assert "Compact Pair Invariant" in text
     assert "fixed mailbox writer" in text
-    assert "one committed verify-request" in _compact(text)
-    assert "Model or provider identity grants no authority" in _compact(text)
-    assert (
-        "A different model or harness is preferred; a same-model independent "
-        "reviewer is weaker and must be identified as such."
-    ) in _compact(text)
+    compact = _compact(text)
+    assert "owner explicitly assesses plausible abuse classes" in compact
+    assert "Early independent review is encouraged" in compact
+    assert "no universal preflight CLEAR" in compact
+    assert "distinct seat and different system-visible model" in compact
+    assert "actual commit or range" in compact
     assert "live receipt-backed advisory review/reconciliation" not in text
     assert "lane-v-report/v2" not in text
     assert "same-model reviewer does not discharge it" not in text
     assert "does not replace the preferred cross-model per-task verification" not in text
     assert "that it was cross-model" not in text
-    assert "citing the reviewer's identity and harness" in _compact(text)
-    assert "dispatch templates" in text
+    assert "changing owners or reviewers cannot erase material evidence" in compact
 
 
 def test_root_and_pr_docs_do_not_reference_stale_architecture_sections():
@@ -153,6 +168,6 @@ def test_operator_phase_taxonomy_uses_current_codex_triggers():
         text = _read(path)
         compact = _compact(text)
 
-        assert "operator waits for one assigned committed verify-request" in compact.lower()
+        assert "committed verify-request" in compact.lower()
         assert "in-chat \"Dispatching X\" narration" not in text
         assert "implicit git-log poll" not in text

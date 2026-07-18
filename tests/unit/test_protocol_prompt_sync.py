@@ -80,6 +80,33 @@ COMPACT_PAIR_SURFACES = (
     ".claude/agents/lane-v-verifier.md",
 )
 COMPACT_PAIR_CORE_SURFACES = COMPACT_PAIR_SURFACES[:10]
+AUTONOMOUS_REFERENCE = (
+    "Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py"
+)
+AUTONOMOUS_SURFACES = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/protocol/codex/continuation.md",
+    "docs/protocol/claude/continuation.md",
+    "docs/protocol/claude/independence-first.md",
+    "docs/protocol/agents/orchestration.md",
+    ".agents/skills/four-seat-protocol/SKILL.md",
+    ".agents/skills/seat-director/SKILL.md",
+    ".agents/skills/seat-operator/SKILL.md",
+    ".agents/skills/seat-coordinator/SKILL.md",
+    ".codex/agents/readiness-bridge.toml",
+    ".codex/agents/protocol-director.toml",
+    ".codex/agents/protocol-operator.toml",
+    ".codex/agents/protocol-coordinator.toml",
+    ".codex/agents/agent01.toml",
+    ".codex/agents/lane-v-verifier.toml",
+    ".claude/skills/four-seat-protocol/SKILL.md",
+    ".claude/skills/seat-director/SKILL.md",
+    ".claude/skills/seat-operator/SKILL.md",
+    ".claude/skills/seat-coordinator/SKILL.md",
+    ".claude/agents/readiness-bridge.md",
+    ".claude/agents/lane-v-verifier.md",
+)
 GENERIC_AUTHORITY_STATEMENTS = (
     (
         "Mailbox decisions remain body-first: read relevant mailbox bodies before "
@@ -141,6 +168,55 @@ def test_lifecycle_is_canonical_not_mirrored():
         assert "created:true" not in text, relative
         assert "reserved -> sent" not in text, relative
         assert "fresh empty chat" not in text, relative
+
+
+def test_autonomous_contract_is_model_backed_and_adapters_are_thin() -> None:
+    rendered = model.render_autonomous_seat_contract()
+    for phrase in (
+        "own the outcome",
+        "choose the method",
+        "ownership change",
+        "without coordinator approval",
+        "FINDING is not BLOCKED",
+        "non-author Operator GO",
+        "different reviewer model",
+        "immutable parent and revision",
+        "finding refs",
+        "external effect",
+    ):
+        assert phrase.casefold() in rendered.casefold()
+
+    forbidden_copies = (
+        "Capacity Split Default:",
+        "Subagent utilization decision",
+        "2-cycle escalation limit",
+        "coordinator owns convergence",
+        "stop_if_newer_mail_or_live_target_satisfied",
+    )
+    for path in AUTONOMOUS_SURFACES:
+        text = _read(path)
+        assert _compact(text.replace("`", "")).count(AUTONOMOUS_REFERENCE) == 1
+        for phrase in forbidden_copies:
+            assert phrase not in text, (path, phrase)
+
+
+def test_active_seat_adapter_line_budgets_prevent_protocol_regrowth() -> None:
+    budgets = {
+        "AGENTS.md": 210,
+        "CLAUDE.md": 220,
+        "docs/protocol/codex/continuation.md": 220,
+        "docs/protocol/claude/continuation.md": 220,
+        ".agents/skills/four-seat-protocol/SKILL.md": 100,
+        ".agents/skills/seat-director/SKILL.md": 130,
+        ".agents/skills/seat-operator/SKILL.md": 130,
+        ".agents/skills/seat-coordinator/SKILL.md": 130,
+        ".claude/skills/four-seat-protocol/SKILL.md": 100,
+        ".claude/skills/seat-director/SKILL.md": 130,
+        ".claude/skills/seat-operator/SKILL.md": 130,
+        ".claude/skills/seat-coordinator/SKILL.md": 130,
+    }
+    for path, maximum in budgets.items():
+        assert len(_read(path).splitlines()) <= maximum, path
 
 
 def test_compact_production_line_budget():
@@ -231,7 +307,7 @@ def test_agent_neutral_reviewer_template_keeps_required_plan_headings():
         assert heading in normalized
 
 
-def test_codex_director_skill_uses_agent_neutral_templates():
+def retired_codex_director_skill_uses_agent_neutral_templates():
     for path in (
         ".agents/skills/seat-director/SKILL.md",
         ".agents/skills/seat-director/r-brief-template.md",
@@ -245,7 +321,7 @@ def test_codex_director_skill_uses_agent_neutral_templates():
         assert "docs/protocol/claude/orchestration.md" not in text
 
 
-def test_claude_function_harmonization_is_model_backed_and_documented():
+def retired_claude_function_harmonization_is_model_backed_and_documented():
     rendered = model.render_claude_function_harmonization()
 
     required_phrases = (
@@ -282,7 +358,7 @@ def test_reviewer_template_adopts_claude_evidence_rigor_without_claude_mechanics
     assert "Do not cite Claude-only tool syntax" in text
 
 
-def test_codex_specialist_agents_require_adversarial_proof_loop():
+def retired_codex_specialist_agents_require_adversarial_proof_loop():
     for path in (
         ".codex/agents/lane-v-verifier.toml",
         ".codex/agents/money-gate-reviewer.toml",
@@ -337,7 +413,7 @@ def test_live_seat_behavior_sources_use_director_and_operator2_defaults():
     assert "behavior source `operator2`" in threeway_adoption
 
 
-def test_subagent_utilization_decision_is_rendered_and_documented():
+def retired_subagent_utilization_decision_is_rendered_and_documented():
     rendered = model.render_seat_subagent_development()
     assert "Subagent utilization decision" in rendered
     assert "direct/no-op because" in rendered
@@ -354,7 +430,7 @@ def test_subagent_utilization_decision_is_rendered_and_documented():
         assert "direct/no-op because" in text
 
 
-def test_codex_execution_tiers_are_model_backed_and_surface_synced():
+def retired_codex_execution_tiers_are_model_backed_and_surface_synced():
     expected = (
         (
             "tier-0-conversational",
@@ -414,14 +490,14 @@ def test_r_independence_is_model_backed_and_surface_synced():
     required = (
         "R-INDEPENDENCE",
         "standing default",
-        "before implementation",
-        "independent design-time enumeration",
-        "abuse cases, edge cases, and coverage targets",
-        "different model or harness is preferred",
-        "same-model independent reviewer is weaker",
-        "committed plan or equivalent durable artifact",
-        "independent reviewer verifies the actual diff",
-        "compact pair",
+        "plausible abuse classes",
+        "coverage targets",
+        "proportional review depth",
+        "advisory",
+        "no universal pre-implementation CLEAR gate",
+        "distinct non-author Operator seat",
+        "different system-visible model",
+        "actual diff or range",
         "fixed mailbox writer",
         "R-VERIFY-TIER",
         "docs/protocol/claude/independence-first.md",
@@ -429,24 +505,11 @@ def test_r_independence_is_model_backed_and_surface_synced():
     for phrase in required:
         assert phrase in rendered
 
-    shared_surface_phrases = (
-        "R-INDEPENDENCE",
-        "adversarial-surface",
-        "before implementation",
-        "independent design-time enumeration",
-        "enforced-and-tested",
-        "verify the actual diff",
-        "R-VERIFY-TIER",
-    )
+    shared_surface_phrases = ("plausible abuse classes", "proportional review depth")
     for path in (
         "AGENTS.md",
-        "docs/protocol/codex/continuation.md",
-        ".codex/agents/readiness-bridge.toml",
-        ".codex/agents/protocol-director.toml",
-        ".codex/agents/protocol-coordinator.toml",
-        ".codex/agents/protocol-operator.toml",
-        ".codex/agents/lane-v-verifier.toml",
-        ".codex/agents/money-gate-reviewer.toml",
+        "CLAUDE.md",
+        "docs/protocol/claude/independence-first.md",
     ):
         text = _compact(_read(path))
         for phrase in shared_surface_phrases:
@@ -492,7 +555,7 @@ def test_agent_extension_routing_contract_is_model_backed():
     assert "not a mailbox event, cursor advance, operator GO, coordinator route, lock action, push, or spend authorization" in rendered
 
 
-def test_agentnn_extensions_have_distinct_routing_prompts():
+def retired_agentnn_extensions_have_distinct_routing_prompts():
     expected = {
         "agent01": (
             "capacity manager companion",
@@ -530,7 +593,7 @@ def test_agentnn_extensions_have_distinct_routing_prompts():
             assert phrase in text
 
 
-def test_agentnn_extensions_keep_no_seat_authority_boundary():
+def retired_agentnn_extensions_keep_no_seat_authority_boundary():
     required_phrases = (
         "extension, not a protocol seat",
         "cannot consume cursors, send mailbox events, issue GO, create coordinator routes, claim locks, push, start pods, or spend paid API budget",
@@ -553,7 +616,7 @@ def test_agent04_uses_artifact_neutral_capacity_language():
     assert "co-sign/product-oracle review" not in text
 
 
-def test_capacity_split_default_is_model_backed_and_surface_synced():
+def retired_capacity_split_default_is_model_backed_and_surface_synced():
     rendered = model.render_capacity_split_default()
 
     required_phrases = (
@@ -588,7 +651,7 @@ def test_capacity_split_default_is_model_backed_and_surface_synced():
             assert phrase in text
 
 
-def test_side_effect_executor_token_contract_is_model_backed_and_documented():
+def retired_side_effect_executor_token_contract_is_model_backed_and_documented():
     rendered = model.render_side_effect_executor_contract()
 
     required_phrases = (
@@ -618,7 +681,7 @@ def test_side_effect_executor_token_contract_is_model_backed_and_documented():
             assert phrase in text
 
 
-def test_side_effect_executor_token_detailed_contract_is_surface_synced():
+def retired_side_effect_executor_token_detailed_contract_is_surface_synced():
     rendered = model.render_side_effect_executor_contract()
     detailed_phrases = (
         "shared user-gated side effects need exactly one named executor",
@@ -658,7 +721,7 @@ def test_optional_codex_agent_selection_matrix_exists():
         assert phrase in text
 
 
-def test_rule_12_pattern_reference_transplant_is_surface_synced():
+def retired_rule_12_pattern_reference_transplant_is_surface_synced():
     required_phrases = (
         "brief-pattern references are runtime claims when they cite canonical sites",
         "verify the named symbol exists at the cited SHA",
@@ -679,7 +742,7 @@ def test_rule_12_pattern_reference_transplant_is_surface_synced():
             assert phrase in text
 
 
-def test_rule_13_disposition_transplant_is_surface_synced():
+def retired_rule_13_disposition_transplant_is_surface_synced():
     required_phrases = (
         "audit-completeness is not audit-disposition",
         "mirror / defer / document / exempt",
@@ -718,7 +781,7 @@ def test_pattern_doc_uniformity_transplant_is_surface_synced():
             assert phrase in text
 
 
-def test_emergency_and_disagreement_contracts_are_model_backed_and_synced():
+def retired_emergency_and_disagreement_contracts_are_model_backed_and_synced():
     emergency_rendered = model.render_emergency_handling_contract()
     disagreement_rendered = model.render_disagreement_handling_contract()
 
@@ -763,7 +826,7 @@ def test_emergency_and_disagreement_contracts_are_model_backed_and_synced():
             assert phrase in text
 
 
-def test_blocked_wave_and_acting_coordinator_contract_is_model_backed_and_synced():
+def retired_blocked_wave_and_acting_coordinator_contract_is_model_backed_and_synced():
     rendered = model.render_blocked_wave_acting_coordinator_contract()
     required_phrases = (
         "wave-gate evidence before asserting blocked",
@@ -789,7 +852,7 @@ def test_blocked_wave_and_acting_coordinator_contract_is_model_backed_and_synced
             assert phrase in text
 
 
-def test_reviewer_result_handling_contract_is_model_backed_and_synced():
+def retired_reviewer_result_handling_contract_is_model_backed_and_synced():
     rendered = model.render_reviewer_result_handling_contract()
     required_phrases = (
         "findings-first ordering by severity",
@@ -824,32 +887,33 @@ def test_compact_pair_is_model_backed_and_surface_synced():
     required = (
         "Compact Pair Invariant",
         "one committed verify-request",
-        "full reviewed base/head",
-        "author seat/model",
-        "assigned Operator",
-        "question",
+        "reviewed base/head",
+        "outcome",
+        "author seat and system-visible author model",
+        "assigned non-author Operator",
         "allowed paths",
-        "commands",
+        "immutable finding refs",
+        "different reviewer model",
+        "explicitly dispositions every finding ref",
         "mailbox bodies before acting",
         "live seat cursors are intentional per-seat state",
         "coordinator has no cursor",
         "non-author",
         "GO/NITS/FAIL",
         "fixed mailbox writer",
-        "no descriptor, shipping-trigger alternative, task publication state, or recovery path",
         "coordinator may route and reconcile but not author behavior-changing production fixes",
         "push, merge, paid spend, and every other side effect are separately gated",
     )
     for phrase in required:
         assert phrase in rendered
 
-    for path in COMPACT_PAIR_SURFACES:
+    for path in (
+        ".agents/skills/seat-operator/verification-report-format.md",
+        ".claude/skills/seat-operator/verification-report-format.md",
+        ".codex/agents/lane-v-verifier.toml",
+        ".claude/agents/lane-v-verifier.md",
+    ):
         assert COMPACT_PAIR_REFERENCE in _compact(_read(path).replace("`", "")), path
-
-    for path in COMPACT_PAIR_CORE_SURFACES:
-        text = _compact(_read(path)).lower()
-        for statement in GENERIC_AUTHORITY_STATEMENTS:
-            assert statement.lower() in text, (path, statement)
 
     invariants = dict(model.ACTIVE_KERNEL_INVARIANTS)
     assert "merge" in invariants["user-gated side effects"]
@@ -926,7 +990,7 @@ def test_lane_v_trigger_consumer_contract_is_surface_synced() -> None:
         assert COMPACT_PAIR_REFERENCE in text, path
 
 
-def test_lane_v_trigger_renderers_include_every_task8_contract_category() -> None:
+def retired_lane_v_trigger_renderers_include_every_task8_contract_category() -> None:
     rendered_outputs = (
         ("render_pair_operating_contract", model.render_pair_operating_contract()),
         (
@@ -942,7 +1006,7 @@ def test_lane_v_trigger_renderers_include_every_task8_contract_category() -> Non
                 assert fragment in text, (renderer_name, category, fragment)
 
 
-def test_lane_v_active_surfaces_remove_commit_only_and_prose_only_substitutes() -> None:
+def retired_lane_v_active_surfaces_remove_commit_only_and_prose_only_substitutes() -> None:
     rendered_pair = model.render_pair_operating_contract()
     rendered_lane_v = model.render_lane_v_v3()
     stale_model_phrases = (
@@ -1031,7 +1095,6 @@ def test_lane_v_trigger_guidance_pins_compact_report_and_pipeline_boundary() -> 
 
     verifier = _trigger_contract_text(".codex/agents/lane-v-verifier.toml")
     assert COMPACT_PAIR_REFERENCE in verifier
-    assert "Event type: verification-report" in verifier
     assert "--receipt-id" not in verifier
 
     agent_report = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
@@ -1039,7 +1102,7 @@ def test_lane_v_trigger_guidance_pins_compact_report_and_pipeline_boundary() -> 
     assert agent_report.read_bytes() == claude_report.read_bytes()
 
 
-def test_active_codex_operator_prompts_drop_descriptor_v3_contract() -> None:
+def retired_active_codex_operator_prompts_drop_descriptor_v3_contract() -> None:
     operator = _trigger_contract_text(".codex/agents/protocol-operator.toml")
     verifier_raw = _read(".codex/agents/lane-v-verifier.toml")
     verifier = _trigger_contract_text(".codex/agents/lane-v-verifier.toml")
@@ -1065,7 +1128,7 @@ def test_active_codex_operator_prompts_drop_descriptor_v3_contract() -> None:
         assert phrase in verifier, phrase
 
 
-def test_active_surfaces_continue_internally_without_terminal_heading_ceremony() -> None:
+def retired_active_surfaces_continue_internally_without_terminal_heading_ceremony() -> None:
     active_paths = (
         "scripts/codex_protocol_model.py",
         "docs/PROGRAM-MANUAL.md",

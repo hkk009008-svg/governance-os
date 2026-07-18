@@ -1,283 +1,89 @@
-# Session-start protocol (read me first)
+# Pipeline Claude router
 
-**Truth lives in `ARCHITECTURE.md` at the repo root.** This file (CLAUDE.md)
-is the *process layer* — the impact-analysis method, multi-task orchestration, session
-discipline. `ARCHITECTURE.md` is the *truth layer* — verified facts about the
-pipeline, with file:line references and a project smoke test. When they disagree
-about facts, `ARCHITECTURE.md` wins.
+`ARCHITECTURE.md` is factual truth; current code wins when it drifts. This
+file routes Claude sessions to task-specific instructions without loading the
+whole protocol at startup.
 
-Both files drift from the actual code between sessions. Before doing any
-non-trivial work, verify against current source. If a claim is stale,
-**fix the relevant file in the same change** that exposes the staleness —
-don't let a wrong claim survive your session.
+## Start and scope
 
-Trust the code; update the prose when it diverges.
+Before non-trivial work, run:
 
-## Load policy (how to use this file)
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE git log --oneline -5
+env -u GIT_INDEX_FILE git status --short --branch
+```
 
-This file is an **operative router**: it holds only what must be active *before
-you know the task*. Everything task-specific lives in linked docs, pulled on demand.
+Read only the task-relevant topology, source, and protocol docs. User intent is
+in `docs/PROGRAM-MANUAL.md`; read
+`docs/protocol/program-manual-guide.md` before loading the full manual.
 
-- Do NOT read linked protocol docs at session start.
-- Read a linked doc only when its trigger fires.
-- When dispatching a subagent, include only the relevant rule IDs + template
-  slice — never inherited doctrine.
-- `docs/PROGRAM-MANUAL.md` is pull-on-demand only — read
-  `docs/protocol/program-manual-guide.md` before using/maintaining it; never load
-  the full manual at session start.
+Before editing, find a symbol's definition, writes, callers, imports, string
+references, and siblings. Preserve unrelated work and inspect the exact diff
+before committing. Factual inventory claims cite their producing command.
+Gate-controlling measurements use committed instruments and citable `logs/`
+artifacts. Tests and diagnostics prove only what they execute.
 
-## R-START — session-start checklist
-Scope: both
-Trigger: start of every session, before non-trivial work.
-Action: (1) Run the project smoke block — `env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py`; if it
-fails, the doc is stale OR the working tree is broken — fix one before proceeding.
-(2) Skim `ARCHITECTURE.md` §2 topology; spot-check the governance-OS smoke
-invariants implemented in `scripts/ci_smoke.py` `_project_smoke()`. (3) `git log --oneline -20`; if a commit touched a module
-documented in `ARCHITECTURE.md` since its `*Last verified:*` footer, re-read that
-section against the code. (4) If you find a stale claim, fix `ARCHITECTURE.md` first,
-in the same commit (or a `docs:` prep commit right before) the task lands.
-Evidence: smoke output captured; the fixing commit when a claim was stale.
-Details: docs/protocol/claude/core.md
+Use the smallest sufficient verification profile and do not repeat an unchanged
+review question. A deferred confirmed defect needs a strict xfail or a
+`test-infeasible` reason.
 
-# The user-principal's intent for this program (read PROGRAM-MANUAL.md)
+## Proportional independence
 
-**The user-principal has designated [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md)
-as the canonical
-expression of their intent for this program.** Read it early to internalize *what we
-build* (manual §1–§2) — and *how the user wants it driven*: to realize the
-program's **full capability** (manual §5 is the capability-maximization playbook;
-§3/§4/§6 show how the machine interconnects). When a decision trades off against
-realizing that full capability, **surface it rather than silently making the call.**
-Keep the manual true as the code evolves (same staleness discipline as `ARCHITECTURE.md`).
+For parseable/executable composition, authority or security enforcement,
+side-effect gating, or trust-granting schema validation, the owner explicitly
+assesses plausible abuse classes and preserves material independent findings.
+The owner and actual-diff Operator choose proportional review depth. Early
+independent review is encouraged when useful; it is advisory and no universal
+pre-implementation CLEAR gate exists. Behavior-changing acceptance still
+requires a distinct Operator seat using a different system-visible model to
+review the actual commit or range.
 
-# Repo doc map
+Full rationale: `docs/protocol/claude/independence-first.md`.
 
-| Need to | Read |
-|---|---|
-| Get oriented (purpose + quick start) | [README.md](README.md) |
-| Understand the code (verified truth — what's where, what does what) | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Learn the whole program + how to operate it for maximum capability | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
-| Run / configure / troubleshoot | [OPERATIONS.md](OPERATIONS.md) |
-| See WHY the architecture is shaped this way (ADR log) | [DECISIONS.md](DECISIONS.md) |
-| Full process detail (core / orchestration / director-operator / failure-modes) | [docs/protocol/claude/](docs/protocol/claude/) |
-| Operate as a Claude seat on the live kernel (modes, first commands, verdicts, pair contract, capacity split) | [docs/protocol/claude/continuation.md](docs/protocol/claude/continuation.md) |
-| Subagent prompt bodies (implementer / reviewer) | [docs/templates/claude/](docs/templates/claude/) |
-| Rule provenance (codified SHAs, empirical basis, beneficiary/consent) | [docs/PROTOCOL-RULES-LOG.md](docs/PROTOCOL-RULES-LOG.md) |
-| The CLAUDE/AGENTS operative-split map | [docs/protocol/migration-map-claudemd-split.md](docs/protocol/migration-map-claudemd-split.md) |
-| Execute a governance-hardening session (operator manual, why + how + acceptance) | [docs/HANDOFF-governance-hardening-2026-06-30.md](docs/HANDOFF-governance-hardening-2026-06-30.md) |
-| See the common daily loop (director brief → operator verify → push) | [RUNBOOK-DAILY.md](RUNBOOK-DAILY.md) |
+## Governed seat work
 
-Don't duplicate ARCHITECTURE.md content in this file. Record load-bearing subsystem
-facts in `ARCHITECTURE.md`; for decisions (with rationale), append to `DECISIONS.md`
-— never edit prior entries.
+Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
+Own the routed outcome and choose the method. Seats may reroute or exchange
+ownership through a durable accepted handoff without coordinator approval.
+Preflight is advisory. Preserve material findings, require non-author Operator
+GO for behavior-changing work with a distinct Operator seat and different
+model, bind autonomous ownership to an immutable parent/revision, preserve
+immutable finding refs, and keep external effects separately user-authorized
+for the exact effect/executor/target/scope. An Operator cannot verify anything
+it authored. Durable events use the fixed mailbox writer.
 
-# Impact analysis before editing
+Delegation is an owner-chosen capacity tool. Use fresh bounded helpers when they
+add signal or capacity; direct work is valid for tightly coupled work. Never run
+concurrent implementers on shared files. Details:
+`docs/protocol/agents/orchestration.md`.
 
-Before modifying a function, class, or method, gauge its blast radius with
-grep + Read (the de-facto method across every session to date):
+When a seat, mailbox, route, wave, handoff, continuation, or protocol decision
+is named, load `docs/protocol/claude/continuation.md` and the concrete
+`.claude/skills/seat-*` skill. Read mailbox bodies before decisions. Live seat
+cursors are per-seat state; coordinator has no cursor. Ordinary Git and pytest
+use `env -u GIT_INDEX_FILE`.
 
-- `grep -rn 'symbolName' --include='*.py' .` to find the definition + callers;
-  Read the call sites; grep imports for cross-file references.
-- Report the direct callers + risk to the user before editing a high-fanout
-  symbol.
-- Before committing, run `git show --stat` / `git diff` to confirm the changed
-  scope matches intent.
+Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
 
-For renames / extracts / splits: grep the symbol across the repo first
-(callers, imports, string references), update every site, then re-grep to
-confirm none remain. Don't find-and-replace blind to the call graph.
+A committed verify-request binds the actual base/head, outcome, author
+seat/model, assigned non-author Operator, allowed paths, and immutable finding
+refs. Only that Operator issues GO/NITS/FAIL through the fixed mailbox writer.
+Coordinator facilitates but does not author behavior-changing production work.
 
-# Verification discipline (R-EVIDENCE)
-Scope: both
-Trigger: making any specific factual/inventory claim — "N files", "Y functions",
-"Z tests", "N LOC", "present in <path>", "absent from <path>", "X is unused".
-Action: cite the producing command's output in the same change (paste command +
-output, or `verified via $ <cmd> → <result>`). A command scoped to one path proves
-only that path — re-run at the wider scope before making a wider claim. If you
-cannot run the verifying command, label the claim **unverified** rather than
-asserting it. Never apply director-voice authority over an unverified factual claim.
-Evidence: the command + its output, in the doc/commit body (cite or don't claim).
-Details: docs/protocol/claude/core.md (R-EVIDENCE; the 24-vs-1 origin story).
+Push, merge, locks, cursor consumption, provider launch, paid spend, and other
+external effects each require separate explicit authority. Structural tokens
+never grant execution permission.
 
-# Measurement-as-artifact (R-MEASURE)
-Scope: both
-Trigger: recording a number that backs a GO/NO-GO verdict, a gate threshold,
-or a spec/record claim (arc scores, VRAM peaks, prices, durations, counts).
-Action: the number must be produced by a COMMITTED script/command and
-persisted to (or directly citable from) a `logs/` artifact in the same change
-that records it. Ad-hoc runtime measurements may be recorded only when
-explicitly labeled estimate / runtime-unreproducible. Extends R-EVIDENCE from
-"cite the command" to "commit the instrument".
-Evidence: script path + `logs/` artifact cited next to the number.
-Details: docs/PROTOCOL-RULES-LOG.md (R-MEASURE entry; origin = a measurement that backed
-GO/NO-GO verdicts from REPL-only measurement, with no committed instrument).
+For evidence-ledger work, start from `/Users/hyungkoookkim/Pipeline`, read
+`docs/protocol/claude/ledger-cli-adoption.md`, run
+`env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`,
+then read evidence-ledger `CLAUDE.md` and `AGENTS.md`. Pipeline remains the
+governance kernel and evidence-ledger owns product-local truth.
 
-# Verification tiering (R-VERIFY-TIER)
-Scope: both
-Trigger: about to launch a 3rd+ independent verification pass on a claim two seats
-already confirmed; OR confirming a code defect you are NOT fixing this session.
-Action: (A) For doc-only notes about an already-known/deferred defect, convergence =
-TWO independent seats confirming the same file:line claims (a Rule #23 co-sign counts
-as one). A 3rd pass is allowed ONLY for a genuinely different question, stated before
-launch. Does NOT relax per-commit production-code verification (Lane V / Rule #9).
-(B) An agent-confirmed defect left unfixed this session must ship a
-`pytest.mark.xfail(strict=True, reason=...)` pin in the same session, or be labeled
-`test-infeasible` with a one-line reason in the handoff — so CI, not the next
-session's agents, re-verifies.
-Evidence: the stated new question for any 3rd pass; the xfail pin (or test-infeasible label).
-Details: docs/protocol/claude/core.md (R-VERIFY-TIER); origin = a session audit where one
-doc paragraph drew ~25-31 agent-runs across 4 passes without a genuinely new question.
+## Shared-tree hygiene
 
-# Independence-first verification (R-INDEPENDENCE)
-Scope: both
-Trigger: designing OR implementing an ADVERSARIAL-SURFACE change — one that parses/
-renders/composes input into a parseable-or-executable context, enforces authority or a
-security boundary, gates a side effect, or validates a trust-granting schema.
-Action: obtain INDEPENDENT verification at TWO points, not just at the end. (1) Design-
-time: before implementing, an independent reviewer — preferably a DIFFERENT model/harness
-than the author (Codex Lane-V for a Claude author, or vice versa) — enumerates the abuse/
-edge cases the change must handle; the author folds them into the plan's acceptance
-criteria as ENFORCED-AND-TESTED behaviors, never aspirational guarantees. (2) Per-task,
-before "done": an independent reviewer verifies the diff against those cases; for an
-adversarial surface this SHOULD be cross-model — a same-model review does NOT discharge it
-(correlated blind spots make it near-vacuous — the enforcer-is-enforced anti-pattern,
-ADR-003). Extends ADR-001 / Rule #23 (moves independence to design-time + prefers cross-
-model); complements R-VERIFY-TIER (which caps redundant SAME-question passes — this
-requires an early NEW-perspective pass). Non-adversarial/read-only/hermetic changes do NOT
-trigger this; smallest sufficient profile still applies.
-Evidence: the committed design-time enumeration artifact; the per-task independent
-verification report citing the reviewer identity + (for adversarial surfaces) cross-model.
-Details: docs/protocol/claude/independence-first.md; origin = the 2026-07-12 governance-
-improvement retrospective (six slices whose adversarial defects — injection ×2, compound-
-command bypass, unenforced authority, path escape, token bricking, test vacuousness, a
-shipped total-function gap — were caught ONLY by the end-stage cross-model verifier, never
-by same-model internal review). ADR-019.
-
-# Multi-task orchestration (R-ORCH)
-Scope: both
-Trigger: a plan with ≥5 independent sub-tasks OR ≥800 LOC of total change; or a
-user-referenced plan file under `docs/superpowers/plans/`.
-Action: orchestrate — do NOT implement in main context. Main holds the plan + task
-state + ~1–3k summary per task; a fresh implementer subagent does each task, then a
-spec reviewer + a code-quality reviewer review the actual diff per task. **Never run
-two implementers in parallel on shared files** (sequential only); reviewers go after
-implementation. A single change OR tightly-coupled work → stay in main context.
-Evidence: one commit per task (clean BASE..HEAD range); task state.
-Details: docs/protocol/claude/orchestration.md; prompt bodies in docs/templates/claude/.
-
-# Implementation safety rules (specific, repeatedly useful — tied to prior CRITICALs)
-
-## R-BRIEF — brief-pattern adherence
-Scope: both
-Trigger: a brief says "mirror pattern X at file:line" or "use the existing _foo_-style endpoint".
-Action: verify the FULL shape of X (signature, route path, scope params, error
-handling, lock guards) before implementing — brief-pattern references are implicit
-specs. If the reference names a canonical site/SHA, brief-pattern references are
-runtime claims when they cite canonical sites: verify the named symbol exists at
-the cited SHA and verify the cited SHA exhibits the named sub-pattern. If the
-named helper doesn't exist or the wording is ambiguous, report the divergence
-BEFORE implementing.
-Details: docs/protocol/claude/director-operator.md (composes with Rule #12).
-
-## R-PID — pid-scope endpoint check
-Scope: both
-Trigger: adding/touching an HTTP endpoint on a project-scoped resource (e.g. any
-entity owned by a project: items, records, assets, configurations).
-Action: verify the route takes `<pid>` explicitly. Do NOT scan `list_projects()` to
-find a matching resource — IDs collide across projects. Inspect a sibling endpoint
-for that resource type to confirm route shape + scoping.
-Details: docs/protocol/claude/director-operator.md (Rule #13).
-
-## R-SKILL — project-skill load triggers
-Scope: both
-Trigger: about to author, modify, review, or debug domain-specific subsystem code or
-configurations (e.g. a domain-graph subsystem, config schemas, external-API client
-integrations) — or top-level pipeline design work (routing, API selection, identity/
-continuity systems, any domain-specific processing chain).
-Action: invoke the matching project or repo skill BEFORE writing or judging the
-code. In Pipeline, a Claude session loads the Claude-native `.claude/skills/`
-skills for protocol/seat work (seat-director / seat-operator / seat-coordinator /
-four-seat-protocol / wave-gate / create-regression-pin — the `.agents/skills/`
-copies are the Codex/agent-neutral tree) and the active route's target-repo
-instructions before evidence-ledger product edits. When a skill prior shapes a
-verdict, name it in the work product.
-Details: repo and target instructions named by the active route.
-
-## Rule #12 — grep-the-writes
-Scope: both
-Trigger: a brief names a schema field / dict key / mutator / write-path as a target of new code.
-Action: grep the production WRITE site (not just the type declaration) to prove the
-symbol is populated at runtime — type-declaration is not write-evidence. Cite the grep.
-For canonical pattern references, verify the named symbol exists at the cited
-SHA and verify the cited SHA exhibits the named sub-pattern.
-Details: docs/protocol/claude/director-operator.md (Rule #12).
-
-## Rule #13 — symmetric-endpoint audit
-Scope: both
-Trigger: adding/modifying an endpoint that bypasses a fence, gates on a persistent
-flag, or touches shared state other endpoints touch.
-Action: audit ALL sibling endpoints on the same fence/flag/state for parallel checks
-the new one should mirror — and for checks the existing ones may be missing; fold the
-fix or document the exemption. audit-completeness is not audit-disposition:
-enumerating siblings is incomplete until you state the disposition for each
-sibling as mirror / defer / document / exempt.
-Details: docs/protocol/claude/director-operator.md (Rule #13).
-
-# Director–Operator concurrent operation (minimal model)
-
-Four live seats (two pairs) run in parallel by design — **director-seats** (strategy, briefs,
-ADRs, push decisions) and **operator-seats** (independent post-commit verification,
-doc-sync, mailbox reports). Four seats / two pairs of one team; specialization, not hierarchy;
-all serve the user-principal. Seats are inhabited by Claude sessions (`CLAUDE_SEAT` at
-launch) or Codex sessions (`CODEX_SEAT`); never infer a seat — orientation mode is the
-default until the user names one. A `coordinator` seat is spawned **on demand** at
-multi-pair-wrap boundaries for read-only cross-pair audit — not a standing concurrent
-seat (see docs/protocol/claude/four-seat-extension.md §10). **Operating a seat on the
-live kernel (modes, first commands, GO/NITS/FAIL loop, capacity split, side-effect
-tokens): docs/protocol/claude/continuation.md.** Load-bearing invariants:
-
-- **User is principal.** User direct instructions override everything.
-- **Authority precedence:** user > git commits (durable record) > mailbox `sent/`
-  events (bind the receiving seat — Rule #8) > STATE.md (stale cache) > default.
-  The signed three-way ref-bus carries load-bearing three-way facts once
-  `refs/threeway/*` is live; the mailbox stays the human coordination channel.
-- **Git is the tiebreaker.** Before acting on a shared task, run `git log --oneline -3`;
-  the first commit to land wins.
-- **Signal via artifacts** (mailbox event / presence file), not chat alone.
-- **The pair loop closes on the operator's `verification-report` GO/NITS/FAIL** —
-  a gate script's PASS is process evidence, not correctness proof (R-GATE-EVIDENCE);
-  no push before GO (R-VERIFY-THEN-PUSH), and push itself stays user-gated.
-- **Shared-tree hygiene:** re-run `git log -3` + mailbox immediately before any
-  commit/gate decision (R-HOT-TREE); commit with explicit pathspecs only — a bare
-  `git commit`/`git add -A` sweeps peer WIP (R-WIP-POLLUTION).
-
-Full governance — Rules #7–#23, the disagreement protocol, emergency handling, phase
-taxonomy, and mailbox protocol — lives in **docs/protocol/claude/director-operator.md**;
-read it only when coordinating with the other seat. Rule provenance (codified SHAs,
-empirical basis, beneficiary/consent) is in docs/PROTOCOL-RULES-LOG.md.
-
-- **Rule #23 co-sign is TIERED** (Lever #7; body in
-  `docs/protocol/claude/four-seat-extension.md` §6). Classifier: *would the
-  co-signer's verification change which files/sites the implementation touches?*
-  **Tier A** (yes) = co-signer lands a mailbox `verification-report` BEFORE dispatch
-  (async-OK via workflow+mailbox, no session restart). **Tier B** (no) = awareness
-  heads-up, 48h proceed-if-no-objection. Unsure → Tier A.
-
-# Claude Code mechanics
-
-- **AskUserQuestion** — use for choices that are cross-cutting, set policy
-  (advisory-vs-fail gates), or are reversible only with effort (public-API rename,
-  license). Don't ask for which file a helper goes in or a naming choice the file's
-  convention answers — make the reasonable call and keep going.
-- **Background work** — `run_in_background: true` for long verification (pytest,
-  vite build) when you have independent work meanwhile; don't poll a task you
-  started — the harness notifies on completion.
-- **Dispatch templates** — implementer + reviewer prompt bodies live in
-  docs/templates/claude/. Per the load policy, a dispatch includes only the relevant
-  rule IDs + the template slice, never inherited doctrine. Every dispatch includes
-  the templates' **Git hygiene** block (subagents prefix all git with
-  `env -u GIT_INDEX_FILE` — seat-index corruption vector, 2026-06-12).
-- **Git-tooling sharp edges** — the recurring shared-tree/index edges (phantom index,
-  case-only renames, pathspec discipline, `env -u GIT_INDEX_FILE`, tool-cache-hit
-  false-fail) are documented once in `docs/protocol/claude/core.md` →
-  "Git-tooling sharp edges (standing)". Reference it; do not re-derive in handoffs.
+- Refresh `git log --oneline -3` and scoped status before writes and gates.
+- Use `env -u GIT_INDEX_FILE` and explicit pathspecs.
+- Preserve peer/user dirt; first landed shared-file commit wins.
+- Edit, stage, commit, push, merge, consume, lock, and spend are separate acts.

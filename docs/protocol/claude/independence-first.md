@@ -1,116 +1,41 @@
-# Independence-first verification (R-INDEPENDENCE)
+# Proportional independence (R-INDEPENDENCE)
 
-**Standing default of the governance OS** (ADR-019). This document is the full
-text; the operative stub lives in `CLAUDE.md` / `AGENTS.md` as **R-INDEPENDENCE**.
+Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
 
-## The rule
+This rule applies when work composes parseable/executable input, enforces an
+authority or security boundary, gates a side effect, or validates a schema whose
+acceptance grants trust.
 
-**Scope: both** (every seat, Claude or Codex).
+The owner explicitly assesses plausible abuse classes, edge cases, and coverage
+targets before implementing. It preserves all material independent findings as
+immutable refs through ownership changes and review. The owner chooses methods
+and the actual-diff Operator chooses proportional review depth.
 
-**Trigger:** designing OR implementing an **adversarial-surface** change — any
-change that:
-- parses, renders, or composes input into a parseable/executable context
-  (a renderer, a header/config parser, a template, a serializer);
-- enforces authority or a security boundary (command-class checks, path
-  confinement, identity/route binding, supersession/revocation);
-- gates a side effect (a consumable token/capability, a push/merge gate);
-- validates a schema whose acceptance grants trust.
+Early independent review is encouraged when it adds signal, especially for a
+novel or high-consequence surface. It is advisory: there is no universal
+preflight CLEAR. A FINDING is not BLOCKED unless it identifies an
+unresolved hard-boundary violation.
 
-**Action — obtain independent verification at TWO points, not just at the end:**
+Behavior-changing acceptance always requires a non-author Operator from a
+distinct seat and different system-visible model to review the actual commit or
+range. That Operator cannot verify anything it authored and issues
+GO/NITS/FAIL through the fixed mailbox writer. Review depth is proportional,
+but identity, actual-range binding, finding preservation, and non-authorship are
+not optional.
 
-1. **Design-time (before implementing).** An **independent** reviewer —
-   preferably a *different model/harness* than the author (a Codex seat when
-   the author is a Claude seat, or vice versa) — enumerates the abuse/edge
-   cases and coverage targets the change must handle. The author folds these
-   into the plan's acceptance criteria as **enforced-and-tested behaviors**
-   ("consume rejects a command outside the class with reason X, proven by test
-   Y"), never as aspirational guarantees ("a capability cannot act on another
-   class"). The enumeration is a committed artifact.
+R-VERIFY-TIER still prevents redundant same-question passes. A later reviewer
+must disposition every carried finding ref; changing owners or reviewers cannot
+erase material evidence.
 
-2. **Per-task (before "done").** An **independent** reviewer verifies the actual
-   diff against those enumerated cases. A different model or harness is
-   preferred; a same-model independent reviewer is weaker and must be
-   identified as such. This is stronger than the standing operator-GO
-   (ADR-001): it fires *per task*, and it prefers a *different perspective*,
-   not merely a different seat running the same model.
-
-## What "independent" means here
-
-- Strongest: a **different model/harness** (cross-model). In this repo that is
-  typically a Codex `Lane-V` pass (`codex exec --sandbox read-only`) reviewing
-  a Claude seat's diff, or a Claude seat reviewing a Codex seat's diff.
-- Weaker: a different seat or cold-context reviewer of the same model with a
-  genuinely adversarial prompt. This remains independent evidence when the
-  reviewer is not the author, and the report identifies the reviewer and
-  harness as weaker evidence.
-- **Not** independent: the author reviewing its own plan or implementation, even under a renamed role.
-
-## Why (the empirical origin)
-
-Origin: the **2026-07-12 governance-improvement retrospective**. Across six
-kernel-hardening slices, a same-model author → implementer → reviewer pipeline
-(all one model, in different hats) produced work that passed every internal
-review — yet an independent cross-model verifier then found, on the adversarial
-surfaces:
-
-- control-character **injection** into a rendered document (twice, in two
-  different renderers);
-- a **compound-command bypass** (`git push && git tag`) past a prefix check;
-- authority that was **computable but not enforced** at the point of use
-  (a command-class field and a currency helper that nothing called);
-- a **path-confinement escape** in a comparator;
-- an identity/binding gap (route id not bound to its filename);
-- a durability defect that **bricked** a one-time token on crash;
-- **test vacuousness** — the property tests meant to catch defects did not
-  reach the code they claimed to cover;
-- a **total-function gap** in already-shipped code (a validator that leaked a
-  raw exception on a hostile-but-typed path).
-
-Every one had been approved by the same-model internal review. Independence
-only at the *end* let a whole change's blind spots accumulate before any
-different perspective saw them. Two structural lessons:
-
-1. **You cannot review — or fuzz — your own blind spots.** The model that
-   writes the validator writes the review and the test strategy with the same
-   gaps, so all three miss the same cases. Only a *different* perspective
-   reveals them.
-2. **Fix the class, not the instance.** The injection class recurred in a new
-   form (shell operators) after the newline form was fixed, because the fix
-   targeted the instance. Design-time enumeration by an independent reviewer is
-   how the *class* gets named before implementation.
-
-## Relationship to existing protocol
-
-- **Extends** ADR-001 (operator independently verifies every commit) and
-  Rule #23 (cross-lane co-sign for CRITICAL cross-cutting change): this rule
-  moves a slice of that independence to *design time* and prefers *cross-model*
-  for adversarial surfaces.
-- **Complements** R-VERIFY-TIER: that rule *caps* redundant same-question
-  passes; this rule *requires* an early, genuinely-different-perspective pass
-  for adversarial surfaces. They are not in tension — R-VERIFY-TIER bounds
-  repetition of the *same* question; R-INDEPENDENCE demands a *new* question
-  from a *new* perspective.
-- Non-adversarial, read-only, or hermetic changes do **not** trigger this rule;
-  the smallest sufficient profile still applies (do not spread adversarial-tier
-  cost onto low-risk work).
+External effects remain separately user-authorized for the exact
+effect/executor/target/scope. A structural seat-authored token never grants
+execution authority.
 
 ## Evidence
 
-- the committed design-time enumeration artifact (the independent reviewer's
-  abuse/coverage list);
-- the per-task independent verification report, citing the reviewer's identity
-  and harness.
+- owner abuse assessment and coverage selected for the task;
+- immutable material finding refs, including explicit empty state;
+- committed verify-request bound to the actual base/head and identities;
+- distinct-seat, different-model Operator report with explicit dispositions.
 
-## Mechanized enforcement and remaining follow-up
-
-- Mechanized: `scripts/compact_pair_loop.py` and `scripts/check_go_schema.py`
-  enforce the Canonical Compact Pair Invariant: one committed verify-request
-  binds the reviewed range, author identity, assigned non-author Operator,
-  question, scope, and commands. The assigned Operator remains the sole
-  GO/NITS/FAIL authority. `coordination/bin/send-event` publishes every mailbox
-  kind through the same fixed mailbox writer. Model or provider identity grants
-  no authority.
-  Exact historical reports remain readable only through the committed
-  path/raw-byte digest manifest.
-- Add the design-time enumeration step to the implementer/reviewer
-  dispatch templates in `docs/templates/claude/`.
+Canonical Compact Pair Invariant: scripts/codex_protocol_model.py

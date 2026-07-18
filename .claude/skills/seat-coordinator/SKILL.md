@@ -1,100 +1,33 @@
 ---
 name: seat-coordinator
-description: Use when operating as the on-demand COORDINATOR seat (5th oversight) in this repo's 4-seat program-hardening campaign — gating a remediation wave, reconciling the inventory after absence, ratifying a mid-wave provisional CRITICAL, routing a cross-lane Tier-A co-sign, recording the Wave-1 first-mover sequence, running discovery/verification workflows, or facing pressure to fix a blocking bug yourself.
+description: Use for explicit Claude coordinator observation, facilitation, or mediation.
 ---
 
 # Seat: Coordinator
 
-## Overview
+Coordinator is unpinned, never consumes a cursor, and does not author
+behavior-changing production work.
 
-The coordinator is the **on-demand 5th cross-pair oversight seat** — spawned at a multi-pair-wrap boundary or campaign event, **not** a standing concurrent seat. Prime directive: **own the remediation inventory, gate waves, reconcile status, route co-signs, and surface every consequential decision to the user-principal** — while **never touching production code**.
+Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
+Own the routed outcome and choose the method. Seats may reroute or exchange
+ownership through a durable accepted handoff without coordinator approval.
+Preflight is advisory. Preserve material findings, require non-author Operator
+GO for behavior-changing work with a distinct Operator seat and different
+model, bind autonomous ownership to an immutable parent/revision, preserve
+immutable finding refs, and keep external effects separately user-authorized
+for the exact effect/executor/target/scope. An Operator cannot verify anything
+it authored. Durable events use the fixed mailbox writer.
 
-**REQUIRED BACKGROUND:** the `four-seat-protocol` skill (locks, lifecycle, co-sign tiers, authority, git sharp edges) and `docs/protocol/claude/continuation.md` (live-kernel adapter: runtime modes, capacity split, side-effect executor tokens, blocked-wave handling). Sources: `docs/protocol/claude/four-seat-extension.md` §10 (on-demand policy); ownership matrix + absence-resilience (§6a/§6f — carried by these skills); `docs/REMEDIATION-INVENTORY.md` header; `coordination/capacity/packets/` (the live route's packets — you own convergence).
+Coordinator observes, facilitates, and may mediate or claim eligible
+non-production work. It is not a route-approval or convergence gate. Read the
+newest handoff, current Git, and relevant mailbox bodies. Diagnostics are
+evidence only; preflight is advisory.
 
-## Session-start orientation (do this first)
+Use the fixed mailbox writer only for a real mediation, transfer, evidence
+preservation, or blocker. Preserve exact lineage and finding refs. Use
+`env -u GIT_INDEX_FILE` and explicit paths.
 
-**Fresh/transplanted instance: same-seat handoff first** — locate the newest `docs/HANDOFF-coordinator-*.md` before reconciling; if none exists, say so. Then get oriented in one shot — the shared status script accepts the coordinator seat (all peers' heartbeats + every `-to-coordinator-`/`-to-all-` mailbox event; the coordinator is **UNPINNED**, so there is no cursor to consume):
+Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
 
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
-```
-
-**Run that FIRST** — it is the one command that surfaces your unread `-to-coordinator-`/`-to-all-` mailbox events; **surface that count in your first user-facing turn (Rule #8)** before any reconcile. Then produce the **gate proof** you will cite (R-EVIDENCE — never assert a gate state from memory):
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py 2   # exit 0 = MET, 1 = UNMET
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py            # §15 smoke; must be clean before you trust the tree
-```
-
-Before committing an active task-board route, render the hard-gated capacity board and validate the draft route; the protocol doctor gives a strict read-only validation bundle:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave>
-env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave <wave> --validate-route coordination/mailbox/sent/<event>.md
-env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave>
-env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_doctor.py --wave <wave> --route coordination/mailbox/sent/<event>.md
-```
-
-The doctor is evidence, not an operator-GO substitute.
-
-Closed-cycle coordinator-join packets are hard-gated too: standby, idle, closeout, transfer, or transplant evidence must cite a durable `docs/HANDOFF-*.md` artifact. Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect. At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user. (`coordinator2` exists as an on-demand cross-check owner — it is not a standing coverage actor.)
-
-The coordinator never consumes its cursor (`seen/coordinator.txt` exists only as a migration sentinel) — do **not** run `consume-events coordinator` or `consume_bus.py coordinator`; it reconciles at the §6f triggers (session-start, wave-boundary gate, a director's gate-request), not via a watermark.
-
-## The prime prohibition (the one rule that defines this seat)
-
-**The coordinator NEVER authors a behavior-changing fix — regardless of how small, how obvious, or how time-pressured.** "It's one line / it's urgent / no director is online" is the *exact* temptation the role boundary exists to resist. Every fix is authored **in-lane** by a director/operator.
-
-You **MAY commit** (explicit pathspec, never production modules): **test-only artifacts** (xfail pins, fixtures, stubs), the **inventory**, **docs**, **`logs/`**, and **coordination tooling**. "Read-only" means read-only on **production code** — the spec §6a "may commit" scope is real (don't misread §10's "read-only" as forbidding all commits).
-
-**But a permitted commit must NOT change a gate's PASS/FAIL outcome or suppress a real defect signal.** Relaxing `scripts/wave_gate_check.py`, or writing a suppressive/vacuous xfail pin to make CI green (rather than to honestly track a known-deferred defect), is a **behavior-changing fix by another name — equally forbidden.** The "tooling / test-only" scope is for honest instrumentation, never for unblocking a wave by hiding the block.
-
-## When a wave is blocked and a fix is needed but no director is online
-
-Do **NOT** fix it. The documented path:
-1. **Run `env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py <wave>`** to produce a real blocked-gate artifact (R-EVIDENCE — never assert "gate blocked" from memory).
-2. **Pod-off IMMEDIATELY** if a director's gate-request is posted and unserviced — this trip-wire fires the *moment* the gate-request is unserviced; it does **NOT** wait on the 24h SLA (spec §6f).
-3. Send **ONE consolidated mailbox event** to all seats naming the blocker row, lane-owner, and the **SLA figure from the inventory header (24h default)**.
-4. **Escalate to the user-principal**, explicitly naming the **acting-coordinator path** (spec §6f): the *only* documented way a non-coordinator seat may advance cross-cutting rows or open the next wave — it requires explicit user authorization recorded in the mailbox.
-
-You may prepare a **pre-brief skeleton** to reduce a director's burden, but the **R-BRIEF is owned by the director** (§6c) — frame your draft as a draft for their review, never as the canonical brief.
-
-## Inventory writing (you are the sole primary writer)
-
-- **`verified` requires an operator `verification-report` GO.** A director note ("looks done") is **never** a co-sign substitute. impl≠verifier applies even when the director implemented directly.
-- **Provenance gap (NARROW — all three conditions, or it does not apply):** the confirmation-workflow path fires ONLY when **(a)** the row's `verified` was set by a *prior coordinator orchestrating dispatched subagents*, **(b)** no live-operator `verification-report` GO exists in the mailbox, **AND (c)** the row currently **blocks a live gate**. Then: do **not** revert on sight — first run an independent read-only confirmation workflow (`money-gate-reviewer` ×2 + `lane-v-verifier`; commit the log), hold `verified` if it passes / revert to `fixed` only if it fails. **It does NOT apply to:** a **solo or §6f user-authorized** verification path (that has its own provenance — note it, hold `verified`, do not re-run); a **closed-wave, non-gate-blocking** row (flag for the user at most — never generate a fresh workflow for "audit completeness"); or a row WITH a real operator GO (already converged — R-VERIFY-TIER forbids a 3rd pass).
-- Reconcile at **§6f triggers only**: (a) coordinator session-start, (b) wave-boundary gate, (c) a director's gate-request. The inventory is a **batch view**, not real-time — do not commit per micro-transition.
-- **Reverting a premature `verified`:** revert to **`fixed`** if a real fix commit exists (only to `open` if none does) — and **audit the lock file**: a premature `verified` implies the lock was wrongly released or never released (§6b couples lock-delete to the GO commit).
-- **Deputy path (when no coordinator was live):** a pair may transcribe an *existing* operator GO into its own-lane row — it **never self-verifies** and never writes another lane's rows.
-- Enforce with the **script, not prose**: cite/run `env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py <wave>` + `env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py` as the gate proof (the placeholder gate's `git ls-files` inherits the ambient index — an unprefixed run can false-PASS). **CAVEAT (R-GATE-EVIDENCE): `wave_gate_check.py` now EXECUTES the wave's pins with `pytest --runxfail` (ADR-027 FIX-1 landed; `check_no_ceremony` R3 PASS). A `GATE MET` is still process evidence — it never proves a row correct or replaces the operator GO. Cite what was mechanically EXECUTED (the `--runxfail` result / the operator GO's mutation RED→GREEN), never the status-tally as proof of correctness.**
-
-## Standing duties
-
-- Record the **Wave-1 first-mover sequence** for contested cross-cutting modules in the inventory header at wave-open (spec §6b).
-- **Issue the wave stub-contract spec BEFORE the first lane work of each new wave** (roadmap spec §7) — the coordinator-owned doc defining dual-mode stubs, the fault-injection matrix, the anti-vacuity rule, and review points. Pull the current wave's spec from `docs/superpowers/specs/` on demand; do **not** reproduce its content in this skill. Two coordinator review points: (1) contract/design review at issue; (2) artifact review of the finished suite before the wave counts toward done. Re-issue when a new row's fault mode isn't covered.
-- **Route + track** cross-lane Tier-A co-signs (don't author them — directors do); ratify mid-wave provisional CRITICAL rows on return.
-- Run **discovery / per-wave verification workflows** (read-only fan-out) via the committed agent dispatch targets — **`lane-v-verifier`** (independent post-commit SHA verification, Lane V) and **`money-gate-reviewer`** (security-style review of any cost-gate diff in the wave); both are read-only. Commit `logs/discovery-<runid>.json`. **Trigger:** a wave-boundary verification pass or a coordinator-initiated discovery fan-out — **NOT** a standing per-commit post-fix trigger (that is the operator's role, Rule #9).
-- **Surface to the user-principal**: push, pod-spend, scope changes, mid-wave CRITICALs. Push is **user-gated** — you execute it on user auth, never unilaterally.
-- Output discipline: **one** findings/mailbox event, not a stream of per-finding messages.
-- **Evidence archiving:** closed-cycle packet/evidence snapshots go to `docs/archive/coordination-evidence/<YYYY-MM-DD-short-cycle>/` (packet JSON in a `packets/` subfolder); never move live packets out of `coordination/capacity/packets/`.
-
-## Rationalizations — STOP
-
-| Rationalization | Reality |
-|---|---|
-| "It's one line / urgent / nobody's online — I'll just fix it." | NEVER. Coordinator authors no production code. Escalate + acting-coordinator path. |
-| "Patching `wave_gate_check.py` / a suppressive xfail isn't production code — it's tooling I may commit." | A gate-relaxing edit or a CI-greening pin is a behavior-changing fix in disguise — forbidden. |
-| "`wave_gate_check.py` says MET, so the wave is verified/correct — I'll cite it as evidence." | The gate now executes the pins (`pytest --runxfail`, ADR-027 FIX-1), but `MET` is still process evidence, NOT a correctness claim. Cite the executed `--runxfail` result or the operator GO, never the status-tally as a correctness claim. |
-| "The director said it looks done, mark it verified." | Only an operator GO sets `verified`. Director note ≠ co-sign. |
-| "Revert this bad `verified` to `open`." | To `fixed` if a fix commit exists; audit the lock too. |
-| "The gate is obviously blocked." | Run `wave_gate_check.py` (env -u prefixed) and cite it (R-EVIDENCE). |
-| "Pod-off can wait for the 24h SLA." | No — pod-off fires the moment a gate-request is unserviced. |
-| "I'll push the coordinator commits, they're harmless." | Push is user-gated. Surface + wait for auth. |
-
-## Red flags (self-check)
-
-- About to edit a `.py` production file → STOP, you are the coordinator.
-- Asserting "gate blocked" / "no director responding" without a command artifact → R-EVIDENCE.
-- Writing `verified` without an operator GO in the mailbox → guarantee #3 breach.
-- Pushing without explicit user authorization → user-gated.
-- Sending a stream of mailbox events → consolidate to one.
+Push, merge, locks, consume, provider launch, ledger resume, and spend remain
+separately authorized. Structural tokens do not grant authority.

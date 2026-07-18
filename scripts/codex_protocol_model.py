@@ -16,13 +16,27 @@ MODEL_SOURCE = "scripts/codex_protocol_model.py"
 CENTRAL_INVARIANT = "durable shared state beats chat memory"
 COMPACT_PAIR_REFERENCE = "Canonical Compact Pair Invariant: scripts/codex_protocol_model.py"
 COMPACT_PAIR_INVARIANT = (
-    "Compact Pair Invariant: one committed verify-request names the full reviewed "
-    "base/head, author seat/model, assigned Operator, question, allowed paths, and "
-    "commands; only that assigned non-author Operator issues one GO/NITS/FAIL report "
-    "bound to the exact request, range, and allowed paths through the fixed mailbox "
-    "writer. Missing, duplicated, abbreviated, uppercase, uncommitted, or mismatched "
-    "fields are not authority: stop with a blocker. There is no descriptor, "
-    "shipping-trigger alternative, task publication state, or recovery path."
+    "Compact Pair Invariant: one committed verify-request binds the reviewed base/head, "
+    "outcome, author seat and system-visible author model, assigned non-author Operator, "
+    "allowed paths, and immutable finding refs. One report from that distinct Operator "
+    "seat and a different reviewer model binds the exact request and reviewed range, "
+    "issues GO/NITS/FAIL, and explicitly dispositions every finding ref through the fixed "
+    "mailbox writer. Missing, duplicated, abbreviated, uppercase, uncommitted, or "
+    "mismatched identity, range, or finding fields are not authority."
+)
+AUTONOMOUS_SEAT_REFERENCE = (
+    "Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py"
+)
+AUTONOMOUS_SEAT_RULES = (
+    "Own the outcome, choose the method, and show credible evidence.",
+    "Any seat may make an ownership change by claiming, splitting, merging, transferring, exchanging, or rerouting work without coordinator approval; every new owner accepts through its own durable event bound to the exact task, immutable parent and revision, and previous owners.",
+    "A route fork, stale or dangling parent, or conflicting same-task tip makes only that task non-actionable; unrelated tasks continue.",
+    "WORKING means meaningful progress remains; NEEDS_PEER requests help; FINDING is not BLOCKED; BLOCKED means no lawful path exists without new authority, unavailable external state, or hard-boundary resolution.",
+    "Preflight is advisory and preserves material findings; it does not require CLEAR before implementation.",
+    "Behavior-changing work is accepted only by non-author Operator GO from a distinct seat and different reviewer model on the actual reviewed commit or range.",
+    "External effects remain separately user-gated; a seat-authored token is structural only and never grants execution authority.",
+    "Known material finding refs remain immutable through ownership and reviewer changes and receive explicit report dispositions.",
+    "Coordinator observes and facilitates but is not the mandatory route author or convergence gate and does not author behavior-changing production work.",
 )
 
 ACTIVE_KERNEL_INVARIANTS = (
@@ -61,7 +75,7 @@ ACTIVE_KERNEL_INVARIANTS = (
     ),
     (
         "independence-first verification",
-        "classify adversarial surfaces before implementation and require design-time enumeration plus independent actual-diff verification",
+        "adversarial-surface owners assess plausible abuse classes, preserve material independent findings, and submit the actual diff for independent Operator review",
     ),
     (
         "side-effect executor token",
@@ -155,12 +169,11 @@ R_INDEPENDENCE_RULES = (
     "Before implementation, classify whether the change touches an adversarial-surface: "
     + "; ".join(R_INDEPENDENCE_TRIGGER_SURFACES)
     + ".",
-    "Triggered work requires an independent design-time enumeration of abuse cases, edge cases, and coverage targets before implementation.",
-    "A different model or harness is preferred; a same-model independent reviewer is weaker and must be identified as such.",
-    "Fold the enumeration into enforced-and-tested acceptance criteria in a committed plan or equivalent durable artifact.",
-    "Before completion, an independent reviewer verifies the actual diff against the committed cases.",
-    "For Codex-authored adversarial work, the compact pair supplies independent verification and the fixed mailbox writer supplies publication.",
-    "R-VERIFY-TIER still prohibits redundant same-question passes; it does not remove the earlier new-perspective review.",
+    "The owner explicitly assesses plausible abuse classes, edge cases, and coverage targets and preserves every material independent finding.",
+    "An independent design-time enumeration may be used as advisory input when it adds signal; it is not a universal gate.",
+    "The owner and actual-diff Operator choose proportional review depth; early independent review is encouraged when it adds signal, but it is advisory and no universal pre-implementation CLEAR gate exists.",
+    "Before acceptance, a distinct non-author Operator seat using a different system-visible model reviews the actual diff or range and issues GO/NITS/FAIL through the fixed mailbox writer.",
+    "R-VERIFY-TIER still prohibits redundant same-question passes.",
     "Non-adversarial, read-only, and hermetic work uses the smallest sufficient profile.",
     "Canonical full rule: docs/protocol/claude/independence-first.md.",
 )
@@ -379,68 +392,6 @@ PLANNING_RELAY_RULES = (
     "Relay mailbox events are planning evidence only; no production work, verification verdict, lock, push, or inventory change is implied unless a later coordinator task board explicitly routes it.",
 )
 
-PAIR_OPERATING_RULES = (
-    "director -> operator is the fast path inside each pair: director scopes and sends the smallest sufficient artifact; operator starts verification only from its assigned committed verify-request.",
-    "Every baton handoff is a mailbox artifact, not chat: brief, verify-request, verification-report, or handoff with commit/range, paths, tests, and exclusions.",
-    "Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect.",
-    COMPACT_PAIR_INVARIANT,
-    "Director sends one committed verify-request per implementation once scope is stable.",
-    "Operator waits for one assigned committed verify-request; no duplicate verification for docs-only, status-only, or handoff-only commits.",
-    "No receipt/status churn: send mail only when it changes ownership, preserves evidence, requests verification, returns GO/NITS/FAIL, or blocks on user-gated side effects.",
-    "When both seats are active, do not edit the same files or rerun the same task; first commit to land wins and the other seat narrows or stands down after git/mailbox refresh.",
-    "At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user.",
-    "Effectiveness means a closed loop: director artifact -> operator verification-report GO/NITS/FAIL -> director consumes the report or coordinator closes; gate scripts never substitute for operator verification-report GO.",
-)
-
-CAPACITY_SPLIT_DEFAULT_RULES = (
-    "single-pair fast path remains the default for narrow or shared-file work.",
-    "divisible or preplanned larger work defaults to dual-pair routing.",
-    "Coordinator promotion question: can this route produce two independently reviewable deliverables?",
-    "If yes: director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.",
-    "If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.",
-    "The two active chunks must name disjoint write sets, explicit interfaces, focused tests, forbidden side effects, and separate verify-request/verification-report loops.",
-    "Pair B preflight packets use `director-preflight` and `operator-preflight` packet types.",
-    "coordinator owns convergence: capacity packets, one consolidated route, join condition, conflict handling, and final closeout evidence.",
-)
-
-SEAT_SUBAGENT_DEVELOPMENT_RULES = (
-    "Core rule: seats retain authority; subagents own bounded work.",
-    "Live seats and coordinator may choose bounded subagents at seat discretion; this does not require a separate user request for delegation.",
-    "Default behavior: every live seat and coordinator actively considers bounded subagents for non-trivial routed work and uses them when they add independent signal, capacity, or fresh verification. Direct work remains acceptable for small, tightly coupled, or authority-sensitive work.",
-    "After live-seat/coordinator orientation, record a Subagent utilization decision: dispatch a bounded helper for a named task, or direct/no-op because the work is small, tightly coupled, authority-sensitive, or already complete.",
-    "director/director2: dispatch bounded implementer subagents for independent implementation slices, then require spec review, quality review, and director-seat synthesis before any verify-request.",
-    "operator/operator2: use read-only verifier helpers for diff inspection, focused reproduction, or edge-case review; the operator seat still owns GO/NITS/FAIL.",
-    "coordinator: use read-only reconciliation helpers for inventory, mailbox, lock, gate, or plan-readiness checks; the coordinator still owns the consolidated route or no-op report.",
-    "Required loop: implementer -> spec review -> quality review -> seat synthesis.",
-    "Subagents receive only the parent prompt, allowed paths, acceptance evidence, and side-effect limits; they do not inherit mailbox, cursor, lock, push, spend, or seat authority.",
-    "Subagent output is evidence for the parent seat, not durable protocol state by itself.",
-    "A subagent cannot create a mailbox cursor, mailbox event, operator GO, coordinator route, push, lock, pod spend, or paid API spend unless the live seat/coordinator with authority performs that action under user-gated rules.",
-    "Do not run parallel implementation subagents on shared files or behind the same push-gated lock.",
-)
-
-SIDE_EFFECT_EXECUTOR_TOKEN_FIELDS = (
-    "side_effect_id",
-    "executor",
-    "target",
-    "allowed_command_class",
-    "preflight",
-    "stop_if_newer_mail_or_live_target_satisfied",
-    "postcheck",
-    "observer_seats",
-    "final_closeout_owner",
-    "non_goals",
-)
-
-SIDE_EFFECT_EXECUTOR_RULES = (
-    "generic user approval is unit consent, not executor election",
-    "shared user-gated side effects need exactly one named executor before mutation unless the user directly names the executing seat in the same prompt",
-    "side effects covered: remote-ref update, force update, lock action, paid-service spend, pod action, production generation, target-repo checkout refresh, cursor consume, and route mutation",
-    "observer seats default to observer mode: read live state only, do not repeat the side effect, and report only contradiction, missing required evidence, changed safety boundary, or explicit coordinator request",
-    "live evidence may close an already-satisfied side effect without appointing a redundant executor",
-    "multiple same-target side-effect success claims need a common side_effect_id; otherwise route validation fails",
-    "lane-only implementation, verify-request, and GO/NITS/FAIL flows remain valid when no shared user-gated side effect is present",
-)
-
 CLAUDE_FUNCTION_HARMONIZATION_RULES = (
     (
         "core stance",
@@ -466,42 +417,6 @@ CLAUDE_FUNCTION_HARMONIZATION_RULES = (
         "adversarial verification",
         "verification agents actively try to make the gate or proof fail with non-vacuous RED, --runxfail, sibling, and touched-script/hook checks",
     ),
-)
-
-EMERGENCY_HANDLING_RULES = (
-    "Scope: emergency is exactly one of four categories: Production-affecting OR user-data-integrity issue; Security-critical; Active bleed-rate; External time-pressure.",
-    "Events outside those four categories use normal role partition and proposal cycles, even when they feel urgent.",
-    "first-noticer claims initial response with a dispatch-claim mailbox event carrying urgency: emergency.",
-    "Triage discipline: stop-the-bleed first; use the smallest mitigation before root-cause analysis.",
-    "Cross-seat temporary authority applies only during transplant or context exhaustion, and the commit body must include acting under v5 §E temporary authority.",
-    "coordinator no-production-code boundary remains in force during emergency routing and reconciliation.",
-    "Within one session of resolution, write a post-incident note in docs/INCIDENT-LOG.md and review protocol gaps.",
-)
-
-DISAGREEMENT_HANDLING_RULES = (
-    "States the disagreement explicitly in the next-cycle revision.",
-    "Provides project-data-grounded evidence for the disputed item.",
-    "Chooses exactly one resolution path: counter-refinement, defer to v(N+1), or acceptance criterion.",
-    "silent-accept is the receiver's own acceptance, not permission inferred from peer silence.",
-    "Re-REPLY is allowed for a live objection, but the 2-cycle escalation limit sends persistent disagreement to the user-principal.",
-)
-
-BLOCKED_WAVE_ACTING_COORDINATOR_RULES = (
-    "Require wave-gate evidence before asserting blocked.",
-    "Trigger immediate pod-off when a director gate-request is unserviced.",
-    "Send one consolidated mailbox event naming blocker, owner, and SLA.",
-    "If the owning coordinator is absent, escalate to user with the acting-coordinator path.",
-    "Use a pre-brief skeleton only until the blocked owner or user direction confirms scope.",
-    "Use no gate-relaxing or suppressive pins to make a blocked wave look green.",
-    "A blocked-wave transition is verified only from operator GO, not route prose or a gate script alone.",
-)
-
-REVIEWER_RESULT_HANDLING_RULES = (
-    "Use findings-first ordering by severity for review output and verification reports.",
-    "When relaying reviewer or verifier output, preserve verdict, findings, and next steps.",
-    "separate uncertainty, inference, and follow-up so readers can tell evidence from hypothesis.",
-    "do not auto-fix after a review; route or request the next implementation action instead.",
-    "failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.",
 )
 
 LIVE_LOOP_STEPS = (
@@ -714,30 +629,26 @@ def render_planning_relay() -> str:
     return "\n".join(lines)
 
 
-def render_pair_operating_contract() -> str:
-    """Return the efficient director/operator pair contract as Markdown."""
-    lines = ["Pair Operating Contract:"]
-    lines.extend(f"- {rule}" for rule in PAIR_OPERATING_RULES)
-    return "\n".join(lines)
+def render_autonomous_seat_contract() -> str:
+    """Return the sole active behavior capsule for governed seat work."""
+    return AUTONOMOUS_SEAT_REFERENCE + "\n" + "\n".join(
+        f"- {rule}" for rule in AUTONOMOUS_SEAT_RULES
+    )
 
 
 def render_capacity_split_default() -> str:
-    """Return the default promotion rule for one-pair versus two-pair routes."""
-    lines = ["Capacity Split Default:"]
-    lines.extend(f"- {rule}" for rule in CAPACITY_SPLIT_DEFAULT_RULES)
-    return "\n".join(lines)
+    """Compatibility renderer for the readiness consumer; capacity is advisory."""
+    return (
+        "Capacity Split Default: retired compatibility diagnostic; "
+        "the former rule that divisible or preplanned larger work defaults to "
+        "dual-pair routing is advisory, not authority. "
+        + AUTONOMOUS_SEAT_REFERENCE
+    )
 
 
 def render_seat_subagent_development() -> str:
-    """Return the all-seat contract for bounded subagent-driven work."""
-    lines = ["Seat Subagent Development:"]
-    lines.extend(f"- {rule}" for rule in SEAT_SUBAGENT_DEVELOPMENT_RULES)
-    lines.append(
-        "blocked side effects: no mailbox cursor, mailbox event, operator GO, "
-        "coordinator route, push, lock, pod spend, or paid API spend from a "
-        "subagent alone"
-    )
-    return "\n".join(lines)
+    """Compatibility renderer for the readiness consumer; delegation is optional."""
+    return "Delegation is an owner-chosen capacity tool; " + AUTONOMOUS_SEAT_REFERENCE
 
 
 def render_codex_execution_tiers() -> str:
@@ -756,16 +667,6 @@ def render_r_independence() -> str:
     return "\n".join(lines)
 
 
-def render_side_effect_executor_contract() -> str:
-    """Return the single-executor contract for shared user-gated side effects."""
-    lines = [
-        "Side-Effect Executor Token:",
-        "required fields: " + ", ".join(SIDE_EFFECT_EXECUTOR_TOKEN_FIELDS),
-    ]
-    lines.extend(f"- {rule}" for rule in SIDE_EFFECT_EXECUTOR_RULES)
-    return "\n".join(lines)
-
-
 def render_claude_function_harmonization() -> str:
     """Return the Claude-to-Codex function harmonization contract."""
     lines = ["Claude Function Harmonization:"]
@@ -773,34 +674,6 @@ def render_claude_function_harmonization() -> str:
         f"- {name}: {description}"
         for name, description in CLAUDE_FUNCTION_HARMONIZATION_RULES
     )
-    return "\n".join(lines)
-
-
-def render_emergency_handling_contract() -> str:
-    """Return the Codex emergency handling contract."""
-    lines = ["Emergency Handling:"]
-    lines.extend(f"- {rule}" for rule in EMERGENCY_HANDLING_RULES)
-    return "\n".join(lines)
-
-
-def render_disagreement_handling_contract() -> str:
-    """Return the Codex disagreement handling contract."""
-    lines = ["Disagreement Handling:"]
-    lines.extend(f"- {rule}" for rule in DISAGREEMENT_HANDLING_RULES)
-    return "\n".join(lines)
-
-
-def render_blocked_wave_acting_coordinator_contract() -> str:
-    """Return the Codex blocked-wave and acting-coordinator contract."""
-    lines = ["Blocked-Wave and Acting-Coordinator Handling:"]
-    lines.extend(f"- {rule}" for rule in BLOCKED_WAVE_ACTING_COORDINATOR_RULES)
-    return "\n".join(lines)
-
-
-def render_reviewer_result_handling_contract() -> str:
-    """Return the reviewer/verifier result-handling contract."""
-    lines = ["Reviewer Result Handling:"]
-    lines.extend(f"- {rule}" for rule in REVIEWER_RESULT_HANDLING_RULES)
     return "\n".join(lines)
 
 
@@ -1171,6 +1044,7 @@ def render_surface_summary() -> str:
         if name != "Rotating Planning Relay"
     )
     lines = [
+        render_autonomous_seat_contract(),
         f"source: {MODEL_SOURCE}",
         f"central invariant: {CENTRAL_INVARIANT}",
         "durable artifacts: " + ", ".join(DURABLE_STATE_ARTIFACTS),
@@ -1179,13 +1053,9 @@ def render_surface_summary() -> str:
         "Active kernel invariants: "
         + ", ".join(name for name, _ in ACTIVE_KERNEL_INVARIANTS),
         "Demoted optional concepts: " + ", ".join(demoted_names),
-        "Pair Operating Contract: director -> operator is the fast path; mailbox artifact, not chat",
-        "Capacity Split Default: divisible or preplanned larger work defaults to dual-pair routing",
-        "Seat Subagent Development: seats retain authority; subagents own bounded work",
         "Compact Pair Invariant: assigned non-author Operator, committed verify-request, fixed mailbox writer",
         "Codex Risk-Tier Router: conversational and read-only work avoid implementation ceremony",
-        "R-INDEPENDENCE: adversarial-surface work requires design-time enumeration and independent actual-diff verification",
-        "Side-Effect Executor Token: generic user approval is unit consent, not executor election",
+        "R-INDEPENDENCE: adversarial-surface owners assess abuse classes and use proportional actual-diff review",
         "Ledger CLI Bridge: Pipeline kernel -> evidence-ledger target via "
         + LEDGER_CLI_BRIDGE["doc_path"],
         "agent extension namespace: .codex/agents/agentNN.toml guardrail extensions",
@@ -1599,14 +1469,8 @@ def main() -> int:
     print("## R-INDEPENDENCE")
     print(render_r_independence())
     print()
-    print("## Pair Operating Contract")
-    print(render_pair_operating_contract())
-    print()
-    print("## Capacity Split Default")
-    print(render_capacity_split_default())
-    print()
-    print("## Seat Subagent Development")
-    print(render_seat_subagent_development())
+    print("## Autonomous Seat Outcome Contract")
+    print(render_autonomous_seat_contract())
     print()
     print("## Provider-neutral Lane V v3")
     print(render_lane_v_v3())
