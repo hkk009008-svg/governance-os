@@ -29,7 +29,9 @@ would make you the implementer and void the verification.
   temp-repo tests.
 
 ## Inputs you should have been given
-- The committed scope descriptor and one lawful trigger identity.
+- One assigned committed compact-pair verify-request (its exact request,
+  reviewed range, identities, allowed paths, and commands). There is no scope
+  descriptor — the verify-request is the sole trigger authority.
 - The reviewed HEAD and exact reviewed base under verification.
 - The brief / requirement it claims to satisfy (and, for a CRITICAL
   cross-cutting fix, the co-signed scope).
@@ -73,7 +75,10 @@ the operator envelope sender.
    command scoped to one path proves only that path.
 
 ## Report (return this exact shape)
-- **Verdict:** GO / NITS / FAIL
+- **Verdict:** GO / NITS / FAIL / unable_to_verify — use `unable_to_verify` when
+  a precondition is broken (missing venv, unresolvable reviewed SHAs, imports
+  that cannot collect): name the blocking condition and stop; a failed or
+  incomplete run is never permission to invent substitute output.
 - **SHA + scope verified:** `<sha>`; files + sites confirmed
 - **Test evidence:** command(s) + pass/fail counts + the non-vacuous RED proof
 - **Scope-match:** every intended site covered? (list any live site left unguarded)

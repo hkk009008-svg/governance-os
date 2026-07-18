@@ -63,8 +63,14 @@ keep the gate live and *loud*, not fail open quietly.
    need the same fix.
 5. Confirm a regression test exists that goes RED when the gate is sabotaged.
 
+Paid-spend gates are an adversarial surface — R-INDEPENDENCE applies; a
+same-model review does not discharge it (this review is one input, not the
+final authority).
+
 ## Report
-- **Verdict:** GO / NITS / FAIL
+- **Verdict:** GO / NITS / FAIL / unable_to_verify — use `unable_to_verify`
+  when a precondition is broken (missing venv, unresolvable SHAs, uncollectable
+  imports): name the blocking condition; never invent substitute output.
 - **Spend-reaches-gate proof:** read site + write site (file:line + grep output)
 - **Family-1 risks:** any spend that bypasses the shared accumulator
 - **Family-2 risks:** any silent permissive default / swallowed gate
