@@ -1165,3 +1165,34 @@ time-bound records.
 - Any future capability kernel or provider tool requires a fresh design and its
   own separately-authorized side effects.
 - Commit, push, merge, paid spend, and runtime cleanup remain separately gated.
+
+## Delete the two unwired validators (check_cas, work-state transition table)
+
+**Date:** 2026-07-18
+**Status:** Accepted (user-approved deletion)
+
+**Context:**
+Two validators were tested but had no production caller: `route_lineage.check_cas`
+(+ `CasResult`) — the ADR-015 compare-and-swap route-admission check, never wired
+into any route writer or the `--check` CLI (which uses only
+`resolve_authoritative`) — and `packet_state.is_valid_work_transition`
+(+ `WORK_TRANSITIONS`) — the ADR-017 Part-A transition table whose intended
+Part-B gate consumer was never built. Tested-but-unenforced validators are the
+same dormancy class as the deleted compact/capability and route/v1 stacks:
+appearance of enforcement without an enforcement path.
+
+**Decision:**
+Delete both validators, their tests (six CAS tests in `test_route_lineage.py`,
+the CAS property section of `test_kernel_properties.py`, three transition tests
+in `test_packet_state.py`), and the transition-table section of
+`docs/protocol/packet-state.md`. `resolve_authoritative` (live: consumed by
+`ledger_start_guard`, `protocol_doctor`) and the `derive_*` functions (live)
+are retained. This supersedes the live-validator aspects of ADR-015 and the
+ADR-017 Part-A table without rewriting them; a future Part-B or route-admission
+writer defines its rules fresh.
+
+**Consequences:**
+- Route admission remains prose + lineage-tip resolution; packet gates remain
+  the derive-based checks. No enforcement existed before, so none is lost.
+- The int-only-generation lesson from the CAS boundary (a bool must never ride
+  an int successor) is preserved in history and this entry for any future writer.

@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Route lineage: generation + parent + compare-and-swap authority (ADR-015).
+"""Route lineage: generation + parent authority (ADR-015).
 
 Route currency stops depending on filename timestamp sort. A route carries a
 monotone ``Route generation:`` and a ``Supersedes route:`` parent pointer,
 emitted by live coordinator routes. The authoritative route is the lineage TIP: the
-highest-generation route that no other route supersedes. A proposed route is
-accepted only when its parent is the current tip and its generation is
-current+1 (compare-and-swap); otherwise a structured stale_parent result is
-returned. Legacy routes without a generation header fall back to the previous
+highest-generation route that no other route supersedes. Legacy routes
+without a generation header fall back to the previous
 reverse-lexicographic filename resolution, so the live campaign is unaffected.
 This does not activate the dormant signed bus (ADR-010).
 """
@@ -132,50 +130,6 @@ def resolve_authoritative(routes: list[LineageRoute]) -> Resolution:
         for route_id, parent_id in dangling
     )
     return Resolution(winner=tips[0].route_id, mode="lineage", issues=tuple(issues))
-
-
-@dataclass(frozen=True)
-class CasResult:
-    ok: bool
-    reason: str = ""
-
-
-def check_cas(current: LineageRoute, proposed: LineageRoute) -> CasResult:
-    """Accept proposed as the next authoritative route only under compare-and-swap.
-
-    parent must equal the current tip AND generation must be current + 1.
-    Any mismatch is a structured stale_parent refusal (the writer must rebase).
-    """
-    if proposed.lineage.parent_route_id != current.route_id:
-        return CasResult(
-            ok=False,
-            reason=(
-                f"stale_parent: proposed parent {proposed.lineage.parent_route_id!r} "
-                f"is not the current tip {current.route_id!r}"
-            ),
-        )
-    if current.lineage.generation is None or proposed.lineage.generation is None:
-        return CasResult(
-            ok=False, reason="stale_parent: missing generation on current or proposed"
-        )
-    # Int-only generations. A bool
-    # is an int subclass, so `True == 1 == 0 + 1` would otherwise ride the
-    # successor arithmetic below; reject a boolean (or any non-int) generation on
-    # either side so a bool can never be accepted as an int generation.
-    if not (type(current.lineage.generation) is int and type(proposed.lineage.generation) is int):
-        return CasResult(
-            ok=False,
-            reason="stale_parent: generation must be an integer (a boolean must never ride an int successor)",
-        )
-    if proposed.lineage.generation != current.lineage.generation + 1:
-        return CasResult(
-            ok=False,
-            reason=(
-                f"stale_parent: proposed generation {proposed.lineage.generation} "
-                f"is not current {current.lineage.generation} + 1"
-            ),
-        )
-    return CasResult(ok=True)
 
 
 def load_routes(root: Path) -> list[LineageRoute]:

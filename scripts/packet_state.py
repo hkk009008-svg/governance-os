@@ -28,18 +28,6 @@ VERIFICATION_STATES = (
     "not_required", "pending", "go", "nits", "fail", "unable_to_verify",
 )
 
-# Allowed work_state transitions (Part-B gate validation will consume this).
-WORK_TRANSITIONS: dict[str, frozenset[str]] = {
-    "queued": frozenset({"ready", "cancelled", "superseded"}),
-    "ready": frozenset({"running", "cancelled", "superseded"}),
-    "running": frozenset({"blocked", "completed", "failed", "cancelled", "superseded"}),
-    "blocked": frozenset({"running", "cancelled", "superseded"}),
-    "completed": frozenset({"superseded"}),
-    "failed": frozenset({"ready", "superseded", "cancelled"}),
-    "superseded": frozenset(),
-    "cancelled": frozenset(),
-}
-
 # Packet types that are not subject to independent (operator) verification.
 NON_VERIFIED_TYPES = frozenset({
     "coordinator-route", "coordinator-join", "coordinator-reconcile",
@@ -51,11 +39,6 @@ NON_VERIFIED_TYPES = frozenset({
 _GO_RE = re.compile(r"\bGO\b")
 _NITS_RE = re.compile(r"\bNITS\b")
 _FAIL_RE = re.compile(r"\bFAIL\b")
-
-
-def is_valid_work_transition(src: str, dst: str) -> bool:
-    """True iff dst is a permitted work_state successor of src."""
-    return dst in WORK_TRANSITIONS.get(src, frozenset())
 
 
 def _has_evidence(packet: dict) -> bool:

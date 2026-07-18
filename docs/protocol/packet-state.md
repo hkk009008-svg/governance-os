@@ -39,7 +39,7 @@ queued | ready | running | blocked | completed | failed | superseded | cancelled
 Note: the derivation currently emits only five of the eight vocabulary states —
 `{queued, ready, running, blocked, completed}`. `failed`, `superseded`, and
 `cancelled` have no legacy-`status` source today; they are reserved in the
-vocabulary and the transition table for Part B (parse-time orthogonal fields).
+vocabulary for Part B (parse-time orthogonal fields).
 
 ### `verification_state` — the independent-acceptance dimension
 
@@ -75,27 +75,12 @@ not_required | pending | go | nits | fail | unable_to_verify
 only thing that ever produces it, and only in case (1) above. It is never
 persisted to any packet.
 
-## `work_state` transition table
+## `work_state` transitions
 
-`WORK_TRANSITIONS` (`scripts/packet_state.py:32`) defines the allowed successors;
-`is_valid_work_transition(src, dst)` (`scripts/packet_state.py:56`) returns
-`True` iff `dst` is a permitted successor of `src` (and `False` for any unknown
-`src`).
-
-| from `src` | allowed `dst` |
-|---|---|
-| `queued`     | `ready`, `cancelled`, `superseded` |
-| `ready`      | `running`, `cancelled`, `superseded` |
-| `running`    | `blocked`, `completed`, `failed`, `cancelled`, `superseded` |
-| `blocked`    | `running`, `cancelled`, `superseded` |
-| `completed`  | `superseded` |
-| `failed`     | `ready`, `superseded`, `cancelled` |
-| `superseded` | *(none — terminal)* |
-| `cancelled`  | *(none — terminal)* |
-
-Every transition target is a member of `WORK_STATES`; forbidden edges (e.g.
-`completed → running`, `superseded → anything`) return `False`. Part B's gate
-validation will consume this table; Part A only exposes it.
+The Part-A transition table (`WORK_TRANSITIONS` + `is_valid_work_transition`)
+was deleted 2026-07-18: it had no production consumer — Part B's gate
+validation, its intended consumer, was never built (see DECISIONS.md). If
+Part B is ever implemented, it defines its own transition rules fresh.
 
 ## The load-bearing rule: `blocked` + completion evidence → `completed`
 

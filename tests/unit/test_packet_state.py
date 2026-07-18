@@ -91,27 +91,6 @@ def test_go_word_boundary_not_substring():
     assert packet_state.derive_verification_state(pkt) == "unable_to_verify"
 
 
-# --- transition table ---
-def test_valid_transitions():
-    assert packet_state.is_valid_work_transition("ready", "running")
-    assert packet_state.is_valid_work_transition("running", "completed")
-    assert packet_state.is_valid_work_transition("running", "blocked")
-    assert packet_state.is_valid_work_transition("blocked", "running")
-
-
-def test_invalid_transitions():
-    assert not packet_state.is_valid_work_transition("completed", "running")
-    assert not packet_state.is_valid_work_transition("superseded", "running")
-    assert not packet_state.is_valid_work_transition("ready", "completed")
-
-
-def test_every_transition_target_is_a_known_state():
-    known = set(packet_state.WORK_STATES)
-    for src, dsts in packet_state.WORK_TRANSITIONS.items():
-        assert src in known
-        assert dsts <= known
-
-
 # --- Task 3: load_packets + build_report + main (read-only --report CLI) ---
 def _write_pkt(root: Path, pkt: dict) -> None:
     d = root / "coordination" / "capacity" / "packets"

@@ -45,41 +45,6 @@ def test_resolve_authoritative_order_independent(routes):
            route_lineage.resolve_authoritative(shuffled).winner
 
 
-# check_cas is fail-closed: ok is True IFF proposed.parent == current tip AND both
-# generations are int AND proposed.gen == current.gen + 1 (refused in every other case).
-@st.composite
-def _cas_pair(draw):
-    current = draw(_lineage_route)
-    # Bias toward exercising the accept path: sometimes point proposed at the tip
-    # and/or set its generation to the exact successor.
-    parent = current.route_id if draw(st.booleans()) else draw(
-        st.one_of(st.none(), st.text(min_size=1, max_size=6)))
-    cur_gen = current.lineage.generation
-    if draw(st.booleans()) and cur_gen is not None:
-        gen = cur_gen + 1
-    else:
-        gen = draw(_gen)
-    proposed = route_lineage.LineageRoute(
-        route_id=draw(st.text(min_size=1, max_size=6)),
-        lineage=route_lineage.RouteLineage(generation=gen, parent_route_id=parent,
-                                           expected_control_head=None),
-    )
-    return current, proposed
-
-
-@given(_cas_pair())
-def test_check_cas_fail_closed(pair):
-    current, proposed = pair
-    res = route_lineage.check_cas(current, proposed)
-    expected = (
-        proposed.lineage.parent_route_id == current.route_id
-        and isinstance(current.lineage.generation, int)
-        and isinstance(proposed.lineage.generation, int)
-        and proposed.lineage.generation == current.lineage.generation + 1
-    )
-    assert res.ok is expected
-
-
 # ---- packet_state.derive_* ----
 _status = st.one_of(st.sampled_from(["ready", "active", "blocked", "done", "excepted", "", "paused"]),
                     st.text(max_size=8))

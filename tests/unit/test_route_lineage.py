@@ -108,53 +108,6 @@ def test_resolve_is_deterministic_regardless_of_input_order():
     )
 
 
-def test_cas_accepts_parent_tip_and_next_generation():
-    current = _lr("r2", generation=2, parent="r1")
-    proposed = _lr("r3", generation=3, parent="r2")
-    assert route_lineage.check_cas(current, proposed).ok
-
-
-def test_cas_rejects_wrong_parent_with_stale_parent():
-    current = _lr("r2", generation=2, parent="r1")
-    proposed = _lr("r3", generation=3, parent="r1")  # stale: parent is not the tip
-    result = route_lineage.check_cas(current, proposed)
-    assert not result.ok and "stale_parent" in result.reason
-
-
-def test_cas_rejects_non_incremented_generation():
-    current = _lr("r2", generation=2, parent="r1")
-    proposed = _lr("r9", generation=9, parent="r2")
-    result = route_lineage.check_cas(current, proposed)
-    assert not result.ok and "stale_parent" in result.reason
-
-
-# --- Cross-model part-#4: check_cas must enforce int-only generations ---------
-#
-# Bool is an int subclass, so the CAS boundary must require exact int types.
-# This prevents a future JSON/TOML boolean generation from satisfying successor
-# arithmetic even though True == 1.
-
-def test_cas_rejects_bool_generation_int_only():
-    # 0 -> True is the numeric successor (True == 1 == 0 + 1), so ONLY the type,
-    # not the arithmetic, distinguishes accept from refuse.
-    current = _lr("r0", generation=0, parent=None)
-    proposed = _lr("r1", generation=True, parent="r0")  # bool where int required
-    result = route_lineage.check_cas(current, proposed)
-    assert not result.ok and "integer" in result.reason
-
-
-def test_cas_rejects_bool_generation_on_current_side():
-    current = _lr("r0", generation=True, parent=None)
-    proposed = _lr("r1", generation=2, parent="r0")
-    result = route_lineage.check_cas(current, proposed)
-    assert not result.ok and "integer" in result.reason
-
-
-def test_cas_still_accepts_plain_int_generations():
-    # positive control: the ordinary int successor path is unaffected.
-    assert route_lineage.check_cas(_lr("r1", 1, None), _lr("r2", 2, "r1")).ok
-
-
 # --- Task 4: load_routes + --check CLI + lineage-first guard rewire ---
 from pathlib import Path
 
