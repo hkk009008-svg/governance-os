@@ -107,7 +107,8 @@ is **no longer a stub** — it asserts the governance OS's own runtime invariant
 - **Governance OS boots turn-key** — `python scripts/ci_smoke.py` → `OK`, **exit 0**
   (the `_project_smoke()` stub runs, the doc-anchor gate passes on the skeleton
   `ARCHITECTURE.md`, the coordination gate passes on the seeded cursors, and the
-  anti-ceremony gate passes all six R1–R6 checks).
+  anti-ceremony gate passes all five checks — R1–R3, R5–R6; R4 was removed with
+  the suite-wide `--runxfail` step).
 
 ---
 

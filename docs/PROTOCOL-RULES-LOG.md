@@ -625,8 +625,8 @@ current conditions, not as a complete protocol.
 
 | Audit | Scope | Findings doc | Commit |
 |---|---|---|---|
-| Hook script (v2.1 baseline) | `.claude/hooks/update-state.sh` vs v2 §A as amended by v2.1 | [docs/AUDIT-hook-script-v2-2026-05-24.md](AUDIT-hook-script-v2-2026-05-24.md) | `3340d1f` |
-| v5.8 per-seat index auto-refresh | `.claude/hooks/update-state.sh` `_sync_seat_index()` | [docs/PROPOSAL-protocol-bundle-v5.8-2026-06-08.md](PROPOSAL-protocol-bundle-v5.8-2026-06-08.md) | `454e770`+`a614f68` impl + _v5.8 text-ship_ |
+| Hook script (v2.1 baseline) | `.claude/hooks/update-state.sh` vs v2 §A as amended by v2.1 | `docs/AUDIT-hook-script-v2-2026-05-24.md` (not transplanted to this repo) | `3340d1f` |
+| v5.8 per-seat index auto-refresh | `.claude/hooks/update-state.sh` `_sync_seat_index()` | `docs/PROPOSAL-protocol-bundle-v5.8-2026-06-08.md` (not transplanted to this repo) | `454e770`+`a614f68` impl + _v5.8 text-ship_ |
 
 ### v5.8 — per-seat index auto-refresh (D-a hardening), 2026-06-08
 

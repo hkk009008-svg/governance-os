@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-17 @ 94f9416*
+*Last verified: 2026-07-18 @ 3c955e3*
 
 ## 1. Purpose
 
@@ -88,16 +88,6 @@ Key directories:
 - `coordination/bin/send-event` permits verification reports only from Operator
   seats, then sends every mailbox kind through the unchanged fixed finalizer in
   `scripts/mailbox_writer.py`.
-
-
-
-
-
-
-
-
-
-
 - Historical report paths remain immutable evidence and grant no current
   publication authority. Local `.codex/runtime` residue is outside the operative
   scan and is not mutated by protocol verification.

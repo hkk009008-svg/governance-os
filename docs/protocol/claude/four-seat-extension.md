@@ -167,9 +167,11 @@ written. Order the cutover so no intermediate state can FATAL the peer's smoke:
    widens).
 2. **Widen the four vocabulary spots together** (send-event, consume-events,
    check_coordination, status.py) + the cosmetic hook unread.
-3. **Add a regression test** (`tests/unit/test_four_seat_coordination.py`):
-   a `director2→operator2` event + an `all` broadcast lint clean, `count_unread`
-   counts `all` for every seat, and `consume-events operator2` advances.
+3. **Regression coverage** — carried by `tests/unit/test_check_coordination.py`
+   + `tests/unit/test_coordination_tooling.py` (a `director2→operator2` event +
+   an `all` broadcast lint clean, `count_unread` counts `all` for every seat,
+   `consume-events operator2` advances). The originally cited
+   `test_four_seat_coordination.py` was never created (see header note).
 4. **Run `scripts/ci_smoke.py`** → must stay green (it runs check_coordination).
    Round-trip a real `director2→operator2` test event through send/consume.
 5. **README launch stanzas + this doc** flipped to ACCEPTED.

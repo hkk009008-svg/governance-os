@@ -43,8 +43,9 @@ Non-goals:
 User or parent prompts assign a mode: readiness bridge, live seat, coordinator,
 or bounded subagent. Pipeline startup tools then read durable state before any
 protocol decision. `ledger_start_guard.py` enforces the Pipeline-first boundary
-for ledger-routed work. `seat_status.py` reports HEAD, mailbox unread state,
-peer heartbeats, and wave gate state.
+for ledger-routed work. `seat_status.py` (in the four-seat-protocol skill:
+`.claude/skills/four-seat-protocol/scripts/`) reports HEAD, mailbox unread
+state, peer heartbeats, and wave gate state.
 
 Mailbox events in `coordination/mailbox/sent/` bind recipients. Capacity
 packets in `coordination/capacity/packets/` define active scope. Smoke,

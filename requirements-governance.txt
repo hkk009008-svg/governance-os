@@ -1,7 +1,7 @@
 # Governance OS deps only — append your project deps below.
 #
 # Scan basis: grep of scripts/*.py and threeway/*.py for non-stdlib imports.
-# Command run: grep -rh '^import |^from ' scripts/ threeway/ | awk '{print $1}' | sort -u
+# Command run: grep -rh '^import |^from ' scripts/ threeway/ | awk '{print $2}' | sort -u
 # Stdlib exclusions: argparse, ast, collections, copy, dataclasses, datetime,
 #   fnmatch, glob, hashlib, importlib, json, logging, math, os, pathlib,
 #   random, re, secrets, shlex, shutil, signal, subprocess, sys, tempfile,

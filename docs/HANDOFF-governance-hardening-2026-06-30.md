@@ -26,7 +26,7 @@ the named source files when its trigger fires (load policy), don't pre-read ever
 ## §1 Why (intent — read this)
 
 Three independent audits converged on one finding: **the system's reliability
-rests on ~4 hard Python gates (`ci_smoke`, doc-anchor drift, anti-ceremony R1–R6,
+rests on ~4 hard Python gates (`ci_smoke`, doc-anchor drift, anti-ceremony R1–R3/R5–R6,
 reviewer-schema), while dozens of markdown rules are soft-enforced — by the same
 class of unreliable agent they exist to govern.** Two consequences follow, and
 this session addresses exactly those, nothing more:

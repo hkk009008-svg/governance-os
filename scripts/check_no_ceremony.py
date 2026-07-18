@@ -14,7 +14,8 @@ introduced. FIX-1 (gate executes pins) has landed — see R3. FIX-2, a suite-wid
 `--runxfail` CI step, was withdrawn as logically backwards: the normal strict
 run already fails an unexpected XPASS, whereas a suite-wide --runxfail instead
 fails deliberately-deferred pins by design. Targeted pin execution lives in
-wave_gate_check.py.
+wave_gate_check.py. R4, which enforced the withdrawn step, was removed with it —
+the rule roster is R1-R3, R5-R6 (numbering preserved for provenance).
 
 Rules:
   R1  xfail-strictness     every pytest.mark.xfail must be strict=True + reason=  (AST; prevention)
