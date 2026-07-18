@@ -1,6 +1,6 @@
 # Pipeline Maintenance Priority Pause Design
 
-**Status:** user-approved design, pending user review of this committed specification  
+**Status:** user-approved scope; coordinator correction pending fresh Director2 preflight
 **Date:** 2026-07-18  
 **Coordinator base:** `f38da0dcac562f8eb39333f532d3b0f9aac825b0`  
 **Active ledger route:** `coordination/mailbox/sent/2026-07-18T02-40-57Z-coordinator-to-all-coordination.md`
@@ -113,8 +113,13 @@ acceptance tests:
 - canonical same-seat versus noncanonical near-match names;
 - coordinator/coordinator2 canonical aliasing without cross-seat leakage;
 - different handoffs introduced in one commit, including exact metadata ties;
+- exact-current-path additions that Git can similarity-follow across a copy or
+  rename;
+- incomparable introducing commits from merged branches, without commit-time
+  ordering;
 - untracked, symlinked, deleted, or working-tree-divergent candidates;
-- Git-unavailable and introduction-commit-unreachable states;
+- Git-unavailable, per-candidate Git-failure, and
+  introduction-commit-unreachable states;
 - an invalid newest-looking candidate attempting to suppress the newest valid
   candidate; and
 - warning behavior that must remain visible without crashing `seat_status`.
@@ -126,9 +131,9 @@ fresh non-author review; the handoff preflight cannot authorize it.
 ## 5. Deterministic Handoff Selection Contract
 
 The corrected selector must not use filesystem `mtime` for ordering and must
-not implement the scan report's date-only filename sort. Durable Git history is
-the primary chronology; content metadata is only a same-introduction
-tiebreaker.
+not implement the scan report's date-only filename sort. Durable Git ancestry
+is the primary chronology. Content metadata is only a tiebreaker for candidates
+introduced together or on incomparable merged branches.
 
 The current corpus proves that legitimate handoffs use multiple historical
 metadata forms: full and date-only `When:`, `Date:`, and `Created:`. Two recent
@@ -139,33 +144,42 @@ a newly invented uniform header.
 
 For every canonical same-seat candidate:
 
-1. Resolve the path lexically below `docs/`; reject a symlink or non-regular
+1. Enumerate canonical paths from the `HEAD` tree and the worktree. This union
+   makes a tracked-at-`HEAD` candidate deleted from the worktree visible for a
+   deterministic warning instead of silently hiding it behind `Path.glob`.
+2. Resolve each path lexically below `docs/`; reject a symlink or non-regular
    leaf with a deterministic warning.
-2. Require the exact path to be tracked and present at `HEAD` and require the
+3. Require the exact path to be tracked and present at `HEAD` and require the
    working-tree bytes to equal `HEAD:<path>`. Exclude an untracked, deleted,
    unreadable, or divergent candidate with a warning. Durable committed state,
    not an uncommitted edit, controls seat orientation.
-3. Obtain the commit that introduced the exact current path from history
-   reachable from `HEAD`. Rank that commit by its position in
-   `git rev-list --topo-order --reverse HEAD`, not by commit wall-clock time.
-4. Select the candidate whose introducing commit has the greatest topological
-   rank.
-5. If two candidates were introduced by the same commit, inspect only the
-   bounded leading metadata block established by the Director2 corpus
-   inventory. Recognize `When:`, `Created:`, and `Date:` fields with either a
-   strict full UTC `YYYY-MM-DDTHH:MM:SSZ` value or a legacy date-only
-   `YYYY-MM-DD` value.
-6. Within one introducing commit, prefer a valid full timestamp over a
-   date-only value and compare values of equal precision chronologically. A
-   missing, duplicated, malformed, non-UTC, or filename-disagreeing metadata
-   value emits a warning but does not suppress an otherwise HEAD-backed
-   candidate.
-7. Use basename only for the remaining same-introduction tie and emit a
-   deterministic warning that the metadata could not establish an order.
-8. If Git is unavailable, an introducing commit is unreachable, or no valid
-   HEAD-backed candidate remains, return no selection and visible warnings;
-   never silently fall back to `mtime`, commit timestamps, filename-day
-   ordering, or an uncommitted candidate.
+4. Obtain the most recent addition of the exact current path from history
+   reachable from `HEAD` with `git log --diff-filter=A -- <path>`. Do not use
+   `--follow`: copy or rename similarity must not rewrite current-path
+   introduction to an older source path.
+5. Compare introducing commits by ancestry. A descendant introduction is newer
+   and dominates its ancestor. Introductions on incomparable merged branches
+   remain tied; neither commit time nor incidental `rev-list` traversal order
+   may break that tie.
+6. For candidates introduced by the same commit or left maximal because their
+   introductions are incomparable, inspect only the bounded leading metadata
+   block established by the Director2 corpus inventory. Recognize `When:`,
+   `Created:`, and `Date:` fields with either a strict full UTC
+   `YYYY-MM-DDTHH:MM:SSZ` value or a legacy date-only `YYYY-MM-DD` value.
+7. Within that ancestry tie set, prefer a valid full timestamp over a date-only
+   value and compare values of equal precision chronologically. A missing,
+   duplicated, malformed, non-UTC, out-of-range, invalid-UTF-8, or
+   filename-disagreeing metadata value emits a warning but does not suppress an
+   otherwise HEAD-backed candidate.
+8. Use basename only for the remaining ancestry-and-metadata tie and emit a
+   deterministic warning that metadata could not establish an order. Also emit
+   a warning when incomparable branch introductions require metadata
+   tie-breaking.
+9. If initial Git enumeration fails, any candidate's exact-path introduction
+   cannot be established, ancestry comparison fails, or no valid HEAD-backed
+   candidate remains, return no selection and visible warnings; never silently
+   fall back to `mtime`, commit timestamps, filename-day ordering, a similarity
+   lineage, or an uncommitted candidate.
 
 The existing canonical seat pattern and noncanonical near-match warning
 contract remain in force. Director2 must inventory the complete current
