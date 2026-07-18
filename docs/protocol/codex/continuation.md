@@ -34,28 +34,43 @@ state immediately before a protocol write or decision.
 - **Subagent** is bounded by its parent prompt and returns evidence to the
   parent. It does not become a seat.
 
-Behavior sources are separate from concrete identities:
-`director -> director`, `director2 -> director`, `operator -> operator2`, and
-`operator2 -> operator2`.
+Behavior sources are separate from concrete identities.
+Behavior source map: `director -> director`, `director2 -> director`, `operator -> operator2`, `operator2 -> operator2`.
 
 The root risk tiers in `AGENTS.md` decide whether this adapter is needed at all.
 Ordinary conversation and read-only inspection do not become live-seat work.
+`tier-0-conversational` and `tier-1-read-only` avoid implementation workflow;
+`tier-2-local-mutation` uses focused checks and one completion pass;
+`tier-3-governed-side-effect` refreshes every triggered authority guard. Do not
+repeat Lane V for the same unchanged commit without a different, pre-stated
+question. Deterministic artifact evidence may be reused only with unchanged HEAD
+and relevant paths. Tier 3 requires fresh signed-bus, mailbox/cursor, lock,
+approval, and external-state checks; reuse never relaxes a triggered guard.
 
 ## Claude Function Harmonization:
 
-Adapt Claude functions to Codex-native primitives; do not transplant
-Claude-only mechanics.
+- core stance: adapt Claude functions to Codex-native primitives; do not transplant Claude-only mechanics
+- AskUserQuestion discipline: ask only for cross-cutting, policy, or
+  hard-to-reverse choices; use repo convention and durable state for ordinary
+  file, naming, and routing choices
+- background work discipline: let long verification run in an exec session
+  while independent read-only context gathering continues, then read the result
+  before claiming status
+- dispatch-template minimalism: give subagents only the relevant rule IDs,
+  allowed paths, evidence checks, side-effect limits, and env-u git hygiene
+  instead of inherited doctrine
+- reviewer evidence rigor: reviewers use pass | issues | unable_to_verify,
+  U1-U5 unverifiable reasons, reviewed-head checks, clean-tree checks, and
+  command evidence
+- adversarial verification: verification agents actively try to make the gate
+  or proof fail with non-vacuous RED, --runxfail, sibling, and
+  touched-script/hook checks
 
-- **User questions:** ask only for policy, cross-cutting, or hard-to-reverse
-  choices; recover ordinary choices from repo convention and durable state.
-- **Background work:** keep long verification in an exec session while doing
-  independent reads, then collect its result before claiming status.
-- **Dispatch:** send only role, scope, allowed paths, acceptance evidence,
-  forbidden effects, and Git hygiene. Do not forward inherited doctrine.
-- **Review:** preserve findings, verdict, uncertainty, reviewed HEAD, and
-  command evidence. An incomplete reviewer result is not substitute evidence.
-- **Adversarial work:** enumerate abuse cases before implementation and test the
-  actual diff against them; do not add redundant same-question reviewers.
+**R-INDEPENDENCE:** Before implementation, classify adversarial-surface work and
+capture an independent design-time enumeration as enforced-and-tested acceptance
+criteria. Before completion, an independent reviewer must verify the actual diff.
+This classification occurs before implementation. R-VERIFY-TIER prevents
+redundant same-question passes.
 
 ## Start commands
 
@@ -97,6 +112,20 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave
 
 Use the capacity board only for an actual multi-seat route. A narrow or
 shared-file task stays on the single-pair fast path.
+
+Capacity Split Default:
+
+- single-pair fast path remains the default for narrow or shared-file work.
+- divisible or preplanned larger work defaults to dual-pair routing.
+- Coordinator promotion question: can this route produce two independently reviewable deliverables?
+- If yes: director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.
+- If no: keep one pair implementing while Pair B performs bounded planning or preflight instead of idle standby.
+- The two active chunks must name disjoint write sets, explicit interfaces,
+  focused tests, forbidden side effects, and separate
+  verify-request/verification-report loops.
+- Pair B preflight packets use `director-preflight` and `operator-preflight` packet types.
+- coordinator owns convergence: capacity packets, one consolidated route, join
+  condition, conflict handling, and final closeout evidence.
 
 For evidence-ledger work, remain in `/Users/hyungkoookkim/Pipeline` until
 `docs/protocol/codex/ledger-cli-adoption.md` directs the transition. Run its
@@ -154,15 +183,50 @@ GO/NITS/FAIL from repository evidence. The coordinator may route and reconcile
 but not author behavior-changing production fixes. Push, merge, paid spend, and
 every other side effect are separately gated and require explicit authority.
 
-The executable model owns the complete pair lifecycle, capacity split,
-emergency/disagreement handling, blocked-wave rules, reviewer-result handling,
-and side-effect executor contract. Apply those details when their trigger
-fires; do not recreate them here.
+The executable model owns the complete pair lifecycle and the triggered
+contracts below. Gate output is process evidence, not an operator verdict.
 
-Generic user consent for a shared effect does not elect multiple executors.
-Use the model's single-executor contract or close the action from fresh evidence
-when the target is already satisfied. Gate output is process evidence, not an
-operator correctness verdict.
+### Side-Effect Executor Token:
+
+- Required fields: `side_effect_id`, `executor`, `target`,
+  `allowed_command_class`, `preflight`,
+  `stop_if_newer_mail_or_live_target_satisfied`, `postcheck`, `observer_seats`,
+  `final_closeout_owner`, and `non_goals`.
+- generic user approval is unit consent, not executor election.
+- shared user-gated side effects need exactly one named executor before mutation
+  unless the user directly names the executing seat in the same prompt.
+- side effects covered: remote-ref update, force update, lock action,
+  paid-service spend, pod action, production generation, target-repo checkout
+  refresh, cursor consume, and route mutation.
+- observer seats default to observer mode: read live state only, do not repeat
+  the side effect, and report only contradiction, missing required evidence, changed safety boundary, or explicit coordinator request.
+- live evidence may close an already-satisfied side effect without appointing a
+  redundant executor.
+- multiple same-target side-effect success claims need a common side_effect_id;
+  otherwise route validation fails.
+
+### Triggered exception contracts
+
+- **Emergency:** Scope is exactly one of Production-affecting OR
+  user-data-integrity issue; Security-critical; Active bleed-rate; External
+  time-pressure. The first-noticer claims initial response, applies
+  stop-the-bleed first, and may use cross-seat authority only while acting under
+  v5 §E temporary authority. The coordinator no-production-code boundary remains
+  in force; close with a post-incident note.
+- **Disagreement:** States the disagreement explicitly, supplies
+  project-data-grounded evidence, and chooses one of counter-refinement, defer to
+  v(N+1), or acceptance criterion. silent-accept is the receiver's own
+  acceptance; the 2-cycle escalation limit routes persistence to the user.
+- **Blocked wave:** Require wave-gate evidence before asserting blocked, immediate
+  pod-off when a director gate-request is unserviced, and one consolidated
+  mailbox event naming blocker, owner, and SLA. If the coordinator is absent,
+  escalate to user with the acting-coordinator path. Use a pre-brief skeleton
+  only, no gate-relaxing or suppressive pins, and treat the transition as
+  verified only from operator GO.
+- **Reviewer result:** Use findings-first ordering by severity; preserve verdict,
+  findings, and next steps; separate uncertainty, inference, and follow-up; do
+  not auto-fix after a review. failed, incomplete, or unable_to_verify runs are
+  not permission to invent substitute output.
 
 ## Subagents
 
@@ -174,6 +238,11 @@ Use a bounded helper only when it adds independent signal or parallel capacity.
 The parent keeps synthesis and every authority-bearing action. Do not run
 parallel implementers on shared files or behind one push-gated lock. Direct work
 requires no utilization report or no-op artifact.
+
+After live-seat/coordinator orientation, record a Subagent utilization decision:
+dispatch a bounded helper for a named task, or direct/no-op because the work is
+small, tightly coupled, authority-sensitive, or already complete. This is a
+working choice, not a required standalone artifact.
 
 Project roles are available for bounded assignments:
 `protocol-director`, `protocol-operator`, `protocol-coordinator`,
@@ -196,11 +265,11 @@ Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/sk
 
 ## Stop and transfer
 
-Coordinator and seat chains continue internally until completion, a genuine
-blocker, scope expansion, or a separately user-gated effect. Write a narrow
-handoff only at a real transfer/context boundary or when explicitly requested.
-At a stop, state the actual boundary or next authority in plain language; do
-not impose a terminal heading or return seat commands to the user.
+Coordinator and seat chains continue internally and stop only at completion, a
+genuine blocker, scope expansion, or a separately user-gated effect. Write a
+narrow handoff only at a real transfer/context boundary or when explicitly
+requested. At a real stop, state the blocking boundary or plain next authority
+without a prescribed heading or returning seat commands to the user.
 
 ## Verification
 

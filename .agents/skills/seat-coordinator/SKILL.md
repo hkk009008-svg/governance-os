@@ -31,9 +31,47 @@ boundaries.
 
 Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
 
-The executable model owns capacity split, blocked-wave/acting-coordinator,
-emergency, disagreement, review-result, pair-lifecycle, and side-effect executor
-details. Apply those contracts when triggered; do not duplicate them here.
+The executable model owns the exact lifecycle and the compact trigger contracts
+below. Apply them when triggered; do not duplicate them in route artifacts.
+
+## Model-backed contract capsule
+
+Mailbox decisions remain body-first: read relevant mailbox bodies before acting; live seat cursors are intentional per-seat state, and the coordinator has no cursor.
+The verifying operator must be a non-author and alone issues GO/NITS/FAIL from repository evidence.
+The coordinator may route and reconcile but not author behavior-changing production fixes.
+Push, merge, paid spend, and every other side effect are separately gated and require explicit authority.
+
+Capacity Split Default:
+
+- single-pair fast path remains the default for narrow or shared-file work.
+- divisible or preplanned larger work defaults to dual-pair routing.
+- Ask whether the route yields two independently reviewable deliverables.
+- If yes, director owns Chunk A and operator verifies Chunk A; director2 owns Chunk B and operator2 verifies Chunk B.
+- Otherwise Pair B performs bounded planning or preflight instead of idle standby.
+- Pair B preflight packets use `director-preflight` and `operator-preflight` packet types; coordinator owns convergence.
+
+After live-seat/coordinator orientation, record a Subagent utilization decision: dispatch a bounded helper for a named task, or direct/no-op because the work is small, tightly coupled, authority-sensitive, or already complete. This is a working choice, not a standalone artifact.
+
+Side-Effect Executor Token:
+
+- Required fields include `side_effect_id`, `allowed_command_class`, and `stop_if_newer_mail_or_live_target_satisfied`.
+- generic user approval is unit consent, not executor election.
+- shared user-gated side effects need exactly one named executor before mutation.
+- side effects covered: remote-ref update, force update, lock action, paid-service spend, pod action, production generation, target-repo checkout refresh, cursor consume, and route mutation.
+- observer seats default to observer mode; report only contradiction, missing required evidence, changed safety boundary, or explicit coordinator request.
+- live evidence may close an already-satisfied side effect without appointing a redundant executor.
+- multiple same-target side-effect success claims need a common side_effect_id.
+
+Triggered exceptions stay narrow: Production-affecting OR user-data-integrity issue, Security-critical, Active bleed-rate, or External time-pressure. The first-noticer claims initial response, uses stop-the-bleed first, and records acting under v5 §E temporary authority when applicable; the coordinator no-production-code boundary remains in force and resolution gets a post-incident note. A disagreement States the disagreement explicitly, uses project-data-grounded evidence, and chooses counter-refinement, defer to v(N+1), or an acceptance criterion; silent-accept is the receiver's own acceptance and the 2-cycle escalation limit routes persistence to the user.
+
+Require wave-gate evidence before asserting blocked, immediate pod-off when a director gate-request is unserviced, and one consolidated mailbox event naming blocker, owner, and SLA. If needed, escalate to user with the acting-coordinator path; use a pre-brief skeleton only, no gate-relaxing or suppressive pins, and treat the transition as verified only from operator GO.
+
+Reviewer output uses findings-first ordering by severity, must preserve verdict, findings, and next steps, and must separate uncertainty, inference, and follow-up. do not auto-fix after a review; failed, incomplete, or unable_to_verify runs are not permission to invent substitute output.
+
+Coordinator and seat chains continue internally and stop only at completion, a genuine blocker, scope expansion, or a separately user-gated effect.
+At a real stop, state the blocking boundary or plain next authority without a prescribed heading or returning seat commands to the user.
+
+Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
 
 ## Capacity and route gate
 

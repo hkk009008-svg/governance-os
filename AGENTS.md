@@ -40,10 +40,12 @@ Choose the smallest applicable tier before loading tools or skills:
   state, or external effects, apply the exact mailbox, capacity, independent
   verification, and user-authorization gates for that action.
 
-Deterministic evidence may be reused only when HEAD and relevant paths are
-unchanged. Tier 3 always refreshes live bus/mailbox, cursor, lock, approval, and
-external state. Do not repeat the same generic verification on the same commit
-unless the new review has a different, stated question.
+Deterministic artifact evidence may be reused only when HEAD and relevant paths
+are unchanged. Tier 3 always refreshes live bus/mailbox, cursor, lock, approval,
+and external state. Tier 3 requires fresh signed-bus, mailbox/cursor, lock,
+approval, and external-state checks; reuse never relaxes a triggered guard. Do
+not launch another generic reviewer or repeat Lane V for the same unchanged
+commit unless it asks a genuinely different, pre-stated question.
 
 ## Start only what the task requires
 
@@ -118,13 +120,15 @@ scope. Preserve unrelated user or peer work.
 
 ### Independence first
 
-Before implementation, classify whether the change touches an adversarial
-surface: parseable/executable composition, authority or security enforcement,
-side-effect gating, or trust-granting schema validation. If triggered, capture
-an independent design-time abuse/edge-case enumeration in durable acceptance
-criteria and have an independent reviewer test the actual diff against it.
-R-VERIFY-TIER still prevents redundant review. Non-adversarial, read-only, and
-hermetic work uses the smallest sufficient profile. Full doctrine:
+**R-INDEPENDENCE:** Before implementation, classify whether the change touches
+an adversarial-surface: parseable/executable composition, authority or security
+enforcement, side-effect gating, or trust-granting schema validation. If
+triggered, capture an independent design-time enumeration of abuse cases, edge
+cases, and coverage targets as enforced-and-tested acceptance criteria, then
+have an independent reviewer verify the actual diff. This classification occurs
+before implementation. R-VERIFY-TIER still
+prevents redundant review. Non-adversarial, read-only, and hermetic work uses
+the smallest sufficient profile. Full doctrine:
 `docs/protocol/claude/independence-first.md`.
 
 ### Orchestration
@@ -142,20 +146,30 @@ capacity. Give it the relevant rules, allowed paths, acceptance evidence,
 forbidden effects, and `env -u GIT_INDEX_FILE` hygiene. Direct work needs no
 recorded non-use decision.
 
+**Capacity Split Default:** the single-pair fast path remains the default for
+narrow or shared-file work; divisible or preplanned larger work defaults to
+dual-pair routing only when it yields two independently reviewable deliverables.
+If split, director owns Chunk A and operator verifies Chunk A; director2 owns
+Chunk B and operator2 verifies Chunk B. Otherwise Pair B performs bounded
+planning or preflight instead of idle standby. Pair B preflight packets use
+`director-preflight` and `operator-preflight` packet types; coordinator owns
+convergence.
+
 ### Repeated safety checks
 
-- **R-BRIEF:** When a brief says to mirror a pattern, verify the full signature,
-  path, scope, error handling, and guards. A canonical site/SHA is a runtime
-  claim: verify the symbol and named sub-pattern at that SHA.
+- **R-BRIEF:** brief-pattern references are runtime claims when they cite
+  canonical sites: verify the named symbol exists at the cited SHA and verify
+  the cited SHA exhibits the named sub-pattern, including its full signature,
+  scope, error handling, and guards.
 - **R-PID:** A project-scoped HTTP resource takes `<pid>` explicitly; never
   recover it by scanning a global list. Check all sibling endpoints.
 - **R-SKILL:** Load the matching project skill before authoring, reviewing, or
   debugging domain graph/pipeline code or a major external-API client.
 - **Rule 12, grep the writes:** A declaration is not runtime evidence. Find and
   cite the production mutator/write site for each targeted field or key.
-- **Rule 13, symmetric endpoints:** Enumerate every sibling sharing the same
-  fence, flag, or state, then classify each as mirror, defer, document, or
-  exempt. Enumeration without disposition is incomplete.
+- **Rule 13, symmetric endpoints:** audit-completeness is not audit-disposition.
+  Enumerate every sibling sharing the fence, flag, or state; use
+  `mirror / defer / document / exempt` and state the disposition for each sibling.
 
 ## Four-seat protocol trigger
 
@@ -166,6 +180,12 @@ concrete seat skill. For evidence-ledger work, start in Pipeline and load
 `docs/protocol/codex/ledger-cli-adoption.md` before entering the target repo.
 
 Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
+
+Mailbox decisions remain body-first: read relevant mailbox bodies before acting;
+live seat cursors are intentional per-seat state, and the coordinator has no cursor.
+The verifying operator must be a non-author and alone issues GO/NITS/FAIL from repository evidence.
+The coordinator may route and reconcile but not author behavior-changing production fixes.
+Push, merge, paid spend, and every other side effect are separately gated and require explicit authority.
 
 The live authority block and Codex commands are owned by
 `docs/protocol/codex/continuation.md`; the umbrella and concrete seat skills add
@@ -191,3 +211,5 @@ authority boundaries here. Codex adapts those functions to native tools through
 `docs/protocol/codex/continuation.md`; it does not transplant Claude-only tool
 syntax. Cross-provider ownership and synchronization rules live in
 `docs/protocol/protocol-assembly-map.md`.
+
+Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
