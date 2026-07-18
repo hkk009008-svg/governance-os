@@ -106,11 +106,15 @@ acceptance tests:
 - multiple same-seat handoffs on one calendar day;
 - an older handoff touched after a newer handoff;
 - equal or clone-like filesystem mtimes;
-- missing, duplicated, malformed, non-UTC, or out-of-range `When:` values;
-- filename date and metadata timestamp disagreement;
+- legacy `When:`, `Created:`, and `Date:` metadata, including date-only values;
+- missing, duplicated, malformed, non-UTC, or out-of-range metadata values;
+- filename date and metadata date disagreement without discarding an otherwise
+  durable legacy handoff;
 - canonical same-seat versus noncanonical near-match names;
 - coordinator/coordinator2 canonical aliasing without cross-seat leakage;
-- exact timestamp ties;
+- different handoffs introduced in one commit, including exact metadata ties;
+- untracked, symlinked, deleted, or working-tree-divergent candidates;
+- Git-unavailable and introduction-commit-unreachable states;
 - an invalid newest-looking candidate attempting to suppress the newest valid
   candidate; and
 - warning behavior that must remain visible without crashing `seat_status`.
@@ -122,31 +126,52 @@ fresh non-author review; the handoff preflight cannot authorize it.
 ## 5. Deterministic Handoff Selection Contract
 
 The corrected selector must not use filesystem `mtime` for ordering and must
-not implement the scan report's date-only filename sort.
+not implement the scan report's date-only filename sort. Durable Git history is
+the primary chronology; content metadata is only a same-introduction
+tiebreaker.
+
+The current corpus proves that legitimate handoffs use multiple historical
+metadata forms: full and date-only `When:`, `Date:`, and `Created:`. Two recent
+coordinator handoffs use `Date:` rather than `When:`, one director2 handoff uses
+`Created:`, and an operator2 filename date differs from its full `When:` date.
+The implementation must preserve these durable artifacts instead of requiring
+a newly invented uniform header.
 
 For every canonical same-seat candidate:
 
-1. Inspect only the bounded leading metadata block established by the
-   Director2 corpus inventory.
-2. Require exactly one canonical UTC `When:` value in strict
-   `YYYY-MM-DDTHH:MM:SSZ` form.
-3. Require the UTC calendar date to equal the date encoded in the canonical
-   filename.
-4. Exclude a missing, duplicated, malformed, non-UTC, or mismatched candidate
-   from selection and emit a deterministic warning naming that file and
-   reason.
-5. Select the valid candidate with the greatest full UTC timestamp.
-6. Use basename only as the deterministic tiebreaker for two valid candidates
-   with exactly equal timestamps.
-7. If no valid candidate remains, return no selection and visible warnings;
-   never silently fall back to `mtime`, filename-day ordering, or an invalid
+1. Resolve the path lexically below `docs/`; reject a symlink or non-regular
+   leaf with a deterministic warning.
+2. Require the exact path to be tracked and present at `HEAD` and require the
+   working-tree bytes to equal `HEAD:<path>`. Exclude an untracked, deleted,
+   unreadable, or divergent candidate with a warning. Durable committed state,
+   not an uncommitted edit, controls seat orientation.
+3. Obtain the commit that introduced the exact current path from history
+   reachable from `HEAD`. Rank that commit by its position in
+   `git rev-list --topo-order --reverse HEAD`, not by commit wall-clock time.
+4. Select the candidate whose introducing commit has the greatest topological
+   rank.
+5. If two candidates were introduced by the same commit, inspect only the
+   bounded leading metadata block established by the Director2 corpus
+   inventory. Recognize `When:`, `Created:`, and `Date:` fields with either a
+   strict full UTC `YYYY-MM-DDTHH:MM:SSZ` value or a legacy date-only
+   `YYYY-MM-DD` value.
+6. Within one introducing commit, prefer a valid full timestamp over a
+   date-only value and compare values of equal precision chronologically. A
+   missing, duplicated, malformed, non-UTC, or filename-disagreeing metadata
+   value emits a warning but does not suppress an otherwise HEAD-backed
    candidate.
+7. Use basename only for the remaining same-introduction tie and emit a
+   deterministic warning that the metadata could not establish an order.
+8. If Git is unavailable, an introducing commit is unreachable, or no valid
+   HEAD-backed candidate remains, return no selection and visible warnings;
+   never silently fall back to `mtime`, commit timestamps, filename-day
+   ordering, or an uncommitted candidate.
 
-The existing canonical seat pattern and near-match warning contract remain in
-force. Director2 must inventory the complete current canonical handoff corpus
-before implementation. If the corpus contains an additional legitimate
-metadata grammar, the preflight must state and test that grammar rather than
-letting implementation infer it.
+The existing canonical seat pattern and noncanonical near-match warning
+contract remain in force. Director2 must inventory the complete current
+canonical handoff corpus before implementation. If the corpus contains another
+legitimate metadata grammar, the preflight must return a design contradiction
+rather than letting implementation infer or silently normalize it.
 
 ## 6. Small Cleanup Contract
 
