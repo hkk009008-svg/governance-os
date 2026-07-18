@@ -112,7 +112,7 @@ attestations, `ci` signs `ci_result` (`predicate.py:152-161`).
 - **The signed bus is the load-bearing substrate for three-way facts; the mailbox remains human
   coordination.** T1/T2/T3 principal-safe CLIs now emit signed facts locally and are proved against
   `refs/threeway/test-main`; free-form mailbox artifacts still carry human handoffs and verify
-  requests. Verified via `env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_t2_t3_emitters_e2e.py -q` -> 6 passed in 41.34s.
+  requests. Coverage: `tests/unit/test_threeway_activation_scripts.py` (sign_ci_result + run_merge_gate); the emitter CLIs carry no dedicated e2e test — a previously cited `test_threeway_t2_t3_emitters_e2e.py` never existed (citation corrected 2026-07-18).
 - **Slice 2.5 (legacy-bus migration substrate) is BUILT + hardened, but local authority is not assumed.** The
   substrate — `legacy_projector.py`, `divergence.py`, `cursor_backfill.py`, `cutover.py` — is built and
   test-covered; current adoption status is tracked in
@@ -138,8 +138,9 @@ attestations, `ci` signs `ci_result` (`predicate.py:152-161`).
   infer `THREEWAY_CI_KEY`, `THREEWAY_BUS_LIVE`, or signed-bus authority from
   this prose; verify the live environment and refs first. The REMAINING blocker for protected `main`: deployment-verifiable
   branch-protection/ref-ACL controls and the protected merge-gate runner. Local `refs/heads/main`
-  attempts fail closed. Verified via
-  `env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_run_merge_gate_protected_main.py -q` -> 2 passed in 0.03s.
+  attempts fail closed. Coverage: `tests/unit/test_threeway_activation_scripts.py::test_run_merge_gate_script`;
+  the protected-main fail-closed path has no dedicated test — a previously cited
+  `test_threeway_run_merge_gate_protected_main.py` never existed (citation corrected 2026-07-18).
 - **Forgery hardening (ADR-036/037/038):** revoke-authority + collision-aware index (ADR-036);
   event-id uniqueness at the gate and both stores (ADR-037); reserved merge-id + `brief_superseded`
   sibling (ADR-038) — closing the forgery / merge-DoS class.

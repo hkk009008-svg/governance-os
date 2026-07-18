@@ -39,8 +39,9 @@ What IS and is NOT live (be precise — this is bus + local CLI mechanism, not a
   until `refs/threeway/*` exists locally or remote refs are explicitly verified.
 - **NOT live — deployed protected-main strategic loop.** The local signed-bus path is proved on `refs/threeway/test-main`, but deployed
   protected `refs/heads/main` promotion still requires verifiable branch-protection/ref-ACL controls and
-  a protected merge-gate runner. Verified via
-  `env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_run_merge_gate_protected_main.py -q` -> 2 passed in 0.03s.
+  a protected merge-gate runner. Coverage: `tests/unit/test_threeway_activation_scripts.py::test_run_merge_gate_script`;
+  the protected-main fail-closed path has no dedicated test — a previously cited
+  `test_threeway_run_merge_gate_protected_main.py` never existed (citation corrected 2026-07-18).
 
 Activation tooling: `scripts/sign_ci_result.py`, `scripts/run_merge_gate.py`, `scripts/agy_observer.py`,
 `scripts/execute_threeway_cutover.sh`, `scripts/seat_emit.py`, `scripts/chief_emit.py`,

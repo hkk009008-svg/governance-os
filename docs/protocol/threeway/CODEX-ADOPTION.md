@@ -112,7 +112,7 @@ ref-bus is the load-bearing state source for three-way facts once `refs/threeway
 liveness oracle at step 3 below; while it returns no refs, the mailbox stays authoritative), and the
 free-form mailbox remains the human coordination channel. T1/T2/T3 principal-safe emitters are available as local CLIs and are proved
 against `refs/threeway/test-main`; protected `refs/heads/main` remains fail-closed without deployment
-controls. Verified via `env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_threeway_t2_t3_emitters_e2e.py -q` -> 6 passed in 41.34s. The design **forbids dual-write** (spec §8 item 8 +
+controls. Coverage: `tests/unit/test_threeway_activation_scripts.py` (sign_ci_result + run_merge_gate); the emitter CLIs themselves carry no dedicated e2e test — a previously cited `test_threeway_t2_t3_emitters_e2e.py` never existed (citation corrected 2026-07-18; the mechanism ledger now verifies cited test files exist). The design **forbids dual-write** (spec §8 item 8 +
 Slice-2.5 design spec §D2, audited). So adoption is the deployment path, in order:
 
 1. **Provision keys** (§3) and commit the registry.

@@ -22,24 +22,27 @@ class MechanismRow:
     note: str
 
 
+# Tests column policy: cite ONLY test files that exist (collect_mechanisms
+# enforces this — the 2026-07-18 audit found six cited files that never
+# existed in git history). An empty tuple renders as "(no dedicated test)".
 _ROWS = {
-    "brief": MechanismRow("brief", "live", ("scripts/overseer_emit.py brief",), ("tests/unit/test_threeway_overseer_emit.py",), "overseer-authority fact"),
-    "brief_superseded": MechanismRow("brief_superseded", "live", ("scripts/overseer_emit.py brief_superseded",), ("tests/unit/test_threeway_overseer_emit.py", "tests/unit/test_threeway_tier.py"), "overseer supersession CLI"),
-    "candidate": MechanismRow("candidate", "live", ("scripts/seat_emit.py coordinator candidate", "scripts/seat_emit.py coordinator2 candidate"), ("tests/unit/test_threeway_seat_emit.py",), "interactive coordinator fact"),
-    "candidate_aborted": MechanismRow("candidate_aborted", "live", ("scripts/seat_emit.py coordinator candidate_aborted", "scripts/seat_emit.py coordinator2 candidate_aborted"), ("tests/unit/test_threeway_seat_emit.py",), "interactive coordinator abort fact"),
-    "assignment": MechanismRow("assignment", "live", ("scripts/overseer_emit.py assignment",), ("tests/unit/test_threeway_overseer_emit.py",), "overseer assignment"),
-    "attestation": MechanismRow("attestation", "live", ("scripts/seat_emit.py operator attestation", "scripts/seat_emit.py operator2 attestation"), ("tests/unit/test_threeway_seat_emit.py",), "primary verifier attestation"),
-    "attestation_revoked": MechanismRow("attestation_revoked", "live", ("scripts/seat_emit.py <seat> attestation_revoked", "scripts/chief_emit.py <chief> attestation_revoked", "scripts/overseer_emit.py attestation_revoked"), ("tests/unit/test_threeway_seat_emit.py", "tests/unit/test_threeway_chief_emit.py", "tests/unit/test_threeway_overseer_emit.py", "tests/unit/test_threeway_t2_t3_emitters_e2e.py"), "principal-safe revocation CLIs"),
-    "co_sign": MechanismRow("co_sign", "live", ("scripts/seat_emit.py operator2 co_sign",), ("tests/unit/test_threeway_seat_emit.py", "tests/unit/test_threeway_t2_t3_emitters_e2e.py"), "dynamic mirror-verifier CLI"),
-    "re_verify": MechanismRow("re_verify", "live", ("scripts/seat_emit.py operator re_verify",), ("tests/unit/test_threeway_seat_emit.py", "tests/unit/test_threeway_t2_t3_emitters_e2e.py"), "candidate primary-verifier challenge echo CLI"),
-    "re_verify_challenge": MechanismRow("re_verify_challenge", "live", ("scripts/overseer_emit.py re_verify_challenge",), ("tests/unit/test_threeway_overseer_emit.py",), "overseer nonce challenge"),
-    "cycle_go": MechanismRow("cycle_go", "live", ("scripts/overseer_emit.py cycle_go",), ("tests/unit/test_threeway_overseer_emit.py",), "overseer cycle authorization"),
-    "release_requested": MechanismRow("release_requested", "live", ("scripts/seat_emit.py coordinator release_requested", "scripts/seat_emit.py coordinator2 release_requested"), ("tests/unit/test_threeway_seat_emit.py",), "interactive coordinator release request"),
-    "release_order": MechanismRow("release_order", "live", ("scripts/overseer_emit.py release_order",), ("tests/unit/test_threeway_overseer_emit.py",), "manual overseer release order"),
-    "human_approval": MechanismRow("human_approval", "live", ("scripts/chief_emit.py <chief> human_approval",), ("tests/unit/test_threeway_chief_emit.py", "tests/unit/test_threeway_t2_t3_emitters_e2e.py"), "rostered chief approval CLI"),
-    "approver_roster": MechanismRow("approver_roster", "live", ("scripts/overseer_emit.py approver_roster",), ("tests/unit/test_threeway_overseer_emit.py",), "overseer roster"),
-    "ci_result": MechanismRow("ci_result", "live", ("scripts/sign_ci_result.py",), ("tests/unit/test_threeway_e2e_walking_skeleton.py",), "CI attestor fact"),
-    "merge_completed": MechanismRow("merge_completed", "live", ("threeway/gate.py run_gate",), ("tests/unit/test_threeway_e2e_walking_skeleton.py",), "merge-gate completion fact"),
+    "brief": MechanismRow("brief", "live", ("scripts/overseer_emit.py brief",), (), "overseer-authority fact"),
+    "brief_superseded": MechanismRow("brief_superseded", "live", ("scripts/overseer_emit.py brief_superseded",), (), "overseer supersession CLI"),
+    "candidate": MechanismRow("candidate", "live", ("scripts/seat_emit.py coordinator candidate", "scripts/seat_emit.py coordinator2 candidate"), (), "interactive coordinator fact"),
+    "candidate_aborted": MechanismRow("candidate_aborted", "live", ("scripts/seat_emit.py coordinator candidate_aborted", "scripts/seat_emit.py coordinator2 candidate_aborted"), (), "interactive coordinator abort fact"),
+    "assignment": MechanismRow("assignment", "live", ("scripts/overseer_emit.py assignment",), (), "overseer assignment"),
+    "attestation": MechanismRow("attestation", "live", ("scripts/seat_emit.py operator attestation", "scripts/seat_emit.py operator2 attestation"), (), "primary verifier attestation"),
+    "attestation_revoked": MechanismRow("attestation_revoked", "live", ("scripts/seat_emit.py <seat> attestation_revoked", "scripts/chief_emit.py <chief> attestation_revoked", "scripts/overseer_emit.py attestation_revoked"), ("tests/unit/test_chief_emit.py",), "principal-safe revocation CLIs (chief path tested; seat/overseer paths untested)"),
+    "co_sign": MechanismRow("co_sign", "live", ("scripts/seat_emit.py operator2 co_sign",), (), "dynamic mirror-verifier CLI"),
+    "re_verify": MechanismRow("re_verify", "live", ("scripts/seat_emit.py operator re_verify",), (), "candidate primary-verifier challenge echo CLI"),
+    "re_verify_challenge": MechanismRow("re_verify_challenge", "live", ("scripts/overseer_emit.py re_verify_challenge",), (), "overseer nonce challenge"),
+    "cycle_go": MechanismRow("cycle_go", "live", ("scripts/overseer_emit.py cycle_go",), (), "overseer cycle authorization"),
+    "release_requested": MechanismRow("release_requested", "live", ("scripts/seat_emit.py coordinator release_requested", "scripts/seat_emit.py coordinator2 release_requested"), (), "interactive coordinator release request"),
+    "release_order": MechanismRow("release_order", "live", ("scripts/overseer_emit.py release_order",), (), "manual overseer release order"),
+    "human_approval": MechanismRow("human_approval", "live", ("scripts/chief_emit.py <chief> human_approval",), ("tests/unit/test_chief_emit.py",), "rostered chief approval CLI"),
+    "approver_roster": MechanismRow("approver_roster", "live", ("scripts/overseer_emit.py approver_roster",), (), "overseer roster"),
+    "ci_result": MechanismRow("ci_result", "live", ("scripts/sign_ci_result.py",), ("tests/unit/test_threeway_activation_scripts.py",), "CI attestor fact"),
+    "merge_completed": MechanismRow("merge_completed", "live", ("threeway/gate.py run_gate",), ("tests/unit/test_threeway_activation_scripts.py",), "merge-gate completion fact"),
 }
 
 
@@ -48,6 +51,13 @@ def collect_mechanisms() -> dict[str, MechanismRow]:
     extra = set(_ROWS) - set(LOAD_BEARING_KINDS)
     if missing or extra:
         raise AssertionError(f"ledger drift: missing={sorted(missing)} extra={sorted(extra)}")
+    for row in _ROWS.values():
+        for test in row.tests:
+            if not (_REPO_ROOT / test).is_file():
+                raise AssertionError(f"ledger cites a nonexistent test file: {row.kind} -> {test}")
+        emitter_path = row.emitters[0].split()[0] if row.emitters else ""
+        if emitter_path and not (_REPO_ROOT / emitter_path).is_file():
+            raise AssertionError(f"ledger cites a nonexistent emitter: {row.kind} -> {emitter_path}")
     return dict(sorted(_ROWS.items()))
 
 
@@ -66,7 +76,7 @@ def render_markdown(rows: dict[str, MechanismRow]) -> str:
     ]
     for row in rows.values():
         emitters = "<br>".join(f"`{emitter}`" for emitter in row.emitters)
-        tests = "<br>".join(f"`{test}`" for test in row.tests)
+        tests = "<br>".join(f"`{test}`" for test in row.tests) or "(no dedicated test)"
         lines.append(f"| `{row.kind}` | `{row.status}` | {emitters} | {tests} | {row.note} |")
     return "\n".join(lines) + "\n"
 
