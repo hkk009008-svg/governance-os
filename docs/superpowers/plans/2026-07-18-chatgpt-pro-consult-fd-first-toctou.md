@@ -1,5 +1,9 @@
 # ChatGPT Pro Consultation FD-First TOCTOU Implementation Plan
 
+> **Status (2026-07-18): OPTIONAL — not required for CI-green.** CI was scoped to
+> macOS (`10163ef`; Linux is not used and not planned), retiring the Linux
+> inode-reuse failure this plan repairs. Execute only for a future Linux deployment.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (recommended for this tightly coupled security change) or superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the filesystem-dependent pre-open inode snapshot with FD-first state and lock validation that behaves identically on Linux and macOS.

@@ -1,5 +1,10 @@
 # R-BRIEF: CONSULT-TOCTOU-001 — remove filesystem-dependent pre-open identity
 
+> **Status (2026-07-18): OPTIONAL — not required for CI-green.** The user-principal
+> scoped CI to macOS (`10163ef`; Linux is not used and not planned), which retires
+> the Linux inode-reuse failure this brief targets. Retained for a future Linux
+> deployment only.
+
 PRIORITY: MAJOR
 
 LANE: A (ChatGPT Pro consultation safety kernel)

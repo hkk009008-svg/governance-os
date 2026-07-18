@@ -1,5 +1,9 @@
 # ChatGPT Pro Consultation FD-First TOCTOU Repair Design
 
+> **Status (2026-07-18): OPTIONAL — not required for CI-green.** CI was scoped to
+> macOS (`10163ef`; Linux is not used and not planned), retiring the Linux
+> inode-reuse failure this design repairs. Retained for a future Linux deployment.
+
 **Date:** 2026-07-18
 
 **Status:** Approved in chat for documentation on 2026-07-18
