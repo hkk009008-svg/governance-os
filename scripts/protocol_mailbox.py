@@ -320,3 +320,19 @@ def load_takeover_confirmation_statement(
         observed_at=observed_at,
         finding_refs=_finding_refs(event),
     )
+
+
+def committed_event_is_strict_ancestor(
+    root: Path,
+    earlier: CommittedEventRef,
+    later: CommittedEventRef,
+) -> bool:
+    """Return whether ``later`` is committed strictly after ``earlier``."""
+
+    if earlier.commit == later.commit:
+        return False
+    try:
+        _git(root, "merge-base", "--is-ancestor", earlier.commit, later.commit)
+    except ValueError:
+        return False
+    return True

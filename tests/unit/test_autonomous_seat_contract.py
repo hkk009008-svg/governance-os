@@ -325,6 +325,7 @@ def _takeover_change(
     confirmation_task_id: str | None = None,
     confirmation_claim_ref: str | None = None,
     confirmation_observed: str | None = None,
+    confirmation_timestamp: str | None = None,
 ) -> model.OwnershipChange:
     sequence = int(_git(repo, "rev-list", "--all", "--count"))
     claim_minute = 10 + sequence
@@ -356,7 +357,10 @@ def _takeover_change(
             sender=corroborator,
             recipient="director2",
             kind="acknowledgement",
-            timestamp=f"2026-07-18T07-{confirmation_minute:02d}-00Z",
+            timestamp=(
+                confirmation_timestamp
+                or f"2026-07-18T07-{confirmation_minute:02d}-00Z"
+            ),
             body="\n".join(
                 (
                     f"Task ID: {confirmation_task_id or task_id}",
@@ -454,6 +458,56 @@ def test_takeover_rejects_forged_stale_or_mutated_corroboration(event_repo: Path
     assert not model.ownership_change_is_effective(
         _contract(),
         replace(valid, takeover_confirmations=(replaced_body,)),
+        root=event_repo,
+    )
+
+
+def test_takeover_rejects_backdated_confirmation_envelope(event_repo: Path):
+    backdated = _takeover_change(
+        event_repo,
+        confirmation_timestamp="2026-07-18T07-00-00Z",
+    )
+    assert not model.ownership_change_is_effective(
+        _contract(), backdated, root=event_repo
+    )
+
+
+def test_takeover_rejects_confirmation_from_unrelated_branch(event_repo: Path):
+    _event(
+        event_repo,
+        sender="operator",
+        recipient="all",
+        kind="status",
+        timestamp="2026-07-18T06-59-00Z",
+        body="Seed: unrelated branch base",
+    )
+    change = _takeover_change(event_repo, corroborator=None)
+    claim = change.takeover_evidence
+    _git(event_repo, "switch", "-q", "-c", "side", f"{claim.event.commit}^")
+    confirmation_ref = _event(
+        event_repo,
+        sender="operator",
+        recipient="director2",
+        kind="acknowledgement",
+        timestamp="2026-07-18T07-30-00Z",
+        body="\n".join(
+            (
+                "Task ID: task-1",
+                f"Parent contract: {PARENT}",
+                "Contract revision: 2",
+                "Proposed owner: director2",
+                f"Takeover claim ref: {claim.event.ref}",
+                f"Observed at: {claim.observed_at}",
+                f"Finding refs: {FINDING_A}, {FINDING_B}",
+            )
+        ),
+    )
+    confirmation = protocol_mailbox.load_takeover_confirmation_statement(
+        event_repo, confirmation_ref
+    )
+    assert not model.ownership_change_is_effective(
+        _contract(),
+        replace(change, takeover_confirmations=(confirmation,)),
         root=event_repo,
     )
 

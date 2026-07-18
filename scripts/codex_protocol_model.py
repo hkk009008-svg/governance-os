@@ -1468,6 +1468,11 @@ def _abandoned_takeover_is_effective(
         and confirmation.takeover_claim_ref == evidence.event.ref
         and confirmation.observed_at == evidence.observed_at
         and confirmation.finding_refs == contract.finding_refs
+        and protocol_mailbox.committed_event_is_strict_ancestor(
+            root, evidence.event, confirmation.event
+        )
+        and confirmation.event.when >= evidence.event.when
+        and confirmation.event.when >= evidence.observed_at
     )
 
 
