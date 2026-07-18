@@ -59,46 +59,47 @@ def _resolve(path: Path) -> Path:
 def find_latest_ledger_route(
     root: Path, target: target_binding.TargetBinding | None = None
 ) -> Path | None:
-    """Return the authoritative coordinator-to-all route for target work.
-
-    Lineage-first (ADR-015): when candidate routes carry a Route generation
-    header, return the lineage tip; otherwise fall back to reverse-lex
-    filename order (byte-identical to the prior behavior).
-    """
+    """Return the selected target task's conflict-free outcome-contract route."""
     if target is None:
         target = target_binding.resolve_target()
-    sent = root / "coordination" / "mailbox" / "sent"
-    if not sent.exists():
-        return None
-    candidates: list[Path] = []
-    for path in sorted(sent.glob("*coordinator-to-all*.md"), reverse=True):
+    routes = route_lineage.load_routes(root)
+    candidates: list[route_lineage.LineageRoute] = []
+    for route in routes:
+        path = route.path
+        if path is None:
+            continue
         try:
             body = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
         body_lower = body.lower()
-        if "Task-board:" in body and (
+        task_lower = (route.task_id or "").lower()
+        if any(keyword in task_lower for keyword in target.route_keywords) or (
             any(keyword in body_lower for keyword in target.route_keywords)
             or target.path.as_posix() in body
         ):
-            candidates.append(path)
+            candidates.append(route)
     if not candidates:
         return None
-    lineage_routes = [
-        route_lineage.LineageRoute(
-            route_lineage.route_id_of(path.name),
-            route_lineage.parse_lineage(
-                path.read_text(encoding="utf-8", errors="replace")
-            ),
-        )
-        for path in candidates
-    ]
-    resolution = route_lineage.resolve_authoritative(lineage_routes)
-    if resolution.mode == "lineage" and resolution.winner is not None:
-        for path in candidates:
-            if route_lineage.route_id_of(path.name) == resolution.winner:
-                return path
-    return candidates[0]  # legacy fallback: reverse-lex newest
+    if all(route.legacy for route in candidates):
+        legacy_resolution = route_lineage.resolve_authoritative(candidates)
+        if legacy_resolution.mode == "lineage":
+            if legacy_resolution.issues or legacy_resolution.authoritative is None:
+                selected_task = max(candidates, key=lambda route: route.route_id).task_id
+                detail = "; ".join(legacy_resolution.issues)
+                raise RouteResolutionError(
+                    f"Outcome-contract route for task {selected_task!r} is non-actionable: {detail}"
+                )
+            return legacy_resolution.authoritative.path
+        return max(candidates, key=lambda route: route.route_id).path
+    selected = max(candidates, key=lambda route: route.route_id)
+    if selected.task_id is None:
+        return selected.path
+    resolution = route_lineage.resolve_task_routes(routes, selected.task_id)
+    if resolution.issues or resolution.authoritative is None:
+        detail = "; ".join(resolution.issues) or "no authoritative route"
+        raise RouteResolutionError(f"Outcome-contract route for task {selected.task_id!r} is non-actionable: {detail}")
+    return resolution.authoritative.path
 
 
 def route_guidance(route: Path) -> RouteGuidance:
@@ -171,7 +172,6 @@ def first_commands(
         )
     return tuple(commands)
 
-
 def build_guard(
     *,
     seat: str,
@@ -210,12 +210,17 @@ def build_guard(
             f"`{_display(kernel)}`, not `{_display(root)}`."
         )
 
-    route = find_latest_ledger_route(root, target)
+    try:
+        route = find_latest_ledger_route(root, target)
+    except RouteResolutionError as exc:
+        route = None
+        errors.append(str(exc))
     if route is None:
-        errors.append(
-            "No active ledger coordinator route found under "
-            "`coordination/mailbox/sent/`."
-        )
+        if not any("Outcome-contract route" in error for error in errors):
+            errors.append(
+                "No active ledger outcome-contract route found under "
+                "`coordination/mailbox/sent/`."
+            )
 
     if errors:
         return GuardResult(
@@ -246,6 +251,10 @@ def build_guard(
         f"- {command}" for command in first_commands(seat, wave, kernel, route, target)
     )
     return GuardResult(ok=True, lines=tuple(lines), errors=())
+
+
+class RouteResolutionError(RuntimeError):
+    """The selected target task has no conflict-free authoritative route."""
 
 
 def main(argv: list[str] | None = None) -> int:

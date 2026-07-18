@@ -329,3 +329,86 @@ def test_protocol_doctor_base_commands_include_binding_check():
     assert ["PY", "scripts/target_binding.py", "--check"] in commands
     assert ["PY", "scripts/check_coordination.py"] in commands
     assert ["PY", "scripts/protocol_capacity_board.py", "--wave", "2"] in commands
+
+
+# --- autonomous route conflict enforcement ----------------------------------
+
+
+def _write_legacy_lineage_route(
+    root: Path,
+    *,
+    timestamp: str,
+    task: str,
+    keyword: str,
+    generation: int,
+    parent: str | None = None,
+) -> Path:
+    sent = root / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True, exist_ok=True)
+    path = sent / f"{timestamp}-coordinator-to-all-coordination.md"
+    parent_line = f"Supersedes route: {parent}\n" if parent else ""
+    path.write_text(
+        f"Task-board: {task}\nThis routes {keyword} work.\n"
+        f"Route generation: {generation}\n{parent_line}",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_find_latest_target_route_rejects_same_task_fork(tmp_path):
+    import ledger_start_guard
+
+    root = _demo_root(tmp_path)
+    parent = _write_legacy_lineage_route(
+        root,
+        timestamp="2026-07-18T10-00-00Z",
+        task="demo-route",
+        keyword="demo",
+        generation=1,
+    )
+    parent_ref = parent.name
+    _write_legacy_lineage_route(
+        root,
+        timestamp="2026-07-18T10-01-00Z",
+        task="demo-route",
+        keyword="demo",
+        generation=2,
+        parent=parent_ref,
+    )
+    _write_legacy_lineage_route(
+        root,
+        timestamp="2026-07-18T10-02-00Z",
+        task="demo-route",
+        keyword="demo",
+        generation=2,
+        parent=parent_ref,
+    )
+    target = target_binding.resolve_target(root, env={})
+
+    with pytest.raises(ledger_start_guard.RouteResolutionError, match="demo-route"):
+        ledger_start_guard.find_latest_ledger_route(root, target)
+
+
+def test_build_guard_reports_selected_task_lineage_failure(tmp_path):
+    import ledger_start_guard
+
+    root = _demo_root(tmp_path)
+    _write_legacy_lineage_route(
+        root,
+        timestamp="2026-07-18T10-00-00Z",
+        task="demo-route",
+        keyword="demo",
+        generation=3,
+        parent="missing-route.md",
+    )
+
+    result = ledger_start_guard.build_guard(
+        seat="director",
+        root=root,
+        kernel=root,
+        binding_root=root,
+    )
+
+    assert not result.ok
+    assert any("demo-route" in error for error in result.errors)
+    assert any("dangling parent" in error for error in result.errors)

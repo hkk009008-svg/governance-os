@@ -1,6 +1,8 @@
 """Route lineage parsing, resolution, and compare-and-swap (ADR-015)."""
 from __future__ import annotations
 
+import subprocess
+
 import route_lineage
 
 
@@ -84,7 +86,7 @@ def test_resolve_detects_forked_lineage_two_tips_same_generation():
     ]
     res = route_lineage.resolve_authoritative(routes)
     assert res.mode == "lineage"
-    assert res.winner is not None  # still deterministic
+    assert res.winner is None
     assert any("forked lineage" in issue for issue in res.issues)
 
 
@@ -212,7 +214,7 @@ def test_resolve_flags_abandoned_different_generation_branch():
     ]
     res = route_lineage.resolve_authoritative(routes)
     assert res.mode == "lineage"
-    assert res.winner == "r3b"  # highest-generation tip, deterministic
+    assert res.winner is None
     assert any(
         "forked" in issue or "multiple" in issue for issue in res.issues
     ), res.issues
@@ -222,7 +224,7 @@ def test_resolve_flags_abandoned_different_generation_branch():
 def test_resolve_flags_dangling_parent():
     routes = [_lr("r1", generation=5, parent="ghost")]
     res = route_lineage.resolve_authoritative(routes)
-    assert res.winner == "r1"  # unchanged winner
+    assert res.winner is None
     assert any(
         "dangling parent" in issue and "ghost" in issue for issue in res.issues
     ), res.issues
@@ -238,3 +240,268 @@ def test_check_cli_fails_on_dangling_parent(tmp_path, capsys):
     rc = route_lineage.main(["--root", str(tmp_path)])
     out = capsys.readouterr().out
     assert rc == 1 and "dangling parent" in out
+
+
+# --- Autonomous per-task routes ------------------------------------------------
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=repo, text=True, capture_output=True, check=True
+    ).stdout.strip()
+
+
+def _init_event_repo(repo: Path) -> None:
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.name", "Route Test")
+    _git(repo, "config", "user.email", "route@example.test")
+
+
+def _commit_event(
+    repo: Path,
+    *,
+    sender: str,
+    recipient: str,
+    kind: str,
+    timestamp: str,
+    body: str,
+) -> tuple[Path, str]:
+    sent = repo / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True, exist_ok=True)
+    path = sent / f"{timestamp}-{sender}-to-{recipient}-{kind}.md"
+    iso = timestamp[:11] + timestamp[11:19].replace("-", ":") + "Z"
+    path.write_text(
+        f"# {sender} -> {recipient}: route event\n\n"
+        f"**When:** {iso} · **From:** {sender} (online)\n\n"
+        f"{body.rstrip()}\n\nCursor at send: 0\n",
+        encoding="utf-8",
+    )
+    rel = path.relative_to(repo).as_posix()
+    _git(repo, "add", "--", rel)
+    _git(repo, "commit", "-q", "-m", f"{kind} from {sender}")
+    return path, f"{rel}@{_git(repo, 'rev-parse', 'HEAD')}"
+
+
+def _autonomous_body(
+    *,
+    task: str,
+    parent: str = "(none)",
+    revision: int = 0,
+    previous: str = "(none)",
+    owners: str = "director",
+    proposal: str = "self-candidate",
+    acceptances: str = "self-candidate",
+    findings: str = "(none)",
+) -> str:
+    return "\n".join(
+        (
+            f"Task ID: {task}",
+            "Outcome contract: deliver tested route behavior",
+            f"Parent contract: {parent}",
+            f"Contract revision: {revision}",
+            f"Previous owners: {previous}",
+            f"Owners: {owners}",
+            f"Proposal ref: {proposal}",
+            f"Acceptance refs: {acceptances}",
+            f"Finding refs: {findings}",
+        )
+    )
+
+
+def _root_contract(repo: Path, *, task: str, timestamp: str = "2026-07-18T08-00-00Z"):
+    return _commit_event(
+        repo,
+        sender="director",
+        recipient="all",
+        kind="coordination",
+        timestamp=timestamp,
+        body=_autonomous_body(task=task),
+    )
+
+
+def _transfer_route(
+    repo: Path,
+    *,
+    task: str,
+    parent: str,
+    new_owner: str,
+    minute: int,
+) -> tuple[Path, str]:
+    proposal_body = "\n".join(
+        (
+            f"Task ID: {task}",
+            f"Parent contract: {parent}",
+            "Contract revision: 1",
+            "Previous owners: director",
+            f"Proposed owners: {new_owner}",
+            "Outcome: deliver tested route behavior",
+            "Finding refs: (none)",
+        )
+    )
+    _, proposal_ref = _commit_event(
+        repo,
+        sender="director",
+        recipient="all",
+        kind="proposal",
+        timestamp=f"2026-07-18T08-{minute:02d}-00Z",
+        body=proposal_body,
+    )
+    _, acceptance_ref = _commit_event(
+        repo,
+        sender=new_owner,
+        recipient="director",
+        kind="proposal-reply",
+        timestamp=f"2026-07-18T08-{minute + 1:02d}-00Z",
+        body=proposal_body + f"\nProposal ref: {proposal_ref}",
+    )
+    return _commit_event(
+        repo,
+        sender=new_owner,
+        recipient="all",
+        kind="coordination",
+        timestamp=f"2026-07-18T08-{minute + 2:02d}-00Z",
+        body=_autonomous_body(
+            task=task,
+            parent=parent,
+            revision=1,
+            previous="director",
+            owners=new_owner,
+            proposal=proposal_ref,
+            acceptances=acceptance_ref,
+        ),
+    )
+
+
+def test_staged_self_is_structural_only_and_not_yet_effective(tmp_path):
+    path = _write_route(
+        tmp_path,
+        "2026-07-18T08-00-00Z-director-to-all-coordination.md",
+        _autonomous_body(task="demo-task"),
+    )
+
+    candidate = route_lineage.validate_route_candidate_structure(
+        path, path.read_text(encoding="utf-8")
+    )
+
+    assert candidate.task_id == "demo-task"
+    assert not candidate.effective
+
+
+def test_recipient_authored_route_accepts_exact_incumbent_proposal(tmp_path):
+    _init_event_repo(tmp_path)
+    _, parent_ref = _root_contract(tmp_path, task="demo-task")
+    _transfer_route(
+        tmp_path,
+        task="demo-task",
+        parent=parent_ref,
+        new_owner="operator",
+        minute=3,
+    )
+
+    routes = route_lineage.load_routes(tmp_path)
+    resolution = route_lineage.resolve_task_routes(routes, "demo-task")
+
+    assert resolution.authoritative is not None
+    assert resolution.authoritative.owners == ("operator",)
+    assert resolution.issues == ()
+
+
+def test_incumbent_proposal_alone_does_not_transfer(tmp_path):
+    _init_event_repo(tmp_path)
+    _, parent_ref = _root_contract(tmp_path, task="demo-task")
+    proposal_body = "\n".join(
+        (
+            "Task ID: demo-task",
+            f"Parent contract: {parent_ref}",
+            "Contract revision: 1",
+            "Previous owners: director",
+            "Proposed owners: operator",
+            "Outcome: deliver tested route behavior",
+            "Finding refs: (none)",
+        )
+    )
+    _, proposal_ref = _commit_event(
+        tmp_path,
+        sender="director",
+        recipient="all",
+        kind="proposal",
+        timestamp="2026-07-18T08-03-00Z",
+        body=proposal_body,
+    )
+    _commit_event(
+        tmp_path,
+        sender="operator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T08-04-00Z",
+        body=_autonomous_body(
+            task="demo-task",
+            parent=parent_ref,
+            revision=1,
+            previous="director",
+            owners="operator",
+            proposal=proposal_ref,
+            acceptances="(none)",
+        ),
+    )
+
+    resolution = route_lineage.resolve_task_routes(
+        route_lineage.load_routes(tmp_path), "demo-task"
+    )
+    assert resolution.authoritative is None
+    assert any("ineffective" in issue for issue in resolution.issues)
+
+
+def test_same_task_fork_fails_closed_in_both_input_orders(tmp_path):
+    _init_event_repo(tmp_path)
+    _, parent_ref = _root_contract(tmp_path, task="demo-task")
+    _transfer_route(
+        tmp_path, task="demo-task", parent=parent_ref, new_owner="operator", minute=3
+    )
+    _transfer_route(
+        tmp_path, task="demo-task", parent=parent_ref, new_owner="operator2", minute=10
+    )
+    routes = route_lineage.load_routes(tmp_path)
+
+    for ordered in (routes, list(reversed(routes))):
+        resolution = route_lineage.resolve_task_routes(ordered, "demo-task")
+        assert resolution.authoritative is None
+        assert resolution.winner is None
+        assert any("fork" in issue or "tip" in issue for issue in resolution.issues)
+
+
+def test_unrelated_task_continues_when_another_task_forks(tmp_path):
+    _init_event_repo(tmp_path)
+    _, parent_ref = _root_contract(tmp_path, task="forked-task")
+    _transfer_route(
+        tmp_path, task="forked-task", parent=parent_ref, new_owner="operator", minute=3
+    )
+    _transfer_route(
+        tmp_path, task="forked-task", parent=parent_ref, new_owner="operator2", minute=10
+    )
+    _root_contract(tmp_path, task="healthy-task", timestamp="2026-07-18T09-00-00Z")
+
+    routes = route_lineage.load_routes(tmp_path)
+    assert route_lineage.resolve_task_routes(routes, "forked-task").authoritative is None
+    healthy = route_lineage.resolve_task_routes(routes, "healthy-task")
+    assert healthy.authoritative is not None
+    assert healthy.authoritative.owners == ("director",)
+
+
+def test_unmarked_seat_coordination_is_not_a_route(tmp_path):
+    path = _write_route(
+        tmp_path,
+        "2026-07-18T08-00-00Z-director-to-all-coordination.md",
+        "Task ID: demo-task\nThis is ordinary coordination.\n",
+    )
+    assert not route_lineage.is_route_event(path, path.read_text(encoding="utf-8"))
+
+
+def test_legacy_task_board_coordination_status_and_decision_are_readable(repo_root):
+    paths = (
+        "2026-07-07T09-36-23Z-coordinator-to-all-coordination.md",
+        "2026-07-07T16-52-18Z-coordinator-to-all-status.md",
+        "2026-07-07T17-12-12Z-coordinator-to-all-decision.md",
+    )
+    discovered = {path.name for path in route_lineage.load_route_paths(repo_root)}
+    assert set(paths) <= discovered
