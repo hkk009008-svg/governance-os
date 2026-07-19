@@ -319,6 +319,54 @@ FAST_RESUME_ADAPTER_SURFACES = (
     "docs/protocol/codex/ledger-cli-adoption.md",
 )
 
+AUTOMATIC_TASK_ROUTING_REFERENCE = (
+    "Automatic Seat-Task Routing: scripts/codex_protocol_model.py"
+)
+AUTOMATIC_TASK_ROUTING_SURFACES = (
+    "AGENTS.md",
+    ".agents/skills/seat-coordinator/SKILL.md",
+    "docs/protocol/codex/continuation.md",
+)
+
+
+def test_automatic_task_routing_model_is_direct_deduplicated_and_effect_free() -> None:
+    rendered = _compact(model.render_automatic_task_routing())
+
+    required = (
+        "committed immutable trigger",
+        "dispatch identity",
+        "already in progress",
+        "monitor",
+        "automatically create",
+        "Never ask the user to relay",
+        "concrete live-seat Codex task",
+        "tooling blocker",
+        "grants no external-effect authority",
+    )
+    for phrase in required:
+        assert phrase.casefold() in rendered.casefold(), phrase
+
+    assert "persistent task registry" not in rendered
+    assert "parent-scoped subagent may issue GO" not in rendered
+
+
+def test_automatic_task_routing_adapters_are_thin_and_synced() -> None:
+    required = (
+        "discover/deduplicate",
+        "reuse one compatible task",
+        "automatically create a fresh missing task",
+        "send the exact trigger",
+        "wait",
+        "reconcile",
+        "Never ask the user to relay a seat prompt",
+        "grants no seat or external-effect authority",
+    )
+    for path in AUTOMATIC_TASK_ROUTING_SURFACES:
+        text = _compact(_read(path).replace("`", ""))
+        assert text.count(AUTOMATIC_TASK_ROUTING_REFERENCE) == 1, path
+        for phrase in required:
+            assert phrase.casefold() in text.casefold(), (path, phrase)
+
 
 def test_fast_resume_adapter_rules_are_thin_truthful_and_authority_free() -> None:
     for path in FAST_RESUME_ADAPTER_SURFACES:

@@ -91,6 +91,12 @@ for the exact effect/executor/target/scope. An Operator cannot verify anything
 it authored. Use the fixed mailbox writer for durable ownership and review
 events.
 
+Automatic Seat-Task Routing: scripts/codex_protocol_model.py
+For a committed next-seat trigger, use Codex task tools to discover/deduplicate,
+reuse one compatible task or automatically create a fresh missing task, send
+the exact trigger, wait, and reconcile. Never ask the user to relay a seat
+prompt. Task routing grants no seat or external-effect authority.
+
 Delegation is an owner-chosen capacity tool, not a task-count or line-count
 mandate. Use it when it adds independent signal or useful capacity. Never run
 concurrent implementers on shared files.
