@@ -16,6 +16,7 @@ EOF
 Event type: verification-report
 VERDICT: GO | NITS | FAIL
 Verification request: coordination/mailbox/sent/<request>.md@<40-lowercase-request-commit>
+Reviewed repository: <absolute canonical Git worktree root; omit only for Pipeline-local review>
 Reviewed head: <40-lowercase-hex>
 Reviewed base: <40-lowercase-hex>
 Reviewer seat: operator | operator2
@@ -44,6 +45,10 @@ Verification context: <optional evidence note; not identity proof>
 $ <reviewer-chosen command or inspection>
 → <observed result>
 ```
+
+For a cross-repository review, preserve the request's exact
+`Reviewed repository` field; never infer it from `Verification context` or
+other prose.
 
 Preserve the request's finding references in their original order and give
 each exactly one disposition. GO requires evidence, a distinct author/reviewer

@@ -1036,7 +1036,7 @@ def test_compact_pair_is_model_backed_and_surface_synced():
     required = (
         "Compact Pair Invariant",
         "one committed verify-request",
-        "reviewed base/head",
+        "reviewed repository when explicit and base/head",
         "outcome",
         "author seat and system-visible author model",
         "assigned non-author Operator",
@@ -1249,6 +1249,22 @@ def test_lane_v_trigger_guidance_pins_compact_report_and_pipeline_boundary() -> 
     agent_report = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
     claude_report = ROOT / ".claude/skills/seat-operator/verification-report-format.md"
     assert agent_report.read_bytes() == claude_report.read_bytes()
+
+
+def test_compact_pair_surfaces_bind_optional_reviewed_repository() -> None:
+    assert (
+        "reviewed repository when explicit and base/head"
+        in model.COMPACT_PAIR_INVARIANT
+    )
+    for relative in (
+        ".agents/skills/seat-operator/verification-report-format.md",
+        ".claude/skills/seat-operator/verification-report-format.md",
+    ):
+        text = _read(relative)
+        assert (
+            "Reviewed repository: <absolute canonical Git worktree root; "
+            "omit only for Pipeline-local review>"
+        ) in text
 
 
 def retired_active_codex_operator_prompts_drop_descriptor_v3_contract() -> None:
@@ -1480,6 +1496,7 @@ def test_verification_report_format_mirrors_pin_the_compact_binding_order():
         "Event type:",
         "VERDICT:",
         "Verification request:",
+        "Reviewed repository:",
         "Reviewed head:",
         "Reviewed base:",
         "Reviewer seat:",
