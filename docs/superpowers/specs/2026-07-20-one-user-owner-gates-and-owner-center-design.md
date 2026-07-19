@@ -1,7 +1,7 @@
 # One-User Owner Gates and Owner Center Design
 
 **Date:** 2026-07-20
-**Status:** Owner choices approved; awaiting written-spec review
+**Status:** Approved
 **Target:** `/Users/hyungkoookkim/evidence-ledger/.worktrees/codex-ppl-offer-decision-m1`
 **Accepted target base:** `41d9f1d846d6e0928b520573094ae59846114df5`
 
