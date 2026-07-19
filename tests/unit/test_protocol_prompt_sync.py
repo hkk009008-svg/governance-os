@@ -332,6 +332,12 @@ AUTOMATIC_TASK_ROUTING_SURFACES = (
 def test_automatic_task_routing_model_is_direct_deduplicated_and_effect_free() -> None:
     rendered = _compact(model.render_automatic_task_routing())
 
+    assert model.AUTOMATIC_TASK_ROUTING_RULES[1:4] == (
+        "The dispatch identity is the trigger path and full commit, assigned seat, Pipeline checkout, and for review the exact base/head and required reviewer model.",
+        "If the same dispatch identity is already in progress, monitor it; if it completed, reconcile its committed artifact instead of resending it.",
+        "Reuse one unambiguous compatible seat task; if none exists or candidates are stale, incompatible, or ambiguous, automatically create a fresh local task in the saved Pipeline project.",
+    )
+
     required = (
         "committed immutable trigger",
         "dispatch identity",
