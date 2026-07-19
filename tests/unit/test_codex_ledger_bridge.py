@@ -192,7 +192,8 @@ def test_read_only_benchmark_reports_actual_classification_and_all_git_launches(
 
     monkeypatch.setattr(benchmark.ledger_start_guard, "build_resume", fake_build_resume)
     monkeypatch.setattr(benchmark.ledger_start_guard, "PIPELINE_KERNEL", root)
-    output = tmp_path / "benchmark.json"
+    output = root / "logs/fast-resume-startup-benchmark.json"
+    output.parent.mkdir()
     base_args = [
         "--seat",
         "director",
@@ -237,6 +238,106 @@ def test_read_only_benchmark_reports_actual_classification_and_all_git_launches(
     assert payload["pipeline_head"] == head
     assert payload["resume_from"] == route_ref
     assert output.read_text(encoding="utf-8").strip() == printed.strip()
+
+
+@pytest.mark.parametrize(
+    ("relative_output", "existing"),
+    [
+        ("arbitrary.json", False),
+        ("coordination/mailbox/seen/director.txt", True),
+    ],
+)
+def test_benchmark_rejects_noncanonical_output_before_evaluation(
+    tmp_path, monkeypatch, relative_output, existing
+):
+    import measure_ledger_start_guard as benchmark
+    import ledger_start_guard
+
+    root = tmp_path / "Pipeline"
+    root.mkdir()
+    output = root / relative_output
+    output.parent.mkdir(parents=True, exist_ok=True)
+    sentinel = "protected sentinel\n"
+    if existing:
+        output.write_text(sentinel, encoding="utf-8")
+    evaluator_calls = 0
+
+    def fake_build_resume(**_kwargs):
+        nonlocal evaluator_calls
+        evaluator_calls += 1
+        return ledger_start_guard.ResumeResult(
+            ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED,
+            ("FULL ORIENTATION REQUIRED",),
+            ("synthetic fallback",),
+        )
+
+    monkeypatch.setattr(benchmark.ledger_start_guard, "build_resume", fake_build_resume)
+    monkeypatch.setattr(benchmark.ledger_start_guard, "PIPELINE_KERNEL", root)
+    monkeypatch.setattr(benchmark, "_pipeline_head", lambda _root: "a" * 40)
+
+    with pytest.raises(SystemExit) as exc:
+        benchmark.main(
+            [
+                "--seat",
+                "director",
+                "--resume-from",
+                "coordination/mailbox/sent/route.md@" + "b" * 40,
+                "--output",
+                str(output),
+            ]
+        )
+
+    assert exc.value.code == 2
+    assert evaluator_calls == 0
+    if existing:
+        assert output.read_text(encoding="utf-8") == sentinel
+    else:
+        assert not output.exists()
+
+
+def test_benchmark_rejects_symlinked_canonical_output_before_evaluation(
+    tmp_path, monkeypatch
+):
+    import measure_ledger_start_guard as benchmark
+    import ledger_start_guard
+
+    root = tmp_path / "Pipeline"
+    output = root / "logs/fast-resume-startup-benchmark.json"
+    output.parent.mkdir(parents=True)
+    protected = root / "coordination/mailbox/seen/director.txt"
+    protected.parent.mkdir(parents=True)
+    protected.write_text("protected sentinel\n", encoding="utf-8")
+    output.symlink_to(protected)
+    evaluator_calls = 0
+
+    def fake_build_resume(**_kwargs):
+        nonlocal evaluator_calls
+        evaluator_calls += 1
+        return ledger_start_guard.ResumeResult(
+            ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED,
+            ("FULL ORIENTATION REQUIRED",),
+            ("synthetic fallback",),
+        )
+
+    monkeypatch.setattr(benchmark.ledger_start_guard, "build_resume", fake_build_resume)
+    monkeypatch.setattr(benchmark.ledger_start_guard, "PIPELINE_KERNEL", root)
+    monkeypatch.setattr(benchmark, "_pipeline_head", lambda _root: "a" * 40)
+
+    with pytest.raises(SystemExit) as exc:
+        benchmark.main(
+            [
+                "--seat",
+                "director",
+                "--resume-from",
+                "coordination/mailbox/sent/route.md@" + "b" * 40,
+                "--output",
+                str(output),
+            ]
+        )
+
+    assert exc.value.code == 2
+    assert evaluator_calls == 0
+    assert protected.read_text(encoding="utf-8") == "protected sentinel\n"
 
 
 def test_model_verification_commands_are_current():

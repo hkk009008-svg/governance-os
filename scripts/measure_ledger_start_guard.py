@@ -14,6 +14,9 @@ from typing import Any
 import ledger_start_guard
 
 
+CANONICAL_BENCHMARK_OUTPUT = Path("logs/fast-resume-startup-benchmark.json")
+
+
 class _GitProcessCounter:
     def __init__(self, popen: Any) -> None:
         self._popen = popen
@@ -41,6 +44,25 @@ def _pipeline_head(root: Path) -> str:
     ).stdout.strip()
 
 
+def _validated_output_path(root: Path, requested: Path) -> Path:
+    canonical = root / CANONICAL_BENCHMARK_OUTPUT
+    candidate = (
+        Path(os.path.abspath(os.fspath(requested)))
+        if requested.is_absolute()
+        else root / requested
+    )
+    if candidate != canonical:
+        raise ValueError(
+            "--output must name the canonical benchmark report: "
+            f"{CANONICAL_BENCHMARK_OUTPUT}"
+        )
+    if canonical.parent.is_symlink() or not canonical.parent.is_dir():
+        raise ValueError("canonical benchmark output parent must be a real directory")
+    if canonical.is_symlink() or (canonical.exists() and not canonical.is_file()):
+        raise ValueError("canonical benchmark output must be a regular file")
+    return canonical
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Measure one ledger start-guard resume classification"
@@ -53,6 +75,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = ledger_start_guard.PIPELINE_KERNEL.resolve(strict=False)
+    output_path = None
+    if args.output is not None:
+        try:
+            output_path = _validated_output_path(root, args.output)
+        except ValueError as exc:
+            parser.error(str(exc))
     counter = _GitProcessCounter(subprocess.Popen)
     original_popen = subprocess.Popen
     started = time.perf_counter()
@@ -79,8 +107,8 @@ def main(argv: list[str] | None = None) -> int:
         "resume_from": args.resume_from,
     }
     rendered = json.dumps(payload, indent=2) + "\n"
-    if args.output is not None:
-        args.output.write_text(rendered, encoding="utf-8")
+    if output_path is not None:
+        output_path.write_text(rendered, encoding="utf-8")
     print(rendered, end="")
     return (
         1
