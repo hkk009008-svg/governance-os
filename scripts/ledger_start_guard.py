@@ -264,16 +264,12 @@ def parse_route_guidance_body(body: str) -> RouteGuidance:
         following = body[start:]
         next_heading = re.search(r"^#{1,6}\s+", following, re.MULTILINE)
         section = following[: next_heading.start()] if next_heading else following
-        saw_bullet = False
         for raw_line in section.splitlines():
             line = raw_line.strip()
             if not line:
                 continue
             if not line.startswith("- "):
-                if saw_bullet:
-                    break
                 raise ValueError("allowed-path section accepts bullet paths only")
-            saw_bullet = True
             value = line[2:].strip()
             if value.startswith("`") or value.endswith("`"):
                 if len(value) < 2 or not (

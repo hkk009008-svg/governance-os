@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 import ledger_start_guard
+import protocol_mailbox
 import route_lineage
 import startup_snapshot
-import target_binding
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -40,21 +40,34 @@ def _route_body(
     target_head: str,
     *,
     allowed_paths: tuple[str, ...] = (),
+    allowed_section_suffix: str = "",
+    sender: str = "director",
+    parent: str = "(none)",
+    revision: int = 0,
+    previous: str = "(none)",
+    owners: str = "director",
+    proposal: str = "self-candidate",
+    acceptances: str = "self-candidate",
 ) -> str:
     allowed = ""
     if allowed_paths:
-        allowed = "\n## Allowed Paths\n" + "".join(f"- {path}\n" for path in allowed_paths)
+        allowed = (
+            "\n## Allowed Paths\n"
+            + "".join(f"- {path}\n" for path in allowed_paths)
+            + allowed_section_suffix
+            + "\n## Route Metadata\n"
+        )
     return (
-        "# director -> all: autonomous demo route\n\n"
-        "**When:** 2026-07-19T00:00:00Z · **From:** director (online)\n\n"
+        f"# {sender} -> all: autonomous demo route\n\n"
+        f"**When:** 2026-07-19T00:00:00Z · **From:** {sender} (online)\n\n"
         "Task ID: demo-fast-resume\n"
         "Outcome contract: deliver the exact demo outcome\n"
-        "Parent contract: (none)\n"
-        "Contract revision: 0\n"
-        "Previous owners: (none)\n"
-        "Owners: director\n"
-        "Proposal ref: self-candidate\n"
-        "Acceptance refs: self-candidate\n"
+        f"Parent contract: {parent}\n"
+        f"Contract revision: {revision}\n"
+        f"Previous owners: {previous}\n"
+        f"Owners: {owners}\n"
+        f"Proposal ref: {proposal}\n"
+        f"Acceptance refs: {acceptances}\n"
         "Finding refs: (none)\n"
         f"Target worktree: {target.as_posix()}\n"
         f"Accepted target HEAD: {target_head}\n"
@@ -67,6 +80,7 @@ def _make_lane(
     tmp_path: Path,
     *,
     allowed_paths: tuple[str, ...] = (),
+    allowed_section_suffix: str = "",
 ) -> tuple[Path, Path, str, Path]:
     root = tmp_path / "Pipeline"
     target = tmp_path / "demo-app"
@@ -86,7 +100,12 @@ def _make_lane(
     sent.mkdir(parents=True)
     route = sent / "2026-07-19T00-00-00Z-director-to-all-coordination.md"
     route.write_text(
-        _route_body(target, target_head, allowed_paths=allowed_paths),
+        _route_body(
+            target,
+            target_head,
+            allowed_paths=allowed_paths,
+            allowed_section_suffix=allowed_section_suffix,
+        ),
         encoding="utf-8",
     )
     seen = root / "coordination/mailbox/seen"
@@ -98,6 +117,97 @@ def _make_lane(
     return root, target, route_ref, route
 
 
+def _commit_event(
+    root: Path,
+    *,
+    sender: str,
+    recipient: str,
+    kind: str,
+    minute: int,
+    body: str,
+) -> str:
+    timestamp = f"2026-07-19T00-{minute:02d}-00Z"
+    path = (
+        root
+        / "coordination/mailbox/sent"
+        / f"{timestamp}-{sender}-to-{recipient}-{kind}.md"
+    )
+    iso = timestamp[:11] + timestamp[11:19].replace("-", ":") + "Z"
+    path.write_text(
+        f"# {sender} -> {recipient}: route evidence\n\n"
+        f"**When:** {iso} · **From:** {sender} (online)\n\n"
+        f"{body.rstrip()}\n\nCursor at send: 0\n",
+        encoding="utf-8",
+    )
+    relative = path.relative_to(root).as_posix()
+    _git(root, "add", "--", relative)
+    _git(root, "commit", "-qm", f"{kind} from {sender}")
+    return f"{relative}@{_git(root, 'rev-parse', 'HEAD')}"
+
+
+def _accepted_successor(
+    root: Path,
+    target: Path,
+    parent_ref: str,
+    *,
+    new_owners: tuple[str, ...],
+    minute: int,
+) -> str:
+    owners = ", ".join(new_owners)
+    proposal_body = "\n".join(
+        (
+            "Task ID: demo-fast-resume",
+            f"Parent contract: {parent_ref}",
+            "Contract revision: 1",
+            "Previous owners: director",
+            f"Proposed owners: {owners}",
+            "Outcome: deliver the exact demo outcome",
+            "Finding refs: (none)",
+        )
+    )
+    proposal_ref = _commit_event(
+        root,
+        sender="director",
+        recipient="all",
+        kind="proposal",
+        minute=minute,
+        body=proposal_body,
+    )
+    acceptance_refs = tuple(
+        _commit_event(
+            root,
+            sender=owner,
+            recipient="director",
+            kind="proposal-reply",
+            minute=minute + offset,
+            body=proposal_body + f"\nProposal ref: {proposal_ref}",
+        )
+        for offset, owner in enumerate(new_owners, start=1)
+    )
+    successor_minute = minute + len(new_owners) + 1
+    sender = new_owners[-1]
+    full_body = _route_body(
+        target,
+        _git(target, "rev-parse", "HEAD"),
+        sender=sender,
+        parent=parent_ref,
+        revision=1,
+        previous="director",
+        owners=owners,
+        proposal=proposal_ref,
+        acceptances=", ".join(acceptance_refs),
+    )
+    payload = full_body.split("\n\n", 2)[2].rsplit("\nCursor at send: 0\n", 1)[0]
+    return _commit_event(
+        root,
+        sender=sender,
+        recipient="all",
+        kind="coordination",
+        minute=successor_minute,
+        body=payload,
+    )
+
+
 def _resume(root: Path, route_ref: str) -> ledger_start_guard.ResumeResult:
     return ledger_start_guard.build_resume(
         seat="director",
@@ -105,6 +215,72 @@ def _resume(root: Path, route_ref: str) -> ledger_start_guard.ResumeResult:
         kernel=root,
         binding_root=root,
         resume_from=route_ref,
+    )
+
+
+def _reference_classification(
+    root: Path,
+    route_ref: str,
+    *,
+    candidate_refs: tuple[str, ...] | None = None,
+) -> ledger_start_guard.ResumeClassification:
+    """Classify from exact per-object proofs, without the production batch path."""
+    fallback = ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED
+    try:
+        expected_event = protocol_mailbox.load_committed_event_ref(root, route_ref)
+    except (OSError, ValueError):
+        return fallback
+    if expected_event.sender not in protocol_mailbox.SEATS:
+        return fallback
+
+    try:
+        routes = [
+            route_lineage.validate_committed_route_effectiveness(root, ref)
+            for ref in (candidate_refs or (route_ref,))
+        ]
+    except (OSError, ValueError):
+        return fallback
+    expected = next((route for route in routes if route.route_ref == route_ref), None)
+    if expected is None or expected.task_id is None:
+        return fallback
+    resolution = route_lineage.resolve_task_routes(routes, expected.task_id)
+    current = resolution.authoritative
+    if resolution.issues or current is None or current.route_ref != route_ref:
+        return fallback
+
+    try:
+        guidance = ledger_start_guard.parse_route_guidance_body(current.body or "")
+    except ValueError:
+        return fallback
+    if guidance.worktree is None or guidance.accepted_target_head is None:
+        return fallback
+
+    pipeline = startup_snapshot.collect_git_snapshot(root)
+    target = startup_snapshot.collect_git_snapshot(Path(guidance.worktree))
+    mailbox = startup_snapshot.collect_mailbox_snapshot(root, "director")
+    dirty_paths = tuple(
+        path
+        for state in target.dirty_paths
+        for path in (state.path, state.original_path)
+        if path is not None
+    )
+    eligible = (
+        current.effective
+        and not current.legacy
+        and current.revision is not None
+        and bool(current.owners)
+        and not pipeline.errors
+        and not pipeline.dirty_paths
+        and not target.errors
+        and target.head == guidance.accepted_target_head
+        and all(path in guidance.allowed_paths for path in dirty_paths)
+        and mailbox.unavailable_reason is None
+        and not mailbox.unread_refs
+    )
+    return (
+        ledger_start_guard.ResumeClassification.FAST_RESUME_PASS
+        if eligible
+        else fallback
     )
 
 
@@ -430,6 +606,11 @@ def test_resume_collection_mutates_no_cursor_index_ref_lock_or_worktree_byte(tmp
     [
         "autonomous-clean",
         "autonomous-dirty",
+        "accepted-transfer",
+        "accepted-exchange",
+        "legacy",
+        "same-task-fork",
+        "route-replacement",
         "changed-head",
         "unread",
         "unavailable-mailbox",
@@ -441,8 +622,51 @@ def test_batch_and_reference_collectors_make_equal_decisions_over_shared_corpus(
 ):
     allowed = ("tracked.txt",) if case == "autonomous-dirty" else ()
     root, target, route_ref, _route = _make_lane(tmp_path, allowed_paths=allowed)
+    candidate_refs = [route_ref]
+    expected_ref = route_ref
     if case == "autonomous-dirty":
         (target / "tracked.txt").write_text("in lane\n", encoding="utf-8")
+    elif case in {"accepted-transfer", "accepted-exchange"}:
+        owners = (
+            ("operator",)
+            if case == "accepted-transfer"
+            else ("director2", "operator")
+        )
+        successor_ref = _accepted_successor(
+            root, target, route_ref, new_owners=owners, minute=1
+        )
+        candidate_refs.append(successor_ref)
+        expected_ref = successor_ref
+    elif case == "legacy":
+        legacy_ref = _commit_event(
+            root,
+            sender="coordinator",
+            recipient="all",
+            kind="coordination",
+            minute=1,
+            body=(
+                "Task-board: demo-fast-resume\n"
+                f"Target worktree: {target.as_posix()}\n"
+                f"Accepted target HEAD: {_git(target, 'rev-parse', 'HEAD')}"
+            ),
+        )
+        candidate_refs.append(legacy_ref)
+        expected_ref = legacy_ref
+    elif case == "same-task-fork":
+        first = _accepted_successor(
+            root, target, route_ref, new_owners=("operator",), minute=1
+        )
+        second = _accepted_successor(
+            root, target, route_ref, new_owners=("operator2",), minute=10
+        )
+        candidate_refs.extend((first, second))
+        expected_ref = second
+    elif case == "route-replacement":
+        candidate_refs.append(
+            _accepted_successor(
+                root, target, route_ref, new_owners=("operator",), minute=1
+            )
+        )
     elif case == "changed-head":
         (target / "next.txt").write_text("next\n", encoding="utf-8")
         _git(target, "add", "--", "next.txt")
@@ -469,16 +693,57 @@ def test_batch_and_reference_collectors_make_equal_decisions_over_shared_corpus(
             ),
         )
 
-    production = _resume(root, route_ref).classification
-    current = ledger_start_guard.find_latest_ledger_route(
-        root, target_binding.resolve_target(root, env={})
+    production = _resume(root, expected_ref).classification
+    reference = _reference_classification(
+        root, expected_ref, candidate_refs=tuple(candidate_refs)
     )
-    assert current is not None
-    exact = route_lineage.validate_committed_route_effectiveness(root, route_ref)
-    assert exact.route_ref == route_ref
-    reference = _resume(root, exact.route_ref).classification
+    expected = (
+        ledger_start_guard.ResumeClassification.FAST_RESUME_PASS
+        if case
+        in {
+            "autonomous-clean",
+            "autonomous-dirty",
+            "accepted-transfer",
+            "accepted-exchange",
+        }
+        else ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED
+    )
 
+    assert reference is expected
     assert production is reference
+
+
+def test_reference_classifier_never_calls_batch_or_production_resume(
+    tmp_path, monkeypatch
+):
+    root, _target, route_ref, _route = _make_lane(tmp_path)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("reference path called production batch resume")
+
+    monkeypatch.setattr(ledger_start_guard, "build_resume", forbidden)
+    monkeypatch.setattr(route_lineage.RouteBatchReader, "__enter__", forbidden)
+
+    assert (
+        _reference_classification(root, route_ref)
+        is ledger_start_guard.ResumeClassification.FAST_RESUME_PASS
+    )
+
+
+def test_allowed_path_section_rejects_prose_after_a_valid_bullet(tmp_path):
+    root, _target, route_ref, _route = _make_lane(
+        tmp_path,
+        allowed_paths=("tracked.txt",),
+        allowed_section_suffix="This prose is still inside the allowed-path section.\n",
+    )
+
+    result = _resume(root, route_ref)
+
+    assert (
+        result.classification
+        is ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED
+    )
+    assert any(reason.startswith("route-guidance-invalid:") for reason in result.reasons)
 
 
 def test_route_guidance_is_strict_and_never_infers_path_scope_from_prose(tmp_path):
