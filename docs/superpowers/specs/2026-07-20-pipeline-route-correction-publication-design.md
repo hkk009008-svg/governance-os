@@ -1,7 +1,7 @@
 # Pipeline Route Correction and Publication Design
 
-**Date:** 2026-07-20  
-**Status:** Approved  
+**Date:** 2026-07-20
+**Status:** Approved
 **Scope:** Correct the active Pipeline coordinator route's false G7 push classification, then publish Pipeline `main` once. Evidence-ledger integration remains a separate, unexecuted recommendation.
 
 ## Context
