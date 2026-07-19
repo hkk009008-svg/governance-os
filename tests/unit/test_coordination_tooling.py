@@ -61,12 +61,24 @@ def _init_repo(repo: Path, repo_root: Path) -> None:
     _git(repo, "commit", "-q", "-m", "chore: fixture")
 
 
-def _prepare_verify_request(repo: Path) -> tuple[str, str, str, str]:
+def _prepare_verify_request(
+    repo: Path,
+    *,
+    reviewed_repository: str | None = None,
+    reviewed_range: tuple[str, str] | None = None,
+) -> tuple[str, str, str, str]:
     base = _git(repo, "rev-parse", "HEAD")
     (repo / "scripts/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(repo, "add", "scripts/feature.py")
     _git(repo, "commit", "-q", "-m", "feat: candidate")
     head = _git(repo, "rev-parse", "HEAD")
+    if reviewed_range is not None:
+        base, head = reviewed_range
+    repository_line = (
+        ""
+        if reviewed_repository is None
+        else f"Reviewed repository: {reviewed_repository}\n"
+    )
     request_path = (
         "coordination/mailbox/sent/"
         "2026-07-17T08-00-00Z-director-to-operator-verify-request.md"
@@ -78,7 +90,7 @@ def _prepare_verify_request(repo: Path) -> tuple[str, str, str, str]:
 **When:** 2026-07-17T08:00:00Z · **From:** director (online)
 
 Event type: verify-request
-Reviewed head: {head}
+{repository_line}Reviewed head: {head}
 Reviewed base: {base}
 Author seat: director
 Author model: gpt-5.6-sol
@@ -109,6 +121,7 @@ def _report_body(
     *,
     verdict: str,
     reviewer_seat: str = "operator",
+    reviewed_repository: str | None = None,
 ) -> str:
     evidence = ""
     if verdict == "GO":
@@ -119,11 +132,16 @@ def _report_body(
 $ env -u GIT_INDEX_FILE python -m pytest tests/unit/test_feature.py -q
 → 1 passed
 """
+    repository_line = (
+        ""
+        if reviewed_repository is None
+        else f"Reviewed repository: {reviewed_repository}\n"
+    )
     return f"""\
 Event type: verification-report
 VERDICT: {verdict}
 Verification request: {request_path}@{trigger}
-Reviewed head: {head}
+{repository_line}Reviewed head: {head}
 Reviewed base: {base}
 Reviewer seat: {reviewer_seat}
 Reviewer model: gpt-5.6-terra
@@ -193,6 +211,56 @@ def test_valid_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
     assert "verification_report_gate" not in source
     assert "TRUSTED_CODE" not in source
     assert "recover" not in source.lower()
+
+
+def test_cross_repository_verification_report_uses_fixed_finalizer(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo, repo_root)
+
+    target = tmp_path / "target"
+    target.mkdir()
+    _git(target, "init", "-q")
+    _git(target, "config", "user.email", "test@example.invalid")
+    _git(target, "config", "user.name", "Test User")
+    (target / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(target, "add", ".")
+    _git(target, "commit", "-q", "-m", "chore: target base")
+    base = _git(target, "rev-parse", "HEAD")
+    (target / "feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _git(target, "add", "feature.py")
+    _git(target, "commit", "-q", "-m", "feat: target candidate")
+    head = _git(target, "rev-parse", "HEAD")
+
+    _local_base, _local_head, request_path, trigger = _prepare_verify_request(
+        repo,
+        reviewed_repository=target.as_posix(),
+        reviewed_range=(base, head),
+    )
+    result = _run(
+        [
+            repo_root / "coordination/bin/send-event",
+            "operator",
+            "all",
+            "verification-report",
+            f"truthful GO target commit `{head}`",
+        ],
+        repo,
+        input_text=_report_body(
+            base,
+            head,
+            request_path,
+            trigger,
+            verdict="GO",
+            reviewed_repository=target.as_posix(),
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    staged = _git(repo, "diff", "--cached", "--name-only")
+    assert staged.endswith("-operator-to-all-verification-report.md")
 
 
 def test_misassigned_verification_report_fails_before_finalization(

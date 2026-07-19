@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -44,10 +45,15 @@ def _bullet_section(heading: str, values: tuple[str, ...]) -> str:
     return f"## {heading}\n\n{body}\n"
 
 
+def _reviewed_repository_line(value: str | None) -> str:
+    return "" if value is None else f"Reviewed repository: {value}\n"
+
+
 def _request_text(
     base: str,
     head: str,
     *,
+    reviewed_repository: str | None = None,
     author_seat: str = "director",
     author_model: str = "gpt-5.6-sol",
     assigned_operator: str = "operator",
@@ -59,7 +65,7 @@ def _request_text(
 **When:** 2026-07-18T08:00:00Z · **From:** {author_seat} (online)
 
 Event type: verify-request
-Reviewed head: {head}
+{_reviewed_repository_line(reviewed_repository)}Reviewed head: {head}
 Reviewed base: {base}
 Author seat: {author_seat}
 Author model: {author_model}
@@ -79,6 +85,7 @@ def _report_text(
     head: str,
     trigger: str,
     *,
+    reviewed_repository: str | None = None,
     verdict: str = "GO",
     request_path: str = REQUEST_PATH,
     reviewer_seat: str = "operator",
@@ -105,7 +112,7 @@ $ independent actual-diff inspection
 Event type: verification-report
 VERDICT: {verdict}
 Verification request: {request_path}@{trigger}
-Reviewed head: {head}
+{_reviewed_repository_line(reviewed_repository)}Reviewed head: {head}
 Reviewed base: {base}
 Reviewer seat: {reviewer_seat}
 Reviewer model: {reviewer_model}
@@ -183,6 +190,291 @@ def _write_report(
         encoding="utf-8",
     )
     return report
+
+
+_DEFAULT_REPOSITORY = object()
+
+
+def _cross_repo(
+    tmp_path: Path,
+    *,
+    repository_value: object = _DEFAULT_REPOSITORY,
+    transform_request: Callable[[str], str] = lambda text: text,
+    range_values: Callable[[str, str], tuple[str, str]] = lambda base, head: (
+        base,
+        head,
+    ),
+) -> tuple[Path, Path, str, str, str]:
+    pipeline = tmp_path / "pipeline"
+    pipeline.mkdir()
+    _git(pipeline, "init", "-q")
+    _git(pipeline, "config", "user.name", "Compact Pair Test")
+    _git(pipeline, "config", "user.email", "compact-pair@example.invalid")
+    (pipeline / "README.md").write_text("pipeline\n", encoding="utf-8")
+    _git(pipeline, "add", ".")
+    _git(pipeline, "commit", "-q", "-m", "chore: pipeline base")
+
+    target = tmp_path / "target"
+    target.mkdir()
+    _git(target, "init", "-q")
+    _git(target, "config", "user.name", "Compact Pair Test")
+    _git(target, "config", "user.email", "compact-pair@example.invalid")
+    (target / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(target, "add", ".")
+    _git(target, "commit", "-q", "-m", "chore: target base")
+    base = _git(target, "rev-parse", "HEAD")
+    (target / "feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _git(target, "add", "feature.py")
+    _git(target, "commit", "-q", "-m", "feat: target candidate")
+    head = _git(target, "rev-parse", "HEAD")
+
+    if repository_value is _DEFAULT_REPOSITORY:
+        reviewed_repository: str | None = target.as_posix()
+    elif callable(repository_value):
+        reviewed_repository = repository_value(target)
+    else:
+        assert repository_value is None or isinstance(repository_value, str)
+        reviewed_repository = repository_value
+    reviewed_base, reviewed_head = range_values(base, head)
+
+    request = pipeline / REQUEST_PATH
+    request.parent.mkdir(parents=True)
+    request.write_text(
+        transform_request(
+            _request_text(
+                reviewed_base,
+                reviewed_head,
+                reviewed_repository=reviewed_repository,
+            )
+        ),
+        encoding="utf-8",
+    )
+    _git(pipeline, "add", REQUEST_PATH)
+    _git(pipeline, "commit", "-q", "-m", "coord: request target review")
+    return pipeline, target, base, head, _git(pipeline, "rev-parse", "HEAD")
+
+
+def test_cross_repository_request_and_report_bind_exact_target_range(
+    tmp_path: Path,
+) -> None:
+    root, target, base, head, trigger = _cross_repo(tmp_path)
+    request = pair.parse_verify_request(root, REQUEST_PATH, trigger)
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            reviewed_repository=target.as_posix(),
+        ),
+    )
+
+    assert request.reviewed_repository == target.as_posix()
+    assert report.reviewed_repository == target.as_posix()
+    assert pair.validate_report(root, report) == []
+
+
+def test_target_commits_without_reviewed_repository_fail_in_pipeline(
+    tmp_path: Path,
+) -> None:
+    root, _target, _base, _head, trigger = _cross_repo(
+        tmp_path, repository_value=None
+    )
+
+    with pytest.raises(
+        pair.CompactPairError, match="Git commit or path validation failed"
+    ):
+        pair.parse_verify_request(root, REQUEST_PATH, trigger)
+
+
+@pytest.mark.parametrize(
+    ("repository_value", "message"),
+    (
+        ("target", "absolute"),
+        ("/tmp/../tmp/target", "normalized"),
+        ("/definitely/missing/compact-pair-target", "repository"),
+    ),
+)
+def test_reviewed_repository_rejects_noncanonical_or_missing_paths(
+    tmp_path: Path, repository_value: str, message: str
+) -> None:
+    root, _target, _base, _head, trigger = _cross_repo(
+        tmp_path, repository_value=repository_value
+    )
+
+    with pytest.raises(pair.CompactPairError, match=message):
+        pair.parse_verify_request(root, REQUEST_PATH, trigger)
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    (("symlink", "symlink"), ("nested", "Git worktree root")),
+)
+def test_reviewed_repository_rejects_symlink_and_nested_worktree_path(
+    tmp_path: Path, case: str, message: str
+) -> None:
+    def invalid_repository(target: Path) -> str:
+        if case == "symlink":
+            link = target.parent / "target-link"
+            link.symlink_to(target, target_is_directory=True)
+            return link.as_posix()
+        nested = target / "nested"
+        nested.mkdir()
+        return nested.as_posix()
+
+    root, _target, _base, _head, trigger = _cross_repo(
+        tmp_path, repository_value=invalid_repository
+    )
+
+    with pytest.raises(pair.CompactPairError, match=message):
+        pair.parse_verify_request(root, REQUEST_PATH, trigger)
+
+
+@pytest.mark.parametrize(
+    "duplicate",
+    (
+        "Reviewed repository:\n",
+        " Reviewed repository :   \n",
+        "reviewed REPOSITORY: spoofed\n",
+    ),
+)
+def test_reviewed_repository_rejects_blank_malformed_or_duplicate_header(
+    tmp_path: Path, duplicate: str
+) -> None:
+    root, _target, _base, _head, trigger = _cross_repo(
+        tmp_path,
+        transform_request=lambda text: text.replace(
+            "Reviewed repository: ", duplicate + "Reviewed repository: ", 1
+        ),
+    )
+
+    with pytest.raises(pair.CompactPairError, match="Reviewed repository"):
+        pair.parse_verify_request(root, REQUEST_PATH, trigger)
+
+
+@pytest.mark.parametrize("report_repository", (None, "/tmp/different-target"))
+def test_report_cannot_omit_or_substitute_request_repository(
+    tmp_path: Path, report_repository: str | None
+) -> None:
+    root, _target, base, head, trigger = _cross_repo(tmp_path)
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            reviewed_repository=report_repository,
+        ),
+    )
+    violations = pair.validate_report(root, report)
+    assert any("Reviewed repository" in item for item in violations)
+
+
+def test_report_cannot_add_repository_to_pipeline_local_request(
+    tmp_path: Path,
+) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            reviewed_repository=root.as_posix(),
+        ),
+    )
+    assert any(
+        "Reviewed repository" in item for item in pair.validate_report(root, report)
+    )
+
+
+def test_report_rejects_duplicate_reviewed_repository_header(tmp_path: Path) -> None:
+    root, target, base, head, trigger = _cross_repo(tmp_path)
+    report_path = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        reviewed_repository=target.as_posix(),
+    )
+    text = report_path.read_text(encoding="utf-8")
+    report_path.write_text(
+        text.replace(
+            "Reviewed repository: ",
+            "Reviewed repository:\nReviewed repository: ",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(pair.CompactPairError, match="Reviewed repository"):
+        pair.parse_verification_report(root, report_path)
+
+
+def test_request_bound_repository_must_remain_available_for_report(
+    tmp_path: Path,
+) -> None:
+    root, target, base, head, trigger = _cross_repo(tmp_path)
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            reviewed_repository=target.as_posix(),
+        ),
+    )
+    target.rename(tmp_path / "moved-target")
+    assert any(
+        "request binding invalid" in item
+        for item in pair.validate_report(root, report)
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    (
+        ("equal", "strict ancestor"),
+        ("reversed", "strict ancestor"),
+        ("missing", "Git commit or path validation failed"),
+    ),
+)
+def test_cross_repository_range_fails_closed(
+    tmp_path: Path, case: str, message: str
+) -> None:
+    def invalid_range(base: str, head: str) -> tuple[str, str]:
+        if case == "equal":
+            return base, base
+        if case == "reversed":
+            return head, base
+        return base, "f" * 40
+
+    root, _target, _base, _head, trigger = _cross_repo(
+        tmp_path, range_values=invalid_range
+    )
+
+    with pytest.raises(pair.CompactPairError, match=message):
+        pair.parse_verify_request(root, REQUEST_PATH, trigger)
+
+
+def test_cross_repository_merge_base_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _target, _base, _head, trigger = _cross_repo(tmp_path)
+    real_run = pair.subprocess.run
+
+    def fail_merge_base(*args, **kwargs):
+        command = args[0]
+        if "merge-base" in command and "--is-ancestor" in command:
+            return subprocess.CompletedProcess(command, 2, b"", b"fatal")
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(pair.subprocess, "run", fail_merge_base)
+    with pytest.raises(pair.CompactPairError, match="Git ancestry validation failed"):
+        pair.parse_verify_request(root, REQUEST_PATH, trigger)
 
 
 def test_minimal_request_and_report_bind_range_identity_outcome_and_findings(

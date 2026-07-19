@@ -44,6 +44,7 @@ class CompactPairError(ValueError):
 class VerifyRequest:
     path: str
     trigger_commit: str
+    reviewed_repository: str | None
     reviewed_head: str
     reviewed_base: str
     author_seat: str
@@ -59,6 +60,7 @@ class VerificationReport:
     verdict: str
     request_path: str
     request_commit: str
+    reviewed_repository: str | None
     reviewed_head: str
     reviewed_base: str
     reviewer_seat: str
@@ -239,8 +241,20 @@ def parse_verify_request(
     lines = text.splitlines()
     if _one(lines, "Event type: ", "Event type") != "verify-request":
         raise CompactPairError("missing or duplicate Event type: verify-request")
-    head = _full_commit(root, _one(lines, "Reviewed head: ", "Reviewed head"), "Reviewed head")
-    base = _full_commit(root, _one(lines, "Reviewed base: ", "Reviewed base"), "Reviewed base")
+    reviewed_repository = _optional_one(
+        lines, "Reviewed repository: ", "Reviewed repository"
+    )
+    reviewed_root = _reviewed_root(root, reviewed_repository)
+    head = _full_commit(
+        reviewed_root,
+        _one(lines, "Reviewed head: ", "Reviewed head"),
+        "Reviewed head",
+    )
+    base = _full_commit(
+        reviewed_root,
+        _one(lines, "Reviewed base: ", "Reviewed base"),
+        "Reviewed base",
+    )
     author = _one(lines, "Author seat: ", "Author seat")
     assigned = _one(lines, "Assigned operator: ", "Assigned operator")
     if author not in PAIR_SEATS or assigned not in OPERATOR_SEATS:
@@ -249,9 +263,11 @@ def parse_verify_request(
         raise CompactPairError("Author seat does not match verify-request envelope/path")
     if assigned != match.group("operator"):
         raise CompactPairError("Assigned operator does not match verify-request path")
-    if head == trigger or not _is_ancestor(root, head, trigger):
+    if reviewed_root == root and (
+        head == trigger or not _is_ancestor(root, head, trigger)
+    ):
         raise CompactPairError("request trigger must be strictly after Reviewed head")
-    if base == head or not _is_ancestor(root, base, head):
+    if base == head or not _is_ancestor(reviewed_root, base, head):
         raise CompactPairError("Reviewed base must be a strict ancestor of Reviewed head")
     legacy = _section_optional(lines, "## Finding Refs") is None
     if legacy and not _is_frozen_verbose_request(root, path, raw, trigger):
@@ -263,6 +279,7 @@ def parse_verify_request(
     return VerifyRequest(
         path=path,
         trigger_commit=trigger,
+        reviewed_repository=reviewed_repository,
         reviewed_head=head,
         reviewed_base=base,
         author_seat=author,
@@ -318,6 +335,9 @@ def _parse_verification_report_bytes(root: Path, path: str, raw: bytes) -> Verif
         raise CompactPairError("Verification request path is not canonical")
     if SHA_RE.fullmatch(request_commit) is None:
         raise CompactPairError("request commit must be one full lowercase commit SHA")
+    reviewed_repository = _optional_one(
+        lines, "Reviewed repository: ", "Reviewed repository"
+    )
     head = _one(lines, "Reviewed head: ", "Reviewed head")
     base = _one(lines, "Reviewed base: ", "Reviewed base")
     if SHA_RE.fullmatch(head) is None or SHA_RE.fullmatch(base) is None:
@@ -331,6 +351,7 @@ def _parse_verification_report_bytes(root: Path, path: str, raw: bytes) -> Verif
         verdict=verdict,
         request_path=request_path,
         request_commit=request_commit,
+        reviewed_repository=reviewed_repository,
         reviewed_head=head,
         reviewed_base=base,
         reviewer_seat=_one(lines, "Reviewer seat: ", "Reviewer seat"),
@@ -382,6 +403,8 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
         violations.append("reviewer seat equals author seat")
     if report.reviewer_model.casefold() == request.author_model.casefold():
         violations.append("reviewer model equals author model")
+    if report.reviewed_repository != request.reviewed_repository:
+        violations.append("report Reviewed repository does not match request")
     if report.reviewed_head != request.reviewed_head:
         violations.append("report Reviewed head does not match request")
     if report.reviewed_base != request.reviewed_base:
@@ -399,11 +422,60 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
     ):
         violations.append("GO cannot carry unresolved hard-boundary findings")
     try:
-        _full_commit(root, request.reviewed_base, "Reviewed base")
-        _full_commit(root, request.reviewed_head, "Reviewed head")
+        reviewed_root = _reviewed_root(root, request.reviewed_repository)
+        base = _full_commit(reviewed_root, request.reviewed_base, "Reviewed base")
+        head = _full_commit(reviewed_root, request.reviewed_head, "Reviewed head")
+        if base == head or not _is_ancestor(reviewed_root, base, head):
+            raise CompactPairError(
+                "Reviewed base must be a strict ancestor of Reviewed head"
+            )
     except CompactPairError as exc:
         violations.append(f"reviewed range unavailable: {exc}")
     return violations
+
+
+def _optional_one(lines: list[str], prefix: str, label: str) -> str | None:
+    occurrences = _normalized_field_occurrences(lines, label)
+    if len(occurrences) > 1:
+        raise CompactPairError(f"duplicate {label}")
+    if not occurrences:
+        return None
+    line = occurrences[0]
+    if not line.startswith(prefix):
+        raise CompactPairError(f"invalid {label}")
+    value = line[len(prefix) :]
+    if not value or value != value.strip():
+        raise CompactPairError(f"invalid {label}")
+    return value
+
+
+def _reviewed_root(pipeline_root: Path, repository_field: str | None) -> Path:
+    pipeline_root = pipeline_root.resolve()
+    if repository_field is None:
+        return pipeline_root
+    candidate = Path(repository_field)
+    if not candidate.is_absolute():
+        raise CompactPairError("Reviewed repository must be absolute")
+    if (
+        candidate.as_posix() != repository_field
+        or any(component in {".", ".."} for component in candidate.parts)
+    ):
+        raise CompactPairError("Reviewed repository must be normalized")
+    current = Path(candidate.anchor)
+    for component in candidate.parts[1:]:
+        current = current / component
+        if current.is_symlink():
+            raise CompactPairError("Reviewed repository traverses a symlink")
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as exc:
+        raise CompactPairError("Reviewed repository is unavailable") from exc
+    if not resolved.is_dir() or resolved.as_posix() != repository_field:
+        raise CompactPairError("Reviewed repository must be one canonical directory")
+    top_level = _git(resolved, "rev-parse", "--show-toplevel").decode().strip()
+    if top_level != repository_field:
+        raise CompactPairError("Reviewed repository must be a Git worktree root")
+    return resolved
 
 
 def _section_optional(lines: list[str], heading: str) -> list[str] | None:
