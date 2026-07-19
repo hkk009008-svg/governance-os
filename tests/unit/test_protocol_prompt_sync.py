@@ -332,10 +332,14 @@ AUTOMATIC_TASK_ROUTING_SURFACES = (
 def test_automatic_task_routing_model_is_direct_deduplicated_and_effect_free() -> None:
     rendered = _compact(model.render_automatic_task_routing())
 
-    assert model.AUTOMATIC_TASK_ROUTING_RULES[1:4] == (
+    assert model.AUTOMATIC_TASK_ROUTING_RULES == (
+        "For a committed immutable trigger naming the next concrete seat, use Codex task tools before returning a prompt to the user.",
         "The dispatch identity is the trigger path and full commit, assigned seat, Pipeline checkout, and for review the exact base/head and required reviewer model.",
         "If the same dispatch identity is already in progress, monitor it; if it completed, reconcile its committed artifact instead of resending it.",
         "Reuse one unambiguous compatible seat task; if none exists or candidates are stale, incompatible, or ambiguous, automatically create a fresh local task in the saved Pipeline project.",
+        "Never ask the user to relay a seat prompt while Codex task tools are available; send the exact trigger, wait for the task, reconcile its committed result, and route any correction or next seat directly.",
+        "If Codex task tools are unavailable, preserve the exact trigger and report one concrete tooling blocker without asking the user to relay it.",
+        "A concrete live-seat Codex task may exercise only its committed authority; parent-scoped subagents do not publish live-seat events or formal GO, and task routing grants no external-effect authority.",
     )
 
     required = (
