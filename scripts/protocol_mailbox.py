@@ -117,6 +117,20 @@ class TakeoverConfirmationStatement:
     finding_refs: tuple[str, ...]
 
 
+class _CommittedEventBatchBackend:
+    """Marker for the in-process exact-object proof backend."""
+
+    def _protocol_load_committed_event_ref(self, value: str) -> CommittedEventRef:
+        raise NotImplementedError
+
+    def _protocol_committed_event_is_strict_ancestor(
+        self,
+        earlier: CommittedEventRef,
+        later: CommittedEventRef,
+    ) -> bool:
+        raise NotImplementedError
+
+
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     clean_env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     clean_env.update({"LANG": "C", "LC_ALL": "C"})
@@ -136,9 +150,7 @@ def _filename_timestamp_to_iso(value: str) -> str:
     return value[:11] + value[11:19].replace("-", ":") + "Z"
 
 
-def load_committed_event_ref(root: Path, value: str) -> CommittedEventRef:
-    """Load an exact full-SHA fixed-writer event without reading the worktree."""
-
+def _committed_event_parts(value: str) -> tuple[str, str, re.Match[str]]:
     if not isinstance(value, str) or "@" not in value:
         raise ValueError("committed event reference must be path@full-sha")
     path, commit = value.rsplit("@", 1)
@@ -152,20 +164,18 @@ def load_committed_event_ref(root: Path, value: str) -> CommittedEventRef:
     kind = match.group("kind")
     if sender not in SENDERS or recipient not in RECIPIENTS or kind not in KNOWN_KINDS:
         raise ValueError("committed event filename has an unknown envelope token")
+    return path, commit, match
 
-    if _git(root, "cat-file", "-t", commit).stdout.strip() != "commit":
-        raise ValueError("committed event reference must name a commit object")
 
-    tree_entry = _git(root, "ls-tree", "--full-tree", commit, "--", path).stdout.rstrip("\n")
-    try:
-        metadata, committed_path = tree_entry.split("\t", 1)
-        mode, object_type, _object_id = metadata.split(" ", 2)
-    except ValueError as exc:
-        raise ValueError("event path is absent from the named commit") from exc
-    if committed_path != path or mode != "100644" or object_type != "blob":
-        raise ValueError("event path is not a regular fixed-writer blob")
+def parse_committed_event_text(value: str, text: str) -> CommittedEventRef:
+    """Parse fixed-writer bytes already proven to be ``value``'s exact blob."""
 
-    text = _git(root, "show", f"{commit}:{path}").stdout
+    path, commit, match = _committed_event_parts(value)
+    if not isinstance(text, str):
+        raise ValueError("committed event text must be decoded UTF-8")
+    sender = match.group("sender")
+    recipient = match.group("recipient")
+    kind = match.group("kind")
     envelope_lines = [line for line in text.splitlines() if line.startswith("**When:**")]
     if len(envelope_lines) != 1:
         raise ValueError("committed event requires exactly one fixed-writer envelope")
@@ -187,6 +197,29 @@ def load_committed_event_ref(root: Path, value: str) -> CommittedEventRef:
         when=when,
         text=text,
     )
+
+
+def load_committed_event_ref(root: Path, value: str) -> CommittedEventRef:
+    """Load an exact full-SHA fixed-writer event without reading the worktree."""
+
+    if isinstance(root, _CommittedEventBatchBackend):
+        return root._protocol_load_committed_event_ref(value)
+    path, commit, _match = _committed_event_parts(value)
+
+    if _git(root, "cat-file", "-t", commit).stdout.strip() != "commit":
+        raise ValueError("committed event reference must name a commit object")
+
+    tree_entry = _git(root, "ls-tree", "--full-tree", commit, "--", path).stdout.rstrip("\n")
+    try:
+        metadata, committed_path = tree_entry.split("\t", 1)
+        mode, object_type, _object_id = metadata.split(" ", 2)
+    except ValueError as exc:
+        raise ValueError("event path is absent from the named commit") from exc
+    if committed_path != path or mode != "100644" or object_type != "blob":
+        raise ValueError("event path is not a regular fixed-writer blob")
+
+    text = _git(root, "show", f"{commit}:{path}").stdout
+    return parse_committed_event_text(value, text)
 
 
 def _single_body_field(event: CommittedEventRef, label: str) -> str:
@@ -247,8 +280,9 @@ def _require_kind(event: CommittedEventRef, expected: str) -> None:
         raise ValueError(f"expected a committed {expected!r} event")
 
 
-def load_ownership_proposal_statement(root: Path, value: str) -> OwnershipProposalStatement:
-    event = load_committed_event_ref(root, value)
+def parse_ownership_proposal_statement(
+    event: CommittedEventRef,
+) -> OwnershipProposalStatement:
     _require_kind(event, "proposal")
     return OwnershipProposalStatement(
         event=event,
@@ -262,8 +296,13 @@ def load_ownership_proposal_statement(root: Path, value: str) -> OwnershipPropos
     )
 
 
-def load_ownership_acceptance_statement(root: Path, value: str) -> OwnershipAcceptanceStatement:
-    event = load_committed_event_ref(root, value)
+def load_ownership_proposal_statement(root: Path, value: str) -> OwnershipProposalStatement:
+    return parse_ownership_proposal_statement(load_committed_event_ref(root, value))
+
+
+def parse_ownership_acceptance_statement(
+    event: CommittedEventRef,
+) -> OwnershipAcceptanceStatement:
     _require_kind(event, "proposal-reply")
     return OwnershipAcceptanceStatement(
         event=event,
@@ -278,8 +317,13 @@ def load_ownership_acceptance_statement(root: Path, value: str) -> OwnershipAcce
     )
 
 
-def load_takeover_evidence_statement(root: Path, value: str) -> TakeoverEvidenceStatement:
-    event = load_committed_event_ref(root, value)
+def load_ownership_acceptance_statement(root: Path, value: str) -> OwnershipAcceptanceStatement:
+    return parse_ownership_acceptance_statement(load_committed_event_ref(root, value))
+
+
+def parse_takeover_evidence_statement(
+    event: CommittedEventRef,
+) -> TakeoverEvidenceStatement:
     _require_kind(event, "dispatch-claim")
     observed_at = _single_body_field(event, "Observed at")
     if observed_at != event.when:
@@ -296,10 +340,13 @@ def load_takeover_evidence_statement(root: Path, value: str) -> TakeoverEvidence
     )
 
 
-def load_takeover_confirmation_statement(
-    root: Path, value: str
+def load_takeover_evidence_statement(root: Path, value: str) -> TakeoverEvidenceStatement:
+    return parse_takeover_evidence_statement(load_committed_event_ref(root, value))
+
+
+def parse_takeover_confirmation_statement(
+    event: CommittedEventRef,
 ) -> TakeoverConfirmationStatement:
-    event = load_committed_event_ref(root, value)
     _require_kind(event, "acknowledgement")
     proposed_owner = _single_body_field(event, "Proposed owner")
     if proposed_owner not in SEATS:
@@ -322,6 +369,12 @@ def load_takeover_confirmation_statement(
     )
 
 
+def load_takeover_confirmation_statement(
+    root: Path, value: str
+) -> TakeoverConfirmationStatement:
+    return parse_takeover_confirmation_statement(load_committed_event_ref(root, value))
+
+
 def committed_event_is_strict_ancestor(
     root: Path,
     earlier: CommittedEventRef,
@@ -329,6 +382,8 @@ def committed_event_is_strict_ancestor(
 ) -> bool:
     """Return whether ``later`` is committed strictly after ``earlier``."""
 
+    if isinstance(root, _CommittedEventBatchBackend):
+        return root._protocol_committed_event_is_strict_ancestor(earlier, later)
     if earlier.commit == later.commit:
         return False
     try:

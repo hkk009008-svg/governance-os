@@ -345,13 +345,19 @@ def _committed_ref_for_path(root: Path, path: Path) -> str | None:
     return None
 
 
-def _legacy_route(root: Path, path: Path, body: str) -> LineageRoute:
+def _legacy_route(
+    root: Path,
+    path: Path,
+    body: str,
+    *,
+    route_ref: str | None = None,
+) -> LineageRoute:
     lineage = parse_lineage(body)
     return LineageRoute(
         route_id=route_id_of(path.name),
         lineage=lineage,
         task_id=_task_board(body),
-        route_ref=_committed_ref_for_path(root, path),
+        route_ref=route_ref if route_ref is not None else _committed_ref_for_path(root, path),
         revision=lineage.generation,
         path=path,
         effective=True,
@@ -360,24 +366,31 @@ def _legacy_route(root: Path, path: Path, body: str) -> LineageRoute:
     )
 
 
-def _route_from_exact_ref(root: Path, route_ref: str, seen: frozenset[str]) -> LineageRoute:
+def _route_from_exact_ref(
+    root: Path,
+    route_ref: str,
+    seen: frozenset[str],
+    reader: RouteBatchReader | None = None,
+) -> LineageRoute:
     if route_ref in seen:
         raise ValueError("cyclic autonomous parent reference")
-    event = protocol_mailbox.load_committed_event_ref(root, route_ref)
+    proof_root = reader if reader is not None else root
+    event = protocol_mailbox.load_committed_event_ref(proof_root, route_ref)
     path = root / event.path
     if not is_route_event(path, event.text):
         raise ValueError("parent ref is not a route event")
     match = _ROUTE_NAME_RE.fullmatch(path.name)
     assert match is not None
     if match.group("sender") in {"coordinator", "coordinator2"}:
-        return _legacy_route(root, path, event.text)
-    return _validate_committed_autonomous(root, event, seen | {route_ref})
+        return _legacy_route(root, path, event.text, route_ref=event.ref)
+    return _validate_committed_autonomous(root, event, seen | {route_ref}, reader)
 
 
 def _validate_committed_autonomous(
     root: Path,
     event: protocol_mailbox.CommittedEventRef,
     seen: frozenset[str],
+    reader: RouteBatchReader | None = None,
 ) -> LineageRoute:
     candidate = validate_route_candidate_structure(root / event.path, event.text)
     candidate = replace(candidate, route_ref=event.ref)
@@ -392,7 +405,7 @@ def _validate_committed_autonomous(
             if candidate.revision != 0 or candidate.previous_owners:
                 raise ValueError("initial contract requires revision zero and no previous owners")
         else:
-            parent = _route_from_exact_ref(root, candidate.parent_ref, seen)
+            parent = _route_from_exact_ref(root, candidate.parent_ref, seen, reader)
             if (
                 not parent.effective
                 or parent.task_id != candidate.task_id
@@ -416,7 +429,7 @@ def _validate_committed_autonomous(
 
     if candidate.parent_ref is None or candidate.proposal_ref is None:
         raise ValueError("ownership successor requires parent and proposal refs")
-    parent = _route_from_exact_ref(root, candidate.parent_ref, seen)
+    parent = _route_from_exact_ref(root, candidate.parent_ref, seen, reader)
     if not parent.effective or parent.task_id != candidate.task_id or parent.revision is None:
         raise ValueError("ownership successor has an ineffective or mismatched parent")
     contract = codex_protocol_model.claim_outcome(
@@ -430,11 +443,14 @@ def _validate_committed_autonomous(
         hard_boundaries=("immutable lineage",),
         finding_refs=parent.finding_refs,
     )
-    proposal_event = protocol_mailbox.load_committed_event_ref(root, candidate.proposal_ref)
+    proof_root = reader if reader is not None else root
+    proposal_event = protocol_mailbox.load_committed_event_ref(proof_root, candidate.proposal_ref)
     if proposal_event.kind == "proposal":
-        proposal = protocol_mailbox.load_ownership_proposal_statement(root, candidate.proposal_ref)
+        proposal = protocol_mailbox.load_ownership_proposal_statement(
+            proof_root, candidate.proposal_ref
+        )
         acceptances = tuple(
-            protocol_mailbox.load_ownership_acceptance_statement(root, ref)
+            protocol_mailbox.load_ownership_acceptance_statement(proof_root, ref)
             for ref in candidate.acceptance_refs
         )
         change = codex_protocol_model.OwnershipChange(
@@ -449,9 +465,11 @@ def _validate_committed_autonomous(
             outcome=(candidate.outcome if candidate.outcome != parent.outcome else None),
         )
     elif proposal_event.kind == "dispatch-claim":
-        evidence = protocol_mailbox.load_takeover_evidence_statement(root, candidate.proposal_ref)
+        evidence = protocol_mailbox.load_takeover_evidence_statement(
+            proof_root, candidate.proposal_ref
+        )
         confirmations = tuple(
-            protocol_mailbox.load_takeover_confirmation_statement(root, ref)
+            protocol_mailbox.load_takeover_confirmation_statement(proof_root, ref)
             for ref in candidate.acceptance_refs
         )
         change = codex_protocol_model.OwnershipChange(
@@ -470,10 +488,459 @@ def _validate_committed_autonomous(
     else:
         raise ValueError("proposal ref must name a proposal or takeover claim")
     if sender not in candidate.owners or not codex_protocol_model.ownership_change_is_effective(
-        contract, change, root=root
+        contract, change, root=proof_root
     ):
         raise ValueError("ownership evidence is ineffective")
     return replace(candidate, effective=True)
+
+
+class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
+    """Read route and ownership proof with a fixed number of Git processes."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = Path(root)
+        self._entered = False
+        self._git_repo = False
+        self._cat_process: subprocess.Popen[bytes] | None = None
+        self._head_entries: dict[str, tuple[str, str, str]] = {}
+        self._history: dict[str, tuple[str, ...]] = {}
+        self._cat_cache: dict[str, tuple[str, str, bytes] | None] = {}
+        self._tree_cache: dict[str, dict[str, tuple[str, str]]] = {}
+        self._candidate_cache: tuple[LineageRoute, ...] | None = None
+        self._validated_cache: dict[str, LineageRoute] = {}
+        self._issues: list[str] = []
+
+    @staticmethod
+    def _clean_env() -> dict[str, str]:
+        env = {
+            key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+        }
+        env.update({"LANG": "C", "LC_ALL": "C"})
+        return env
+
+    def _run(self, *args: str) -> bytes:
+        try:
+            return subprocess.run(
+                ["git", "--no-replace-objects", "-C", str(self.root), *args],
+                capture_output=True,
+                check=True,
+                env=self._clean_env(),
+            ).stdout
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise ValueError("batch route Git evidence is not readable") from exc
+
+    def __enter__(self) -> RouteBatchReader:
+        if self._entered:
+            raise RuntimeError("RouteBatchReader cannot be entered twice")
+        self._entered = True
+        self._git_repo = (self.root / ".git").exists()
+        if not self._git_repo:
+            return self
+        try:
+            self._load_head_entries()
+            self._load_history()
+            self._cat_process = subprocess.Popen(
+                [
+                    "git",
+                    "--no-replace-objects",
+                    "-C",
+                    str(self.root),
+                    "cat-file",
+                    "--batch",
+                ],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self._clean_env(),
+            )
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        process = self._cat_process
+        if process is None:
+            return
+        if process.stdin is not None and not process.stdin.closed:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
+
+    def _require_entered(self) -> None:
+        if not self._entered:
+            raise RuntimeError("RouteBatchReader must be used as a context manager")
+
+    def _load_head_entries(self) -> None:
+        raw = self._run(
+            "ls-tree", "-r", "-z", "HEAD", "--", "coordination/mailbox/sent"
+        )
+        for entry in raw.split(b"\0"):
+            if not entry:
+                continue
+            try:
+                metadata, raw_path = entry.split(b"\t", 1)
+                mode, object_type, object_id = metadata.decode("ascii").split(" ", 2)
+                path = raw_path.decode("utf-8")
+            except (UnicodeError, ValueError) as exc:
+                raise ValueError("malformed current mailbox tree entry") from exc
+            self._head_entries[path] = (mode, object_type, object_id)
+
+    def _load_history(self) -> None:
+        raw = self._run(
+            "-c",
+            "diff.renames=false",
+            "log",
+            "--full-history",
+            "--format=%x1e%H%x00",
+            "--name-only",
+            "-z",
+            "--",
+            "coordination/mailbox/sent",
+        )
+        history: dict[str, list[str]] = {}
+        for record in raw.split(b"\x1e"):
+            if not record:
+                continue
+            fields = record.split(b"\0")
+            try:
+                commit = fields[0].decode("ascii")
+            except UnicodeError as exc:
+                raise ValueError("malformed mailbox introduction history") from exc
+            if not re.fullmatch(r"[0-9a-f]{40}", commit):
+                raise ValueError("malformed mailbox introduction commit")
+            for raw_path in fields[1:]:
+                raw_path = raw_path.lstrip(b"\n")
+                if not raw_path:
+                    continue
+                try:
+                    path = raw_path.decode("utf-8")
+                except UnicodeError as exc:
+                    raise ValueError("mailbox history path is not UTF-8") from exc
+                history.setdefault(path, []).append(commit)
+        self._history = {path: tuple(commits) for path, commits in history.items()}
+
+    def _cat(self, expression: str) -> tuple[str, str, bytes] | None:
+        self._require_entered()
+        if expression in self._cat_cache:
+            return self._cat_cache[expression]
+        process = self._cat_process
+        if process is None or process.stdin is None or process.stdout is None:
+            raise ValueError("batch object reader is unavailable")
+        try:
+            process.stdin.write(expression.encode("utf-8") + b"\n")
+            process.stdin.flush()
+            header = process.stdout.readline()
+            if not header:
+                raise ValueError("batch object reader ended unexpectedly")
+            parts = header.rstrip(b"\n").split(b" ")
+            if parts[-1:] == [b"missing"]:
+                self._cat_cache[expression] = None
+                return None
+            if len(parts) != 3:
+                raise ValueError("batch object reader returned malformed metadata")
+            object_id = parts[0].decode("ascii")
+            object_type = parts[1].decode("ascii")
+            size = int(parts[2])
+            body = process.stdout.read(size)
+            terminator = process.stdout.read(1)
+            if len(body) != size or terminator != b"\n":
+                raise ValueError("batch object reader returned truncated content")
+        except (BrokenPipeError, OSError, UnicodeError, ValueError) as exc:
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError("batch object reader failed") from exc
+        result = (object_id, object_type, body)
+        self._cat_cache[expression] = result
+        return result
+
+    def _tree_entries(self, tree_id: str) -> dict[str, tuple[str, str]]:
+        if tree_id in self._tree_cache:
+            return self._tree_cache[tree_id]
+        loaded = self._cat(tree_id)
+        if loaded is None or loaded[1] != "tree":
+            raise ValueError("historical path tree is not readable")
+        raw = loaded[2]
+        entries: dict[str, tuple[str, str]] = {}
+        cursor = 0
+        try:
+            while cursor < len(raw):
+                space = raw.index(b" ", cursor)
+                nul = raw.index(b"\0", space + 1)
+                mode = raw[cursor:space].decode("ascii")
+                name = raw[space + 1 : nul].decode("utf-8")
+                object_id = raw[nul + 1 : nul + 21].hex()
+                if len(object_id) != 40:
+                    raise ValueError
+                entries[name] = (mode, object_id)
+                cursor = nul + 21
+        except (UnicodeError, ValueError) as exc:
+            raise ValueError("historical tree object is malformed") from exc
+        self._tree_cache[tree_id] = entries
+        return entries
+
+    def _commit_tree_and_parents(self, commit: str) -> tuple[str, tuple[str, ...]]:
+        loaded = self._cat(commit)
+        if loaded is None or loaded[1] != "commit":
+            raise ValueError("committed event reference must name a commit object")
+        try:
+            header = loaded[2].split(b"\n\n", 1)[0].decode("ascii")
+        except UnicodeError as exc:
+            raise ValueError("commit object headers are malformed") from exc
+        tree: str | None = None
+        parents: list[str] = []
+        for line in header.splitlines():
+            if line.startswith("tree "):
+                tree = line[5:]
+            elif line.startswith("parent "):
+                parents.append(line[7:])
+        if tree is None or not re.fullmatch(r"[0-9a-f]{40}", tree):
+            raise ValueError("commit object has no canonical tree")
+        if any(not re.fullmatch(r"[0-9a-f]{40}", parent) for parent in parents):
+            raise ValueError("commit object has a malformed parent")
+        return tree, tuple(parents)
+
+    def _path_entry(self, commit: str, path: str) -> tuple[str, str, str]:
+        tree_id, _parents = self._commit_tree_and_parents(commit)
+        parts = path.split("/")
+        for index, part in enumerate(parts):
+            entry = self._tree_entries(tree_id).get(part)
+            if entry is None:
+                raise ValueError("event path is absent from the named commit")
+            mode, object_id = entry
+            if index < len(parts) - 1:
+                if mode not in {"40000", "040000"}:
+                    raise ValueError("event path crosses a non-tree object")
+                tree_id = object_id
+                continue
+            loaded = self._cat(object_id)
+            if loaded is None:
+                raise ValueError("event path object is unreadable")
+            return mode, loaded[1], object_id
+        raise ValueError("event path is absent from the named commit")
+
+    def _protocol_load_committed_event_ref(
+        self, value: str
+    ) -> protocol_mailbox.CommittedEventRef:
+        path, commit, _match = protocol_mailbox._committed_event_parts(value)
+        self._commit_tree_and_parents(commit)
+        mode, object_type, object_id = self._path_entry(commit, path)
+        if mode != "100644" or object_type != "blob":
+            raise ValueError("event path is not a regular fixed-writer blob")
+        expression = self._cat(f"{commit}:{path}")
+        if (
+            expression is None
+            or expression[0] != object_id
+            or expression[1] != "blob"
+        ):
+            raise ValueError("event commit:path object does not match its exact tree entry")
+        try:
+            text = expression[2].decode("utf-8")
+        except UnicodeError as exc:
+            raise ValueError("committed event body is not UTF-8") from exc
+        return protocol_mailbox.parse_committed_event_text(value, text)
+
+    def _protocol_committed_event_is_strict_ancestor(
+        self,
+        earlier: protocol_mailbox.CommittedEventRef,
+        later: protocol_mailbox.CommittedEventRef,
+    ) -> bool:
+        if earlier.commit == later.commit:
+            return False
+        pending = [later.commit]
+        seen: set[str] = set()
+        while pending:
+            commit = pending.pop()
+            if commit in seen:
+                continue
+            seen.add(commit)
+            try:
+                _tree, parents = self._commit_tree_and_parents(commit)
+            except ValueError:
+                return False
+            if earlier.commit in parents:
+                return True
+            pending.extend(parents)
+        return False
+
+    def _introduction_ref(self, path: str, current_blob: str) -> str | None:
+        for commit in self._history.get(path, ()):
+            loaded = self._cat(f"{commit}:{path}")
+            if loaded is not None and loaded[0] == current_blob and loaded[1] == "blob":
+                return f"{path}@{commit}"
+        return None
+
+    @staticmethod
+    def _looks_route_shaped(path: Path, body: str) -> bool:
+        match = _ROUTE_NAME_RE.fullmatch(path.name)
+        if match is None:
+            return False
+        if match.group("sender") in {"coordinator", "coordinator2"}:
+            task_boards = re.findall(
+                r"^\s*Task-board:\s*`?([^`\n]+?)`?\s*$", body, re.MULTILINE
+            )
+            return any(
+                not task_board.strip().casefold().startswith("none")
+                for task_board in task_boards
+            )
+        return match.group("kind") == "coordination" and any(
+            f"{label}:" in body for label in _AUTONOMOUS_FIELDS
+        )
+
+    def _non_git_candidates(self) -> tuple[LineageRoute, ...]:
+        sent = self.root / "coordination" / "mailbox" / "sent"
+        if not sent.exists():
+            return ()
+        routes: list[LineageRoute] = []
+        for path in sorted(sent.iterdir()):
+            if not path.is_file():
+                continue
+            try:
+                body = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if not is_route_event(path, body):
+                if self._looks_route_shaped(path, body):
+                    self._issues.append(f"malformed route-shaped event: {path.name}")
+                continue
+            match = _ROUTE_NAME_RE.fullmatch(path.name)
+            assert match is not None
+            if match.group("sender") in {"coordinator", "coordinator2"}:
+                routes.append(_legacy_route(self.root, path, body))
+            else:
+                routes.append(validate_route_candidate_structure(path, body))
+        return tuple(routes)
+
+    def candidate_routes(self) -> tuple[LineageRoute, ...]:
+        self._require_entered()
+        if self._candidate_cache is not None:
+            return self._candidate_cache
+        if not self._git_repo:
+            self._candidate_cache = self._non_git_candidates()
+            return self._candidate_cache
+
+        exact_bodies: list[tuple[str, Path, str, str, str]] = []
+        for relative, (mode, object_type, object_id) in sorted(self._head_entries.items()):
+            path = self.root / relative
+            if _ROUTE_NAME_RE.fullmatch(path.name) is None:
+                continue
+            loaded = self._cat(object_id)
+            if loaded is None or loaded[1] != "blob" or loaded[0] != object_id:
+                raise ValueError(f"current committed route object is unreadable: {relative}")
+            try:
+                body = loaded[2].decode("utf-8")
+            except UnicodeError as exc:
+                raise ValueError(f"current committed route body is not UTF-8: {relative}") from exc
+            exact_bodies.append((relative, path, body, object_id, mode))
+
+        routes: list[LineageRoute] = []
+        for relative, path, body, object_id, mode in exact_bodies:
+            if mode != "100644":
+                self._issues.append(
+                    f"malformed route-shaped event has non-regular mode: {path.name}"
+                )
+                continue
+            if not is_route_event(path, body):
+                if self._looks_route_shaped(path, body):
+                    self._issues.append(f"malformed route-shaped event: {path.name}")
+                continue
+            match = _ROUTE_NAME_RE.fullmatch(path.name)
+            assert match is not None
+            route_ref = self._introduction_ref(relative, object_id)
+            if match.group("sender") in {"coordinator", "coordinator2"}:
+                routes.append(
+                    _legacy_route(
+                        self.root, path, body, route_ref=route_ref
+                    )
+                )
+                continue
+            candidate = validate_route_candidate_structure(path, body)
+            routes.append(replace(candidate, route_ref=route_ref))
+        self._candidate_cache = tuple(routes)
+        return self._candidate_cache
+
+    def load_route_ref(self, route_ref: str) -> LineageRoute:
+        self._require_entered()
+        if not self._git_repo:
+            raise ValueError("exact committed route refs require a Git repository")
+        cached = self._validated_cache.get(route_ref)
+        if cached is not None:
+            return cached
+        event = self._protocol_load_committed_event_ref(route_ref)
+        path = self.root / event.path
+        if not is_route_event(path, event.text):
+            raise ValueError("committed ref is not a route event")
+        match = _ROUTE_NAME_RE.fullmatch(path.name)
+        assert match is not None
+        if match.group("sender") in {"coordinator", "coordinator2"}:
+            route = _legacy_route(
+                self.root, path, event.text, route_ref=event.ref
+            )
+        else:
+            route = _validate_committed_autonomous(
+                self.root, event, frozenset({route_ref}), self
+            )
+        self._validated_cache[route_ref] = route
+        return route
+
+    def _validate_candidates(self, candidates: tuple[LineageRoute, ...]) -> list[LineageRoute]:
+        routes: list[LineageRoute] = []
+        for candidate in candidates:
+            if candidate.legacy:
+                routes.append(candidate)
+                continue
+            if candidate.route_ref is None:
+                routes.append(
+                    replace(
+                        candidate,
+                        issues=(
+                            "uncommitted autonomous route is structurally valid but ineffective",
+                        ),
+                    )
+                )
+                continue
+            try:
+                validated = self.load_route_ref(candidate.route_ref)
+                if validated.body != candidate.body:
+                    raise ValueError(
+                        "validated event blob differs from current committed tree blob"
+                    )
+                routes.append(validated)
+            except (OSError, ValueError) as exc:
+                routes.append(
+                    replace(
+                        candidate,
+                        issues=(f"ineffective autonomous route: {exc}",),
+                    )
+                )
+        return routes
+
+    def load_task_routes(self, task_id: str) -> list[LineageRoute]:
+        candidates = tuple(
+            route for route in self.candidate_routes() if route.task_id == task_id
+        )
+        return self._validate_candidates(candidates)
+
+    def load_all_routes(self) -> list[LineageRoute]:
+        return self._validate_candidates(self.candidate_routes())
+
+    @property
+    def issues(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(self._issues))
 
 
 def validate_committed_route_effectiveness(root: Path, route_ref: str) -> LineageRoute:
@@ -490,86 +957,17 @@ def validate_committed_route_effectiveness(root: Path, route_ref: str) -> Lineag
 def load_route_paths(root: Path) -> list[Path]:
     """Discover all regular legacy or autonomous route events in the mailbox."""
 
-    sent = root / "coordination" / "mailbox" / "sent"
-    if _is_git_repo(root):
-        try:
-            entries = _git_output(
-                root,
-                "ls-tree",
-                "-r",
-                "-z",
-                "HEAD",
-                "--",
-                "coordination/mailbox/sent",
-            ).split("\0")
-        except (OSError, subprocess.CalledProcessError, UnicodeError):
-            return []
-        paths: list[Path] = []
-        for entry in entries:
-            if not entry:
-                continue
-            metadata, relative = entry.split("\t", 1)
-            mode, object_type, _blob = metadata.split(" ", 2)
-            if mode != "100644" or object_type != "blob":
-                continue
-            path = root / relative
-            try:
-                body = current_committed_route_body(root, path)
-            except (OSError, UnicodeError, ValueError):
-                continue
-            if is_route_event(path, body):
-                paths.append(path)
-        return sorted(paths)
-    if not sent.exists():
-        return []
-    paths: list[Path] = []
-    for path in sorted(sent.iterdir()):
-        if not path.is_file():
-            continue
-        try:
-            body = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        if is_route_event(path, body):
-            paths.append(path)
-    return paths
+    with RouteBatchReader(root) as reader:
+        return sorted(
+            route.path for route in reader.candidate_routes() if route.path is not None
+        )
 
 
 def load_routes(root: Path) -> list[LineageRoute]:
     """Load compatible legacy routes and provenance-checked autonomous routes."""
 
-    routes: list[LineageRoute] = []
-    for path in load_route_paths(root):
-        body = current_committed_route_body(root, path)
-        match = _ROUTE_NAME_RE.fullmatch(path.name)
-        assert match is not None
-        if match.group("sender") in {"coordinator", "coordinator2"}:
-            routes.append(_legacy_route(root, path, body))
-            continue
-        candidate = validate_route_candidate_structure(path, body)
-        route_ref = _committed_ref_for_path(root, path)
-        if route_ref is None:
-            routes.append(
-                replace(
-                    candidate,
-                    issues=("uncommitted autonomous route is structurally valid but ineffective",),
-                )
-            )
-            continue
-        try:
-            validated = validate_committed_route_effectiveness(root, route_ref)
-            if validated.body != body:
-                raise ValueError("validated event blob differs from current committed tree blob")
-            routes.append(validated)
-        except (OSError, ValueError) as exc:
-            routes.append(
-                replace(
-                    candidate,
-                    route_ref=route_ref,
-                    issues=(f"ineffective autonomous route: {exc}",),
-                )
-            )
-    return routes
+    with RouteBatchReader(root) as reader:
+        return reader.load_all_routes()
 
 
 def _legacy_resolution(routes: list[LineageRoute]) -> Resolution:

@@ -148,6 +148,7 @@ def _commit_event(
     recipient: str = "operator",
     kind: str = "proposal",
     timestamp: str = "2026-07-18T06-30-00Z",
+    body: str = "Task ID: task-1",
 ) -> tuple[Path, str]:
     sent = repo / "coordination" / "mailbox" / "sent"
     sent.mkdir(parents=True, exist_ok=True)
@@ -156,7 +157,7 @@ def _commit_event(
     path.write_text(
         "# Director → Operator: immutable event\n\n"
         f"**When:** {iso_timestamp} · **From:** {envelope_sender or sender} (online)\n\n"
-        "Task ID: task-1\n",
+        f"{body.rstrip()}\n",
         encoding="utf-8",
     )
     rel = path.relative_to(repo).as_posix()
@@ -256,3 +257,61 @@ def test_load_committed_event_ref_rejects_tree_object_instead_of_commit(tmp_path
             tmp_path,
             f"{path.relative_to(tmp_path).as_posix()}@{tree}",
         )
+
+
+def test_pure_event_parser_matches_existing_git_backed_loader(tmp_path: Path):
+    _init_repo(tmp_path)
+    path, commit = _commit_event(tmp_path)
+    ref = f"{path.relative_to(tmp_path).as_posix()}@{commit}"
+    text = _git(tmp_path, "show", f"{commit}:{path.relative_to(tmp_path).as_posix()}").stdout
+
+    assert protocol_mailbox.parse_committed_event_text(ref, text) == (
+        protocol_mailbox.load_committed_event_ref(tmp_path, ref)
+    )
+
+
+def test_pure_statement_parsers_preserve_duplicate_and_mismatch_rejection(tmp_path: Path):
+    _init_repo(tmp_path)
+    proposal_body = "\n".join(
+        (
+            "Task ID: task-1",
+            "Parent contract: sha256:" + "1" * 64,
+            "Contract revision: 1",
+            "Previous owners: director",
+            "Proposed owners: operator",
+            "Outcome: tested outcome",
+            "Finding refs: (none)",
+        )
+    )
+    path, commit = _commit_event(tmp_path, body=proposal_body)
+    ref = f"{path.relative_to(tmp_path).as_posix()}@{commit}"
+    event = protocol_mailbox.load_committed_event_ref(tmp_path, ref)
+
+    parsed = protocol_mailbox.parse_ownership_proposal_statement(event)
+    assert parsed.task_id == "task-1"
+    assert parsed.proposed_owners == ("operator",)
+
+    duplicate = protocol_mailbox.CommittedEventRef(
+        **{**event.__dict__, "text": event.text + "Task ID: duplicate\n"}
+    )
+    with pytest.raises(ValueError, match="exactly one"):
+        protocol_mailbox.parse_ownership_proposal_statement(duplicate)
+
+    wrong_kind = protocol_mailbox.CommittedEventRef(
+        **{**event.__dict__, "kind": "proposal-reply"}
+    )
+    with pytest.raises(ValueError, match="proposal"):
+        protocol_mailbox.parse_ownership_proposal_statement(wrong_kind)
+
+    evidence = protocol_mailbox.CommittedEventRef(
+        **{
+            **event.__dict__,
+            "kind": "dispatch-claim",
+            "text": event.text
+            + "Observed at: 2026-07-18T06:30:01Z\n"
+            + "Fresh work state: no fresh work\n"
+            + "Lock state: no active lock\n",
+        }
+    )
+    with pytest.raises(ValueError, match="observation time"):
+        protocol_mailbox.parse_takeover_evidence_statement(evidence)

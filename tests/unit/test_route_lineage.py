@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import subprocess
 
+import pytest
+
 import route_lineage
 
 
@@ -530,3 +532,341 @@ def test_delete_readd_same_filename_binds_current_tree_blob(tmp_path):
     assert routes[0].task_id == "demo-evil"
     assert not routes[0].effective
     assert any("self-candidate" in issue for issue in routes[0].issues)
+
+
+def _batch_repo(repo: Path, *, unrelated: int = 0) -> None:
+    _init_event_repo(repo)
+    sent = repo / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True, exist_ok=True)
+    target = sent / "2026-07-18T10-00-00Z-director-to-all-coordination.md"
+    target.write_text(
+        "# director -> all: route event\n\n"
+        "**When:** 2026-07-18T10:00:00Z · **From:** director (online)\n\n"
+        + _autonomous_body(task="target-task")
+        + "\n\nCursor at send: 0\n",
+        encoding="utf-8",
+    )
+    for index in range(unrelated):
+        second = index % 60
+        minute = (index // 60) % 60
+        hour = 11 + (index // 3600)
+        path = sent / (
+            f"2026-07-18T{hour:02d}-{minute:02d}-{second:02d}Z-"
+            "director2-to-all-coordination.md"
+        )
+        iso = f"2026-07-18T{hour:02d}:{minute:02d}:{second:02d}Z"
+        path.write_text(
+            "# director2 -> all: route event\n\n"
+            f"**When:** {iso} · **From:** director2 (online)\n\n"
+            + _autonomous_body(task=f"unrelated-{index}", owners="director2")
+            + "\n\nCursor at send: 0\n",
+            encoding="utf-8",
+        )
+    _git(repo, "add", "--", "coordination/mailbox/sent")
+    _git(repo, "commit", "-q", "-m", "route corpus")
+
+
+def test_batch_git_process_count_is_bounded_for_one_and_many_routes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    one = tmp_path / "one"
+    many = tmp_path / "many"
+    one.mkdir()
+    many.mkdir()
+    _batch_repo(one)
+    _batch_repo(many, unrelated=500)
+    real_run = subprocess.run
+    real_popen = subprocess.Popen
+    launches = 0
+
+    def counted_run(*args, **kwargs):
+        nonlocal launches
+        launches += 1
+        return real_run(*args, **kwargs)
+
+    def counted_popen(*args, **kwargs):
+        nonlocal launches
+        launches += 1
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", counted_run)
+    monkeypatch.setattr(subprocess, "Popen", counted_popen)
+    counts = []
+    for root in (one, many):
+        launches = 0
+        with route_lineage.RouteBatchReader(root) as reader:
+            routes = reader.load_task_routes("target-task")
+        assert len(routes) == 1
+        counts.append(launches)
+
+    assert counts[1] == counts[0]
+    assert counts[1] <= 6
+
+
+def test_batch_task_load_skips_immutable_validation_for_unrelated_tasks(tmp_path: Path):
+    _init_event_repo(tmp_path)
+    _root_contract(tmp_path, task="target-task")
+    _commit_event(
+        tmp_path,
+        sender="operator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T10-00-00Z",
+        body=_autonomous_body(
+            task="unrelated-task",
+            parent="coordination/mailbox/sent/missing.md@" + "0" * 40,
+            revision=1,
+            previous="director",
+            owners="operator",
+        ),
+    )
+
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        routes = reader.load_task_routes("target-task")
+
+    assert len(routes) == 1
+    assert routes[0].effective
+
+
+def test_batch_task_load_includes_every_same_task_route_and_rejects_fork(tmp_path: Path):
+    _init_event_repo(tmp_path)
+    _, parent_ref = _root_contract(tmp_path, task="demo-task")
+    _transfer_route(
+        tmp_path, task="demo-task", parent=parent_ref, new_owner="operator", minute=3
+    )
+    _transfer_route(
+        tmp_path, task="demo-task", parent=parent_ref, new_owner="operator2", minute=10
+    )
+
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        routes = reader.load_task_routes("demo-task")
+
+    assert len(routes) == 3
+    resolution = route_lineage.resolve_task_routes(routes, "demo-task")
+    assert resolution.authoritative is None
+    assert any("fork" in issue or "tip" in issue for issue in resolution.issues)
+
+
+def test_batch_takeover_uses_exact_statement_and_ancestry_proof(tmp_path: Path):
+    _init_event_repo(tmp_path)
+    _, parent_ref = _root_contract(tmp_path, task="takeover-task")
+    _, evidence_ref = _commit_event(
+        tmp_path,
+        sender="operator",
+        recipient="all",
+        kind="dispatch-claim",
+        timestamp="2026-07-18T10-00-00Z",
+        body="\n".join(
+            (
+                "Task ID: takeover-task",
+                f"Parent contract: {parent_ref}",
+                "Contract revision: 1",
+                "Observed at: 2026-07-18T10:00:00Z",
+                "Fresh work state: no fresh work",
+                "Lock state: no active lock",
+                "Finding refs: (none)",
+            )
+        ),
+    )
+    _, confirmation_ref = _commit_event(
+        tmp_path,
+        sender="operator2",
+        recipient="operator",
+        kind="acknowledgement",
+        timestamp="2026-07-18T10-01-00Z",
+        body="\n".join(
+            (
+                "Task ID: takeover-task",
+                f"Parent contract: {parent_ref}",
+                "Contract revision: 1",
+                "Proposed owner: operator",
+                f"Takeover claim ref: {evidence_ref}",
+                "Observed at: 2026-07-18T10:00:00Z",
+                "Finding refs: (none)",
+            )
+        ),
+    )
+    _commit_event(
+        tmp_path,
+        sender="operator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T10-02-00Z",
+        body=_autonomous_body(
+            task="takeover-task",
+            parent=parent_ref,
+            revision=1,
+            previous="director",
+            owners="operator",
+            proposal=evidence_ref,
+            acceptances=confirmation_ref,
+        ),
+    )
+
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        routes = reader.load_task_routes("takeover-task")
+
+    resolution = route_lineage.resolve_task_routes(routes, "takeover-task")
+    assert resolution.authoritative is not None
+    assert resolution.authoritative.owners == ("operator",)
+
+
+def test_batch_exact_ref_preserves_commit_type_mode_and_envelope_checks(tmp_path: Path):
+    _init_event_repo(tmp_path)
+    path, ref = _root_contract(tmp_path, task="demo-task")
+    tree = _git(tmp_path, "rev-parse", "HEAD^{tree}")
+    bad_commit_ref = f"{path.relative_to(tmp_path).as_posix()}@{tree}"
+
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        assert reader.load_route_ref(ref).effective
+        with pytest.raises(ValueError, match="commit object"):
+            reader.load_route_ref(bad_commit_ref)
+
+    _git(tmp_path, "update-index", "--chmod=+x", "--", path.relative_to(tmp_path).as_posix())
+    _git(tmp_path, "commit", "-q", "-m", "make route executable")
+    executable_ref = (
+        f"{path.relative_to(tmp_path).as_posix()}@{_git(tmp_path, 'rev-parse', 'HEAD')}"
+    )
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        with pytest.raises(ValueError, match="regular fixed-writer blob"):
+            reader.load_route_ref(executable_ref)
+
+
+def test_batch_delete_readd_and_dirty_worktree_bind_committed_body(tmp_path: Path):
+    _init_event_repo(tmp_path)
+    path, original_ref = _root_contract(tmp_path, task="demo-good")
+    rel = path.relative_to(tmp_path).as_posix()
+    _git(tmp_path, "rm", "-q", "--", rel)
+    _git(tmp_path, "commit", "-q", "-m", "delete original route")
+    _, readd_ref = _commit_event(
+        tmp_path,
+        sender="director",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T08-00-00Z",
+        body=_autonomous_body(task="demo-current"),
+    )
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("demo-current", "dirty"),
+        encoding="utf-8",
+    )
+
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        routes = reader.load_task_routes("demo-current")
+        historical = reader.load_route_ref(original_ref)
+
+    assert len(routes) == 1
+    assert routes[0].route_ref == readd_ref
+    assert routes[0].route_ref != original_ref
+    assert routes[0].task_id == "demo-current"
+    assert routes[0].body is not None and "dirty" not in routes[0].body
+    assert historical.task_id == "demo-good"
+
+
+def test_batch_candidate_scan_uses_exact_head_bodies_before_task_filter(tmp_path: Path):
+    _batch_repo(tmp_path, unrelated=1)
+    unrelated = next(
+        path
+        for path in (tmp_path / "coordination" / "mailbox" / "sent").iterdir()
+        if "director2" in path.name
+    )
+    unrelated.write_text(
+        unrelated.read_text(encoding="utf-8").replace("unrelated-0", "target-task"),
+        encoding="utf-8",
+    )
+
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        routes = reader.load_task_routes("target-task")
+
+    assert len(routes) == 1
+    assert routes[0].owners == ("director",)
+
+
+def test_batch_unreadable_object_fails_closed_in_full_loader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _batch_repo(tmp_path)
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        route_blob = next(
+            object_id
+            for path, (_mode, _kind, object_id) in reader._head_entries.items()
+            if path.endswith("-coordination.md")
+        )
+        original_cat = reader._cat
+
+        def unreadable(expression: str):
+            if expression == route_blob:
+                return None
+            return original_cat(expression)
+
+        monkeypatch.setattr(reader, "_cat", unreadable)
+        with pytest.raises(ValueError, match="unreadable"):
+            reader.load_all_routes()
+
+
+def test_batch_malformed_route_shaped_event_is_visible_to_resume(tmp_path: Path):
+    _init_event_repo(tmp_path)
+    _root_contract(tmp_path, task="demo-task")
+    _commit_event(
+        tmp_path,
+        sender="operator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T10-00-00Z",
+        body="Task ID: malformed-route\nOutcome contract: incomplete",
+    )
+
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        routes = reader.load_task_routes("demo-task")
+        issues = reader.issues
+
+    assert len(routes) == 1
+    assert any("malformed" in issue and "10-00-00" in issue for issue in issues)
+
+
+def test_batch_reader_closes_cat_file_on_success_and_error(tmp_path: Path):
+    _batch_repo(tmp_path)
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        assert reader.load_task_routes("target-task")
+        process = reader._cat_process
+        assert process is not None and process.poll() is None
+    assert process.poll() is not None
+    assert process.stdout is not None and process.stdout.closed
+    assert process.stderr is not None and process.stderr.closed
+
+    with pytest.raises(RuntimeError, match="sentinel"):
+        with route_lineage.RouteBatchReader(tmp_path) as reader:
+            reader.candidate_routes()
+            process = reader._cat_process
+            raise RuntimeError("sentinel")
+    assert process is not None and process.poll() is not None
+    assert process.stdout is not None and process.stdout.closed
+    assert process.stderr is not None and process.stderr.closed
+
+
+def test_non_git_route_loading_and_wrapper_remain_compatible(tmp_path: Path):
+    _write_route(
+        tmp_path,
+        "2026-07-12T09-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: ledger-b\nThis routes ledger work.\n",
+    )
+    _write_route(
+        tmp_path,
+        "2026-07-12T10-00-00Z-coordinator-to-all-status.md",
+        "Task-board: none; this is an awareness notice, not a route.\n",
+    )
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        direct = reader.load_all_routes()
+        issues = reader.issues
+
+    assert route_lineage.load_routes(tmp_path) == direct
+    assert len(direct) == 1 and direct[0].legacy
+    assert issues == ()
+
+
+def test_load_routes_wrapper_matches_batch_full_results_in_git(tmp_path: Path):
+    _batch_repo(tmp_path, unrelated=3)
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        direct = reader.load_all_routes()
+
+    assert route_lineage.load_routes(tmp_path) == direct
