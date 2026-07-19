@@ -391,6 +391,26 @@ def test_find_latest_target_route_rejects_same_task_fork(tmp_path):
         ledger_start_guard.find_latest_ledger_route(root, target)
 
 
+def test_resolve_latest_target_route_returns_the_selected_live_object(tmp_path):
+    import ledger_start_guard
+
+    root = _demo_root(tmp_path)
+    expected = _write_legacy_lineage_route(
+        root,
+        timestamp="2026-07-18T10-00-00Z",
+        task="demo-route",
+        keyword="demo",
+        generation=1,
+    )
+    target = target_binding.resolve_target(root, env={})
+
+    route = ledger_start_guard.resolve_latest_ledger_route(root, target)
+
+    assert route is not None
+    assert route.path == expected
+    assert route.body == expected.read_text(encoding="utf-8")
+
+
 def test_build_guard_reports_selected_task_lineage_failure(tmp_path):
     import ledger_start_guard
 

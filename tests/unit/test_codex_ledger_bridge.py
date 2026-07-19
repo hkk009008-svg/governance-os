@@ -317,3 +317,5 @@ def test_ledger_start_guard_surfaces_route_base_and_worktree_before_normal_check
         "status --short --branch"
     ) in out
     assert "normal target checkout may be stale; do not start product work there unless the route names it" in out
+    assert "env -u GIT_INDEX_FILE git log --oneline -5" not in out
+    assert "env -u GIT_INDEX_FILE git status --short\n" not in out
