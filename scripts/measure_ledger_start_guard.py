@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
 
-    root = Path.cwd().resolve(strict=False)
+    root = ledger_start_guard.PIPELINE_KERNEL.resolve(strict=False)
     counter = _GitProcessCounter(subprocess.Popen)
     original_popen = subprocess.Popen
     started = time.perf_counter()

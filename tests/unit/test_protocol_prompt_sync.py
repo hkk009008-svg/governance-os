@@ -348,6 +348,15 @@ def test_fast_resume_adapter_rules_are_thin_truthful_and_authority_free() -> Non
             )
 
 
+def test_ledger_adoption_names_canonical_resume_source_and_command_once() -> None:
+    text = _read("docs/protocol/codex/ledger-cli-adoption.md")
+    command = model.LEDGER_CLI_BRIDGE["guard_resume_command"]
+
+    assert "scripts/codex_protocol_model.py" in text
+    assert "LEDGER_CLI_BRIDGE" in text
+    assert text.count(command) == 1
+
+
 def _trigger_contract_text(path: str) -> str:
     return _compact(_read(path).replace("`", ""))
 

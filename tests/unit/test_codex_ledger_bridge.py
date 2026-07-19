@@ -164,9 +164,10 @@ def test_read_only_benchmark_reports_actual_classification_and_all_git_launches(
     route_ref = f"coordination/mailbox/sent/route.md@{head}"
     evaluator_calls = 0
 
-    def fake_build_resume(**_kwargs):
+    def fake_build_resume(**kwargs):
         nonlocal evaluator_calls
         evaluator_calls += 1
+        assert kwargs["root"] == root
         subprocess.run(
             ["git", "status", "--short"],
             cwd=root,
@@ -190,6 +191,7 @@ def test_read_only_benchmark_reports_actual_classification_and_all_git_launches(
         )
 
     monkeypatch.setattr(benchmark.ledger_start_guard, "build_resume", fake_build_resume)
+    monkeypatch.setattr(benchmark.ledger_start_guard, "PIPELINE_KERNEL", root)
     output = tmp_path / "benchmark.json"
     base_args = [
         "--seat",
@@ -203,7 +205,9 @@ def test_read_only_benchmark_reports_actual_classification_and_all_git_launches(
     with pytest.raises(SystemExit):
         benchmark.main([*base_args, "--root", str(root)])
     capsys.readouterr()
-    monkeypatch.chdir(root)
+    unrelated_cwd = tmp_path / "unrelated"
+    unrelated_cwd.mkdir()
+    monkeypatch.chdir(unrelated_cwd)
 
     rc = benchmark.main(
         [

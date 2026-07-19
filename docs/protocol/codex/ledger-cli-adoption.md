@@ -50,6 +50,8 @@ env -u GIT_INDEX_FILE git log --oneline -5
 env -u GIT_INDEX_FILE git status --short
 ```
 
+Canonical source: `scripts/codex_protocol_model.py`, `LEDGER_CLI_BRIDGE`.
+
 Fast resume is optional only for a named seat or coordinator continuing an
 unchanged already-routed local implementation or review by passing its exact
 current route ref to:
