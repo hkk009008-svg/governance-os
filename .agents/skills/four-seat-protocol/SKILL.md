@@ -18,6 +18,14 @@ env -u GIT_INDEX_FILE git log --oneline -5
 env -u GIT_INDEX_FILE git status --short
 ```
 
+Fast resume is optional only for a named seat or coordinator continuing an
+unchanged already-routed local implementation or review by passing its exact
+current route ref. Fresh, transplanted, ambiguous, or external-effect work uses
+ordinary fresh orientation. The classifications are `FAST RESUME: PASS`,
+`FULL ORIENTATION REQUIRED`, and `START GUARD: FAIL`; full orientation is an
+advisory fallback to ordinary startup, not `BLOCKED`, and fast resume grants no
+external-effect authority.
+
 Surface unread count and read relevant mailbox bodies before decisions. Only
 the concrete live seat consumes its cursor; coordinator has no cursor. Use
 `coordination/bin/consume-events <seat> [--to <timestamp>]` only intentionally.

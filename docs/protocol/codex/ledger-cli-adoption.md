@@ -50,6 +50,20 @@ env -u GIT_INDEX_FILE git log --oneline -5
 env -u GIT_INDEX_FILE git status --short
 ```
 
+Fast resume is optional only for a named seat or coordinator continuing an
+unchanged already-routed local implementation or review by passing its exact
+current route ref to:
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2 --resume-from <route-path>@<full-commit>
+```
+
+Fresh, transplanted, ambiguous, or external-effect work uses ordinary fresh
+orientation. The classifications are `FAST RESUME: PASS`, `FULL ORIENTATION
+REQUIRED`, and `START GUARD: FAIL`; full orientation is an advisory fallback to
+ordinary startup, not `BLOCKED`, and fast resume grants no external-effect
+authority.
+
 Coordinator:
 
 ```bash

@@ -122,6 +122,14 @@ For evidence-ledger work, start in Pipeline, read
 repo instructions. Pipeline remains the governance kernel; evidence-ledger owns
 product-local truth.
 
+Fast resume is optional only for a named seat or coordinator continuing an
+unchanged already-routed local implementation or review by passing its exact
+current route ref. Fresh, transplanted, ambiguous, or external-effect work uses
+ordinary fresh orientation. The classifications are `FAST RESUME: PASS`,
+`FULL ORIENTATION REQUIRED`, and `START GUARD: FAIL`; full orientation is an
+advisory fallback to ordinary startup, not `BLOCKED`, and fast resume grants no
+external-effect authority.
+
 ## Hot shared tree
 
 - Refresh `env -u GIT_INDEX_FILE git log --oneline -3` and scoped status before

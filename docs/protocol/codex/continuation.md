@@ -32,6 +32,14 @@ Consume only when intentionally authorized:
 coordination/bin/consume-events <seat> [--to <last-read-timestamp>]
 ```
 
+Fast resume is optional only for a named seat or coordinator continuing an
+unchanged already-routed local implementation or review by passing its exact
+current route ref. Fresh, transplanted, ambiguous, or external-effect work uses
+ordinary fresh orientation. The classifications are `FAST RESUME: PASS`,
+`FULL ORIENTATION REQUIRED`, and `START GUARD: FAIL`; full orientation is an
+advisory fallback to ordinary startup, not `BLOCKED`, and fast resume grants no
+external-effect authority.
+
 Coordinator is unpinned and never consumes a cursor. Ordinary Git and pytest
 use `env -u GIT_INDEX_FILE`; a seat index is only for deliberate cursor/status
 staging. Refresh HEAD, relevant mail, and scoped status before a write or gate.

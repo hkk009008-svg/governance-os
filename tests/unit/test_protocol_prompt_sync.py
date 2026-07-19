@@ -312,6 +312,42 @@ def _compact(text: str) -> str:
     return " ".join(text.split())
 
 
+FAST_RESUME_ADAPTER_SURFACES = (
+    "AGENTS.md",
+    ".agents/skills/four-seat-protocol/SKILL.md",
+    "docs/protocol/codex/continuation.md",
+    "docs/protocol/codex/ledger-cli-adoption.md",
+)
+
+
+def test_fast_resume_adapter_rules_are_thin_truthful_and_authority_free() -> None:
+    for path in FAST_RESUME_ADAPTER_SURFACES:
+        text = _compact(_read(path).replace("`", ""))
+        for phrase in (
+            "fresh, transplanted, ambiguous, or external-effect work",
+            "unchanged already-routed local implementation or review",
+            "exact current route ref",
+            "FAST RESUME: PASS",
+            "FULL ORIENTATION REQUIRED",
+            "START GUARD: FAIL",
+            "advisory fallback",
+            "not BLOCKED",
+            "no external-effect authority",
+        ):
+            assert phrase.casefold() in text.casefold(), (path, phrase)
+
+        for duplicated_checklist_detail in (
+            "target-dirty-outside-allowed-paths",
+            "expected-route-body-mismatch",
+            "mailbox-unavailable",
+            "route-candidate-issue",
+        ):
+            assert duplicated_checklist_detail not in text, (
+                path,
+                duplicated_checklist_detail,
+            )
+
+
 def _trigger_contract_text(path: str) -> str:
     return _compact(_read(path).replace("`", ""))
 

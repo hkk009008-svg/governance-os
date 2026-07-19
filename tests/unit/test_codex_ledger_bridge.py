@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import shlex
+import subprocess
 from pathlib import Path
+
+import pytest
 
 import codex_protocol_model as model
 import continuation_readiness
@@ -103,6 +107,132 @@ def test_ledger_start_guard_renderer_names_all_seat_first_commands():
             "env -u GIT_INDEX_FILE .venv/bin/python "
             f"scripts/ledger_start_guard.py --seat {seat} --wave 2"
         ) in rendered
+
+
+def test_ledger_start_guard_renderer_has_one_optional_exact_resume_command():
+    command = (
+        "scripts/ledger_start_guard.py --seat <seat> --wave 2 "
+        "--resume-from <route-path>@<full-commit>"
+    )
+    rendered = model.render_ledger_start_guard()
+
+    assert model.LEDGER_CLI_BRIDGE["guard_resume_command"] == command
+    assert model.LEDGER_CLI_BRIDGE["guard_start_command"] in rendered
+    assert rendered.count(command) == 1
+    for phrase in (
+        "named seat or coordinator",
+        "unchanged already-routed local implementation or review",
+        "fresh, transplanted, ambiguous, or external-effect work",
+        "FULL ORIENTATION REQUIRED",
+        "advisory fallback",
+        "not BLOCKED",
+        "no external-effect authority",
+    ):
+        assert phrase.casefold() in rendered.casefold()
+
+
+def test_read_only_benchmark_reports_actual_classification_and_all_git_launches(
+    tmp_path, capsys, monkeypatch
+):
+    benchmark_path = ROOT / "scripts/measure_ledger_start_guard.py"
+    assert benchmark_path.is_file(), "benchmark instrument is not implemented"
+
+    import measure_ledger_start_guard as benchmark
+    import ledger_start_guard
+
+    root = tmp_path / "Pipeline"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Benchmark Test"], cwd=root, check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "benchmark@example.test"],
+        cwd=root,
+        check=True,
+    )
+    (root / "tracked.txt").write_text("benchmark\n", encoding="utf-8")
+    subprocess.run(["git", "add", "--", "tracked.txt"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "benchmark base"], cwd=root, check=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    route_ref = f"coordination/mailbox/sent/route.md@{head}"
+    evaluator_calls = 0
+
+    def fake_build_resume(**_kwargs):
+        nonlocal evaluator_calls
+        evaluator_calls += 1
+        subprocess.run(
+            ["git", "status", "--short"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        process = subprocess.Popen(
+            ["git", "status", "--short"],
+            cwd=root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        process.communicate()
+        assert process.returncode == 0
+        return ledger_start_guard.ResumeResult(
+            ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED,
+            ("FULL ORIENTATION REQUIRED",),
+            ("live evidence requires ordinary orientation",),
+        )
+
+    monkeypatch.setattr(benchmark.ledger_start_guard, "build_resume", fake_build_resume)
+    output = tmp_path / "benchmark.json"
+    base_args = [
+        "--seat",
+        "director",
+        "--wave",
+        "2",
+        "--resume-from",
+        route_ref,
+    ]
+
+    with pytest.raises(SystemExit):
+        benchmark.main([*base_args, "--root", str(root)])
+    capsys.readouterr()
+    monkeypatch.chdir(root)
+
+    rc = benchmark.main(
+        [
+            *base_args,
+            "--output",
+            str(output),
+        ]
+    )
+
+    printed = capsys.readouterr().out
+    payload = json.loads(printed)
+    assert rc == 0
+    assert evaluator_calls == 1
+    assert list(payload) == [
+        "schema",
+        "classification",
+        "elapsed_seconds",
+        "git_processes",
+        "pipeline_head",
+        "resume_from",
+    ]
+    assert payload["schema"] == "ledger-start-guard-benchmark-v1"
+    assert payload["classification"] == "FULL ORIENTATION REQUIRED"
+    assert isinstance(payload["elapsed_seconds"], float)
+    assert payload["elapsed_seconds"] >= 0
+    assert payload["git_processes"] == 3
+    assert payload["pipeline_head"] == head
+    assert payload["resume_from"] == route_ref
+    assert output.read_text(encoding="utf-8").strip() == printed.strip()
 
 
 def test_model_verification_commands_are_current():

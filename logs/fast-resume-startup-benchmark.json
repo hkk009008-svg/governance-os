@@ -1,0 +1,8 @@
+{
+  "schema": "ledger-start-guard-benchmark-v1",
+  "classification": "FULL ORIENTATION REQUIRED",
+  "elapsed_seconds": 0.223448,
+  "git_processes": 20,
+  "pipeline_head": "dbaeb7e602d9c1968653c96cf90fa12705ef71d4",
+  "resume_from": "coordination/mailbox/sent/2026-07-18T16-22-27Z-coordinator-to-all-coordination.md@513f690ec837648f4edb4a973007fde995052650"
+}

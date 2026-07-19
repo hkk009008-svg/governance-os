@@ -712,7 +712,28 @@ def render_ledger_start_guard() -> str:
         f"{seat}: env -u GIT_INDEX_FILE .venv/bin/python {guard} --seat {seat} --wave 2"
         for seat in seats
     )
+    lines.extend(
+        (
+            "- Optional unchanged-lane resume:",
+            "  - env -u GIT_INDEX_FILE .venv/bin/python "
+            f"{LEDGER_CLI_BRIDGE['guard_resume_command']}",
+            "- Resume rules:",
+        )
+    )
+    lines.extend(f"  - {rule}" for rule in LEDGER_CLI_BRIDGE["guard_resume_rules"])
     return "\n".join(lines)
+
+
+LEDGER_CLI_BRIDGE["guard_resume_command"] = (
+    "scripts/ledger_start_guard.py --seat <seat> --wave 2 "
+    "--resume-from <route-path>@<full-commit>"
+)
+LEDGER_CLI_BRIDGE["guard_resume_rules"] = (
+    "Only a named seat or coordinator continuing an unchanged already-routed local implementation or review may use fast resume with the exact current route ref.",
+    "Fresh, transplanted, ambiguous, or external-effect work uses ordinary fresh orientation.",
+    "FULL ORIENTATION REQUIRED is an advisory fallback to the ordinary startup path, not BLOCKED.",
+    "Fast resume grants no external-effect authority.",
+)
 
 
 def render_codex_verification_commands() -> str:
