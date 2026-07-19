@@ -39,6 +39,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 import bus_unread  # de-degrade: real ref-bus unread for migrated (scalar) cursors
 import latest_handoff
 import protocol_mailbox
+import startup_snapshot
 from codex_protocol_model import CENTRAL_INVARIANT, MODEL_SOURCE
 
 SEATS = protocol_mailbox.RECEIVING_SEATS
@@ -95,12 +96,36 @@ def section(title: str):
     print(f"\n── {title} " + "─" * max(2, 58 - len(title)))
 
 
-def git_head(root: str):
+def git_head(root: str, snapshot: startup_snapshot.GitSnapshot):
     section("HEAD")
-    _, head, _ = run(["git", "log", "-1", "--format=%h  %s"], cwd=root)
-    _, branch, _ = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
-    print(f"branch {branch}")
-    print(head or "(no commits)")
+    print(f"branch {snapshot.branch or '(unavailable / detached)'}")
+    if snapshot.recent_commits:
+        short, separator, subject = snapshot.recent_commits[0].partition(" ")
+        print(f"{short}  {subject}" if separator else short)
+    elif snapshot.head:
+        print(snapshot.head)
+    else:
+        print("(unavailable)")
+    dirty_error = next(
+        (error for error in snapshot.errors if error.startswith("dirty paths")),
+        None,
+    )
+    if dirty_error:
+        print(f"dirty paths: (unavailable: {dirty_error})")
+    elif not snapshot.dirty_paths:
+        print("dirty paths: clean")
+    else:
+        print(f"dirty paths: {len(snapshot.dirty_paths)}")
+        for state in snapshot.dirty_paths:
+            suffix = (
+                f" <- {state.original_path}"
+                if state.original_path is not None
+                else ""
+            )
+            print(f"  {state.status} {state.path}{suffix}")
+    for error in snapshot.errors:
+        if error != dirty_error:
+            print(f"git snapshot: {error}")
     code, counts, _ = run(
         ["git", "rev-list", "--left-right", "--count", "origin/main...HEAD"],
         cwd=root,
@@ -112,70 +137,52 @@ def git_head(root: str):
         print("vs origin/main: (no upstream / offline)")
 
 
-def git_log(root: str, n: int):
+def git_log(snapshot: startup_snapshot.GitSnapshot, n: int):
     section(f"recent commits (last {n})")
-    _, out, _ = run(["git", "log", "--oneline", f"-{n}"], cwd=root)
-    print(out or "(none)")
+    if snapshot.recent_commits:
+        print("\n".join(snapshot.recent_commits))
+    elif any(error.startswith("recent commits") for error in snapshot.errors):
+        print("(unavailable)")
+    else:
+        print("(none)")
 
 
-def mailbox(root: str, seat: str):
+def mailbox(
+    root: str,
+    seat: str,
+    snapshot: startup_snapshot.MailboxSnapshot | None = None,
+):
     section(f"mailbox — unread for '{seat}' (live recompute, read-only)")
-    for line in mailbox_lines(root, seat):
+    for line in mailbox_lines(root, seat, snapshot):
         print(line)
 
 
-def mailbox_lines(root: str, seat: str) -> list[str]:
+def mailbox_lines(
+    root: str,
+    seat: str,
+    snapshot: startup_snapshot.MailboxSnapshot | None = None,
+) -> list[str]:
+    snapshot = snapshot or startup_snapshot.collect_mailbox_snapshot(Path(root), seat)
     lines: list[str] = []
-    seen = os.path.join(root, "coordination", "mailbox", "seen", f"{seat}.txt")
-    sent = os.path.join(root, "coordination", "mailbox", "sent")
-    cursor_dt = None
-    cursor_raw = "(missing)"
-    if os.path.exists(seen):
-        with open(seen) as fh:
-            cursor_raw = fh.readline().strip()
-        if bus_unread.is_migrated_cursor(cursor_raw):
-            # Migrated (Slice-2.5) seat: real unread lives on the signed ref-bus, NOT the
-            # legacy sent/*.md filename path (which returns 0 for a scalar cursor — a silent
-            # under-report). Short-circuit BEFORE _parse_cursor_ts so the `cursor_dt is None`
-            # "count everything" branch is never reached. None => a VISIBLE "(unavailable)"
-            # sentinel, never a silent 0 (silent-gate-degradation). Mirrors scripts/status.py
-            # collect_mailbox; the LIVE cursor is the ref (store.cursor_seq), not this scalar.
-            lines.append(f"cursor: {cursor_raw}")
-            n = bus_unread.bus_unread_count(root, seat)
-            if n is None:
-                lines.append("UNREAD: (unavailable: ref-bus)")
-            else:
-                lines.append(f"UNREAD: {n} / ref-bus")
-                if n:
-                    lines.append(
-                        "→ Rule #8: surface this count in your FIRST user-facing turn; "
-                        "consume via scripts/consume_bus.py " + seat
-                    )
-            return lines
-        cursor_dt = _parse_cursor_ts(cursor_raw)
+    cursor_raw = snapshot.cursor if snapshot.cursor is not None else "(missing)"
     lines.append(f"cursor: {cursor_raw}")
-    if not os.path.isdir(sent):
-        lines.append("no sent/ dir — 0 unread")
+    if snapshot.unavailable_reason is not None:
+        lines.append(f"UNREAD: (unavailable: {snapshot.unavailable_reason})")
         return lines
-    addressed = sorted(
-        f
-        for f in os.listdir(sent)
-        if f.endswith(".md")
-        and (f"-to-{seat}-" in f or "-to-all-" in f)
-    )
-    unread = []
-    for f in addressed:
-        ts = _filename_ts_to_dt(f)
-        if ts is None:
-            continue
-        if cursor_dt is None or ts > cursor_dt:
-            unread.append(f)
-    lines.append(f"UNREAD: {len(unread)}")
-    for f in unread[-12:]:  # newest tail, cap the print
-        lines.append(f"  • {f}")
+    unread = snapshot.unread_refs
+    migrated = bus_unread.is_migrated_cursor(snapshot.cursor)
+    source = " / ref-bus" if migrated else ""
+    lines.append(f"UNREAD: {len(unread)}{source}")
+    for ref in unread[-12:]:
+        lines.append(f"  • {ref}")
     if len(unread) > 12:
         lines.append(f"  … and {len(unread) - 12} older")
-    if unread:
+    if unread and migrated:
+        lines.append(
+            "→ Rule #8: surface this count in your FIRST user-facing turn; "
+            "consume via scripts/consume_bus.py " + seat
+        )
+    elif unread:
         lines.append(
             "→ Rule #8: surface this count in your FIRST user-facing turn; "
             "consume via coordination/bin/consume-events " + seat
@@ -238,11 +245,15 @@ def capacity_board(root: str, wave: str):
     print(f"→ exit {code} ({'valid' if code == 0 else 'blocking issues'})")
 
 
-def all_mailboxes(root: str):
+def all_mailboxes(
+    root: str,
+    snapshots: dict[str, startup_snapshot.MailboxSnapshot] | None = None,
+):
     section("mailboxes — all seats (live recompute, read-only)")
     for seat in SEATS:
         print(seat)
-        for line in mailbox_lines(root, seat):
+        snapshot = snapshots[seat] if snapshots is not None else None
+        for line in mailbox_lines(root, seat, snapshot):
             print(f"  {line}")
 
 
@@ -296,9 +307,13 @@ def smoke(root: str):
 def render_single_status(root: str, args) -> None:
     print(f"SEAT STATUS — {args.seat}   (read-only; nothing staged/committed)")
     print(f"repo: {root}")
-    git_head(root)
-    git_log(root, args.commits)
-    mailbox(root, args.seat)
+    git_snapshot = startup_snapshot.collect_git_snapshot(
+        Path(root), commits=args.commits
+    )
+    mailbox_snapshot = startup_snapshot.collect_mailbox_snapshot(Path(root), args.seat)
+    git_head(root, git_snapshot)
+    git_log(git_snapshot, args.commits)
+    mailbox(root, args.seat, mailbox_snapshot)
     heartbeats(root, args.seat, args.stale_min)
     if args.wave is not None:
         wave_gate(root, args.wave)
@@ -314,9 +329,16 @@ def render_single_status(root: str, args) -> None:
 def render_all_status(root: str, args) -> None:
     print("SEAT STATUS — all seats   (read-only; nothing staged/committed)")
     print(f"repo: {root}")
-    git_head(root)
-    git_log(root, args.commits)
-    all_mailboxes(root)
+    git_snapshot = startup_snapshot.collect_git_snapshot(
+        Path(root), commits=args.commits
+    )
+    mailbox_snapshots = {
+        seat: startup_snapshot.collect_mailbox_snapshot(Path(root), seat)
+        for seat in SEATS
+    }
+    git_head(root, git_snapshot)
+    git_log(git_snapshot, args.commits)
+    all_mailboxes(root, mailbox_snapshots)
     all_heartbeats(root, args.stale_min)
     latest_handoffs(root)
     if args.wave is not None:

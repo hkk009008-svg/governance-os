@@ -9,10 +9,14 @@ SEAT_STATUS_PATH = (
     Path(__file__).resolve().parents[2]
     / ".agents/skills/four-seat-protocol/scripts/seat_status.py"
 )
+CLAUDE_SEAT_STATUS_PATH = (
+    Path(__file__).resolve().parents[2]
+    / ".claude/skills/four-seat-protocol/scripts/seat_status.py"
+)
 
 
-def _load_seat_status():
-    spec = importlib.util.spec_from_file_location("seat_status_under_test", SEAT_STATUS_PATH)
+def _load_seat_status(path: Path = SEAT_STATUS_PATH, *, name: str = "seat_status_under_test"):
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -150,3 +154,105 @@ def test_main_single_seat_still_accepts_positional_seat_argument(
     assert rc == 0
     assert "SEAT STATUS — director" in out
     assert "mailbox — unread for 'director'" in out
+
+
+def test_seat_status_single_and_all_rendering_remain_compatible(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    seat_status = _load_seat_status(name="seat_status_compatibility")
+    git_snapshot = seat_status.startup_snapshot.GitSnapshot(
+        root=tmp_path,
+        head="a" * 40,
+        branch="main",
+        recent_commits=("aaaaaaa initial state",),
+        dirty_paths=(seat_status.startup_snapshot.GitPathState("??", "odd\npath.txt"),),
+        errors=(),
+    )
+    mailbox_snapshot = seat_status.startup_snapshot.MailboxSnapshot(
+        seat="director",
+        cursor="0",
+        unread_refs=("seq1:status:operator->director",),
+        unavailable_reason=None,
+    )
+    monkeypatch.setattr(
+        seat_status.startup_snapshot,
+        "collect_git_snapshot",
+        lambda root, *, commits: git_snapshot,
+    )
+    monkeypatch.setattr(
+        seat_status.startup_snapshot,
+        "collect_mailbox_snapshot",
+        lambda root, seat: mailbox_snapshot.__class__(
+            seat=seat,
+            cursor=mailbox_snapshot.cursor,
+            unread_refs=mailbox_snapshot.unread_refs,
+            unavailable_reason=None,
+        ),
+    )
+    monkeypatch.setattr(seat_status, "repo_root", lambda: str(tmp_path))
+    monkeypatch.setattr(seat_status, "run", _fake_run_for_all)
+
+    assert seat_status.main(["director", "--commits", "1"]) == 0
+    single = capsys.readouterr().out
+    assert "branch main" in single
+    assert "aaaaaaa  initial state" in single
+    assert "dirty paths: 1" in single
+    assert "  ?? odd\npath.txt" in single
+    assert "UNREAD: 1 / ref-bus" in single
+    assert "seq1:status:operator->director" in single
+
+    assert seat_status.main(["--all", "--commits", "1"]) == 0
+    shared = capsys.readouterr().out
+    assert shared.count("── HEAD ") == 1
+    assert shared.count("dirty paths: 1") == 1
+    assert "mailboxes — all seats" in shared
+
+
+def test_codex_and_claude_status_adapters_share_behavior(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    codex = _load_seat_status(name="codex_seat_status_adapter")
+    claude = _load_seat_status(
+        CLAUDE_SEAT_STATUS_PATH,
+        name="claude_seat_status_adapter",
+    )
+
+    def install_fakes(module) -> None:
+        git_snapshot = module.startup_snapshot.GitSnapshot(
+            root=tmp_path,
+            head="b" * 40,
+            branch="main",
+            recent_commits=("bbbbbbb aligned providers",),
+            dirty_paths=(),
+            errors=(),
+        )
+        monkeypatch.setattr(module, "repo_root", lambda: str(tmp_path))
+        monkeypatch.setattr(module, "run", _fake_run_for_all)
+        monkeypatch.setattr(
+            module.startup_snapshot,
+            "collect_git_snapshot",
+            lambda root, *, commits: git_snapshot,
+        )
+        monkeypatch.setattr(
+            module.startup_snapshot,
+            "collect_mailbox_snapshot",
+            lambda root, seat: module.startup_snapshot.MailboxSnapshot(
+                seat=seat,
+                cursor="0",
+                unread_refs=(),
+                unavailable_reason=None,
+            ),
+        )
+
+    install_fakes(codex)
+    install_fakes(claude)
+
+    assert codex.main(["director", "--commits", "1"]) == 0
+    codex_output = capsys.readouterr().out
+    assert claude.main(["director", "--commits", "1"]) == 0
+    claude_output = capsys.readouterr().out
+    assert claude_output == codex_output
