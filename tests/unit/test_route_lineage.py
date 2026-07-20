@@ -294,11 +294,12 @@ def _autonomous_body(
     proposal: str = "self-candidate",
     acceptances: str = "self-candidate",
     findings: str = "(none)",
+    outcome: str = "deliver tested route behavior",
 ) -> str:
     return "\n".join(
         (
             f"Task ID: {task}",
-            "Outcome contract: deliver tested route behavior",
+            f"Outcome contract: {outcome}",
             f"Parent contract: {parent}",
             f"Contract revision: {revision}",
             f"Previous owners: {previous}",
@@ -647,7 +648,18 @@ def test_batch_task_load_includes_every_same_task_route_and_rejects_fork(tmp_pat
     assert any("fork" in issue or "tip" in issue for issue in resolution.issues)
 
 
-def test_batch_takeover_uses_exact_statement_and_ancestry_proof(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("outcome", "expected_owner"),
+    (
+        ("deliver tested route behavior", ("operator",)),
+        ("silently changed takeover outcome", None),
+    ),
+)
+def test_batch_takeover_preserves_parent_outcome(
+    tmp_path: Path,
+    outcome: str,
+    expected_owner: tuple[str, ...] | None,
+):
     _init_event_repo(tmp_path)
     _, parent_ref = _root_contract(tmp_path, task="takeover-task")
     _, evidence_ref = _commit_event(
@@ -700,6 +712,7 @@ def test_batch_takeover_uses_exact_statement_and_ancestry_proof(tmp_path: Path):
             owners="operator",
             proposal=evidence_ref,
             acceptances=confirmation_ref,
+            outcome=outcome,
         ),
     )
 
@@ -707,8 +720,17 @@ def test_batch_takeover_uses_exact_statement_and_ancestry_proof(tmp_path: Path):
         routes = reader.load_task_routes("takeover-task")
 
     resolution = route_lineage.resolve_task_routes(routes, "takeover-task")
-    assert resolution.authoritative is not None
-    assert resolution.authoritative.owners == ("operator",)
+    if expected_owner is not None:
+        assert resolution.authoritative is not None
+        assert resolution.authoritative.owners == expected_owner
+        assert resolution.issues == ()
+    else:
+        assert resolution.authoritative is None
+        assert resolution.winner is None
+        assert any(
+            "ownership evidence is ineffective" in issue
+            for issue in resolution.issues
+        )
 
 
 def test_batch_exact_ref_preserves_commit_type_mode_and_envelope_checks(tmp_path: Path):

@@ -487,6 +487,7 @@ def _validate_committed_autonomous(
             proposal=None,
             acceptances=(),
             finding_refs=candidate.finding_refs,
+            outcome=(candidate.outcome if candidate.outcome != parent.outcome else None),
             abandoned_takeover=True,
             takeover_evidence=evidence,
             takeover_confirmations=confirmations,
