@@ -1039,6 +1039,28 @@ def _legacy_resolution(routes: list[LineageRoute]) -> Resolution:
     )
 
 
+def _legacy_ancestor_closure(
+    selected: list[LineageRoute], known: list[LineageRoute]
+) -> list[LineageRoute]:
+    """Add only known legacy ancestors of the selected task routes."""
+
+    by_id = {route.route_id: route for route in known}
+    closure = list(selected)
+    included = {route.route_id for route in closure}
+    pending = list(selected)
+    while pending:
+        parent_id = pending.pop().lineage.parent_route_id
+        if parent_id is None or parent_id in included:
+            continue
+        parent = by_id.get(parent_id)
+        if parent is None:
+            continue
+        closure.append(parent)
+        included.add(parent.route_id)
+        pending.append(parent)
+    return closure
+
+
 def resolve_task_routes(routes: list[LineageRoute], task_id: str) -> Resolution:
     """Resolve one task independently and fail closed on every overlapping fork."""
 
@@ -1061,7 +1083,10 @@ def resolve_task_routes(routes: list[LineageRoute], task_id: str) -> Resolution:
 
     base: LineageRoute | None = None
     if legacy:
-        base_resolution = _legacy_resolution(legacy)
+        known_legacy = [route for route in routes if route.legacy]
+        base_resolution = _legacy_resolution(
+            _legacy_ancestor_closure(legacy, known_legacy)
+        )
         if base_resolution.issues or base_resolution.authoritative is None:
             return Resolution(
                 winner=None,

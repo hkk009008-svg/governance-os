@@ -491,6 +491,88 @@ def test_unrelated_task_continues_when_another_task_forks(tmp_path):
     assert healthy.authoritative.owners == ("director",)
 
 
+def test_task_resolution_retains_known_cross_task_legacy_ancestors(tmp_path):
+    _init_event_repo(tmp_path)
+    earlier_path, _ = _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T07-00-00Z",
+        body="Task-board: completed-task\nRoute generation: 4",
+    )
+    _, later_ref = _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T08-00-00Z",
+        body=(
+            "Task-board: active-task\n"
+            "Route generation: 5\n"
+            f"Supersedes route: {earlier_path.relative_to(tmp_path).as_posix()}"
+        ),
+    )
+    _, child_ref = _commit_event(
+        tmp_path,
+        sender="director",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T09-00-00Z",
+        body=_autonomous_body(
+            task="active-task",
+            parent=later_ref,
+            revision=6,
+            previous="director",
+        ),
+    )
+
+    resolution = route_lineage.resolve_task_routes(
+        route_lineage.load_routes(tmp_path), "active-task"
+    )
+
+    assert resolution.authoritative is not None
+    assert resolution.authoritative.route_ref == child_ref
+    assert resolution.issues == ()
+
+
+def test_task_resolution_rejects_genuinely_unknown_legacy_ancestor(tmp_path):
+    _init_event_repo(tmp_path)
+    _, later_ref = _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T08-00-00Z",
+        body=(
+            "Task-board: active-task\n"
+            "Route generation: 5\n"
+            "Supersedes route: coordination/mailbox/sent/"
+            "2026-07-18T07-00-00Z-coordinator-to-all-coordination.md"
+        ),
+    )
+    _commit_event(
+        tmp_path,
+        sender="director",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T09-00-00Z",
+        body=_autonomous_body(
+            task="active-task",
+            parent=later_ref,
+            revision=6,
+            previous="director",
+        ),
+    )
+
+    resolution = route_lineage.resolve_task_routes(
+        route_lineage.load_routes(tmp_path), "active-task"
+    )
+
+    assert resolution.authoritative is None
+    assert any("dangling parent" in issue for issue in resolution.issues)
+
+
 def test_unmarked_seat_coordination_is_not_a_route(tmp_path):
     path = _write_route(
         tmp_path,
