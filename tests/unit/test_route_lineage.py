@@ -824,6 +824,46 @@ def test_batch_malformed_route_shaped_event_is_visible_to_resume(tmp_path: Path)
     assert any("malformed" in issue and "10-00-00" in issue for issue in issues)
 
 
+def test_batch_issue_task_view_keeps_same_and_unattributed_but_not_other(
+    tmp_path: Path,
+):
+    _init_event_repo(tmp_path)
+    _root_contract(tmp_path, task="expected-task")
+    for timestamp, body in (
+        (
+            "2026-07-18T09-00-00Z",
+            "Task ID: expected-task\nOutcome contract: incomplete",
+        ),
+        (
+            "2026-07-18T10-00-00Z",
+            "Task ID: unrelated-task\nOutcome contract: incomplete",
+        ),
+        (
+            "2026-07-18T11-00-00Z",
+            "Task ID: first\nTask ID: second\nOutcome contract: incomplete",
+        ),
+    ):
+        _commit_event(
+            tmp_path,
+            sender="operator",
+            recipient="all",
+            kind="coordination",
+            timestamp=timestamp,
+            body=body,
+        )
+
+    with route_lineage.RouteBatchReader(tmp_path) as reader:
+        routes = reader.load_task_routes("expected-task")
+        global_issues = reader.issues
+        expected_issues = reader.issues_for_task("expected-task")
+
+    assert len(routes) == 1
+    assert any("09-00-00" in issue for issue in expected_issues)
+    assert any("11-00-00" in issue for issue in expected_issues)
+    assert not any("10-00-00" in issue for issue in expected_issues)
+    assert any("10-00-00" in issue for issue in global_issues)
+
+
 def test_batch_reader_closes_cat_file_on_success_and_error(tmp_path: Path):
     _batch_repo(tmp_path)
     with route_lineage.RouteBatchReader(tmp_path) as reader:

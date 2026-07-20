@@ -107,6 +107,12 @@ class Resolution:
     authoritative: LineageRoute | None = None
 
 
+@dataclass(frozen=True)
+class RouteCandidateIssue:
+    message: str
+    task_id: str | None
+
+
 def resolve_authoritative(routes: list[LineageRoute]) -> Resolution:
     """Resolve ADR-015 generations, returning no winner on any conflict."""
 
@@ -494,6 +500,29 @@ def _validate_committed_autonomous(
     return replace(candidate, effective=True)
 
 
+def _partial_route_task_id(path: Path, body: str) -> str | None:
+    match = _ROUTE_NAME_RE.fullmatch(path.name)
+    if match is None:
+        return None
+    label = (
+        "Task-board"
+        if match.group("sender") in {"coordinator", "coordinator2"}
+        else "Task ID"
+    )
+    prefix = f"{label}:"
+    values = [
+        line[len(prefix) :].strip().strip(chr(96))
+        for line in body.splitlines()
+        if line.startswith(prefix)
+    ]
+    if len(values) != 1 or not values[0]:
+        return None
+    value = values[0]
+    if value.casefold().startswith("none"):
+        return None
+    return value
+
+
 class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
     """Read route and ownership proof with a fixed number of Git processes."""
 
@@ -508,7 +537,7 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
         self._tree_cache: dict[str, dict[str, tuple[str, str]]] = {}
         self._candidate_cache: tuple[LineageRoute, ...] | None = None
         self._validated_cache: dict[str, LineageRoute] = {}
-        self._issues: list[str] = []
+        self._issues: list[RouteCandidateIssue] = []
 
     @staticmethod
     def _clean_env() -> dict[str, str]:
@@ -801,6 +830,14 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
             f"{label}:" in body for label in _AUTONOMOUS_FIELDS
         )
 
+    def _record_issue(self, message: str, *, path: Path, body: str) -> None:
+        self._issues.append(
+            RouteCandidateIssue(
+                message=message,
+                task_id=_partial_route_task_id(path, body),
+            )
+        )
+
     def _non_git_candidates(self) -> tuple[LineageRoute, ...]:
         sent = self.root / "coordination" / "mailbox" / "sent"
         if not sent.exists():
@@ -815,7 +852,11 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
                 continue
             if not is_route_event(path, body):
                 if self._looks_route_shaped(path, body):
-                    self._issues.append(f"malformed route-shaped event: {path.name}")
+                    self._record_issue(
+                        f"malformed route-shaped event: {path.name}",
+                        path=path,
+                        body=body,
+                    )
                 continue
             match = _ROUTE_NAME_RE.fullmatch(path.name)
             assert match is not None
@@ -850,13 +891,19 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
         routes: list[LineageRoute] = []
         for relative, path, body, object_id, mode in exact_bodies:
             if mode != "100644":
-                self._issues.append(
-                    f"malformed route-shaped event has non-regular mode: {path.name}"
+                self._record_issue(
+                    f"malformed route-shaped event has non-regular mode: {path.name}",
+                    path=path,
+                    body=body,
                 )
                 continue
             if not is_route_event(path, body):
                 if self._looks_route_shaped(path, body):
-                    self._issues.append(f"malformed route-shaped event: {path.name}")
+                    self._record_issue(
+                        f"malformed route-shaped event: {path.name}",
+                        path=path,
+                        body=body,
+                    )
                 continue
             match = _ROUTE_NAME_RE.fullmatch(path.name)
             assert match is not None
@@ -940,7 +987,16 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
 
     @property
     def issues(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(self._issues))
+        return tuple(dict.fromkeys(issue.message for issue in self._issues))
+
+    def issues_for_task(self, task_id: str) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                issue.message
+                for issue in self._issues
+                if issue.task_id in {None, task_id}
+            )
+        )
 
 
 def validate_committed_route_effectiveness(root: Path, route_ref: str) -> LineageRoute:
