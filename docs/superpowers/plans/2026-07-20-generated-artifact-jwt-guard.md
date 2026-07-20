@@ -199,12 +199,12 @@ Do not stage or commit yet; the combined Task 3 gate and both final-byte reviews
 - Consumes: Task 1 GREEN semantic guard and the preserved Task 3 implementation/review-finding fixes.
 - Produces: one local evidence-ledger Task 3 commit and one immutable actual-range verify-request.
 
-- [ ] **Step 1: Run the combined focused suite**
+- [ ] **Step 1: Run the six-file combined focused suite**
 
 Run from `web`:
 
 ```bash
-npm test -- src/api/owner-settings-api.test.ts src/features/auth/session.test.ts src/features/recovery/pending-journal.test.ts src/features/recovery/command-runner.test.ts src/app/AppController.test.ts
+npm test -- src/api/owner-settings-api.test.ts src/config/env.test.ts src/features/auth/session.test.ts src/features/recovery/pending-journal.test.ts src/features/recovery/command-runner.test.ts src/app/AppController.test.ts
 ```
 
 Expected: all 73 tests pass.
