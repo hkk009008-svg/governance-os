@@ -353,26 +353,47 @@ def test_replaced_forked_or_ineffective_route_requires_full_orientation(tmp_path
     assert any("route" in reason for reason in result.reasons)
 
 
-def test_live_malformed_candidate_issue_forces_full_orientation(tmp_path):
+@pytest.mark.parametrize(
+    ("malformed_task", "expected_classification"),
+    [
+        (
+            "demo-fast-resume",
+            ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED,
+        ),
+        (
+            "unrelated-task",
+            ledger_start_guard.ResumeClassification.FAST_RESUME_PASS,
+        ),
+    ],
+)
+def test_malformed_route_issue_is_scoped_to_expected_task(
+    tmp_path,
+    malformed_task,
+    expected_classification,
+):
     root, _target, route_ref, _route = _make_lane(tmp_path)
-    malformed = (
-        root
-        / "coordination/mailbox/sent/2026-07-19T00-01-00Z-coordinator-to-all-coordination.md"
+    _commit_event(
+        root,
+        sender="operator",
+        recipient="all",
+        kind="coordination",
+        minute=1,
+        body=f"Task ID: {malformed_task}\nOutcome contract: incomplete",
     )
-    malformed.write_text(
-        "Task-board: demo-malformed\nTask-board: demo-duplicate\n",
-        encoding="utf-8",
-    )
-    _git(root, "add", "--", malformed.relative_to(root).as_posix())
-    _git(root, "commit", "-qm", "malformed route-shaped candidate")
 
     result = _resume(root, route_ref)
 
-    assert result.classification is ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED
-    assert any(
-        reason.startswith("route-candidate-issue: malformed route-shaped event:")
-        for reason in result.reasons
-    )
+    assert result.classification is expected_classification
+    if malformed_task == "demo-fast-resume":
+        assert any(
+            reason.startswith("route-candidate-issue:")
+            for reason in result.reasons
+        )
+    else:
+        assert not any(
+            reason.startswith("route-candidate-issue:")
+            for reason in result.reasons
+        )
 
 
 @pytest.mark.parametrize("change", ["worktree", "binding", "head"])
@@ -410,14 +431,14 @@ def test_changed_route_worktree_binding_or_target_head_requires_full_orientation
 
 def test_changed_or_ambiguous_ownership_requires_full_orientation(tmp_path, monkeypatch):
     root, _target, route_ref, _route = _make_lane(tmp_path)
-    original = ledger_start_guard.resolve_latest_ledger_route
+    original = ledger_start_guard._select_resume_task
 
     def ambiguous(*args, **kwargs):
-        route = original(*args, **kwargs)
-        assert route is not None
-        return dataclasses.replace(route, owners=())
+        expected, current, reasons = original(*args, **kwargs)
+        assert current is not None
+        return expected, dataclasses.replace(current, owners=()), reasons
 
-    monkeypatch.setattr(ledger_start_guard, "resolve_latest_ledger_route", ambiguous)
+    monkeypatch.setattr(ledger_start_guard, "_select_resume_task", ambiguous)
 
     result = _resume(root, route_ref)
 
@@ -525,32 +546,34 @@ def test_existing_kernel_route_or_binding_failure_remains_start_guard_fail(tmp_p
     assert result.reasons
 
 
-def test_resume_resolves_route_once_and_guard_git_processes_are_bounded(
+def test_resume_selects_exact_expected_task_without_target_wide_resolution(
     tmp_path, monkeypatch
 ):
     root, _target, route_ref, _route = _make_lane(tmp_path)
-    original_resolve = ledger_start_guard.resolve_latest_ledger_route
     original_popen = subprocess.Popen
-    calls = {"resolve": 0, "git": 0}
+    git_processes = 0
 
-    def counted_resolve(*args, **kwargs):
-        calls["resolve"] += 1
-        return original_resolve(*args, **kwargs)
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("resume called target-wide route selection")
 
     def counted_popen(*args, **kwargs):
+        nonlocal git_processes
         command = args[0] if args else kwargs.get("args", ())
         if command and Path(command[0]).name == "git":
-            calls["git"] += 1
+            git_processes += 1
         return original_popen(*args, **kwargs)
 
-    monkeypatch.setattr(ledger_start_guard, "resolve_latest_ledger_route", counted_resolve)
+    monkeypatch.setattr(
+        ledger_start_guard,
+        "resolve_latest_ledger_route",
+        forbidden,
+    )
     monkeypatch.setattr(subprocess, "Popen", counted_popen)
 
     result = _resume(root, route_ref)
 
     assert result.classification is ledger_start_guard.ResumeClassification.FAST_RESUME_PASS
-    assert calls["resolve"] == 1
-    assert calls["git"] <= 20
+    assert git_processes <= 20
 
 
 def test_full_orientation_is_exit_zero_and_never_prints_blocked(tmp_path, capsys):

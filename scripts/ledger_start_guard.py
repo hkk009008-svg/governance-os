@@ -92,6 +92,15 @@ def _resolve(path: Path) -> Path:
     return path.expanduser().resolve(strict=False)
 
 
+def _route_matches_target(route: route_lineage.LineageRoute, target: target_binding.TargetBinding) -> bool:
+    if route.path is None or route.body is None:
+        return False
+    searchable = ((route.task_id or "").lower(), route.body.lower())
+    return any(
+        keyword in value for keyword in target.route_keywords for value in searchable
+    ) or target.path.as_posix() in route.body
+
+
 def resolve_latest_ledger_route(
     root: Path,
     target: target_binding.TargetBinding | None = None,
@@ -104,16 +113,7 @@ def resolve_latest_ledger_route(
     routes = reader.load_all_routes() if reader is not None else route_lineage.load_routes(root)
     candidates: list[route_lineage.LineageRoute] = []
     for route in routes:
-        path = route.path
-        body = route.body
-        if path is None or body is None:
-            continue
-        body_lower = body.lower()
-        task_lower = (route.task_id or "").lower()
-        if any(keyword in task_lower for keyword in target.route_keywords) or (
-            any(keyword in body_lower for keyword in target.route_keywords)
-            or target.path.as_posix() in body
-        ):
+        if _route_matches_target(route, target):
             candidates.append(route)
     if not candidates:
         return None
@@ -723,6 +723,64 @@ def _fast_capsule(
     return ResumeResult(ResumeClassification.FAST_RESUME_PASS, lines, ())
 
 
+def _select_resume_task(
+    *,
+    root: Path,
+    target: target_binding.TargetBinding,
+    reader: route_lineage.RouteBatchReader,
+    resume_from: str,
+) -> tuple[
+    route_lineage.LineageRoute | None,
+    route_lineage.LineageRoute | None,
+    tuple[str, ...],
+]:
+    reasons: list[str] = []
+    if not protocol_mailbox.immutable_reference_is_canonical(resume_from):
+        return (
+            None,
+            None,
+            ("expected-route-invalid: expected a canonical path@full-commit reference",),
+        )
+    try:
+        expected = reader.load_route_ref(resume_from)
+    except (OSError, ValueError) as exc:
+        return None, None, (f"expected-route-unreadable: {exc}",)
+    if expected.task_id is None:
+        return expected, None, ("expected-task-unavailable: route has no task identity",)
+    if not _route_matches_target(expected, target):
+        reasons.append(
+            "expected-task-target-mismatch: route does not identify the selected target"
+        )
+
+    routes = reader.load_task_routes(expected.task_id)
+    resolution = route_lineage.resolve_task_routes(routes, expected.task_id)
+    reasons.extend(
+        f"route-candidate-issue: {issue}"
+        for issue in reader.issues_for_task(expected.task_id)
+    )
+    reasons.extend(f"route-state-changed: {issue}" for issue in resolution.issues)
+    current = resolution.authoritative
+    if current is None:
+        reasons.append(
+            f"route-state-changed: task {expected.task_id} has no authoritative route"
+        )
+    else:
+        try:
+            current = _actionable_route(root, current, reader=reader)
+        except RouteResolutionError as exc:
+            reasons.append(f"route-state-changed: {exc}")
+        if current.route_ref != resume_from:
+            reasons.append(
+                f"expected-route-mismatch: expected {resume_from}, "
+                f"current {current.route_ref or 'unavailable'}"
+            )
+        if current.body != expected.body:
+            reasons.append(
+                "expected-route-body-mismatch: exact route bodies differ"
+            )
+    return expected, current, tuple(dict.fromkeys(reasons))
+
+
 def build_resume(
     *,
     seat: str,
@@ -751,73 +809,31 @@ def build_resume(
     route: route_lineage.LineageRoute | None = None
     try:
         with route_lineage.RouteBatchReader(root) as reader:
-            try:
-                route = resolve_latest_ledger_route(root, target, reader=reader)
-            except RouteResolutionError as exc:
-                return _full_orientation(
-                    seat=seat,
-                    root=root,
-                    kernel=kernel,
-                    wave=wave,
-                    target=target,
-                    route=None,
-                    reasons=(f"route-state-changed: {exc}",),
-                )
-
-            reader_issues = reader.issues
-            guard = _build_guard_from_route(
-                seat=seat,
+            expected_route, current_route, selection_reasons = _select_resume_task(
                 root=root,
-                route=route,
-                kernel=kernel,
-                wave=wave,
                 target=target,
-                forbidden=forbidden,
+                reader=reader,
+                resume_from=resume_from,
             )
-            if not guard.ok:
-                if any("No active ledger" in error for error in guard.errors):
-                    return _start_guard_failure(seat, guard.errors)
-                return _full_orientation(
+            route = current_route or expected_route
+            reasons = list(selection_reasons)
+
+            if route is not None:
+                guard = _build_guard_from_route(
                     seat=seat,
                     root=root,
+                    route=route,
                     kernel=kernel,
                     wave=wave,
                     target=target,
-                    route=route,
-                    reasons=tuple(
+                    forbidden=forbidden,
+                )
+                if not guard.ok:
+                    reasons.extend(
                         f"route-guidance-invalid: {error}" for error in guard.errors
-                    ),
-                )
+                    )
 
-            reasons: list[str] = [
-                f"route-candidate-issue: {issue}" for issue in reader_issues
-            ]
-            expected_route: route_lineage.LineageRoute | None = None
-            if not protocol_mailbox.immutable_reference_is_canonical(resume_from):
-                reasons.append(
-                    "expected-route-invalid: expected a canonical path@full-commit reference"
-                )
-            else:
-                try:
-                    expected_route = reader.load_route_ref(resume_from)
-                except (OSError, ValueError) as exc:
-                    reasons.append(f"expected-route-unreadable: {exc}")
-
-            current_ref = route.route_ref if route is not None else None
-            if current_ref is None:
-                reasons.append(
-                    "current-route-ref-unavailable: current route has no immutable ref"
-                )
-            elif current_ref != resume_from:
-                reasons.append(
-                    f"expected-route-mismatch: expected {resume_from}, current {current_ref}"
-                )
-            if (
-                expected_route is not None
-                and route is not None
-                and expected_route.body != route.body
-            ):
-                reasons.append("expected-route-body-mismatch: exact route bodies differ")
+            current_ref = current_route.route_ref if current_route is not None else None
 
             guidance = RouteGuidance()
             if route is None or route.body is None:
