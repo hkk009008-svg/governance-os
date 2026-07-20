@@ -25,11 +25,23 @@ ordinary fresh orientation. The classifications are `FAST RESUME: PASS`,
 `FULL ORIENTATION REQUIRED`, and `START GUARD: FAIL`; full orientation is an
 advisory fallback to ordinary startup, not `BLOCKED`, and fast resume grants no
 external-effect authority.
+When fast resume falls back after collecting route and state evidence, full
+orientation includes that read-only orientation capsule without a second
+collection pass or any new authority.
 
 Surface unread count and read relevant mailbox bodies before decisions. Only
 the concrete live seat consumes its cursor; coordinator has no cursor. Use
 `coordination/bin/consume-events <seat> [--to <timestamp>]` only intentionally.
 Use `coordination/bin/send-event` as the fixed mailbox writer.
+
+Codex Fixed-Writer Launch: scripts/codex_protocol_model.py
+For an already-authorized exact fixed-writer action in the known managed
+Pipeline checkout, use the supported scoped execution profile on the first
+attempt. Scope any reusable prefix to coordination/bin/send-event plus the
+sender seat. This grants no publication authority; on failure report the exact
+writer error, use no alternate writer, and do not weaken the sandbox or fence.
+Outside that known context, use ordinary execution and infer no authority from
+this guidance.
 
 Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
 Own the routed outcome and choose the method. Seats may reroute or exchange

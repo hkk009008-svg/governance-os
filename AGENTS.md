@@ -96,6 +96,23 @@ For a committed next-seat trigger, use Codex task tools to discover/deduplicate,
 reuse one compatible task or automatically create a fresh missing task, send
 the exact trigger, wait, and reconcile. Never ask the user to relay a seat
 prompt. Task routing grants no seat or external-effect authority.
+After one exact trigger, monitor with wait_threads and its per-target cursor.
+Only a missing or unavailable wait handler permits a bounded read-only
+read_thread(turnLimit=1, includeOutputs=false) snapshot of the same task.
+Deduplicate by cursor and latest turn or message identity. If both transports
+fail, preserve the dispatch identity, perform at most one discovery refresh,
+and report ambiguity as one tooling blocker. Monitoring failure never
+redispatches, replaces the task, or changes seats.
+Leave an approval or user-input request for the user.
+
+Codex Fixed-Writer Launch: scripts/codex_protocol_model.py
+For an already-authorized exact fixed-writer action in the known managed
+Pipeline checkout, use the supported scoped execution profile on the first
+attempt. Scope any reusable prefix to coordination/bin/send-event plus the
+sender seat. This grants no publication authority; on failure report the exact
+writer error, use no alternate writer, and do not weaken the sandbox or fence.
+Outside that known context, use ordinary execution and infer no authority from
+this guidance.
 
 Delegation is an owner-chosen capacity tool, not a task-count or line-count
 mandate. Use it when it adds independent signal or useful capacity. Never run
@@ -135,6 +152,9 @@ ordinary fresh orientation. The classifications are `FAST RESUME: PASS`,
 `FULL ORIENTATION REQUIRED`, and `START GUARD: FAIL`; full orientation is an
 advisory fallback to ordinary startup, not `BLOCKED`, and fast resume grants no
 external-effect authority.
+When fast resume falls back after collecting route and state evidence, full
+orientation includes that read-only orientation capsule without a second
+collection pass or any new authority.
 
 ## Hot shared tree
 

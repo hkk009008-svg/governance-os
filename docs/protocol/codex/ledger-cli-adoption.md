@@ -65,6 +65,13 @@ orientation. The classifications are `FAST RESUME: PASS`, `FULL ORIENTATION
 REQUIRED`, and `START GUARD: FAIL`; full orientation is an advisory fallback to
 ordinary startup, not `BLOCKED`, and fast resume grants no external-effect
 authority.
+When fast resume falls back after collecting route and state evidence, full
+orientation includes that read-only orientation capsule without a second
+collection pass or any new authority.
+
+New target-bound routes use Target worktree, Accepted target HEAD, and
+## Target Allowed Paths. The parser retains historical aliases only for
+committed compatibility.
 
 Coordinator:
 

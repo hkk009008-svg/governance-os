@@ -386,15 +386,15 @@ COORDINATOR_INVARIANTS = (
 AUTOMATIC_TASK_ROUTING_REFERENCE = (
     "Automatic Seat-Task Routing: scripts/codex_protocol_model.py"
 )
-AUTOMATIC_TASK_ROUTING_RULES = (
+_AUTOMATIC_TASK_ROUTING_BASE_RULES = (
     "For a committed immutable trigger naming the next concrete seat, use Codex task tools before returning a prompt to the user.",
     "The dispatch identity is the trigger path and full commit, assigned seat, Pipeline checkout, and for review the exact base/head and required reviewer model.",
     "If the same dispatch identity is already in progress, monitor it; if it completed, reconcile its committed artifact instead of resending it.",
     "Reuse one unambiguous compatible seat task; if none exists or candidates are stale, incompatible, or ambiguous, automatically create a fresh local task in the saved Pipeline project.",
-    "Never ask the user to relay a seat prompt while Codex task tools are available; send the exact trigger, wait for the task, reconcile its committed result, and route any correction or next seat directly.",
-    "If Codex task tools are unavailable, preserve the exact trigger and report one concrete tooling blocker without asking the user to relay it.",
-    "A concrete live-seat Codex task may exercise only its committed authority; parent-scoped subagents do not publish live-seat events or formal GO, and task routing grants no external-effect authority.",
+    "Never ask the user to relay a seat prompt while Codex task tools are available; send the exact trigger and reconcile its committed result directly.",
+    "If discovery or dispatch tools are unavailable before a trigger is sent, preserve the exact trigger and report one concrete tooling blocker without asking the user to relay it.",
 )
+# The canonical tuple is completed below the model's anchor-sensitive definitions.
 
 PLANNING_RELAY_ORDER = ("director", "operator", "director2", "operator2")
 
@@ -746,6 +746,34 @@ def render_ledger_start_guard() -> str:
     return "\n".join(lines)
 
 
+AUTOMATIC_TASK_ROUTING_RULES = (
+    *_AUTOMATIC_TASK_ROUTING_BASE_RULES,
+    "After one exact trigger is sent, monitor with wait_threads and preserve its per-target cursor.",
+    "Only when wait_threads reports a missing or unavailable wait handler, read the same thread with read_thread(turnLimit=1, includeOutputs=false).",
+    "Snapshot monitoring uses bounded cadence, compares the cursor and latest turn or message identity, and reports only changes.",
+    "If both monitoring transports fail, preserve the dispatch identity and perform at most one normal discovery/deduplication refresh; unavailable or ambiguous state becomes one concrete tooling blocker.",
+    "Monitoring failure never resends the trigger, creates a replacement task, or changes seats; leave an approval or user-input request for the user.",
+    "A concrete live-seat Codex task may exercise only its committed authority; parent-scoped subagents do not publish live-seat events or formal GO, and task routing grants no external-effect authority.",
+)
+FIXED_WRITER_LAUNCH_REFERENCE = (
+    "Codex Fixed-Writer Launch: scripts/codex_protocol_model.py"
+)
+FIXED_WRITER_LAUNCH_RULES = (
+    "Publication authority must already name the exact sender, recipient, kind, target, and scope before Codex launches a writer.",
+    "In the known managed Pipeline checkout where the default sandbox cannot open the Git-common-dir writer fence, launch the exact coordination/bin/send-event command with the supported scoped execution profile on the first attempt.",
+    "Limit any reusable approval prefix to coordination/bin/send-event plus the concrete sender seat; never grant a generic shell, Python, Git, or filesystem prefix.",
+    "If that writer attempt fails, report the exact path, syscall, and error; do not direct-edit the mailbox, use an alternate writer, inject TMPDIR, or weaken the sandbox or fence.",
+    "Outside that known context, use ordinary execution and never infer scoped-profile authority from repository prose.",
+)
+
+
+def render_fixed_writer_launch() -> str:
+    """Return the Codex fixed-writer launch contract."""
+    return FIXED_WRITER_LAUNCH_REFERENCE + "\n" + "\n".join(
+        f"- {rule}" for rule in FIXED_WRITER_LAUNCH_RULES
+    )
+
+
 LEDGER_CLI_BRIDGE["guard_resume_command"] = (
     "scripts/ledger_start_guard.py --seat <seat> --wave 2 "
     "--resume-from <route-path>@<full-commit>"
@@ -1088,6 +1116,7 @@ def render_surface_summary() -> str:
     lines = [
         render_autonomous_seat_contract(),
         render_automatic_task_routing(),
+        render_fixed_writer_launch(),
         f"source: {MODEL_SOURCE}",
         f"central invariant: {CENTRAL_INVARIANT}",
         "durable artifacts: " + ", ".join(DURABLE_STATE_ARTIFACTS),

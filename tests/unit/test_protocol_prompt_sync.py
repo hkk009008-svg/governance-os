@@ -327,6 +327,14 @@ AUTOMATIC_TASK_ROUTING_SURFACES = (
     ".agents/skills/seat-coordinator/SKILL.md",
     "docs/protocol/codex/continuation.md",
 )
+FIXED_WRITER_LAUNCH_REFERENCE = (
+    "Codex Fixed-Writer Launch: scripts/codex_protocol_model.py"
+)
+FIXED_WRITER_LAUNCH_SURFACES = (
+    "AGENTS.md",
+    ".agents/skills/four-seat-protocol/SKILL.md",
+    "docs/protocol/codex/continuation.md",
+)
 
 
 def test_automatic_task_routing_model_is_direct_deduplicated_and_effect_free() -> None:
@@ -337,8 +345,13 @@ def test_automatic_task_routing_model_is_direct_deduplicated_and_effect_free() -
         "The dispatch identity is the trigger path and full commit, assigned seat, Pipeline checkout, and for review the exact base/head and required reviewer model.",
         "If the same dispatch identity is already in progress, monitor it; if it completed, reconcile its committed artifact instead of resending it.",
         "Reuse one unambiguous compatible seat task; if none exists or candidates are stale, incompatible, or ambiguous, automatically create a fresh local task in the saved Pipeline project.",
-        "Never ask the user to relay a seat prompt while Codex task tools are available; send the exact trigger, wait for the task, reconcile its committed result, and route any correction or next seat directly.",
-        "If Codex task tools are unavailable, preserve the exact trigger and report one concrete tooling blocker without asking the user to relay it.",
+        "Never ask the user to relay a seat prompt while Codex task tools are available; send the exact trigger and reconcile its committed result directly.",
+        "If discovery or dispatch tools are unavailable before a trigger is sent, preserve the exact trigger and report one concrete tooling blocker without asking the user to relay it.",
+        "After one exact trigger is sent, monitor with wait_threads and preserve its per-target cursor.",
+        "Only when wait_threads reports a missing or unavailable wait handler, read the same thread with read_thread(turnLimit=1, includeOutputs=false).",
+        "Snapshot monitoring uses bounded cadence, compares the cursor and latest turn or message identity, and reports only changes.",
+        "If both monitoring transports fail, preserve the dispatch identity and perform at most one normal discovery/deduplication refresh; unavailable or ambiguous state becomes one concrete tooling blocker.",
+        "Monitoring failure never resends the trigger, creates a replacement task, or changes seats; leave an approval or user-input request for the user.",
         "A concrete live-seat Codex task may exercise only its committed authority; parent-scoped subagents do not publish live-seat events or formal GO, and task routing grants no external-effect authority.",
     )
 
@@ -352,6 +365,15 @@ def test_automatic_task_routing_model_is_direct_deduplicated_and_effect_free() -
         "concrete live-seat Codex task",
         "tooling blocker",
         "grants no external-effect authority",
+        "wait_threads",
+        "per-target cursor",
+        "missing or unavailable wait handler",
+        "read_thread(turnLimit=1, includeOutputs=false)",
+        "bounded cadence",
+        "latest turn or message identity",
+        "at most one normal discovery",
+        "never resends the trigger",
+        "approval or user-input request",
     )
     for phrase in required:
         assert phrase.casefold() in rendered.casefold(), phrase
@@ -370,6 +392,14 @@ def test_automatic_task_routing_adapters_are_thin_and_synced() -> None:
         "reconcile",
         "Never ask the user to relay a seat prompt",
         "grants no seat or external-effect authority",
+        "monitor with wait_threads",
+        "per-target cursor",
+        "bounded read-only",
+        "read_thread(turnLimit=1, includeOutputs=false)",
+        "preserve the dispatch identity",
+        "at most one discovery refresh",
+        "never redispatches",
+        "approval or user-input request",
     )
     for path in AUTOMATIC_TASK_ROUTING_SURFACES:
         text = _compact(_read(path).replace("`", ""))
@@ -404,6 +434,67 @@ def test_fast_resume_adapter_rules_are_thin_truthful_and_authority_free() -> Non
                 path,
                 duplicated_checklist_detail,
             )
+
+
+def test_fast_resume_adapters_reuse_capsule_and_ledger_uses_canonical_grammar() -> None:
+    for path in FAST_RESUME_ADAPTER_SURFACES:
+        text = _compact(_read(path).replace("`", ""))
+        for phrase in (
+            "read-only orientation capsule",
+            "without a second collection pass",
+            "or any new authority",
+        ):
+            assert phrase.casefold() in text.casefold(), (path, phrase)
+
+    canonical_grammar = _compact(
+        """New target-bound routes use Target worktree, Accepted target HEAD, and
+        ## Target Allowed Paths. The parser retains historical aliases only for
+        committed compatibility."""
+    )
+    ledger_path = "docs/protocol/codex/ledger-cli-adoption.md"
+    ledger_text = _compact(_read(ledger_path).replace("`", ""))
+    assert ledger_text.count(canonical_grammar) == 1
+    for path in FAST_RESUME_ADAPTER_SURFACES:
+        if path != ledger_path:
+            assert canonical_grammar not in _compact(_read(path).replace("`", ""))
+
+
+def test_fixed_writer_launch_model_is_scoped_and_fail_closed() -> None:
+    rendered = _compact(model.render_fixed_writer_launch())
+
+    assert model.FIXED_WRITER_LAUNCH_RULES == (
+        "Publication authority must already name the exact sender, recipient, kind, target, and scope before Codex launches a writer.",
+        "In the known managed Pipeline checkout where the default sandbox cannot open the Git-common-dir writer fence, launch the exact coordination/bin/send-event command with the supported scoped execution profile on the first attempt.",
+        "Limit any reusable approval prefix to coordination/bin/send-event plus the concrete sender seat; never grant a generic shell, Python, Git, or filesystem prefix.",
+        "If that writer attempt fails, report the exact path, syscall, and error; do not direct-edit the mailbox, use an alternate writer, inject TMPDIR, or weaken the sandbox or fence.",
+        "Outside that known context, use ordinary execution and never infer scoped-profile authority from repository prose.",
+    )
+    for phrase in (
+        "authority must already",
+        "first attempt",
+        "concrete sender seat",
+        "exact path, syscall, and error",
+        "do not direct-edit",
+        "ordinary execution",
+    ):
+        assert phrase.casefold() in rendered.casefold()
+    assert FIXED_WRITER_LAUNCH_REFERENCE in model.render_surface_summary()
+
+
+def test_fixed_writer_launch_adapters_are_thin_and_synced() -> None:
+    required = (
+        "already-authorized exact fixed-writer action",
+        "known managed Pipeline checkout",
+        "supported scoped execution profile on the first attempt",
+        "no alternate writer",
+        "grants no publication authority",
+        "outside that known context, use ordinary execution",
+    )
+    for path in FIXED_WRITER_LAUNCH_SURFACES:
+        text = _compact(_read(path).replace(chr(96), ""))
+        assert text.count(FIXED_WRITER_LAUNCH_REFERENCE) == 1, path
+        for phrase in required:
+            assert phrase.casefold() in text.casefold(), (path, phrase)
 
 
 def test_ledger_adoption_names_canonical_resume_source_and_command_once() -> None:
