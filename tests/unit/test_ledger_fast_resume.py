@@ -641,6 +641,73 @@ def test_legacy_full_orientation_contains_complete_read_only_capsule(tmp_path):
     assert after == before
 
 
+def test_evidence_backed_full_orientation_reuses_collected_guidance_for_actions(
+    tmp_path,
+    monkeypatch,
+):
+    root, target, route_ref, route = _make_lane(tmp_path)
+    guidance = ledger_start_guard.parse_route_guidance_body(
+        route.read_text(encoding="utf-8")
+    )
+    guidance_calls = 0
+
+    def one_validated_read(_route):
+        nonlocal guidance_calls
+        guidance_calls += 1
+        if guidance_calls > 1:
+            raise AssertionError("evidence-backed FULL reread route guidance")
+        return guidance
+
+    monkeypatch.setattr(ledger_start_guard, "route_guidance", one_validated_read)
+    (root / "ambient.txt").write_text("dirty\n", encoding="utf-8")
+
+    result = _resume(root, route_ref)
+
+    capsule = "\n".join(result.lines)
+    assert (
+        result.classification
+        is ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED
+    )
+    assert guidance_calls == 1
+    for expected in (
+        f"Expected route ref: {route_ref}",
+        f"Current route ref: {route_ref}",
+        "Route body:",
+        route.read_text(encoding="utf-8"),
+        "Task ID: demo-fast-resume",
+        "Revision: 0",
+        "Current owners: director",
+        "Immutable finding refs: (none)",
+        "Routed outcome: deliver the exact demo outcome",
+        "Pipeline HEAD:",
+        "Pipeline branch:",
+        "Pipeline dirty: ?? ambient.txt",
+        "Target name: demo-app",
+        "Target registered repo: example/demo-app",
+        f"Target worktree: {target.as_posix()}",
+        "Target HEAD:",
+        "Target dirty: clean",
+        "Mailbox cursor:",
+        "Mailbox availability: available",
+        "Unread refs: (none)",
+        "Route base: (none)",
+        "Allowed paths: (none)",
+        "Reasons:",
+        "Ordinary startup actions:",
+        f"- cd {root.as_posix()}",
+        "- env -u GIT_INDEX_FILE .venv/bin/python "
+        "scripts/ledger_start_guard.py --seat director --wave 2",
+        "- env -u GIT_INDEX_FILE .venv/bin/python "
+        ".agents/skills/four-seat-protocol/scripts/seat_status.py director --wave 2",
+        "- read Pipeline route body: " + route.relative_to(root).as_posix(),
+        f"- route worktree: {target.as_posix()}",
+        "- normal target checkout may be stale; do not start product work there "
+        "unless the route names it",
+        "External effects authorized: none by fast resume",
+    ):
+        assert expected in capsule
+
+
 def test_fast_capsule_contains_exact_body_state_ownership_and_no_effect_authority(tmp_path):
     root, target, route_ref, route = _make_lane(tmp_path)
 

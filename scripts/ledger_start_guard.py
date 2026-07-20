@@ -316,18 +316,15 @@ def _seat_status_command(seat: str, wave: int) -> str:
     )
 
 
-def first_commands(
+def _first_commands_from_guidance(
     seat: str,
     wave: int,
     kernel: Path,
     route: Path,
-    target: target_binding.TargetBinding | None = None,
+    target: target_binding.TargetBinding,
+    guidance: RouteGuidance,
 ) -> tuple[str, ...]:
-    """Return the ordered commands/instructions a target-routed seat must start with."""
-    if target is None:
-        target = target_binding.resolve_target()
     route_ref = _safe_relative(route, kernel)
-    guidance = route_guidance(route)
     commands = [
         f"cd {_display(kernel)}",
         (
@@ -362,6 +359,27 @@ def first_commands(
             "coordinator may reconcile ledger evidence only; no evidence-ledger product fixes"
         )
     return tuple(commands)
+
+
+def first_commands(
+    seat: str,
+    wave: int,
+    kernel: Path,
+    route: Path,
+    target: target_binding.TargetBinding | None = None,
+) -> tuple[str, ...]:
+    """Return the ordered commands/instructions a target-routed seat must start with."""
+    if target is None:
+        target = target_binding.resolve_target()
+    return _first_commands_from_guidance(
+        seat,
+        wave,
+        kernel,
+        route,
+        target,
+        route_guidance(route),
+    )
+
 
 def _base_guard_errors(
     *,
@@ -597,8 +615,18 @@ def _ordinary_actions(
     wave: int,
     target: target_binding.TargetBinding | None,
     route: route_lineage.LineageRoute | None,
+    guidance: RouteGuidance | None = None,
 ) -> tuple[str, ...]:
     if target is not None and route is not None and route.path is not None:
+        if guidance is not None:
+            return _first_commands_from_guidance(
+                seat,
+                wave,
+                kernel,
+                route.path,
+                target,
+                guidance,
+            )
         try:
             return first_commands(seat, wave, kernel, route.path, target)
         except RouteResolutionError:
@@ -726,6 +754,7 @@ def _full_orientation(
             wave=wave,
             target=target,
             route=route,
+            guidance=evidence.guidance if evidence is not None else None,
         )
     )
     lines.append("External effects authorized: none by fast resume")
