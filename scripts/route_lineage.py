@@ -1039,25 +1039,41 @@ def _legacy_resolution(routes: list[LineageRoute]) -> Resolution:
     )
 
 
-def _legacy_ancestor_closure(
+def _legacy_overlap_closure(
     selected: list[LineageRoute], known: list[LineageRoute]
 ) -> list[LineageRoute]:
-    """Add only known legacy ancestors of the selected task routes."""
+    """Add known ancestors and sibling children along selected parent paths."""
 
     by_id = {route.route_id: route for route in known}
+    children_by_parent: dict[str, list[LineageRoute]] = {}
+    for route in known:
+        parent_id = route.lineage.parent_route_id
+        if parent_id is not None:
+            children_by_parent.setdefault(parent_id, []).append(route)
     closure = list(selected)
     included = {route.route_id for route in closure}
     pending = list(selected)
+    traversed: set[str] = set()
     while pending:
-        parent_id = pending.pop().lineage.parent_route_id
-        if parent_id is None or parent_id in included:
+        route = pending.pop()
+        if route.route_id in traversed:
+            continue
+        traversed.add(route.route_id)
+        parent_id = route.lineage.parent_route_id
+        if parent_id is None:
             continue
         parent = by_id.get(parent_id)
         if parent is None:
             continue
-        closure.append(parent)
-        included.add(parent.route_id)
-        pending.append(parent)
+        if parent.route_id not in included:
+            closure.append(parent)
+            included.add(parent.route_id)
+        if parent.route_id not in traversed:
+            pending.append(parent)
+        for sibling in children_by_parent.get(parent_id, ()):
+            if sibling.route_id not in included:
+                closure.append(sibling)
+                included.add(sibling.route_id)
     return closure
 
 
@@ -1085,7 +1101,7 @@ def resolve_task_routes(routes: list[LineageRoute], task_id: str) -> Resolution:
     if legacy:
         known_legacy = [route for route in routes if route.legacy]
         base_resolution = _legacy_resolution(
-            _legacy_ancestor_closure(legacy, known_legacy)
+            _legacy_overlap_closure(legacy, known_legacy)
         )
         if base_resolution.issues or base_resolution.authoritative is None:
             return Resolution(

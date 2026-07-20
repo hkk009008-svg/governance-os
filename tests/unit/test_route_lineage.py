@@ -536,6 +536,119 @@ def test_task_resolution_retains_known_cross_task_legacy_ancestors(tmp_path):
     assert resolution.issues == ()
 
 
+def test_task_resolution_rejects_known_cross_task_sibling_fork(tmp_path):
+    _init_event_repo(tmp_path)
+    ancestor_path, _ = _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T07-00-00Z",
+        body="Task-board: completed-task\nRoute generation: 4",
+    )
+    _, selected_base_ref = _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T08-00-00Z",
+        body=(
+            "Task-board: active-task\n"
+            "Route generation: 5\n"
+            f"Supersedes route: {ancestor_path.relative_to(tmp_path).as_posix()}"
+        ),
+    )
+    _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T08-30-00Z",
+        body=(
+            "Task-board: sibling-task\n"
+            "Route generation: 5\n"
+            f"Supersedes route: {ancestor_path.relative_to(tmp_path).as_posix()}"
+        ),
+    )
+    _commit_event(
+        tmp_path,
+        sender="director",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T09-00-00Z",
+        body=_autonomous_body(
+            task="active-task",
+            parent=selected_base_ref,
+            revision=6,
+            previous="director",
+        ),
+    )
+
+    resolution = route_lineage.resolve_task_routes(
+        route_lineage.load_routes(tmp_path), "active-task"
+    )
+
+    assert resolution.authoritative is None
+    assert any("forked lineage" in issue for issue in resolution.issues)
+
+
+def test_task_resolution_ignores_later_cross_task_successor(tmp_path):
+    _init_event_repo(tmp_path)
+    ancestor_path, _ = _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T07-00-00Z",
+        body="Task-board: completed-task\nRoute generation: 4",
+    )
+    selected_base_path, selected_base_ref = _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T08-00-00Z",
+        body=(
+            "Task-board: active-task\n"
+            "Route generation: 5\n"
+            f"Supersedes route: {ancestor_path.relative_to(tmp_path).as_posix()}"
+        ),
+    )
+    _, child_ref = _commit_event(
+        tmp_path,
+        sender="director",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T09-00-00Z",
+        body=_autonomous_body(
+            task="active-task",
+            parent=selected_base_ref,
+            revision=6,
+            previous="director",
+        ),
+    )
+    _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T10-00-00Z",
+        body=(
+            "Task-board: later-task\n"
+            "Route generation: 6\n"
+            f"Supersedes route: {selected_base_path.relative_to(tmp_path).as_posix()}"
+        ),
+    )
+
+    resolution = route_lineage.resolve_task_routes(
+        route_lineage.load_routes(tmp_path), "active-task"
+    )
+
+    assert resolution.authoritative is not None
+    assert resolution.authoritative.route_ref == child_ref
+    assert resolution.issues == ()
+
+
 def test_task_resolution_rejects_genuinely_unknown_legacy_ancestor(tmp_path):
     _init_event_repo(tmp_path)
     _, later_ref = _commit_event(
