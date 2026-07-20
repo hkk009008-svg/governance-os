@@ -49,14 +49,12 @@ def _route_body(
     proposal: str = "self-candidate",
     acceptances: str = "self-candidate",
 ) -> str:
-    allowed = ""
-    if allowed_paths:
-        allowed = (
-            "\n## Allowed Paths\n"
-            + "".join(f"- {path}\n" for path in allowed_paths)
-            + allowed_section_suffix
-            + "\n## Route Metadata\n"
-        )
+    allowed = (
+        "\n## Target Allowed Paths\n"
+        + "".join(f"- {path}\n" for path in allowed_paths)
+        + allowed_section_suffix
+        + "\n## Route Metadata\n"
+    )
     return (
         f"# {sender} -> all: autonomous demo route\n\n"
         f"**When:** 2026-07-19T00:00:00Z · **From:** {sender} (online)\n\n"
@@ -592,6 +590,57 @@ def test_full_orientation_is_exit_zero_and_never_prints_blocked(tmp_path, capsys
     assert "BLOCKED" not in out
 
 
+def test_legacy_full_orientation_contains_complete_read_only_capsule(tmp_path):
+    root, target, _route_ref, _route = _make_lane(tmp_path)
+    legacy_ref = _commit_event(
+        root,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        minute=1,
+        body=(
+            "Task-board: demo-legacy-only\n"
+            f"Target worktree: {target.as_posix()}\n"
+            f"Accepted target HEAD: {_git(target, 'rev-parse', 'HEAD')}\n"
+            "\n## Target Allowed Paths\n"
+            "- tracked.txt\n"
+            "\n## Route Metadata"
+        ),
+    )
+    before = _snapshot_bytes(root)
+
+    result = _resume(root, legacy_ref)
+
+    after = _snapshot_bytes(root)
+    capsule = "\n".join(result.lines)
+    assert result.classification is ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED
+    for expected in (
+        f"Expected route ref: {legacy_ref}",
+        f"Current route ref: {legacy_ref}",
+        "Route body:",
+        "Task ID: demo-legacy-only",
+        "Revision: (legacy)",
+        "Current owners: (none)",
+        "Immutable finding refs: (none)",
+        "Routed outcome: (legacy route body governs)",
+        "Pipeline HEAD:",
+        "Pipeline branch:",
+        "Pipeline dirty:",
+        f"Target worktree: {target.as_posix()}",
+        "Target HEAD:",
+        "Target dirty:",
+        "Mailbox cursor:",
+        "Mailbox availability: available",
+        "Unread refs: (none)",
+        "Allowed paths: tracked.txt",
+        "Reasons:",
+        "Ordinary startup actions:",
+        "External effects authorized: none by fast resume",
+    ):
+        assert expected in capsule
+    assert after == before
+
+
 def test_fast_capsule_contains_exact_body_state_ownership_and_no_effect_authority(tmp_path):
     root, target, route_ref, route = _make_lane(tmp_path)
 
@@ -608,7 +657,7 @@ def test_fast_capsule_contains_exact_body_state_ownership_and_no_effect_authorit
     assert "Current owners: director" in capsule
     assert target.as_posix() in capsule
     assert _git(target, "rev-parse", "HEAD") in capsule
-    assert "Unread: 0" in capsule
+    assert "Unread refs: (none)" in capsule
     assert "Routed outcome: deliver the exact demo outcome" in capsule
     assert "External effects authorized: none by fast resume" in capsule
 
@@ -767,6 +816,22 @@ def test_allowed_path_section_rejects_prose_after_a_valid_bullet(tmp_path):
         is ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED
     )
     assert any(reason.startswith("route-guidance-invalid:") for reason in result.reasons)
+
+
+def test_legacy_route_guidance_aliases_remain_parseable(tmp_path):
+    target = tmp_path / "target"
+    guidance = ledger_start_guard.parse_route_guidance_body(
+        f"Route worktree: {target}\n"
+        f"Target reviewed head: {'a' * 40}\n"
+        "\n## Allowed Paths\n"
+        "- legacy/path.py\n"
+    )
+
+    assert guidance == ledger_start_guard.RouteGuidance(
+        worktree=target.as_posix(),
+        accepted_target_head="a" * 40,
+        allowed_paths=("legacy/path.py",),
+    )
 
 
 def test_route_guidance_is_strict_and_never_infers_path_scope_from_prose(tmp_path):

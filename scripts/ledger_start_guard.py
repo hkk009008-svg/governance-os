@@ -635,6 +635,66 @@ def _ordinary_actions(
     return tuple(actions)
 
 
+def _evidence_capsule_lines(
+    evidence: ResumeEvidence,
+    target_value: target_binding.TargetBinding,
+) -> tuple[str, ...]:
+    route = evidence.route
+    target = evidence.target
+    owners = (
+        ", ".join(route.owners)
+        if route is not None and route.owners
+        else "(none)"
+    )
+    findings = (
+        ", ".join(route.finding_refs)
+        if route is not None and route.finding_refs
+        else "(none)"
+    )
+    unread = (
+        ", ".join(evidence.mailbox.unread_refs)
+        if evidence.mailbox.unread_refs
+        else "(none)"
+    )
+    allowed = (
+        ", ".join(evidence.guidance.allowed_paths)
+        if evidence.guidance.allowed_paths
+        else "(none)"
+    )
+    lines = [
+        f"Expected route ref: {evidence.expected_route_ref}",
+        f"Current route ref: {evidence.current_route_ref or '(unavailable)'}",
+    ]
+    if route is not None and route.body is not None:
+        lines.extend(("Route body:", route.body))
+    else:
+        lines.append("Route body: (unavailable)")
+    lines.extend(
+        (
+            f"Task ID: {route.task_id if route and route.task_id else '(unavailable)'}",
+            f"Revision: {route.revision if route and route.revision is not None else '(legacy)'}",
+            f"Current owners: {owners}",
+            f"Immutable finding refs: {findings}",
+            f"Routed outcome: {route.outcome if route and route.outcome else '(legacy route body governs)'}",
+            f"Pipeline HEAD: {evidence.pipeline.head or '(unavailable)'}",
+            f"Pipeline branch: {evidence.pipeline.branch or '(detached)'}",
+            f"Pipeline dirty: {_format_dirty(evidence.pipeline)}",
+            f"Target name: {target_value.name}",
+            f"Target registered repo: {target_value.repository}",
+            f"Target worktree: {target.root.as_posix() if target else '(unavailable)'}",
+            f"Target HEAD: {target.head if target and target.head else '(unavailable)'}",
+            f"Target dirty: {_format_dirty(target) if target else '(unavailable)'}",
+            f"Mailbox cursor: {evidence.mailbox.cursor or '(unavailable)'}",
+            "Mailbox availability: "
+            + (evidence.mailbox.unavailable_reason or "available"),
+            f"Unread refs: {unread}",
+            f"Route base: {evidence.guidance.base or '(none)'}",
+            f"Allowed paths: {allowed}",
+        )
+    )
+    return tuple(lines)
+
+
 def _full_orientation(
     *,
     seat: str,
@@ -644,6 +704,8 @@ def _full_orientation(
     target: target_binding.TargetBinding | None,
     route: route_lineage.LineageRoute | None,
     reasons: tuple[str, ...],
+    evidence: ResumeEvidence | None = None,
+    target_value: target_binding.TargetBinding | None = None,
 ) -> ResumeResult:
     lines = [
         ResumeClassification.FULL_ORIENTATION_REQUIRED.value,
@@ -651,6 +713,9 @@ def _full_orientation(
         "Reasons:",
     ]
     lines.extend(f"- {reason}" for reason in reasons)
+    if evidence is not None and target_value is not None:
+        lines.append("Orientation capsule:")
+        lines.extend(_evidence_capsule_lines(evidence, target_value))
     lines.append("Ordinary startup actions:")
     lines.extend(
         f"- {action}"
@@ -692,32 +757,10 @@ def _fast_capsule(
     evidence: ResumeEvidence,
     target_value: target_binding.TargetBinding,
 ) -> ResumeResult:
-    route = evidence.route
-    target = evidence.target
-    assert route is not None and target is not None and route.body is not None
-    owners = ", ".join(route.owners) if route.owners else "(none)"
-    findings = ", ".join(route.finding_refs) if route.finding_refs else "(none)"
     lines = (
         ResumeClassification.FAST_RESUME_PASS.value,
         f"Seat: {seat}",
-        f"Pipeline HEAD: {evidence.pipeline.head}",
-        f"Pipeline branch: {evidence.pipeline.branch or '(detached)'}",
-        f"Pipeline dirty: {_format_dirty(evidence.pipeline)}",
-        f"Route ref: {evidence.current_route_ref}",
-        "Route body:",
-        route.body,
-        f"Task ID: {route.task_id or '(legacy)'}",
-        f"Revision: {route.revision if route.revision is not None else '(legacy)'}",
-        f"Current owners: {owners}",
-        f"Immutable finding refs: {findings}",
-        f"Target name: {target_value.name}",
-        f"Target registered repo: {target_value.repository}",
-        f"Target worktree: {target.root.as_posix()}",
-        f"Target HEAD: {target.head}",
-        f"Target dirty: {_format_dirty(target)}",
-        f"Mailbox cursor: {evidence.mailbox.cursor}",
-        f"Unread: {len(evidence.mailbox.unread_refs)}",
-        f"Routed outcome: {route.outcome or '(legacy route body governs)'}",
+        *_evidence_capsule_lines(evidence, target_value),
         "External effects authorized: none by fast resume",
     )
     return ResumeResult(ResumeClassification.FAST_RESUME_PASS, lines, ())
@@ -937,6 +980,8 @@ def build_resume(
                     target=target,
                     route=route,
                     reasons=evidence.reasons,
+                    evidence=evidence,
+                    target_value=target,
                 )
             return _fast_capsule(
                 seat=seat,
