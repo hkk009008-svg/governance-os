@@ -1,0 +1,36 @@
+---
+description: Cursor adopts Pipeline governance-OS workflow habits
+alwaysApply: true
+---
+
+# Pipeline OS — Cursor side
+
+Pipeline is the governance kernel. Cursor does not replace Codex/Claude
+mailbox seats; it adopts the same durable-state habits.
+
+## Startup (non-trivial work)
+
+```bash
+cd /Users/hyungkoookkim/Pipeline
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE git log --oneline -5
+env -u GIT_INDEX_FILE git status --short --branch
+```
+
+Default posture: readiness bridge / local builder. Escalate to a named seat
+only when the user explicitly names one.
+
+## Habits
+
+- Durable state beats chat: git, mailbox, plans, tests, gate evidence.
+- `env -u GIT_INDEX_FILE` for ordinary git and shared checks.
+- Find definition, writers, callers, siblings before editing a symbol.
+- Smallest sufficient verification; tests prove only what they execute.
+- Push, merge, lock, mailbox publish, and spend need separate user authority.
+- Do not start product work from `~/Content`.
+
+## Cursor surfaces only
+
+Cursor workflow lives under `.cursor/rules/` and
+`docs/protocol/cursor/`. Do not rewrite Codex/Claude ledger bridges for
+Cursor-only retargets.

@@ -1,0 +1,36 @@
+---
+description: Cursor product target is FoulPlay (Godot game)
+alwaysApply: true
+---
+
+# Active Cursor target — FoulPlay
+
+Product work for this Cursor workflow targets
+`/Users/hyungkoookkim/FoulPlay`, not evidence-ledger.
+
+## Binding
+
+evidence-ledger remains the ADR registry default for Codex/Claude ledger
+seats. Cursor sessions must select FoulPlay explicitly:
+
+```bash
+export GOVERNANCE_TARGET=foulplay
+env -u GIT_INDEX_FILE .venv/bin/python scripts/target_binding.py --check
+env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py \
+  --seat <seat> --wave 2 --target foulplay
+```
+
+Bridge: `docs/protocol/cursor/foulplay-adoption.md`.
+
+## Product truth
+
+- Design: `FoulPlay/docs/superpowers/specs/2026-07-21-foul-play-design.md`
+- Roadmap: `FoulPlay/docs/superpowers/plans/ROADMAP.md`
+- Engine: Godot 4 / GDScript (`project.godot`)
+- Read FoulPlay `AGENTS.md` before product edits
+
+## Hygiene
+
+- Never stage FoulPlay paths from a Pipeline seat index.
+- Preserve unrelated dirty files in either repo.
+- Cross-repo handoffs record both Pipeline and FoulPlay HEADs.

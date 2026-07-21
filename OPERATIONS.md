@@ -72,8 +72,10 @@ target checkout. The normal checkout may be stale.
 ### 5.1 Target-Binding Registry (governance.toml, ADR-013)
 
 Which product repos this kernel can govern is declared in `governance.toml`,
-not in Python constants. `evidence-ledger` is the default target; a future
-work is onboarded by registering a new table — no code edits:
+not in Python constants. `evidence-ledger` is the default target; registered
+additional targets include `foulplay` (`~/FoulPlay`, Cursor bridge at
+`docs/protocol/cursor/foulplay-adoption.md`). A future work is onboarded by
+registering a new table — no code edits:
 
 ```toml
 [targets.my-new-app]
