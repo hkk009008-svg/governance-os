@@ -748,11 +748,11 @@ def render_ledger_start_guard() -> str:
 
 AUTOMATIC_TASK_ROUTING_RULES = (
     *_AUTOMATIC_TASK_ROUTING_BASE_RULES,
-    "After one exact trigger is sent, monitor with wait_threads and preserve its per-target cursor.",
-    "Only when wait_threads reports a missing or unavailable wait handler, read the same thread with read_thread(turnLimit=1, includeOutputs=false).",
-    "Snapshot monitoring uses bounded cadence, compares the cursor and latest turn or message identity, and reports only changes.",
-    "If both monitoring transports fail, preserve the dispatch identity and perform at most one normal discovery/deduplication refresh; unavailable or ambiguous state becomes one concrete tooling blocker.",
-    "Monitoring failure never resends the trigger, creates a replacement task, or changes seats; leave an approval or user-input request for the user.",
+    "After one exact trigger is sent, monitor with wait_threads and preserve its per-target cursor; a normal timeout continues wait_threads with that same cursor.",
+    "Only when wait_threads reports a missing or unavailable wait handler, read exactly one bounded snapshot of the same task with read_thread(turnLimit=1, includeOutputs=false).",
+    "After that one snapshot, reconcile progress at bounded cadence from immutable Git and mailbox artifacts; do not repeat thread snapshots.",
+    "If both that one snapshot and immutable artifact reconciliation are unavailable or ambiguous, preserve the dispatch identity, perform at most one normal discovery/deduplication refresh, and report one concrete tooling blocker.",
+    "Monitoring failure never resends the trigger, creates a replacement task, changes seats, or asks the user to relay the trigger; leave an approval or user-input request for the user.",
     "A concrete live-seat Codex task may exercise only its committed authority; parent-scoped subagents do not publish live-seat events or formal GO, and task routing grants no external-effect authority.",
 )
 FIXED_WRITER_LAUNCH_REFERENCE = (

@@ -824,7 +824,7 @@ def _select_resume_task(
             "expected-task-target-mismatch: route does not identify the selected target"
         )
 
-    routes = reader.load_task_routes(expected.task_id)
+    routes = reader.load_all_routes()
     resolution = route_lineage.resolve_task_routes(routes, expected.task_id)
     reasons.extend(
         f"route-candidate-issue: {issue}"

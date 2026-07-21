@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -49,7 +51,7 @@ def _write_packet(root: Path, packet: dict) -> None:
 
 def _write_route(root: Path, name: str, body: str) -> Path:
     sent = root / "coordination" / "mailbox" / "sent"
-    sent.mkdir(parents=True)
+    sent.mkdir(parents=True, exist_ok=True)
     path = sent / name
     path.write_text(body, encoding="utf-8")
     return path
@@ -137,19 +139,61 @@ def _capacity_split_route_body(extra: str = "") -> str:
     )
 
 
-def _autonomous_route_body(extra: str = "") -> str:
+def _autonomous_route_body(
+    extra: str = "",
+    *,
+    task_id: str = "autonomous-capacity-test",
+    parent: str = "none",
+    revision: int = 0,
+    previous_owners: str = "none",
+) -> str:
     return (
-        "Task ID: autonomous-capacity-test\n"
+        f"Task ID: {task_id}\n"
         "Outcome contract: seats can deliver the routed outcome\n"
-        "Parent contract: none\n"
-        "Contract revision: 0\n"
-        "Previous owners: none\n"
+        f"Parent contract: {parent}\n"
+        f"Contract revision: {revision}\n"
+        f"Previous owners: {previous_owners}\n"
         "Owners: director\n"
         "Proposal ref: self-candidate\n"
         "Acceptance refs: self-candidate\n"
         "Finding refs: none\n"
         f"{extra}"
     )
+
+
+def _git(repo: Path, *args: str) -> str:
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+        env=env,
+    ).stdout.strip()
+
+
+def _commit_legacy_parent(
+    root: Path,
+    *,
+    task_id: str = "autonomous-capacity-test",
+    generation: int = 3,
+) -> str:
+    _git(root, "init", "-q")
+    _git(root, "config", "user.name", "Capacity Test")
+    _git(root, "config", "user.email", "capacity@example.test")
+    path = _write_route(
+        root,
+        "2026-07-18T09-00-00Z-coordinator-to-all-coordination.md",
+        "# coordinator -> all: route event\n\n"
+        "**When:** 2026-07-18T09:00:00Z · **From:** coordinator (online)\n\n"
+        f"Task-board: {task_id}\nRoute generation: {generation}\n\n"
+        "Cursor at send: 0\n",
+    )
+    relative = path.relative_to(root).as_posix()
+    _git(root, "add", "--", relative)
+    _git(root, "commit", "-q", "-m", "add parent route")
+    return f"{relative}@{_git(root, 'rev-parse', 'HEAD')}"
 
 
 def _compact_token_body(
@@ -195,6 +239,109 @@ def test_autonomous_route_needs_no_packets_join_or_capacity_split(tmp_path: Path
     assert result.valid
     assert result.route_issues == ()
     assert result.advisories == []
+
+
+def test_autonomous_route_candidate_accepts_exact_effective_parent_continuity(
+    tmp_path: Path,
+):
+    parent_ref = _commit_legacy_parent(tmp_path, generation=3)
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-00-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            parent=parent_ref,
+            revision=4,
+            previous_owners="director",
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert result.route_issues == ()
+
+
+def test_autonomous_route_candidate_rejects_nonzero_root_revision(tmp_path: Path):
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-00-01Z-director-to-all-coordination.md",
+        _autonomous_route_body(revision=1),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "parent none requires contract revision 0" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_autonomous_route_candidate_rejects_unknown_exact_parent(tmp_path: Path):
+    parent_ref = _commit_legacy_parent(tmp_path)
+    missing_ref = parent_ref.replace(
+        "2026-07-18T09-00-00Z-coordinator-to-all-coordination.md",
+        "2026-07-18T08-59-59Z-coordinator-to-all-coordination.md",
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-00-02Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            parent=missing_ref,
+            revision=4,
+            previous_owners="director",
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "parent contract is not an effective committed route" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_autonomous_route_candidate_rejects_cross_task_parent(tmp_path: Path):
+    parent_ref = _commit_legacy_parent(tmp_path, task_id="different-task")
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-00-03Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            parent=parent_ref,
+            revision=4,
+            previous_owners="director",
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "parent Task ID does not match candidate Task ID" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_autonomous_route_candidate_rejects_nonconsecutive_revision(tmp_path: Path):
+    parent_ref = _commit_legacy_parent(tmp_path, generation=3)
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T10-00-04Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            parent=parent_ref,
+            revision=5,
+            previous_owners="director",
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "contract revision must equal parent revision plus one" in issue["message"]
+        for issue in result.route_issues
+    )
 
 
 def test_capacity_findings_are_advisory_to_autonomous_route_validity(tmp_path: Path):

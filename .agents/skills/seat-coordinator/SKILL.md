@@ -23,13 +23,16 @@ For a committed next-seat trigger, use Codex task tools to discover/deduplicate,
 reuse one compatible task or automatically create a fresh missing task, send
 the exact trigger, wait, and reconcile. Never ask the user to relay a seat
 prompt. Task routing grants no seat or external-effect authority.
-After one exact trigger, monitor with wait_threads and its per-target cursor.
-Only a missing or unavailable wait handler permits a bounded read-only
-read_thread(turnLimit=1, includeOutputs=false) snapshot of the same task.
-Deduplicate by cursor and latest turn or message identity. If both transports
-fail, preserve the dispatch identity, perform at most one discovery refresh,
-and report ambiguity as one tooling blocker. Monitoring failure never
-redispatches, replaces the task, or changes seats.
+After one exact trigger, monitor with wait_threads and preserve its per-target
+cursor; a normal timeout continues wait_threads with that same cursor. Only a
+missing or unavailable wait handler permits exactly one bounded
+read_thread(turnLimit=1, includeOutputs=false) snapshot of the same task. After
+that one snapshot, reconcile at bounded cadence from immutable Git/mailbox
+artifacts; do not repeat thread snapshots. If both the snapshot and immutable
+artifact reconciliation are unavailable or ambiguous, preserve the dispatch
+identity, perform at most one discovery refresh, and report one tooling
+blocker. Monitoring failure never redispatches, replaces the task, changes
+seats, or asks the user to relay the trigger.
 Leave an approval or user-input request for the user.
 
 Coordinator observes, facilitates, and may mediate or claim eligible

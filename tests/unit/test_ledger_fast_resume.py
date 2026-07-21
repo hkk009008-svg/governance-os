@@ -39,6 +39,7 @@ def _route_body(
     target: Path,
     target_head: str,
     *,
+    task_id: str = "demo-fast-resume",
     allowed_paths: tuple[str, ...] = (),
     allowed_section_suffix: str = "",
     sender: str = "director",
@@ -58,7 +59,7 @@ def _route_body(
     return (
         f"# {sender} -> all: autonomous demo route\n\n"
         f"**When:** 2026-07-19T00:00:00Z · **From:** {sender} (online)\n\n"
-        "Task ID: demo-fast-resume\n"
+        f"Task ID: {task_id}\n"
         "Outcome contract: deliver the exact demo outcome\n"
         f"Parent contract: {parent}\n"
         f"Contract revision: {revision}\n"
@@ -113,6 +114,110 @@ def _make_lane(
     _git(root, "commit", "-qm", "routed lane")
     route_ref = f"{route.relative_to(root).as_posix()}@{_git(root, 'rev-parse', 'HEAD')}"
     return root, target, route_ref, route
+
+
+def _make_cross_task_lane(
+    tmp_path: Path,
+    case: str,
+) -> tuple[Path, str]:
+    root = tmp_path / "Pipeline"
+    target = tmp_path / "demo-app"
+    _init_repo(target)
+    target_head = _git(target, "rev-parse", "HEAD")
+    _init_repo(root, tracked=False)
+    (root / "governance.toml").write_text(
+        "[kernel]\nrepository = \"example/pipeline\"\n\n"
+        "[binding]\ndefault_target = \"demo-app\"\n\n"
+        "[targets.demo-app]\nrepository = \"example/demo-app\"\n"
+        f"path = \"{target.as_posix()}\"\n"
+        "route_keywords = [\"demo\"]\n\n"
+        "[paths]\nforbidden_roots = []\n",
+        encoding="utf-8",
+    )
+    sent = root / "coordination/mailbox/sent"
+    sent.mkdir(parents=True)
+    seen = root / "coordination/mailbox/seen"
+    seen.mkdir(parents=True)
+    (seen / "director.txt").write_text("2099-01-01T00:00:00Z\n", encoding="utf-8")
+    _git(root, "add", "--", "governance.toml", "coordination/mailbox/seen")
+    _git(root, "commit", "-qm", "bootstrap routed lane")
+
+    if case == "unknown-legacy-parent":
+        ancestor_path = (
+            "coordination/mailbox/sent/"
+            "2026-07-18T23-59-00Z-coordinator-to-all-coordination.md"
+        )
+    else:
+        ancestor_ref = _commit_event(
+            root,
+            sender="coordinator",
+            recipient="all",
+            kind="coordination",
+            minute=1,
+            body="Task-board: completed-task\nRoute generation: 4",
+        )
+        ancestor_path = ancestor_ref.rsplit("@", 1)[0]
+
+    base_ref = _commit_event(
+        root,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        minute=2,
+        body=(
+            "Task-board: demo-fast-resume\n"
+            "Route generation: 5\n"
+            f"Supersedes route: {ancestor_path}"
+        ),
+    )
+    base_path = base_ref.rsplit("@", 1)[0]
+
+    if case == "sibling-fork":
+        _commit_event(
+            root,
+            sender="coordinator",
+            recipient="all",
+            kind="coordination",
+            minute=3,
+            body=(
+                "Task-board: sibling-task\n"
+                "Route generation: 5\n"
+                f"Supersedes route: {ancestor_path}"
+            ),
+        )
+
+    full_body = _route_body(
+        target,
+        target_head,
+        parent=base_ref,
+        revision=6,
+        previous="director",
+    )
+    payload = full_body.split("\n\n", 2)[2].rsplit("\nCursor at send: 0\n", 1)[0]
+    child_ref = _commit_event(
+        root,
+        sender="director",
+        recipient="all",
+        kind="coordination",
+        minute=4,
+        body=payload,
+    )
+
+    if case == "later-cross-task-successor":
+        _commit_event(
+            root,
+            sender="coordinator",
+            recipient="all",
+            kind="coordination",
+            minute=5,
+            body=(
+                "Task-board: later-task\n"
+                "Route generation: 6\n"
+                f"Supersedes route: {base_path}"
+            ),
+        )
+
+    return root, child_ref
 
 
 def _commit_event(
@@ -307,6 +412,39 @@ def test_unchanged_exact_route_clean_target_and_zero_unread_passes(tmp_path):
 
     assert result.classification is ledger_start_guard.ResumeClassification.FAST_RESUME_PASS
     assert result.reasons == ()
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    (
+        (
+            "known-cross-task-ancestor",
+            ledger_start_guard.ResumeClassification.FAST_RESUME_PASS,
+        ),
+        (
+            "unknown-legacy-parent",
+            ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED,
+        ),
+        (
+            "sibling-fork",
+            ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED,
+        ),
+        (
+            "later-cross-task-successor",
+            ledger_start_guard.ResumeClassification.FAST_RESUME_PASS,
+        ),
+    ),
+)
+def test_resume_consumer_resolves_expected_task_against_complete_route_graph(
+    tmp_path: Path,
+    case: str,
+    expected: ledger_start_guard.ResumeClassification,
+):
+    root, route_ref = _make_cross_task_lane(tmp_path, case)
+
+    result = _resume(root, route_ref)
+
+    assert result.classification is expected
 
 
 def test_ordinary_cli_without_resume_from_preserves_guard_semantics_and_uses_one_status_snapshot(

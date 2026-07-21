@@ -1126,7 +1126,6 @@ def _apply_exceptions(
 
 
 def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, Any]]:
-    del report
     try:
         body = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -1141,9 +1140,22 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
         issues.append(
             _issue("G7", f"{path.name}: route path must be under coordination/mailbox/sent/")
         )
+    try:
+        autonomous_candidate = route_lineage.validate_route_candidate_structure(
+            path, body
+        )
+    except ValueError:
+        autonomous_candidate = None
     if not route_lineage.is_route_event(path, body):
         issues.append(
             _issue("G7", f"{path.name}: not a recognized outcome-contract route")
+        )
+    elif autonomous_candidate is not None:
+        issues.extend(
+            _autonomous_candidate_parent_issues(
+                autonomous_candidate,
+                Path(report.root),
+            )
         )
 
     forbidden = _forbidden_side_effects(body)
@@ -1157,6 +1169,58 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
         )
     issues.extend(_side_effect_executor_issues(body))
     issues.extend(_side_effect_success_claim_issues(body))
+    return issues
+
+
+def _autonomous_candidate_parent_issues(
+    candidate: route_lineage.LineageRoute,
+    root: Path,
+) -> list[dict[str, Any]]:
+    """Prove autonomous parent continuity without requiring candidate commit."""
+
+    if candidate.parent_ref is None:
+        if candidate.revision == 0:
+            return []
+        return [
+            _issue(
+                "G7",
+                f"{candidate.path.name}: parent none requires contract revision 0",
+            )
+        ]
+
+    try:
+        with route_lineage.RouteBatchReader(root) as reader:
+            parent = reader.load_route_ref(candidate.parent_ref)
+    except (OSError, UnicodeError, ValueError):
+        return [
+            _issue(
+                "G7",
+                f"{candidate.path.name}: parent contract is not an effective committed route",
+            )
+        ]
+
+    issues: list[dict[str, Any]] = []
+    if not parent.effective:
+        issues.append(
+            _issue(
+                "G7",
+                f"{candidate.path.name}: parent contract is not an effective committed route",
+            )
+        )
+    if parent.task_id != candidate.task_id:
+        issues.append(
+            _issue(
+                "G7",
+                f"{candidate.path.name}: parent Task ID does not match candidate Task ID",
+            )
+        )
+    if parent.revision is None or candidate.revision != parent.revision + 1:
+        issues.append(
+            _issue(
+                "G7",
+                f"{candidate.path.name}: contract revision must equal parent revision plus one",
+            )
+        )
     return issues
 
 
