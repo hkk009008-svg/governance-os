@@ -11,9 +11,11 @@ from typing import Any
 
 try:
     from scripts import codex_protocol_model as model
+    from scripts import ledger_start_guard
     from scripts import route_lineage
 except ImportError:  # direct script execution
     import codex_protocol_model as model
+    import ledger_start_guard
     import route_lineage
 
 if __package__:
@@ -1146,17 +1148,25 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
         )
     except ValueError:
         autonomous_candidate = None
-    if not route_lineage.is_route_event(path, body):
+    recognized_route = route_lineage.is_route_event(path, body)
+    if not recognized_route:
         issues.append(
             _issue("G7", f"{path.name}: not a recognized outcome-contract route")
         )
-    elif autonomous_candidate is not None:
-        issues.extend(
-            _autonomous_candidate_parent_issues(
-                autonomous_candidate,
-                Path(report.root),
+    else:
+        try:
+            ledger_start_guard.parse_route_guidance_body(body)
+        except ValueError as exc:
+            issues.append(
+                _issue("G7", f"{path.name}: invalid route guidance ({exc})")
             )
-        )
+        if autonomous_candidate is not None:
+            issues.extend(
+                _autonomous_candidate_parent_issues(
+                    autonomous_candidate,
+                    Path(report.root),
+                )
+            )
 
     forbidden = _forbidden_side_effects(body)
     subagent_forbidden = [label for label in forbidden if label.startswith("subagent ")]

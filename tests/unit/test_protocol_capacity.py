@@ -241,6 +241,49 @@ def test_autonomous_route_needs_no_packets_join_or_capacity_split(tmp_path: Path
     assert result.advisories == []
 
 
+def test_route_validation_rejects_prose_inside_target_allowed_paths(
+    tmp_path: Path,
+):
+    route = _write_route(
+        tmp_path,
+        "2026-07-22T01-43-27Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            "\n## Target Allowed Paths\n\n"
+            "- scripts/protocol_capacity.py\n"
+            "Explanatory prose is not an allowed-path bullet.\n"
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        route.name in issue["message"]
+        and "allowed-path section accepts bullet paths only" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_route_validation_accepts_semantics_after_allowed_path_heading(
+    tmp_path: Path,
+):
+    route = _write_route(
+        tmp_path,
+        "2026-07-22T02-01-34Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            "\n## Target Allowed Paths\n\n"
+            "- scripts/protocol_capacity.py\n\n"
+            "## Allowed Path Semantics\n\n"
+            "The bullet is implementation scope; this prose is explanation.\n"
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert result.route_issues == ()
+
+
 def test_autonomous_route_candidate_accepts_exact_effective_parent_continuity(
     tmp_path: Path,
 ):
