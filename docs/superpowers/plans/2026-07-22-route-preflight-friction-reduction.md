@@ -2,24 +2,24 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Reject malformed target guidance, stale autonomous parents, and legacy downgrades before a route is committed, while documenting one authority-safe Supabase lifecycle preflight.
+**Goal:** Reject malformed target guidance, stale autonomous parents, global legacy forks, and same-task legacy downgrades before a route is committed, while documenting one authority-safe Supabase lifecycle preflight.
 
-**Architecture:** Keep `ledger_start_guard.parse_route_guidance_body` as the only target-guidance grammar. Add current-task context checks to the existing capacity validator using `RouteBatchReader` and `resolve_task_routes`, and expose only the existing Task-board parser from `route_lineage`. Record the service rule once in the canonical ledger adoption bridge; add no helper service or dependency.
+**Architecture:** Keep `ledger_start_guard.parse_route_guidance_body` as the only target-guidance grammar. Add current-task and global legacy-tip checks to the existing capacity validator using `RouteBatchReader`, `resolve_task_routes`, and `resolve_authoritative`, and expose only the existing Task-board parser from `route_lineage`. Record the service rule once in the canonical ledger adoption bridge; add no helper service or dependency.
 
 **Tech Stack:** Python 3.11+, pytest, existing Pipeline route/mailbox modules, Markdown doctrine.
 
 ## Global Constraints
 
-- Design authority: `docs/superpowers/specs/2026-07-22-route-preflight-friction-reduction-design.md@d527994768ea46c3549bb8fce4ad3f9309e30ce0`.
+- Design authority: `docs/superpowers/specs/2026-07-22-route-preflight-friction-reduction-design.md@9d91e8375a9f6dce2a5284f1d8b32dcb23f5b978`.
 - One Director owns the complete implementation range; do not run concurrent implementers on the shared validator files.
 - Use RED to GREEN for every behavior change and stage only explicit pathspecs.
 - Reuse `ledger_start_guard.parse_route_guidance_body`; do not copy its regular expressions or allowed-path loop.
 - Expose the existing Task-board parser only; do not change committed route resolution or effectiveness semantics.
-- Preserve legacy-only route compatibility and historical committed bytes.
+- Preserve historical committed bytes; when a generated global legacy tip exists, every new generated Coordinator candidate must extend it exactly.
 - Add no module, executable, dependency, lifecycle helper, service supervisor, retry loop, registry, or state store.
 - Do not change evidence-ledger, the Codex task tools, fixed-writer behavior, fast-resume behavior, or any service/container/database state.
 - Validation is read-only and grants no merge, push, deployment, activation, service, cursor, lock, spend, or other external-effect authority.
-- Assess these abuse classes in final review: parser differential, stale-parent replay, legacy downgrade/fork, unresolved same-task evidence, and route-text confusion about service authority.
+- Assess these abuse classes in final review: parser differential, stale-parent replay, global legacy fork, same-task legacy downgrade, unresolved same-task evidence, and route-text confusion about service authority.
 
 ---
 
@@ -183,8 +183,8 @@ Expected staged paths: exactly the two named files.
 **Interfaces:**
 
 - Produces: `route_lineage.task_board_of(body: str) -> str | None`
-- Consumes: `RouteBatchReader.load_all_routes()`, `RouteBatchReader.issues_for_task(task_id)`, `RouteBatchReader.load_route_ref(ref)`, and `resolve_task_routes(routes, task_id)`
-- Produces: blocking `G7` issues for an existing-task root, unresolved task evidence, a non-tip parent, or a legacy candidate targeting an autonomous task
+- Consumes: `RouteBatchReader.load_all_routes()`, `RouteBatchReader.issues_for_task(task_id)`, `RouteBatchReader.load_route_ref(ref)`, `resolve_task_routes(routes, task_id)`, and `resolve_authoritative(legacy_routes)`
+- Produces: blocking `G7` issues for an existing-task root, unresolved task evidence, a non-tip parent, a generated legacy route that does not extend the current global tip, or a legacy candidate targeting an autonomous task
 
 - [ ] **Step 1: Pin the public Task-board parser**
 
@@ -365,7 +365,9 @@ def test_legacy_candidate_rejects_task_with_autonomous_lineage(tmp_path: Path):
     route = _write_route(
         tmp_path,
         "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
-        "Task-board: autonomous-capacity-test\nRoute generation: 4\n",
+        "Task-board: autonomous-capacity-test\n"
+        "Route generation: 4\n"
+        f"Supersedes route: {legacy.split('@', 1)[0]}\n",
     )
 
     result = protocol_capacity.validate_route(tmp_path, 2, route)
@@ -378,12 +380,40 @@ def test_legacy_candidate_rejects_task_with_autonomous_lineage(tmp_path: Path):
     )
 
 
-def test_legacy_candidate_retains_legacy_only_compatibility(tmp_path: Path):
-    _commit_legacy_parent(tmp_path, task_id="legacy-only", generation=3)
+def test_legacy_candidate_rejects_new_global_root_beside_existing_tip(
+    tmp_path: Path,
+):
+    _commit_legacy_parent(tmp_path, task_id="prior-global-task", generation=3)
     route = _write_route(
         tmp_path,
         "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
-        "Task-board: legacy-only\nRoute generation: 4\n",
+        "Task-board: next-global-task\nRoute generation: 0\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "generated legacy route must extend current global tip"
+        in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_legacy_candidate_accepts_next_global_generation_and_tip(
+    tmp_path: Path,
+):
+    legacy = _commit_legacy_parent(
+        tmp_path,
+        task_id="prior-global-task",
+        generation=3,
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        "Task-board: next-global-task\n"
+        "Route generation: 4\n"
+        f"Supersedes route: {legacy.split('@', 1)[0]}\n",
     )
 
     result = protocol_capacity.validate_route(tmp_path, 2, route)
@@ -401,10 +431,10 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
   -k task_board_of -q
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
   tests/unit/test_protocol_capacity.py \
-  -k 'current_authoritative_tip or superseded_parent or existing_same_task_route or unresolved_same_task_fork or legacy_candidate' -q
+  -k 'current_authoritative_tip or superseded_parent or existing_same_task_route or unresolved_same_task_fork or legacy_candidate or next_global_generation' -q
 ```
 
-Expected before implementation: the route-lineage test fails with missing `task_board_of`; the stale-parent, existing-root, fork, and autonomous-to-legacy cases fail because validation accepts them.
+Expected before implementation: the route-lineage test fails with missing `task_board_of`; the stale-parent, existing-root, fork, global-root, and autonomous-to-legacy cases fail because validation accepts them.
 
 - [ ] **Step 5: Expose the existing Task-board parser without changing semantics**
 
@@ -558,7 +588,7 @@ def _autonomous_candidate_parent_issues(
     return issues
 ```
 
-- [ ] **Step 8: Reject legacy candidates after autonomous cutover**
+- [ ] **Step 8: Reject global legacy forks and same-task autonomous downgrades**
 
 Add this helper after autonomous parent validation:
 
@@ -589,6 +619,39 @@ def _legacy_candidate_lineage_issues(
         )
         for message in task_issues
     ]
+    legacy_routes = [route for route in routes if route.legacy]
+    generated_legacy = [
+        route
+        for route in legacy_routes
+        if route.lineage.generation is not None
+    ]
+    if generated_legacy:
+        global_resolution = route_lineage.resolve_authoritative(legacy_routes)
+        if global_resolution.issues or global_resolution.authoritative is None:
+            detail = "; ".join(global_resolution.issues) or "no global tip"
+            issues.append(
+                _issue(
+                    "G7",
+                    f"{path.name}: current global legacy lineage is unresolved ({detail})",
+                )
+            )
+        else:
+            current_tip = global_resolution.authoritative
+            assert current_tip.lineage.generation is not None
+            candidate_lineage = route_lineage.parse_lineage(body)
+            expected_generation = current_tip.lineage.generation + 1
+            if (
+                candidate_lineage.generation != expected_generation
+                or candidate_lineage.parent_route_id != current_tip.route_id
+            ):
+                issues.append(
+                    _issue(
+                        "G7",
+                        f"{path.name}: generated legacy route must extend current "
+                        f"global tip {current_tip.route_id} at generation "
+                        f"{expected_generation}",
+                    )
+                )
     if any(
         route.task_id == task_id and not route.legacy
         for route in routes
@@ -628,7 +691,7 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
   tests/unit/test_route_lineage.py -k task_board_of -q
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
   tests/unit/test_protocol_capacity.py \
-  -k 'current_authoritative_tip or superseded_parent or existing_same_task_route or unresolved_same_task_fork or legacy_candidate' -q
+  -k 'current_authoritative_tip or superseded_parent or existing_same_task_route or unresolved_same_task_fork or legacy_candidate or next_global_generation' -q
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest \
   tests/unit/test_protocol_capacity.py tests/unit/test_route_lineage.py -q
 ```
@@ -753,9 +816,10 @@ Inspect the actual three-commit range and record one disposition for each:
 ```text
 parser differential: closed by the shared pure parser and revision-34/35 probes
 stale-parent replay: closed by exact authoritative-tip equality
-legacy downgrade/fork: closed after any committed autonomous route
+global legacy fork: closed by exact global-tip parent and consecutive generation
+same-task legacy downgrade: closed after any committed autonomous route
 unresolved same-task evidence: fails closed without selecting a winner
 service authority confusion: doctrine requires separate user authorization plus exact route fields
 ```
 
-Then publish one canonical verify-request through the fixed mailbox writer. Bind the exact base/head, all five changed paths, the three commit subjects, these five finding refs, the implementation owner/model, and one distinct different-model non-author Operator. Do not merge, push, deploy, start services, resume beta activation, or change evidence-ledger.
+Then publish one canonical verify-request through the fixed mailbox writer. Bind the exact base/head, all five changed paths, the three commit subjects, the six abuse-class dispositions above, the immutable defect evidence refs from design section 2, the implementation owner/model, and one distinct different-model non-author Operator. Do not merge, push, deploy, start services, resume beta activation, or change evidence-ledger. After Operator review, stop for Coordinator reconciliation; the separate beta sequence follows the Mac-first checkpoint in design section 9.
