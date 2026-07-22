@@ -1,6 +1,6 @@
 # Route Preflight Friction Reduction Design
 
-**Status:** verbal design approved; written spec awaiting user review
+**Status:** amended after pre-dispatch lineage regression; awaiting user re-review
 **Date:** 2026-07-22
 **Design base:** `9e4e18c50edf4ec783f49bf8a0f4a487aa275213`
 
@@ -12,7 +12,8 @@ Make three small corrections to the existing Pipeline workflow:
    grammar that the evidence-ledger start guard applies after commit.
 2. Make candidate lineage validation prove that an autonomous continuation
    extends the current authoritative tip, and prevent a new Coordinator legacy
-   route from reopening a task that already has autonomous lineage.
+   route from reopening a task that already has autonomous lineage or forking
+   the global generated legacy chain.
 3. Record one evidence-ledger service-lifecycle preflight rule: inspect the
    installed Supabase CLI and exact container state before an authorized
    action, and never assume `supabase start` can partially resume stopped
@@ -69,7 +70,28 @@ authoritative parent instead:
 The defect is pre-commit incompleteness, not a need to change the committed
 lineage resolver.
 
-### 2.3 Supabase partial-start behavior was assumed, not established
+### 2.3 Generated Coordinator routes form one global legacy chain
+
+After the initial spec was approved, Coordinator published an undispatched
+candidate for this friction task at
+`coordination/mailbox/sent/2026-07-22T04-03-49Z-coordinator-to-all-coordination.md@0c04b5faaf5fac28d02e4ffdfead3f2c334470bb`.
+Capacity validation, the target-guidance parser, and smoke passed, but the
+mandatory committed global lineage check failed with two unsuperseded tips.
+
+The cause is exact: `resolve_authoritative(legacy)` treats every generated
+Coordinator Task-board route as one global chain across Task IDs. The new
+route incorrectly started generation zero without superseding the existing
+generation-32 tip. It was never dispatched and was removed from the current
+tree by the history-preserving revert
+`4b9367087c16c45850062126ed7958d079c76d9d`.
+
+A read-only resolution probe proved the corrected shape: generation 33 with
+`Supersedes route` naming
+`2026-07-22T00-20-15Z-coordinator-to-all-coordination` yields one tip and zero
+issues after excluding the reverted candidate. Candidate validation currently
+does not enforce that global continuation rule.
+
+### 2.4 Supabase partial-start behavior was assumed, not established
 
 The first Task 6 Auth/Kong route used `supabase start --exclude ...` while the
 database container was already running. Supabase CLI `2.109.0` treated the
@@ -167,18 +189,26 @@ not claim the candidate is effective before commit.
 
 ### Coordinator legacy candidates
 
-A newly validated Coordinator/Coordinator2 legacy route remains accepted when
-its Task-board has only legacy history or no history. If that exact Task-board
-already has any committed autonomous route, the candidate fails `G7` with an
-actionable message directing the incumbent owner to publish an autonomous
-continuation or use the existing durable transfer protocol.
+A generated Coordinator/Coordinator2 legacy candidate first resolves the
+complete committed legacy route set with `resolve_authoritative`. When a
+generated global tip exists, the candidate's `Route generation` must equal the
+tip generation plus one and its `Supersedes route` must name that exact tip.
+An unresolved global legacy chain, missing/stale parent, new root, or
+nonconsecutive generation fails `G7` before commit. A repository with no
+generated legacy history retains the existing compatibility behavior.
+
+After that global check, the candidate's exact Task-board is checked. If that
+Task-board already has any committed autonomous route, the candidate fails
+`G7` with an actionable message directing the incumbent owner to publish an
+autonomous continuation or use the existing durable transfer protocol.
 
 `protocol_capacity.py` obtains that exact Task-board through
 `route_lineage.task_board_of(body)`. It does not add another Task-board regular
 expression or infer task identity from prose.
 
-This preserves legacy-only compatibility while preventing a legacy route from
-becoming a competing base after a task has crossed into autonomous lineage.
+This preserves legacy-only compatibility while preventing both a global
+Coordinator fork and a competing base after a task has crossed into autonomous
+lineage.
 
 ## 6. Evidence-Ledger Service Preflight Rule
 
@@ -205,6 +235,7 @@ network, acquisition, configuration, restart, or cleanup.
 | Candidate parent is effective but not the current task tip | Blocking `G7` before commit |
 | Existing same-task lineage is unresolved or forked | Blocking `G7`; no inferred winner |
 | Revision-zero root targets an existing task | Blocking `G7` |
+| Generated Coordinator candidate does not extend the global legacy tip | Blocking `G7` |
 | Legacy candidate targets an autonomous task | Blocking `G7`; use autonomous continuation/transfer |
 | Legacy-only route chain | Existing compatibility retained |
 | DB already running and sibling-service behavior is uncertain | Stop, report exact state, seek exact authority if action is needed |
@@ -223,6 +254,8 @@ Implementation follows RED to GREEN and adds focused regression cases for:
 - an autonomous candidate extending an effective but superseded parent failing;
 - a revision-zero root for an existing task failing;
 - an unresolved same-task lineage failing without choosing a winner;
+- a generated Coordinator root beside an existing global tip failing;
+- the next generated Coordinator route with the exact global parent passing;
 - a Coordinator legacy candidate for an autonomous task failing; and
 - a new or legacy-only Coordinator Task-board retaining compatibility.
 
