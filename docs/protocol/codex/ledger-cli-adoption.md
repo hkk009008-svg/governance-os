@@ -84,6 +84,20 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
 Read relevant Pipeline mailbox bodies before protocol decisions. Counts alone
 are not enough.
 
+## Local Supabase Lifecycle Preflight
+
+Before any user-authorized local Supabase lifecycle action, inspect
+`supabase --version` and the exact existing project container/service state.
+If the database is already running while required siblings are stopped, do not
+infer that `supabase start` or `--exclude` will partially resume those
+siblings.
+
+Stop and report the observed state unless the user separately authorizes the
+exact existing-container action and the active route records its executor,
+target, scope, frozen identities, and restoration contract. This preflight
+does not authorize network, acquisition, configuration, restart, cleanup, or
+any other service action.
+
 ## Enter Evidence-Ledger
 
 Before product edits, inspect the target repo from a clean command environment:
