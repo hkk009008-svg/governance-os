@@ -539,7 +539,9 @@ git commit -m "feat(web): unify selling and evidence experience"
 
 Use the fresh cumulative RED evidence from target HEAD
 `6b817bdc27acdecea5dce8832cd1b4a3daceed5c`: 13 Playwright tests passed and
-exactly four failed. In `web/e2e/pwa.spec.ts` only:
+exactly four failed. After the first six stale bindings were corrected, the
+focused PWA run advanced to 2 passed and exactly 3 failed solely on the removed
+post-release `나중에` control. In `web/e2e/pwa.spec.ts` only:
 
 - import the already-validated `LOOPBACK_ORIGIN` from `../playwright.config`;
 - replace all three hardcoded `http://127.0.0.1:4173/` bindings (registration
@@ -547,6 +549,9 @@ exactly four failed. In `web/e2e/pwa.spec.ts` only:
   derived from `LOOPBACK_ORIGIN`;
 - replace exactly the three stale `저장하고 다음` button locators with the
   approved all-fields editor label `초안 저장`;
+- replace exactly the three post-release `나중에` enabled assertions with the
+  current command-settlement invariant: the same `초안 저장` button is present
+  and disabled after the held save completes;
 - preserve every PWA installability, cache, waiting-worker, multi-client,
   offline, and activation assertion.
 
