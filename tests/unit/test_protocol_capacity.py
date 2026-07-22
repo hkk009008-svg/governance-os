@@ -196,6 +196,29 @@ def _commit_legacy_parent(
     return f"{relative}@{_git(root, 'rev-parse', 'HEAD')}"
 
 
+def _commit_legacy_successor(
+    root: Path,
+    *,
+    task_id: str,
+    generation: int,
+    parent_ref: str,
+) -> str:
+    path = _write_route(
+        root,
+        "2026-07-18T09-05-00Z-coordinator-to-all-coordination.md",
+        "# coordinator -> all: route event\n\n"
+        "**When:** 2026-07-18T09:05:00Z · **From:** coordinator (online)\n\n"
+        f"Task-board: {task_id}\n"
+        f"Route generation: {generation}\n"
+        f"Supersedes route: {parent_ref.split('@', 1)[0]}\n\n"
+        "Cursor at send: 0\n",
+    )
+    relative = path.relative_to(root).as_posix()
+    _git(root, "add", "--", relative)
+    _git(root, "commit", "-q", "-m", "add cross-task successor route")
+    return f"{relative}@{_git(root, 'rev-parse', 'HEAD')}"
+
+
 def _commit_autonomous_route(
     root: Path,
     *,
@@ -330,6 +353,68 @@ def test_autonomous_route_candidate_accepts_exact_effective_parent_continuity(
     )
 
     result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert result.route_issues == ()
+
+
+def test_autonomous_candidate_accepts_cross_task_generation_32_33_tip(
+    tmp_path: Path,
+):
+    generation_32 = _commit_legacy_parent(
+        tmp_path,
+        task_id="task6-local-acceptance",
+        generation=32,
+    )
+    generation_33 = _commit_legacy_successor(
+        tmp_path,
+        task_id="route-preflight-friction",
+        generation=33,
+        parent_ref=generation_32,
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-10-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            task_id="route-preflight-friction",
+            parent=generation_33,
+            revision=34,
+            previous_owners="director",
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    assert result.route_issues == ()
+
+
+def test_committed_autonomous_candidate_accepts_repository_relative_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    generation_32 = _commit_legacy_parent(
+        tmp_path,
+        task_id="task6-local-acceptance",
+        generation=32,
+    )
+    generation_33 = _commit_legacy_successor(
+        tmp_path,
+        task_id="route-preflight-friction",
+        generation=33,
+        parent_ref=generation_32,
+    )
+    candidate_ref = _commit_autonomous_route(
+        tmp_path,
+        task_id="route-preflight-friction",
+        parent=generation_33,
+        revision=34,
+        minute=10,
+    )
+    candidate_path = Path(candidate_ref.split("@", 1)[0])
+    monkeypatch.chdir(tmp_path)
+
+    result = protocol_capacity.validate_route(tmp_path, 2, candidate_path)
 
     assert result.valid
     assert result.route_issues == ()

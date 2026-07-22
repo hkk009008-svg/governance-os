@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 import re
@@ -1197,11 +1197,14 @@ def _committed_task_context(
     tuple[str, ...],
     route_lineage.LineageRoute | None,
 ]:
+    normalized_candidate_path = (
+        candidate_path if candidate_path.is_absolute() else root / candidate_path
+    )
     with route_lineage.RouteBatchReader(root) as reader:
         routes = [
             route
             for route in reader.load_all_routes()
-            if route.path != candidate_path
+            if route.path != normalized_candidate_path
         ]
         task_issues = reader.issues_for_task(task_id)
         parent = reader.load_route_ref(parent_ref) if parent_ref is not None else None
@@ -1279,16 +1282,45 @@ def _autonomous_candidate_parent_issues(
             )
         )
 
-    resolution = route_lineage.resolve_task_routes(routes, task_id)
-    if resolution.issues or resolution.authoritative is None:
-        detail = "; ".join(resolution.issues) or "no authoritative route"
+    current_resolution = route_lineage.resolve_task_routes(routes, task_id)
+    if (
+        not current_resolution.issues
+        and current_resolution.authoritative is not None
+        and current_resolution.authoritative.route_ref != candidate.parent_ref
+    ):
+        issues.append(
+            _issue(
+                "G7",
+                f"{candidate.path.name}: parent contract must equal current authoritative task tip",
+            )
+        )
+        return issues
+
+    prospective_ref = f"candidate://{candidate.path.name}"
+    prospective_candidate = replace(
+        candidate,
+        effective=True,
+        route_ref=prospective_ref,
+    )
+    prospective_resolution = route_lineage.resolve_task_routes(
+        [*routes, prospective_candidate],
+        task_id,
+    )
+    if (
+        prospective_resolution.issues
+        or prospective_resolution.authoritative is None
+    ):
+        detail = (
+            "; ".join(prospective_resolution.issues)
+            or "no authoritative route"
+        )
         issues.append(
             _issue(
                 "G7",
                 f"{candidate.path.name}: current task lineage is unresolved ({detail})",
             )
         )
-    elif resolution.authoritative.route_ref != candidate.parent_ref:
+    elif prospective_resolution.authoritative.route_ref != prospective_ref:
         issues.append(
             _issue(
                 "G7",
