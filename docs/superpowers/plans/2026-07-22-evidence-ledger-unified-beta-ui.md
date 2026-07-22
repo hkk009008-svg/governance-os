@@ -34,6 +34,7 @@
 | `web/src/app/App.tsx` | Phase composition, workspace selection, owner sequential save orchestration, existing data mapping |
 | `web/src/main.tsx` | One global import of the application stylesheet |
 | `web/playwright.config.ts` | Strict numeric test-only loopback port override while preserving default 4173 |
+| `web/e2e/pwa.spec.ts` | Keep the cumulative PWA contract bound to the validated loopback origin and current owner-editor label |
 | `web/src/styles/app.css` | Tokens, shell, cards, controls, tables, dialogs, responsive and focus behavior |
 | `web/src/features/auth/LoginView.tsx` | Two-field Korean login card and show-password control |
 | `web/src/features/recovery/RecoveryPanel.tsx` | Korean recovery state presentation with raw metadata behind details |
@@ -524,6 +525,7 @@ git commit -m "feat(web): unify selling and evidence experience"
 ### Task 4: Cumulative verification, factual docs, and independent review request
 
 **Files:**
+- Modify: `web/e2e/pwa.spec.ts`
 - Modify: `ARCHITECTURE.md`
 - Modify: `OPERATIONS.md`
 - Read-only verify: all files changed by Tasks 1-3
@@ -531,9 +533,40 @@ git commit -m "feat(web): unify selling and evidence experience"
 
 **Interfaces:**
 - Consumes: Task 1-3 commits and their common accepted base.
-- Produces: one shipping commit/range, complete local verification evidence, factual documentation, and one non-author Operator verify-request. It does not launch or replace the live Mac beta.
+- Produces: one test-only PWA correction commit, one factual documentation commit, one shipping range, complete local verification evidence, and one non-author Operator verify-request. It does not launch or replace the live Mac beta.
 
-- [ ] **Step 1: Run the complete unit, type, build, browser, and privacy gates.**
+- [ ] **Step 1: Correct the stale cumulative PWA browser contract.**
+
+Use the fresh cumulative RED evidence from target HEAD
+`6b817bdc27acdecea5dce8832cd1b4a3daceed5c`: 13 Playwright tests passed and
+exactly four failed. In `web/e2e/pwa.spec.ts` only:
+
+- import the already-validated `LOOPBACK_ORIGIN` from `../playwright.config`;
+- replace all three hardcoded `http://127.0.0.1:4173/` bindings (registration
+  scope, service-worker script URL expectation, and CDP `scopeURL`) with values
+  derived from `LOOPBACK_ORIGIN`;
+- replace exactly the three stale `저장하고 다음` button locators with the
+  approved all-fields editor label `초안 저장`;
+- preserve every PWA installability, cache, waiting-worker, multi-client,
+  offline, and activation assertion.
+
+Then run:
+
+```bash
+cd web
+lsof -nP -iTCP:4174 -sTCP:LISTEN
+EVIDENCE_LEDGER_PLAYWRIGHT_PORT=4174 npx playwright test e2e/pwa.spec.ts
+cd ..
+lsof -nP -iTCP:4174 -sTCP:LISTEN
+git add -- web/e2e/pwa.spec.ts
+git commit -m "test(web): align PWA gate with unified UI"
+```
+
+Expected: each `lsof` exits 1 with no listener; every PWA node passes; the
+registered teaching preview on 4173 is untouched; the commit changes only the
+one test path.
+
+- [ ] **Step 2: Run the complete unit, type, build, browser, and privacy gates.**
 
 ```bash
 cd web
@@ -551,7 +584,7 @@ rg -n "owner_ruling_required|manual_only|\bBUY\b|\bTEST\b|\bSKIP\b|\bNEGOTIATE\b
 
 Expected: all commands exit 0; storage hits remain limited to reviewed auth/recovery machinery; raw-state hits are either mapper inputs or technical-detail output, never primary visible copy.
 
-- [ ] **Step 2: Run the repository smoke proportional to UI risk.**
+- [ ] **Step 3: Run the repository smoke proportional to UI risk.**
 
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
@@ -559,18 +592,18 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
 
 Expected: PASS. Do not run real database mutation, managed Supabase, real policy activation, provider launch, email, booking, or deployment.
 
-- [ ] **Step 3: Update factual documentation from the observed output.**
+- [ ] **Step 4: Update factual documentation from the observed output.**
 
-Update `ARCHITECTURE.md` and `OPERATIONS.md` to describe the unified Korean shell, all-ten-fields page, three primary destinations, answer-first recommendation, and the exact Vitest/Playwright summaries emitted by Step 1. Remove stale prior counts rather than copying the pre-change `251` claim. State clearly that local verification is not physical Windows installation or managed deployment.
+Update `ARCHITECTURE.md` and `OPERATIONS.md` to describe the unified Korean shell, all-ten-fields page, three primary destinations, answer-first recommendation, and the exact Vitest/Playwright summaries emitted by Step 2. Remove stale prior counts rather than copying the pre-change `251` claim. State clearly that local verification is not physical Windows installation or managed deployment.
 
-- [ ] **Step 4: Commit the factual closeout.**
+- [ ] **Step 5: Commit the factual closeout.**
 
 ```bash
 git add -- ARCHITECTURE.md OPERATIONS.md
 git commit -m "docs: record unified beta UI verification"
 ```
 
-- [ ] **Step 5: Verify the actual range and write set.**
+- [ ] **Step 6: Verify the actual range and write set.**
 
 ```bash
 git diff --check bc2e85891f27befe19236686e608f3d45db84d14..HEAD
@@ -580,7 +613,7 @@ git status --short --branch
 
 Expected: only the files named in this plan plus focused tests/docs changed; the worktree is clean; `.vscode/` and `web/node_modules` remain untouched outside the isolated worktree.
 
-- [ ] **Step 6: Publish one cumulative non-author verify-request.**
+- [ ] **Step 7: Publish one cumulative non-author verify-request.**
 
 The Director publishes through the fixed Pipeline mailbox writer and binds:
 
@@ -589,11 +622,11 @@ The Director publishes through the fixed Pipeline mailbox writer and binds:
 - assigned distinct non-author Operator seat and different model;
 - immutable design and plan refs;
 - exact changed paths;
-- every command and terminal summary from Steps 1-2;
+- every command and terminal summary from Steps 1-3;
 - findings for login two-field visibility, all-ten owner fields, sequential save/fail-closed behavior, product ordering, complete/no-PPL recommendation, raw-copy containment, privacy, responsive overflow, and recovery behavior.
 
 No merge, push, live preview restart, service launch, deployment, booking, or real-policy activation is authorized by the verify-request.
 
-- [ ] **Step 7: Stop for the Operator verdict.**
+- [ ] **Step 8: Stop for the Operator verdict.**
 
 The assigned Operator independently reviews the actual range and publishes GO/NITS/FAIL. On FAIL, the Director corrects only the cited findings and republishes a new exact range. On GO, the Coordinator may integrate under the user's existing local-beta continuation authority; live Mac preview replacement remains a separately checked effect.
