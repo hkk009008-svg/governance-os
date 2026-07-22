@@ -87,10 +87,11 @@ ordinary full-stack command.
 ### Behavior-changing surfaces
 
 - `scripts/protocol_capacity.py`
-- `scripts/route_lineage.py` only if a small public staged-candidate helper is
-  required to avoid duplicating task identity or route classification
+- `scripts/route_lineage.py`, limited to exposing the existing exact
+  Task-board parser as a public read-only `task_board_of(body)` helper; the
+  resolver and effectiveness rules do not change
 - `tests/unit/test_protocol_capacity.py`
-- `tests/unit/test_route_lineage.py` only if `scripts/route_lineage.py` changes
+- `tests/unit/test_route_lineage.py`
 
 ### Instruction-only surface
 
@@ -118,9 +119,9 @@ It is not copied across prompts or skills.
 
 Candidate validation reuses
 `ledger_start_guard.parse_route_guidance_body(body)` as the single grammar
-implementation. The implementation may use a direct import or an existing
-dependency-safe import pattern; it must not copy the regular expressions or
-allowed-path loop into `protocol_capacity.py`.
+implementation. `protocol_capacity.py` imports that existing pure function
+through the same package/direct-script fallback pattern used by its neighboring
+imports. It must not copy the regular expressions or allowed-path loop.
 
 After a candidate is recognized as a route event, capacity validation calls
 that parser. A `ValueError` becomes a blocking `G7` route issue containing the
@@ -147,7 +148,10 @@ shape remains valid.
 
 After structural parsing, candidate validation resolves the committed routes
 for the candidate's exact Task ID using the existing `RouteBatchReader` and
-`resolve_task_routes` behavior.
+`resolve_task_routes` behavior. It loads the committed route set once, checks
+`reader.issues_for_task(candidate.task_id)`, and passes the complete set to
+`resolve_task_routes` so existing cross-task legacy-ancestor handling remains
+intact.
 
 - A revision-zero candidate with no parent is accepted only when no committed
   route already exists for that task.
@@ -169,6 +173,10 @@ already has any committed autonomous route, the candidate fails `G7` with an
 actionable message directing the incumbent owner to publish an autonomous
 continuation or use the existing durable transfer protocol.
 
+`protocol_capacity.py` obtains that exact Task-board through
+`route_lineage.task_board_of(body)`. It does not add another Task-board regular
+expression or infer task identity from prose.
+
 This preserves legacy-only compatibility while preventing a legacy route from
 becoming a competing base after a task has crossed into autonomous lineage.
 
@@ -181,9 +189,9 @@ Add one short rule to the canonical ledger adoption bridge:
 2. If the database is already running while required siblings are stopped, do
    not infer that `supabase start` or `--exclude` will partially resume those
    siblings.
-3. Stop and report the observed state unless a separate route or user grant
-   authorizes an exact existing-container action with frozen identities and a
-   restoration contract.
+3. Stop and report the observed state unless the user separately authorizes
+   the exact existing-container action and the active route records its
+   executor, target, scope, frozen identities, and restoration contract.
 
 The rule is advisory preflight plus an authority boundary. It does not execute
 a service action, prescribe a universal Docker workaround, or authorize
