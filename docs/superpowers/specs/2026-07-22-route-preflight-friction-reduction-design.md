@@ -285,11 +285,23 @@ migration, service cleanup, or data repair is required.
 
 The beta-activation checkpoint remains paused and unchanged while this
 friction slice is implemented and reviewed. After Operator GO and Coordinator
-reconciliation, work resumes from the already-established state:
+reconciliation, work resumes from the already-established state in this
+user-selected order:
 
 - Task 6 local acceptance commit
   `87a10b787a2f01f4353cad6a5e8ed338c381d333` has canonical GO;
 - it remains two fast-forwardable commits ahead of evidence-ledger `main`; and
-- integration, managed deployment/Auth, one-owner provisioning, required-info
-  entry, and physical Windows Edge acceptance remain the next separately
-  governed beta actions.
+- first integrate the reviewed Task 6 range as separately authorized, then run
+  the reviewed program locally on this Mac;
+- the user tests it on this Mac and uses that working copy to show and teach
+  the intended users;
+- only after the user confirms that Mac teaching/acceptance is complete,
+  package the Windows version and send it through separately authorized
+  effects; and
+- managed deployment/Auth, one-owner provisioning, required-info entry, and
+  physical Windows Edge acceptance remain separately governed and are invoked
+  only when the chosen Mac-first path actually requires them.
+
+This design grants no integration, local service start, activation, packaging,
+or sending authority. Windows packaging is expressly deferred until the user
+accepts the Mac teaching run.
