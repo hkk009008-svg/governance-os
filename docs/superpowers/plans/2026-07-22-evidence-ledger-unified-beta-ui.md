@@ -23,6 +23,7 @@
 - No screen or button performs booking, purchase, payment, email, deployment, policy activation against real data, or another external effect.
 - No iOS work and no Windows packaging in this slice.
 - Use synthetic test data only. A live Mac preview restart happens only after integration and under its separate user-authorized effect boundary.
+- Preserve Playwright port `4173` as the default. On this Mac only, run isolated browser tests with validated environment override `EVIDENCE_LEDGER_PLAYWRIGHT_PORT=4174`; never reuse, stop, restart, replace, or rebind the teaching preview on `127.0.0.1:4173`.
 - One cumulative non-author Operator actual-range verdict is required before integration. The Operator must be a distinct seat and different model from the Director and cannot have authored the range.
 
 ## File Map
@@ -32,6 +33,7 @@
 | `web/src/app/AppShell.tsx` | Shared ready, signed-out, offline, unavailable, and recovery presentation shell |
 | `web/src/app/App.tsx` | Phase composition, workspace selection, owner sequential save orchestration, existing data mapping |
 | `web/src/main.tsx` | One global import of the application stylesheet |
+| `web/playwright.config.ts` | Strict numeric test-only loopback port override while preserving default 4173 |
 | `web/src/styles/app.css` | Tokens, shell, cards, controls, tables, dialogs, responsive and focus behavior |
 | `web/src/features/auth/LoginView.tsx` | Two-field Korean login card and show-password control |
 | `web/src/features/recovery/RecoveryPanel.tsx` | Korean recovery state presentation with raw metadata behind details |
@@ -221,6 +223,7 @@ git commit -m "feat(web): add unified Korean application shell"
 - Modify: `web/e2e/owner-settings.spec.ts`
 - Modify: `web/e2e/workflow.spec.ts`
 - Modify: `web/e2e/security.spec.ts`
+- Modify: `web/playwright.config.ts`
 
 **Interfaces:**
 - Consumes: ordered `OwnerSettingsView.status.fields`, existing `OwnerSettingInput`, and the unchanged `saveOwnerSetting(input): Promise<OwnerSettingsView>` command boundary.
@@ -316,11 +319,50 @@ Disable the form during the loop. Stop on the first failure so expected-head and
 - Use the existing `ConfirmDialog` for activation and keep private values and digests out of the closed dialog body; put immutable IDs in a collapsed technical-details section if retained.
 - Keep `설정 검토 완료` and `정책 활성화` separately enabled only by server truth.
 
-- [ ] **Step 7: Update synthetic browser coverage.**
+- [ ] **Step 7: Add a strict test-only Playwright port override.**
+
+In the existing `VITEST=true` branch of `web/e2e/security.spec.ts`, first add
+failing tests for the exported parser:
+
+```ts
+unitTest("accepts only a bounded numeric Playwright loopback port", () => {
+  unitExpect(parsePlaywrightLoopbackPort(undefined)).toBe(4173);
+  unitExpect(parsePlaywrightLoopbackPort("4174")).toBe(4174);
+  for (const value of ["", "0", "1023", "65536", "4174;touch-x", "+4174", "04174"]) {
+    unitExpect(() => parsePlaywrightLoopbackPort(value)).toThrow("invalid Playwright loopback port");
+  }
+});
+```
+
+Run `npx vitest run e2e/security.spec.ts` and require RED because the parser is
+missing. Then implement only this test-harness correction in
+`web/playwright.config.ts`:
+
+```ts
+export function parsePlaywrightLoopbackPort(raw: string | undefined): number {
+  if (raw === undefined) return 4173;
+  if (!/^[1-9][0-9]{3,4}$/.test(raw)) throw new Error("invalid Playwright loopback port");
+  const port = Number(raw);
+  if (!Number.isSafeInteger(port) || port < 1024 || port > 65_535) {
+    throw new Error("invalid Playwright loopback port");
+  }
+  return port;
+}
+
+const loopbackPort = parsePlaywrightLoopbackPort(process.env.EVIDENCE_LEDGER_PLAYWRIGHT_PORT);
+export const LOOPBACK_ORIGIN = `http://127.0.0.1:${loopbackPort}`;
+```
+
+Use the validated numeric `loopbackPort` in the existing Vite preview command.
+Keep `reuseExistingServer: false`. Default behavior remains exactly 4173; the
+environment value changes only the ephemeral synthetic test server and the
+matching backend allowlist in that Playwright process.
+
+- [ ] **Step 8: Update synthetic browser coverage.**
 
 Change the owner-settings E2E flow to fill/toggle multiple visible rows before pressing `초안 저장`; assert that the backend receives `save_owner_settings_field` once per dirty row in field order. Keep the storage inspection during a held command and prove that neither the first nor later unsaved value appears in Local Storage, Session Storage, Cache Storage, IndexedDB, URLs, or unexpected traffic. Update transport-loss cases to use `초안 저장` and assert fail-closed unmounting remains unchanged.
 
-- [ ] **Step 8: Run Task 2 gates.**
+- [ ] **Step 9: Run Task 2 gates.**
 
 ```bash
 cd web
@@ -330,15 +372,19 @@ npx vitest run \
   src/app/AppController.test.ts
 npm run typecheck
 npm run build:ci
-npx playwright test e2e/owner-settings.spec.ts e2e/security.spec.ts
+lsof -nP -iTCP:4174 -sTCP:LISTEN
+EVIDENCE_LEDGER_PLAYWRIGHT_PORT=4174 npx playwright test \
+  e2e/owner-settings.spec.ts e2e/security.spec.ts
 ```
 
-Expected: all selected tests pass, build exits 0, private-state checks remain empty, and unexpected synthetic traffic is `[]`.
+Expected: `lsof` exits 1 with no listener before the test; all selected tests
+pass, the ephemeral 4174 listener exits with Playwright, build exits 0,
+private-state checks remain empty, and unexpected synthetic traffic is `[]`.
 
-- [ ] **Step 9: Commit Task 2.**
+- [ ] **Step 10: Commit Task 2.**
 
 ```bash
-git add -- web/src/app/App.tsx web/src/features/owner-settings \
+git add -- web/playwright.config.ts web/src/app/App.tsx web/src/features/owner-settings \
   web/e2e/owner-settings.spec.ts web/e2e/workflow.spec.ts web/e2e/security.spec.ts
 git commit -m "feat(web): show all owner settings on one page"
 ```
@@ -460,7 +506,7 @@ npx vitest run \
   src/app/AppController.test.ts
 npm run typecheck
 npm run build:ci
-npx playwright test e2e/workflow.spec.ts
+EVIDENCE_LEDGER_PLAYWRIGHT_PORT=4174 npx playwright test e2e/workflow.spec.ts
 ```
 
 Expected: all selected tests pass, build exits 0, the synthetic path remains product-first, and unexpected traffic is `[]`.
@@ -493,7 +539,8 @@ git commit -m "feat(web): unify selling and evidence experience"
 cd web
 npm test
 npm run typecheck
-npm run test:e2e
+npm run build:ci
+EVIDENCE_LEDGER_PLAYWRIGHT_PORT=4174 npx playwright test
 npm run build
 cd ..
 rg -n "localStorage|sessionStorage|indexedDB|caches|console\." web/src \
