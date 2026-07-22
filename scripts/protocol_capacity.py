@@ -1167,6 +1167,10 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
                     Path(report.root),
                 )
             )
+        else:
+            issues.extend(
+                _legacy_candidate_lineage_issues(path, body, Path(report.root))
+            )
 
     forbidden = _forbidden_side_effects(body)
     subagent_forbidden = [label for label in forbidden if label.startswith("subagent ")]
@@ -1182,34 +1186,77 @@ def _validate_route_file(path: Path, report: CapacityReport) -> list[dict[str, A
     return issues
 
 
+def _committed_task_context(
+    root: Path,
+    task_id: str,
+    candidate_path: Path,
+    *,
+    parent_ref: str | None = None,
+) -> tuple[
+    list[route_lineage.LineageRoute],
+    tuple[str, ...],
+    route_lineage.LineageRoute | None,
+]:
+    with route_lineage.RouteBatchReader(root) as reader:
+        routes = [
+            route
+            for route in reader.load_all_routes()
+            if route.path != candidate_path
+        ]
+        task_issues = reader.issues_for_task(task_id)
+        parent = reader.load_route_ref(parent_ref) if parent_ref is not None else None
+    return routes, task_issues, parent
+
+
 def _autonomous_candidate_parent_issues(
     candidate: route_lineage.LineageRoute,
     root: Path,
 ) -> list[dict[str, Any]]:
-    """Prove autonomous parent continuity without requiring candidate commit."""
+    """Prove candidate continuity against current committed task truth."""
+
+    task_id = candidate.task_id or ""
+    try:
+        routes, task_issues, parent = _committed_task_context(
+            root,
+            task_id,
+            candidate.path,
+            parent_ref=candidate.parent_ref,
+        )
+    except (OSError, UnicodeError, ValueError):
+        message = (
+            "parent contract is not an effective committed route"
+            if candidate.parent_ref is not None
+            else "current task route evidence is unreadable"
+        )
+        return [_issue("G7", f"{candidate.path.name}: {message}")]
+
+    issues = [
+        _issue(
+            "G7",
+            f"{candidate.path.name}: current task route evidence is unresolved ({message})",
+        )
+        for message in task_issues
+    ]
+    matching = [route for route in routes if route.task_id == task_id]
 
     if candidate.parent_ref is None:
-        if candidate.revision == 0:
-            return []
-        return [
-            _issue(
-                "G7",
-                f"{candidate.path.name}: parent none requires contract revision 0",
+        if candidate.revision != 0:
+            issues.append(
+                _issue(
+                    "G7",
+                    f"{candidate.path.name}: parent none requires contract revision 0",
+                )
             )
-        ]
-
-    try:
-        with route_lineage.RouteBatchReader(root) as reader:
-            parent = reader.load_route_ref(candidate.parent_ref)
-    except (OSError, UnicodeError, ValueError):
-        return [
-            _issue(
-                "G7",
-                f"{candidate.path.name}: parent contract is not an effective committed route",
+        if matching:
+            issues.append(
+                _issue(
+                    "G7",
+                    f"{candidate.path.name}: revision-zero root requires an empty committed task",
+                )
             )
-        ]
+        return issues
 
-    issues: list[dict[str, Any]] = []
+    assert parent is not None
     if not parent.effective:
         issues.append(
             _issue(
@@ -1229,6 +1276,96 @@ def _autonomous_candidate_parent_issues(
             _issue(
                 "G7",
                 f"{candidate.path.name}: contract revision must equal parent revision plus one",
+            )
+        )
+
+    resolution = route_lineage.resolve_task_routes(routes, task_id)
+    if resolution.issues or resolution.authoritative is None:
+        detail = "; ".join(resolution.issues) or "no authoritative route"
+        issues.append(
+            _issue(
+                "G7",
+                f"{candidate.path.name}: current task lineage is unresolved ({detail})",
+            )
+        )
+    elif resolution.authoritative.route_ref != candidate.parent_ref:
+        issues.append(
+            _issue(
+                "G7",
+                f"{candidate.path.name}: parent contract must equal current authoritative task tip",
+            )
+        )
+    return issues
+
+
+def _legacy_candidate_lineage_issues(
+    path: Path,
+    body: str,
+    root: Path,
+) -> list[dict[str, Any]]:
+    task_id = route_lineage.task_board_of(body)
+    if task_id is None:
+        return []
+    try:
+        routes, task_issues, _ = _committed_task_context(
+            root,
+            task_id,
+            path,
+        )
+    except (OSError, UnicodeError, ValueError):
+        return [
+            _issue("G7", f"{path.name}: current task route evidence is unreadable")
+        ]
+
+    issues = [
+        _issue(
+            "G7",
+            f"{path.name}: current task route evidence is unresolved ({message})",
+        )
+        for message in task_issues
+    ]
+    legacy_routes = [route for route in routes if route.legacy]
+    generated_legacy = [
+        route
+        for route in legacy_routes
+        if route.lineage.generation is not None
+    ]
+    if generated_legacy:
+        global_resolution = route_lineage.resolve_authoritative(legacy_routes)
+        if global_resolution.issues or global_resolution.authoritative is None:
+            detail = "; ".join(global_resolution.issues) or "no global tip"
+            issues.append(
+                _issue(
+                    "G7",
+                    f"{path.name}: current global legacy lineage is unresolved ({detail})",
+                )
+            )
+        else:
+            current_tip = global_resolution.authoritative
+            assert current_tip.lineage.generation is not None
+            candidate_lineage = route_lineage.parse_lineage(body)
+            expected_generation = current_tip.lineage.generation + 1
+            if (
+                candidate_lineage.generation != expected_generation
+                or candidate_lineage.parent_route_id != current_tip.route_id
+            ):
+                issues.append(
+                    _issue(
+                        "G7",
+                        f"{path.name}: generated legacy route must extend current "
+                        f"global tip {current_tip.route_id} at generation "
+                        f"{expected_generation}",
+                    )
+                )
+    if any(
+        route.task_id == task_id and not route.legacy
+        for route in routes
+    ):
+        issues.append(
+            _issue(
+                "G7",
+                f"{path.name}: legacy route cannot extend a task with autonomous lineage; "
+                "the incumbent must publish an autonomous continuation or use durable transfer",
             )
         )
     return issues

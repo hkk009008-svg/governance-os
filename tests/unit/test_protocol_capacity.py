@@ -196,6 +196,37 @@ def _commit_legacy_parent(
     return f"{relative}@{_git(root, 'rev-parse', 'HEAD')}"
 
 
+def _commit_autonomous_route(
+    root: Path,
+    *,
+    task_id: str,
+    parent: str,
+    revision: int,
+    minute: int,
+) -> str:
+    name = (
+        f"2026-07-18T09-{minute:02d}-00Z-director-to-all-coordination.md"
+    )
+    path = _write_route(
+        root,
+        name,
+        "# director -> all: route event\n\n"
+        f"**When:** 2026-07-18T09:{minute:02d}:00Z · "
+        "**From:** director (online)\n\n"
+        + _autonomous_route_body(
+            task_id=task_id,
+            parent=parent,
+            revision=revision,
+            previous_owners="director",
+        )
+        + "\nCursor at send: 0\n",
+    )
+    relative = path.relative_to(root).as_posix()
+    _git(root, "add", "--", relative)
+    _git(root, "commit", "-q", "-m", f"add route revision {revision}")
+    return f"{relative}@{_git(root, 'rev-parse', 'HEAD')}"
+
+
 def _compact_token_body(
     *,
     executor: str = "director",
@@ -385,6 +416,187 @@ def test_autonomous_route_candidate_rejects_nonconsecutive_revision(tmp_path: Pa
         "contract revision must equal parent revision plus one" in issue["message"]
         for issue in result.route_issues
     )
+
+
+def test_autonomous_candidate_accepts_current_authoritative_tip(tmp_path: Path):
+    parent = _commit_legacy_parent(tmp_path, generation=3)
+    tip = _commit_autonomous_route(
+        tmp_path,
+        task_id="autonomous-capacity-test",
+        parent=parent,
+        revision=4,
+        minute=10,
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            parent=tip,
+            revision=5,
+            previous_owners="director",
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+
+
+def test_autonomous_candidate_rejects_effective_superseded_parent(tmp_path: Path):
+    legacy = _commit_legacy_parent(tmp_path, generation=3)
+    superseded = _commit_autonomous_route(
+        tmp_path,
+        task_id="autonomous-capacity-test",
+        parent=legacy,
+        revision=4,
+        minute=10,
+    )
+    _commit_autonomous_route(
+        tmp_path,
+        task_id="autonomous-capacity-test",
+        parent=superseded,
+        revision=5,
+        minute=20,
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            parent=superseded,
+            revision=5,
+            previous_owners="director",
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "parent contract must equal current authoritative task tip"
+        in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_autonomous_root_rejects_existing_same_task_route(tmp_path: Path):
+    _commit_legacy_parent(tmp_path, generation=3)
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "revision-zero root requires an empty committed task"
+        in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_autonomous_candidate_rejects_unresolved_same_task_fork(tmp_path: Path):
+    legacy = _commit_legacy_parent(tmp_path, generation=3)
+    left = _commit_autonomous_route(
+        tmp_path,
+        task_id="autonomous-capacity-test",
+        parent=legacy,
+        revision=4,
+        minute=10,
+    )
+    _commit_autonomous_route(
+        tmp_path,
+        task_id="autonomous-capacity-test",
+        parent=legacy,
+        revision=4,
+        minute=11,
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-director-to-all-coordination.md",
+        _autonomous_route_body(
+            parent=left,
+            revision=5,
+            previous_owners="director",
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "current task lineage is unresolved" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_legacy_candidate_rejects_task_with_autonomous_lineage(tmp_path: Path):
+    legacy = _commit_legacy_parent(tmp_path, generation=3)
+    _commit_autonomous_route(
+        tmp_path,
+        task_id="autonomous-capacity-test",
+        parent=legacy,
+        revision=4,
+        minute=10,
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        "Task-board: autonomous-capacity-test\n"
+        "Route generation: 4\n"
+        f"Supersedes route: {legacy.split('@', 1)[0]}\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "legacy route cannot extend a task with autonomous lineage"
+        in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_legacy_candidate_rejects_new_global_root_beside_existing_tip(
+    tmp_path: Path,
+):
+    _commit_legacy_parent(tmp_path, task_id="prior-global-task", generation=3)
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        "Task-board: next-global-task\nRoute generation: 0\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "generated legacy route must extend current global tip"
+        in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_legacy_candidate_accepts_next_global_generation_and_tip(
+    tmp_path: Path,
+):
+    legacy = _commit_legacy_parent(
+        tmp_path,
+        task_id="prior-global-task",
+        generation=3,
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        "Task-board: next-global-task\n"
+        "Route generation: 4\n"
+        f"Supersedes route: {legacy.split('@', 1)[0]}\n",
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
 
 
 def test_capacity_findings_are_advisory_to_autonomous_route_validity(tmp_path: Path):

@@ -217,7 +217,7 @@ def _refs(value: str, *, allow_self: bool) -> tuple[str, ...]:
     return values
 
 
-def _task_board(body: str) -> str | None:
+def task_board_of(body: str) -> str | None:
     matches = re.findall(r"^\s*Task-board:\s*`?([^`\n]+?)`?\s*$", body, re.MULTILINE)
     if len(matches) != 1:
         return None
@@ -236,7 +236,7 @@ def is_route_event(path: Path, body: str) -> bool:
     sender = match.group("sender")
     kind = match.group("kind")
     if sender in {"coordinator", "coordinator2"}:
-        return kind in {"coordination", "status", "decision"} and _task_board(body) is not None
+        return kind in {"coordination", "status", "decision"} and task_board_of(body) is not None
     if sender not in protocol_mailbox.SEATS or kind != "coordination":
         return False
     try:
@@ -362,7 +362,7 @@ def _legacy_route(
     return LineageRoute(
         route_id=route_id_of(path.name),
         lineage=lineage,
-        task_id=_task_board(body),
+        task_id=task_board_of(body),
         route_ref=route_ref if route_ref is not None else _committed_ref_for_path(root, path),
         revision=lineage.generation,
         path=path,

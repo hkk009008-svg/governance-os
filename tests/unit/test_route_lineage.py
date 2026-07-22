@@ -44,6 +44,14 @@ def test_parse_legacy_route_without_generation():
     assert parsed.parent_route_id == "foo"
 
 
+def test_task_board_of_requires_one_non_none_exact_field():
+    assert route_lineage.task_board_of("Task-board: `demo-task`\n") == "demo-task"
+    assert route_lineage.task_board_of("Task-board: none\n") is None
+    assert route_lineage.task_board_of(
+        "Task-board: first\nTask-board: second\n"
+    ) is None
+
+
 def test_parse_first_generation_no_parent():
     parsed = route_lineage.parse_lineage("Task-board: x\nRoute generation: 1\n")
     assert parsed.generation == 1
