@@ -97,11 +97,44 @@ def _project_smoke() -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    fast_mode = False
+    args = argv if argv is not None else sys.argv[1:]
+    if "--fast" in args:
+        fast_mode = True
+
     # --- HALF A: project runtime smoke ---
     _result = _project_smoke()
     if _result:
         return _result
+
+    if fast_mode:
+        # Fast preflight mode: run essential coordination, ceremony, and placeholder checks
+        import check_coordination as _cc
+        import check_no_ceremony as _cnc
+        import check_placeholders as _cp
+
+        _repo_root = Path(_REPO_ROOT)
+        _coord_issues = _cc.run(_repo_root / "coordination", docs_root=_repo_root / "docs")
+        _coord_fatal = [_i for _i in _coord_issues if _i.severity == "FATAL"]
+        if _coord_fatal:
+            for _i in _coord_fatal:
+                print(f"COORDINATION FATAL [{_i.kind}] {_i.path} — {_i.message}")
+            if not os.environ.get("CI"):
+                return 1
+
+        _ceremony_exit = _cnc.main()
+        if _ceremony_exit:
+            return _ceremony_exit
+
+        _ph_violations = _cp.run(_repo_root)
+        if _ph_violations:
+            print(f"PLACEHOLDER CHECK — FAIL: {len(_ph_violations)} violation(s)")
+            return 1
+
+        print("FAST PREFLIGHT — PASS (essential invariants ok).")
+        print("OK")
+        return 0
 
     # --- HALF B: governance gates (fully portable) ---
 
