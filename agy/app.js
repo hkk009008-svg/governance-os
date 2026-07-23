@@ -1,5 +1,5 @@
 /**
- * Dr. ROOTEM Ultra-Stunning Interactive App Engine (54+ Authentic Reviews Expanded)
+ * Dr. ROOTEM Ultra-Stunning Interactive App Engine (Real Product Photography Version)
  */
 
 const PRODUCTS = [
@@ -14,7 +14,7 @@ const PRODUCTS = [
     origPrice: 33500,
     discount: "26% OFF",
     rating: "★ 4.9 (14,820개 리뷰)",
-    color: "#10b981"
+    image: "assets/ps_70.jpg"
   },
   {
     id: 2,
@@ -27,7 +27,7 @@ const PRODUCTS = [
     origPrice: 31000,
     discount: "20% OFF",
     rating: "★ 4.9 (9,840개 리뷰)",
-    color: "#f59e0b"
+    image: "assets/vitc_1000.jpg"
   },
   {
     id: 3,
@@ -40,7 +40,7 @@ const PRODUCTS = [
     origPrice: 22000,
     discount: "23% OFF",
     rating: "★ 4.8 (6,420개 리뷰)",
-    color: "#8b5cf6"
+    image: "assets/yeast_4000.jpg"
   },
   {
     id: 4,
@@ -53,7 +53,7 @@ const PRODUCTS = [
     origPrice: 39000,
     discount: "25% OFF",
     rating: "★ 4.9 (11,200개 리뷰)",
-    color: "#2563eb"
+    image: "assets/saw_palmetto.jpg"
   },
   {
     id: 5,
@@ -66,7 +66,7 @@ const PRODUCTS = [
     origPrice: 29000,
     discount: "21% OFF",
     rating: "★ 4.8 (4,350개 리뷰)",
-    color: "#dc2626"
+    image: "assets/banaba_care.jpg"
   },
   {
     id: 6,
@@ -79,7 +79,7 @@ const PRODUCTS = [
     origPrice: 36000,
     discount: "22% OFF",
     rating: "★ 4.9 (5,890개 리뷰)",
-    color: "#059669"
+    image: "assets/omega3.jpg"
   }
 ];
 
@@ -111,7 +111,6 @@ const MATRIX_DATA = {
   }
 };
 
-// Massive Authentic Customer Review Dataset (54 Comprehensive Items)
 const CATEGORIES = ["ps", "vitc", "yeast", "eye", "banaba", "omega"];
 const PROD_NAMES = {
   ps: "이시형 박사의 두뇌엔 PS 70",
@@ -138,7 +137,6 @@ const BASE_TEMPLATES = [
 ];
 
 let REVIEWS = [];
-// Generate 54 rich, diverse review objects
 let reviewIdCounter = 200;
 for (let i = 0; i < 54; i++) {
   const cat = CATEGORIES[i % CATEGORIES.length];
@@ -147,7 +145,6 @@ for (let i = 0; i < 54; i++) {
   const gender = i % 2 === 0 ? "여성" : "남성";
   const nameMask = ["김", "이", "박", "최", "정", "강", "조", "윤", "장", "임", "한", "오"][i % 12];
   const subMask = ["*영", "*수", "*아", "*우", "*선", "*진", "*훈", "*현", "*택", "*미", "*섭", "*은"][i % 12];
-  
   const daysAgo = (i % 28) + 1;
   const dateStr = `2026.07.${String(30 - (daysAgo % 25)).padStart(2, '0')}`;
 
@@ -188,7 +185,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initBarClose();
 });
 
-// Canvas Particle Engine
 function initParticleCanvas() {
   const canvas = document.getElementById("particleCanvas");
   const ctx = canvas.getContext("2d");
@@ -362,6 +358,10 @@ function renderCatalog() {
   grid.innerHTML = PRODUCTS.map(p => `
     <div class="cat-card glass-card-3d">
       <div>
+        <div class="catalog-photo-container">
+          <img src="${p.image}" alt="${p.name}" class="cat-prod-img">
+        </div>
+
         <span class="p-badge" style="background:rgba(16,185,129,0.1); color:var(--neon-emerald); font-size:0.78rem; font-weight:800; padding:4px 10px; border-radius:6px; border:1px solid var(--border-neon);">${p.badge}</span>
         <h3 style="font-size:1.25rem; font-weight:800; margin:12px 0 6px;">${p.name}</h3>
         <p style="font-size:0.9rem; color:var(--text-sub); margin-bottom:16px;">${p.desc}</p>
@@ -378,7 +378,6 @@ function renderCatalog() {
   setTimeout(init3DTilt, 100);
 }
 
-// Review Filters, Search, and Load More
 function initReviewFilters() {
   const chips = document.querySelectorAll(".rev-chip");
   chips.forEach(chip => {
@@ -575,9 +574,12 @@ function updateCart() {
   } else {
     list.innerHTML = cart.map(i => `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:14px; border:1px solid var(--border-glass); border-radius:12px; margin-bottom:12px; background:rgba(0,0,0,0.2);">
-        <div>
-          <div style="font-weight:800; font-size:0.95rem;">${i.name}</div>
-          <div style="color:var(--neon-emerald); font-weight:800; margin-top:4px;">${(i.price * i.qty).toLocaleString()}원</div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <img src="${i.image}" alt="${i.name}" style="width:48px; height:48px; object-fit:cover; border-radius:8px;">
+          <div>
+            <div style="font-weight:800; font-size:0.92rem;">${i.name}</div>
+            <div style="color:var(--neon-emerald); font-weight:800; margin-top:2px;">${(i.price * i.qty).toLocaleString()}원</div>
+          </div>
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
           <span>${i.qty}개</span>
