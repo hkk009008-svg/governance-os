@@ -1,0 +1,390 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1000" width="100%" height="100%" aria-labelledby="agyOsTitle agyOsDesc" role="img">
+  <title id="agyOsTitle">AGY OS Governance Kernel Interactive Architecture</title>
+  <desc id="agyOsDesc">Detailed interactive vector diagram of Google Antigravity AGY OS showcasing four-seat protocol, signed event bus, ci_smoke runtime invariants, provider mechanics, and wave gates.</desc>
+
+  <defs>
+    <!-- Background & Glowing Radial Gradients -->
+    <radialGradient id="kernelCoreGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#6366F1" stop-opacity="0.45"/>
+      <stop offset="35%" stop-color="#06B6D4" stop-opacity="0.25"/>
+      <stop offset="70%" stop-color="#10B981" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Metallic & Cyber Gradients -->
+    <linearGradient id="violetIndigo" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EEF2FF"/>
+      <stop offset="30%" stop-color="#818CF8"/>
+      <stop offset="70%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#312E81"/>
+    </linearGradient>
+
+    <linearGradient id="cyanTeal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E0F2FE"/>
+      <stop offset="30%" stop-color="#38BDF8"/>
+      <stop offset="70%" stop-color="#0284C7"/>
+      <stop offset="100%" stop-color="#075985"/>
+    </linearGradient>
+
+    <linearGradient id="goldAmber" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FEF3C7"/>
+      <stop offset="30%" stop-color="#F59E0B"/>
+      <stop offset="70%" stop-color="#D97706"/>
+      <stop offset="100%" stop-color="#78350F"/>
+    </linearGradient>
+
+    <linearGradient id="emeraldMint" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D1FAE5"/>
+      <stop offset="30%" stop-color="#34D399"/>
+      <stop offset="70%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#064E3B"/>
+    </linearGradient>
+
+    <linearGradient id="glassPanelBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.80"/>
+      <stop offset="50%" stop-color="#0F172A" stop-opacity="0.90"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="0.96"/>
+    </linearGradient>
+
+    <!-- Filters -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="panelShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000000" flood-opacity="0.7"/>
+    </filter>
+
+    <!-- Keyframe Animations -->
+    <style>
+      .spin-cw {
+        transform-origin: 700px 500px;
+        animation: spinClockwise 35s linear infinite;
+      }
+      .spin-ccw {
+        transform-origin: 700px 500px;
+        animation: spinCounter 25s linear infinite;
+      }
+      .pulse-kernel {
+        transform-origin: 700px 500px;
+        animation: pulseGlow 4s ease-in-out infinite alternate;
+      }
+      .signal-line {
+        stroke-dasharray: 10, 10;
+        animation: dashFlow 12s linear infinite;
+      }
+      .os-node {
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.3s ease;
+        cursor: pointer;
+      }
+      .os-node:hover {
+        transform: translateY(-4px) scale(1.03);
+        filter: url(#neonGlow);
+      }
+      .seat-card:hover {
+        stroke: #F59E0B;
+        stroke-width: 2.5px;
+      }
+
+      @keyframes spinClockwise {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes spinCounter {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(-360deg); }
+      }
+      @keyframes pulseGlow {
+        0% { opacity: 0.6; transform: scale(0.97); }
+        100% { opacity: 1; transform: scale(1.03); }
+      }
+      @keyframes dashFlow {
+        from { stroke-dashoffset: 0; }
+        to { stroke-dashoffset: 240; }
+      }
+    </style>
+  </defs>
+
+  <!-- Deep Cosmic Canvas Background -->
+  <rect width="1400" height="1000" fill="#020617"/>
+
+  <!-- Ambient Holographic Kernel Aura -->
+  <circle cx="700" cy="500" r="550" fill="url(#kernelCoreGlow)"/>
+
+  <!-- Grid Pattern Substrate -->
+  <g opacity="0.05" stroke="#94A3B8" stroke-width="1">
+    <path d="M 0,100 H 1400 M 0,200 H 1400 M 0,300 H 1400 M 0,400 H 1400 M 0,500 H 1400 M 0,600 H 1400 M 0,700 H 1400 M 0,800 H 1400 M 0,900 H 1400"/>
+    <path d="M 100,0 V 1000 M 200,0 V 1000 M 300,0 V 1000 M 400,0 V 1000 M 500,0 V 1000 M 600,0 V 1000 M 700,0 V 1000 M 800,0 V 1000 M 900,0 V 1000 M 1000,0 V 1000 M 1100,0 V 1000 M 1200,0 V 1000 M 1300,0 V 1000"/>
+  </g>
+
+  <!-- ==================== HEADER BAR ==================== -->
+  <g transform="translate(50, 40)" filter="url(#panelShadow)">
+    <rect width="1300" height="70" rx="16" fill="url(#glassPanelBg)" stroke="url(#violetIndigo)" stroke-width="2"/>
+    
+    <!-- OS Logo Icon -->
+    <g transform="translate(30, 20)">
+      <polygon points="15,0 30,10 30,25 15,35 0,25 0,10" fill="url(#violetIndigo)"/>
+      <circle cx="15" cy="17.5" r="5" fill="#EEF2FF" filter="url(#neonGlow)"/>
+    </g>
+
+    <!-- Title Typography -->
+    <text x="75" y="36" font-family="'Space Grotesk', 'Outfit', sans-serif" font-size="20" font-weight="900" fill="#EEF2FF" letter-spacing="2">
+      AGY OS // GOVERNANCE OS PLATFORM ARCHITECTURE
+    </text>
+    <text x="75" y="54" font-family="'Inter', sans-serif" font-size="11" font-weight="600" fill="#94A3B8" letter-spacing="1">
+      FOUR-SEAT COMPACT PAIR • ED25519 SIGNED BUS • CI_SMOKE INVARIANTS • ADAPTIVE PROVIDERS
+    </text>
+
+    <!-- Live Status Indicators -->
+    <g transform="translate(1000, 22)">
+      <rect x="0" y="0" width="130" height="26" rx="13" fill="#064E3B" stroke="#10B981" stroke-width="1.5"/>
+      <circle cx="15" cy="13" r="4" fill="#34D399" filter="url(#neonGlow)"/>
+      <text x="26" y="17" font-family="'Inter', sans-serif" font-size="10" font-weight="800" fill="#D1FAE5">SMOKE: PASS</text>
+
+      <rect x="140" y="0" width="130" height="26" rx="13" fill="#1E1B4B" stroke="#818CF8" stroke-width="1.5"/>
+      <circle cx="155" cy="13" r="4" fill="#A5B4FC" filter="url(#neonGlow)"/>
+      <text x="166" y="17" font-family="'Inter', sans-serif" font-size="10" font-weight="800" fill="#EEF2FF">WAVE 2: MET</text>
+    </g>
+  </g>
+
+  <!-- ==================== SIGNAL BUS CONNECTORS ==================== -->
+  <g stroke-width="2" opacity="0.6">
+    <path class="signal-line" d="M 220,240 L 220,340 L 700,340 L 700,430" fill="none" stroke="url(#cyanTeal)"/>
+    <path class="signal-line" d="M 540,240 L 540,340 L 700,340" fill="none" stroke="url(#violetIndigo)"/>
+    <path class="signal-line" d="M 860,240 L 860,340 L 700,340" fill="none" stroke="url(#goldAmber)"/>
+    <path class="signal-line" d="M 1180,240 L 1180,340 L 700,340" fill="none" stroke="url(#emeraldMint)"/>
+
+    <path class="signal-line" d="M 700,570 L 700,640" fill="none" stroke="url(#goldAmber)"/>
+    <path class="signal-line" d="M 700,780 L 700,840" fill="none" stroke="url(#cyanTeal)"/>
+  </g>
+
+  <!-- ==================== LAYER 1: PROVIDER ADAPTERS ==================== -->
+  <g transform="translate(50, 140)">
+    <text x="0" y="-10" font-family="'Space Grotesk', sans-serif" font-size="12" font-weight="800" fill="#64748B" letter-spacing="2">
+      LAYER 1 // AGENT PROVIDERS &amp; HARNESS SURFACES
+    </text>
+
+    <!-- Card 1: AGY (Antigravity Harness) -->
+    <g class="os-node" transform="translate(0, 0)">
+      <rect width="280" height="90" rx="14" fill="url(#glassPanelBg)" stroke="url(#cyanTeal)" stroke-width="2"/>
+      <circle cx="30" cy="30" r="14" fill="#0891B2"/>
+      <text x="30" y="34" font-family="'Space Grotesk', sans-serif" font-size="12" font-weight="900" fill="#FFFFFF" text-anchor="middle">AGY</text>
+      <text x="56" y="32" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="800" fill="#E0F2FE">Antigravity Harness</text>
+      <text x="56" y="48" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Slash Commands (/goal, /schedule)</text>
+      <text x="56" y="64" font-family="'Inter', sans-serif" font-size="10" fill="#38BDF8">docs/protocol/agy/continuation.md</text>
+      <rect x="200" y="14" width="65" height="18" rx="9" fill="#0369A1"/><text x="232.5" y="26" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#E0F2FE" text-anchor="middle">NATIVE</text>
+    </g>
+
+    <!-- Card 2: Claude Code -->
+    <g class="os-node" transform="translate(320, 0)">
+      <rect width="280" height="90" rx="14" fill="url(#glassPanelBg)" stroke="url(#violetIndigo)" stroke-width="2"/>
+      <circle cx="30" cy="30" r="14" fill="#4F46E5"/>
+      <text x="30" y="34" font-family="'Space Grotesk', sans-serif" font-size="12" font-weight="900" fill="#FFFFFF" text-anchor="middle">CC</text>
+      <text x="56" y="32" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="800" fill="#EEF2FF">Claude Code Adapter</text>
+      <text x="56" y="48" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">CLAUDE.md &amp; .claude/ hooks</text>
+      <text x="56" y="64" font-family="'Inter', sans-serif" font-size="10" fill="#818CF8">docs/protocol/claude/</text>
+      <rect x="200" y="14" width="65" height="18" rx="9" fill="#3730A3"/><text x="232.5" y="26" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#EEF2FF" text-anchor="middle">ADAPTER</text>
+    </g>
+
+    <!-- Card 3: Codex -->
+    <g class="os-node" transform="translate(640, 0)">
+      <rect width="280" height="90" rx="14" fill="url(#glassPanelBg)" stroke="url(#goldAmber)" stroke-width="2"/>
+      <circle cx="30" cy="30" r="14" fill="#D97706"/>
+      <text x="30" y="34" font-family="'Space Grotesk', sans-serif" font-size="12" font-weight="900" fill="#FFFFFF" text-anchor="middle">CX</text>
+      <text x="56" y="32" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="800" fill="#FEF3C7">Codex Engine</text>
+      <text x="56" y="48" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Tier 0-3 Readiness Bridge &amp; Skills</text>
+      <text x="56" y="64" font-family="'Inter', sans-serif" font-size="10" fill="#F59E0B">docs/protocol/codex/continuation.md</text>
+      <rect x="200" y="14" width="65" height="18" rx="9" fill="#92400E"/><text x="232.5" y="26" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#FEF3C7" text-anchor="middle">BRIDGE</text>
+    </g>
+
+    <!-- Card 4: Cursor -->
+    <g class="os-node" transform="translate(960, 0)">
+      <rect width="280" height="90" rx="14" fill="url(#glassPanelBg)" stroke="url(#emeraldMint)" stroke-width="2"/>
+      <circle cx="30" cy="30" r="14" fill="#059669"/>
+      <text x="30" y="34" font-family="'Space Grotesk', sans-serif" font-size="12" font-weight="900" fill="#FFFFFF" text-anchor="middle">CR</text>
+      <text x="56" y="32" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="800" fill="#D1FAE5">Cursor Integration</text>
+      <text x="56" y="48" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">.cursor/rules &amp; FoulPlay Bridge</text>
+      <text x="56" y="64" font-family="'Inter', sans-serif" font-size="10" fill="#34D399">cursor-auto-relay &amp; land path</text>
+      <rect x="200" y="14" width="65" height="18" rx="9" fill="#065F46"/><text x="232.5" y="26" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#D1FAE5" text-anchor="middle">RELAY</text>
+    </g>
+  </g>
+
+  <!-- ==================== LAYER 2: FOUR-SEAT PROTOCOL CORE ==================== -->
+  <g transform="translate(50, 370)">
+    <text x="0" y="-10" font-family="'Space Grotesk', sans-serif" font-size="12" font-weight="800" fill="#64748B" letter-spacing="2">
+      LAYER 2 // FOUR-SEAT COMPACT PAIR PROTOCOL CORE (.agents/skills/four-seat-protocol/)
+    </text>
+
+    <!-- Outer Seat Protocol Hex Shield -->
+    <rect width="1300" height="200" rx="20" fill="url(#glassPanelBg)" stroke="url(#goldAmber)" stroke-width="2" filter="url(#panelShadow)"/>
+
+    <!-- Central Orbit Ring -->
+    <g class="spin-cw" opacity="0.3">
+      <circle cx="700" cy="500" r="140" fill="none" stroke="url(#goldAmber)" stroke-width="2" stroke-dasharray="20 10 40 10"/>
+    </g>
+
+    <!-- Seat 1: Director (Author) -->
+    <g class="os-node seat-card" transform="translate(30, 25)">
+      <rect width="280" height="150" rx="14" fill="#0F172A" stroke="url(#violetIndigo)" stroke-width="2"/>
+      <rect x="16" y="16" width="40" height="40" rx="10" fill="#312E81"/>
+      <text x="36" y="41" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="900" fill="#EEF2FF" text-anchor="middle">D</text>
+      <text x="68" y="34" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="900" fill="#EEF2FF">director / director2</text>
+      <text x="68" y="48" font-family="'Inter', sans-serif" font-size="10" font-weight="700" fill="#818CF8">AUTHOR &amp; IMPLEMENTER</text>
+      <path d="M 20,70 H 260" stroke="#334155" stroke-width="1"/>
+      <text x="20" y="88" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">• Implements worktree changes</text>
+      <text x="20" y="104" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">• Emits verify-request event</text>
+      <text x="20" y="120" font-family="'Inter', sans-serif" font-size="10" fill="#818CF8">• Binds exact commit range &amp; model</text>
+      <rect x="180" y="12" width="85" height="20" rx="10" fill="#1E1B4B"/><text x="222.5" y="25" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#A5B4FC" text-anchor="middle">WORKTREE</text>
+    </g>
+
+    <!-- Seat 2: Operator (Reviewer & GO Gate) -->
+    <g class="os-node seat-card" transform="translate(340, 25)">
+      <rect width="280" height="150" rx="14" fill="#0F172A" stroke="url(#emeraldMint)" stroke-width="2"/>
+      <rect x="16" y="16" width="40" height="40" rx="10" fill="#064E3B"/>
+      <text x="36" y="41" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="900" fill="#D1FAE5" text-anchor="middle">O</text>
+      <text x="68" y="34" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="900" fill="#D1FAE5">operator / operator2</text>
+      <text x="68" y="48" font-family="'Inter', sans-serif" font-size="10" font-weight="700" fill="#34D399">INDEPENDENT REVIEWER</text>
+      <path d="M 20,70 H 260" stroke="#334155" stroke-width="1"/>
+      <text x="20" y="88" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">• Distinct non-author seat &amp; model</text>
+      <text x="20" y="104" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">• Validates GO-Schema &amp; ci_smoke</text>
+      <text x="20" y="120" font-family="'Inter', sans-serif" font-size="10" fill="#34D399">• Issues VERDICT: GO / NITS / FAIL</text>
+      <rect x="180" y="12" width="85" height="20" rx="10" fill="#065F46"/><text x="222.5" y="25" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#A7F3D0" text-anchor="middle">GO VERDICT</text>
+    </g>
+
+    <!-- Seat 3: Coordinator (Observer / Facilitator) -->
+    <g class="os-node seat-card" transform="translate(650, 25)">
+      <rect width="310" height="150" rx="14" fill="#0F172A" stroke="url(#goldAmber)" stroke-width="2"/>
+      <rect x="16" y="16" width="40" height="40" rx="10" fill="#78350F"/>
+      <text x="36" y="41" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="900" fill="#FEF3C7" text-anchor="middle">C</text>
+      <text x="68" y="34" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="900" fill="#FEF3C7">coordinator</text>
+      <text x="68" y="48" font-family="'Inter', sans-serif" font-size="10" font-weight="700" fill="#F59E0B">OBSERVER &amp; FACILITATOR</text>
+      <path d="M 20,70 H 290" stroke="#334155" stroke-width="1"/>
+      <text x="20" y="88" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">• Unpinned observer (zero cursor consumed)</text>
+      <text x="20" y="104" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">• Routes tasks &amp; monitors wave gates</text>
+      <text x="20" y="120" font-family="'Inter', sans-serif" font-size="10" fill="#F59E0B">• Publishes convergence reports</text>
+      <rect x="210" y="12" width="85" height="20" rx="10" fill="#92400E"/><text x="252.5" y="25" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#FDE68A" text-anchor="middle">FACILITATOR</text>
+    </g>
+
+    <!-- Seat 4: Readiness Bridge -->
+    <g class="os-node seat-card" transform="translate(980, 25)">
+      <rect width="290" height="150" rx="14" fill="#0F172A" stroke="url(#cyanTeal)" stroke-width="2"/>
+      <rect x="16" y="16" width="40" height="40" rx="10" fill="#075985"/>
+      <text x="36" y="41" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="900" fill="#E0F2FE" text-anchor="middle">R</text>
+      <text x="68" y="34" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="900" fill="#E0F2FE">readiness bridge</text>
+      <text x="68" y="48" font-family="'Inter', sans-serif" font-size="10" font-weight="700" fill="#38BDF8">STARTUP ORIENTATION</text>
+      <path d="M 20,70 H 270" stroke="#334155" stroke-width="1"/>
+      <text x="20" y="88" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">• Fast resume / full orientation check</text>
+      <text x="20" y="104" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">• Startup snapshot verification</text>
+      <text x="20" y="120" font-family="'Inter', sans-serif" font-size="10" fill="#38BDF8">• Seat status &amp; wave 2 gate check</text>
+      <rect x="195" y="12" width="80" height="20" rx="10" fill="#0369A1"/><text x="235" y="25" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#E0F2FE" text-anchor="middle">ORIENTATION</text>
+    </g>
+  </g>
+
+  <!-- ==================== LAYER 3: SIGNED EVENT BUS & TRANSPORT ==================== -->
+  <g transform="translate(50, 610)">
+    <text x="0" y="-10" font-family="'Space Grotesk', sans-serif" font-size="12" font-weight="800" fill="#64748B" letter-spacing="2">
+      LAYER 3 // ED25519 SIGNED EVENT BUS &amp; MAILBOX PIPELINE (coordination/bin/send-event)
+    </text>
+
+    <rect width="1300" height="150" rx="20" fill="url(#glassPanelBg)" stroke="url(#cyanTeal)" stroke-width="2" filter="url(#panelShadow)"/>
+
+    <!-- Event Bus Flow Nodes -->
+    <g transform="translate(30, 25)">
+      <!-- Step 1: Fixed Mailbox Writer -->
+      <g class="os-node" transform="translate(0, 0)">
+        <rect width="270" height="100" rx="12" fill="#0F172A" stroke="#38BDF8" stroke-width="1.5"/>
+        <text x="16" y="28" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="800" fill="#E0F2FE">Fixed Writer: send-event</text>
+        <text x="16" y="46" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">coordination/bin/send-event</text>
+        <text x="16" y="62" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Validates kinds.txt registry</text>
+        <text x="16" y="78" font-family="'Inter', sans-serif" font-size="10" fill="#38BDF8">Enforces compact-pair validator</text>
+      </g>
+
+      <!-- Arrow 1 -->
+      <path d="M 285,50 L 315,50" stroke="#06B6D4" stroke-width="2.5" stroke-linecap="round"/>
+
+      <!-- Step 2: Canonicalizer -->
+      <g class="os-node" transform="translate(325, 0)">
+        <rect width="270" height="100" rx="12" fill="#0F172A" stroke="#818CF8" stroke-width="1.5"/>
+        <text x="16" y="28" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="800" fill="#EEF2FF">RFC 8785 Canonicalizer</text>
+        <text x="16" y="46" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">threeway.canon.canonicalize</text>
+        <text x="16" y="62" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Deterministic JSON hashing</text>
+        <text x="16" y="78" font-family="'Inter', sans-serif" font-size="10" fill="#818CF8">Sidecar route capabilities (.json)</text>
+      </g>
+
+      <!-- Arrow 2 -->
+      <path d="M 610,50 L 640,50" stroke="#818CF8" stroke-width="2.5" stroke-linecap="round"/>
+
+      <!-- Step 3: Ed25519 Signed Bus -->
+      <g class="os-node" transform="translate(650, 0)">
+        <rect width="290" height="100" rx="12" fill="#0F172A" stroke="#F59E0B" stroke-width="1.5"/>
+        <text x="16" y="28" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="800" fill="#FEF3C7">Ed25519 Signed Bus (threeway/)</text>
+        <text x="16" y="46" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Cryptographic origin attestation</text>
+        <text x="16" y="62" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Immutable facts &amp; state reducer</text>
+        <text x="16" y="78" font-family="'Inter', sans-serif" font-size="10" fill="#F59E0B">Protected-main topology gate</text>
+      </g>
+
+      <!-- Arrow 3 -->
+      <path d="M 955,50 L 985,50" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round"/>
+
+      <!-- Step 4: Durable Mailbox Ledger -->
+      <g class="os-node" transform="translate(995, 0)">
+        <rect width="250" height="100" rx="12" fill="#0F172A" stroke="#10B981" stroke-width="1.5"/>
+        <text x="16" y="28" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="800" fill="#D1FAE5">Mailbox Sent Ledger</text>
+        <text x="16" y="46" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">coordination/mailbox/sent/</text>
+        <text x="16" y="62" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">TS-from-to-kind.md files</text>
+        <text x="16" y="78" font-family="'Inter', sans-serif" font-size="10" fill="#34D399">124+ Validated GO Reports</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ==================== LAYER 4: RUNTIME INVARIANTS & GATE ENGINE ==================== -->
+  <g transform="translate(50, 800)">
+    <text x="0" y="-10" font-family="'Space Grotesk', sans-serif" font-size="12" font-weight="800" fill="#64748B" letter-spacing="2">
+      LAYER 4 // RUNTIME INVARIANTS &amp; CEREMONY GATES (scripts/ci_smoke.py)
+    </text>
+
+    <rect width="1300" height="150" rx="20" fill="url(#glassPanelBg)" stroke="url(#emeraldMint)" stroke-width="2" filter="url(#panelShadow)"/>
+
+    <g transform="translate(30, 25)">
+      <!-- Check 1: ci_smoke.py -->
+      <g class="os-node" transform="translate(0, 0)">
+        <rect width="280" height="100" rx="12" fill="#0F172A" stroke="#10B981" stroke-width="1.5"/>
+        <text x="16" y="28" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="800" fill="#D1FAE5">ci_smoke.py Kernel Gate</text>
+        <text x="16" y="46" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Governance-OS runtime invariants</text>
+        <text x="16" y="62" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Strict xfail &amp; arch freshness check</text>
+        <text x="16" y="78" font-family="'Inter', sans-serif" font-size="10" fill="#34D399">STATUS: OK (0 Ceremony)</text>
+      </g>
+
+      <!-- Check 2: Ceremony Gate -->
+      <g class="os-node" transform="translate(310, 0)">
+        <rect width="280" height="100" rx="12" fill="#0F172A" stroke="#38BDF8" stroke-width="1.5"/>
+        <text x="16" y="28" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="800" fill="#E0F2FE">Ceremony Gate (ADR-027/028)</text>
+        <text x="16" y="46" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Forbids appearance of verification</text>
+        <text x="16" y="62" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">R1-R6 substance invariants</text>
+        <text x="16" y="78" font-family="'Inter', sans-serif" font-size="10" fill="#38BDF8">STATUS: PASS (Every green backed)</text>
+      </g>
+
+      <!-- Check 3: GO Schema Validator -->
+      <g class="os-node" transform="translate(620, 0)">
+        <rect width="320" height="100" rx="12" fill="#0F172A" stroke="#818CF8" stroke-width="1.5"/>
+        <text x="16" y="28" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="800" fill="#EEF2FF">GO-Schema Validator</text>
+        <text x="16" y="46" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">scripts/check_go_schema.py</text>
+        <text x="16" y="62" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Non-vacuous evidence requirement</text>
+        <text x="16" y="78" font-family="'Inter', sans-serif" font-size="10" fill="#818CF8">STATUS: PASS (124/124 Reports Validated)</text>
+      </g>
+
+      <!-- Check 4: Wave 2 Gate Engine -->
+      <g class="os-node" transform="translate(960, 0)">
+        <rect width="280" height="100" rx="12" fill="#0F172A" stroke="#F59E0B" stroke-width="1.5"/>
+        <text x="16" y="28" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="800" fill="#FEF3C7">Wave 2 Gate Engine</text>
+        <text x="16" y="46" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">wave_gate_check.py</text>
+        <text x="16" y="62" font-family="'Inter', sans-serif" font-size="10" fill="#94A3B8">Remediation inventory reconciliation</text>
+        <text x="16" y="78" font-family="'Inter', sans-serif" font-size="10" fill="#F59E0B">STATUS: MET (0 Open Defects)</text>
+      </g>
+    </g>
+  </g>
+</svg>
