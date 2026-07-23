@@ -356,10 +356,177 @@ body { font-family: var(--font-main); background-color: var(--bg-space); color: 
   line-height: 1.5;
 }
 
+/* Brain Health Score Calculator Section Styles */
+.calculator-section {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 80px 24px;
+  position: relative;
+  z-index: 10;
+}
+
+.calculator-container {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 48px;
+  padding: 48px;
+  align-items: center;
+}
+
+.calc-inputs-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slider-group {
+  margin-bottom: 24px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 18px 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-glass);
+  transition: var(--transition);
+}
+
+.slider-group:hover {
+  border-color: var(--neon-emerald);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.1);
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 12px;
+}
+
+.slider-val {
+  color: var(--neon-emerald);
+  font-family: var(--font-head);
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.score-display {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 24px 0;
+  position: relative;
+}
+
+.score-ring {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-ring-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ring-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 10;
+}
+
+.ring-progress {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.3s ease;
+}
+
+.score-inner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-val {
+  font-family: var(--font-head);
+  font-size: 2.8rem;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--text-white);
+  transition: color 0.3s ease;
+}
+
+.score-status {
+  font-size: 0.88rem;
+  font-weight: 800;
+  margin-top: 6px;
+  letter-spacing: 0.5px;
+  transition: color 0.3s ease;
+}
+
+.score-summary {
+  font-size: 0.95rem;
+  color: var(--text-sub);
+  line-height: 1.6;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 16px 20px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-glass);
+}
+
+/* CSS Color Status Themes */
+.score-ring.status-optimal .ring-progress {
+  stroke: var(--neon-emerald);
+  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.6));
+}
+.score-ring.status-optimal .score-val,
+.score-ring.status-optimal .score-status {
+  color: var(--neon-emerald);
+}
+
+.score-ring.status-good .ring-progress {
+  stroke: var(--solar-gold);
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.6));
+}
+.score-ring.status-good .score-val,
+.score-ring.status-good .score-status {
+  color: var(--solar-gold);
+}
+
+.score-ring.status-caution .ring-progress {
+  stroke: #f97316;
+  filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.6));
+}
+.score-ring.status-caution .score-val,
+.score-ring.status-caution .score-status {
+  color: #f97316;
+}
+
+.score-ring.status-warning .ring-progress {
+  stroke: #ef4444;
+  filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.6));
+}
+.score-ring.status-warning .score-val,
+.score-ring.status-warning .score-status {
+  color: #ef4444;
+}
+
 @media (max-width: 992px) {
   .svg-artifact-container { grid-template-columns: 1fr; padding: 24px; }
-  .hero-container, .matrix-display, .dashboard-container, .review-analytics-panel { grid-template-columns: 1fr; gap: 40px; }
+  .hero-container, .matrix-display, .dashboard-container, .calculator-container, .review-analytics-panel { grid-template-columns: 1fr; gap: 40px; }
   .hero-headline { font-size: 2.4rem; }
   .nav-links { display: none; }
 }
+
 

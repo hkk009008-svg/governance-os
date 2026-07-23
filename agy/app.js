@@ -175,6 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSoundToggle();
   renderMatrix("ps");
   initDashboard();
+  initBrainCalculator();
   renderCatalog();
   renderReviews();
   initReviewFilters();
@@ -309,6 +310,99 @@ function initDashboard() {
 
   [rScreen, rBrain, rSleep, rOutdoor].forEach(r => r.addEventListener("input", update));
   update();
+}
+
+function initBrainCalculator() {
+  const rSleep = document.getElementById("rangeCalcSleep");
+  const rPS = document.getElementById("rangeCalcPS");
+  const rExercise = document.getElementById("rangeCalcExercise");
+  const rFocus = document.getElementById("rangeCalcFocus");
+
+  if (!rSleep || !rPS || !rExercise || !rFocus) return;
+
+  function updateBrainCalculator() {
+    const sleep = parseFloat(rSleep.value) || 0;
+    const ps = parseFloat(rPS.value) || 0;
+    const exercise = parseFloat(rExercise.value) || 0;
+    const focus = parseFloat(rFocus.value) || 0;
+
+    const valSleep = document.getElementById("valCalcSleep");
+    const valPS = document.getElementById("valCalcPS");
+    const valExercise = document.getElementById("valCalcExercise");
+    const valFocus = document.getElementById("valCalcFocus");
+
+    if (valSleep) valSleep.textContent = `${sleep} 시간`;
+    if (valPS) valPS.textContent = `${ps} mg`;
+    if (valExercise) valExercise.textContent = `${exercise} 일`;
+    if (valFocus) valFocus.textContent = `${focus} 분`;
+
+    // 1. Sleep score (4-10 hrs, max 25 pts)
+    let sleepScore = 25;
+    if (sleep >= 7 && sleep <= 8) {
+      sleepScore = 25;
+    } else if (sleep < 7) {
+      sleepScore = Math.max(5, 25 - (7 - sleep) * 6.5);
+    } else {
+      sleepScore = Math.max(10, 25 - (sleep - 8) * 7.5);
+    }
+
+    // 2. PS 70 score (0-300 mg, max 35 pts)
+    const psScore = (ps / 300) * 35;
+
+    // 3. Weekly Aerobic Exercise (0-7 days, max 20 pts)
+    const exerciseScore = (exercise / 7) * 20;
+
+    // 4. Mental Focus / Meditation (0-60 mins, max 20 pts)
+    const focusScore = (focus / 60) * 20;
+
+    const totalScore = Math.min(100, Math.max(0, Math.round(sleepScore + psScore + exerciseScore + focusScore)));
+
+    const scoreValEl = document.getElementById("calcScoreVal");
+    const statusEl = document.getElementById("calcScoreStatus");
+    const summaryEl = document.getElementById("calcScoreSummary");
+    const ringProgress = document.getElementById("scoreRingProgress");
+    const scoreRing = document.getElementById("scoreRing");
+
+    if (scoreValEl) scoreValEl.textContent = `${totalScore}%`;
+
+    const circumference = 326.726; // 2 * Math.PI * 52
+    const offset = circumference - (totalScore / 100) * circumference;
+    if (ringProgress) {
+      ringProgress.style.strokeDasharray = `${circumference}`;
+      ringProgress.style.strokeDashoffset = `${offset}`;
+    }
+
+    let statusText = "";
+    let summaryText = "";
+    let statusClass = "";
+
+    if (totalScore >= 80) {
+      statusText = "최상 (Optimal)";
+      statusClass = "status-optimal";
+      summaryText = "충분한 수면과 PS 70 300mg 최고함량 복용으로 최상의 두뇌 컨디션과 인지 능력을 유지하고 있습니다.";
+    } else if (totalScore >= 60) {
+      statusText = "양호 (Good)";
+      statusClass = "status-good";
+      summaryText = "우수한 뇌 건강 상태입니다. PS 70 섭취량을 늘리거나 유산소 운동 시간을 보충하면 최상 등급에 도달할 수 있습니다.";
+    } else if (totalScore >= 40) {
+      statusText = "주의 (Caution)";
+      statusClass = "status-caution";
+      summaryText = "두뇌 피로 및 기억력 둔화 위험이 관찰됩니다. 수면 확보와 PS 70 일일 300mg 섭취 권장 생활 패턴으로 개선해보세요.";
+    } else {
+      statusText = "위험 (Warning)";
+      statusClass = "status-warning";
+      summaryText = "뇌 세포 활성 감소 및 집중력 저하 집중 관리가 필요합니다. 이시형 박사의 두뇌엔 PS 70 집중 케어가 시급합니다.";
+    }
+
+    if (statusEl) statusEl.textContent = statusText;
+    if (summaryEl) summaryEl.textContent = summaryText;
+    if (scoreRing) scoreRing.className = `score-ring ${statusClass}`;
+  }
+
+  [rSleep, rPS, rExercise, rFocus].forEach(r => {
+    r.addEventListener("input", updateBrainCalculator);
+  });
+  updateBrainCalculator();
 }
 
 function drawRadarChart(screen, brain, sleep, outdoor) {

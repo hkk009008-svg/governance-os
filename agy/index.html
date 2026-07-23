@@ -51,6 +51,7 @@
         <a href="#agy-os-architecture" class="n-link">AGY OS 아키텍처</a>
         <a href="#catalog" class="n-link">시그니처 라인업</a>
         <a href="#dashboard" class="n-link">바이오 레이더</a>
+        <a href="#brain-calculator" class="n-link">두뇌 점수 계산기</a>
         <a href="#reviews" class="n-link">12만 실구매후기</a>
       </nav>
 
@@ -411,6 +412,72 @@
         <div class="recommend-box" id="radarRecommendBox">
           <!-- Injected via JS -->
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Real-time Brain Health Score Calculator Section -->
+  <section class="calculator-section" id="brain-calculator">
+    <div class="section-title-box text-center">
+      <span class="section-tag">REAL-TIME BRAIN HEALTH CALCULATOR</span>
+      <h2 class="section-heading">실시간 두뇌 건강 점수 계산기</h2>
+      <p class="section-lead">수면, PS 70 섭취량, 유산소 운동, 집중 및 명상 라이프스타일을 조절하여 두뇌 건강 지수를 실시간으로 측정하세요.</p>
+    </div>
+
+    <div class="calculator-container glass-panel">
+      <div class="calc-inputs-col">
+        <h3 class="dash-panel-title">두뇌 라이프스타일 지표 설정</h3>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>😴 일일 수면 시간 (Daily Sleep Hours)</span>
+            <span class="slider-val" id="valCalcSleep">7 시간</span>
+          </div>
+          <input type="range" id="rangeCalcSleep" min="4" max="10" value="7" step="0.5" class="cyber-range">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>🧠 PS 70 포스파티딜세린 섭취량 (PS 70 Intake)</span>
+            <span class="slider-val" id="valCalcPS">300 mg</span>
+          </div>
+          <input type="range" id="rangeCalcPS" min="0" max="300" value="300" step="10" class="cyber-range">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>🏃‍♂️ 주간 유산소 운동 (Weekly Aerobic Exercise)</span>
+            <span class="slider-val" id="valCalcExercise">4 일</span>
+          </div>
+          <input type="range" id="rangeCalcExercise" min="0" max="7" value="4" step="1" class="cyber-range">
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>🧘‍♀️ 명상 및 정신 집중 (Mental Focus / Meditation)</span>
+            <span class="slider-val" id="valCalcFocus">30 분</span>
+          </div>
+          <input type="range" id="rangeCalcFocus" min="0" max="60" value="30" step="5" class="cyber-range">
+        </div>
+      </div>
+
+      <div class="calc-result-col text-center">
+        <h3 class="dash-panel-title">두뇌 종합 헬스 스코어</h3>
+        <div class="score-display">
+          <div class="score-ring status-optimal" id="scoreRing">
+            <svg viewBox="0 0 120 120" class="score-ring-svg">
+              <circle cx="60" cy="60" r="52" class="ring-bg"></circle>
+              <circle cx="60" cy="60" r="52" class="ring-progress" id="scoreRingProgress"></circle>
+            </svg>
+            <div class="score-inner">
+              <span class="score-val" id="calcScoreVal">85%</span>
+              <span class="score-status" id="calcScoreStatus">최상 (Optimal)</span>
+            </div>
+          </div>
+        </div>
+        <p class="score-summary" id="calcScoreSummary">
+          충분한 수면과 PS 70 300mg 최고함량 복용으로 최상의 두뇌 컨디션과 인지 능력을 유지하고 있습니다.
+        </p>
       </div>
     </div>
   </section>
