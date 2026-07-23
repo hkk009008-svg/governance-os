@@ -842,3 +842,31 @@ def test_build_binding_allows_mutation_denies_mailbox_and_foreign(
     )
     assert apply_ok["permission"] == "allow"
 
+
+def test_readiness_allows_cursor_land_gate() -> None:
+    result = policy.evaluate(
+        _shell("env -u GIT_INDEX_FILE .venv/bin/python scripts/cursor_land_gate.py"),
+        {},
+    )
+    assert result["permission"] == "allow"
+
+
+def test_readiness_allows_cursor_unit_pytest_cluster() -> None:
+    result = policy.evaluate(
+        _shell(
+            "env -u GIT_INDEX_FILE .venv/bin/python -m pytest "
+            "tests/unit/test_cursor_hook_policy.py "
+            "tests/unit/test_cursor_apply_bundle.py -q"
+        ),
+        {},
+    )
+    assert result["permission"] == "allow"
+
+
+def test_readiness_denies_broad_pytest() -> None:
+    result = policy.evaluate(
+        _shell("env -u GIT_INDEX_FILE .venv/bin/python -m pytest -q"),
+        {},
+    )
+    assert result["permission"] == "deny"
+

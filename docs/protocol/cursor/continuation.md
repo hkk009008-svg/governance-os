@@ -90,6 +90,24 @@ seat. The launcher refuses ambiguous or foreign workspaces.
   denied; Cursor relay strips foreign provider env residue (`out_of_side`).
 
 
+## Implement from ordinary chat
+
+When the user asks to implement a Cursor-side plan from a readiness chat,
+prefer a local-builder bind instead of Desktop/`/tmp` scripts:
+
+```bash
+coordination/bin/cursor-seat build --seat director --trigger-ref local:<task>
+```
+
+Short staged land (no build seat): stage under
+`.pytest-verify-tmp/cursor-bundles/<id>/`, then
+`coordination/bin/cursor-apply-bundle <id>` (type `yes`) and
+`env -u GIT_INDEX_FILE .venv/bin/python scripts/cursor_land_gate.py`.
+Readiness may also run that land gate (or the `tests/unit/test_cursor_*.py` cluster) with
+`env -u GIT_INDEX_FILE`; it still cannot mutate the repo tree
+or publish mailbox events. Prefer these native Cursor paths over ad-hoc
+Desktop `.command` wrappers.
+
 ## Startup (non-trivial work)
 
 ```bash

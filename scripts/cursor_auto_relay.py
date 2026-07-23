@@ -24,6 +24,16 @@ class RelayError(RuntimeError):
     """Auto-relay cannot proceed without guessing or new authority."""
 
 
+def build_bound(environ: Mapping[str, str]) -> bool:
+    """True for a local-builder bind (edit/test/commit; not mailbox live)."""
+
+    if environ.get("CURSOR_OPERATION") != "build":
+        return False
+    seat = environ.get("CURSOR_SEAT", "")
+    index = environ.get("GIT_INDEX_FILE", "")
+    return bool(seat) and bool(index) and index.endswith("index-cursor-" + seat)
+
+
 def live_bound(environ: Mapping[str, str]) -> bool:
     seat = environ.get("CURSOR_SEAT", "")
     if seat not in LAUNCH_SEATS:

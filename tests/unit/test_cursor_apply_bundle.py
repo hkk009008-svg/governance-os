@@ -81,3 +81,18 @@ def test_rejects_forbidden_paths(tmp_path: Path) -> None:
                 ).read_text(encoding="utf-8")
             ),
         )
+
+
+def test_rejects_junk_paths(tmp_path: Path) -> None:
+    _stage(tmp_path, "demo", "scripts/__pycache__/x.pyc", b"x\n")
+    with pytest.raises(bundle.BundleError, match="junk"):
+        bundle.plan_copies(
+            tmp_path,
+            tmp_path / ".pytest-verify-tmp/cursor-bundles/demo",
+            json.loads(
+                (
+                    tmp_path / ".pytest-verify-tmp/cursor-bundles/demo/manifest.json"
+                ).read_text(encoding="utf-8")
+            ),
+        )
+

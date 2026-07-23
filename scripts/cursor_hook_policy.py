@@ -539,6 +539,7 @@ _ORIENTATION_SCRIPTS = frozenset(
         "continuation_readiness.py",
         "target_binding.py",
         "ledger_start_guard.py",
+        "cursor_land_gate.py",
     }
 )
 _SAFE_READ_COMMANDS = frozenset(
@@ -858,6 +859,42 @@ def _bounded_read_only_segment(
     return executable in _SAFE_READ_COMMANDS and not _writes_repo_tree(tokens)
 
 
+
+_CURSOR_UNIT_PREFIX = "tests/unit/test_cursor_"
+
+
+def _cursor_unit_pytest(tokens: list[str], *, unsets_index: bool) -> bool:
+    """Allow readiness to run only the Cursor-unit pytest cluster."""
+
+    if not unsets_index or not tokens:
+        return False
+    executable = PurePosixPath(tokens[0]).name
+    args = tokens[1:]
+    paths: list[str] = []
+    if executable == "pytest":
+        paths = [token for token in args if not token.startswith("-")]
+    elif executable.startswith("python"):
+        try:
+            marker = args.index("-m")
+        except ValueError:
+            return False
+        if marker + 1 >= len(args) or args[marker + 1] != "pytest":
+            return False
+        paths = [
+            token
+            for token in args[marker + 2 :]
+            if not token.startswith("-")
+        ]
+    else:
+        return False
+    if not paths:
+        return False
+    return all(
+        path.startswith(_CURSOR_UNIT_PREFIX) and path.endswith(".py")
+        for path in paths
+    )
+
+
 def _review_test_segment(tokens: list[str], *, unsets_index: bool) -> bool:
     executable = PurePosixPath(tokens[0]).name if tokens else ""
     is_pytest = executable == "pytest" or (
@@ -1053,6 +1090,8 @@ def _shell_decision(
             if review_capable and _review_test_segment(
                 tokens, unsets_index=unsets_index
             ):
+                continue
+            if _cursor_unit_pytest(tokens, unsets_index=unsets_index):
                 continue
             if not _bounded_read_only_segment(
                 tokens,

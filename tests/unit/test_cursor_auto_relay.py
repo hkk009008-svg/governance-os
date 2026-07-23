@@ -129,3 +129,16 @@ def test_wake_seat_dry_run_argv_has_no_foreign_launchers(tmp_path: Path) -> None
     assert "agy-seat" not in joined
     assert "codex-seat" not in joined
     assert argv[1] == "review"
+
+
+def test_build_bound_is_not_mailbox_live_bound() -> None:
+    from scripts.cursor_auto_relay import build_bound, live_bound
+
+    env = {
+        "CURSOR_SEAT": "director",
+        "CURSOR_OPERATION": "build",
+        "GIT_INDEX_FILE": "/tmp/index-cursor-director",
+    }
+    assert build_bound(env) is True
+    assert live_bound(env) is False
+

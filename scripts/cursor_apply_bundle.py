@@ -12,6 +12,8 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from scripts.cursor_auto_relay import build_bound
+
 BUNDLE_ROOT = Path(".pytest-verify-tmp/cursor-bundles")
 FORBIDDEN_PREFIXES = (
     "coordination/mailbox/",
@@ -49,12 +51,7 @@ def _confirm(prompt: str, *, stdin_isatty: bool) -> None:
 def may_skip_tty(environ: Mapping[str, str]) -> bool:
     """Skip TTY only for a build seat bind (not mailbox live_bound)."""
 
-    if environ.get("CURSOR_OPERATION") != "build":
-        return False
-    seat = environ.get("CURSOR_SEAT", "")
-    index = environ.get("GIT_INDEX_FILE", "")
-    # build is intentionally outside mailbox LIVE_OPERATIONS; require seat index only.
-    return bool(seat) and bool(index) and index.endswith("index-cursor-" + seat)
+    return build_bound(environ)
 
 
 def load_manifest(root: Path, bundle_id: str) -> tuple[Path, dict]:
@@ -74,9 +71,20 @@ def load_manifest(root: Path, bundle_id: str) -> tuple[Path, dict]:
     return bundle_dir, document
 
 
+
+def _junk_rel(rel: str) -> bool:
+    parts = Path(rel).parts
+    if "__pycache__" in parts:
+        return True
+    name = Path(rel).name
+    return name.endswith(".pyc") or name == ".DS_Store"
+
+
 def validate_entry(rel: str, digest: str) -> None:
     if not rel or rel.startswith("/") or ".." in Path(rel).parts:
         raise BundleError("illegal bundle path: " + repr(rel))
+    if _junk_rel(rel):
+        raise BundleError("junk bundle path: " + rel)
     if any(rel == prefix.rstrip("/") or rel.startswith(prefix) for prefix in FORBIDDEN_PREFIXES):
         raise BundleError("forbidden bundle path: " + rel)
     if not isinstance(digest, str) or len(digest) != 64:
