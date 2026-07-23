@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Interactive, seat-bound front door for publishing one mailbox event.
+# Delegates to the fixed send-event writer; never reimplements it.
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+exec /usr/bin/env -u GIT_INDEX_FILE python3 "$ROOT/scripts/cursor_mailbox.py" publish "$@"

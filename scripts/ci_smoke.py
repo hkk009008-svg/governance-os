@@ -44,11 +44,11 @@ import os
 import sys
 from pathlib import Path
 
-# Bootstrap sys.path so we can import from the repo root regardless of CWD.
+# Bootstrap sys.path so we can import from repo root and scripts dir.
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
-
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+for _p in (_REPO_ROOT, _SCRIPTS_DIR):
+    if _p not in sys.path: sys.path.insert(0, _p)
 
 def _project_smoke() -> int:
     """Project-runtime smoke: the governance OS's own load-bearing invariants.

@@ -1,0 +1,46 @@
+---
+description: Cursor seat identity, guardrails, and advisor-subagent posture
+alwaysApply: true
+---
+
+# Cursor seats — identity and boundaries
+
+Default posture is **readiness bridge**: an ordinary Cursor chat orients and
+reports but never claims a seat, mutates the mailbox, consumes a cursor, claims
+a lock, or pushes. A live Pipeline seat exists only when the Cursor seat
+launcher binds it from a committed trigger. Full adapter:
+`docs/protocol/cursor/continuation.md`.
+
+## When a seat is bound
+
+- `director`/`director2` implement (behavior source `director`);
+  `operator`/`operator2` verify (behavior source `operator2`); `coordinator`
+  reconciles and never authors production work or holds a cursor.
+- Behavior-changing acceptance needs a non-author Operator GO from a distinct
+  seat using a different system-visible model, emitted through the fixed mailbox
+  writer. An Operator cannot verify work it authored.
+- Ordinary Git and pytest use `env -u GIT_INDEX_FILE`; the per-seat index
+  `.git/index-cursor-<seat>` is only for deliberate staging. Read-only Git
+  stays usable bare under a seat index; index mutators and pytest need the
+  prefix.
+- Provider separation: never launch another provider's seats
+  (`codex-seat`, `agy-seat`, Claude sessions) from Cursor; reading their
+  files is fine.
+
+## Separately authorized effects
+
+Edit, stage, commit, push, merge, mailbox publish, cursor consume, lock, and
+paid spend are distinct authorities. Publish/consume go through
+`coordination/bin/cursor-publish` / `cursor-consume`, which only delegate to the
+existing fixed writers. Never write `coordination/mailbox/` or `.cursor/runtime/`
+directly. The project hooks fail closed on these; the hook describes identity
+and grants no authority.
+
+## Cursor subagents are advisors
+
+An unbound Cursor session may use Task subagents as parent-scoped advisors.
+Cursor's child-tool hook inputs cannot safely distinguish a live-seat child from
+its parent, so a live seat cannot spawn a subagent. Use a separate unbound
+advisor session instead. Advisor output is evidence for its parent, not a
+mailbox event, cursor advance, operator verdict, coordinator route, lock action,
+push, or spend authorization.

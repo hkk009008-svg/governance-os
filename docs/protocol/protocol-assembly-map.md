@@ -39,6 +39,10 @@ flowchart TD
 | Codex protocol mapping | `docs/protocol/codex/continuation.md` | Capacity-max workflow, Codex launch pattern | Codex mechanics translate the universal rules into Codex-native tools, hooks, and role agents. |
 | Target-repo CLI adoption bridge | `docs/protocol/codex/ledger-cli-adoption.md` | Evidence-ledger CLI bridge | Target-repo adoption is Codex-specific mechanics and should not duplicate universal protocol policy. |
 | Cursor target adoption bridge | `docs/protocol/cursor/foulplay-adoption.md` | FoulPlay Cursor bridge | Cursor-only product retarget; does not rewrite Codex/Claude ledger bridges or change ADR default. |
+| Cursor protocol mapping | `docs/protocol/cursor/continuation.md` | Cursor mode/startup/mailbox/guardrail adapter | Cursor mechanics translate the universal rules into Cursor-native launcher, hooks, and SDK surfaces without forking policy. |
+| Cursor seat role prompts | `docs/protocol/cursor/roles/*.md` | `docs/protocol/cursor/roles/operator.md` | Launcher-injected role prompts are the Cursor analogue of `.codex/agents/*.toml`; the launcher reads them at dispatch. |
+| Cursor seat launcher + mailbox wrappers | `scripts/cursor_seat_launcher.py`, `coordination/bin/cursor-*` | `coordination/bin/cursor-seat`, `cursor-publish`, `cursor-consume` | Executable Cursor entrypoints that delegate to the fixed writers; local registry stays under `.cursor/runtime/` (never committed). |
+| Cursor session guardrails | `.cursor/hooks.json` and `.cursor/hooks/` | `.cursor/hooks/seat-policy` -> `scripts/cursor_hook_policy.py` | Hooks are fail-closed lifecycle/tool boundaries, not protocol prose or mailbox state. |
 | Target-repo start guard | `scripts/ledger_start_guard.py` | Enforced Pipeline-first ledger seat startup | Executable proof belongs in scripts, then docs/skills/prompts link to it. |
 | Start-session router | `AGENTS.md` | Codex start-session inhabitance block | The root file should route agents before task-specific docs are loaded. |
 | Live seat checklists | `.agents/skills/` | `.agents/skills/seat-operator/SKILL.md` | Seat actions are reusable runtime instructions with clear trigger rules. |
@@ -64,6 +68,10 @@ Universal rule?             -> docs/protocol/agents/
 Codex-only rule?            -> docs/protocol/codex/
 Target-repo Codex bridge?   -> docs/protocol/codex/ledger-cli-adoption.md
 Cursor FoulPlay bridge?     -> docs/protocol/cursor/foulplay-adoption.md
+Cursor protocol mapping?    -> docs/protocol/cursor/continuation.md
+Cursor seat role prompt?    -> docs/protocol/cursor/roles/
+Cursor seat launcher?       -> scripts/cursor_seat_launcher.py + coordination/bin/cursor-*
+Cursor lifecycle guardrail? -> .cursor/hooks.json + .cursor/hooks/
 Target-repo start guard?    -> scripts/ledger_start_guard.py
 Seat action checklist?      -> .agents/skills/
 Spawnable role prompt?      -> .codex/agents/
