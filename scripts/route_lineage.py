@@ -20,16 +20,23 @@ import protocol_mailbox
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-_GENERATION_RE = re.compile(
-    r"^\s*Route generation:\s*(?P<value>\d+)\s*$", re.IGNORECASE | re.MULTILINE
+_GENERATION_FIELD_RE = re.compile(
+    r"^\s*Route generation:\s*(?P<value>.*?)\s*$", re.IGNORECASE
 )
-_SUPERSEDES_RE = re.compile(
-    r"^\s*Supersedes(?: active)? route:\s*`?(?P<value>[^`\n]+?)`?\s*$",
-    re.IGNORECASE | re.MULTILINE,
+_GENERATION_SHAPED_RE = re.compile(r"^\s*Route\s+generation\b", re.IGNORECASE)
+_SUPERSEDES_FIELD_RE = re.compile(
+    r"^\s*Supersedes(?P<active>\s+active)?\s+route:\s*(?P<value>.*?)\s*$",
+    re.IGNORECASE,
 )
-_CONTROL_HEAD_RE = re.compile(
-    r"^\s*(?:Expected control HEAD|Control HEAD):\s*`?(?P<value>[0-9a-fA-F]{7,40})`?\s*$",
-    re.MULTILINE,
+_SUPERSEDES_SHAPED_RE = re.compile(
+    r"^\s*Supersedes(?:\s+active)?\s+route\b", re.IGNORECASE
+)
+_CONTROL_HEAD_FIELD_RE = re.compile(
+    r"^\s*(?P<label>Expected control HEAD|Control HEAD):\s*(?P<value>.*?)\s*$",
+    re.IGNORECASE,
+)
+_CONTROL_HEAD_SHAPED_RE = re.compile(
+    r"^\s*(?:Expected\s+control\s+HEAD|Control\s+HEAD)\b", re.IGNORECASE
 )
 _ROUTE_NAME_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-"
@@ -64,16 +71,139 @@ class RouteLineage:
     generation: int | None
     parent_route_id: str | None
     expected_control_head: str | None
+    parent_route_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Retain the legacy scalar while making every merge edge explicit."""
+
+        parent_ids = tuple(self.parent_route_ids)
+        if parent_ids:
+            if self.parent_route_id is not None and (
+                len(parent_ids) != 1 or parent_ids[0] != self.parent_route_id
+            ):
+                raise ValueError("scalar and multi-parent lineage fields disagree")
+        elif self.parent_route_id is not None:
+            parent_ids = (self.parent_route_id,)
+        if any(not isinstance(parent, str) or not parent for parent in parent_ids):
+            raise ValueError("lineage parent IDs must be nonblank strings")
+        if len(parent_ids) != len(set(parent_ids)):
+            raise ValueError("lineage parent IDs must be unique")
+        object.__setattr__(self, "parent_route_ids", parent_ids)
+        object.__setattr__(
+            self,
+            "parent_route_id",
+            parent_ids[0] if len(parent_ids) == 1 else None,
+        )
+
+
+def _parse_parent_reference(raw: str) -> str:
+    value = raw.strip()
+    if not value:
+        raise ValueError("Supersedes route requires a nonblank parent")
+    has_open_tick = value.startswith("`")
+    has_close_tick = value.endswith("`")
+    if has_open_tick or has_close_tick:
+        if not (has_open_tick and has_close_tick and value.count("`") == 2):
+            raise ValueError("Supersedes route has malformed backticks")
+        value = value[1:-1].strip()
+    if (
+        not value
+        or "`" in value
+        or "," in value
+        or any(char.isspace() for char in value)
+    ):
+        raise ValueError("Supersedes route requires one unambiguous parent")
+    route_path = Path(value)
+    if route_path.is_absolute() or any(part in {".", ".."} for part in route_path.parts):
+        raise ValueError("Supersedes route parent must be a relative route reference")
+    parent_id = route_id_of(value)
+    if not parent_id:
+        raise ValueError("Supersedes route requires a nonblank parent")
+    return parent_id
+
+
+def _single_header_value(
+    body: str,
+    *,
+    field_re: re.Pattern[str],
+    shaped_re: re.Pattern[str],
+    label: str,
+) -> str | None:
+    values: list[str] = []
+    for line in body.splitlines():
+        if not shaped_re.match(line):
+            continue
+        match = field_re.fullmatch(line)
+        if match is None:
+            raise ValueError(f"malformed {label} field")
+        value = match.group("value").strip()
+        if not value:
+            raise ValueError(f"{label} requires a nonblank value")
+        values.append(value)
+    if len(values) > 1:
+        raise ValueError(f"route requires exactly one {label} field")
+    return values[0] if values else None
 
 
 def parse_lineage(body: str) -> RouteLineage:
-    gen_match = _GENERATION_RE.search(body)
-    sup_match = _SUPERSEDES_RE.search(body)
-    head_match = _CONTROL_HEAD_RE.search(body)
+    generation_text = _single_header_value(
+        body,
+        field_re=_GENERATION_FIELD_RE,
+        shaped_re=_GENERATION_SHAPED_RE,
+        label="Route generation",
+    )
+    if generation_text is not None and (
+        not generation_text.isascii() or not generation_text.isdecimal()
+    ):
+        raise ValueError("Route generation must be a nonnegative decimal integer")
+
+    canonical_parents: list[str] = []
+    active_parents: list[str] = []
+    for line in body.splitlines():
+        if not _SUPERSEDES_SHAPED_RE.match(line):
+            continue
+        match = _SUPERSEDES_FIELD_RE.fullmatch(line)
+        if match is None:
+            raise ValueError("malformed Supersedes route field")
+        parent_id = _parse_parent_reference(match.group("value"))
+        if match.group("active"):
+            active_parents.append(parent_id)
+        else:
+            canonical_parents.append(parent_id)
+    if canonical_parents and active_parents:
+        raise ValueError("cannot mix Supersedes route and Supersedes active route")
+    if len(active_parents) > 1:
+        raise ValueError("Supersedes active route permits only one parent")
+    parent_ids = tuple(canonical_parents or active_parents)
+    if len(parent_ids) != len(set(parent_ids)):
+        raise ValueError("Supersedes route parents must be unique")
+
+    control_head_text = _single_header_value(
+        body,
+        field_re=_CONTROL_HEAD_FIELD_RE,
+        shaped_re=_CONTROL_HEAD_SHAPED_RE,
+        label="Expected control HEAD",
+    )
+    if control_head_text is not None:
+        has_open_tick = control_head_text.startswith("`")
+        has_close_tick = control_head_text.endswith("`")
+        if has_open_tick or has_close_tick:
+            if not (
+                has_open_tick
+                and has_close_tick
+                and control_head_text.count("`") == 2
+            ):
+                raise ValueError("Expected control HEAD has malformed backticks")
+            control_head_text = control_head_text[1:-1].strip()
+        if not re.fullmatch(r"[0-9a-fA-F]{7,40}", control_head_text):
+            raise ValueError("Expected control HEAD requires a hexadecimal commit prefix")
     return RouteLineage(
-        generation=int(gen_match.group("value")) if gen_match else None,
-        parent_route_id=route_id_of(sup_match.group("value")) if sup_match else None,
-        expected_control_head=head_match.group("value").lower() if head_match else None,
+        generation=int(generation_text) if generation_text is not None else None,
+        parent_route_id=parent_ids[0] if len(parent_ids) == 1 else None,
+        expected_control_head=(
+            control_head_text.lower() if control_head_text is not None else None
+        ),
+        parent_route_ids=parent_ids,
     )
 
 
@@ -111,6 +241,105 @@ class Resolution:
 class RouteCandidateIssue:
     message: str
     task_id: str | None
+    legacy: bool = False
+
+
+@dataclass(frozen=True)
+class LineageState:
+    """Derived generated-route graph state used by resolution and admission."""
+
+    generated_routes: tuple[LineageRoute, ...]
+    tips: tuple[LineageRoute, ...]
+    structural_issues: tuple[str, ...]
+
+
+def inspect_lineage(routes: list[LineageRoute]) -> LineageState:
+    """Inspect every generated legacy edge without choosing a fork winner."""
+
+    generated_routes = tuple(
+        route for route in routes if route.lineage.generation is not None
+    )
+    if not generated_routes:
+        return LineageState((), (), ())
+
+    known_by_id = {route.route_id: route for route in routes}
+    generated_by_id = {route.route_id: route for route in generated_routes}
+    superseded = {
+        parent_id
+        for route in generated_routes
+        for parent_id in route.lineage.parent_route_ids
+    }
+    tips = tuple(
+        sorted(
+            (
+                route
+                for route in generated_routes
+                if route.route_id not in superseded
+            ),
+            key=lambda route: route.route_id,
+        )
+    )
+    issues: list[str] = []
+
+    dangling = sorted(
+        {
+            (route.route_id, parent_id)
+            for route in generated_routes
+            for parent_id in route.lineage.parent_route_ids
+            if parent_id not in known_by_id
+        }
+    )
+    issues.extend(
+        f"dangling parent: {route_id} supersedes unknown {parent_id}"
+        for route_id, parent_id in dangling
+    )
+
+    for route in sorted(generated_routes, key=lambda item: item.route_id):
+        assert route.lineage.generation is not None
+        for parent_id in route.lineage.parent_route_ids:
+            parent = generated_by_id.get(parent_id)
+            if (
+                parent is not None
+                and parent.lineage.generation is not None
+                and route.lineage.generation <= parent.lineage.generation
+            ):
+                issues.append(
+                    f"non-increasing generation: {route.route_id} generation "
+                    f"{route.lineage.generation} must exceed parent {parent_id} "
+                    f"generation {parent.lineage.generation}"
+                )
+
+    visit_state: dict[str, int] = {}
+    active: list[str] = []
+    cycles: set[tuple[str, ...]] = set()
+
+    def visit(route_id: str) -> None:
+        state = visit_state.get(route_id, 0)
+        if state == 1:
+            start = active.index(route_id)
+            cycles.add(tuple(sorted(set(active[start:]))))
+            return
+        if state == 2:
+            return
+        visit_state[route_id] = 1
+        active.append(route_id)
+        route = generated_by_id[route_id]
+        for parent_id in sorted(route.lineage.parent_route_ids):
+            if parent_id in generated_by_id:
+                visit(parent_id)
+        active.pop()
+        visit_state[route_id] = 2
+
+    for route_id in sorted(generated_by_id):
+        visit(route_id)
+    issues.extend(
+        "cyclic lineage: " + ", ".join(cycle) for cycle in sorted(cycles)
+    )
+    return LineageState(
+        generated_routes=generated_routes,
+        tips=tips,
+        structural_issues=tuple(dict.fromkeys(issues)),
+    )
 
 
 def resolve_authoritative(routes: list[LineageRoute]) -> Resolution:
@@ -118,18 +347,12 @@ def resolve_authoritative(routes: list[LineageRoute]) -> Resolution:
 
     if not routes:
         return Resolution(winner=None, mode="empty")
-    gen_routes = [route for route in routes if route.lineage.generation is not None]
-    if not gen_routes:
+    state = inspect_lineage(routes)
+    if not state.generated_routes:
         return Resolution(winner=None, mode="legacy")
 
-    known_ids = {route.route_id for route in routes}
-    superseded = {
-        route.lineage.parent_route_id
-        for route in gen_routes
-        if route.lineage.parent_route_id is not None
-    }
-    tips = [route for route in gen_routes if route.route_id not in superseded]
-    issues: list[str] = []
+    tips = list(state.tips)
+    issues = list(state.structural_issues)
     if not tips:
         issues.append("lineage has no tip (cycle or every generation superseded)")
     elif len(tips) > 1:
@@ -149,19 +372,6 @@ def resolve_authoritative(routes: list[LineageRoute]) -> Resolution:
                     f"forked lineage: multiple tips at generation {generation}: "
                     + ", ".join(sorted(same_generation))
                 )
-
-    dangling = sorted(
-        {
-            (route.route_id, route.lineage.parent_route_id)
-            for route in gen_routes
-            if route.lineage.parent_route_id is not None
-            and route.lineage.parent_route_id not in known_ids
-        }
-    )
-    issues.extend(
-        f"dangling parent: {route_id} supersedes unknown {parent_id}"
-        for route_id, parent_id in dangling
-    )
     if issues:
         return Resolution(winner=None, mode="lineage", issues=tuple(issues))
     assert len(tips) == 1
@@ -236,7 +446,13 @@ def is_route_event(path: Path, body: str) -> bool:
     sender = match.group("sender")
     kind = match.group("kind")
     if sender in {"coordinator", "coordinator2"}:
-        return kind in {"coordination", "status", "decision"} and task_board_of(body) is not None
+        if kind not in {"coordination", "status", "decision"} or task_board_of(body) is None:
+            return False
+        try:
+            parse_lineage(body)
+        except ValueError:
+            return False
+        return True
     if sender not in protocol_mailbox.SEATS or kind != "coordination":
         return False
     try:
@@ -832,10 +1048,15 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
         )
 
     def _record_issue(self, message: str, *, path: Path, body: str) -> None:
+        match = _ROUTE_NAME_RE.fullmatch(path.name)
         self._issues.append(
             RouteCandidateIssue(
                 message=message,
                 task_id=_partial_route_task_id(path, body),
+                legacy=(
+                    match is not None
+                    and match.group("sender") in {"coordinator", "coordinator2"}
+                ),
             )
         )
 
@@ -999,6 +1220,12 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
             )
         )
 
+    @property
+    def legacy_issues(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(issue.message for issue in self._issues if issue.legacy)
+        )
+
 
 def validate_committed_route_effectiveness(root: Path, route_ref: str) -> LineageRoute:
     """Load one exact route blob and validate its immutable ownership claims."""
@@ -1047,8 +1274,7 @@ def _legacy_overlap_closure(
     by_id = {route.route_id: route for route in known}
     children_by_parent: dict[str, list[LineageRoute]] = {}
     for route in known:
-        parent_id = route.lineage.parent_route_id
-        if parent_id is not None:
+        for parent_id in route.lineage.parent_route_ids:
             children_by_parent.setdefault(parent_id, []).append(route)
     closure = list(selected)
     included = {route.route_id for route in closure}
@@ -1059,21 +1285,19 @@ def _legacy_overlap_closure(
         if route.route_id in traversed:
             continue
         traversed.add(route.route_id)
-        parent_id = route.lineage.parent_route_id
-        if parent_id is None:
-            continue
-        parent = by_id.get(parent_id)
-        if parent is None:
-            continue
-        if parent.route_id not in included:
-            closure.append(parent)
-            included.add(parent.route_id)
-        if parent.route_id not in traversed:
-            pending.append(parent)
-        for sibling in children_by_parent.get(parent_id, ()):
-            if sibling.route_id not in included:
-                closure.append(sibling)
-                included.add(sibling.route_id)
+        for parent_id in route.lineage.parent_route_ids:
+            parent = by_id.get(parent_id)
+            if parent is None:
+                continue
+            if parent.route_id not in included:
+                closure.append(parent)
+                included.add(parent.route_id)
+            if parent.route_id not in traversed:
+                pending.append(parent)
+            for sibling in children_by_parent.get(parent_id, ()):
+                if sibling.route_id not in included:
+                    closure.append(sibling)
+                    included.add(sibling.route_id)
     return closure
 
 
@@ -1159,8 +1383,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", default=str(_REPO_ROOT))
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
-    routes = load_routes(Path(args.root))
-    issues: list[str] = []
+    with RouteBatchReader(Path(args.root)) as reader:
+        routes = reader.load_all_routes()
+        # The global CLI resolves the legacy coordinator graph. Autonomous
+        # candidate faults remain task-scoped, so unrelated historical seat
+        # artifacts cannot prevent a lawful legacy reconciliation.
+        issues = list(reader.legacy_issues)
     legacy = [route for route in routes if route.legacy]
     if legacy:
         legacy_resolution = resolve_authoritative(legacy)

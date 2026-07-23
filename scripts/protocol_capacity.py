@@ -1195,6 +1195,7 @@ def _committed_task_context(
 ) -> tuple[
     list[route_lineage.LineageRoute],
     tuple[str, ...],
+    tuple[str, ...],
     route_lineage.LineageRoute | None,
 ]:
     normalized_candidate_path = (
@@ -1207,8 +1208,9 @@ def _committed_task_context(
             if route.path != normalized_candidate_path
         ]
         task_issues = reader.issues_for_task(task_id)
+        legacy_issues = reader.legacy_issues
         parent = reader.load_route_ref(parent_ref) if parent_ref is not None else None
-    return routes, task_issues, parent
+    return routes, task_issues, legacy_issues, parent
 
 
 def _autonomous_candidate_parent_issues(
@@ -1219,7 +1221,7 @@ def _autonomous_candidate_parent_issues(
 
     task_id = candidate.task_id or ""
     try:
-        routes, task_issues, parent = _committed_task_context(
+        routes, task_issues, _, parent = _committed_task_context(
             root,
             task_id,
             candidate.path,
@@ -1339,7 +1341,7 @@ def _legacy_candidate_lineage_issues(
     if task_id is None:
         return []
     try:
-        routes, task_issues, _ = _committed_task_context(
+        routes, task_issues, legacy_issues, _ = _committed_task_context(
             root,
             task_id,
             path,
@@ -1356,6 +1358,13 @@ def _legacy_candidate_lineage_issues(
         )
         for message in task_issues
     ]
+    issues.extend(
+        _issue(
+            "G7",
+            f"{path.name}: current global legacy lineage is unresolved ({message})",
+        )
+        for message in legacy_issues
+    )
     legacy_routes = [route for route in routes if route.legacy]
     generated_legacy = [
         route
@@ -1363,30 +1372,96 @@ def _legacy_candidate_lineage_issues(
         if route.lineage.generation is not None
     ]
     if generated_legacy:
-        global_resolution = route_lineage.resolve_authoritative(legacy_routes)
-        if global_resolution.issues or global_resolution.authoritative is None:
-            detail = "; ".join(global_resolution.issues) or "no global tip"
+        candidate_lineage = route_lineage.parse_lineage(body)
+        known_ids = {route.route_id for route in legacy_routes}
+        unknown_parents = sorted(
+            set(candidate_lineage.parent_route_ids) - known_ids
+        )
+        if unknown_parents:
+            issues.append(
+                _issue(
+                    "G7",
+                    f"{path.name}: merge route declares unknown parent "
+                    + ", ".join(unknown_parents),
+                )
+            )
+        lineage_state = route_lineage.inspect_lineage(legacy_routes)
+        if lineage_state.structural_issues:
+            detail = "; ".join(lineage_state.structural_issues)
             issues.append(
                 _issue(
                     "G7",
                     f"{path.name}: current global legacy lineage is unresolved ({detail})",
                 )
             )
+        elif not lineage_state.tips:
+            issues.append(
+                _issue(
+                    "G7",
+                    f"{path.name}: current global legacy lineage is unresolved (no global tip)",
+                )
+            )
         else:
-            current_tip = global_resolution.authoritative
-            assert current_tip.lineage.generation is not None
-            candidate_lineage = route_lineage.parse_lineage(body)
-            expected_generation = current_tip.lineage.generation + 1
+            tip_ids = {route.route_id for route in lineage_state.tips}
+            parent_ids = set(candidate_lineage.parent_route_ids)
+            expected_generation = (
+                max(
+                    route.lineage.generation
+                    for route in lineage_state.tips
+                    if route.lineage.generation is not None
+                )
+                + 1
+            )
+            if len(lineage_state.tips) == 1:
+                current_tip = lineage_state.tips[0]
+                if (
+                    parent_ids != tip_ids
+                    or candidate_lineage.generation != expected_generation
+                ):
+                    issues.append(
+                        _issue(
+                            "G7",
+                            f"{path.name}: generated legacy route must extend current "
+                            f"global tip {current_tip.route_id} at generation "
+                            f"{expected_generation}",
+                        )
+                    )
+            else:
+                if parent_ids != tip_ids:
+                    issues.append(
+                        _issue(
+                            "G7",
+                            f"{path.name}: merge parents must equal the complete current "
+                            "unsuperseded tip set",
+                        )
+                    )
+                if candidate_lineage.generation != expected_generation:
+                    issues.append(
+                        _issue(
+                            "G7",
+                            f"{path.name}: merge generation must equal max current tip "
+                            "generation plus one",
+                        )
+                    )
+
+            candidate = route_lineage.LineageRoute(
+                route_id=route_lineage.route_id_of(path.name),
+                lineage=candidate_lineage,
+                task_id=task_id,
+                path=path,
+            )
+            prospective = route_lineage.resolve_authoritative(
+                [*legacy_routes, candidate]
+            )
             if (
-                candidate_lineage.generation != expected_generation
-                or candidate_lineage.parent_route_id != current_tip.route_id
+                prospective.issues
+                or prospective.authoritative is None
+                or prospective.authoritative.route_id != candidate.route_id
             ):
                 issues.append(
                     _issue(
                         "G7",
-                        f"{path.name}: generated legacy route must extend current "
-                        f"global tip {current_tip.route_id} at generation "
-                        f"{expected_generation}",
+                        f"{path.name}: merge candidate does not produce the sole global tip",
                     )
                 )
     if any(

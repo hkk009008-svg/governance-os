@@ -117,6 +117,27 @@ execution authority; require explicit user authorization for the exact
 effect/executor/target/scope. Push, merge, lock, cursor consume, paid spend,
 provider launch, and ledger resume are separate effects.
 
+## Legacy coordinator route reconciliation
+
+Legacy coordinator Task-board routes normally carry one `Supersedes route:`
+field and the next route generation. When the committed generated legacy graph
+has multiple clean unsuperseded tips, a coordinator candidate may reconcile it
+only by repeating the canonical field once for every current tip:
+
+```text
+Supersedes route: coordination/mailbox/sent/<tip-a>.md
+Supersedes route: coordination/mailbox/sent/<tip-b>.md
+```
+
+The parent set must be exact and unique, and the generation must equal the
+highest current-tip generation plus one. Reconciliation rejects partial,
+extra/non-tip, unknown, malformed, duplicate, cyclic, or mixed-spelling
+parents. `Supersedes active route:` remains a single-parent compatibility
+spelling and cannot be combined with repeated canonical fields. Expected
+control HEAD remains recorded lineage provenance; parent-set plus generation is
+the candidate CAS boundary. A structurally valid candidate does not authorize
+the coordinator to publish it or grant any separate side effect.
+
 ## Evidence-ledger bridge
 
 For work routed to `/Users/hyungkoookkim/evidence-ledger`, read

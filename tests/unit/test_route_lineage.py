@@ -34,7 +34,54 @@ def test_parse_generation_and_parent_backtick_and_plain():
     b = route_lineage.parse_lineage(plain)
     assert b.generation == 12
     assert b.parent_route_id == "2026-07-11T07-38-30Z-coordinator-to-all-coordination"
+    assert b.parent_route_ids == (
+        "2026-07-11T07-38-30Z-coordinator-to-all-coordination",
+    )
     assert b.expected_control_head == "808bda9"
+
+
+def test_parse_repeated_canonical_supersedes_routes_as_one_merge_parent_set():
+    parsed = route_lineage.parse_lineage(
+        "Task-board: reconcile\n"
+        "Route generation: 41\n"
+        "Supersedes route: coordination/mailbox/sent/left.md\n"
+        "Supersedes route: right.md\n"
+    )
+
+    assert parsed.parent_route_ids == ("left", "right")
+    assert parsed.parent_route_id is None
+
+
+@pytest.mark.parametrize(
+    "headers",
+    (
+        (
+            "Supersedes route: left.md",
+            "Supersedes route: left.md",
+        ),
+        (
+            "Supersedes route: coordination/mailbox/sent/left.md",
+            "Supersedes route: left",
+        ),
+        ("Supersedes route:",),
+        ("Supersedes route: `left.md",),
+        ("Supersedes route: left.md, right.md",),
+        ("Supersedes route: ../left.md",),
+        (
+            "Supersedes route: left.md",
+            "Supersedes active route: right.md",
+        ),
+        (
+            "Supersedes active route: left.md",
+            "Supersedes active route: right.md",
+        ),
+    ),
+)
+def test_parse_rejects_ambiguous_or_malformed_supersedes_fields(headers):
+    with pytest.raises(ValueError):
+        route_lineage.parse_lineage(
+            "Task-board: reconcile\nRoute generation: 41\n" + "\n".join(headers)
+        )
 
 
 def test_parse_legacy_route_without_generation():
@@ -63,6 +110,24 @@ def test_control_head_lowercased():
     assert parsed.expected_control_head == "808bda9"
 
 
+@pytest.mark.parametrize(
+    "headers",
+    (
+        (
+            "Expected control HEAD: 808bda9",
+            "Expected control HEAD: 808bda9",
+        ),
+        (
+            "Expected control HEAD: 808bda9",
+            "Control HEAD: 808bda9",
+        ),
+    ),
+)
+def test_parse_rejects_duplicate_or_mixed_control_head_fields(headers):
+    with pytest.raises(ValueError):
+        route_lineage.parse_lineage("\n".join(headers))
+
+
 def _lr(route_id, generation=None, parent=None):
     return route_lineage.LineageRoute(
         route_id, route_lineage.RouteLineage(generation, parent, None)
@@ -86,6 +151,67 @@ def test_resolve_lineage_tip_is_unsuperseded_highest_generation():
     ]
     res = route_lineage.resolve_authoritative(routes)
     assert res.mode == "lineage" and res.winner == "r3" and res.issues == ()
+
+
+def test_resolve_multi_parent_merge_supersedes_every_tip_and_yields_one_winner():
+    routes = [
+        _lr("root", generation=0, parent=None),
+        _lr("left", generation=40, parent="root"),
+        _lr("right", generation=1, parent="root"),
+        route_lineage.LineageRoute(
+            "merge",
+            route_lineage.RouteLineage(41, None, None, ("right", "left")),
+        ),
+    ]
+
+    res = route_lineage.resolve_authoritative(routes)
+
+    assert res.mode == "lineage"
+    assert res.winner == "merge"
+    assert res.issues == ()
+
+
+def test_resolve_rejects_unknown_multi_parent_and_disconnected_cycle():
+    unknown = route_lineage.resolve_authoritative(
+        [
+            _lr("tip", generation=1, parent=None),
+            route_lineage.LineageRoute(
+                "merge",
+                route_lineage.RouteLineage(2, None, None, ("tip", "missing")),
+            ),
+        ]
+    )
+    assert unknown.winner is None
+    assert any("dangling parent" in issue and "missing" in issue for issue in unknown.issues)
+
+    cyclic = route_lineage.resolve_authoritative(
+        [
+            _lr("healthy", generation=1, parent=None),
+            route_lineage.LineageRoute(
+                "cycle-a", route_lineage.RouteLineage(2, None, None, ("cycle-b",))
+            ),
+            route_lineage.LineageRoute(
+                "cycle-b", route_lineage.RouteLineage(3, None, None, ("cycle-a",))
+            ),
+        ]
+    )
+    assert cyclic.winner is None
+    assert any("cycle" in issue for issue in cyclic.issues)
+
+
+def test_resolve_rejects_child_generation_that_does_not_exceed_every_parent():
+    resolution = route_lineage.resolve_authoritative(
+        [
+            _lr("root", generation=40, parent=None),
+            route_lineage.LineageRoute(
+                "merge",
+                route_lineage.RouteLineage(1, None, None, ("root",)),
+            ),
+        ]
+    )
+
+    assert resolution.winner is None
+    assert any("non-increasing generation" in issue for issue in resolution.issues)
 
 
 def test_resolve_detects_forked_lineage_two_tips_same_generation():
@@ -250,6 +376,35 @@ def test_check_cli_fails_on_dangling_parent(tmp_path, capsys):
     rc = route_lineage.main(["--root", str(tmp_path)])
     out = capsys.readouterr().out
     assert rc == 1 and "dangling parent" in out
+
+
+def test_check_cli_fails_closed_on_malformed_multi_parent_route(tmp_path, capsys):
+    _write_route(
+        tmp_path,
+        "2026-07-12T05-00-00Z-coordinator-to-all-coordination.md",
+        "Task-board: x\nRoute generation: 5\n"
+        "Supersedes route: left.md\n"
+        "Supersedes active route: right.md\n",
+    )
+
+    rc = route_lineage.main(["--root", str(tmp_path), "--check"])
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "malformed route-shaped event" in out
+
+
+def test_check_cli_keeps_malformed_autonomous_event_task_scoped(tmp_path, capsys):
+    _write_route(
+        tmp_path,
+        "2026-07-12T05-00-00Z-director-to-all-coordination.md",
+        "Task ID: autonomous-task\nOutcome contract: incomplete\n",
+    )
+
+    rc = route_lineage.main(["--root", str(tmp_path), "--check"])
+
+    assert rc == 0
+    assert "no routes found" in capsys.readouterr().out.lower()
 
 
 # --- Autonomous per-task routes ------------------------------------------------

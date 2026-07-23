@@ -8,6 +8,7 @@ import subprocess
 import pytest
 
 import protocol_capacity
+import route_lineage
 
 
 def _packet(
@@ -217,6 +218,69 @@ def _commit_legacy_successor(
     _git(root, "add", "--", relative)
     _git(root, "commit", "-q", "-m", "add cross-task successor route")
     return f"{relative}@{_git(root, 'rev-parse', 'HEAD')}"
+
+
+def _legacy_route_body(
+    *,
+    task_id: str,
+    generation: int,
+    parents: tuple[str, ...] = (),
+) -> str:
+    lines = [f"Task-board: {task_id}", f"Route generation: {generation}"]
+    lines.extend(
+        f"Supersedes route: {parent.split('@', 1)[0]}" for parent in parents
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _commit_legacy_branch(
+    root: Path,
+    *,
+    task_id: str,
+    generation: int,
+    parents: tuple[str, ...],
+    minute: int,
+) -> str:
+    path = _write_route(
+        root,
+        f"2026-07-18T09-{minute:02d}-00Z-coordinator-to-all-coordination.md",
+        "# coordinator -> all: route event\n\n"
+        f"**When:** 2026-07-18T09:{minute:02d}:00Z · "
+        "**From:** coordinator (online)\n\n"
+        + _legacy_route_body(
+            task_id=task_id,
+            generation=generation,
+            parents=parents,
+        )
+        + "\nCursor at send: 0\n",
+    )
+    relative = path.relative_to(root).as_posix()
+    _git(root, "add", "--", relative)
+    _git(root, "commit", "-q", "-m", f"add legacy route generation {generation}")
+    return f"{relative}@{_git(root, 'rev-parse', 'HEAD')}"
+
+
+def _commit_two_tip_legacy_fork(root: Path) -> tuple[str, str, str]:
+    root_ref = _commit_legacy_parent(
+        root,
+        task_id="legacy-root",
+        generation=0,
+    )
+    left = _commit_legacy_branch(
+        root,
+        task_id="left-branch",
+        generation=40,
+        parents=(root_ref,),
+        minute=10,
+    )
+    right = _commit_legacy_branch(
+        root,
+        task_id="right-branch",
+        generation=1,
+        parents=(root_ref,),
+        minute=20,
+    )
+    return root_ref, left, right
 
 
 def _commit_autonomous_route(
@@ -682,6 +746,192 @@ def test_legacy_candidate_accepts_next_global_generation_and_tip(
     result = protocol_capacity.validate_route(tmp_path, 2, route)
 
     assert result.valid
+
+
+def test_legacy_candidate_accepts_exact_two_tip_merge_and_restores_lineage_check(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    _, left, right = _commit_two_tip_legacy_fork(tmp_path)
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        _legacy_route_body(
+            task_id="legacy-reconciliation",
+            generation=41,
+            parents=(left, right),
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert result.valid
+    relative = route.relative_to(tmp_path).as_posix()
+    _git(tmp_path, "add", "--", relative)
+    _git(tmp_path, "commit", "-q", "-m", "reconcile legacy tips")
+    assert route_lineage.main(["--root", str(tmp_path), "--check"]) == 0
+    assert capsys.readouterr().out.startswith("ROUTE LINEAGE — legacy route set")
+
+
+def test_legacy_candidate_rejects_partial_merge_of_current_two_tip_fork(tmp_path: Path):
+    _, left, _ = _commit_two_tip_legacy_fork(tmp_path)
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        _legacy_route_body(
+            task_id="legacy-reconciliation",
+            generation=41,
+            parents=(left,),
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "complete current unsuperseded tip set" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_legacy_candidate_rejects_extra_or_non_tip_merge_parent(tmp_path: Path):
+    root_ref, left, right = _commit_two_tip_legacy_fork(tmp_path)
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        _legacy_route_body(
+            task_id="legacy-reconciliation",
+            generation=41,
+            parents=(left, right, root_ref),
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "complete current unsuperseded tip set" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_legacy_candidate_rejects_unknown_merge_parent(tmp_path: Path):
+    _, left, right = _commit_two_tip_legacy_fork(tmp_path)
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        _legacy_route_body(
+            task_id="legacy-reconciliation",
+            generation=41,
+            parents=(left, right, "unknown-route.md"),
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "unknown parent" in issue["message"] for issue in result.route_issues
+    )
+
+
+def test_legacy_candidate_rejects_merge_with_wrong_successor_generation(
+    tmp_path: Path,
+):
+    _, left, right = _commit_two_tip_legacy_fork(tmp_path)
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        _legacy_route_body(
+            task_id="legacy-reconciliation",
+            generation=40,
+            parents=(left, right),
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "max current tip generation plus one" in issue["message"]
+        for issue in result.route_issues
+    )
+
+
+def test_legacy_candidate_rejects_reconciliation_over_cyclic_current_lineage(
+    tmp_path: Path,
+):
+    root_ref = _commit_legacy_parent(
+        tmp_path,
+        task_id="legacy-root",
+        generation=0,
+    )
+    future_parent = (
+        "coordination/mailbox/sent/"
+        "2026-07-18T09-20-00Z-coordinator-to-all-coordination.md"
+    )
+    left = _commit_legacy_branch(
+        tmp_path,
+        task_id="cycle-left",
+        generation=2,
+        parents=(future_parent,),
+        minute=10,
+    )
+    _commit_legacy_branch(
+        tmp_path,
+        task_id="cycle-right",
+        generation=3,
+        parents=(left,),
+        minute=20,
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        _legacy_route_body(
+            task_id="legacy-reconciliation",
+            generation=1,
+            parents=(root_ref,),
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "cyclic lineage" in issue["message"] for issue in result.route_issues
+    )
+
+
+def test_legacy_candidate_rejects_reconciliation_over_dangling_current_lineage(
+    tmp_path: Path,
+):
+    root_ref = _commit_legacy_parent(
+        tmp_path,
+        task_id="legacy-root",
+        generation=0,
+    )
+    _commit_legacy_branch(
+        tmp_path,
+        task_id="dangling-branch",
+        generation=2,
+        parents=("unknown-route.md",),
+        minute=10,
+    )
+    route = _write_route(
+        tmp_path,
+        "2026-07-18T09-30-00Z-coordinator-to-all-coordination.md",
+        _legacy_route_body(
+            task_id="legacy-reconciliation",
+            generation=1,
+            parents=(root_ref,),
+        ),
+    )
+
+    result = protocol_capacity.validate_route(tmp_path, 2, route)
+
+    assert not result.valid
+    assert any(
+        "dangling parent" in issue["message"] for issue in result.route_issues
+    )
 
 
 def test_capacity_findings_are_advisory_to_autonomous_route_validity(tmp_path: Path):
