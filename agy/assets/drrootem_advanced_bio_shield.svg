@@ -1,0 +1,239 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="100%" height="100%" aria-labelledby="drrootemTitle drrootemDesc" role="img">
+  <title id="drrootemTitle">Dr. ROOTEM Ultra-Bio Healthcare Ecosystem Crest</title>
+  <desc id="drrootemDesc">Interactive state-of-the-art vector artifact for Dr. ROOTEM bio-healthcare featuring animated DNA nodes, glassmorphic bio-shield, and gold-amber aura.</desc>
+  
+  <defs>
+    <!-- Color Gradients -->
+    <radialGradient id="bgHoloGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.35"/>
+      <stop offset="40%" stop-color="#10B981" stop-opacity="0.15"/>
+      <stop offset="75%" stop-color="#06B6D4" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="goldMetallic" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FEF3C7"/>
+      <stop offset="30%" stop-color="#F59E0B"/>
+      <stop offset="70%" stop-color="#D97706"/>
+      <stop offset="100%" stop-color="#78350F"/>
+    </linearGradient>
+
+    <linearGradient id="emeraldBio" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#064E3B"/>
+      <stop offset="50%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#A7F3D0"/>
+    </linearGradient>
+
+    <linearGradient id="cyanCyber" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0891B2"/>
+      <stop offset="50%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#CFFAFE"/>
+    </linearGradient>
+
+    <linearGradient id="glassShieldBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#0F172A" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="0.98"/>
+    </linearGradient>
+
+    <!-- Glowing Filters -->
+    <filter id="goldGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComponentTransfer in="blur" result="glow1">
+        <feFuncA type="linear" slope="1.5"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="glow1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="cyanGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="glassShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+
+    <!-- Embedded CSS Keyframe Animations -->
+    <style>
+      .orbit-clockwise {
+        transform-origin: 500px 500px;
+        animation: spinCW 30s linear infinite;
+      }
+      .orbit-counter {
+        transform-origin: 500px 500px;
+        animation: spinCCW 22s linear infinite;
+      }
+      .pulse-core {
+        transform-origin: 500px 500px;
+        animation: pulseCore 4s ease-in-out infinite alternate;
+      }
+      .float-shield {
+        transform-origin: 500px 500px;
+        animation: floatShield 6s ease-in-out infinite;
+      }
+      .dna-strand {
+        stroke-dasharray: 12, 12;
+        animation: dnaFlow 15s linear infinite;
+      }
+      .bio-node {
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), fill 0.3s ease;
+        cursor: pointer;
+      }
+      .bio-node:hover {
+        transform: scale(1.35);
+        fill: #FBBF24;
+      }
+
+      @keyframes spinCW {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes spinCCW {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(-360deg); }
+      }
+      @keyframes pulseCore {
+        0% { opacity: 0.7; transform: scale(0.98); }
+        100% { opacity: 1; transform: scale(1.02); }
+      }
+      @keyframes floatShield {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-12px); }
+      }
+      @keyframes dnaFlow {
+        from { stroke-dashoffset: 0; }
+        to { stroke-dashoffset: 240; }
+      }
+    </style>
+  </defs>
+
+  <!-- Background Ambient Holographic Aura -->
+  <rect x="0" y="0" width="1000" height="1000" fill="#020617"/>
+  <circle cx="500" cy="500" r="480" fill="url(#bgHoloGlow)"/>
+
+  <!-- Outer Cybernetic Tech Radar Rings -->
+  <g class="orbit-clockwise">
+    <!-- Outer Arc Segment 1 -->
+    <circle cx="500" cy="500" r="440" fill="none" stroke="url(#goldMetallic)" stroke-width="2" stroke-opacity="0.3" stroke-dasharray="80 20 40 20 120 40"/>
+    <circle cx="500" cy="500" r="420" fill="none" stroke="url(#cyanCyber)" stroke-width="1.5" stroke-opacity="0.4" stroke-dasharray="10 15 30 15"/>
+    
+    <!-- Outer Bio Satellite Nodes -->
+    <circle class="bio-node" cx="500" cy="60" r="14" fill="#F59E0B" filter="url(#goldGlow)"/>
+    <circle class="bio-node" cx="940" cy="500" r="12" fill="#10B981" filter="url(#cyanGlow)"/>
+    <circle class="bio-node" cx="500" cy="940" r="14" fill="#06B6D4" filter="url(#cyanGlow)"/>
+    <circle class="bio-node" cx="60" cy="500" r="12" fill="#F59E0B" filter="url(#goldGlow)"/>
+  </g>
+
+  <g class="orbit-counter">
+    <!-- Inner Counter-Rotating Rings -->
+    <circle cx="500" cy="500" r="370" fill="none" stroke="url(#emeraldBio)" stroke-width="2.5" stroke-opacity="0.5" stroke-dasharray="200 40 100 40"/>
+    <circle cx="500" cy="500" r="340" fill="none" stroke="url(#goldMetallic)" stroke-width="1" stroke-opacity="0.35"/>
+
+    <!-- Quadrant Connector Lines & Bio Molecule Satellites -->
+    <g stroke="url(#cyanCyber)" stroke-width="1.5" stroke-opacity="0.3">
+      <line x1="260" y1="260" x2="740" y2="740"/>
+      <line x1="740" y1="260" x2="260" y2="740"/>
+    </g>
+
+    <!-- Bio Product Molecule Badges -->
+    <g transform="translate(500, 500)">
+      <!-- PS 70 Node -->
+      <g transform="rotate(45) translate(370, 0)">
+        <circle class="bio-node" cx="0" cy="0" r="22" fill="#1E293B" stroke="url(#goldMetallic)" stroke-width="3" filter="url(#goldGlow)"/>
+        <text x="0" y="4" font-family="'Inter', sans-serif" font-size="10" font-weight="800" fill="#FEF3C7" text-anchor="middle">PS70</text>
+      </g>
+      <!-- Vit-C 1000 Node -->
+      <g transform="rotate(135) translate(370, 0)">
+        <circle class="bio-node" cx="0" cy="0" r="22" fill="#1E293B" stroke="url(#cyanCyber)" stroke-width="3" filter="url(#cyanGlow)"/>
+        <text x="0" y="4" font-family="'Inter', sans-serif" font-size="10" font-weight="800" fill="#CFFAFE" text-anchor="middle">VIT-C</text>
+      </g>
+      <!-- Memory Gold Node -->
+      <g transform="rotate(225) translate(370, 0)">
+        <circle class="bio-node" cx="0" cy="0" r="22" fill="#1E293B" stroke="url(#goldMetallic)" stroke-width="3" filter="url(#goldGlow)"/>
+        <text x="0" y="4" font-family="'Inter', sans-serif" font-size="10" font-weight="800" fill="#FEF3C7" text-anchor="middle">GOLD</text>
+      </g>
+      <!-- Omega-3 Node -->
+      <g transform="rotate(315) translate(370, 0)">
+        <circle class="bio-node" cx="0" cy="0" r="22" fill="#1E293B" stroke="url(#emeraldBio)" stroke-width="3" filter="url(#cyanGlow)"/>
+        <text x="0" y="4" font-family="'Inter', sans-serif" font-size="9" font-weight="800" fill="#A7F3D0" text-anchor="middle">OMEGA3</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- DNA Double Helix Intertwined Decorative Paths -->
+  <g class="pulse-core">
+    <path class="dna-strand" d="M 200,500 C 300,380 400,620 500,500 C 600,380 700,620 800,500" fill="none" stroke="url(#goldMetallic)" stroke-width="3" stroke-opacity="0.6"/>
+    <path class="dna-strand" d="M 200,500 C 300,620 400,380 500,500 C 600,620 700,380 800,500" fill="none" stroke="url(#cyanCyber)" stroke-width="3" stroke-opacity="0.6"/>
+  </g>
+
+  <!-- Central Floating Glassmorphic Shield & Crest -->
+  <g class="float-shield" filter="url(#glassShadow)">
+    <!-- Outer Shield Frame (Hexagonal Bio-Shield Geometry) -->
+    <polygon points="500,180 760,300 760,640 500,820 240,640 240,300" fill="url(#glassShieldBg)" stroke="url(#goldMetallic)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- Inner Shield Inset Border -->
+    <polygon points="500,205 738,315 738,625 500,795 262,625 262,315" fill="none" stroke="url(#cyanCyber)" stroke-width="1.5" stroke-opacity="0.4" stroke-dasharray="16 8"/>
+
+    <!-- Bio-Shield Header Badge Accent -->
+    <path d="M 420,205 L 580,205 L 560,240 L 440,240 Z" fill="url(#goldMetallic)" opacity="0.85"/>
+    <text x="500" y="228" font-family="'Inter', sans-serif" font-size="11" font-weight="900" fill="#020617" letter-spacing="3" text-anchor="middle">LUTEMBIO OFFICIAL</text>
+
+    <!-- Central Bio Medical Caduceus & Leaf Symbol -->
+    <g transform="translate(500, 420)">
+      <!-- Pulsing Aura Behind Emblem -->
+      <circle cx="0" cy="0" r="90" fill="url(#bgHoloGlow)" filter="url(#goldGlow)"/>
+
+      <!-- Emblem Hexagon Base -->
+      <polygon points="0,-75 65,-37 65,37 0,75 -65,37 -65,-37" fill="#0F172A" stroke="url(#goldMetallic)" stroke-width="3.5"/>
+
+      <!-- Stylized Medical Cross & Bio Leaf -->
+      <path d="M -16,-32 H 16 V -16 H 32 V 16 H 16 V 32 H -16 V 16 H -32 V -16 H -16 Z" fill="url(#emeraldBio)"/>
+      <!-- Gold Leaf overlay -->
+      <path d="M 0,-45 C 25,-25 35,5 0,35 C -35,5 -25,-25 0,-45 Z" fill="url(#goldMetallic)" opacity="0.75"/>
+      <circle cx="0" cy="0" r="10" fill="#FEF3C7" filter="url(#goldGlow)"/>
+    </g>
+
+    <!-- Typography: Dr. ROOTEM Brand Text -->
+    <text x="500" y="555" font-family="'Outfit', 'Inter', sans-serif" font-size="40" font-weight="900" fill="url(#goldMetallic)" letter-spacing="6" text-anchor="middle" filter="url(#goldGlow)">
+      Dr. ROOTEM
+    </text>
+
+    <text x="500" y="590" font-family="'Inter', sans-serif" font-size="14" font-weight="700" fill="#94A3B8" letter-spacing="4" text-anchor="middle">
+      ULTRA-BIO HEALTHCARE ECOSYSTEM
+    </text>
+
+    <!-- Divider Line with Diamond Center -->
+    <g opacity="0.8">
+      <line x1="320" y1="620" x2="470" y2="620" stroke="url(#goldMetallic)" stroke-width="2"/>
+      <polygon points="500,615 506,620 500,625 494,620" fill="#F59E0B"/>
+      <line x1="530" y1="620" x2="680" y2="620" stroke="url(#goldMetallic)" stroke-width="2"/>
+    </g>
+
+    <!-- Subtitle Formula Badges -->
+    <g transform="translate(500, 675)">
+      <!-- Badge 1: PS-70 -->
+      <rect x="-180" y="-18" width="105" height="34" rx="17" fill="#1E293B" stroke="url(#goldMetallic)" stroke-width="1.5"/>
+      <text x="-127.5" y="4" font-family="'Inter', sans-serif" font-size="11" font-weight="800" fill="#FEF3C7" text-anchor="middle">PS 70 100%</text>
+
+      <!-- Badge 2: Vit-C 1000 -->
+      <rect x="-52.5" y="-18" width="105" height="34" rx="17" fill="#1E293B" stroke="url(#cyanCyber)" stroke-width="1.5"/>
+      <text x="0" y="4" font-family="'Inter', sans-serif" font-size="11" font-weight="800" fill="#CFFAFE" text-anchor="middle">VIT-C 1000</text>
+
+      <!-- Badge 3: Memory Gold -->
+      <rect x="75" y="-18" width="105" height="34" rx="17" fill="#1E293B" stroke="url(#emeraldBio)" stroke-width="1.5"/>
+      <text x="127.5" y="4" font-family="'Inter', sans-serif" font-size="11" font-weight="800" fill="#A7F3D0" text-anchor="middle">GOLD MEMORY</text>
+    </g>
+
+    <!-- Footer Certification Text -->
+    <text x="500" y="745" font-family="'Inter', sans-serif" font-size="11" font-weight="600" fill="#64748B" letter-spacing="2" text-anchor="middle">
+      EST. 2026 • DRROOTEM.COM • KOREA PREMIUM HEALTHCARE
+    </text>
+  </g>
+</svg>
