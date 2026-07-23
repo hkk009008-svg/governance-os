@@ -756,3 +756,27 @@ def test_subagent_start_allows_unbound_readiness_advisor() -> None:
     )
 
     assert result["permission"] == "allow"
+
+def test_live_seat_may_run_cursor_relay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, env, _ = _valid_binding(tmp_path, monkeypatch)
+    result = policy.evaluate(
+        _shell(
+            "coordination/bin/cursor-relay publish --to operator --kind status --subject s"
+        ),
+        env,
+    )
+    assert result["permission"] == "allow"
+
+
+def test_readiness_denies_cursor_relay_publish() -> None:
+    result = policy.evaluate(
+        _shell(
+            "coordination/bin/cursor-relay publish --to operator --kind status --subject s"
+        ),
+        {},
+    )
+    assert result["permission"] == "deny"
+

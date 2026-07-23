@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Cursor-only auto-relay front door.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+exec /usr/bin/env -u GIT_INDEX_FILE python3 "$ROOT/scripts/cursor_auto_relay.py" "$@"

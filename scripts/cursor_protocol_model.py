@@ -65,6 +65,10 @@ def render_runtime_env_contract(
             "- only the Cursor seat launcher binds a top-level live seat.",
             "- Cursor subagents remain parent-scoped and never inherit seat authority.",
             "- environment values describe identity and never authorize external effects.",
+            "- provider_side=cursor",
+            "- foreign_launch=denied",
+            "- live seats use auto-relay for mailbox publish/consume without human TTY.",
+            "- readiness-bridge sessions cannot publish or relay mailbox events.",
         )
     )
     return "\n".join(lines)

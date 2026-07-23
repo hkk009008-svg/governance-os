@@ -10,7 +10,7 @@ canonical model `scripts/codex_protocol_model.py`. Behavior source for
 
 Operating rules:
 
-- Chat continuation without a launcher bind is not a live seat; durable mail goes through human-confirmed `coordination/bin/cursor-publish`.
+- Chat continuation without a launcher bind is not a live seat; live seats auto-relay via `coordination/bin/cursor-relay`; readiness still uses human-confirmed `coordination/bin/cursor-publish`.
 - Before changing a symbol, find its definition, writers, callers, imports,
   string references, and siblings; read those sites first.
 - For behavior changes and bug fixes, write a failing behavior test first when

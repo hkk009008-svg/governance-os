@@ -2,8 +2,9 @@
 """Interactive Cursor mailbox wrappers that delegate to Pipeline fixed writers.
 
 These wrappers add one thing on top of the canonical ``coordination/bin``
-writers: an explicit, seat-bound, interactively confirmed front door for a
-human operating a Cursor session. They never reimplement mailbox validation,
+writers: a seat-bound front door for mailbox publish/consume. Readiness-bridge
+sessions still require an explicit typed yes on the controlling terminal;
+live Cursor dispatch/review seats auto-publish/consume without TTY confirmation. They never reimplement mailbox validation,
 fencing, durable replacement, or staging -- every effect is executed by the
 existing fixed writer (``send-event`` / ``consume-events``). Publishing a
 mailbox event and consuming a seat cursor are separately authorized effects, so
@@ -20,6 +21,8 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+
+from scripts.cursor_auto_relay import live_bound
 
 LAUNCH_SEATS = ("director", "director2", "operator", "operator2", "coordinator")
 
@@ -153,14 +156,15 @@ def main(
                             "seat": seat,
                             "argv": delegate,
                             "body_bytes": len(body.encode("utf-8")),
-                            "would_confirm": True,
+                            "would_confirm": not live_bound(os.environ),
                         },
                         indent=2,
                         sort_keys=True,
                     )
                 )
                 return 0
-            confirm(action="publish", detail=detail, prompt_fn=prompt_fn)
+            if not live_bound(os.environ):
+                confirm(action="publish", detail=detail, prompt_fn=prompt_fn)
             return runner(delegate, input=body, text=True, env=_delegate_env())
         if args.command == "consume":
             extra = [token for token in (args.extra or []) if token != "--"]
@@ -172,14 +176,15 @@ def main(
                             "operation": "consume",
                             "seat": seat,
                             "argv": delegate,
-                            "would_confirm": True,
+                            "would_confirm": not live_bound(os.environ),
                         },
                         indent=2,
                         sort_keys=True,
                     )
                 )
                 return 0
-            confirm(action="consume", detail=f"advance {seat} cursor", prompt_fn=prompt_fn)
+            if not live_bound(os.environ):
+                confirm(action="consume", detail=f"advance {seat} cursor", prompt_fn=prompt_fn)
             return runner(delegate, env=_delegate_env())
     except MailboxBindingError as exc:
         print(f"cursor-mailbox: {exc}", file=sys.stderr)

@@ -84,3 +84,11 @@ def test_cursor_contract_tracks_canonical_mode_semantics() -> None:
     }
     for cursor_key, canonical_key in pairs.items():
         assert cursor_values[cursor_key] == canonical_values[canonical_key]
+
+def test_cursor_contract_documents_provider_isolation_and_auto_relay() -> None:
+    rendered = cursor.render_runtime_env_contract({})
+    assert "provider_side=cursor" in rendered
+    assert "foreign_launch=denied" in rendered
+    assert "auto-relay" in rendered
+    assert "readiness-bridge sessions cannot publish" in rendered
+

@@ -496,3 +496,40 @@ def test_dry_run_does_not_create_runtime_or_index(
     after = set(runtime.iterdir()) if runtime.exists() else set()
     assert after == before
     assert (index.stat().st_mtime_ns if index.exists() else None) == index_before
+
+def test_relay_chain_skips_provider_confirmation() -> None:
+    with pytest.raises(launcher.LaunchError, match="interactive"):
+        launcher.confirm_provider_launch(
+            seat="director",
+            model="model-director",
+            workspace=Path("/repo"),
+            trigger_ref="path@sha",
+            stdin_isatty=False,
+        )
+    import os
+    old = os.environ.get("CURSOR_RELAY_CHAIN")
+    os.environ["CURSOR_RELAY_CHAIN"] = "1"
+    try:
+        assert launcher.confirm_provider_launch(
+            seat="director",
+            model="model-director",
+            workspace=Path("/repo"),
+            trigger_ref="path@sha",
+            stdin_isatty=False,
+        )
+    finally:
+        if old is None:
+            os.environ.pop("CURSOR_RELAY_CHAIN", None)
+        else:
+            os.environ["CURSOR_RELAY_CHAIN"] = old
+
+
+def test_readiness_prints_provider_side_and_foreign_launch_denied(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = launcher.main(["readiness"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "provider_side=cursor" in out
+    assert "foreign_launch=denied" in out
+

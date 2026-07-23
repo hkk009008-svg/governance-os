@@ -66,12 +66,16 @@ seat. The launcher refuses ambiguous or foreign workspaces.
   bind a live seat, consume a cursor, or authorize mailbox publish/consume.
 - A live seat starts only through the human launcher:
   `coordination/bin/cursor-seat dispatch|review`.
-- Durable mailbox traffic uses the human front door: a seat writes to
-  `.cursor/runtime/outbox/<seat>/`, then a human runs TTY
-  `coordination/bin/cursor-publish` and types `yes` at the prompt. There is no
-  auto-relay into another Cursor chat window or peer session.
-- Agent tools remain denied for live publish, consume, dispatch, and other
-  separately authorized effects even when chat prose names a seat.
+- Durable mailbox traffic from a **live seat** auto-relays: the seat writes to
+  `.cursor/runtime/outbox/<seat>/`, then `scripts/cursor_auto_relay.py` (shim
+  `coordination/bin/cursor-relay`) publishes through the fixed writer and may
+  wake the next Cursor seat via `cursor-seat` only. Readiness-bridge chat still
+  requires human TTY `coordination/bin/cursor-publish` with typed `yes`.
+- Agent tools remain denied for publish, consume, dispatch, and other separately
+  authorized effects in readiness mode even when chat prose names a seat. Live
+  seats may run Cursor-only mailbox/relay wrappers under hook policy.
+- Foreign provider launchers (`agy-seat`, `codex-seat`, Claude launchers) are
+  denied; Cursor relay strips foreign provider env residue (`out_of_side`).
 
 
 ## Startup (non-trivial work)
@@ -96,8 +100,11 @@ HEAD, relevant mail, and scoped status before any write or gate decision.
 A live Cursor seat is launched, not adopted from chat. The launcher
 (`scripts/cursor_seat_launcher.py`, shim `coordination/bin/cursor-seat`) binds
 the exact seat identity, seeds a per-seat Git index, records a private local
-registry under `.cursor/runtime/` (never committed), and requires interactive
-confirmation before any provider agent starts.
+registry under `.cursor/runtime/` (never committed), requires interactive
+confirmation before any provider agent starts (except `CURSOR_RELAY_CHAIN=1`
+relay wakes), and auto-relays finished outbox results when a `cursor-relay`
+directive is present. Readiness reports `provider_side=cursor` and
+`foreign_launch=denied`.
 
 ```bash
 coordination/bin/cursor-seat readiness             # print the runtime contract
@@ -115,11 +122,14 @@ never publishes a mailbox event.
 
 Cursor never reimplements mailbox mechanics. Publishing an event and consuming
 a seat cursor are separately authorized effects that delegate to the existing
-fixed writers, behind an interactive, seat-bound confirmation:
+fixed writers. Live dispatch/review seats auto-publish/consume (and may
+auto-relay through `coordination/bin/cursor-relay`) without TTY confirmation;
+readiness-bridge sessions keep the interactive confirmation:
 
 ```bash
 echo "body" | coordination/bin/cursor-publish --seat director --to operator --kind status --subject "..."
 coordination/bin/cursor-consume --seat director
+coordination/bin/cursor-relay from-outbox .cursor/runtime/outbox/director/<run>.json
 ```
 
 These wrappers call `coordination/bin/send-event` and

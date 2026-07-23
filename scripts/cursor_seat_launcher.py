@@ -22,19 +22,21 @@ from typing import Any
 
 try:
     from scripts import compact_pair_loop, protocol_mailbox
+    from scripts.cursor_auto_relay import maybe_auto_relay
     from scripts.cursor_protocol_model import infer_runtime_env, render_runtime_env_contract
 except ModuleNotFoundError as exc:
     if exc.name != "scripts":
         raise
     import compact_pair_loop
     import protocol_mailbox
+    from cursor_auto_relay import maybe_auto_relay
     from cursor_protocol_model import infer_runtime_env, render_runtime_env_contract
 
 
 LAUNCH_SEATS = ("director", "director2", "operator", "operator2", "coordinator")
 DEFAULT_CONFIG_PATH = Path("~/.cursor/pipeline-seat-launcher.toml")
 REGISTRY_SCHEMA_VERSION = 1
-_SEAT_ENV_PREFIXES = ("CURSOR_", "CODEX_", "AGY_", "ANTIGRAVITY_", "GIT_")
+_SEAT_ENV_PREFIXES = ("CURSOR_", "CODEX_", "AGY_", "ANTIGRAVITY_", "CLAUDE_", "GIT_")
 _PRESERVED_AMBIENT_ENV = frozenset(
     {
         "CURSOR_API_KEY",
@@ -425,6 +427,8 @@ def confirm_provider_launch(
     stdin_isatty: bool,
     input_fn: Callable[[str], str] = input,
 ) -> bool:
+    if os.environ.get("CURSOR_RELAY_CHAIN") == "1":
+        return True
     if not stdin_isatty:
         raise LaunchError("provider launch requires interactive user confirmation")
     answer = input_fn(
@@ -650,6 +654,10 @@ def _run_live(
         )
         outbox = _write_outbox(root, spec.seat, run_id, text, actual_model)
         save_registry(registry_path, registry)
+        if status == "finished":
+            relay = maybe_auto_relay(root, outbox_path=outbox, environ=spec.env)
+            if relay is not None:
+                print("relay=" + str(relay.get("last_relay", "")))
         print(f"run={run_id} status={status} model={actual_model} outbox={outbox}")
         return 0 if status == "finished" else 2
 
@@ -677,6 +685,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "readiness":
             print(render_runtime_env_contract({}))
             print("provider launch: none")
+            print("provider_side=cursor")
+            print("foreign_launch=denied")
             return 0
         if args.command == "status":
             registry = load_registry(root / ".cursor/runtime/pipeline-seats.json", root)

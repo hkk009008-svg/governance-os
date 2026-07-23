@@ -594,6 +594,8 @@ _PRIVILEGED_EXECS = {
     "mailbox_writer.py",
     "cursor_seat_launcher.py",
     "cursor_mailbox.py",
+    "cursor-relay",
+    "cursor_auto_relay.py",
 }
 # Provider separation: Cursor sessions never launch another provider's seats.
 _FOREIGN_PROVIDER_EXECS = {
@@ -605,10 +607,37 @@ _FOREIGN_PROVIDER_EXECS = {
 # Documented read-only orientation entry points of the Cursor launcher.
 _READ_ONLY_LAUNCHER_COMMANDS = {"readiness", "status"}
 _READ_ONLY_LAUNCHERS = {"cursor-seat", "cursor_seat_launcher.py"}
-_DRY_RUN_WRAPPERS = {"cursor-publish", "cursor-consume", "cursor_mailbox.py"}
+_DRY_RUN_WRAPPERS = {"cursor-publish", "cursor-consume", "cursor-relay", "cursor_mailbox.py", "cursor_auto_relay.py"}
+_LIVE_MAILBOX_EXECS = frozenset(
+    {
+        "cursor-publish",
+        "cursor-consume",
+        "cursor-relay",
+        "cursor_mailbox.py",
+        "cursor_auto_relay.py",
+    }
+)
 _INTERPRETER_NAMES = {"bash", "sh", "zsh", "dash", "ksh", "ruby", "perl"}
 _SHELL_INTERPRETERS = {"bash", "sh", "zsh", "dash", "ksh"}
 _COMMAND_WRAPPERS = {"command", "exec"}
+
+def _live_mailbox_effect(tokens: list[str]) -> bool:
+    if not tokens:
+        return False
+    executable = PurePosixPath(tokens[0]).name
+    if executable in _LIVE_MAILBOX_EXECS:
+        if _read_only_invocation(executable, tokens[1:]):
+            return False
+        return True
+    if executable.startswith("python") or executable in _INTERPRETER_NAMES:
+        for index, token in enumerate(tokens[1:], start=1):
+            name = PurePosixPath(token).name
+            if name in _LIVE_MAILBOX_EXECS:
+                if _read_only_invocation(name, tokens[index + 1 :]):
+                    return False
+                return True
+    return False
+
 
 
 def _after_command_wrapper(tokens: list[str]) -> list[str]:
@@ -813,6 +842,7 @@ def _shell_decision(
     environ: Mapping[str, str],
     *,
     depth: int = 0,
+    allow_live_mailbox: bool = True,
 ) -> dict[str, str]:
     command = payload.get("command")
     if not isinstance(command, str) or not command.strip():
@@ -829,6 +859,7 @@ def _shell_decision(
             nested_payload,
             environ,
             depth=depth + 1,
+            allow_live_mailbox=False,
         )
         if nested_result.get("permission") != "allow":
             return _deny(
@@ -873,6 +904,14 @@ def _shell_decision(
                 "providers' seats."
             )
         if violation == "effect":
+            if (
+                allow_live_mailbox
+                and binding_valid
+                and not is_subagent
+                and environ.get("CURSOR_OPERATION") in {"dispatch", "review"}
+                and _live_mailbox_effect(tokens)
+            ):
+                continue
             subject = "subagent" if is_subagent else "Cursor seat"
             return _deny(
                 f"{subject} cannot perform this separately authorized effect from an agent tool."

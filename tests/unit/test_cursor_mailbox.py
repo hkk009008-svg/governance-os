@@ -204,3 +204,37 @@ def test_consume_confirms_then_delegates(tmp_path: Path) -> None:
     assert rc == 0
     assert seen[0][-1] == "operator"
     assert seen[0][-2].endswith("consume-events")
+
+def test_publish_skips_confirm_when_live_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _writers(tmp_path)
+    seen: dict[str, object] = {}
+
+    def _runner(argv: list[str], **kwargs: object) -> int:
+        seen["argv"] = argv
+        return 0
+
+    monkeypatch.setenv("CURSOR_SEAT", "director")
+    monkeypatch.setenv("CURSOR_OPERATION", "dispatch")
+    monkeypatch.setenv("GIT_INDEX_FILE", "/repo/.git/index-cursor-director")
+    rc = mailbox.main(
+        [
+            "publish",
+            "--seat",
+            "director",
+            "--to",
+            "operator",
+            "--kind",
+            "status",
+            "--subject",
+            "hello",
+        ],
+        root=tmp_path,
+        stdin_text="body",
+        runner=_runner,
+        prompt_fn=lambda _: (_ for _ in ()).throw(AssertionError("confirm should not run")),
+    )
+    assert rc == 0
+    assert seen["argv"][-4:] == ["director", "operator", "status", "hello"]
+

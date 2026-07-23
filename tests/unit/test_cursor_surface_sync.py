@@ -30,9 +30,11 @@ def test_cursor_scripts_and_shims_are_present_and_delegating() -> None:
         "scripts/cursor_seat_launcher.py",
         "scripts/cursor_hook_policy.py",
         "scripts/cursor_mailbox.py",
+        "scripts/cursor_auto_relay.py",
         "coordination/bin/cursor-seat",
         "coordination/bin/cursor-publish",
         "coordination/bin/cursor-consume",
+        "coordination/bin/cursor-relay",
         ".cursor/hooks/seat-policy",
     ):
         assert (ROOT / relative).is_file(), relative
@@ -130,3 +132,12 @@ def test_gitignore_excludes_cursor_seat_runtime_and_indexes() -> None:
     gitignore = _read(".gitignore")
     assert ".cursor/runtime/" in gitignore
     assert ".git/index-cursor-*" in gitignore
+
+def test_auto_relay_never_mentions_foreign_launchers() -> None:
+    source = _read("scripts/cursor_auto_relay.py")
+    lowered = source.casefold()
+    assert "agy-seat" not in lowered
+    assert "codex-seat" not in lowered
+    assert "agy_seat_launcher" not in lowered
+    assert "codex_seat_launcher" not in lowered
+
