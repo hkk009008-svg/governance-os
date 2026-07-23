@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>닥터루템 (Dr. Rootem) | 프리미엄 바이오 건강기능식품 공식몰</title>
+  <meta name="description" content="자연에서 찾은 과학적 맞춤 영양 솔루션, 닥터루템(Dr. Rootem) 공식 브랜드스토어. 루테인, 포스파티딜세린, 리포좀 비타민C, 맥주효모, 바나바 혈당케어.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="#" class="brand-logo" id="brandLogo">
+        <span class="logo-badge">BIO</span>
+        <span class="logo-text">Dr.Rootem <small>닥터루템</small></span>
+      </a>
+
+      <nav class="nav-menu" id="navMenu">
+        <a href="#hero" class="nav-link active">홈</a>
+        <a href="#catalog" class="nav-link">전체제품</a>
+        <a href="#wizard" class="nav-link">맞춤진단</a>
+        <a href="#calculator" class="nav-link">영양계산기</a>
+        <a href="#reviews" class="nav-link">리얼후기</a>
+      </nav>
+
+      <div class="nav-actions">
+        <button class="theme-toggle" id="themeToggle" aria-label="테마 변경">
+          <svg class="sun-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <svg class="moon-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+
+        <button class="cart-btn" id="cartBtn" aria-label="장바구니">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          <span class="cart-badge" id="cartBadge">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section" id="hero">
+    <div class="hero-bg-glow"></div>
+    <div class="hero-container">
+      <div class="hero-content">
+        <div class="hero-pill">
+          <span class="pulse-dot"></span>
+          <span>의학 & 바이오 과학의 조화 · 닥터루템</span>
+        </div>
+        <h1 class="hero-title">
+          당신의 신체 바이오리듬을<br>
+          <span class="gradient-text">자연의 정밀한 영양</span>으로 채우다
+        </h1>
+        <p class="hero-desc">
+          정신의학 및 바이오 전문가들의 정밀 배합 기술로 탄생한 닥터루템.<br>
+          눈 건강, 뇌 기억력, 고함량 비타민C, 모발 활력까지 과학적으로 입증된 원료만을 엄선합니다.
+        </p>
+        <div class="hero-cta">
+          <a href="#wizard" class="btn btn-primary btn-lg">
+            <span>내 맞춤 영양제 찾기</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a href="#catalog" class="btn btn-outline btn-lg">베스트셀러 보기</a>
+        </div>
+
+        <div class="hero-stats">
+          <div class="stat-item">
+            <span class="stat-number">98.4%</span>
+            <span class="stat-label">고객 재구매 만족도</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-item">
+            <span class="stat-number">1,250,000+</span>
+            <span class="stat-label">누적 판매 캡슐 수</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-item">
+            <span class="stat-number">100%</span>
+            <span class="stat-label">식약처 인증 기능성</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="glass-card hero-card">
+          <div class="card-badge">HOT BEST</div>
+          <div class="product-preview-img">
+            <div class="bottle-mockup">
+              <div class="cap"></div>
+              <div class="body">
+                <div class="label-brand">Dr.Rootem</div>
+                <div class="label-title">포스파티딜세린<br>기억력 징코</div>
+              </div>
+            </div>
+          </div>
+          <div class="hero-card-footer">
+            <div>
+              <div class="hero-card-title">닥터루템 포스파티딜세린 70</div>
+              <div class="hero-card-sub">인체시험 데이터 입증 · 뇌 세포막 영양 케어</div>
+            </div>
+            <div class="hero-card-price">₩48,000</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Product Catalog Section -->
+  <section class="catalog-section" id="catalog">
+    <div class="section-header">
+      <div class="section-subtitle">PREMIUM PRODUCTS</div>
+      <h2 class="section-title">닥터루템 정밀 영양 솔루션</h2>
+      <p class="section-desc">건강 고민별로 최적화된 식약처 기능성 건강기능식품 라인업을 확인하세요.</p>
+    </div>
+
+    <!-- Category Filter Tabs -->
+    <div class="filter-tabs" id="filterTabs">
+      <button class="tab-btn active" data-category="all">전체 라인업</button>
+      <button class="tab-btn" data-category="brain">뇌 & 기억력</button>
+      <button class="tab-btn" data-category="eye">눈 & 활력</button>
+      <button class="tab-btn" data-category="immune">면역 & 항산화</button>
+      <button class="tab-btn" data-category="hair">두피 & 모발</button>
+      <button class="tab-btn" data-category="metabolic">혈당 & 대사</button>
+    </div>
+
+    <!-- Product Grid -->
+    <div class="product-grid" id="productGrid">
+      <!-- Dynamic rendering via JS -->
+    </div>
+  </section>
+
+  <!-- Interactive Health Wizard Section -->
+  <section class="wizard-section" id="wizard">
+    <div class="wizard-container glass-panel">
+      <div class="section-header text-center">
+        <div class="section-subtitle">PERSONALIZED NUTRITION</div>
+        <h2 class="section-title">AI 맞춤 영양제 진단 솔루션</h2>
+        <p class="section-desc">현재 생활 습관과 건강 고민에 맞는 닥터루템 영양 조합을 30초 만에 추천받으세요.</p>
+      </div>
+
+      <div class="wizard-box" id="wizardBox">
+        <div class="wizard-step" id="wizardStep">
+          <!-- Step content injected dynamically -->
+        </div>
+        <div class="wizard-navigation">
+          <button class="btn btn-outline" id="prevStepBtn" style="display: none;">이전</button>
+          <button class="btn btn-primary" id="nextStepBtn">다음 단계로</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Daily Dose & Habit Calculator -->
+  <section class="calculator-section" id="calculator">
+    <div class="calculator-container">
+      <div class="calculator-info">
+        <div class="section-subtitle">SMART HABIT CALCULATOR</div>
+        <h2 class="section-title">나의 1일 영양 충족도 계산기</h2>
+        <p class="section-desc">
+          일상 생활 패턴을 입력하면 식약처 1일 권장 섭취량 대비 부족한 영양 성분 수치와 섭취 가이드를 계산해드립니다.
+        </p>
+        <div class="calc-metrics">
+          <div class="metric-card">
+            <span class="metric-title">스마트폰/모니터 사용</span>
+            <input type="range" min="1" max="14" value="8" class="range-slider" id="screenTimeSlider">
+            <div class="metric-val"><span id="screenTimeVal">8</span> 시간 / 일</div>
+          </div>
+          <div class="metric-card">
+            <span class="metric-title">야외 활동 & 햇빛 쬐기</span>
+            <input type="range" min="0" max="8" value="2" class="range-slider" id="outdoorTimeSlider">
+            <div class="metric-val"><span id="outdoorTimeVal">2</span> 시간 / 일</div>
+          </div>
+          <div class="metric-card">
+            <span class="metric-title">두뇌 집중 & 학습 시간</span>
+            <input type="range" min="1" max="12" value="6" class="range-slider" id="brainWorkSlider">
+            <div class="metric-val"><span id="brainWorkVal">6</span> 시간 / 일</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="calculator-result glass-panel">
+        <h3 class="result-heading">오늘의 바이오 스코어</h3>
+        <div class="score-circle">
+          <svg class="score-svg" viewBox="0 0 100 100">
+            <circle class="score-bg" cx="50" cy="50" r="42"></circle>
+            <circle class="score-progress" id="scoreCircleProgress" cx="50" cy="50" r="42" stroke-dasharray="264" stroke-dashoffset="80"></circle>
+          </svg>
+          <div class="score-text">
+            <span class="score-num" id="calcScoreNum">68</span>
+            <span class="score-unit">/ 100점</span>
+          </div>
+        </div>
+        <div class="result-details" id="calcResultDetails">
+          <div class="detail-row">
+            <span>루테인/지아잔틴 충족도</span>
+            <div class="bar-outer"><div class="bar-inner" id="luteinBar" style="width: 45%;"></div></div>
+          </div>
+          <div class="detail-row">
+            <span>포스파티딜세린 충족도</span>
+            <div class="bar-outer"><div class="bar-inner" id="psBar" style="width: 60%;"></div></div>
+          </div>
+          <div class="detail-row">
+            <span>리포좀 비타민C 항산화도</span>
+            <div class="bar-outer"><div class="bar-inner" id="vitCBar" style="width: 50%;"></div></div>
+          </div>
+        </div>
+        <button class="btn btn-primary w-full" id="calcRecommendBtn">권장 영양제 바로담기</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Customer Reviews Section -->
+  <section class="reviews-section" id="reviews">
+    <div class="section-header">
+      <div class="section-subtitle">REAL REVIEWS</div>
+      <h2 class="section-title">닥터루템 찐 실구매 후기</h2>
+      <p class="section-desc">100% 누적 12만 건 이상의 실제 구매 고객 리뷰를 확인하세요.</p>
+    </div>
+
+    <div class="review-stats-bar glass-panel">
+      <div class="rev-stat">
+        <div class="rev-score">4.9 / 5.0</div>
+        <div class="rev-stars">★★★★★</div>
+        <div class="rev-count">총 128,420개 평점</div>
+      </div>
+      <div class="rev-filters" id="reviewFilterBtns">
+        <button class="filter-chip active" data-filter="all">전체보기</button>
+        <button class="filter-chip" data-filter="5">★★★★★ (5점만점)</button>
+        <button class="filter-chip" data-filter="photo">포토리뷰</button>
+      </div>
+      <button class="btn btn-outline" id="writeReviewBtn">후기 작성하기</button>
+    </div>
+
+    <div class="reviews-grid" id="reviewsGrid">
+      <!-- Injected via JS -->
+    </div>
+  </section>
+
+  <!-- Cart Drawer Component -->
+  <div class="cart-drawer-overlay" id="cartOverlay"></div>
+  <aside class="cart-drawer" id="cartDrawer">
+    <div class="cart-header">
+      <h3>장바구니 (<span id="cartCountTitle">0</span>)</h3>
+      <button class="close-btn" id="closeCartBtn">&times;</button>
+    </div>
+
+    <div class="cart-items" id="cartItemsList">
+      <!-- Injected via JS -->
+    </div>
+
+    <div class="cart-footer">
+      <div class="cart-summary-row">
+        <span>총 상품금액</span>
+        <span id="cartSubtotal">₩0</span>
+      </div>
+      <div class="cart-summary-row">
+        <span>배송비</span>
+        <span class="free-shipping">무료배송</span>
+      </div>
+      <div class="cart-total-row">
+        <span>최종 결제예정금액</span>
+        <span class="cart-total-price" id="cartTotalPrice">₩0</span>
+      </div>
+      <button class="btn btn-primary btn-lg w-full" id="checkoutBtn">주문하기 & 무료배송 혜택</button>
+    </div>
+  </aside>
+
+  <!-- Review Modal Component -->
+  <div class="modal-overlay" id="reviewModalOverlay">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h3>닥터루템 솔직 후기 작성</h3>
+        <button class="close-btn" id="closeReviewModal">&times;</button>
+      </div>
+      <form id="reviewForm">
+        <div class="form-group">
+          <label for="reviewProductSelect">구매 제품 선택</label>
+          <select id="reviewProductSelect" class="form-select" required>
+            <option value="1">닥터루템 포스파티딜세린 70</option>
+            <option value="2">닥터루템 리포좀 비타민C 1000</option>
+            <option value="3">닥터루템 맥주효모 비오틴 콤플렉스</option>
+            <option value="4">닥터루템 쏘팔메토 & 루테인 지아잔틴</option>
+            <option value="5">닥터루템 바나바잎 혈당케어</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>평점 선택</label>
+          <div class="star-rating-input">
+            <span class="star-btn active" data-rating="5">★</span>
+            <span class="star-btn active" data-rating="4">★</span>
+            <span class="star-btn active" data-rating="3">★</span>
+            <span class="star-btn active" data-rating="2">★</span>
+            <span class="star-btn active" data-rating="1">★</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="reviewerName">작성자 닉네임</label>
+          <input type="text" id="reviewerName" class="form-input" placeholder="예: 건강챙기자" required>
+        </div>
+        <div class="form-group">
+          <label for="reviewContent">상세 후기 내용</label>
+          <textarea id="reviewContent" class="form-textarea" rows="4" placeholder="제품 섭취 후 느끼신 변화나 만족도를 들려주세요." required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary w-full">후기 등록 완료</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-col">
+        <div class="footer-brand">Dr.Rootem 닥터루템</div>
+        <p class="footer-desc">주식회사 루템바이오 | 대표: 이시형 박사 추천 자문 | 사업자등록번호: 220-88-00000</p>
+        <p class="footer-desc">주소: 서울특별시 강남구 테헤란로 바이오타워 12층 | 고객센터: 070-8862-3333</p>
+      </div>
+      <div class="footer-col">
+        <h4>고객 지원</h4>
+        <ul class="footer-links">
+          <li><a href="#">자주 묻는 질문 (FAQ)</a></li>
+          <li><a href="#">배송 & 반품 안내</a></li>
+          <li><a href="#">정기배송 구독혜택</a></li>
+          <li><a href="#">이용약관 및 개인정보처리방침</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>품질 보증</h4>
+        <div class="quality-badges">
+          <span class="q-badge">식약처 인증</span>
+          <span class="q-badge">GMP 시설 제조</span>
+          <span class="q-badge">ISO 9001</span>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 Dr. Rootem (루템바이오). All rights reserved. 본 제품은 질병의 예방 및 치료를 위한 의약품이 아닌 건강기능식품입니다.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
