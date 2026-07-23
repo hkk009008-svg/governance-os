@@ -86,6 +86,13 @@ def test_all_agy_profile_runtime_labels_are_inert_to_codex(profile: str) -> None
         "AGY_BEHAVIOR_SOURCE",
         "AGY_GIT_INDEX_FILE",
     }
+    assert agy_runtime == {
+        "AGY_SEAT": f"agy-unit-{profile}",
+        "AGY_AGENT_MODE": agy.SINGLE_MODEL_MODE,
+        "AGY_AGENT_ROLE": f"agy-unit-{profile}",
+        "AGY_BEHAVIOR_SOURCE": f"agy-unit-{profile}",
+        "AGY_GIT_INDEX_FILE": f"/repo/.git/index-agy-{profile}",
+    }
     assert codex.infer_runtime_env(agy_runtime) == _codex_baseline()
 
 
@@ -99,6 +106,7 @@ def test_genuine_codex_inputs_continue_to_drive_codex_contract() -> None:
             "CODEX_SEAT": "operator2",
             "CODEX_AGENT_MODE": "live-seat",
             "CODEX_AGENT_ROLE": "operator2",
+            "GIT_INDEX_FILE": "/repo/.git/index-codex-operator2",
             **policy,
         }
     )
@@ -107,5 +115,45 @@ def test_genuine_codex_inputs_continue_to_drive_codex_contract() -> None:
     assert values["CODEX_AGENT_ROLE"] == "operator2"
     assert values["CODEX_SEAT"] == "operator2"
     assert values["CODEX_BEHAVIOR_SOURCE"] == "operator2"
+    assert values["GIT_INDEX_FILE"] == "/repo/.git/index-codex-operator2"
     for suffix, value in policy.items():
         assert values[suffix] == value
+
+
+@pytest.mark.parametrize(
+    ("environ", "expected"),
+    [
+        (
+            {"CODEX_SEAT": "operator2"},
+            {
+                "CODEX_AGENT_MODE": "live-seat",
+                "CODEX_AGENT_ROLE": "operator2",
+                "CODEX_SEAT": "operator2",
+                "CODEX_BEHAVIOR_SOURCE": "operator2",
+            },
+        ),
+        (
+            {"CODEX_AGENT_MODE": "subagent"},
+            {
+                "CODEX_AGENT_MODE": "subagent",
+                "CODEX_AGENT_ROLE": "subagent",
+                "CODEX_SEAT": "(unset)",
+            },
+        ),
+        (
+            {"CODEX_AGENT_ROLE": "lane-v-verifier"},
+            {
+                "CODEX_AGENT_MODE": "subagent",
+                "CODEX_AGENT_ROLE": "lane-v-verifier",
+                "CODEX_SEAT": "(unset)",
+            },
+        ),
+    ],
+)
+def test_each_genuine_codex_identity_input_is_preserved(
+    environ: dict[str, str], expected: dict[str, str]
+) -> None:
+    values = codex.infer_runtime_env(environ)
+
+    for name, value in expected.items():
+        assert values[name] == value
