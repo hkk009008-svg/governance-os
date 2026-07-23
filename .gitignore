@@ -70,6 +70,7 @@ coordination/threeway/events/*
 # Per-seat git index files (created by D-a launcher; never committed)
 .git/index-codex-*
 .git/index-cursor-*
+.git/index-agy-*
 
 # Hook sync markers (regenerated each hook run)
 .claude/hooks/.last-index-sync-*
@@ -90,6 +91,9 @@ STATE.md
 # pytest
 .pytest_cache/
 .pytest-verify-tmp/
+
+# AGY runtime state
+.agy/runtime/
 
 # Subagent-driven-development scratch ledger (skill-owned, never committed)
 .superpowers/

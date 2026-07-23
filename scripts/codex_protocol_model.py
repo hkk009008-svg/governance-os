@@ -851,7 +851,11 @@ def _mode_from_seat(seat: str) -> str:
 
 def infer_runtime_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     """Infer the Codex runtime contract from an environment-like mapping."""
-    env = environ or {}
+    env = {
+        name: value
+        for name, value in (environ or {}).items()
+        if name.startswith("CODEX_") or name == "GIT_INDEX_FILE"
+    }
     seat = env.get("CODEX_SEAT", "")
     explicit_mode = env.get("CODEX_AGENT_MODE", "")
     explicit_role = env.get("CODEX_AGENT_ROLE", "")
