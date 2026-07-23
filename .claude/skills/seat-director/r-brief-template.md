@@ -59,7 +59,7 @@ MIRROR: <existing helper/endpoint at file:line> — its FULL shape:
 | Situation | Do |
 |---|---|
 | Small, tightly-coupled change | Implement directly (you author; your operator verifies — impl≠verifier) |
-| ≥5 independent sub-tasks OR ≥800 LOC | **Orchestrate** (R-ORCH): a fresh implementer subagent per task, sequential on shared files, reviewers after. Never two implementers in parallel on shared files. See `docs/protocol/claude/orchestration.md`. |
+| Delegation adds fresh context, independent signal, or useful capacity | Optionally **orchestrate** (R-ORCH) with Claude-native helpers. Keep overlapping writes sequential and see `docs/protocol/agents/orchestration.md`. |
 | Dispatching an implementer | Use the body in `docs/templates/claude/implementer.md` — include its **Git-hygiene block** verbatim (subagents prefix git with `env -u GIT_INDEX_FILE`) + items 4–5 (brief-pattern adherence, pid-scope). |
 
 **Name the right specialist reviewer** when the lane has one — these are real dispatch targets:

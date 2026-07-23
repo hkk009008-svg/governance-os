@@ -9,6 +9,9 @@ Provider mechanics live in their adapters:
 - Claude Code: `CLAUDE.md`, then `docs/protocol/claude/` and `.claude/`.
 - Codex: `docs/protocol/codex/continuation.md`, then `.agents/skills/` and
   `.codex/agents/`.
+- AGY (Antigravity): `docs/protocol/agy/continuation.md`, then `.agents/skills/antigravity-harness/` and `.agy/agents/`.
+- Cursor: `docs/protocol/cursor/continuation.md`, then `.cursor/rules/` and
+  `docs/protocol/cursor/roles/`.
 - Cross-provider work: `docs/protocol/threeway/`.
 - Artifact ownership: `docs/protocol/protocol-assembly-map.md`.
 
@@ -50,6 +53,7 @@ invariant.
 | Codex continuation | `docs/protocol/codex/continuation.md` |
 | Four-seat entrypoint | `.agents/skills/four-seat-protocol/SKILL.md` |
 | Codex ledger bridge | `docs/protocol/codex/ledger-cli-adoption.md` |
+| Cursor continuation | `docs/protocol/cursor/continuation.md` |
 | Cursor FoulPlay bridge | `docs/protocol/cursor/foulplay-adoption.md` |
 
 ## Implementation discipline
@@ -67,6 +71,25 @@ substitutes for an Operator verdict.
 Use the smallest sufficient verification profile. Do not repeat the same review
 question over an unchanged commit. A confirmed defect intentionally deferred
 needs a strict xfail pin or a `test-infeasible` reason.
+
+## Engineering workflow policy
+
+Pipeline does not depend on the Superpowers plugin. Repository instructions and
+the current route govern workflow; skill presence alone is not a trigger.
+Existing `docs/superpowers/` files are durable historical inputs, not automatic
+instructions to invoke the plugin.
+
+- If an accepted exact task already defines behavior, execute it without a new
+  brainstorming, spec, or plan cycle. Clarify or design only material ambiguity.
+- For behavior changes and bug fixes, write a failing behavior test first when
+  feasible. Otherwise use characterization evidence or record `test-infeasible`.
+- For unexpected failures, establish root cause before changing behavior.
+- Before completion claims, run fresh smallest sufficient verification and
+  report the actual result.
+- Binding review is the assigned non-author Operator's actual-commit or range
+  verdict. Generic subagent review is advisory and must not duplicate it.
+- A generic skill cannot independently authorize a worktree, reviewer, merge,
+  push, cleanup, or other side effect, or widen routed scope.
 
 ## Proportional independence
 

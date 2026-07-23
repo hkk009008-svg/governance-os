@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -140,6 +142,39 @@ REQUIRED_REVIEWER_TEMPLATE_HEADINGS = (
     "## Spec reviewer prompt template",
     "## Code quality reviewer prompt template",
 )
+PIPELINE_ENGINEERING_POLICY_MARKERS = (
+    "Pipeline does not depend on the Superpowers plugin",
+    "skill presence alone is not a trigger",
+    "accepted exact task",
+    "failing behavior test first when feasible",
+    "establish root cause before changing behavior",
+    "fresh smallest sufficient verification",
+    "assigned non-author Operator",
+    "cannot independently authorize a worktree, reviewer, merge, push, cleanup",
+)
+PROVIDER_ROUTER_MARKERS = (
+    "AGY (Antigravity): `docs/protocol/agy/continuation.md`",
+    ".agents/skills/antigravity-harness/",
+    ".agy/agents/",
+    "Cursor: `docs/protocol/cursor/continuation.md`",
+    ".cursor/rules/",
+    "docs/protocol/cursor/roles/",
+)
+ACTIVE_INSTRUCTION_ROOTS = (
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".agents/skills",
+    ".claude/agents",
+    ".claude/skills",
+    ".codex/agents",
+    "docs/protocol/agents",
+    "docs/protocol/claude",
+    "docs/protocol/codex",
+)
+MANDATORY_SUPERPOWERS_RE = re.compile(
+    r"\bsuperpowers:[a-z0-9][a-z0-9-]*\b",
+    re.IGNORECASE,
+)
 
 
 def test_compact_chatgpt_tool_is_installed_and_each_surface_points_once():
@@ -217,6 +252,83 @@ def test_active_seat_adapter_line_budgets_prevent_protocol_regrowth() -> None:
     }
     for path, maximum in budgets.items():
         assert len(_read(path).splitlines()) <= maximum, path
+
+
+def test_pipeline_engineering_policy_stays_project_native_and_proportional() -> None:
+    agents = _compact(_read("AGENTS.md"))
+
+    for marker in PIPELINE_ENGINEERING_POLICY_MARKERS:
+        assert marker in agents
+
+
+def test_project_codex_config_does_not_promise_ineffective_runtime_permissions() -> None:
+    config = tomllib.loads(_read(".codex/config.toml"))
+
+    assert "approval_policy" not in config
+    assert "sandbox_mode" not in config
+    assert config["personality"] == "friendly"
+    assert config["features"]["hooks"] is True
+
+
+def test_project_provider_routers_keep_agy_and_cursor_discoverable() -> None:
+    agents = _compact(_read("AGENTS.md"))
+
+    for marker in PROVIDER_ROUTER_MARKERS:
+        assert marker in agents
+
+
+def test_active_instruction_surfaces_have_no_superpowers_skill_invocation() -> None:
+    active_paths: list[Path] = []
+    for relative in ACTIVE_INSTRUCTION_ROOTS:
+        path = ROOT / relative
+        if path.is_file():
+            active_paths.append(path)
+        else:
+            active_paths.extend(
+                candidate
+                for candidate in path.rglob("*")
+                if candidate.is_file() and candidate.suffix in {".md", ".toml"}
+            )
+
+    violations = {
+        path.relative_to(ROOT).as_posix(): sorted(
+            set(MANDATORY_SUPERPOWERS_RE.findall(path.read_text(encoding="utf-8")))
+        )
+        for path in active_paths
+        if MANDATORY_SUPERPOWERS_RE.search(path.read_text(encoding="utf-8"))
+    }
+    assert violations == {}
+
+
+def test_claude_orchestration_is_native_optional_and_operator_bound() -> None:
+    orchestration = _compact(_read("docs/protocol/claude/orchestration.md"))
+
+    for marker in (
+        "Claude-native TaskCreate, TaskUpdate, and Agent helpers",
+        "docs/superpowers/ is an ordinary durable input",
+        "Delegation is an owner-chosen capacity tool",
+        "not a task-count or line-count mandate",
+        "assigned non-author Operator",
+        "actual commit or range",
+        "fixed mailbox writer",
+        "Plugin availability does not grant",
+    ):
+        assert marker in orchestration
+
+
+def test_claude_director_brief_uses_agent_neutral_orchestration_pointer() -> None:
+    brief = _read(".claude/skills/seat-director/r-brief-template.md")
+
+    assert "docs/protocol/agents/orchestration.md" in brief
+    assert "docs/protocol/claude/orchestration.md" not in brief
+    assert "≥5 independent sub-tasks OR ≥800 LOC" not in brief
+
+
+def test_gitignore_has_no_redundant_gap_after_superpowers_scratch() -> None:
+    gitignore = _read(".gitignore")
+
+    assert ".superpowers/\n\n# Project-local git worktrees" in gitignore
+    assert ".superpowers/\n\n\n# Project-local git worktrees" not in gitignore
 
 
 def test_r_independence_truth_is_owner_assessment_plus_actual_diff_review() -> None:
