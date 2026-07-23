@@ -254,24 +254,218 @@ def test_ensure_seat_index_seeds_only_when_missing(
     def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(argv)
         environments.append(dict(kwargs["env"]))  # type: ignore[arg-type]
-        index_path.parent.mkdir()
-        index_path.write_text("seed", encoding="utf-8")
+        if "read-tree" in argv:
+            index_path.parent.mkdir()
+            index_path.write_bytes(b"seed")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if "ls-files" in argv:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                "100644 deadbeef 0\ttracked.txt\0",
+                "",
+            )
+        if "status" in argv:
+            return subprocess.CompletedProcess(argv, 0, "M  tracked.txt\n", "")
+        raise AssertionError(f"unexpected Git command: {argv}")
+
+    launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+    launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+
+    assert calls[0] == [
+        "git",
+        "-C",
+        str(tmp_path),
+        "read-tree",
+        f"--index-output={index_path}",
+        "HEAD",
+    ]
+    assert "ls-files" in calls[1]
+    assert "status" in calls[2]
+    assert not any(key.startswith("GIT_") for key in environments[0])
+
+
+def test_existing_non_regular_seat_indexes_fail_closed(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / ".git" / "index-agy-director"
+    index_path.parent.mkdir()
+    index_path.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+    with pytest.raises(launcher.LaunchError, match="regular file"):
+        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+
+    assert index_path.is_dir()
+    assert calls == []
+
+
+def test_existing_dangling_seat_index_symlink_fails_closed(tmp_path: Path) -> None:
+    index_path = tmp_path / ".git" / "index-agy-director"
+    missing_target = tmp_path / "must-not-be-created"
+    index_path.parent.mkdir()
+    index_path.symlink_to(missing_target)
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    with pytest.raises(launcher.LaunchError, match="regular file"):
+        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+
+    assert index_path.is_symlink()
+    assert not missing_target.exists()
+    assert calls == []
+
+
+def test_existing_resolved_seat_index_symlink_fails_closed(tmp_path: Path) -> None:
+    index_path = tmp_path / ".git" / "index-agy-director"
+    target = tmp_path / "foreign-index"
+    index_path.parent.mkdir()
+    target.write_bytes(b"foreign-index")
+    index_path.symlink_to(target)
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    with pytest.raises(launcher.LaunchError, match="regular file"):
+        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+
+    assert index_path.is_symlink()
+    assert target.read_bytes() == b"foreign-index"
+    assert calls == []
+
+
+def test_existing_corrupt_seat_index_fails_closed_and_preserves_bytes(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / ".git" / "index-agy-director"
+    index_path.parent.mkdir()
+    index_path.write_bytes(b"corrupt-index")
+
+    def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 128, "", "fatal: bad index file")
+
+    with pytest.raises(launcher.LaunchError, match="existing seat index.*unusable"):
+        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+
+    assert index_path.read_bytes() == b"corrupt-index"
+
+
+def test_existing_empty_seat_index_against_non_empty_head_fails_closed(
+    tmp_path: Path,
+) -> None:
+    index_path = tmp_path / ".git" / "index-agy-director"
+    index_path.parent.mkdir()
+    index_path.write_bytes(b"empty-index")
+
+    def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if "ls-files" in argv:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if "ls-tree" in argv:
+            return subprocess.CompletedProcess(argv, 0, "tracked.txt\0", "")
+        raise AssertionError(f"unexpected Git command: {argv}")
+
+    with pytest.raises(launcher.LaunchError, match="empty while HEAD tracks files"):
+        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+
+    assert index_path.read_bytes() == b"empty-index"
+
+
+def test_existing_empty_seat_index_is_valid_when_head_is_empty(tmp_path: Path) -> None:
+    index_path = tmp_path / ".git" / "index-agy-director"
+    index_path.parent.mkdir()
+    index_path.write_bytes(b"empty-index")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        if "ls-files" in argv or "ls-tree" in argv or "status" in argv:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        raise AssertionError(f"unexpected Git command: {argv}")
+
     launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
 
-    assert calls == [
-        [
-            "git",
-            "-C",
-            str(tmp_path),
-            "read-tree",
-            f"--index-output={index_path}",
-            "HEAD",
-        ]
-    ]
-    assert not any(key.startswith("GIT_") for key in environments[0])
+    assert index_path.read_bytes() == b"empty-index"
+    assert any("ls-tree" in call for call in calls)
+    assert any("status" in call for call in calls)
+    assert not any("read-tree" in call for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("failing_command", "message"),
+    [
+        ("ls-tree", "validation failed"),
+        ("status", "existing seat index.*unusable"),
+    ],
+)
+def test_existing_index_git_validation_failures_preserve_bytes(
+    tmp_path: Path, failing_command: str, message: str
+) -> None:
+    index_path = tmp_path / ".git" / "index-agy-director"
+    index_path.parent.mkdir()
+    index_path.write_bytes(b"preserve-index")
+
+    def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if "ls-files" in argv:
+            output = "" if failing_command == "ls-tree" else "100644 deadbeef 0\ttracked.txt\0"
+            return subprocess.CompletedProcess(argv, 0, output, "")
+        if failing_command in argv:
+            return subprocess.CompletedProcess(argv, 128, "", "fatal: validation failed")
+        if "ls-tree" in argv or "status" in argv:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        raise AssertionError(f"unexpected Git command: {argv}")
+
+    with pytest.raises(launcher.LaunchError, match=message):
+        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+
+    assert index_path.read_bytes() == b"preserve-index"
+
+
+def test_valid_existing_seat_index_preserves_staged_work_and_uses_clean_git_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    index_path = tmp_path / ".git" / "index-agy-director"
+    index_path.parent.mkdir()
+    index_path.write_bytes(b"staged-index")
+    environments: list[dict[str, str]] = []
+    monkeypatch.setenv("GIT_DIR", "/foreign/git")
+    monkeypatch.setenv("GIT_WORK_TREE", "/foreign/tree")
+    monkeypatch.setenv("GIT_INDEX_FILE", "/foreign/index")
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        environments.append(dict(kwargs["env"]))  # type: ignore[arg-type]
+        if "ls-files" in argv:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                "100644 deadbeef 0\ttracked.txt\0",
+                "",
+            )
+        if "status" in argv:
+            return subprocess.CompletedProcess(argv, 0, "M  tracked.txt\n", "")
+        raise AssertionError(f"unexpected Git command: {argv}")
+
+    launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+
+    assert index_path.read_bytes() == b"staged-index"
+    assert len(environments) == 2
+    assert all(
+        {
+            key: value
+            for key, value in environment.items()
+            if key.startswith("GIT_")
+        }
+        == {"GIT_INDEX_FILE": str(index_path)}
+        for environment in environments
+    )
 
 
 def test_resolve_git_dir_discards_all_ambient_git_authority(

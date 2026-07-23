@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tomllib
@@ -197,8 +198,81 @@ def ensure_seat_index(
     *,
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> None:
-    """Seed a missing per-seat index; preserve an existing seat index."""
-    if index_path.exists():
+    """Seed a missing per-seat index; validate and preserve an existing one."""
+    try:
+        index_mode = index_path.lstat().st_mode
+    except FileNotFoundError:
+        index_mode = None
+    except OSError as exc:
+        raise LaunchError(f"cannot inspect existing seat index {index_path}: {exc}") from exc
+    if index_mode is not None:
+        if not stat.S_ISREG(index_mode):
+            raise LaunchError(
+                f"existing seat index {index_path} must be a regular file; "
+                "refusing to launch without changing it"
+            )
+        index_env = _without_inherited_git_authority(os.environ)
+        index_env["GIT_INDEX_FILE"] = str(index_path)
+        entries = runner(
+            ["git", "-C", str(repo_root), "ls-files", "--stage", "-z"],
+            env=index_env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if entries.returncode != 0:
+            detail = entries.stderr.strip() or entries.stdout.strip()
+            raise LaunchError(
+                f"existing seat index {index_path} is unusable: "
+                f"{detail or 'cannot read index entries'}"
+            )
+        if not entries.stdout:
+            head_entries = runner(
+                [
+                    "git",
+                    "-C",
+                    str(repo_root),
+                    "ls-tree",
+                    "-r",
+                    "--name-only",
+                    "-z",
+                    "HEAD",
+                ],
+                env=_without_inherited_git_authority(os.environ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if head_entries.returncode != 0:
+                detail = head_entries.stderr.strip() or head_entries.stdout.strip()
+                raise LaunchError(detail or "cannot inspect HEAD before seat launch")
+            if head_entries.stdout:
+                raise LaunchError(
+                    f"existing seat index {index_path} is empty while HEAD tracks files; "
+                    "refusing to launch without changing the index"
+                )
+        status = runner(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(repo_root),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=no",
+                "--ignore-submodules=all",
+            ],
+            env=index_env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0:
+            detail = status.stderr.strip() or status.stdout.strip()
+            raise LaunchError(
+                f"existing seat index {index_path} is unusable: "
+                f"{detail or 'Git status validation failed'}"
+            )
         return
     result = runner(
         [
