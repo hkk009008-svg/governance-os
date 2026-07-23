@@ -699,6 +699,38 @@ def test_task_resolution_retains_known_cross_task_legacy_ancestors(tmp_path):
     assert resolution.issues == ()
 
 
+def test_task_resolution_retains_known_cross_task_pure_legacy_ancestors(tmp_path):
+    _init_event_repo(tmp_path)
+    earlier_path, _ = _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T07-00-00Z",
+        body="Task-board: completed-task\nRoute generation: 4",
+    )
+    _, later_ref = _commit_event(
+        tmp_path,
+        sender="coordinator",
+        recipient="all",
+        kind="coordination",
+        timestamp="2026-07-18T08-00-00Z",
+        body=(
+            "Task-board: active-legacy-task\n"
+            "Route generation: 5\n"
+            f"Supersedes route: {earlier_path.relative_to(tmp_path).as_posix()}"
+        ),
+    )
+
+    resolution = route_lineage.resolve_task_routes(
+        route_lineage.load_routes(tmp_path), "active-legacy-task"
+    )
+
+    assert resolution.authoritative is not None
+    assert resolution.authoritative.route_ref == later_ref
+    assert resolution.issues == ()
+
+
 def test_task_resolution_rejects_known_cross_task_sibling_fork(tmp_path):
     _init_event_repo(tmp_path)
     ancestor_path, _ = _commit_event(

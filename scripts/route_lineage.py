@@ -1310,7 +1310,8 @@ def resolve_task_routes(routes: list[LineageRoute], task_id: str) -> Resolution:
     legacy = [route for route in matching if route.legacy]
     autonomous = [route for route in matching if not route.legacy]
     if not autonomous:
-        return _legacy_resolution(legacy)
+        known_legacy = [route for route in routes if route.legacy]
+        return _legacy_resolution(_legacy_overlap_closure(legacy, known_legacy))
 
     issues = sorted({issue for route in autonomous for issue in route.issues})
     if any(not route.effective for route in autonomous):
