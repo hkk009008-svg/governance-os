@@ -1,85 +1,85 @@
 /**
- * Dr. ROOTEM Ultra-Stunning Interactive App Engine (Real Product Photography Version)
+ * Dr. ROOTEM Official Store App Engine (drrootem.com Official Product Photos Version)
  */
 
 const PRODUCTS = [
   {
     id: 1,
-    name: "이시형 박사의 두뇌엔 PS 70",
+    name: "[5포입 추가증정] 이시형 박사의 두뇌엔 PS",
     category: "ps",
-    tag: "정신건강의학과 이시형 박사 추천",
-    badge: "1+1 기획전",
+    tag: "이시형 박사 뇌건강 인지력 개선",
+    badge: "공식몰 BEST #1",
     desc: "식약처 고시 최고 함량 포스파티딜세린 300mg + 징코빌로바 콤플렉스. 인지력 및 기억력 개선 1위 솔루션.",
     price: 24800,
     origPrice: 33500,
     discount: "26% OFF",
     rating: "★ 4.9 (14,820개 리뷰)",
-    image: "assets/ps_70.jpg"
+    image: "assets/ps_70.png"
   },
   {
     id: 2,
-    name: "닥터루템 리포좀 비타민C 1000",
+    name: "닥터루템 리포조말 비타민C 1000",
     category: "vitc",
     tag: "가수 남진's PICK",
-    badge: "흡수율 250% 고함량",
-    desc: "체내 흡수율을 2.5배 높인 리포좀 제형화 기술. 위장 장해 제로, 일상 활력 충전 비타민C.",
+    badge: "체내 흡수율 250%",
+    desc: "체내 흡수율을 2.5배 높인 리포좀 제형화 기술. 위장 장애 제로, 일상 활력 충전 비타민C.",
     price: 24800,
     origPrice: 31000,
     discount: "20% OFF",
     rating: "★ 4.9 (9,840개 리뷰)",
-    image: "assets/vitc_1000.jpg"
+    image: "assets/vitc_1000.png"
   },
   {
     id: 3,
-    name: "닥터루템 THE 맥주효모 4000",
-    category: "yeast",
-    tag: "독일산 원료 75%",
-    badge: "재구매율 1위",
-    desc: "독일산 프리미엄 맥주효모 75% + 비오틴 5,000µg. 풍성한 두피 & 모발 영양 케어.",
-    price: 16900,
-    origPrice: 22000,
-    discount: "23% OFF",
-    rating: "★ 4.8 (6,420개 리뷰)",
-    image: "assets/yeast_4000.jpg"
+    name: "이시형 박사 메모리 투모로우 골드",
+    category: "ps",
+    tag: "두뇌건강 · 기억력 · 인지력",
+    badge: "프리미엄 두뇌 케어",
+    desc: "정신의학과 이시형 박사의 독자적 배합 레시피. 중장년층 기억력 및 인지력 집중 관리 골드 라인.",
+    price: 29800,
+    origPrice: 38000,
+    discount: "22% OFF",
+    rating: "★ 4.9 (8,420개 리뷰)",
+    image: "assets/memory_gold.png"
   },
   {
     id: 4,
-    name: "닥터루템 쏘팔메토 & 루테인 지아잔틴",
-    category: "eye",
-    tag: "눈 건강 & 전립선 생기",
-    badge: "황금비율 배합",
-    desc: "쏘팔메토 로르산 115mg + 마리골드 추출 루테인지아잔틴. 침침한 눈 피로 및 남성 건강 복합 케어.",
-    price: 28900,
-    origPrice: 39000,
-    discount: "25% OFF",
-    rating: "★ 4.9 (11,200개 리뷰)",
-    image: "assets/saw_palmetto.jpg"
-  },
-  {
-    id: 5,
-    name: "닥터루템 바나바잎 혈당케어 코로솔산",
-    category: "banaba",
-    tag: "식후 혈당 상승 억제",
-    badge: "식약처 인정 기능성",
-    desc: "바나바잎 추출 코로솔산 1.3mg + 대사 크롬 & 셀렌 콤플렉스. 탄수화물 섭취 후 당 케어.",
-    price: 22800,
-    origPrice: 29000,
-    discount: "21% OFF",
-    rating: "★ 4.8 (4,350개 리뷰)",
-    image: "assets/banaba_care.jpg"
-  },
-  {
-    id: 6,
-    name: "닥터루템 초임계 rTG 오메가3 플래티넘",
+    name: "리얼 식물성 초임계 알티지 오메가3",
     category: "omega",
-    tag: "저온 초임계 추출",
+    tag: "저온 초임계 추출 rTG",
     badge: "순도 80% 이상",
     desc: "체내 흡수율이 높은 rTG 구조 오메가3 600mg + 비타민E. 혈행 개선 및 건조한 눈 종합 솔루션.",
     price: 27900,
     origPrice: 36000,
     discount: "22% OFF",
     rating: "★ 4.9 (5,890개 리뷰)",
-    image: "assets/omega3.jpg"
+    image: "assets/omega3.png"
+  },
+  {
+    id: 5,
+    name: "이시형 박사의 두뇌엔 PS 진 분말 가루",
+    category: "ps",
+    tag: "스틱 분말 제형",
+    badge: "신제품 특가",
+    desc: "포스파티딜세린 300mg과 코로솔산 혈당 케어 성분이 결합된 15포 스틱 분말 가루 제형.",
+    price: 22800,
+    origPrice: 29000,
+    discount: "21% OFF",
+    rating: "★ 4.8 (3,250개 리뷰)",
+    image: "assets/ps_jin.jpg"
+  },
+  {
+    id: 6,
+    name: "이시형 박사의 인생 마그네슘 (액상)",
+    category: "immune",
+    tag: "독일산 젖산 마그네슘",
+    badge: "체내 흡수 쾌속 액상",
+    desc: "독일산 프리미엄 젖산 마그네슘 14개입 앰플. 근육 긴장 완화 및 에너지 대사 충전.",
+    price: 19800,
+    origPrice: 26000,
+    discount: "24% OFF",
+    rating: "★ 4.9 (4,120개 리뷰)",
+    image: "assets/magnesium.png"
   }
 ];
 
@@ -113,12 +113,12 @@ const MATRIX_DATA = {
 
 const CATEGORIES = ["ps", "vitc", "yeast", "eye", "banaba", "omega"];
 const PROD_NAMES = {
-  ps: "이시형 박사의 두뇌엔 PS 70",
-  vitc: "닥터루템 리포좀 비타민C 1000",
+  ps: "[5포입 추가증정] 이시형 박사의 두뇌엔 PS",
+  vitc: "닥터루템 리포조말 비타민C 1000",
   yeast: "닥터루템 THE 맥주효모 4000",
   eye: "닥터루템 쏘팔메토 & 루테인 지아잔틴",
   banaba: "닥터루템 바나바잎 혈당케어 코로솔산",
-  omega: "닥터루템 초임계 rTG 오메가3 플래티넘"
+  omega: "리얼 식물성 초임계 알티지 오메가3"
 };
 
 const BASE_TEMPLATES = [
@@ -126,7 +126,7 @@ const BASE_TEMPLATES = [
   { text: "연구직 업무 특성상 머리를 항상 쓰는데 포스파티딜세린 300mg 최고 함량이라 아침 두뇌 피로도가 일절 없네요. 4번째 재구매합니다.", helpful: 142 },
   { text: "남진 님 추천 광고 보고 샀어요. 체내 흡수율 높은 리포좀 제형이라 아침 공복에 먹어도 속 쓰림 0%입니다. 매일 아침 필수템!", helpful: 129 },
   { text: "일반 비타민C 먹으면 항상 위가 더부룩했는데 이건 속이 너무 편해요. 피로 회복 속도가 차원이 다릅니다.", helpful: 95 },
-  { text: "독일산 맥주효모 75%에 비오틴 5000µg 들어있어서 두피 탄력이 살아나요. 머리 감을 때 빠지는 갯수가 현저히 줄었습니다.", helpful: 210 },
+  { text: "독일산 맥주효모 75%에 비오틴 5000µg 들어있어서 두피 탄력이 살아나요. 샤워할 때 머리 빠지는 수가 현저히 줄었습니다.", helpful: 210 },
   { text: "모발에 힘이 생기고 굵어진 느낌입니다. 풍채 관리를 위해 3달째 꾸준히 섭취 중인데 가성비 최고의 영양제예요.", helpful: 168 },
   { text: "컴퓨터 모니터를 하루 9시간 이상 보는 직장인인데 루테인지아잔틴 황금비율이라 눈 뻑뻑함이 싹 가십니다.", helpful: 135 },
   { text: "전립선 로르산이랑 눈 영양이 한 알에 해결돼서 복잡하게 안 챙겨도 돼서 편합니다. 밤에 깨는 일이 훨씬 줄었어요.", helpful: 157 },
@@ -358,8 +358,8 @@ function renderCatalog() {
   grid.innerHTML = PRODUCTS.map(p => `
     <div class="cat-card glass-card-3d">
       <div>
-        <div class="catalog-photo-container">
-          <img src="${p.image}" alt="${p.name}" class="cat-prod-img">
+        <div class="catalog-photo-container" style="background:#fff; padding:12px; border-radius:16px;">
+          <img src="${p.image}" alt="${p.name}" class="cat-prod-img" style="object-fit:contain;">
         </div>
 
         <span class="p-badge" style="background:rgba(16,185,129,0.1); color:var(--neon-emerald); font-size:0.78rem; font-weight:800; padding:4px 10px; border-radius:6px; border:1px solid var(--border-neon);">${p.badge}</span>
@@ -575,7 +575,7 @@ function updateCart() {
     list.innerHTML = cart.map(i => `
       <div style="display:flex; justify-content:space-between; align-items:center; padding:14px; border:1px solid var(--border-glass); border-radius:12px; margin-bottom:12px; background:rgba(0,0,0,0.2);">
         <div style="display:flex; align-items:center; gap:12px;">
-          <img src="${i.image}" alt="${i.name}" style="width:48px; height:48px; object-fit:cover; border-radius:8px;">
+          <img src="${i.image}" alt="${i.name}" style="width:48px; height:48px; object-fit:contain; background:#fff; border-radius:8px; padding:4px;">
           <div>
             <div style="font-weight:800; font-size:0.92rem;">${i.name}</div>
             <div style="color:var(--neon-emerald); font-weight:800; margin-top:2px;">${(i.price * i.qty).toLocaleString()}원</div>
