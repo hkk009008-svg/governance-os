@@ -208,6 +208,151 @@ def _segments(command: str) -> list[list[str]]:
     return result
 
 
+_MAX_SHELL_NESTING = 8
+
+
+def _backtick_substitution(command: str, start: int) -> tuple[str, int] | None:
+    """Extract one unescaped legacy command substitution."""
+
+    body: list[str] = []
+    index = start + 1
+    while index < len(command):
+        if command[index] == "\\":
+            if index + 1 >= len(command):
+                return None
+            if command[index + 1] == "`":
+                # Legacy nested backticks escape their inner delimiters.
+                # Normalize them so the recursive policy pass sees execution.
+                body.append("`")
+            else:
+                body.extend(command[index : index + 2])
+            index += 2
+            continue
+        if command[index] == "`":
+            return "".join(body), index + 1
+        body.append(command[index])
+        index += 1
+    return None
+
+
+def _parenthesized_substitution(
+    command: str,
+    open_index: int,
+) -> tuple[str, int] | None:
+    """Extract a command/process substitution with nested quote awareness."""
+
+    quote_stack: list[str | None] = [None]
+    index = open_index + 1
+    while index < len(command):
+        quote = quote_stack[-1]
+        character = command[index]
+        if quote == "'":
+            if character == "'":
+                quote_stack[-1] = None
+            index += 1
+            continue
+        if character == "\\":
+            index += 2
+            continue
+        if quote == '"':
+            if character == '"':
+                quote_stack[-1] = None
+                index += 1
+                continue
+            if command.startswith("$(", index):
+                if len(quote_stack) >= _MAX_SHELL_NESTING:
+                    return None
+                quote_stack.append(None)
+                index += 2
+                continue
+            if character == "`":
+                nested = _backtick_substitution(command, index)
+                if nested is None:
+                    return None
+                index = nested[1]
+                continue
+            index += 1
+            continue
+        if character in {"'", '"'}:
+            quote_stack[-1] = character
+            index += 1
+            continue
+        if (
+            command.startswith("$(", index)
+            or command.startswith("<(", index)
+            or command.startswith(">(", index)
+        ):
+            if len(quote_stack) >= _MAX_SHELL_NESTING:
+                return None
+            quote_stack.append(None)
+            index += 2
+            continue
+        if character == "`":
+            nested = _backtick_substitution(command, index)
+            if nested is None:
+                return None
+            index = nested[1]
+            continue
+        if character == ")":
+            quote_stack.pop()
+            if not quote_stack:
+                return command[open_index + 1 : index], index + 1
+        index += 1
+    return None
+
+
+def _shell_substitutions(command: str) -> list[str] | None:
+    """Return executable substitution bodies, or None for unsafe syntax."""
+
+    substitutions: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(command):
+        character = command[index]
+        if quote == "'":
+            if character == "'":
+                quote = None
+            index += 1
+            continue
+        if character == "\\":
+            index += 2
+            continue
+        if character == "'" and quote is None:
+            quote = "'"
+            index += 1
+            continue
+        if character == '"':
+            quote = None if quote == '"' else '"'
+            index += 1
+            continue
+        opener = (
+            command.startswith("$(", index)
+            or (
+                quote is None
+                and (
+                    command.startswith("<(", index)
+                    or command.startswith(">(", index)
+                )
+            )
+        )
+        if opener:
+            nested = _parenthesized_substitution(command, index + 1)
+            if nested is None:
+                return None
+            substitutions.append(nested[0])
+            index = nested[1]
+            continue
+        if character == "`":
+            nested = _backtick_substitution(command, index)
+            if nested is None:
+                return None
+            substitutions.append(nested[0])
+            index = nested[1]
+            continue
+        index += 1
+    return substitutions
+
+
 def _assignment(token: str) -> bool:
     return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token) is not None
 
@@ -638,11 +783,32 @@ def _effect_violation(tokens: list[str], *, depth: int = 0) -> str | None:
 
 
 def _shell_decision(
-    payload: Mapping[str, Any], environ: Mapping[str, str]
+    payload: Mapping[str, Any],
+    environ: Mapping[str, str],
+    *,
+    depth: int = 0,
 ) -> dict[str, str]:
     command = payload.get("command")
     if not isinstance(command, str) or not command.strip():
         return _deny("Cursor seat hook received malformed shell input.")
+    if depth >= _MAX_SHELL_NESTING:
+        return _deny("Cursor seat hook exceeded safe shell nesting depth.")
+    substitutions = _shell_substitutions(command)
+    if substitutions is None:
+        return _deny("Cursor seat hook could not safely parse shell substitution.")
+    for nested_command in substitutions:
+        nested_payload = dict(payload)
+        nested_payload["command"] = nested_command
+        nested_result = _shell_decision(
+            nested_payload,
+            environ,
+            depth=depth + 1,
+        )
+        if nested_result.get("permission") != "allow":
+            return _deny(
+                "Shell substitution contains an action that is not authorized "
+                "in this Cursor posture."
+            )
     segments = _segments(command)
     if not segments:
         return _deny("Cursor seat hook could not parse a sensitive shell command.")

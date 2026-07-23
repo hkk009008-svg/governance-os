@@ -428,6 +428,119 @@ def test_heredoc_bodies_are_data_not_commands(
     assert result["permission"] == "allow"
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo $(touch scripts/example.py)",
+        'echo "$(touch scripts/example.py)"',
+        "echo `touch scripts/example.py`",
+        'echo "`touch scripts/example.py`"',
+        "cat <(touch scripts/example.py)",
+        "cat >(touch scripts/example.py)",
+        'echo "$(echo "$(touch scripts/example.py)")"',
+        "cat <(echo $(touch scripts/example.py))",
+        'echo "$(echo `touch scripts/example.py`)"',
+        "echo `echo \\`touch scripts/example.py\\``",
+        "echo $(coordination/bin/cursor-publish --to operator "
+        "--kind status --subject hidden)",
+    ],
+)
+def test_unauthorized_shell_substitution_cannot_hide_mutation_or_effect(
+    command: str,
+) -> None:
+    for env in ({}, {"CURSOR_SEAT": "coordinator"}):
+        result = policy.evaluate(_shell(command), env)
+
+        assert result["permission"] == "deny", command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo $(touch scripts/example.py)",
+        "echo `touch scripts/example.py`",
+        "cat <(touch scripts/example.py)",
+        "cat >(touch scripts/example.py)",
+    ],
+)
+def test_operator_review_substitution_remains_repository_read_only(
+    command: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, env, _ = _valid_binding(
+        tmp_path, monkeypatch, seat="operator", operation="review"
+    )
+
+    result = policy.evaluate(_shell(command), env)
+
+    assert result["permission"] == "deny", command
+
+
+def test_valid_dispatch_substitution_cannot_hide_protected_effect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, env, _ = _valid_binding(tmp_path, monkeypatch)
+
+    result = policy.evaluate(
+        _shell(
+            "echo $(coordination/bin/cursor-publish --to operator "
+            "--kind status --subject hidden)"
+        ),
+        env,
+    )
+
+    assert result["permission"] == "deny"
+
+
+def test_valid_dispatch_substitution_retains_ordinary_mutation_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, env, _ = _valid_binding(tmp_path, monkeypatch)
+
+    result = policy.evaluate(
+        _shell("echo $(touch scripts/example.py)"),
+        env,
+    )
+
+    assert result["permission"] == "allow"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'echo "$(pwd)"',
+        "cat <(echo synthetic)",
+        'echo "$(echo "$(pwd)")"',
+        "echo `echo \\`pwd\\``",
+        "echo '$(touch scripts/example.py)'",
+        "echo '`touch scripts/example.py`'",
+    ],
+)
+def test_bounded_read_only_and_literal_substitutions_remain_allowed(
+    command: str,
+) -> None:
+    result = policy.evaluate(_shell(command), {})
+
+    assert result["permission"] == "allow", command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo $(touch scripts/example.py",
+        "cat <(touch scripts/example.py",
+        "echo `touch scripts/example.py",
+    ],
+)
+def test_malformed_shell_substitution_fails_closed(command: str) -> None:
+    result = policy.evaluate(_shell(command), {})
+
+    assert result["permission"] == "deny", command
+
+
 def test_operator_review_mode_is_read_only_but_may_run_tests(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
