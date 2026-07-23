@@ -21,6 +21,7 @@ When performing substantive work, adhere to the full unified operating doctrine 
   - `pro` / `inherit`: Complex reasoning, heavy refactoring, and verifier analysis.
 - **Adaptive Planning:** Skip `implementation_plan.md` artifacts for routine single-file edits, bug fixes, or minor tweaks (<50 lines). Require formal plan artifacts only for multi-file/architectural initiatives or material ambiguity.
 - **Worktree Isolation:** Use `Workspace: 'branch'` when spawning subagents for code modification to ensure git index safety and prevent shared path conflicts.
+- **Automatic Seat Routing (Default Behavior):** When emitting a mailbox trigger event to a recipient seat (`director`, `operator`, etc.), AGY OS automatically dispatches the next seat via `scripts/agy_emit.py --dispatch` or `invoke_subagent`. **Never ask the user to manually copy or relay prompts between seats.**
 - **Mailbox Emission:** Use `scripts/agy_emit.py --to <seat> --kind <kind> --subject <subj> --body <body>` for 1-step schema-compliant event creation and explicit git commits.
 - **Reporting:** Use markdown artifacts in `brain/<conversation-id>/` for structured output.
 - **Isolation:** Use `env -u GIT_INDEX_FILE` or `Workspace: 'branch'` for staging isolation.

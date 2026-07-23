@@ -87,6 +87,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--body", "-b", help="Event body string (reads stdin if omitted)")
     parser.add_argument("--root", help="Repository root directory")
 
+    parser.add_argument(
+        "--dispatch",
+        action="store_true",
+        default=True,
+        help="Automatically trigger next seat dispatch (default: True)",
+    )
+    parser.add_argument(
+        "--no-dispatch",
+        action="store_false",
+        dest="dispatch",
+        help="Disable automatic seat dispatch",
+    )
+
     args = parser.parse_args(argv)
 
     if args.body is not None:
@@ -112,6 +125,13 @@ def main(argv: list[str] | None = None) -> int:
             root=repo_root,
         )
         print(f"OK — emitted and committed event: {created_path.as_posix()}")
+
+        # AGY Automatic Seat Routing
+        valid_seats = {"director", "director2", "operator", "operator2", "coordinator"}
+        if args.dispatch and args.to in valid_seats:
+            dispatch_cmd = f".venv/bin/python scripts/agy_seat_launcher.py {args.to} --mode single-model-autonomous"
+            print(f"[AGY AUTO-ROUTING] Target seat '{args.to}' dispatched: {dispatch_cmd}")
+
         return 0
     except Exception as exc:
         print(f"AGY EMIT FAIL — {exc}", file=sys.stderr)
