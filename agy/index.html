@@ -48,7 +48,7 @@
         <a href="#matrix" class="n-link">성분 매트릭스</a>
         <a href="#catalog" class="n-link">시그니처 라인업</a>
         <a href="#dashboard" class="n-link">바이오 레이더</a>
-        <a href="#reviews" class="n-link">12만 고객리뷰</a>
+        <a href="#reviews" class="n-link">12만 실구매후기</a>
       </nav>
 
       <div class="nav-controls">
@@ -100,12 +100,12 @@
 
         <div class="hero-trust-metrics">
           <div class="metric">
-            <span class="m-val" id="countVal1">99.2%</span>
-            <span class="m-lbl">누적 만족도</span>
+            <span class="m-val">4.9 / 5.0</span>
+            <span class="m-lbl">고객 평점 (12만건)</span>
           </div>
           <div class="m-divider"></div>
           <div class="metric">
-            <span class="m-val" id="countVal2">1,500,000+</span>
+            <span class="m-val">1,500,000+</span>
             <span class="m-lbl">누적 판매 병</span>
           </div>
           <div class="m-divider"></div>
@@ -204,7 +204,6 @@
     </div>
 
     <div class="dashboard-container">
-      <!-- Input Controls -->
       <div class="dash-controls glass-panel">
         <h3 class="dash-panel-title">일상 생활 패턴 설정</h3>
 
@@ -241,7 +240,6 @@
         </div>
       </div>
 
-      <!-- Radar Canvas & Score Display -->
       <div class="dash-chart-panel glass-panel text-center">
         <h3 class="dash-panel-title">실시간 바이오 밸런스 분석</h3>
         
@@ -273,18 +271,92 @@
     </div>
   </section>
 
-  <!-- Real Reviews Gallery Section -->
+  <!-- Real Reviews Gallery & Analytics Section -->
   <section class="reviews-section" id="reviews">
     <div class="section-title-box text-center">
-      <span class="section-tag">REAL CUSTOMER REVIEWS</span>
-      <h2 class="section-heading">12만 고객이 증명하는 실제 리뷰</h2>
-      <p class="section-lead">평점 4.9 / 5.0 닥터루템이 선사하는 일상의 놀라운 변화</p>
+      <span class="section-tag">AUTHENTIC CUSTOMER REVIEWS</span>
+      <h2 class="section-heading">누적 12만 건의 찐 실구매 후기 갤러리</h2>
+      <p class="section-lead">구매 고객들이 직접 작성한 검증된 리얼 리뷰 데이터입니다.</p>
+    </div>
+
+    <!-- Review Analytics Panel -->
+    <div class="review-analytics-panel glass-panel">
+      <div class="rating-score-box text-center">
+        <div class="big-score">4.9</div>
+        <div class="stars-gold">★★★★★</div>
+        <div class="score-meta">총 128,450개 구매후기 기준</div>
+      </div>
+
+      <div class="rating-bars-box">
+        <div class="r-bar-row">
+          <span>5점 (아주 만족)</span>
+          <div class="r-bar-track"><div class="r-bar-fill" style="width: 94%;"></div></div>
+          <span>94%</span>
+        </div>
+        <div class="r-bar-row">
+          <span>4점 (만족)</span>
+          <div class="r-bar-track"><div class="r-bar-fill" style="width: 5%;"></div></div>
+          <span>5%</span>
+        </div>
+        <div class="r-bar-row">
+          <span>3점 (보통)</span>
+          <div class="r-bar-track"><div class="r-bar-fill" style="width: 1%;"></div></div>
+          <span>1%</span>
+        </div>
+      </div>
+
+      <div class="review-action-box text-center">
+        <button class="btn btn-cyber btn-lg" id="openWriteReviewBtn">
+          <span>✍️ 실시간 후기 작성하기</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Review Filter Chips -->
+    <div class="review-filter-bar">
+      <button class="rev-chip active" data-revcat="all">전체 후기 (128,450)</button>
+      <button class="rev-chip" data-revcat="ps">두뇌엔 PS 70</button>
+      <button class="rev-chip" data-revcat="vitc">리포좀 비타민C</button>
+      <button class="rev-chip" data-revcat="yeast">THE 맥주효모 4000</button>
+      <button class="rev-chip" data-revcat="eye">쏘팔메토 루테인</button>
+      <button class="rev-chip" data-revcat="banaba">바나바 혈당케어</button>
     </div>
 
     <div class="reviews-grid" id="reviewsGrid">
       <!-- Injected via JS -->
     </div>
   </section>
+
+  <!-- Write Review Modal -->
+  <div class="modal-overlay" id="writeReviewModalOverlay">
+    <div class="modal-card glass-panel" style="max-width: 500px;">
+      <button class="modal-close-btn" id="writeReviewModalClose">&times;</button>
+      <h3 style="font-size:1.4rem; font-weight:800; margin-bottom:16px;">✍️ 닥터루템 리얼 후기 작성</h3>
+      
+      <div style="margin-bottom:16px;">
+        <label style="font-size:0.88rem; color:var(--text-sub); display:block; margin-bottom:6px;">제품 선택</label>
+        <select id="revProdSelect" style="width:100%; padding:10px; border-radius:8px; background:var(--bg-panel); color:var(--text-main); border:1px solid var(--border-glass);">
+          <option value="두뇌엔 PS 70">이시형 박사의 두뇌엔 PS 70</option>
+          <option value="리포좀 비타민C 1000">닥터루템 리포좀 비타민C 1000</option>
+          <option value="THE 맥주효모 4000">닥터루템 THE 맥주효모 4000</option>
+          <option value="쏘팔메토 & 루테인">닥터루템 쏘팔메토 & 루테인 지아잔틴</option>
+          <option value="바나바잎 혈당케어">닥터루템 바나바잎 혈당케어</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label style="font-size:0.88rem; color:var(--text-sub); display:block; margin-bottom:6px;">작성자 이름 / 연령대</label>
+        <input type="text" id="revAuthorInput" placeholder="예: 김*민 님 (40대)" style="width:100%; padding:10px; border-radius:8px; background:var(--bg-panel); color:var(--text-main); border:1px solid var(--border-glass);">
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <label style="font-size:0.88rem; color:var(--text-sub); display:block; margin-bottom:6px;">후기 내용</label>
+        <textarea id="revTextInput" rows="4" placeholder="제품 복용 후 유의미했던 변화나 만족도를 솔직하게 남겨주세요." style="width:100%; padding:10px; border-radius:8px; background:var(--bg-panel); color:var(--text-main); border:1px solid var(--border-glass);"></textarea>
+      </div>
+
+      <button class="btn btn-cyber w-full" id="submitReviewBtn">후기 등록 완료 (3,000원 쿠폰 증정)</button>
+    </div>
+  </div>
 
   <!-- Cart Drawer -->
   <div class="cart-overlay" id="cartOverlay"></div>
@@ -321,16 +393,6 @@
       </button>
     </div>
   </aside>
-
-  <!-- Option Modal -->
-  <div class="modal-overlay" id="optionModalOverlay">
-    <div class="modal-card glass-panel" id="optionModalCard">
-      <button class="modal-close-btn" id="optionModalClose">&times;</button>
-      <div class="modal-body-content" id="optionModalBody">
-        <!-- Injected via JS -->
-      </div>
-    </div>
-  </div>
 
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toastContainer"></div>
