@@ -76,3 +76,11 @@ service_tier = "fast"
 An independent single-model unit must receive a separate, explicit route before
 entering another repository. It must not borrow the Pipeline shared mailbox,
 cursor, lock, or seat identity.
+
+## Automatic Seat-Task Routing via Subagents
+
+In Single-Model Autonomous Unit mode, AGY sessions dispatch recipient seats (`director`, `operator`, `coordinator`) automatically upon emitting mailbox trigger events (such as `verify-request` or `route`):
+1. **Emitter Tooling**: Use `.venv/bin/python scripts/agy_emit.py --to <seat> --kind <kind> --subject <subj> --body <body>` or `invoke_subagent`.
+2. **Subagent Execution**: When a next seat is assigned, spawn a background subagent (`invoke_subagent` with `TypeName: "self"`) to execute that seat's verification or edits asynchronously without asking the user to relay prompts.
+3. **Reactive Wakeup & Reconciliation**: AGY resumes automatically when the subagent completes. Read the committed mailbox artifact (`coordination/mailbox/sent/`), verify the GO verdict, and issue convergence automatically.
+
