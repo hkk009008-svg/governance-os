@@ -264,6 +264,27 @@ def test_existing_empty_seat_index_against_non_empty_head_fails_closed(
     assert index_path.read_bytes() == b"preserve-empty-index"
 
 
+def test_existing_dangling_seat_index_symlink_fails_closed(tmp_path: Path) -> None:
+    index_path = tmp_path / ".git" / "index-codex-director"
+    missing_target = tmp_path / "must-not-be-created"
+    index_path.parent.mkdir()
+    index_path.symlink_to(missing_target)
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        index_path.unlink()
+        index_path.write_bytes(b"incorrectly-seeded")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    with pytest.raises(launcher.LaunchError, match="existing seat index.*regular file"):
+        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
+
+    assert index_path.is_symlink()
+    assert not missing_target.exists()
+    assert calls == []
+
+
 def test_valid_existing_seat_index_preserves_staged_work(tmp_path: Path) -> None:
     index_path = tmp_path / ".git" / "index-codex-director"
     index_path.parent.mkdir()

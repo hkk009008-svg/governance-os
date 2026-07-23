@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tomllib
@@ -165,7 +166,16 @@ def ensure_seat_index(
     runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> None:
     """Seed a missing per-seat index; validate and preserve an existing one."""
-    if index_path.exists():
+    try:
+        index_mode = index_path.lstat().st_mode
+    except FileNotFoundError:
+        index_mode = None
+    if index_mode is not None:
+        if not stat.S_ISREG(index_mode):
+            raise LaunchError(
+                f"existing seat index {index_path} must be a regular file; "
+                "refusing to launch without changing it"
+            )
         index_env = _without_ambient_index(os.environ)
         index_env["GIT_INDEX_FILE"] = str(index_path)
         entries = runner(
