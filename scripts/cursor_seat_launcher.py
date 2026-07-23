@@ -654,12 +654,29 @@ def _run_live(
         )
         outbox = _write_outbox(root, spec.seat, run_id, text, actual_model)
         save_registry(registry_path, registry)
-        if status == "finished":
+        if status == "finished" and spec.operation in {"dispatch", "review"}:
             relay = maybe_auto_relay(root, outbox_path=outbox, environ=spec.env)
             if relay is not None:
                 print("relay=" + str(relay.get("last_relay", "")))
         print(f"run={run_id} status={status} model={actual_model} outbox={outbox}")
         return 0 if status == "finished" else 2
+
+
+
+
+def _build_trigger_text(root: Path, trigger_ref: str) -> str:
+    """Resolve a local-builder trigger without requiring mailbox traffic."""
+
+    if trigger_ref.startswith("local:"):
+        return trigger_ref
+    path_part = trigger_ref.split("@", 1)[0]
+    candidate = root / path_part
+    if candidate.is_file():
+        return candidate.read_text(encoding="utf-8")
+    try:
+        return _event_from_ref(root, trigger_ref).text
+    except Exception:
+        return trigger_ref
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -669,7 +686,7 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("readiness")
     commands.add_parser("status")
-    for name in ("dispatch", "review"):
+    for name in ("dispatch", "review", "build"):
         sub = commands.add_parser(name)
         sub.add_argument("seat", choices=LAUNCH_SEATS)
         flag = "--verify-request" if name == "review" else "--trigger-ref"
@@ -687,6 +704,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("provider launch: none")
             print("provider_side=cursor")
             print("foreign_launch=denied")
+            print("local_builder=cursor-seat build")
             return 0
         if args.command == "status":
             registry = load_registry(root / ".cursor/runtime/pipeline-seats.json", root)
@@ -694,7 +712,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         config = load_config(args.config, expected_workspace=root)
         git_dir = resolve_git_dir(root)
-        operation = "review" if args.command == "review" else "dispatch"
+        if args.command == "review":
+            operation = "review"
+        elif args.command == "build":
+            operation = "build"
+        else:
+            operation = "dispatch"
         spec = build_launch_spec(
             config,
             git_dir=git_dir,
@@ -728,6 +751,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             request = _verify_request_from_ref(root, args.trigger_ref)
             validate_review_binding(request, args.seat, spec.model)
             trigger_text = request.outcome
+        elif args.command == "build":
+            trigger_text = _build_trigger_text(root, args.trigger_ref)
         else:
             trigger_text = _event_from_ref(root, args.trigger_ref).text
         role_prompt = _role_prompt(root, args.seat)

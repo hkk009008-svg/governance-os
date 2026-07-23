@@ -533,3 +533,31 @@ def test_readiness_prints_provider_side_and_foreign_launch_denied(
     assert "provider_side=cursor" in out
     assert "foreign_launch=denied" in out
 
+
+def test_build_dry_run_sets_build_operation_and_skips_mailbox_trigger(
+    tmp_path: Path, repo_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = tmp_path / "seats.toml"
+    _write_config(config, repo_root)
+    code = launcher.main(
+        [
+            "--config",
+            str(config),
+            "--dry-run",
+            "build",
+            "director",
+            "--trigger-ref",
+            "local:efficiency",
+        ]
+    )
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["operation"] == "build"
+    assert payload["env"]["CURSOR_OPERATION"] == "build"
+
+
+def test_readiness_mentions_local_builder(capsys: pytest.CaptureFixture[str]) -> None:
+    assert launcher.main(["readiness"]) == 0
+    out = capsys.readouterr().out
+    assert "local_builder=cursor-seat build" in out
+

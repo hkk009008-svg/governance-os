@@ -13,10 +13,14 @@ mode/role/behavior semantics the kernel already validates. Cursor never emits
 
 ## Modes
 
-- Readiness bridge: the default for ordinary Cursor chat. Read-only
-  orientation; no seat claim, no durable mutation, no mailbox consume, no push.
+- Readiness bridge: the default for ordinary Cursor chat. Orientation plus
+  scratch staging under `.pytest-verify-tmp/`; no seat claim, no repo-tree
+  mutation, no mailbox consume, no push.
+- Local builder: `coordination/bin/cursor-seat build` binds a mutating seat
+  index with `CURSOR_OPERATION=build` for edit/test/commit. Mailbox
+  publish/relay/consume stay denied.
 - Live seat: only when the Cursor seat launcher binds `director`, `director2`,
-  `operator`, or `operator2` from a committed trigger.
+  `operator`, or `operator2` from a committed dispatch/review trigger.
 - Coordinator: only for explicit reconciliation or facilitation; authors no
   behavior-changing production work and holds no cursor.
 - Subagent: an unbound Cursor session may use parent-scoped advisors. Cursor's
@@ -64,7 +68,15 @@ seat. The launcher refuses ambiguous or foreign workspaces.
 - Ordinary Cursor chat is a **readiness bridge** only. Saying "continue as
   director" (or any seat name) in chat is orientation guidance; it does **not**
   bind a live seat, consume a cursor, or authorize mailbox publish/consume.
-- A live seat starts only through the human launcher:
+- Efficient Cursor-only land path:
+  1. Readiness stages files under `.pytest-verify-tmp/cursor-bundles/<id>/`.
+  2. Short land: `coordination/bin/cursor-apply-bundle <id>` (type yes) then
+     `env -u GIT_INDEX_FILE .venv/bin/python scripts/cursor_land_gate.py`.
+  3. Longer implement: `coordination/bin/cursor-seat build --seat director
+     --trigger-ref local:<task>`.
+  4. Protocol/mailbox work: `coordination/bin/cursor-seat dispatch|review`
+     (auto-relay unchanged). Label foreign mailbox residue `out_of_side`.
+- A live dispatch/review seat starts only through the human launcher:
   `coordination/bin/cursor-seat dispatch|review`.
 - Durable mailbox traffic from a **live seat** auto-relays: the seat writes to
   `.cursor/runtime/outbox/<seat>/`, then `scripts/cursor_auto_relay.py` (shim
@@ -103,11 +115,13 @@ the exact seat identity, seeds a per-seat Git index, records a private local
 registry under `.cursor/runtime/` (never committed), requires interactive
 confirmation before any provider agent starts (except `CURSOR_RELAY_CHAIN=1`
 relay wakes), and auto-relays finished outbox results when a `cursor-relay`
-directive is present. Readiness reports `provider_side=cursor` and
-`foreign_launch=denied`.
+directive is present. Readiness reports `provider_side=cursor`,
+`foreign_launch=denied`, and `local_builder=cursor-seat build`.
 
 ```bash
 coordination/bin/cursor-seat readiness             # print the runtime contract
+coordination/bin/cursor-seat --dry-run build director --trigger-ref local:task
+coordination/bin/cursor-apply-bundle --dry-run <bundle-id>
 coordination/bin/cursor-seat --dry-run dispatch director --trigger-ref <path@sha>
 coordination/bin/cursor-seat dispatch director --trigger-ref <path@sha>
 coordination/bin/cursor-seat review operator --verify-request <path@sha>

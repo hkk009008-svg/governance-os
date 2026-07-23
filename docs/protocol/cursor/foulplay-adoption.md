@@ -22,8 +22,9 @@ Do not start product work from `/Users/hyungkoookkim/Content`.
   names foulplay keywords or the FoulPlay path.
 - Coordinator: may reconcile from durable evidence but must not author
   behavior-changing FoulPlay fixes.
-- Cursor without an explicit seat name stays readiness-bridge / local-builder
-  unless the user names a seat or protocol decision.
+- Cursor without an explicit seat name stays readiness-bridge unless the user
+  names a seat or protocol decision. Local builder work uses
+  `coordination/bin/cursor-seat build` (mailbox still denied).
 
 ## Select The FoulPlay Target
 

@@ -780,3 +780,65 @@ def test_readiness_denies_cursor_relay_publish() -> None:
     )
     assert result["permission"] == "deny"
 
+
+def test_quoted_heredoc_body_with_literal_publish_is_data() -> None:
+    command = (
+        "cat > .pytest-verify-tmp/cursor-bundles/demo/note.txt <<'EOF'\n"
+        "echo $(coordination/bin/cursor-publish --to operator --kind status --subject hidden)\n"
+        "EOF"
+    )
+    result = policy.evaluate(_shell(command), {})
+    assert result["permission"] == "allow"
+
+
+def test_readiness_write_allows_scratch_and_denies_repo_tree() -> None:
+    allow = policy.evaluate(
+        {
+            "hook_event_name": "preToolUse",
+            "tool_name": "Write",
+            "tool_input": {"path": ".pytest-verify-tmp/cursor-bundles/x/a.py"},
+        },
+        {},
+    )
+    deny = policy.evaluate(
+        {
+            "hook_event_name": "preToolUse",
+            "tool_name": "Write",
+            "tool_input": {"path": "scripts/example.py"},
+        },
+        {},
+    )
+    assert allow["permission"] == "allow"
+    assert deny["permission"] == "deny"
+
+
+def test_build_binding_allows_mutation_denies_mailbox_and_foreign(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, env, _ = _valid_binding(tmp_path, monkeypatch, operation="build")
+    write = policy.evaluate(
+        {
+            "hook_event_name": "preToolUse",
+            "tool_name": "Write",
+            "tool_input": {"path": "scripts/example.py"},
+        },
+        env,
+    )
+    assert write["permission"] == "allow"
+    publish = policy.evaluate(
+        _shell(
+            "coordination/bin/cursor-publish --to operator "
+            "--kind status --subject x"
+        ),
+        env,
+    )
+    assert publish["permission"] == "deny"
+    foreign = policy.evaluate(_shell("coordination/bin/agy-seat status"), env)
+    assert foreign["permission"] == "deny"
+    apply_ok = policy.evaluate(
+        _shell("coordination/bin/cursor-apply-bundle demo-bundle"),
+        env,
+    )
+    assert apply_ok["permission"] == "allow"
+

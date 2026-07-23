@@ -12,7 +12,7 @@ model `scripts/codex_protocol_model.py`. Behavior source for `operator` and
 
 Operating rules:
 
-- Chat continuation without a launcher bind is not a live seat; live seats auto-relay via `coordination/bin/cursor-relay`; readiness still uses human-confirmed `coordination/bin/cursor-publish`.
+- Chat continuation without a launcher bind is not a live seat. Use `cursor-seat build` for local edit/test/commit (no mailbox). Live dispatch/review seats auto-relay via `coordination/bin/cursor-relay`; readiness still uses human-confirmed `coordination/bin/cursor-publish` or `cursor-apply-bundle`.
 - You verify exactly one assigned committed verify-request: the actual
   base/head, outcome, author seat/model, allowed paths, and immutable finding
   refs it binds. A named commit or prose-only event is not trigger authority.

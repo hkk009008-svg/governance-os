@@ -154,7 +154,7 @@ def _mutation_capable(
 ) -> bool:
     return (
         not _subagent(payload)
-        and environ.get("CURSOR_OPERATION") == "dispatch"
+        and environ.get("CURSOR_OPERATION") in {"dispatch", "build"}
         and environ.get("CURSOR_SEAT") in _MUTATING_SEATS
         and _valid_live_binding(environ)
     )
@@ -299,6 +299,73 @@ def _parenthesized_substitution(
                 return command[open_index + 1 : index], index + 1
         index += 1
     return None
+
+
+
+def _strip_quoted_heredoc_bodies(command: str) -> str:
+    """Drop bodies of quoted/escaped heredocs before substitution scanning."""
+
+    if "<<" not in command:
+        return command
+    pieces: list[str] = []
+    index = 0
+    while index < len(command):
+        start = command.find("<<", index)
+        if start < 0:
+            pieces.append(command[index:])
+            break
+        pieces.append(command[index:start])
+        cursor = start + 2
+        if cursor < len(command) and command[cursor] == "-":
+            cursor += 1
+        while cursor < len(command) and command[cursor] in " \t":
+            cursor += 1
+        if cursor >= len(command):
+            pieces.append(command[start:])
+            break
+        tag = ""
+        if command[cursor] == "'":
+            end = command.find("'", cursor + 1)
+            if end < 0:
+                return command
+            tag = command[cursor + 1 : end]
+            cursor = end + 1
+        elif command[cursor] == '"':
+            end = command.find('"', cursor + 1)
+            if end < 0:
+                return command
+            tag = command[cursor + 1 : end]
+            cursor = end + 1
+        elif command[cursor] == "\\":
+            match = re.match(r"\\(\S+)", command[cursor:])
+            if not match:
+                return command
+            tag = match.group(1)
+            cursor += match.end()
+        else:
+            pieces.append(command[start:cursor])
+            index = cursor
+            continue
+        newline = command.find("\n", cursor)
+        if newline < 0:
+            pieces.append(command[start:])
+            break
+        pieces.append(command[start : newline + 1])
+        pos = newline + 1
+        while True:
+            next_nl = command.find("\n", pos)
+            line = command[pos:] if next_nl < 0 else command[pos:next_nl]
+            if line.rstrip("\r") == tag:
+                if next_nl < 0:
+                    pieces.append(line)
+                    return "".join(pieces)
+                pieces.append(command[pos : next_nl + 1])
+                index = next_nl + 1
+                break
+            if next_nl < 0:
+                return command
+            pos = next_nl + 1
+    return "".join(pieces)
 
 
 def _shell_substitutions(command: str) -> list[str] | None:
@@ -596,6 +663,8 @@ _PRIVILEGED_EXECS = {
     "cursor_mailbox.py",
     "cursor-relay",
     "cursor_auto_relay.py",
+    "cursor-apply-bundle",
+    "cursor_apply_bundle.py",
 }
 # Provider separation: Cursor sessions never launch another provider's seats.
 _FOREIGN_PROVIDER_EXECS = {
@@ -607,7 +676,7 @@ _FOREIGN_PROVIDER_EXECS = {
 # Documented read-only orientation entry points of the Cursor launcher.
 _READ_ONLY_LAUNCHER_COMMANDS = {"readiness", "status"}
 _READ_ONLY_LAUNCHERS = {"cursor-seat", "cursor_seat_launcher.py"}
-_DRY_RUN_WRAPPERS = {"cursor-publish", "cursor-consume", "cursor-relay", "cursor_mailbox.py", "cursor_auto_relay.py"}
+_DRY_RUN_WRAPPERS = {"cursor-publish", "cursor-consume", "cursor-relay", "cursor_mailbox.py", "cursor_auto_relay.py", "cursor-apply-bundle", "cursor_apply_bundle.py"}
 _LIVE_MAILBOX_EXECS = frozenset(
     {
         "cursor-publish",
@@ -638,6 +707,34 @@ def _live_mailbox_effect(tokens: list[str]) -> bool:
                 return True
     return False
 
+
+
+
+
+_BUILD_LAND_EXECS = frozenset(
+    {
+        "cursor-apply-bundle",
+        "cursor_apply_bundle.py",
+    }
+)
+
+
+def _build_land_effect(tokens: list[str]) -> bool:
+    if not tokens:
+        return False
+    executable = PurePosixPath(tokens[0]).name
+    if executable in _BUILD_LAND_EXECS:
+        if _read_only_invocation(executable, tokens[1:]):
+            return False
+        return True
+    if executable.startswith("python") or executable in _INTERPRETER_NAMES:
+        for index, token in enumerate(tokens[1:], start=1):
+            name = PurePosixPath(token).name
+            if name in _BUILD_LAND_EXECS:
+                if _read_only_invocation(name, tokens[index + 1 :]):
+                    return False
+                return True
+    return False
 
 
 def _after_command_wrapper(tokens: list[str]) -> list[str]:
@@ -849,6 +946,7 @@ def _shell_decision(
         return _deny("Cursor seat hook received malformed shell input.")
     if depth >= _MAX_SHELL_NESTING:
         return _deny("Cursor seat hook exceeded safe shell nesting depth.")
+    command = _strip_quoted_heredoc_bodies(command)
     substitutions = _shell_substitutions(command)
     if substitutions is None:
         return _deny("Cursor seat hook could not safely parse shell substitution.")
@@ -875,7 +973,7 @@ def _shell_decision(
     mutation_capable = (
         binding_valid
         and not is_subagent
-        and environ.get("CURSOR_OPERATION") == "dispatch"
+        and environ.get("CURSOR_OPERATION") in {"dispatch", "build"}
         and environ.get("CURSOR_SEAT") in _MUTATING_SEATS
     )
     review_capable = (
@@ -912,6 +1010,13 @@ def _shell_decision(
                 and _live_mailbox_effect(tokens)
             ):
                 continue
+            if (
+                binding_valid
+                and not is_subagent
+                and environ.get("CURSOR_OPERATION") == "build"
+                and _build_land_effect(tokens)
+            ):
+                continue
             subject = "subagent" if is_subagent else "Cursor seat"
             return _deny(
                 f"{subject} cannot perform this separately authorized effect from an agent tool."
@@ -943,7 +1048,7 @@ def _shell_decision(
             ):
                 return _deny(
                     "Cursor readiness/review mode is repository read-only; "
-                    "mutation requires an exact live dispatch seat/index binding."
+                    "mutation requires an exact live dispatch or build seat/index binding."
                 )
             if review_capable and _review_test_segment(
                 tokens, unsets_index=unsets_index
@@ -1006,9 +1111,13 @@ def evaluate(
             if _subagent(payload):
                 return _deny("Cursor subagents cannot inherit parent seat mutation authority.")
             if not _mutation_capable(payload, env):
+                normalized = _normalized_path(path)
+                if normalized and _scratch(normalized) and not _protected(path):
+                    return _allow()
                 return _deny(
                     "Write/Delete requires an exact live Cursor dispatch "
-                    "seat/index binding; this session is readiness-only."
+                    "or build seat/index binding, or a scratch path under "
+                    ".pytest-verify-tmp/; this session is readiness-only."
                 )
         return _allow()
     return _allow()

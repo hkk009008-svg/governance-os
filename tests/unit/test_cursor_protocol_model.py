@@ -91,4 +91,6 @@ def test_cursor_contract_documents_provider_isolation_and_auto_relay() -> None:
     assert "foreign_launch=denied" in rendered
     assert "auto-relay" in rendered
     assert "readiness-bridge sessions cannot publish" in rendered
+    assert "local_builder=cursor-seat build" in rendered
+    assert "build binds may edit" in rendered
 

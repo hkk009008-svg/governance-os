@@ -67,8 +67,10 @@ def render_runtime_env_contract(
             "- environment values describe identity and never authorize external effects.",
             "- provider_side=cursor",
             "- foreign_launch=denied",
+            "- local_builder=cursor-seat build",
             "- live seats use auto-relay for mailbox publish/consume without human TTY.",
             "- readiness-bridge sessions cannot publish or relay mailbox events.",
+            "- build binds may edit/test/commit but cannot mailbox publish or relay.",
         )
     )
     return "\n".join(lines)

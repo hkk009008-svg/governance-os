@@ -35,6 +35,9 @@ def test_cursor_scripts_and_shims_are_present_and_delegating() -> None:
         "coordination/bin/cursor-publish",
         "coordination/bin/cursor-consume",
         "coordination/bin/cursor-relay",
+        "coordination/bin/cursor-apply-bundle",
+        "scripts/cursor_apply_bundle.py",
+        "scripts/cursor_land_gate.py",
         ".cursor/hooks/seat-policy",
     ):
         assert (ROOT / relative).is_file(), relative
@@ -79,6 +82,9 @@ def test_continuation_adapter_is_present_and_points_at_kernel() -> None:
         ".cursor/hooks.json",
         "Canonical Compact Pair Invariant: scripts/codex_protocol_model.py",
         "readiness bridge",
+        "cursor-seat build",
+        "cursor-apply-bundle",
+        "cursor_land_gate",
     ):
         assert marker in text, marker
     # Same terminal-ceremony ban the shared active-surface gate enforces.
