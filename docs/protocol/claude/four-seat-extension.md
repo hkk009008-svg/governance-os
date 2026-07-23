@@ -48,31 +48,38 @@ not invent a new role. "Two seats of one team" becomes "four seats / two pairs o
 one team"; user is still principal; **git is still the tiebreaker** (first commit
 to land wins) at any boundary.
 
-## 2. Launch (additive — README §"Per-seat launch" gets two more stanzas)
+## 2. Launch (provider-pure canonical path)
 
 ```bash
-# director2 session (new terminal, SAME shared tree)
+# Any four-seat Claude session (new terminal, SAME shared tree)
 cd /Users/hyungkoookkim/Pipeline
-export CLAUDE_SEAT=director2
-export GIT_INDEX_FILE="$(git rev-parse --absolute-git-dir)/index-director2"
-[ -f "$GIT_INDEX_FILE" ] || git read-tree HEAD   # seed per-seat index from HEAD
-claude
-
-# operator2 session (new terminal, SAME shared tree)
-cd /Users/hyungkoookkim/Pipeline
-export CLAUDE_SEAT=operator2
-export GIT_INDEX_FILE="$(git rev-parse --absolute-git-dir)/index-operator2"
-[ -f "$GIT_INDEX_FILE" ] || git read-tree HEAD
-claude
+coordination/bin/claude-seat <director|director2|operator|operator2> -- <claude-args>
 ```
 
-## 3. Presence / heartbeat / index — **NO hook change required**
+The launcher scrubs inherited foreign-provider and Git authority, replaces stale
+Claude contract identity with the selected seat, and binds exactly
+`.git/index-claude-<seat>`. Existing regular indexes are validated and
+preserved, including staged work. Symlinks, directories, malformed/unreadable
+indexes, and an empty index against non-empty `HEAD` fail closed. Only a truly
+missing index is seeded. `--dry-run` neither seeds nor starts Claude.
 
-`.claude/hooks/update-state.sh` is already seat-generic:
+Manual `CLAUDE_SEAT` / `GIT_INDEX_FILE` export recipes are not a supported
+launch path because they can inherit or cross-bind another provider's index.
+
+## 3. Presence / heartbeat / index — exact binding required
+
+`.claude/hooks/update-state.sh` is seat-generic only after it validates the
+provider-pure binding:
 - `_stamp_presence()` stamps `coordination/presence/${CLAUDE_SEAT}-heartbeat.ts`
   for *any* seat → `director2`/`operator2` auto-stamp on launch.
 - `_sync_seat_index()` / `_clear_skip_worktree()` key off `$GIT_INDEX_FILE` →
-  `index-director2`/`index-operator2` are maintained automatically.
+  `index-claude-director2`/`index-claude-operator2` are maintained automatically.
+
+An unpinned, mismatched, foreign-provider, unreadable, or subagent context
+performs none of those mutations and does not write `STATE.md` or hook markers.
+The PreToolUse guard applies the same binding to Bash, Write, and Edit: invalid
+contexts may inspect through a conservative read-only shell subset but cannot
+mutate.
 
 The ONLY hook touch was **cosmetic** and has since landed: the STATE.md
 unread report lists all six seats (`.claude/hooks/update-state.sh`
@@ -124,7 +131,8 @@ coordination/mailbox/seen/operator2.txt   <- 2026-06-13T00:00:00Z
   independently verifies — the current loop, run twice in parallel. Disjoint by
   construction; shared seams handled per Rule #23.
 - **Tiebreaker unchanged.** `git log --oneline -3` before acting on a shared
-  task; first commit to land wins. With four seats the per-seat `GIT_INDEX_FILE`
+  task; first commit to land wins. With four seats the provider-prefixed
+  `.git/index-claude-<seat>`
   already isolates staging; commits serialize on git's ref lock.
 - **Lane discipline (NEW Rule).** A seat does substantive work only in its lane.
   Cross-lane edits require a `-to-all-` heads-up first (or a direct dispatch-claim
@@ -200,4 +208,4 @@ cross-pair view, not the constant presence. (This is the on-demand framing of th
   event) — not a stream of per-finding events. The send-only `coordinator` mailbox
   vocab (`fd334d3`) stays valid for this but is used sparingly.
 - **Commits** only under explicit user direction, via a seeded
-  `.git/index-coordinator` + pathspec partial commit; push stays USER-gated.
+  `.git/index-claude-coordinator` + pathspec partial commit; push stays USER-gated.

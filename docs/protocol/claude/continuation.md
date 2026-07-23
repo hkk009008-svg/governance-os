@@ -7,6 +7,22 @@ Codex. This file contains only Claude-local orientation and authority effects.
 
 Claude starts read-only unless the user names `director`, `director2`,
 `operator`, `operator2`, or coordinator. A Claude subagent is never a seat.
+Launch the four mutable live seats only through the provider-pure launcher:
+
+```bash
+cd /Users/hyungkoookkim/Pipeline
+coordination/bin/claude-seat <director|director2|operator|operator2> -- <claude-args>
+```
+
+The launcher removes inherited Codex, Cursor, AGY/Antigravity, Git, and stale
+Claude contract authority; binds the chosen seat to
+`.git/index-claude-<seat>`; validates an existing regular index without
+rewriting it; seeds only a genuinely missing index from `HEAD`; and then starts
+Claude. `--dry-run` prints the binding without creating the index or starting
+Claude. Do not reproduce this contract with manual `export` commands. The
+coordinator remains unpinned/read-only unless a separate exact route authorizes
+another posture.
+
 Fresh/transplanted roles first find the newest same-seat handoff, then run:
 
 ```bash
@@ -59,6 +75,11 @@ effect/executor/target/scope. Structural tokens do not grant authority.
 Use Claude Read/Grep/Glob for inspection, Edit/Write for scoped local changes,
 and Bash for commands. Background commands must be read before claims.
 Read-only verifier agents may inspect but never edit or issue the seat verdict.
+PreToolUse permits Write/Edit and mutating Bash only for an exact
+`CLAUDE_SEAT` plus `.git/index-claude-<same-seat>` regular-file binding.
+Unpinned, foreign-bound, mismatched, malformed, and subagent contexts remain
+read-only. PostToolUse performs no presence, state, marker, index-sync, or
+skip-worktree mutation until the same binding validates.
 
 For evidence-ledger work, start from `/Users/hyungkoookkim/Pipeline`, read
 `docs/protocol/claude/ledger-cli-adoption.md`, run

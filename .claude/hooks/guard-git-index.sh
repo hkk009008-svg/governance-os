@@ -1,103 +1,234 @@
 #!/usr/bin/env bash
-# PreToolUse(Bash) guard: block git index-mutators / pytest that lack the
-# `env -u GIT_INDEX_FILE` prefix WHEN this session inherits a per-seat index.
-#
-# Why: D-a launched seats run with $GIT_INDEX_FILE pointing at a per-seat git
-# index. A bare `git add/commit/...` or `pytest` (temp-repo tests) corrupts it
-# under concurrent refreshes ("unable to read <blob>", 2026-06-12). Every
-# dispatch template already mandates the prefix; this enforces it mechanically.
-#
-# Design: FAIL-OPEN. Any parse problem, missing python, or unexpected shape
-# exits 0 (allow). It only blocks (exit 2) on a precise, confident match, so a
-# bug here can never halt the fleet — it can only fail to catch a mistake.
+# PreToolUse(Bash|Write|Edit): fail closed unless the current Claude session is
+# bound to its exact provider-prefixed regular seat index. Invalid sessions may
+# perform a conservative read-only Bash subset, but no mutation.
 set -uo pipefail
 
-# Fast path: no per-seat index -> nothing to guard (the main session is here).
-[ -z "${GIT_INDEX_FILE:-}" ] && exit 0
+PAYLOAD=$(cat 2>/dev/null || true)
+ROOT="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$ROOT" ]; then
+  ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd) || exit 2
+fi
+command -v python3 >/dev/null 2>&1 || {
+  echo "BLOCKED: python3 unavailable; cannot validate Claude seat binding." >&2
+  exit 2
+}
 
-payload="$(cat)"
+exec python3 - "$ROOT" "$PAYLOAD" <<'PY'
+import json
+import os
+import re
+import shlex
+import stat
+import subprocess
+import sys
+from pathlib import Path
 
-# Hand the decision to python for robust JSON + shell tokenization. This branch
-# only runs for seats that actually have a per-seat index, so its startup cost
-# is paid rarely.
-PYBIN="python3"
-command -v "$PYBIN" >/dev/null 2>&1 || exit 0   # fail-open if no python
+SEATS = {"director", "director2", "operator", "operator2"}
+SAFE_GIT = {
+    "cat-file", "describe", "diff", "grep", "log", "ls-files", "ls-tree",
+    "merge-base", "name-rev", "rev-list", "rev-parse", "show", "status",
+}
+SAFE_COMMANDS = {
+    "cat", "cut", "echo", "file", "grep", "head", "ls", "md5", "pwd",
+    "rg", "sed", "sha256sum", "shasum", "sort", "stat", "tail", "test",
+    "tr", "uniq", "wc", "[",
+}
+GIT_MUTATORS = {
+    "add", "apply", "checkout", "cherry-pick", "clean", "commit", "merge",
+    "mv", "read-tree", "rebase", "reset", "restore", "rm", "stash", "switch",
+    "update-index",
+}
 
-exec "$PYBIN" - "$payload" <<'PY'
-import sys, json, shlex, re
 
-payload = sys.argv[1] if len(sys.argv) > 1 else ""
-try:
-    data = json.loads(payload)
-except Exception:
-    sys.exit(0)  # fail-open on malformed JSON
+def deny(message: str) -> None:
+    sys.stderr.write(f"BLOCKED: {message}\n")
+    raise SystemExit(2)
 
-# Robust extraction: any unexpected shape (non-dict payload, non-dict
-# tool_input, non-string command) -> fail-open, never crash/exit-nonzero.
-cmd = ""
-if isinstance(data, dict):
-    ti = data.get("tool_input")
-    if isinstance(ti, dict):
-        cmd = ti.get("command", "")
-if not isinstance(cmd, str) or not cmd or "env -u GIT_INDEX_FILE" in cmd:
-    sys.exit(0)  # nothing to check / already safe
 
-# Git subcommands that read or write the index (so they care about which index).
-MUT = {"add", "commit", "stash", "reset", "rm", "restore", "mv", "read-tree",
-       "checkout", "switch", "merge", "rebase", "cherry-pick", "apply", "clean"}
+def clean_git_env() -> dict[str, str]:
+    return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
 
-# Scope note: this guard targets the ACCIDENTAL mistake — a seat that forgot the
-# `env -u GIT_INDEX_FILE` prefix on a normal `git <mutator>` / `pytest`. It is a
-# guardrail, not an anti-evasion sandbox: deliberately obfuscated forms
-# (`sh -c 'git commit'`, `git$(echo " ")commit`, `git-commit`) are out of scope —
-# the dispatch templates mandate the prefix, and chasing obfuscation in a
-# tokenizer only adds false positives. Detection keys off the COMMAND position
-# (first token after any VAR=val env assignments), so `git`/`pytest` appearing as
-# an ARGUMENT (e.g. `grep 'pytest' tests/`, `grep git add`) is correctly allowed.
-def offending_segment(c):
-    for part in re.split(r"&&|\|\||;|\|", c):
+
+def binding_is_valid(root: Path, data: dict[str, object]) -> bool:
+    if "agent_id" in data or "agent_type" in data:
+        return False
+    seat = os.environ.get("CLAUDE_SEAT", "")
+    raw_index = os.environ.get("GIT_INDEX_FILE", "")
+    if seat not in SEATS or not raw_index:
+        return False
+    result = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--absolute-git-dir"],
+        env=clean_git_env(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+    expected = Path(result.stdout.strip()) / f"index-claude-{seat}"
+    index = Path(raw_index)
+    if not index.is_absolute() or os.path.normpath(str(index)) != str(expected):
+        return False
+    try:
+        if not stat.S_ISREG(index.lstat().st_mode):
+            return False
+    except OSError:
+        return False
+    index_env = clean_git_env()
+    index_env["GIT_INDEX_FILE"] = str(index)
+    entries = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--stage", "-z"],
+        env=index_env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if entries.returncode != 0:
+        return False
+    if not entries.stdout:
+        head_entries = subprocess.run(
+            ["git", "-C", str(root), "ls-tree", "-r", "--name-only", "-z", "HEAD"],
+            env=clean_git_env(),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if head_entries.returncode != 0 or head_entries.stdout:
+            return False
+    status_result = subprocess.run(
+        [
+            "git", "--no-optional-locks", "-C", str(root), "status",
+            "--porcelain=v1", "--untracked-files=no", "--ignore-submodules=all",
+        ],
+        env=index_env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return status_result.returncode == 0
+
+
+def segments(command: str) -> list[list[str]] | None:
+    if any(token in command for token in ("$(", "`", ">", "<", "\n")):
+        return None
+    parsed: list[list[str]] = []
+    for part in re.split(r"&&|\|\||;|\|", command):
         try:
-            toks = shlex.split(part)
-        except Exception:
+            tokens = shlex.split(part)
+        except ValueError:
+            return None
+        if tokens:
+            parsed.append(tokens)
+    return parsed or None
+
+
+def unwrap_env(tokens: list[str]) -> tuple[list[str], bool]:
+    if Path(tokens[0]).name != "env":
+        return tokens, False
+    index = 1
+    unset_index = False
+    while index < len(tokens):
+        if tokens[index] == "-u" and index + 1 < len(tokens):
+            unset_index = unset_index or tokens[index + 1] == "GIT_INDEX_FILE"
+            index += 2
             continue
-        if not toks:
+        if tokens[index] == "--":
+            index += 1
+            break
+        if tokens[index].startswith("-") or "=" in tokens[index]:
+            return [], False
+        break
+    return tokens[index:], unset_index
+
+
+def git_subcommand(tokens: list[str]) -> str | None:
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "-C" and index + 1 < len(tokens):
+            index += 2
             continue
-        # command token = first token that is not a `VAR=val` env assignment
-        ci = 0
-        while ci < len(toks) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[ci]):
-            ci += 1
-        if ci >= len(toks):
+        if token in {"--no-pager", "--no-optional-locks", "--literal-pathspecs"}:
+            index += 1
             continue
-        cmd0 = toks[ci].split("/")[-1]  # basename of the invoked command
-        # pytest: `pytest …`, `.venv/bin/pytest …`, or `python[3] -m pytest …`
-        if cmd0 == "pytest":
-            return part.strip()
-        if cmd0.startswith("python") and any(
-            toks[k] == "-m" and k + 1 < len(toks) and toks[k + 1] == "pytest"
-            for k in range(ci + 1, len(toks))
-        ):
-            return part.strip()
-        # git index-mutator: command is git, subcommand (after global flags) in MUT
-        if cmd0 == "git":
-            j = ci + 1
-            while j < len(toks) and toks[j].startswith("-"):
-                if toks[j] in ("-C", "-c") and j + 1 < len(toks):
-                    j += 2
-                else:
-                    j += 1
-            if j < len(toks) and toks[j] in MUT:
-                return part.strip()
+        if token.startswith("-"):
+            return None
+        return token
     return None
 
-bad = offending_segment(cmd)
-if bad:
-    sys.stderr.write(
-        "BLOCKED: $GIT_INDEX_FILE is set but this command lacks "
-        "'env -u GIT_INDEX_FILE'.\n"
-        "  Offending segment: %s\n"
-        "  Seat-index corruption vector (2026-06-12 'unable to read <blob>').\n"
-        "  Re-run prefixed:    env -u GIT_INDEX_FILE <your command>\n" % bad
-    )
-    sys.exit(2)  # PreToolUse: non-zero (esp. 2) blocks the tool and shows stderr
-sys.exit(0)
+
+def read_only_shell(command: str) -> bool:
+    parsed = segments(command)
+    if parsed is None:
+        return False
+    for raw in parsed:
+        tokens, unset_index = unwrap_env(raw)
+        if not tokens:
+            return False
+        command_name = Path(tokens[0]).name
+        if command_name == "git":
+            if git_subcommand(tokens) not in SAFE_GIT:
+                return False
+            if "--no-optional-locks" not in tokens[1:]:
+                return False
+            if os.environ.get("GIT_INDEX_FILE") and not unset_index:
+                return False
+            continue
+        if command_name == "sed" and any(token.startswith("-i") for token in tokens[1:]):
+            return False
+        if command_name == "find" or command_name not in SAFE_COMMANDS:
+            return False
+    return True
+
+
+def valid_binding_bash_is_safe(command: str) -> bool:
+    parsed = segments(command)
+    if parsed is None:
+        return False
+    for raw in parsed:
+        tokens, unset_index = unwrap_env(raw)
+        if not tokens:
+            return False
+        command_name = Path(tokens[0]).name
+        if command_name == "pytest" and not unset_index:
+            return False
+        if command_name.startswith("python") and not unset_index:
+            if any(
+                tokens[i] == "-m" and i + 1 < len(tokens) and tokens[i + 1] == "pytest"
+                for i in range(1, len(tokens))
+            ):
+                return False
+        if command_name == "git" and git_subcommand(tokens) in GIT_MUTATORS and not unset_index:
+            return False
+    return True
+
+
+try:
+    data = json.loads(sys.argv[2])
+except Exception:
+    deny("malformed hook payload; mutation authority cannot be established")
+if not isinstance(data, dict):
+    deny("non-object hook payload; mutation authority cannot be established")
+root = Path(sys.argv[1])
+tool = data.get("tool_name")
+tool_input = data.get("tool_input")
+command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
+valid = binding_is_valid(root, data)
+
+if tool in {"Write", "Edit"}:
+    if valid:
+        raise SystemExit(0)
+    deny("Write/Edit requires exact CLAUDE_SEAT and index-claude-<same-seat> binding")
+if tool == "Bash":
+    if not isinstance(command, str) or not command:
+        deny("Bash payload has no auditable command")
+    if valid:
+        if valid_binding_bash_is_safe(command):
+            raise SystemExit(0)
+        deny("seat-bound Git mutators and pytest require exact env -u GIT_INDEX_FILE")
+    if read_only_shell(command):
+        raise SystemExit(0)
+    deny("unpinned or foreign-bound Claude sessions are read-only")
+deny("unexpected mutating tool cannot be authorized")
 PY

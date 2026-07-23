@@ -54,6 +54,10 @@ def _init_repo(repo: Path, *, install_pipeline_hook: bool = False) -> None:
             ROOT / ".claude/hooks/update-state.sh",
             repo / ".claude/hooks/update-state.sh",
         )
+        shutil.copy2(
+            ROOT / ".claude/hooks/guard-git-index.sh",
+            repo / ".claude/hooks/guard-git-index.sh",
+        )
     _git(repo, "add", ".")
     _git(repo, "commit", "-q", "-m", "baseline")
 
@@ -68,6 +72,24 @@ def _configured_update_state_command(pipeline: Path) -> str | None:
             if isinstance(command, str) and "update-state" in command:
                 return command
     return None
+
+
+def _configured_guard_command(pipeline: Path) -> tuple[str, str] | None:
+    settings = json.loads(
+        (pipeline / ".claude/settings.json").read_text(encoding="utf-8")
+    )
+    for registration in settings.get("hooks", {}).get("PreToolUse", []):
+        for hook in registration.get("hooks", []):
+            command = hook.get("command")
+            if isinstance(command, str) and "guard-git-index" in command:
+                return registration.get("matcher", ""), command
+    return None
+
+
+def _seat_index(repo: Path, seat: str, *, provider: str = "claude") -> Path:
+    index = repo / ".git" / f"index-{provider}-{seat}"
+    _git(repo, "read-tree", f"--index-output={index}", "HEAD")
+    return index
 
 
 def _post_tool_input(cwd: Path, *, subagent: bool) -> str:
@@ -90,6 +112,19 @@ def _post_tool_input(cwd: Path, *, subagent: bool) -> str:
     return json.dumps(payload)
 
 
+def _pre_tool_input(cwd: Path, tool: str, command: str = "") -> str:
+    return json.dumps(
+        {
+            "session_id": "test-session",
+            "transcript_path": str(cwd / "transcript.jsonl"),
+            "cwd": str(cwd),
+            "hook_event_name": "PreToolUse",
+            "tool_name": tool,
+            "tool_input": {"command": command} if tool == "Bash" else {},
+        }
+    )
+
+
 def test_claude_update_state_hook_anchors_pipeline_root_across_cwd(
     tmp_path: Path,
 ) -> None:
@@ -99,6 +134,7 @@ def test_claude_update_state_hook_anchors_pipeline_root_across_cwd(
     _init_repo(target)
     command = _configured_update_state_command(pipeline)
     assert command is not None, "update-state hook no longer registered in settings.json"
+    index = _seat_index(pipeline, "operator2")
 
     result = _run(
         ["/bin/bash", "-lc", command],
@@ -106,7 +142,7 @@ def test_claude_update_state_hook_anchors_pipeline_root_across_cwd(
         env={
             "CLAUDE_PROJECT_DIR": str(pipeline),
             "CLAUDE_SEAT": "operator2",
-            "CLAUDE_CODE_SESSION_ID": "main-test",
+            "GIT_INDEX_FILE": str(index),
         },
         stdin=_post_tool_input(target, subagent=False),
     )
@@ -127,13 +163,14 @@ def test_claude_update_state_hook_script_location_fallback_anchors_owner(
     target = tmp_path / "target"
     _init_repo(pipeline, install_pipeline_hook=True)
     _init_repo(target)
+    index = _seat_index(pipeline, "operator2")
 
     result = _run(
         ["/bin/bash", str(pipeline / ".claude/hooks/update-state.sh")],
         target,
         env={
             "CLAUDE_SEAT": "operator2",
-            "CLAUDE_CODE_SESSION_ID": "fallback-test",
+            "GIT_INDEX_FILE": str(index),
         },
         stdin=_post_tool_input(target, subagent=False),
     )
@@ -152,6 +189,7 @@ def test_claude_update_state_hook_skips_subagent_seat_mutations(
     _init_repo(pipeline, install_pipeline_hook=True)
     command = _configured_update_state_command(pipeline)
     assert command is not None, "update-state hook no longer registered in settings.json"
+    index = _seat_index(pipeline, "operator2")
 
     result = _run(
         ["/bin/bash", "-lc", command],
@@ -159,10 +197,220 @@ def test_claude_update_state_hook_skips_subagent_seat_mutations(
         env={
             "CLAUDE_PROJECT_DIR": str(pipeline),
             "CLAUDE_SEAT": "operator2",
-            "CLAUDE_CODE_SESSION_ID": "parent-test",
+            "GIT_INDEX_FILE": str(index),
         },
         stdin=_post_tool_input(pipeline, subagent=True),
     )
 
     assert result.returncode == 0, result.stderr
     assert not (pipeline / "coordination/presence/operator2-heartbeat.ts").exists()
+
+
+def test_claude_pretool_guard_requires_exact_binding_for_write_and_edit(
+    tmp_path: Path,
+) -> None:
+    pipeline = tmp_path / "pipeline"
+    _init_repo(pipeline, install_pipeline_hook=True)
+    configured = _configured_guard_command(pipeline)
+    assert configured is not None
+    matcher, command = configured
+    assert matcher == "Bash|Write|Edit"
+    foreign = _seat_index(pipeline, "director", provider="codex")
+
+    for tool in ("Write", "Edit"):
+        unpinned = _run(
+            ["/bin/bash", "-lc", command],
+            pipeline,
+            env={"CLAUDE_PROJECT_DIR": str(pipeline)},
+            stdin=_pre_tool_input(pipeline, tool),
+        )
+        foreign_bound = _run(
+            ["/bin/bash", "-lc", command],
+            pipeline,
+            env={
+                "CLAUDE_PROJECT_DIR": str(pipeline),
+                "CLAUDE_SEAT": "director",
+                "GIT_INDEX_FILE": str(foreign),
+            },
+            stdin=_pre_tool_input(pipeline, tool),
+        )
+        assert unpinned.returncode != 0
+        assert foreign_bound.returncode != 0
+
+
+def test_claude_pretool_guard_allows_read_only_bash_but_denies_mutation_when_invalid(
+    tmp_path: Path,
+) -> None:
+    pipeline = tmp_path / "pipeline"
+    _init_repo(pipeline, install_pipeline_hook=True)
+    configured = _configured_guard_command(pipeline)
+    assert configured is not None
+    _, command = configured
+
+    read_only = _run(
+        ["/bin/bash", "-lc", command],
+        pipeline,
+        env={"CLAUDE_PROJECT_DIR": str(pipeline)},
+        stdin=_pre_tool_input(
+            pipeline,
+            "Bash",
+            "env -u GIT_INDEX_FILE git --no-optional-locks status --short",
+        ),
+    )
+    mutation = _run(
+        ["/bin/bash", "-lc", command],
+        pipeline,
+        env={"CLAUDE_PROJECT_DIR": str(pipeline)},
+        stdin=_pre_tool_input(pipeline, "Bash", "touch forbidden.txt"),
+    )
+
+    assert read_only.returncode == 0, read_only.stderr
+    assert mutation.returncode != 0
+
+
+def test_claude_pretool_guard_requires_scrubbed_index_for_invalid_git_inspection(
+    tmp_path: Path,
+) -> None:
+    pipeline = tmp_path / "pipeline"
+    _init_repo(pipeline, install_pipeline_hook=True)
+    configured = _configured_guard_command(pipeline)
+    assert configured is not None
+    _, command = configured
+    foreign = _seat_index(pipeline, "director", provider="codex")
+    env = {
+        "CLAUDE_PROJECT_DIR": str(pipeline),
+        "CLAUDE_SEAT": "director",
+        "GIT_INDEX_FILE": str(foreign),
+    }
+
+    inherited = _run(
+        ["/bin/bash", "-lc", command],
+        pipeline,
+        env=env,
+        stdin=_pre_tool_input(
+            pipeline, "Bash", "git --no-optional-locks status --short"
+        ),
+    )
+    scrubbed = _run(
+        ["/bin/bash", "-lc", command],
+        pipeline,
+        env=env,
+        stdin=_pre_tool_input(
+            pipeline,
+            "Bash",
+            "env -u GIT_INDEX_FILE git --no-optional-locks status --short",
+        ),
+    )
+
+    assert inherited.returncode != 0
+    assert scrubbed.returncode == 0, scrubbed.stderr
+
+
+def test_claude_pretool_guard_allows_mutation_only_for_valid_exact_binding(
+    tmp_path: Path,
+) -> None:
+    pipeline = tmp_path / "pipeline"
+    _init_repo(pipeline, install_pipeline_hook=True)
+    configured = _configured_guard_command(pipeline)
+    assert configured is not None
+    _, command = configured
+    index = _seat_index(pipeline, "director")
+    env = {
+        "CLAUDE_PROJECT_DIR": str(pipeline),
+        "CLAUDE_SEAT": "director",
+        "GIT_INDEX_FILE": str(index),
+    }
+
+    write = _run(
+        ["/bin/bash", "-lc", command],
+        pipeline,
+        env=env,
+        stdin=_pre_tool_input(pipeline, "Write"),
+    )
+    shell_mutation = _run(
+        ["/bin/bash", "-lc", command],
+        pipeline,
+        env=env,
+        stdin=_pre_tool_input(pipeline, "Bash", "touch allowed.txt"),
+    )
+    bare_git_mutation = _run(
+        ["/bin/bash", "-lc", command],
+        pipeline,
+        env=env,
+        stdin=_pre_tool_input(pipeline, "Bash", "git add allowed.txt"),
+    )
+    scrubbed_git_mutation = _run(
+        ["/bin/bash", "-lc", command],
+        pipeline,
+        env=env,
+        stdin=_pre_tool_input(
+            pipeline, "Bash", "env -u GIT_INDEX_FILE git add allowed.txt"
+        ),
+    )
+
+    assert write.returncode == 0, write.stderr
+    assert shell_mutation.returncode == 0, shell_mutation.stderr
+    assert bare_git_mutation.returncode != 0
+    assert scrubbed_git_mutation.returncode == 0, scrubbed_git_mutation.stderr
+
+
+def test_claude_pretool_guard_rejects_corrupt_exact_path_binding(
+    tmp_path: Path,
+) -> None:
+    pipeline = tmp_path / "pipeline"
+    _init_repo(pipeline, install_pipeline_hook=True)
+    configured = _configured_guard_command(pipeline)
+    assert configured is not None
+    _, command = configured
+    index = pipeline / ".git/index-claude-director"
+    index.write_bytes(b"not a git index")
+
+    result = _run(
+        ["/bin/bash", "-lc", command],
+        pipeline,
+        env={
+            "CLAUDE_PROJECT_DIR": str(pipeline),
+            "CLAUDE_SEAT": "director",
+            "GIT_INDEX_FILE": str(index),
+        },
+        stdin=_pre_tool_input(pipeline, "Write"),
+    )
+
+    assert result.returncode != 0
+
+
+def test_claude_posttool_hook_never_mutates_foreign_or_mismatched_indexes(
+    tmp_path: Path,
+) -> None:
+    cases = (
+        ("codex", "director", "director"),
+        ("cursor", "director", "director"),
+        ("agy", "director", "director"),
+        ("claude", "operator", "director"),
+    )
+    for provider, index_seat, claimed_seat in cases:
+        pipeline = tmp_path / f"pipeline-{provider}-{index_seat}"
+        _init_repo(pipeline, install_pipeline_hook=True)
+        command = _configured_update_state_command(pipeline)
+        assert command is not None
+        index = _seat_index(pipeline, index_seat, provider=provider)
+        before = index.read_bytes()
+
+        result = _run(
+            ["/bin/bash", "-lc", command],
+            pipeline,
+            env={
+                "CLAUDE_PROJECT_DIR": str(pipeline),
+                "CLAUDE_SEAT": claimed_seat,
+                "GIT_INDEX_FILE": str(index),
+            },
+            stdin=_post_tool_input(pipeline, subagent=False),
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert index.read_bytes() == before
+        assert not (pipeline / "STATE.md").exists()
+        assert not (
+            pipeline / f"coordination/presence/{claimed_seat}-heartbeat.ts"
+        ).exists()
+        assert not list((pipeline / ".claude/hooks").glob(".last-index-sync-*"))

@@ -17,10 +17,8 @@
 # - Runs on every PostToolUse: Bash|Write|Edit tool call.
 # - Presence auto-freshness (v5.7 M1): stamps the seat's presence file
 #   (head_at_write + updated) on EVERY call, before the skip-perf gate, so
-#   liveness updates during non-committing work. Seat resolution: CLAUDE_SEAT
-#   env (preferred) ELSE a per-session marker `.claude/presence-seat.<session-id>`
-#   (hardening 2026-06-06) so a session launched without CLAUDE_SEAT still
-#   stamps presence instead of silently no-opping. The hook NEVER writes
+#   liveness updates during non-committing work. Mutation requires exact
+#   CLAUDE_SEAT plus .git/index-claude-<same-seat> binding. The hook NEVER writes
 #   `current_task` or `status` (those are agent-owned per Rule #19).
 # - Skip-perf gate: exits early if HEAD hasn't moved since last run AND
 #   STATE.md still exists on disk. Marker stored at
@@ -39,29 +37,29 @@ _repo_git() {
   env -u GIT_INDEX_FILE git "$@"
 }
 
-# Subagent gate (CLAUDE-HOOK-SUBAGENT-002, operator2 FAIL 2026-07-10):
+# Subagent and payload gate (CLAUDE-HOOK-SUBAGENT-002):
 # settings-level tool hooks also fire for SUBAGENT tool calls, with the parent
 # env (CLAUDE_SEAT, GIT_INDEX_FILE) inherited and agent_id/agent_type in the
 # hook's stdin JSON. Without this gate a read-only helper stamps the parent
 # seat's heartbeat and maintains its seat index — inherited seat authority.
-# Subagent invocations get NO mutations at all: the parent session's own tool
-# calls keep presence/STATE fresh. (Accepted trade-off: skip-worktree
-# pollution arising DURING subagent activity now self-heals only on the
-# parent's next own tool call.) FAIL-OPEN: a TTY stdin, unreadable payload,
-# or missing python3 is treated as a main-session call.
+# Subagent invocations get NO mutations at all. Missing/malformed input also
+# gets no mutations because the hook cannot prove that it is the parent call.
 PAYLOAD=""
 [ -t 0 ] || PAYLOAD="$(cat 2>/dev/null || true)"
-if [ -n "$PAYLOAD" ] && command -v python3 >/dev/null 2>&1; then
-  if printf '%s' "$PAYLOAD" | python3 -c '
+if [ -z "$PAYLOAD" ] || ! command -v python3 >/dev/null 2>&1; then
+  exit 0
+fi
+if ! printf '%s' "$PAYLOAD" | python3 -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(1)
-sys.exit(0 if isinstance(d, dict) and ("agent_id" in d or "agent_type" in d) else 1)
+sys.exit(0 if isinstance(d, dict) and "tool_name" in d and not (
+    "agent_id" in d or "agent_type" in d
+) else 1)
 ' 2>/dev/null; then
-    exit 0
-  fi
+  exit 0
 fi
 
 # Root anchoring (CLAUDE-HOOK-ROOT-001, operator2 FAIL 2026-07-10): NEVER
@@ -78,6 +76,24 @@ fi
 cd "$ROOT" 2>/dev/null || exit 0
 _repo_git rev-parse --show-toplevel >/dev/null 2>&1 || exit 0
 
+# Provider-pure mutation gate (CLAUDE-F001/F002): every mutation below is
+# forbidden unless the path itself is one regular index-claude-<seat> file and
+# Git can read it. Do not resolve/follow symlinks when comparing authority.
+case "${CLAUDE_SEAT:-}" in
+  director|director2|operator|operator2) ;;
+  *) exit 0 ;;
+esac
+CLAUDE_GIT_DIR=$(_repo_git rev-parse --absolute-git-dir 2>/dev/null) || exit 0
+EXPECTED_CLAUDE_INDEX="${CLAUDE_GIT_DIR}/index-claude-${CLAUDE_SEAT}"
+[ "${GIT_INDEX_FILE:-}" = "$EXPECTED_CLAUDE_INDEX" ] || exit 0
+[ -f "$GIT_INDEX_FILE" ] && [ ! -L "$GIT_INDEX_FILE" ] || exit 0
+INDEX_ENTRIES=$(git ls-files --stage 2>/dev/null) || exit 0
+if [ -z "$INDEX_ENTRIES" ] && _repo_git ls-tree -r --name-only HEAD | grep -q .; then
+  exit 0
+fi
+git --no-optional-locks status --porcelain=v1 --untracked-files=no \
+  --ignore-submodules=all >/dev/null 2>&1 || exit 0
+
 # Presence heartbeat (v6.0 Tier 2, user-authorized 2026-06-11; replaces the
 # v5.7 M1 sed-in-place stamp): the hook's liveness signal is a SINGLE-LINE
 # atomic overwrite of coordination/presence/<seat>-heartbeat.ts —
@@ -88,17 +104,13 @@ _repo_git rev-parse --show-toplevel >/dev/null 2>&1 || exit 0
 # its read and write — workaround was Bash heredocs) and the stale-status
 # split (hook-moved `updated:` under frozen prose → 2 misattribution
 # incidents). Liveness = heartbeat freshness; intent = the .md file.
-# Seat resolution unchanged (v5.7 + 2026-06-06 hardening): CLAUDE_SEAT env
-# wins, else the per-session marker `.claude/presence-seat.<session-id>`.
+# Seat resolution is the already-validated CLAUDE_SEAT binding above.
 # Best-effort: called with `|| true` — a presence hiccup must never abort
 # the hook under `set -e` before the STATE.md regen below.
 # Tests: origin-project test_presence_heartbeat_split.py (not transplanted);
 # tests/unit/test_coordination_tooling.py executes this hook end-to-end.
 _stamp_presence() {
   local seat="${CLAUDE_SEAT:-}"
-  if [ -z "$seat" ] && [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
-    seat=$(cat ".claude/presence-seat.${CLAUDE_CODE_SESSION_ID}" 2>/dev/null || true)
-  fi
   [ -n "$seat" ] || return 0
   mkdir -p coordination/presence
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
