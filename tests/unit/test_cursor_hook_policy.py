@@ -707,6 +707,44 @@ def test_subagent_start_rejects_any_child_of_a_live_seat() -> None:
     assert "live Cursor seat" in result["agent_message"]
 
 
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py",
+        "env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py",
+        "env -u GIT_INDEX_FILE .venv/bin/python scripts/target_binding.py --check",
+        "env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director --wave 2",
+        "env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py director --wave 2",
+        "env -u GIT_INDEX_FILE git status --short --branch",
+        "env -u GIT_INDEX_FILE git log --oneline -5",
+    ],
+)
+def test_readiness_allows_documented_orientation_commands(command: str) -> None:
+    result = policy.evaluate(_shell(command), {})
+
+    assert result["permission"] == "allow", command
+
+
+def test_readiness_denies_python_c_repo_mutation() -> None:
+    result = policy.evaluate(
+        _shell("python -c \"open('scripts/example.py','w').write('x')\""),
+        {},
+    )
+
+    assert result["permission"] == "deny"
+
+
+def test_readiness_still_denies_non_dry_run_publish() -> None:
+    result = policy.evaluate(
+        _shell(
+            "coordination/bin/cursor-publish --to operator --kind status --subject s"
+        ),
+        {},
+    )
+
+    assert result["permission"] == "deny"
 def test_subagent_start_allows_unbound_readiness_advisor() -> None:
     result = policy.evaluate(
         {

@@ -12,6 +12,7 @@ model `scripts/codex_protocol_model.py`. Behavior source for `operator` and
 
 Operating rules:
 
+- Chat continuation without a launcher bind is not a live seat; durable mail goes through human-confirmed `coordination/bin/cursor-publish`.
 - You verify exactly one assigned committed verify-request: the actual
   base/head, outcome, author seat/model, allowed paths, and immutable finding
   refs it binds. A named commit or prose-only event is not trigger authority.

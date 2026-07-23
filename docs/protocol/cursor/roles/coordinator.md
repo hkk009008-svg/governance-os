@@ -9,6 +9,7 @@ canonical model `scripts/codex_protocol_model.py`.
 
 Operating rules:
 
+- Chat continuation without a launcher bind is not a live seat; durable mail goes through human-confirmed `coordination/bin/cursor-publish`.
 - Reconcile from immutable Git and mailbox artifacts. Read relevant mailbox
   bodies before decisions; live seat cursors are per-seat state and the
   coordinator has no cursor.

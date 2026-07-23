@@ -465,7 +465,15 @@ _SAFE_GIT_READS = frozenset(
         "status",
     }
 )
-_GIT_OPTIONAL_INDEX_READS = frozenset({"diff", "ls-files", "status"})
+_ORIENTATION_SCRIPTS = frozenset(
+    {
+        "ci_smoke.py",
+        "seat_status.py",
+        "continuation_readiness.py",
+        "target_binding.py",
+        "ledger_start_guard.py",
+    }
+)
 _SAFE_READ_COMMANDS = frozenset(
     {
         "[",
@@ -643,6 +651,27 @@ def _git_subcommand(tokens: list[str]) -> str:
     return tokens[index] if index < len(tokens) else ""
 
 
+
+def _orientation_python_script(tokens: list[str]) -> bool:
+    """True when python invokes a documented read-only orientation script."""
+
+    if not tokens or not PurePosixPath(tokens[0]).name.startswith("python"):
+        return False
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--":
+            index += 1
+            break
+        if token.startswith("-"):
+            if token in {"-m", "-c"}:
+                return False
+            index += 1
+            continue
+        return PurePosixPath(token).name in _ORIENTATION_SCRIPTS
+    return False
+
+
 def _launcher_read_only(arguments: list[str]) -> bool:
     """True for cursor-seat invocations that cannot produce a live launch."""
 
@@ -684,16 +713,13 @@ def _bounded_read_only_segment(
         )
     ):
         return True
+    if _orientation_python_script(tokens):
+        return True
     if executable == "git":
         subcommand = _git_subcommand(tokens)
         if subcommand not in _SAFE_GIT_READS:
             return False
         if environ.get("GIT_INDEX_FILE") and not unsets_index:
-            return False
-        if (
-            subcommand in _GIT_OPTIONAL_INDEX_READS
-            and "--no-optional-locks" not in tokens[1:]
-        ):
             return False
         return True
     if executable == "sed" and any(

@@ -30,6 +30,50 @@ Only the top-level Cursor seat launcher binds a live seat; an ordinary Cursor
 window (including one whose parent is a seat) stays a readiness bridge, and a
 Cursor subagent stays parent-scoped.
 
+## Local setup
+
+Create one user-local launcher config at `~/.cursor/pipeline-seat-launcher.toml`.
+It must point at the managed Pipeline workspace and load project hooks/rules only:
+
+```toml
+[runtime]
+workspace = "/Users/hyungkoookkim/Pipeline"
+setting_sources = ["project"]
+
+[seats.director]
+model = "your-director-model"
+
+[seats.director2]
+model = "your-director2-model"
+
+[seats.operator]
+model = "your-operator-model"
+
+[seats.operator2]
+model = "your-operator2-model"
+
+[seats.coordinator]
+model = "your-coordinator-model"
+```
+
+Replace each `model` value with the exact Cursor model id you intend for that
+seat. The launcher refuses ambiguous or foreign workspaces.
+
+## Chat vs live seat
+
+- Ordinary Cursor chat is a **readiness bridge** only. Saying "continue as
+  director" (or any seat name) in chat is orientation guidance; it does **not**
+  bind a live seat, consume a cursor, or authorize mailbox publish/consume.
+- A live seat starts only through the human launcher:
+  `coordination/bin/cursor-seat dispatch|review`.
+- Durable mailbox traffic uses the human front door: a seat writes to
+  `.cursor/runtime/outbox/<seat>/`, then a human runs TTY
+  `coordination/bin/cursor-publish` and types `yes` at the prompt. There is no
+  auto-relay into another Cursor chat window or peer session.
+- Agent tools remain denied for live publish, consume, dispatch, and other
+  separately authorized effects even when chat prose names a seat.
+
+
 ## Startup (non-trivial work)
 
 ```bash
