@@ -248,10 +248,18 @@ def main() -> int:
     try:
         _go_reports = _cgs.scan_repository_reports(_repo_root)
         _go_manifest = _cgs.load_baseline_manifest(_cgs.DEFAULT_MANIFEST)
-        _go_violations = _cgs.repository_report_violations(
-            _repo_root, _go_reports, _go_manifest
+        _retired_reviews = _cgs.load_retired_review_targets(
+            _cgs.DEFAULT_RETIRED_MANIFEST
         )
-    except (OSError, UnicodeError, _cgs.BaselineGenerationError) as _go_error:
+        _go_violations = _cgs.repository_report_violations(
+            _repo_root, _go_reports, _go_manifest, _retired_reviews
+        )
+    except (
+        OSError,
+        UnicodeError,
+        _cgs.BaselineGenerationError,
+        _cgs.RetiredReviewTargetsError,
+    ) as _go_error:
         print(f"\nGO-SCHEMA CHECK — FAIL: {_go_error}")
         return 1
     if _go_violations:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -19,6 +21,140 @@ def _manifest(*entries: tuple[str, bytes]) -> dict[str, object]:
             for path, raw in entries
         ],
     }
+
+
+def _git(root: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ["env", "-u", "GIT_INDEX_FILE", "git", *arguments],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
+def _retired_pair(
+    tmp_path: Path, *, retire: bool = True
+) -> tuple[Path, schema.RawReport, dict[str, object], Path]:
+    root = tmp_path / "pipeline"
+    root.mkdir()
+    _git(root, "init", "-q")
+    _git(root, "config", "user.name", "Retired Review Test")
+    _git(root, "config", "user.email", "retired-review@example.invalid")
+    (root / "README.md").write_text("pipeline\n", encoding="utf-8")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-q", "-m", "chore: pipeline base")
+
+    target = tmp_path / "reviewed-target"
+    target.mkdir()
+    _git(target, "init", "-q")
+    _git(target, "config", "user.name", "Retired Review Test")
+    _git(target, "config", "user.email", "retired-review@example.invalid")
+    (target / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(target, "add", "feature.py")
+    _git(target, "commit", "-q", "-m", "chore: target base")
+    base = _git(target, "rev-parse", "HEAD")
+    (target / "feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _git(target, "add", "feature.py")
+    _git(target, "commit", "-q", "-m", "feat: target change")
+    head = _git(target, "rev-parse", "HEAD")
+
+    request_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-23T11-10-00Z-director-to-operator-verify-request.md"
+    )
+    request = root / request_path
+    request.parent.mkdir(parents=True)
+    request.write_text(
+        f"""\
+# Director -> Operator: verify retired target fixture
+
+**When:** 2026-07-23T11:10:00Z · **From:** director (online)
+
+Event type: verify-request
+Reviewed repository: {target.as_posix()}
+Reviewed head: {head}
+Reviewed base: {base}
+Author seat: director
+Author model: gpt-5.6-sol
+Assigned operator: operator
+
+## Outcome
+
+Verify the exact synthetic target range.
+
+## Finding Refs
+
+Cursor at send: 0
+""",
+        encoding="utf-8",
+    )
+    _git(root, "add", request_path)
+    _git(root, "commit", "-q", "-m", "coord: request review")
+    trigger = _git(root, "rev-parse", "HEAD")
+
+    report_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-23T11-11-00Z-operator-to-director-verification-report.md"
+    )
+    report = root / report_path
+    report.write_text(
+        f"""\
+# Operator -> Director: retired target fixture verdict
+
+**When:** 2026-07-23T11:11:00Z · **From:** operator (online)
+
+Event type: verification-report
+VERDICT: GO
+Verification request: {request_path}@{trigger}
+Reviewed repository: {target.as_posix()}
+Reviewed head: {head}
+Reviewed base: {base}
+Reviewer seat: operator
+Reviewer model: gpt-5.6-terra
+
+## Finding Refs
+
+## Finding Dispositions
+
+## Evidence
+
+$ synthetic exact-range review
+→ exact range satisfies the requested outcome
+
+## Findings
+
+None.
+
+Cursor at send: 0
+""",
+        encoding="utf-8",
+    )
+    raw = report.read_bytes()
+    request_raw = request.read_bytes()
+    entry = {
+        "report_path": report_path,
+        "report_sha256": hashlib.sha256(raw).hexdigest(),
+        "request_ref": f"{request_path}@{trigger}",
+        "request_sha256": hashlib.sha256(request_raw).hexdigest(),
+        "reviewed_repository": target.as_posix(),
+        "reviewed_base": base,
+        "reviewed_head": head,
+    }
+    retired_manifest = {
+        "schema_version": "retired-review-targets/v1",
+        "retirement_contract": (
+            "coordination/mailbox/sent/"
+            "2026-07-23T11-03-36Z-director-to-all-coordination.md@"
+            "66809189455da6f7bbf659cf019c6589c623b854"
+        ),
+        "retired_worktree_shells": [],
+        "entries": [entry],
+    }
+    if retire:
+        target.rename(tmp_path / "retired-target")
+    return root, schema.RawReport(report_path, raw), retired_manifest, target
 
 
 def test_go_evidence_requires_command_and_output() -> None:
@@ -127,8 +263,172 @@ def test_filesystem_scan_reads_regular_reports_and_rejects_symlinks(
 def test_live_mailbox_is_valid_against_frozen_history_and_compact_current_rules() -> None:
     reports = schema.scan_repository_reports(schema.ROOT)
     manifest = schema.load_baseline_manifest(schema.DEFAULT_MANIFEST)
+    retired = schema.load_retired_review_targets(schema.DEFAULT_RETIRED_MANIFEST)
 
-    assert schema.repository_report_violations(schema.ROOT, reports, manifest) == []
+    assert schema.repository_report_violations(
+        schema.ROOT, reports, manifest, retired
+    ) == []
+    assert len(retired["entries"]) == 38
+    assert Counter(
+        entry["reviewed_repository"] for entry in retired["entries"]
+    ) == {
+        "/Users/hyungkoookkim/evidence-ledger": 26,
+        (
+            "/Users/hyungkoookkim/evidence-ledger/.worktrees/"
+            "codex-ppl-offer-decision-m1"
+        ): 11,
+        (
+            "/Users/hyungkoookkim/Pipeline/.worktrees/"
+            "evidence-ledger-workbook-refresh-0720"
+        ): 1,
+    }
+
+
+def test_exact_retired_review_binding_passes_without_restoring_target(
+    tmp_path: Path,
+) -> None:
+    root, report, retired, _target = _retired_pair(tmp_path)
+
+    assert schema.repository_report_violations(
+        root, [report], _manifest(), retired
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        (
+            "report_path",
+            "coordination/mailbox/sent/"
+            "2026-07-23T11-11-01Z-operator-to-director-verification-report.md",
+        ),
+        ("report_sha256", "0" * 64),
+        (
+            "request_ref",
+            "coordination/mailbox/sent/"
+            "2026-07-23T11-10-00Z-director-to-operator-verify-request.md@"
+            + "f" * 40,
+        ),
+        ("request_sha256", "0" * 64),
+        ("reviewed_repository", "/definitely/not/the-reviewed-target"),
+        ("reviewed_base", "0" * 40),
+        ("reviewed_head", "f" * 40),
+    ),
+)
+def test_retired_review_binding_fails_on_every_exact_field_drift(
+    tmp_path: Path, field: str, replacement: str
+) -> None:
+    root, report, retired, _target = _retired_pair(tmp_path)
+    assert schema.repository_report_violations(
+        root, [report], _manifest(), retired
+    ) == []
+
+    changed = json.loads(json.dumps(retired))
+    changed["entries"][0][field] = replacement
+    assert schema.repository_report_violations(
+        root, [report], _manifest(), changed
+    )
+
+
+def test_retired_review_report_byte_drift_fails_closed(tmp_path: Path) -> None:
+    root, report, retired, _target = _retired_pair(tmp_path)
+    changed = schema.RawReport(report.relative_path, report.raw + b"\n")
+
+    assert schema.repository_report_violations(
+        root, [changed], _manifest(), retired
+    )
+
+
+@pytest.mark.parametrize("case", ("model", "finding", "evidence"))
+def test_matching_digest_cannot_bless_structurally_invalid_retired_report(
+    tmp_path: Path, case: str
+) -> None:
+    root, report, retired, _target = _retired_pair(tmp_path)
+    text = report.raw.decode("utf-8")
+    if case == "model":
+        text = text.replace(
+            "Reviewer model: gpt-5.6-terra",
+            "Reviewer model: gpt-5.6-sol",
+        )
+    elif case == "finding":
+        finding = (
+            "coordination/mailbox/sent/"
+            "2026-07-23T11-03-36Z-director-to-all-coordination.md@"
+            "66809189455da6f7bbf659cf019c6589c623b854"
+        )
+        text = text.replace(
+            "## Finding Refs\n\n",
+            f"## Finding Refs\n\n- {finding}\n\n",
+        ).replace(
+            "## Finding Dispositions\n\n",
+            f"## Finding Dispositions\n\n- {finding}: addressed\n\n",
+        )
+    else:
+        text = text.replace("→ exact range satisfies the requested outcome\n", "")
+    changed_raw = text.encode("utf-8")
+    (root / report.relative_path).write_bytes(changed_raw)
+    retired["entries"][0]["report_sha256"] = hashlib.sha256(changed_raw).hexdigest()
+
+    assert schema.repository_report_violations(
+        root,
+        [schema.RawReport(report.relative_path, changed_raw)],
+        _manifest(),
+        retired,
+    )
+
+
+def test_retired_review_path_reappearance_fails_closed(tmp_path: Path) -> None:
+    root, report, retired, _target = _retired_pair(tmp_path, retire=False)
+
+    assert schema.repository_report_violations(
+        root, [report], _manifest(), retired
+    )
+
+
+def test_retired_worktree_shell_must_remain_non_live(tmp_path: Path) -> None:
+    root, report, retired, target = _retired_pair(tmp_path)
+    target.mkdir()
+    retired["retired_worktree_shells"] = [target.as_posix()]
+
+    assert schema.repository_report_violations(
+        root, [report], _manifest(), retired
+    ) == []
+
+    _git(target, "init", "-q")
+    assert schema.repository_report_violations(
+        root, [report], _manifest(), retired
+    )
+
+
+def test_new_unlisted_unavailable_report_still_fails_closed(tmp_path: Path) -> None:
+    root, report, retired, _target = _retired_pair(tmp_path)
+    new_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-23T11-12-00Z-operator-to-director-verification-report.md"
+    )
+    new_report = schema.RawReport(new_path, report.raw)
+
+    assert schema.repository_report_violations(
+        root, [report, new_report], _manifest(), retired
+    )
+
+
+def test_retired_manifest_rejects_malformed_and_duplicate_entries(
+    tmp_path: Path,
+) -> None:
+    root, _report, retired, _target = _retired_pair(tmp_path)
+    manifest_path = root / "retired.json"
+    malformed = json.loads(json.dumps(retired))
+    malformed["entries"][0]["wildcard"] = "*"
+    manifest_path.write_text(json.dumps(malformed), encoding="utf-8")
+    with pytest.raises(schema.RetiredReviewTargetsError):
+        schema.load_retired_review_targets(manifest_path)
+
+    duplicated = json.loads(json.dumps(retired))
+    duplicated["entries"].append(duplicated["entries"][0])
+    manifest_path.write_text(json.dumps(duplicated), encoding="utf-8")
+    with pytest.raises(schema.RetiredReviewTargetsError, match="duplicate"):
+        schema.load_retired_review_targets(manifest_path)
 
 
 def test_report_compatibility_is_narrow_across_each_frozen_generation() -> None:

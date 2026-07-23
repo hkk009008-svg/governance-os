@@ -5,7 +5,7 @@
 > prose and this file disagree about Pipeline facts, this file wins and the
 > stale prose must be fixed in the same change.
 
-*Last verified: 2026-07-18 @ b879481*
+*Last verified: 2026-07-23 @ 6680918*
 
 ## 1. Purpose
 
@@ -62,8 +62,8 @@ Key directories:
 | `render_r_independence` | `scripts/codex_protocol_model.py:684` | Renders the standing R-INDEPENDENCE contract into Codex harness output. |
 | `render_ledger_start_guard` | `scripts/codex_protocol_model.py:718` | Renders guard guidance into readiness output. |
 | `chatgpt_pro_consult.reserve` | `scripts/chatgpt_pro_consult.py:195` | Reserves one parent-owned consultation key in the shared Git-common-dir record. |
-| `parse_verify_request` | `scripts/compact_pair_loop.py:217` | Validates one committed Director verify-request and its exact reviewed range. |
-| `validate_report` | `scripts/compact_pair_loop.py:390` | Binds one assigned non-author Operator verdict to that exact request, range, and scope. |
+| `parse_verify_request` | `scripts/compact_pair_loop.py:283` | Validates one committed Director verify-request and its exact reviewed range. |
+| `validate_report` | `scripts/compact_pair_loop.py:442` | Binds one assigned non-author Operator verdict to that exact request, range, and scope. |
 
 ## 4. Runtime Invariants
 
