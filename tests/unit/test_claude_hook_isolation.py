@@ -86,6 +86,14 @@ def _configured_guard_command(pipeline: Path) -> tuple[str, str] | None:
     return None
 
 
+def test_claude_settings_do_not_enable_codex_provider_bridge(repo_root: Path) -> None:
+    settings = json.loads(
+        (repo_root / ".claude/settings.json").read_text(encoding="utf-8")
+    )
+
+    assert "codex@openai-codex" not in settings.get("enabledPlugins", {})
+
+
 def _seat_index(repo: Path, seat: str, *, provider: str = "claude") -> Path:
     index = repo / ".git" / f"index-{provider}-{seat}"
     _git(repo, "read-tree", f"--index-output={index}", "HEAD")
