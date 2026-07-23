@@ -1,292 +1,314 @@
 /**
- * Dr. Rootem (닥터루템) Interactive E-Commerce & Health App
+ * 닥터루템 (Dr. ROOTEM) Official Store Interactive App
  */
 
-// 1. Data Store
-const PRODUCTS = [
+// 1. Official Product Data (drrootem.com)
+const OFFICIAL_PRODUCTS = [
   {
     id: 1,
-    name: "닥터루템 포스파티딜세린 70",
+    name: "이시형 박사의 두뇌엔 PS 70",
     category: "brain",
-    categoryLabel: "뇌 & 기억력",
-    desc: "식약처 고시 최고 함량 포스파티딜세린 300mg + 징코 빌로바 콤플렉스. 뇌 세포막 건강 및 중장년 기억력 개선.",
-    price: 48000,
-    originalPrice: 65000,
+    tag: "이시형 박사 추천",
+    badge: "1+1 기획전",
+    desc: "식약처 인증 포스파티딜세린 300mg 최고 함량 + 징코빌로바. 인지력 & 중장년 기억력 개선 1위 솔루션.",
+    salePrice: 24800,
+    origPrice: 33500,
     discount: "26% OFF",
     rating: 4.9,
-    reviews: 3420,
-    badge: "BEST SELL",
-    color: "#10b981"
+    reviews: 14820,
+    theme: "ps-theme",
+    color: "#047857"
   },
   {
     id: 2,
     name: "닥터루템 리포좀 비타민C 1000",
     category: "immune",
-    categoryLabel: "면역 & 항산화",
-    desc: "체내 흡수율 2.5배 높인 리포좀 제형 기술. 위장 장애 없는 프리미엄 위드 아세로라 고함량 항산화 케어.",
-    price: 36000,
-    originalPrice: 45000,
+    tag: "가수 남진's PICK",
+    badge: "체내 흡수율 250%",
+    desc: "위장 장애 없는 리포좀 제형화 기술. 프리미엄 고함량 항산화 & 일상 활력 케어 비타민.",
+    salePrice: 24800,
+    origPrice: 31000,
     discount: "20% OFF",
-    rating: 4.8,
-    reviews: 2150,
-    badge: "흡수율 UP",
-    color: "#f59e0b"
+    rating: 4.9,
+    reviews: 9840,
+    theme: "vitc-theme",
+    color: "#d97706"
   },
   {
     id: 3,
-    name: "닥터루템 맥주효모 비오틴 콤플렉스",
+    name: "닥터루템 THE 맥주효모 4000",
     category: "hair",
-    categoryLabel: "두피 & 모발",
-    desc: "독일산 프리미엄 맥주효모 75% + 프랑스산 비오틴 5,000µg (16,666%). 풍성하고 탄탄한 두피 모근 완성.",
-    price: 32000,
-    originalPrice: 42000,
+    tag: "독일산 원료 75%",
+    badge: "재구매율 1위",
+    desc: "독일산 프리미엄 건조맥주효모 + 프랑스산 비오틴 5,000µg. 풍성한 모발 생기 & 두피 영양 밸런스.",
+    salePrice: 16900,
+    origPrice: 22000,
     discount: "23% OFF",
-    rating: 4.9,
-    reviews: 1890,
-    badge: "재구매 1위",
-    color: "#8b5cf6"
+    rating: 4.8,
+    reviews: 6420,
+    theme: "hair-theme",
+    color: "#7c3aed"
   },
   {
     id: 4,
     name: "닥터루템 쏘팔메토 & 루테인 지아잔틴",
     category: "eye",
-    categoryLabel: "눈 & 활력",
-    desc: "남성 전립선 건강 쏘팔메토 로르산 + 마리골드꽃 추출 루테인지아잔틴 24:4 황금비율. 눈 피로 & 생기 개선.",
-    price: 42000,
-    originalPrice: 58000,
-    discount: "27% OFF",
+    tag: "남성 전립선 + 눈 건강",
+    badge: "황금비율 복합배합",
+    desc: "쏘팔메토 로르산 115mg + 마리골드 꽃 추출 루테인지아잔틴 24:4. 눈 피로 개선 & 남성 생기 충전.",
+    salePrice: 28900,
+    origPrice: 39000,
+    discount: "25% OFF",
     rating: 4.9,
-    reviews: 4120,
-    badge: "복합 배합",
-    color: "#3b82f6"
+    reviews: 11200,
+    theme: "eye-theme",
+    color: "#2563eb"
   },
   {
     id: 5,
-    name: "닥터루템 바나바잎 혈당케어",
+    name: "닥터루템 바나바잎 혈당케어 코로솔산",
     category: "metabolic",
-    categoryLabel: "혈당 & 대사",
-    desc: "식후 혈당 상승 억제 코로솔산 1.3mg + 크롬 & 셀렌 콤플렉스. 탄수화물 섭취 후 당 대사 밸런스 유지.",
-    price: 38000,
-    originalPrice: 49000,
+    tag: "식후 혈당 억제",
+    badge: "식약처 인정 기능성",
+    desc: "바나바잎 추출 코로솔산 1.3mg + 크롬 & 셀렌. 탄수화물 섭취 후 식후 혈당 수치 밸런스 케어.",
+    salePrice: 22800,
+    origPrice: 29000,
+    discount: "21% OFF",
+    rating: 4.8,
+    reviews: 4350,
+    theme: "blood-theme",
+    color: "#dc2626"
+  },
+  {
+    id: 6,
+    name: "닥터루템 초임계 rTG 오메가3 플래티넘",
+    category: "metabolic",
+    tag: "혈행 & 건조한 눈",
+    badge: "저온 초임계 추출",
+    desc: "체내 흡수율이 높은 rTG 구조 오메가3 600mg + 비타민E. 순도 80% 이상의 혈행 개선 및 눈 건강.",
+    salePrice: 27900,
+    origPrice: 36000,
     discount: "22% OFF",
-    rating: 4.7,
-    reviews: 1240,
-    badge: "식후 필수",
-    color: "#ef4444"
+    rating: 4.9,
+    reviews: 5890,
+    theme: "omega-theme",
+    color: "#059669"
   }
 ];
 
-const INITIAL_REVIEWS = [
+const REVIEWS_DATA = [
   {
-    id: 1,
-    user: "김*진 님",
-    rating: 5,
-    product: "닥터루템 포스파티딜세린 70",
-    content: "부모님 선물로 사드렸는데 깜빡거리시던 게 확실히 줄었다고 좋아하세요. 알약 크기도 작아서 목넘김이 편합니다!"
+    user: "김*원 님 (50대)",
+    rating: "★★★★★ 5.0",
+    product: "이시형 박사의 두뇌엔 PS 70",
+    text: "이시형 박사님 추천이라 믿고 1+1 구성 구매했습니다. 자주 깜빡거리던 게 3주 정도 섭취 후 한결 머리가 맑아진 느낌이에요!"
   },
   {
-    id: 2,
-    user: "박*우 님",
-    rating: 5,
+    user: "박*호 님 (40대)",
+    rating: "★★★★★ 5.0",
     product: "닥터루템 리포좀 비타민C 1000",
-    content: "기존 비타민C는 속이 쓰렸는데 리포좀 제형이라 그런지 속도 속 편하고 피부 톤도 맑아진 느낌입니다. 재구매 3번째!"
+    text: "가수 남진 씨 광고 보고 샀는데 일반 비타민C와 달리 속 쓰림이 전혀 없네요. 피로감이 덜해서 매일 아침 꼭 챙깁니다."
   },
   {
-    id: 3,
-    user: "이*혜 님",
-    rating: 5,
-    product: "닥터루템 맥주효모 비오틴 콤플렉스",
-    content: "머리 감을 때 빠지는 양이 확연히 달라졌어요. 맥주효모 비오틴 조합 강력 추천합니다."
-  }
-];
-
-const WIZARD_STEPS = [
-  {
-    question: "가장 개선하고 싶은 건강 고민은 무엇인가요?",
-    options: [
-      { text: "잦은 건망증과 집중력 감소 (뇌 & 기억력)", category: "brain" },
-      { text: "스마트폰/모니터로 인한 눈 피로 (눈 건강)", category: "eye" },
-      { text: "환절기 면역력 및 피부 항산화 케어", category: "immune" },
-      { text: "두피 가려움과 모발 가늘어짐", category: "hair" },
-      { text: "식후 식곤증과 혈당 조절 걱정", category: "metabolic" }
-    ]
-  },
-  {
-    question: "평소 하루 생활 습관은 어떤 편인가요?",
-    options: [
-      { text: "하루 8시간 이상 PC/스마트폰 업무", value: "high_screen" },
-      { text: "잦은 외식과 탄수화물/디저트 선호", value: "high_carb" },
-      { text: "스트레스가 많고 야근이 잦음", value: "high_stress" },
-      { text: "불규칙한 식사와 야채 섭취 부족", value: "low_nutrition" }
-    ]
+    user: "최*진 님 (30대)",
+    rating: "★★★★★ 5.0",
+    product: "닥터루템 THE 맥주효모 4000",
+    text: "머리 감을 때 빠지는 양이 현저히 줄었어요. 비오틴까지 고함량으로 들어있어서 가성비 최고입니다."
   }
 ];
 
 // App State
 let cart = [];
-let reviews = [...INITIAL_REVIEWS];
-let currentWizardStep = 0;
-let wizardAnswers = [];
+let currentCategory = "all";
 
-// DOM Elements
 document.addEventListener("DOMContentLoaded", () => {
-  initTheme();
+  initNavbar();
+  initCarousel();
   renderProducts("all");
-  renderReviews("all");
-  initWizard();
-  initCalculator();
-  initCartEvents();
-  initReviewModal();
+  renderReviews();
+  initCartDrawer();
+  initCouponModal();
+  initTheme();
 });
 
 // Theme Switcher
 function initTheme() {
-  const toggleBtn = document.getElementById("themeToggle");
-  const savedTheme = localStorage.getItem("drrootem_theme") || "dark";
-  document.documentElement.setAttribute("data-theme", savedTheme);
+  const toggle = document.getElementById("themeToggle");
+  const saved = localStorage.getItem("drrootem_theme") || "dark";
+  document.documentElement.setAttribute("data-theme", saved);
 
-  toggleBtn.addEventListener("click", () => {
-    const current = document.documentElement.getAttribute("data-theme");
-    const next = current === "dark" ? "light" : "dark";
+  toggle.addEventListener("click", () => {
+    const cur = document.documentElement.getAttribute("data-theme");
+    const next = cur === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("drrootem_theme", next);
-    showToast(`화면 테마가 ${next === "dark" ? "다크" : "라이트"} 모드로 변경되었습니다.`);
+    showToast(`테마가 ${next === "dark" ? "다크" : "라이트"} 모드로 전환되었습니다.`);
   });
 }
 
-// Render Products Catalog
-function renderProducts(categoryFilter = "all") {
-  const grid = document.getElementById("productGrid");
-  const filtered = categoryFilter === "all" 
-    ? PRODUCTS 
-    : PRODUCTS.filter(p => p.category === categoryFilter);
+// Navbar & Announcement Top Bar
+function initNavbar() {
+  const closeBar = document.getElementById("topBarClose");
+  if (closeBar) {
+    closeBar.addEventListener("click", () => {
+      document.querySelector(".top-bar").style.display = "none";
+    });
+  }
 
-  grid.innerHTML = filtered.map(product => `
-    <div class="glass-card product-card" data-category="${product.category}">
+  // Category Shortcut Chips
+  const chips = document.querySelectorAll(".cat-chip");
+  chips.forEach(chip => {
+    chip.addEventListener("click", () => {
+      chips.forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      renderProducts(chip.dataset.cat);
+    });
+  });
+}
+
+// Carousel Banner
+function initCarousel() {
+  const dots = document.querySelectorAll(".dot");
+  let slideIndex = 0;
+
+  dots.forEach(dot => {
+    dot.addEventListener("click", () => {
+      slideIndex = parseInt(dot.dataset.slide);
+      updateCarousel(slideIndex);
+    });
+  });
+
+  setInterval(() => {
+    slideIndex = (slideIndex + 1) % 2;
+    updateCarousel(slideIndex);
+  }, 5000);
+}
+
+function updateCarousel(index) {
+  const dots = document.querySelectorAll(".dot");
+  const slides = document.querySelectorAll(".carousel-slide");
+  dots.forEach((d, i) => d.classList.toggle("active", i === index));
+  slides.forEach((s, i) => s.classList.toggle("active", i === index));
+}
+
+// Products Catalog Render
+function renderProducts(category = "all") {
+  const grid = document.getElementById("productsGrid");
+  const filtered = category === "all" ? OFFICIAL_PRODUCTS : OFFICIAL_PRODUCTS.filter(p => p.category === category);
+
+  grid.innerHTML = filtered.map(p => `
+    <div class="p-card">
       <div>
-        <div class="product-tag">${product.badge} · ${product.categoryLabel}</div>
-        <div class="product-img-box">
-          <div class="bottle-mockup" style="transform: scale(0.9);">
-            <div class="cap"></div>
-            <div class="body" style="background: linear-gradient(135deg, ${product.color}, #047857);">
-              <div class="label-brand">Dr.Rootem</div>
-              <div class="label-title">${product.name.replace("닥터루템 ", "")}</div>
-            </div>
-          </div>
+        <div class="p-badge">${p.badge} · ${p.tag}</div>
+        <h3 class="p-title">${p.name}</h3>
+        <p class="p-desc">${p.desc}</p>
+        <div class="p-price-box">
+          <span class="p-disc">${p.discount}</span>
+          <span class="p-sale">${p.salePrice.toLocaleString()}원</span>
+          <span class="p-orig">${p.origPrice.toLocaleString()}원</span>
         </div>
-        <h3 class="product-name">${product.name}</h3>
-        <p class="product-desc">${product.desc}</p>
       </div>
 
-      <div>
-        <div class="product-price-row">
-          <span class="price-current">₩${product.price.toLocaleString()}</span>
-          <span class="price-original">₩${product.originalPrice.toLocaleString()}</span>
-          <span class="price-discount">${product.discount}</span>
-        </div>
-        <button class="btn btn-primary w-full" onclick="addToCart(${product.id})">
-          <span>장바구니 담기</span>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-primary w-full" onclick="openOptionModal(${p.id})">
+          <span>옵션선택 & 구매</span>
         </button>
       </div>
     </div>
   `).join("");
-
-  // Tab Active State
-  const tabs = document.querySelectorAll("#filterTabs .tab-btn");
-  tabs.forEach(tab => {
-    tab.classList.toggle("active", tab.dataset.category === categoryFilter);
-    tab.onclick = () => renderProducts(tab.dataset.category);
-  });
 }
 
-// Cart Logic
-function addToCart(productId) {
-  const product = PRODUCTS.find(p => p.id === productId);
-  if (!product) return;
+// Reviews Render
+function renderReviews() {
+  const grid = document.getElementById("reviewGrid");
+  grid.innerHTML = REVIEWS_DATA.map(r => `
+    <div class="rev-card">
+      <div class="rev-head">
+        <span>${r.user}</span>
+        <span class="rev-star">${r.rating}</span>
+      </div>
+      <div class="rev-prod">[공식몰 구매] ${r.product}</div>
+      <p class="rev-text">${r.text}</p>
+    </div>
+  `).join("");
+}
 
-  const existing = cart.find(item => item.id === productId);
+// Option Modal & Direct Purchase
+function openOptionModal(productId) {
+  const p = OFFICIAL_PRODUCTS.find(item => item.id === productId);
+  if (!p) return;
+
+  const overlay = document.getElementById("optionModalOverlay");
+  const content = document.getElementById("optionModalContent");
+
+  content.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+      <div>
+        <span class="p-badge">${p.badge}</span>
+        <h3 style="font-size: 1.4rem; font-weight:800; margin-top:6px;">${p.name}</h3>
+      </div>
+    </div>
+    
+    <p style="color: var(--text-sub); font-size:0.9rem; margin-bottom:20px;">${p.desc}</p>
+
+    <div style="background: var(--bg-card); padding:16px; border-radius:12px; border:1px solid var(--border); margin-bottom:20px;">
+      <div style="font-size:0.88rem; font-weight:700; margin-bottom:8px;">수량 및 구성 선택</div>
+      <select id="optionQtySelect" style="width:100%; padding:10px; border-radius:8px; background:var(--bg-surface); color:var(--text-main); border:1px solid var(--border);">
+        <option value="1">1박스 (1개월분) - ${p.salePrice.toLocaleString()}원</option>
+        <option value="2" selected>2박스 [1+1 특별할인] - ${(p.salePrice * 1.8).toLocaleString()}원 (추가 10% OFF)</option>
+        <option value="3">3박스 세트 - ${(p.salePrice * 2.5).toLocaleString()}원 (추가 15% OFF)</option>
+      </select>
+    </div>
+
+    <div style="display:flex; gap:12px;">
+      <button class="btn btn-primary btn-lg w-full" onclick="confirmAddToCart(${p.id})">장바구니 담기</button>
+    </div>
+  `;
+
+  overlay.classList.add("active");
+  document.getElementById("optionModalClose").onclick = () => overlay.classList.remove("active");
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove("active"); };
+}
+
+function confirmAddToCart(productId) {
+  const p = OFFICIAL_PRODUCTS.find(item => item.id === productId);
+  const select = document.getElementById("optionQtySelect");
+  const qtyMultiplier = parseInt(select.value);
+
+  const existing = cart.find(i => i.id === productId);
   if (existing) {
-    existing.qty += 1;
+    existing.qty += qtyMultiplier;
   } else {
-    cart.push({ ...product, qty: 1 });
+    cart.push({ ...p, qty: qtyMultiplier });
   }
 
+  document.getElementById("optionModalOverlay").classList.remove("active");
   updateCartUI();
   openCartDrawer();
-  showToast(`${product.name}이(가) 장바구니에 추가되었습니다.`);
+  showToast(`${p.name} ${qtyMultiplier}세트가 장바구니에 담겼습니다!`);
 }
 
-function updateCartUI() {
-  const badge = document.getElementById("cartBadge");
-  const countTitle = document.getElementById("cartCountTitle");
-  const itemsList = document.getElementById("cartItemsList");
-  const subtotalEl = document.getElementById("cartSubtotal");
-  const totalEl = document.getElementById("cartTotalPrice");
-
-  const totalQty = cart.reduce((acc, item) => acc + item.qty, 0);
-  const totalPrice = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
-
-  badge.textContent = totalQty;
-  countTitle.textContent = `${totalQty}개`;
-
-  if (cart.length === 0) {
-    itemsList.innerHTML = `<div class="text-center" style="padding: 40px; color: var(--text-muted);">장바구니가 비어 있습니다.</div>`;
-  } else {
-    itemsList.innerHTML = cart.map(item => `
-      <div class="cart-item">
-        <div class="cart-item-details">
-          <div class="cart-item-title">${item.name}</div>
-          <div class="cart-item-price">₩${(item.price * item.qty).toLocaleString()}</div>
-          <div class="qty-controls">
-            <button class="qty-btn" onclick="changeCartQty(${item.id}, -1)">-</button>
-            <span>${item.qty}</span>
-            <button class="qty-btn" onclick="changeCartQty(${item.id}, 1)">+</button>
-          </div>
-        </div>
-        <button class="close-btn" onclick="removeFromCart(${item.id})" style="font-size: 1.2rem;">&times;</button>
-      </div>
-    `).join("");
-  }
-
-  subtotalEl.textContent = `₩${totalPrice.toLocaleString()}`;
-  totalEl.textContent = `₩${totalPrice.toLocaleString()}`;
-}
-
-function changeCartQty(productId, delta) {
-  const item = cart.find(i => i.id === productId);
-  if (!item) return;
-  item.qty += delta;
-  if (item.qty <= 0) {
-    cart = cart.filter(i => i.id !== productId);
-  }
-  updateCartUI();
-}
-
-function removeFromCart(productId) {
-  cart = cart.filter(i => i.id !== productId);
-  updateCartUI();
-}
-
-function initCartEvents() {
-  const cartBtn = document.getElementById("cartBtn");
-  const closeBtn = document.getElementById("closeCartBtn");
+// Cart Drawer
+function initCartDrawer() {
+  const btn = document.getElementById("cartBtn");
+  const closeBtn = document.getElementById("cartCloseBtn");
   const overlay = document.getElementById("cartOverlay");
   const checkoutBtn = document.getElementById("checkoutBtn");
 
-  cartBtn.addEventListener("click", openCartDrawer);
-  closeBtn.addEventListener("click", closeCartDrawer);
-  overlay.addEventListener("click", closeCartDrawer);
+  btn.onclick = openCartDrawer;
+  closeBtn.onclick = closeCartDrawer;
+  overlay.onclick = closeCartDrawer;
 
-  checkoutBtn.addEventListener("click", () => {
+  checkoutBtn.onclick = () => {
     if (cart.length === 0) {
-      showToast("장바구니가 비어 있습니다.");
+      showToast("장바구니가 비어있습니다.");
       return;
     }
-    showToast("주문 페이지로 이동합니다. (시뮬레이션 완료)");
+    showToast("신규회원 30,000원 쿠폰이 적용되어 주문 완료되었습니다! (시뮬레이션)");
     cart = [];
     updateCartUI();
     closeCartDrawer();
-  });
+  };
 }
 
 function openCartDrawer() {
@@ -299,194 +321,72 @@ function closeCartDrawer() {
   document.getElementById("cartOverlay").classList.remove("active");
 }
 
-// Wizard Solution
-function initWizard() {
-  renderWizardStep();
+function updateCartUI() {
+  const badge = document.getElementById("cartBadge");
+  const count = document.getElementById("cartCount");
+  const list = document.getElementById("cartItemsList");
+  const subtotalEl = document.getElementById("cartSubtotal");
+  const discEl = document.getElementById("cartDiscount");
+  const totalEl = document.getElementById("cartTotalPrice");
 
-  document.getElementById("nextStepBtn").onclick = () => {
-    if (currentWizardStep < WIZARD_STEPS.length - 1) {
-      currentWizardStep++;
-      renderWizardStep();
-    } else {
-      finishWizard();
-    }
-  };
+  const totalQty = cart.reduce((acc, i) => acc + i.qty, 0);
+  const subtotal = cart.reduce((acc, i) => acc + (i.salePrice * i.qty), 0);
+  const discount = subtotal > 0 ? Math.min(30000, subtotal * 0.15) : 0;
+  const finalTotal = Math.max(0, subtotal - discount);
 
-  document.getElementById("prevStepBtn").onclick = () => {
-    if (currentWizardStep > 0) {
-      currentWizardStep--;
-      renderWizardStep();
-    }
-  };
-}
+  badge.textContent = totalQty;
+  count.textContent = totalQty;
 
-function renderWizardStep() {
-  const stepContainer = document.getElementById("wizardStep");
-  const prevBtn = document.getElementById("prevStepBtn");
-  const nextBtn = document.getElementById("nextStepBtn");
-  const stepData = WIZARD_STEPS[currentWizardStep];
-
-  prevBtn.style.display = currentWizardStep === 0 ? "none" : "inline-flex";
-  nextBtn.textContent = currentWizardStep === WIZARD_STEPS.length - 1 ? "맞춤 진단결과 보기" : "다음 단계로";
-
-  stepContainer.innerHTML = `
-    <div class="wizard-question">${stepData.question}</div>
-    <div class="wizard-options">
-      ${stepData.options.map((opt, i) => `
-        <button class="opt-btn ${wizardAnswers[currentWizardStep] === i ? 'selected' : ''}" onclick="selectWizardOpt(${i})">
-          <span>${opt.text}</span>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-        </button>
-      `).join("")}
-    </div>
-  `;
-}
-
-function selectWizardOpt(optIndex) {
-  wizardAnswers[currentWizardStep] = optIndex;
-  renderWizardStep();
-}
-
-function finishWizard() {
-  const wizardBox = document.getElementById("wizardBox");
-  const selectedCat = WIZARD_STEPS[0].options[wizardAnswers[0] || 0].category;
-  const recommendedProduct = PRODUCTS.find(p => p.category === selectedCat) || PRODUCTS[0];
-
-  wizardBox.innerHTML = `
-    <div class="glass-card text-center" style="padding: 40px;">
-      <div class="section-subtitle">YOUR PERSONAL RECOMMENDATION</div>
-      <h3 style="font-size: 1.8rem; margin-bottom: 12px;">고객님을 위한 닥터루템 맞춤 조합</h3>
-      <p style="color: var(--text-secondary); margin-bottom: 24px;">진단하신 라이프스타일 분석 결과, 아래 영양 솔루션이 가장 시급합니다.</p>
-      
-      <div style="background: var(--bg-surface); padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid var(--border-hover);">
-        <h4 style="color: var(--emerald-primary); font-size: 1.3rem; margin-bottom: 8px;">${recommendedProduct.name}</h4>
-        <p style="font-size: 0.9rem; color: var(--text-secondary);">${recommendedProduct.desc}</p>
-        <div style="font-size: 1.4rem; font-weight: 800; margin-top: 12px; color: var(--text-primary);">₩${recommendedProduct.price.toLocaleString()}</div>
+  if (cart.length === 0) {
+    list.innerHTML = `<div style="text-align:center; padding:40px; color:var(--text-muted);">장바구니가 비어있습니다.</div>`;
+  } else {
+    list.innerHTML = cart.map(i => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border:1px solid var(--border); border-radius:10px; margin-bottom:12px;">
+        <div>
+          <div style="font-weight:800; font-size:0.95rem;">${i.name}</div>
+          <div style="color:var(--emerald); font-weight:800; margin-top:4px;">${(i.salePrice * i.qty).toLocaleString()}원</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span>${i.qty}개</span>
+          <button onclick="removeFromCart(${i.id})" style="color:var(--text-muted); font-size:1.2rem;">&times;</button>
+        </div>
       </div>
-
-      <div style="display: flex; gap: 12px; justify-content: center;">
-        <button class="btn btn-primary btn-lg" onclick="addToCart(${recommendedProduct.id})">추천 상품 담기</button>
-        <button class="btn btn-outline btn-lg" onclick="resetWizard()">다시 진단하기</button>
-      </div>
-    </div>
-  `;
-}
-
-function resetWizard() {
-  currentWizardStep = 0;
-  wizardAnswers = [];
-  location.hash = "#wizard";
-  initWizard();
-}
-
-// Calculator Logic
-function initCalculator() {
-  const screenSlider = document.getElementById("screenTimeSlider");
-  const outdoorSlider = document.getElementById("outdoorTimeSlider");
-  const brainSlider = document.getElementById("brainWorkSlider");
-  const recommendBtn = document.getElementById("calcRecommendBtn");
-
-  function updateCalc() {
-    const screenVal = parseInt(screenSlider.value);
-    const outdoorVal = parseInt(outdoorSlider.value);
-    const brainVal = parseInt(brainSlider.value);
-
-    document.getElementById("screenTimeVal").textContent = screenVal;
-    document.getElementById("outdoorTimeVal").textContent = outdoorVal;
-    document.getElementById("brainWorkVal").textContent = brainVal;
-
-    // Score Algorithm
-    let score = 100 - (screenVal * 3) - (brainVal * 3) + (outdoorVal * 4);
-    score = Math.max(30, Math.min(98, score));
-
-    document.getElementById("calcScoreNum").textContent = Math.round(score);
-
-    // Circle progress dashoffset (max 264)
-    const progressCircle = document.getElementById("scoreCircleProgress");
-    const offset = 264 - (264 * (score / 100));
-    progressCircle.style.strokeDashoffset = offset;
-
-    // Bars
-    document.getElementById("luteinBar").style.width = `${Math.max(20, 100 - screenVal * 6)}%`;
-    document.getElementById("psBar").style.width = `${Math.max(25, 100 - brainVal * 7)}%`;
-    document.getElementById("vitCBar").style.width = `${Math.min(95, 30 + outdoorVal * 10)}%`;
+    `).join("");
   }
 
-  [screenSlider, outdoorSlider, brainSlider].forEach(s => s.addEventListener("input", updateCalc));
-  updateCalc();
-
-  recommendBtn.addEventListener("click", () => {
-    addToCart(1); // Phosphatidylserine
-    addToCart(4); // Lutein Saw Palmetto
-  });
+  subtotalEl.textContent = `${subtotal.toLocaleString()}원`;
+  discEl.textContent = `-${Math.round(discount).toLocaleString()}원`;
+  totalEl.textContent = `${Math.round(finalTotal).toLocaleString()}원`;
 }
 
-// Reviews & Modal Logic
-function renderReviews(filter = "all") {
-  const grid = document.getElementById("reviewsGrid");
-  const filtered = reviews.filter(r => {
-    if (filter === "5") return r.rating === 5;
-    return true;
-  });
-
-  grid.innerHTML = filtered.map(rev => `
-    <div class="glass-card review-card">
-      <div class="rev-card-head">
-        <span class="rev-user">${rev.user}</span>
-        <span style="color: var(--gold-accent);">★ ${rev.rating}.0</span>
-      </div>
-      <div class="rev-prod-name">[구매] ${rev.product}</div>
-      <p class="rev-body">${rev.content}</p>
-    </div>
-  `).join("");
+function removeFromCart(id) {
+  cart = cart.filter(i => i.id !== id);
+  updateCartUI();
 }
 
-function initReviewModal() {
-  const writeBtn = document.getElementById("writeReviewBtn");
-  const overlay = document.getElementById("reviewModalOverlay");
-  const closeBtn = document.getElementById("closeReviewModal");
-  const form = document.getElementById("reviewForm");
+// Coupon Modal
+function initCouponModal() {
+  const btn = document.getElementById("couponClaimBtn");
+  const overlay = document.getElementById("couponModalOverlay");
+  const closeBtn = document.getElementById("couponModalClose");
+  const applyBtn = document.getElementById("applyCouponBtn");
 
-  writeBtn.addEventListener("click", () => overlay.classList.add("active"));
-  closeBtn.addEventListener("click", () => overlay.classList.remove("active"));
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.classList.remove("active");
-  });
-
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const prodSelect = document.getElementById("reviewProductSelect");
-    const nameInput = document.getElementById("reviewerName");
-    const contentInput = document.getElementById("reviewContent");
-
-    const newRev = {
-      id: Date.now(),
-      user: `${nameInput.value.slice(0, 1)}*${nameInput.value.slice(-1)} 님`,
-      rating: 5,
-      product: prodSelect.options[prodSelect.selectedIndex].text,
-      content: contentInput.value
+  if (btn) btn.onclick = () => overlay.classList.add("active");
+  if (closeBtn) closeBtn.onclick = () => overlay.classList.remove("active");
+  if (applyBtn) {
+    applyBtn.onclick = () => {
+      overlay.classList.remove("active");
+      showToast("🎉 30,000원 웰컴 쿠폰팩이 장바구니에 적용되었습니다!");
     };
-
-    reviews.unshift(newRev);
-    renderReviews("all");
-    overlay.classList.remove("active");
-    form.reset();
-    showToast("리얼후기가 성공적으로 등록되었습니다!");
-  });
+  }
 }
 
 // Toast Helper
-function showToast(message) {
+function showToast(msg) {
   const container = document.getElementById("toastContainer");
   const toast = document.createElement("div");
   toast.className = "toast";
-  toast.innerHTML = `
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-    <span>${message}</span>
-  `;
+  toast.innerHTML = `<span>${msg}</span>`;
   container.appendChild(toast);
-
-  setTimeout(() => {
-    if (toast.parentNode) toast.parentNode.removeChild(toast);
-  }, 3000);
+  setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
 }
