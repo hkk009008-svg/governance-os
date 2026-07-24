@@ -162,6 +162,64 @@ def test_environment_cross_check_rejects_disagreeing_values(tmp_path: Path) -> N
         )
 
 
+def test_payload_identity_must_match_registry_even_with_matching_env(
+    tmp_path: Path,
+) -> None:
+    _, worktree = _repo_with_worktree(tmp_path, "operator2")
+    identity = binding.resolve_worktree_seat(worktree)
+    assert identity is not None
+    registry = tmp_path / "registry.json"
+    binding.register_session(
+        identity,
+        conversation_id="operator2-chat",
+        model_id="claude-sonnet-5",
+        registry_path=registry,
+    )
+    env = {
+        "CURSOR_APP_CONVERSATION_ID": "operator2-chat",
+        "CURSOR_APP_MODEL_ID": "claude-sonnet-5",
+    }
+
+    matched = binding.resolve_registered_session(
+        worktree,
+        env,
+        registry_path=registry,
+        payload={
+            "conversation_id": "operator2-chat",
+            "model_id": "claude-sonnet-5",
+        },
+    )
+    assert matched.conversation_id == "operator2-chat"
+
+    with pytest.raises(binding.AppBindingError, match="payload conversation_id"):
+        binding.resolve_registered_session(
+            worktree,
+            env,
+            registry_path=registry,
+            payload={
+                "conversation_id": "spoofed-chat",
+                "model_id": "claude-sonnet-5",
+            },
+        )
+    with pytest.raises(binding.AppBindingError, match="payload model_id"):
+        binding.resolve_registered_session(
+            worktree,
+            env,
+            registry_path=registry,
+            payload={
+                "conversation_id": "operator2-chat",
+                "model_id": "composer-2.5",
+            },
+        )
+    with pytest.raises(binding.AppBindingError, match="payload conversation_id"):
+        binding.resolve_registered_session(
+            worktree,
+            env,
+            registry_path=registry,
+            payload={"conversation_id": "", "model_id": "claude-sonnet-5"},
+        )
+
+
 def test_registry_rejects_same_seat_in_two_live_worktrees(tmp_path: Path) -> None:
     _, first = _repo_with_worktree(tmp_path)
     second = tmp_path / "director-copy"

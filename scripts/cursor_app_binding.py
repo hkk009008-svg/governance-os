@@ -286,17 +286,28 @@ def register_payload_session(
     )
 
 
+def _payload_field(payload: Mapping[str, Any], *keys: str) -> object:
+    for key in keys:
+        if key in payload:
+            return payload[key]
+    return None
+
+
 def resolve_registered_session(
     root: Path,
     environ: Mapping[str, str] | None = None,
     *,
     registry_path: Path = DEFAULT_REGISTRY_PATH,
+    payload: Mapping[str, Any] | None = None,
 ) -> AppSessionBinding:
     """Resolve the one active seat binding from the worktree and registry.
 
     Identity is the linked worktree's reserved branch plus the user-local
     registry record written at ``sessionStart``. Environment values are only a
     consistency cross-check when present; they never establish identity.
+    When a hook payload supplies ``conversation_id`` / ``model_id`` (or the
+    legacy ``session_id`` / ``model`` aliases), those values must match the
+    registry or resolution fails closed.
     """
 
     env = os.environ if environ is None else environ
@@ -332,6 +343,29 @@ def resolve_registered_session(
         supplied = env.get(key)
         if supplied and supplied != expected:
             raise AppBindingError(f"{key} disagrees with the registered app session")
+    if payload is not None:
+        supplied_conversation = _payload_field(
+            payload, "conversation_id", "session_id"
+        )
+        if supplied_conversation is not None:
+            if (
+                not isinstance(supplied_conversation, str)
+                or not supplied_conversation.strip()
+                or supplied_conversation.strip() != conversation_id
+            ):
+                raise AppBindingError(
+                    "payload conversation_id disagrees with the registered app session"
+                )
+        supplied_model = _payload_field(payload, "model_id", "model")
+        if supplied_model is not None:
+            if (
+                not isinstance(supplied_model, str)
+                or not supplied_model.strip()
+                or supplied_model.strip() != model_id
+            ):
+                raise AppBindingError(
+                    "payload model_id disagrees with the registered app session"
+                )
     return AppSessionBinding(
         seat=identity.seat,
         root=identity.root,

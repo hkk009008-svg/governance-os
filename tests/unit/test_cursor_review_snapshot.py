@@ -88,3 +88,15 @@ def test_rejects_archive_symlink_that_escapes_snapshot(tmp_path: Path) -> None:
             head=head,
             output=Path(f".pytest-verify-tmp/cursor-reviews/{head}"),
         )
+
+
+def test_require_exact_head_accepts_match_and_rejects_drift(tmp_path: Path) -> None:
+    repository, reviewed = _repo(tmp_path)
+    later = _git(repository, "rev-parse", "HEAD")
+    assert later != reviewed
+
+    with pytest.raises(snapshot.ReviewSnapshotError, match="not reviewed_head"):
+        snapshot.require_exact_head(repository, reviewed)
+
+    _git(repository, "checkout", "-q", reviewed)
+    assert snapshot.require_exact_head(repository, reviewed) == reviewed

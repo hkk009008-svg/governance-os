@@ -703,3 +703,104 @@ def test_malformed_sensitive_payload_fails_closed(tmp_path: Path) -> None:
     )
     assert status == 0
     assert json.loads(output)["permission"] == "deny"
+
+
+@pytest.mark.parametrize("seat", ("operator", "operator2", "coordinator"))
+@pytest.mark.parametrize(
+    ("command", "permission"),
+    (
+        ("sed -i s/a/b/ production.py", "ask"),
+        ("printf x>production.py", "ask"),
+        ("bash coordination/bin/send-event director operator status hello", "deny"),
+        ("command git push origin HEAD", "ask"),
+    ),
+)
+def test_h1_probe_commands_never_allow_for_non_director_or_subagent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    seat: str,
+    command: str,
+    permission: str,
+) -> None:
+    _bind(monkeypatch, seat)
+    top_level = policy.evaluate(
+        _payload("beforeShellExecution", command=command),
+        {},
+        root=tmp_path,
+    )
+    child = policy.evaluate(
+        _payload("beforeShellExecution", command=command, subagent_id="child-1"),
+        {},
+        root=tmp_path,
+    )
+    assert top_level["permission"] == permission, command
+    assert child["permission"] == "deny", command
+
+
+def test_unknown_shell_asks_top_level_and_denies_subagent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "operator")
+    command = "unusual-mutator --force production.py"
+    top_level = policy.evaluate(
+        _payload("beforeShellExecution", command=command),
+        {},
+        root=tmp_path,
+    )
+    child = policy.evaluate(
+        _payload("beforeShellExecution", command=command, subagent_id="child-1"),
+        {},
+        root=tmp_path,
+    )
+    assert top_level["permission"] == "ask"
+    assert child["permission"] == "deny"
+
+
+def test_mailbox_approval_denies_mismatched_payload_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    active = _binding("operator2")
+
+    def resolve(
+        root: Path,
+        environ: object = None,
+        *,
+        registry_path: object = None,
+        payload: dict[str, object] | None = None,
+    ) -> AppSessionBinding:
+        if payload is not None:
+            conversation = payload.get("conversation_id")
+            model = payload.get("model_id")
+            if conversation is not None and conversation != active.conversation_id:
+                raise AppBindingError(
+                    "payload conversation_id disagrees with the registered app session"
+                )
+            if model is not None and model != active.model_id:
+                raise AppBindingError(
+                    "payload model_id disagrees with the registered app session"
+                )
+        return active
+
+    monkeypatch.setattr(policy, "resolve_registered_session", resolve)
+    command = (
+        "coordination/bin/cursor-publish --to director --kind status "
+        "--subject hello --body-file .pytest-verify-tmp/body.md"
+    )
+    matched = policy.evaluate(
+        _payload("beforeShellExecution", command=command),
+        {},
+        root=tmp_path,
+    )
+    mismatched = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            conversation_id="other-conversation",
+            model_id="composer-2.5",
+            command=command,
+        ),
+        {"CURSOR_APP_CONVERSATION_ID": "conversation-1"},
+        root=tmp_path,
+    )
+    assert matched["permission"] == "ask"
+    assert mismatched["permission"] == "deny"
+    assert "bound top-level" in mismatched["user_message"]

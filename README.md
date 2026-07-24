@@ -2,8 +2,8 @@
 
 Pipeline is the governance kernel for a multi-seat AI coding protocol. It
 coordinates director, operator, director2, operator2, and coordinator work with
-mailbox artifacts, capacity packets, smoke gates, and Codex/Claude/Antigravity
-adoption docs.
+mailbox artifacts, capacity packets, smoke gates, and
+Codex/Claude/Antigravity/Cursor adoption docs.
 
 This repository is not the private product application. `evidence-ledger` is
 the bound product target for the current ledger-routed work, while Pipeline
@@ -42,6 +42,8 @@ doctor commands prove that the kernel is still internally consistent.
 | User-principal intent for this kernel | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
 | Decision history | [DECISIONS.md](DECISIONS.md) |
 | Codex ledger bridge | [docs/protocol/codex/ledger-cli-adoption.md](docs/protocol/codex/ledger-cli-adoption.md) |
+| Cursor Desktop app seats | [docs/protocol/cursor/continuation.md](docs/protocol/cursor/continuation.md) |
+| Cursor seat roles | [docs/protocol/cursor/roles/](docs/protocol/cursor/roles/) |
 | Protocol assembly map | [docs/protocol/protocol-assembly-map.md](docs/protocol/protocol-assembly-map.md) |
 
 ## Verification

@@ -156,7 +156,12 @@ denied.
 `next-review` is read-only: it finds the newest pending committed request for
 the bound Operator across all `refs/heads/cursor-seat/*` tips, skips requests
 already referenced by a committed report, and refuses same-model review. Seats
-do not merge mailbox-only commits merely to discover them.
+do not merge mailbox-only commits merely to discover them. Focused tests may
+use the immutable scratch snapshot; repository-level gates
+(`scripts/ci_smoke.py`, `scripts/cursor_land_gate.py`) must run only after
+`scripts/cursor_review_snapshot.py --require-exact-head` succeeds against
+`reviewed_head`, or inside a detached worktree checked out at that exact
+commit. Never green those gates from a seat HEAD that is not `reviewed_head`.
 
 Mailbox publication, cursor consume, push, pull, fetch, merge, rebase,
 cherry-pick, lock, and spend are separate effects. Each surfaces one in-app
@@ -175,7 +180,10 @@ execution, and subagent creation through `.cursor/hooks/seat-policy` and
 The policy:
 
 - fails closed on malformed input and unclassifiable identity;
-- allows reads and scratch writes everywhere without approval;
+- Reads are free for classified inspection forms and scratch writes;
+- unknown top-level shell commands ask; unknown subagent shell commands deny;
+- sensitive hooks compare payload `conversation_id` / `model_id` to the
+  registry whenever those fields are supplied and fail closed on mismatch;
 - permits unattended production mutation only in Director worktree chats, and
   the Operator's own staged fixed-writer event commit;
 - converts every other governed mutation or separately authorized effect into

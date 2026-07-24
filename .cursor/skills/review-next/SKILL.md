@@ -23,14 +23,20 @@ disable-model-invocation: true
    as the repository when the request omits that field.
 6. Inspect the base/head Git diff and run focused tests from that immutable
    scratch snapshot. Production edits, staging, and general index mutation are
-   forbidden. Run repository-level gates (`scripts/ci_smoke.py`,
-   `scripts/cursor_land_gate.py`) in this seat worktree, never inside the
-   snapshot: the archive has no `.git` and only the head-commit mailbox
-   corpus, so history-bound validators such as GO-SCHEMA report spurious
-   violations there.
-7. Draft one canonical GO/NITS/FAIL body under `.pytest-verify-tmp/`, disposition
+   forbidden.
+7. Before any repository-level gate (`scripts/ci_smoke.py`,
+   `scripts/cursor_land_gate.py`), either:
+   - run
+     `python3 scripts/cursor_review_snapshot.py --repository <repo>
+     --head <reviewed-head> --require-exact-head` in the gate host and proceed
+     only on success; or
+   - create/use a detached Git worktree checked out at exactly
+     `<reviewed-head>` and run the gates there.
+   Never run those gates inside the immutable snapshot archive (no `.git`),
+   and never against a seat HEAD that differs from `reviewed_head`.
+8. Draft one canonical GO/NITS/FAIL body under `.pytest-verify-tmp/`, disposition
    every finding ref, and show the verdict plus evidence.
-8. Publish only after an explicit in-app approval through
+9. Publish only after an explicit in-app approval through
    `coordination/bin/cursor-publish --to <director-seat> --kind verification-report
    --subject <subject> --body-file <scratch-file>`. Commit only the staged event
    path returned by the fixed writer, using `git commit --only -- <event-path>`.

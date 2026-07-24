@@ -122,6 +122,25 @@ def _extract(archive: bytes, destination: Path) -> None:
             )
 
 
+def require_exact_head(repository: Path, reviewed_head: str) -> str:
+    """Fail closed unless the repository HEAD is exactly ``reviewed_head``.
+
+    Repository-level gates (``ci_smoke.py``, ``cursor_land_gate.py``) need a
+    real ``.git`` history. Call this before those gates, or host them in a
+    detached worktree checked out at ``reviewed_head``.
+    """
+
+    repository = repository.expanduser().resolve(strict=True)
+    expected = _full_commit(repository, reviewed_head)
+    head = _full_commit(repository, "HEAD")
+    if head != expected:
+        raise ReviewSnapshotError(
+            f"repository HEAD {head} is not reviewed_head {expected}; "
+            "run repository-level gates only at the exact reviewed head"
+        )
+    return head
+
+
 def materialize(
     workspace: Path,
     *,
@@ -158,13 +177,23 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
     parser.add_argument("--repository", type=Path, required=True)
     parser.add_argument("--head", required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--require-exact-head",
+        action="store_true",
+        help="verify repository HEAD equals --head; do not materialize",
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.require_exact_head:
+            print(require_exact_head(args.repository, args.head))
+            return 0
+        if args.output is None:
+            raise ReviewSnapshotError("--output is required unless --require-exact-head")
         destination = materialize(
             args.workspace,
             repository=args.repository,
