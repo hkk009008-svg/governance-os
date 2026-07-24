@@ -1,36 +1,31 @@
 ---
-description: Cursor adopts Pipeline governance-OS workflow habits
+description: Cursor Desktop adopts Pipeline governance-OS workflow habits
 alwaysApply: true
 ---
 
-# Pipeline OS — Cursor side
+# Pipeline OS — Cursor app
 
-Pipeline is the governance kernel. Cursor does not replace Codex/Claude
-mailbox seats; it adopts the same durable-state habits.
+Pipeline is the governance kernel. Cursor Desktop/Agents Window is the normal
+Cursor runtime; CLI agents, SDK agents, API keys, and relay daemons are not
+required.
 
-## Startup (non-trivial work)
+For non-trivial work, inspect fresh smoke, recent Git history, scoped status,
+and relevant mailbox bodies. Durable state beats chat memory.
 
-```bash
-cd /Users/hyungkoookkim/Pipeline
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE git status --short --branch
-```
+Default posture is readiness. A named seat exists only in its reserved linked
+worktree after the hook registers the top-level conversation and selected
+model ID. Reads are free everywhere. Director seats mutate their worktree
+without per-action approval; every other posture gets one in-app approval per
+governed mutation or effect.
 
-Default posture: readiness bridge / local builder. Escalate to a named seat
-only when the user explicitly names one.
+Use each worktree's native Git index. Never set `GIT_INDEX_FILE` in Cursor app
+seats. Preserve unrelated dirty files and stage explicit pathspecs.
 
-## Habits
+Find definitions, writers, callers, imports, and siblings before changing a
+symbol. Tests prove only what they execute. Push, merge, lock, mailbox publish,
+cursor consume, and spend are separate effects, each authorized by its own
+in-app approval for the exact action.
 
-- Durable state beats chat: git, mailbox, plans, tests, gate evidence.
-- `env -u GIT_INDEX_FILE` for ordinary git and shared checks.
-- Find definition, writers, callers, siblings before editing a symbol.
-- Smallest sufficient verification; tests prove only what they execute.
-- Push, merge, lock, mailbox publish, and spend need separate user authority.
-- Do not start product work from `~/Content`.
-
-## Cursor surfaces only
-
-Cursor workflow lives under `.cursor/rules/` and
-`docs/protocol/cursor/`. Do not rewrite Codex/Claude ledger bridges for
-Cursor-only retargets.
+Cursor workflow truth lives under `.cursor/` and `docs/protocol/cursor/`. Do not
+rewrite Codex/Claude adapters for Cursor-only changes. No Cursor-specific
+product destination is currently configured.

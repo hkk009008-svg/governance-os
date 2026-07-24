@@ -1,46 +1,43 @@
 ---
-description: Cursor seat identity, guardrails, and advisor-subagent posture
+description: Cursor app-seat identity, worktree boundaries, and mailbox policy
 alwaysApply: true
 ---
 
-# Cursor seats — identity and boundaries
+# Cursor app seats
 
-Default posture is **readiness bridge**: an ordinary Cursor chat orients and
-reports but never claims a seat, mutates the mailbox, consumes a cursor, claims
-a lock, or pushes. A live Pipeline seat exists only when the Cursor seat
-launcher binds it from a committed trigger. Full adapter:
-`docs/protocol/cursor/continuation.md`.
+Cursor Desktop/Agents Window is the normal runtime. The main checkout and
+ordinary branches are a **readiness bridge**: reads and `.pytest-verify-tmp/`
+scratch are free; every governed mutation or effect surfaces one in-app
+approval.
 
-## When a seat is bound
+A live seat is one fact: a linked worktree on reserved branch
+`cursor-seat/<seat>` whose user-local registry record (root, active top-level
+app `conversation_id`, app-visible selected model ID) was written by the
+`sessionStart` hook. Wrappers and hooks resolve that identity at point of use;
+environment variables describe it but never grant authority. Cursor app seats
+use their worktree's native Git index and reject `GIT_INDEX_FILE`.
 
-- `director`/`director2` implement (behavior source `director`);
-  `operator`/`operator2` verify (behavior source `operator2`); `coordinator`
-  reconciles and never authors production work or holds a cursor.
-- Behavior-changing acceptance needs a non-author Operator GO from a distinct
-  seat using a different system-visible model, emitted through the fixed mailbox
-  writer. An Operator cannot verify work it authored.
-- Ordinary Git and pytest use `env -u GIT_INDEX_FILE`; the per-seat index
-  `.git/index-cursor-<seat>` is only for deliberate staging. Read-only Git
-  stays usable bare under a seat index; index mutators and pytest need the
-  prefix.
-- Provider separation: never launch another provider's seats
-  (`codex-seat`, `agy-seat`, Claude sessions) from Cursor; reading their
-  files is fine.
+- `director`/`director2` implement without per-action approval in their own
+  worktree.
+- `operator`/`operator2` review and issue GO/NITS/FAIL; their one unattended
+  commit is the exact event path just staged by the fixed writer.
+- `coordinator` reconciles, authors no production changes, and holds no
+  mailbox cursor.
+- The standing pair is `director` plus `operator2`; other seats are on-demand
+  capacity lanes.
+- Behavior-changing acceptance requires a non-author Operator using a different
+  selected model ID against one committed verify-request. This is app-visible
+  evidence, not provider/backend attestation.
 
-## Separately authorized effects
+Mailbox publish/consume uses `cursor-publish`/`cursor-consume`, delegates to
+the fixed writers, and requires an in-app approval. Never edit mailbox, lock,
+or `.cursor/runtime/` state directly — the hook hard-denies that. Push, pull,
+fetch, merge, rebase, cursor consume, and paid spend are separate effects;
+each needs its own in-app approval for the exact action.
 
-Edit, stage, commit, push, merge, mailbox publish, cursor consume, lock, and
-paid spend are distinct authorities. Publish/consume go through
-`coordination/bin/cursor-publish` / `cursor-consume`, which only delegate to the
-existing fixed writers. Never write `coordination/mailbox/` or `.cursor/runtime/`
-directly. The project hooks fail closed on these; the hook describes identity
-and grants no authority.
+Never switch branches inside a seat chat on a dirty tree; the app may
+auto-commit a checkpoint. Seats stay on their reserved branch.
 
-## Cursor subagents are advisors
-
-An unbound Cursor session may use Task subagents as parent-scoped advisors.
-Cursor's child-tool hook inputs cannot safely distinguish a live-seat child from
-its parent, so a live seat cannot spawn a subagent. Use a separate unbound
-advisor session instead. Advisor output is evidence for its parent, not a
-mailbox event, cursor advance, operator verdict, coordinator route, lock action,
-push, or spend authorization.
+Custom subagents are optional advisors or capacity workers. They are not
+durable seats, cannot inherit seat authority, and cannot publish verdicts.
+Full seats are pinned top-level Agents Window chats in dedicated worktrees.

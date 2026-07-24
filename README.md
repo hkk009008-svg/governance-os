@@ -42,7 +42,6 @@ doctor commands prove that the kernel is still internally consistent.
 | User-principal intent for this kernel | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
 | Decision history | [DECISIONS.md](DECISIONS.md) |
 | Codex ledger bridge | [docs/protocol/codex/ledger-cli-adoption.md](docs/protocol/codex/ledger-cli-adoption.md) |
-| Cursor FoulPlay bridge | [docs/protocol/cursor/foulplay-adoption.md](docs/protocol/cursor/foulplay-adoption.md) |
 | Protocol assembly map | [docs/protocol/protocol-assembly-map.md](docs/protocol/protocol-assembly-map.md) |
 
 ## Verification

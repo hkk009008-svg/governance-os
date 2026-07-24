@@ -1,55 +1,43 @@
 #!/usr/bin/env python3
-"""Interactive Cursor mailbox wrappers that delegate to Pipeline fixed writers.
-
-These wrappers add one thing on top of the canonical ``coordination/bin``
-writers: a seat-bound front door for mailbox publish/consume. Readiness-bridge
-sessions still require an explicit typed yes on the controlling terminal;
-live Cursor dispatch/review seats auto-publish/consume without TTY confirmation. They never reimplement mailbox validation,
-fencing, durable replacement, or staging -- every effect is executed by the
-existing fixed writer (``send-event`` / ``consume-events``). Publishing a
-mailbox event and consuming a seat cursor are separately authorized effects, so
-each requires a typed confirmation on the controlling terminal and is denied
-from ordinary agent tools by the Cursor seat hook.
-"""
+"""Cursor app mailbox front door delegating every effect to fixed writers."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import stat
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from scripts.cursor_auto_relay import live_bound
+try:
+    from scripts import compact_pair_loop
+    from scripts.cursor_app_binding import (
+        OPERATOR_SEATS,
+        AppBindingError,
+        AppSessionBinding,
+        resolve_registered_session,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name != "scripts":
+        raise
+    import compact_pair_loop
+    from cursor_app_binding import (  # type: ignore[no-redef]
+        OPERATOR_SEATS,
+        AppBindingError,
+        AppSessionBinding,
+        resolve_registered_session,
+    )
 
-LAUNCH_SEATS = ("director", "director2", "operator", "operator2", "coordinator")
+CURSOR_SEATS = frozenset({"director", "director2", "operator", "operator2"})
+_MAILBOX_SENT = "coordination/mailbox/sent/"
 
 
 class MailboxBindingError(RuntimeError):
-    """A Cursor mailbox wrapper cannot proceed without guessing or new authority."""
-
-
-def resolve_seat(explicit: str | None, environ: Mapping[str, str]) -> str:
-    """Resolve the from-seat from an explicit flag, then ``CURSOR_SEAT``."""
-
-    bound = environ.get("CURSOR_SEAT")
-    if bound and bound not in LAUNCH_SEATS:
-        raise MailboxBindingError(
-            f"CURSOR_SEAT is not a live Cursor seat: {bound!r}"
-        )
-    if explicit and bound and explicit != bound:
-        raise MailboxBindingError(
-            f"explicit seat {explicit!r} does not match bound CURSOR_SEAT {bound!r}"
-        )
-    seat = explicit or bound
-    if seat not in LAUNCH_SEATS:
-        raise MailboxBindingError(
-            "resolve the Cursor from-seat via --seat or CURSOR_SEAT "
-            f"(one of {', '.join(LAUNCH_SEATS)}); got: {seat!r}"
-        )
-    return seat
+    """A Cursor mailbox operation cannot proceed without a proven app seat."""
 
 
 def _writer(root: Path, name: str) -> Path:
@@ -62,54 +50,237 @@ def _writer(root: Path, name: str) -> Path:
 def build_publish_argv(
     root: Path, *, seat: str, to: str, kind: str, subject: str
 ) -> list[str]:
-    """Compose the exact ``send-event`` argv; validation stays in the writer."""
-
     if not to or not kind or not subject:
-        raise MailboxBindingError("publish requires --to, --kind, and a subject")
+        raise MailboxBindingError("publish requires --to, --kind, and --subject")
     if to == seat:
         raise MailboxBindingError("refusing self-addressed event")
     return [str(_writer(root, "send-event")), seat, to, kind, subject]
 
 
 def build_consume_argv(root: Path, *, seat: str, extra: Sequence[str]) -> list[str]:
-    """Compose the exact ``consume-events`` argv for this seat's cursor."""
-
+    if seat not in CURSOR_SEATS:
+        raise MailboxBindingError(f"{seat} holds no mailbox cursor")
     return [str(_writer(root, "consume-events")), seat, *extra]
 
 
-def _read_tty(prompt: str) -> str:
+def read_body_file(root: Path, value: Path) -> str:
+    """Read one regular, non-symlink scratch body with a bounded size."""
+
+    candidate = value.expanduser()
+    raw_path = candidate if candidate.is_absolute() else root / candidate
+    path = Path(os.path.abspath(raw_path))
+    scratch = (root / ".pytest-verify-tmp").resolve()
     try:
-        with open("/dev/tty", "r+", encoding="utf-8") as tty:
-            tty.write(prompt)
-            tty.flush()
-            return tty.readline()
+        relative = path.relative_to(scratch)
+        path.resolve(strict=False).relative_to(scratch)
+    except ValueError as exc:
+        raise MailboxBindingError("--body-file must be under .pytest-verify-tmp") from exc
+    current = scratch
+    try:
+        for component in relative.parts[:-1]:
+            current = current / component
+            if current.is_symlink():
+                raise MailboxBindingError(
+                    "--body-file must not traverse a symlink"
+                )
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+            os, "O_NOFOLLOW", 0
+        )
+        descriptor = os.open(path, flags)
     except OSError as exc:
         raise MailboxBindingError(
-            "no controlling terminal for interactive confirmation"
+            "--body-file must be a regular non-symlink file"
         ) from exc
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise MailboxBindingError(
+                "--body-file must be a regular non-symlink file"
+            )
+        if opened.st_size > 1024 * 1024:
+            raise MailboxBindingError("--body-file exceeds the 1 MiB limit")
+        raw = os.read(descriptor, opened.st_size + 1)
+        if len(raw) != opened.st_size:
+            raise MailboxBindingError("--body-file changed while reading")
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise MailboxBindingError("--body-file is not UTF-8") from exc
+    finally:
+        os.close(descriptor)
 
 
-def confirm(
-    *,
-    action: str,
-    detail: str,
-    prompt_fn: Callable[[str], str] = _read_tty,
-) -> bool:
-    """Require a typed ``yes`` on the controlling terminal for an effect."""
+def _clean_git_env(environ: Mapping[str, str]) -> dict[str, str]:
+    return {key: value for key, value in environ.items() if not key.startswith("GIT_")}
 
-    answer = prompt_fn(
-        f"{action}: {detail}\n"
-        "This performs a separately authorized mailbox effect. Type yes: "
+
+def _git(root: Path, environ: Mapping[str, str], *args: str) -> str:
+    result = subprocess.run(
+        ["git", "--no-optional-locks", "-C", str(root), *args],
+        env=_clean_git_env(environ),
+        text=True,
+        capture_output=True,
+        check=False,
     )
-    if answer.strip().casefold() != "yes":
-        raise MailboxBindingError(f"{action} was not authorized")
-    return True
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise MailboxBindingError(detail or f"git {' '.join(args)} failed")
+    return result.stdout
 
 
-def _delegate_env() -> dict[str, str]:
-    clean = dict(os.environ)
+def _mailbox_tips(root: Path, environ: Mapping[str, str]) -> list[str]:
+    output = _git(
+        root,
+        environ,
+        "for-each-ref",
+        "--format=%(objectname)",
+        "refs/heads/cursor-seat/",
+    )
+    tips = {line for line in output.splitlines() if len(line) == 40}
+    head = _git(root, environ, "rev-parse", "HEAD").strip()
+    if len(head) == 40:
+        tips.add(head)
+    return sorted(tips)
+
+
+def _committed_mailbox_events(
+    root: Path, environ: Mapping[str, str]
+) -> list[tuple[str, str]]:
+    events: dict[str, str] = {}
+    for tip in _mailbox_tips(root, environ):
+        output = _git(
+            root,
+            environ,
+            "ls-tree",
+            "-r",
+            "--name-only",
+            tip,
+            "--",
+            "coordination/mailbox/sent",
+        )
+        for line in output.splitlines():
+            if not line.startswith(_MAILBOX_SENT) or not line.endswith(".md"):
+                continue
+            commit = _introduction_commit(root, environ, line, tip=tip)
+            previous = events.get(line)
+            if previous is not None and previous != commit:
+                raise MailboxBindingError(
+                    f"mailbox path has conflicting introduction commits: {line}"
+                )
+            events[line] = commit
+    return sorted(events.items(), reverse=True)
+
+
+def _introduction_commit(
+    root: Path,
+    environ: Mapping[str, str],
+    path: str,
+    *,
+    tip: str,
+) -> str:
+    commit = _git(
+        root,
+        environ,
+        "log",
+        "--diff-filter=A",
+        "--format=%H",
+        "-1",
+        tip,
+        "--",
+        path,
+    ).strip()
+    if len(commit) != 40:
+        raise MailboxBindingError(f"cannot resolve introduction commit for {path}")
+    return commit
+
+
+def _reported_request_refs(
+    root: Path,
+    environ: Mapping[str, str],
+    events: Sequence[tuple[str, str]],
+) -> frozenset[str]:
+    """Collect request refs suppressed only by valid canonical reports.
+
+    Malformed reports and reports that fail structural validation are skipped.
+    They must neither abort next-review nor mark a request as already reviewed.
+    """
+    refs: set[str] = set()
+    scratch = root / ".pytest-verify-tmp"
+    scratch.mkdir(parents=True, exist_ok=True)
+    for path, commit in events:
+        if not path.endswith("-verification-report.md"):
+            continue
+        text = _git(root, environ, "show", f"{commit}:{path}")
+        temporary_name = ""
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                prefix=".cursor-report.",
+                suffix=".md",
+                dir=scratch,
+                delete=False,
+            ) as temporary:
+                temporary.write(text)
+                temporary_name = temporary.name
+            try:
+                report = compact_pair_loop.parse_verification_report_candidate(
+                    root,
+                    temporary_name,
+                    path,
+                )
+            except compact_pair_loop.CompactPairError:
+                continue
+            violations = compact_pair_loop.validate_report_structure(root, report)
+            if violations:
+                continue
+            refs.add(f"{report.request_path}@{report.request_commit}")
+        finally:
+            if temporary_name:
+                Path(temporary_name).unlink(missing_ok=True)
+    return frozenset(refs)
+
+
+def next_verify_request(
+    root: Path,
+    *,
+    seat: str,
+    environ: Mapping[str, str],
+) -> compact_pair_loop.VerifyRequest:
+    if seat not in OPERATOR_SEATS:
+        raise MailboxBindingError("next-review is available only to Operator seats")
+    events = _committed_mailbox_events(root, environ)
+    reported = _reported_request_refs(root, environ, events)
+    marker = f"-to-{seat}-verify-request.md"
+    for path, commit in events:
+        if not path.endswith(marker):
+            continue
+        ref = f"{path}@{commit}"
+        if ref in reported:
+            continue
+        try:
+            request = compact_pair_loop.parse_verify_request(root, path, commit)
+        except compact_pair_loop.CompactPairError as exc:
+            raise MailboxBindingError(f"latest pending verify-request is invalid: {exc}") from exc
+        if request.assigned_operator != seat:
+            raise MailboxBindingError("verify-request recipient does not match assigned Operator")
+        return request
+    raise MailboxBindingError(f"no pending committed verify-request for {seat}")
+
+
+def _delegate_env(environ: Mapping[str, str]) -> dict[str, str]:
+    clean = dict(environ)
     clean.pop("GIT_INDEX_FILE", None)
     return clean
+
+
+def _returncode(result: object) -> int:
+    if isinstance(result, int):
+        return result
+    value = getattr(result, "returncode", None)
+    if not isinstance(value, int):
+        raise MailboxBindingError("mailbox delegate returned no exit status")
+    return value
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -118,15 +289,16 @@ def _parser() -> argparse.ArgumentParser:
 
     publish = commands.add_parser("publish")
     publish.add_argument("--dry-run", action="store_true")
-    publish.add_argument("--seat")
     publish.add_argument("--to", required=True)
     publish.add_argument("--kind", required=True)
     publish.add_argument("--subject", required=True)
+    publish.add_argument("--body-file", required=True, type=Path)
 
     consume = commands.add_parser("consume")
     consume.add_argument("--dry-run", action="store_true")
-    consume.add_argument("--seat")
     consume.add_argument("extra", nargs=argparse.REMAINDER)
+
+    commands.add_parser("next-review")
     return parser
 
 
@@ -134,58 +306,110 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     root: Path | None = None,
-    stdin_text: str | None = None,
-    runner: Callable[..., int] = subprocess.call,
-    prompt_fn: Callable[[str], str] = _read_tty,
+    environ: Mapping[str, str] | None = None,
+    runner: Callable[..., object] = subprocess.run,
+    binding_resolver: Callable[[Path, Mapping[str, str]], AppSessionBinding] = (
+        resolve_registered_session
+    ),
 ) -> int:
     args = _parser().parse_args(sys.argv[1:] if argv is None else list(argv))
-    repo_root = root if root is not None else Path(__file__).resolve().parents[1]
+    repo_root = (root if root is not None else Path(__file__).resolve().parents[1]).resolve()
+    env = os.environ if environ is None else environ
     try:
-        seat = resolve_seat(args.seat, os.environ)
+        try:
+            binding = binding_resolver(repo_root, env)
+        except AppBindingError as exc:
+            raise MailboxBindingError(str(exc)) from exc
         if args.command == "publish":
-            body = sys.stdin.read() if stdin_text is None else stdin_text
+            body = read_body_file(repo_root, args.body_file)
             delegate = build_publish_argv(
-                repo_root, seat=seat, to=args.to, kind=args.kind, subject=args.subject
+                repo_root,
+                seat=binding.seat,
+                to=args.to,
+                kind=args.kind,
+                subject=args.subject,
             )
-            detail = f"{seat} -> {args.to} [{args.kind}] {args.subject}"
             if args.dry_run:
                 print(
                     json.dumps(
                         {
                             "operation": "publish",
-                            "seat": seat,
+                            "seat": binding.seat,
+                            "model_id": binding.model_id,
+                            "conversation_id": binding.conversation_id,
                             "argv": delegate,
+                            "body_file": str(args.body_file),
                             "body_bytes": len(body.encode("utf-8")),
-                            "would_confirm": not live_bound(os.environ),
+                            "requires_app_approval": True,
                         },
                         indent=2,
                         sort_keys=True,
                     )
                 )
                 return 0
-            if not live_bound(os.environ):
-                confirm(action="publish", detail=detail, prompt_fn=prompt_fn)
-            return runner(delegate, input=body, text=True, env=_delegate_env())
+            return _returncode(
+                runner(
+                    delegate,
+                    input=body,
+                    text=True,
+                    env=_delegate_env(env),
+                    check=False,
+                )
+            )
         if args.command == "consume":
             extra = [token for token in (args.extra or []) if token != "--"]
-            delegate = build_consume_argv(repo_root, seat=seat, extra=extra)
+            delegate = build_consume_argv(
+                repo_root, seat=binding.seat, extra=extra
+            )
             if args.dry_run:
                 print(
                     json.dumps(
                         {
                             "operation": "consume",
-                            "seat": seat,
+                            "seat": binding.seat,
+                            "conversation_id": binding.conversation_id,
                             "argv": delegate,
-                            "would_confirm": not live_bound(os.environ),
+                            "requires_app_approval": True,
                         },
                         indent=2,
                         sort_keys=True,
                     )
                 )
                 return 0
-            if not live_bound(os.environ):
-                confirm(action="consume", detail=f"advance {seat} cursor", prompt_fn=prompt_fn)
-            return runner(delegate, env=_delegate_env())
+            return _returncode(
+                runner(delegate, env=_delegate_env(env), check=False)
+            )
+        if args.command == "next-review":
+            request = next_verify_request(
+                repo_root, seat=binding.seat, environ=env
+            )
+            if request.author_model.casefold() == binding.model_id.casefold():
+                raise MailboxBindingError(
+                    "Operator selected model ID must differ from the author model"
+                )
+            print(
+                json.dumps(
+                    {
+                        "verify_request": f"{request.path}@{request.trigger_commit}",
+                        "reviewed_repository": request.reviewed_repository,
+                        "reviewed_base": request.reviewed_base,
+                        "reviewed_head": request.reviewed_head,
+                        "author_seat": request.author_seat,
+                        "author_model": request.author_model,
+                        "assigned_operator": request.assigned_operator,
+                        "reviewer_model": binding.model_id,
+                        "models_differ": (
+                            request.author_model.casefold()
+                            != binding.model_id.casefold()
+                        ),
+                        "outcome": request.outcome,
+                        "finding_refs": list(request.finding_refs),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 0
     except MailboxBindingError as exc:
         print(f"cursor-mailbox: {exc}", file=sys.stderr)
         return 2

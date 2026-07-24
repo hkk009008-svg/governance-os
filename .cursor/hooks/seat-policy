@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
-# Pipeline Cursor seat guardrail hook wrapper.
-#
-# Fail-closed by design: on any infrastructure fault (missing interpreter,
-# missing policy script, unresolvable root) we emit an explicit deny verdict
-# and exit 0 -- a clean, self-describing block -- instead of a bare non-zero
-# exit. A non-zero exit under `failClosed: true` blocks every agent tool with
-# an opaque "exit code 127" and cannot describe itself, which previously caused
-# an unrecoverable bootstrap deadlock. Exit 0 with a deny message keeps the
-# guardrail fail-closed while remaining diagnosable and self-healing once the
-# infrastructure is restored.
+# Fail-closed wrapper for the Cursor Desktop app-seat policy.
 set -uo pipefail
 
 deny() {

@@ -10,7 +10,6 @@ try:
 except ModuleNotFoundError:
     import codex_protocol_model as canonical
 
-
 _INPUT_KEYS = {
     "CURSOR_AGENT_MODE": "CODEX_AGENT_MODE",
     "CURSOR_AGENT_ROLE": "CODEX_AGENT_ROLE",
@@ -38,39 +37,42 @@ def infer_runtime_env(environ: Mapping[str, str] | None = None) -> dict[str, str
         for cursor_key, canonical_key in _INPUT_KEYS.items()
         if cursor_key in source
     }
-    if "GIT_INDEX_FILE" in source:
-        translated["GIT_INDEX_FILE"] = source["GIT_INDEX_FILE"]
     values = canonical.infer_runtime_env(translated)
-    result = {
+    cursor_values = {
         key.replace("CODEX_", "CURSOR_", 1): value
         for key, value in values.items()
         if key.startswith("CODEX_")
     }
-    result["CURSOR_GIT_INDEX_FILE"] = values["GIT_INDEX_FILE"]
-    return result
+    seat = cursor_values.get("CURSOR_SEAT", "(unset)")
+    if seat in {"director", "director2"}:
+        cursor_values["CURSOR_GIT_POLICY"] = "native-worktree-index"
+    elif seat in {"operator", "operator2", "coordinator"}:
+        cursor_values["CURSOR_GIT_POLICY"] = (
+            "native-worktree-index-read-only-except-own-fixed-writer-event"
+        )
+    return cursor_values
 
 
 def render_runtime_env_contract(
     environ: Mapping[str, str] | None = None,
 ) -> str:
-    """Render the Cursor-specific names and canonical inferred values."""
-
     values = infer_runtime_env(environ)
-    lines = ["Cursor runtime env contract:"]
+    lines = ["Cursor Desktop app-seat contract:"]
     lines.extend(f"{key}={value}" for key, value in values.items())
     lines.extend(
         (
             "contract rules:",
-            "- ordinary Cursor chat defaults to readiness-bridge.",
-            "- only the Cursor seat launcher binds a top-level live seat.",
-            "- Cursor subagents remain parent-scoped and never inherit seat authority.",
-            "- environment values describe identity and never authorize external effects.",
+            "- Cursor Desktop/Agents Window is the normal runtime.",
+            "- readiness is the default outside a linked cursor-seat/<seat> worktree.",
+            "- a live seat requires worktree branch, conversation id, and selected model-id agreement.",
+            "- each seat uses its linked worktree's native Git index; GIT_INDEX_FILE is rejected.",
+            "- Director seats may implement; Operator and Coordinator seats are repository-tree read-only.",
+            "- custom subagents are advisors and never publish verdicts or inherit seat authority.",
+            "- mailbox publication goes through cursor-publish and requires an in-app approval.",
+            "- review-next resolves the next committed request without copied prompt bodies or refs.",
+            "- activating another existing local top-level chat is the one manual app handoff.",
             "- provider_side=cursor",
             "- foreign_launch=denied",
-            "- local_builder=cursor-seat build",
-            "- live seats use auto-relay for mailbox publish/consume without human TTY.",
-            "- readiness-bridge sessions cannot publish or relay mailbox events.",
-            "- build binds may edit/test/commit but cannot mailbox publish or relay.",
         )
     )
     return "\n".join(lines)

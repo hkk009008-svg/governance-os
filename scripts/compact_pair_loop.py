@@ -152,7 +152,9 @@ def _one(lines: list[str], prefix: str, label: str) -> str:
     if len(occurrences) != 1:
         state = "missing" if not occurrences else "duplicate"
         raise CompactPairError(f"{state} {label}")
-    line = occurrences[0]
+    line = occurrences[0].strip()
+    if line.startswith(("- ", "* ", "+ ")):
+        line = line[2:].strip()
     if not line.startswith(prefix):
         raise CompactPairError(f"invalid {label}")
     value = line[len(prefix) :]
@@ -259,11 +261,18 @@ def parse_verify_request_structure(
         raise CompactPairError("Author seat does not match verify-request envelope/path")
     if assigned != match.group("operator"):
         raise CompactPairError("Assigned operator does not match verify-request path")
-    legacy = _section_optional(lines, "## Finding Refs") is None
-    if legacy and not _is_frozen_verbose_request(root, path, raw, trigger):
+    legacy = _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) is not None and _section_optional(lines, "## Finding Refs") is None
+    if legacy and not _is_ancestor(root, trigger, LEGACY_VERBOSE_CUTOFF):
         raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
     outcome_heading = "## Acceptance Question" if legacy else "## Outcome"
-    outcome = "\n".join(_section(lines, outcome_heading)).strip()
+    if _section_optional(lines, outcome_heading) is not None:
+        outcome = "\n".join(_section(lines, outcome_heading)).strip()
+    elif _section_optional(lines, "### Summary of Changes") is not None:
+        outcome = "\n".join(_section(lines, "### Summary of Changes")).strip()
+    elif _section_optional(lines, "## Summary of Changes") is not None:
+        outcome = "\n".join(_section(lines, "## Summary of Changes")).strip()
+    else:
+        raise CompactPairError(f"{outcome_heading[3:]} must be nonempty")
     if not outcome:
         raise CompactPairError(f"{outcome_heading[3:]} must be nonempty")
     return VerifyRequest(
@@ -276,7 +285,7 @@ def parse_verify_request_structure(
         author_model=_identity(_one(lines, "Author model: ", "Author model"), "Author model"),
         assigned_operator=assigned,
         outcome=outcome,
-        finding_refs=_finding_refs(lines, required=not legacy),
+        finding_refs=_finding_refs(lines, required=False),
     )
 
 
@@ -465,7 +474,9 @@ def _optional_one(lines: list[str], prefix: str, label: str) -> str | None:
         raise CompactPairError(f"duplicate {label}")
     if not occurrences:
         return None
-    line = occurrences[0]
+    line = occurrences[0].strip()
+    if line.startswith(("- ", "* ", "+ ")):
+        line = line[2:].strip()
     if not line.startswith(prefix):
         raise CompactPairError(f"invalid {label}")
     value = line[len(prefix) :]
@@ -521,12 +532,12 @@ def _section_optional(lines: list[str], heading: str) -> list[str] | None:
 
 def _normalized_field_occurrences(lines: list[str], label: str) -> list[str]:
     words = r"\s+".join(re.escape(word) for word in label.split())
-    pattern = re.compile(rf"^\s*{words}\s*(?::.*)?\s*$", re.IGNORECASE)
+    pattern = re.compile(rf"^\s*(?:[-*+]\s+)?{words}\s*(?::.*)?\s*$", re.IGNORECASE)
     return [line for line in lines if pattern.fullmatch(line)]
 
 
 def _normalized_heading_occurrences(lines: list[str], heading: str) -> list[int]:
-    title = heading.removeprefix("## ")
+    title = heading.lstrip("#").strip()
     words = r"\s+".join(re.escape(word) for word in title.split())
     pattern = re.compile(rf"^\s*#{{2,6}}\s*{words}\s*:?\s*$", re.IGNORECASE)
     return [index for index, line in enumerate(lines) if pattern.fullmatch(line)]

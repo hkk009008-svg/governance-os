@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Interactive, seat-bound front door for consuming one seat's mailbox cursor.
-# Delegates to the fixed consume-events writer; never reimplements it.
+# Cursor app-seat front door for one separately approved cursor advance.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-exec /usr/bin/env -u GIT_INDEX_FILE python3 "$ROOT/scripts/cursor_mailbox.py" consume "$@"
+export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 "$ROOT/scripts/cursor_mailbox.py" consume "$@"

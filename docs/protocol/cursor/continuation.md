@@ -1,214 +1,211 @@
 # Cursor continuation adapter
 
-This file maps Pipeline's governed protocol to **Cursor** mechanics. Policy
-lives in the executable kernel model (`scripts/codex_protocol_model.py`); this
-adapter only translates mode, startup, mailbox, Git, and guardrail consequences
-into Cursor-native surfaces. It does not restate or fork the protocol, and it
-does not replace the Codex/Claude continuation adapters.
+This adapter maps Pipeline's provider-neutral governance contract onto Cursor Desktop/Agents Window.
+Canonical policy remains in
+`scripts/codex_protocol_model.py`; `scripts/cursor_protocol_model.py` only
+renames the runtime vocabulary.
 
-The Cursor naming layer is a thin adapter over the canonical contract:
-`scripts/cursor_protocol_model.py` renames `CURSOR_*` identity onto the same
-mode/role/behavior semantics the kernel already validates. Cursor never emits
-`CODEX_*` authority keys of its own.
+Cursor app seats do not require `cursor-agent`, the Cursor SDK, API keys,
+terminal launchers, relay daemons, or shared-checkout per-seat indexes.
 
-## Modes
+## Policy model
 
-- Readiness bridge: the default for ordinary Cursor chat. Orientation plus
-  scratch staging under `.pytest-verify-tmp/`; no seat claim, no repo-tree
-  mutation, no mailbox consume, no push.
-- Local builder: `coordination/bin/cursor-seat build` binds a mutating seat
-  index with `CURSOR_OPERATION=build` for edit/test/commit. Mailbox
-  publish/relay/consume stay denied.
-- Live seat: only when the Cursor seat launcher binds `director`, `director2`,
-  `operator`, or `operator2` from a committed dispatch/review trigger.
-- Coordinator: only for explicit reconciliation or facilitation; authors no
-  behavior-changing production work and holds no cursor.
-- Subagent: an unbound Cursor session may use parent-scoped advisors. Cursor's
-  child-tool hook input does not safely identify a live seat child, so a live
-  seat cannot spawn a subagent; use a separate unbound advisor session instead.
+The project hook is write-governed. Reads are free: any inspection command —
+Git reads, `rg`, `pytest`, diagnostics — runs without ceremony in every
+posture. Authority applies only to writes and effects:
 
-Behavior source map: `director -> director`, `director2 -> director`,
-`operator -> operator2`, `operator2 -> operator2`.
+- **Director worktree chats** mutate their own worktree freely.
+- **Every other top-level posture** (operator, coordinator, readiness) gets one
+  in-app approval per repository mutation instead of a hard deny. Scratch
+  writes under `.pytest-verify-tmp/` are always free.
+- **Separately authorized effects** — mailbox publish/consume, `git push`,
+  `pull`, `fetch`, `merge`, `rebase`, `cherry-pick` — always surface one
+  in-app approval naming the acting seat. The approval is the exact-effect
+  user authority; structural identity alone never grants it.
+- **Hard denies** are reserved for direct writes to mailbox/lock/runtime
+  state, direct fixed-writer calls, foreign provider launchers, mutations
+  targeting another checkout, and subagent seat impersonation or inherited
+  authority.
 
-Only the top-level Cursor seat launcher binds a live seat; an ordinary Cursor
-window (including one whose parent is a seat) stays a readiness bridge, and a
-Cursor subagent stays parent-scoped.
+Because approvals replace denials, the main checkout can bootstrap changes to
+the policy itself without disabling hooks.
 
-## Local setup
+## Runtime topology
 
-Create one user-local launcher config at `~/.cursor/pipeline-seat-launcher.toml`.
-It must point at the managed Pipeline workspace and load project hooks/rules only:
+- **Readiness bridge:** any chat in the main checkout or on an ordinary branch.
+  It inspects freely, writes scratch freely, and needs one in-app approval per
+  governed mutation or effect.
+- **Director seats:** pinned top-level chats in linked worktrees on
+  `cursor-seat/director` (and `cursor-seat/director2` on demand). They
+  implement and commit in their worktree.
+- **Operator seats:** pinned top-level chats in linked worktrees on
+  `cursor-seat/operator2` (and `cursor-seat/operator` on demand). They review
+  and publish binding verdicts.
+- **Coordinator:** an on-demand top-level chat on `cursor-seat/coordinator`.
+  It routes and reconciles but holds no cursor and authors no production
+  changes.
+- **Subagents:** optional parent-scoped advisors/capacity workers. They are not
+  durable seats and cannot publish verdicts or inherit seat authority.
 
-```toml
-[runtime]
-workspace = "/Users/hyungkoookkim/Pipeline"
-setting_sources = ["project"]
+The standing pair is `director` plus `operator2`; the other seats are capacity
+lanes created on demand, not mandatory ceremony. Behavior source map:
+`director -> director`, `director2 -> director`, `operator -> operator2`,
+`operator2 -> operator2`.
 
-[seats.director]
-model = "your-director-model"
+## App setup
 
-[seats.director2]
-model = "your-director2-model"
+In Cursor Agents Window:
 
-[seats.operator]
-model = "your-operator-model"
+1. Create a linked worktree per active seat with its reserved
+   `cursor-seat/<seat>` branch (two standing: director, operator2).
+2. Open and pin one top-level chat in each worktree.
+3. Select the intended model for each chat; the Operator's selected model ID
+   must differ from the Director's.
+4. The `sessionStart` hook registers the newest conversation and app-visible
+   selected model metadata for that worktree in the user-local
+   `~/.cursor/pipeline-app-seats.json`. No initialization message is required.
 
-[seats.operator2]
-model = "your-operator2-model"
+The newest chat in a seat's worktree becomes active. An older duplicate loses
+authority because its conversation id no longer matches. A live worktree at a
+different path is not silently replaced. Any additional seat becomes live the
+same way: add its worktree, open a chat, done.
 
-[seats.coordinator]
-model = "your-coordinator-model"
-```
+Do not switch branches from inside a seat chat on a dirty tree: the app may
+auto-commit a checkpoint of every dirty file onto the current branch. Seats
+stay on their reserved branch; branch surgery happens in a terminal with
+explicit user authority.
 
-Replace each `model` value with the exact Cursor model id you intend for that
-seat. The launcher refuses ambiguous or foreign workspaces.
+`coordination/bin/cursor-seat readiness|status` remains a read-only diagnostic;
+it never launches or binds a seat.
 
-## Chat vs live seat
+## Binding and Git isolation
 
-- Ordinary Cursor chat is a **readiness bridge** only. Saying "continue as
-  director" (or any seat name) in chat is orientation guidance; it does **not**
-  bind a live seat, consume a cursor, or authorize mailbox publish/consume.
-- Efficient Cursor-only land path:
-  1. Readiness stages files under `.pytest-verify-tmp/cursor-bundles/<id>/`.
-  2. Short land: `coordination/bin/cursor-apply-bundle <id>` (type yes) then
-     `env -u GIT_INDEX_FILE .venv/bin/python scripts/cursor_land_gate.py`.
-  3. Longer implement: `coordination/bin/cursor-seat build --seat director
-     --trigger-ref local:<task>`.
-  4. Protocol/mailbox work: `coordination/bin/cursor-seat dispatch|review`
-     (auto-relay unchanged). Label foreign mailbox residue `out_of_side`.
-- A live dispatch/review seat starts only through the human launcher:
-  `coordination/bin/cursor-seat dispatch|review`.
-- Durable mailbox traffic from a **live seat** auto-relays: the seat writes to
-  `.cursor/runtime/outbox/<seat>/`, then `scripts/cursor_auto_relay.py` (shim
-  `coordination/bin/cursor-relay`) publishes through the fixed writer and may
-  wake the next Cursor seat via `cursor-seat` only. Readiness-bridge chat still
-  requires human TTY `coordination/bin/cursor-publish` with typed `yes`.
-- Agent tools remain denied for publish, consume, dispatch, and other separately
-  authorized effects in readiness mode even when chat prose names a seat. Live
-  seats may run Cursor-only mailbox/relay wrappers under hook policy.
-- Foreign provider launchers (`agy-seat`, `codex-seat`, Claude launchers) are
-  denied; Cursor relay strips foreign provider env residue (`out_of_side`).
+Identity is one fact checked one way: the linked worktree's reserved
+`cursor-seat/<seat>` branch plus the user-local registry record written at
+`sessionStart` (absolute root, active `conversation_id`, selected `model_id`).
+`scripts/cursor_app_binding.py` owns this resolution and the atomic registry.
 
+Wrappers and hooks resolve that identity at point of use with
+`resolve_registered_session`; nothing depends on injected environment values.
+`sessionStart` still exports identity variables as context, and when they are
+present they must agree with the registry, but they never establish identity.
+Model changes require a new session registration.
 
-## Implement from ordinary chat
+The reserved branch is a Pipeline convention verified with Git, not a
+Cursor-issued worktree identity. Unknown, detached, multi-root, and ordinary
+branches remain readiness posture.
 
-When the user asks to implement a Cursor-side plan from a readiness chat,
-prefer a local-builder bind instead of Desktop/`/tmp` scripts:
+Each worktree owns a normal Git working tree and index. Cursor app seats reject
+`GIT_INDEX_FILE`; the obsolete `.git/index-cursor-*` files are never consulted.
+Use parallel writers only for non-overlapping work and reconcile through normal
+Git history.
 
-```bash
-coordination/bin/cursor-seat build --seat director --trigger-ref local:<task>
-```
+## Individual, pair, and unit operation
 
-Short staged land (no build seat): stage under
-`.pytest-verify-tmp/cursor-bundles/<id>/`, then
-`coordination/bin/cursor-apply-bundle <id>` (type `yes`) and
-`env -u GIT_INDEX_FILE .venv/bin/python scripts/cursor_land_gate.py`.
-Readiness may also run that land gate (or the `tests/unit/test_cursor_*.py` cluster) with
-`env -u GIT_INDEX_FILE`; it still cannot mutate the repo tree
-or publish mailbox events. Prefer these native Cursor paths over ad-hoc
-Desktop `.command` wrappers.
+### Individual
 
-## Startup (non-trivial work)
+Open the pinned seat chat and work in its dedicated worktree. No terminal
+launch or copied bootstrap prompt is needed.
 
-```bash
-cd /Users/hyungkoookkim/Pipeline
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE git status --short --branch
-```
+### Compact pair
 
-Surface the unread count, then read relevant mailbox bodies before decisions.
-Ordinary Git and pytest use `env -u GIT_INDEX_FILE`; a per-seat index
-(`.git/index-cursor-<seat>`) is only for a deliberately bound live seat. When a
-seat index is present, read-only Git (`status`, `log`, `show`, `diff`, ...)
-stays usable bare; index mutators (`add`, `commit`, `stash`, ...) and pytest
-require the `env -u GIT_INDEX_FILE` prefix, mirroring the Codex guard. Refresh
-HEAD, relevant mail, and scoped status before any write or gate decision.
+1. A Director implements, tests, commits the actual range, and drafts a
+   canonical verify-request body under `.pytest-verify-tmp/`.
+2. The Director invokes `coordination/bin/cursor-publish` with `--body-file`.
+   The hook shows an in-app approval and the wrapper delegates to the fixed
+   `send-event` writer. The Director commits only the returned staged event
+   path on its seat branch.
+3. The user activates the pinned assigned Operator chat and invokes
+   `/review-next`.
+4. The skill resolves the newest pending committed verify-request addressed to
+   that Operator, validates its selected model ID differs from the author, and
+   uses `scripts/cursor_review_snapshot.py` to materialize the exact reviewed
+   head under scratch without changing the Operator branch.
+5. The Operator drafts and publishes one canonical GO/NITS/FAIL report through
+   the same approved wrapper, then commits only the returned staged report
+   path.
 
-## Live seats (Cursor SDK)
+No prompt body or `path@sha` is relayed by the user. Cursor currently exposes
+no documented API to wake and submit into another existing local top-level
+chat, so activating that pinned chat is the one baseline manual app handoff.
+Cloud Agents/Automations may automate it later, but are optional, remote,
+potentially paid, and separately authorized.
 
-A live Cursor seat is launched, not adopted from chat. The launcher
-(`scripts/cursor_seat_launcher.py`, shim `coordination/bin/cursor-seat`) binds
-the exact seat identity, seeds a per-seat Git index, records a private local
-registry under `.cursor/runtime/` (never committed), requires interactive
-confirmation before any provider agent starts (except `CURSOR_RELAY_CHAIN=1`
-relay wakes), and auto-relays finished outbox results when a `cursor-relay`
-directive is present. Readiness reports `provider_side=cursor`,
-`foreign_launch=denied`, and `local_builder=cursor-seat build`.
+### Unit
 
-```bash
-coordination/bin/cursor-seat readiness             # print the runtime contract
-coordination/bin/cursor-seat --dry-run build director --trigger-ref local:task
-coordination/bin/cursor-apply-bundle --dry-run <bundle-id>
-coordination/bin/cursor-seat --dry-run dispatch director --trigger-ref <path@sha>
-coordination/bin/cursor-seat dispatch director --trigger-ref <path@sha>
-coordination/bin/cursor-seat review operator --verify-request <path@sha>
-```
+Keep the standing pair pinned in Agents Window and add capacity seats only
+when parallel lanes earn their cost. Worktrees isolate file/index state;
+committed mailbox events and cursors hold durable coordination state.
+Coordinator facilitates only when reconciliation is useful.
 
-An Operator review binds to the assigned committed verify-request and must run
-a different system-visible model from the author. A seat writes its result to
-`.cursor/runtime/outbox/<seat>/` for human review; the seat process itself
-never publishes a mailbox event.
+## Mailbox
 
-## Mailbox and locks
+Cursor never reimplements mailbox finalization:
 
-Cursor never reimplements mailbox mechanics. Publishing an event and consuming
-a seat cursor are separately authorized effects that delegate to the existing
-fixed writers. Live dispatch/review seats auto-publish/consume (and may
-auto-relay through `coordination/bin/cursor-relay`) without TTY confirmation;
-readiness-bridge sessions keep the interactive confirmation:
+- `coordination/bin/cursor-publish` delegates to `send-event`;
+- `coordination/bin/cursor-consume` delegates to `consume-events`;
+- direct writes to `coordination/mailbox/`, locks, or `.cursor/runtime/` are
+  denied.
 
-```bash
-echo "body" | coordination/bin/cursor-publish --seat director --to operator --kind status --subject "..."
-coordination/bin/cursor-consume --seat director
-coordination/bin/cursor-relay from-outbox .cursor/runtime/outbox/director/<run>.json
-```
+Publication requires a regular non-symlink body file under
+`.pytest-verify-tmp/` and one in-app approval. The wrapper resolves the bound
+seat itself from the worktree and app registry, uses `subprocess.run`, and
+delegates the body on stdin. Direct fixed-writer calls from agent tools stay
+denied.
 
-These wrappers call `coordination/bin/send-event` and
-`coordination/bin/consume-events` and add no validation, fencing, or staging of
-their own. Locks still use `coordination/bin/claim-lock` and are a distinct
-push-first authority.
+`next-review` is read-only: it finds the newest pending committed request for
+the bound Operator across all `refs/heads/cursor-seat/*` tips, skips requests
+already referenced by a committed report, and refuses same-model review. Seats
+do not merge mailbox-only commits merely to discover them.
 
-## Guardrails
+Mailbox publication, cursor consume, push, pull, fetch, merge, rebase,
+cherry-pick, lock, and spend are separate effects. Each surfaces one in-app
+approval naming the acting posture; a subagent or foreign `-C` target is
+denied outright. Local seat synchronization is the same flow: run
+`git merge --ff-only <commit>` in the bound seat's own worktree and approve
+the request.
 
-Project hooks (`.cursor/hooks.json` -> `.cursor/hooks/seat-policy` ->
-`scripts/cursor_hook_policy.py`) are a deterministic, fail-closed backstop, not
-a hostile sandbox. They deny direct edits to fixed-writer and Cursor runtime
-state and deny live fixed-writer / launcher / push / merge effects from an
-agent tool, while keeping the documented read-only surfaces usable:
-`cursor-seat readiness`/`status` and `--dry-run` previews of dispatch, publish,
-and consume stay allowed. When a seat index is present, git index mutators and
-pytest require `env -u GIT_INDEX_FILE`; read-only Git stays bare. Operator
-review and Coordinator sessions are held to repository-tree read-only (out-of-
-tree scratch such as `/tmp` and `.pytest-verify-tmp/` stays available). Cursor
-sessions never launch another provider's seats (`codex-seat`, `agy-seat`, or
-their launchers) — provider separation is enforced, reading those files is not
-restricted. Subagents cannot inherit seat authority: child creation under a
-live seat is denied, and seat impersonation tasks are rejected. The hook
-describes identity; it never grants authority.
+## Hook policy
 
-## Governed outcome
+`.cursor/hooks.json` routes `sessionStart`, sensitive file tools, shell
+execution, and subagent creation through `.cursor/hooks/seat-policy` and
+`scripts/cursor_hook_policy.py`. Shell commands are evaluated exactly once, by
+`beforeShellExecution`.
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
-Own the routed outcome and choose the method. Preserve material findings,
-require non-author Operator GO for behavior-changing work with a distinct
-Operator seat and different model, bind ownership to an immutable
-parent/revision, and keep external effects separately user-authorized for the
-exact effect/executor/target/scope. An Operator cannot verify anything it
-authored.
+The policy:
 
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
-A committed verify-request binds the actual base/head, outcome, author
-seat/model, assigned non-author Operator, allowed paths, and immutable finding
-refs. Only that Operator issues GO/NITS/FAIL through the fixed mailbox writer.
+- fails closed on malformed input and unclassifiable identity;
+- allows reads and scratch writes everywhere without approval;
+- permits unattended production mutation only in Director worktree chats, and
+  the Operator's own staged fixed-writer event commit;
+- converts every other governed mutation or separately authorized effect into
+  one in-app approval;
+- hard-denies direct mailbox/runtime writes, direct fixed-writer calls,
+  foreign provider launchers, and subagent seat impersonation or inherited
+  authority.
 
-Push, merge, lock action, cursor consumption, provider launch, and paid spend
-are distinct authorities. Structural identity never grants execution
-permission.
+When Cursor's optional third-party configuration support also loads
+`.claude/settings.json`, the Claude guard does not unconditionally defer. It
+maps the compatibility payload into this same app-seat policy; because that
+host has no in-app approval surface, approval-gated decisions fail closed
+there.
 
-## Target repos
+Hooks are accidental-misuse guardrails, not an authenticated provider
+principal. Cursor has no first-class immutable seat principal; Pipeline records
+and checks the strongest app-visible worktree, conversation, and
+selected-model evidence available. `model_id` is not provider/backend
+attestation; reports record the exact selected IDs and make no stronger claim.
 
-Cursor product work targets FoulPlay via
-`docs/protocol/cursor/foulplay-adoption.md`; evidence-ledger remains the ADR
-registry default for Codex/Claude ledger seats. Select the target explicitly;
-never stage a target-repo path from a Pipeline seat index.
+## Startup and verification
+
+At the start of non-trivial work, refresh smoke, recent Git history, scoped
+status, and relevant mailbox bodies. In app worktrees use normal Git and
+pytest; do not set or unset a per-seat index variable.
+
+Unit tests and `scripts/ci_smoke.py` verify executable invariants but do not
+substitute for a different-model Operator verdict or desktop acceptance.
+
+## Target repositories
+
+No Cursor-specific product destination is configured. Future destinations use
+the provider-neutral `governance.toml` registry and an explicit route.

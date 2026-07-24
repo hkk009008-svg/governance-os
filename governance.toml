@@ -3,9 +3,6 @@
 # This file answers "which product repos can this kernel govern" without
 # editing Python constants. evidence-ledger remains the DEFAULT target
 # (ADR-008 continuity); additional works register a [targets.<name>] table.
-# Cursor sessions select foulplay via GOVERNANCE_TARGET / --target foulplay
-# (see docs/protocol/cursor/foulplay-adoption.md); that does not change the
-# ADR default used by Codex/Claude ledger seats.
 #
 # Active-target resolution order (scripts/target_binding.py):
 #   CLI --target  >  GOVERNANCE_TARGET env  >  [binding].default_target
@@ -23,12 +20,6 @@ repository = "hkk009008-svg/evidence-ledger"
 path = "~/evidence-ledger"
 route_keywords = ["ledger"]
 description = "Evidence-ledger (ADR-008 designated target): trust-first home-shopping P&L product"
-
-[targets.foulplay]
-repository = "local/FoulPlay"
-path = "~/FoulPlay"
-route_keywords = ["foulplay", "foul play", "godot"]
-description = "FOUL PLAY: Godot 4 villain fighter / dungeon campaign game (Cursor product target)"
 
 [paths]
 # Roots a governed seat must never start from (historic wrong-kernel hazard).

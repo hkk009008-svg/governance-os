@@ -54,7 +54,6 @@ invariant.
 | Four-seat entrypoint | `.agents/skills/four-seat-protocol/SKILL.md` |
 | Codex ledger bridge | `docs/protocol/codex/ledger-cli-adoption.md` |
 | Cursor continuation | `docs/protocol/cursor/continuation.md` |
-| Cursor FoulPlay bridge | `docs/protocol/cursor/foulplay-adoption.md` |
 
 ## Implementation discipline
 
@@ -171,12 +170,6 @@ For evidence-ledger work, start in Pipeline, read
 `scripts/ledger_start_guard.py --seat <seat> --wave 2`, and then read the target
 repo instructions. Pipeline remains the governance kernel; evidence-ledger owns
 product-local truth.
-
-For Cursor FoulPlay work, start in Pipeline, read
-`docs/protocol/cursor/foulplay-adoption.md`, select
-`GOVERNANCE_TARGET=foulplay` (or `--target foulplay`), run the start guard with
-that target, then read FoulPlay `AGENTS.md`. FoulPlay owns game-local truth;
-evidence-ledger remains the ADR registry default for ledger seats.
 
 Fast resume is optional only for a named seat or coordinator continuing an
 unchanged already-routed local implementation or review by passing its exact

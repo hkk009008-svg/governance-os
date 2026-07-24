@@ -10,7 +10,7 @@
     "preToolUse": [
       {
         "command": ".cursor/hooks/seat-policy",
-        "matcher": "Write|Delete",
+        "matcher": "Write|Delete|Edit|ApplyPatch",
         "timeout": 10,
         "failClosed": true
       }

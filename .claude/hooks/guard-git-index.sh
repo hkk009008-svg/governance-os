@@ -50,6 +50,61 @@ def clean_git_env() -> dict[str, str]:
     return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
 
 
+def cursor_policy_decision(root: Path, data: dict[str, object]) -> dict[str, object] | None:
+    cursor_root = os.environ.get("CURSOR_PROJECT_DIR", "")
+    if not (
+        cursor_root
+        and os.environ.get("CURSOR_VERSION")
+        and os.environ.get("CLAUDE_PROJECT_DIR") == cursor_root
+    ):
+        return None
+    try:
+        workspace = Path(cursor_root).resolve(strict=True)
+    except OSError:
+        deny("Cursor compatibility host root is unavailable")
+    if workspace != root.resolve():
+        deny("Cursor and Claude compatibility roots disagree")
+    cursor_data = dict(data)
+    tool = cursor_data.get("tool_name")
+    tool_input = cursor_data.get("tool_input")
+    if tool in {"Bash", "Shell"}:
+        cursor_data["hook_event_name"] = "beforeShellExecution"
+        if isinstance(tool_input, dict):
+            cursor_data["command"] = tool_input.get("command", "")
+    else:
+        cursor_data["hook_event_name"] = "preToolUse"
+    cursor_data.setdefault(
+        "conversation_id", os.environ.get("CURSOR_APP_CONVERSATION_ID", "")
+    )
+    cursor_data.setdefault("model_id", os.environ.get("CURSOR_APP_MODEL_ID", ""))
+    sys.path.insert(0, str(workspace))
+    try:
+        from scripts import cursor_hook_policy
+
+        result = cursor_hook_policy.evaluate(
+            cursor_data,
+            os.environ,
+            root=workspace,
+        )
+    except Exception as exc:
+        deny(f"Cursor compatibility policy failed closed: {exc}")
+    if not isinstance(result, dict):
+        deny("Cursor compatibility policy returned no decision")
+    if result.get("permission") == "ask":
+        # This compatibility host has no in-app approval surface; the
+        # approval-gated action must run from the Cursor app seat chat.
+        message = (
+            "Cursor in-app approval is unavailable in this compatibility host; "
+            "run this action from the bound Cursor app seat chat."
+        )
+        return {
+            "permission": "deny",
+            "user_message": message,
+            "agent_message": message,
+        }
+    return result
+
+
 def binding_is_valid(root: Path, data: dict[str, object]) -> bool:
     if "agent_id" in data or "agent_type" in data:
         return False
@@ -214,6 +269,10 @@ root = Path(sys.argv[1])
 tool = data.get("tool_name")
 tool_input = data.get("tool_input")
 command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
+cursor_result = cursor_policy_decision(root, data)
+if cursor_result is not None:
+    print(json.dumps(cursor_result))
+    raise SystemExit(0)
 valid = binding_is_valid(root, data)
 
 if tool in {"Write", "Edit"}:

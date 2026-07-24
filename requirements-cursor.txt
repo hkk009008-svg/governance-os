@@ -1,2 +1,0 @@
-# Optional local Cursor seat-provider runtime. Core governance and CI do not install it.
-cursor-sdk==1.0.24

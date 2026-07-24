@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
+# Read-only compatibility diagnostics for Cursor Desktop app seats.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-exec /usr/bin/env -u GIT_INDEX_FILE python3 "$ROOT/scripts/cursor_seat_launcher.py" "$@"
+export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 "$ROOT/scripts/cursor_seat_launcher.py" "$@"

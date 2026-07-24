@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Deterministic guardrails for project-local Cursor seat hooks."""
+"""Write-governed Cursor Desktop guardrails for Pipeline app seats.
+
+Reads are free. Repository mutations are role-governed: Director worktree
+chats mutate freely, every other top-level posture receives one in-app
+approval. Separately authorized effects (mailbox, push, pull, fetch, merge,
+rebase, cherry-pick) always surface one in-app approval. Hard denies are
+reserved for protected coordination surfaces, direct fixed-writer calls,
+foreign provider launchers, and subagent seat impersonation.
+"""
 
 from __future__ import annotations
 
@@ -8,14 +16,35 @@ import json
 import os
 import re
 import shlex
-import stat
-import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+try:
+    from scripts.cursor_app_binding import (
+        DEFAULT_REGISTRY_PATH,
+        DIRECTOR_SEATS,
+        AppBindingError,
+        AppSessionBinding,
+        register_payload_session,
+        resolve_registered_session,
+        session_environment,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name != "scripts":
+        raise
+    from cursor_app_binding import (  # type: ignore[no-redef]
+        DEFAULT_REGISTRY_PATH,
+        DIRECTOR_SEATS,
+        AppBindingError,
+        AppSessionBinding,
+        register_payload_session,
+        resolve_registered_session,
+        session_environment,
+    )
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _PROTECTED_PREFIXES = (
     "coordination/mailbox/sent/",
     "coordination/mailbox/seen/",
@@ -23,19 +52,128 @@ _PROTECTED_PREFIXES = (
     ".cursor/runtime/",
     ".git/refs/threeway/",
 )
-_SEAT_IMPERSONATION = re.compile(
-    r"\b(live\s+)?(director2?|operator2?|coordinator2?)\s+seat\b|\bissue\s+(go|nits|fail)\b",
-    re.IGNORECASE,
+_SCRATCH_PREFIXES = (".pytest-verify-tmp/",)
+_MUTATING_FILE_COMMANDS = frozenset(
+    {
+        "chmod",
+        "chown",
+        "cp",
+        "dd",
+        "install",
+        "ln",
+        "mkdir",
+        "mv",
+        "rm",
+        "rmdir",
+        "rsync",
+        "tee",
+        "touch",
+        "truncate",
+    }
 )
-_LIVE_SEATS = frozenset(
-    {"director", "director2", "operator", "operator2", "coordinator"}
+_GIT_TREE_MUTATORS = frozenset(
+    {
+        "add",
+        "am",
+        "apply",
+        "branch",
+        "checkout",
+        "clean",
+        "clone",
+        "commit",
+        "config",
+        "filter-branch",
+        "init",
+        "mv",
+        "notes",
+        "read-tree",
+        "remote",
+        "replace",
+        "reset",
+        "restore",
+        "revert",
+        "rm",
+        "stash",
+        "submodule",
+        "switch",
+        "symbolic-ref",
+        "tag",
+        "update-index",
+        "update-ref",
+        "worktree",
+    }
 )
-_MUTATING_SEATS = frozenset({"director", "director2", "operator", "operator2"})
-_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_EXTERNAL_GIT_EFFECTS = frozenset(
+    {"fetch", "pull", "push", "merge", "rebase", "cherry-pick"}
+)
+_MAILBOX_WRAPPERS = frozenset(
+    {"cursor-publish", "cursor-consume", "cursor_mailbox.py"}
+)
+_DIRECT_EFFECTS = frozenset(
+    {
+        "claim-lock",
+        "consume-events",
+        "mailbox_writer.py",
+        "release-lock",
+        "send-event",
+    }
+)
+_FOREIGN_LAUNCHERS = frozenset(
+    {
+        "agy-seat",
+        "claude-seat",
+        "codex-seat",
+        "cursor-agent",
+        "agy_seat_launcher.py",
+        "claude_seat_launcher.py",
+        "codex_seat_launcher.py",
+    }
+)
+_EPHEMERAL_WRITE_TARGETS = frozenset(
+    {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"}
+)
+_EPHEMERAL_WRITE_PREFIXES = (
+    "/tmp/",
+    "/private/tmp/",
+    "/var/folders/",
+    "/private/var/folders/",
+)
+_BRANCH_WRITE_FLAGS = frozenset(
+    {
+        "-c",
+        "-C",
+        "-d",
+        "-D",
+        "-f",
+        "-m",
+        "-M",
+        "--copy",
+        "--delete",
+        "--edit-description",
+        "--force",
+        "--move",
+        "--set-upstream-to",
+        "--unset-upstream",
+    }
+)
+_REDIRECT = re.compile(r"^(?:[0-9]*>>?|&>>?|>\|)(?P<path>.*)$")
+_MAILBOX_EVENT_NAME = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-"
+    r"(?P<sender>director2?|operator2?|coordinator)-to-"
+    r"(?:director2?|operator2?|coordinator|all)-[a-z0-9-]+\.md$"
+)
 
 
 def _allow() -> dict[str, str]:
     return {"permission": "allow"}
+
+
+def _ask(message: str) -> dict[str, str]:
+    return {
+        "permission": "ask",
+        "user_message": message,
+        "agent_message": message,
+    }
 
 
 def _deny(message: str) -> dict[str, str]:
@@ -46,135 +184,85 @@ def _deny(message: str) -> dict[str, str]:
     }
 
 
-def _normalized_path(value: object) -> str:
-    if not isinstance(value, str):
-        return ""
-    try:
-        path = Path(value).expanduser().resolve(strict=False)
-        return path.relative_to(_PROJECT_ROOT).as_posix()
-    except (OSError, ValueError):
-        pass
-    path = PurePosixPath(value.replace("\\", "/")).as_posix()
-    while path.startswith("./"):
-        path = path[2:]
-    return path
-
-
-def _protected(value: object) -> bool:
-    path = _normalized_path(value)
-    return any(path == prefix.rstrip("/") or path.startswith(prefix) for prefix in _PROTECTED_PREFIXES)
-
-
 def _subagent(payload: Mapping[str, Any]) -> bool:
     return any(
         key in payload
-        for key in ("subagent_id", "subagent_type")
+        for key in ("subagent_id", "subagent_type", "parent_conversation_id")
     )
 
 
-def _clean_git_env(environ: Mapping[str, str]) -> dict[str, str]:
-    return {
-        key: value
-        for key, value in environ.items()
-        if not key.startswith("GIT_")
-    }
-
-
-def _valid_live_binding(environ: Mapping[str, str]) -> bool:
-    """Prove one exact, healthy provider-prefixed Cursor seat binding."""
-
-    seat = environ.get("CURSOR_SEAT", "")
-    raw_index = environ.get("GIT_INDEX_FILE", "")
-    if seat not in _LIVE_SEATS or not raw_index:
-        return False
-    root = _PROJECT_ROOT
-    resolved = subprocess.run(
-        ["git", "-C", str(root), "rev-parse", "--absolute-git-dir"],
-        env=_clean_git_env(environ),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if resolved.returncode != 0:
-        return False
-    expected = Path(resolved.stdout.strip()) / f"index-cursor-{seat}"
-    index = Path(raw_index)
-    if (
-        not index.is_absolute()
-        or os.path.normpath(str(index)) != os.path.normpath(str(expected))
-    ):
-        return False
+def _normalized_path(value: object, *, root: Path) -> str:
+    if not isinstance(value, str) or not value:
+        return ""
+    candidate = Path(value).expanduser()
     try:
-        if not stat.S_ISREG(index.lstat().st_mode):
-            return False
-    except OSError:
-        return False
-    index_env = _clean_git_env(environ)
-    index_env["GIT_INDEX_FILE"] = str(index)
-    entries = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "--stage", "-z"],
-        env=index_env,
-        text=True,
-        capture_output=True,
-        check=False,
+        absolute = candidate.resolve(strict=False) if candidate.is_absolute() else (
+            root / candidate
+        ).resolve(strict=False)
+        return absolute.relative_to(root.resolve()).as_posix()
+    except (OSError, ValueError):
+        return PurePosixPath(value.replace("\\", "/")).as_posix()
+
+
+def _protected(value: object, *, root: Path) -> bool:
+    path = _normalized_path(value, root=root)
+    return any(
+        path == prefix.rstrip("/") or path.startswith(prefix)
+        for prefix in _PROTECTED_PREFIXES
     )
-    if entries.returncode != 0:
+
+
+def _scratch(value: object, *, root: Path) -> bool:
+    path = _normalized_path(value, root=root)
+    return any(
+        path == prefix.rstrip("/") or path.startswith(prefix)
+        for prefix in _SCRATCH_PREFIXES
+    )
+
+
+def _repo_path(value: object, *, root: Path) -> bool:
+    if not isinstance(value, str) or not value or value.startswith("-"):
         return False
-    if not entries.stdout:
-        head_entries = subprocess.run(
-            ["git", "-C", str(root), "ls-tree", "-r", "--name-only", "-z", "HEAD"],
-            env=_clean_git_env(environ),
-            text=True,
-            capture_output=True,
-            check=False,
+    candidate = Path(value).expanduser()
+    try:
+        absolute = candidate.resolve(strict=False) if candidate.is_absolute() else (
+            root / candidate
+        ).resolve(strict=False)
+        absolute.relative_to(root.resolve())
+        return not _scratch(value, root=root)
+    except (OSError, ValueError):
+        return False
+
+
+def _outside_workspace(value: object, *, root: Path) -> bool:
+    if not isinstance(value, str) or not value or value.startswith("-"):
+        return False
+    candidate = Path(value).expanduser()
+    try:
+        absolute = (
+            candidate.resolve(strict=False)
+            if candidate.is_absolute()
+            else (root / candidate).resolve(strict=False)
         )
-        if head_entries.returncode != 0 or head_entries.stdout:
-            return False
-    status = subprocess.run(
-        [
-            "git",
-            "--no-optional-locks",
-            "-C",
-            str(root),
-            "status",
-            "--porcelain=v1",
-            "--untracked-files=no",
-            "--ignore-submodules=all",
-        ],
-        env=index_env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    return status.returncode == 0
+        absolute.relative_to(root.resolve())
+        return False
+    except (OSError, ValueError):
+        return True
 
 
-def _mutation_capable(
-    payload: Mapping[str, Any], environ: Mapping[str, str]
-) -> bool:
-    return (
-        not _subagent(payload)
-        and environ.get("CURSOR_OPERATION") in {"dispatch", "build"}
-        and environ.get("CURSOR_SEAT") in _MUTATING_SEATS
-        and _valid_live_binding(environ)
+def _ephemeral_write(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    return value in _EPHEMERAL_WRITE_TARGETS or value.startswith(
+        _EPHEMERAL_WRITE_PREFIXES
     )
 
 
 def _segments(command: str) -> list[list[str]]:
-    if "\n" in command:
-        if "<<" in command:
-            # Heredoc bodies are data for the first-line command, not shell.
-            command = command.split("\n", 1)[0]
-        else:
-            result: list[list[str]] = []
-            for line in command.split("\n"):
-                if not line.strip():
-                    continue
-                parsed = _segments(line)
-                if not parsed:
-                    return []
-                result.extend(parsed)
-            return result
+    """Parse simple shell segments; opaque syntax yields no segments."""
+
+    if any(token in command for token in ("\n", "$(", "`", "<(", ">(")):
+        return []
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
         lexer.whitespace_split = True
@@ -183,981 +271,495 @@ def _segments(command: str) -> list[list[str]]:
         return []
     result: list[list[str]] = []
     current: list[str] = []
-    index = 0
-    while index < len(tokens):
-        token = tokens[index]
-        if (
-            token == "&"
-            and current
-            and _REDIRECT_BARE.fullmatch(current[-1])
-            and index + 1 < len(tokens)
-            and re.fullmatch(r"(?:[0-9]+|-)", tokens[index + 1])
-        ):
-            current[-1] = f"{current[-1]}&{tokens[index + 1]}"
-            index += 2
-            continue
+    for token in tokens:
         if token in {";", "&", "|", "|&", "||", "&&"}:
             if current:
                 result.append(current)
                 current = []
-        else:
-            current.append(token)
-        index += 1
+            continue
+        current.append(token)
     if current:
         result.append(current)
     return result
-
-
-_MAX_SHELL_NESTING = 8
-
-
-def _backtick_substitution(command: str, start: int) -> tuple[str, int] | None:
-    """Extract one unescaped legacy command substitution."""
-
-    body: list[str] = []
-    index = start + 1
-    while index < len(command):
-        if command[index] == "\\":
-            if index + 1 >= len(command):
-                return None
-            if command[index + 1] == "`":
-                # Legacy nested backticks escape their inner delimiters.
-                # Normalize them so the recursive policy pass sees execution.
-                body.append("`")
-            else:
-                body.extend(command[index : index + 2])
-            index += 2
-            continue
-        if command[index] == "`":
-            return "".join(body), index + 1
-        body.append(command[index])
-        index += 1
-    return None
-
-
-def _parenthesized_substitution(
-    command: str,
-    open_index: int,
-) -> tuple[str, int] | None:
-    """Extract a command/process substitution with nested quote awareness."""
-
-    quote_stack: list[str | None] = [None]
-    index = open_index + 1
-    while index < len(command):
-        quote = quote_stack[-1]
-        character = command[index]
-        if quote == "'":
-            if character == "'":
-                quote_stack[-1] = None
-            index += 1
-            continue
-        if character == "\\":
-            index += 2
-            continue
-        if quote == '"':
-            if character == '"':
-                quote_stack[-1] = None
-                index += 1
-                continue
-            if command.startswith("$(", index):
-                if len(quote_stack) >= _MAX_SHELL_NESTING:
-                    return None
-                quote_stack.append(None)
-                index += 2
-                continue
-            if character == "`":
-                nested = _backtick_substitution(command, index)
-                if nested is None:
-                    return None
-                index = nested[1]
-                continue
-            index += 1
-            continue
-        if character in {"'", '"'}:
-            quote_stack[-1] = character
-            index += 1
-            continue
-        if (
-            command.startswith("$(", index)
-            or command.startswith("<(", index)
-            or command.startswith(">(", index)
-        ):
-            if len(quote_stack) >= _MAX_SHELL_NESTING:
-                return None
-            quote_stack.append(None)
-            index += 2
-            continue
-        if character == "`":
-            nested = _backtick_substitution(command, index)
-            if nested is None:
-                return None
-            index = nested[1]
-            continue
-        if character == ")":
-            quote_stack.pop()
-            if not quote_stack:
-                return command[open_index + 1 : index], index + 1
-        index += 1
-    return None
-
-
-
-def _strip_quoted_heredoc_bodies(command: str) -> str:
-    """Drop bodies of quoted/escaped heredocs before substitution scanning."""
-
-    if "<<" not in command:
-        return command
-    pieces: list[str] = []
-    index = 0
-    while index < len(command):
-        start = command.find("<<", index)
-        if start < 0:
-            pieces.append(command[index:])
-            break
-        pieces.append(command[index:start])
-        cursor = start + 2
-        if cursor < len(command) and command[cursor] == "-":
-            cursor += 1
-        while cursor < len(command) and command[cursor] in " \t":
-            cursor += 1
-        if cursor >= len(command):
-            pieces.append(command[start:])
-            break
-        tag = ""
-        if command[cursor] == "'":
-            end = command.find("'", cursor + 1)
-            if end < 0:
-                return command
-            tag = command[cursor + 1 : end]
-            cursor = end + 1
-        elif command[cursor] == '"':
-            end = command.find('"', cursor + 1)
-            if end < 0:
-                return command
-            tag = command[cursor + 1 : end]
-            cursor = end + 1
-        elif command[cursor] == "\\":
-            match = re.match(r"\\(\S+)", command[cursor:])
-            if not match:
-                return command
-            tag = match.group(1)
-            cursor += match.end()
-        else:
-            pieces.append(command[start:cursor])
-            index = cursor
-            continue
-        newline = command.find("\n", cursor)
-        if newline < 0:
-            pieces.append(command[start:])
-            break
-        pieces.append(command[start : newline + 1])
-        pos = newline + 1
-        while True:
-            next_nl = command.find("\n", pos)
-            line = command[pos:] if next_nl < 0 else command[pos:next_nl]
-            if line.rstrip("\r") == tag:
-                if next_nl < 0:
-                    pieces.append(line)
-                    return "".join(pieces)
-                pieces.append(command[pos : next_nl + 1])
-                index = next_nl + 1
-                break
-            if next_nl < 0:
-                return command
-            pos = next_nl + 1
-    return "".join(pieces)
-
-
-def _shell_substitutions(command: str) -> list[str] | None:
-    """Return executable substitution bodies, or None for unsafe syntax."""
-
-    substitutions: list[str] = []
-    quote: str | None = None
-    index = 0
-    while index < len(command):
-        character = command[index]
-        if quote == "'":
-            if character == "'":
-                quote = None
-            index += 1
-            continue
-        if character == "\\":
-            index += 2
-            continue
-        if character == "'" and quote is None:
-            quote = "'"
-            index += 1
-            continue
-        if character == '"':
-            quote = None if quote == '"' else '"'
-            index += 1
-            continue
-        opener = (
-            command.startswith("$(", index)
-            or (
-                quote is None
-                and (
-                    command.startswith("<(", index)
-                    or command.startswith(">(", index)
-                )
-            )
-        )
-        if opener:
-            nested = _parenthesized_substitution(command, index + 1)
-            if nested is None:
-                return None
-            substitutions.append(nested[0])
-            index = nested[1]
-            continue
-        if character == "`":
-            nested = _backtick_substitution(command, index)
-            if nested is None:
-                return None
-            substitutions.append(nested[0])
-            index = nested[1]
-            continue
-        index += 1
-    return substitutions
 
 
 def _assignment(token: str) -> bool:
     return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token) is not None
 
 
-def _unwrap_env(tokens: list[str]) -> tuple[list[str], bool]:
+def _unwrap_env(tokens: list[str]) -> list[str]:
     index = 0
     while index < len(tokens) and _assignment(tokens[index]):
         index += 1
     if index >= len(tokens) or PurePosixPath(tokens[index]).name != "env":
-        return tokens[index:], False
+        return tokens[index:]
     index += 1
-    unset_index = False
-    reset_index = False
-    while index < len(tokens):
-        token = tokens[index]
-        if token == "--":
-            index += 1
-            break
-        if token in {"-u", "--unset"} and index + 1 < len(tokens):
-            unset_index = unset_index or tokens[index + 1] == "GIT_INDEX_FILE"
-            index += 2
-            continue
-        if token.startswith("--unset="):
-            unset_index = unset_index or token.partition("=")[2] == "GIT_INDEX_FILE"
-            index += 1
-            continue
-        if _assignment(token):
-            reset_index = reset_index or token.partition("=")[0] == "GIT_INDEX_FILE"
-            index += 1
-            continue
-        if token.startswith("-"):
-            index += 1
-            continue
-        break
-    return tokens[index:], unset_index and not reset_index
-
-
-_REDIRECT_GLUED = re.compile(r"^(?:[0-9]*>>?|&>>?|>\|)(?P<path>.+)$")
-_REDIRECT_BARE = re.compile(r"^(?:[0-9]*>>?|&>>?|>\|)$")
-_MUTATING_FILE_CMDS = {
-    "tee",
-    "cp",
-    "mv",
-    "rm",
-    "dd",
-    "install",
-    "ln",
-    "truncate",
-    "touch",
-    "mkdir",
-    "rmdir",
-    "chmod",
-    "chown",
-}
-_GIT_MUTATION_SUBCOMMANDS = frozenset(
-    {
-        "add",
-        "apply",
-        "checkout",
-        "clean",
-        "commit",
-        "config",
-        "mv",
-        "rebase",
-        "reset",
-        "restore",
-        "revert",
-        "rm",
-        "stash",
-        "switch",
-    }
-)
-# Parity with .codex/hooks guard-git-index semantics: only commands that read
-# or write the git index need the `env -u GIT_INDEX_FILE` prefix under a
-# per-seat index. Read-only git (status/log/show/diff/...) stays usable.
-_GIT_INDEX_MUTATORS = frozenset(
-    {
-        "add",
-        "apply",
-        "checkout",
-        "cherry-pick",
-        "clean",
-        "commit",
-        "merge",
-        "mv",
-        "read-tree",
-        "rebase",
-        "reset",
-        "restore",
-        "rm",
-        "stash",
-        "switch",
-        "update-index",
-    }
-)
-_SAFE_GIT_READS = frozenset(
-    {
-        "cat-file",
-        "describe",
-        "diff",
-        "grep",
-        "log",
-        "ls-files",
-        "ls-tree",
-        "merge-base",
-        "name-rev",
-        "rev-list",
-        "rev-parse",
-        "show",
-        "status",
-    }
-)
-_ORIENTATION_SCRIPTS = frozenset(
-    {
-        "ci_smoke.py",
-        "seat_status.py",
-        "continuation_readiness.py",
-        "target_binding.py",
-        "ledger_start_guard.py",
-        "cursor_land_gate.py",
-    }
-)
-_SAFE_READ_COMMANDS = frozenset(
-    {
-        "[",
-        "cat",
-        "cd",
-        "cut",
-        "echo",
-        "file",
-        "grep",
-        "head",
-        "less",
-        "ls",
-        "md5",
-        "pwd",
-        "rg",
-        "sed",
-        "set",
-        "sha256sum",
-        "shasum",
-        "sort",
-        "stat",
-        "tail",
-        "test",
-        "tr",
-        "uniq",
-        "wc",
-    }
-)
-
-
-def _writes_protected(tokens: list[str]) -> bool:
-    """Deny only actual writes to protected state, never plain reads."""
-    if not tokens:
-        return False
-    for index, token in enumerate(tokens):
-        glued = _REDIRECT_GLUED.match(token)
-        if glued and _protected(glued.group("path")):
-            return True
-        if _REDIRECT_BARE.match(token) and index + 1 < len(tokens) and _protected(tokens[index + 1]):
-            return True
-    executable = PurePosixPath(tokens[0]).name
-    if executable in _MUTATING_FILE_CMDS and any(_protected(token) for token in tokens[1:]):
-        return True
-    return False
-
-
-_SCRATCH_PREFIXES = (".pytest-verify-tmp/",)
-
-
-def _repo_relative(value: object) -> str | None:
-    """Return the repo-relative path, or None when it points outside."""
-
-    path = _normalized_path(value)
-    if not path or path.startswith("/") or path.startswith(".."):
-        return None
-    return path
-
-
-def _scratch(path: str) -> bool:
-    return any(
-        path == prefix.rstrip("/") or path.startswith(prefix)
-        for prefix in _SCRATCH_PREFIXES
-    )
-
-
-def _mutated_repo_path(value: object) -> bool:
-    path = _repo_relative(value)
-    return path is not None and not _scratch(path)
-
-
-def _writes_repo_tree(tokens: list[str]) -> bool:
-    """Recognize common shell mutations aimed at the repository tree.
-
-    Writes outside the repository (e.g. /tmp scratch) and to the sanctioned
-    scratch prefixes stay allowed so read-only seats can still capture logs.
-    """
-
-    if not tokens:
-        return False
-    for index, token in enumerate(tokens):
-        glued = _REDIRECT_GLUED.match(token)
-        if glued:
-            target = glued.group("path")
-            if not target.startswith("&") and _mutated_repo_path(target):
-                return True
-            continue
-        if (
-            _REDIRECT_BARE.match(token)
-            and index + 1 < len(tokens)
-            and _mutated_repo_path(tokens[index + 1])
-        ):
-            return True
-    executable = PurePosixPath(tokens[0]).name
-    mutates = executable in _MUTATING_FILE_CMDS or (
-        executable == "sed"
-        and any(
-            token == "-i" or (token.startswith("-i") and not token.startswith("--"))
-            for token in tokens[1:]
-        )
-    )
-    if not mutates:
-        return False
-    return any(
-        _mutated_repo_path(token)
-        for token in tokens[1:]
-        if not token.startswith("-")
-    )
-
-
-_PRIVILEGED_EXECS = {
-    "send-event",
-    "consume-events",
-    "claim-lock",
-    "release-lock",
-    "cursor-seat",
-    "cursor-publish",
-    "cursor-consume",
-    "mailbox_writer.py",
-    "cursor_seat_launcher.py",
-    "cursor_mailbox.py",
-    "cursor-relay",
-    "cursor_auto_relay.py",
-    "cursor-apply-bundle",
-    "cursor_apply_bundle.py",
-}
-# Provider separation: Cursor sessions never launch another provider's seats.
-_FOREIGN_PROVIDER_EXECS = {
-    "agy-seat",
-    "codex-seat",
-    "agy_seat_launcher.py",
-    "codex_seat_launcher.py",
-}
-# Documented read-only orientation entry points of the Cursor launcher.
-_READ_ONLY_LAUNCHER_COMMANDS = {"readiness", "status"}
-_READ_ONLY_LAUNCHERS = {"cursor-seat", "cursor_seat_launcher.py"}
-_DRY_RUN_WRAPPERS = {"cursor-publish", "cursor-consume", "cursor-relay", "cursor_mailbox.py", "cursor_auto_relay.py", "cursor-apply-bundle", "cursor_apply_bundle.py"}
-_LIVE_MAILBOX_EXECS = frozenset(
-    {
-        "cursor-publish",
-        "cursor-consume",
-        "cursor-relay",
-        "cursor_mailbox.py",
-        "cursor_auto_relay.py",
-    }
-)
-_INTERPRETER_NAMES = {"bash", "sh", "zsh", "dash", "ksh", "ruby", "perl"}
-_SHELL_INTERPRETERS = {"bash", "sh", "zsh", "dash", "ksh"}
-_COMMAND_WRAPPERS = {"command", "exec"}
-
-def _live_mailbox_effect(tokens: list[str]) -> bool:
-    if not tokens:
-        return False
-    executable = PurePosixPath(tokens[0]).name
-    if executable in _LIVE_MAILBOX_EXECS:
-        if _read_only_invocation(executable, tokens[1:]):
-            return False
-        return True
-    if executable.startswith("python") or executable in _INTERPRETER_NAMES:
-        for index, token in enumerate(tokens[1:], start=1):
-            name = PurePosixPath(token).name
-            if name in _LIVE_MAILBOX_EXECS:
-                if _read_only_invocation(name, tokens[index + 1 :]):
-                    return False
-                return True
-    return False
-
-
-
-
-
-_BUILD_LAND_EXECS = frozenset(
-    {
-        "cursor-apply-bundle",
-        "cursor_apply_bundle.py",
-    }
-)
-
-
-def _build_land_effect(tokens: list[str]) -> bool:
-    if not tokens:
-        return False
-    executable = PurePosixPath(tokens[0]).name
-    if executable in _BUILD_LAND_EXECS:
-        if _read_only_invocation(executable, tokens[1:]):
-            return False
-        return True
-    if executable.startswith("python") or executable in _INTERPRETER_NAMES:
-        for index, token in enumerate(tokens[1:], start=1):
-            name = PurePosixPath(token).name
-            if name in _BUILD_LAND_EXECS:
-                if _read_only_invocation(name, tokens[index + 1 :]):
-                    return False
-                return True
-    return False
-
-
-def _after_command_wrapper(tokens: list[str]) -> list[str]:
-    """Return the command invoked by shell ``command`` / ``exec`` builtins."""
-
-    index = 1
     while index < len(tokens):
         token = tokens[index]
         if token == "--":
             return tokens[index + 1 :]
-        if token.startswith("-"):
+        if token in {"-u", "--unset"} and index + 1 < len(tokens):
+            index += 2
+            continue
+        if token.startswith("--unset=") or token.startswith("-") or _assignment(token):
             index += 1
             continue
         return tokens[index:]
     return []
 
 
-def _shell_code_argument(tokens: list[str]) -> str | None:
-    """Return the script passed to a shell's ``-c`` option, when present."""
-
-    for index, token in enumerate(tokens[1:], start=1):
-        if token == "--":
-            return None
-        if token == "-c" or (
-            token.startswith("-")
-            and not token.startswith("--")
-            and "c" in token[1:]
-        ):
-            return tokens[index + 1] if index + 1 < len(tokens) else ""
-    return None
-
-
 def _git_subcommand(tokens: list[str]) -> str:
-    index = 1
-    while index < len(tokens) and tokens[index].startswith("-"):
-        if tokens[index] in {"-C", "-c", "--git-dir", "--work-tree"} and index + 1 < len(tokens):
-            index += 2
-        else:
-            index += 1
-    return tokens[index] if index < len(tokens) else ""
-
-
-
-def _orientation_python_script(tokens: list[str]) -> bool:
-    """True when python invokes a documented read-only orientation script."""
-
-    if not tokens or not PurePosixPath(tokens[0]).name.startswith("python"):
-        return False
     index = 1
     while index < len(tokens):
         token = tokens[index]
-        if token == "--":
-            index += 1
-            break
-        if token.startswith("-"):
-            if token in {"-m", "-c"}:
-                return False
+        if token in {"-C", "-c", "--git-dir", "--work-tree"} and index + 1 < len(tokens):
+            index += 2
+            continue
+        if token in {"--no-optional-locks", "--no-pager", "--literal-pathspecs"}:
             index += 1
             continue
-        return PurePosixPath(token).name in _ORIENTATION_SCRIPTS
-    return False
+        if token.startswith("-"):
+            index += 1
+            continue
+        return token
+    return ""
 
 
-def _launcher_read_only(arguments: list[str]) -> bool:
-    """True for cursor-seat invocations that cannot produce a live launch."""
-
-    index = 0
-    while index < len(arguments):
-        token = arguments[index]
-        if token == "--dry-run":
-            return True
-        if token == "--config" and index + 1 < len(arguments):
+def _git_arguments(tokens: list[str]) -> list[str]:
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"-C", "-c", "--git-dir", "--work-tree"} and index + 1 < len(tokens):
             index += 2
             continue
         if token.startswith("-"):
             index += 1
             continue
-        return token in _READ_ONLY_LAUNCHER_COMMANDS
-    return False
+        return tokens[index + 1 :]
+    return []
 
 
-def _bounded_read_only_segment(
-    tokens: list[str],
-    *,
-    unsets_index: bool,
-    environ: Mapping[str, str],
-) -> bool:
-    """Allow a small inspection/scratch subset for readiness-only sessions."""
+def _git_read_form(tokens: list[str], subcommand: str) -> bool:
+    """Detect read-only invocations of git subcommands that can also mutate."""
 
-    if not tokens:
-        return False
-    executable = PurePosixPath(tokens[0]).name
-    if _read_only_invocation(executable, tokens[1:]):
-        return True
-    if (
-        executable.startswith("python")
-        and len(tokens) > 1
-        and not tokens[1].startswith("-")
-        and _read_only_invocation(
-            PurePosixPath(tokens[1]).name,
-            tokens[2:],
+    arguments = _git_arguments(tokens)
+    if subcommand == "worktree":
+        return bool(arguments) and arguments[0] == "list"
+    if subcommand == "stash":
+        return bool(arguments) and arguments[0] in {"list", "show"}
+    if subcommand == "remote":
+        return not arguments or arguments[0] in {"-v", "--verbose", "show", "get-url"}
+    if subcommand == "config":
+        return any(
+            argument in {"--list", "-l"} or argument.startswith("--get")
+            for argument in arguments
         )
-    ):
-        return True
-    if _orientation_python_script(tokens):
-        return True
-    if executable == "git":
-        subcommand = _git_subcommand(tokens)
-        if subcommand not in _SAFE_GIT_READS:
+    if subcommand == "tag":
+        return not arguments or "-l" in arguments or "--list" in arguments
+    if subcommand == "branch":
+        if any(
+            argument in _BRANCH_WRITE_FLAGS
+            or argument.startswith("--set-upstream-to=")
+            for argument in arguments
+        ):
             return False
-        if environ.get("GIT_INDEX_FILE") and not unsets_index:
+        return "--list" in arguments or all(
+            argument.startswith("-") for argument in arguments
+        )
+    if subcommand == "symbolic-ref":
+        if "--delete" in arguments or "-d" in arguments:
             return False
-        return True
-    if executable == "sed" and any(
-        token == "-i" or (token.startswith("-i") and not token.startswith("--"))
-        for token in tokens[1:]
-    ):
-        return False
-    if executable in _MUTATING_FILE_CMDS:
-        return not _writes_repo_tree(tokens)
-    return executable in _SAFE_READ_COMMANDS and not _writes_repo_tree(tokens)
-
-
-
-_CURSOR_UNIT_PREFIX = "tests/unit/test_cursor_"
-
-
-def _cursor_unit_pytest(tokens: list[str], *, unsets_index: bool) -> bool:
-    """Allow readiness to run only the Cursor-unit pytest cluster."""
-
-    if not unsets_index or not tokens:
-        return False
-    executable = PurePosixPath(tokens[0]).name
-    args = tokens[1:]
-    paths: list[str] = []
-    if executable == "pytest":
-        paths = [token for token in args if not token.startswith("-")]
-    elif executable.startswith("python"):
-        try:
-            marker = args.index("-m")
-        except ValueError:
-            return False
-        if marker + 1 >= len(args) or args[marker + 1] != "pytest":
-            return False
-        paths = [
-            token
-            for token in args[marker + 2 :]
-            if not token.startswith("-")
+        positional = [
+            argument for argument in arguments if not argument.startswith("-")
         ]
-    else:
-        return False
-    if not paths:
-        return False
-    return all(
-        path.startswith(_CURSOR_UNIT_PREFIX) and path.endswith(".py")
-        for path in paths
-    )
-
-
-def _review_test_segment(tokens: list[str], *, unsets_index: bool) -> bool:
-    executable = PurePosixPath(tokens[0]).name if tokens else ""
-    is_pytest = executable == "pytest" or (
-        executable.startswith("python")
-        and any(
-            tokens[index : index + 2] == ["-m", "pytest"]
-            for index in range(1, len(tokens) - 1)
-        )
-    )
-    return is_pytest and unsets_index
-
-
-def _read_only_invocation(program: str, arguments: list[str]) -> bool:
-    if program in _READ_ONLY_LAUNCHERS:
-        return _launcher_read_only(arguments)
-    if program in _DRY_RUN_WRAPPERS:
-        return "--dry-run" in arguments
+        return len(positional) <= 1
+    if subcommand == "notes":
+        return bool(arguments) and arguments[0] in {"list", "show"}
     return False
 
 
-def _effect_violation(tokens: list[str], *, depth: int = 0) -> str | None:
-    """Classify direct and common shell-wrapped privileged executions.
+def _git_tree_mutation(tokens: list[str]) -> bool:
+    if not tokens or PurePosixPath(tokens[0]).name != "git":
+        return False
+    subcommand = _git_subcommand(tokens)
+    if subcommand not in _GIT_TREE_MUTATORS:
+        return False
+    return not _git_read_form(tokens, subcommand)
 
-    Returns ``"effect"`` for separately authorized effects, ``"foreign"`` for
-    other providers' seat launchers, and ``None`` when the segment is clean.
-    """
 
+def _read_only_mailbox_invocation(program: str, arguments: list[str]) -> bool:
+    if program not in _MAILBOX_WRAPPERS:
+        return False
+    return "--dry-run" in arguments or "next-review" in arguments
+
+
+def _python_program(tokens: list[str]) -> tuple[str, list[str]]:
     if not tokens:
-        return None
-    if depth > 4:
-        return "effect"
+        return "", []
     executable = PurePosixPath(tokens[0]).name
-    if executable in _FOREIGN_PROVIDER_EXECS:
-        return "foreign"
-    if executable in _PRIVILEGED_EXECS:
-        if _read_only_invocation(executable, tokens[1:]):
-            return None
-        return "effect"
-    if executable == "sudo":
-        return "effect"
-    if executable in _COMMAND_WRAPPERS:
-        return _effect_violation(_after_command_wrapper(tokens), depth=depth + 1)
-    if executable.startswith("python") or executable in _INTERPRETER_NAMES:
-        for index, token in enumerate(tokens[1:], start=1):
-            name = PurePosixPath(token).name
-            if name in _FOREIGN_PROVIDER_EXECS:
-                return "foreign"
-            if name in _PRIVILEGED_EXECS:
-                if _read_only_invocation(name, tokens[index + 1 :]):
-                    return None
-                return "effect"
-        if executable in _SHELL_INTERPRETERS:
-            shell_code = _shell_code_argument(tokens)
-            if shell_code is not None:
-                nested = _segments(shell_code)
-                if not nested:
-                    return "effect"
-                for segment in nested:
-                    violation = _effect_violation(
-                        _unwrap_env(segment)[0], depth=depth + 1
-                    )
-                    if violation:
-                        return violation
-                return None
-    if executable == "git" and _git_subcommand(tokens) in {
-        "push",
-        "merge",
-        "rebase",
-        "cherry-pick",
-        "fetch",
-        "pull",
-    }:
-        return "effect"
+    if not executable.startswith("python"):
+        return executable, tokens[1:]
+    for index, token in enumerate(tokens[1:], start=1):
+        if token == "--":
+            continue
+        if token.startswith("-"):
+            if token in {"-m", "-c"}:
+                return executable, tokens[1:]
+            continue
+        return PurePosixPath(token).name, tokens[index + 1 :]
+    return executable, []
+
+
+def _effect(tokens: list[str]) -> str | None:
+    program, arguments = _python_program(tokens)
+    if program in _FOREIGN_LAUNCHERS:
+        return "launcher"
+    if program in _DIRECT_EFFECTS:
+        return "direct"
+    if program in _MAILBOX_WRAPPERS:
+        return None if _read_only_mailbox_invocation(program, arguments) else "mailbox"
+    if PurePosixPath(tokens[0]).name == "git":
+        subcommand = _git_subcommand(tokens)
+        if subcommand in _EXTERNAL_GIT_EFFECTS:
+            return "external-git"
+    if PurePosixPath(tokens[0]).name == "sudo":
+        return "direct"
     return None
+
+
+def _opaque_execution(tokens: list[str]) -> bool:
+    if not tokens:
+        return True
+    executable = PurePosixPath(tokens[0]).name
+    if executable in {"bash", "dash", "sh", "zsh"} and "-c" in tokens[1:]:
+        return True
+    if executable.startswith("python") and "-c" in tokens[1:]:
+        return True
+    if executable in {"node", "perl", "ruby"} and any(
+        flag in tokens[1:] for flag in ("-e", "--eval")
+    ):
+        return True
+    return False
+
+
+def _write_paths(tokens: list[str]) -> list[str]:
+    paths: list[str] = []
+    for index, token in enumerate(tokens):
+        match = _REDIRECT.match(token)
+        if match and match.group("path"):
+            # File-descriptor duplication (2>&1, >&2) writes no file.
+            if not match.group("path").startswith("&"):
+                paths.append(match.group("path"))
+        elif token in {">", ">>", "1>", "1>>", "2>", "2>>"} and index + 1 < len(tokens):
+            paths.append(tokens[index + 1])
+    program = PurePosixPath(tokens[0]).name if tokens else ""
+    if program in _MUTATING_FILE_COMMANDS:
+        paths.extend(
+            token
+            for token in tokens[1:]
+            if not token.startswith("-") and not token.startswith("+")
+        )
+    return paths
+
+
+def _outside_git_mutation(tokens: list[str], *, root: Path) -> bool:
+    if not tokens or PurePosixPath(tokens[0]).name != "git":
+        return False
+    subcommand = _git_subcommand(tokens)
+    if (
+        subcommand not in _GIT_TREE_MUTATORS
+        and subcommand not in _EXTERNAL_GIT_EFFECTS
+    ):
+        return False
+    for index, token in enumerate(tokens[:-1]):
+        if token == "-C":
+            return _outside_workspace(tokens[index + 1], root=root)
+    return False
+
+
+def _seat_mailbox_commit(
+    tokens: list[str], *, root: Path, binding: AppSessionBinding | None
+) -> bool:
+    if (
+        binding is None
+        or not tokens
+        or PurePosixPath(tokens[0]).name != "git"
+        or _git_subcommand(tokens) != "commit"
+        or "--only" not in tokens
+        or "--" not in tokens
+        or not any(
+            token == "-m" or token.startswith("--message=") for token in tokens
+        )
+        or any(flag in tokens for flag in ("--amend", "--all", "--include", "-a"))
+    ):
+        return False
+    marker = tokens.index("--")
+    paths = tokens[marker + 1 :]
+    if len(paths) != 1:
+        return False
+    normalized = _normalized_path(paths[0], root=root)
+    expected_prefix = "coordination/mailbox/sent/"
+    if not normalized.startswith(expected_prefix):
+        return False
+    name = PurePosixPath(normalized).name
+    match = _MAILBOX_EVENT_NAME.fullmatch(name)
+    return match is not None and match.group("sender") == binding.seat
+
+
+def _writes_protected(tokens: list[str], *, root: Path) -> bool:
+    for index, token in enumerate(tokens):
+        match = _REDIRECT.match(token)
+        if match and match.group("path") and _protected(match.group("path"), root=root):
+            return True
+        if token in {">", ">>", "1>", "1>>", "2>", "2>>"} and index + 1 < len(tokens):
+            if _protected(tokens[index + 1], root=root):
+                return True
+    program = PurePosixPath(tokens[0]).name if tokens else ""
+    return program in _MUTATING_FILE_COMMANDS and any(
+        _protected(token, root=root) for token in tokens[1:]
+    )
+
+
+def _tool_paths(tool_input: Mapping[str, Any]) -> list[object]:
+    paths = [
+        tool_input[key]
+        for key in ("path", "file_path", "target_file")
+        if key in tool_input
+    ]
+    patch = tool_input.get("patch") or tool_input.get("diff")
+    if isinstance(patch, str):
+        paths.extend(
+            match.group(1).strip()
+            for match in re.finditer(
+                r"^\*\*\* (?:Add|Update|Delete) File: (.+)$",
+                patch,
+                re.MULTILINE,
+            )
+        )
+    return paths
+
+
+def _role_prompt(root: Path, binding: AppSessionBinding) -> str:
+    role = (
+        "director"
+        if binding.seat in DIRECTOR_SEATS
+        else "coordinator"
+        if binding.seat == "coordinator"
+        else "operator"
+    )
+    path = root / "docs" / "protocol" / "cursor" / "roles" / f"{role}.md"
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return f"Pipeline Cursor app seat: {binding.seat}."
+
+
+def _bound_session(
+    *,
+    root: Path,
+    registry_path: Path,
+    environ: Mapping[str, str],
+) -> AppSessionBinding | None:
+    if environ.get("GIT_INDEX_FILE"):
+        return None
+    try:
+        return resolve_registered_session(
+            root, environ, registry_path=registry_path
+        )
+    except AppBindingError:
+        return None
 
 
 def _shell_decision(
     payload: Mapping[str, Any],
-    environ: Mapping[str, str],
     *,
-    depth: int = 0,
-    allow_live_mailbox: bool = True,
+    root: Path,
+    registry_path: Path,
+    environ: Mapping[str, str],
 ) -> dict[str, str]:
     command = payload.get("command")
     if not isinstance(command, str) or not command.strip():
-        return _deny("Cursor seat hook received malformed shell input.")
-    if depth >= _MAX_SHELL_NESTING:
-        return _deny("Cursor seat hook exceeded safe shell nesting depth.")
-    command = _strip_quoted_heredoc_bodies(command)
-    substitutions = _shell_substitutions(command)
-    if substitutions is None:
-        return _deny("Cursor seat hook could not safely parse shell substitution.")
-    for nested_command in substitutions:
-        nested_payload = dict(payload)
-        nested_payload["command"] = nested_command
-        nested_result = _shell_decision(
-            nested_payload,
-            environ,
-            depth=depth + 1,
-            allow_live_mailbox=False,
-        )
-        if nested_result.get("permission") != "allow":
-            return _deny(
-                "Shell substitution contains an action that is not authorized "
-                "in this Cursor posture."
-            )
+        return _deny("Cursor hook received malformed shell input.")
+    child = _subagent(payload)
+    binding = _bound_session(
+        root=root, registry_path=registry_path, environ=environ
+    )
+    director = binding is not None and binding.seat in DIRECTOR_SEATS and not child
+    posture = binding.seat if binding is not None else "readiness"
     segments = _segments(command)
     if not segments:
-        return _deny("Cursor seat hook could not parse a sensitive shell command.")
-    inherited_index = bool(environ.get("GIT_INDEX_FILE"))
-    is_subagent = _subagent(payload)
-    binding_valid = _valid_live_binding(environ)
-    mutation_capable = (
-        binding_valid
-        and not is_subagent
-        and environ.get("CURSOR_OPERATION") in {"dispatch", "build"}
-        and environ.get("CURSOR_SEAT") in _MUTATING_SEATS
-    )
-    review_capable = (
-        binding_valid
-        and not is_subagent
-        and environ.get("CURSOR_OPERATION") == "review"
-        and environ.get("CURSOR_SEAT") in {"operator", "operator2"}
-    )
-    for raw in segments:
-        tokens, unsets_index = _unwrap_env(raw)
-        if not tokens:
-            continue
-        executable = PurePosixPath(tokens[0]).name
-        git_subcommand = _git_subcommand(tokens) if executable == "git" else ""
-        is_pytest = executable == "pytest" or (
-            executable.startswith("python")
-            and any(
-                tokens[index : index + 2] == ["-m", "pytest"]
-                for index in range(1, len(tokens) - 1)
-            )
+        if child:
+            return _deny("Cursor subagents may use only auditable shell syntax.")
+        return _ask(
+            "Cursor cannot statically classify this shell syntax; approve one run?"
         )
-        violation = _effect_violation(tokens)
-        if violation == "foreign":
-            return _deny(
-                "Provider separation: Cursor sessions do not launch other "
-                "providers' seats."
-            )
-        if violation == "effect":
-            if (
-                allow_live_mailbox
-                and binding_valid
-                and not is_subagent
-                and environ.get("CURSOR_OPERATION") in {"dispatch", "review"}
-                and _live_mailbox_effect(tokens)
-            ):
-                continue
-            if (
-                binding_valid
-                and not is_subagent
-                and environ.get("CURSOR_OPERATION") == "build"
-                and _build_land_effect(tokens)
-            ):
-                continue
-            subject = "subagent" if is_subagent else "Cursor seat"
-            return _deny(
-                f"{subject} cannot perform this separately authorized effect from an agent tool."
-            )
-        if _writes_protected(tokens):
-            return _deny("Direct writes to fixed-writer or Cursor runtime state are forbidden.")
-        if (
-            inherited_index
-            and not unsets_index
-            and (
-                is_pytest
-                or (
-                    executable == "git"
-                    and git_subcommand in _GIT_INDEX_MUTATORS
-                )
-            )
-        ):
-            return _deny(
-                "GIT_INDEX_FILE is set; git index mutators and pytest require "
-                "'env -u GIT_INDEX_FILE'."
-            )
-        if not mutation_capable:
-            if (
-                _writes_repo_tree(tokens)
-                or (
-                    executable == "git"
-                    and git_subcommand in _GIT_MUTATION_SUBCOMMANDS
-                )
-            ):
+    pending_ask: dict[str, str] | None = None
+    for raw in segments:
+        tokens = _unwrap_env(raw)
+        if not tokens:
+            return _deny("Cursor hook could not resolve the shell executable.")
+        if _opaque_execution(tokens):
+            if child:
                 return _deny(
-                    "Cursor readiness/review mode is repository read-only; "
-                    "mutation requires an exact live dispatch or build seat/index binding."
+                    "Cursor subagents may not run opaque interpreter commands."
                 )
-            if review_capable and _review_test_segment(
-                tokens, unsets_index=unsets_index
-            ):
-                continue
-            if _cursor_unit_pytest(tokens, unsets_index=unsets_index):
-                continue
-            if not _bounded_read_only_segment(
-                tokens,
-                unsets_index=unsets_index,
-                environ=environ,
-            ):
+            pending_ask = pending_ask or _ask(
+                f"Approve one opaque interpreter command in this {posture} session?"
+            )
+            continue
+        effect = _effect(tokens)
+        if effect == "launcher":
+            return _deny("Cursor app seats do not launch CLI or foreign provider seats.")
+        if effect == "direct":
+            return _deny(
+                "Use the Cursor mailbox wrappers; direct fixed-writer effects are denied."
+            )
+        if effect == "external-git":
+            if _outside_git_mutation(tokens, root=root):
+                return _deny("Git effects must target the bound app worktree.")
+            if child:
                 return _deny(
-                    "Cursor readiness/review mode permits only bounded "
-                    "read-only inspection and out-of-repository scratch output."
+                    "Separately authorized Git effects require a top-level session."
                 )
-    return _allow()
+            pending_ask = pending_ask or _ask(
+                "Approve one separately authorized Git effect "
+                f"({_git_subcommand(tokens)}) as {posture}?"
+            )
+            continue
+        if effect == "mailbox":
+            if binding is None or child:
+                return _deny(
+                    "Mailbox effects require a bound top-level Cursor app seat."
+                )
+            pending_ask = pending_ask or _ask(
+                f"Approve one mailbox effect as {binding.seat} "
+                f"from model {binding.model_id}?"
+            )
+            continue
+        if _outside_git_mutation(tokens, root=root):
+            return _deny("Git mutations must remain inside the bound app worktree.")
+        if _writes_protected(tokens, root=root):
+            return _deny(
+                "Direct writes to mailbox, lock, or Cursor runtime state are forbidden."
+            )
+        write_paths = [
+            path for path in _write_paths(tokens) if not _ephemeral_write(path)
+        ]
+        outside = [
+            path for path in write_paths if _outside_workspace(path, root=root)
+        ]
+        if outside:
+            if child:
+                return _deny("Cursor subagents may not write outside the workspace.")
+            pending_ask = pending_ask or _ask(
+                f"Approve one write outside the workspace ({outside[0]})?"
+            )
+            continue
+        repo_write = any(
+            _repo_path(path, root=root) for path in write_paths
+        ) or _git_tree_mutation(tokens)
+        if not repo_write:
+            continue
+        if _seat_mailbox_commit(tokens, root=root, binding=binding) and not child:
+            continue
+        if child:
+            return _deny("Cursor subagents cannot mutate the repository tree.")
+        if director:
+            continue
+        pending_ask = pending_ask or _ask(
+            f"Approve one repository mutation in this {posture} session?"
+        )
+    return pending_ask or _allow()
 
 
 def evaluate(
-    payload: Mapping[str, Any], environ: Mapping[str, str] | None = None
+    payload: Mapping[str, Any],
+    environ: Mapping[str, str] | None = None,
+    *,
+    root: Path | None = None,
+    registry_path: Path = DEFAULT_REGISTRY_PATH,
 ) -> dict[str, Any]:
-    env = environ or os.environ
+    env = os.environ if environ is None else environ
+    workspace = _PROJECT_ROOT if root is None else root.resolve()
     event = payload.get("hook_event_name")
     if event == "sessionStart":
-        seat = env.get("CURSOR_SEAT", "")
+        if env.get("GIT_INDEX_FILE"):
+            return {
+                "additional_context": (
+                    "Pipeline Cursor posture: readiness-bridge. "
+                    "App worktree seats refuse inherited GIT_INDEX_FILE."
+                )
+            }
+        try:
+            binding = register_payload_session(
+                workspace, payload, registry_path=registry_path
+            )
+        except AppBindingError as exc:
+            return {
+                "additional_context": (
+                    "Pipeline Cursor posture: readiness-bridge. "
+                    f"Seat binding was not established: {exc}"
+                )
+            }
+        if binding is None:
+            return {
+                "additional_context": (
+                    "Pipeline Cursor posture: readiness-bridge. "
+                    "Open a reserved cursor-seat/<seat> linked worktree for a named seat."
+                )
+            }
         return {
-            "env": {"CURSOR_HOOK_SEAT": seat or "readiness-bridge"},
-            "additional_context": (
-                f"Pipeline Cursor posture: {seat or 'readiness-bridge'}. "
-                "Hook identity describes context and does not grant authority."
-            ),
+            "env": session_environment(binding),
+            "additional_context": _role_prompt(workspace, binding),
         }
+    binding = _bound_session(
+        root=workspace, registry_path=registry_path, environ=env
+    )
     if event == "subagentStart":
-        if env.get("CURSOR_SEAT") in _LIVE_SEATS:
+        if binding is not None:
             return _deny(
-                "A live Cursor seat cannot spawn a subagent because Cursor hooks "
-                "cannot safely strip inherited seat authority from child tools."
+                "Durable Cursor app seats are top-level chats; use an unbound advisor chat."
             )
         task = payload.get("task", "")
-        if isinstance(task, str) and _SEAT_IMPERSONATION.search(task):
-            return _deny("Cursor subagents are advisors and cannot impersonate a live seat.")
+        if isinstance(task, str) and re.search(
+            r"\b(director2?|operator2?|coordinator)\s+seat\b|\bissue\s+(go|nits|fail)\b",
+            task,
+            re.IGNORECASE,
+        ):
+            return _deny("Cursor subagents are advisors and cannot impersonate a seat.")
         return _allow()
     if event == "beforeShellExecution":
-        return _shell_decision(payload, env)
+        return _shell_decision(
+            payload,
+            root=workspace,
+            registry_path=registry_path,
+            environ=env,
+        )
     if event == "preToolUse":
-        tool = payload.get("tool_name")
         tool_input = payload.get("tool_input")
         if not isinstance(tool_input, dict):
-            return _deny("Cursor seat hook received malformed tool input.")
-        if tool in {"Write", "Delete"}:
-            path = next(
-                (
-                    tool_input[key]
-                    for key in ("path", "file_path", "target_file")
-                    if key in tool_input
-                ),
-                "",
-            )
-            if _protected(path):
-                return _deny("Direct edits to fixed-writer or Cursor runtime state are forbidden.")
-            if _subagent(payload):
-                return _deny("Cursor subagents cannot inherit parent seat mutation authority.")
-            if not _mutation_capable(payload, env):
-                normalized = _normalized_path(path)
-                if normalized and _scratch(normalized) and not _protected(path):
-                    return _allow()
+            return _deny("Cursor hook received malformed tool input.")
+        tool = payload.get("tool_name")
+        if tool in {"Write", "Delete", "Edit", "ApplyPatch"}:
+            paths = _tool_paths(tool_input)
+            if not paths:
+                return _deny("Cursor hook could not resolve the edited file path.")
+            if any(_outside_workspace(path, root=workspace) for path in paths):
+                return _deny("Cursor app-seat file edits must remain inside the worktree.")
+            if any(_protected(path, root=workspace) for path in paths):
                 return _deny(
-                    "Write/Delete requires an exact live Cursor dispatch "
-                    "or build seat/index binding, or a scratch path under "
-                    ".pytest-verify-tmp/; this session is readiness-only."
+                    "Direct edits to mailbox, lock, or Cursor runtime state are forbidden."
                 )
+            if _subagent(payload):
+                return _deny("Cursor subagents cannot inherit top-level seat authority.")
+            if binding is not None and binding.seat in DIRECTOR_SEATS:
+                return _allow()
+            if all(_scratch(path, root=workspace) for path in paths):
+                return _allow()
+            posture = binding.seat if binding is not None else "readiness"
+            return _ask(
+                f"Approve one repository file edit in this {posture} session?"
+            )
         return _allow()
     return _allow()
 
@@ -1167,6 +769,8 @@ def process_bytes(
     *,
     event_hint: str | None,
     environ: Mapping[str, str] | None = None,
+    root: Path | None = None,
+    registry_path: Path = DEFAULT_REGISTRY_PATH,
 ) -> tuple[str, int]:
     try:
         payload = json.loads(raw.decode("utf-8"))
@@ -1174,14 +778,24 @@ def process_bytes(
             raise ValueError("hook payload is not an object")
     except (UnicodeError, json.JSONDecodeError, ValueError):
         result = (
-            _deny("Malformed input was denied by the fail-closed Cursor seat hook.")
+            _deny("Malformed input was denied by the fail-closed Cursor app hook.")
             if event_hint in {"beforeShellExecution", "preToolUse", "subagentStart"}
             else {}
         )
         return json.dumps(result), 0
     if event_hint and "hook_event_name" not in payload:
         payload["hook_event_name"] = event_hint
-    return json.dumps(evaluate(payload, environ)), 0
+    return (
+        json.dumps(
+            evaluate(
+                payload,
+                environ,
+                root=root,
+                registry_path=registry_path,
+            )
+        ),
+        0,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1189,7 +803,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--event")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     output, status = process_bytes(
-        sys.stdin.buffer.read(), event_hint=args.event, environ=os.environ
+        sys.stdin.buffer.read(),
+        event_hint=args.event,
+        environ=os.environ,
     )
     print(output)
     return status

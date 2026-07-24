@@ -11,8 +11,9 @@ artifact needs a home, place it where the folder already expresses that intent.
 flowchart TD
     Root["AGENTS.md / CLAUDE.md"]
     Policy["docs/protocol/"]
-    Skills[".agents/skills/"]
+    Skills[".agents/skills/ + .cursor/skills/"]
     Codex[".codex/agents/ + .codex/hooks/"]
+    Cursor[".cursor/hooks/ + Agents Window worktrees"]
     Scope["coordination/verification/scopes/ (frozen historical)"]
     Ledger["coordination/"]
     Board["docs/REMEDIATION-INVENTORY.md"]
@@ -23,8 +24,10 @@ flowchart TD
     Root --> Policy
     Policy --> Skills
     Policy --> Codex
+    Policy --> Cursor
     Skills --> Ledger
     Codex --> Ledger
+    Cursor --> Ledger
     Skills --> Scope
     Scope --> Evidence
     Ledger --> Board
@@ -38,10 +41,11 @@ flowchart TD
 | Universal protocol policy | `docs/protocol/agents/` | `docs/protocol/agents/director-operator.md` | Rules shared by Claude, Codex, and other agents should not live in a Codex-only surface. |
 | Codex protocol mapping | `docs/protocol/codex/continuation.md` | Capacity-max workflow, Codex launch pattern | Codex mechanics translate the universal rules into Codex-native tools, hooks, and role agents. |
 | Target-repo CLI adoption bridge | `docs/protocol/codex/ledger-cli-adoption.md` | Evidence-ledger CLI bridge | Target-repo adoption is Codex-specific mechanics and should not duplicate universal protocol policy. |
-| Cursor target adoption bridge | `docs/protocol/cursor/foulplay-adoption.md` | FoulPlay Cursor bridge | Cursor-only product retarget; does not rewrite Codex/Claude ledger bridges or change ADR default. |
-| Cursor protocol mapping | `docs/protocol/cursor/continuation.md` | Cursor mode/startup/mailbox/guardrail adapter | Cursor mechanics translate the universal rules into Cursor-native launcher, hooks, and SDK surfaces without forking policy. |
-| Cursor seat role prompts | `docs/protocol/cursor/roles/*.md` | `docs/protocol/cursor/roles/operator.md` | Launcher-injected role prompts are the Cursor analogue of `.codex/agents/*.toml`; the launcher reads them at dispatch. |
-| Cursor seat launcher + mailbox wrappers | `scripts/cursor_seat_launcher.py`, `coordination/bin/cursor-*` | `coordination/bin/cursor-seat`, `cursor-publish`, `cursor-consume` | Executable Cursor entrypoints that delegate to the fixed writers; local registry stays under `.cursor/runtime/` (never committed). |
+| Cursor protocol mapping | `docs/protocol/cursor/continuation.md` | Agents Window/worktree/mailbox adapter | Cursor mechanics translate universal rules into app-native worktrees, hooks, and top-level chats without forking policy. |
+| Cursor seat role prompts | `docs/protocol/cursor/roles/*.md` | `docs/protocol/cursor/roles/operator.md` | The session-start hook injects the role matching the validated worktree, conversation, and model. |
+| Cursor review command | `.cursor/skills/review-next/SKILL.md` | `/review-next` | The assigned Operator resolves committed work without copied prompts or event refs. |
+| Cursor app binding | `scripts/cursor_app_binding.py` | `~/.cursor/pipeline-app-seats.json` | One helper exclusively owns the user-local conversation/model registry. |
+| Cursor diagnostics + mailbox wrappers | `scripts/cursor_seat_launcher.py`, `coordination/bin/cursor-*` | `cursor-seat status`, `cursor-publish`, `cursor-consume` | The former launcher is read-only; mailbox wrappers delegate effects to fixed writers. |
 | Cursor session guardrails | `.cursor/hooks.json` and `.cursor/hooks/` | `.cursor/hooks/seat-policy` -> `scripts/cursor_hook_policy.py` | Hooks are fail-closed lifecycle/tool boundaries, not protocol prose or mailbox state. |
 | Target-repo start guard | `scripts/ledger_start_guard.py` | Enforced Pipeline-first ledger seat startup | Executable proof belongs in scripts, then docs/skills/prompts link to it. |
 | Start-session router | `AGENTS.md` | Codex start-session inhabitance block | The root file should route agents before task-specific docs are loaded. |
@@ -57,7 +61,7 @@ flowchart TD
 | Plans and specs | `docs/superpowers/plans/`, `docs/superpowers/specs/` | Wave plans, stub-contract specs | Larger design and execution artifacts need durable but bounded homes. |
 | Executable checks | `scripts/` | `wave_gate_check.py`, `ci_smoke.py` | Gate and readiness truth should be runnable, not only asserted in prose. |
 | Committed evidence | `logs/` | `product-oracle-wave2.json`, `discovery-*.json` | Measurement and discovery outputs support R-MEASURE/R-EVIDENCE claims. |
-| Protocol tool tests | `tests/unit/` | `test_protocol_mailbox.py`, `test_coordination_tooling.py`, `test_protocol_capacity.py`, `test_protocol_doc_integrity.py`, `test_protocol_prompt_sync.py`, `test_codex_ledger_bridge.py` | Tool contracts should be enforced by tests so prose drift is caught. |
+| Protocol tool tests | `tests/unit/` | `test_protocol_mailbox.py`, `test_cursor_surface_sync.py`, `test_codex_ledger_bridge.py` | Tool contracts should be enforced by tests so prose drift is caught. |
 
 ## Placement Rule
 
@@ -67,11 +71,11 @@ Use this quick routing check before adding or moving protocol material:
 Universal rule?             -> docs/protocol/agents/
 Codex-only rule?            -> docs/protocol/codex/
 Target-repo Codex bridge?   -> docs/protocol/codex/ledger-cli-adoption.md
-Cursor FoulPlay bridge?     -> docs/protocol/cursor/foulplay-adoption.md
 Cursor protocol mapping?    -> docs/protocol/cursor/continuation.md
+Cursor app binding?         -> scripts/cursor_app_binding.py + .cursor/hooks/
 Cursor seat role prompt?    -> docs/protocol/cursor/roles/
-Cursor seat launcher?       -> scripts/cursor_seat_launcher.py + coordination/bin/cursor-*
-Cursor lifecycle guardrail? -> .cursor/hooks.json + .cursor/hooks/
+Cursor app command?         -> .cursor/skills/
+Cursor mailbox front door?  -> scripts/cursor_mailbox.py + coordination/bin/cursor-*
 Target-repo start guard?    -> scripts/ledger_start_guard.py
 Seat action checklist?      -> .agents/skills/
 Spawnable role prompt?      -> .codex/agents/

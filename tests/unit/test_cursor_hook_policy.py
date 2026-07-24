@@ -2,871 +2,704 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import stat
-import subprocess
 
 import pytest
 
 from scripts import cursor_hook_policy as policy
+from scripts.cursor_app_binding import AppBindingError, AppSessionBinding
 
 
-ROOT = Path(__file__).resolve().parents[2]
-
-
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", *args],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-        env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"},
-    ).stdout.strip()
-
-
-def _valid_binding(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    seat: str = "director",
-    operation: str = "dispatch",
-) -> tuple[Path, dict[str, str], Path]:
-    repo = tmp_path / "pipeline"
-    repo.mkdir()
-    _git(repo, "init", "-q")
-    _git(repo, "config", "user.email", "cursor-policy@example.invalid")
-    _git(repo, "config", "user.name", "Cursor Policy Test")
-    (repo / "tracked.txt").write_text("baseline\n", encoding="utf-8")
-    _git(repo, "add", "tracked.txt")
-    _git(repo, "commit", "-q", "-m", "baseline")
-    git_dir = Path(_git(repo, "rev-parse", "--absolute-git-dir"))
-    index = git_dir / f"index-cursor-{seat}"
-    _git(repo, "read-tree", f"--index-output={index}", "HEAD")
-    monkeypatch.setattr(policy, "_PROJECT_ROOT", repo)
-    return repo, {
-        "CURSOR_SEAT": seat,
-        "CURSOR_OPERATION": operation,
-        "GIT_INDEX_FILE": str(index),
-    }, index
-
-
-def _shell(command: str, **extra: object) -> dict[str, object]:
+def _payload(event: str, **values: object) -> dict[str, object]:
     return {
-        "hook_event_name": "beforeShellExecution",
-        "command": command,
-        **extra,
+        "hook_event_name": event,
+        "conversation_id": "conversation-1",
+        "model_id": "composer-2.5",
+        **values,
     }
 
 
-@pytest.mark.parametrize("tool", ["Write", "Delete"])
-def test_unbound_pre_tool_use_denies_ordinary_repository_mutation(tool: str) -> None:
-    result = policy.evaluate(
-        {
-            "hook_event_name": "preToolUse",
-            "tool_name": tool,
-            "tool_input": {"path": "scripts/example.py"},
-        },
-        {},
+def _binding(seat: str = "director") -> AppSessionBinding:
+    return AppSessionBinding(
+        seat=seat,
+        root=Path("/tmp/seat"),
+        branch=f"cursor-seat/{seat}",
+        conversation_id="conversation-1",
+        model_id="composer-2.5",
     )
 
-    assert result["permission"] == "deny"
+
+def _bind(monkeypatch: pytest.MonkeyPatch, seat: str | None) -> None:
+    if seat is None:
+        def _unbound(*args: object, **kwargs: object) -> AppSessionBinding:
+            raise AppBindingError("current workspace is not a bound Cursor seat worktree")
+
+        monkeypatch.setattr(policy, "resolve_registered_session", _unbound)
+    else:
+        active = _binding(seat)
+        monkeypatch.setattr(
+            policy, "resolve_registered_session", lambda *args, **kwargs: active
+        )
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        "touch scripts/example.py",
-        "git add scripts/example.py",
-    ],
-)
-def test_unbound_shell_denies_common_repository_mutation(command: str) -> None:
-    result = policy.evaluate(_shell(command), {})
-
-    assert result["permission"] == "deny"
-
-
-def test_mutation_requires_exact_live_cursor_seat_index_binding(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_session_start_registers_app_seat_and_injects_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    repo, valid_env, index = _valid_binding(tmp_path, monkeypatch)
-    write = {
-        "hook_event_name": "preToolUse",
-        "tool_name": "Write",
-        "tool_input": {"path": str(repo / "scripts/example.py")},
-    }
-    missing = dict(valid_env, GIT_INDEX_FILE=str(index.with_name("index-cursor-operator")))
-    mismatched = dict(valid_env, CURSOR_SEAT="operator")
-
-    assert policy.evaluate(write, missing)["permission"] == "deny"
-    assert policy.evaluate(write, mismatched)["permission"] == "deny"
-    assert policy.evaluate(write, valid_env)["permission"] == "allow"
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        "coordination/mailbox/sent/event.md",
-        "coordination/mailbox/seen/director.txt",
-        "coordination/locks/2-module.lock",
-        ".cursor/runtime/pipeline-seats.json",
-        ".git/refs/threeway/events",
-    ],
-)
-def test_pre_tool_use_denies_direct_writes_to_protected_state(path: str) -> None:
-    result = policy.evaluate(
-        {
-            "hook_event_name": "preToolUse",
-            "tool_name": "Write",
-            "tool_input": {"path": path},
-        },
-        {"CURSOR_SEAT": "director"},
+    active = _binding("director2")
+    role_dir = tmp_path / "docs" / "protocol" / "cursor" / "roles"
+    role_dir.mkdir(parents=True)
+    (role_dir / "director.md").write_text("DIRECTOR ROLE\n", encoding="utf-8")
+    monkeypatch.setattr(
+        policy, "register_payload_session", lambda *args, **kwargs: active
     )
 
-    assert result["permission"] == "deny"
-
-
-def test_pre_tool_use_denies_absolute_writes_to_protected_state() -> None:
-    root = Path(__file__).resolve().parents[2]
     result = policy.evaluate(
-        {
-            "hook_event_name": "preToolUse",
-            "tool_name": "Write",
-            "tool_input": {
-                "path": str(root / "coordination/mailbox/sent/event.md"),
-            },
-        },
-        {"CURSOR_SEAT": "director"},
+        _payload("sessionStart"), {}, root=tmp_path, registry_path=tmp_path / "registry"
     )
 
-    assert result["permission"] == "deny"
+    assert result["env"]["CURSOR_SEAT"] == "director2"
+    assert result["env"]["CURSOR_APP_MODEL_ID"] == "composer-2.5"
+    assert result["additional_context"] == "DIRECTOR ROLE\n"
 
 
-def test_subagent_inheriting_parent_seat_cannot_run_fixed_writer() -> None:
+def test_session_start_defaults_to_readiness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        policy, "register_payload_session", lambda *args, **kwargs: None
+    )
+    result = policy.evaluate(_payload("sessionStart"), {}, root=tmp_path)
+    assert "env" not in result
+    assert "readiness-bridge" in result["additional_context"]
+
+
+def test_session_start_fails_to_readiness_on_binding_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise AppBindingError("conflict")
+
+    monkeypatch.setattr(policy, "register_payload_session", _raise)
+    result = policy.evaluate(_payload("sessionStart"), {}, root=tmp_path)
+    assert "readiness-bridge" in result["additional_context"]
+    assert "conflict" in result["additional_context"]
+
+
+def test_inherited_legacy_index_never_gets_seat_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
     result = policy.evaluate(
-        _shell(
-            "coordination/bin/send-event director operator status subject",
-            subagent_id="sub-1",
-            subagent_type="generalPurpose",
+        _payload(
+            "preToolUse",
+            tool_name="Write",
+            tool_input={"path": str(tmp_path / "src.py")},
         ),
-        {"CURSOR_SEAT": "director"},
+        {"GIT_INDEX_FILE": "/tmp/index-cursor-director"},
+        root=tmp_path,
     )
-
-    assert result["permission"] == "deny"
-    assert "subagent" in result["agent_message"].casefold()
+    assert result["permission"] == "ask"
 
 
-def test_generic_agent_id_does_not_make_a_parent_write_a_subagent(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_director_may_edit_normal_tree_but_not_protected_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _, env, _ = _valid_binding(tmp_path, monkeypatch)
-    result = policy.evaluate(
-        {
-            "hook_event_name": "preToolUse",
-            "tool_name": "Write",
-            "tool_input": {"path": "scripts/example.py"},
-            "agent_id": "top-level-agent",
-        },
-        env,
-    )
-
-    assert result["permission"] == "allow"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "git push origin main",
-        "git merge feature",
-        "coordination/bin/send-event director operator status subject",
-        "coordination/bin/consume-events director",
-        "coordination/bin/claim-lock 2 module director defect",
-        "coordination/bin/cursor-seat dispatch director --trigger-ref x",
-        "coordination/bin/cursor-publish --to operator --kind status --subject s",
-        "coordination/bin/cursor-consume --seat director",
-        "python scripts/mailbox_writer.py consume-events director",
-        "python scripts/cursor_mailbox.py publish --to operator --kind status --subject s",
-    ],
-)
-def test_shell_hook_denies_separately_authorized_effects(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
-
-    assert result["permission"] == "deny"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "command coordination/bin/send-event director operator status subject",
-        "exec coordination/bin/cursor-publish --to operator --kind status --subject s",
-        "bash -c 'coordination/bin/cursor-consume --seat director'",
-        "sh -c 'git push origin main'",
-    ],
-)
-def test_shell_hook_denies_wrapped_separately_authorized_effects(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
-
-    assert result["permission"] == "deny"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "cat coordination/mailbox/sent/event.md",
-        "ls coordination/mailbox/seen",
-        "git show HEAD:coordination/locks/2-module.lock",
-        "grep -r director coordination/mailbox/sent/",
-    ],
-)
-def test_shell_hook_allows_reading_protected_state(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
-
-    assert result["permission"] == "allow"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "echo x > coordination/mailbox/sent/event.md",
-        "echo x >> coordination/mailbox/seen/director.txt",
-        "echo x >coordination/locks/2-module.lock",
-        "printf x | tee coordination/mailbox/sent/event.md",
-        "cp /tmp/x .cursor/runtime/pipeline-seats.json",
-        "rm coordination/locks/2-module.lock",
-    ],
-)
-def test_shell_hook_denies_writes_to_protected_state(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
-
-    assert result["permission"] == "deny"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "cat coordination/bin/send-event",
-        "cat coordination/bin/cursor-seat",
-        "less scripts/mailbox_writer.py",
-        "git show HEAD:coordination/bin/cursor-seat",
-        "rg send-event coordination/bin",
-        "head -n 20 scripts/cursor_seat_launcher.py",
-    ],
-)
-def test_shell_hook_allows_reading_fixed_writer_scripts(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
-
-    assert result["permission"] == "allow"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "bash coordination/bin/send-event director operator status subject",
-        "sh coordination/bin/cursor-seat dispatch director --trigger-ref x",
-        "python3 scripts/cursor_seat_launcher.py dispatch director --trigger-ref x",
-    ],
-)
-def test_shell_hook_denies_interpreter_launched_effects(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
-
-    assert result["permission"] == "deny"
-
-
-def test_seat_index_requires_env_unset_for_ordinary_pytest(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, env, _ = _valid_binding(tmp_path, monkeypatch, seat="operator")
-
-    denied = policy.evaluate(_shell(".venv/bin/python -m pytest tests/unit -q"), env)
+    _bind(monkeypatch, "director")
     allowed = policy.evaluate(
-        _shell("env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit -q"),
-        env,
+        _payload(
+            "preToolUse",
+            tool_name="Write",
+            tool_input={"path": str(tmp_path / "src.py")},
+        ),
+        {},
+        root=tmp_path,
     )
-
-    assert denied["permission"] == "deny"
+    denied = policy.evaluate(
+        _payload(
+            "preToolUse",
+            tool_name="Write",
+            tool_input={
+                "path": str(tmp_path / "coordination" / "mailbox" / "sent" / "x.md")
+            },
+        ),
+        {},
+        root=tmp_path,
+    )
     assert allowed["permission"] == "allow"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "git status --short --branch",
-        "git log --oneline -5",
-        "git show HEAD:AGENTS.md",
-        "git diff HEAD~1",
-        "git ls-files scripts",
-    ],
-)
-def test_seat_index_allows_bare_read_only_git(
-    command: str,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, env, _ = _valid_binding(tmp_path, monkeypatch)
-
-    result = policy.evaluate(_shell(command), env)
-
-    assert result["permission"] == "allow"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "git add scripts/x.py",
-        "git commit -m msg",
-        "git stash",
-        "git read-tree HEAD",
-        "git restore scripts/x.py",
-    ],
-)
-def test_seat_index_requires_env_unset_for_git_index_mutators(
-    command: str,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, env, _ = _valid_binding(tmp_path, monkeypatch)
-
-    denied = policy.evaluate(_shell(command), env)
-    allowed = policy.evaluate(_shell(f"env -u GIT_INDEX_FILE {command}"), env)
-
     assert denied["permission"] == "deny"
-    assert allowed["permission"] == "allow"
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        "coordination/bin/cursor-seat readiness",
+def test_apply_patch_paths_are_checked_before_director_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    protected = policy.evaluate(
+        _payload(
+            "preToolUse",
+            tool_name="ApplyPatch",
+            tool_input={
+                "patch": (
+                    "*** Begin Patch\n"
+                    "*** Update File: coordination/mailbox/sent/event.md\n"
+                    "@@\n-old\n+new\n"
+                    "*** End Patch\n"
+                )
+            },
+        ),
+        {},
+        root=tmp_path,
+    )
+    unresolved = policy.evaluate(
+        _payload(
+            "preToolUse",
+            tool_name="ApplyPatch",
+            tool_input={"patch": "not an auditable patch"},
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert protected["permission"] == "deny"
+    assert unresolved["permission"] == "deny"
+
+
+def test_director_file_tools_cannot_write_outside_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    result = policy.evaluate(
+        _payload(
+            "preToolUse",
+            tool_name="Write",
+            tool_input={"path": str(tmp_path.parent / "outside.py")},
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert result["permission"] == "deny"
+
+
+@pytest.mark.parametrize("seat", ("operator", "operator2", "coordinator"))
+def test_non_director_seats_write_scratch_freely_and_ask_for_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seat: str
+) -> None:
+    _bind(monkeypatch, seat)
+    tree = policy.evaluate(
+        _payload(
+            "preToolUse",
+            tool_name="Write",
+            tool_input={"path": str(tmp_path / "production.py")},
+        ),
+        {},
+        root=tmp_path,
+    )
+    scratch = policy.evaluate(
+        _payload(
+            "preToolUse",
+            tool_name="Write",
+            tool_input={"path": str(tmp_path / ".pytest-verify-tmp" / "report.md")},
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert tree["permission"] == "ask"
+    assert seat in tree["user_message"]
+    assert scratch["permission"] == "allow"
+
+
+def test_readiness_reads_are_free_and_mutations_ask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, None)
+    read = policy.evaluate(
+        _payload("beforeShellExecution", command="git --no-optional-locks status --short"),
+        {},
+        root=tmp_path,
+    )
+    write = policy.evaluate(
+        _payload("beforeShellExecution", command="touch production.py"),
+        {},
+        root=tmp_path,
+    )
+    commit = policy.evaluate(
+        _payload("beforeShellExecution", command="git commit -m bootstrap"),
+        {},
+        root=tmp_path,
+    )
+    assert read["permission"] == "allow"
+    assert write["permission"] == "ask"
+    assert "readiness" in write["user_message"]
+    assert commit["permission"] == "ask"
+
+
+def test_git_read_forms_and_inspection_commands_are_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, None)
+    for command in (
+        "git branch -vv --list",
+        "git branch",
+        "git diff-tree --no-commit-id --name-status -r HEAD",
+        "git worktree list --porcelain",
+        "git stash list",
+        "git for-each-ref refs/heads/cursor-seat/",
+        "git config --get user.email",
+        "git tag --list",
+        "python -m pytest tests/unit -q",
         "coordination/bin/cursor-seat status",
-        "coordination/bin/cursor-seat --dry-run dispatch director "
-        "--trigger-ref x@" + "a" * 40,
-        "python3 scripts/cursor_seat_launcher.py readiness",
-    ],
-)
-def test_launcher_read_only_commands_are_allowed(command: str) -> None:
-    for env in ({}, {"CURSOR_SEAT": "director"}):
-        result = policy.evaluate(_shell(command), env)
-
+    ):
+        result = policy.evaluate(
+            _payload("beforeShellExecution", command=command),
+            {},
+            root=tmp_path,
+        )
         assert result["permission"] == "allow", command
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        "coordination/bin/cursor-publish --to operator --kind status "
-        "--subject s --dry-run",
-        "coordination/bin/cursor-consume --seat director --dry-run",
-        "python scripts/cursor_mailbox.py publish --to operator --kind status "
-        "--subject s --dry-run",
-    ],
-)
-def test_mailbox_wrapper_dry_run_previews_are_allowed(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
+def test_git_write_forms_of_read_capable_subcommands_ask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, None)
+    for command in (
+        "git branch new-branch",
+        "git branch -D old-branch",
+        "git worktree add ../new-tree",
+        "git stash pop",
+        "git config user.email x@example.invalid",
+        "git tag v1",
+    ):
+        result = policy.evaluate(
+            _payload("beforeShellExecution", command=command),
+            {},
+            root=tmp_path,
+        )
+        assert result["permission"] == "ask", command
 
-    assert result["permission"] == "allow"
+
+def test_ephemeral_writes_never_count_as_mutations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, None)
+    for command in (
+        "git log --oneline -3 2>/dev/null",
+        "rg -n pattern scripts 2>/dev/null",
+        "python scripts/ci_smoke.py 2>&1",
+        "touch /tmp/probe.txt",
+    ):
+        result = policy.evaluate(
+            _payload("beforeShellExecution", command=command),
+            {},
+            root=tmp_path,
+        )
+        assert result["permission"] == "allow", command
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        "coordination/bin/agy-seat director",
-        "coordination/bin/codex-seat operator",
-        "python3 scripts/agy_seat_launcher.py --dry-run director",
-        "python3 scripts/codex_seat_launcher.py --dry-run director",
-        "bash -c 'coordination/bin/codex-seat director'",
-    ],
-)
-def test_foreign_provider_launchers_are_denied(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
+def test_readiness_scratch_write_is_allowed_and_external_write_asks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, None)
+    scratch = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command="touch .pytest-verify-tmp/report.md",
+        ),
+        {},
+        root=tmp_path,
+    )
+    external = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command="touch /opt/homebrew/outside.txt",
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert scratch["permission"] == "allow"
+    assert external["permission"] == "ask"
 
+
+def test_director_mutates_freely_and_external_effects_ask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    add = policy.evaluate(
+        _payload("beforeShellExecution", command="git add src.py"),
+        {},
+        root=tmp_path,
+    )
+    commit = policy.evaluate(
+        _payload("beforeShellExecution", command="git commit -m change"),
+        {},
+        root=tmp_path,
+    )
+    push = policy.evaluate(
+        _payload("beforeShellExecution", command="git push origin HEAD"),
+        {},
+        root=tmp_path,
+    )
+    assert add["permission"] == "allow"
+    assert commit["permission"] == "allow"
+    assert push["permission"] == "ask"
+    assert "push" in push["user_message"]
+    assert "director" in push["user_message"]
+
+
+def test_separately_authorized_git_effects_ask_for_top_level_sessions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sha = "a" * 40
+    cases = (
+        f"git merge --ff-only {sha}",
+        f"git merge {sha}",
+        "git pull --ff-only",
+        "git fetch origin",
+        "git push origin HEAD",
+        f"git rebase {sha}",
+        f"git cherry-pick {sha}",
+    )
+    for seat in ("director", "operator2", None):
+        _bind(monkeypatch, seat)
+        for command in cases:
+            result = policy.evaluate(
+                _payload("beforeShellExecution", command=command),
+                {},
+                root=tmp_path,
+            )
+            assert result["permission"] == "ask", (seat, command)
+
+
+def test_external_git_effects_deny_subagents_and_foreign_worktrees(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sha = "b" * 40
+    _bind(monkeypatch, "director")
+    child = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command=f"git merge --ff-only {sha}",
+            subagent_id="child-1",
+        ),
+        {},
+        root=tmp_path,
+    )
+    external = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command=f"git -C {tmp_path.parent / 'other'} merge --ff-only {sha}",
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert child["permission"] == "deny"
+    assert external["permission"] == "deny"
+
+
+def test_director_cannot_mutate_another_git_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    result = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command=f"git -C {tmp_path.parent / 'other'} add file.py",
+        ),
+        {},
+        root=tmp_path,
+    )
     assert result["permission"] == "deny"
-    assert "provider" in result["agent_message"].casefold()
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        "cat coordination/bin/agy-seat",
-        "rg codex-seat coordination/bin",
-        "git show HEAD:scripts/codex_seat_launcher.py",
-    ],
-)
-def test_reading_foreign_provider_surfaces_is_allowed(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
-
-    assert result["permission"] == "allow"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "cd /tmp\nrm coordination/locks/2-module.lock",
-        "set -euo pipefail\ncoordination/bin/send-event director operator status s",
-    ],
-)
-def test_newline_separated_commands_are_not_merged(command: str) -> None:
-    result = policy.evaluate(_shell(command), {"CURSOR_SEAT": "director"})
-
-    assert result["permission"] == "deny"
+def test_operator_runs_tests_freely_and_asks_for_git_mutators(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "operator")
+    tests = policy.evaluate(
+        _payload("beforeShellExecution", command="python -m pytest tests/unit -q"),
+        {},
+        root=tmp_path,
+    )
+    reset = policy.evaluate(
+        _payload("beforeShellExecution", command="git reset --quiet"),
+        {},
+        root=tmp_path,
+    )
+    assert tests["permission"] == "allow"
+    assert reset["permission"] == "ask"
+    assert "operator" in reset["user_message"]
 
 
-def test_heredoc_bodies_are_data_not_commands(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_operator_commits_only_its_fixed_writer_report_without_ask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "operator")
+    report = (
+        "coordination/mailbox/sent/"
+        "2026-07-24T02-00-00Z-operator-to-director-verification-report.md"
+    )
+    exact = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command=f"git commit -m report --only -- {report}",
+        ),
+        {},
+        root=tmp_path,
+    )
+    broad = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command=f"git commit -m report --only -- {report} production.py",
+        ),
+        {},
+        root=tmp_path,
+    )
+    foreign = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command=(
+                "git commit -m request --only -- "
+                "coordination/mailbox/sent/"
+                "2026-07-24T02-00-00Z-director-to-operator-verify-request.md"
+            ),
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert exact["permission"] == "allow"
+    assert broad["permission"] == "ask"
+    assert foreign["permission"] == "ask"
+
+
+def test_mailbox_wrapper_asks_in_bound_seat_and_denies_readiness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     command = (
-        "env -u GIT_INDEX_FILE .venv/bin/python - <<'PY'\n"
-        "print('coordination/bin/send-event is just a string here')\n"
-        "PY"
+        "coordination/bin/cursor-publish --to operator --kind status "
+        "--subject hello --body-file .pytest-verify-tmp/body.md"
     )
-    _, env, _ = _valid_binding(tmp_path, monkeypatch)
-
-    result = policy.evaluate(_shell(command), env)
-
-    assert result["permission"] == "allow"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "echo $(touch scripts/example.py)",
-        'echo "$(touch scripts/example.py)"',
-        "echo `touch scripts/example.py`",
-        'echo "`touch scripts/example.py`"',
-        "cat <(touch scripts/example.py)",
-        "cat >(touch scripts/example.py)",
-        'echo "$(echo "$(touch scripts/example.py)")"',
-        "cat <(echo $(touch scripts/example.py))",
-        'echo "$(echo `touch scripts/example.py`)"',
-        "echo `echo \\`touch scripts/example.py\\``",
-        "echo $(coordination/bin/cursor-publish --to operator "
-        "--kind status --subject hidden)",
-    ],
-)
-def test_unauthorized_shell_substitution_cannot_hide_mutation_or_effect(
-    command: str,
-) -> None:
-    for env in ({}, {"CURSOR_SEAT": "coordinator"}):
-        result = policy.evaluate(_shell(command), env)
-
-        assert result["permission"] == "deny", command
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "echo $(touch scripts/example.py)",
-        "echo `touch scripts/example.py`",
-        "cat <(touch scripts/example.py)",
-        "cat >(touch scripts/example.py)",
-    ],
-)
-def test_operator_review_substitution_remains_repository_read_only(
-    command: str,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, env, _ = _valid_binding(
-        tmp_path, monkeypatch, seat="operator", operation="review"
+    _bind(monkeypatch, "director")
+    bound = policy.evaluate(
+        _payload("beforeShellExecution", command=command),
+        {},
+        root=tmp_path,
     )
+    _bind(monkeypatch, None)
+    readiness = policy.evaluate(
+        _payload("beforeShellExecution", command=command),
+        {},
+        root=tmp_path,
+    )
+    assert bound["permission"] == "ask"
+    assert "director" in bound["user_message"]
+    assert readiness["permission"] == "deny"
 
-    result = policy.evaluate(_shell(command), env)
 
-    assert result["permission"] == "deny", command
-
-
-def test_valid_dispatch_substitution_cannot_hide_protected_effect(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_pretool_shell_is_not_double_evaluated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _, env, _ = _valid_binding(tmp_path, monkeypatch)
-
+    _bind(monkeypatch, "director")
     result = policy.evaluate(
-        _shell(
-            "echo $(coordination/bin/cursor-publish --to operator "
-            "--kind status --subject hidden)"
+        _payload(
+            "preToolUse",
+            tool_name="Shell",
+            tool_input={"command": "git status --short"},
         ),
-        env,
+        {},
+        root=tmp_path,
     )
+    assert result == {"permission": "allow"}
 
-    assert result["permission"] == "deny"
 
-
-def test_valid_dispatch_substitution_retains_ordinary_mutation_scope(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+def test_direct_fixed_writer_and_foreign_launchers_are_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _, env, _ = _valid_binding(tmp_path, monkeypatch)
-
-    result = policy.evaluate(
-        _shell("echo $(touch scripts/example.py)"),
-        env,
+    _bind(monkeypatch, "director")
+    direct = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command="coordination/bin/send-event director operator status hello",
+        ),
+        {},
+        root=tmp_path,
     )
+    launcher = policy.evaluate(
+        _payload("beforeShellExecution", command="cursor-agent --model composer-2.5"),
+        {},
+        root=tmp_path,
+    )
+    foreign = policy.evaluate(
+        _payload("beforeShellExecution", command="codex-seat build director"),
+        {},
+        root=tmp_path,
+    )
+    assert direct["permission"] == "deny"
+    assert launcher["permission"] == "deny"
+    assert foreign["permission"] == "deny"
 
+
+def test_protected_state_writes_are_hard_denied_for_everyone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for seat in ("director", "operator", None):
+        _bind(monkeypatch, seat)
+        for command in (
+            "tee coordination/mailbox/sent/forged.md",
+            "echo forged > coordination/mailbox/sent/forged.md",
+            "rm coordination/locks/route.lock",
+            "touch .cursor/runtime/state.json",
+        ):
+            result = policy.evaluate(
+                _payload("beforeShellExecution", command=command),
+                {},
+                root=tmp_path,
+            )
+            assert result["permission"] == "deny", (seat, command)
+
+
+def test_next_review_lookup_is_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "operator")
+    result = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command="python scripts/cursor_mailbox.py next-review",
+        ),
+        {},
+        root=tmp_path,
+    )
     assert result["permission"] == "allow"
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        'echo "$(pwd)"',
-        "cat <(echo synthetic)",
-        'echo "$(echo "$(pwd)")"',
-        "echo `echo \\`pwd\\``",
-        "echo '$(touch scripts/example.py)'",
-        "echo '`touch scripts/example.py`'",
-    ],
-)
-def test_bounded_read_only_and_literal_substitutions_remain_allowed(
-    command: str,
+def test_operator_may_materialize_immutable_review_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    result = policy.evaluate(_shell(command), {})
-
-    assert result["permission"] == "allow", command
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "echo $(touch scripts/example.py",
-        "cat <(touch scripts/example.py",
-        "echo `touch scripts/example.py",
-    ],
-)
-def test_malformed_shell_substitution_fails_closed(command: str) -> None:
-    result = policy.evaluate(_shell(command), {})
-
-    assert result["permission"] == "deny", command
-
-
-def test_operator_review_mode_is_read_only_but_may_run_tests(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, env, _ = _valid_binding(
-        tmp_path, monkeypatch, seat="operator", operation="review"
-    )
-
-    write = policy.evaluate(
-        {
-            "hook_event_name": "preToolUse",
-            "tool_name": "Write",
-            "tool_input": {"path": "scripts/example.py"},
-        },
-        env,
-    )
-    tests = policy.evaluate(
-        _shell("env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_x.py"),
-        env,
-    )
-
-    assert write["permission"] == "deny"
-    assert tests["permission"] == "allow"
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "echo changed > scripts/example.py",
-        "printf changed | tee scripts/example.py",
-        "rm scripts/example.py",
-        "sed -i '' 's/old/new/' scripts/example.py",
-    ],
-)
-def test_operator_review_mode_denies_shell_tree_mutations(command: str) -> None:
+    _bind(monkeypatch, "operator")
+    head = "1" * 40
     result = policy.evaluate(
-        _shell(command),
-        {
-            "CURSOR_SEAT": "operator",
-            "CURSOR_OPERATION": "review",
-        },
+        _payload(
+            "beforeShellExecution",
+            command=(
+                "python scripts/cursor_review_snapshot.py "
+                f"--repository /tmp/repo --head {head} "
+                f"--output .pytest-verify-tmp/cursor-reviews/{head}"
+            ),
+        ),
+        {},
+        root=tmp_path,
     )
+    assert result["permission"] == "allow"
 
+
+def test_live_seat_cannot_spawn_subagent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    result = policy.evaluate(
+        _payload("subagentStart", task="Search tests", subagent_type="explore"),
+        {},
+        root=tmp_path,
+    )
     assert result["permission"] == "deny"
 
 
+def test_unbound_advisor_allowed_but_seat_impersonation_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, None)
+    advisor = policy.evaluate(
+        _payload("subagentStart", task="Search tests"),
+        {},
+        root=tmp_path,
+    )
+    impersonation = policy.evaluate(
+        _payload("subagentStart", task="Act as operator seat and issue GO"),
+        {},
+        root=tmp_path,
+    )
+    assert advisor["permission"] == "allow"
+    assert impersonation["permission"] == "deny"
+
+
+def test_subagent_cannot_inherit_director_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    edit = policy.evaluate(
+        _payload(
+            "preToolUse",
+            tool_name="Write",
+            tool_input={"path": str(tmp_path / "src.py")},
+            subagent_id="child-1",
+        ),
+        {},
+        root=tmp_path,
+    )
+    mutation = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command="git add src.py",
+            subagent_id="child-1",
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert edit["permission"] == "deny"
+    assert mutation["permission"] == "deny"
+
+
 @pytest.mark.parametrize(
     "command",
-    [
-        "mkdir -p /tmp/review-scratch",
-        "env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests -q "
-        "> /tmp/out.txt 2>&1",
-        "mkdir -p .pytest-verify-tmp",
-        "touch /tmp/review-scratch/notes.md",
-    ],
+    (
+        "echo $(touch production.py)",
+        "echo `touch production.py`",
+        "bash -c 'touch production.py'\nrm production.py",
+        "bash -c 'touch production.py'",
+        "python -c 'open(\"production.py\", \"w\").write(\"x\")'",
+    ),
 )
-def test_operator_review_mode_allows_out_of_tree_scratch(
-    command: str,
+def test_opaque_shell_syntax_asks_top_level_and_denies_subagents(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    command: str,
 ) -> None:
-    _, env, _ = _valid_binding(
-        tmp_path, monkeypatch, seat="operator", operation="review"
+    _bind(monkeypatch, "director")
+    top_level = policy.evaluate(
+        _payload("beforeShellExecution", command=command),
+        {},
+        root=tmp_path,
     )
+    child = policy.evaluate(
+        _payload("beforeShellExecution", command=command, subagent_id="child-1"),
+        {},
+        root=tmp_path,
+    )
+    assert top_level["permission"] == "ask"
+    assert child["permission"] == "deny"
+
+
+def test_ask_never_shadows_a_later_denied_segment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, None)
     result = policy.evaluate(
-        _shell(command),
-        env,
+        _payload(
+            "beforeShellExecution",
+            command=(
+                "touch production.py && "
+                "tee coordination/mailbox/sent/forged.md"
+            ),
+        ),
+        {},
+        root=tmp_path,
     )
-
-    assert result["permission"] == "allow", command
-
-
-def test_coordinator_allows_out_of_tree_notes_but_not_repo_writes() -> None:
-    env = {"CURSOR_SEAT": "coordinator"}
-
-    scratch = policy.evaluate(_shell("echo note > /tmp/notes.md"), env)
-    repo = policy.evaluate(_shell("echo x > scripts/example.py"), env)
-
-    assert scratch["permission"] == "allow"
-    assert repo["permission"] == "deny"
-
-
-def test_coordinator_cannot_edit_pipeline_production() -> None:
-    result = policy.evaluate(
-        {
-            "hook_event_name": "preToolUse",
-            "tool_name": "Write",
-            "tool_input": {"path": "scripts/example.py"},
-        },
-        {"CURSOR_SEAT": "coordinator"},
-    )
-
     assert result["permission"] == "deny"
 
 
-def test_malformed_sensitive_input_fails_closed() -> None:
+def test_malformed_sensitive_payload_fails_closed(tmp_path: Path) -> None:
     output, status = policy.process_bytes(
-        b"{not-json",
+        b"{",
         event_hint="beforeShellExecution",
-        environ={"CURSOR_SEAT": "director"},
+        environ={},
+        root=tmp_path,
+        registry_path=tmp_path / "registry",
     )
-
     assert status == 0
     assert json.loads(output)["permission"] == "deny"
-
-
-def test_hook_wrapper_returns_explicit_deny_when_policy_crashes(tmp_path: Path) -> None:
-    wrapper = tmp_path / ".cursor/hooks/seat-policy"
-    wrapper.parent.mkdir(parents=True)
-    wrapper.write_text(
-        (ROOT / ".cursor/hooks/seat-policy").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
-    policy_path = tmp_path / "scripts/cursor_hook_policy.py"
-    policy_path.parent.mkdir()
-    policy_path.write_text("raise RuntimeError('boom')\n", encoding="utf-8")
-
-    completed = subprocess.run(
-        [str(wrapper)],
-        input=b'{"hook_event_name":"beforeShellExecution","command":"echo hi"}',
-        capture_output=True,
-        check=False,
-    )
-
-    assert completed.returncode == 0
-    assert json.loads(completed.stdout)["permission"] == "deny"
-
-
-def test_session_start_injects_context_without_claiming_authority() -> None:
-    result = policy.evaluate(
-        {"hook_event_name": "sessionStart", "session_id": "session-1"},
-        {"CURSOR_SEAT": "director", "CURSOR_AGENT_ID": "agent-1"},
-    )
-
-    assert result["env"]["CURSOR_HOOK_SEAT"] == "director"
-    assert "does not grant authority" in result["additional_context"]
-
-
-def test_subagent_start_rejects_live_seat_impersonation() -> None:
-    result = policy.evaluate(
-        {
-            "hook_event_name": "subagentStart",
-            "subagent_type": "generalPurpose",
-            "task": "Act as the live operator seat and issue GO",
-        },
-        {"CURSOR_SEAT": "director"},
-    )
-
-    assert result["permission"] == "deny"
-
-
-def test_subagent_start_rejects_any_child_of_a_live_seat() -> None:
-    result = policy.evaluate(
-        {
-            "hook_event_name": "subagentStart",
-            "subagent_type": "explore",
-            "task": "Read the current diff and report findings.",
-        },
-        {"CURSOR_SEAT": "director"},
-    )
-
-    assert result["permission"] == "deny"
-    assert "live Cursor seat" in result["agent_message"]
-
-
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py",
-        "env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py",
-        "env -u GIT_INDEX_FILE .venv/bin/python scripts/target_binding.py --check",
-        "env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director --wave 2",
-        "env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py director --wave 2",
-        "env -u GIT_INDEX_FILE git status --short --branch",
-        "env -u GIT_INDEX_FILE git log --oneline -5",
-    ],
-)
-def test_readiness_allows_documented_orientation_commands(command: str) -> None:
-    result = policy.evaluate(_shell(command), {})
-
-    assert result["permission"] == "allow", command
-
-
-def test_readiness_denies_python_c_repo_mutation() -> None:
-    result = policy.evaluate(
-        _shell("python -c \"open('scripts/example.py','w').write('x')\""),
-        {},
-    )
-
-    assert result["permission"] == "deny"
-
-
-def test_readiness_still_denies_non_dry_run_publish() -> None:
-    result = policy.evaluate(
-        _shell(
-            "coordination/bin/cursor-publish --to operator --kind status --subject s"
-        ),
-        {},
-    )
-
-    assert result["permission"] == "deny"
-def test_subagent_start_allows_unbound_readiness_advisor() -> None:
-    result = policy.evaluate(
-        {
-            "hook_event_name": "subagentStart",
-            "subagent_type": "explore",
-            "task": "Read the current diff and report findings.",
-        },
-        {},
-    )
-
-    assert result["permission"] == "allow"
-
-def test_live_seat_may_run_cursor_relay(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, env, _ = _valid_binding(tmp_path, monkeypatch)
-    result = policy.evaluate(
-        _shell(
-            "coordination/bin/cursor-relay publish --to operator --kind status --subject s"
-        ),
-        env,
-    )
-    assert result["permission"] == "allow"
-
-
-def test_readiness_denies_cursor_relay_publish() -> None:
-    result = policy.evaluate(
-        _shell(
-            "coordination/bin/cursor-relay publish --to operator --kind status --subject s"
-        ),
-        {},
-    )
-    assert result["permission"] == "deny"
-
-
-def test_quoted_heredoc_body_with_literal_publish_is_data() -> None:
-    command = (
-        "cat > .pytest-verify-tmp/cursor-bundles/demo/note.txt <<'EOF'\n"
-        "echo $(coordination/bin/cursor-publish --to operator --kind status --subject hidden)\n"
-        "EOF"
-    )
-    result = policy.evaluate(_shell(command), {})
-    assert result["permission"] == "allow"
-
-
-def test_readiness_write_allows_scratch_and_denies_repo_tree() -> None:
-    allow = policy.evaluate(
-        {
-            "hook_event_name": "preToolUse",
-            "tool_name": "Write",
-            "tool_input": {"path": ".pytest-verify-tmp/cursor-bundles/x/a.py"},
-        },
-        {},
-    )
-    deny = policy.evaluate(
-        {
-            "hook_event_name": "preToolUse",
-            "tool_name": "Write",
-            "tool_input": {"path": "scripts/example.py"},
-        },
-        {},
-    )
-    assert allow["permission"] == "allow"
-    assert deny["permission"] == "deny"
-
-
-def test_build_binding_allows_mutation_denies_mailbox_and_foreign(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, env, _ = _valid_binding(tmp_path, monkeypatch, operation="build")
-    write = policy.evaluate(
-        {
-            "hook_event_name": "preToolUse",
-            "tool_name": "Write",
-            "tool_input": {"path": "scripts/example.py"},
-        },
-        env,
-    )
-    assert write["permission"] == "allow"
-    publish = policy.evaluate(
-        _shell(
-            "coordination/bin/cursor-publish --to operator "
-            "--kind status --subject x"
-        ),
-        env,
-    )
-    assert publish["permission"] == "deny"
-    foreign = policy.evaluate(_shell("coordination/bin/agy-seat status"), env)
-    assert foreign["permission"] == "deny"
-    apply_ok = policy.evaluate(
-        _shell("coordination/bin/cursor-apply-bundle demo-bundle"),
-        env,
-    )
-    assert apply_ok["permission"] == "allow"
-
-
-def test_readiness_allows_cursor_land_gate() -> None:
-    result = policy.evaluate(
-        _shell("env -u GIT_INDEX_FILE .venv/bin/python scripts/cursor_land_gate.py"),
-        {},
-    )
-    assert result["permission"] == "allow"
-
-
-def test_readiness_allows_cursor_unit_pytest_cluster() -> None:
-    result = policy.evaluate(
-        _shell(
-            "env -u GIT_INDEX_FILE .venv/bin/python -m pytest "
-            "tests/unit/test_cursor_hook_policy.py "
-            "tests/unit/test_cursor_apply_bundle.py -q"
-        ),
-        {},
-    )
-    assert result["permission"] == "allow"
-
-
-def test_readiness_denies_broad_pytest() -> None:
-    result = policy.evaluate(
-        _shell("env -u GIT_INDEX_FILE .venv/bin/python -m pytest -q"),
-        {},
-    )
-    assert result["permission"] == "deny"
-
