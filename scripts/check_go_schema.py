@@ -375,6 +375,15 @@ def _retired_report_violations(
     if repository.as_posix() in retired_worktree_shells:
         try:
             metadata = os.lstat(repository)
+        except FileNotFoundError:
+            # A shell is the inert directory `git worktree remove` leaves on the
+            # machine that retired the target. No other machine ever created it,
+            # so demanding it exist made this branch pass only where the
+            # retirement happened. Absence is accepted for the same reason the
+            # non-shell branch below accepts it, and it settles the question
+            # this check actually asks — whether the target came back — more
+            # firmly than an inert directory does: nothing is there to be live.
+            pass
         except OSError as exc:
             violations.append(f"{prefix} retired worktree shell drift: {exc}")
         else:
