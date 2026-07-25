@@ -104,9 +104,17 @@ def test_rule_body_routes_state_reads_to_live_sources(repo_root: Path) -> None:
 
     # Rule #8's session-bootstrap gate must name a live source. Pointing it back
     # at any stored artifact means dropping this citation, which fails.
-    _, _, after_gate = text.partition("**Session-bootstrap awareness gate.**")
-    assert after_gate, "session-bootstrap gate not found"
-    gate_body, _, _ = after_gate.partition("**Authority precedence")
+    # Both delimiters must be asserted found. str.partition returns the whole
+    # string with an empty separator when the marker is missing, so a reworded
+    # end heading would silently widen gate_body to the rest of the document —
+    # which cites mailbox-unread at two other lines, letting the assertion pass
+    # while checking nothing.
+    _, start_marker, after_gate = text.partition(
+        "**Session-bootstrap awareness gate.**"
+    )
+    assert start_marker, "session-bootstrap gate heading not found"
+    gate_body, end_marker, _ = after_gate.partition("**Authority precedence")
+    assert end_marker, "authority precedence heading not found"
     assert "scripts/status.py mailbox-unread" in gate_body, (
         "Rule #8 bootstrap gate no longer cites a live unread source"
     )
