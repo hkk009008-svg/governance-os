@@ -12,7 +12,7 @@ flowchart TD
     Root["AGENTS.md / CLAUDE.md"]
     Policy["docs/protocol/"]
     Skills[".agents/skills/ + .cursor/skills/"]
-    Codex[".codex/agents/ + .codex/hooks/"]
+    Codex[".codex/agents/ + native worktrees"]
     Cursor[".cursor/hooks/ + Agents Window worktrees"]
     Scope["coordination/verification/scopes/ (frozen historical)"]
     Ledger["coordination/"]
@@ -39,7 +39,7 @@ flowchart TD
 | Protocol portion | Intended home | Example | Reason |
 |---|---|---|---|
 | Universal protocol policy | `docs/protocol/agents/` | `docs/protocol/agents/director-operator.md` | Rules shared by Claude, Codex, and other agents should not live in a Codex-only surface. |
-| Codex protocol mapping | `docs/protocol/codex/continuation.md` | Capacity-max workflow, Codex launch pattern | Codex mechanics translate the universal rules into Codex-native tools, hooks, and role agents. |
+| Codex protocol mapping | `docs/protocol/codex/continuation.md` | Codex launch and task-worktree pattern | Codex mechanics translate the universal rules into Codex-native tools and thin role agents. |
 | Target-repo CLI adoption bridge | `docs/protocol/codex/ledger-cli-adoption.md` | Evidence-ledger CLI bridge | Target-repo adoption is Codex-specific mechanics and should not duplicate universal protocol policy. |
 | Cursor protocol mapping | `docs/protocol/cursor/continuation.md` | Agents Window/worktree/mailbox adapter | Cursor mechanics translate universal rules into app-native worktrees, hooks, and top-level chats without forking policy. |
 | Cursor seat role prompts | `docs/protocol/cursor/roles/*.md` | `docs/protocol/cursor/roles/operator.md` | The session-start hook injects the role matching the validated worktree, conversation, and model. |
@@ -51,7 +51,7 @@ flowchart TD
 | Start-session router | `AGENTS.md` | Codex start-session inhabitance block | The root file should route agents before task-specific docs are loaded. |
 | Live seat checklists | `.agents/skills/` | `.agents/skills/seat-operator/SKILL.md` | Seat actions are reusable runtime instructions with clear trigger rules. |
 | Spawnable Codex roles | `.codex/agents/*.toml` | `.codex/agents/protocol-operator.toml` | Role prompts are executable agent modules and should stay near Codex agent configuration. |
-| Session guardrails | `.codex/hooks.json` and `.codex/hooks/` | `guard-git-index.sh`, `session-smoke.sh` | Hooks are lifecycle/tool boundaries, not protocol prose or mailbox state. |
+| Codex lifecycle | Native task worktrees plus explicit verification commands | `git worktree`, `scripts/status.py`, `scripts/ci_smoke.py` | Repository hooks do not mutate indexes, presence, cursors, or generated state and do not run the full suite at session start. |
 | Lane-V trigger authority | `coordination/mailbox/sent/` (compact-pair verify-request) | `*-director-to-operator-verify-request.md` | The committed compact-pair verify-request is the sole Lane-V trigger authority (Canonical Compact Pair Invariant, `scripts/codex_protocol_model.py`). `coordination/verification/scopes/` retains only frozen historical descriptors (e.g. `<task-uuid>.json`) — no longer a live authority. |
 | Mailbox events | `coordination/mailbox/sent/` | `*-operator2-to-all-verification-report.md` | Inter-seat protocol speech must be durable and commit-addressable. |
 | Mailbox read cursors | `coordination/mailbox/seen/` | `coordination/mailbox/seen/director.txt` | Per-seat consumed-up-to timestamps are the single read-state truth. |
@@ -79,7 +79,7 @@ Cursor mailbox front door?  -> scripts/cursor_mailbox.py + coordination/bin/curs
 Target-repo start guard?    -> scripts/ledger_start_guard.py
 Seat action checklist?      -> .agents/skills/
 Spawnable role prompt?      -> .codex/agents/
-Lifecycle/index guardrail?  -> .codex/hooks*
+Codex lifecycle/isolation?  -> native task worktree + explicit verification
 Lane-V trigger authority?   -> coordination/mailbox/sent/ (compact-pair verify-request)
 Actual protocol event?      -> coordination/mailbox/sent/
 Read cursor?                -> coordination/mailbox/seen/

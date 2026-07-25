@@ -7,20 +7,18 @@ import argparse
 import json
 import os
 import shutil
-import stat
-import subprocess
 import sys
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 try:
-    from scripts.codex_protocol_model import infer_runtime_env
+    from scripts.codex_protocol_model import RuntimeIdentity, RUNTIME_SCRUB_ENV_KEYS
 except ModuleNotFoundError as exc:
     if exc.name != "scripts":
         raise
-    from codex_protocol_model import infer_runtime_env
+    from codex_protocol_model import RuntimeIdentity, RUNTIME_SCRUB_ENV_KEYS
 
 
 LAUNCH_SEATS = ("director", "director2", "operator", "operator2", "coordinator")
@@ -47,7 +45,7 @@ class LaunchSpec:
     argv: tuple[str, ...]
     env: dict[str, str]
     repo_root: Path
-    index_path: Path
+    identity: RuntimeIdentity
 
 
 def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
@@ -90,7 +88,6 @@ def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
 
 def build_launch_spec(
     repo_root: Path,
-    git_dir: Path,
     seat: str,
     settings: Mapping[str, SeatSettings],
     inherited_env: Mapping[str, str],
@@ -103,24 +100,14 @@ def build_launch_spec(
     if seat not in settings:
         raise LaunchError(f"missing settings for seat: {seat}")
 
-    runtime = infer_runtime_env({"CODEX_SEAT": seat})
-    env = dict(inherited_env)
-    env.update(
-        {
-            "CODEX_SEAT": seat,
-            "CODEX_AGENT_MODE": runtime["CODEX_AGENT_MODE"],
-            "CODEX_AGENT_ROLE": runtime["CODEX_AGENT_ROLE"],
-        }
-    )
-    behavior_source = runtime["CODEX_BEHAVIOR_SOURCE"]
-    if behavior_source == "(none)":
-        env.pop("CODEX_BEHAVIOR_SOURCE", None)
-    else:
-        env["CODEX_BEHAVIOR_SOURCE"] = behavior_source
-
-    index_path = git_dir / f"index-codex-{seat}"
-    env["GIT_INDEX_FILE"] = str(index_path)
     selected = settings[seat]
+    identity = RuntimeIdentity.for_seat(seat, model=selected.model)
+    env = {
+        key: value
+        for key, value in inherited_env.items()
+        if key not in RUNTIME_SCRUB_ENV_KEYS
+    }
+    env.update(identity.as_env())
     argv = (
         codex_executable,
         "--model",
@@ -135,126 +122,8 @@ def build_launch_spec(
         argv=argv,
         env=env,
         repo_root=repo_root,
-        index_path=index_path,
+        identity=identity,
     )
-
-
-def _without_ambient_index(environ: Mapping[str, str]) -> dict[str, str]:
-    clean_env = dict(environ)
-    clean_env.pop("GIT_INDEX_FILE", None)
-    return clean_env
-
-
-def resolve_git_dir(repo_root: Path) -> Path:
-    """Resolve the repository git directory without trusting an ambient index."""
-    result = subprocess.run(
-        ["git", "-C", str(repo_root), "rev-parse", "--absolute-git-dir"],
-        env=_without_ambient_index(os.environ),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise LaunchError(result.stderr.strip() or "cannot resolve repository git directory")
-    return Path(result.stdout.strip())
-
-
-def ensure_seat_index(
-    repo_root: Path,
-    index_path: Path,
-    *,
-    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-) -> None:
-    """Seed a missing per-seat index; validate and preserve an existing one."""
-    try:
-        index_mode = index_path.lstat().st_mode
-    except FileNotFoundError:
-        index_mode = None
-    if index_mode is not None:
-        if not stat.S_ISREG(index_mode):
-            raise LaunchError(
-                f"existing seat index {index_path} must be a regular file; "
-                "refusing to launch without changing it"
-            )
-        index_env = _without_ambient_index(os.environ)
-        index_env["GIT_INDEX_FILE"] = str(index_path)
-        entries = runner(
-            ["git", "-C", str(repo_root), "ls-files", "--stage", "-z"],
-            env=index_env,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if entries.returncode != 0:
-            detail = entries.stderr.strip() or entries.stdout.strip()
-            raise LaunchError(
-                f"existing seat index {index_path} is unusable: "
-                f"{detail or 'cannot read index entries'}"
-            )
-        if not entries.stdout:
-            head_entries = runner(
-                [
-                    "git",
-                    "-C",
-                    str(repo_root),
-                    "ls-tree",
-                    "-r",
-                    "--name-only",
-                    "-z",
-                    "HEAD",
-                ],
-                env=_without_ambient_index(os.environ),
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if head_entries.returncode != 0:
-                detail = head_entries.stderr.strip() or head_entries.stdout.strip()
-                raise LaunchError(detail or "cannot inspect HEAD before seat launch")
-            if head_entries.stdout:
-                raise LaunchError(
-                    f"existing seat index {index_path} is empty while HEAD tracks files; "
-                    "refusing to launch without changing the index"
-                )
-        status = runner(
-            [
-                "git",
-                "--no-optional-locks",
-                "-C",
-                str(repo_root),
-                "status",
-                "--porcelain=v1",
-                "--untracked-files=no",
-                "--ignore-submodules=all",
-            ],
-            env=index_env,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if status.returncode != 0:
-            detail = status.stderr.strip() or status.stdout.strip()
-            raise LaunchError(
-                f"existing seat index {index_path} is unusable: "
-                f"{detail or 'Git status validation failed'}"
-            )
-        return
-    result = runner(
-        [
-            "git",
-            "-C",
-            str(repo_root),
-            "read-tree",
-            f"--index-output={index_path}",
-            "HEAD",
-        ],
-        env=_without_ambient_index(os.environ),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise LaunchError(result.stderr.strip() or f"cannot seed seat index {index_path}")
 
 
 def _parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
@@ -283,16 +152,14 @@ def _parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args, forwarded_args = _parse_args(sys.argv[1:] if argv is None else argv)
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path.cwd().resolve()
     try:
         settings = load_seat_settings(args.config)
-        git_dir = resolve_git_dir(repo_root)
         codex_executable = shutil.which("codex")
         if codex_executable is None and not args.dry_run:
             raise LaunchError("codex executable not found on PATH")
         spec = build_launch_spec(
             repo_root,
-            git_dir,
             args.seat,
             settings,
             os.environ,
@@ -305,14 +172,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "CODEX_AGENT_MODE",
                 "CODEX_AGENT_ROLE",
                 "CODEX_BEHAVIOR_SOURCE",
-                "GIT_INDEX_FILE",
             )
             print(
                 json.dumps(
                     {
                         "argv": list(spec.argv),
                         "env": {key: spec.env[key] for key in identity_keys if key in spec.env},
-                        "index_exists": spec.index_path.exists(),
                     },
                     indent=2,
                     sort_keys=True,
@@ -320,7 +185,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
 
-        ensure_seat_index(spec.repo_root, spec.index_path)
         os.execvpe(spec.argv[0], list(spec.argv), spec.env)
     except (ConfigError, LaunchError) as exc:
         print(f"codex-seat: {exc}", file=sys.stderr)

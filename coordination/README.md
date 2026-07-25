@@ -10,20 +10,18 @@ for the full discipline (Rules #7–#23).
   file; the v6.0 envelope is an H1 (`# <From> → <To>: <subject>`) followed by a
   `**When:** <ISO-UTC> · **From:** <seat>` line whose timestamp must match the
   filename (linted). Pre-v6.0 events used YAML frontmatter (`from`, `to`,
-  `kind`, …) and are grandfathered. Written directly by sender (Tier-1
-  auto-send; no approval gate) — preferably via `bin/send-event`.
-- `mailbox/seen/<seat>.txt` — Per-seat consumed-up-to timestamp for concrete
-  live seats and receiving seats. Pair seats advance their own cursor via
-  `bin/consume-events`; coordinator is unpinned and reads all-scope mail
-  without consuming a coordinator cursor. Content is a single UTC ISO-8601
-  timestamp (e.g., `2026-05-24T13:42:00Z`).
-- `bin/send-event <from> <to> <kind> <subject…>` (body on stdin) — writes a
-  convention-conforming event + envelope, appends an automatic
-  `Cursor at send:` line read from the sender's seen file, and stages the file
-  when the active git index is writable (explicit pathspec; never commits). If
-  staging is blocked by an index lock or sandbox boundary, the event remains on
-  disk and the command reports `not staged`; commit it later with an explicit
-  pathspec.
+  `kind`, …) and are grandfathered. New events must go through
+  `bin/send-event`; raw event writes bypass publication validation and are not
+  supported.
+- `mailbox/seen/<seat>.txt` — Compatibility read state for the four concrete
+  pair seats. Coordinators are cursorless. Historical ISO timestamps and
+  migrated scalar sequences are accepted; malformed state is unavailable or
+  fatal, never silently zero unread.
+- `bin/send-event <from> <to> <kind> <subject…>` (body on stdin) — constructs
+  one canonical candidate, validates its envelope and kind-specific structure,
+  finalizes it under the shared writer fence, and stages only its explicit
+  path. It never commits. A validation or staging failure is reported rather
+  than bypassed with a direct write.
 - `bin/consume-events <role> [--to <ts>]` — advances `seen/<role>.txt` to the
   newest event addressed to the role (or the explicit target), refusing
   regressions and nonexistent targets, and STAGES the cursor file. **Cursor
@@ -46,9 +44,9 @@ for the full discipline (Rules #7–#23).
   locally, warns in CI; ADVISORY warns; INFO silent.
 - `mailbox/archive/` — Old events moved out of `sent/` for log hygiene (manual
   move by operator).
-- `presence/<seat>-heartbeat.ts` — (v6.0 Tier 2) HOOK-OWNED liveness: a single
-  line `<ISO-UTC> <short-head>` atomically overwritten on every tool call.
-  Read the peer's heartbeat for liveness (fresh < T = active).
+- `presence/<seat>-heartbeat.ts` — legacy/provider-specific liveness hint. Codex
+  does not write repository heartbeats; host task/thread activity is its
+  liveness source. A heartbeat never grants authority.
 - `presence/director.md`, `presence/operator.md` — (v5.7 Rule #19, narrowed by
   v6.0 Tier 2) per-seat **agent-owned intent**: flat `key: value` (`seat`,
   `status`, `current_task`, …). The hook NEVER touches these anymore (the
@@ -59,12 +57,11 @@ for the full discipline (Rules #7–#23).
 
 ## Readiness bridge
 
-Use `python scripts/continuation_readiness.py` when a non-seat agent needs to
-resume understanding of the four-seat process without claiming a seat. It reports
-current git state, live unread counts for all four seats, Wave 2 gate state,
-ADR-028 ceremony status, and the verification-environment status. It is
-read-only: it does not consume cursors, send mailbox events, edit the
-remediation inventory, or claim director/operator work.
+Use `python scripts/status.py snapshot` for one compact non-seat orientation.
+`scripts/continuation_readiness.py` is a compatibility wrapper around that same
+snapshot. It reports current Git, authoritative unread transport, the current
+request or blocker, and the lawful next action without claiming a role or
+mutating state.
 
 Use `python scripts/mailbox_monitor.py --once` for an active communication
 snapshot, or `python scripts/mailbox_monitor.py --watch --interval 5` while a
@@ -73,13 +70,12 @@ read-only: it reports unread counts, latest unread events, coordinator broadcast
 receipt splits, and heartbeat freshness, but it never consumes cursors, sends
 mailbox events, claims live-seat authority, or proves assigned work complete.
 
-For a real pair-seat resume, use the seat-specific orientation command instead:
-`python .agents/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2`,
-then surface the unread count per Rule #8. Pair seats consume and read unread
-events with `coordination/bin/consume-events <seat>` before deciding the seat is
-idle, routed, blocked, or ready to verify, unless the user explicitly asks for a
-read-only/no-consume check. Coordinator is unpinned: read relevant coordinator
-mailbox bodies and all-scope state, but do not run `consume-events coordinator`.
+For an explicitly assigned Codex pair role, use
+`python scripts/status.py snapshot <seat>` and read the actionable event bodies.
+Cursor consumption is a separate action; run
+`coordination/bin/consume-events <seat>` only when that role is authorized to
+advance its own read state. Coordinator is unpinned: read relevant coordinator
+and all-scope bodies, but never run `consume-events coordinator`.
 
 ## Codex transplant
 
@@ -91,8 +87,8 @@ Codex-native continuation details live in
 - `.codex/agents/*.toml` — explicit-use Codex custom agents for
   `readiness-bridge`, `protocol-director`, `protocol-operator`,
   `protocol-coordinator`, `lane-v-verifier`, and `money-gate-reviewer`.
-- `.codex/hooks.json` + `.codex/hooks/*.sh` — Codex lifecycle wrappers for the
-  existing smoke, heartbeat/state, and git-index guard scripts.
+- No project Codex hook registry — Codex has no repository lifecycle hook or
+  persistent-index dependency.
 
 For a local Codex seat launch, give each seat its own model and speed in
 `~/.codex/pipeline-seat-launcher.toml`:
@@ -135,59 +131,42 @@ coordination/bin/codex-seat operator -- "continue as operator"
 coordination/bin/codex-seat --dry-run operator
 ```
 
-Codex may require `/hooks` review/trust before repo-local hooks run. If a Codex
-thread is not launched with `CODEX_SEAT` and a per-seat index, keep it in
-readiness bridge mode unless the user explicitly accepts one-off seat work.
-The launcher creates a missing per-seat index with the hook-safe
-`--index-output` form and preserves an existing index. Direct `git read-tree
-HEAD` under exported `GIT_INDEX_FILE` is blocked by the Codex git-index guard.
+Codex has no repository-mutating lifecycle hooks and does not use persistent
+per-seat indexes. Launch mutating work from a task-specific native Git worktree;
+the checkout's ordinary index is the only index. A shared-root Codex session is
+read-only except for narrowly authorized coordination writes with explicit
+pathspecs.
 
-Codex live-seat mailbox consumption stages only
-`coordination/mailbox/seen/<seat>.txt` in the seat-local index. After consuming,
-inspect that active seat index with `git diff --cached --name-status`; a
-mailbox-only consume should show exactly `M coordination/mailbox/seen/<seat>.txt`.
-If `HEAD` advanced after the index was seeded, a stale seat index can stage bogus
-deletions for files introduced by the newer commit. When there is no intentional
-staged seat work, refresh the seat index to `HEAD` and re-stage only the cursor
-using the hook-approved wrapper:
-
-```bash
-env -u GIT_INDEX_FILE bash -lc 'idx="$(git rev-parse --absolute-git-dir)/index-codex-<seat>"; git read-tree --index-output="$idx" HEAD; GIT_INDEX_FILE="$idx" git add coordination/mailbox/seen/<seat>.txt; GIT_INDEX_FILE="$idx" git diff --cached --name-status'
-```
-
-If there is intentional staged implementation/doc work and `HEAD` moved, do not
-blindly reset the index; reconcile the mixed state deliberately and preserve the
-seat-owned staged paths.
+Mailbox read state is user-interface state, not execution authority. Only a
+concrete consuming role advances its own cursor through the canonical event
+store; coordinator has no cursor. Never hand-edit or stage a cursor as a
+substitute for a successful consume operation.
 
 ## Authority (Rule #8)
 
-A sent mailbox event obligates the receiving role to act per its content, with
-authority equal to a user-relayed signal. **User direct instructions override
-mailbox events; mailbox events override default behavior.**
+A sent mailbox event communicates durable task state. It can bind work only
+within authority already granted by the user, an accepted route, or an
+executable capability. It cannot grant push, merge, spend, provider launch,
+live-data mutation, or any other external effect merely by saying so.
+
+**User instructions and executable capabilities define authority. Mailbox
+events preserve coordination and evidence inside that boundary.**
 
 ### Session-bootstrap awareness gate (Rule #8 sub-clause)
 
-On session start, if `STATE.md`'s `unread mailbox` field shows N ≥ 1 events
-for your role, you MUST surface the count to the user in your first
-user-facing turn BEFORE processing events:
-
-> "Mailbox has N unread event(s) for {role}; processing now per Rule #8."
-
-The role then processes the queue with full Tier-1 authority. This is a
-**one-time-per-session signal**, not a per-event gate. Steady-state events
-during the session require no user-surface — Tier-1 throughput preserved.
+On session start, use the compact status/orientation snapshot. Surface a
+mailbox item only when it changes the lawful next action, introduces a blocker,
+or requires user authority. Do not manufacture a startup announcement for an
+empty or unchanged queue.
 
 ## Polling cadence (consuming session)
 
-1. **Session start** — Cold-start checklist reads `STATE.md`'s `unread mailbox`
-   field; if non-zero, surface to user per the bootstrap gate above and then
-   process the queue.
+1. **Session start** — Read one compact status/orientation snapshot.
 2. **Before any shared-task action** — Pairs with Rule #4 (pre-Write check)
    and Rule #7 (pre-commit check). A mailbox event between your pre-Write
    check and your commit can invalidate the assertion.
-3. **After every commit** — STATE.md's hook auto-update surfaces new unread
-   count (passive notification).
-4. **On receipt of any user direct instruction** that may interact with
+3. **Before protocol finalization** — refresh the relevant task/event refs once.
+4. **On receipt of a user instruction** that may interact with
    pending events. For live seats, read/consume pending mail before acting on
    the instruction unless the user explicitly asks for read-only/no-consume
    behavior.
@@ -260,7 +239,7 @@ Manual for v1. Operator-only task: periodically move events older than ~N
 sessions from `sent/` to `archive/`. Stale-event surfacing automation
 deferred to v2 if it becomes painful.
 
-## STATE.md model (current — post B-003 Option E + v5.7)
+## Claude-only STATE.md model
 
 STATE.md is **gitignored, per-clone, regenerated on disk** by
 `.claude/hooks/update-state.sh` on each HEAD move. B-003 Option E (cycle 8)
@@ -276,7 +255,7 @@ both directions AND compared file mtime (the source of the observed
 regardless; STATE.md's field is a convenience cache. For exact current HEAD,
 `git rev-parse HEAD` (git > STATE.md per the authority precedence).
 
-## Per-clone setup
+## Claude-only per-clone setup
 
 The hook that auto-maintains `STATE.md` (and thus the `unread mailbox` field)
 lives at `.claude/hooks/update-state.sh` (committed). Hook **registration**
@@ -305,7 +284,7 @@ start checklist will still work but the read will be out-of-date). The matcher
 is `Bash|Write|Edit` (v5.7): presence freshness (Rule #19) must update through
 long edit stretches with no Bash call, not just on commits.
 
-## Per-seat launch (D-a, v5.7)
+## Claude-only shared-tree seat launch
 
 The two seats run as concurrent Claude Code sessions in **one shared working
 tree** (shared object store, shared HEAD on `main`). Per Q4 (user-adjudicated
@@ -375,11 +354,6 @@ this case). The one case left manual is **mixed** state (you have staged work
 AND the peer moved HEAD): the hook deliberately abstains, so resolve it with
 `git read-tree -m`. The launch seed above (`[ -f … ] || git read-tree HEAD`)
 still stands — the hook needs an existing index to maintain.
-
-For Codex live seats, still inspect staged scope after mailbox consumption. If a
-cursor-only consume stages a deletion for a file introduced by a newer `HEAD`,
-the index was stale at the moment of consumption; repair the seat index as
-documented in the Codex transplant section above, then re-stage only the cursor.
 
 **Skip-worktree pollution is also hook-cleared (v5.9).** Harness child
 processes (Workflow/subagent runs) have twice left skip-worktree bits in the

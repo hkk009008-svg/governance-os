@@ -11,8 +11,12 @@ import re
 import stat
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator
+
+import bus_unread
+import compact_pair_loop
 
 _LOCK_NAME = "protocol-kernel-writer.lock"
 _EVENT_RE = re.compile(
@@ -23,9 +27,7 @@ _EVENT_RE = re.compile(
 )
 _COLON_ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _DASH_ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z")
-_ROLES = {
-    "director", "director2", "operator", "operator2", "coordinator", "coordinator2",
-}
+_ROLES = {"director", "director2", "operator", "operator2"}
 _GIT_ENV = {
     "PATH": "/usr/bin:/bin",
     "LANG": "C",
@@ -88,6 +90,125 @@ def _stage(root: Path, relative: str, *, force: bool = False) -> None:
     _git(root, *arguments, "--", relative)
 
 
+def validate_event_envelope(
+    root: Path,
+    candidate: Path,
+    relative: str,
+) -> re.Match[str]:
+    """Validate one event's canonical carrier envelope.
+
+    This intentionally does not validate the kind-specific payload.  Committed
+    historical events use the canonical committed-artifact parser for that
+    step, while new candidates use :func:`validate_event_candidate`.
+    """
+
+    match = _EVENT_RE.fullmatch(Path(relative).name)
+    if (
+        match is None
+        or Path(relative).parent.as_posix() != "coordination/mailbox/sent"
+    ):
+        raise MailboxWriterError("send-event candidate path is not canonical")
+    raw = candidate.read_bytes()
+    if len(raw) > compact_pair_loop.MAX_EVENT_BYTES or b"\x00" in raw:
+        raise MailboxWriterError("send-event candidate is not one bounded text event")
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise MailboxWriterError("send-event candidate is not UTF-8") from exc
+    sender, recipient = match.group("sender"), match.group("recipient")
+    stamp = _colon(match.group("stamp"))
+    kinds = (root / "coordination/mailbox/kinds.txt").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    h1_lines = [line for line in lines if line.startswith("# ")]
+    envelope_lines = [
+        line
+        for line in lines
+        if line.startswith("**When:** ") or line.startswith("**From:** ")
+    ]
+    cursor_lines = [line for line in lines if line.startswith("Cursor at send: ")]
+    if len(h1_lines) != 1:
+        raise MailboxWriterError("send-event candidate has missing or duplicate H1 envelope")
+    if len(envelope_lines) != 1:
+        raise MailboxWriterError(
+            "send-event candidate has missing or duplicate When/From envelope"
+        )
+    if len(cursor_lines) != 1:
+        raise MailboxWriterError("send-event candidate has missing or duplicate cursor footer")
+    cursor_value = cursor_lines[0].removeprefix("Cursor at send: ")
+    if sender in {"coordinator", "coordinator2"}:
+        if cursor_value != "cursorless":
+            raise MailboxWriterError(
+                "coordinator send-event candidate must use the cursorless marker"
+            )
+    elif cursor_value == "cursorless":
+        raise MailboxWriterError(
+            "pair-seat send-event candidate cannot use the cursorless marker"
+        )
+    if (
+        match.group("kind") not in kinds
+        or len(lines) < 5
+        or lines[1]
+        or lines[3]
+        or h1_lines[0] != lines[0]
+        or not lines[0].startswith(
+            f"# {sender.capitalize()} → {recipient.capitalize()}: "
+        )
+        or envelope_lines[0] != lines[2]
+        or lines[2] != f"**When:** {stamp} · **From:** {sender} (online)"
+        or cursor_lines[0] != lines[-1]
+    ):
+        raise MailboxWriterError("send-event candidate envelope does not match filename")
+    return match
+
+
+def validate_event_candidate(
+    root: Path,
+    candidate: Path,
+    relative: str,
+    *,
+    validate_range: bool = True,
+) -> None:
+    """Validate one new event's canonical envelope and kind-specific structure."""
+
+    match = validate_event_envelope(root, candidate, relative)
+    if match.group("kind") == "verify-request":
+        try:
+            request = compact_pair_loop.parse_verify_request_candidate(
+                root, candidate, relative
+            )
+            violations = (
+                compact_pair_loop.validate_request_candidate(root, request)
+                if validate_range
+                else []
+            )
+        except compact_pair_loop.CompactPairError as exc:
+            raise MailboxWriterError(f"verify-request candidate is invalid: {exc}") from exc
+        if violations:
+            raise MailboxWriterError(
+                "verify-request candidate is invalid: " + "; ".join(violations)
+            )
+    elif match.group("kind") == "verification-report":
+        try:
+            report = compact_pair_loop.parse_verification_report_candidate(
+                root, candidate, relative
+            )
+            violations = (
+                compact_pair_loop.validate_report(root, report)
+                if validate_range
+                else compact_pair_loop.validate_report_structure(root, report)
+            )
+        except compact_pair_loop.CompactPairError as exc:
+            raise MailboxWriterError(
+                f"verification-report candidate is invalid: {exc}"
+            ) from exc
+        if violations:
+            raise MailboxWriterError(
+                "verification-report candidate is invalid: "
+                + "; ".join(violations)
+            )
+
+
 def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
     match = _EVENT_RE.fullmatch(Path(relative).name)
     sent = root / "coordination" / "mailbox" / "sent"
@@ -102,24 +223,7 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
     observed = candidate.lstat()
     if not stat.S_ISREG(observed.st_mode) or stat.S_IMODE(observed.st_mode) != 0o600:
         raise MailboxWriterError("send-event candidate must be one mode-0600 regular file")
-    lines = candidate.read_text(encoding="utf-8").splitlines()
-    sender, recipient = match.group("sender"), match.group("recipient")
-    stamp = _colon(match.group("stamp"))
-    kinds = (root / "coordination/mailbox/kinds.txt").read_text(
-        encoding="utf-8"
-    ).splitlines()
-    if (
-        match.group("kind") not in kinds
-        or len(lines) < 5
-        or lines[1]
-        or lines[3]
-        or not lines[0].startswith(
-            f"# {sender.capitalize()} → {recipient.capitalize()}: "
-        )
-        or lines[2] != f"**When:** {stamp} · **From:** {sender} (online)"
-        or not lines[-1].startswith("Cursor at send: ")
-    ):
-        raise MailboxWriterError("send-event candidate envelope does not match filename")
+    validate_event_candidate(root, candidate, relative)
     final = root / relative
     with writer_fence(root):
         directory_fd = os.open(sent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
@@ -160,6 +264,26 @@ def _colon(value: str) -> str:
     return value[:11] + value[11:19].replace("-", ":") + "Z"
 
 
+def _valid_colon_iso(value: str) -> bool:
+    if _COLON_ISO_RE.fullmatch(value) is None:
+        return False
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return False
+    return True
+
+
+def _valid_dash_iso(value: str) -> bool:
+    if _DASH_ISO_RE.fullmatch(value) is None:
+        return False
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H-%M-%SZ")
+    except ValueError:
+        return False
+    return True
+
+
 def _consume_events_finalize(root: Path, role: str, target: str | None) -> str:
     if role not in _ROLES:
         raise MailboxWriterError("consume-events role is invalid")
@@ -171,33 +295,71 @@ def _consume_events_finalize(root: Path, role: str, target: str | None) -> str:
         if current_raw.count(b"\n") != 1 or not current_raw.endswith(b"\n"):
             raise MailboxWriterError("consume-events cursor is not one canonical line")
         current = current_raw[:-1].decode("ascii", "strict")
+        scalar_fallback = False
         if current.isdigit():
-            raise MailboxWriterError(f"{role} is migrated to the signed ref-bus")
-        if _COLON_ISO_RE.fullmatch(current) is None:
+            authority = bus_unread.bus_authority_state(root, role)
+            if authority.state == "live":
+                raise MailboxWriterError(
+                    f"{role} has a live signed ref-bus; use its cursor consumer"
+                )
+            if authority.state == "incoherent":
+                raise MailboxWriterError(
+                    f"{role} transport is incoherent: {authority.detail}"
+                )
+            scalar_fallback = True
+        elif not _valid_colon_iso(current):
             raise MailboxWriterError("consume-events current cursor is not colon ISO")
-        current_dash = _dash(current)
-        addressed = sorted(
+        event_names = [
             path.name
             for path in sent.iterdir()
-            if path.is_file()
-            and (match := _EVENT_RE.fullmatch(path.name)) is not None
-            and match.group("recipient") in {role, "all"}
-        )
+            if path.is_file() and path.name.endswith(".md")
+        ]
+        try:
+            canonical = bus_unread.ordered_mailbox_events(event_names)
+        except ValueError as exc:
+            raise MailboxWriterError(f"mailbox event order is invalid: {exc}") from exc
+        if scalar_fallback:
+            try:
+                remaining = bus_unread.mailbox_events_after_scalar(
+                    current, canonical
+                )
+            except ValueError as exc:
+                raise MailboxWriterError(str(exc)) from exc
+            addressed = [
+                name
+                for name in remaining
+                if (
+                    (match := _EVENT_RE.fullmatch(name)) is not None
+                    and match.group("recipient") in {role, "all"}
+                )
+            ]
+            current_dash = None
+        else:
+            current_dash = _dash(current)
+            addressed = [
+                name
+                for name in canonical
+                if (
+                    (match := _EVENT_RE.fullmatch(name)) is not None
+                    and match.group("recipient") in {role, "all"}
+                )
+            ]
         if target is None:
             if not addressed:
-                return f"cursor {role}: no addressed events (no-op)"
+                suffix = " via mailbox fallback" if scalar_fallback else ""
+                return f"cursor {role}: no addressed events{suffix} (no-op)"
             target_dash = addressed[-1][:20]
         else:
             if not (
-                _COLON_ISO_RE.fullmatch(target) or _DASH_ISO_RE.fullmatch(target)
+                _valid_colon_iso(target) or _valid_dash_iso(target)
             ):
                 raise MailboxWriterError("consume-events target is not an ISO timestamp")
             target_dash = _dash(target)
             if not any(name.startswith(target_dash + "-") for name in addressed):
                 raise MailboxWriterError("consume-events target names no addressed event")
-        if target_dash == current_dash:
+        if current_dash is not None and target_dash == current_dash:
             return f"cursor {role}: already at {_colon(target_dash)} (no-op)"
-        if target_dash < current_dash:
+        if current_dash is not None and target_dash < current_dash:
             raise MailboxWriterError("consume-events refuses cursor regression")
         updated = (_colon(target_dash) + "\n").encode("ascii")
         temporary = seen / f".{role}.{os.getpid()}.tmp"
@@ -223,7 +385,11 @@ def _consume_events_finalize(root: Path, role: str, target: str | None) -> str:
         finally:
             os.close(directory_fd)
         unread = sum(name[:20] > target_dash for name in addressed)
-        return f"cursor {role}: {current} -> {_colon(target_dash)}; unread now: {unread} (staged)"
+        mode = "mailbox fallback; " if scalar_fallback else ""
+        return (
+            f"cursor {role}: {current} -> {_colon(target_dash)}; unread now: "
+            f"{unread} ({mode}staged)"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

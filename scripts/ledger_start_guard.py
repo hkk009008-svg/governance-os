@@ -4,16 +4,11 @@
 from __future__ import annotations
 
 import argparse
-import os
 import re
-import subprocess
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 
-import protocol_mailbox
 import route_lineage
-import startup_snapshot
 import target_binding
 
 # The kernel is wherever this script lives; the target repo and forbidden
@@ -36,31 +31,6 @@ class RouteGuidance:
     worktree: str | None = None
     accepted_target_head: str | None = None
     allowed_paths: tuple[str, ...] = ()
-
-
-class ResumeClassification(str, Enum):
-    FAST_RESUME_PASS = "FAST RESUME: PASS"
-    FULL_ORIENTATION_REQUIRED = "FULL ORIENTATION REQUIRED"
-    START_GUARD_FAIL = "START GUARD: FAIL"
-
-
-@dataclass(frozen=True)
-class ResumeEvidence:
-    expected_route_ref: str
-    current_route_ref: str | None
-    route: route_lineage.LineageRoute | None
-    pipeline: startup_snapshot.GitSnapshot
-    target: startup_snapshot.GitSnapshot | None
-    mailbox: startup_snapshot.MailboxSnapshot
-    guidance: RouteGuidance
-    reasons: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class ResumeResult:
-    classification: ResumeClassification
-    lines: tuple[str, ...]
-    reasons: tuple[str, ...]
 
 
 _ROUTE_BASE_RE = re.compile(
@@ -309,13 +279,6 @@ def route_guidance(route: Path) -> RouteGuidance:
     )
 
 
-def _seat_status_command(seat: str, wave: int) -> str:
-    return (
-        "env -u GIT_INDEX_FILE .venv/bin/python "
-        f".agents/skills/four-seat-protocol/scripts/seat_status.py {seat} --wave {wave}"
-    )
-
-
 def _first_commands_from_guidance(
     seat: str,
     wave: int,
@@ -326,12 +289,6 @@ def _first_commands_from_guidance(
 ) -> tuple[str, ...]:
     route_ref = _safe_relative(route, kernel)
     commands = [
-        f"cd {_display(kernel)}",
-        (
-            "env -u GIT_INDEX_FILE .venv/bin/python "
-            f"scripts/ledger_start_guard.py --seat {seat} --wave {wave}"
-        ),
-        _seat_status_command(seat, wave),
         f"read Pipeline route body: {route_ref}",
     ]
     if target.name == "evidence-ledger":
@@ -343,17 +300,15 @@ def _first_commands_from_guidance(
     if guidance.worktree:
         commands.append(f"route worktree: {guidance.worktree}")
         commands.append(
-            "env -u GIT_INDEX_FILE git -C "
-            f"{guidance.worktree} status --short --branch"
+            f"git -C {guidance.worktree} status --short --branch"
         )
-    commands.append(
-        "normal target checkout may be stale; do not start product work there "
-        "unless the route names it"
-    )
-    commands.append(
-        "env -u GIT_INDEX_FILE git -C "
-        f"{_display(target.path)} status --short --branch"
-    )
+        commands.append(
+            "normal target checkout may be stale; use the route worktree above"
+        )
+    else:
+        commands.append(
+            f"git -C {_display(target.path)} status --short --branch"
+        )
     if seat == "coordinator":
         commands.append(
             "coordinator may reconcile ledger evidence only; no evidence-ledger product fixes"
@@ -504,531 +459,6 @@ def _validated_route_guidance_body(route: Path) -> str:
     return body
 
 
-def _git_environment() -> dict[str, str]:
-    env = {
-        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
-    }
-    env.update(
-        {
-            "LANG": "C",
-            "LC_ALL": "C",
-            "LANGUAGE": "C",
-            "GIT_OPTIONAL_LOCKS": "0",
-        }
-    )
-    return env
-
-
-def _git_identity(path: Path) -> tuple[Path | None, Path | None, str | None]:
-    try:
-        completed = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel", "--git-common-dir"],
-            cwd=path,
-            env=_git_environment(),
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-        )
-    except Exception as exc:
-        return None, None, f"Git identity unavailable: {exc}"
-    if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout).strip()
-        suffix = f": {detail}" if detail else ""
-        return None, None, f"Git identity unavailable: git exited {completed.returncode}{suffix}"
-    lines = completed.stdout.splitlines()
-    if len(lines) != 2 or not lines[0] or not lines[1]:
-        return None, None, "Git identity parse error"
-    top = _resolve(Path(lines[0]))
-    common_raw = Path(lines[1])
-    common = _resolve(common_raw if common_raw.is_absolute() else path / common_raw)
-    return top, common, None
-
-
-def _target_identity_reasons(
-    target: target_binding.TargetBinding, worktree: Path
-) -> tuple[str, ...]:
-    reasons: list[str] = []
-    worktree_top, worktree_common, worktree_error = _git_identity(worktree)
-    if worktree_error:
-        reasons.append(f"target-worktree-unavailable: {worktree_error}")
-    elif worktree_top != worktree:
-        reasons.append(
-            "target-worktree-top-level-mismatch: "
-            f"expected {worktree.as_posix()}, got "
-            f"{worktree_top.as_posix() if worktree_top else 'unavailable'}"
-        )
-
-    registered = _resolve(target.path)
-    if registered == worktree:
-        registered_top, registered_common, registered_error = (
-            worktree_top,
-            worktree_common,
-            worktree_error,
-        )
-    else:
-        registered_top, registered_common, registered_error = _git_identity(registered)
-    if registered_error:
-        reasons.append(f"target-binding-unavailable: {registered_error}")
-    elif registered_top != registered:
-        reasons.append(
-            "target-binding-top-level-mismatch: "
-            f"expected {registered.as_posix()}, got "
-            f"{registered_top.as_posix() if registered_top else 'unavailable'}"
-        )
-    if (
-        worktree_common is not None
-        and registered_common is not None
-        and worktree_common != registered_common
-    ):
-        reasons.append(
-            "target-binding-common-dir-mismatch: route worktree is not linked to "
-            "the registered target repository"
-        )
-    return tuple(reasons)
-
-
-def _dirty_path_names(snapshot: startup_snapshot.GitSnapshot) -> tuple[str, ...]:
-    values: list[str] = []
-    for state in snapshot.dirty_paths:
-        values.append(state.path)
-        if state.original_path is not None:
-            values.append(state.original_path)
-    return tuple(dict.fromkeys(values))
-
-
-def _format_dirty(snapshot: startup_snapshot.GitSnapshot) -> str:
-    if not snapshot.dirty_paths:
-        return "clean"
-    return ", ".join(
-        f"{state.status} {state.path}"
-        + (f" <- {state.original_path}" if state.original_path else "")
-        for state in snapshot.dirty_paths
-    )
-
-
-def _ordinary_actions(
-    *,
-    seat: str,
-    root: Path,
-    kernel: Path,
-    wave: int,
-    target: target_binding.TargetBinding | None,
-    route: route_lineage.LineageRoute | None,
-    guidance: RouteGuidance | None = None,
-) -> tuple[str, ...]:
-    if target is not None and route is not None and route.path is not None:
-        if guidance is not None:
-            return _first_commands_from_guidance(
-                seat,
-                wave,
-                kernel,
-                route.path,
-                target,
-                guidance,
-            )
-        try:
-            return first_commands(seat, wave, kernel, route.path, target)
-        except RouteResolutionError:
-            pass
-    actions = [
-        f"cd {_display(kernel)}",
-        (
-            "env -u GIT_INDEX_FILE .venv/bin/python "
-            f"scripts/ledger_start_guard.py --seat {seat} --wave {wave}"
-        ),
-        _seat_status_command(seat, wave),
-    ]
-    if route is not None and route.path is not None:
-        actions.append(
-            f"read Pipeline route body: {_safe_relative(route.path, root)}"
-        )
-    if target is not None:
-        if target.name == "evidence-ledger":
-            actions.append(
-                "read docs/protocol/codex/ledger-cli-adoption.md before entering evidence-ledger"
-            )
-        actions.extend(
-            (
-                "normal target checkout may be stale; do not start product work there "
-                "unless the route names it",
-                "env -u GIT_INDEX_FILE git -C "
-                f"{_display(target.path)} status --short --branch",
-            )
-        )
-    if seat == "coordinator":
-        actions.append(
-            "coordinator may reconcile ledger evidence only; no evidence-ledger product fixes"
-        )
-    return tuple(actions)
-
-
-def _evidence_capsule_lines(
-    evidence: ResumeEvidence,
-    target_value: target_binding.TargetBinding,
-) -> tuple[str, ...]:
-    route = evidence.route
-    target = evidence.target
-    owners = (
-        ", ".join(route.owners)
-        if route is not None and route.owners
-        else "(none)"
-    )
-    findings = (
-        ", ".join(route.finding_refs)
-        if route is not None and route.finding_refs
-        else "(none)"
-    )
-    unread = (
-        ", ".join(evidence.mailbox.unread_refs)
-        if evidence.mailbox.unread_refs
-        else "(none)"
-    )
-    allowed = (
-        ", ".join(evidence.guidance.allowed_paths)
-        if evidence.guidance.allowed_paths
-        else "(none)"
-    )
-    lines = [
-        f"Expected route ref: {evidence.expected_route_ref}",
-        f"Current route ref: {evidence.current_route_ref or '(unavailable)'}",
-    ]
-    if route is not None and route.body is not None:
-        lines.extend(("Route body:", route.body))
-    else:
-        lines.append("Route body: (unavailable)")
-    lines.extend(
-        (
-            f"Task ID: {route.task_id if route and route.task_id else '(unavailable)'}",
-            f"Revision: {route.revision if route and route.revision is not None else '(legacy)'}",
-            f"Current owners: {owners}",
-            f"Immutable finding refs: {findings}",
-            f"Routed outcome: {route.outcome if route and route.outcome else '(legacy route body governs)'}",
-            f"Pipeline HEAD: {evidence.pipeline.head or '(unavailable)'}",
-            f"Pipeline branch: {evidence.pipeline.branch or '(detached)'}",
-            f"Pipeline dirty: {_format_dirty(evidence.pipeline)}",
-            f"Target name: {target_value.name}",
-            f"Target registered repo: {target_value.repository}",
-            f"Target worktree: {target.root.as_posix() if target else '(unavailable)'}",
-            f"Target HEAD: {target.head if target and target.head else '(unavailable)'}",
-            f"Target dirty: {_format_dirty(target) if target else '(unavailable)'}",
-            f"Mailbox cursor: {evidence.mailbox.cursor or '(unavailable)'}",
-            "Mailbox availability: "
-            + (evidence.mailbox.unavailable_reason or "available"),
-            f"Unread refs: {unread}",
-            f"Route base: {evidence.guidance.base or '(none)'}",
-            f"Allowed paths: {allowed}",
-        )
-    )
-    return tuple(lines)
-
-
-def _full_orientation(
-    *,
-    seat: str,
-    root: Path,
-    kernel: Path,
-    wave: int,
-    target: target_binding.TargetBinding | None,
-    route: route_lineage.LineageRoute | None,
-    reasons: tuple[str, ...],
-    evidence: ResumeEvidence | None = None,
-    target_value: target_binding.TargetBinding | None = None,
-) -> ResumeResult:
-    lines = [
-        ResumeClassification.FULL_ORIENTATION_REQUIRED.value,
-        f"Seat: {seat}",
-        "Reasons:",
-    ]
-    lines.extend(f"- {reason}" for reason in reasons)
-    if evidence is not None and target_value is not None:
-        lines.append("Orientation capsule:")
-        lines.extend(_evidence_capsule_lines(evidence, target_value))
-    lines.append("Ordinary startup actions:")
-    lines.extend(
-        f"- {action}"
-        for action in _ordinary_actions(
-            seat=seat,
-            root=root,
-            kernel=kernel,
-            wave=wave,
-            target=target,
-            route=route,
-            guidance=evidence.guidance if evidence is not None else None,
-        )
-    )
-    lines.append("External effects authorized: none by fast resume")
-    return ResumeResult(
-        ResumeClassification.FULL_ORIENTATION_REQUIRED,
-        tuple(lines),
-        reasons,
-    )
-
-
-def _start_guard_failure(seat: str, reasons: tuple[str, ...]) -> ResumeResult:
-    lines = [
-        ResumeClassification.START_GUARD_FAIL.value,
-        f"Seat: {seat}",
-        "Errors:",
-    ]
-    lines.extend(f"- {reason}" for reason in reasons)
-    lines.append("External effects authorized: none by fast resume")
-    return ResumeResult(
-        ResumeClassification.START_GUARD_FAIL,
-        tuple(lines),
-        reasons,
-    )
-
-
-def _fast_capsule(
-    *,
-    seat: str,
-    evidence: ResumeEvidence,
-    target_value: target_binding.TargetBinding,
-) -> ResumeResult:
-    lines = (
-        ResumeClassification.FAST_RESUME_PASS.value,
-        f"Seat: {seat}",
-        *_evidence_capsule_lines(evidence, target_value),
-        "External effects authorized: none by fast resume",
-    )
-    return ResumeResult(ResumeClassification.FAST_RESUME_PASS, lines, ())
-
-
-def _select_resume_task(
-    *,
-    root: Path,
-    target: target_binding.TargetBinding,
-    reader: route_lineage.RouteBatchReader,
-    resume_from: str,
-) -> tuple[
-    route_lineage.LineageRoute | None,
-    route_lineage.LineageRoute | None,
-    tuple[str, ...],
-]:
-    reasons: list[str] = []
-    if not protocol_mailbox.immutable_reference_is_canonical(resume_from):
-        return (
-            None,
-            None,
-            ("expected-route-invalid: expected a canonical path@full-commit reference",),
-        )
-    try:
-        expected = reader.load_route_ref(resume_from)
-    except (OSError, ValueError) as exc:
-        return None, None, (f"expected-route-unreadable: {exc}",)
-    if expected.task_id is None:
-        return expected, None, ("expected-task-unavailable: route has no task identity",)
-    if not _route_matches_target(expected, target):
-        reasons.append(
-            "expected-task-target-mismatch: route does not identify the selected target"
-        )
-
-    routes = reader.load_all_routes()
-    resolution = route_lineage.resolve_task_routes(routes, expected.task_id)
-    reasons.extend(
-        f"route-candidate-issue: {issue}"
-        for issue in reader.issues_for_task(expected.task_id)
-    )
-    reasons.extend(f"route-state-changed: {issue}" for issue in resolution.issues)
-    current = resolution.authoritative
-    if current is None:
-        reasons.append(
-            f"route-state-changed: task {expected.task_id} has no authoritative route"
-        )
-    else:
-        try:
-            current = _actionable_route(root, current, reader=reader)
-        except RouteResolutionError as exc:
-            reasons.append(f"route-state-changed: {exc}")
-        if current.route_ref != resume_from:
-            reasons.append(
-                f"expected-route-mismatch: expected {resume_from}, "
-                f"current {current.route_ref or 'unavailable'}"
-            )
-        if current.body != expected.body:
-            reasons.append(
-                "expected-route-body-mismatch: exact route bodies differ"
-            )
-    return expected, current, tuple(dict.fromkeys(reasons))
-
-
-def build_resume(
-    *,
-    seat: str,
-    root: Path,
-    resume_from: str,
-    kernel: Path = PIPELINE_KERNEL,
-    wave: int = 2,
-    target_name: str | None = None,
-    binding_root: Path | None = None,
-) -> ResumeResult:
-    """Prove one unchanged routed lane or return a read-only orientation fallback."""
-    root = _resolve(root)
-    kernel = _resolve(kernel)
-    try:
-        target = target_binding.resolve_target(binding_root, name=target_name)
-        forbidden = target_binding.forbidden_roots(binding_root)
-    except target_binding.BindingError as exc:
-        return _start_guard_failure(seat, (str(exc),))
-
-    hard_errors = _base_guard_errors(
-        seat=seat, root=root, kernel=kernel, forbidden=forbidden
-    )
-    if hard_errors:
-        return _start_guard_failure(seat, tuple(hard_errors))
-
-    route: route_lineage.LineageRoute | None = None
-    try:
-        with route_lineage.RouteBatchReader(root) as reader:
-            expected_route, current_route, selection_reasons = _select_resume_task(
-                root=root,
-                target=target,
-                reader=reader,
-                resume_from=resume_from,
-            )
-            route = current_route or expected_route
-            reasons = list(selection_reasons)
-
-            if route is not None:
-                guard = _build_guard_from_route(
-                    seat=seat,
-                    root=root,
-                    route=route,
-                    kernel=kernel,
-                    wave=wave,
-                    target=target,
-                    forbidden=forbidden,
-                )
-                if not guard.ok:
-                    reasons.extend(
-                        f"route-guidance-invalid: {error}" for error in guard.errors
-                    )
-
-            current_ref = current_route.route_ref if current_route is not None else None
-
-            guidance = RouteGuidance()
-            if route is None or route.body is None:
-                reasons.append("route-body-unavailable: current route body is unreadable")
-            else:
-                try:
-                    guidance = parse_route_guidance_body(route.body)
-                except ValueError as exc:
-                    reasons.append(f"route-guidance-invalid: {exc}")
-
-            if route is not None:
-                if not route.effective:
-                    reasons.append("ownership-ineffective: current route is ineffective")
-                if route.legacy:
-                    reasons.append(
-                        "ownership-ambiguous: legacy route has no immutable owners"
-                    )
-                elif route.revision is None or not route.owners:
-                    reasons.append(
-                        "ownership-ambiguous: revision or current owners are missing"
-                    )
-
-            if guidance.worktree is None:
-                reasons.append(
-                    "target-worktree-unpinned: committed route names no worktree"
-                )
-                worktree = _resolve(target.path)
-            else:
-                worktree = _resolve(Path(guidance.worktree))
-            reasons.extend(_target_identity_reasons(target, worktree))
-
-            pipeline_snapshot = startup_snapshot.collect_git_snapshot(root)
-            target_snapshot = startup_snapshot.collect_git_snapshot(worktree)
-            mailbox_snapshot = startup_snapshot.collect_mailbox_snapshot(root, seat)
-
-            if pipeline_snapshot.errors:
-                reasons.extend(
-                    f"pipeline-state-unavailable: {error}"
-                    for error in pipeline_snapshot.errors
-                )
-            if pipeline_snapshot.dirty_paths:
-                reasons.append(
-                    "pipeline-dirty: "
-                    + ", ".join(_dirty_path_names(pipeline_snapshot))
-                )
-            if target_snapshot.errors:
-                reasons.extend(
-                    f"target-state-unavailable: {error}"
-                    for error in target_snapshot.errors
-                )
-            if guidance.accepted_target_head is None:
-                reasons.append(
-                    "target-head-unpinned: committed route names no accepted target HEAD"
-                )
-            elif target_snapshot.head != guidance.accepted_target_head:
-                reasons.append(
-                    "target-head-changed: expected "
-                    f"{guidance.accepted_target_head}, current "
-                    f"{target_snapshot.head or 'unavailable'}"
-                )
-
-            dirty_paths = _dirty_path_names(target_snapshot)
-            if dirty_paths and not guidance.allowed_paths:
-                reasons.append(
-                    "target-dirty-unattributed: committed route has no allowed paths"
-                )
-            elif dirty_paths:
-                outside = tuple(
-                    path for path in dirty_paths if path not in guidance.allowed_paths
-                )
-                if outside:
-                    reasons.append(
-                        "target-dirty-out-of-lane: " + ", ".join(outside)
-                    )
-
-            if mailbox_snapshot.unavailable_reason is not None:
-                reasons.append(
-                    f"mailbox-unavailable: {mailbox_snapshot.unavailable_reason}"
-                )
-            if mailbox_snapshot.unread_refs:
-                reasons.append(
-                    "mailbox-unread: " + ", ".join(mailbox_snapshot.unread_refs)
-                )
-
-            evidence = ResumeEvidence(
-                expected_route_ref=resume_from,
-                current_route_ref=current_ref,
-                route=route,
-                pipeline=pipeline_snapshot,
-                target=target_snapshot,
-                mailbox=mailbox_snapshot,
-                guidance=guidance,
-                reasons=tuple(dict.fromkeys(reasons)),
-            )
-            if evidence.reasons:
-                return _full_orientation(
-                    seat=seat,
-                    root=root,
-                    kernel=kernel,
-                    wave=wave,
-                    target=target,
-                    route=route,
-                    reasons=evidence.reasons,
-                    evidence=evidence,
-                    target_value=target,
-                )
-            return _fast_capsule(
-                seat=seat,
-                evidence=evidence,
-                target_value=target,
-            )
-    except (OSError, UnicodeError, ValueError) as exc:
-        return _full_orientation(
-            seat=seat,
-            root=root,
-            kernel=kernel,
-            wave=wave,
-            target=target,
-            route=route,
-            reasons=(f"batch-unavailable: {exc}",),
-        )
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Validate Pipeline-first startup for a ledger-routed Codex seat.",
@@ -1043,12 +473,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", default=".", help=argparse.SUPPRESS)
     parser.add_argument("--kernel", default=str(PIPELINE_KERNEL), help=argparse.SUPPRESS)
     parser.add_argument("--binding-root", default=None, help=argparse.SUPPRESS)
-    parser.add_argument(
-        "--resume-from",
-        default=None,
-        metavar="ROUTE_REF",
-        help="optional exact path@full-commit expectation for unchanged-lane resume",
-    )
     args = parser.parse_args(argv)
     common = {
         "seat": args.seat,
@@ -1058,15 +482,6 @@ def main(argv: list[str] | None = None) -> int:
         "target_name": args.target,
         "binding_root": Path(args.binding_root) if args.binding_root else None,
     }
-    if args.resume_from is not None:
-        resume = build_resume(resume_from=args.resume_from, **common)
-        print("\n".join(resume.lines))
-        return (
-            1
-            if resume.classification is ResumeClassification.START_GUARD_FAIL
-            else 0
-        )
-
     guard = build_guard(**common)
     print("\n".join(guard.lines))
     if guard.errors:

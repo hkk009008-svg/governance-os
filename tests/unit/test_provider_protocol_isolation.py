@@ -96,7 +96,7 @@ def test_all_agy_profile_runtime_labels_are_inert_to_codex(profile: str) -> None
     assert codex.infer_runtime_env(agy_runtime) == _codex_baseline()
 
 
-def test_genuine_codex_inputs_continue_to_drive_codex_contract() -> None:
+def test_genuine_codex_identity_drives_only_derived_codex_contract() -> None:
     policy = {
         f"CODEX_{suffix}": f"codex-{value}"
         for suffix, value in FOREIGN_POLICY_VALUES.items()
@@ -115,9 +115,8 @@ def test_genuine_codex_inputs_continue_to_drive_codex_contract() -> None:
     assert values["CODEX_AGENT_ROLE"] == "operator2"
     assert values["CODEX_SEAT"] == "operator2"
     assert values["CODEX_BEHAVIOR_SOURCE"] == "operator2"
-    assert values["GIT_INDEX_FILE"] == "/repo/.git/index-codex-operator2"
-    for suffix, value in policy.items():
-        assert values[suffix] == value
+    assert "GIT_INDEX_FILE" not in values
+    assert values == codex.infer_runtime_env({"CODEX_SEAT": "operator2"})
 
 
 @pytest.mark.parametrize(

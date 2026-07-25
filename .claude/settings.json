@@ -1,37 +1,3 @@
 {
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-git-index.sh\""
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-smoke.sh\""
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash|Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/update-state.sh\""
-          }
-        ]
-      }
-    ]
-  },
-  "$comment": "Team-shared (checked-in) Claude Code config for the 4-seat fleet. Personal/machine config stays in .claude/settings.local.json (gitignored); both files merge, hooks are additive across them. Paths use $CLAUDE_PROJECT_DIR for portability."
+  "$comment": "Repository lifecycle hooks are absent by design, matching .codex/ and .agy/. A seat is a linked worktree plus an app-visible session identity, which no PreToolUse hook can validate. Personal config stays in .claude/settings.local.json."
 }

@@ -14,7 +14,7 @@ trigger for a separate model run.
 
 ## Run the gate
 ```
-env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py <wave>
+python scripts/wave_gate_check.py <wave>
 ```
 The script reports whether every defect row assigned to `<wave>` is in a
 closed + verified state. A non-zero exit = the wave is NOT met; read which rows
@@ -22,7 +22,7 @@ are still open.
 
 ## Reconcile before trusting the verdict
 The gate reads the inventory; the inventory drifts. Before declaring a wave MET:
-1. `env -u GIT_INDEX_FILE git log --oneline -20` — confirm each row's cited fix
+1. `git log --oneline -20` — confirm each row's cited fix
    SHA is actually on `origin/main` (git is the tiebreaker, not the doc).
 2. For each row, confirm an operator **verification-report** GO exists (two
    independent seats confirming = convergence; a Rule #23 co-sign counts as

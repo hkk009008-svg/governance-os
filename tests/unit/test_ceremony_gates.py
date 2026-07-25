@@ -20,8 +20,8 @@ import check_no_ceremony as cnc
 # main() — the whole detector on THIS repo (it currently passes -> exit 0)
 # --------------------------------------------------------------------------
 
-def test_main_returns_zero_on_clean_repo():
-    """The repo is ceremony-clean today, so main() must return 0 (no HARD violation)."""
+def test_main_returns_zero_when_configured_checks_pass():
+    """Passing the bounded rules must not claim that all ceremony is absent."""
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = cnc.main()
@@ -29,7 +29,9 @@ def test_main_returns_zero_on_clean_repo():
     out = buf.getvalue()
     # sanity: it actually ran the rule pipeline, not a short-circuit
     assert "CEREMONY CHECK" in out
-    assert "RESULT: no ceremony detected" in out
+    assert "RESULT: configured anti-ceremony checks passed" in out
+    assert "does not certify every protocol surface" in out
+    assert "no ceremony detected" not in out
 
 
 # --------------------------------------------------------------------------

@@ -1,15 +1,16 @@
 # Pipeline agent guide
 
-This is the agent-neutral router for Pipeline. `ARCHITECTURE.md` is factual
-truth and current code wins when prose drifts. Load task-specific doctrine only
-when its trigger fires.
+This is the agent-neutral router for Pipeline. `ARCHITECTURE.md` describes the
+current system, and executable code wins when prose drifts. Load only the
+provider and task doctrine that applies.
 
-Provider mechanics live in their adapters:
+Provider entrypoints:
 
 - Claude Code: `CLAUDE.md`, then `docs/protocol/claude/` and `.claude/`.
 - Codex: `docs/protocol/codex/continuation.md`, then `.agents/skills/` and
   `.codex/agents/`.
-- AGY (Antigravity): `docs/protocol/agy/continuation.md`, then `.agents/skills/antigravity-harness/` and `.agy/agents/`.
+- AGY (Antigravity): `docs/protocol/agy/continuation.md`, then
+  `.agents/skills/antigravity-harness/` and `.agy/agents/`.
 - Cursor: `docs/protocol/cursor/continuation.md`, then `.cursor/rules/` and
   `docs/protocol/cursor/roles/`.
 - Cross-provider work: `docs/protocol/threeway/`.
@@ -22,23 +23,22 @@ Use the smallest applicable tier:
 - `tier-0-conversational`: supplied context is enough; do not orient the repo.
 - `tier-1-read-only`: inspect only evidence needed for the report.
 - `tier-2-local-mutation`: perform scoped impact analysis and focused checks.
-- `tier-3-governed-side-effect`: refresh live authority, mailbox, locks, and
-  external state for the exact governed action.
+- `tier-3-governed-side-effect`: refresh live authority and external state for
+  the exact governed action.
 
-Codex starts as a readiness bridge. It becomes `director`, `director2`,
-`operator`, `operator2`, or coordinator only when the user or parent explicitly
-names the role or requests a protocol decision.
+Codex starts as a readiness bridge. It adopts a live role or coordinator role
+only when the user or parent explicitly assigns it. Parent-scoped helpers never
+inherit that authority.
 
-For tier 2 work:
+For tier 2, refresh the native worktree before changing it:
 
 ```bash
-env -u GIT_INDEX_FILE git status --short --branch
-env -u GIT_INDEX_FILE git log --oneline -5 -- <relevant-paths>
+git status --short --branch
+git log --oneline -5 -- <relevant-paths>
 ```
 
-Run `env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py` when the task
-touches governance/runtime topology or relies on an `ARCHITECTURE.md`
-invariant.
+Run `python scripts/ci_smoke.py` from the active development environment when work changes governance/runtime
+topology or relies on an `ARCHITECTURE.md` invariant.
 
 ## Project sources
 
@@ -50,146 +50,91 @@ invariant.
 | Operations | `OPERATIONS.md` |
 | Decision history | `DECISIONS.md` |
 | Universal protocol | `docs/protocol/agents/` |
-| Codex continuation | `docs/protocol/codex/continuation.md` |
-| Four-seat entrypoint | `.agents/skills/four-seat-protocol/SKILL.md` |
-| Codex ledger bridge | `docs/protocol/codex/ledger-cli-adoption.md` |
-| Cursor continuation | `docs/protocol/cursor/continuation.md` |
+| Codex mechanics | `docs/protocol/codex/continuation.md` |
+| Protocol entry skill | `.agents/skills/four-seat-protocol/SKILL.md` |
+| Evidence-ledger bridge | `docs/protocol/codex/ledger-cli-adoption.md` |
 
-## Implementation discipline
+## Engineering discipline
 
 Before changing a symbol, use `rg` to find its definition, writes, callers,
 imports, string references, and relevant siblings. Read those sites before
-editing. Compare the actual diff and changed paths with the requested scope;
-preserve unrelated user or peer work.
+editing. Preserve unrelated user and peer work, compare the actual diff with
+the requested scope, and stage explicit paths only.
 
-Factual inventory claims cite the command and result that proves the exact
-scope. Gate-controlling numbers come from a committed instrument and citable
-`logs/` evidence. Tests prove only what they execute, and a gate script never
-substitutes for an Operator verdict.
+Factual inventory claims cite the command and result that proves the scope.
+Gate-controlling numbers come from a committed instrument and citable evidence.
+Tests prove only what they execute; a green gate does not grant authority.
 
-Use the smallest sufficient verification profile. Do not repeat the same review
-question over an unchanged commit. A confirmed defect intentionally deferred
-needs a strict xfail pin or a `test-infeasible` reason.
+- Execute an accepted exact task without adding a brainstorming or planning
+  cycle unless behavior is materially ambiguous.
+- For a behavior change or bug fix, start with a failing behavior test when
+  feasible; otherwise preserve characterization evidence or `test-infeasible`.
+- Establish root cause before changing behavior after an unexpected failure.
+- Run fresh, smallest-sufficient verification before claiming completion.
+- A confirmed defect deferred from the current scope needs a strict xfail pin
+  or a `test-infeasible` reason.
+- Delegation is optional and owner-chosen. Never run concurrent implementers on
+  shared files.
 
-## Engineering workflow policy
+Pipeline does not depend on the Superpowers plugin. Historical
+`docs/superpowers/` artifacts are inputs, not instructions, and skill presence
+alone is not a trigger.
 
-Pipeline does not depend on the Superpowers plugin. Repository instructions and
-the current route govern workflow; skill presence alone is not a trigger.
-Existing `docs/superpowers/` files are durable historical inputs, not automatic
-instructions to invoke the plugin.
+## Governed protocol
 
-- If an accepted exact task already defines behavior, execute it without a new
-  brainstorming, spec, or plan cycle. Clarify or design only material ambiguity.
-- For behavior changes and bug fixes, write a failing behavior test first when
-  feasible. Otherwise use characterization evidence or record `test-infeasible`.
-- For unexpected failures, establish root cause before changing behavior.
-- Before completion claims, run fresh smallest sufficient verification and
-  report the actual result.
-- Binding review is the assigned non-author Operator's actual-commit or range
-  verdict. Generic subagent review is advisory and must not duplicate it.
-- A generic skill cannot independently authorize a worktree, reviewer, merge,
-  push, cleanup, or other side effect, or widen routed scope.
+Use the executable seam that owns the claim:
 
-## Proportional independence
+- Autonomous Seat Outcome Contract: `scripts/codex_protocol_model.py`.
+- Runtime identity, ownership lineage, risk profiles, and structural
+  external-effect shape: `scripts/codex_protocol_model.py`.
+- Formal request/report parsing and exact-range review:
+  `scripts/compact_pair_loop.py`.
+- Event construction, validation, and serialized publication:
+  `scripts/mailbox_writer.py` through `coordination/bin/send-event`.
+- Host task discovery, dispatch, and waiting:
+  `docs/protocol/codex/continuation.md`.
 
-For parseable/executable composition, authority or security enforcement,
-side-effect gating, or trust-granting schema validation, the owner explicitly
-assesses plausible abuse classes and preserves material independent findings.
-The owner and actual-diff Operator choose proportional review depth. Early
-independent review is encouraged when it adds signal; it is advisory and is not
-a universal pre-implementation CLEAR gate. Behavior-changing acceptance still
-requires distinct-seat, different-model, non-author Operator review of the
-actual commit or range.
-
-## Autonomous governed work
-
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
-Own the routed outcome and choose the method. Seats may reroute or exchange
-ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings, require non-author Operator
-GO for behavior-changing work with a distinct Operator seat and different
-model, bind autonomous ownership to an immutable parent/revision, preserve
-immutable finding refs, and keep external effects separately user-authorized
-for the exact effect/executor/target/scope. An Operator cannot verify anything
-it authored. Use the fixed mailbox writer for durable ownership and review
-events.
-
-Automatic Seat-Task Routing: scripts/codex_protocol_model.py
-For a committed next-seat trigger, use Codex task tools to discover/deduplicate,
-reuse one compatible task or automatically create a fresh missing task, send
-the exact trigger, wait, and reconcile. Never ask the user to relay a seat
-prompt. Task routing grants no seat or external-effect authority.
-After one exact trigger, monitor with wait_threads and preserve its per-target
-cursor; a normal timeout continues wait_threads with that same cursor. Only a
-missing or unavailable wait handler permits exactly one bounded
-read_thread(turnLimit=1, includeOutputs=false) snapshot of the same task. After
-that one snapshot, reconcile at bounded cadence from immutable Git/mailbox
-artifacts; do not repeat thread snapshots. If both the snapshot and immutable
-artifact reconciliation are unavailable or ambiguous, preserve the dispatch
-identity, perform at most one discovery refresh, and report one tooling
-blocker. Monitoring failure never redispatches, replaces the task, changes
-seats, or asks the user to relay the trigger.
-Leave an approval or user-input request for the user.
-
-Codex Fixed-Writer Launch: scripts/codex_protocol_model.py
-For an already-authorized exact fixed-writer action in the known managed
-Pipeline checkout, use the supported scoped execution profile on the first
-attempt. Scope any reusable prefix to coordination/bin/send-event plus the
-sender seat. This grants no publication authority; on failure report the exact
-writer error, use no alternate writer, and do not weaken the sandbox or fence.
-Outside that known context, use ordinary execution and infer no authority from
-this guidance.
-
-Delegation is an owner-chosen capacity tool, not a task-count or line-count
-mandate. Use it when it adds independent signal or useful capacity. Never run
-concurrent implementers on shared files.
-
-## Four-seat trigger and mechanics
-
-When a seat, mailbox, route, wave, handoff, continuation, or protocol decision
+When a seat, mailbox, route, handoff, wave, continuation, or protocol decision
 is explicitly in scope, load `.agents/skills/four-seat-protocol/SKILL.md` and
-the concrete seat skill. Read relevant mailbox bodies before decisions; live
-seat cursors are per-seat state and coordinator has no cursor. Only the
-concrete seat consumes its cursor. Ordinary Git and pytest use
-`env -u GIT_INDEX_FILE`.
+the concrete role skill.
 
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
+The following boundaries remain mandatory:
 
-The fixed writers under `coordination/bin/` own mailbox publication. A
-committed verify-request binds the actual reviewed range, author identity,
-assigned non-author Operator, and finding refs; only the assigned Operator may
-issue GO/NITS/FAIL. Coordinator observes and facilitates but does not author
-behavior-changing production fixes.
+- Current committed route/event bodies and Git state outrank stale summaries.
+- Transport ambiguity is reported; it is never converted into an empty queue.
+- Push, merge, lock, cursor consumption, paid spend, provider launch, live-data
+  mutation, and other external effects require separate exact authority.
+- Structural protocol data, task dispatch, and helper assignment grant no
+  external-effect authority.
 
-Push, merge, lock action, cursor consumption, paid spend, provider launch, and
-other external effects are distinct actions requiring their own explicit
-authority. Structural protocol data never grants that authority.
+Review depth follows risk:
 
-For evidence-ledger work, start in Pipeline, read
-`docs/protocol/codex/ledger-cli-adoption.md`, run
-`scripts/ledger_start_guard.py --seat <seat> --wave 2`, and then read the target
-repo instructions. Pipeline remains the governance kernel; evidence-ledger owns
-product-local truth.
+- Ordinary reversible local work needs focused verification.
+- Material behavior changes need non-author review of the exact range.
+- Authority, security, executable composition, side-effect gates, and
+  trust-granting schemas need distinct non-author, different-model actual-diff
+  review plus explicit abuse-class analysis.
+- External effects need live authorization for the executor, target, and scope.
 
-Fast resume is optional only for a named seat or coordinator continuing an
-unchanged already-routed local implementation or review by passing its exact
-current route ref. Fresh, transplanted, ambiguous, or external-effect work uses
-ordinary fresh orientation. The classifications are `FAST RESUME: PASS`,
-`FULL ORIENTATION REQUIRED`, and `START GUARD: FAIL`; full orientation is an
-advisory fallback to ordinary startup, not `BLOCKED`, and fast resume grants no
-external-effect authority.
-When fast resume falls back after collecting route and state evidence, full
-orientation includes that read-only orientation capsule without a second
-collection pass or any new authority.
+When formal review is triggered, its committed request retains the complete
+Compact Pair binding. An author cannot approve its own work.
 
-## Hot shared tree
+Host task tools own discovery, dispatch, and waiting mechanics. Repository
+doctrine must not prescribe a particular host API or ask the user to relay a
+task that the active host can deliver.
 
-- Refresh `env -u GIT_INDEX_FILE git log --oneline -3` and scoped status before
-  every write or gate decision.
-- Preserve unrelated dirty files and stage explicit pathspecs only.
-- First landed commit wins on shared work; refresh and narrow instead of
-  recreating it.
-- Local edit, stage, commit, push, merge, mailbox consume, lock, and spend are
-  separate authorities.
+## Target repositories
+
+For evidence-ledger work, start in Pipeline and read
+`docs/protocol/codex/ledger-cli-adoption.md` before entering the target repo.
+Pipeline owns governance; the target repo owns product-local truth.
+
+## Worktree hygiene
+
+- Use the worktree's native Git index; do not create or share per-seat indexes.
+- Refresh HEAD and scoped status before each write or gate decision.
+- First landed work wins in a shared tree; refresh and narrow, do not recreate.
+- Editing, staging, committing, pushing, merging, consuming events, locking,
+  and spending are separate actions.
 
 Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.

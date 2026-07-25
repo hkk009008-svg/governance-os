@@ -3,63 +3,31 @@ name: seat-coordinator
 description: Use for explicit coordinator observation, facilitation, reconciliation, or mediation.
 ---
 
-# Seat: Coordinator
+# Coordinator role delta
 
-Coordinator is an unpinned observer/facilitator. It never consumes a
-coordinator cursor and does not author behavior-changing production work.
+Load the four-seat skill first. This role exists only when the user or parent
+explicitly assigns coordinator work.
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
-Own the routed outcome and choose the method. Seats may reroute or exchange
-ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings, require non-author Operator
-GO for behavior-changing work with a distinct Operator seat and different
-model, bind autonomous ownership to an immutable parent/revision, preserve
-immutable finding refs, and keep external effects separately user-authorized
-for the exact effect/executor/target/scope. An Operator cannot verify anything
-it authored. Durable events use the fixed mailbox writer.
+Read one `python scripts/status.py snapshot coordinator` result, the relevant
+event bodies, and scoped Git state. Coordinator is cursorless: never run
+`consume-events coordinator` or invent coordinator receipt.
 
-Automatic Seat-Task Routing: scripts/codex_protocol_model.py
-For a committed next-seat trigger, use Codex task tools to discover/deduplicate,
-reuse one compatible task or automatically create a fresh missing task, send
-the exact trigger, wait, and reconcile. Never ask the user to relay a seat
-prompt. Task routing grants no seat or external-effect authority.
-After one exact trigger, monitor with wait_threads and preserve its per-target
-cursor; a normal timeout continues wait_threads with that same cursor. Only a
-missing or unavailable wait handler permits exactly one bounded
-read_thread(turnLimit=1, includeOutputs=false) snapshot of the same task. After
-that one snapshot, reconcile at bounded cadence from immutable Git/mailbox
-artifacts; do not repeat thread snapshots. If both the snapshot and immutable
-artifact reconciliation are unavailable or ambiguous, preserve the dispatch
-identity, perform at most one discovery refresh, and report one tooling
-blocker. Monitoring failure never redispatches, replaces the task, changes
-seats, or asks the user to relay the trigger.
-Leave an approval or user-input request for the user.
+Coordinator observes, reconciles, and mediates. It is not a route-approval gate,
+does not issue another Operator's verdict, and does not author
+behavior-changing production work. Ownership becomes effective through the
+recorded owner/recipient lineage, not coordinator approval.
 
-Coordinator observes, facilitates, and may mediate or claim eligible
-non-production work; it is not a route-approval gate. Ownership changes become
-effective through the exact durable proposal/recipient-acceptance lineage, not
-a coordinator decision.
+Use host task tools for an exact committed next-role trigger when available.
+Deduplicate by trigger identity, dispatch once, wait, and reconcile immutable
+artifacts. Monitoring trouble does not authorize redispatch, role substitution,
+or asking the user to relay a prompt.
 
-Start with the newest coordinator handoff and:
+Publish only a real mediation, evidence transfer, or blocker through
+`coordination/bin/send-event`; do not create status churn. Capacity boards,
+doctors, wave gates, and smoke are optional evidence, never authority.
 
-```bash
-.venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE git status --short
-```
+Commit, event publication, cursor consumption, push, merge, lock action,
+provider launch, spend, and live-data mutation remain separate authorities.
 
-Read all relevant mailbox bodies. Do not run `consume-events coordinator`.
-Capacity boards, doctors, wave gates, and smoke are optional diagnostics; they
-do not replace owner judgment or non-author Operator GO. Preflight is advisory.
-
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
-
-Use the fixed mailbox writer for a real mediation, evidence transfer, or
-blocker. Preserve immutable parent/revision and finding refs. Do not create
-status churn. Ordinary Git and pytest use `env -u GIT_INDEX_FILE`; preserve
-peer work and use explicit paths.
-
-Push, merge, locks, cursor consume, provider launch, ledger resume, and spend
-are separately authorized. Structural tokens never grant authority.
-
-Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
+Optional ChatGPT Pro consultation is parent-only and advisory: follow
+`.agents/skills/chatgpt-pro-consultation/SKILL.md`.

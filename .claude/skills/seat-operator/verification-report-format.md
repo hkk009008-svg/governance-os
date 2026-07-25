@@ -1,6 +1,6 @@
 # verification-report — outcome evidence reference
 
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. Only the
+Formal review validation: `scripts/compact_pair_loop.py`. Only the
 assigned non-author Operator emits GO, NITS, or FAIL. The fixed mailbox writer
 supplies the H1, timestamp/from envelope, and cursor footer.
 
@@ -20,7 +20,9 @@ Reviewed repository: <absolute canonical Git worktree root; omit only for Pipeli
 Reviewed head: <40-lowercase-hex>
 Reviewed base: <40-lowercase-hex>
 Reviewer seat: operator | operator2
-Reviewer model: <system-visible model different from Author model>
+Reviewer model: <system-visible model; different family from Author model for high-risk-control>
+Risk class: material-behavior | high-risk-control
+<high-risk-control only: add `Abuse Class Assessment: bound-to-request` here>
 Verification harness: <optional evidence note; not authority>
 Verification context: <optional evidence note; not identity proof>
 
@@ -50,11 +52,16 @@ For a cross-repository review, preserve the request's exact
 `Reviewed repository` field; never infer it from `Verification context` or
 other prose.
 
-Preserve the request's finding references in their original order and give
-each exactly one disposition. GO requires evidence, a distinct author/reviewer
-seat, a different system-visible model, and no `unresolved-hard-boundary`
-disposition. NITS and FAIL remain publishable without successful evidence, but
-they still preserve and disposition every reference.
+Preserve the request's risk class and finding references in their original
+order and give each reference exactly one disposition. Include
+`Abuse Class Assessment: bound-to-request` only for `high-risk-control`. GO
+requires evidence, a distinct author/reviewer seat, and no
+`unresolved-hard-boundary` disposition. A different system-visible model
+*family* is required for `high-risk-control`, not `material-behavior`: a harness
+prefix or version suffix is not a different reviewer, and
+`codex_protocol_model.models_are_independent` decides the question. NITS and
+FAIL remain publishable without successful evidence, but still preserve every
+binding.
 
 The Operator judges the actual committed outcome and applicable hard
 boundaries. Request-listed paths, commands, free-form harness names, and

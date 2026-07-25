@@ -91,21 +91,33 @@ def _mailbox_events(root: Path, seat: str, cursor: str = "", limit: int = 12) ->
     sent = root / "coordination" / "mailbox" / "sent"
     if not sent.exists():
         return []
-    # A scalar `seq` cursor (post Slice-2.5 backfill) is not a wall-clock ISO ts:
-    # the lexical `_event_ts(name) > cursor` compare below would drop every event
-    # ("2026-..." > "42" is False). Unread for a migrated seat lives on the signed
-    # ref-bus (RefEventStore seq>cursor_seq), not this legacy filename path — so
-    # surface the REAL recent ref-bus events (ADR-062) instead of a silent []. A bus
-    # ERROR (None) surfaces a visible sentinel; a reachable-but-empty bus is a real [].
+    if seat not in protocol_mailbox.SEATS:
+        return ["(cursorless coordinator; inspect recent coordination mail read-only)"]
+    all_names = sorted(path.name for path in sent.glob("*.md"))
     if bus_unread.is_migrated_cursor(cursor):
-        evs = bus_unread.bus_unread_events(root, seat)
-        if evs is None:
-            return ["(unavailable: ref-bus)"]
-        return [bus_unread.format_unread(ev) for ev in evs][-limit:]
-    names = sorted(p.name for p in sent.glob("*.md") if _is_addressed(p.name, seat))
-    if cursor and not cursor.startswith("("):
-        cursor_norm = _normalize_cursor(cursor)
-        names = [name for name in names if _event_ts(name) > cursor_norm]
+        authority = bus_unread.bus_authority_state(root, seat)
+        if authority.state == "live":
+            evs = bus_unread.bus_unread_events(root, seat)
+            if evs is None:
+                return ["(unavailable: live ref-bus read failed)"]
+            return [bus_unread.format_unread(ev) for ev in evs][-limit:]
+        try:
+            remaining = bus_unread.mailbox_events_after_scalar(cursor, all_names)
+        except (TypeError, ValueError) as exc:
+            return [f"(unavailable: {exc})"]
+        return [name for name in remaining if _is_addressed(name, seat)][-limit:]
+    if not cursor or cursor.startswith("("):
+        return [f"(unavailable: invalid cursor {cursor!r})"]
+    try:
+        datetime.strptime(cursor, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return [f"(unavailable: invalid cursor {cursor!r})"]
+    cursor_norm = _normalize_cursor(cursor)
+    names = [
+        name
+        for name in all_names
+        if _is_addressed(name, seat) and _event_ts(name) > cursor_norm
+    ]
     return names[-limit:]
 
 
@@ -210,10 +222,7 @@ def _fence(text: str) -> str:
 
 
 def render_handoff(ctx: HandoffContext) -> str:
-    seat_command = (
-        ".venv/bin/python .agents/skills/four-seat-protocol/scripts/"
-        f"seat_status.py {ctx.seat} --wave {ctx.wave}"
-    )
+    seat_command = f"python scripts/status.py snapshot {ctx.seat}"
     if ctx.seat == "coordinator":
         first_prompt = "continue as coordinator"
     else:
@@ -237,7 +246,7 @@ evidence as proof that assigned work is complete.
 
 ## Refresh Live State First
 
-{_fence(seat_command + chr(10) + "env -u GIT_INDEX_FILE git log --oneline -5")}
+{_fence(seat_command + chr(10) + "git log --oneline -5")}
 
 For coordinator work, also read recent `coordination/mailbox/sent/` bodies before
 routing or reconciling. For live-seat work, surface the unread count before

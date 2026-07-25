@@ -105,13 +105,25 @@ if [ "$KIND" = "verification-report" ]; then
       ;;
   esac
 fi
+if [ "$KIND" = "verify-request" ]; then
+  case "$FROM" in
+    director|director2|operator|operator2) ;;
+    *)
+      echo "send-event: only pair seats may publish verify-request" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 TS_DASH=$(/bin/date -u +%Y-%m-%dT%H-%M-%SZ)
 TS_COLON="${TS_DASH:0:11}$(printf '%s' "${TS_DASH:11:8}" | /usr/bin/tr '-' ':')Z"
 REL="coordination/mailbox/sent/$TS_DASH-$FROM-to-$TO-$KIND.md"
 FROM_TITLE="$(printf '%s' "${FROM:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${FROM:1}"
 TO_TITLE="$(printf '%s' "${TO:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${TO:1}"
-CURSOR=$(/usr/bin/head -1 "$ROOT/coordination/mailbox/seen/$FROM.txt" 2>/dev/null || echo "unknown")
+case "$FROM" in
+  coordinator|coordinator2) CURSOR="cursorless" ;;
+  *) CURSOR=$(/usr/bin/head -1 "$ROOT/coordination/mailbox/seen/$FROM.txt" 2>/dev/null || echo "unknown") ;;
+esac
 BODY=$(/bin/cat)
 
 TMP=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.${TS_DASH}-${FROM}-to-${TO}-${KIND}.XXXXXX.tmp")
@@ -125,7 +137,7 @@ TMP=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.${TS_DASH}-${FROM}-to-${
 } > "$TMP"
 /bin/chmod 0600 "$TMP"
 
-if [ "$KIND" = "verification-report" ]; then
+if [ "$KIND" = "verification-report" ] || [ "$KIND" = "verify-request" ]; then
   /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
     HOME="$GIT_ENV_ROOT/home" XDG_CONFIG_HOME="$GIT_ENV_ROOT/xdg" \
     "$TRUSTED_PYTHON" -E -s -S -B "$COMPACT_VALIDATOR" \

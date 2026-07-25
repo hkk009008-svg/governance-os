@@ -33,6 +33,8 @@ conforming at adoption time.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -40,18 +42,14 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from protocol_mailbox import KNOWN_KINDS, RECEIVING_SEATS, SEATS
-from status import count_unread
-import bus_unread  # de-degrade: real ref-bus unread for migrated (scalar) cursors
+import compact_pair_loop
+import mailbox_writer
+from protocol_mailbox import KNOWN_KINDS, SEATS
+import bus_unread
 
-# All seats in RECEIVING_SEATS are now addressable receivers WITH a seen cursor
-# (Slice 2.5 §7): coordinator is no longer send-only, and coordinator2 is a new
-# full send/receive seat. `all` stays a broadcast TARGET only (no seen/all.txt);
-# every real seat counts `-to-all-` events as addressed to it (see _check_cursors
-# orphan test + status.count_unread). Seat names stay aligned with
-# coordination/bin/{send-event,consume-events} and status._EVENT_RE; mailbox kinds
-# come from protocol_mailbox.KNOWN_KINDS.
-ROLES = RECEIVING_SEATS
+# Only the four concrete pair seats own consumable mailbox cursors. Coordinators
+# may read broadcasts and direct messages, but remain cursorless observers.
+ROLES = SEATS
 
 _EVENT_NAME_RE = re.compile(
     r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-"
@@ -106,6 +104,25 @@ class CoordIssue:
                      # unread
     severity: str    # FATAL | ADVISORY | INFO
     message: str
+
+
+@dataclass(frozen=True)
+class CurrentVerifyRequest:
+    path: str
+    commit: str | None
+    assigned_operator: str
+    valid: bool
+    problem: str | None
+    grandfathered: bool = False
+
+
+_PRE_CUTOVER_INVALID_REQUESTS = {
+    (
+        "coordination/mailbox/sent/"
+        "2026-07-25T05-45-10Z-coordinator-to-operator-verify-request.md",
+        "61786501e26f7e1bac92efbdcd4ff0ea468a7bbb",
+    ): "d77efcb26159733b31b1159fba6bb83c9b62b8ef3937ed8432ddff54fc224f7c",
+}
 
 
 def _dash(ts: str) -> str:
@@ -202,16 +219,137 @@ def _unread_report(coord_root: Path, names: list[str],
         if not cf.exists():
             continue
         cur = cf.read_text().strip()
-        if bus_unread.is_migrated_cursor(cur):
-            # Migrated seat: real unread is on the signed ref-bus, not the legacy
-            # sent/*.md path (count_unread returns 0 for a scalar) — ADR-062. None =>
-            # a VISIBLE "unavailable", never a silent 0.
-            n = bus_unread.bus_unread_count(repo_root, role) if repo_root is not None else None
-            msg = (f"{role}: {n} unread event(s)" if n is not None
-                   else f"{role}: unread unavailable (ref-bus)")
+        resolution = bus_unread.resolve_unread(
+            repo_root if repo_root is not None else coord_root.parent,
+            role,
+            cur,
+            names,
+        )
+        if resolution.count is None:
+            msg = f"{role}: unread unavailable via {resolution.source}"
         else:
-            msg = f"{role}: {count_unread(cur, names, role)} unread event(s)"
+            msg = (
+                f"{role}: {resolution.count} unread event(s) "
+                f"via {resolution.source}"
+            )
         issues.append(CoordIssue(f"mailbox/seen/{role}.txt", "unread", "INFO", msg))
+        if resolution.transport == "incoherent":
+            issues.append(CoordIssue(
+                f"mailbox/seen/{role}.txt",
+                "transport_incoherent",
+                "FATAL",
+                f"{role}: {resolution.detail}",
+            ))
+    return issues
+
+
+def _introduction_commit(repo_root: Path, path: str) -> str | None:
+    completed = subprocess.run(
+        [
+            "git",
+            "--no-optional-locks",
+            "-C",
+            str(repo_root),
+            "log",
+            "--diff-filter=A",
+            "--format=%H",
+            "-1",
+            "HEAD",
+            "--",
+            path,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={key: value for key, value in os.environ.items() if key != "GIT_INDEX_FILE"},
+    )
+    commit = completed.stdout.strip()
+    if completed.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", commit):
+        return commit
+    return None
+
+
+def inspect_current_verify_requests(
+    repo_root: Path | str,
+    coord_root: Path | str | None = None,
+) -> list[CurrentVerifyRequest]:
+    """Inspect the newest request addressed to each Operator seat."""
+
+    root = Path(repo_root).resolve()
+    coordination = Path(coord_root) if coord_root is not None else root / "coordination"
+    sent = coordination / "mailbox" / "sent"
+    if not sent.is_dir():
+        return []
+    current: list[CurrentVerifyRequest] = []
+    for operator in ("operator", "operator2"):
+        candidates = sorted(sent.glob(f"*-to-{operator}-verify-request.md"))
+        if not candidates:
+            continue
+        artifact = candidates[-1]
+        path = artifact.relative_to(root).as_posix()
+        commit = _introduction_commit(root, path)
+        problem: str | None = None
+        request = None
+        try:
+            mailbox_writer.validate_event_envelope(root, artifact, path)
+            if commit is None:
+                raise mailbox_writer.MailboxWriterError(
+                    "request is not introduced by a committed revision"
+                )
+            request = compact_pair_loop.parse_verify_request_structure(
+                root, path, commit
+            )
+            if request.assigned_operator != operator:
+                raise mailbox_writer.MailboxWriterError(
+                    "request recipient does not match assigned Operator"
+                )
+        except (
+            mailbox_writer.MailboxWriterError,
+            compact_pair_loop.CompactPairError,
+            OSError,
+            UnicodeError,
+        ) as exc:
+            problem = str(exc)
+        expected_digest = _PRE_CUTOVER_INVALID_REQUESTS.get((path, commit))
+        try:
+            observed_digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        except OSError:
+            observed_digest = None
+        grandfathered = (
+            expected_digest is not None and observed_digest == expected_digest
+        )
+        current.append(CurrentVerifyRequest(
+            path=path,
+            commit=commit,
+            assigned_operator=(
+                request.assigned_operator if request is not None else operator
+            ),
+            valid=problem is None,
+            problem=problem,
+            grandfathered=grandfathered,
+        ))
+    return current
+
+
+def _check_current_verify_requests(
+    repo_root: Path, coord_root: Path
+) -> list[CoordIssue]:
+    issues: list[CoordIssue] = []
+    for request in inspect_current_verify_requests(repo_root, coord_root):
+        if request.valid:
+            continue
+        severity = "ADVISORY" if request.grandfathered else "FATAL"
+        prefix = (
+            "pre-cutover immutable request remains invalid"
+            if request.grandfathered
+            else "current request is invalid"
+        )
+        issues.append(CoordIssue(
+            request.path.removeprefix("coordination/"),
+            "invalid_current_verify_request",
+            severity,
+            f"{prefix} for {request.assigned_operator}: {request.problem}",
+        ))
     return issues
 
 
@@ -287,7 +425,7 @@ def _check_coordinator_handoff_theater(docs_root: Path | str | None) -> list[Coo
 def run(coord_root: Path | str, since: str = "2026-06-11",
         now: str | None = None, git_root: Path | str | None = None,
         docs_root: Path | str | None = None) -> list[CoordIssue]:
-    coord_root = Path(coord_root)
+    coord_root = Path(coord_root).resolve()
     if now is None:
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     names = _event_names(coord_root)
@@ -298,6 +436,7 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
     # parent is the repo root unless an explicit git_root is given (ADR-062).
     bus_repo_root = Path(git_root) if git_root else coord_root.parent
     issues += _unread_report(coord_root, names, bus_repo_root)
+    issues += _check_current_verify_requests(bus_repo_root, coord_root)
     if git_root is not None:
         issues += _check_standalone_cursor_commits(git_root)
     issues += _check_coordinator_handoff_theater(docs_root)

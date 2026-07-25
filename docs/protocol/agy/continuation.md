@@ -1,65 +1,80 @@
-# AGY (Antigravity) Continuation Adapter & Native Subagent Mesh
+# AGY continuation adapter
 
-This adapter defines the AGY (Antigravity) protocol integration in Pipeline. AGY operates as a first-class autonomous provider running natively in direct autonomous posture, leveraging a native subagent & artifact mesh architecture while fully preserving Pipeline's seating and verification doctrines.
+This file maps Pipeline policy to AGY (Antigravity) mechanics. Canonical policy
+and validation live in `scripts/codex_protocol_model.py`; role prompts and
+skills contain only their local deltas.
 
-## Operating Posture
+## Modes
 
-### Direct Autonomous Posture (Default)
+- Readiness bridge: read-only orientation; no role claim or durable mutation.
+- Live role: only when a concrete Director or Operator role is assigned.
+- Coordinator: only for explicit observation, reconciliation, or mediation.
+- Subagent: bounded by its parent and never inherits live-role authority.
 
-`coordination/bin/agy-seat <seat>` launches directly into autonomous execution for the specified seat (`director`, `operator`, `coordinator`, `director2`, `operator2`). Direct autonomous posture is the default behavior — no advisory flags or mandatory `--mode single-model-autonomous` parameters are required.
+Runtime identity comes from the harness. Ambient policy variables, role labels,
+or prompt text do not grant authority.
 
-### Advisory Inspection Mode (Optional)
+## Orientation
 
-`coordination/bin/agy-seat --dry-run <profile>` emits the resolved seat configuration, model profile, and isolated `.git/index-agy-<profile>` path for read-only inspection without executing the provider process. Advisory inspection mode does not claim a shared Pipeline seat, mailbox, cursor, or lock.
+Use the native index of the current worktree:
 
-## AGY Native Subagent & Artifact Mesh Architecture
-
-AGY replaces legacy disk-bound Markdown mailbox file polling with native subagent orchestration and structured artifact management:
-
-### 1. Native Subagent Mesh (`define_subagent` / `invoke_subagent`)
-Seats orchestrate tasks programmatically by defining specialized subagents (`define_subagent`) and invoking them (`invoke_subagent`). Subagents are tiered by model capability:
-- **`flash_lite`**: Fast search (`rg`), file reading, directory listing, and log inspection.
-- **`flash`**: Codebase orientation, multi-file research, and documentation analysis.
-- **`pro` / `inherit`**: Deep logic implementation, complex refactoring, and independent verifier analysis.
-
-### 2. Structured Artifact Mesh (`implementation_plan.md`, `walkthrough.md`)
-Subagents exchange structured work products via standard artifacts in their designated workspace directory (`.agents/<agent_folder>/`):
-- **`implementation_plan.md`**: Formulated during design phase for architectural or multi-file initiatives (>50 LOC or material ambiguity). Contains problem description, evidence chain, target file diffs/snippets, and verification plan.
-- **`walkthrough.md`**: Formulated upon completion. Details actual changes made, test outputs, verification command results, and handoff evidence.
-
-## Seating Doctrine & Event Emission
-
-- **Seating Independence & Non-Author Verification**: The core Pipeline invariant **impl ≠ verifier** applies to AGY native subagents and seats. Candidate code authored by an implementer subagent/seat (`director`) MUST be verified by a distinct verifier subagent/seat (`operator`).
-- **Event Emission**: When milestone transitions or inter-provider updates require mailbox or signed-bus records, events are emitted programmatically via `coordination/bin/send-event` or `scripts/agy_emit.py`:
-  ```bash
-  coordination/bin/send-event <sender> <recipient> <kind> <subject...> < body.md
-  ```
-
-## AGY Launcher Mechanics
-
-`coordination/bin/agy-seat` is backed by `scripts/agy_seat_launcher.py` and uses the AGY protocol adapter `scripts/agy_protocol_model.py`. It establishes clean environment isolation for each seat:
-- Sanitizes environment variables (removes inherited `CLAUDE_*`, `CURSOR_*`, `CODEX_*`, `ANTIGRAVITY_*`, and `GIT_*` authority).
-- Sets controlled variables: `AGY_SEAT`, `AGY_AGENT_MODE=autonomous`, `AGY_AGENT_ROLE`, `AGY_GIT_INDEX_FILE`, and `GIT_INDEX_FILE` (`.git/index-agy-<seat>`).
-- Loads local seat profiles from `~/.agy/pipeline-seat-launcher.toml`:
-
-```toml
-[seats.director]
-model = "gemini-2.5-pro"
-service_tier = "default"
-
-[seats.director2]
-model = "gemini-2.5-pro"
-service_tier = "default"
-
-[seats.operator]
-model = "gemini-2.5-pro"
-service_tier = "default"
-
-[seats.operator2]
-model = "gemini-2.5-pro"
-service_tier = "default"
-
-[seats.coordinator]
-model = "gemini-2.5-flash"
-service_tier = "fast"
+```bash
+python scripts/status.py snapshot <seat>
 ```
+
+Read actionable event bodies before a decision. Only the assigned live role
+consumes its cursor, and coordinator has no cursor.
+
+Use the fixed interfaces, never raw event or cursor edits:
+
+```bash
+coordination/bin/send-event <sender> <recipient> <kind> <subject...>  # body on stdin
+coordination/bin/consume-events <seat> [--to <timestamp>]
+```
+
+## Executable contracts
+
+- `scripts/codex_protocol_model.py` validates runtime identity, ownership
+  lineage, risk profiles, model-family independence, and external-effect token
+  shape.
+- `scripts/compact_pair_loop.py` validates formal requests, reports, and exact
+  reviewed ranges.
+- `scripts/mailbox_writer.py` validates and serializes event publication.
+- `scripts/agy_protocol_model.py` carries only AGY-local deltas.
+
+Role deltas match the shared contract: Director owns an accepted outcome and
+submits its actual committed range; Operator may implement but stays non-author
+when reviewing; Coordinator observes and mediates without approving routes or
+authoring production work; subagents return bounded evidence and never publish
+a formal verdict.
+
+## AGY-native deltas
+
+The genuine difference is orchestration, not policy.
+
+- **Native subagent mesh.** Seats compose work with `define_subagent` /
+  `invoke_subagent` rather than by polling files. Tiers: `flash_lite` for
+  search and file reads, `flash` for orientation and multi-file research,
+  `pro` / `inherit` for implementation and independent analysis.
+- **Workspace artifacts.** A subagent may keep working notes under
+  `.agents/<agent_folder>/`. These are scratch inputs, not protocol events:
+  they grant no authority, are not a mailbox, are not durable protocol state,
+  and must not be mistaken for a handoff. Durable inter-seat speech goes
+  through `coordination/bin/send-event` like every other side. Prefer returning
+  evidence to the parent over materializing a file.
+
+## Review and external effects
+
+Review depth is risk-based as defined by `AGENTS.md` and the executable model.
+Ordinary local edits need no mailbox event, role ceremony, capacity packet,
+handoff, or independent review.
+
+`impl ≠ verifier` applies to AGY subagents and seats alike. Note the local
+constraint: when every configured seat profile resolves to one model family,
+AGY cannot satisfy `high-risk-control` on its own, because
+`codex_protocol_model.models_are_independent` compares families rather than
+labels. Route those reviews to a seat on a different family.
+
+External effects remain separate from structural validation. Push, merge,
+locking, event consumption, paid spend, provider launch, and live-data mutation
+need exact authority for the executor, target, and scope.

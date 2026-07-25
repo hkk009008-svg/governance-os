@@ -49,7 +49,7 @@ def test_cursor_subagent_stays_parent_scoped_even_with_inherited_seat() -> None:
         }
     )
     assert values["CURSOR_AGENT_MODE"] == "subagent"
-    assert values["CURSOR_SEAT"] == "(ignored: operator)"
+    assert values["CURSOR_SEAT"] == "(unset)"
     assert values["CURSOR_AUTHORITY_SCOPE"] == "parent-scoped"
 
 

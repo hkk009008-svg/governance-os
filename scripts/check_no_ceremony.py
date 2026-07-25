@@ -301,7 +301,10 @@ def main() -> int:
     if hard_fail:
         print("RESULT: HARD ceremony violation(s) present — the verification core is not fully self-executing.")
         return 1
-    print("RESULT: no ceremony detected — every relied-on green is backed by execution.")
+    print(
+        "RESULT: configured anti-ceremony checks passed — this bounded rule set "
+        "does not certify every protocol surface."
+    )
     return 0
 
 

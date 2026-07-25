@@ -50,16 +50,19 @@ MIRROR: <existing helper/endpoint at file:line> — its FULL shape:
 
 - **Rule #12 slot has real grep OUTPUT** under the target symbol — not "I'll grep later," not the type declaration. Without it, label the symbol *type-level claim* explicitly so the implementer knows.
 - **Rule #13 slot names the siblings actually checked** and states fold-or-defer for each under-defended one; audit-completeness is not audit-disposition, so state the disposition for each sibling as mirror / defer / document / exempt.
-- **Cross-cutting?** The lock was claimed (push-first, exit 0) **before** any code; a CRITICAL cross-cutting brief carries the other lane's Tier-A `verification-report` **before you dispatch or self-implement** (silence ≠ consent; 40 min is not a green light).
+- **Cross-cutting?** Name the overlap and preserve peer work. Claim a lock only
+  when the user or active route separately authorizes that exact lock action.
+  High-risk control work receives the required actual-range review; there is no
+  universal pre-implementation review ceremony.
 - **Pattern refs are full-shape**, not just a function name. For canonical sites, verify the named symbol exists at the cited SHA and verify the cited SHA exhibits the named sub-pattern.
 
 ## Dispatch decision (after the brief is verified-complete)
 
 | Situation | Do |
 |---|---|
-| Small, tightly-coupled change | Implement directly (you author; your operator verifies — impl≠verifier) |
-| ≥5 independent sub-tasks OR ≥800 LOC | **Orchestrate** (R-ORCH): a fresh implementer subagent per task, sequential on shared files, reviewers after. Never two implementers in parallel on shared files. See `docs/protocol/agents/orchestration.md`. |
-| Dispatching an implementer | Use the body in `docs/templates/agents/implementer.md` — include its **Git-hygiene block** verbatim (subagents prefix git with `env -u GIT_INDEX_FILE`) + items 4–5 (brief-pattern adherence, pid-scope). |
+| Small, tightly-coupled change | Implement directly and apply the risk-based verification profile. |
+| Independent work where parallel evidence or capacity helps | Delegate bounded, non-overlapping ownership; never run concurrent writers on shared files. |
+| Dispatching an implementer | Use the relevant parts of `docs/templates/agents/implementer.md`, bind its allowed paths, and use the selected native worktree index. |
 
 **Name the right specialist reviewer** when the lane has one — these are real dispatch targets:
 - **Money / cost-gate fix** (the cost/budget gate accumulator, per-item veto, budget pre-check) → the **`money-gate-reviewer`** agent (hunts gate-source-mismatch + silent-gate-degradation).

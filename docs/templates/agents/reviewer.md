@@ -45,11 +45,11 @@ severity inside the verdict.
 
 ## Git hygiene
 
-- Prefix every git invocation with `env -u GIT_INDEX_FILE ` so inherited seat
-  indexes do not corrupt or hide the default repository index.
+- Use the selected task worktree's native Git index; do not create or inherit a
+  per-seat `GIT_INDEX_FILE`.
 - Never run state-changing git unless the parent prompt explicitly authorizes
   it. Read-only git commands such as `show`, `log`, `diff`, `grep`, `rev-parse`,
-  `ls-tree`, and `cat-file -e` are safe with the prefix.
+  `ls-tree`, and `cat-file -e` are allowed when relevant.
 - If tests or tooling invoke git internally, keep the outer command exactly as
   specified by the parent prompt.
 - For Lane V, a named commit or prose-only event is not trigger authority.
@@ -103,8 +103,8 @@ Schema invariants:
 Run the parent prompt's evidence checks before scoring requirements. At minimum,
 capture:
 
-1. `env -u GIT_INDEX_FILE git rev-parse HEAD`
-2. `env -u GIT_INDEX_FILE git status --short`
+1. `git rev-parse HEAD`
+2. `git status --short`
 3. The requested `git show` or `git diff` for the reviewed commit/range.
 4. Every task-specific verification command named by the parent prompt.
 

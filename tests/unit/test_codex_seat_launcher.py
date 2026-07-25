@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -50,16 +51,27 @@ def test_build_launch_spec_sets_exact_seat_identity(
     settings = launcher.load_seat_settings(config_path)
     ambient = {
         "PATH": "/bin",
+        "CODEX_HOME": "/preserve-codex-home",
         "CODEX_SEAT": "wrong-seat",
         "CODEX_AGENT_MODE": "wrong-mode",
         "CODEX_AGENT_ROLE": "wrong-role",
         "CODEX_BEHAVIOR_SOURCE": "wrong-source",
+        "CODEX_CAPABILITY_MODE": "ambient-capability",
+        "CODEX_MUTATION_SCOPE": "ambient-mutation",
+        "CODEX_AUTHORITY_SCOPE": "ambient-authority",
+        "CODEX_MAILBOX_POLICY": "ambient-mailbox",
+        "CODEX_GIT_POLICY": "ambient-git-policy",
+        "CODEX_VERIFICATION_POLICY": "ambient-verification",
+        "CODEX_CONTEXT_SOURCES": "ambient-context",
+        "CODEX_OUTPUT_CONTRACT": "ambient-output",
+        "CODEX_DECISION_BOUNDARY": "ambient-decision",
+        "CODEX_NEXT_ACTION_POLICY": "ambient-next-action",
+        "CODEX_SIDE_EFFECT_POLICY": "ambient-side-effect",
         "GIT_INDEX_FILE": "/wrong-index",
     }
 
     spec = launcher.build_launch_spec(
         repo_root=tmp_path,
-        git_dir=tmp_path / ".git",
         seat=seat,
         settings=settings,
         inherited_env=ambient,
@@ -71,9 +83,22 @@ def test_build_launch_spec_sets_exact_seat_identity(
     assert spec.env["CODEX_AGENT_MODE"] == mode
     assert spec.env["CODEX_AGENT_ROLE"] == role
     assert spec.env.get("CODEX_BEHAVIOR_SOURCE") == behavior_source
-    assert spec.env["GIT_INDEX_FILE"] == str(
-        tmp_path / ".git" / f"index-codex-{seat}"
-    )
+    assert spec.identity.model == f"model-{seat}"
+    assert spec.env["CODEX_HOME"] == "/preserve-codex-home"
+    assert "GIT_INDEX_FILE" not in spec.env
+    assert not {
+        "CODEX_CAPABILITY_MODE",
+        "CODEX_MUTATION_SCOPE",
+        "CODEX_AUTHORITY_SCOPE",
+        "CODEX_MAILBOX_POLICY",
+        "CODEX_GIT_POLICY",
+        "CODEX_VERIFICATION_POLICY",
+        "CODEX_CONTEXT_SOURCES",
+        "CODEX_OUTPUT_CONTRACT",
+        "CODEX_DECISION_BOUNDARY",
+        "CODEX_NEXT_ACTION_POLICY",
+        "CODEX_SIDE_EFFECT_POLICY",
+    } & spec.env.keys()
 
 
 def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
@@ -89,7 +114,6 @@ def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
 
     first = launcher.build_launch_spec(
         tmp_path,
-        tmp_path / ".git",
         "director",
         settings,
         {},
@@ -98,7 +122,6 @@ def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
     )
     second = launcher.build_launch_spec(
         tmp_path,
-        tmp_path / ".git",
         "director2",
         settings,
         {},
@@ -122,25 +145,24 @@ def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
     )
 
 
-def test_all_seat_indexes_are_distinct(tmp_path: Path) -> None:
+def test_launch_spec_uses_caller_checkout_native_index(tmp_path: Path) -> None:
     config_path = tmp_path / "seats.toml"
     _write_config(config_path)
-    settings = launcher.load_seat_settings(config_path)
 
-    paths = {
-        launcher.build_launch_spec(
-            tmp_path,
-            tmp_path / ".git",
-            seat,
-            settings,
-            {},
-            "codex",
-            [],
-        ).index_path
-        for seat in SEATS
-    }
+    spec = launcher.build_launch_spec(
+        tmp_path,
+        "director",
+        launcher.load_seat_settings(config_path),
+        {"GIT_INDEX_FILE": "/ambient/index"},
+        "codex",
+        [],
+    )
 
-    assert len(paths) == len(SEATS)
+    assert spec.repo_root == tmp_path
+    assert spec.argv[-2:] == ("--cd", str(tmp_path))
+    assert "GIT_INDEX_FILE" not in spec.env
+    assert not hasattr(spec, "index_path")
+    assert not hasattr(launcher, "ensure_seat_index")
 
 
 def test_forwarded_codex_arguments_remain_literal(tmp_path: Path) -> None:
@@ -150,7 +172,6 @@ def test_forwarded_codex_arguments_remain_literal(tmp_path: Path) -> None:
 
     spec = launcher.build_launch_spec(
         tmp_path,
-        tmp_path / ".git",
         "operator",
         launcher.load_seat_settings(config_path),
         {},
@@ -192,146 +213,11 @@ def test_config_rejects_incomplete_or_unknown_settings(tmp_path: Path, body: str
         launcher.load_seat_settings(config_path)
 
 
-def test_ensure_seat_index_seeds_only_when_missing(tmp_path: Path) -> None:
-    index_path = tmp_path / ".git" / "index-codex-director"
-    calls: list[list[str]] = []
-
-    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(argv)
-        if "read-tree" in argv:
-            index_path.parent.mkdir()
-            index_path.write_text("seed", encoding="utf-8")
-        if "ls-files" in argv:
-            return subprocess.CompletedProcess(
-                argv,
-                0,
-                "100644 deadbeef 0\ttracked.txt\0",
-                "",
-            )
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
-    launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
-
-    assert [call for call in calls if "read-tree" in call] == [
-        [
-            "git",
-            "-C",
-            str(tmp_path),
-            "read-tree",
-            f"--index-output={index_path}",
-            "HEAD",
-        ]
-    ]
-
-
-def test_existing_unreadable_seat_index_fails_closed(tmp_path: Path) -> None:
-    index_path = tmp_path / ".git" / "index-codex-director"
-    index_path.parent.mkdir()
-    index_path.write_bytes(b"preserve-corrupt-index")
-
-    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(
-            argv,
-            128,
-            "",
-            "fatal: unable to read tree deadbeef",
-        )
-
-    with pytest.raises(launcher.LaunchError, match="existing seat index.*unusable"):
-        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
-
-    assert index_path.read_bytes() == b"preserve-corrupt-index"
-
-
-def test_existing_empty_seat_index_against_non_empty_head_fails_closed(
-    tmp_path: Path,
+def test_dry_run_uses_cwd_without_creating_index_or_starting_codex(
+    tmp_path: Path, repo_root: Path
 ) -> None:
-    index_path = tmp_path / ".git" / "index-codex-director"
-    index_path.parent.mkdir()
-    index_path.write_bytes(b"preserve-empty-index")
-
-    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if "ls-files" in argv:
-            return subprocess.CompletedProcess(argv, 0, "", "")
-        if "ls-tree" in argv:
-            return subprocess.CompletedProcess(argv, 0, "tracked.txt\0", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    with pytest.raises(launcher.LaunchError, match="empty while HEAD tracks files"):
-        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
-
-    assert index_path.read_bytes() == b"preserve-empty-index"
-
-
-def test_existing_dangling_seat_index_symlink_fails_closed(tmp_path: Path) -> None:
-    index_path = tmp_path / ".git" / "index-codex-director"
-    missing_target = tmp_path / "must-not-be-created"
-    index_path.parent.mkdir()
-    index_path.symlink_to(missing_target)
-    calls: list[list[str]] = []
-
-    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(argv)
-        index_path.unlink()
-        index_path.write_bytes(b"incorrectly-seeded")
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    with pytest.raises(launcher.LaunchError, match="existing seat index.*regular file"):
-        launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
-
-    assert index_path.is_symlink()
-    assert not missing_target.exists()
-    assert calls == []
-
-
-def test_valid_existing_seat_index_preserves_staged_work(tmp_path: Path) -> None:
-    index_path = tmp_path / ".git" / "index-codex-director"
-    index_path.parent.mkdir()
-    index_path.write_bytes(b"preserve-staged-index")
-    calls: list[list[str]] = []
-
-    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        calls.append(argv)
-        if "ls-files" in argv:
-            return subprocess.CompletedProcess(
-                argv,
-                0,
-                "100644 deadbeef 0\ttracked.txt\0",
-                "",
-            )
-        if "status" in argv:
-            return subprocess.CompletedProcess(argv, 0, "M  tracked.txt\n", "")
-        raise AssertionError(f"unexpected Git command: {argv}")
-
-    launcher.ensure_seat_index(tmp_path, index_path, runner=fake_run)
-
-    assert index_path.read_bytes() == b"preserve-staged-index"
-    assert not any("read-tree" in call for call in calls)
-
-
-def test_dry_run_does_not_create_index_or_start_codex(tmp_path: Path, repo_root: Path) -> None:
     config_path = tmp_path / "seats.toml"
     _write_config(config_path)
-    git_dir = Path(
-        subprocess.run(
-            ["git", "-C", str(repo_root), "rev-parse", "--absolute-git-dir"],
-            text=True,
-            capture_output=True,
-            check=True,
-            env={
-                key: value
-                for key, value in os.environ.items()
-                if key != "GIT_INDEX_FILE"
-            },
-        ).stdout.strip()
-    )
-    index_path = git_dir / "index-codex-director"
-    index_before = (
-        (index_path.stat().st_size, index_path.stat().st_mtime_ns)
-        if index_path.exists()
-        else None
-    )
     marker = tmp_path / "codex-was-run"
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -340,6 +226,8 @@ def test_dry_run_does_not_create_index_or_start_codex(tmp_path: Path, repo_root:
     fake_codex.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["GIT_INDEX_FILE"] = "/ambient/index"
+    env["CODEX_AUTHORITY_SCOPE"] = "ambient-authority"
 
     result = subprocess.run(
         [
@@ -359,11 +247,10 @@ def test_dry_run_does_not_create_index_or_start_codex(tmp_path: Path, repo_root:
     )
 
     assert result.returncode == 0, result.stderr
-    assert '"unchanged start input"' in result.stdout
-    index_after = (
-        (index_path.stat().st_size, index_path.stat().st_mtime_ns)
-        if index_path.exists()
-        else None
-    )
-    assert index_after == index_before
+    payload = json.loads(result.stdout)
+    assert "unchanged start input" in payload["argv"]
+    assert payload["argv"][payload["argv"].index("--cd") + 1] == str(repo_root)
+    assert "index_exists" not in payload
+    assert "GIT_INDEX_FILE" not in payload["env"]
+    assert "CODEX_AUTHORITY_SCOPE" not in payload["env"]
     assert not marker.exists()

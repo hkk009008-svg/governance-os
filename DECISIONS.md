@@ -1247,3 +1247,38 @@ while letting capable models choose the right engineering path.
 immutable evidence. New outcome-contract events can supersede them explicitly.
 Capacity boards and doctors remain diagnostics rather than discretionary route
 authority.
+
+## ADR-064: Cut Codex over to one truthful, proportional control path (2026-07-25)
+
+**Status:** Accepted by the user through the Codex-side migration request.
+
+**Context.** Codex accumulated several compensating systems: mailbox and
+partially materialized signed-bus views, persistent per-seat Git indexes plus
+lifecycle hooks, numbered pseudo-seat prompts, fast-resume classification, and
+the same independent-review burden for unlike risks. Each component was
+individually defensible, but their composition obscured current truth and made
+ordinary work pay protocol costs intended for authority-sensitive work.
+
+**Decision.**
+
+- The mailbox is the read authority until an event ref and the addressed
+  cursor ref prove the signed bus coherent. Ambiguity is visible, never zero.
+- The fixed writer validates every new event before publication. Formal review
+  requests and reports retain exact committed bindings.
+- Codex uses one closed runtime identity and the selected worktree's native Git
+  index. Ambient policy variables, persistent seat indexes, and repository
+  lifecycle hooks grant nothing and are removed.
+- One compact snapshot replaces startup hook output, handoff-first orientation,
+  and fast-resume classification.
+- Review is proportional: focused checks for ordinary local work, exact-range
+  non-author review for material behavior, different-model abuse-aware review
+  for high-risk control surfaces, and live authorization for external effects.
+- Numbered `agent01` through `agent04` modules are removed. Named role modules
+  remain small deltas; subagents remain parent-scoped capacity, not seats.
+
+**Consequences.** Historical events, packets, handoffs, and cursor files remain
+immutable compatibility evidence, but do not reactivate superseded ceremony.
+The four pair-seat names remain where the mailbox and formal review format need
+stable identities; they are not a mandate to allocate four agents. Commit,
+publication, cursor consumption, push, merge, and every other external effect
+remain separate actions.
