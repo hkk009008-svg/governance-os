@@ -189,6 +189,12 @@ only authority for the name, and it is what `--model` accepts:
 agy models
 ```
 
+The launcher enforces this rather than trusting the file: it runs that listing
+on every launch *and* on `--dry-run`, and refuses a model the listing does not
+offer. If the listing cannot be produced at all — a sandbox that blocks AGY's
+local language-server socket, a missing login — the launch fails rather than
+proceeding with a model it could not check.
+
 Report the same string back. `Author model:` and `Reviewer model:` in a
 verification report must be the exact listed ID the seat ran on, which
 `coordination/bin/agy-seat --dry-run <seat>` prints as `AGY_MODEL`. Do not
@@ -198,10 +204,11 @@ a prefix buys no independence and only makes the cited string impossible to
 check against `agy models`.
 
 Model family still governs independence, and AGY does not automatically supply
-it: two AGY seats both on `gemini-*` are the same family and cannot be the
-author/Operator pair for behavior-changing work. The listing also offers
-non-Gemini models, so an independent AGY Operator is possible — but it is a
-configuration choice, never an assumption.
+it: two AGY seats both on `gemini-*` are one family, so they cannot be the
+author/Operator pair for `high-risk-control`, the profile whose
+`requires_different_model` is set. The listing also offers non-Gemini models, so
+an independent AGY Operator is possible — but it is a configuration choice,
+never an assumption.
 
 ## Authority (Rule #8)
 

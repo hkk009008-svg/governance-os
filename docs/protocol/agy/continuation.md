@@ -81,7 +81,9 @@ passes to `--model`. `Author model:` and `Reviewer model:` are read by people
 re-checking whether a seat could have run as claimed, so a form that no launch
 could produce, such as `antigravity-gemini-3.6` or an unlisted `gemini-2.5-pro`,
 is unverifiable even when `model_family` happens to normalize it to the same
-family.
+family. The launcher checks the configured model against that listing on launch
+and on `--dry-run`, and fails closed when the listing is unobtainable, so a
+dry-run identity is either checked or absent — never merely asserted.
 
 External effects remain separate from structural validation. Push, merge,
 locking, event consumption, paid spend, provider launch, and live-data mutation

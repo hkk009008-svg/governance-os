@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tomllib
 from collections.abc import Mapping, Sequence
@@ -67,6 +68,10 @@ MODEL_LISTING_COMMAND = ("agy", "models")
 # can assert it is still a literal `agy models` entry. The seat config shipped
 # `gemini-2.5-pro`, which that listing has never contained.
 REFERENCE_MODEL = "gemini-3.1-pro-high"
+
+# `agy models` starts a local language server, so it is slower than a plain
+# subprocess but still makes no inference request and costs nothing.
+MODEL_LISTING_TIMEOUT_SECONDS = 120
 _FOREIGN_AUTHORITY_PREFIXES = (
     "CLAUDE_",
     "CURSOR_",
@@ -135,6 +140,54 @@ def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
             )
         settings[seat] = SeatSettings(model=model, effort=effort)
     return settings
+
+
+def list_models(agy_executable: str) -> frozenset[str]:
+    """Return the model IDs the installed CLI reports as usable.
+
+    Syntactic config validation cannot establish that a model exists, and a
+    launcher that accepts any well-formed string will happily promote a typo to
+    `--model` and to the `AGY_MODEL` a verification report cites. That is the
+    whole failure this launcher is supposed to close, so the check runs against
+    the CLI rather than against a list committed here that would drift.
+
+    Fails closed: if the listing cannot be obtained the model is unsubstantiated
+    and the caller must not proceed as though it had been checked.
+    """
+    try:
+        completed = subprocess.run(
+            [agy_executable, *MODEL_LISTING_COMMAND[1:]],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=MODEL_LISTING_TIMEOUT_SECONDS,
+            start_new_session=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise LaunchError(
+            f"cannot run `{' '.join(MODEL_LISTING_COMMAND)}` to check the seat model: {exc}"
+        ) from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip().splitlines()
+        raise LaunchError(
+            f"`{' '.join(MODEL_LISTING_COMMAND)}` failed (exit {completed.returncode}), "
+            "so the seat model cannot be checked"
+            + (f": {detail[-1]}" if detail else "")
+        )
+    return frozenset(
+        line.strip() for line in completed.stdout.splitlines() if line.strip()
+    )
+
+
+def require_listed_model(model: str, listed: frozenset[str]) -> None:
+    """Reject a seat model the installed CLI does not offer."""
+    if model in listed:
+        return
+    raise LaunchError(
+        f"model {model!r} is not offered by `{' '.join(MODEL_LISTING_COMMAND)}`; "
+        "choose one of: " + ", ".join(sorted(listed))
+    )
 
 
 def build_launch_spec(
@@ -239,11 +292,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     repo_root = Path(__file__).resolve().parents[1]
     try:
         settings = load_seat_settings(args.config)
-        agy_executable = "agy" if args.dry_run else (
-            shutil.which("agy") or shutil.which("antigravity")
-        )
+        agy_executable = shutil.which("agy") or shutil.which("antigravity")
         if agy_executable is None:
             raise LaunchError("agy/antigravity executable not found on PATH")
+        # Checked on `--dry-run` too, and deliberately: dry-run is the surface a
+        # verification report quotes its `Reviewer model:` from, so an unchecked
+        # dry-run would hand out exactly the unsubstantiated identity that
+        # citing a live listing is meant to prevent.
+        require_listed_model(settings[args.seat].model, list_models(agy_executable))
         spec = build_launch_spec(
             repo_root,
             args.seat,

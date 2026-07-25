@@ -20,25 +20,20 @@ SEATS = ("director", "director2", "operator", "operator2", "coordinator")
 UNDEFINED_FLAG_MARKER = "flags provided but not defined"
 
 _AGY_ON_PATH = shutil.which("agy")
-_needs_agy = pytest.mark.skipif(
-    _AGY_ON_PATH is None, reason="installed agy CLI not on PATH"
-)
-
-
-def _emitted_flags(argv: tuple[str, ...]) -> set[str]:
-    """Return the flag tokens the launcher itself put on the command line."""
-    return {token for token in argv[1:] if token.startswith("-")}
 
 
 def _parse_probe(flags: list[str]) -> subprocess.CompletedProcess[str]:
     """Run `agy <flags> models`: real flag parsing, no UI and no model call.
 
     `models` is a local listing subcommand, so a fully-defined command line
-    exits 0 having printed the model list, while any undefined flag still
-    fails first with `UNDEFINED_FLAG_MARKER`. A trailing argument-hungry flag
-    such as `--print` cannot be used as the terminator instead: AGY reports the
-    missing argument *before* the undefined-flag error, which would mask
-    exactly the defect this probe exists to catch.
+    exits 0 having printed the model list, while an undefined flag anywhere
+    ahead of it still fails with `UNDEFINED_FLAG_MARKER`.
+
+    A trailing argument-hungry flag such as `--print` is not usable as the
+    terminator: for at least some argv shapes AGY reports the missing argument
+    instead of the undefined flag, which masks exactly the defect the probe
+    exists to catch. `models` was checked against both retired flags and masks
+    neither.
 
     `start_new_session` leaves the child without a controlling terminal, so it
     cannot fall through to the interactive UI and hang when pytest itself is
@@ -49,7 +44,7 @@ def _parse_probe(flags: list[str]) -> subprocess.CompletedProcess[str]:
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=launcher.MODEL_LISTING_TIMEOUT_SECONDS,
         start_new_session=True,
         check=False,
     )
@@ -60,12 +55,48 @@ def _canonical_model() -> str:
     return launcher.REFERENCE_MODEL
 
 
-def _model_listing() -> set[str]:
-    """Model IDs the installed CLI reports as usable."""
-    completed = _parse_probe([])
-    if completed.returncode != 0:
-        return set()
-    return {line.strip() for line in completed.stdout.splitlines() if line.strip()}
+def _listing_probe() -> tuple[frozenset[str], str]:
+    """Return the live model listing, or why this machine cannot produce one."""
+    if _AGY_ON_PATH is None:
+        return frozenset(), "installed agy CLI not on PATH"
+    try:
+        return launcher.list_models(str(_AGY_ON_PATH)), ""
+    except launcher.LaunchError as exc:
+        return frozenset(), str(exc)
+
+
+_LIVE_LISTING, _LIVE_BLOCKED_REASON = _listing_probe()
+
+# An `agy` that is installed but cannot run here -- a sandbox that forbids its
+# language-server socket, a missing login -- is an environment limitation, not
+# a defect in the launcher. Skip on that, loudly, quoting the real cause. A
+# genuinely rejected flag is a different thing and still fails, because the
+# tests below assert on `UNDEFINED_FLAG_MARKER` rather than on exit status
+# alone. The hermetic tests never skip, so this cannot go quietly vacuous.
+_needs_agy = pytest.mark.skipif(
+    not _LIVE_LISTING, reason=f"cannot run the live agy listing: {_LIVE_BLOCKED_REASON}"
+)
+
+
+def _emitted_flags(argv: tuple[str, ...]) -> set[str]:
+    """Return the flag tokens the launcher itself put on the command line."""
+    return {token for token in argv[1:] if token.startswith("-")}
+
+
+def _stub_installed_cli(
+    monkeypatch: pytest.MonkeyPatch, listed: tuple[str, ...] | None = None
+) -> None:
+    """Make `main` independent of whether AGY is installed on this machine.
+
+    `main` resolves the executable and checks the seat model against the live
+    listing, so without this a test of chdir/exec ordering silently turns into
+    a test of whether the developer happens to have AGY on PATH. The default
+    listing accepts exactly what `_write_config` writes.
+    """
+    if listed is None:
+        listed = tuple(f"gemini-{seat}" for seat in SEATS) + (launcher.REFERENCE_MODEL,)
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: "/opt/agy")
+    monkeypatch.setattr(launcher, "list_models", lambda executable: frozenset(listed))
 
 
 def _write_config(path: Path, overrides: dict[str, tuple[str, str]] | None = None) -> None:
@@ -281,7 +312,7 @@ def test_codex_only_flags_never_return_to_the_agy_command_line(tmp_path: Path) -
 @_needs_agy
 @pytest.mark.parametrize("retired", ("--config", "--cd"))
 def test_probe_still_detects_flags_the_installed_cli_does_not_define(
-    tmp_path: Path, retired: str
+    retired: str,
 ) -> None:
     """Negative control: the probe must reject what the launcher used to emit.
 
@@ -290,7 +321,7 @@ def test_probe_still_detects_flags_the_installed_cli_does_not_define(
     Codex flags are used as the controls because they are the concrete strings
     that broke every seat.
     """
-    control = _parse_probe(["--model", "gemini-3.1-pro-high", retired, "/tmp"])
+    control = _parse_probe(["--model", _canonical_model(), retired, "/tmp"])
 
     assert control.returncode != 0
     assert UNDEFINED_FLAG_MARKER in control.stdout + control.stderr
@@ -316,19 +347,62 @@ def test_installed_cli_accepts_the_emitted_argv_at_parse_time(tmp_path: Path) ->
 
 
 @_needs_agy
-def test_configured_model_is_a_model_the_installed_cli_lists(tmp_path: Path) -> None:
+def test_canonical_model_is_a_model_the_installed_cli_lists() -> None:
     """The canonical model form is literally an `agy models` entry.
 
     The launcher config shipped `gemini-2.5-pro`, which the CLI has never
-    listed, so `--model` was wrong even independently of the flag names. Any
-    model the launcher is configured with has to survive this listing, and a
-    report citing it can be re-checked by re-running the same command.
+    listed, so `--model` was wrong even independently of the flag names. A
+    report citing the canonical form can be re-checked by re-running the same
+    command the launcher itself checks against.
     """
-    listing = _model_listing()
+    assert _canonical_model() in _LIVE_LISTING
+    assert "gemini-2.5-pro" not in _LIVE_LISTING
 
-    assert listing, "agy models produced no entries"
-    assert _canonical_model() in listing
-    assert "gemini-2.5-pro" not in listing
+
+def test_unlisted_model_is_rejected_before_it_can_be_cited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A model the CLI does not offer must never reach `--model` or AGY_MODEL.
+
+    Syntactic validation accepted any nonempty token, so a typo became the
+    citable `Reviewer model:` of a launch that could not have happened. The
+    check runs on `--dry-run` as well, because dry-run is the surface a report
+    quotes.
+    """
+    config_path = tmp_path / "seats.toml"
+    _write_config(config_path, {"operator": ("definitely-not-an-agy-model", "high")})
+    _stub_installed_cli(monkeypatch, (launcher.REFERENCE_MODEL,))
+
+    code = launcher.main(["--dry-run", "--config", str(config_path), "operator"])
+    captured = capsys.readouterr()
+
+    assert code == 2
+    assert "definitely-not-an-agy-model" not in captured.out
+    assert "is not offered by" in captured.err
+
+
+def test_unavailable_model_listing_fails_closed(tmp_path: Path) -> None:
+    """An unusable listing must not be read as an empty allowlist or a pass.
+
+    A sandbox that blocks AGY's language-server socket makes the listing
+    unobtainable. Treating that as "no models matched" or as "checked" would
+    both be wrong; the model is simply unsubstantiated.
+    """
+    failing = tmp_path / "failing-agy"
+    failing.write_text(
+        "#!/bin/sh\necho 'bind: operation not permitted' >&2\nexit 1\n", encoding="utf-8"
+    )
+    failing.chmod(0o755)
+
+    with pytest.raises(launcher.LaunchError) as blocked:
+        launcher.list_models(str(failing))
+    assert "cannot be checked" in str(blocked.value)
+    # The real cause has to reach the operator, or a blocked sandbox is
+    # indistinguishable from a genuinely rejected model.
+    assert "bind: operation not permitted" in str(blocked.value)
+
+    with pytest.raises(launcher.LaunchError, match="cannot run"):
+        launcher.list_models(str(tmp_path / "no-such-executable"))
 
 
 def test_configured_model_reaches_the_cli_and_the_report_surface_verbatim(
@@ -417,6 +491,7 @@ def test_dry_run_prints_identity_and_does_not_start_agy(
     def _fail(*args, **kwargs):  # pragma: no cover - must never run
         raise AssertionError("dry run must not exec the provider")
 
+    _stub_installed_cli(monkeypatch)
     monkeypatch.setattr(launcher.os, "execvpe", _fail)
 
     code = launcher.main(["--dry-run", "--config", str(config_path), "director"])
@@ -442,6 +517,7 @@ def test_launch_enters_the_repository_before_exec(
     repo_root = Path(launcher.__file__).resolve().parents[1]
     calls: list[tuple[str, object]] = []
 
+    _stub_installed_cli(monkeypatch)
     monkeypatch.setattr(launcher.os, "chdir", lambda path: calls.append(("chdir", path)))
     monkeypatch.setattr(
         launcher.os,
@@ -464,6 +540,7 @@ def test_dry_run_does_not_move_the_calling_shell(
     def _fail(*args, **kwargs):  # pragma: no cover - must never run
         raise AssertionError("dry run must not chdir or exec")
 
+    _stub_installed_cli(monkeypatch)
     monkeypatch.setattr(launcher.os, "chdir", _fail)
     monkeypatch.setattr(launcher.os, "execvpe", _fail)
 
@@ -480,6 +557,7 @@ def test_dry_run_prints_the_model_string_a_report_must_cite(
     """
     config_path = tmp_path / "seats.toml"
     _write_config(config_path, {"operator": (launcher.REFERENCE_MODEL, "high")})
+    _stub_installed_cli(monkeypatch)
     monkeypatch.setattr(launcher.os, "execvpe", lambda *a, **k: None)
 
     launcher.main(["--dry-run", "--config", str(config_path), "operator"])
