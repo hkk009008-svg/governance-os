@@ -79,9 +79,13 @@ def _compact(text: str) -> str:
 def _git_listing(*arguments: str) -> tuple[tuple[str, ...], bool]:
     """One NUL-framed `git ls-files` call, as (entries, answered).
 
-    `answered` is False when git could not be run or its output could not be
-    read; callers decide what an unanswered query means for them. `-z` framing
-    stops a path containing a newline from forging entries. `GIT_INDEX_FILE` is
+    `answered` is False when git could not be run, or when what came back is
+    not a whole listing; callers decide what an unanswered query means for
+    them. `-z` framing stops a path containing a newline from forging entries,
+    and it is also what makes truncation detectable: git terminates every entry
+    with NUL, so a non-empty payload not ending in one lost its tail and an
+    unknown number of entries before it. Accepting that shape would hand a
+    caller an incomplete listing with full confidence. `GIT_INDEX_FILE` is
     scrubbed because this repo exports a per-seat index — inheriting it would
     make tracked files read as untracked.
     """
@@ -89,14 +93,20 @@ def _git_listing(*arguments: str) -> tuple[tuple[str, ...], bool]:
         name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
     }
     try:
-        listing = subprocess.run(
+        payload = subprocess.run(
             ("git", "ls-files", "-z", *arguments),
             cwd=ROOT,
             env=environment,
             capture_output=True,
             check=True,
-        ).stdout.decode("utf-8")
-    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return (), False
+    if payload and not payload.endswith(b"\0"):
+        return (), False
+    try:
+        listing = payload.decode("utf-8")
+    except UnicodeDecodeError:
         return (), False
     return tuple(entry for entry in listing.split("\0") if entry), True
 
@@ -120,8 +130,15 @@ def _git_tracked_directories() -> tuple[frozenset[str], bool]:
     A prune decision needs this and cannot get it from the ignore listing:
     `git ls-files --others` reports only untracked paths, so an ignore rule
     naming a directory says nothing about tracked files committed beneath it.
+
+    An empty listing is reported as unanswered rather than as the fact that
+    nothing is tracked. Every checkout this module runs in tracks files, so an
+    empty `--cached` result is a listing that failed to arrive, and treating it
+    as a complete answer would license pruning on no evidence at all.
     """
     entries, answered = _git_listing("--cached")
+    if not entries:
+        return frozenset(), False
     holders: set[str] = set()
     for entry in entries:
         parent = PurePosixPath(entry).parent
@@ -528,11 +545,68 @@ def test_unanswered_git_query_sweeps_more_never_less(
     previous shape pruned the floor unconditionally, which meant a git that
     failed, was absent, or returned nothing still inspected *less* under that
     one root while inspecting more everywhere else.
+
+    This stubs the helper and so pins only the prune's use of `answered`. What
+    counts as unanswered in the first place is pinned separately, against the
+    real parser, by test_malformed_git_listing_counts_as_unanswered.
     """
     monkeypatch.setattr(f"{__name__}._git_ignored_paths", lambda: frozenset())
     monkeypatch.setattr(
         f"{__name__}._git_tracked_directories", lambda: (frozenset(), False)
     )
+    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
+        relative = probe.relative_to(ROOT).as_posix()
+        assert relative in _protocol_sweep_relatives()
+
+
+def _stub_git_stdout(payload: bytes):
+    def run(*_arguments: object, **_keywords: object) -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess((), 0, stdout=payload, stderr=b"")
+
+    return run
+
+
+def test_malformed_git_listing_counts_as_unanswered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a whole NUL-terminated listing is an answer.
+
+    Exit status alone does not establish that a listing arrived intact. `-z`
+    terminates every entry, so a non-empty payload without a trailing NUL is a
+    truncation whose tail entry is a fragment and whose earlier entries are
+    simply missing; an empty payload is not the fact that nothing is tracked,
+    because every checkout this module runs in tracks files. Either shape read
+    as answered would give `_sweep_active_files` a short holder set with full
+    confidence, and the prune would then skip a fallback root that a complete
+    listing would have kept — which is the blind spot in a second disguise.
+    """
+    unanswered = (
+        b"",  # nothing arrived at all
+        b"AGENTS.md",  # single entry, terminator lost
+        b"AGENTS.md\0CLAUDE.md",  # tail entry truncated mid-listing
+    )
+    for payload in unanswered:
+        monkeypatch.setattr(subprocess, "run", _stub_git_stdout(payload))
+        assert _git_tracked_directories() == (frozenset(), False), payload
+
+    monkeypatch.setattr(subprocess, "run", _stub_git_stdout(b"docs/protocol/x.md\0"))
+    holders, answered = _git_tracked_directories()
+    assert answered is True
+    assert holders == frozenset({"docs", "docs/protocol"})
+
+
+def test_truncated_tracked_listing_still_sweeps_fallback_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A truncated tracked listing widens the sweep, through the real parser.
+
+    The end-to-end companion to the parser test: no helper is stubbed out, so
+    the prune reaches its decision the way it does in production, and a
+    fallback root is walked rather than skipped when the listing it would have
+    relied on came back incomplete.
+    """
+    monkeypatch.setattr(f"{__name__}._git_ignored_paths", lambda: frozenset())
+    monkeypatch.setattr(subprocess, "run", _stub_git_stdout(b"AGENTS.md"))
     with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
         relative = probe.relative_to(ROOT).as_posix()
         assert relative in _protocol_sweep_relatives()
