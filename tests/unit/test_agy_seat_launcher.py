@@ -245,11 +245,14 @@ def test_agy_guides_never_teach_manual_index_binding(repo_root: Path) -> None:
     Claude guides by `test_claude_seat_launcher.py`. These two trees were the
     uncovered surface, which is why the drift landed here.
     """
-    guides = [
-        *sorted((repo_root / ".agents/skills").rglob("*.md")),
-        *sorted((repo_root / "docs/protocol/agy").glob("*.md")),
-    ]
-    assert guides, "expected AGY guide surfaces to exist"
+    guides: list[Path] = []
+    for root in (repo_root / ".agents/skills", repo_root / "docs/protocol/agy"):
+        # rglob and a per-root nonempty check, not a combined one: a plain glob
+        # lets a nested stale guide through, and a combined check stays green
+        # when one root disappears because the other still supplies files.
+        found = sorted(root.rglob("*.md"))
+        assert found, f"no guides under {root.relative_to(repo_root)}"
+        guides.extend(found)
 
     for guide in guides:
         text = guide.read_text(encoding="utf-8")
