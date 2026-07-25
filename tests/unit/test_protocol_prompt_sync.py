@@ -4,10 +4,11 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import tomllib
 from collections.abc import Iterable, Iterator
 from contextlib import ExitStack, contextmanager, suppress
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import pytest
 
@@ -56,16 +57,15 @@ MANDATORY_SUPERPOWERS_RE = re.compile(
     re.IGNORECASE,
 )
 EXACT_NEXT_TRIGGER = "Exact Next Trigger"
-# Directory walks see the filesystem; git's ignore rules live in the index and
-# exclude files, so the two never meet on their own. A git worktree checked out
-# under `.claude/worktrees/<name>/` is a full second copy of this repo —
-# mailbox history and all — and would otherwise be judged as active protocol
-# surface. The committed `.gitignore` carries that path today, so this floor is
-# the second of two independent defences: it still prunes the tree on a clone
-# where that rule has been edited out. It is not a licence to skip content —
-# `_sweep_active_files` prunes a floor entry only while git confirms nothing
-# tracked lives beneath it.
-UNSWEEPABLE_FALLBACK = frozenset({".claude/worktrees"})
+# There is deliberately no hardcoded prune list here. Directory walks see the
+# filesystem while git's ignore rules live in the index and exclude files, and
+# the obvious bridge — naming the paths a walk should skip — is a claim about
+# pathnames that knows nothing about their content. A tracked protocol surface
+# under such a name is skipped in silence, and every attempt to guard that
+# hardcoded claim only moved the same gap one layer down: first to whether git
+# reported the path ignored, then to whether a tracked listing arrived whole,
+# then to whether that listing was truncated at a record boundary. The prune
+# now asks git for a positive statement instead; see `_sweep_active_files`.
 
 
 def _read(path: str) -> str:
@@ -76,18 +76,23 @@ def _compact(text: str) -> str:
     return " ".join(text.split())
 
 
-def _git_listing(*arguments: str) -> tuple[tuple[str, ...], bool]:
-    """One NUL-framed `git ls-files` call, as (entries, answered).
+def _git_listing(*arguments: str) -> tuple[str, ...]:
+    """Entries from one NUL-framed `git ls-files` call; empty if unavailable.
 
-    `answered` is False when git could not be run, or when what came back is
-    not a whole listing; callers decide what an unanswered query means for
-    them. `-z` framing stops a path containing a newline from forging entries,
-    and it is also what makes truncation detectable: git terminates every entry
-    with NUL, so a non-empty payload not ending in one lost its tail and an
-    unknown number of entries before it. Accepting that shape would hand a
-    caller an incomplete listing with full confidence. `GIT_INDEX_FILE` is
-    scrubbed because this repo exports a per-seat index — inheriting it would
-    make tracked files read as untracked.
+    Every caller uses this to *add* prunes, so a short answer is safe and only
+    a wrong entry is dangerous. That is why nothing here reports whether the
+    listing was complete: an entry that never arrived prunes nothing, while an
+    entry that arrived corrupt could prune a directory git never named.
+
+    `-z` is what makes a corrupt entry detectable. Git terminates every path
+    with NUL, so a non-empty payload not ending in one was cut mid-record, and
+    its tail is a fragment — and a fragment is precisely the dangerous shape,
+    because truncating `.claude/worktrees-backup/` yields `.claude/worktrees`,
+    a real directory git never reported. Such a payload is discarded whole.
+    Framing also stops a path containing a newline from forging entries.
+
+    `GIT_INDEX_FILE` is scrubbed because this repo exports a per-seat index —
+    inheriting it would make tracked files read as untracked.
     """
     environment = {
         name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
@@ -101,51 +106,36 @@ def _git_listing(*arguments: str) -> tuple[tuple[str, ...], bool]:
             check=True,
         ).stdout
     except (OSError, subprocess.CalledProcessError):
-        return (), False
+        return ()
     if payload and not payload.endswith(b"\0"):
-        return (), False
+        return ()
     try:
         listing = payload.decode("utf-8")
     except UnicodeDecodeError:
-        return (), False
-    return tuple(entry for entry in listing.split("\0") if entry), True
+        return ()
+    return tuple(entry for entry in listing.split("\0") if entry)
 
 
-def _git_ignored_paths() -> frozenset[str]:
-    """Root-relative posix paths git ignores, collapsed at directory level.
+def _git_ignored_entries() -> tuple[frozenset[str], frozenset[str]]:
+    """Ignored paths git named, split into (whole directories, single files).
 
-    `--directory` collapses a wholly-ignored tree to its top directory, so a
-    worktree holding thousands of files costs a single entry. An unanswered
-    query yields the empty set, which prunes less rather than more.
+    `--directory` collapses a directory to one `dir/` entry only when
+    everything inside it is untracked; a directory holding even one tracked
+    file is never collapsed, and git lists its untracked members individually
+    instead. A trailing slash is therefore git's own statement that nothing
+    tracked lives beneath that path — exactly the fact a prune needs, and the
+    one a hardcoded list can never supply.
+
+    The two are kept apart because they license different things. A collapsed
+    directory may be pruned unwalked. A named file may be skipped, but says
+    nothing about any tree, so it must never stop a walk from descending.
     """
-    entries, _ = _git_listing(
+    entries = _git_listing(
         "--others", "--ignored", "--directory", "--exclude-standard"
     )
-    return frozenset(entry.rstrip("/") for entry in entries)
-
-
-def _git_tracked_directories() -> tuple[frozenset[str], bool]:
-    """Every directory holding tracked content, root-relative posix.
-
-    A prune decision needs this and cannot get it from the ignore listing:
-    `git ls-files --others` reports only untracked paths, so an ignore rule
-    naming a directory says nothing about tracked files committed beneath it.
-
-    An empty listing is reported as unanswered rather than as the fact that
-    nothing is tracked. Every checkout this module runs in tracks files, so an
-    empty `--cached` result is a listing that failed to arrive, and treating it
-    as a complete answer would license pruning on no evidence at all.
-    """
-    entries, answered = _git_listing("--cached")
-    if not entries:
-        return frozenset(), False
-    holders: set[str] = set()
-    for entry in entries:
-        parent = PurePosixPath(entry).parent
-        while str(parent) != ".":
-            holders.add(str(parent))
-            parent = parent.parent
-    return frozenset(holders), answered
+    directories = frozenset(entry.rstrip("/") for entry in entries if entry.endswith("/"))
+    files = frozenset(entry for entry in entries if not entry.endswith("/"))
+    return directories, files
 
 
 def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[Path]:
@@ -156,22 +146,24 @@ def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[P
     out afterwards. A root named explicitly is always swept even when ignored —
     naming it is the opt-in.
 
-    A directory is pruned only on positive evidence that nothing tracked lives
-    beneath it. An ignore rule is an assertion about pathnames, not about
-    content, and an unanswered git query is no evidence at all; both gaps
-    resolve toward sweeping more rather than less, because a guard that
-    inspects too little fails silently while one that inspects too much fails
-    loudly.
+    A directory is pruned only where git collapsed it, which is git stating
+    that nothing tracked lives beneath it. Nothing else prunes: there is no
+    pathname this module skips on its own authority, so there is no path where
+    a tracked surface can be skipped in silence.
+
+    Every way this can go wrong subtracts. A git that fails, is missing, returns
+    nothing, or returns a listing cut short at a record boundary yields fewer
+    collapsed entries, so the sweep walks more and any violation it finds is
+    reported rather than hidden. The single shape that could add a prune is a
+    fragment left by a mid-record cut, and `_git_listing` discards any payload
+    carrying one. A guard that inspects too much fails loudly; one that
+    inspects too little does not fail at all.
     """
     wanted = frozenset(suffixes)
-    ignored = _git_ignored_paths() | UNSWEEPABLE_FALLBACK
-    tracked_directories, tracked_answered = _git_tracked_directories()
+    prunable_directories, ignored_files = _git_ignored_entries()
 
-    def is_pruned(path: Path) -> bool:
-        relative = path.relative_to(ROOT).as_posix()
-        if relative not in ignored:
-            return False
-        return tracked_answered and relative not in tracked_directories
+    def relative_to_root(path: Path) -> str:
+        return path.relative_to(ROOT).as_posix()
 
     found: list[Path] = []
     for relative in roots:
@@ -184,12 +176,14 @@ def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[P
             directories[:] = sorted(
                 name
                 for name in directories
-                if name != ".git" and not is_pruned(branch / name)
+                if name != ".git"
+                and relative_to_root(branch / name) not in prunable_directories
             )
             found.extend(
                 branch / name
                 for name in sorted(filenames)
-                if (branch / name).suffix in wanted and not is_pruned(branch / name)
+                if (branch / name).suffix in wanted
+                and relative_to_root(branch / name) not in ignored_files
             )
     return found
 
@@ -425,15 +419,16 @@ def _ignored_probe(relative_root: str, *, self_ignore: bool) -> Iterator[Path]:
 def test_active_surface_sweeps_skip_git_ignored_trees() -> None:
     probe_roots = {
         # The reported failure: a worktree checkout under `.claude/worktrees/`.
-        # Carries no `.gitignore` of its own, so on this repository it is the
-        # committed rule that excludes it. Since that rule landed, this probe
-        # pins the git lookup and no longer isolates the floor; the floor is
-        # pinned by test_fallback_prunes_when_git_reports_nothing_ignored.
+        # Carries no `.gitignore` of its own, so it is the committed rule that
+        # excludes it here, and git collapses the tree because nothing under it
+        # is tracked. This is the end-to-end case against real ignore rules;
+        # what a collapsed entry means is pinned by
+        # test_git_collapses_only_wholly_untracked_directories.
         f".claude/worktrees/{PROBE_NAME}": False,
         # Ignored by a `.gitignore` it carries itself, so it is excluded on any
-        # machine regardless of what the committed rules say, and it is absent
-        # from UNSWEEPABLE_FALLBACK. Under `.claude/agents` to stay in range of
-        # both sweeps, not just the protocol one.
+        # machine regardless of what the committed rules say. Under
+        # `.claude/agents` to stay in range of both sweeps, not just the
+        # protocol one.
         f".claude/agents/{PROBE_NAME}": True,
     }
     with ExitStack() as stack:
@@ -477,88 +472,6 @@ def _protocol_sweep_relatives() -> set[str]:
     }
 
 
-def _tracked_holders_of(relative: str) -> frozenset[str]:
-    holders: set[str] = set()
-    parent = PurePosixPath(relative).parent
-    while str(parent) != ".":
-        holders.add(str(parent))
-        parent = parent.parent
-    return frozenset(holders)
-
-
-def test_fallback_prunes_when_git_reports_nothing_ignored(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """UNSWEEPABLE_FALLBACK alone holds a worktree out of both sweeps.
-
-    The committed `.gitignore` now covers `.claude/worktrees/`, so every probe
-    that relies on the real ignore rules exercises the git lookup and would
-    pass with the floor emptied. Patching git's answer instead of editing the
-    repository leaves that committed rule in place and removes the only other
-    defence, so this fails if the floor is emptied — which is what makes it a
-    test of the floor rather than a restatement of the ignore rule.
-    """
-    monkeypatch.setattr(f"{__name__}._git_ignored_paths", lambda: frozenset())
-    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
-        relative = probe.relative_to(ROOT).as_posix()
-        body = probe.read_text(encoding="utf-8")
-        assert EXACT_NEXT_TRIGGER in body and MANDATORY_SUPERPOWERS_RE.search(body)
-        assert relative not in _protocol_sweep_relatives()
-
-
-def test_fallback_prune_yields_to_tracked_content(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A fallback root stops pruning as soon as it holds tracked content.
-
-    The floor names a pathname, and a pathname asserts nothing about what is
-    committed beneath it, so pruning on the name alone would make a tracked
-    protocol surface invisible to both sweeps while it is still live. Both
-    directions are asserted against one planted probe: the pathname is what
-    prunes it, and a tracked descendant is what stops the prune.
-    """
-    root_relative = f".claude/agents/{PROBE_NAME}"
-    monkeypatch.setattr(
-        f"{__name__}.UNSWEEPABLE_FALLBACK", frozenset({root_relative})
-    )
-    with _ignored_probe(root_relative, self_ignore=False) as probe:
-        relative = probe.relative_to(ROOT).as_posix()
-
-        # Nothing tracked beneath it: the floor prunes, exactly as before.
-        assert relative not in _protocol_sweep_relatives()
-
-        # One tracked descendant: the same root must now be walked.
-        monkeypatch.setattr(
-            f"{__name__}._git_tracked_directories",
-            lambda: (_tracked_holders_of(relative), True),
-        )
-        assert relative in _protocol_sweep_relatives()
-
-
-def test_unanswered_git_query_sweeps_more_never_less(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A broken git widens the sweep rather than silently narrowing it.
-
-    When `git ls-files --cached` cannot be answered there is no evidence that a
-    fallback root is free of tracked content, so the prune must not fire. The
-    previous shape pruned the floor unconditionally, which meant a git that
-    failed, was absent, or returned nothing still inspected *less* under that
-    one root while inspecting more everywhere else.
-
-    This stubs the helper and so pins only the prune's use of `answered`. What
-    counts as unanswered in the first place is pinned separately, against the
-    real parser, by test_malformed_git_listing_counts_as_unanswered.
-    """
-    monkeypatch.setattr(f"{__name__}._git_ignored_paths", lambda: frozenset())
-    monkeypatch.setattr(
-        f"{__name__}._git_tracked_directories", lambda: (frozenset(), False)
-    )
-    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
-        relative = probe.relative_to(ROOT).as_posix()
-        assert relative in _protocol_sweep_relatives()
-
-
 def _stub_git_stdout(payload: bytes):
     def run(*_arguments: object, **_keywords: object) -> subprocess.CompletedProcess:
         return subprocess.CompletedProcess((), 0, stdout=payload, stderr=b"")
@@ -566,47 +479,141 @@ def _stub_git_stdout(payload: bytes):
     return run
 
 
-def test_malformed_git_listing_counts_as_unanswered(
+def _stub_git_raising(error: BaseException):
+    def run(*_arguments: object, **_keywords: object) -> subprocess.CompletedProcess:
+        raise error
+
+    return run
+
+
+def test_git_collapses_only_wholly_untracked_directories() -> None:
+    """The fact the prune rests on, measured in a real repository.
+
+    `--directory` may collapse a directory to one entry only when nothing
+    inside it is tracked. That is the whole reason a collapsed entry counts as
+    evidence, so it is measured here rather than taken from documentation: if
+    git ever collapsed a directory holding tracked content, the prune would be
+    unsound and this test is what would notice.
+    """
+    directory = Path(tempfile.mkdtemp(prefix="sweep-collapse-"))
+
+    def git(*arguments: str) -> str:
+        return subprocess.run(
+            ("git", *arguments),
+            cwd=directory,
+            check=True,
+            capture_output=True,
+            env={**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null"},
+        ).stdout.decode("utf-8")
+
+    try:
+        git("init", "-q")
+        git("config", "user.email", "sweep@example.invalid")
+        git("config", "user.name", "sweep")
+        (directory / ".gitignore").write_text("untracked/\nmixed/skip.md\n", encoding="utf-8")
+        for branch, name in (("untracked", "a.md"), ("mixed", "skip.md"), ("mixed", "kept.md")):
+            (directory / branch).mkdir(exist_ok=True)
+            (directory / branch / name).write_text("x\n", encoding="utf-8")
+        git("add", ".gitignore", "mixed/kept.md")
+        git("commit", "-qm", "seed")
+
+        listed = [
+            entry
+            for entry in git(
+                "ls-files", "-z", "--others", "--ignored", "--directory",
+                "--exclude-standard",
+            ).split("\0")
+            if entry
+        ]
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+    # Wholly untracked: collapsed, and therefore prunable.
+    assert "untracked/" in listed
+    # Holds a tracked file: never collapsed, so the tree is walked and only the
+    # ignored member is named. This is what makes a tracked surface unskippable.
+    assert "mixed/" not in listed
+    assert "mixed/skip.md" in listed
+
+
+def test_collapsed_directory_prunes_but_a_named_file_does_not(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only a whole NUL-terminated listing is an answer.
+    """The trailing slash is the entire licence to skip a tree.
 
-    Exit status alone does not establish that a listing arrived intact. `-z`
-    terminates every entry, so a non-empty payload without a trailing NUL is a
-    truncation whose tail entry is a fragment and whose earlier entries are
-    simply missing; an empty payload is not the fact that nothing is tracked,
-    because every checkout this module runs in tracks files. Either shape read
-    as answered would give `_sweep_active_files` a short holder set with full
-    confidence, and the prune would then skip a fallback root that a complete
-    listing would have kept — which is the blind spot in a second disguise.
+    git names an ignored file individually exactly when its directory holds
+    tracked content and could not be collapsed. Reading that name as a
+    directory decision would prune a tree git explicitly declined to collapse,
+    which is the original blind spot in its purest form. Both directions are
+    asserted against one planted probe.
     """
-    unanswered = (
-        b"",  # nothing arrived at all
-        b"AGENTS.md",  # single entry, terminator lost
-        b"AGENTS.md\0CLAUDE.md",  # tail entry truncated mid-listing
+    root_relative = f".claude/worktrees/{PROBE_NAME}"
+    with _ignored_probe(root_relative, self_ignore=False) as probe:
+        relative = probe.relative_to(ROOT).as_posix()
+
+        monkeypatch.setattr(
+            subprocess, "run", _stub_git_stdout(f"{root_relative}\0".encode())
+        )
+        assert _git_ignored_entries() == (frozenset(), frozenset({root_relative}))
+        assert relative in _protocol_sweep_relatives()
+
+        monkeypatch.setattr(
+            subprocess, "run", _stub_git_stdout(f"{root_relative}/\0".encode())
+        )
+        assert _git_ignored_entries() == (frozenset({root_relative}), frozenset())
+        assert relative not in _protocol_sweep_relatives()
+
+
+def test_unavailable_git_prunes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each failure direction yields no prunes at all, so the sweep widens.
+
+    Pins the three safe returns individually. The previous shape had all three
+    and no test that would have noticed any of them being removed, which the
+    operator established by replacing them with `raise` and watching every
+    sweep test stay green.
+    """
+    failures = (
+        _stub_git_raising(FileNotFoundError("git")),
+        _stub_git_raising(subprocess.CalledProcessError(128, ("git",))),
+        _stub_git_stdout(b"\xff\xfe not utf-8\0"),
     )
-    for payload in unanswered:
-        monkeypatch.setattr(subprocess, "run", _stub_git_stdout(payload))
-        assert _git_tracked_directories() == (frozenset(), False), payload
-
-    monkeypatch.setattr(subprocess, "run", _stub_git_stdout(b"docs/protocol/x.md\0"))
-    holders, answered = _git_tracked_directories()
-    assert answered is True
-    assert holders == frozenset({"docs", "docs/protocol"})
-
-
-def test_truncated_tracked_listing_still_sweeps_fallback_root(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A truncated tracked listing widens the sweep, through the real parser.
-
-    The end-to-end companion to the parser test: no helper is stubbed out, so
-    the prune reaches its decision the way it does in production, and a
-    fallback root is walked rather than skipped when the listing it would have
-    relied on came back incomplete.
-    """
-    monkeypatch.setattr(f"{__name__}._git_ignored_paths", lambda: frozenset())
-    monkeypatch.setattr(subprocess, "run", _stub_git_stdout(b"AGENTS.md"))
     with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
         relative = probe.relative_to(ROOT).as_posix()
-        assert relative in _protocol_sweep_relatives()
+        for stub in failures:
+            monkeypatch.setattr(subprocess, "run", stub)
+            assert _git_ignored_entries() == (frozenset(), frozenset())
+            assert relative in _protocol_sweep_relatives()
+
+
+def test_fragment_payload_is_discarded_whole(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A mid-record cut is the one shape that could ADD a prune.
+
+    Cutting `.claude/worktrees-backup/` mid-record leaves `.claude/worktrees`,
+    a real directory git never reported as wholly untracked. Salvaging the
+    intact records and dropping only the fragment would prune on a path git did
+    not name, so a payload carrying one is discarded entirely.
+    """
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _stub_git_stdout(b".claude/hooks/\0.claude/worktrees"),
+    )
+    assert _git_ignored_entries() == (frozenset(), frozenset())
+    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
+        assert probe.relative_to(ROOT).as_posix() in _protocol_sweep_relatives()
+
+
+def test_boundary_truncated_listing_only_prunes_less(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A listing cut at a record boundary is shorter, never wrong.
+
+    No parser can tell this shape from a complete listing, and it no longer
+    needs to: a lost entry removes a prune. The probe's tree is absent from the
+    shortened listing, so it is walked rather than skipped, and the surviving
+    entry still prunes.
+    """
+    monkeypatch.setattr(subprocess, "run", _stub_git_stdout(b".claude/hooks/\0"))
+    assert _git_ignored_entries() == (frozenset({".claude/hooks"}), frozenset())
+    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
+        assert probe.relative_to(ROOT).as_posix() in _protocol_sweep_relatives()
