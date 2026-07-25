@@ -51,6 +51,13 @@ def test_live_guides_do_not_present_the_retired_state_hook_as_live(
     for relative in (
         "coordination/README.md",
         "docs/protocol/agents/director-operator.md",
+        # Live dispatch templates. implementer.md framed its hook mention as
+        # history, which read as harmless, but its resolution clause still said
+        # the hook "no longer amends" and the state file was "regenerated
+        # locally" — describing a repaired mechanism rather than an absent one,
+        # which is the same defect in a quieter voice.
+        "docs/templates/claude/implementer.md",
+        "docs/templates/claude/reviewer.md",
     ):
         guide = repo_root / relative
         assert guide.exists(), relative
