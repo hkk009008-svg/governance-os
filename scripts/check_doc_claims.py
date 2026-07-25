@@ -1502,8 +1502,14 @@ SHA_DEFAULT_DOCS = [
 # deleted as a second copy of the agent-neutral file. The 112 removed citations
 # were duplicate provenance for commits that no longer resolve in this
 # transfer bundle; the surviving agent-neutral copy still carries the set.
+# 2026-07-25: digest refreshed after the retired per-clone state hook and the
+# retired per-seat index topology were corrected in director-operator.md, which
+# shifted citation line numbers below the edits. The citation SET is unchanged:
+# count held at 103, and a normalized diff of the drift list against the
+# pre-edit tree (file + SHA + kind + message, line numbers stripped) was
+# byte-identical, so no citation was added, removed, or altered.
 SHA_REF_BASELINE_COUNT = 103
-SHA_REF_BASELINE_DIGEST = "7d79c4801d04caec8a2538fd7e422c2c5eaa69971f76d0ff7d7e6eefcfb53f63"
+SHA_REF_BASELINE_DIGEST = "ced005f57b9709e58365458544b3ecb9256b209997c2ab042882a071d1e1bad7"
 
 
 @dataclass(frozen=True)

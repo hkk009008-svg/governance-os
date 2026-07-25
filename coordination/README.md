@@ -47,13 +47,11 @@ for the full discipline (Rules #7–#23).
 - `presence/<seat>-heartbeat.ts` — legacy/provider-specific liveness hint. Codex
   does not write repository heartbeats; host task/thread activity is its
   liveness source. A heartbeat never grants authority.
-- `presence/director.md`, `presence/operator.md` — (v5.7 Rule #19, narrowed by
-  v6.0 Tier 2) per-seat **agent-owned intent**: flat `key: value` (`seat`,
-  `status`, `current_task`, …). The hook NEVER touches these anymore (the
-  pre-split hook sed livelocked the seat's own Write-tool edits and let
-  hook-stamped `updated:` mask stale prose). Gitignored + per-clone.
-  Transition: a session predating the split has no heartbeat file — fall back
-  to its .md `updated:` until the first heartbeat appears.
+- `presence/director.md`, `presence/operator.md` — (Rule #19) per-seat
+  **agent-owned intent**: flat `key: value` (`seat`, `status`, `current_task`,
+  …). Each seat writes its own file and owns every field; nothing else stamps
+  them, because there are no repository lifecycle hooks. A file only reads
+  fresh if its seat refreshed it. Gitignored + per-clone.
 
 ## Readiness bridge
 
@@ -241,19 +239,26 @@ deferred to v2 if it becomes painful.
 
 ## Claude-only STATE.md model
 
-STATE.md is **gitignored, per-clone, regenerated on disk** by
-`.claude/hooks/update-state.sh` on each HEAD move. B-003 Option E (cycle 8)
-retired the prior `git commit --amend` STATE.md-fold model — the hook **never
-touches git history**. STATE.md is an informational cache, NOT a coordination
-channel (it is not shared between seats).
+Retired. No STATE.md is generated, and nothing under `scripts/`,
+`coordination/bin/`, or `.claude/` writes one.
 
-**Unread-count accuracy (Rule #20, v5.7).** The hook counts events
-`*-to-<role>-*` whose filename-timestamp is newer than the cursor's **content**
-timestamp — replacing the pre-v5.7 `find -newer <cursor-mtime>` that counted
-both directions AND compared file mtime (the source of the observed
-`director=4`-vs-1). The Rule #8 awareness gate **recomputes unread live**
-regardless; STATE.md's field is a convenience cache. For exact current HEAD,
-`git rev-parse HEAD` (git > STATE.md per the authority precedence).
+A per-clone lifecycle hook used to regenerate it on each HEAD move and to
+maintain the Rule #20 unread count. It is gone along with the rest of the
+repository lifecycle hooks (see the next section).
+`tests/unit/test_claude_hook_isolation.py` and
+`tests/unit/test_codex_hook_lifecycle.py` assert the retired scripts stay
+absent, and `.gitignore` still lists `STATE.md` and `.claude/hooks/` so
+leftovers from that era stay untracked. Read state from its source, not from a
+cache.
+
+**Unread-count accuracy (Rule #20).** Count events `*-to-<role>-*` whose
+filename-timestamp is strictly newer than the cursor's **content** timestamp,
+not its mtime, and not counting the role's own sends — the pre-Rule-#20
+`find -newer <cursor-mtime>` form got both wrong and produced the observed
+`director=4`-vs-1. Use `python scripts/status.py mailbox-unread <seat>`, which
+encapsulates that comparison, or `python scripts/mailbox_monitor.py --once`.
+The Rule #8 awareness gate recomputes live; there is no cached field to fall
+back to.
 
 ## Claude-only per-clone setup
 

@@ -1079,10 +1079,12 @@ review, thinking) read as "offline." Rule #19 replaces inference with a signal.
 
 1. **Each seat maintains `coordination/presence/<seat>.md`** (gitignored,
    per-clone; flat `key: value`: `seat`, `status` (active|wrapping|away),
-   `current_task`, `head_at_write`, `updated`). The hook bumps
-   `updated`/`head_at_write` every tool call (operator-shipped M2/M3); the
-   **agent owns `status` + `current_task`** and updates `current_task` at each
-   task boundary.
+   `current_task`, `head_at_write`, `updated`). The **seat owns every field**
+   and writes the file itself; nothing stamps it automatically, because
+   repository lifecycle hooks are absent by design. Refresh
+   `updated`/`head_at_write` as you work, and update `current_task` at each
+   task boundary. An unrefreshed file reads stale no matter how active the
+   seat is.
 2. **Liveness is read from presence freshness + `current_task`, NOT from commit
    recency.** "Offline" = presence `updated` stale > T (default 10 min). A seat
    mid-implementation with a fresh presence file is active, not idle.
@@ -1093,26 +1095,31 @@ review, thinking) read as "offline." Rule #19 replaces inference with a signal.
    conversation" reliance in Rule #2 §Signaling** (Rule #2's narration is
    retained for the user; the peer learns intent from `current_task` + mailbox).
 
-**`current_task`-rot guard.** The hook bumps freshness every tool call, so a
-file can read *fresh* while `current_task` is *semantically stale* ("drafting X"
+**`current_task`-rot guard.** Refreshing `updated` without revising the prose
+lets a file read *fresh* while `current_task` is *semantically stale* ("drafting X"
 long after you moved on) — a maintained-looking artifact that lies (cf. the
 GitNexus phantom, ADR-016). Mitigations: (a) agent updates `current_task` at
 task boundaries; (b) the Rule #8 bootstrap awareness gate surfaces "peer
 presence fresh but `current_task` unchanged since HEAD <X>" as a soft warning;
 (c) session-wrap checklist clears `current_task`.
 
-**Topology (D-a).** Rule #19's presence files + STATE.md + `coordination/`
-assume **one shared working tree**; the seats isolate *staging* via per-seat
-`GIT_INDEX_FILE` (NOT separate worktrees — those force separate branches and
-make gitignored presence peer-invisible). See `coordination/README.md`
-§"Per-seat launch (D-a)".
+**Topology.** The per-seat staging-isolation model described here is retired,
+along with the STATE.md it assumed. No side binds a per-seat Git index; every
+worktree uses its native index (`ARCHITECTURE.md` section 5). The per-clone
+hook that once fast-forwarded a seat index on peer-commit staleness is gone
+with the rest of the repository lifecycle hooks, and so is the manual
+`git read-tree` seeding it depended on.
 
-Per-seat index freshness is hook-maintained (v5.8): `update-state.sh`
-fast-forwards a seat's `GIT_INDEX_FILE` index to HEAD on peer-commit
-staleness (and only then — staged work is never touched; see the decision
-table in the hook). Manual `git read-tree HEAD` is retired except for the
-mixed case (staged work + peer commit), where `git read-tree -m` remains a
-manual call.
+Never bind a per-seat index by hand: setting `GIT_INDEX_FILE` in a shell
+silently rebinds every later Git command in that session including commits, and
+follows `cd` into unrelated repositories. Prefix ordinary Git and pytest with
+`env -u GIT_INDEX_FILE`, and work in a native worktree you are willing to
+commit from — each one already has the staging isolation the retired mechanism
+was reaching for. The earlier objection that separate worktrees make gitignored
+presence peer-invisible assumed hook-stamped presence; seats now write their own
+presence files. When seats do share one tree, commit scope stays load-bearing:
+always commit with an explicit pathspec. See `coordination/README.md`
+§"Claude-only seat launch".
 
 **Beneficiary (per R11): `both`** — symmetric. Both seats owe presence
 maintenance; both gain accurate peer-liveness. No asymmetric-veto path;
@@ -1140,10 +1147,9 @@ when the actionable count was 1.
 
 1. **The Rule #8 awareness gate recomputes unread LIVE** — count events
    `*-to-<me>-*` whose filename-timestamp is strictly newer than the cursor's
-   **content** timestamp — rather than trusting STATE.md's possibly-frozen
-   field. STATE.md is a convenience cache; the gate verifies. (The M2 hook fix,
-   operator-shipped, makes STATE.md's own field correct; the gate verifies
-   regardless.) **Advisory (2026-06-09, operator-drafted, director-consented):**
+   **content** timestamp — rather than trusting a cached field. STATE.md is no
+   longer generated at all, so the live recompute is the only path; there is no
+   cache left to fall back to. **Advisory (2026-06-09, operator-drafted, director-consented):**
    the live recompute SHOULD use `scripts/status.py mailbox-unread <seat>`
    (`3fa29c9`) over a hand-rolled `ls | awk`. The hand-rolled form had two
    proven sharp edges this session — it counted both directions (incl. the
