@@ -272,6 +272,9 @@ def test_high_risk_request_requires_abuse_assessment_and_report_binds_it(
             base,
             head,
             trigger,
+            # A declared high-risk-control artifact needs a genuinely distinct
+            # model family; the fixture default shares the author's.
+            reviewer_model="claude-opus-5",
             risk_class="high-risk-control",
             abuse_class_assessment_binding="bound-to-request",
         ),
@@ -865,7 +868,106 @@ def test_same_model_across_operator_seats_is_not_independent(tmp_path: Path) -> 
         ),
     )
 
-    assert "reviewer model equals author model" in pair.validate_report(root, report)
+    assert "reviewer model shares the author model family" in pair.validate_report(
+        root, report
+    )
+
+
+@pytest.mark.parametrize(
+    ("author_model", "reviewer_model"),
+    (
+        # Every pair below was accepted by the previous casefolded string
+        # inequality. The first is the dominant pairing in the committed
+        # corpus: 84 `gpt-5.6-sol` authors against 65 `gpt-5.6-terra`
+        # reviewers, i.e. one model family reviewing itself.
+        ("gpt-5.6-sol", "gpt-5.6-terra"),
+        ("gpt-5.6-terra", "codex-gpt-5.6-terra"),
+        ("gpt-5.6-sol", "GPT-5 Codex"),
+        ("antigravity-gemini-3.6", "gemini-3.6-flash"),
+        ("claude-opus-5", "claude-sonnet-5"),
+    ),
+)
+def test_high_risk_control_rejects_same_family_reviewer(
+    tmp_path: Path, author_model: str, reviewer_model: str
+) -> None:
+    """A harness prefix or version suffix must not buy model independence."""
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        author_model=author_model,
+        assigned_operator="operator2",
+        risk_class="high-risk-control",
+        abuse_class_assessment=("untrusted request fields cannot widen authority",),
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+            reviewer_model=reviewer_model,
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+        ),
+    )
+
+    assert "reviewer model shares the author model family" in pair.validate_report(
+        root, report
+    )
+
+
+@pytest.mark.parametrize(
+    ("author_model", "reviewer_model"),
+    (
+        ("gpt-5.6-sol", "claude-opus-5"),
+        ("gpt-5.6-sol", "antigravity-gemini-3.6"),
+        ("claude-opus-5", "gpt-5.6-terra"),
+        ("grok-4.5", "composer-2.5"),
+    ),
+)
+def test_high_risk_control_accepts_distinct_family_reviewer(
+    tmp_path: Path, author_model: str, reviewer_model: str
+) -> None:
+    """Genuinely distinct families must still pass; the fix is not a blanket deny."""
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        author_model=author_model,
+        assigned_operator="operator2",
+        risk_class="high-risk-control",
+        abuse_class_assessment=("untrusted request fields cannot widen authority",),
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+            reviewer_model=reviewer_model,
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+        ),
+    )
+
+    assert not [
+        violation
+        for violation in pair.validate_report(root, report)
+        if "model family" in violation
+    ]
 
 
 def test_material_behavior_permits_same_model_for_non_author_reviewer(

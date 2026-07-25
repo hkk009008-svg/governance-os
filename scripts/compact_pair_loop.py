@@ -576,11 +576,20 @@ def _report_structure_violations(
     if report.reviewer_seat == request.author_seat:
         violations.append("reviewer seat equals author seat")
     profile = codex_protocol_model.review_profile_for(request.risk_class)
-    if (
-        profile.requires_different_model
-        and report.reviewer_model.casefold() == request.author_model.casefold()
-    ):
-        violations.append("reviewer model equals author model")
+    if profile.requires_different_model:
+        if request.risk_class_explicit:
+            # Artifacts that declare a risk class must clear model-family
+            # independence: a harness prefix or version suffix is not a
+            # different reviewer.
+            if not codex_protocol_model.models_are_independent(
+                request.author_model, report.reviewer_model
+            ):
+                violations.append("reviewer model shares the author model family")
+        elif report.reviewer_model.casefold() == request.author_model.casefold():
+            # Legacy artifacts predate the Risk class field and are graded on
+            # the exact-label rule that was in force when they were accepted.
+            # Committed evidence stays readable; it is not retroactively voided.
+            violations.append("reviewer model equals author model")
     if report.risk_class != request.risk_class:
         violations.append("report Risk class does not match request")
     if profile.requires_abuse_class_assessment and request.risk_class_explicit:

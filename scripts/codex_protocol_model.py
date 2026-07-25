@@ -78,6 +78,49 @@ def review_profile_for(risk_class: str) -> ReviewProfile:
         raise ValueError(f"unknown Codex review risk class: {risk_class}") from exc
 
 
+# Harness/vendor decorations that describe where a model runs, not which model
+# it is. `codex-gpt-5.6-terra` and `gpt-5.6-terra` are one model behind two
+# labels; independence must not be satisfiable by the prefix alone.
+MODEL_HARNESS_PREFIXES = ("codex-", "antigravity-", "cursor-", "agy-", "claude-code-")
+MODEL_FAMILY_ALIASES = {
+    "chatgpt": "gpt",
+    "o1": "gpt",
+    "o3": "gpt",
+    "o4": "gpt",
+}
+
+
+def model_family(model_id: str) -> str:
+    """Collapse one system-visible model ID to its provider family.
+
+    Independence is a property of the underlying model, not of the label a
+    harness prints. The observed corpus pairs `gpt-5.6-sol` authors with
+    `gpt-5.6-terra` reviewers; those are the same family and a plain string
+    inequality accepts them. This normalizer exists so the acceptance rule can
+    ask the question it actually means.
+
+    Unknown or malformed identifiers collapse toward *more* collisions, never
+    fewer, so an unrecognized label cannot buy independence it has not earned.
+    """
+    token = model_id.strip().casefold().replace("_", "-").replace(" ", "-")
+    changed = True
+    while changed:
+        changed = False
+        for prefix in MODEL_HARNESS_PREFIXES:
+            if token.startswith(prefix) and len(token) > len(prefix):
+                token = token[len(prefix) :]
+                changed = True
+    head = token.split("-", 1)[0].strip()
+    if not head:
+        return token
+    return MODEL_FAMILY_ALIASES.get(head, head)
+
+
+def models_are_independent(author_model: str, reviewer_model: str) -> bool:
+    """Return whether two system-visible model IDs are different families."""
+    return model_family(author_model) != model_family(reviewer_model)
+
+
 SEATS = protocol_mailbox.SEATS
 DIRECTOR_SEATS = ("director", "director2")
 OPERATOR_SEATS = ("operator", "operator2")
