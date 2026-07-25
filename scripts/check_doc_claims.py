@@ -1502,14 +1502,18 @@ SHA_DEFAULT_DOCS = [
 # deleted as a second copy of the agent-neutral file. The 112 removed citations
 # were duplicate provenance for commits that no longer resolve in this
 # transfer bundle; the surviving agent-neutral copy still carries the set.
-# 2026-07-25: digest refreshed after the retired per-clone state hook and the
-# retired per-seat index topology were corrected in director-operator.md, which
-# shifted citation line numbers below the edits. The citation SET is unchanged:
+# 2026-07-25: digest refreshed twice in one session, both times for the same
+# reason — correcting the retired per-clone state hook, the retired per-seat
+# index topology, and then the residual active STATE.md instructions in
+# director-operator.md shifted citation line numbers below the edits, and the
+# digest keys on those line numbers. The citation SET is unchanged across both:
 # count held at 103, and a normalized diff of the drift list against the
 # pre-edit tree (file + SHA + kind + message, line numbers stripped) was
-# byte-identical, so no citation was added, removed, or altered.
+# byte-identical each time, so no citation was added, removed, or altered.
+# operator2/gpt-5.6-terra independently re-derived the first refresh from a
+# detached base and confirmed zero set or multiset difference.
 SHA_REF_BASELINE_COUNT = 103
-SHA_REF_BASELINE_DIGEST = "ced005f57b9709e58365458544b3ecb9256b209997c2ab042882a071d1e1bad7"
+SHA_REF_BASELINE_DIGEST = "70a185e5838b07386f72bfd423e2f75486de489bb776d3f19bab44a0ae670765"
 
 
 @dataclass(frozen=True)

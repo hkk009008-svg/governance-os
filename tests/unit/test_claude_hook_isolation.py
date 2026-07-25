@@ -53,4 +53,22 @@ def test_live_guides_do_not_present_the_retired_state_hook_as_live(
     ):
         guide = repo_root / relative
         assert guide.exists(), relative
-        assert "update-state.sh" not in guide.read_text(encoding="utf-8"), relative
+        text = guide.read_text(encoding="utf-8")
+        assert "update-state.sh" not in text, relative
+        # Banning the script name alone was not enough. The first attempt left
+        # the expanded rule body still telling readers to consult STATE.md and
+        # calling it a "hook-derived snapshot" — active instructions toward a
+        # file that is never generated — while the same document declared it
+        # retired a few hundred lines away. Ban the artifact and the phrase.
+        assert "hook-derived" not in text, relative
+
+    # STATE.md is banned outright in the rule body: a live instruction surface
+    # must not name a file nothing generates, in any tense. coordination/README
+    # is exempt because it owns the one section that documents the retirement,
+    # which is the single place the name still earns its keep. Historical
+    # records under docs/superpowers/, docs/HANDOFF-*, and
+    # docs/PROTOCOL-RULES-LOG.md keep their provenance untouched.
+    rule_body = repo_root / "docs/protocol/agents/director-operator.md"
+    assert "STATE.md" not in rule_body.read_text(encoding="utf-8"), (
+        "docs/protocol/agents/director-operator.md names STATE.md"
+    )
