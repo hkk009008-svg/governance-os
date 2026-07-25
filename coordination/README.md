@@ -142,6 +142,67 @@ concrete consuming role advances its own cursor through the canonical event
 store; coordinator has no cursor. Never hand-edit or stage a cursor as a
 substitute for a successful consume operation.
 
+## AGY transplant
+
+AGY-native continuation details live in `docs/protocol/agy/continuation.md`.
+Give each seat its own model and reasoning effort in
+`~/.agy/pipeline-seat-launcher.toml`:
+
+```toml
+[seats.director]
+model = "gemini-3.1-pro-high"
+effort = "high"
+
+[seats.director2]
+model = "gemini-3.1-pro-high"
+effort = "high"
+
+[seats.operator]
+model = "gemini-3.1-pro-high"
+effort = "high"
+
+[seats.operator2]
+model = "gemini-3.1-pro-high"
+effort = "high"
+
+[seats.coordinator]
+model = "gemini-3.6-flash-low"
+effort = "low"
+```
+
+Then launch only the selected seat, exactly as with Codex:
+
+```bash
+coordination/bin/agy-seat operator -- "continue as operator"
+coordination/bin/agy-seat --dry-run operator
+```
+
+The schema is deliberately *not* the Codex one. AGY has no service tier and no
+working-directory flag; it expresses speed as reasoning effort, and the seat
+starts in the repository because the launcher chdirs there before exec.
+`effort` accepts `low`, `medium`, or `high`.
+
+`model` must be a literal entry from the model listing — that listing is the
+only authority for the name, and it is what `--model` accepts:
+
+```bash
+agy models
+```
+
+Report the same string back. `Author model:` and `Reviewer model:` in a
+verification report must be the exact listed ID the seat ran on, which
+`coordination/bin/agy-seat --dry-run <seat>` prints as `AGY_MODEL`. Do not
+decorate it with a harness prefix such as `antigravity-`:
+`codex_protocol_model.model_family` strips those before comparing families, so
+a prefix buys no independence and only makes the cited string impossible to
+check against `agy models`.
+
+Model family still governs independence, and AGY does not automatically supply
+it: two AGY seats both on `gemini-*` are the same family and cannot be the
+author/Operator pair for behavior-changing work. The listing also offers
+non-Gemini models, so an independent AGY Operator is possible — but it is a
+configuration choice, never an assumption.
+
 ## Authority (Rule #8)
 
 A sent mailbox event communicates durable task state. It can bind work only

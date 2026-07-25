@@ -75,6 +75,14 @@ AGY cannot satisfy `high-risk-control` on its own, because
 `codex_protocol_model.models_are_independent` compares families rather than
 labels. Route those reviews to a seat on a different family.
 
+State the model as the exact ID `agy models` lists, undecorated — the same
+string `coordination/bin/agy-seat --dry-run <seat>` prints as `AGY_MODEL` and
+passes to `--model`. `Author model:` and `Reviewer model:` are read by people
+re-checking whether a seat could have run as claimed, so a form that no launch
+could produce, such as `antigravity-gemini-3.6` or an unlisted `gemini-2.5-pro`,
+is unverifiable even when `model_family` happens to normalize it to the same
+family.
+
 External effects remain separate from structural validation. Push, merge,
 locking, event consumption, paid spend, provider launch, and live-data mutation
 need exact authority for the executor, target, and scope.

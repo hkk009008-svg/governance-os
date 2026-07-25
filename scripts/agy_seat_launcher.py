@@ -34,8 +34,39 @@ except ModuleNotFoundError as exc:
 
 
 LAUNCH_SEATS = ("director", "director2", "operator", "operator2", "coordinator")
-SERVICE_TIERS = ("fast", "default")
+EFFORT_LEVELS = ("low", "medium", "high")
 DEFAULT_CONFIG_PATH = Path("~/.agy/pipeline-seat-launcher.toml")
+
+# Every flag this launcher may put on an `agy` command line. AGY parses flags
+# with Go's `flag` package, which aborts the whole invocation on the first
+# undefined flag rather than ignoring it, so one wrong name breaks every seat.
+#
+# This launcher was cloned from `scripts/codex_seat_launcher.py` and inherited
+# `--config key=value` and `--cd DIR`. Both are real *Codex* flags and neither
+# exists on AGY, so `coordination/bin/agy-seat <seat>` failed at parse time for
+# every seat with `flags provided but not defined: -config`. The set is
+# committed so `tests/unit/test_agy_seat_launcher.py` can hold the emitted argv
+# to it hermetically, and separately feed a real argv through the installed
+# CLI's parser instead of trusting that this set is still true.
+EMITTED_CLI_FLAGS = frozenset({"--model", "--effort", "--add-dir"})
+
+# AGY exposes no service-tier flag. Speed is expressed as reasoning effort,
+# both as a `--effort` value and as a suffix on the model IDs that
+# `agy models` lists (`gemini-3.1-pro-high`, `gemini-3.6-flash-low`, ...).
+#
+# `agy models` is the sole authority for a model name: it is the only form
+# `--model` accepts, and reports must cite that exact string so a reader can
+# re-run the listing and confirm the seat could have run on it. Do not decorate
+# it with a harness prefix. `codex_protocol_model.model_family` strips
+# `antigravity-`/`agy-` before comparing, so a prefix buys no independence and
+# only makes the report unverifiable.
+MODEL_LISTING_COMMAND = ("agy", "models")
+
+# The canonical model string documented in `coordination/README.md` and cited
+# by AGY verification reports. It is pinned here rather than in prose so a test
+# can assert it is still a literal `agy models` entry. The seat config shipped
+# `gemini-2.5-pro`, which that listing has never contained.
+REFERENCE_MODEL = "gemini-3.1-pro-high"
 _FOREIGN_AUTHORITY_PREFIXES = (
     "CLAUDE_",
     "CURSOR_",
@@ -57,7 +88,7 @@ class LaunchError(RuntimeError):
 @dataclass(frozen=True)
 class SeatSettings:
     model: str
-    service_tier: str
+    effort: str
 
 
 @dataclass(frozen=True)
@@ -85,12 +116,12 @@ def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
     settings: dict[str, SeatSettings] = {}
     for seat in LAUNCH_SEATS:
         value = seats[seat]
-        if not isinstance(value, dict) or set(value) != {"model", "service_tier"}:
+        if not isinstance(value, dict) or set(value) != {"model", "effort"}:
             raise ConfigError(
-                f"[seats.{seat}] must contain exactly model and service_tier"
+                f"[seats.{seat}] must contain exactly model and effort"
             )
         model = value["model"]
-        service_tier = value["service_tier"]
+        effort = value["effort"]
         if (
             not isinstance(model, str)
             or not model
@@ -98,11 +129,11 @@ def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
             or any(character.isspace() or ord(character) < 32 for character in model)
         ):
             raise ConfigError(f"[seats.{seat}].model must be a non-empty model name")
-        if service_tier not in SERVICE_TIERS:
+        if effort not in EFFORT_LEVELS:
             raise ConfigError(
-                f"[seats.{seat}].service_tier must be fast or default"
+                f"[seats.{seat}].effort must be one of: " + ", ".join(EFFORT_LEVELS)
             )
-        settings[seat] = SeatSettings(model=model, service_tier=service_tier)
+        settings[seat] = SeatSettings(model=model, effort=effort)
     return settings
 
 
@@ -131,13 +162,20 @@ def build_launch_spec(
     env = _clean_inherited_environment(inherited_env)
     env.update(runtime)
     selected = settings[seat]
+    # AGY_MODEL is authoritative, not inherited: `_clean_inherited_environment`
+    # drops an ambient AGY_MODEL so a launched seat reads back the same string
+    # that reached `--model` and can cite it verbatim in a verification report.
+    env["AGY_MODEL"] = selected.model
+    # `--add-dir` puts the repository in the AGY workspace. It does not set the
+    # process working directory the way the old (nonexistent) `--cd` intended
+    # to, so `main` also chdirs to `repo_root` before exec.
     argv = (
         agy_executable,
         "--model",
         selected.model,
-        "--config",
-        f'service_tier="{selected.service_tier}"',
-        "--cd",
+        "--effort",
+        selected.effort,
+        "--add-dir",
         str(repo_root),
         *forwarded_args,
     )
@@ -221,6 +259,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "AGY_AGENT_MODE",
                 "AGY_AGENT_ROLE",
                 "AGY_BEHAVIOR_SOURCE",
+                "AGY_MODEL",
             )
             print(
                 json.dumps(
@@ -235,6 +274,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
 
+        # AGY has no working-directory flag; the seat must simply start in the
+        # repository it was launched for.
+        os.chdir(spec.repo_root)
         os.execvpe(spec.argv[0], list(spec.argv), spec.env)
     except (ConfigError, LaunchError) as exc:
         print(f"agy-seat: {exc}", file=sys.stderr)
