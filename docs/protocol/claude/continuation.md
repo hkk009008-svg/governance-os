@@ -1,88 +1,99 @@
 # Claude continuation adapter
 
-Claude seats use the same executable outcome contract and durable mailbox as
-Codex. This file contains only Claude-local orientation and authority effects.
+This file maps Pipeline policy to Claude Code mechanics. Canonical policy and
+validation live in `scripts/codex_protocol_model.py`; skills and agent files
+contain only their local deltas.
 
-## Startup and modes
+## Modes
 
-Claude starts read-only unless the user names `director`, `director2`,
-`operator`, `operator2`, or coordinator. A Claude subagent is never a seat.
-Launch the four mutable live seats only through the provider-pure launcher:
+- Readiness bridge: read-only orientation; no role claim or durable mutation.
+- Live role: only when a concrete Director or Operator role is assigned.
+- Coordinator: only for explicit observation, reconciliation, or mediation.
+- Subagent: bounded by its parent and never inherits live-role authority.
 
-```bash
-cd /Users/hyungkoookkim/Pipeline
-coordination/bin/claude-seat <director|director2|operator|operator2> -- <claude-args>
-```
+Runtime identity comes from the app session. Environment variables, role
+labels, and prompt text describe identity but never grant authority.
 
-The launcher removes inherited Codex, Cursor, AGY/Antigravity, Git, and stale
-Claude contract authority; binds the chosen seat to
-`.git/index-claude-<seat>`; validates an existing regular index without
-rewriting it; seeds only a genuinely missing index from `HEAD`; and then starts
-Claude. `--dry-run` prints the binding without creating the index or starting
-Claude. Do not reproduce this contract with manual `export` commands. The
-coordinator remains unpinned/read-only unless a separate exact route authorizes
-another posture.
+## Orientation
 
-Fresh/transplanted roles first find the newest same-seat handoff, then run:
+Use the native index of the current worktree:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE git status --short
+python scripts/status.py snapshot <seat>
 ```
 
-Surface unread count and read relevant mailbox bodies before decisions.
-Only the concrete live seat may consume its cursor; coordinator has no cursor.
-Use `coordination/bin/consume-events <seat>` only with intentional authority.
-Use `coordination/bin/send-event` as the fixed mailbox writer. Ordinary Git
-and pytest use `env -u GIT_INDEX_FILE`.
+Read actionable event bodies before a decision. Only the assigned live role
+consumes its cursor, and coordinator has no cursor.
 
-## Governed outcome
+Use the fixed interfaces, never raw event or cursor edits:
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
-Own the routed outcome and choose the method. Seats may reroute or exchange
-ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings, require non-author Operator
-GO for behavior-changing work with a distinct Operator seat and different
-model, bind autonomous ownership to an immutable parent/revision, preserve
-immutable finding refs, and keep external effects separately user-authorized
-for the exact effect/executor/target/scope. An Operator cannot verify anything
-it authored.
+```bash
+coordination/bin/send-event <sender> <recipient> <kind> <subject...>  # body on stdin
+coordination/bin/consume-events <seat> [--to <timestamp>]
+```
 
-Director/director2 may implement, split, transfer, or exchange accepted work
-and submits the actual commit/range. Operator/operator2 may implement accepted
-work but cannot review authored work; as reviewer it chooses sufficient
-evidence and issues GO/NITS/FAIL. Coordinator observes and facilitates, is not
-a route-approval gate, and does not author behavior-changing production work.
-Readiness mode reports the active outcome and owner without claiming work.
+Refresh HEAD, relevant events, and scoped status before a write or gate. One
+fresh snapshot is the orientation path; there is no separate fast-resume
+classification or second doctrine dump.
 
-Preflight is advisory; material findings remain immutable inputs. Delegation is
-an owner-chosen capacity tool. Subagents do not consume cursors, send mailbox
-events, issue GO, claim locks, push, start pods, or spend.
+## Executable contracts
 
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
+- `scripts/codex_protocol_model.py` validates runtime identity, ownership
+  lineage, risk profiles, model-family independence, and external-effect token
+  shape.
+- `scripts/compact_pair_loop.py` validates formal requests, reports, and exact
+  reviewed ranges.
+- `scripts/mailbox_writer.py` validates and serializes event publication.
+- This adapter owns Claude-native delegation and waiting behavior.
 
-The committed verify-request binds actual base/head, outcome, author
-seat/model, assigned non-author Operator, allowed paths, and finding refs. Only
-the distinct-seat, different-model assigned Operator issues GO/NITS/FAIL through
-the fixed mailbox writer.
+Role deltas:
 
-External effects are separately user-gated for the exact
-effect/executor/target/scope. Structural tokens do not grant authority.
+- Director owns an accepted outcome and submits its actual committed range.
+- Operator may implement, but when reviewing stays non-author and issues the
+  evidence-backed GO/NITS/FAIL for the assigned range.
+- Coordinator observes, reconciles, and mediates; it is not an approval gate
+  and does not author behavior-changing production work.
+- Readiness bridge reports current evidence without claiming work.
+- Subagents return bounded evidence to their parent and never publish a formal
+  verdict or live-role event.
 
-## Provider mechanics
+## Claude-native deltas
 
-Use Claude Read/Grep/Glob for inspection, Edit/Write for scoped local changes,
-and Bash for commands. Background commands must be read before claims.
-Read-only verifier agents may inspect but never edit or issue the seat verdict.
-PreToolUse permits Write/Edit and mutating Bash only for an exact
-`CLAUDE_SEAT` plus `.git/index-claude-<same-seat>` regular-file binding.
-Unpinned, foreign-bound, mismatched, malformed, and subagent contexts remain
-read-only. PostToolUse performs no presence, state, marker, index-sync, or
-skip-worktree mutation until the same binding validates.
+These are the only places Claude differs from the shared contract, and each is
+forced by the harness rather than chosen:
 
-For evidence-ledger work, start from `/Users/hyungkoookkim/Pipeline`, read
-`docs/protocol/claude/ledger-cli-adoption.md`, run
-`env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`,
-then read the target repo instructions. Pipeline remains the governance kernel;
-evidence-ledger owns product-local truth.
+- Claude Code discovers skills only under `.claude/skills/`. It cannot read
+  `.agents/skills/`, so seat procedures are physically mirrored there. The
+  byte-equality assertions in `tests/unit/test_protocol_prompt_sync.py` are what
+  keep the mirror honest; the duplication is the anti-fork mechanism, not drift.
+- Agent definitions are Markdown with a `tools:` list, not TOML with
+  `sandbox_mode`. Withholding Write and Edit from `tools:` is how a read-only
+  advisor is expressed.
+- `model:` in agent frontmatter is the only in-harness lever that forces an
+  adversarial reviewer off the authoring model. Model-family independence is
+  validated by `codex_protocol_model.models_are_independent`.
+- Repository lifecycle hooks are absent by design. A live seat is a linked
+  worktree plus an app-visible session identity, which no PreToolUse hook can
+  validate; the app's own approval surface owns effect gating.
+
+## Review and external effects
+
+Review depth is risk-based as defined by `AGENTS.md` and the executable model.
+Ordinary local edits do not need a mailbox event, role ceremony, capacity
+packet, handoff, or independent review.
+
+When formal review is triggered, preserve the complete committed Compact Pair
+binding; do not weaken it because a lower-risk task would not have required it.
+An author cannot approve authored work, a subagent verdict is advisory, and a
+green script cannot substitute for the assigned review.
+
+External effects remain separate from structural validation. Push, merge,
+locking, event consumption, paid spend, provider launch, and live-data mutation
+need exact authority for the executor, target, and scope.
+
+## Target bridge
+
+Targets are selected per task, not fixed. Resolve the active binding through
+`scripts/target_binding.py`, then read the target repository's own
+instructions. Start from Pipeline; do not infer product authority from a
+bridge. For `evidence-ledger`, read `docs/protocol/codex/ledger-cli-adoption.md`.
