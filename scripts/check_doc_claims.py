@@ -1489,7 +1489,6 @@ SHA_DEFAULT_DOCS = [
     "AGENTS.md",
     "DECISIONS.md",
     "ARCHITECTURE.md",
-    "docs/protocol/claude/director-operator.md",
     "docs/protocol/agents/director-operator.md",
 ]
 
@@ -1499,8 +1498,12 @@ SHA_DEFAULT_DOCS = [
 # 2026-07-13: digest refreshed after Task 8 trigger guidance shifted citation
 # line numbers in AGENTS.md and protocol director-operator docs; the citation
 # SET is unchanged (count held at 215, zero SHAs added/removed).
-SHA_REF_BASELINE_COUNT = 215
-SHA_REF_BASELINE_DIGEST = "47cc8a32d25fb5592b17273799b63ea6e6d3dfa025e3657b60cfec03e9302a18"
+# 2026-07-25: 215 -> 103 after docs/protocol/claude/director-operator.md was
+# deleted as a second copy of the agent-neutral file. The 112 removed citations
+# were duplicate provenance for commits that no longer resolve in this
+# transfer bundle; the surviving agent-neutral copy still carries the set.
+SHA_REF_BASELINE_COUNT = 103
+SHA_REF_BASELINE_DIGEST = "7d79c4801d04caec8a2538fd7e422c2c5eaa69971f76d0ff7d7e6eefcfb53f63"
 
 
 @dataclass(frozen=True)

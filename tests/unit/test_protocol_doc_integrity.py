@@ -169,7 +169,6 @@ def test_operator_phase_taxonomy_uses_current_codex_triggers():
     for path in (
         ".agents/skills/seat-operator/SKILL.md",
         "docs/protocol/agents/director-operator.md",
-        "docs/protocol/claude/director-operator.md",
     ):
         text = _read(path)
         compact = _compact(text)

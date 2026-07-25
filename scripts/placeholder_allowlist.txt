@@ -25,7 +25,6 @@ AGENTS.md
 # (docs/protocol/claude/core.md was bound on 2026-07-11 per ADR-012 and removed;
 #  four-seat-extension.md's lane slots stay unbound BY DESIGN per ADR-009)
 docs/PROTOCOL-RULES-LOG.md
-docs/protocol/claude/director-operator.md
 docs/protocol/agents/four-seat-extension.md
 docs/protocol/agents/core.md
 docs/protocol/agents/director-operator.md
