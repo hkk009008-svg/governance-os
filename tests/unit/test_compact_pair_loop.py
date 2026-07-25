@@ -1470,3 +1470,83 @@ def test_compose_rejects_malformed_inputs_before_emitting_anything(
     arguments.update(kwargs)
     with pytest.raises(pair.CompactPairError, match=expected):
         pair.compose_request(root, **arguments)
+
+
+def test_compose_refuses_a_self_addressed_routing_the_writer_would_reject(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    """Operator-to-itself composed cleanly while being unpublishable.
+
+    `coordination/bin/send-event` refuses a self-addressed event before it
+    builds a candidate, so `_compose_self_check` — which simulates the envelope
+    rather than invoking the writer — never reached that boundary. Membership
+    was checked for each seat independently and equality never was.
+    """
+    root, _, _ = _compose_repo(tmp_path)
+    with pytest.raises(pair.CompactPairError, match="must differ"):
+        pair.compose_request(
+            root,
+            author_seat="operator",
+            author_model="gpt-5",
+            assigned_operator="operator",
+            risk_class="material-behavior",
+            base_rev="HEAD~1",
+            head_rev="HEAD",
+            outcome="Self-addressed routing.",
+        )
+
+    writer = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
+    assert "refusing self-addressed event" in writer
+
+
+def test_compose_refuses_a_range_assembled_from_two_repository_states(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ref that moves between the two resolutions widened the range silently.
+
+    Base and head were resolved in separate Git calls. Moving `HEAD` between
+    them produced ends read from different repository states — still a strict
+    ancestor pair, so every later check passed while the request bound
+    concurrent work its author never reviewed.
+    """
+    root, base, head = _compose_repo(tmp_path)
+
+    real = pair._resolve_rev
+    calls: list[str] = []
+
+    def moving(root_arg: Path, value: str, label: str) -> str:
+        calls.append(label)
+        resolved = real(root_arg, value, label)
+        # Simulate a concurrent commit landing after the first pair is read.
+        if len(calls) == 3:
+            _git(root, "commit", "-q", "--allow-empty", "-m", "feat: concurrent")
+        return resolved
+
+    monkeypatch.setattr(pair, "_resolve_rev", moving)
+    with pytest.raises(pair.CompactPairError, match="moved while composing"):
+        pair.compose_request(
+            root,
+            author_seat="director",
+            author_model="claude-opus-5",
+            assigned_operator="operator",
+            risk_class="material-behavior",
+            base_rev="HEAD~1",
+            head_rev="HEAD",
+            outcome="Moving ref under test.",
+        )
+
+    # Non-vacuity: the same call with a quiet repository still composes, so the
+    # refusal above is the drift check firing rather than the fixture failing.
+    monkeypatch.setattr(pair, "_resolve_rev", real)
+    body = pair.compose_request(
+        root,
+        author_seat="director",
+        author_model="claude-opus-5",
+        assigned_operator="operator",
+        risk_class="material-behavior",
+        base_rev=base,
+        head_rev=head,
+        outcome="Quiet repository.",
+    )
+    assert f"Reviewed base: {base}" in body
+    assert f"Reviewed head: {head}" in body

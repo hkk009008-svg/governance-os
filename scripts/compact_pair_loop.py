@@ -152,6 +152,32 @@ def _resolve_rev(root: Path, value: str, label: str) -> str:
     return resolved
 
 
+def _resolve_range(root: Path, base_rev: str, head_rev: str) -> tuple[str, str]:
+    """Resolve both ends of a range, refusing one assembled from two states.
+
+    Resolving base and head in separate Git calls lets a shared ref move
+    between them, so `HEAD~1..HEAD` can yield ends read from different
+    repository states. The result is still a strict ancestor pair and passes
+    every later check, while binding concurrent work the author never reviewed.
+    Reading each name twice around the pair turns that race into a refusal
+    instead of a silently wider range.
+    """
+    first = (
+        _resolve_rev(root, base_rev, "Reviewed base"),
+        _resolve_rev(root, head_rev, "Reviewed head"),
+    )
+    second = (
+        _resolve_rev(root, base_rev, "Reviewed base"),
+        _resolve_rev(root, head_rev, "Reviewed head"),
+    )
+    if first != second:
+        raise CompactPairError(
+            "Reviewed base/head moved while composing; name explicit commit "
+            "SHAs or re-run against a quiet repository"
+        )
+    return first
+
+
 def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
     environment = {
         key: value for key, value in os.environ.items() if not key.startswith("GIT_")
@@ -546,6 +572,15 @@ def compose_request(
         raise CompactPairError(
             f"Assigned operator must be one of {sorted(OPERATOR_SEATS)}"
         )
+    if author_seat == assigned_operator:
+        # `coordination/bin/send-event` refuses a self-addressed event before it
+        # builds a candidate, so the simulated self-check never sees that
+        # boundary. Composing this routing would report success for a body the
+        # writer cannot publish and no non-author review could accept.
+        raise CompactPairError(
+            "Author seat and Assigned operator must differ; a self-addressed "
+            "event is refused by the mailbox writer and cannot be non-author reviewed"
+        )
     try:
         profile = codex_protocol_model.review_profile_for(risk_class)
     except ValueError:
@@ -580,8 +615,7 @@ def compose_request(
         raise CompactPairError("finding refs must be unique")
 
     reviewed_root = _reviewed_root(root.resolve(), reviewed_repository)
-    base = _resolve_rev(reviewed_root, base_rev, "Reviewed base")
-    head = _resolve_rev(reviewed_root, head_rev, "Reviewed head")
+    base, head = _resolve_range(reviewed_root, base_rev, head_rev)
 
     lines = ["Event type: verify-request"]
     if reviewed_repository is not None:
