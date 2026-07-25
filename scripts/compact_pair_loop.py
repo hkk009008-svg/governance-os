@@ -12,6 +12,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+import codex_protocol_model
 import protocol_mailbox
 
 
@@ -31,6 +32,13 @@ MAX_EVENT_BYTES = 262_144
 LEGACY_VERBOSE_CUTOFF = "ab7fd77081448008f1de30c17a8aaf156a9506c5"
 PAIR_SEATS = frozenset({"director", "director2", "operator", "operator2"})
 OPERATOR_SEATS = frozenset({"operator", "operator2"})
+MATERIAL_BEHAVIOR_RISK = codex_protocol_model.review_profile_for(
+    "material-behavior"
+).risk_class
+HIGH_RISK_CONTROL = codex_protocol_model.review_profile_for(
+    "high-risk-control"
+).risk_class
+ABUSE_ASSESSMENT_BOUND_TO_REQUEST = "bound-to-request"
 FINDING_DISPOSITIONS = frozenset(
     {"addressed", "counter-evidence", "ordinary-risk", "unresolved-hard-boundary"}
 )
@@ -50,6 +58,9 @@ class VerifyRequest:
     author_seat: str
     author_model: str
     assigned_operator: str
+    risk_class: str
+    risk_class_explicit: bool
+    abuse_class_assessment: tuple[str, ...]
     outcome: str
     finding_refs: tuple[str, ...]
 
@@ -65,6 +76,9 @@ class VerificationReport:
     reviewed_base: str
     reviewer_seat: str
     reviewer_model: str
+    risk_class: str
+    risk_class_explicit: bool
+    abuse_class_assessment_binding: str | None
     evidence: tuple[str, ...]
     finding_refs: tuple[str, ...]
     finding_dispositions: tuple[tuple[str, str], ...]
@@ -207,6 +221,54 @@ def _finding_refs(lines: list[str], *, required: bool) -> tuple[str, ...]:
     return tuple(values)
 
 
+def _risk_class(
+    lines: list[str], *, allow_legacy_missing: bool, artifact: str
+) -> tuple[str, bool]:
+    value = _optional_one(lines, "Risk class: ", "Risk class")
+    if value is None:
+        if allow_legacy_missing:
+            return HIGH_RISK_CONTROL, False
+        raise CompactPairError(f"missing Risk class for new {artifact}")
+    try:
+        profile = codex_protocol_model.review_profile_for(value)
+    except ValueError:
+        profile = None
+    if (
+        profile is None
+        or not profile.requires_non_author_review
+        or not profile.requires_exact_range
+        or profile.requires_live_authorization
+    ):
+        raise CompactPairError(
+            "Risk class must be material-behavior or high-risk-control for formal review"
+        )
+    return value, True
+
+
+def _abuse_class_assessment(
+    lines: list[str], *, required: bool
+) -> tuple[str, ...]:
+    body = _section_optional(lines, "## Abuse Class Assessment")
+    if body is None:
+        if required:
+            raise CompactPairError(
+                "high-risk-control request requires nonempty ## Abuse Class Assessment"
+            )
+        return ()
+    values: list[str] = []
+    for line in body:
+        if not line.startswith("- ") or not line[2:].strip():
+            raise CompactPairError(
+                "Abuse Class Assessment must contain only nonempty '- assessment' entries"
+            )
+        values.append(line[2:])
+    if not values:
+        raise CompactPairError("## Abuse Class Assessment must be nonempty")
+    if len(values) != len(set(values)):
+        raise CompactPairError("Abuse Class Assessment entries must be unique")
+    return tuple(values)
+
+
 def _envelope_sender(text: str) -> str:
     values = re.findall(r"\*\*From:\*\* ([a-z0-9]+) \(online\)", text)
     if len(values) != 1:
@@ -216,30 +278,19 @@ def _envelope_sender(text: str) -> str:
 
 # Public parser locations are stable architecture smoke anchors.
 # Internal helper definitions intentionally follow validate_report.
-def parse_verify_request_structure(
-    root: Path, request_path: str | os.PathLike[str], trigger_commit: str
+def _parse_verify_request_bytes(
+    root: Path,
+    path: str,
+    raw: bytes,
+    *,
+    trigger_commit: str,
+    allow_frozen_legacy: bool,
 ) -> VerifyRequest:
-    """Validate immutable request bytes and fields without opening the reviewed repo."""
-    root = root.resolve()
-    path = _repo_path(root, request_path)
+    """Parse request fields once for committed artifacts and new candidates."""
+
     match = REQUEST_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verify-request path is not canonical")
-    trigger = _full_commit(root, trigger_commit, "request trigger")
-    change = _git(
-        root,
-        "diff-tree",
-        "--root",
-        "--no-commit-id",
-        "--name-status",
-        "-r",
-        trigger,
-        "--",
-        path,
-    ).decode("utf-8", errors="strict").splitlines()
-    if change != [f"A\t{path}"]:
-        raise CompactPairError("verify-request must be added by trigger commit")
-    raw = _git(root, "show", f"{trigger}:{path}")
     text = _decode(raw, "verify-request")
     lines = text.splitlines()
     if _one(lines, "Event type: ", "Event type") != "verify-request":
@@ -261,8 +312,22 @@ def parse_verify_request_structure(
         raise CompactPairError("Author seat does not match verify-request envelope/path")
     if assigned != match.group("operator"):
         raise CompactPairError("Assigned operator does not match verify-request path")
-    legacy = _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) is not None and _section_optional(lines, "## Finding Refs") is None
-    if legacy and not _is_ancestor(root, trigger, LEGACY_VERBOSE_CUTOFF):
+    risk_class, risk_class_explicit = _risk_class(
+        lines,
+        allow_legacy_missing=allow_frozen_legacy,
+        artifact="verify-request",
+    )
+    profile = codex_protocol_model.review_profile_for(risk_class)
+    abuse_class_assessment = _abuse_class_assessment(
+        lines,
+        required=profile.requires_abuse_class_assessment and risk_class_explicit,
+    )
+    legacy = (
+        allow_frozen_legacy
+        and _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) is not None
+        and _section_optional(lines, "## Finding Refs") is None
+    )
+    if legacy and not _is_ancestor(root, trigger_commit, LEGACY_VERBOSE_CUTOFF):
         raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
     outcome_heading = "## Acceptance Question" if legacy else "## Outcome"
     if _section_optional(lines, outcome_heading) is not None:
@@ -277,15 +342,48 @@ def parse_verify_request_structure(
         raise CompactPairError(f"{outcome_heading[3:]} must be nonempty")
     return VerifyRequest(
         path=path,
-        trigger_commit=trigger,
+        trigger_commit=trigger_commit,
         reviewed_repository=reviewed_repository,
         reviewed_head=head,
         reviewed_base=base,
         author_seat=author,
         author_model=_identity(_one(lines, "Author model: ", "Author model"), "Author model"),
         assigned_operator=assigned,
+        risk_class=risk_class,
+        risk_class_explicit=risk_class_explicit,
+        abuse_class_assessment=abuse_class_assessment,
         outcome=outcome,
         finding_refs=_finding_refs(lines, required=False),
+    )
+
+
+def parse_verify_request_structure(
+    root: Path, request_path: str | os.PathLike[str], trigger_commit: str
+) -> VerifyRequest:
+    """Validate immutable request bytes and fields without opening the reviewed repo."""
+    root = root.resolve()
+    path = _repo_path(root, request_path)
+    trigger = _full_commit(root, trigger_commit, "request trigger")
+    change = _git(
+        root,
+        "diff-tree",
+        "--root",
+        "--no-commit-id",
+        "--name-status",
+        "-r",
+        trigger,
+        "--",
+        path,
+    ).decode("utf-8", errors="strict").splitlines()
+    if change != [f"A\t{path}"]:
+        raise CompactPairError("verify-request must be added by trigger commit")
+    raw = _git(root, "show", f"{trigger}:{path}")
+    return _parse_verify_request_bytes(
+        root,
+        path,
+        raw,
+        trigger_commit=trigger,
+        allow_frozen_legacy=True,
     )
 
 
@@ -332,7 +430,44 @@ def _read_regular(root: Path, path: str) -> bytes:
         os.close(descriptor)
 
 
-def _parse_verification_report_bytes(root: Path, path: str, raw: bytes) -> VerificationReport:
+def parse_verify_request_candidate(
+    root: Path,
+    candidate_path: str | os.PathLike[str],
+    final_path: str | os.PathLike[str],
+) -> VerifyRequest:
+    """Parse new request bytes using the intended final path as identity authority."""
+
+    root = root.resolve()
+    candidate = _repo_path(root, candidate_path)
+    final = _repo_path(root, final_path)
+    return _parse_verify_request_bytes(
+        root,
+        final,
+        _read_regular(root, candidate),
+        trigger_commit="",
+        allow_frozen_legacy=False,
+    )
+
+
+def validate_request_candidate(root: Path, request: VerifyRequest) -> list[str]:
+    """Validate a candidate's reviewed range before it can be finalized."""
+
+    try:
+        reviewed_root = _reviewed_root(root.resolve(), request.reviewed_repository)
+        base = _full_commit(reviewed_root, request.reviewed_base, "Reviewed base")
+        head = _full_commit(reviewed_root, request.reviewed_head, "Reviewed head")
+        if base == head or not _is_ancestor(reviewed_root, base, head):
+            raise CompactPairError(
+                "Reviewed base must be a strict ancestor of Reviewed head"
+            )
+    except CompactPairError as exc:
+        return [str(exc)]
+    return []
+
+
+def _parse_verification_report_bytes(
+    root: Path, path: str, raw: bytes, *, allow_legacy_missing_risk: bool = True
+) -> VerificationReport:
     match = REPORT_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verification-report path is not canonical Operator output")
@@ -359,6 +494,24 @@ def _parse_verification_report_bytes(root: Path, path: str, raw: bytes) -> Verif
     base = _one(lines, "Reviewed base: ", "Reviewed base")
     if SHA_RE.fullmatch(head) is None or SHA_RE.fullmatch(base) is None:
         raise CompactPairError("Reviewed base/head must be full lowercase commit SHAs")
+    risk_class, risk_class_explicit = _risk_class(
+        lines,
+        allow_legacy_missing=allow_legacy_missing_risk,
+        artifact="verification-report",
+    )
+    abuse_class_assessment_binding = _optional_one(
+        lines, "Abuse Class Assessment: ", "Abuse Class Assessment"
+    )
+    profile = codex_protocol_model.review_profile_for(risk_class)
+    if profile.requires_abuse_class_assessment and risk_class_explicit:
+        if abuse_class_assessment_binding != ABUSE_ASSESSMENT_BOUND_TO_REQUEST:
+            raise CompactPairError(
+                "high-risk-control report must bind Abuse Class Assessment to request"
+            )
+    elif abuse_class_assessment_binding is not None:
+        raise CompactPairError(
+            "Abuse Class Assessment binding is only valid for high-risk-control reports"
+        )
     legacy = _section_optional(lines, "## Finding Refs") is None
     if legacy and not _is_frozen_verbose_report(root, path, raw):
         raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
@@ -373,6 +526,9 @@ def _parse_verification_report_bytes(root: Path, path: str, raw: bytes) -> Verif
         reviewed_base=base,
         reviewer_seat=_one(lines, "Reviewer seat: ", "Reviewer seat"),
         reviewer_model=_identity(_one(lines, "Reviewer model: ", "Reviewer model"), "Reviewer model"),
+        risk_class=risk_class,
+        risk_class_explicit=risk_class_explicit,
+        abuse_class_assessment_binding=abuse_class_assessment_binding,
         evidence=_evidence(lines),
         finding_refs=finding_refs,
         finding_dispositions=_finding_dispositions(
@@ -400,7 +556,12 @@ def parse_verification_report_candidate(
     root = root.resolve()
     candidate = _repo_path(root, candidate_path)
     final = _repo_path(root, final_path)
-    return _parse_verification_report_bytes(root, final, _read_regular(root, candidate))
+    return _parse_verification_report_bytes(
+        root,
+        final,
+        _read_regular(root, candidate),
+        allow_legacy_missing_risk=False,
+    )
 
 
 
@@ -414,8 +575,32 @@ def _report_structure_violations(
         violations.append("reviewer seat is not the assigned Operator")
     if report.reviewer_seat == request.author_seat:
         violations.append("reviewer seat equals author seat")
-    if report.reviewer_model.casefold() == request.author_model.casefold():
-        violations.append("reviewer model equals author model")
+    profile = codex_protocol_model.review_profile_for(request.risk_class)
+    if profile.requires_different_model:
+        if request.risk_class_explicit:
+            # Artifacts that declare a risk class must clear model-family
+            # independence: a harness prefix or version suffix is not a
+            # different reviewer.
+            if not codex_protocol_model.models_are_independent(
+                request.author_model, report.reviewer_model
+            ):
+                violations.append("reviewer model shares the author model family")
+        elif report.reviewer_model.casefold() == request.author_model.casefold():
+            # Legacy artifacts predate the Risk class field and are graded on
+            # the exact-label rule that was in force when they were accepted.
+            # Committed evidence stays readable; it is not retroactively voided.
+            violations.append("reviewer model equals author model")
+    if report.risk_class != request.risk_class:
+        violations.append("report Risk class does not match request")
+    if profile.requires_abuse_class_assessment and request.risk_class_explicit:
+        if not request.abuse_class_assessment:
+            violations.append("high-risk-control request lacks Abuse Class Assessment")
+        if (
+            report.risk_class_explicit
+            and report.abuse_class_assessment_binding
+            != ABUSE_ASSESSMENT_BOUND_TO_REQUEST
+        ):
+            violations.append("high-risk-control report does not bind Abuse Class Assessment")
     if report.reviewed_repository != request.reviewed_repository:
         violations.append("report Reviewed repository does not match request")
     if report.reviewed_head != request.reviewed_head:
@@ -616,12 +801,20 @@ def _main(argv: list[str] | None = None) -> int:
     candidate.add_argument("--final-relative", required=True)
     arguments = parser.parse_args(argv)
     try:
-        report = parse_verification_report_candidate(
-            arguments.repo_root,
-            arguments.candidate,
-            arguments.final_relative,
-        )
-        violations = validate_report(arguments.repo_root, report)
+        if str(arguments.final_relative).endswith("-verify-request.md"):
+            request = parse_verify_request_candidate(
+                arguments.repo_root,
+                arguments.candidate,
+                arguments.final_relative,
+            )
+            violations = validate_request_candidate(arguments.repo_root, request)
+        else:
+            report = parse_verification_report_candidate(
+                arguments.repo_root,
+                arguments.candidate,
+                arguments.final_relative,
+            )
+            violations = validate_report(arguments.repo_root, report)
         if violations:
             raise CompactPairError("; ".join(violations))
     except (CompactPairError, OSError) as exc:

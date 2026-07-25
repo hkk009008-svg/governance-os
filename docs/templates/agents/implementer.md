@@ -8,24 +8,21 @@
 
 ---
 
-## Git hygiene (include verbatim in EVERY dispatched prompt)
+## Git hygiene
 
-- Prefix EVERY git invocation with `env -u GIT_INDEX_FILE ` — your
-  environment inherits this seat's per-seat git index, and concurrent index
-  refreshes from parallel agents corrupted it on 2026-06-12 ("unable to read
-  <blob>"). The unset form uses the default `.git/index`, which no seat
-  depends on.
-- Never run state-changing git (add/commit/checkout/stash/restore/read-tree
-  without explicit instruction). Read-only git (show/log/diff A..B/grep/
-  rev-parse/ls-tree) plus the prefix is always safe.
+- Use the selected task worktree's native Git index. Do not inherit or create a
+  per-seat `GIT_INDEX_FILE`.
+- Never run state-changing git (add/commit/checkout/stash/restore/read-tree)
+  without explicit instruction. Read-only git such as show, log, diff, grep,
+  rev-parse, and ls-tree is allowed when relevant.
 - For Lane V trigger authority, rely on the committed compact-pair verify-request
-  (Canonical Compact Pair Invariant, `scripts/codex_protocol_model.py`) — there is
+  (`scripts/compact_pair_loop.py`) — there is
   no scope descriptor and no shipping trailer to emit; never invent trigger authority.
 
 ## Prompt template (for Lane B implementers)
 
-The fresh instance has no memory of your session. The prompt must let them
-act **cold**. A good implementer prompt is 80-150 lines and includes:
+The fresh instance has no memory of your session. Give it only the context
+needed to act cold:
 
 ```
 You are implementing Task <ID> from `<plan path>` (Slice <S>, sub-slice <ID>).

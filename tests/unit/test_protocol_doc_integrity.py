@@ -17,28 +17,34 @@ def _compact(text: str) -> str:
 
 def test_codex_subagents_never_inherit_seat_authority():
     continuation = _read("docs/protocol/codex/continuation.md")
-    compact = _compact(continuation)
+    compact = _compact(continuation).casefold()
 
-    assert "Subagents never inherit live-seat or coordinator authority." in compact
-    assert "Subagents do not inherit live-seat or coordinator authority unless" not in compact
-    assert "Subagents do not consume cursors, send mailbox events, issue GO" in compact
+    assert "subagent" in compact
+    assert "never inherits live-role authority" in compact
+    assert "never publish a formal verdict or live-role event" in compact
+    assert "unless explicitly delegated" not in compact
 
 
-def test_active_protocol_makes_preflight_advisory_and_ownership_transfer_direct():
+def test_every_provider_entrypoint_points_to_the_canonical_policy_model():
+    """One executable policy source, named by every side's adapter.
+
+    Providers differ in runtime mechanics, not in policy. Each adapter must
+    name `scripts/codex_protocol_model.py` as the canonical source rather than
+    restating identity, ownership, risk, or external-effect rules in prose that
+    can drift. The assertion is on the pointer target, not on one sentence, so
+    an adapter may word its own hand-off naturally.
+    """
+    pointer = "scripts/codex_protocol_model.py"
     for path in (
         "AGENTS.md",
-        "docs/protocol/codex/continuation.md",
         ".agents/skills/four-seat-protocol/SKILL.md",
-        ".agents/skills/seat-director/SKILL.md",
-        ".agents/skills/seat-operator/SKILL.md",
-        ".agents/skills/seat-coordinator/SKILL.md",
+        "docs/protocol/codex/continuation.md",
+        "docs/protocol/claude/continuation.md",
+        "docs/protocol/cursor/continuation.md",
+        "docs/protocol/agy/continuation.md",
     ):
-        compact = _compact(_read(path)).casefold()
-        assert "preflight is advisory" in compact, path
-        assert "without coordinator approval" in compact, path
-        assert "fixed mailbox writer" in compact, path
-        assert "non-author operator go" in compact, path
-        assert "cannot verify anything it authored" in compact, path
+        compact = _compact(_read(path).replace("`", ""))
+        assert pointer in compact, path
 
 
 def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():
@@ -163,7 +169,6 @@ def test_operator_phase_taxonomy_uses_current_codex_triggers():
     for path in (
         ".agents/skills/seat-operator/SKILL.md",
         "docs/protocol/agents/director-operator.md",
-        "docs/protocol/claude/director-operator.md",
     ):
         text = _read(path)
         compact = _compact(text)

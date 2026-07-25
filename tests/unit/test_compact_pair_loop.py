@@ -57,8 +57,15 @@ def _request_text(
     author_seat: str = "director",
     author_model: str = "gpt-5.6-sol",
     assigned_operator: str = "operator",
+    risk_class: str = "material-behavior",
+    abuse_class_assessment: tuple[str, ...] = (),
     finding_refs: tuple[str, ...] = (FINDING_A,),
 ) -> str:
+    abuse_assessment = (
+        ""
+        if not abuse_class_assessment
+        else "\n" + _bullet_section("Abuse Class Assessment", abuse_class_assessment)
+    )
     return f"""\
 # Pair seat -> Operator: verify outcome
 
@@ -70,11 +77,13 @@ Reviewed base: {base}
 Author seat: {author_seat}
 Author model: {author_model}
 Assigned operator: {assigned_operator}
+Risk class: {risk_class}
 
 ## Outcome
 
 The committed change satisfies the routed maintenance outcome.
 
+{abuse_assessment}
 {_bullet_section("Finding Refs", finding_refs)}
 Cursor at send: 0
 """
@@ -90,6 +99,8 @@ def _report_text(
     request_path: str = REQUEST_PATH,
     reviewer_seat: str = "operator",
     reviewer_model: str = "gpt-5.6-terra",
+    risk_class: str = "material-behavior",
+    abuse_class_assessment_binding: str | None = None,
     finding_refs: tuple[str, ...] = (FINDING_A,),
     dispositions: tuple[tuple[str, str], ...] = ((FINDING_A, "addressed"),),
     evidence: bool = True,
@@ -104,6 +115,11 @@ $ independent actual-diff inspection
 → reviewed range satisfies the outcome
 """
     disposition_lines = tuple(f"{ref}: {value}" for ref, value in dispositions)
+    abuse_binding = (
+        ""
+        if abuse_class_assessment_binding is None
+        else f"Abuse Class Assessment: {abuse_class_assessment_binding}\n"
+    )
     return f"""\
 # Operator -> Pair seat: outcome verification
 
@@ -116,6 +132,8 @@ Verification request: {request_path}@{trigger}
 Reviewed base: {base}
 Reviewer seat: {reviewer_seat}
 Reviewer model: {reviewer_model}
+Risk class: {risk_class}
+{abuse_binding}
 
 {_bullet_section("Finding Refs", finding_refs)}
 {_bullet_section("Finding Dispositions", disposition_lines)}
@@ -136,6 +154,8 @@ def _repo(
     author_seat: str = "director",
     author_model: str = "gpt-5.6-sol",
     assigned_operator: str = "operator",
+    risk_class: str = "material-behavior",
+    abuse_class_assessment: tuple[str, ...] = (),
     finding_refs: tuple[str, ...] = (FINDING_A,),
     transform_request=lambda text: text,
 ) -> tuple[Path, str, str, str]:
@@ -165,6 +185,8 @@ def _repo(
                 author_seat=author_seat,
                 author_model=author_model,
                 assigned_operator=assigned_operator,
+                risk_class=risk_class,
+                abuse_class_assessment=abuse_class_assessment,
                 finding_refs=finding_refs,
             )
         ),
@@ -190,6 +212,143 @@ def _write_report(
         encoding="utf-8",
     )
     return report
+
+
+def test_verify_request_candidate_uses_intended_final_path_as_identity(
+    tmp_path: Path,
+) -> None:
+    root, base, head, _trigger = _repo(tmp_path)
+    candidate = root / "coordination/mailbox/sent/.request-candidate.tmp"
+    candidate.write_text(_request_text(base, head), encoding="utf-8")
+
+    request = pair.parse_verify_request_candidate(root, candidate, REQUEST_PATH)
+
+    assert request.path == REQUEST_PATH
+    assert request.trigger_commit == ""
+    assert request.author_seat == "director"
+    assert request.assigned_operator == "operator"
+    assert request.risk_class == "material-behavior"
+
+
+@pytest.mark.parametrize("risk_class", ("ordinary-local", "external-effect", "invented"))
+def test_new_verify_request_candidate_rejects_nonformal_risk_classes(
+    tmp_path: Path, risk_class: str
+) -> None:
+    root, base, head, _trigger = _repo(tmp_path)
+    candidate = root / "coordination/mailbox/sent/.request-candidate.tmp"
+    candidate.write_text(
+        _request_text(base, head, risk_class=risk_class), encoding="utf-8"
+    )
+
+    with pytest.raises(pair.CompactPairError, match="Risk class must be"):
+        pair.parse_verify_request_candidate(root, candidate, REQUEST_PATH)
+
+
+def test_new_verify_request_candidate_requires_explicit_risk_class(
+    tmp_path: Path,
+) -> None:
+    root, base, head, _trigger = _repo(tmp_path)
+    candidate = root / "coordination/mailbox/sent/.request-candidate.tmp"
+    candidate.write_text(
+        _request_text(base, head).replace("Risk class: material-behavior\n", ""),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(pair.CompactPairError, match="missing Risk class"):
+        pair.parse_verify_request_candidate(root, candidate, REQUEST_PATH)
+
+
+def test_high_risk_request_requires_abuse_assessment_and_report_binds_it(
+    tmp_path: Path,
+) -> None:
+    root, base, head, trigger = _repo(
+        tmp_path,
+        risk_class="high-risk-control",
+        abuse_class_assessment=("untrusted request fields cannot widen authority",),
+    )
+    candidate = root / "coordination/mailbox/sent/.report-candidate.tmp"
+    candidate.write_text(
+        _report_text(
+            base,
+            head,
+            trigger,
+            # A declared high-risk-control artifact needs a genuinely distinct
+            # model family; the fixture default shares the author's.
+            reviewer_model="claude-opus-5",
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+        ),
+        encoding="utf-8",
+    )
+
+    report = pair.parse_verification_report_candidate(root, candidate, REPORT_PATH)
+
+    assert report.risk_class == "high-risk-control"
+    assert pair.validate_report(root, report) == []
+
+
+def test_high_risk_candidate_rejects_missing_assessment_or_report_binding(
+    tmp_path: Path,
+) -> None:
+    root, base, head, _trigger = _repo(tmp_path)
+    request_candidate = root / "coordination/mailbox/sent/.request-candidate.tmp"
+    request_candidate.write_text(
+        _request_text(base, head, risk_class="high-risk-control"), encoding="utf-8"
+    )
+    with pytest.raises(pair.CompactPairError, match="Abuse Class Assessment"):
+        pair.parse_verify_request_candidate(root, request_candidate, REQUEST_PATH)
+
+    second_tmp = tmp_path / "bound"
+    second_tmp.mkdir()
+    root, base, head, trigger = _repo(
+        second_tmp,
+        risk_class="high-risk-control",
+        abuse_class_assessment=("untrusted request fields cannot widen authority",),
+    )
+    report_candidate = root / "coordination/mailbox/sent/.report-candidate.tmp"
+    report_candidate.write_text(
+        _report_text(base, head, trigger, risk_class="high-risk-control"),
+        encoding="utf-8",
+    )
+    with pytest.raises(pair.CompactPairError, match="bind Abuse Class Assessment"):
+        pair.parse_verification_report_candidate(root, report_candidate, REPORT_PATH)
+
+
+def test_report_candidate_requires_matching_explicit_risk_class(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    candidate = root / "coordination/mailbox/sent/.report-candidate.tmp"
+    candidate.write_text(
+        _report_text(base, head, trigger).replace("Risk class: material-behavior\n", ""),
+        encoding="utf-8",
+    )
+    with pytest.raises(pair.CompactPairError, match="missing Risk class"):
+        pair.parse_verification_report_candidate(root, candidate, REPORT_PATH)
+
+    candidate.write_text(
+        _report_text(base, head, trigger, risk_class="high-risk-control", abuse_class_assessment_binding="bound-to-request"),
+        encoding="utf-8",
+    )
+    report = pair.parse_verification_report_candidate(root, candidate, REPORT_PATH)
+
+    assert "report Risk class does not match request" in pair.validate_report(root, report)
+
+
+def test_verify_request_candidate_rejects_non_pair_author_path(
+    tmp_path: Path,
+) -> None:
+    root, base, head, _trigger = _repo(tmp_path)
+    candidate = root / "coordination/mailbox/sent/.request-candidate.tmp"
+    candidate.write_text(
+        _request_text(base, head, author_seat="coordinator"),
+        encoding="utf-8",
+    )
+    coordinator_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-18T08-00-00Z-coordinator-to-operator-verify-request.md"
+    )
+
+    with pytest.raises(pair.CompactPairError, match="path is not canonical"):
+        pair.parse_verify_request_candidate(root, candidate, coordinator_path)
 
 
 _DEFAULT_REPOSITORY = object()
@@ -690,6 +849,138 @@ def test_same_model_across_operator_seats_is_not_independent(tmp_path: Path) -> 
         author_seat="operator",
         author_model="GPT-5.6-SOL",
         assigned_operator="operator2",
+        risk_class="high-risk-control",
+        abuse_class_assessment=("untrusted request fields cannot widen authority",),
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+            reviewer_model="gpt-5.6-sol",
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+        ),
+    )
+
+    assert "reviewer model shares the author model family" in pair.validate_report(
+        root, report
+    )
+
+
+@pytest.mark.parametrize(
+    ("author_model", "reviewer_model"),
+    (
+        # Every pair below was accepted by the previous casefolded string
+        # inequality. The first is the dominant pairing in the committed
+        # corpus: 84 `gpt-5.6-sol` authors against 65 `gpt-5.6-terra`
+        # reviewers, i.e. one model family reviewing itself.
+        ("gpt-5.6-sol", "gpt-5.6-terra"),
+        ("gpt-5.6-terra", "codex-gpt-5.6-terra"),
+        ("gpt-5.6-sol", "GPT-5 Codex"),
+        ("antigravity-gemini-3.6", "gemini-3.6-flash"),
+        ("claude-opus-5", "claude-sonnet-5"),
+    ),
+)
+def test_high_risk_control_rejects_same_family_reviewer(
+    tmp_path: Path, author_model: str, reviewer_model: str
+) -> None:
+    """A harness prefix or version suffix must not buy model independence."""
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        author_model=author_model,
+        assigned_operator="operator2",
+        risk_class="high-risk-control",
+        abuse_class_assessment=("untrusted request fields cannot widen authority",),
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+            reviewer_model=reviewer_model,
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+        ),
+    )
+
+    assert "reviewer model shares the author model family" in pair.validate_report(
+        root, report
+    )
+
+
+@pytest.mark.parametrize(
+    ("author_model", "reviewer_model"),
+    (
+        ("gpt-5.6-sol", "claude-opus-5"),
+        ("gpt-5.6-sol", "antigravity-gemini-3.6"),
+        ("claude-opus-5", "gpt-5.6-terra"),
+        ("grok-4.5", "composer-2.5"),
+    ),
+)
+def test_high_risk_control_accepts_distinct_family_reviewer(
+    tmp_path: Path, author_model: str, reviewer_model: str
+) -> None:
+    """Genuinely distinct families must still pass; the fix is not a blanket deny."""
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        author_model=author_model,
+        assigned_operator="operator2",
+        risk_class="high-risk-control",
+        abuse_class_assessment=("untrusted request fields cannot widen authority",),
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+            reviewer_model=reviewer_model,
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+        ),
+    )
+
+    assert not [
+        violation
+        for violation in pair.validate_report(root, report)
+        if "model family" in violation
+    ]
+
+
+def test_material_behavior_permits_same_model_for_non_author_reviewer(
+    tmp_path: Path,
+) -> None:
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        author_model="GPT-5.6-SOL",
+        assigned_operator="operator2",
     )
     report = pair.parse_verification_report(
         root,
@@ -705,7 +996,7 @@ def test_same_model_across_operator_seats_is_not_independent(tmp_path: Path) -> 
         ),
     )
 
-    assert "reviewer model equals author model" in pair.validate_report(root, report)
+    assert pair.validate_report(root, report) == []
 
 
 @pytest.mark.parametrize(

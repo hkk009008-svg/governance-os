@@ -276,7 +276,7 @@ class CapacityReport:
         for owner in SEAT_ORDER:
             packets = _selected_actor_packets(list(self.packets), active_cycles, owner)
             packet = packets[0] if packets else None
-            rows.append(_actor_action(owner, self.wave, packet))
+            rows.append(_actor_action(owner, packet))
         return rows
 
     def to_dict(self) -> dict[str, Any]:
@@ -422,7 +422,7 @@ def render_capacity_board(report: CapacityReport) -> str:
         lines.extend(
             [
                 row["owner"],
-                f"  startup: {row['startup']}",
+                f"  orientation: {row['orientation']}",
                 f"  packet: {row['packet']}",
                 f"  deps: {row['dependencies']}",
                 f"  next: {row['next_action']}",
@@ -704,15 +704,12 @@ def _selected_actor_packets(
     return current
 
 
-def _actor_action(owner: str, wave: int, packet: Packet | None) -> dict[str, Any]:
-    startup = (
-        "env -u GIT_INDEX_FILE .venv/bin/python "
-        f"scripts/ledger_start_guard.py --seat {owner} --wave {wave}"
-    )
+def _actor_action(owner: str, packet: Packet | None) -> dict[str, Any]:
+    orientation = f"python scripts/status.py snapshot {owner}"
     if packet is None:
         return {
             "owner": owner,
-            "startup": startup,
+            "orientation": orientation,
             "packet": "-",
             "dependencies": "-",
             "next_action": "standby until a fresh coordinator route, lawful authority-bearing trigger, or user prompt assigns work",
@@ -723,7 +720,7 @@ def _actor_action(owner: str, wave: int, packet: Packet | None) -> dict[str, Any
     next_action, stop_condition = _packet_action_text(owner, packet)
     return {
         "owner": owner,
-        "startup": startup,
+        "orientation": orientation,
         "packet": f"{packet.id} ({packet.packet_type}, {packet.status})",
         "dependencies": dependencies,
         "next_action": next_action,

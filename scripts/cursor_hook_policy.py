@@ -682,11 +682,10 @@ def _bound_session(
 _ORIENTATION_PYTHON = frozenset(
     {
         "ci_smoke.py",
-        "continuation_readiness.py",
         "cursor_land_gate.py",
         "cursor_review_snapshot.py",
         "ledger_start_guard.py",
-        "seat_status.py",
+        "status.py",
         "target_binding.py",
     }
 )

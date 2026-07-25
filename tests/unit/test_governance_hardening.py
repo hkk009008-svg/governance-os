@@ -51,6 +51,11 @@ def _collect_closed_cycle_snapshot(
         return unread_events_by_seat.get(seat, [])
 
     monkeypatch.setattr(mailbox_monitor.bus_unread, "bus_unread_events", fake_unread_events)
+    monkeypatch.setattr(
+        mailbox_monitor.bus_unread,
+        "bus_authority_state",
+        lambda root, seat: SimpleNamespace(state="live"),
+    )
     _write(
         tmp_path
         / "coordination/mailbox/sent/2026-07-08T00-00-00Z-coordinator-to-all-coordination.md",
@@ -166,6 +171,11 @@ def test_mailbox_monitor_alerts_when_latest_broadcast_receipt_is_unknown(
     tmp_path: Path, monkeypatch
 ):
     monkeypatch.setattr(mailbox_monitor.bus_unread, "bus_unread_events", lambda root, seat: [])
+    monkeypatch.setattr(
+        mailbox_monitor.bus_unread,
+        "bus_authority_state",
+        lambda root, seat: SimpleNamespace(state="live"),
+    )
     _write(
         tmp_path
         / "coordination/mailbox/sent/2026-07-08T00-00-00Z-coordinator-to-all-coordination.md",
@@ -189,7 +199,7 @@ def test_mailbox_monitor_alerts_when_latest_broadcast_receipt_is_unknown(
     assert state["receipt_summary"]["unknown"] == len(mailbox_monitor.SEATS)
     assert any("coordinator broadcast receipt is unproved" in alert for alert in state["alerts"])
     assert "receipt unknown means unproved, not delivered" in rendered
-    assert "coordinator   unread=" in rendered
+    assert "coordinator   unread=" not in rendered
 
 
 def test_mailbox_monitor_downgrades_closed_cycle_receipt_and_heartbeat_noise(

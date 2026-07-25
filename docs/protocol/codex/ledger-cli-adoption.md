@@ -1,153 +1,100 @@
-# Ledger CLI Adoption Bridge
+# Evidence-ledger bridge for Codex
 
-This bridge is for Codex CLI sessions working on
-`/Users/hyungkoookkim/evidence-ledger` while Pipeline remains the governance
-kernel.
-
-Pipeline remains the Codex four-seat governance kernel. Evidence-ledger remains
-the product repo and owns product-local truth.
-
-Use this bridge only when the user or parent prompt routes work to
+Use this bridge only when a user or parent task routes work from Pipeline to
 `/Users/hyungkoookkim/evidence-ledger`.
 
-Canonical path: `docs/protocol/codex/ledger-cli-adoption.md`.
+Pipeline remains the Codex four-seat governance kernel. Evidence-ledger remains
+the product repository and owns product-local truth. Do not start ledger work
+from `/Users/hyungkoookkim/Content`.
 
-Do not start ledger work from `/Users/hyungkoookkim/Content`.
-Ledger-routed Codex seats start from `/Users/hyungkoookkim/Pipeline`, then run
-`env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`
-before entering evidence-ledger.
+## Start
 
-## Authority Boundary
-
-- Readiness bridge: may inspect and report. It must not mutate evidence-ledger.
-- Named live seat: may work on evidence-ledger only inside the explicit route.
-- Coordinator: Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes.
-- Subagent: receives only the parent prompt, allowed paths, acceptance evidence,
-  forbidden side effects, and git hygiene. It does not inherit mailbox, cursor,
-  GO, route, lock, push, or spend authority.
-
-## Start From Pipeline
-
-First command for every live ledger seat:
+Use one compact Pipeline snapshot, then the ordinary target guard:
 
 ```bash
 cd /Users/hyungkoookkim/Pipeline
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2
+python scripts/status.py snapshot <seat>
+python scripts/ledger_start_guard.py --seat <seat> --wave 2
 ```
 
-Readiness bridge:
+The guard resolves the registered target and current committed route, validates
+that startup began in Pipeline, and prints only the route-bound next evidence.
+There is no fast-resume mode or second seat-status pass.
 
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py
-env -u GIT_INDEX_FILE git log --oneline -5
-```
+Read the route body and the target repository's `CLAUDE.md` and `AGENTS.md`
+before product edits. If instructions disagree, user instructions win first;
+evidence-ledger controls product behavior and Pipeline controls the protocol
+boundary.
 
-Named live seat:
+## Identity and scope
 
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py director --wave 2
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE git status --short
-```
+- Readiness bridge may inspect and report but does not mutate evidence-ledger.
+- A named role works only inside the explicit route and allowed paths.
+- Coordinator may reconcile ledger work from durable evidence but must not
+  author behavior-changing product fixes.
+- A subagent remains parent-scoped and inherits no role, mailbox, cursor,
+  verdict, lock, push, or spending authority.
 
-Canonical source: `scripts/codex_protocol_model.py`, `LEDGER_CLI_BRIDGE`.
-
-Fast resume is optional only for a named seat or coordinator continuing an
-unchanged already-routed local implementation or review by passing its exact
-current route ref to:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2 --resume-from <route-path>@<full-commit>
-```
-
-Fresh, transplanted, ambiguous, or external-effect work uses ordinary fresh
-orientation. The classifications are `FAST RESUME: PASS`, `FULL ORIENTATION
-REQUIRED`, and `START GUARD: FAIL`; full orientation is an advisory fallback to
-ordinary startup, not `BLOCKED`, and fast resume grants no external-effect
-authority.
-When fast resume falls back after collecting route and state evidence, full
-orientation includes that read-only orientation capsule without a second
-collection pass or any new authority.
-
-New target-bound routes use Target worktree, Accepted target HEAD, and
-## Target Allowed Paths. The parser retains historical aliases only for
-committed compatibility.
-
-Coordinator:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-```
-
-Read relevant Pipeline mailbox bodies before protocol decisions. Counts alone
-are not enough.
-
-## Local Supabase Lifecycle Preflight
-
-Before any user-authorized local Supabase lifecycle action, inspect
-`supabase --version` and the exact existing project container/service state.
-If the database is already running while required siblings are stopped, do not
-infer that `supabase start` or `--exclude` will partially resume those
-siblings.
-
-Stop and report the observed state unless the user separately authorizes the
-exact existing-container action and the active route records its executor,
-target, scope, frozen identities, and restoration contract. This preflight
-does not authorize network, acquisition, configuration, restart, cleanup, or
-any other service action.
-
-## Enter Evidence-Ledger
-
-Before product edits, inspect the target repo from a clean command environment:
-
-```bash
-env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger status --short
-env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger log --oneline -5
-```
-
-Read evidence-ledger CLAUDE.md and AGENTS.md before product edits. If those
-files disagree with Pipeline, user instructions win first; evidence-ledger
-controls product behavior, and Pipeline controls Codex seat mechanics.
-
-## Cross-Repo Git Hygiene
-
-- Prefix every ordinary cross-repo git and pytest command with `env -u GIT_INDEX_FILE`.
-- Do not let a Pipeline seat index follow `cd` into evidence-ledger.
-- Do not stage or commit evidence-ledger files from a Pipeline seat index.
-- Use explicit pathspecs for any parent-authorized staging or commit.
-- Preserve unrelated evidence-ledger dirty work.
-
-## Handoffs
-
-Cross-repo handoffs record both repo heads.
-
-Use this minimum body when active work spans both repos:
+The target route may bind:
 
 ```text
-Pipeline HEAD: paste output from `env -u GIT_INDEX_FILE git log -1 --oneline`
-Evidence-ledger HEAD: paste output from `env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger log -1 --oneline`
-Pipeline status: paste output from `env -u GIT_INDEX_FILE git status --short`, or write `clean`
-Evidence-ledger status: paste output from `env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger status --short`, or write `clean`
-Seat: write one of `director`, `director2`, `operator`, `operator2`, or `coordinator`
-Authority used: write one of `readiness report`, `live-seat route`, `operator verification`, or `coordinator reconciliation`
-Evidence run: paste commands and results
-Side effects not taken: push, lock, cursor consume, mailbox event, spend
-Exact next trigger: paste the next prompt or seat event
+Target worktree: /absolute/path
+Accepted target HEAD: <full lowercase SHA>
+
+## Target Allowed Paths
+- relative/path
 ```
 
-Replace every field value with concrete command output or one of the listed
-values before committing a real handoff. Do not commit this example body as-is.
+Historical field aliases remain parseable only for committed compatibility.
+The guard rejects unsafe paths, conflicting routes, and divergent exact heads.
 
-## Verification
+## Git and environment
 
-Use current Pipeline protocol checks:
+Codex uses each caller-selected worktree's native Git index. The launcher strips
+an inherited `GIT_INDEX_FILE`; do not create or share a Pipeline seat index.
+Inspect the exact route worktree when one is named:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_imports_smoke.py tests/unit/test_protocol_mailbox.py tests/unit/test_status.py tests/unit/test_coordination_tooling.py tests/unit/test_ceremony_gates.py tests/unit/test_protocol_capacity.py tests/unit/test_protocol_doc_integrity.py tests/unit/test_protocol_prompt_sync.py tests/unit/test_codex_ledger_bridge.py -q
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+git -C /absolute/route/worktree status --short --branch
+git -C /absolute/route/worktree log --oneline -5
 ```
 
-Use evidence-ledger's own verification commands for product changes after
-reading that repo's local docs.
+Otherwise inspect the registered target checkout:
+
+```bash
+git -C /Users/hyungkoookkim/evidence-ledger status --short --branch
+git -C /Users/hyungkoookkim/evidence-ledger log --oneline -5
+```
+
+Preserve unrelated dirty work and use explicit pathspecs for separately
+authorized staging or commits. A normal checkout can be stale relative to a
+route worktree; the exact route wins.
+
+## Local services and external effects
+
+Before a local Supabase lifecycle action, inspect the installed version and
+actual container/service state. A partially running stack does not prove that a
+generic start command will safely resume only missing services.
+
+Starting, stopping, acquiring, reconfiguring, or cleaning services needs exact
+authorization for the executor, target, action, and restoration scope. The
+same separation applies to push, merge, cursor consumption, locks, paid spend,
+provider launch, and live-data mutation. A route or successful guard does not
+authorize any of them.
+
+## Transfer and verification
+
+Record both repository heads only when ownership or context actually transfers
+across repositories. A routine local continuation does not require a handoff.
+
+With the development environment activated, verify Pipeline protocol changes
+using the smallest focused tests and one completion gate:
+
+```bash
+python -m pytest tests/unit/test_codex_ledger_bridge.py -q
+python scripts/ci_smoke.py
+```
+
+Use evidence-ledger's own verification commands for product changes. Formal
+review follows the risk profile in `AGENTS.md`; a green guard or smoke run is
+evidence, not an Operator verdict.

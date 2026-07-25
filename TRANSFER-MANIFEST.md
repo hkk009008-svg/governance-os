@@ -25,7 +25,7 @@ and structural element was preserved verbatim.
 | `.claude/hooks/{guard-git-index,session-smoke,update-state}.sh` | The three runtime hooks |
 | `.claude/hookify.*.local.md` | 6 guard rules (block force-push, block `git add -A`, warn no-verify, warn pytest-without-venv, etc.) |
 | `.claude/agents/{lane-v-verifier,money-gate-reviewer}.md` | Two reusable review-agent definitions |
-| `.codex/{config.toml,hooks.json,hooks/*.sh,agents/*.toml}` | Codex-runtime twin of the harness (10 agent profiles + 3 hooks) |
+| `.codex/{config.toml,agents/*.toml}` | Codex adapter: six named role deltas; no project lifecycle hooks |
 | `.agents/skills/*` | Agent-agnostic skill mirrors (antigravity-harness + the seat skills) |
 | `.github/workflows/ci.yml`, `.github/pull_request_template.md` | CI skeleton (governance gates wired; domain steps stubbed) |
 | `.env.example`, `.gitignore`, `pyproject.toml`, `requirements-governance.txt` | Slim, governance-only configs |
@@ -55,7 +55,7 @@ cinema skills (`ai-video-gen`, `comfyui-mastery`) were **excluded**.
 | `coordination/bin/{claim-lock,release-lock,send-event,consume-events}` | The git-native cross-cutting lock + mailbox event primitives |
 | `coordination/README.md`, `coordination/mailbox/kinds.txt` | Coordination mechanics + the mailbox-kind schema |
 | `coordination/presence/{SEAT.md.template,README.md}` | Per-seat presence-file template (originals were runtime state) |
-| `coordination/mailbox/seen/*.txt` | Seeded read-cursors at `0` for the 6 default seats (turn-key) |
+| `coordination/mailbox/seen/*.txt` | Compatibility read cursors for the four pair seats; coordinators are cursorless |
 | `coordination/threeway/keys/README.md` | Trust-root layout (public keys; regenerate per deployment) |
 | `coordination/workflows/discovery-bughunt.js` | A reusable discovery-bughunt coordination workflow |
 | `threeway/*.py` (20 modules) | The Ed25519-signed event-bus control plane (envelope, canon, gate, reducer, refstore, keys, …) |

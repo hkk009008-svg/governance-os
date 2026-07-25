@@ -251,7 +251,8 @@ def test_guard_routes_future_target_from_registry(tmp_path, capsys):
     demo_path = (tmp_path / "demo-app").resolve().as_posix()
     assert rc == 0
     assert f"Target repo: {demo_path}" in out
-    assert f"env -u GIT_INDEX_FILE git -C {demo_path} status --short --branch" in out
+    assert f"git -C {demo_path} status --short --branch" in out
+    assert "env -u GIT_INDEX_FILE" not in out
 
 
 def test_guard_selects_named_target_over_default(tmp_path, capsys):

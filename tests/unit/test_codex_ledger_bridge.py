@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
-import json
 import shlex
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -36,15 +34,16 @@ CURRENT_PROTOCOL_TESTS = (
 REQUIRED_LEDGER_DOC_PHRASES = (
     "Pipeline remains the Codex four-seat governance kernel.",
     "/Users/hyungkoookkim/evidence-ledger",
-    "Do not start ledger work from `/Users/hyungkoookkim/Content`.",
+    "Do not start ledger work",
+    "/Users/hyungkoookkim/Content",
     "scripts/ledger_start_guard.py --seat <seat> --wave 2",
-    "env -u GIT_INDEX_FILE",
-    "Read evidence-ledger CLAUDE.md and AGENTS.md before product edits.",
-    "Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes.",
-    "Cross-repo handoffs record both repo heads.",
+    "native Git index",
+    "Read the route body and the target repository's `CLAUDE.md` and `AGENTS.md`",
+    "Coordinator may reconcile ledger work from durable evidence",
+    "author behavior-changing product fixes",
+    "Record both repository heads only when ownership or context actually transfers",
 )
 DOC_SURFACES = (
-    "docs/protocol/codex/ledger-cli-adoption.md",
     "docs/protocol/codex/continuation.md",
     "docs/protocol/protocol-assembly-map.md",
     "AGENTS.md",
@@ -62,286 +61,72 @@ def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_ledger_bridge_contract_declares_kernel_target_and_hygiene():
-    bridge = model.LEDGER_CLI_BRIDGE
-    assert bridge["doc_path"] == "docs/protocol/codex/ledger-cli-adoption.md"
-    assert bridge["pipeline_kernel"] == "/Users/hyungkoookkim/Pipeline"
-    assert bridge["target_repo"] == "/Users/hyungkoookkim/evidence-ledger"
-    assert bridge["forbidden_kernel"] == "/Users/hyungkoookkim/Content"
-    assert bridge["guard_script"] == "scripts/ledger_start_guard.py"
-    assert "env -u GIT_INDEX_FILE" in "\n".join(bridge["cross_repo_git_rules"])
+def test_ledger_start_guard_cli_rejects_obsolete_resume_flag(capsys):
+    import ledger_start_guard
 
-    rendered = model.render_ledger_cli_bridge()
-    assert "/Users/hyungkoookkim/Pipeline" in rendered
-    assert "/Users/hyungkoookkim/evidence-ledger" in rendered
-    assert "/Users/hyungkoookkim/Content" in rendered
-    assert "scripts/ledger_start_guard.py --seat <seat> --wave 2" in rendered
-    assert "readiness bridge" in rendered
-    assert "named seat" in rendered
-    assert "env -u GIT_INDEX_FILE" in rendered
-    for rule in bridge["kernel_rules"]:
-        assert f"  - {rule}" in rendered
-    for rule in bridge["cross_repo_git_rules"]:
-        assert f"  - {rule}" in rendered
+    with pytest.raises(SystemExit) as exc:
+        ledger_start_guard.main(
+            [
+                "--seat",
+                "director",
+                "--resume-from",
+                "coordination/mailbox/sent/route.md@" + "a" * 40,
+            ]
+        )
+
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --resume-from" in capsys.readouterr().err
 
 
-def test_codex_surfaces_include_ledger_bridge_doc():
-    assert (
-        "docs/protocol/codex/ledger-cli-adoption.md",
-        "ledger CLI adoption bridge for evidence-ledger target work",
-    ) in model.CODEX_SURFACES
-    assert (
-        "scripts/ledger_start_guard.py",
-        "ledger seat start guard that enforces Pipeline kernel before target repo work",
-    ) in model.CODEX_SURFACES
+def test_ledger_route_guidance_accepts_only_structured_safe_scope(tmp_path):
+    import ledger_start_guard
 
-
-def test_ledger_start_guard_renderer_names_all_seat_first_commands():
-    rendered = model.render_ledger_start_guard()
-
-    assert "Ledger Start Guard:" in rendered
-    assert "cd /Users/hyungkoookkim/Pipeline" in rendered
-    assert "Do not start from `/Users/hyungkoookkim/Content`" in rendered
-    for seat in ("coordinator", "director", "director2", "operator", "operator2"):
-        assert (
-            "env -u GIT_INDEX_FILE .venv/bin/python "
-            f"scripts/ledger_start_guard.py --seat {seat} --wave 2"
-        ) in rendered
-
-
-def test_ledger_start_guard_renderer_has_one_optional_exact_resume_command():
-    command = (
-        "scripts/ledger_start_guard.py --seat <seat> --wave 2 "
-        "--resume-from <route-path>@<full-commit>"
+    worktree = tmp_path / "target"
+    body = (
+        f"Target worktree: {worktree}\n"
+        f"Accepted target HEAD: {'a' * 40}\n"
+        "Only edit ignored/prose.py\n"
+        "\n## Target Allowed Paths\n"
+        "- exact/path.py\n"
     )
-    rendered = model.render_ledger_start_guard()
 
-    assert model.LEDGER_CLI_BRIDGE["guard_resume_command"] == command
-    assert model.LEDGER_CLI_BRIDGE["guard_start_command"] in rendered
-    assert rendered.count(command) == 1
-    for phrase in (
-        "named seat or coordinator",
-        "unchanged already-routed local implementation or review",
-        "fresh, transplanted, ambiguous, or external-effect work",
-        "FULL ORIENTATION REQUIRED",
-        "advisory fallback",
-        "not BLOCKED",
-        "no external-effect authority",
+    assert ledger_start_guard.parse_route_guidance_body(body) == (
+        ledger_start_guard.RouteGuidance(
+            worktree=worktree.as_posix(),
+            accepted_target_head="a" * 40,
+            allowed_paths=("exact/path.py",),
+        )
+    )
+    for invalid in (
+        body + f"Target worktree: {tmp_path / 'duplicate'}\n",
+        body.replace("a" * 40, "A" * 40),
+        body.replace("exact/path.py", "../escape.py"),
+        body.replace("exact/path.py", "/absolute.py"),
+        body.replace("exact/path.py", "wild/*.py"),
     ):
-        assert phrase.casefold() in rendered.casefold()
+        with pytest.raises(ValueError):
+            ledger_start_guard.parse_route_guidance_body(invalid)
 
 
-def test_read_only_benchmark_reports_actual_classification_and_all_git_launches(
-    tmp_path, capsys, monkeypatch
-):
-    benchmark_path = ROOT / "scripts/measure_ledger_start_guard.py"
-    assert benchmark_path.is_file(), "benchmark instrument is not implemented"
-
-    import measure_ledger_start_guard as benchmark
+def test_ledger_route_guidance_keeps_committed_legacy_aliases(tmp_path):
     import ledger_start_guard
 
-    root = tmp_path / "Pipeline"
-    root.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    subprocess.run(
-        ["git", "config", "user.name", "Benchmark Test"], cwd=root, check=True
-    )
-    subprocess.run(
-        ["git", "config", "user.email", "benchmark@example.test"],
-        cwd=root,
-        check=True,
-    )
-    (root / "tracked.txt").write_text("benchmark\n", encoding="utf-8")
-    subprocess.run(["git", "add", "--", "tracked.txt"], cwd=root, check=True)
-    subprocess.run(["git", "commit", "-qm", "benchmark base"], cwd=root, check=True)
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    route_ref = f"coordination/mailbox/sent/route.md@{head}"
-    evaluator_calls = 0
-
-    def fake_build_resume(**kwargs):
-        nonlocal evaluator_calls
-        evaluator_calls += 1
-        assert kwargs["root"] == root
-        subprocess.run(
-            ["git", "status", "--short"],
-            cwd=root,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        process = subprocess.Popen(
-            ["git", "status", "--short"],
-            cwd=root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        process.communicate()
-        assert process.returncode == 0
-        return ledger_start_guard.ResumeResult(
-            ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED,
-            ("FULL ORIENTATION REQUIRED",),
-            ("live evidence requires ordinary orientation",),
-        )
-
-    monkeypatch.setattr(benchmark.ledger_start_guard, "build_resume", fake_build_resume)
-    monkeypatch.setattr(benchmark.ledger_start_guard, "PIPELINE_KERNEL", root)
-    output = root / "logs/fast-resume-startup-benchmark.json"
-    output.parent.mkdir()
-    base_args = [
-        "--seat",
-        "director",
-        "--wave",
-        "2",
-        "--resume-from",
-        route_ref,
-    ]
-
-    with pytest.raises(SystemExit):
-        benchmark.main([*base_args, "--root", str(root)])
-    capsys.readouterr()
-    unrelated_cwd = tmp_path / "unrelated"
-    unrelated_cwd.mkdir()
-    monkeypatch.chdir(unrelated_cwd)
-
-    rc = benchmark.main(
-        [
-            *base_args,
-            "--output",
-            str(output),
-        ]
+    guidance = ledger_start_guard.parse_route_guidance_body(
+        f"Route worktree: {tmp_path / 'target'}\n"
+        f"Target reviewed head: {'b' * 40}\n"
+        "\n## Allowed Paths\n"
+        "- legacy/path.py\n"
     )
 
-    printed = capsys.readouterr().out
-    payload = json.loads(printed)
-    assert rc == 0
-    assert evaluator_calls == 1
-    assert list(payload) == [
-        "schema",
-        "classification",
-        "elapsed_seconds",
-        "git_processes",
-        "pipeline_head",
-        "resume_from",
-    ]
-    assert payload["schema"] == "ledger-start-guard-benchmark-v1"
-    assert payload["classification"] == "FULL ORIENTATION REQUIRED"
-    assert isinstance(payload["elapsed_seconds"], float)
-    assert payload["elapsed_seconds"] >= 0
-    assert payload["git_processes"] == 3
-    assert payload["pipeline_head"] == head
-    assert payload["resume_from"] == route_ref
-    assert output.read_text(encoding="utf-8").strip() == printed.strip()
-
-
-@pytest.mark.parametrize(
-    ("relative_output", "existing"),
-    [
-        ("arbitrary.json", False),
-        ("coordination/mailbox/seen/director.txt", True),
-    ],
-)
-def test_benchmark_rejects_noncanonical_output_before_evaluation(
-    tmp_path, monkeypatch, relative_output, existing
-):
-    import measure_ledger_start_guard as benchmark
-    import ledger_start_guard
-
-    root = tmp_path / "Pipeline"
-    root.mkdir()
-    output = root / relative_output
-    output.parent.mkdir(parents=True, exist_ok=True)
-    sentinel = "protected sentinel\n"
-    if existing:
-        output.write_text(sentinel, encoding="utf-8")
-    evaluator_calls = 0
-
-    def fake_build_resume(**_kwargs):
-        nonlocal evaluator_calls
-        evaluator_calls += 1
-        return ledger_start_guard.ResumeResult(
-            ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED,
-            ("FULL ORIENTATION REQUIRED",),
-            ("synthetic fallback",),
-        )
-
-    monkeypatch.setattr(benchmark.ledger_start_guard, "build_resume", fake_build_resume)
-    monkeypatch.setattr(benchmark.ledger_start_guard, "PIPELINE_KERNEL", root)
-    monkeypatch.setattr(benchmark, "_pipeline_head", lambda _root: "a" * 40)
-
-    with pytest.raises(SystemExit) as exc:
-        benchmark.main(
-            [
-                "--seat",
-                "director",
-                "--resume-from",
-                "coordination/mailbox/sent/route.md@" + "b" * 40,
-                "--output",
-                str(output),
-            ]
-        )
-
-    assert exc.value.code == 2
-    assert evaluator_calls == 0
-    if existing:
-        assert output.read_text(encoding="utf-8") == sentinel
-    else:
-        assert not output.exists()
-
-
-def test_benchmark_rejects_symlinked_canonical_output_before_evaluation(
-    tmp_path, monkeypatch
-):
-    import measure_ledger_start_guard as benchmark
-    import ledger_start_guard
-
-    root = tmp_path / "Pipeline"
-    output = root / "logs/fast-resume-startup-benchmark.json"
-    output.parent.mkdir(parents=True)
-    protected = root / "coordination/mailbox/seen/director.txt"
-    protected.parent.mkdir(parents=True)
-    protected.write_text("protected sentinel\n", encoding="utf-8")
-    output.symlink_to(protected)
-    evaluator_calls = 0
-
-    def fake_build_resume(**_kwargs):
-        nonlocal evaluator_calls
-        evaluator_calls += 1
-        return ledger_start_guard.ResumeResult(
-            ledger_start_guard.ResumeClassification.FULL_ORIENTATION_REQUIRED,
-            ("FULL ORIENTATION REQUIRED",),
-            ("synthetic fallback",),
-        )
-
-    monkeypatch.setattr(benchmark.ledger_start_guard, "build_resume", fake_build_resume)
-    monkeypatch.setattr(benchmark.ledger_start_guard, "PIPELINE_KERNEL", root)
-    monkeypatch.setattr(benchmark, "_pipeline_head", lambda _root: "a" * 40)
-
-    with pytest.raises(SystemExit) as exc:
-        benchmark.main(
-            [
-                "--seat",
-                "director",
-                "--resume-from",
-                "coordination/mailbox/sent/route.md@" + "b" * 40,
-                "--output",
-                str(output),
-            ]
-        )
-
-    assert exc.value.code == 2
-    assert evaluator_calls == 0
-    assert protected.read_text(encoding="utf-8") == "protected sentinel\n"
+    assert guidance == ledger_start_guard.RouteGuidance(
+        worktree=(tmp_path / "target").as_posix(),
+        accepted_target_head="b" * 40,
+        allowed_paths=("legacy/path.py",),
+    )
 
 
 def test_model_verification_commands_are_current():
-    rendered = model.render_codex_verification_commands()
+    rendered = " ".join(model.CODEX_VERIFICATION_COMMANDS)
     for selector in CURRENT_PROTOCOL_TESTS:
         assert selector in rendered
         assert (ROOT / selector).exists(), selector
@@ -350,13 +135,13 @@ def test_model_verification_commands_are_current():
 
 
 def test_protocol_doctor_derives_verification_commands_from_model():
-    expected_pytest = shlex.split(model.CODEX_VERIFICATION_COMMANDS[0])[3:]
-    expected_smoke = shlex.split(model.CODEX_VERIFICATION_COMMANDS[1])[3:]
+    expected_pytest = shlex.split(model.CODEX_VERIFICATION_COMMANDS[0])[1:]
+    expected_smoke = shlex.split(model.CODEX_VERIFICATION_COMMANDS[1])[1:]
     commands = doctor.verification_commands("/tmp/python")
 
     assert commands == [
-        ["/tmp/python", *expected_pytest[1:]],
-        ["/tmp/python", *expected_smoke[1:]],
+        ["/tmp/python", *expected_pytest],
+        ["/tmp/python", *expected_smoke],
     ]
 
     flattened = " ".join(part for command in commands for part in command)
@@ -417,46 +202,38 @@ def test_doc_surfaces_route_to_ledger_bridge_without_stale_selectors():
             assert selector not in text
 
 
-def test_protocol_assembly_renderer_includes_target_repo_bridge():
-    rendered = model.render_protocol_assembly_map()
-    assert "Target-repo CLI adoption bridge" in rendered
-    assert "docs/protocol/codex/ledger-cli-adoption.md" in rendered
-
-
-def test_core_codex_role_prompts_reference_ledger_bridge_and_hygiene():
+def test_core_codex_role_prompts_are_thin_deltas_with_ledger_pointer():
     for path in CORE_CODEX_ROLE_PROMPTS:
         text = _read(path)
         assert "docs/protocol/codex/ledger-cli-adoption.md" in text
-        assert "scripts/ledger_start_guard.py --seat" in text
-        assert "cd /Users/hyungkoookkim/Pipeline" in text
-        assert "Do not start ledger work from `/Users/hyungkoookkim/Content`." in text
-        assert "/Users/hyungkoookkim/evidence-ledger" in text
-        assert "env -u GIT_INDEX_FILE" in text
-        assert "Pipeline remains the Codex four-seat governance kernel" in text
-        assert "evidence-ledger owns product-local truth" in text
+        assert "scripts/codex_protocol_model.py" in text
+        assert "scripts/ledger_start_guard.py --seat" not in text
+        assert "env -u GIT_INDEX_FILE" not in text
+        assert len(text.splitlines()) <= 30, path
 
 
 def test_readiness_and_coordinator_prompts_keep_mutation_boundaries():
-    readiness = _read(".codex/agents/readiness-bridge.toml")
-    coordinator = _read(".codex/agents/protocol-coordinator.toml")
-    assert "A readiness bridge must not mutate evidence-ledger." in readiness
-    assert "Coordinator may reconcile ledger work from durable evidence but must not author behavior-changing product fixes." in coordinator
+    readiness = " ".join(_read(".codex/agents/readiness-bridge.toml").split())
+    coordinator = " ".join(_read(".codex/agents/protocol-coordinator.toml").split())
+    assert "read-only" in readiness
+    assert "does not claim work" in readiness
+    assert "has no cursor" in coordinator
+    assert "does not author behavior-changing production work" in coordinator
 
 
-def test_readiness_render_codex_surfaces_ledger_bridge():
+def test_readiness_bridge_is_only_a_compact_snapshot_wrapper():
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
-        continuation_readiness.render_codex(ROOT)
+        rc = continuation_readiness.main(["--seat", "operator"])
 
-    rendered = buffer.getvalue()
-    assert "Ledger CLI Bridge:" in rendered
-    assert "docs/protocol/codex/ledger-cli-adoption.md" in rendered
-    assert "Ledger Start Guard:" in rendered
-    assert "scripts/ledger_start_guard.py --seat <seat> --wave 2" in rendered
-    assert "Capacity Split Default:" in rendered
-    assert "divisible or preplanned larger work defaults to dual-pair routing" in rendered
-    assert "R-INDEPENDENCE:" in rendered
-    assert "independent design-time enumeration" in rendered
+    rendered = buffer.getvalue().splitlines()
+    assert rc == 0
+    assert len(rendered) <= 20
+    assert rendered[0].startswith("Pipeline snapshot ")
+    assert any(line.startswith("Request:") for line in rendered)
+    assert not any("Runtime env contract" in line for line in rendered)
+    assert not any("Capacity Split Default" in line for line in rendered)
+    assert not any("Ledger Start Guard" in line for line in rendered)
 
 
 def test_ledger_start_guard_cli_rejects_content_kernel():
@@ -510,8 +287,9 @@ def test_ledger_start_guard_cli_prints_route_and_first_commands(tmp_path, capsys
     assert rc == 0
     assert "Ledger seat start guard: PASS" in out
     assert "Active route: coordination/mailbox/sent/2026-07-07T09-36-23Z-coordinator-to-all-coordination.md" in out
-    assert "env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py operator2 --wave 2" in out
-    assert f"env -u GIT_INDEX_FILE git -C {target.path.as_posix()} status --short --branch" in out
+    assert "seat_status.py" not in out
+    assert "env -u GIT_INDEX_FILE" not in out
+    assert f"git -C {target.path.as_posix()} status --short --branch" in out
 
 
 def test_ledger_start_guard_surfaces_route_base_and_worktree_before_normal_checkout(tmp_path, capsys):
@@ -547,10 +325,10 @@ def test_ledger_start_guard_surfaces_route_base_and_worktree_before_normal_check
     assert "route base: origin/main @ abc1234" in out
     assert "route worktree: /Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-task23" in out
     assert (
-        "env -u GIT_INDEX_FILE git -C "
+        "git -C "
         "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-task23 "
         "status --short --branch"
     ) in out
-    assert "normal target checkout may be stale; do not start product work there unless the route names it" in out
-    assert "env -u GIT_INDEX_FILE git log --oneline -5" not in out
-    assert "env -u GIT_INDEX_FILE git status --short\n" not in out
+    assert "normal target checkout may be stale; use the route worktree above" in out
+    assert "git -C /Users/hyungkoookkim/evidence-ledger status" not in out
+    assert "env -u GIT_INDEX_FILE" not in out

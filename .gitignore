@@ -74,7 +74,6 @@ coordination/threeway/events/*
 
 # Hook sync markers (regenerated each hook run)
 .claude/hooks/.last-index-sync-*
-.codex/hooks/.last-index-sync-*
 
 # State snapshot (gitignored by convention; local only)
 STATE.md
@@ -102,10 +101,6 @@ STATE.md
 .worktrees/
 
 # Codex hook runtime state (written on every codex run; never committed)
-.codex/hooks/.last-state-head
-.codex/hooks/.last-smoke-pass
-.codex/hooks/.last-skip-worktree-scan*
-.codex/hooks/.skip-worktree-cleared.log
 
 # Local ChatGPT Pro consultation lifecycle metadata; never prompt/response content.
 .codex/runtime/chatgpt-pro-consultations.json
@@ -116,6 +111,13 @@ STATE.md
 # Cursor SDK seat bindings, dispatch ledger, locks, and review outbox.
 .cursor/runtime/
 
-# Claude hook runtime state (written by .claude/hooks/update-state.sh; never committed)
-.claude/hooks/.last-state-head
-.claude/hooks/.skip-worktree-cleared.log
+# Retired Claude hook runtime state (the hook layer itself is gone; these linger
+# in existing checkouts and must never be committed)
+.claude/hooks/
+
+# AGY native-subagent workspaces. Scratch inputs for one run: they grant no
+# authority, are not a mailbox, and are not durable protocol state. Durable
+# inter-seat speech goes through coordination/bin/send-event like every other
+# side. .agents/skills/ is the shared seat-procedure tree and stays tracked.
+.agents/*/
+!.agents/skills/

@@ -93,7 +93,7 @@ The `threeway/` control plane verifies every load-bearing fact against Ed25519 k
 The bundle ships **only public-key layout docs** — generate fresh keys for your deployment:
 
 ```bash
-.venv/bin/python -m threeway.keys_bootstrap        # writes per-seat keypairs
+python -m threeway.keys_bootstrap                  # writes per-seat keypairs
 # private keys live in $THREEWAY_KEYSTORE (default ~/.threeway/keys) — NEVER commit them
 # commit the regenerated <seat>.pub files to coordination/threeway/keys/
 ```
@@ -103,25 +103,27 @@ lock primitives in `coordination/bin/` work without it.
 
 ## 8. Adjust the seat roster (optional)
 
-The default is 6 seats: `director`, `director2`, `operator`, `operator2`,
-`coordinator`, `coordinator2`. To change it, edit `SEATS` / `RECEIVING_SEATS` in
-`scripts/protocol_mailbox.py`, then add/remove the matching
-`coordination/mailbox/seen/<seat>.txt` cursor files (seeded at `0`).
+The default receiving roster has four pair roles plus two cursorless
+coordinator aliases. To change it, edit `SEATS` / `RECEIVING_SEATS` in
+`scripts/protocol_mailbox.py`. Create read cursors only for roles that can
+lawfully consume events; do not create coordinator cursors.
 
-## 9. Wire the harness env (for concurrent seats)
+## 9. Configure concurrent runtimes
 
-Copy `.env.example` → `.env` and set per-seat values (`CLAUDE_SEAT`, `GIT_INDEX_FILE`,
-the `CODEX_*` contract). For a single-session start you can skip this — the hooks and
-smoke work without it.
+Use each provider's launcher. Codex validates one closed identity and uses the
+selected task worktree's native Git index; do not create per-seat
+`GIT_INDEX_FILE` state or rely on repository lifecycle hooks. Provider-specific
+environment values describe identity only and never grant task or side-effect
+authority.
 
 ---
 
 ## Acceptance check
 
 ```bash
-.venv/bin/python scripts/ci_smoke.py        # OK, exit 0
-.venv/bin/python scripts/check_coordination.py   # no FATALs
-.venv/bin/python scripts/check_placeholders.py   # exit 0 when all skeletons are filled
+python scripts/ci_smoke.py                  # OK, exit 0
+python scripts/check_coordination.py        # no FATALs
+python scripts/check_placeholders.py        # exit 0 when all skeletons are filled
 ```
 
 **Non-empty target: re-baseline the allowlist first.** The scanner walks every
@@ -138,7 +140,7 @@ allowlist is empty and the scan is clean, the repo is **fully bound** — no ske
 placeholders remain. (The gate is enforced by CI; a non-empty allowlist with clean
 scan simply means the corresponding skeletons are still unfilled.)
 
-When `ci_smoke.py` is green **and** `_project_smoke()` asserts something real about
-your code, the OS is live: every session starts under the guard hooks, the seat
-protocol is loadable as skills, and the coordination + signing layers are ready when
-you scale to concurrent seats.
+When `ci_smoke.py` is green **and** `_project_smoke()` asserts something real
+about your code, the kernel is locally testable. That does not prove the signed
+bus, protected merge gate, provider identity, or any external effect is live;
+verify those in their actual deployment before claiming them.

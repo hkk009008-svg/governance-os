@@ -300,10 +300,11 @@ III).
 
 ## II.F Coordination, authority, and side effects
 
-- **Authority precedence:** **user direct instruction > git commits (durable record) > coordination
-  events (bind the recipient) > cached state files (STATE.md) > default behavior.** Git is the
-  tiebreaker — before acting on a shared task, check `git log`; the first commit to land wins. A
-  coordination event obligates the recipient with the same weight as a user instruction.
+- **Authority and evidence:** user or parent authority defines the allowed action.
+  Commits, capabilities, routes, and coordination events preserve evidence
+  inside that boundary; none can widen it by assertion. Current committed state
+  and event bodies outrank cached summaries. Before acting on overlapping work,
+  check current Git state; the first lawful landed change wins.
 - **Signal via durable artifacts, not chat.** Binding cross-session signals are files (a coordination
   event, a presence update), never a sentence in a private chat. Chat is a user courtesy, not a peer
   channel.
@@ -315,8 +316,9 @@ III).
 - **Flag-before-burn.** Any script that spends clock-billed or per-call money gets a **non-author**
   review before its first execution (idempotency guard, spend-site enumeration, error propagation on
   every paid call, timeout on every blocking call).
-- **Same-seat handoff first.** A fresh/transplanted named seat locates the newest
-  `docs/HANDOFF-<concrete-seat>-*.md` from that same concrete role before ordinary orientation.
+- **Handoffs only at transfer boundaries.** Inspect a handoff when ownership or
+  context actually transferred. Provider-native current status, event bodies,
+  and Git state are the normal orientation evidence.
 
 ## II.G The four-seat governance rules (#7–#23, condensed)
 
@@ -326,8 +328,8 @@ These govern concurrent seats sharing one tree. Most are **portable principles**
 | Rule | Principle |
 |---|---|
 | #7 Pre-commit re-verify | Immediately before a state-asserting commit, re-check `git log -5` + new coordination events vs your write-start; re-edit or abort on contradicting drift. |
-| #8 Events bind the recipient | A coordination event obligates the receiver as strongly as a user instruction; surface unread count in the first turn at session start, then process. |
-| #9 Independent reviewer | The verification pass is a *second opinion* built cold from `BASE..HEAD` + spec only; must not cite the author's reviewer. |
+| #8 Events preserve scoped state | Read an event when it changes the lawful next action; it binds no authority beyond the user/parent grant and executable capability. |
+| #9 Proportional independent review | Material behavior receives non-author exact-range review; high-risk control work additionally requires model diversity and abuse-case assessment. |
 | #10 Joint-team mode | Within a pair, equals; in-lane act unilaterally, cross-cutting goes through a proposal cycle; persistent disagreement escalates after 2 cycles. |
 | #11 Codification bias check | A proposed rule names its primary beneficiary; an asymmetric rule gives the other seat veto. |
 | #12 Grep-the-writes | (II.B) prove the write site. |
@@ -367,10 +369,10 @@ your provider's mechanism. Antigravity bindings have been explicitly established
 | **Deterministic multi-agent orchestration** | `Workflow` tool (fan-out/pipeline) | sequential subagent dispatch per `R-ORCH` | concurrent execution via `invoke_subagent` array |
 | **Structured/validated output from a worker** | `schema` on `Agent`/`Workflow`; reviewer `RESULT SCHEMA` json block | prompt-enforced report format + `apply_patch` | Markdown artifacts in `brain/<conversation-id>/` |
 | **Load a domain skill before judging code** | `Skill` tool over `.claude/skills/` | `.agents/skills/` + role TOML references | reads `.agents/skills/*/SKILL.md` as markdown |
-| **Session-start tripwire / smoke** | SessionStart hook → `ci_smoke.py` | `.codex/hooks/session-smoke.sh` (fail-open) | run `scripts/ci_smoke.py` manually |
-| **Per-worker staging isolation on a shared tree** | per-seat `GIT_INDEX_FILE`; subagents prefix `env -u GIT_INDEX_FILE` | same `GIT_INDEX_FILE=<git-dir>/index-codex-$CODEX_SEAT`; `.codex/hooks/guard-git-index.sh` enforces | `env -u GIT_INDEX_FILE` or `Workspace: 'branch'` |
+| **Session verification** | SessionStart hook → `ci_smoke.py` | explicit focused checks during work and `scripts/ci_smoke.py` at the completion gate | run `scripts/ci_smoke.py` manually |
+| **Per-worker staging isolation** | per-seat `GIT_INDEX_FILE`; subagents prefix `env -u GIT_INDEX_FILE` | native task worktrees and indexes; the shared root is read-only or limited to explicit coordination pathspecs | `env -u GIT_INDEX_FILE` or `Workspace: 'branch'` |
 | **Durable coordination channel + read cursor** | mailbox `coordination/mailbox/sent/` + `seen/<seat>.txt` | same mailbox + `coordination/bin/{send-event,consume-events}` | N/A (holds no seat) |
-| **Liveness signal separate from intent** | hook-written heartbeat + agent-written presence `.md` | `.codex/hooks/update-state.sh` heartbeat | N/A (holds no seat) |
+| **Liveness signal separate from intent** | hook-written heartbeat + agent-written presence `.md` | host task/thread activity; repository hooks do not manufacture liveness | N/A (holds no seat) |
 | **Background long task without polling** | `run_in_background: true`; harness notifies | background command support | `schedule` and `manage_task` tools |
 | **Ask the user vs decide** | `AskUserQuestion` (only for cross-cutting/policy/hard-to-reverse) | surface the choice in prose | `ask_question` interactive modal tool |
 | **Cross-cutting edit lock** | `coordination/bin/claim-lock` (4 modules only) | same `claim-lock`/`release-lock` | N/A (holds no seat) |

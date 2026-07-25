@@ -32,10 +32,12 @@ def infer_runtime_env(environ: Mapping[str, str] | None = None) -> dict[str, str
     """Infer Cursor's contract without presenting Codex variables as authority."""
 
     source = environ or {}
+    explicit_subagent = source.get("CURSOR_AGENT_MODE") == "subagent"
     translated = {
         canonical_key: source[cursor_key]
         for cursor_key, canonical_key in _INPUT_KEYS.items()
         if cursor_key in source
+        and not (explicit_subagent and cursor_key == "CURSOR_SEAT")
     }
     values = canonical.infer_runtime_env(translated)
     cursor_values = {

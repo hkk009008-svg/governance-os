@@ -2,7 +2,7 @@
 
 Pipeline is the governance kernel for a multi-seat AI coding protocol. It
 coordinates director, operator, director2, operator2, and coordinator work with
-mailbox artifacts, capacity packets, smoke gates, and
+durable task events, exact-range review gates, and
 Codex/Claude/Antigravity/Cursor adoption docs.
 
 This repository is not the private product application. `evidence-ledger` is
@@ -11,17 +11,17 @@ keeps the shared protocol machinery honest and executable.
 
 ## Quick Start
 
+Activate a Python environment satisfying `requirements-dev.txt`, then:
+
 ```bash
 cd /Users/hyungkoookkim/Pipeline
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py
+python scripts/status.py snapshot
 ```
 
-For ledger-routed live seats, start from Pipeline and use the guard:
+For ledger-routed governed work, additionally use the Pipeline guard:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director --wave 2
-env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py director --wave 2
+python scripts/ledger_start_guard.py --seat director --wave 2
 ```
 
 ## How It Works
@@ -29,9 +29,9 @@ env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts
 ARCHITECTURE.md records verified governance-kernel truth. The load-bearing
 runtime is a set of committed Python and shell tools under `scripts/`,
 `coordination/`, `threeway/`, `.agents/`, and `.codex/`. Seats exchange durable
-mailbox events in `coordination/mailbox/sent/`; capacity packets under
-`coordination/capacity/packets/` define active routed work; smoke and protocol
-doctor commands prove that the kernel is still internally consistent.
+mailbox events in `coordination/mailbox/sent/`; one effective task/route defines
+current governed work. Capacity packets are optional campaign diagnostics.
+Smoke and protocol-doctor commands test the kernel at the completion gate.
 
 ## Doc Map
 
@@ -48,17 +48,16 @@ doctor commands prove that the kernel is still internally consistent.
 
 ## Verification
 
-Use `env -u GIT_INDEX_FILE` for ordinary git and Python commands so seat-local
-indexes do not leak into shared checks.
+Run mutating Codex work in a task-specific native Git worktree. Use the
+checkout's ordinary Git index.
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit -q
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2
+python -m pytest tests/unit -q
+python scripts/ci_smoke.py
 ```
 
 Smoke stays quiet for the reviewed historical commit-SHA baseline. Run
-`env -u GIT_INDEX_FILE .venv/bin/python scripts/check_doc_claims.py --sha-refs`
+`python scripts/check_doc_claims.py --sha-refs`
 when you need the full SHA-reference audit report.
 
 ## License
