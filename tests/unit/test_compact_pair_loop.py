@@ -447,15 +447,24 @@ def test_target_commits_without_reviewed_repository_fail_in_pipeline(
         pair.parse_verify_request(root, REQUEST_PATH, trigger)
 
 
+# An absolute path belonging to some other machine. It must not exist here.
+MISSING_AUTHORING_PATH = "/definitely/missing/compact-pair-target"
+
+
 @pytest.mark.parametrize(
     ("repository_value", "message"),
     (
         ("target", "absolute"),
         ("/tmp/../tmp/target", "normalized"),
-        ("/definitely/missing/compact-pair-target", "repository"),
+        # A path that is merely absent here is no longer rejected for being
+        # absent: it degrades to the local root, exactly as an omitted field
+        # does. The rejection moves to the range instead, which is the stricter
+        # question — these fixtures keep the reviewed commits in the target
+        # repository, so they do not resolve locally and the pair still fails.
+        (MISSING_AUTHORING_PATH, "Git commit or path validation failed"),
     ),
 )
-def test_reviewed_repository_rejects_noncanonical_or_missing_paths(
+def test_reviewed_repository_rejects_noncanonical_paths_and_unresolvable_ranges(
     tmp_path: Path, repository_value: str, message: str
 ) -> None:
     root, _target, _base, _head, trigger = _cross_repo(
@@ -464,6 +473,31 @@ def test_reviewed_repository_rejects_noncanonical_or_missing_paths(
 
     with pytest.raises(pair.CompactPairError, match=message):
         pair.parse_verify_request(root, REQUEST_PATH, trigger)
+
+
+def test_reviewed_repository_absent_here_validates_against_the_local_root(
+    tmp_path: Path,
+) -> None:
+    """The CI case: the recorded checkout is gone but the range is right here.
+
+    Every event records the absolute path the review ran at, so on a runner or
+    a fresh clone that path is missing while the reviewed commits are present.
+    The pair must still validate, or the gate can only ever pass on the one
+    machine that wrote it.
+    """
+    assert not Path(MISSING_AUTHORING_PATH).exists()
+    root, base, head, trigger = _repo(
+        tmp_path,
+        transform_request=lambda text: text.replace(
+            "Event type: verify-request\n",
+            f"Event type: verify-request\nReviewed repository: {MISSING_AUTHORING_PATH}\n",
+        ),
+    )
+
+    request = pair.parse_verify_request(root, REQUEST_PATH, trigger)
+
+    assert request.reviewed_repository == MISSING_AUTHORING_PATH
+    assert (request.reviewed_base, request.reviewed_head) == (base, head)
 
 
 @pytest.mark.parametrize(

@@ -682,8 +682,18 @@ def _reviewed_root(pipeline_root: Path, repository_field: str | None) -> Path:
             raise CompactPairError("Reviewed repository traverses a symlink")
     try:
         resolved = candidate.resolve(strict=True)
-    except OSError as exc:
-        raise CompactPairError("Reviewed repository is unavailable") from exc
+    except OSError:
+        # The field records where the review ran: an absolute path on the
+        # authoring machine. A CI runner or a fresh clone holds the same
+        # repository under a different path, so demanding this one exist made
+        # every event fail everywhere except the machine that wrote it, while
+        # passing locally — a gate that only ever runs green where it cannot
+        # catch anything. Degrade to the local root, which is exactly what an
+        # absent field already does. Nothing is skipped: the Reviewed
+        # base/head lookups below still have to resolve here, so an
+        # unreachable range fails and naming a path that is not a repository
+        # buys no leniency.
+        return pipeline_root
     if not resolved.is_dir() or resolved.as_posix() != repository_field:
         raise CompactPairError("Reviewed repository must be one canonical directory")
     top_level = _git(resolved, "rev-parse", "--show-toplevel").decode().strip()
