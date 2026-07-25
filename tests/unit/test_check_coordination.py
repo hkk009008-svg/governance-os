@@ -184,9 +184,22 @@ def test_new_invalid_current_verify_request_is_fatal(tmp_path: Path) -> None:
     assert invalid[0].severity == "FATAL"
 
 
-def test_exact_pre_cutover_invalid_request_is_advisory_blocker(
+def test_live_repo_has_no_fatal_invalid_current_verify_request(
     repo_root: Path,
 ) -> None:
+    """No seat may be left holding an unparseable current request.
+
+    An invalid request cannot be answered: a verdict bound to it has no
+    machine-valid binding, so the work reads as accepted while nothing
+    validates. The 2026-07-25 duplicate-cursor-footer request was exactly that
+    case, and it was cleared by a superseding re-issue rather than by lowering
+    the gate.
+
+    A pre-cutover immutable request may still surface as ADVISORY — it is
+    evidence that grants no authority, and a FATAL on an immutable artifact
+    could never be cleared by anyone. Post-cutover invalid requests stay FATAL;
+    that path is covered against a synthetic repository above.
+    """
     issues = cc.run(
         repo_root / "coordination",
         now="2026-07-25T06:01:00Z",
@@ -198,6 +211,8 @@ def test_exact_pre_cutover_invalid_request_is_advisory_blocker(
         for issue in issues
         if issue.kind == "invalid_current_verify_request"
     ]
-    assert len(invalid) == 1
-    assert invalid[0].severity == "ADVISORY"
-    assert "pre-cutover immutable request remains invalid" in invalid[0].message
+
+    assert [issue for issue in invalid if issue.severity == "FATAL"] == []
+    for issue in invalid:
+        assert issue.severity == "ADVISORY"
+        assert "pre-cutover immutable request remains invalid" in issue.message
