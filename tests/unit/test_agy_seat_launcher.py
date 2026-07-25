@@ -580,14 +580,22 @@ def test_default_launch_launches_autonomous_provider(
     assert env["AGY_AGENT_MODE"] == launcher.SINGLE_MODEL_MODE
 
 
-def test_continuation_documents_advisory_default_and_stdin_writer(
+def test_continuation_documents_read_only_bridge_and_stdin_writer(
     repo_root: Path,
 ) -> None:
+    """The AGY adapter states the same two things every other adapter states.
+
+    The `--mode single-model-autonomous` flag assertion was retired with the
+    flag itself: AGY's direct-autonomous default made it unnecessary, and the
+    string only survived inside a sentence saying it was not required.
+    """
     text = (repo_root / "docs/protocol/agy/continuation.md").read_text(
         encoding="utf-8"
     )
 
-    assert "--mode single-model-autonomous" in text
-    assert "does not claim a shared Pipeline seat" in text
-    assert "coordination/bin/send-event <sender> <recipient> <kind> <subject...> < body.md" in text
+    assert "no role claim or durable mutation" in text
+    assert (
+        "coordination/bin/send-event <sender> <recipient> <kind> <subject...>" in text
+    )
     assert "<body-file>" not in text
+    assert "scripts/codex_protocol_model.py" in text

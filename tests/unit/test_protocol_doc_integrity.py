@@ -25,15 +25,26 @@ def test_codex_subagents_never_inherit_seat_authority():
     assert "unless explicitly delegated" not in compact
 
 
-def test_codex_entrypoints_point_to_canonical_autonomy_contract():
-    pointer = "Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py"
+def test_every_provider_entrypoint_points_to_the_canonical_policy_model():
+    """One executable policy source, named by every side's adapter.
+
+    Providers differ in runtime mechanics, not in policy. Each adapter must
+    name `scripts/codex_protocol_model.py` as the canonical source rather than
+    restating identity, ownership, risk, or external-effect rules in prose that
+    can drift. The assertion is on the pointer target, not on one sentence, so
+    an adapter may word its own hand-off naturally.
+    """
+    pointer = "scripts/codex_protocol_model.py"
     for path in (
         "AGENTS.md",
-        "docs/protocol/codex/continuation.md",
         ".agents/skills/four-seat-protocol/SKILL.md",
+        "docs/protocol/codex/continuation.md",
+        "docs/protocol/claude/continuation.md",
+        "docs/protocol/cursor/continuation.md",
+        "docs/protocol/agy/continuation.md",
     ):
         compact = _compact(_read(path).replace("`", ""))
-        assert compact.count(pointer) == 1, path
+        assert pointer in compact, path
 
 
 def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():
