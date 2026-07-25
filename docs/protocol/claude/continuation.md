@@ -74,9 +74,14 @@ These are the only places Claude differs from the shared contract, and each is
 forced by the harness rather than chosen:
 
 - Claude Code discovers skills only under `.claude/skills/`. It cannot read
-  `.agents/skills/`, so seat procedures are physically mirrored there. The
-  byte-equality assertions in `tests/unit/test_protocol_prompt_sync.py` are what
-  keep the mirror honest; the duplication is the anti-fork mechanism, not drift.
+  `.agents/skills/`, so seat procedures are mirrored there. The mirrors are
+  adapted, not byte-equal: they carry `env -u GIT_INDEX_FILE` and
+  `.venv/bin/python` invocations, Claude tool names, and
+  `disable-model-invocation` where a procedure is user-triggered only. Only
+  `seat-operator/verification-report-format.md` is asserted byte-identical, by
+  `test_verification_report_templates_remain_identical`; no test asserts parity
+  for any `SKILL.md`. Divergence beyond those harness mechanics is drift, and
+  review is the only thing that catches it.
 - Agent definitions are Markdown with a `tools:` list, not TOML with
   `sandbox_mode`. Withholding Write and Edit from `tools:` is how a read-only
   advisor is expressed.
