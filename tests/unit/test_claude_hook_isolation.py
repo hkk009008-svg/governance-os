@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 
@@ -72,3 +73,42 @@ def test_live_guides_do_not_present_the_retired_state_hook_as_live(
     assert "STATE.md" not in rule_body.read_text(encoding="utf-8"), (
         "docs/protocol/agents/director-operator.md names STATE.md"
     )
+
+
+def test_rule_body_routes_state_reads_to_live_sources(repo_root: Path) -> None:
+    """Positive pins, because banning names is whack-a-mole.
+
+    operator2 closed the retired-cache work with one INFORMATIONAL: the literal
+    needles above reject the exact bytes that failed review, but a reinstated
+    cache described as "an automatically refreshed local session summary"
+    evades all three. A substring ban can only forbid the wordings someone
+    already thought of, and the next regression will be worded by someone who
+    has not read this test.
+
+    So pin the corrected mechanism instead of enumerating its replacements. A
+    regression now has to either delete a pin, which fails here, or leave the
+    document self-contradictory — which is exactly the state the prior FAIL
+    was about, and what the negative needles above already catch.
+    """
+    text = (repo_root / "docs/protocol/agents/director-operator.md").read_text(
+        encoding="utf-8"
+    )
+
+    # Any tier inserted into the precedence hierarchy fails, whatever it is
+    # called. This is the check a renamed cache has to get past: the retired
+    # model sat in this hierarchy as its own tier, so reinstating one under any
+    # name puts it back here.
+    tiers = re.findall(r"hierarchy: user > git > mailbox > ([^)]*)\)", text)
+    assert tiers, "Instruction Priority hierarchy not found"
+    assert set(tiers) == {"default"}, tiers
+
+    # Rule #8's session-bootstrap gate must name a live source. Pointing it back
+    # at any stored artifact means dropping this citation, which fails.
+    _, _, after_gate = text.partition("**Session-bootstrap awareness gate.**")
+    assert after_gate, "session-bootstrap gate not found"
+    gate_body, _, _ = after_gate.partition("**Authority precedence")
+    assert "scripts/status.py mailbox-unread" in gate_body, (
+        "Rule #8 bootstrap gate no longer cites a live unread source"
+    )
+
+    assert "no generated state cache in this precedence" in text
