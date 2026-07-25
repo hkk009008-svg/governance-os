@@ -1,8 +1,3 @@
----
-name: antigravity-harness
-description: Use this skill when operating as Antigravity within Pipeline. Defines Layer-2 operating doctrine bindings, direct autonomous seating, native subagent mesh (define_subagent/invoke_subagent), and structured artifact mesh conventions (implementation_plan.md, walkthrough.md).
----
-
 # Antigravity Protocol Harness & Native Subagent Mesh
 
 This skill is the Antigravity-specific runtime harness for Pipeline. AGY operates natively in direct autonomous posture, executing seated roles (`director`, `operator`, `coordinator`, `director2`, `operator2`) and leveraging native subagent orchestration and structured artifact mesh conventions.

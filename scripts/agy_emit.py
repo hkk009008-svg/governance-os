@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         # AGY Automatic Seat Routing
         valid_seats = {"director", "director2", "operator", "operator2", "coordinator"}
         if args.dispatch and args.to in valid_seats:
-            dispatch_cmd = f".venv/bin/python scripts/agy_seat_launcher.py {args.to} --mode single-model-autonomous"
+            dispatch_cmd = f".venv/bin/python scripts/agy_seat_launcher.py {args.to}"
             print(f"[AGY AUTO-ROUTING] Target seat '{args.to}' dispatched: {dispatch_cmd}")
 
         return 0

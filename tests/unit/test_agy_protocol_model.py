@@ -33,3 +33,15 @@ def test_single_model_runtime_is_explicitly_namespaced() -> None:
     assert values["AGY_AGENT_MODE"] == "single-model-autonomous"
     assert values["AGY_AGENT_ROLE"] == "agy-unit-operator2"
     assert values["AGY_BEHAVIOR_SOURCE"] == "agy-unit-operator2"
+
+
+def test_infer_runtime_env_defaults_to_single_model_autonomous() -> None:
+    values = protocol.infer_runtime_env(
+        profile="director",
+        index_path="/repo/.git/index-agy-director",
+    )
+
+    assert values["AGY_SEAT"] == "agy-unit-director"
+    assert values["AGY_AGENT_MODE"] == "single-model-autonomous"
+    assert values["AGY_AGENT_ROLE"] == "agy-unit-director"
+    assert values["AGY_BEHAVIOR_SOURCE"] == "agy-unit-director"

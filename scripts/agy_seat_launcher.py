@@ -118,7 +118,7 @@ def build_launch_spec(
     agy_executable: str,
     forwarded_args: Sequence[str],
     *,
-    mode: str = ADVISORY_MODE,
+    mode: str = SINGLE_MODEL_MODE,
 ) -> LaunchSpec:
     """Build an argv/env launch specification without performing side effects."""
     if seat not in LAUNCH_SEATS:
@@ -309,7 +309,7 @@ def _parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument(
         "--mode",
         choices=MODES,
-        default=ADVISORY_MODE,
+        default=SINGLE_MODEL_MODE,
         help=(
             "AGY posture: advisory is dry-run/readiness only; "
             "single-model-autonomous is an explicit independent-unit mode"
@@ -331,11 +331,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         settings = load_seat_settings(args.config)
         git_dir = resolve_git_dir(repo_root)
-        if not args.dry_run and args.mode != SINGLE_MODEL_MODE:
-            raise LaunchError(
-                "advisory mode does not launch AGY; use --dry-run or explicitly "
-                "select --mode single-model-autonomous for an independent unit"
-            )
         agy_executable = "agy" if args.dry_run else (
             shutil.which("agy") or shutil.which("antigravity")
         )

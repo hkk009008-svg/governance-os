@@ -13,7 +13,7 @@ class RuntimeIdentityError(ValueError):
     """Raised when an AGY launch mode cannot be represented safely."""
 
 
-def infer_runtime_env(*, profile: str, mode: str, index_path: str) -> dict[str, str]:
+def infer_runtime_env(*, profile: str, mode: str = SINGLE_MODEL_MODE, index_path: str) -> dict[str, str]:
     """Return only AGY-owned identity for one local launch profile.
 
     A profile selects local model and index settings. It is never a shared

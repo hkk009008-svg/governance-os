@@ -345,9 +345,7 @@ def test_r_independence_truth_is_owner_assessment_plus_actual_diff_review() -> N
         assert "Operator" in text
 
     assert "requires a durable independent design-time enumeration" not in architecture
-    assert "early independent" in architecture.casefold()
-    assert "advisory" in architecture.casefold()
-    assert "not a universal requirement or CLEAR gate" in architecture
+    assert "A gate never substitutes for an actual-diff Operator verdict" in architecture
 
 
 def test_capacity_board_is_optional_diagnostic_not_route_authority() -> None:
@@ -360,7 +358,7 @@ def test_capacity_board_is_optional_diagnostic_not_route_authority() -> None:
     required = "optional diagnostic evidence"
     assert required in architecture
     assert required in dict(model.ACTIVE_KERNEL_INVARIANTS)["capacity diagnostics"]
-    assert "route and hard-boundary validation" in architecture
+    assert "do not grant route authority" in architecture
 
     forbidden = (
         "capacity-board route validation before any active coordinator task-board route",

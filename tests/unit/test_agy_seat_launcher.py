@@ -29,7 +29,7 @@ def _write_config(path: Path, overrides: dict[str, tuple[str, str]] | None = Non
     path.write_text("\n".join(blocks), encoding="utf-8")
 
 
-def test_build_launch_spec_defaults_to_advisory_agy_identity_and_cleans_authority(
+def test_build_launch_spec_defaults_to_single_model_autonomous_and_cleans_authority(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "seats.toml"
@@ -63,10 +63,10 @@ def test_build_launch_spec_defaults_to_advisory_agy_identity_and_cleans_authorit
         forwarded_args=[],
     )
 
-    assert spec.env["AGY_SEAT"] == "agy-advisory"
-    assert spec.env["AGY_AGENT_MODE"] == "advisory-readiness"
-    assert spec.env["AGY_AGENT_ROLE"] == "readiness-bridge"
-    assert spec.env["AGY_BEHAVIOR_SOURCE"] == "advisory-read-only"
+    assert spec.env["AGY_SEAT"] == "agy-unit-director"
+    assert spec.env["AGY_AGENT_MODE"] == "single-model-autonomous"
+    assert spec.env["AGY_AGENT_ROLE"] == "agy-unit-director"
+    assert spec.env["AGY_BEHAVIOR_SOURCE"] == "agy-unit-director"
     assert spec.env["AGY_GIT_INDEX_FILE"] == str(
         tmp_path / ".git" / "index-agy-director"
     )
@@ -538,8 +538,8 @@ def test_dry_run_does_not_create_index_or_start_agy(tmp_path: Path, repo_root: P
     assert result.returncode == 0, result.stderr
     assert '"unchanged start input"' in result.stdout
     payload = json.loads(result.stdout)
-    assert payload["env"]["AGY_SEAT"] == "agy-advisory"
-    assert payload["env"]["AGY_AGENT_MODE"] == "advisory-readiness"
+    assert payload["env"]["AGY_SEAT"] == "agy-unit-director"
+    assert payload["env"]["AGY_AGENT_MODE"] == "single-model-autonomous"
     assert payload["env"]["AGY_GIT_INDEX_FILE"] == str(index_path)
     assert not any(key.startswith("CODEX_") for key in payload["env"])
     index_after = (
@@ -551,30 +551,33 @@ def test_dry_run_does_not_create_index_or_start_agy(tmp_path: Path, repo_root: P
     assert not marker.exists()
 
 
-def test_default_advisory_mode_refuses_provider_launch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_default_launch_launches_autonomous_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config_path = tmp_path / "seats.toml"
     _write_config(config_path)
     monkeypatch.setattr(launcher, "resolve_git_dir", lambda _: tmp_path / ".git")
-    monkeypatch.setattr(
-        launcher.shutil,
-        "which",
-        lambda _: pytest.fail("advisory mode must not inspect a provider executable"),
-    )
-    monkeypatch.setattr(
-        launcher,
-        "ensure_seat_index",
-        lambda *_args, **_kwargs: pytest.fail("advisory mode must not create an index"),
-    )
-    monkeypatch.setattr(
-        launcher.os,
-        "execvpe",
-        lambda *_args, **_kwargs: pytest.fail("advisory mode must not launch AGY"),
-    )
+    monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/local/bin/agy")
 
-    assert launcher.main(["--config", str(config_path), "director"]) == 2
-    assert "advisory mode does not launch AGY" in capsys.readouterr().err
+    indexed: list[Path] = []
+    exec_called: list[tuple[str, list[str], dict[str, str]]] = []
+
+    def fake_ensure_seat_index(repo_root: Path, index_path: Path) -> None:
+        indexed.append(index_path)
+
+    def fake_execvpe(file: str, args: list[str], env: dict[str, str]) -> None:
+        exec_called.append((file, args, env))
+
+    monkeypatch.setattr(launcher, "ensure_seat_index", fake_ensure_seat_index)
+    monkeypatch.setattr(launcher.os, "execvpe", fake_execvpe)
+
+    assert launcher.main(["--config", str(config_path), "director"]) == 0
+    assert len(indexed) == 1
+    assert len(exec_called) == 1
+    file, args, env = exec_called[0]
+    assert file == "/usr/local/bin/agy"
+    assert env["AGY_SEAT"] == "agy-unit-director"
+    assert env["AGY_AGENT_MODE"] == launcher.SINGLE_MODEL_MODE
 
 
 def test_continuation_documents_advisory_default_and_stdin_writer(
