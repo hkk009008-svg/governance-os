@@ -13,11 +13,12 @@ class RuntimeIdentityError(ValueError):
     """Raised when an AGY launch mode cannot be represented safely."""
 
 
-def infer_runtime_env(*, profile: str, mode: str = SINGLE_MODEL_MODE, index_path: str) -> dict[str, str]:
+def infer_runtime_env(*, profile: str, mode: str = SINGLE_MODEL_MODE) -> dict[str, str]:
     """Return only AGY-owned identity for one local launch profile.
 
-    A profile selects local model and index settings. It is never a shared
-    Codex, Claude, or Cursor seat identity.
+    A profile selects the local model. It is never a shared Codex, Claude, or
+    Cursor seat identity, and it carries no index binding: each worktree uses
+    its native Git index, matching every other side.
     """
 
     if mode == ADVISORY_MODE:
@@ -26,7 +27,6 @@ def infer_runtime_env(*, profile: str, mode: str = SINGLE_MODEL_MODE, index_path
             "AGY_AGENT_MODE": "advisory-readiness",
             "AGY_AGENT_ROLE": "readiness-bridge",
             "AGY_BEHAVIOR_SOURCE": "advisory-read-only",
-            "AGY_GIT_INDEX_FILE": index_path,
         }
     if mode == SINGLE_MODEL_MODE:
         identity = f"agy-unit-{profile}"
@@ -35,6 +35,5 @@ def infer_runtime_env(*, profile: str, mode: str = SINGLE_MODEL_MODE, index_path
             "AGY_AGENT_MODE": SINGLE_MODEL_MODE,
             "AGY_AGENT_ROLE": identity,
             "AGY_BEHAVIOR_SOURCE": identity,
-            "AGY_GIT_INDEX_FILE": index_path,
         }
     raise RuntimeIdentityError(f"unsupported AGY mode: {mode}")

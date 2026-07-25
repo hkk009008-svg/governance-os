@@ -76,7 +76,6 @@ def test_all_agy_profile_runtime_labels_are_inert_to_codex(profile: str) -> None
     agy_runtime = agy.infer_runtime_env(
         profile=profile,
         mode=agy.SINGLE_MODEL_MODE,
-        index_path=f"/repo/.git/index-agy-{profile}",
     )
 
     assert set(agy_runtime) == {
@@ -84,14 +83,12 @@ def test_all_agy_profile_runtime_labels_are_inert_to_codex(profile: str) -> None
         "AGY_AGENT_MODE",
         "AGY_AGENT_ROLE",
         "AGY_BEHAVIOR_SOURCE",
-        "AGY_GIT_INDEX_FILE",
     }
     assert agy_runtime == {
         "AGY_SEAT": f"agy-unit-{profile}",
         "AGY_AGENT_MODE": agy.SINGLE_MODEL_MODE,
         "AGY_AGENT_ROLE": f"agy-unit-{profile}",
         "AGY_BEHAVIOR_SOURCE": f"agy-unit-{profile}",
-        "AGY_GIT_INDEX_FILE": f"/repo/.git/index-agy-{profile}",
     }
     assert codex.infer_runtime_env(agy_runtime) == _codex_baseline()
 

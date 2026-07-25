@@ -7,11 +7,9 @@ import argparse
 import json
 import os
 import shutil
-import stat
-import subprocess
 import sys
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,7 +65,6 @@ class LaunchSpec:
     argv: tuple[str, ...]
     env: dict[str, str]
     repo_root: Path
-    index_path: Path
     mode: str
 
 
@@ -111,7 +108,6 @@ def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
 
 def build_launch_spec(
     repo_root: Path,
-    git_dir: Path,
     seat: str,
     settings: Mapping[str, SeatSettings],
     inherited_env: Mapping[str, str],
@@ -128,18 +124,12 @@ def build_launch_spec(
     if mode not in MODES:
         raise LaunchError(f"unsupported AGY mode: {mode}")
 
-    index_path = git_dir / f"index-agy-{seat}"
     try:
-        runtime = infer_runtime_env(
-            profile=seat,
-            mode=mode,
-            index_path=str(index_path),
-        )
+        runtime = infer_runtime_env(profile=seat, mode=mode)
     except RuntimeIdentityError as exc:
         raise LaunchError(str(exc)) from exc
     env = _clean_inherited_environment(inherited_env)
     env.update(runtime)
-    env["GIT_INDEX_FILE"] = str(index_path)
     selected = settings[seat]
     argv = (
         agy_executable,
@@ -155,7 +145,6 @@ def build_launch_spec(
         argv=argv,
         env=env,
         repo_root=repo_root,
-        index_path=index_path,
         mode=mode,
     )
 
@@ -172,124 +161,6 @@ def _clean_inherited_environment(environ: Mapping[str, str]) -> dict[str, str]:
             or key in _PRESERVED_AGY_CREDENTIALS
         )
     }
-
-
-def _without_inherited_git_authority(environ: Mapping[str, str]) -> dict[str, str]:
-    return {key: value for key, value in environ.items() if not key.startswith("GIT_")}
-
-
-def resolve_git_dir(repo_root: Path) -> Path:
-    """Resolve the repository git directory without trusting an ambient index."""
-    result = subprocess.run(
-        ["git", "-C", str(repo_root), "rev-parse", "--absolute-git-dir"],
-        env=_without_inherited_git_authority(os.environ),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise LaunchError(result.stderr.strip() or "cannot resolve repository git directory")
-    return Path(result.stdout.strip())
-
-
-def ensure_seat_index(
-    repo_root: Path,
-    index_path: Path,
-    *,
-    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-) -> None:
-    """Seed a missing per-seat index; validate and preserve an existing one."""
-    try:
-        index_mode = index_path.lstat().st_mode
-    except FileNotFoundError:
-        index_mode = None
-    except OSError as exc:
-        raise LaunchError(f"cannot inspect existing seat index {index_path}: {exc}") from exc
-    if index_mode is not None:
-        if not stat.S_ISREG(index_mode):
-            raise LaunchError(
-                f"existing seat index {index_path} must be a regular file; "
-                "refusing to launch without changing it"
-            )
-        index_env = _without_inherited_git_authority(os.environ)
-        index_env["GIT_INDEX_FILE"] = str(index_path)
-        entries = runner(
-            ["git", "-C", str(repo_root), "ls-files", "--stage", "-z"],
-            env=index_env,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if entries.returncode != 0:
-            detail = entries.stderr.strip() or entries.stdout.strip()
-            raise LaunchError(
-                f"existing seat index {index_path} is unusable: "
-                f"{detail or 'cannot read index entries'}"
-            )
-        if not entries.stdout:
-            head_entries = runner(
-                [
-                    "git",
-                    "-C",
-                    str(repo_root),
-                    "ls-tree",
-                    "-r",
-                    "--name-only",
-                    "-z",
-                    "HEAD",
-                ],
-                env=_without_inherited_git_authority(os.environ),
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if head_entries.returncode != 0:
-                detail = head_entries.stderr.strip() or head_entries.stdout.strip()
-                raise LaunchError(detail or "cannot inspect HEAD before seat launch")
-            if head_entries.stdout:
-                raise LaunchError(
-                    f"existing seat index {index_path} is empty while HEAD tracks files; "
-                    "refusing to launch without changing the index"
-                )
-        status = runner(
-            [
-                "git",
-                "--no-optional-locks",
-                "-C",
-                str(repo_root),
-                "status",
-                "--porcelain=v1",
-                "--untracked-files=no",
-                "--ignore-submodules=all",
-            ],
-            env=index_env,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if status.returncode != 0:
-            detail = status.stderr.strip() or status.stdout.strip()
-            raise LaunchError(
-                f"existing seat index {index_path} is unusable: "
-                f"{detail or 'Git status validation failed'}"
-            )
-        return
-    result = runner(
-        [
-            "git",
-            "-C",
-            str(repo_root),
-            "read-tree",
-            f"--index-output={index_path}",
-            "HEAD",
-        ],
-        env=_without_inherited_git_authority(os.environ),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise LaunchError(result.stderr.strip() or f"cannot seed seat index {index_path}")
 
 
 def _parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
@@ -330,7 +201,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     repo_root = Path(__file__).resolve().parents[1]
     try:
         settings = load_seat_settings(args.config)
-        git_dir = resolve_git_dir(repo_root)
         agy_executable = "agy" if args.dry_run else (
             shutil.which("agy") or shutil.which("antigravity")
         )
@@ -338,7 +208,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise LaunchError("agy/antigravity executable not found on PATH")
         spec = build_launch_spec(
             repo_root,
-            git_dir,
             args.seat,
             settings,
             os.environ,
@@ -352,15 +221,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "AGY_AGENT_MODE",
                 "AGY_AGENT_ROLE",
                 "AGY_BEHAVIOR_SOURCE",
-                "AGY_GIT_INDEX_FILE",
-                "GIT_INDEX_FILE",
             )
             print(
                 json.dumps(
                     {
                         "argv": list(spec.argv),
                         "env": {key: spec.env[key] for key in identity_keys if key in spec.env},
-                        "index_exists": spec.index_path.exists(),
+                        "mode": spec.mode,
                     },
                     indent=2,
                     sort_keys=True,
@@ -368,7 +235,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
 
-        ensure_seat_index(spec.repo_root, spec.index_path)
         os.execvpe(spec.argv[0], list(spec.argv), spec.env)
     except (ConfigError, LaunchError) as exc:
         print(f"agy-seat: {exc}", file=sys.stderr)
