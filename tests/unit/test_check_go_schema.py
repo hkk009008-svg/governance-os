@@ -611,3 +611,28 @@ def test_absent_authoring_checkout_does_not_skip_range_validation(
 
     violations = schema.repository_report_violations(root, [report], _manifest(), None)
     assert [item for item in violations if "request binding invalid" in item], violations
+
+
+def test_retired_worktree_shell_absent_here_is_accepted(tmp_path: Path) -> None:
+    """The CI case: the inert shell exists only where the target was retired.
+
+    `git worktree remove` leaves the shell behind on one machine. A runner or a
+    fresh clone never had it, and refusing the binding there made this branch
+    pass only on the machine that did the retiring.
+    """
+    root, report, retired, target = _retired_pair(tmp_path)
+    retired["retired_worktree_shells"] = [target.as_posix()]
+    assert not target.exists()
+
+    assert schema.repository_report_violations(
+        root, [report], _manifest(), retired
+    ) == []
+
+
+def test_absent_shell_still_fails_when_the_target_reappears(tmp_path: Path) -> None:
+    root, report, retired, target = _retired_pair(tmp_path)
+    retired["retired_worktree_shells"] = [target.as_posix()]
+    target.mkdir()
+    _git(target, "init", "-q")
+
+    assert schema.repository_report_violations(root, [report], _manifest(), retired)

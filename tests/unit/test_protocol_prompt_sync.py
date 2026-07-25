@@ -7,7 +7,9 @@ import subprocess
 import tomllib
 from collections.abc import Iterable, Iterator
 from contextlib import ExitStack, contextmanager, suppress
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+import pytest
 
 import codex_protocol_model as model
 
@@ -58,9 +60,11 @@ EXACT_NEXT_TRIGGER = "Exact Next Trigger"
 # exclude files, so the two never meet on their own. A git worktree checked out
 # under `.claude/worktrees/<name>/` is a full second copy of this repo —
 # mailbox history and all — and would otherwise be judged as active protocol
-# surface. The committed `.gitignore` now carries `.claude/worktrees/`, but git
-# stays a non-sole authority here: this floor still holds if that rule is edited
-# out, and wherever `git ls-files` cannot answer.
+# surface. The committed `.gitignore` carries that path today, so this floor is
+# the second of two independent defences: it still prunes the tree on a clone
+# where that rule has been edited out. It is not a licence to skip content —
+# `_sweep_active_files` prunes a floor entry only while git confirms nothing
+# tracked lives beneath it.
 UNSWEEPABLE_FALLBACK = frozenset({".claude/worktrees"})
 
 
@@ -72,37 +76,59 @@ def _compact(text: str) -> str:
     return " ".join(text.split())
 
 
-def _git_ignored_paths() -> frozenset[str]:
-    """Root-relative posix paths git ignores, collapsed at directory level.
+def _git_listing(*arguments: str) -> tuple[tuple[str, ...], bool]:
+    """One NUL-framed `git ls-files` call, as (entries, answered).
 
-    One `git ls-files` call: `--directory` collapses a wholly-ignored tree to
-    its top directory, so a worktree holding thousands of files costs a single
-    entry. `GIT_INDEX_FILE` is scrubbed because this repo exports a per-seat
-    index — inheriting it would make tracked files read as untracked.
+    `answered` is False when git could not be run or its output could not be
+    read; callers decide what an unanswered query means for them. `-z` framing
+    stops a path containing a newline from forging entries. `GIT_INDEX_FILE` is
+    scrubbed because this repo exports a per-seat index — inheriting it would
+    make tracked files read as untracked.
     """
     environment = {
         name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
     }
     try:
         listing = subprocess.run(
-            (
-                "git",
-                "ls-files",
-                "-z",
-                "--others",
-                "--ignored",
-                "--directory",
-                "--exclude-standard",
-            ),
+            ("git", "ls-files", "-z", *arguments),
             cwd=ROOT,
             env=environment,
             capture_output=True,
             check=True,
         ).stdout.decode("utf-8")
     except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
-        return UNSWEEPABLE_FALLBACK
-    ignored = {entry.rstrip("/") for entry in listing.split("\0") if entry}
-    return frozenset(ignored | UNSWEEPABLE_FALLBACK)
+        return (), False
+    return tuple(entry for entry in listing.split("\0") if entry), True
+
+
+def _git_ignored_paths() -> frozenset[str]:
+    """Root-relative posix paths git ignores, collapsed at directory level.
+
+    `--directory` collapses a wholly-ignored tree to its top directory, so a
+    worktree holding thousands of files costs a single entry. An unanswered
+    query yields the empty set, which prunes less rather than more.
+    """
+    entries, _ = _git_listing(
+        "--others", "--ignored", "--directory", "--exclude-standard"
+    )
+    return frozenset(entry.rstrip("/") for entry in entries)
+
+
+def _git_tracked_directories() -> tuple[frozenset[str], bool]:
+    """Every directory holding tracked content, root-relative posix.
+
+    A prune decision needs this and cannot get it from the ignore listing:
+    `git ls-files --others` reports only untracked paths, so an ignore rule
+    naming a directory says nothing about tracked files committed beneath it.
+    """
+    entries, answered = _git_listing("--cached")
+    holders: set[str] = set()
+    for entry in entries:
+        parent = PurePosixPath(entry).parent
+        while str(parent) != ".":
+            holders.add(str(parent))
+            parent = parent.parent
+    return frozenset(holders), answered
 
 
 def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[Path]:
@@ -112,12 +138,23 @@ def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[P
     descending: an ignored worktree must never be walked, not merely filtered
     out afterwards. A root named explicitly is always swept even when ignored —
     naming it is the opt-in.
+
+    A directory is pruned only on positive evidence that nothing tracked lives
+    beneath it. An ignore rule is an assertion about pathnames, not about
+    content, and an unanswered git query is no evidence at all; both gaps
+    resolve toward sweeping more rather than less, because a guard that
+    inspects too little fails silently while one that inspects too much fails
+    loudly.
     """
     wanted = frozenset(suffixes)
-    ignored = _git_ignored_paths()
+    ignored = _git_ignored_paths() | UNSWEEPABLE_FALLBACK
+    tracked_directories, tracked_answered = _git_tracked_directories()
 
-    def is_ignored(path: Path) -> bool:
-        return path.relative_to(ROOT).as_posix() in ignored
+    def is_pruned(path: Path) -> bool:
+        relative = path.relative_to(ROOT).as_posix()
+        if relative not in ignored:
+            return False
+        return tracked_answered and relative not in tracked_directories
 
     found: list[Path] = []
     for relative in roots:
@@ -130,12 +167,12 @@ def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[P
             directories[:] = sorted(
                 name
                 for name in directories
-                if name != ".git" and not is_ignored(branch / name)
+                if name != ".git" and not is_pruned(branch / name)
             )
             found.extend(
                 branch / name
                 for name in sorted(filenames)
-                if (branch / name).suffix in wanted and not is_ignored(branch / name)
+                if (branch / name).suffix in wanted and not is_pruned(branch / name)
             )
     return found
 
@@ -371,13 +408,15 @@ def _ignored_probe(relative_root: str, *, self_ignore: bool) -> Iterator[Path]:
 def test_active_surface_sweeps_skip_git_ignored_trees() -> None:
     probe_roots = {
         # The reported failure: a worktree checkout under `.claude/worktrees/`.
-        # Carries no `.gitignore`, so it is pruned by UNSWEEPABLE_FALLBACK even
-        # on a clone where nothing excludes that path.
+        # Carries no `.gitignore` of its own, so on this repository it is the
+        # committed rule that excludes it. Since that rule landed, this probe
+        # pins the git lookup and no longer isolates the floor; the floor is
+        # pinned by test_fallback_prunes_when_git_reports_nothing_ignored.
         f".claude/worktrees/{PROBE_NAME}": False,
-        # Ignored by a `.gitignore` it carries itself — ignored on any machine,
-        # and absent from UNSWEEPABLE_FALLBACK, so this pins the git lookup
-        # rather than the hardcoded floor. Under `.claude/agents` to stay in
-        # range of both sweeps, not just the protocol one.
+        # Ignored by a `.gitignore` it carries itself, so it is excluded on any
+        # machine regardless of what the committed rules say, and it is absent
+        # from UNSWEEPABLE_FALLBACK. Under `.claude/agents` to stay in range of
+        # both sweeps, not just the protocol one.
         f".claude/agents/{PROBE_NAME}": True,
     }
     with ExitStack() as stack:
@@ -412,3 +451,88 @@ def test_active_surface_sweeps_skip_git_ignored_trees() -> None:
 
     for relative in probe_roots:
         assert not (ROOT / relative).exists(), relative
+
+
+def _protocol_sweep_relatives() -> set[str]:
+    return {
+        path.relative_to(ROOT).as_posix()
+        for path in _sweep_active_files(ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"})
+    }
+
+
+def _tracked_holders_of(relative: str) -> frozenset[str]:
+    holders: set[str] = set()
+    parent = PurePosixPath(relative).parent
+    while str(parent) != ".":
+        holders.add(str(parent))
+        parent = parent.parent
+    return frozenset(holders)
+
+
+def test_fallback_prunes_when_git_reports_nothing_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """UNSWEEPABLE_FALLBACK alone holds a worktree out of both sweeps.
+
+    The committed `.gitignore` now covers `.claude/worktrees/`, so every probe
+    that relies on the real ignore rules exercises the git lookup and would
+    pass with the floor emptied. Patching git's answer instead of editing the
+    repository leaves that committed rule in place and removes the only other
+    defence, so this fails if the floor is emptied — which is what makes it a
+    test of the floor rather than a restatement of the ignore rule.
+    """
+    monkeypatch.setattr(f"{__name__}._git_ignored_paths", lambda: frozenset())
+    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
+        relative = probe.relative_to(ROOT).as_posix()
+        body = probe.read_text(encoding="utf-8")
+        assert EXACT_NEXT_TRIGGER in body and MANDATORY_SUPERPOWERS_RE.search(body)
+        assert relative not in _protocol_sweep_relatives()
+
+
+def test_fallback_prune_yields_to_tracked_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fallback root stops pruning as soon as it holds tracked content.
+
+    The floor names a pathname, and a pathname asserts nothing about what is
+    committed beneath it, so pruning on the name alone would make a tracked
+    protocol surface invisible to both sweeps while it is still live. Both
+    directions are asserted against one planted probe: the pathname is what
+    prunes it, and a tracked descendant is what stops the prune.
+    """
+    root_relative = f".claude/agents/{PROBE_NAME}"
+    monkeypatch.setattr(
+        f"{__name__}.UNSWEEPABLE_FALLBACK", frozenset({root_relative})
+    )
+    with _ignored_probe(root_relative, self_ignore=False) as probe:
+        relative = probe.relative_to(ROOT).as_posix()
+
+        # Nothing tracked beneath it: the floor prunes, exactly as before.
+        assert relative not in _protocol_sweep_relatives()
+
+        # One tracked descendant: the same root must now be walked.
+        monkeypatch.setattr(
+            f"{__name__}._git_tracked_directories",
+            lambda: (_tracked_holders_of(relative), True),
+        )
+        assert relative in _protocol_sweep_relatives()
+
+
+def test_unanswered_git_query_sweeps_more_never_less(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken git widens the sweep rather than silently narrowing it.
+
+    When `git ls-files --cached` cannot be answered there is no evidence that a
+    fallback root is free of tracked content, so the prune must not fire. The
+    previous shape pruned the floor unconditionally, which meant a git that
+    failed, was absent, or returned nothing still inspected *less* under that
+    one root while inspecting more everywhere else.
+    """
+    monkeypatch.setattr(f"{__name__}._git_ignored_paths", lambda: frozenset())
+    monkeypatch.setattr(
+        f"{__name__}._git_tracked_directories", lambda: (frozenset(), False)
+    )
+    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
+        relative = probe.relative_to(ROOT).as_posix()
+        assert relative in _protocol_sweep_relatives()
