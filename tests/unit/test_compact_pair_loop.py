@@ -1239,3 +1239,200 @@ def test_recommitted_identical_verbose_request_loses_legacy_compatibility(
 
     with pytest.raises(pair.CompactPairError, match="historical provenance"):
         pair.parse_verify_request(clone, path, replay_trigger)
+
+
+COMPOSED_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-07-26T08-00-00Z-director-to-operator-verify-request.md"
+)
+
+
+def _compose_repo(tmp_path: Path) -> tuple[Path, str, str]:
+    root = tmp_path / "compose"
+    root.mkdir()
+    (root / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(root, "init", "-q")
+    _git(root, "config", "user.name", "Compose Test")
+    _git(root, "config", "user.email", "compose@example.invalid")
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "chore: base")
+    base = _git(root, "rev-parse", "HEAD")
+
+    (root / "feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _git(root, "add", "feature.py")
+    _git(root, "commit", "-q", "-m", "feat: candidate")
+    return root, base, _git(root, "rev-parse", "HEAD")
+
+
+def _publish_as_send_event(root: Path, body: str) -> Path:
+    """Wrap a composed body exactly as `coordination/bin/send-event` does."""
+    candidate = root / "candidate.tmp"
+    candidate.write_text(
+        "# Director → Operator: composed request\n\n"
+        "**When:** 2026-07-26T08:00:00Z · **From:** director (online)\n\n"
+        f"{body}\n\nCursor at send: 0\n",
+        encoding="utf-8",
+    )
+    candidate.chmod(0o600)
+    return candidate
+
+
+def test_composed_request_round_trips_through_the_candidate_parser(
+    tmp_path: Path,
+) -> None:
+    """The composer and the parser must not be able to drift apart.
+
+    Authors previously reconstructed this format by reading
+    `_parse_verify_request_bytes` and copying an older event. If a future
+    parser change is not mirrored in `compose_request`, this round trip is what
+    fails instead of the next author's publication attempt.
+    """
+    root, base, head = _compose_repo(tmp_path)
+    body = pair.compose_request(
+        root,
+        author_seat="director",
+        author_model="claude-opus-5",
+        assigned_operator="operator2",
+        risk_class="high-risk-control",
+        base_rev="HEAD~1",
+        head_rev="HEAD",
+        outcome="Composed outcome under test.",
+        abuse_assessments=("Composer emits a body the parser rejects.",),
+        finding_refs=(FINDING_A,),
+    )
+
+    candidate = _publish_as_send_event(root, body)
+    request = pair.parse_verify_request_candidate(
+        root,
+        candidate,
+        COMPOSED_PATH.replace("-to-operator-", "-to-operator2-"),
+    )
+
+    assert request.reviewed_base == base
+    assert request.reviewed_head == head
+    assert request.author_seat == "director"
+    assert request.author_model == "claude-opus-5"
+    assert request.assigned_operator == "operator2"
+    assert request.risk_class == "high-risk-control"
+    assert request.risk_class_explicit is True
+    assert request.outcome == "Composed outcome under test."
+    assert request.abuse_class_assessment == (
+        "Composer emits a body the parser rejects.",
+    )
+    assert request.finding_refs == (FINDING_A,)
+    assert pair.validate_request_candidate(root, request) == []
+
+
+def test_compose_resolves_revisions_so_authors_never_transcribe_shas(
+    tmp_path: Path,
+) -> None:
+    root, base, head = _compose_repo(tmp_path)
+    body = pair.compose_request(
+        root,
+        author_seat="director",
+        author_model="claude-opus-5",
+        assigned_operator="operator",
+        risk_class="material-behavior",
+        base_rev="HEAD~1",
+        head_rev="HEAD",
+        outcome="Range resolution under test.",
+    )
+
+    assert f"Reviewed base: {base}" in body
+    assert f"Reviewed head: {head}" in body
+    assert "HEAD" not in body
+    assert "## Abuse Class Assessment" not in body
+    assert "## Finding Refs" not in body
+
+
+@pytest.mark.parametrize("risk_class", ("ordinary-local", "external-effect", "invented"))
+def test_compose_refuses_risk_classes_that_carry_no_formal_review(
+    tmp_path: Path, risk_class: str
+) -> None:
+    root, _, _ = _compose_repo(tmp_path)
+    with pytest.raises(pair.CompactPairError, match="Risk class must be"):
+        pair.compose_request(
+            root,
+            author_seat="director",
+            author_model="claude-opus-5",
+            assigned_operator="operator",
+            risk_class=risk_class,
+            base_rev="HEAD~1",
+            head_rev="HEAD",
+            outcome="Rejected risk class.",
+        )
+
+
+@pytest.mark.parametrize(
+    ("author", "operator", "expected"),
+    (
+        ("coordinator", "operator", "Author seat must be"),
+        ("director", "director2", "Assigned operator must be"),
+    ),
+)
+def test_compose_refuses_seats_outside_the_pair(
+    tmp_path: Path, author: str, operator: str, expected: str
+) -> None:
+    root, _, _ = _compose_repo(tmp_path)
+    with pytest.raises(pair.CompactPairError, match=expected):
+        pair.compose_request(
+            root,
+            author_seat=author,
+            author_model="claude-opus-5",
+            assigned_operator=operator,
+            risk_class="material-behavior",
+            base_rev="HEAD~1",
+            head_rev="HEAD",
+            outcome="Rejected seat.",
+        )
+
+
+def test_compose_refuses_high_risk_without_an_abuse_assessment(
+    tmp_path: Path,
+) -> None:
+    root, _, _ = _compose_repo(tmp_path)
+    with pytest.raises(pair.CompactPairError, match="Abuse Class Assessment"):
+        pair.compose_request(
+            root,
+            author_seat="director",
+            author_model="claude-opus-5",
+            assigned_operator="operator",
+            risk_class="high-risk-control",
+            base_rev="HEAD~1",
+            head_rev="HEAD",
+            outcome="Missing assessment.",
+        )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    (
+        ({"outcome": "   "}, "Outcome must be nonempty"),
+        ({"finding_refs": ("docs/notes.md@abc",)}, "immutable full-SHA"),
+        ({"finding_refs": (FINDING_A, FINDING_A)}, "must be unique"),
+        ({"base_rev": "HEAD"}, "strict ancestor"),
+        ({"base_rev": "--upload-pack=touch"}, "must be one git revision"),
+    ),
+)
+def test_compose_rejects_malformed_inputs_before_emitting_anything(
+    tmp_path: Path, kwargs: dict[str, object], expected: str
+) -> None:
+    """A composer that emitted an invalid body would only move the failure.
+
+    Every rejection here is one the parser would also make; catching it at
+    composition means the author never publishes it and never has to burn a
+    review round discovering it.
+    """
+    root, _, _ = _compose_repo(tmp_path)
+    arguments: dict[str, object] = {
+        "author_seat": "director",
+        "author_model": "claude-opus-5",
+        "assigned_operator": "operator",
+        "risk_class": "material-behavior",
+        "base_rev": "HEAD~1",
+        "head_rev": "HEAD",
+        "outcome": "Rejected input.",
+    }
+    arguments.update(kwargs)
+    with pytest.raises(pair.CompactPairError, match=expected):
+        pair.compose_request(root, **arguments)

@@ -9,7 +9,9 @@ import re
 import stat
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 import codex_protocol_model
@@ -132,6 +134,22 @@ def _full_commit(root: Path, value: str, label: str) -> str:
     if resolved != value:
         raise CompactPairError(f"{label} commit does not resolve exactly")
     return value
+
+
+def _resolve_rev(root: Path, value: str, label: str) -> str:
+    """Resolve any git revision to the one full SHA it names right now.
+
+    `_full_commit` deliberately refuses anything but a full SHA, because a
+    committed artifact must never be re-resolvable. Composition is the opposite
+    situation: the author names a revision before the artifact exists, so
+    `HEAD~3` has to become a fixed SHA here rather than in the reader.
+    """
+    if not value or value.strip() != value or value.startswith("-"):
+        raise CompactPairError(f"{label} must be one git revision")
+    resolved = _git(root, "rev-parse", "--verify", f"{value}^{{commit}}").decode().strip()
+    if SHA_RE.fullmatch(resolved) is None:
+        raise CompactPairError(f"{label} did not resolve to one commit")
+    return resolved
 
 
 def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
@@ -463,6 +481,135 @@ def validate_request_candidate(root: Path, request: VerifyRequest) -> list[str]:
     except CompactPairError as exc:
         return [str(exc)]
     return []
+
+
+def _compose_self_check(
+    root: Path, body: str, *, author_seat: str, assigned_operator: str
+) -> None:
+    """Refuse a body this module would reject once `send-event` wraps it.
+
+    The writer validates the finished candidate, never the body it was handed,
+    so a composer that only checked its own output would still emit requests
+    that die at publication. Simulating the exact envelope, footer and path the
+    writer builds is what makes the check mean the same thing.
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    final = (
+        f"coordination/mailbox/sent/{stamp}-{author_seat}"
+        f"-to-{assigned_operator}-verify-request.md"
+    )
+    when = f"{stamp[:11]}{stamp[11:19].replace('-', ':')}Z"
+    candidate = (
+        f"# Compose: verify-request self-check\n\n"
+        f"**When:** {when} · **From:** {author_seat} (online)\n\n"
+        f"{body}\n\nCursor at send: 0\n"
+    ).encode("utf-8")
+    if len(candidate) > MAX_EVENT_BYTES:
+        raise CompactPairError("composed request exceeds the event size limit")
+    request = _parse_verify_request_bytes(
+        root.resolve(),
+        final,
+        candidate,
+        trigger_commit="",
+        allow_frozen_legacy=False,
+    )
+    violations = validate_request_candidate(root, request)
+    if violations:
+        raise CompactPairError("; ".join(violations))
+
+
+def compose_request(
+    root: Path,
+    *,
+    author_seat: str,
+    author_model: str,
+    assigned_operator: str,
+    risk_class: str,
+    base_rev: str,
+    head_rev: str,
+    outcome: str,
+    reviewed_repository: str | None = None,
+    abuse_assessments: Sequence[str] = (),
+    finding_refs: Sequence[str] = (),
+) -> str:
+    """Build one verify-request body that this module's own parser accepts.
+
+    The request format lives only in `_parse_verify_request_bytes`, so authors
+    have had to reconstruct it by reading the parser and copying an older
+    event. Generating the body from the same constants closes that gap: the
+    author supplies the judgement — seats, risk class, outcome — and everything
+    git already knows is resolved here instead of transcribed by hand.
+    """
+    if author_seat not in PAIR_SEATS:
+        raise CompactPairError(f"Author seat must be one of {sorted(PAIR_SEATS)}")
+    if assigned_operator not in OPERATOR_SEATS:
+        raise CompactPairError(
+            f"Assigned operator must be one of {sorted(OPERATOR_SEATS)}"
+        )
+    try:
+        profile = codex_protocol_model.review_profile_for(risk_class)
+    except ValueError:
+        profile = None
+    if (
+        profile is None
+        or not profile.requires_non_author_review
+        or not profile.requires_exact_range
+        or profile.requires_live_authorization
+    ):
+        raise CompactPairError(
+            f"Risk class must be {MATERIAL_BEHAVIOR_RISK} or {HIGH_RISK_CONTROL}"
+        )
+
+    author_model = _identity(author_model, "Author model")
+    outcome = outcome.strip()
+    if not outcome:
+        raise CompactPairError("Outcome must be nonempty")
+
+    assessments = [entry.strip() for entry in abuse_assessments if entry.strip()]
+    if profile.requires_abuse_class_assessment and not assessments:
+        raise CompactPairError(
+            f"{HIGH_RISK_CONTROL} requires a nonempty Abuse Class Assessment"
+        )
+    references = [entry.strip() for entry in finding_refs if entry.strip()]
+    for reference in references:
+        if not protocol_mailbox.immutable_reference_is_canonical(reference):
+            raise CompactPairError(
+                f"finding refs must use immutable full-SHA paths or digests: {reference}"
+            )
+    if len(references) != len(set(references)):
+        raise CompactPairError("finding refs must be unique")
+
+    reviewed_root = _reviewed_root(root.resolve(), reviewed_repository)
+    base = _resolve_rev(reviewed_root, base_rev, "Reviewed base")
+    head = _resolve_rev(reviewed_root, head_rev, "Reviewed head")
+
+    lines = ["Event type: verify-request"]
+    if reviewed_repository is not None:
+        lines.append(f"Reviewed repository: {reviewed_repository}")
+    lines += [
+        f"Reviewed base: {base}",
+        f"Reviewed head: {head}",
+        f"Author seat: {author_seat}",
+        f"Author model: {author_model}",
+        f"Assigned operator: {assigned_operator}",
+        f"Risk class: {risk_class}",
+        "",
+        "## Outcome",
+        "",
+        outcome,
+    ]
+    if assessments:
+        lines += ["", "## Abuse Class Assessment", ""]
+        lines += [f"- {entry}" for entry in assessments]
+    if references:
+        lines += ["", "## Finding Refs", ""]
+        lines += [f"- {entry}" for entry in references]
+
+    body = "\n".join(lines)
+    _compose_self_check(
+        root, body, author_seat=author_seat, assigned_operator=assigned_operator
+    )
+    return body
 
 
 def _parse_verification_report_bytes(
@@ -799,7 +946,40 @@ def _main(argv: list[str] | None = None) -> int:
     candidate.add_argument("--repo-root", required=True, type=Path)
     candidate.add_argument("--candidate", required=True)
     candidate.add_argument("--final-relative", required=True)
+    compose = subparsers.add_parser("compose-request")
+    compose.add_argument("--repo-root", required=True, type=Path)
+    compose.add_argument("--author", required=True)
+    compose.add_argument("--author-model", required=True)
+    compose.add_argument("--operator", required=True)
+    compose.add_argument("--risk-class", required=True)
+    compose.add_argument("--base", required=True)
+    compose.add_argument("--head", default="HEAD")
+    compose.add_argument("--reviewed-repository")
+    compose.add_argument("--abuse-class", action="append", default=[])
+    compose.add_argument("--finding-ref", action="append", default=[])
     arguments = parser.parse_args(argv)
+
+    if arguments.command == "compose-request":
+        try:
+            body = compose_request(
+                arguments.repo_root,
+                author_seat=arguments.author,
+                author_model=arguments.author_model,
+                assigned_operator=arguments.operator,
+                risk_class=arguments.risk_class,
+                base_rev=arguments.base,
+                head_rev=arguments.head,
+                outcome=sys.stdin.read(),
+                reviewed_repository=arguments.reviewed_repository,
+                abuse_assessments=arguments.abuse_class,
+                finding_refs=arguments.finding_ref,
+            )
+        except (CompactPairError, OSError) as exc:
+            print(f"compose-request failed: {exc}", file=sys.stderr)
+            return 1
+        sys.stdout.write(f"{body}\n")
+        return 0
+
     try:
         if str(arguments.final_relative).endswith("-verify-request.md"):
             request = parse_verify_request_candidate(
