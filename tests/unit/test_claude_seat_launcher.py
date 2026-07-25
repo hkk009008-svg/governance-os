@@ -9,8 +9,12 @@ def test_retired_claude_cli_launcher_is_absent(repo_root: Path) -> None:
     The retired launcher seeded `.git/index-claude-<seat>` and exported
     `GIT_INDEX_FILE` into the session. That made seat identity a property of an
     inherited environment variable, which a desktop app cannot set and any
-    process can forge. Identity is now a linked worktree plus an app-visible
-    session record, matching `.codex/` and `.cursor/`.
+    process can forge.
+
+    Nothing replaced it, deliberately. Claude has no launcher and no session
+    registry — unlike Cursor, whose registry exists to gate in-app effects.
+    Claude seat naming is convention; review identity is decided at publication
+    by `scripts/compact_pair_loop.py`.
     """
     assert not (repo_root / "scripts/claude_seat_launcher.py").exists()
     assert not (repo_root / "coordination/bin/claude-seat").exists()

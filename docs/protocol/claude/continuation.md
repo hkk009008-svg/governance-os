@@ -11,8 +11,19 @@ contain only their local deltas.
 - Coordinator: only for explicit observation, reconciliation, or mediation.
 - Subagent: bounded by its parent and never inherits live-role authority.
 
-Runtime identity comes from the app session. Environment variables, role
-labels, and prompt text describe identity but never grant authority.
+**Claude has no session-start seat binding, and does not need one.** Naming a
+role here is convention: no launcher, registry, or hook records or validates a
+Claude seat at startup. Cursor enforces an app-seat registry because its hooks
+gate in-app effects; Codex has a launch spec. Claude has neither, and this file
+does not claim otherwise.
+
+Identity is enforced where it decides something — at publication, by
+`scripts/compact_pair_loop.py`, which binds a verdict to reviewer seat not equal
+to author seat, reviewer equal to the request's assigned operator, reviewer
+matching its own envelope and filename, distinct model families for
+`high-risk-control`, and repository/base/head equal to the committed request.
+Session-start binding never prevented a bad GO; publication-time validation
+does.
 
 ## Orientation
 
@@ -72,9 +83,11 @@ forced by the harness rather than chosen:
 - `model:` in agent frontmatter is the only in-harness lever that forces an
   adversarial reviewer off the authoring model. Model-family independence is
   validated by `codex_protocol_model.models_are_independent`.
-- Repository lifecycle hooks are absent by design. A live seat is a linked
-  worktree plus an app-visible session identity, which no PreToolUse hook can
-  validate; the app's own approval surface owns effect gating.
+- Repository lifecycle hooks are absent by design, and nothing replaced them.
+  The retired PreToolUse guard bound *mutation* to `CLAUDE_SEAT` plus a per-seat
+  index; it never validated review identity, so removing it took nothing away
+  from the acceptance gate. Work in a worktree you are willing to commit from,
+  and let `compact_pair_loop.py` decide whether a verdict binds.
 
 ## Review and external effects
 

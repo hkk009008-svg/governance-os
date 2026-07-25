@@ -7,10 +7,12 @@ from pathlib import Path
 def test_claude_has_no_repo_mutating_lifecycle_hooks(repo_root: Path) -> None:
     """Claude uses native worktree state and explicit verification commands.
 
-    A live seat is a linked worktree plus an app-visible session identity. That
-    is not a fact a PreToolUse hook can validate, so repository lifecycle hooks
-    must not gate mutation, mutate Git indexes, presence, cursors, or generated
-    state, and session start must not run the full smoke suite.
+    The retired PreToolUse guard bound mutation to an environment variable a
+    desktop app cannot set and any process can forge, and it never validated
+    review identity — so it was not part of the acceptance gate it appeared to
+    protect. Repository lifecycle hooks must not gate mutation, mutate Git
+    indexes, presence, cursors, or generated state, and session start must not
+    run the full smoke suite.
     """
     settings_path = repo_root / ".claude/settings.json"
     if not settings_path.exists():
