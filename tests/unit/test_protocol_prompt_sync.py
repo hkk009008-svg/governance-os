@@ -58,9 +58,9 @@ EXACT_NEXT_TRIGGER = "Exact Next Trigger"
 # exclude files, so the two never meet on their own. A git worktree checked out
 # under `.claude/worktrees/<name>/` is a full second copy of this repo —
 # mailbox history and all — and would otherwise be judged as active protocol
-# surface. `.claude/worktrees/` is only in machine-local `.git/info/exclude`,
-# never in the committed `.gitignore`, so git cannot be the sole authority
-# here: this floor holds on a fresh clone where git reports nothing ignored.
+# surface. The committed `.gitignore` now carries `.claude/worktrees/`, but git
+# stays a non-sole authority here: this floor still holds if that rule is edited
+# out, and wherever `git ls-files` cannot answer.
 UNSWEEPABLE_FALLBACK = frozenset({".claude/worktrees"})
 
 
