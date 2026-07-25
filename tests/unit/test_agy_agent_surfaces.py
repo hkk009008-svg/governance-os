@@ -35,6 +35,11 @@ def _assert_advisory_instructions(instructions: str) -> None:
     assert "coordination/bin/send-event" not in lowered
     assert "consume-events" not in lowered
     assert "index-agy-" not in lowered
+    # The retired per-seat index is reachable by wording that never names the
+    # index: an instruction to point GIT_INDEX_FILE anywhere reintroduces the
+    # session-wide rebinding hazard, so reject the variable itself, not just
+    # its old provider-prefixed filename.
+    assert "git_index_file" not in lowered
     assert "protocol-director" not in lowered
     assert "protocol-operator" not in lowered
     assert "protocol-coordinator" not in lowered
@@ -77,6 +82,9 @@ def test_agy_catalog_contains_only_read_only_advisory_profiles(repo_root: Path) 
         "Use coordination/bin/send-event to publish findings.",
         "Consume shared state before analyzing the range.",
         "Issue a binding GO after review.",
+        # operator2's probe against 31e5cbf..b1c6c80: the retired binding
+        # reintroduced by wording that never names index-agy-.
+        "Export GIT_INDEX_FILE=/tmp/seat-specific-index before inspecting.",
     ],
 )
 def test_catalog_guardrail_check_rejects_contradictory_authority_grants(
