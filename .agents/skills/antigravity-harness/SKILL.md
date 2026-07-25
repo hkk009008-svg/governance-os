@@ -29,7 +29,7 @@ When performing substantive work, adhere to the unified operating doctrine bound
 - **Seating Doctrine & Non-Author Verification**:
   - **impl ≠ verifier**: Candidate code authored by an implementer subagent/seat (`director`) MUST be verified by a distinct verifier subagent/seat (`operator`).
 - **Programmatic Event Emission**: Use `scripts/agy_emit.py --to <seat> --kind <kind> --subject <subj> --body <body>` or `coordination/bin/send-event` to emit schema-compliant events programmatically when milestone records are required.
-- **Environment & Index Isolation**: Each seat uses its dedicated `.git/index-agy-<seat>` index and isolated process environment.
+- **Environment Isolation & Native Index**: Each seat gets an isolated process environment; `scripts/agy_seat_launcher.py` emits only `AGY_SEAT`, `AGY_AGENT_MODE`, `AGY_AGENT_ROLE`, and `AGY_BEHAVIOR_SOURCE`, and drops inherited `GIT_*` authority rather than replacing it. No seat binds a per-seat Git index: every worktree uses its native index and `index-<provider>-<seat>` is retired. Never hand-roll a `GIT_INDEX_FILE` export — it silently rebinds every later Git command in the session including commits, and follows `cd` into unrelated repositories. Prefix ordinary Git and pytest with `env -u GIT_INDEX_FILE`.
 - **Background Tasks**: Use `schedule` and `manage_task` tools for background command and timer execution.
 - **User Delegation**: Use `ask_question` rather than deciding policy or cross-cutting changes on your own.
 - **Smoke Tests**: Run `scripts/ci_smoke.py --fast` for session-start preflight verification; run full `scripts/ci_smoke.py` before final verification.

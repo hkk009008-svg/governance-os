@@ -230,6 +230,35 @@ def test_dry_run_prints_identity_and_does_not_start_agy(
     assert "index_exists" not in payload
 
 
+def test_agy_guides_never_teach_manual_index_binding(repo_root: Path) -> None:
+    """The doc-side counterpart to the launcher's no-index assertion.
+
+    `test_launch_spec_binds_no_index_and_scrubs_inherited_git_authority` proves
+    the launcher exports no `GIT_INDEX_FILE`, but a seat reads its guides too. A
+    stale guide bullet survived the `09d04fb` retirement telling AGY seats they
+    each own `.git/index-agy-<seat>`; a seat obeying it hand-rolls
+    `export GIT_INDEX_FILE=...`, which silently rebinds every later Git command
+    in the session including commits, and follows `cd` into unrelated
+    repositories.
+
+    `.agy/agents/*.toml` is covered by `test_agy_agent_surfaces.py` and the
+    Claude guides by `test_claude_seat_launcher.py`. These two trees were the
+    uncovered surface, which is why the drift landed here.
+    """
+    guides = [
+        *sorted((repo_root / ".agents/skills").rglob("*.md")),
+        *sorted((repo_root / "docs/protocol/agy").glob("*.md")),
+    ]
+    assert guides, "expected AGY guide surfaces to exist"
+
+    for guide in guides:
+        text = guide.read_text(encoding="utf-8")
+        relative = guide.relative_to(repo_root)
+        assert "export GIT_INDEX_FILE=" not in text, relative
+        for retired in ("index-agy-", "index-claude-", "index-codex-", "index-cursor-"):
+            assert retired not in text, f"{relative}: {retired}"
+
+
 def test_continuation_documents_read_only_bridge_and_stdin_writer(
     repo_root: Path,
 ) -> None:
