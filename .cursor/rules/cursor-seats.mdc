@@ -7,7 +7,7 @@ alwaysApply: true
 
 Cursor Desktop/Agents Window is the normal runtime. The main checkout and
 ordinary branches are a **readiness bridge**: reads and `.pytest-verify-tmp/`
-scratch are free; every governed mutation or effect surfaces one in-app
+scratch are free; governed mutations and remote Git effects surface one in-app
 approval.
 
 A live seat is one fact: a linked worktree on reserved branch
@@ -17,23 +17,24 @@ app `conversation_id`, app-visible selected model ID) was written by the
 environment variables describe it but never grant authority. Cursor app seats
 use their worktree's native Git index and reject `GIT_INDEX_FILE`.
 
+- Standing pair: `director` plus `operator` (Operator model must differ from
+  Director). `director2` / `operator2` / `coordinator` are cold capacity.
 - `director`/`director2` implement without per-action approval in their own
   worktree.
 - `operator`/`operator2` review and issue GO/NITS/FAIL; their one unattended
   commit is the exact event path just staged by the fixed writer.
-- `coordinator` reconciles, authors no production changes, and holds no
-  mailbox cursor.
-- The standing pair is `director` plus `operator2`; other seats are on-demand
-  capacity lanes.
+- Bound Director/Operator `cursor-publish` / `cursor-consume` do not need a
+  second mailbox approval. Do not ask chat to re-authorize the same effect
+  after a hook approval card.
+- `coordinator` reconciles on demand, authors no production changes, and holds
+  no mailbox cursor.
 - Behavior-changing acceptance requires a non-author Operator using a different
   selected model ID against one committed verify-request. This is app-visible
   evidence, not provider/backend attestation.
 
-Mailbox publish/consume uses `cursor-publish`/`cursor-consume`, delegates to
-the fixed writers, and requires an in-app approval. Never edit mailbox, lock,
-or `.cursor/runtime/` state directly — the hook hard-denies that. Push, pull,
-fetch, merge, rebase, cursor consume, and paid spend are separate effects;
-each needs its own in-app approval for the exact action.
+Never edit mailbox, lock, or `.cursor/runtime/` state directly — the hook
+hard-denies that. Push, pull, fetch, merge, rebase, and paid spend are separate
+remote effects; each needs its own in-app approval for the exact action.
 
 Never switch branches inside a seat chat on a dirty tree; the app may
 auto-commit a checkpoint. Seats stay on their reserved branch.

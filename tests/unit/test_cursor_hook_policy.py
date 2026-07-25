@@ -467,15 +467,23 @@ def test_operator_commits_only_its_fixed_writer_report_without_ask(
     assert foreign["permission"] == "ask"
 
 
-def test_mailbox_wrapper_asks_in_bound_seat_and_denies_readiness(
+def test_mailbox_wrapper_allows_bound_pair_and_denies_readiness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     command = (
         "coordination/bin/cursor-publish --to operator --kind status "
         "--subject hello --body-file .pytest-verify-tmp/body.md"
     )
-    _bind(monkeypatch, "director")
-    bound = policy.evaluate(
+    for seat in ("director", "operator", "operator2"):
+        _bind(monkeypatch, seat)
+        bound = policy.evaluate(
+            _payload("beforeShellExecution", command=command),
+            {},
+            root=tmp_path,
+        )
+        assert bound["permission"] == "allow", seat
+    _bind(monkeypatch, "coordinator")
+    coordinator = policy.evaluate(
         _payload("beforeShellExecution", command=command),
         {},
         root=tmp_path,
@@ -486,8 +494,8 @@ def test_mailbox_wrapper_asks_in_bound_seat_and_denies_readiness(
         {},
         root=tmp_path,
     )
-    assert bound["permission"] == "ask"
-    assert "director" in bound["user_message"]
+    assert coordinator["permission"] == "ask"
+    assert "coordinator" in coordinator["user_message"]
     assert readiness["permission"] == "deny"
 
 
@@ -801,6 +809,6 @@ def test_mailbox_approval_denies_mismatched_payload_identity(
         {"CURSOR_APP_CONVERSATION_ID": "conversation-1"},
         root=tmp_path,
     )
-    assert matched["permission"] == "ask"
+    assert matched["permission"] == "allow"
     assert mismatched["permission"] == "deny"
     assert "bound top-level" in mismatched["user_message"]

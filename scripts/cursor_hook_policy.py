@@ -4,11 +4,11 @@
 Classified inspection reads and scratch writes are free. Unknown top-level
 commands ask; unknown subagent commands deny. Repository mutations are
 role-governed: Director worktree chats mutate freely, every other top-level
-posture receives one in-app approval. Separately authorized effects (mailbox,
-push, pull, fetch, merge, rebase, cherry-pick) always surface one in-app
-approval. Hard denies are reserved for protected coordination surfaces,
-direct fixed-writer calls, foreign provider launchers, and subagent seat
-impersonation.
+posture receives one in-app approval. Bound Director/Operator mailbox
+wrappers inherit the seat-start grant (allow). Remote Git effects (push,
+pull, fetch, merge, rebase, cherry-pick) always ask. Hard denies are reserved
+for protected coordination surfaces, direct fixed-writer calls, foreign
+provider launchers, and subagent seat impersonation.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ try:
     from scripts.cursor_app_binding import (
         DEFAULT_REGISTRY_PATH,
         DIRECTOR_SEATS,
+        OPERATOR_SEATS,
         AppBindingError,
         AppSessionBinding,
         register_payload_session,
@@ -39,6 +40,7 @@ except ModuleNotFoundError as exc:
     from cursor_app_binding import (  # type: ignore[no-redef]
         DEFAULT_REGISTRY_PATH,
         DIRECTOR_SEATS,
+        OPERATOR_SEATS,
         AppBindingError,
         AppSessionBinding,
         register_payload_session,
@@ -791,6 +793,9 @@ def _shell_decision(
                 return _deny(
                     "Mailbox effects require a bound top-level Cursor app seat."
                 )
+            # Standing Director/Operator: seat-start is the local mailbox grant.
+            if binding.seat in DIRECTOR_SEATS or binding.seat in OPERATOR_SEATS:
+                continue
             pending_ask = pending_ask or _ask(
                 f"Approve one mailbox effect as {binding.seat} "
                 f"from model {binding.model_id}?"

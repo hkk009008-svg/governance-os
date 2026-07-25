@@ -15,16 +15,20 @@ and relevant mailbox bodies. Durable state beats chat memory.
 Default posture is readiness. A named seat exists only in its reserved linked
 worktree after the hook registers the top-level conversation and selected
 model ID. Reads are free everywhere. Director seats mutate their worktree
-without per-action approval; every other posture gets one in-app approval per
-governed mutation or effect.
+without per-action approval; bound Director/Operator mailbox wrappers inherit
+the seat-start grant; every other posture gets one in-app approval per
+governed mutation. Remote Git effects always ask.
+
+Default topology is the standing pair (`director` + `operator`). Do not invent
+five-seat ceremony; capacity seats stay cold until parallel load earns them.
 
 Use each worktree's native Git index. Never set `GIT_INDEX_FILE` in Cursor app
 seats. Preserve unrelated dirty files and stage explicit pathspecs.
 
 Find definitions, writers, callers, imports, and siblings before changing a
-symbol. Tests prove only what they execute. Push, merge, lock, mailbox publish,
-cursor consume, and spend are separate effects, each authorized by its own
-in-app approval for the exact action.
+symbol. Tests prove only what they execute. Push, merge, lock, and spend are
+separate remote effects, each authorized by its own in-app approval. Do not
+double-ask in chat after a hook approval for the same command.
 
 Cursor workflow truth lives under `.cursor/` and `docs/protocol/cursor/`. Do not
 rewrite Codex/Claude adapters for Cursor-only changes. No Cursor-specific

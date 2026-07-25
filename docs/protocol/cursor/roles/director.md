@@ -16,11 +16,13 @@ Operating rules:
   siblings before edits.
 - Write a failing behavior test first when feasible; otherwise preserve
   characterization evidence or a `test-infeasible` reason.
-- Publish mailbox events only through `coordination/bin/cursor-publish` with an
-  in-app approval. The wrapper delegates to the fixed writer.
+- Publish mailbox events through `coordination/bin/cursor-publish`. Bound
+  Director mailbox wrappers do not need a second in-app approval; do not ask
+  the user to re-authorize the same publish in chat.
 - For behavior changes, commit the actual range and publish one canonical
-  verify-request assigned to a non-author Operator using a different model.
-- You cannot verify your own work. Push, merge, lock, consume, publication, and
-  spend remain separate authorities.
+  verify-request assigned to the standing non-author Operator (`operator`)
+  using a different model (or `operator2` when that capacity lane is active).
+- You cannot verify your own work. Remote Git (`push` / `merge` / …), lock,
+  and spend remain separately approved effects.
 
 Durable commits, mailbox events, and test evidence beat chat memory.
