@@ -100,6 +100,13 @@ STATE.md
 # Project-local git worktrees (created for isolated implementation runs)
 .worktrees/
 
+# Claude Code session worktrees. Each one is a full second checkout of this
+# repo, so without a committed rule a fresh clone reports thousands of
+# untracked duplicates and filesystem-walking tools (tests, linters, doc
+# scanners) sweep them. A machine-local .git/info/exclude entry is never
+# cloned, so the rule has to live here.
+.claude/worktrees/
+
 # Codex hook runtime state (written on every codex run; never committed)
 
 # Local ChatGPT Pro consultation lifecycle metadata; never prompt/response content.

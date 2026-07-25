@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
 import tomllib
+from collections.abc import Iterable, Iterator
+from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
 
 import codex_protocol_model as model
@@ -36,10 +41,27 @@ ACTIVE_INSTRUCTION_ROOTS = (
     "docs/protocol/claude",
     "docs/protocol/codex",
 )
+ACTIVE_PROTOCOL_ROOTS = (
+    "docs/PROGRAM-MANUAL.md",
+    ".agents",
+    ".claude",
+    ".codex",
+    "docs/protocol",
+    "scripts",
+)
 MANDATORY_SUPERPOWERS_RE = re.compile(
     r"\bsuperpowers:[a-z0-9][a-z0-9-]*\b",
     re.IGNORECASE,
 )
+EXACT_NEXT_TRIGGER = "Exact Next Trigger"
+# Directory walks see the filesystem; git's ignore rules live in the index and
+# exclude files, so the two never meet on their own. A git worktree checked out
+# under `.claude/worktrees/<name>/` is a full second copy of this repo —
+# mailbox history and all — and would otherwise be judged as active protocol
+# surface. The committed `.gitignore` now carries `.claude/worktrees/`, but git
+# stays a non-sole authority here: this floor still holds if that rule is edited
+# out, and wherever `git ls-files` cannot answer.
+UNSWEEPABLE_FALLBACK = frozenset({".claude/worktrees"})
 
 
 def _read(path: str) -> str:
@@ -48,6 +70,74 @@ def _read(path: str) -> str:
 
 def _compact(text: str) -> str:
     return " ".join(text.split())
+
+
+def _git_ignored_paths() -> frozenset[str]:
+    """Root-relative posix paths git ignores, collapsed at directory level.
+
+    One `git ls-files` call: `--directory` collapses a wholly-ignored tree to
+    its top directory, so a worktree holding thousands of files costs a single
+    entry. `GIT_INDEX_FILE` is scrubbed because this repo exports a per-seat
+    index — inheriting it would make tracked files read as untracked.
+    """
+    environment = {
+        name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
+    }
+    try:
+        listing = subprocess.run(
+            (
+                "git",
+                "ls-files",
+                "-z",
+                "--others",
+                "--ignored",
+                "--directory",
+                "--exclude-standard",
+            ),
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            check=True,
+        ).stdout.decode("utf-8")
+    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
+        return UNSWEEPABLE_FALLBACK
+    ignored = {entry.rstrip("/") for entry in listing.split("\0") if entry}
+    return frozenset(ignored | UNSWEEPABLE_FALLBACK)
+
+
+def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[Path]:
+    """Files under *roots* carrying *suffixes*, skipping anything git ignores.
+
+    `os.walk` rather than `rglob` because the prune has to happen *before*
+    descending: an ignored worktree must never be walked, not merely filtered
+    out afterwards. A root named explicitly is always swept even when ignored —
+    naming it is the opt-in.
+    """
+    wanted = frozenset(suffixes)
+    ignored = _git_ignored_paths()
+
+    def is_ignored(path: Path) -> bool:
+        return path.relative_to(ROOT).as_posix() in ignored
+
+    found: list[Path] = []
+    for relative in roots:
+        root = ROOT / relative
+        if root.is_file():
+            found.append(root)
+            continue
+        for parent, directories, filenames in os.walk(root):
+            branch = Path(parent)
+            directories[:] = sorted(
+                name
+                for name in directories
+                if name != ".git" and not is_ignored(branch / name)
+            )
+            found.extend(
+                branch / name
+                for name in sorted(filenames)
+                if (branch / name).suffix in wanted and not is_ignored(branch / name)
+            )
+    return found
 
 
 def test_codex_entry_surfaces_reference_executable_seams_not_renderers() -> None:
@@ -184,23 +274,11 @@ def test_provider_routers_remain_discoverable() -> None:
 
 
 def test_active_instruction_surfaces_have_no_superpowers_invocation() -> None:
-    paths: list[Path] = []
-    for relative in ACTIVE_INSTRUCTION_ROOTS:
-        root = ROOT / relative
-        if root.is_file():
-            paths.append(root)
-        else:
-            paths.extend(
-                path
-                for path in root.rglob("*")
-                if path.is_file() and path.suffix in {".md", ".toml"}
-            )
-
     violations = {
         path.relative_to(ROOT).as_posix(): sorted(
             set(MANDATORY_SUPERPOWERS_RE.findall(path.read_text(encoding="utf-8")))
         )
-        for path in paths
+        for path in _sweep_active_files(ACTIVE_INSTRUCTION_ROOTS, {".md", ".toml"})
         if MANDATORY_SUPERPOWERS_RE.search(path.read_text(encoding="utf-8"))
     }
     assert violations == {}
@@ -252,24 +330,85 @@ def test_verification_report_templates_remain_identical() -> None:
 
 
 def test_active_protocol_surfaces_do_not_prescribe_exact_next_trigger() -> None:
-    roots = (
-        ROOT / ".agents",
-        ROOT / ".claude",
-        ROOT / ".codex",
-        ROOT / "docs/protocol",
-        ROOT / "scripts",
-    )
-    paths = [ROOT / "docs/PROGRAM-MANUAL.md"]
-    for root in roots:
-        paths.extend(
-            path
-            for path in root.rglob("*")
-            if path.is_file() and path.suffix in {".md", ".toml", ".py"}
-        )
-
     violations = {
         path.relative_to(ROOT).as_posix()
-        for path in paths
-        if "Exact Next Trigger" in path.read_text(encoding="utf-8")
+        for path in _sweep_active_files(ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"})
+        if EXACT_NEXT_TRIGGER in path.read_text(encoding="utf-8")
     }
     assert violations == set()
+
+
+PROBE_NAME = "pytest-ignored-sweep-probe"
+PROBE_NESTED_FILE = "coordination/mailbox/sent/2026-01-01T00-00-00Z-probe.md"
+PROBE_BODY = f"{EXACT_NEXT_TRIGGER}: run superpowers:brainstorming next.\n"
+
+
+@contextmanager
+def _ignored_probe(relative_root: str, *, self_ignore: bool) -> Iterator[Path]:
+    """Plant a forbidden-string file in a nested tree under a git-ignored path.
+
+    Only *relative_root* is ever removed. Its parent may be a live
+    `.claude/worktrees/` holding real checkouts, so the parent is rmdir'd — a
+    no-op on any non-empty directory — only when this helper created it.
+    """
+    probe_root = ROOT / relative_root
+    parent = probe_root.parent
+    parent_existed = parent.is_dir()
+    probe = probe_root / PROBE_NESTED_FILE
+    try:
+        probe.parent.mkdir(parents=True, exist_ok=True)
+        probe.write_text(PROBE_BODY, encoding="utf-8")
+        if self_ignore:
+            (probe_root / ".gitignore").write_text("*\n", encoding="utf-8")
+        yield probe
+    finally:
+        shutil.rmtree(probe_root, ignore_errors=True)
+        if not parent_existed:
+            with suppress(OSError):
+                parent.rmdir()
+
+
+def test_active_surface_sweeps_skip_git_ignored_trees() -> None:
+    probe_roots = {
+        # The reported failure: a worktree checkout under `.claude/worktrees/`.
+        # Carries no `.gitignore`, so it is pruned by UNSWEEPABLE_FALLBACK even
+        # on a clone where nothing excludes that path.
+        f".claude/worktrees/{PROBE_NAME}": False,
+        # Ignored by a `.gitignore` it carries itself — ignored on any machine,
+        # and absent from UNSWEEPABLE_FALLBACK, so this pins the git lookup
+        # rather than the hardcoded floor. Under `.claude/agents` to stay in
+        # range of both sweeps, not just the protocol one.
+        f".claude/agents/{PROBE_NAME}": True,
+    }
+    with ExitStack() as stack:
+        probes = [
+            stack.enter_context(_ignored_probe(relative, self_ignore=self_ignore))
+            for relative, self_ignore in probe_roots.items()
+        ]
+        # Guard the guard: a probe that lost its forbidden strings would let
+        # this test pass while proving nothing.
+        for probe in probes:
+            body = probe.read_text(encoding="utf-8")
+            assert EXACT_NEXT_TRIGGER in body, probe
+            assert MANDATORY_SUPERPOWERS_RE.search(body), probe
+
+        swept = {
+            path.relative_to(ROOT).as_posix()
+            for path in _sweep_active_files(ACTIVE_INSTRUCTION_ROOTS, {".md", ".toml"})
+        } | {
+            path.relative_to(ROOT).as_posix()
+            for path in _sweep_active_files(
+                ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"}
+            )
+        }
+        assert [
+            path
+            for path in sorted(swept)
+            if any(path.startswith(f"{root}/") for root in probe_roots)
+        ] == []
+
+        test_active_instruction_surfaces_have_no_superpowers_invocation()
+        test_active_protocol_surfaces_do_not_prescribe_exact_next_trigger()
+
+    for relative in probe_roots:
+        assert not (ROOT / relative).exists(), relative
