@@ -27,15 +27,22 @@ def test_claude_guides_never_teach_manual_index_binding(repo_root: Path) -> None
     later Git command in the session, including commits, and it follows `cd`
     into unrelated repositories. No Claude guide may reintroduce it.
     """
+    # coordination/README.md is named explicitly because it is where the recipe
+    # actually survived: it taught all four seats to export a per-seat index
+    # long after the mechanism was retired. Named files are asserted present
+    # rather than skipped, so a rename drops the file loudly instead of
+    # silently dropping its coverage.
+    named = [repo_root / "CLAUDE.md", repo_root / "coordination/README.md"]
+    for path in named:
+        assert path.exists(), f"expected guide to exist: {path.relative_to(repo_root)}"
+
     guides = [
-        repo_root / "CLAUDE.md",
-        *sorted((repo_root / "docs/protocol/claude").glob("*.md")),
-        *sorted((repo_root / ".claude/skills").glob("*/SKILL.md")),
+        *named,
+        *sorted((repo_root / "docs/protocol/claude").rglob("*.md")),
+        *sorted((repo_root / ".claude/skills").rglob("*.md")),
     ]
 
     for guide in guides:
-        if not guide.exists():
-            continue
         text = guide.read_text(encoding="utf-8")
         relative = guide.relative_to(repo_root)
         assert "export GIT_INDEX_FILE=" not in text, relative
