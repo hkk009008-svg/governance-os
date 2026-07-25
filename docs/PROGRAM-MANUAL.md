@@ -41,31 +41,33 @@ Non-goals:
 ## 3. How The Machine Interconnects
 
 User or parent prompts assign a mode: readiness bridge, live seat, coordinator,
-or bounded subagent. Pipeline startup tools then read durable state before any
-protocol decision. `ledger_start_guard.py` enforces the Pipeline-first boundary
-for ledger-routed work. `seat_status.py` (in the four-seat-protocol skill:
-`.claude/skills/four-seat-protocol/scripts/`) reports HEAD, mailbox unread
-state, peer heartbeats, and wave gate state.
+or bounded subagent. One compact orientation snapshot reads the current Git,
+task, mailbox, and gate state before a protocol decision.
+`ledger_start_guard.py` additionally enforces the Pipeline-first boundary only
+for ledger-routed work. Codex role mechanics live in
+`.agents/skills/four-seat-protocol/`.
 
-Mailbox events in `coordination/mailbox/sent/` bind recipients. Capacity
-packets in `coordination/capacity/packets/` define active scope. Smoke,
-coordination, capacity, and doc-claim tools provide executable evidence. The
-director/operator pair closes a work loop only when implementation evidence is
-followed by an operator verification-report.
+Mailbox events in `coordination/mailbox/sent/` preserve task communication but
+do not create external-effect authority. The effective task/route defines
+active scope; capacity packets are diagnostics and historical evidence. Smoke,
+coordination, and doc-claim tools provide executable evidence. A formal review
+loop closes only when the triggered risk profile is satisfied by an exact-range
+verification report.
 
 ## 4. Operational Contract
 
 Required inputs:
-- A user or parent prompt naming the mode or seat.
+- A user or parent prompt naming the requested outcome; a protocol role is
+  needed only for governed work.
 - A current Pipeline checkout.
-- The active route body when capacity packets are open.
+- The effective route or task record when governed work is active.
 
 Successful run output:
-- For implementation: a scoped commit plus one lawful authority-bearing trigger
-  for the operator.
+- For implementation: the requested scoped change and fresh sufficient
+  verification. Commit and publication remain separate actions.
 - For verification: a GO/NITS/FAIL verification-report with command evidence.
-- For coordination: a route, closeout, or no-op artifact that changes real
-  ownership or preserves evidence.
+- For coordination: a task/route event only when ownership, evidence, or a
+  hard boundary materially changes; no no-op artifact is required.
 
 Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
 manual intentionally does not restate its lifecycle grammar.
@@ -84,9 +86,9 @@ Known failure modes:
 
 ## 5. Capability-Maximization Playbook
 
-Use the smallest sufficient route. A good route names the owner, packet, allowed
-paths, evidence commands, forbidden side effects, next recipient, and exact next
-trigger.
+Use the smallest sufficient task record. Governed work names the outcome,
+owner, target, evidence bar, hard boundaries, reviewer when required, and any
+separately authorized external effect.
 
 Use subagents when they add independent signal or capacity, but keep seat
 authority in the live seat. Subagents do not consume cursors, issue GO, route

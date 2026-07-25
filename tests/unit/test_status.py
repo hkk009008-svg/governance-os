@@ -11,16 +11,20 @@ Behavior pinned (read from scripts/status.py, the source of truth):
   * Filenames have the shape "<ts>-<from>-to-<to>-<kind>.md" where ts is
     "YYYY-MM-DDTHH-MM-SSZ". Cursor timestamps may use colons (T20:38:34Z);
     both sides are normalized to dashes before comparison.
-  * A scalar / non-ISO ("migrated") cursor returns 0 — the real unread for a
-    migrated seat is computed on the ref-bus, not this legacy filename path.
+  * A scalar / non-ISO cursor raises visibly. Production unread resolution uses
+    bus_unread.resolve_unread and cannot silently degrade to zero.
   * Broadcast events (to == "all") count for every seat.
   * Malformed filenames are silently skipped; an empty list returns 0.
   * Git collection runs in the requested repository and ignores an ambient
     seat-specific index.
 """
 
+import json
 import os
 import subprocess
+from pathlib import Path
+
+import pytest
 
 import status
 
@@ -110,7 +114,6 @@ def test_events_addressed_to_other_seat_are_not_counted():
     assert status.count_unread(cursor, events, "director") == 1
     assert status.count_unread(cursor, events, "operator") == 1
     assert status.count_unread(cursor, events, "operator2") == 1
-    assert status.count_unread(cursor, events, "coordinator") == 0
 
 
 def test_broadcast_events_count_for_every_seat():
@@ -119,7 +122,7 @@ def test_broadcast_events_count_for_every_seat():
         _fname("2026-05-29T09-00-00Z", "director", "all", "wave-gate"),
         _fname("2026-05-29T10-00-00Z", "operator", "all", "wave-gate"),
     ]
-    for seat in ("director", "director2", "operator", "operator2", "coordinator"):
+    for seat in ("director", "director2", "operator", "operator2"):
         assert status.count_unread(cursor, events, seat) == 2
 
 
@@ -138,15 +141,16 @@ def test_broadcast_plus_directed_mix():
     assert status.count_unread(cursor, events, "operator2") == 1
 
 
-def test_scalar_migrated_cursor_returns_zero():
-    # Non-ISO scalar 'seq' cursor (post Slice-2.5 backfill): the legacy
-    # filename path must NOT count anything — unread lives on the ref-bus.
+def test_scalar_migrated_cursor_fails_visibly():
+    # Non-ISO scalar cursors must never recreate the silent-zero footgun.
     events = [
         _fname("2026-05-29T09-00-00Z", "operator", "director"),
         _fname("2026-05-29T10-00-00Z", "operator", "all"),
     ]
-    assert status.count_unread("42", events, "director") == 0
-    assert status.count_unread("migrated", events, "director") == 0
+    with pytest.raises(ValueError, match="ISO mailbox cursor"):
+        status.count_unread("42", events, "director")
+    with pytest.raises(ValueError, match="ISO mailbox cursor"):
+        status.count_unread("migrated", events, "director")
 
 
 def test_colon_form_cursor_is_normalized_to_dashes():
@@ -170,8 +174,115 @@ def test_malformed_filenames_are_silently_skipped():
     assert status.count_unread(cursor, events, "director") == 1
 
 
-def test_does_not_crash_on_weird_inputs():
-    # The helper is designed to NEVER crash; non-ISO cursors short-circuit to 0
-    # before any filename is inspected, so even garbage filenames are inert.
-    assert status.count_unread("", ["whatever.md"], "director") == 0
-    assert status.count_unread("not-a-timestamp", [], "director") == 0
+def test_weird_cursor_inputs_fail_visibly():
+    with pytest.raises(ValueError, match="ISO mailbox cursor"):
+        status.count_unread("", ["whatever.md"], "director")
+    with pytest.raises(ValueError, match="ISO mailbox cursor"):
+        status.count_unread("not-a-timestamp", [], "director")
+
+
+def test_calendar_invalid_iso_cursor_fails_visibly():
+    with pytest.raises(ValueError, match="ISO mailbox cursor"):
+        status.count_unread("2026-99-99T99:99:99Z", [], "director")
+
+
+def _seed_mailbox(root: Path, cursor: str = "0") -> None:
+    sent = root / "coordination/mailbox/sent"
+    seen = root / "coordination/mailbox/seen"
+    sent.mkdir(parents=True)
+    seen.mkdir()
+    for seat in status._MAILBOX_SEATS:
+        (seen / f"{seat}.txt").write_text(cursor + "\n", encoding="ascii")
+
+
+def test_collect_mailbox_scalar_without_live_bus_uses_mailbox_projection(
+    tmp_path: Path,
+) -> None:
+    _seed_mailbox(tmp_path)
+    sent = tmp_path / "coordination/mailbox/sent"
+    (sent / _fname("2026-07-17T01-00-00Z", "director", "operator")).write_text(
+        "one\n", encoding="utf-8"
+    )
+    (sent / _fname("2026-07-17T01-00-01Z", "director", "all")).write_text(
+        "two\n", encoding="utf-8"
+    )
+
+    data = status.collect_mailbox(tmp_path)
+
+    assert data["mailbox_operator_unread"] == 2
+    assert data["mailbox_operator_source"] == "mailbox-fallback"
+    assert data["mailbox_operator_transport"] == "absent"
+    assert data["mailbox_coordinator_cursor"] == "(cursorless)"
+    assert data["mailbox_coordinator_source"] == "broadcast-read-only"
+
+
+def test_collect_mailbox_surfaces_scalar_beyond_mailbox_corpus(
+    tmp_path: Path,
+) -> None:
+    _seed_mailbox(tmp_path, cursor="9")
+
+    data = status.collect_mailbox(tmp_path)
+
+    assert data["mailbox_operator_unread"].startswith("(unavailable:")
+    assert data["mailbox_operator_transport"] == "incoherent"
+
+
+def test_collect_mailbox_surfaces_calendar_invalid_cursor(
+    tmp_path: Path,
+) -> None:
+    _seed_mailbox(tmp_path, cursor="2026-99-99T99:99:99Z")
+
+    data = status.collect_mailbox(tmp_path)
+
+    assert data["mailbox_operator_unread"].startswith("(unavailable:")
+    assert data["mailbox_operator_transport"] == "incoherent"
+
+
+def test_compact_orientation_render_is_bounded_and_names_authority_source() -> None:
+    snapshot = {
+        "generated_at": "2026-07-25T00:00:00Z",
+        "git": {"sha": "abc1234", "branch": "main", "dirty": 2},
+        "unread": {
+            "operator": {
+                "cursor": "0",
+                "count": 3,
+                "source": "mailbox-fallback",
+                "transport": "absent",
+            }
+        },
+        "current_request": {
+            "path": "coordination/mailbox/sent/request.md",
+            "commit": "a" * 40,
+            "assigned_operator": "operator",
+            "valid": True,
+        },
+        "gate": {"status": "PASS", "fatal": 0, "advisory": 1},
+        "blocker": None,
+        "next_action": "operator reviews the exact committed request",
+    }
+
+    rendered = status.render_orientation_snapshot(snapshot)
+
+    assert len(rendered.splitlines()) <= 20
+    assert "mailbox-fallback" in rendered
+    assert "operator reviews the exact committed request" in rendered
+
+
+def test_snapshot_json_cli_emits_machine_readable_object(
+    monkeypatch, capsys
+) -> None:
+    snapshot = {
+        "generated_at": "2026-07-25T00:00:00Z",
+        "git": {"sha": "abc1234", "branch": "main", "dirty": 0},
+        "unread": {},
+        "current_request": None,
+        "gate": {"status": "PASS", "fatal": 0, "advisory": 0},
+        "blocker": None,
+        "next_action": "continue routed work",
+    }
+    monkeypatch.setattr(
+        status, "collect_orientation_snapshot", lambda _root, seat=None: snapshot
+    )
+
+    assert status.main(["snapshot", "operator", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["git"]["sha"] == "abc1234"

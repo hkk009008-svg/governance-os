@@ -7,10 +7,6 @@ from pathlib import Path
 
 SEAT_STATUS_PATH = (
     Path(__file__).resolve().parents[2]
-    / ".agents/skills/four-seat-protocol/scripts/seat_status.py"
-)
-CLAUDE_SEAT_STATUS_PATH = (
-    Path(__file__).resolve().parents[2]
     / ".claude/skills/four-seat-protocol/scripts/seat_status.py"
 )
 
@@ -64,7 +60,7 @@ def _fake_run_for_all(cmd, cwd=None):
             "\n"
             "NEXT LAWFUL ACTIONS\n"
             "coordinator\n"
-            "  startup: refresh board\n"
+            "  orientation: refresh board\n"
             "  packet: route-1\n"
             "  deps: none\n"
             "  next: wait for operator GO\n"
@@ -208,51 +204,3 @@ def test_seat_status_single_and_all_rendering_remain_compatible(
     assert shared.count("── HEAD ") == 1
     assert shared.count("dirty paths: 1") == 1
     assert "mailboxes — all seats" in shared
-
-
-def test_codex_and_claude_status_adapters_share_behavior(
-    tmp_path: Path,
-    monkeypatch,
-    capsys,
-):
-    codex = _load_seat_status(name="codex_seat_status_adapter")
-    claude = _load_seat_status(
-        CLAUDE_SEAT_STATUS_PATH,
-        name="claude_seat_status_adapter",
-    )
-
-    def install_fakes(module) -> None:
-        git_snapshot = module.startup_snapshot.GitSnapshot(
-            root=tmp_path,
-            head="b" * 40,
-            branch="main",
-            recent_commits=("bbbbbbb aligned providers",),
-            dirty_paths=(),
-            errors=(),
-        )
-        monkeypatch.setattr(module, "repo_root", lambda: str(tmp_path))
-        monkeypatch.setattr(module, "run", _fake_run_for_all)
-        monkeypatch.setattr(
-            module.startup_snapshot,
-            "collect_git_snapshot",
-            lambda root, *, commits: git_snapshot,
-        )
-        monkeypatch.setattr(
-            module.startup_snapshot,
-            "collect_mailbox_snapshot",
-            lambda root, seat: module.startup_snapshot.MailboxSnapshot(
-                seat=seat,
-                cursor="0",
-                unread_refs=(),
-                unavailable_reason=None,
-            ),
-        )
-
-    install_fakes(codex)
-    install_fakes(claude)
-
-    assert codex.main(["director", "--commits", "1"]) == 0
-    codex_output = capsys.readouterr().out
-    assert claude.main(["director", "--commits", "1"]) == 0
-    claude_output = capsys.readouterr().out
-    assert claude_output == codex_output

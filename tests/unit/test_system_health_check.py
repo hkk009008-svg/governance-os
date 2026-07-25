@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import system_health_check
 
 
@@ -11,7 +12,7 @@ def test_check_system_health_returns_status():
 
 def test_system_health_check_cli():
     res = subprocess.run(
-        [".venv/bin/python", "scripts/system_health_check.py"],
+        [sys.executable, "scripts/system_health_check.py"],
         capture_output=True,
         text=True,
         check=False,

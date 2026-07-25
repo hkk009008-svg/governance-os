@@ -1,13 +1,12 @@
 import subprocess
-from pathlib import Path
-import pytest
+import sys
 
 import agy_emit
 
 
 def test_agy_emit_cli_help():
     result = subprocess.run(
-        [".venv/bin/python", "scripts/agy_emit.py", "--help"],
+        [sys.executable, "scripts/agy_emit.py", "--help"],
         capture_output=True,
         text=True,
         check=False,

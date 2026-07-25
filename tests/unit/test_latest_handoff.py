@@ -1,21 +1,13 @@
 from __future__ import annotations
 
-import importlib.util
 import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 
 import pytest
 
 import latest_handoff
-
-
-SEAT_STATUS_PATH = (
-    Path(__file__).resolve().parents[2]
-    / ".agents/skills/four-seat-protocol/scripts/seat_status.py"
-)
 
 
 def _git(root: Path, *args: str, env: dict[str, str] | None = None) -> str:
@@ -31,15 +23,6 @@ def _git(root: Path, *args: str, env: dict[str, str] | None = None) -> str:
     )
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
-
-
-def _load_seat_status():
-    spec = importlib.util.spec_from_file_location("seat_status_under_test", SEAT_STATUS_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _init_repo(root: Path) -> Path:
@@ -410,31 +393,6 @@ def test_main_prints_selected_path_and_all_warnings(
     assert "HANDOFF-2026-07-09-coordinator-session.md" in output.err
     assert untracked.name in output.err
     assert output.err.count("warning:") >= 2
-
-
-def test_seat_status_prints_multiple_handoff_warnings_without_crashing(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    seat_status = _load_seat_status()
-
-    def selection(root: Path, seat: str) -> latest_handoff.HandoffSelection:
-        del root
-        return latest_handoff.HandoffSelection(
-            seat=seat,
-            pattern=latest_handoff.canonical_pattern(seat),
-            path=None,
-            warnings=("warning: first", "warning: second"),
-        )
-
-    monkeypatch.setattr(seat_status.latest_handoff, "find_latest_handoff", selection)
-
-    seat_status.latest_handoffs(str(tmp_path))
-    output = capsys.readouterr().out
-
-    assert output.count("warning: first") == len(seat_status.SEATS)
-    assert output.count("warning: second") == len(seat_status.SEATS)
 
 
 def test_main_reports_no_valid_head_backed_handoff(

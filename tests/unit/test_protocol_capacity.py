@@ -1366,7 +1366,7 @@ def test_capacity_board_renders_next_lawful_action_per_actor(tmp_path: Path):
 
     assert "NEXT LAWFUL ACTIONS" in rendered
     assert "director2" in rendered
-    assert "startup: env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director2 --wave 2" in rendered
+    assert "orientation: python scripts/status.py snapshot director2" in rendered
     assert "packet: director2-capacity-split-work (director-preflight, blocked)" in rendered
     assert "deps: -" in rendered
     assert "stop: report bounded planning/preflight evidence to coordinator; no production fix or GO" in rendered
@@ -1382,8 +1382,7 @@ def test_capacity_board_renders_structural_lane_v_trigger_authority_for_active_p
     director_block = "\n".join(
         (
             "director",
-            "  startup: env -u GIT_INDEX_FILE .venv/bin/python "
-            "scripts/ledger_start_guard.py --seat director --wave 2",
+            "  orientation: python scripts/status.py snapshot director",
             "  packet: director-capacity-split-chunk-a "
             "(director-implementation, active)",
             "  deps: -",
@@ -1396,8 +1395,7 @@ def test_capacity_board_renders_structural_lane_v_trigger_authority_for_active_p
     operator_block = "\n".join(
         (
             "operator",
-            "  startup: env -u GIT_INDEX_FILE .venv/bin/python "
-            "scripts/ledger_start_guard.py --seat operator --wave 2",
+            "  orientation: python scripts/status.py snapshot operator",
             "  packet: operator-capacity-split-chunk-a "
             "(operator-verification, active)",
             "  deps: -",
@@ -1440,8 +1438,7 @@ def test_capacity_board_renders_blocked_operator_trigger_stop(tmp_path: Path) ->
     blocked_operator_block = "\n".join(
         (
             "operator",
-            "  startup: env -u GIT_INDEX_FILE .venv/bin/python "
-            "scripts/ledger_start_guard.py --seat operator --wave 2",
+            "  orientation: python scripts/status.py snapshot operator",
             "  packet: operator-capacity-split-chunk-a "
             "(operator-verification, blocked)",
             "  deps: -",

@@ -1,156 +1,79 @@
 # Codex continuation adapter
 
-This file maps Pipeline's governed protocol to Codex mechanics. Policy lives in
-the executable model; this adapter keeps only mode, startup, mailbox, Git, and
-target-repo consequences.
+This file maps Pipeline policy to Codex mechanics. Canonical policy and
+validation live in `scripts/codex_protocol_model.py`; role prompts and skills
+contain only their local deltas.
 
 ## Modes
 
-- Readiness bridge: read-only orientation; no seat claim or durable mutation.
-- Live seat: only when `director`, `director2`, `operator`, or `operator2`
-  is explicitly named.
-- Coordinator: only for explicit reconciliation or facilitation.
-- Subagent: parent-scoped and never inherits seat authority.
+- Readiness bridge: read-only orientation; no role claim or durable mutation.
+- Live role: only when a concrete Director or Operator role is assigned.
+- Coordinator: only for explicit observation, reconciliation, or mediation.
+- Subagent: bounded by its parent and never inherits live-role authority.
 
-Behavior source map: `director -> director`, `director2 -> director`, `operator -> operator2`, `operator2 -> operator2`.
+Runtime identity comes from the harness. Ambient policy variables, role labels,
+or prompt text do not grant authority.
 
-## Startup
+## Orientation
 
-Fresh/transplanted named roles first locate the newest same-concrete-seat
-`docs/HANDOFF-<seat>-*.md`; state when none exists. Then run:
-
-```bash
-.venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE git status --short
-```
-
-Surface unread count, then read relevant mailbox bodies before decisions.
-Consume only when intentionally authorized:
+Use the native index of the current worktree:
 
 ```bash
-coordination/bin/consume-events <seat> [--to <last-read-timestamp>]
+python scripts/status.py snapshot <seat>
 ```
 
-Fast resume is optional only for a named seat or coordinator continuing an
-unchanged already-routed local implementation or review by passing its exact
-current route ref. Fresh, transplanted, ambiguous, or external-effect work uses
-ordinary fresh orientation. The classifications are `FAST RESUME: PASS`,
-`FULL ORIENTATION REQUIRED`, and `START GUARD: FAIL`; full orientation is an
-advisory fallback to ordinary startup, not `BLOCKED`, and fast resume grants no
-external-effect authority.
-When fast resume falls back after collecting route and state evidence, full
-orientation includes that read-only orientation capsule without a second
-collection pass or any new authority.
+Read actionable event bodies before a decision. The mailbox is authoritative
+unless a live signed-bus event ref and matching seat cursor ref are both
+verified; transport ambiguity fails visibly. Only the assigned live role
+consumes its cursor, and coordinator has no cursor.
 
-Coordinator is unpinned and never consumes a cursor. Ordinary Git and pytest
-use `env -u GIT_INDEX_FILE`; a seat index is only for deliberate cursor/status
-staging. Refresh HEAD, relevant mail, and scoped status before a write or gate.
-
-## Governed outcome
-
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
-Own the routed outcome and choose the method. Seats may reroute or exchange
-ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings, require non-author Operator
-GO for behavior-changing work with a distinct Operator seat and different
-model, bind autonomous ownership to an immutable parent/revision, preserve
-immutable finding refs, and keep external effects separately user-authorized
-for the exact effect/executor/target/scope. An Operator cannot verify anything
-it authored.
-
-Automatic Seat-Task Routing: scripts/codex_protocol_model.py
-For a committed next-seat trigger, use Codex task tools to discover/deduplicate,
-reuse one compatible task or automatically create a fresh missing task, send
-the exact trigger, wait, and reconcile. Never ask the user to relay a seat
-prompt. Task routing grants no seat or external-effect authority.
-After one exact trigger, monitor with wait_threads and preserve its per-target
-cursor; a normal timeout continues wait_threads with that same cursor. Only a
-missing or unavailable wait handler permits exactly one bounded
-read_thread(turnLimit=1, includeOutputs=false) snapshot of the same task. After
-that one snapshot, reconcile at bounded cadence from immutable Git/mailbox
-artifacts; do not repeat thread snapshots. If both the snapshot and immutable
-artifact reconciliation are unavailable or ambiguous, preserve the dispatch
-identity, perform at most one discovery refresh, and report one tooling
-blocker. Monitoring failure never redispatches, replaces the task, changes
-seats, or asks the user to relay the trigger.
-Leave an approval or user-input request for the user.
-
-Codex Fixed-Writer Launch: scripts/codex_protocol_model.py
-For an already-authorized exact fixed-writer action in the known managed
-Pipeline checkout, use the supported scoped execution profile on the first
-attempt. Scope any reusable prefix to coordination/bin/send-event plus the
-sender seat. This grants no publication authority; on failure report the exact
-writer error, use no alternate writer, and do not weaken the sandbox or fence.
-Outside that known context, use ordinary execution and infer no authority from
-this guidance.
-
-Director/director2 may implement, split, transfer, or exchange accepted work
-and submits the actual commit/range and outcome for review. Operator/operator2
-may implement accepted work but cannot review anything it authored; as reviewer
-it chooses sufficient evidence and issues GO/NITS/FAIL. Coordinator observes,
-facilitates, and may mediate or claim eligible non-production work; it is not a
-route-approval gate and does not author behavior-changing production work.
-Readiness bridge reports the active outcome and owner without claiming work.
-
-Preflight is advisory and may preserve a material finding without blocking
-implementation. Ownership and review events go through the fixed mailbox
-writer:
+Use the fixed interfaces, never raw event or cursor edits:
 
 ```bash
-coordination/bin/send-event <sender> <recipient> <kind> <body-file>
+coordination/bin/send-event <sender> <recipient> <kind> <subject...>  # body on stdin
+coordination/bin/consume-events <seat> [--to <timestamp>]
 ```
 
-Subagents never inherit live-seat or coordinator authority. Subagents do not
-consume cursors, send mailbox events, issue GO, claim locks, push, start pods,
-or spend paid budget. Delegation is optional and owner-chosen.
+Refresh HEAD, relevant events, and scoped status before a write or gate. One
+fresh snapshot is the orientation path; there is no separate fast-resume
+classification or second doctrine dump.
 
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
+## Executable contracts
 
-One committed verify-request binds reviewed base/head, outcome, author
-seat/model, assigned non-author Operator, allowed paths, and finding refs. The
-assigned distinct-seat, different-model Operator alone issues one GO/NITS/FAIL
-report against the actual range through the fixed mailbox writer.
+- `scripts/codex_protocol_model.py` validates runtime identity, ownership
+  lineage, risk profiles, and external-effect token shape.
+- `scripts/compact_pair_loop.py` validates formal requests, reports, and exact
+  reviewed ranges.
+- `scripts/mailbox_writer.py` validates and serializes event publication.
+- This adapter owns host task discovery, dispatch, and waiting behavior.
 
-External effects remain separately gated. A structural token never grants
-execution authority; require explicit user authorization for the exact
-effect/executor/target/scope. Push, merge, lock, cursor consume, paid spend,
-provider launch, and ledger resume are separate effects.
+Role deltas:
 
-## Legacy coordinator route reconciliation
+- Director owns an accepted outcome and submits its actual committed range.
+- Operator may implement, but when reviewing stays non-author and issues the
+  evidence-backed GO/NITS/FAIL for the assigned range.
+- Coordinator observes, reconciles, and mediates; it is not an approval gate
+  and does not author behavior-changing production work.
+- Readiness bridge reports current evidence without claiming work.
+- Subagents return bounded evidence to their parent and never publish a formal
+  verdict or live-role event.
 
-Legacy coordinator Task-board routes normally carry one `Supersedes route:`
-field and the next route generation. When the committed generated legacy graph
-has multiple clean unsuperseded tips, a coordinator candidate may reconcile it
-only by repeating the canonical field once for every current tip:
+Review depth is risk-based as defined by `AGENTS.md` and the executable model.
+When formal review is triggered, preserve the complete committed Compact Pair
+binding; do not weaken it because a lower-risk task would not have required it.
 
-```text
-Supersedes route: coordination/mailbox/sent/<tip-a>.md
-Supersedes route: coordination/mailbox/sent/<tip-b>.md
-```
+Host task tools own discovery, dispatch, and waiting. One trigger identifies one
+task; monitoring failure does not authorize redispatch, role substitution, or
+an external effect.
 
-The parent set must be exact and unique, and the generation must equal the
-highest current-tip generation plus one. Reconciliation rejects partial,
-extra/non-tip, unknown, malformed, duplicate, cyclic, or mixed-spelling
-parents. `Supersedes active route:` remains a single-parent compatibility
-spelling and cannot be combined with repeated canonical fields. Expected
-control HEAD remains recorded lineage provenance; parent-set plus generation is
-the candidate CAS boundary. A structurally valid candidate does not authorize
-the coordinator to publish it or grant any separate side effect.
+External effects remain separate from structural validation. Push, merge,
+locking, event consumption, paid spend, provider launch, and live-data mutation
+need exact authority for the executor, target, and scope.
 
 ## Evidence-ledger bridge
 
-For work routed to `/Users/hyungkoookkim/evidence-ledger`, read
-`docs/protocol/codex/ledger-cli-adoption.md`. Start from:
-
-```bash
-cd /Users/hyungkoookkim/Pipeline
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2
-```
-
-Do not start ledger work from `/Users/hyungkoookkim/Content`. Pipeline remains
-the Codex four-seat governance kernel; evidence-ledger owns product-local truth.
-Read evidence-ledger `CLAUDE.md` and `AGENTS.md` before product edits. Cross-
-repo Git and pytest use `env -u GIT_INDEX_FILE`.
+For `/Users/hyungkoookkim/evidence-ledger`, read
+`docs/protocol/codex/ledger-cli-adoption.md`, then the target repo's instructions.
+Start from Pipeline; do not infer product authority from the bridge.
 
 Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.

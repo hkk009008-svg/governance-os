@@ -74,7 +74,6 @@ coordination/threeway/events/*
 
 # Hook sync markers (regenerated each hook run)
 .claude/hooks/.last-index-sync-*
-.codex/hooks/.last-index-sync-*
 
 # State snapshot (gitignored by convention; local only)
 STATE.md
@@ -102,10 +101,6 @@ STATE.md
 .worktrees/
 
 # Codex hook runtime state (written on every codex run; never committed)
-.codex/hooks/.last-state-head
-.codex/hooks/.last-smoke-pass
-.codex/hooks/.last-skip-worktree-scan*
-.codex/hooks/.skip-worktree-cleared.log
 
 # Local ChatGPT Pro consultation lifecycle metadata; never prompt/response content.
 .codex/runtime/chatgpt-pro-consultations.json

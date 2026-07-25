@@ -11,49 +11,45 @@ governance-kernel truth.
 
 ## 1. Prerequisites
 
-- Python virtual environment at `.venv/`.
+- An activated Python environment satisfying `requirements-dev.txt`.
 - Git checkout at `/Users/hyungkoookkim/Pipeline`.
-- Use `env -u GIT_INDEX_FILE` for normal git, pytest, and Python commands.
+- Run mutating Codex work in a task-specific native Git worktree. Do not export
+  a persistent per-seat `GIT_INDEX_FILE`.
 - Do not route ledger work through `/Users/hyungkoookkim/Content`.
 
-## 2. Basic Health Checks
+## 2. Orientation And Completion Checks
 
 ```bash
 cd /Users/hyungkoookkim/Pipeline
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py
-env -u GIT_INDEX_FILE git status --short --branch
+python scripts/status.py snapshot
 ```
 
-Expected:
-- `scripts/ci_smoke.py` exits `0`.
-- The reviewed historical commit-SHA baseline stays quiet in smoke; changed
-  SHA-ref drift hard-fails.
-- `git status --short --branch` shows only changes you intentionally made.
+The compact snapshot is the startup path. Run focused checks while working and
+run `python scripts/ci_smoke.py` at the completion gate for changes
+that touch governance/runtime topology or an `ARCHITECTURE.md` invariant.
 
 ## 3. Live Seat Startup
 
-For a live Codex seat, run the Pipeline guard first, then seat status:
+For governed Codex work, request the concrete role in the compact snapshot:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat director --wave 2
-env -u GIT_INDEX_FILE .venv/bin/python .agents/skills/four-seat-protocol/scripts/seat_status.py director --wave 2
+python scripts/status.py snapshot director
 ```
 
 Replace `director` with `director2`, `operator`, `operator2`, or `coordinator`
-only when the user or parent prompt names that seat. Read the active route body
-reported by the guard before entering any target repo.
+only when the user or parent prompt names that role. Use
+`ledger_start_guard.py --seat <seat> --wave 2` in addition only when the task is
+ledger-routed.
 
 ## 4. Coordination Checks
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2
-env -u GIT_INDEX_FILE .venv/bin/python scripts/check_coordination.py
-env -u GIT_INDEX_FILE .venv/bin/python scripts/mailbox_monitor.py --once
+python scripts/check_coordination.py
+python scripts/status.py snapshot
 ```
 
-`mailbox_monitor.py` is read-only. Unknown coordinator broadcast receipt means
-receipt is unproved, not delivered.
+Use the capacity board only for an active campaign or an explicit diagnostic
+question. It is not a startup or route-authority requirement.
 
 ## 5. Ledger-Routed Target Work
 
@@ -62,8 +58,8 @@ until the guard and active route say which base or worktree is lawful. Inspect
 target state with explicit `git -C` commands:
 
 ```bash
-env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger status --short --branch
-env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger log --oneline -5
+git -C /Users/hyungkoookkim/evidence-ledger status --short --branch
+git -C /Users/hyungkoookkim/evidence-ledger log --oneline -5
 ```
 
 If the route names an isolated worktree, inspect that worktree before the normal
@@ -85,7 +81,7 @@ route_keywords = ["my-new-app"]   # words a coordinator route uses to name this 
 Validate the registry (also runs inside `protocol_doctor.py`):
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/target_binding.py --check
+python scripts/target_binding.py --check
 ```
 
 Select a non-default target at seat startup with

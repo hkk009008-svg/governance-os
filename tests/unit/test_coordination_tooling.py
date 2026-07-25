@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+import mailbox_writer
+
 
 def _run(
     args: list[str | Path],
@@ -95,6 +97,7 @@ Reviewed base: {base}
 Author seat: director
 Author model: gpt-5.6-sol
 Assigned operator: operator
+Risk class: material-behavior
 
 ## Outcome
 
@@ -145,6 +148,7 @@ Verification request: {request_path}@{trigger}
 Reviewed base: {base}
 Reviewer seat: {reviewer_seat}
 Reviewer model: gpt-5.6-terra
+Risk class: material-behavior
 
 ## Finding Refs
 
@@ -158,6 +162,32 @@ Reviewer model: gpt-5.6-terra
 ## Findings
 
 None.
+"""
+
+
+def _request_body(
+    base: str,
+    head: str,
+    *,
+    author: str = "director",
+    assigned: str = "operator",
+) -> str:
+    return f"""\
+Event type: verify-request
+Reviewed head: {head}
+Reviewed base: {base}
+Author seat: {author}
+Author model: gpt-5.6-sol
+Assigned operator: {assigned}
+Risk class: material-behavior
+
+## Outcome
+
+The committed change satisfies the routed maintenance outcome.
+
+## Finding Refs
+
+- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe37f042045e844c2a7de90437445ccd6e0e
 """
 
 
@@ -177,6 +207,141 @@ def test_send_event_stages_ordinary_event_through_fixed_finalizer(
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
     assert staged.endswith("-director-to-operator-status.md")
+
+
+@pytest.mark.parametrize("coordinator", ("coordinator", "coordinator2"))
+def test_coordinator_sender_uses_explicit_cursorless_marker(
+    tmp_path: Path, repo_root: Path, coordinator: str
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo, repo_root)
+
+    result = _run(
+        [
+            repo_root / "coordination/bin/send-event",
+            coordinator,
+            "director",
+            "status",
+            "cursorless sender",
+        ],
+        repo,
+        input_text="body\n",
+    )
+
+    assert result.returncode == 0, result.stderr
+    staged = _git(repo, "diff", "--cached", "--name-only")
+    assert staged.endswith(f"-{coordinator}-to-director-status.md")
+    event = repo / staged
+    assert event.read_text(encoding="utf-8").endswith(
+        "Cursor at send: cursorless\n"
+    )
+
+
+def test_valid_verify_request_is_validated_before_finalization(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo, repo_root)
+    base, head, _old_request, _trigger = _prepare_verify_request(repo)
+
+    result = _run(
+        [
+            repo_root / "coordination/bin/send-event",
+            "director",
+            "operator",
+            "verify-request",
+            "validate candidate",
+        ],
+        repo,
+        input_text=_request_body(base, head),
+    )
+
+    assert result.returncode == 0, result.stderr
+    staged = _git(repo, "diff", "--cached", "--name-only")
+    assert staged.endswith("-director-to-operator-verify-request.md")
+    source = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
+    assert source.index("validate-candidate") < source.index("send-event-finalize")
+
+
+def test_verify_request_without_formal_risk_class_fails_before_finalization(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo, repo_root)
+    base, head, _old_request, _trigger = _prepare_verify_request(repo)
+
+    result = _run(
+        [
+            repo_root / "coordination/bin/send-event",
+            "director",
+            "operator",
+            "verify-request",
+            "missing risk class",
+        ],
+        repo,
+        input_text=_request_body(base, head).replace(
+            "Risk class: material-behavior\n", ""
+        ),
+    )
+
+    assert result.returncode != 0
+    assert "missing Risk class" in result.stderr
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert len(list((repo / "coordination/mailbox/sent").glob("*verify-request.md"))) == 1
+
+
+def test_coordinator_verify_request_fails_before_finalization(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo, repo_root)
+    base, head, _old_request, _trigger = _prepare_verify_request(repo)
+
+    result = _run(
+        [
+            repo_root / "coordination/bin/send-event",
+            "coordinator",
+            "operator",
+            "verify-request",
+            "invalid author",
+        ],
+        repo,
+        input_text=_request_body(
+            base, head, author="coordinator", assigned="operator"
+        ),
+    )
+
+    assert result.returncode != 0
+    assert "only pair seats may publish verify-request" in result.stderr
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_duplicate_cursor_footer_fails_before_publication(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo, repo_root)
+
+    result = _run(
+        [
+            repo_root / "coordination/bin/send-event",
+            "director",
+            "operator",
+            "status",
+            "duplicate footer",
+        ],
+        repo,
+        input_text="body\n\nCursor at send: 0\n",
+    )
+
+    assert result.returncode != 0
+    assert "duplicate cursor footer" in result.stderr
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
 
 
 @pytest.mark.parametrize("verdict", ("GO", "NITS", "FAIL"))
@@ -211,6 +376,49 @@ def test_valid_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
     assert "verification_report_gate" not in source
     assert "TRUSTED_CODE" not in source
     assert "recover" not in source.lower()
+
+
+def test_fixed_finalizer_revalidates_report_changed_after_prevalidation(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo, repo_root)
+    base, head, request_path, trigger = _prepare_verify_request(repo)
+    relative = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T08-10-00Z-operator-to-all-verification-report.md"
+    )
+    candidate = repo / (
+        "coordination/mailbox/sent/"
+        ".2026-07-17T08-10-00Z-operator-to-all-verification-report.race.tmp"
+    )
+    valid = (
+        "# Operator → All: prevalidated report\n\n"
+        "**When:** 2026-07-17T08:10:00Z · **From:** operator (online)\n\n"
+        + _report_body(
+            base, head, request_path, trigger, verdict="FAIL"
+        )
+        + "\nCursor at send: 0\n"
+    )
+    candidate.write_text(valid, encoding="utf-8")
+    candidate.chmod(0o600)
+
+    mailbox_writer.validate_event_candidate(repo, candidate, relative)
+    candidate.write_text(
+        valid.replace("VERDICT: FAIL", "VERDICT: GREEN"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        mailbox_writer.MailboxWriterError,
+        match="verification-report candidate is invalid",
+    ):
+        mailbox_writer._send_event_finalize(repo, candidate, relative)
+
+    assert candidate.exists()
+    assert not (repo / relative).exists()
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
 
 
 def test_cross_repository_verification_report_uses_fixed_finalizer(

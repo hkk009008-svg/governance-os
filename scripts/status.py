@@ -3,8 +3,9 @@
 
 Usage
 -----
-  .venv/bin/python scripts/status.py            # print to stdout
-  .venv/bin/python scripts/status.py --write    # stdout + write STATUS.md
+  python scripts/status.py snapshot             # compact Codex orientation
+  python scripts/status.py snapshot <seat>      # one assigned role
+  python scripts/status.py                      # compatibility dashboard
 
 Design constraints
 ------------------
@@ -21,6 +22,7 @@ Repo root is resolved as the parent of this file's parent (scripts/ → repo/).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -65,7 +67,14 @@ def _normalize_ts(ts: str) -> str:
 
 
 def _is_iso_cursor(ts: str) -> bool:
-    return bool(re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z$", ts.replace(":", "-")))
+    normalized = ts.replace(":", "-")
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z", normalized) is None:
+        return False
+    try:
+        datetime.strptime(normalized, "%Y-%m-%dT%H-%M-%SZ")
+    except ValueError:
+        return False
+    return True
 
 
 def count_unread(cursor_ts: str, event_filenames: list[str], seat: str) -> int:
@@ -76,13 +85,13 @@ def count_unread(cursor_ts: str, event_filenames: list[str], seat: str) -> int:
     dashes (T20-38-34Z). Both are normalized to dashes before comparison.
     Malformed filenames are silently skipped.
 
-    A scalar `seq` cursor (post Slice-2.5 backfill) returns 0 here — the
-    authoritative unread count for a migrated seat comes from the ref-bus
-    (RefEventStore seq>cursor_seq), not this legacy filename path.
+    This legacy helper accepts only an ISO cursor.  Scalar and malformed
+    cursors raise rather than recreating the old silent ``0 unread`` failure.
+    Production collectors use :func:`bus_unread.resolve_unread`.
     """
     cursor_norm = _normalize_ts(cursor_ts)
     if not _is_iso_cursor(cursor_ts):
-        return 0          # scalar-seq cursor: unread is computed on the ref-bus, not here
+        raise ValueError("count_unread requires one ISO mailbox cursor")
     count = 0
     for fname in event_filenames:
         m = _EVENT_RE.match(fname)
@@ -141,6 +150,7 @@ import protocol_mailbox  # noqa: E402
 import bus_unread  # noqa: E402  — de-degrade: real ref-bus unread for migrated (scalar) cursors
 
 _MAILBOX_SEATS = protocol_mailbox.RECEIVING_SEATS
+_CURSOR_SEATS = protocol_mailbox.SEATS
 
 
 def render_manifest(components: Optional[list]) -> list[str]:
@@ -278,7 +288,7 @@ def render(data: dict) -> str:
 
     # --- Smoke pointer ---
     a("## Smoke test")
-    a("  smoke: run `.venv/bin/python scripts/ci_smoke.py`")
+    a("  smoke: run `python scripts/ci_smoke.py`")
     a("  (not run inline — too heavy for a status command)")
 
     return "\n".join(lines) + "\n"
@@ -355,7 +365,7 @@ def _read_cursor(path: Path) -> str:
 
 
 def collect_mailbox(repo_root: Path) -> dict:
-    """Collect mailbox unread counts and cursors."""
+    """Collect unread counts together with their proven authority source."""
     sent_dir = repo_root / "coordination" / "mailbox" / "sent"
     seen_dir = repo_root / "coordination" / "mailbox" / "seen"
 
@@ -366,25 +376,43 @@ def collect_mailbox(repo_root: Path) -> dict:
         return {
             f"mailbox_{seat}_{field}": unavail
             for seat in _MAILBOX_SEATS
-            for field in ("unread", "cursor")
+            for field in ("unread", "cursor", "source", "transport", "detail")
         }
 
     data = {}
     for seat in _MAILBOX_SEATS:
+        if seat not in _CURSOR_SEATS:
+            data[f"mailbox_{seat}_cursor"] = "(cursorless)"
+            data[f"mailbox_{seat}_unread"] = "(broadcast read-only)"
+            data[f"mailbox_{seat}_source"] = "broadcast-read-only"
+            data[f"mailbox_{seat}_transport"] = "none"
+            data[f"mailbox_{seat}_detail"] = (
+                "coordinator roles do not own or consume mailbox cursors"
+            )
+            continue
         cursor = _read_cursor(seen_dir / f"{seat}.txt")
         try:
-            if bus_unread.is_migrated_cursor(cursor):
-                # Migrated (Slice-2.5) seat: real unread lives on the signed ref-bus,
-                # NOT the legacy sent/*.md filename path (count_unread returns 0 for a
-                # scalar cursor — a silent under-report). None => visible sentinel.
-                n = bus_unread.bus_unread_count(repo_root, seat)
-                unread = n if n is not None else "(unavailable: ref-bus)"
-            else:
-                unread = count_unread(cursor, event_filenames, seat)
+            resolution = bus_unread.resolve_unread(
+                repo_root, seat, cursor, event_filenames
+            )
+            unread = (
+                resolution.count
+                if resolution.count is not None
+                else f"(unavailable: {resolution.detail})"
+            )
+            source = resolution.source
+            transport = resolution.transport
+            detail = resolution.detail
         except Exception as e:
             unread = f"(unavailable: {e})"
+            source = "unavailable"
+            transport = "incoherent"
+            detail = str(e)
         data[f"mailbox_{seat}_cursor"] = cursor
         data[f"mailbox_{seat}_unread"] = unread
+        data[f"mailbox_{seat}_source"] = source
+        data[f"mailbox_{seat}_transport"] = transport
+        data[f"mailbox_{seat}_detail"] = detail
     return data
 
 
@@ -495,6 +523,130 @@ def _collect_all(repo_root: Path) -> dict:
     return data
 
 
+def collect_orientation_snapshot(
+    repo_root: Path, seat: str | None = None
+) -> dict:
+    """Collect the small executable orientation surface used by Codex."""
+
+    if seat is not None and seat not in _MAILBOX_SEATS:
+        raise ValueError(f"unknown mailbox seat: {seat}")
+    now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    git = collect_git(repo_root)
+    mailbox = collect_mailbox(repo_root)
+    selected = (seat,) if seat is not None else _CURSOR_SEATS
+    unread = {
+        role: {
+            "cursor": mailbox[f"mailbox_{role}_cursor"],
+            "count": mailbox[f"mailbox_{role}_unread"],
+            "source": mailbox[f"mailbox_{role}_source"],
+            "transport": mailbox[f"mailbox_{role}_transport"],
+            "detail": mailbox[f"mailbox_{role}_detail"],
+        }
+        for role in selected
+    }
+
+    # Local import avoids making the status helper/checker module dependency
+    # recursive at import time.
+    import check_coordination  # type: ignore
+
+    requests = check_coordination.inspect_current_verify_requests(repo_root)
+    if seat in {"operator", "operator2"}:
+        requests = [
+            request for request in requests
+            if request.assigned_operator == seat
+        ]
+    current = max(requests, key=lambda request: request.path, default=None)
+    issues = check_coordination.run(
+        repo_root / "coordination",
+        docs_root=repo_root / "docs",
+    )
+    fatals = [issue for issue in issues if issue.severity == "FATAL"]
+    advisories = [issue for issue in issues if issue.severity == "ADVISORY"]
+
+    blocker = None
+    if current is not None and not current.valid:
+        blocker = (
+            f"invalid current request for {current.assigned_operator}: "
+            f"{current.problem}"
+        )
+    elif fatals:
+        blocker = f"{fatals[0].kind}: {fatals[0].message}"
+
+    if blocker is not None:
+        next_action = "repair the blocker before implementation or review"
+    elif current is not None:
+        next_action = (
+            f"{current.assigned_operator} reviews the exact committed request"
+        )
+    else:
+        next_action = "continue routed local work; publish a request when review is needed"
+
+    current_data = None
+    if current is not None:
+        current_data = {
+            "path": current.path,
+            "commit": current.commit,
+            "assigned_operator": current.assigned_operator,
+            "valid": current.valid,
+            "grandfathered": current.grandfathered,
+            "problem": current.problem,
+        }
+    gate_status = "FAIL" if fatals else ("WARN" if advisories else "PASS")
+    return {
+        "generated_at": now,
+        "git": {
+            "sha": git["git_sha"],
+            "branch": git["git_branch"],
+            "dirty": git["git_dirty"],
+        },
+        "unread": unread,
+        "current_request": current_data,
+        "gate": {
+            "status": gate_status,
+            "fatal": len(fatals),
+            "advisory": len(advisories),
+        },
+        "blocker": blocker,
+        "next_action": next_action,
+    }
+
+
+def render_orientation_snapshot(snapshot: dict) -> str:
+    """Render the compact snapshot in at most twenty human-readable lines."""
+
+    git = snapshot["git"]
+    lines = [
+        f"Pipeline snapshot {snapshot['generated_at']}",
+        f"Git: {git['sha']} branch={git['branch']} dirty={git['dirty']}",
+        "Unread:",
+    ]
+    for role, unread in snapshot["unread"].items():
+        lines.append(
+            f"  {role}: {unread['count']} via {unread['source']} "
+            f"(cursor={unread['cursor']}, transport={unread['transport']})"
+        )
+    current = snapshot.get("current_request")
+    if current is None:
+        lines.append("Request: none")
+    else:
+        commit = current.get("commit") or "uncommitted"
+        state = "valid" if current.get("valid") else "INVALID"
+        lines.append(
+            f"Request: {current['path']}@{commit} "
+            f"assigned={current['assigned_operator']} {state}"
+        )
+    gate = snapshot["gate"]
+    lines.append(
+        f"Gate: {gate['status']} ({gate['fatal']} fatal, "
+        f"{gate['advisory']} advisory)"
+    )
+    lines.append(f"Blocker: {snapshot.get('blocker') or 'none'}")
+    lines.append(f"Next: {snapshot['next_action']}")
+    if len(lines) > 20:
+        raise ValueError("orientation snapshot exceeded the 20-line contract")
+    return "\n".join(lines) + "\n"
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Print a live status snapshot of the repo.",
@@ -516,6 +668,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         action="store_true",
         help="Also write the report to STATUS.md at the repo root.",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="For 'snapshot', emit the machine-readable object.",
+    )
     args = parser.parse_args(argv)
 
     repo_root = _REPO_ROOT
@@ -527,12 +684,23 @@ def main(argv: Optional[list[str]] = None) -> int:
     # two proven sharp edges: full-filename-vs-bare-prefix over-count, and
     # field-split capturing trailing text).
     if args.command == "mailbox-unread":
-        if args.seat not in _MAILBOX_SEATS:
+        if args.seat not in _CURSOR_SEATS:
             parser.error(
                 "mailbox-unread requires a seat: "
                 "director | director2 | operator | operator2"
             )
         print(collect_mailbox(repo_root)[f"mailbox_{args.seat}_unread"])
+        return 0
+    if args.command == "snapshot":
+        if args.seat is not None and args.seat not in _MAILBOX_SEATS:
+            parser.error(
+                "snapshot seat must be one of: " + " | ".join(_MAILBOX_SEATS)
+            )
+        snapshot = collect_orientation_snapshot(repo_root, args.seat)
+        if args.json:
+            print(json.dumps(snapshot, sort_keys=True))
+        else:
+            print(render_orientation_snapshot(snapshot), end="")
         return 0
     if args.command is not None:
         parser.error(f"unknown command: {args.command!r}")

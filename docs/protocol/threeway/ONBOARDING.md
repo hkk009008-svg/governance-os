@@ -89,14 +89,12 @@ stale versus the code, the code wins — fix the doc in the same change that exp
 
 ## Per-provider quick start
 
-- **Codex** — you are a **readiness bridge by default**; become a current harness seat (`director` or
-  `operator2`) only on explicit instruction. `CODEX_SEAT=coordinator2` now binds coordinator MODE — a
-  compatibility alias, unpinned — in the Codex harness (`scripts/codex_protocol_model.py:104,155-156`);
-  `seat_status.py` and `protocol_mailbox.RECEIVING_SEATS` (`scripts/protocol_mailbox.py:17`) accept it.
-  What remains target-state is the LIVE signed-bus INTEGRATOR role (staging refs -> main), gated on the
-  cutover + merge-gate runner. Your harness already mirrors Layer 2 (`scripts/codex_protocol_model.py`,
-  `.codex/agents/*.toml`, `.codex/hooks/`). See `CODEX-ADOPTION.md` for your seats + the migration path.
-  Git: `env -u GIT_INDEX_FILE` for ordinary git/pytest.
+- **Codex** — start as a readiness bridge and accept a live role only from an
+  explicit user or parent assignment. Orient once with
+  `python scripts/status.py snapshot <seat>`, then use the selected task
+  worktree's native index. The signed-bus integrator remains unavailable until
+  the cutover and protected merge-gate deployment are proved. See
+  `CODEX-ADOPTION.md` for current authority and migration mechanics.
 - **Claude** — `CLAUDE.md` + `docs/protocol/claude/` are your mechanics; you hold `director2` /
   `operator` / `coordinator`. Use the `Agent`/`Workflow`/`Skill` tools as your Layer-2 primitives.
 - **Antigravity (agy)** — you hold **no seat**. Operate as a read-only observer or a human-relayed
@@ -108,7 +106,8 @@ stale versus the code, the code wins — fix the doc in the same change that exp
 
 - [ ] I oriented before non-trivial work (smoke / `git log` / read the relevant docs).
 - [ ] Every factual/inventory claim I made cites its producing command.
-- [ ] Any code I changed is being verified by a non-author (ideally a different provider).
+- [ ] I applied the review profile required by the actual risk; any required
+      non-author review is bound to the exact range.
 - [ ] I have not pushed / locked / spent without explicit user consent.
 - [ ] I am holding only the seat(s) assigned to me (Codex: bridge unless named).
 - [ ] If I am Antigravity: I stayed off the merge path and did not claim the chief role.

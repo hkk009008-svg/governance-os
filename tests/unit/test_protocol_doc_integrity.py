@@ -17,28 +17,23 @@ def _compact(text: str) -> str:
 
 def test_codex_subagents_never_inherit_seat_authority():
     continuation = _read("docs/protocol/codex/continuation.md")
-    compact = _compact(continuation)
+    compact = _compact(continuation).casefold()
 
-    assert "Subagents never inherit live-seat or coordinator authority." in compact
-    assert "Subagents do not inherit live-seat or coordinator authority unless" not in compact
-    assert "Subagents do not consume cursors, send mailbox events, issue GO" in compact
+    assert "subagent" in compact
+    assert "never inherits live-role authority" in compact
+    assert "never publish a formal verdict or live-role event" in compact
+    assert "unless explicitly delegated" not in compact
 
 
-def test_active_protocol_makes_preflight_advisory_and_ownership_transfer_direct():
+def test_codex_entrypoints_point_to_canonical_autonomy_contract():
+    pointer = "Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py"
     for path in (
         "AGENTS.md",
         "docs/protocol/codex/continuation.md",
         ".agents/skills/four-seat-protocol/SKILL.md",
-        ".agents/skills/seat-director/SKILL.md",
-        ".agents/skills/seat-operator/SKILL.md",
-        ".agents/skills/seat-coordinator/SKILL.md",
     ):
-        compact = _compact(_read(path)).casefold()
-        assert "preflight is advisory" in compact, path
-        assert "without coordinator approval" in compact, path
-        assert "fixed mailbox writer" in compact, path
-        assert "non-author operator go" in compact, path
-        assert "cannot verify anything it authored" in compact, path
+        compact = _compact(_read(path).replace("`", ""))
+        assert compact.count(pointer) == 1, path
 
 
 def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():

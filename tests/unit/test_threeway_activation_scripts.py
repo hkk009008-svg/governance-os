@@ -20,7 +20,7 @@ import agy_observer
 import bus_unread
 import run_merge_gate
 import sign_ci_result
-from threeway import keys, keys_bootstrap
+from threeway import gitcas, keys, keys_bootstrap
 from threeway.envelope import Event
 from threeway.refstore import RefEventStore
 
@@ -297,8 +297,10 @@ def test_bus_unread_script(temp_git_repo):
     # Initialize live ref cursor
     store.advance_cursor("operator", 0)
 
-    # Verify no unread events initially
-    assert bus_unread.bus_unread_count(repo_dir, "operator") == 0
+    # No event/cursor refs means the bus is absent, never a silent empty live bus.
+    authority = bus_unread.bus_authority_state(repo_dir, "operator")
+    assert authority.state == "absent"
+    assert bus_unread.bus_unread_count(repo_dir, "operator") is None
 
     # Append event addressed to operator
     coord_priv = keys.load_private("coordinator")
@@ -307,6 +309,14 @@ def test_bus_unread_script(temp_git_repo):
             candidate_id="A:c1", recipient="operator", ev_id="directed-event"),
         coord_priv)
 
+    # The event ref alone is a partial cutover. Materialize the matching zero
+    # cursor ref to prove a coherent live bus before reading it.
+    assert bus_unread.bus_authority_state(repo_dir, "operator").state == "incoherent"
+    cursor_oid = gitcas.write_blob(repo_dir, b"0\n")
+    assert gitcas.cas_create_or_update_ref(
+        repo_dir, "refs/threeway/cursors/operator", cursor_oid, None
+    )
+    assert bus_unread.bus_authority_state(repo_dir, "operator").state == "live"
     # Operator should now have 1 unread event
     assert bus_unread.bus_unread_count(repo_dir, "operator") == 1
     unread_evs = bus_unread.bus_unread_events(repo_dir, "operator")
