@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified: 2026-07-25 @ 61786501e26f7e1bac92efbdcd4ff0ea468a7bbb*
+*Last verified: 2026-07-25 @ 2028eebf008c0d86b62dc7b7932271b33afd7de2*
 
 ## 1. Purpose
 
@@ -15,7 +15,10 @@ scheduler, or a substitute for the host task runtime.
 `evidence-ledger` is the default registered target for ledger-routed work.
 Product behavior remains owned by the target repository.
 
-## 2. Codex control flow
+## 2. Control flow
+
+One flow, shared by every provider side. Codex, Cursor, Claude, and AGY differ
+in runtime mechanics, never in policy.
 
 ```text
 user or parent task
@@ -40,10 +43,36 @@ unless their actual risk or transfer boundary requires one.
 | `coordination/mailbox/seen/` | Compatibility cursors for the four concrete pair seats only. |
 | `.agents/skills/` | On-demand role procedures. Skill presence grants no authority. |
 | `.codex/agents/` | Small reusable role deltas; no numbered pseudo-seat inventory. |
-| Project Codex hooks | Absent by design. Codex has no repository lifecycle hook dependency. |
-| `threeway/` | Signed ref-bus substrate used only when its event and matching cursor refs prove it live. |
-| `governance.toml` | Registered product targets. |
-| `.claude/`, `.agy/`, `.cursor/` | Provider-specific adapters with their own runtime contracts. |
+| Repository lifecycle hooks | Absent on every side except `.cursor/hooks/seat-policy`, which gates a real in-app approval surface. No side depends on a hook for orientation, identity, or state. |
+| `threeway/` | Signed ref-bus substrate used only when its event and matching cursor refs prove it live. Dormant here; still load-bearing, because proving the bus absent is what makes the mailbox fallback correct. |
+| `governance.toml` | Registered product targets. Targets are selected per task, not fixed. |
+| `.claude/`, `.agy/`, `.cursor/` | Provider adapters. Each owns runtime mechanics only; policy comes from `scripts/codex_protocol_model.py`. |
+
+### Provider surfaces
+
+Each side maps the same policy onto its host. The differences below are forced
+by the host, not chosen, and each adapter states its own.
+
+| | Codex | Cursor | Claude | AGY |
+|---|---|---|---|---|
+| Runtime | host task tools | Agents Window chats | desktop app | native subagent mesh |
+| Adapter | `docs/protocol/codex/continuation.md` | `docs/protocol/cursor/continuation.md` | `docs/protocol/claude/continuation.md` | `docs/protocol/agy/continuation.md` |
+| Lifecycle hook | none | `seat-policy` | none | none |
+| Launcher | `codex-seat` | `cursor-seat` | none | `agy-seat` |
+| Seat roles | `.codex/agents/*.toml` | `/review-next` skill | `.claude/skills/seat-*` | `.agy/agents/*.toml` |
+
+Notable per-host constraints:
+
+- Cursor is the only side with a lifecycle hook, because it is the only side
+  with an in-app approval surface to gate.
+- Claude has no launcher and no session registry. A desktop app cannot receive
+  a shell-set variable, so seat naming there is convention.
+- Claude Code discovers skills only under `.claude/skills/`, so seat procedures
+  are mirrored from `.agents/skills/`. Byte-equality tests keep the mirror
+  honest; the duplication is the anti-fork mechanism.
+- Codex carries the spawnable seat roles because host task tools dispatch them.
+  Other sides carry only the read-only advisors.
+- AGY keeps a launcher because it selects a per-seat model and service tier.
 
 ## 4. Executable seams
 
@@ -57,20 +86,26 @@ The table names stable symbols instead of volatile line numbers.
 | `validate_event_candidate`, `writer_fence` | `scripts/mailbox_writer.py` | Validate and serialize event/cursor publication. |
 | `parse_verify_request`, `validate_report` | `scripts/compact_pair_loop.py` | Bind formal review to one committed request and exact range. |
 | `RuntimeIdentity`, `review_profile_for` | `scripts/codex_protocol_model.py` | Close runtime identity and select a finite review policy. |
-| `build_launch_spec` | `scripts/codex_seat_launcher.py` | Launch a named role in the caller-selected native worktree. |
+| `model_family`, `models_are_independent` | `scripts/codex_protocol_model.py` | Decide reviewer independence by model family, so a harness prefix or version suffix cannot buy it. |
+| `build_launch_spec` | `scripts/codex_seat_launcher.py`, `scripts/agy_seat_launcher.py` | Launch a named role in the caller-selected native worktree. Neither binds an index. |
+| `resolve_unread` | `scripts/bus_unread.py` | Answer unread from the proven authority, falling back to the canonical mailbox order so an absent bus never renders `0 unread`. |
 | `build_guard` | `scripts/ledger_start_guard.py` | Validate one ordinary Pipeline-first target start. |
 | `resolve_target` | `scripts/target_binding.py` | Resolve the selected product binding. |
 
 ## 5. Runtime invariants
 
-- Codex begins without a live role. A user or parent must explicitly assign a
-  concrete role.
+- Every side begins without a live role. A user or parent must explicitly assign
+  a concrete role.
 - Runtime identity is closed: mode, role, seat, behavior source, and model must
   agree. Ambient policy variables cannot widen it.
-- A launched Codex process inherits the selected checkout but not
-  `GIT_INDEX_FILE` or ambient Codex policy variables. Each worktree uses its
-  native index.
-- Repository hooks do not orient Codex, mutate state, refresh doctrine, or
+- No side binds a per-seat Git index. A launched process inherits the selected
+  checkout but not `GIT_INDEX_FILE` or ambient provider policy variables; every
+  worktree uses its native index. `index-<provider>-<seat>` is retired.
+- Session start enforces nothing. Claude has no launcher or registry and its
+  seat naming is convention; Cursor's registry exists to gate in-app effects,
+  not to validate a verdict. Review identity is decided at publication by
+  `scripts/compact_pair_loop.py`.
+- Repository hooks do not orient any side, mutate state, refresh doctrine, or
   maintain a second index.
 - One compact snapshot is the normal orientation path. There is no fast-resume
   classifier or mandatory handoff-first pass.
@@ -107,7 +142,7 @@ Review depth is selected from four closed profiles:
 |---|---|
 | `ordinary-local` | Focused verification. |
 | `material-behavior` | Non-author review of the exact committed range. |
-| `high-risk-control` | Distinct non-author Operator, different model, exact range, and abuse-class assessment. |
+| `high-risk-control` | Distinct non-author Operator, different model **family**, exact range, and abuse-class assessment. |
 | `external-effect` | Live authorization for the exact executor, target, effect, and scope. |
 
 Once formal review is required, the committed Compact Pair binding remains
