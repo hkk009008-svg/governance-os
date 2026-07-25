@@ -133,8 +133,7 @@ Pipeline owns governance; the target repo owns product-local truth.
 
 - Use the worktree's native Git index; do not create or share per-seat indexes.
 - Refresh HEAD and scoped status before each write or gate decision.
-- First landed work wins in a shared tree; refresh and narrow instead of
-  recreating it.
+- First landed work wins in a shared tree; refresh and narrow, do not recreate.
 - Editing, staging, committing, pushing, merging, consuming events, locking,
   and spending are separate actions.
 
