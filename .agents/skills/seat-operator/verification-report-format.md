@@ -76,3 +76,17 @@ context labels do not prove compliance or independence.
 
 Findings are ordered CRITICAL, MAJOR, MINOR, INFORMATIONAL and name file:line
 when applicable. Separate evidence, inference, uncertainty, and follow-up.
+
+A control that restores the defect proves a guard is not vacuous. It does not
+prove the guard is sufficient, and the two are routinely confused. Reverting
+reproduces the exact form the guard was written against, so a guard resting on a
+text heuristic passes its own reversion control every time while a differently
+shaped input walks through it. Attempt evasion as well: leave the guard fully in
+place and try to reach the forbidden outcome by another route. Report the
+attempt either way — a failed evasion is evidence, and finding none is worth
+saying.
+
+Where the question is what another program does — a flag parser, a shell, an
+installed CLI — observe it running and cite the command. Inferring it from
+source, help text, or an error message is a claim about behaviour supported only
+by text.

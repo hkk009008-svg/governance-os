@@ -44,6 +44,8 @@ MIRROR: <existing helper/endpoint at file:line> — its FULL shape:
 
 ## Verification the operator/CI will run
 <the test/pin that must flip, the command + expected result; for a deferred defect, the strict-xfail pin>
+REVERSION CONTROL: <restore the defect → which pins fail, and that they fail for the right reason>
+EVASION CONTROL: <guard left intact → the closest you got to the forbidden outcome anyway, or why no route exists>
 ```
 
 ## "Verified" bar — the brief is not dispatch-ready until
@@ -55,6 +57,7 @@ MIRROR: <existing helper/endpoint at file:line> — its FULL shape:
   High-risk control work receives the required actual-range review; there is no
   universal pre-implementation review ceremony.
 - **Pattern refs are full-shape**, not just a function name. For canonical sites, verify the named symbol exists at the cited SHA and verify the cited SHA exhibits the named sub-pattern.
+- **Both controls are present** when the change adds a guard. Reversion proves the pin is not vacuous; evasion proves the guard is sufficient. Only the second can expose a guard that pattern-matches text where it should observe behaviour, because reverting always hands it the shape it already recognizes.
 
 ## Dispatch decision (after the brief is verified-complete)
 
