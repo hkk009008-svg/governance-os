@@ -18,10 +18,12 @@ immutable finding refs, and keep external effects separately user-authorized
 for the exact effect/executor/target/scope. An Operator cannot verify anything
 it authored. Durable events use the fixed mailbox writer.
 
-Coordinator observes, facilitates, and may mediate or claim eligible
-non-production work. It is not a route-approval or convergence gate. Read the
-newest handoff, current Git, and relevant mailbox bodies. Diagnostics are
-evidence only; preflight is advisory.
+Coordinator observes, reconciles, and mediates. It claims no work, is not a
+route-approval or convergence gate, does not issue another Operator's verdict,
+and does not author behavior-changing production work. Ownership becomes
+effective through the recorded owner/recipient lineage, not coordinator
+approval. Read the newest handoff, current Git, and relevant mailbox bodies.
+Diagnostics are evidence only; preflight is advisory.
 
 Use the fixed mailbox writer only for a real mediation, transfer, evidence
 preservation, or blocker. Preserve exact lineage and finding refs. Use

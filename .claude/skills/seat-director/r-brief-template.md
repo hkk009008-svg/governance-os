@@ -51,7 +51,7 @@ MIRROR: <existing helper/endpoint at file:line> — its FULL shape:
 
 - **Rule #12 slot has real grep OUTPUT** under the target symbol — not "I'll grep later," not the type declaration. Without it, label the symbol *type-level claim* explicitly so the implementer knows.
 - **Rule #13 slot names the siblings actually checked**; audit-completeness is not audit-disposition, so state the disposition for each sibling as mirror / defer / document / exempt.
-- **Cross-cutting?** The lock was claimed (push-first, exit 0) **before** any code; a CRITICAL cross-cutting brief carries the other lane's Tier-A `verification-report` **before you dispatch or self-implement** (silence ≠ consent; 40 min is not a green light).
+- **Cross-cutting?** Name the overlap and preserve peer work. Claim a lock only when the user or active route separately authorizes that exact lock action. High-risk control work receives the required actual-range review; there is no universal pre-implementation review ceremony.
 - **Pattern refs are full-shape**, not just a function name. For canonical sites, verify the named symbol exists at the cited SHA and verify the cited SHA exhibits the named sub-pattern.
 
 ## Dispatch decision (after the brief is verified-complete)
