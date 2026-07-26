@@ -25,11 +25,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+import agy_seat_launcher
 
 HARNESSES = ("codex", "agy", "cursor")
 AGY_SETTINGS = Path("~/.gemini/antigravity-cli/settings.json")
@@ -107,6 +110,67 @@ def check_codex(root: Path) -> list[Result]:
     return results
 
 
+_FLAG_IN_HELP = re.compile(r"^\s+(--?[A-Za-z][\w-]*)", re.MULTILINE)
+
+
+def _agy_defined_flags(executable: str) -> frozenset[str] | None:
+    """Flags `agy --help` defines, or None when the CLI could not be asked.
+
+    None and the empty set are kept apart on purpose. An empty parse would make
+    every declared flag look undefined and turn a broken invocation into a flood
+    of false parity failures, so a help text that yields nothing is treated as
+    unanswered rather than as an answer.
+    """
+    try:
+        completed = subprocess.run(
+            [executable, "--help"], capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = frozenset(_FLAG_IN_HELP.findall(completed.stdout + completed.stderr))
+    return found or None
+
+
+def _agy_flag_parity(binary: str) -> Result:
+    """Whether the launcher's declared flag set is still what the CLI defines.
+
+    This is the external-interface gate, and it lives here rather than in a unit
+    test because a unit test cannot hold it. `AGY_CLI_FLAGS` is a committed copy
+    of another program's interface, and the only honest check is against the real
+    binary — which CI does not have and cannot install: AGY ships as a platform
+    executable with no package, formula or pinned download in this repository.
+    Every version of that check written as a test therefore skipped in CI, which
+    is every CI run, so the interface was in practice unguarded.
+
+    Pre-dispatch is where the binary is guaranteed instead of hoped for. If it is
+    absent the binary row above has already failed and nothing is called ready,
+    so a passing readiness verdict now implies this comparison ran. It also runs
+    before spend rather than after a merge, which is earlier than CI managed.
+
+    Only the declared-minus-defined direction is a defect. A CLI defining more
+    than the launcher uses is ordinary; a launcher declaring a flag the CLI has
+    dropped is a seat that will not start, because AGY aborts the whole
+    invocation on the first undefined flag.
+    """
+    defined = _agy_defined_flags(binary)
+    if defined is None:
+        return Result(
+            "agy", False, "cannot read `agy --help`, so flag parity is unchecked",
+            f"run `{binary} --help` by hand and fix whatever stops it answering",
+        )
+    undefined = sorted(agy_seat_launcher.AGY_CLI_FLAGS - defined)
+    return Result(
+        "agy", not undefined,
+        "declared flags all defined by the installed CLI" if not undefined
+        else "declared flags the installed CLI does not define: "
+             + ", ".join(undefined),
+        "" if not undefined
+        else "reconcile AGY_CLI_FLAGS in scripts/agy_seat_launcher.py with this "
+             "CLI version before dispatching; a seat emitting one of these dies "
+             "at parse time",
+    )
+
+
 def check_agy(settings_path: Path = AGY_SETTINGS) -> list[Result]:
     """AGY is ready when its own settings grant the tools a review needs."""
     results: list[Result] = []
@@ -115,6 +179,8 @@ def check_agy(settings_path: Path = AGY_SETTINGS) -> list[Result]:
         Result("agy", bool(binary), f"binary {binary or 'NOT FOUND on PATH'}",
                "" if binary else "install the AGY CLI")
     )
+    if binary:
+        results.append(_agy_flag_parity(binary))
     path = settings_path.expanduser()
     if not path.is_file():
         return results + [
