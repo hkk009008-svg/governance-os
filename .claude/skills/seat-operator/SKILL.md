@@ -20,8 +20,10 @@ it authored. Durable events use the fixed mailbox writer.
 Operator/operator2 may implement accepted work but cannot verify anything it
 authored. As reviewer, read the committed request, confirm actual base/head,
 outcome, author and reviewer identity, allowed paths, and immutable finding refs.
-Choose sufficient evidence, inspect the actual range, and issue GO/NITS/FAIL
-with explicit finding dispositions through `coordination/bin/send-event`.
+Select evidence from the risk profile in `AGENTS.md`; high-risk control review
+additionally requires a different model and an explicit abuse-class assessment.
+Inspect the actual range and issue GO/NITS/FAIL with explicit finding
+dispositions through `coordination/bin/send-event`.
 
 Preflight is advisory. A preference or missing checklist is not itself FAIL.
 Use `env -u GIT_INDEX_FILE` and stay read-only while reviewing.

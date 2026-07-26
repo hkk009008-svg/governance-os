@@ -63,6 +63,13 @@ prefix or version suffix is not a different reviewer, and
 FAIL remain publishable without successful evidence, but still preserve every
 binding.
 
+`Reviewer model:` is the model that actually performed the review, as the
+reviewer reports it at review time. A launcher or seat-config pin is a request,
+not a guarantee, and never overrides the report — a config pinning one model
+while the reviewer runs another is a launcher defect to fix, not a verdict to
+void. Report the identifier the running model reports for itself, so the string
+records which model did the work rather than which one was requested.
+
 The Operator judges the actual committed outcome and applicable hard
 boundaries. Request-listed paths, commands, free-form harness names, and
 context labels do not prove compliance or independence.

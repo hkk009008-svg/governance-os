@@ -11,7 +11,10 @@
 ## Git hygiene
 
 - Use the selected task worktree's native Git index. Do not inherit or create a
-  per-seat `GIT_INDEX_FILE`.
+  per-seat `GIT_INDEX_FILE`. Prefix every git invocation with
+  `env -u GIT_INDEX_FILE ` — a dispatched agent cannot un-inherit the variable
+  by intent, and an inherited value follows `cd` into unrelated repositories,
+  where it presents as index corruption rather than as a wrong index.
 - Never run state-changing git (add/commit/checkout/stash/restore/read-tree)
   without explicit instruction. Read-only git such as show, log, diff, grep,
   rev-parse, and ls-tree is allowed when relevant.
