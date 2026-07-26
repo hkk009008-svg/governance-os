@@ -59,14 +59,12 @@ Reported model `Gemini 3.1 Pro (High)`, family `gemini`. Seat launch is
 `coordination/bin/agy-seat <seat>`; it emitted two undefined flags until
 `c6f017b`.
 
-Unresolved: `ANTIGRAVITY-ADOPTION.md` states AGY "holds no Layer-1 seat — and
-that is the design, not an omission" and is human-relayed with no protocol
-authority. Committed evidence disagrees — AGY published a schema-valid GO as
-seat `operator` at `5ad43ed`, `agy_seat_launcher.py` launches all five seats,
-and `.agents/skills/antigravity-harness/SKILL.md` says AGY natively occupies
-them. Whether the adoption doc is stale or the seat capability is out of
-policy is a decision, not a typo. Until it is settled, treat an AGY verdict as
-mechanically valid and doctrinally contested.
+Settled 2026-07-26: AGY may hold Layer-1 seats in both modes, superseding the
+Mode-1 exclusion in `ANTIGRAVITY-ADOPTION.md` §1. That section records what the
+exclusion protected — both audit CRITICALs lived on AGY's CLI write path — and
+what seating it in Mode 1 accepts, so an AGY verdict now rests on the same
+fail-closed publication validation as every other provider rather than on
+provider exclusion. The GO at `5ad43ed` stands.
 
 Its model identity also appears in four forms — `antigravity-gemini-3.6`,
 `gemini-3.6-flash`, `gemini-2.5-pro`, `Gemini 3.1 Pro (High)` — and
