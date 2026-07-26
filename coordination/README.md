@@ -195,12 +195,19 @@ offer. If the listing cannot be produced at all — a sandbox that blocks AGY's
 local language-server socket, a missing login — the launch fails rather than
 proceeding with a model it could not check.
 
-Arguments after `--` reach AGY unchanged, with one exception: they may not
-restate `--model`, `--effort`, or `--add-dir`, in any spelling. AGY resolves a
-repeated flag to its *last* occurrence, so a forwarded `--model` would decide
-what actually runs while the seat kept advertising the configured value, and a
-report citing it would name a model that never ran. The seat config is the only
-place seat identity is set; prompts and every other AGY flag forward normally.
+Arguments after `--` reach AGY unchanged, with one exception: no forwarded token
+may *look like* `--model`, `--effort`, or `--add-dir`, in any spelling. AGY
+resolves a repeated flag to its *last* occurrence, so a forwarded `--model`
+would decide what actually runs while the seat kept advertising the configured
+value, and a report citing it would name a model that never ran. The seat config
+is the only place seat identity is set.
+
+The check reads spelling, not AGY's parser state, so it is conservative in one
+direction: `-- --log-file --model` is refused even though AGY would have taken
+`--model` as the log filename rather than as a model. Pass a second `--` when
+you need such a token to reach AGY as text — after AGY's own terminator nothing
+can become a flag, and the guard stops there. Prompts and other AGY flags
+forward normally.
 
 Report the same string back. `Author model:` and `Reviewer model:` in a
 verification report must be the exact listed ID the seat ran on, which

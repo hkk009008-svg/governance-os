@@ -221,8 +221,17 @@ def reject_forwarded_launcher_flags(forwarded_args: Sequence[str]) -> None:
 
     Seat identity is the config's to state. Forwarding stays open for prompts
     and everything else AGY accepts; it just cannot redefine the seat.
+
+    The check reads spelling, not parser state, so it is deliberately
+    conservative in one direction: a token AGY would have consumed as some other
+    flag's value (`--log-file --model`) is still refused. Refusing a usable
+    command line is recoverable and loud; admitting an identity override is
+    neither. It does honour AGY's own `--` terminator, after which no token can
+    become a flag at all.
     """
     for token in forwarded_args:
+        if token == "--":
+            return
         name = _flag_name(token)
         if name in EMITTED_CLI_FLAGS:
             raise LaunchError(

@@ -72,17 +72,36 @@ _LIVE_LISTING, _LIVE_BLOCKED_REASON = _listing_probe()
 # onto one line or `-rs` shows a bare "cannot be checked:" and hides it.
 _LIVE_BLOCKED_SUMMARY = " ".join(_LIVE_BLOCKED_REASON.split())
 
-# An `agy` that is installed but cannot run here -- a sandbox that forbids its
-# language-server socket, a missing login -- is an environment limitation, not
-# a defect in the launcher. Skip on that, loudly, quoting the real cause.
-#
-# The dangerous case is the other one: if AGY stopped accepting the listing
-# command itself, skipping would bury the interface defect the live tests exist
-# to find. `test_live_listing_failure_is_never_an_interface_rejection` runs
-# unconditionally and fails on exactly that, so this gate cannot swallow it.
-# The hermetic tests never skip either, so nothing here goes quietly vacuous.
+# Recognized reasons this machine cannot run AGY, as opposed to AGY refusing the
+# command we send it. Listing them is the whole point: an earlier version keyed
+# on a single rejection phrase and treated everything else as environmental, so
+# an `agy` that rejected `models` outright still produced four green skips.
+_ENVIRONMENT_LIMIT_MARKERS = (
+    "not on path",
+    "operation not permitted",
+    "permission denied",
+    "bind:",
+    "timed out",
+)
+
+
+def _is_environment_limit(reason: str) -> bool:
+    lowered = reason.casefold()
+    return any(marker in lowered for marker in _ENVIRONMENT_LIMIT_MARKERS)
+
+
+_LIVE_BLOCKED_ENVIRONMENTALLY = _is_environment_limit(_LIVE_BLOCKED_REASON)
+
+# Skip the live tests only for a recognized environment limit, quoting the real
+# cause. Any other listing failure means AGY did not accept the command this
+# suite sends -- interface rot, which is exactly what the live tests exist to
+# catch -- so it must not be skipped. The gate is therefore fail-closed the same
+# way the launcher is, and `test_live_listing_failure_is_an_environment_limit`
+# fails unconditionally on an unrecognized cause rather than leaving the run
+# green. The hermetic tests never skip at all.
 _needs_agy = pytest.mark.skipif(
-    not _LIVE_LISTING, reason=f"cannot run the live agy listing: {_LIVE_BLOCKED_SUMMARY}"
+    not _LIVE_LISTING and _LIVE_BLOCKED_ENVIRONMENTALLY,
+    reason=f"cannot run the live agy listing: {_LIVE_BLOCKED_SUMMARY}",
 )
 
 
@@ -345,15 +364,43 @@ def test_forwarding_still_carries_prompts_and_other_agy_flags(tmp_path: Path) ->
     assert list(spec.argv)[-len(forwarded) :] == forwarded
 
 
-def test_live_listing_failure_is_never_an_interface_rejection() -> None:
+def test_live_listing_failure_is_an_environment_limit() -> None:
     """A live skip must mean "this machine cannot run agy", never "we called it wrong".
 
-    `_needs_agy` turns any listing failure into a skip. That is right for a
-    blocked socket or a missing login and wrong for AGY rejecting the listing
-    command itself, which is precisely the rot the live tests guard. This runs
-    unconditionally so that case fails instead of skipping.
+    Keying this on one rejection phrase was not enough: an `agy` that refused
+    `models` with any other wording still produced four green skips, so the
+    live tests silently covered nothing. The gate now recognizes environment
+    limits explicitly and this runs unconditionally, so an unrecognized cause
+    fails the suite instead of disappearing into a skip.
     """
-    assert UNDEFINED_FLAG_MARKER not in _LIVE_BLOCKED_REASON, _LIVE_BLOCKED_REASON
+    if _LIVE_LISTING:
+        return
+    assert _LIVE_BLOCKED_ENVIRONMENTALLY, _LIVE_BLOCKED_SUMMARY
+    assert UNDEFINED_FLAG_MARKER not in _LIVE_BLOCKED_REASON, _LIVE_BLOCKED_SUMMARY
+
+
+def test_forwarded_double_dash_terminates_the_identity_guard(tmp_path: Path) -> None:
+    """After AGY's own `--`, no token can become a flag, so none can override.
+
+    The guard used to reject `-- -- --model` even though the bare forwarded `--`
+    makes the following token positional prompt text. Refusing that was
+    forwarding collateral with no identity risk behind it.
+    """
+    forwarded = ["--", "--model", "definitely-not-an-agy-model"]
+
+    spec = launcher.build_launch_spec(
+        repo_root=tmp_path,
+        seat="operator",
+        settings=_settings(tmp_path),
+        inherited_env={"PATH": "/bin"},
+        agy_executable="/opt/agy",
+        forwarded_args=forwarded,
+    )
+    argv = list(spec.argv)
+
+    assert argv[-len(forwarded) :] == forwarded
+    # The launcher's own --model still precedes the terminator and still wins.
+    assert argv[argv.index("--model") + 1] == "gemini-operator"
 
 
 def test_failed_listing_reports_the_whole_error_stream(tmp_path: Path) -> None:
