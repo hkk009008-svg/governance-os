@@ -269,10 +269,17 @@ def _committed_pattern(line: str) -> str:
 
     Unescaped trailing spaces are removed because git removes them before
     reporting: a committed `target/   ` is reported as `target/`, and comparing
-    raw would reject a rule that is genuinely committed. A backslash-escaped
-    trailing space is left alone and will simply not compare equal, which is a
-    loud failure on a pattern shape this repository does not use rather than a
-    silent acceptance.
+    raw would reject a rule that is genuinely committed.
+
+    A trailing space escaped by a backslash is kept, which matches git rather
+    than merely erring against it: `one\\ ` is reported as `one\\ `, so keeping
+    it is what makes such a rule compare equal and be accepted. The reduction is
+    deliberately not carried further. A line mixing the two, `two\\  `, is
+    reduced by git to `two\\ ` and is left here as `two\\  `, so it compares
+    unequal and is refused. That is the safe direction — a loud refusal on a
+    pattern shape this repository does not use, never a silent acceptance — but
+    it is a refusal of something genuinely committed, so it is a limit of this
+    comparison rather than a property worth relying on.
     """
     if line.endswith("\r"):
         line = line[:-1]
@@ -1455,7 +1462,12 @@ def test_ignore_provenance_requires_a_committed_rule() -> None:
     assert _committed_pattern(f"{TARGET}/\r\r") == f"{TARGET}/\r"
     assert _committed_pattern(f"{TARGET}/\r") == f"{TARGET}/"
     assert _committed_pattern(f"{TARGET}/   ") == f"{TARGET}/"
+    # An escaped trailing space is kept because git keeps it, so such a rule is
+    # accepted. Mixing the two is where this comparison stops following git: it
+    # reduces `x\  ` to `x\ ` and this does not, so the rule is refused. Both
+    # are pinned so the docstring cannot drift from either again.
     assert _committed_pattern(f"{TARGET}/\\ ") == f"{TARGET}/\\ "
+    assert _committed_pattern(f"{TARGET}/\\  ") == f"{TARGET}/\\  "
 def test_only_an_exact_no_match_exit_confirms_nothing_tracked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
