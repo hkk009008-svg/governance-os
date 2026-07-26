@@ -179,6 +179,48 @@ def _git_exit_code(*arguments: str) -> int:
         return -1
 
 
+# The exclude file a control may rest on, because it is the only one committed.
+COMMITTED_IGNORE_SOURCE = ".gitignore"
+
+
+def _git_ignore_source(relative: str) -> str:
+    """Which exclude file answered `check-ignore` for *relative*; "" if none.
+
+    A 0 exit says the path is ignored. It does not say the repository is what
+    ignores it. `$GIT_DIR/info/exclude` is untracked, lives in the common git
+    dir every worktree shares, and on at least one machine here carries
+    `.claude/worktrees/` a second time, so a control resting on the exit code
+    alone keeps passing after the committed rule is deleted — machine state
+    answering in the repository's name, which is the same class of defect as
+    reading one checkout's layout as a fact about the repository.
+
+    `-v` names the source, and a work-tree `.gitignore` outranks
+    `$GIT_DIR/info/exclude`, so the committed rule is what answers while it
+    exists and its deletion is visible here rather than masked.
+    """
+    environment = {
+        name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
+    }
+    try:
+        completed = subprocess.run(
+            ("git", "check-ignore", "-v", "--", relative),
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if completed.returncode != 0:
+        return ""
+    try:
+        first = completed.stdout.decode("utf-8").split("\n", 1)[0]
+    except UnicodeDecodeError:
+        return ""
+    # `<source>:<line>:<pattern>\t<pathname>`; the source never contains a
+    # colon, and the pathname routinely does, so only the first split is safe.
+    return first.split(":", 1)[0]
+
+
 def _git_confirms_prunable(relative: str) -> bool:
     """Whether git, asked directly about this exact path, sanctions skipping it.
 
@@ -494,11 +536,24 @@ PROBE_BODY = f"{EXACT_NEXT_TRIGGER}: run superpowers:brainstorming next.\n"
 def _ignored_probe(relative_root: str, *, self_ignore: bool) -> Iterator[Path]:
     """Plant a forbidden-string file in a nested tree under a git-ignored path.
 
-    Only *relative_root* is ever removed. Its parent may be a live
-    `.claude/worktrees/` holding real checkouts, so the parent is rmdir'd — a
-    no-op on any non-empty directory — only when this helper created it.
+    Cleanup removes *relative_root* whole and unconditionally, so this refuses
+    to run when something is already there. The root is a fixed name under
+    `.claude/worktrees/`, which is exactly where live checkouts are parked, and
+    an unlucky name or a probe left behind by an interrupted run would
+    otherwise be deleted by a passing test. Scoping the removal to one path was
+    never the same as knowing that path is ours; the guard is what knows.
+
+    Its parent may be a live `.claude/worktrees/` holding real checkouts, so
+    the parent is rmdir'd — a no-op on any non-empty directory — only when this
+    helper created it.
     """
     probe_root = ROOT / relative_root
+    if probe_root.exists():
+        raise AssertionError(
+            f"refusing to plant a probe over existing content at {probe_root}: "
+            "cleanup would delete it. Confirm by hand that it is not a live "
+            "checkout, then remove it."
+        )
     parent = probe_root.parent
     parent_existed = parent.is_dir()
     probe = probe_root / PROBE_NESTED_FILE
@@ -1060,51 +1115,98 @@ def test_an_unlistable_directory_fails_loudly() -> None:
         shutil.rmtree(blocked, ignore_errors=True)
 
 
+# Which magic forms can actually win a confirmation, measured rather than
+# reasoned about. `:(top)` and `:/` both root a pattern at the top of the
+# repository, so both are answered 0 for an ignored path. `:!` and `:^` are
+# negative pathspecs that `check-ignore` rejects outright, so they cannot win;
+# the guard refuses them anyway, and that they cannot win is pinned rather than
+# assumed, so a widening is visible if git ever starts answering one.
+WINNABLE_PATHSPEC_MAGIC = (":(top)", ":/")
+UNWINNABLE_PATHSPEC_MAGIC = (":!", ":^")
+
+
 def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A candidate carrying pathspec magic never becomes a prune.
 
-    `--` ends option parsing but leaves magic alive, so `:(top)x` is answered
-    as a pattern rooted at the top of the repository rather than as a directory
-    literally named `:(top)x`. Both confirmations would then be about a path
-    that is not the one being skipped. `--literal-pathspecs` fixes this for
-    `ls-files` but `git check-ignore` rejects that flag outright, so the magic
-    is refused at the door instead.
+    `--` ends option parsing but leaves magic alive, so `:(top)x` and `:/x` are
+    answered as patterns rooted at the top of the repository rather than as
+    directories literally bearing those names. Both confirmations would then be
+    about a path that is not the one being skipped. `--literal-pathspecs` fixes
+    this for `ls-files` but `git check-ignore` rejects that flag outright, so
+    the magic is refused at the door instead.
 
-    The refusal is only worth asserting if git would otherwise have answered
-    yes, so that answer is measured — which means it has to be measured
-    somewhere the answer actually holds. It does not hold everywhere by itself:
-    the committed rule is `.claude/worktrees/`, and a trailing slash makes a
-    rule directory-only, which `check-ignore` applies only where it can see a
-    directory. Given a query carrying no trailing slash of its own it looks in
-    the working tree, so the same string it answers 0 for in the main checkout
-    it answers 1 for from a linked worktree, where nothing has created that
-    directory. That is a fact about one checkout rather than about the
-    repository, and reading a `False` produced by it as the guard's work would
-    be the vacuity this control exists to prevent. So the directory is planted
-    here and the answer is pinned, rather than inherited from whichever tree
-    pytest happened to start in.
+    The refusal is worth asserting only if git would otherwise have answered
+    yes, so that answer is measured. Four things are needed before the
+    measurement means what it claims, and each of them was missing once:
+
+    Every winnable form, not one of them. A guard narrowed to `:(` leaves `:/`
+    winning both calls, so a control naming only the long form stays green
+    against a refusal that is no longer complete, while the module's own claim
+    is that refusing the leading colon covers every form there is.
+
+    An answer that comes from the committed rule. A bare exit code cannot tell
+    `.gitignore` from `$GIT_DIR/info/exclude`, so `_git_ignore_source` is what
+    stops a machine-local duplicate of the rule from answering in the
+    repository's name.
+
+    A query that does not depend on the checkout. `.claude/worktrees/` is
+    directory-only, and `check-ignore` applies a directory-only rule to a bare
+    path only where it can see a directory, so a bare query is answered 0 in
+    the main checkout and 1 from a linked worktree. Naming a path *under* the
+    ignored directory is what removes that dependency, because the same rule
+    matches a descendant whether or not the parent exists on disk. The probe is
+    planted for other reasons — the sweep below needs a real file, and a
+    candidate reaching `_git_confirms_prunable` in production always names
+    something git just listed off disk — and not to make these exits hold.
+
+    Git actually left unasked. That is this test's name, and nothing pinned it:
+    a guard that refused only after consulting git would satisfy every
+    assertion above. Stubbing git to fail cannot pin it either, because
+    `_git_exit_code` maps a failure to -1 and the conjunction then refuses for
+    the wrong reason. So git is stubbed to *grant* both confirmations, and the
+    calls are counted.
     """
     root_relative = f".claude/worktrees/{PROBE_NAME}"
-    forged = f":(top){root_relative}"
     with _ignored_probe(root_relative, self_ignore=False) as probe:
         relative = probe.relative_to(ROOT).as_posix()
 
-        # Measured, not assumed: without the guard this exact string wins both
-        # confirmations. Each half is pinned on its own, because
-        # `_git_confirms_prunable` needs both and a `False` from either one is
-        # indistinguishable from the refusal under test. The literal path is
-        # pinned absent too: that is what makes the 0 an answer about some
-        # other path, which is the whole hazard the guard closes.
-        assert not (ROOT / forged).exists()
-        assert _git_exit_code("check-ignore", "-q", "--", forged) == 0
-        assert (
-            _git_exit_code("ls-files", "--cached", "--error-unmatch", "--", forged)
-            == NO_PATHSPEC_MATCH
-        )
-        assert _git_confirms_prunable(forged) is False
+        for magic in WINNABLE_PATHSPEC_MAGIC:
+            forged = f"{magic}{root_relative}"
+            # Measured, not assumed: without the guard this string wins both
+            # confirmations. Each half is pinned on its own, because
+            # `_git_confirms_prunable` needs both and a `False` from either one
+            # is indistinguishable from the refusal under test. The literal
+            # path is pinned absent too: that is what makes the 0 an answer
+            # about some other path, which is the hazard the guard closes.
+            assert not (ROOT / forged).exists(), forged
+            assert _git_exit_code("check-ignore", "-q", "--", forged) == 0, forged
+            assert _git_ignore_source(forged) == COMMITTED_IGNORE_SOURCE, forged
+            assert (
+                _git_exit_code("ls-files", "--cached", "--error-unmatch", "--", forged)
+                == NO_PATHSPEC_MATCH
+            ), forged
+            assert _git_confirms_prunable(forged) is False, forged
 
+        for magic in UNWINNABLE_PATHSPEC_MAGIC:
+            forged = f"{magic}{root_relative}"
+            assert _git_exit_code("check-ignore", "-q", "--", forged) != 0, forged
+
+        granting = _stub_git(ignored=True, tracked=False)
+        asked: list[tuple[str, ...]] = []
+
+        def counting(arguments, *a, **k) -> subprocess.CompletedProcess:
+            asked.append(tuple(arguments))
+            return granting(arguments, *a, **k)
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(subprocess, "run", counting)
+            for magic in (*WINNABLE_PATHSPEC_MAGIC, *UNWINNABLE_PATHSPEC_MAGIC):
+                assert _git_confirms_prunable(f"{magic}{root_relative}") is False, magic
+        assert asked == []
+
+        forged = f":(top){root_relative}"
         monkeypatch.setattr(subprocess, "run", _stub_listing_only(f"{forged}/\0".encode()))
         assert relative in _protocol_sweep_relatives()
 
