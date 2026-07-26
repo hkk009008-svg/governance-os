@@ -234,8 +234,12 @@ def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[P
     that inspects too much fails loudly; one that inspects too little does not
     fail at all.
 
-    Symlinked directories are not followed, matching the previous walk and
-    keeping the descent free of cycles.
+    Symlinked *directories* are not followed, matching the previous walk and
+    keeping the descent free of cycles. A symlink to a *file* is read like any
+    other file: it is a live instruction surface at a path under an active
+    root, and whether its bytes live elsewhere changes nothing about that. A
+    broken symlink is neither, and is skipped because it has no content to
+    sweep rather than because it is a link.
     """
     wanted = frozenset(suffixes)
     candidate_directories, ignored_files = _git_ignored_entries()
@@ -251,9 +255,14 @@ def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[P
             return
         for child in children:
             relative = relative_of(child)
-            if child.is_symlink():
-                continue
             if child.is_dir():
+                # Symlinked directories are not followed, matching `os.walk`:
+                # the tree behind one is reached by its real path, and following
+                # it invites cycles. The test is made *inside* the directory
+                # branch on purpose — a symlink to a file is a different thing
+                # entirely and must still be read.
+                if child.is_symlink():
+                    continue
                 if child.name == ".git":
                     continue
                 if relative in candidate_directories and _git_confirms_prunable(
@@ -261,7 +270,11 @@ def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[P
                 ):
                     continue
                 descend(child)
-            elif child.suffix in wanted and relative not in ignored_files:
+            elif (
+                child.is_file()
+                and child.suffix in wanted
+                and relative not in ignored_files
+            ):
                 found.append(child)
 
     for relative in roots:
@@ -821,6 +834,45 @@ def test_fragment_payload_is_discarded_whole(monkeypatch: pytest.MonkeyPatch) ->
         subprocess, "run", _stub_git(b".claude/hooks/\0.claude/worktrees")
     )
     assert _git_ignored_entries() == (frozenset(), frozenset())
+
+
+def test_symlinked_file_is_swept_and_symlinked_directory_is_not_followed() -> None:
+    """A link to a file is active surface; a link to a directory is a duplicate.
+
+    `os.walk` emitted symlinked files as filenames and scanned them, so a
+    depth-first replacement that discards every symlink before telling a file
+    from a directory silently narrows the sweep. A symlink under an active root
+    is a live instruction surface whatever its bytes are stored as. A symlinked
+    directory is a second route to a tree the walk already reaches by its real
+    path, so following it duplicates work and invites cycles.
+    """
+    base = ROOT / ".claude/agents"
+    target_root = Path(tempfile.mkdtemp(prefix="sweep-symlink-"))
+    file_link = base / f"{PROBE_NAME}-link.md"
+    directory_link = base / f"{PROBE_NAME}-dirlink"
+    try:
+        target = target_root / "carried.md"
+        target.write_text(f"{EXACT_NEXT_TRIGGER}\n", encoding="utf-8")
+        (target_root / "inside.md").write_text("x\n", encoding="utf-8")
+        file_link.symlink_to(target)
+        directory_link.symlink_to(target_root, target_is_directory=True)
+
+        swept = {
+            path.relative_to(ROOT).as_posix()
+            for path in _sweep_active_files(
+                ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"}
+            )
+        }
+        link_relative = file_link.relative_to(ROOT).as_posix()
+        directory_relative = directory_link.relative_to(ROOT).as_posix()
+    finally:
+        file_link.unlink(missing_ok=True)
+        directory_link.unlink(missing_ok=True)
+        shutil.rmtree(target_root, ignore_errors=True)
+
+    assert link_relative in swept
+    assert f"{directory_relative}/inside.md" not in swept
+    assert not any(path.startswith(f"{directory_relative}/") for path in swept)
 
 
 def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
