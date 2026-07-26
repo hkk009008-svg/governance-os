@@ -255,6 +255,14 @@ def test_build_launch_spec_rejects_unknown_seat(tmp_path: Path) -> None:
 
 
 def test_each_seat_uses_only_its_own_model_and_effort(tmp_path: Path) -> None:
+    """Both per-seat controls must reach the CLI, and only their own seat's.
+
+    `service_tier` was mandatory, validated and advertised as a speed control
+    while nothing consumed it: changing `fast` to `default` altered no launch
+    behaviour. That false capability is gone. It was replaced rather than
+    deleted, because AGY does expose the control under another name -- `effort`
+    is validated AND passed as `--effort`, so changing it changes the launch.
+    """
     overrides = {seat: (f"model-{seat}", "low" if seat == "coordinator" else "high") for seat in SEATS}
     settings = _settings(tmp_path, overrides)
 
@@ -270,10 +278,36 @@ def test_each_seat_uses_only_its_own_model_and_effort(tmp_path: Path) -> None:
         argv = list(spec.argv)
         expected_effort = "low" if seat == "coordinator" else "high"
         assert argv[argv.index("--model") + 1] == f"model-{seat}"
-        # AGY has no service tier, but it does have `--effort`, so the per-seat
-        # speed setting reaches the CLI rather than being recorded and dropped.
         assert argv[argv.index("--effort") + 1] == expected_effort
         assert not any("service_tier" in token for token in spec.argv)
+        assert not hasattr(settings[seat], "service_tier")
+
+
+def test_the_retired_service_tier_schema_is_refused_by_name(tmp_path: Path) -> None:
+    """A config on the old schema fails loudly rather than loading half-configured.
+
+    The sibling line kept `service_tier` loading and ignored it, so existing
+    configs would keep working. That is right when the field selects nothing.
+    Here it was replaced by `effort`, which is applied, and tolerating a config
+    that carries neither would mean inventing an effort default and applying it
+    silently -- the same false-capability trap from the other direction.
+
+    So the retired schema is refused, and the message names both required keys
+    so the migration is a one-line edit rather than a mystery.
+    """
+    config_path = tmp_path / "seats.toml"
+    config_path.write_text(
+        "".join(
+            f'[seats.{seat}]\nmodel = "gemini-3.1-pro-high"\nservice_tier = "default"\n\n'
+            for seat in SEATS
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(launcher.ConfigError) as refused:
+        launcher.load_seat_settings(config_path)
+
+    assert "model and effort" in str(refused.value)
 
 
 def test_forwarded_agy_arguments_remain_literal(tmp_path: Path) -> None:
@@ -704,11 +738,17 @@ def test_config_rejects_incomplete_or_unknown_settings(tmp_path: Path, body: str
 
 
 def test_config_rejects_bad_model_or_effort(tmp_path: Path) -> None:
+    """Both controls are strictly validated, because both are applied.
+
+    Rejecting `turbo` would be the launcher pretending to gate a control it does
+    not apply -- which is why the inert `service_tier` stopped being validated
+    on the sibling line. Here the control is applied, so gating it is honest.
+    The retired Codex-shaped vocabulary must not quietly still work either.
+    """
     for overrides in (
         {"director": ("", "high")},
         {"director": (" leading-space", "high")},
         {"director": ("model", "turbo")},
-        # The retired Codex-shaped vocabulary must not quietly still work.
         {"director": ("model", "fast")},
         {"director": ("model", "default")},
     ):
@@ -716,6 +756,19 @@ def test_config_rejects_bad_model_or_effort(tmp_path: Path) -> None:
         _write_config(config_path, overrides)
         with pytest.raises(launcher.ConfigError):
             launcher.load_seat_settings(config_path)
+
+
+def test_config_still_rejects_unknown_per_seat_keys(tmp_path: Path) -> None:
+    config_path = tmp_path / "seats.toml"
+    config_path.write_text(
+        "\n".join(
+            f'[seats.{seat}]\nmodel = "m"\nspeed = "fast"\n' for seat in SEATS
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(launcher.ConfigError):
+        launcher.load_seat_settings(config_path)
 
 
 def test_dry_run_prints_identity_and_does_not_start_agy(
@@ -884,20 +937,48 @@ def test_launcher_emits_only_flags_the_agy_cli_defines(tmp_path: Path) -> None:
         assert emitted <= launcher.AGY_CLI_FLAGS, (seat, emitted - launcher.AGY_CLI_FLAGS)
 
 
-def test_declared_agy_flag_set_matches_the_installed_cli() -> None:
-    """Pin the declared set against the binary that will actually run.
+CLI_FLAG_SNAPSHOT = Path(__file__).resolve().parents[1] / "fixtures/agy-cli-flags.txt"
 
-    Without this the flag list is just another copy that can rot, which is the
-    exact failure it exists to prevent. Parsing `--help` costs no model call.
+
+def _snapshot_flags() -> set[str]:
+    return {
+        line.strip()
+        for line in CLI_FLAG_SNAPSHOT.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    }
+
+
+def test_declared_agy_flag_set_matches_the_committed_cli_snapshot() -> None:
+    """Always runs, including where the CLI is absent.
+
+    The previous form skipped when `agy` was missing, and the unit job installs
+    only `requirements-dev.txt` — so a flag added to both the argv and
+    `AGY_CLI_FLAGS`, or removed upstream, passed CI untouched. Checking against
+    a committed snapshot of the real `--help` keeps a real assertion in every
+    environment; `test_cli_snapshot_matches_the_installed_cli` is what keeps the
+    snapshot itself honest wherever the binary exists.
     """
+    defined = _snapshot_flags()
+
+    assert defined, "the committed CLI snapshot is empty"
+    assert launcher.AGY_CLI_FLAGS <= defined, launcher.AGY_CLI_FLAGS - defined
+
+
+def test_cli_snapshot_matches_the_installed_cli() -> None:
+    """Catch upstream drift where the binary exists; never the only guard."""
     executable = shutil.which("agy") or shutil.which("antigravity")
     if executable is None:
-        pytest.skip("agy CLI is not installed on this machine")
+        pytest.skip("agy CLI absent; the snapshot assertion above still ran")
 
     helped = subprocess.run(
         [executable, "--help"], capture_output=True, text=True, check=False
     )
     text = helped.stdout + helped.stderr
     defined = set(re.findall(r"^\s+(--[a-z][a-z0-9-]*)", text, re.MULTILINE))
+
     assert defined, "could not parse any flags from agy --help"
-    assert launcher.AGY_CLI_FLAGS <= defined, launcher.AGY_CLI_FLAGS - defined
+    drifted = _snapshot_flags() - defined
+    assert not drifted, (
+        f"tests/fixtures/agy-cli-flags.txt lists flags the CLI no longer defines: "
+        f"{sorted(drifted)}"
+    )

@@ -183,6 +183,14 @@ def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
     settings: dict[str, SeatSettings] = {}
     for seat in LAUNCH_SEATS:
         value = seats[seat]
+        # `effort` is required, not ignored, because it is applied: it reaches
+        # the CLI as `--effort`. The sibling line reached the opposite fix for
+        # the same finding -- it dropped `service_tier` because nothing consumed
+        # it, so validating it made the launcher advertise a speed control that
+        # selected nothing. Both answer "no false capabilities"; this one keeps
+        # the capability instead of the field. A config still carrying
+        # `service_tier` is on the retired schema and is refused by name rather
+        # than silently ignored, so the migration is visible.
         if not isinstance(value, dict) or set(value) != {"model", "effort"}:
             raise ConfigError(
                 f"[seats.{seat}] must contain exactly model and effort"
@@ -477,7 +485,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         # The CLI has no working-root flag, so the seat inherits this process's
         # directory. Without the chdir a seat launched from anywhere else would
         # silently operate on whatever repository the caller happened to be in.
-        os.chdir(spec.repo_root)
+        # An unreadable or missing root must surface as the launcher's own error
+        # contract, not an uncaught OSError traceback past the handler below.
+        try:
+            os.chdir(spec.repo_root)
+        except OSError as exc:
+            raise LaunchError(f"cannot enter reviewed root {spec.repo_root}: {exc}") from exc
         os.execvpe(spec.argv[0], list(spec.argv), spec.env)
     except (ConfigError, LaunchError) as exc:
         print(f"agy-seat: {exc}", file=sys.stderr)

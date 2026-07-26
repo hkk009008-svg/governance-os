@@ -1282,3 +1282,57 @@ The four pair-seat names remain where the mailbox and formal review format need
 stable identities; they are not a mandate to allocate four agents. Commit,
 publication, cursor consumption, push, merge, and every other external effect
 remain separate actions.
+
+---
+
+## ADR-065: Check harness invocation readiness mechanically, never by documentation alone (2026-07-26)
+
+**Status:** Accepted
+
+**Context:** Dispatching non-author Operator reviews across Codex, AGY and
+Cursor on 2026-07-26 produced four distinct silent failures. `codex exec` read
+stdin for a `<stdin>` block even with a prompt argument and blocked forever on
+an inherited pipe, at 0% CPU with no rollout log. `cursor-agent` pointed at the
+main checkout instead of the seat worktree degraded to an unbound readiness
+posture. `agy --print` auto-denied a tool permission headless mode cannot prompt
+for. A fifth suspected cause, AGY's five-minute `--print-timeout`, turned out to
+be a misdiagnosis of the same permission denial. **Every one of these exited 0.**
+
+The asymmetry is the finding. Protocol machinery in this repository fails
+loudly and self-describes: the mailbox writer rejects a malformed candidate
+before writing, `compact_pair_loop.py` names the missing field, the placeholder
+gate cites file and line, and a same-family reviewer is refused at publication.
+Invocation failures do the opposite — they are silent, they are indistinguishable
+from success at the exit code, and the knowledge of them lives nowhere the
+machine can check.
+
+`docs/protocol/threeway/HEADLESS-REVIEW.md` was written that day to capture
+exactly this knowledge, by an author who had just learned it firsthand. It was
+wrong within twenty minutes when a peer session reverted `.codex/config.toml`
+and removed the ambient `approval_policy` its documented command depended on,
+and wrong again when AGY's permission behaviour was discovered. Prose recording
+harness behaviour rots at the speed of the harnesses, which is faster than
+anyone reads it.
+
+**Decision.** Harness invocation readiness is checked by an executable before
+dispatch, and documentation is demoted to the remediation reference that check
+points at.
+
+- `scripts/harness_preflight.py` is the gate. It fails closed with a nonzero
+  exit, because every real failure returned zero.
+- Each check reads live state rather than restating it: Cursor verdicts come
+  from `cursor_hook_policy.py` itself, AGY grants from the CLI's own settings
+  file, Codex ambient authority from the project config a launch would inherit.
+  A hardcoded copy of an external interface rots the way `agy_seat_launcher.py`
+  did, which is the defect this pattern exists to avoid repeating.
+- `--live` spends one tool-using prompt and requires a positive artifact — the
+  repository HEAD echoed back — because exit status is not evidence of work.
+
+**Consequences.** A harness that cannot produce evidence or publish a verdict is
+identified before spend rather than after a silent no-op. The preflight is
+itself a copy of external behaviour and can rot; reading live state bounds that
+but does not eliminate it, and its own tests are verified non-vacuous by
+blinding each check. Readiness is not authority: passing the preflight says a
+harness can act, never that it may. Provider launch, paid spend, publication and
+push remain separate authorities, and a persistent tool grant in a harness
+config is an authority change rather than a configuration convenience.

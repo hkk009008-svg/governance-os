@@ -4,8 +4,19 @@ How to obtain a non-author Operator review from another harness without a human
 driving that harness's app. Every command here was executed against this
 repository on 2026-07-26; the constraints are observed behaviour, not inference.
 
-Provider launch and paid spend remain separately authorized. This file records
-*how* to dispatch, never that dispatching is pre-approved.
+**Run the check, do not read this file from memory (ADR-065):**
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python scripts/harness_preflight.py all
+```
+
+It fails closed and names the specific remedy. This page is the remediation
+reference it points at, not the thing you are expected to remember — every
+harness failure below exits 0 and produces silence, and this file was already
+wrong twice within hours of being written.
+
+Provider launch and paid spend remain separately authorized. Readiness is not
+authority: the preflight says a harness *can* act, never that it *may*.
 
 ## Why another harness
 
@@ -47,8 +58,29 @@ publish through `coordination/bin/send-event`, and commit its own report.
 ## AGY
 
 ```bash
-agy -p "<brief>"
+agy --sandbox --print "<brief>"
 ```
+
+**A review needs tool grants that headless mode cannot request.** `agy -p`
+succeeds for a prompt that uses no tools, which is why a trivial probe passes
+and a real review does not: any tool it needs is auto-denied because headless
+mode has nobody to prompt. The failure is one line on stdout and exit 0 —
+
+```
+no output produced — a tool required the "read_file" permission that headless
+mode cannot prompt for, so it was auto-denied.
+```
+
+— and the first such run produced no output at all. Grant what a review needs
+in `~/.gemini/antigravity-cli/settings.json` under `permissions.allow`:
+`read_file`, plus a `command(...)` entry per command it must run. The preflight
+checks these against that file directly.
+
+Note what each grant costs. `read_file` is an observation grant;
+`command(git commit)` and `command(coordination/bin/send-event)` are *authority*
+grants that outlive the task and apply to every later AGY session, unlike the
+per-run limits in a prompt. `--dangerously-skip-permissions` grants everything
+at once and should be a deliberate choice, not a shortcut past a denial.
 
 Flags must precede the prompt: it is a Go flag parser, which stops at the first
 positional and then reports `flags provided but not defined` for anything after
