@@ -41,7 +41,31 @@ def test_agy_missing_command_grants_is_not_ready(tmp_path: Path) -> None:
     assert any(command in detail for detail in failures for command in ("git diff", "pytest"))
 
 
-def test_agy_with_every_review_grant_is_ready(tmp_path: Path) -> None:
+def _binary_rows(results) -> list:
+    return [result for result in results if result.detail.startswith("binary ")]
+
+
+def _capability_rows(results) -> list:
+    return [result for result in results if not result.detail.startswith("binary ")]
+
+
+def test_agy_with_every_review_grant_is_ready(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Full readiness, with the binary's presence supplied rather than borrowed.
+
+    This asserted that nothing fails, which is a claim about the grants — but
+    `check_agy` also reports whether the CLI is on PATH, so the assertion only
+    held on a host that happened to have AGY installed. Committed CI installs
+    `requirements-dev.txt` and no AGY, so it failed there while passing for
+    whoever wrote it. `shutil.which` is stubbed rather than `_binary`, so the
+    real lookup still runs, including its fall back to the `antigravity` name.
+    """
+    monkeypatch.setattr(
+        preflight.shutil,
+        "which",
+        lambda name: f"/probe/bin/{name}" if name in ("agy", "antigravity") else None,
+    )
     settings = _settings(
         tmp_path,
         ["read_file", *(f"command({command})" for command in preflight.REVIEW_COMMANDS)],
@@ -50,6 +74,40 @@ def test_agy_with_every_review_grant_is_ready(tmp_path: Path) -> None:
     results = preflight.check_agy(settings)
 
     assert _failures(results) == []
+
+
+def test_agy_capability_rows_run_when_the_binary_is_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing CLI fails on its own row and silences none of the others.
+
+    The capability checks deliberately keep running when the binary is absent,
+    so one report can say both things: the grants are right, and nothing can
+    execute. That is only safe while the binary row still fails, because
+    capability rows reading PASS is precisely what would be mistaken for
+    readiness — the reason the early return was removed in the first place.
+
+    Both halves are asserted, and the capability rows are required to be present
+    as well as passing. Asserting only that the binary row is the sole failure
+    would hold just as well if `check_agy` returned early and ran no capability
+    check at all, which is the regression this is here to catch.
+    """
+    monkeypatch.setattr(preflight.shutil, "which", lambda _name: None)
+    settings = _settings(
+        tmp_path,
+        ["read_file", *(f"command({command})" for command in preflight.REVIEW_COMMANDS)],
+    )
+
+    results = preflight.check_agy(settings)
+
+    assert [result.ok for result in _binary_rows(results)] == [False]
+    capability = _capability_rows(results)
+    assert capability, "no capability row ran, so this proves nothing about them"
+    assert [result.ok for result in capability] == [True] * len(capability)
+    # Exactly the binary row fails, so every capability check ran and passed.
+    assert _failures(results) == ["binary NOT FOUND on PATH"]
+    # What `main` aggregates on: one failing row is NOT READY and exit 1.
+    assert not all(result.ok for result in results)
 
 
 def test_agy_missing_read_file_is_reported_separately(tmp_path: Path) -> None:
