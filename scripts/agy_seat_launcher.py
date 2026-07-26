@@ -44,6 +44,30 @@ _FOREIGN_AUTHORITY_PREFIXES = (
     "GIT_",
 )
 _PRESERVED_AGY_CREDENTIALS = frozenset({"AGY_API_KEY"})
+# Options the installed AGY CLI actually defines, per `agy --help`. This exists
+# because the launcher and the binary are separate artifacts: a flag removed
+# upstream, or invented here, produces `flags provided but not defined` and the
+# seat never starts. Nothing in a pure-Python test can see that on its own, so
+# the emitted argv is checked against this set and this set against `agy --help`.
+AGY_CLI_FLAGS = frozenset(
+    {
+        "--add-dir",
+        "--agent",
+        "--continue",
+        "--conversation",
+        "--dangerously-skip-permissions",
+        "--log-file",
+        "--mode",
+        "--model",
+        "--new-project",
+        "--print",
+        "--print-timeout",
+        "--project",
+        "--prompt",
+        "--prompt-interactive",
+        "--sandbox",
+    }
+)
 
 
 class ConfigError(ValueError):
@@ -131,14 +155,15 @@ def build_launch_spec(
     env = _clean_inherited_environment(inherited_env)
     env.update(runtime)
     selected = settings[seat]
+    # `--config` and `--cd` were emitted here but the installed CLI defines
+    # neither, so every seat launch died at argument parsing. The working root
+    # moves to the process cwd set just before exec, and the service tier has
+    # no CLI surface at all — it stays configuration the launcher records
+    # rather than a flag it invents.
     argv = (
         agy_executable,
         "--model",
         selected.model,
-        "--config",
-        f'service_tier="{selected.service_tier}"',
-        "--cd",
-        str(repo_root),
         *forwarded_args,
     )
     return LaunchSpec(
@@ -235,6 +260,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
 
+        # The CLI has no working-root flag, so the seat inherits this process's
+        # directory. Without the chdir a seat launched from anywhere else would
+        # silently operate on whatever repository the caller happened to be in.
+        os.chdir(spec.repo_root)
         os.execvpe(spec.argv[0], list(spec.argv), spec.env)
     except (ConfigError, LaunchError) as exc:
         print(f"agy-seat: {exc}", file=sys.stderr)

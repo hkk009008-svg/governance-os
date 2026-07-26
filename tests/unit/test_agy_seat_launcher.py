@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -163,8 +165,11 @@ def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
             forwarded_args=[],
         )
         assert f"model-{seat}" in spec.argv
+        # The installed CLI exposes no service-tier option, so the configured
+        # tier stays recorded settings rather than an invented flag.
         expected_tier = "fast" if seat == "coordinator" else "default"
-        assert f'service_tier="{expected_tier}"' in spec.argv
+        assert settings[seat].service_tier == expected_tier
+        assert not any("service_tier" in token for token in spec.argv)
 
 
 def test_forwarded_agy_arguments_remain_literal(tmp_path: Path) -> None:
@@ -281,3 +286,48 @@ def test_continuation_documents_read_only_bridge_and_stdin_writer(
     )
     assert "<body-file>" not in text
     assert "scripts/codex_protocol_model.py" in text
+
+
+def test_launcher_emits_only_flags_the_agy_cli_defines(tmp_path: Path) -> None:
+    """The launcher and the binary are separate artifacts that can disagree.
+
+    `--config` and `--cd` were emitted here for every seat while the installed
+    CLI defined neither, so `coordination/bin/agy-seat <seat>` died at argument
+    parsing before any model call. Nothing in the repository could observe that:
+    the launcher was internally consistent and fully tested against itself.
+    """
+    config_path = tmp_path / "seats.toml"
+    _write_config(config_path)
+    settings = launcher.load_seat_settings(config_path)
+
+    for seat in SEATS:
+        spec = launcher.build_launch_spec(
+            repo_root=tmp_path,
+            seat=seat,
+            settings=settings,
+            inherited_env={"PATH": "/bin"},
+            agy_executable="/opt/agy",
+            forwarded_args=[],
+        )
+        emitted = {token for token in spec.argv if token.startswith("--")}
+        assert emitted, seat
+        assert emitted <= launcher.AGY_CLI_FLAGS, (seat, emitted - launcher.AGY_CLI_FLAGS)
+
+
+def test_declared_agy_flag_set_matches_the_installed_cli() -> None:
+    """Pin the declared set against the binary that will actually run.
+
+    Without this the flag list is just another copy that can rot, which is the
+    exact failure it exists to prevent. Parsing `--help` costs no model call.
+    """
+    executable = shutil.which("agy") or shutil.which("antigravity")
+    if executable is None:
+        pytest.skip("agy CLI is not installed on this machine")
+
+    helped = subprocess.run(
+        [executable, "--help"], capture_output=True, text=True, check=False
+    )
+    text = helped.stdout + helped.stderr
+    defined = set(re.findall(r"^\s+(--[a-z][a-z0-9-]*)", text, re.MULTILINE))
+    assert defined, "could not parse any flags from agy --help"
+    assert launcher.AGY_CLI_FLAGS <= defined, launcher.AGY_CLI_FLAGS - defined
