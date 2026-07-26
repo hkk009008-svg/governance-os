@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -937,48 +936,11 @@ def test_launcher_emits_only_flags_the_agy_cli_defines(tmp_path: Path) -> None:
         assert emitted <= launcher.AGY_CLI_FLAGS, (seat, emitted - launcher.AGY_CLI_FLAGS)
 
 
-CLI_FLAG_SNAPSHOT = Path(__file__).resolve().parents[1] / "fixtures/agy-cli-flags.txt"
-
-
-def _snapshot_flags() -> set[str]:
-    return {
-        line.strip()
-        for line in CLI_FLAG_SNAPSHOT.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    }
-
-
-def test_declared_agy_flag_set_matches_the_committed_cli_snapshot() -> None:
-    """Always runs, including where the CLI is absent.
-
-    The previous form skipped when `agy` was missing, and the unit job installs
-    only `requirements-dev.txt` — so a flag added to both the argv and
-    `AGY_CLI_FLAGS`, or removed upstream, passed CI untouched. Checking against
-    a committed snapshot of the real `--help` keeps a real assertion in every
-    environment; `test_cli_snapshot_matches_the_installed_cli` is what keeps the
-    snapshot itself honest wherever the binary exists.
-    """
-    defined = _snapshot_flags()
-
-    assert defined, "the committed CLI snapshot is empty"
-    assert launcher.AGY_CLI_FLAGS <= defined, launcher.AGY_CLI_FLAGS - defined
-
-
-def test_cli_snapshot_matches_the_installed_cli() -> None:
-    """Catch upstream drift where the binary exists; never the only guard."""
-    executable = shutil.which("agy") or shutil.which("antigravity")
-    if executable is None:
-        pytest.skip("agy CLI absent; the snapshot assertion above still ran")
-
-    helped = subprocess.run(
-        [executable, "--help"], capture_output=True, text=True, check=False
-    )
-    text = helped.stdout + helped.stderr
-    defined = set(re.findall(r"^\s+(--[a-z][a-z0-9-]*)", text, re.MULTILINE))
-
-    assert defined, "could not parse any flags from agy --help"
-    drifted = _snapshot_flags() - defined
-    assert not drifted, (
-        f"tests/fixtures/agy-cli-flags.txt lists flags the CLI no longer defines: "
-        f"{sorted(drifted)}"
-    )
+# The committed `--help` snapshot that used to live here is removed. It was
+# self-consistent rather than externally grounded: adding an invented flag to
+# `AGY_CLI_FLAGS` alone failed, but adding it to the flag set *and* the snapshot
+# passed, while the only comparison against the real CLI still skipped wherever
+# AGY is absent — which is every CI run. That is the original defect shape moved
+# one layer outward. `_parse_probe` supersedes it by feeding a real argv through
+# the installed parser, so the external boundary is checked by the CLI itself
+# rather than by a second copy of what it was once believed to accept.
