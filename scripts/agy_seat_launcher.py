@@ -222,16 +222,25 @@ def reject_forwarded_launcher_flags(forwarded_args: Sequence[str]) -> None:
     Seat identity is the config's to state. Forwarding stays open for prompts
     and everything else AGY accepts; it just cannot redefine the seat.
 
-    The check reads spelling, not parser state, so it is deliberately
-    conservative in one direction: a token AGY would have consumed as some other
-    flag's value (`--log-file --model`) is still refused. Refusing a usable
-    command line is recoverable and loud; admitting an identity override is
-    neither. It does honour AGY's own `--` terminator, after which no token can
-    become a flag at all.
+    The check reads spelling and nothing else, deliberately. An earlier version
+    tried to be smarter and returned early on a bare `--`, reasoning that AGY's
+    terminator makes every later token positional. That is false: whether `--`
+    terminates depends on what precedes it. `--log-file --` consumes the bare
+    token as the log *filename*, so it terminates nothing, and a following
+    `--model X` was still a flag that AGY resolved -- observed on AGY 1.1.7 as
+    `Model ID X not in local config, defaulting to CCPA` while the seat went on
+    advertising its configured model. `--agent`, `--conversation`, `--project`
+    and `--mode` all consume a bare token the same way.
+
+    Deciding which forwarded tokens are really flags therefore means modelling
+    AGY's parser, including every value-taking flag it may add later. This
+    launcher does not attempt that. It refuses any token *spelled* like a flag
+    it owns, wherever that token appears, and accepts the cost: a command line
+    AGY would have parsed harmlessly is sometimes rejected. That failure is
+    loud, immediate, and has a documented workaround; an admitted identity
+    override is silent and falsifies a verification report.
     """
     for token in forwarded_args:
-        if token == "--":
-            return
         name = _flag_name(token)
         if name in EMITTED_CLI_FLAGS:
             raise LaunchError(

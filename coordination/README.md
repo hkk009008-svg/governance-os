@@ -202,12 +202,21 @@ would decide what actually runs while the seat kept advertising the configured
 value, and a report citing it would name a model that never ran. The seat config
 is the only place seat identity is set.
 
-The check reads spelling, not AGY's parser state, so it is conservative in one
+The check reads spelling and nothing else, so it is conservative in one
 direction: `-- --log-file --model` is refused even though AGY would have taken
-`--model` as the log filename rather than as a model. Pass a second `--` when
-you need such a token to reach AGY as text — after AGY's own terminator nothing
-can become a flag, and the guard stops there. Prompts and other AGY flags
-forward normally.
+that `--model` as the log filename. A second `--` does not help and is not an
+escape — whether `--` terminates AGY's flags depends on what precedes it
+(`--log-file --` eats it as the filename), so the guard scans the whole
+forwarded list regardless.
+
+Only a *bare* token is refused. To mention one of these flags in a prompt, keep
+it inside the prompt value, where it is one token that names no flag:
+
+```bash
+coordination/bin/agy-seat operator -- -p "explain why --model is set from the seat config"
+```
+
+Prompts and other AGY flags forward normally.
 
 Report the same string back. `Author model:` and `Reviewer model:` in a
 verification report must be the exact listed ID the seat ran on, which

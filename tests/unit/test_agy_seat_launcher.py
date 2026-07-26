@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -72,35 +73,26 @@ _LIVE_LISTING, _LIVE_BLOCKED_REASON = _listing_probe()
 # onto one line or `-rs` shows a bare "cannot be checked:" and hides it.
 _LIVE_BLOCKED_SUMMARY = " ".join(_LIVE_BLOCKED_REASON.split())
 
-# Recognized reasons this machine cannot run AGY, as opposed to AGY refusing the
-# command we send it. Listing them is the whole point: an earlier version keyed
-# on a single rejection phrase and treated everything else as environmental, so
-# an `agy` that rejected `models` outright still produced four green skips.
-_ENVIRONMENT_LIMIT_MARKERS = (
-    "not on path",
-    "operation not permitted",
-    "permission denied",
-    "bind:",
-    "timed out",
-)
+# Whether missing live coverage may pass silently is decided structurally, never
+# by reading AGY's error text. Two earlier attempts classified the message and
+# both were wrong in the same direction: keying on one rejection phrase let any
+# other refusal skip, and an allowlist of "environmental" substrings let an
+# interface rejection reading `Permission denied` skip too. Vendor prose is not
+# a trustworthy signal, so nothing here parses it.
+#
+# `agy` absent from PATH is structural and unambiguous -- the ordinary CI case,
+# and safe to skip. An `agy` that is present but cannot produce a listing is not
+# distinguishable from one that refused our command, so it fails unless a human
+# waives it for a known-constrained environment.
+_LIVE_WAIVER_ENV = "PIPELINE_AGY_LIVE_TESTS"
+_LIVE_WAIVED = os.environ.get(_LIVE_WAIVER_ENV, "").strip().casefold() == "waive"
 
-
-def _is_environment_limit(reason: str) -> bool:
-    lowered = reason.casefold()
-    return any(marker in lowered for marker in _ENVIRONMENT_LIMIT_MARKERS)
-
-
-_LIVE_BLOCKED_ENVIRONMENTALLY = _is_environment_limit(_LIVE_BLOCKED_REASON)
-
-# Skip the live tests only for a recognized environment limit, quoting the real
-# cause. Any other listing failure means AGY did not accept the command this
-# suite sends -- interface rot, which is exactly what the live tests exist to
-# catch -- so it must not be skipped. The gate is therefore fail-closed the same
-# way the launcher is, and `test_live_listing_failure_is_an_environment_limit`
-# fails unconditionally on an unrecognized cause rather than leaving the run
-# green. The hermetic tests never skip at all.
+# Skipping still suppresses the whole live group, so one clear failure names the
+# problem instead of a cascade -- see
+# `test_live_listing_is_available_absent_or_explicitly_waived`, which always
+# runs. The hermetic tests never skip at all.
 _needs_agy = pytest.mark.skipif(
-    not _LIVE_LISTING and _LIVE_BLOCKED_ENVIRONMENTALLY,
+    not _LIVE_LISTING,
     reason=f"cannot run the live agy listing: {_LIVE_BLOCKED_SUMMARY}",
 )
 
@@ -364,29 +356,81 @@ def test_forwarding_still_carries_prompts_and_other_agy_flags(tmp_path: Path) ->
     assert list(spec.argv)[-len(forwarded) :] == forwarded
 
 
-def test_live_listing_failure_is_an_environment_limit() -> None:
-    """A live skip must mean "this machine cannot run agy", never "we called it wrong".
+def test_live_listing_is_available_absent_or_explicitly_waived() -> None:
+    """Silent loss of live coverage is the failure this prevents.
 
-    Keying this on one rejection phrase was not enough: an `agy` that refused
-    `models` with any other wording still produced four green skips, so the
-    live tests silently covered nothing. The gate now recognizes environment
-    limits explicitly and this runs unconditionally, so an unrecognized cause
-    fails the suite instead of disappearing into a skip.
+    An installed `agy` that cannot produce a listing is indistinguishable from
+    one refusing the command this suite sends, and that second case is exactly
+    the interface rot the live tests exist to catch. Two earlier versions tried
+    to tell them apart from AGY's error text and both let a refusal through as a
+    green skip, so no message is read here at all: a present-but-failing CLI
+    fails until a human sets the waiver for a known-constrained environment.
     """
-    if _LIVE_LISTING:
+    if _LIVE_LISTING or _AGY_ON_PATH is None or _LIVE_WAIVED:
         return
-    assert _LIVE_BLOCKED_ENVIRONMENTALLY, _LIVE_BLOCKED_SUMMARY
-    assert UNDEFINED_FLAG_MARKER not in _LIVE_BLOCKED_REASON, _LIVE_BLOCKED_SUMMARY
+    raise AssertionError(
+        f"agy is installed at {_AGY_ON_PATH} but produced no model listing, so the "
+        f"live checks covered nothing. Set {_LIVE_WAIVER_ENV}=waive to accept that "
+        f"knowingly. Cause: {_LIVE_BLOCKED_SUMMARY}"
+    )
 
 
-def test_forwarded_double_dash_terminates_the_identity_guard(tmp_path: Path) -> None:
-    """After AGY's own `--`, no token can become a flag, so none can override.
+@pytest.mark.parametrize(
+    "value_taking", ("--log-file", "--agent", "--conversation", "--project", "--mode")
+)
+def test_a_value_consumed_bare_token_cannot_smuggle_a_model_override(
+    tmp_path: Path, value_taking: str
+) -> None:
+    """A bare `--` is not a terminator when a value-taking flag eats it.
 
-    The guard used to reject `-- -- --model` even though the bare forwarded `--`
-    makes the following token positional prompt text. Refusing that was
-    forwarding collateral with no identity risk behind it.
+    The guard briefly returned early on the first bare `--`, on the premise that
+    nothing after AGY's terminator can be a flag. Real AGY 1.1.7 disproved it:
+    `--log-file --` takes the bare token as the log filename, so `--model X`
+    after it stayed a flag and AGY resolved it (`defaulting to CCPA`) while
+    `AGY_MODEL` still advertised the configured model. Each flag here was
+    observed consuming the bare token that way.
+
+    The guard reads spelling only and must scan the whole list, so the `--`
+    buys the override nothing.
     """
-    forwarded = ["--", "--model", "definitely-not-an-agy-model"]
+    forwarded = [value_taking, "--", "--model", "definitely-not-an-agy-model"]
+
+    with pytest.raises(launcher.LaunchError, match="restates"):
+        launcher.build_launch_spec(
+            repo_root=tmp_path,
+            seat="operator",
+            settings=_settings(tmp_path),
+            inherited_env={"PATH": "/bin"},
+            agy_executable="/opt/agy",
+            forwarded_args=forwarded,
+        )
+
+
+def test_a_bare_forwarded_terminator_does_not_stop_the_scan(tmp_path: Path) -> None:
+    """Even the unambiguous-looking case is scanned through.
+
+    Distinguishing this from the `--log-file --` shape needs AGY's parser state,
+    which the launcher does not model, so it declines to try.
+    """
+    with pytest.raises(launcher.LaunchError, match="restates"):
+        launcher.build_launch_spec(
+            repo_root=tmp_path,
+            seat="operator",
+            settings=_settings(tmp_path),
+            inherited_env={"PATH": "/bin"},
+            agy_executable="/opt/agy",
+            forwarded_args=["--", "--model", "definitely-not-an-agy-model"],
+        )
+
+
+def test_a_flag_like_token_inside_a_prompt_value_still_forwards(tmp_path: Path) -> None:
+    """The documented workaround has to actually work.
+
+    Only a *bare* launcher-owned flag is refused. Quoted into another flag's
+    value it is a single token that names no flag, so prompts mentioning
+    `--model` still reach AGY.
+    """
+    forwarded = ["-p", "explain why --model is set from the seat config"]
 
     spec = launcher.build_launch_spec(
         repo_root=tmp_path,
@@ -396,11 +440,8 @@ def test_forwarded_double_dash_terminates_the_identity_guard(tmp_path: Path) -> 
         agy_executable="/opt/agy",
         forwarded_args=forwarded,
     )
-    argv = list(spec.argv)
 
-    assert argv[-len(forwarded) :] == forwarded
-    # The launcher's own --model still precedes the terminator and still wins.
-    assert argv[argv.index("--model") + 1] == "gemini-operator"
+    assert list(spec.argv)[-len(forwarded) :] == forwarded
 
 
 def test_failed_listing_reports_the_whole_error_stream(tmp_path: Path) -> None:
