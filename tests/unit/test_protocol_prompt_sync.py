@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import os
 import re
 import shutil
@@ -180,8 +181,8 @@ def _git_exit_code(*arguments: str) -> int:
         return -1
 
 
-def _git_ignore_source(relative: str) -> str:
-    """Which exclude file answered `check-ignore` for *relative*; "" if none.
+def _git_ignore_record(relative: str) -> tuple[str, str, str] | None:
+    """The `(source, line, pattern)` git reports for *relative*; None if none.
 
     A 0 exit says the path is ignored. It does not say the repository is what
     ignores it. `$GIT_DIR/info/exclude` is untracked, lives in the common git
@@ -212,49 +213,78 @@ def _git_ignore_source(relative: str) -> str:
             input=f"{relative}\0".encode(),
             capture_output=True,
         )
-    except (OSError, subprocess.SubprocessError):
-        return ""
+    except (OSError, subprocess.SubprocessError, UnicodeEncodeError):
+        return None
     if completed.returncode != 0:
-        return ""
+        return None
     fields = completed.stdout.split(b"\0")
     # `<source>\0<line>\0<pattern>\0<pathname>\0`, so a complete record leaves
     # at least four fields plus the empty tail of the final terminator.
     if len(fields) < 5 or fields[3] != relative.encode():
-        return ""
+        return None
     try:
-        return fields[0].decode("utf-8")
-    except UnicodeDecodeError:
-        return ""
-
-
-def _git_ignore_source_is_committed(relative: str) -> bool:
-    """Whether the exclude file that answered for *relative* is tracked.
-
-    Trackedness is the property worth asserting, not a filename. `.gitignore`
-    and a nested `.claude/.gitignore` are both committed and either may answer
-    depending on precedence, so pinning the spelling would fail on a lawful
-    relocation of the rule while still admitting an untracked
-    `core.excludesFile` that merely spells itself convincingly. Asking the index
-    separates repository state from machine state exactly.
-
-    `--literal-pathspecs` is required because the source is itself a path this
-    module then hands back to git, and a source beginning with a colon would
-    otherwise be read as magic — the same defect one layer along.
-    """
-    source = _git_ignore_source(relative)
-    if not source:
-        return False
-    return (
-        _git_exit_code(
-            "--literal-pathspecs",
-            "ls-files",
-            "--cached",
-            "--error-unmatch",
-            "--",
-            source,
+        return (
+            fields[0].decode("utf-8"),
+            fields[1].decode("utf-8"),
+            fields[2].decode("utf-8"),
         )
-        == 0
-    )
+    except UnicodeDecodeError:
+        return None
+
+
+def _git_committed_lines(path: str) -> list[str] | None:
+    """Lines of *path* as committed at HEAD; None when it is not committed."""
+    environment = {
+        name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
+    }
+    try:
+        completed = subprocess.run(
+            ("git", "show", f"HEAD:{path}"),
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        return completed.stdout.decode("utf-8").split("\n")
+    except UnicodeDecodeError:
+        return None
+
+
+def _git_ignore_rule_is_committed(relative: str) -> bool:
+    """Whether the rule that ignored *relative* is committed, bytes and all.
+
+    Trackedness of the answering file is not enough, and asserting its name is
+    both too strict and too weak. Too strict because `.gitignore` and a nested
+    `.claude/.gitignore` are equally committed and either may answer depending
+    on precedence. Too weak because `core.excludesFile` may select a *tracked*
+    path whose working copy carries the rule while the committed copy does not:
+    the index then confirms a pathname while the rule that actually matched
+    exists only on this machine, which is the masking this check exists to
+    catch, one level in from where it was first found.
+
+    So the whole record is used. Git reports the source, the line number and the
+    pattern together, and the committed blob is read at that path and that line
+    and required to be that pattern. A source outside the repository, or one
+    whose committed bytes differ, has no such line and fails.
+    """
+    record = _git_ignore_record(relative)
+    if record is None:
+        return False
+    source, line, pattern = record
+    committed = _git_committed_lines(source)
+    if committed is None:
+        return False
+    try:
+        index = int(line) - 1
+    except ValueError:
+        return False
+    if not 0 <= index < len(committed):
+        return False
+    return committed[index].rstrip("\r") == pattern
 
 
 def _git_confirms_prunable(relative: str) -> bool:
@@ -1158,24 +1188,28 @@ def test_an_unlistable_directory_fails_loudly() -> None:
         shutil.rmtree(blocked, ignore_errors=True)
 
 
-# The magic signature space, swept rather than enumerated. A hand-written list
-# of the forms known to win is exactly what a narrowed guard survives, and two
-# review rounds each named a form the previous list had omitted: first `:/`
-# beside `:(top)`, then the empty signature `:x` and the explicitly-empty `::x`.
-# The short form is a leading colon, zero or more signature characters, and an
-# optional closing colon, so sweeping every punctuation character as a
-# one-character signature — plus the empty one and the long forms — covers the
-# grammar instead of tracking discoveries about it.
-MAGIC_SIGNATURES = ("", "(top)", "(top,literal)", *string.punctuation)
+# The magic signature space. Three review rounds each named a form the previous
+# list omitted — `:/` beside `:(top)`, then `:x` and `::x`, then two-character
+# signatures such as `://x` — so the list is generated from the grammar rather
+# than extended one discovery at a time: a leading colon, zero or more signature
+# symbols, optionally closed by a colon.
+MAGIC_SIGNATURE_SYMBOLS = string.punctuation
+MAGIC_SIGNATURES = (
+    "",
+    "(top)",
+    "(top,literal)",
+    *MAGIC_SIGNATURE_SYMBOLS,
+    *("".join(pair) for pair in itertools.product(MAGIC_SIGNATURE_SYMBOLS, repeat=2)),
+)
 
-# Which of those git actually answers for, measured on git 2.50.1 against a
-# planted ignored directory: nothing, `(top)`, `/`, and a bare `:` closing an
-# empty signature. Every other signature is either rejected outright or is a
-# negative pathspec `check-ignore` will not answer, so it cannot win.
-# Asserted as an equality rather than a floor: a change here is git changing
-# under this module, which is worth a loud failure and a re-measurement rather
-# than a threshold loose enough to absorb it.
-WINNABLE_MAGIC_SIGNATURES = frozenset({"", "(top)", "/", ":"})
+# The floor the sweep rests on: signatures measured to win both confirmations on
+# git 2.50.1 against a planted ignored directory. Membership is what makes the
+# refusal sweep non-vacuous, so it is measured rather than assumed — but only
+# for these, because each measurement costs two subprocesses while a refusal
+# costs none, which is what lets the sweep above be wide and this list short.
+# Asserted by equality: a change here is git moving under this module and is
+# worth a loud re-measurement rather than a threshold loose enough to absorb it.
+WINNABLE_MAGIC_SIGNATURES = frozenset({"", "(top)", "/", ":", "//"})
 
 
 def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
@@ -1194,18 +1228,23 @@ def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
     yes, so that answer is measured. Four things are needed before the
     measurement means what it claims, and each of them was missing once:
 
-    The whole signature space, not the forms someone remembered. Every
-    signature is swept and every one of them must be refused, because a guard
-    narrowed to any proper subset of prefixes then leaves some winnable form
-    unrefused and fails here. Naming forms instead let a guard narrowed to `:(`
-    pass while `:/` won, and then a guard narrowed to four listed prefixes pass
-    while `:x` and `::x` won.
+    A generated signature space rather than the forms someone remembered, and
+    every candidate in it refused. Naming forms let a guard narrowed to `:(`
+    pass while `:/` won, then a guard narrowed to four prefixes pass while `:x`
+    and `::x` won, then a one-character sweep pass while `://x` won. What no
+    finite sweep can exclude is a carve-out aimed at exactly the shape it does
+    not generate, so the sweep is paired with the property it approximates: the
+    leading colon decides, and the same path without it is not refused at all.
+    Beyond that the completeness of the refusal rests on git's grammar, in which
+    magic is introduced by a leading colon and by nothing else, and that is an
+    argument rather than a measurement here.
 
-    An answer that comes from committed state. A bare exit code cannot tell
-    `.gitignore` from `$GIT_DIR/info/exclude`, so the source is required to be
-    tracked — trackedness rather than spelling, since a nested `.gitignore` may
-    lawfully answer instead while a `core.excludesFile` may spell itself into
-    looking committed.
+    An answer whose rule is committed, bytes and all. A bare exit code cannot
+    tell `.gitignore` from `$GIT_DIR/info/exclude`, and trackedness of the
+    answering *file* is not enough either, because `core.excludesFile` can
+    select a tracked path whose working copy carries the rule while the
+    committed copy does not. Git reports source, line and pattern together, so
+    the committed blob is read at that line and required to be that pattern.
 
     A query that does not depend on the checkout. `.claude/worktrees/` is
     directory-only, and `check-ignore` applies a directory-only rule to a bare
@@ -1228,8 +1267,10 @@ def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
     with _ignored_probe(root_relative, self_ignore=False) as probe:
         relative = probe.relative_to(ROOT).as_posix()
 
+        # The floor. Without at least one form that would otherwise win, every
+        # refusal below is satisfied by git rather than by the guard.
         winnable: set[str] = set()
-        for signature in MAGIC_SIGNATURES:
+        for signature in sorted(WINNABLE_MAGIC_SIGNATURES):
             forged = f":{signature}{root_relative}"
             # The literal path is pinned absent: that is what makes any 0 here
             # an answer about some other path, which is the hazard the guard
@@ -1239,17 +1280,26 @@ def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
             tracked = _git_exit_code(
                 "ls-files", "--cached", "--error-unmatch", "--", forged
             )
+            # Both halves are pinned separately, because
+            # `_git_confirms_prunable` needs both and a False from either one
+            # is indistinguishable from the refusal under test.
             if ignored == 0 and tracked == NO_PATHSPEC_MATCH:
-                # Both halves are pinned separately, because
-                # `_git_confirms_prunable` needs both and a False from either
-                # one is indistinguishable from the refusal under test.
                 winnable.add(signature)
-                assert _git_ignore_source_is_committed(forged), forged
+                assert _git_ignore_rule_is_committed(forged), forged
+        assert winnable == WINNABLE_MAGIC_SIGNATURES
+
+        # Refusal over the whole generated space. Cheap, because a refused
+        # candidate never reaches a subprocess.
+        for signature in MAGIC_SIGNATURES:
+            forged = f":{signature}{root_relative}"
             assert _git_confirms_prunable(forged) is False, forged
 
-        # Without this the sweep proves nothing: if no signature could win,
-        # every refusal above is satisfied by git rather than by the guard.
-        assert winnable == WINNABLE_MAGIC_SIGNATURES
+        # The property the enumeration only approximates: the leading colon is
+        # what decides, and nothing further along. The same path without it is
+        # not refused here at all — it reaches git and is answered on its
+        # merits — so a guard keyed on any longer prefix has to disagree with
+        # one of these two lines.
+        assert _git_confirms_prunable(root_relative) is True
 
         granting = _stub_git(ignored=True, tracked=False)
         asked: list[tuple[str, ...]] = []
@@ -1284,12 +1334,34 @@ def test_ignore_provenance_requires_a_tracked_source(
     Both directions are pinned. Before the shadow is configured nothing ignores
     the path at all, which is what makes the second half an observation about
     the shadow rather than about some rule that was already there.
+
+    A tracked source is covered too, because trackedness of the file is not the
+    property: `core.excludesFile` may name a tracked path whose working copy
+    carries the rule while the committed copy does not, and the index would
+    confirm that pathname while the rule lives only on this machine.
+
+    Both fixture paths are created exclusively and removed only if this test
+    created them. They are fixed names, and a fixture that overwrites whatever
+    it finds is the same defect `_ignored_probe` was just fixed for.
     """
     shadow = ROOT / f".gitignore:{PROBE_NAME}"
     target = ROOT / ".claude/agents" / f"{PROBE_NAME}-shadowed"
+    tracked_shadow = ROOT / "requirements-dev.txt"
+    made_target = made_shadow = False
+    original = tracked_shadow.read_bytes()
     try:
-        target.mkdir(parents=True)
-        shadow.write_text(f"{target.name}/\n", encoding="utf-8")
+        try:
+            target.mkdir(parents=True)
+            made_target = True
+            with shadow.open("x", encoding="utf-8") as handle:
+                made_shadow = True
+                handle.write(f"{target.name}/\n")
+        except FileExistsError as exc:
+            raise AssertionError(
+                f"refusing to overwrite existing content at {exc.filename}: "
+                "this fixture removes what it creates. Confirm by hand that it "
+                "is not wanted, then remove it."
+            ) from exc
         relative = target.relative_to(ROOT).as_posix()
 
         # The forgery is only interesting because the prefix names a real
@@ -1304,20 +1376,44 @@ def test_ignore_provenance_requires_a_tracked_source(
         )
 
         assert _git_exit_code("check-ignore", "-q", "--", relative) == NO_PATHSPEC_MATCH
-        assert _git_ignore_source(relative) == ""
-        assert _git_ignore_source_is_committed(relative) is False
+        assert _git_ignore_record(relative) is None
+        assert _git_ignore_rule_is_committed(relative) is False
 
-        monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
-        monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
-        monkeypatch.setenv("GIT_CONFIG_VALUE_0", shadow.name)
+        with monkeypatch.context() as scoped:
+            scoped.setenv("GIT_CONFIG_COUNT", "1")
+            scoped.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
+            scoped.setenv("GIT_CONFIG_VALUE_0", shadow.name)
 
-        assert _git_exit_code("check-ignore", "-q", "--", relative) == 0
-        assert _git_ignore_source(relative) == shadow.name
-        assert _git_ignore_source_is_committed(relative) is False
+            assert _git_exit_code("check-ignore", "-q", "--", relative) == 0
+            record = _git_ignore_record(relative)
+            assert record is not None and record[0] == shadow.name
+            assert _git_ignore_rule_is_committed(relative) is False
+
+        # The tracked-but-uncommitted case: the source is in the index, so a
+        # check that asked only about the pathname would be satisfied, while
+        # the rule that matched exists nowhere in the commit.
+        tracked_shadow.write_bytes(original + f"\n{target.name}/\n".encode())
+        with monkeypatch.context() as scoped:
+            scoped.setenv("GIT_CONFIG_COUNT", "1")
+            scoped.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
+            scoped.setenv("GIT_CONFIG_VALUE_0", tracked_shadow.name)
+
+            assert _git_exit_code("check-ignore", "-q", "--", relative) == 0
+            assert (
+                _git_exit_code(
+                    "--literal-pathspecs", "ls-files", "--cached",
+                    "--error-unmatch", "--", tracked_shadow.name,
+                )
+                == 0
+            )
+            assert _git_ignore_rule_is_committed(relative) is False
     finally:
-        shadow.unlink(missing_ok=True)
-        with suppress(OSError):
-            target.rmdir()
+        tracked_shadow.write_bytes(original)
+        if made_shadow:
+            shadow.unlink(missing_ok=True)
+        if made_target:
+            with suppress(OSError):
+                target.rmdir()
 
 
 def test_only_an_exact_no_match_exit_confirms_nothing_tracked(
