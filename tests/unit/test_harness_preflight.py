@@ -84,11 +84,11 @@ def test_codex_ambient_runtime_authority_is_not_ready(tmp_path: Path) -> None:
 
     results = preflight.check_codex(tmp_path)
 
-    if preflight._binary("codex") is None:
-        pytest.skip("codex CLI is not installed on this machine")
-    failures = _failures(results)
-    assert any("approval_policy" in detail for detail in failures)
-    assert any("sandbox_mode" in detail for detail in failures)
+    ambient = [r for r in results if "project config" in r.detail]
+    assert ambient, "the ambient-authority check did not run"
+    assert not ambient[0].ok
+    assert "approval_policy" in ambient[0].detail
+    assert "sandbox_mode" in ambient[0].detail
 
 
 def test_codex_clean_project_config_is_ready(tmp_path: Path) -> None:
@@ -99,9 +99,9 @@ def test_codex_clean_project_config_is_ready(tmp_path: Path) -> None:
 
     results = preflight.check_codex(tmp_path)
 
-    if preflight._binary("codex") is None:
-        pytest.skip("codex CLI is not installed on this machine")
-    assert _failures(results) == []
+    ambient = [r for r in results if "project config" in r.detail]
+    assert ambient, "the ambient-authority check did not run"
+    assert ambient[0].ok
 
 
 def test_cursor_unregistered_seat_is_not_ready(tmp_path: Path) -> None:
@@ -115,8 +115,6 @@ def test_cursor_unregistered_seat_is_not_ready(tmp_path: Path) -> None:
 
     results = preflight.check_cursor("operator", registry)
 
-    if preflight._binary("cursor-agent") is None:
-        pytest.skip("cursor-agent CLI is not installed on this machine")
     assert any("not registered" in detail for detail in _failures(results))
 
 
@@ -135,8 +133,6 @@ def test_cursor_missing_worktree_is_not_ready(tmp_path: Path) -> None:
 
     results = preflight.check_cursor("operator", registry)
 
-    if preflight._binary("cursor-agent") is None:
-        pytest.skip("cursor-agent CLI is not installed on this machine")
     assert any("MISSING" in detail for detail in _failures(results))
 
 
@@ -149,8 +145,6 @@ def test_main_fails_closed_when_any_check_fails(tmp_path: Path, capsys) -> None:
 
     code = preflight.main(["codex", "--repo-root", str(tmp_path)])
 
-    if preflight._binary("codex") is None:
-        pytest.skip("codex CLI is not installed on this machine")
     assert code == 1
     assert "NOT READY" in capsys.readouterr().out
 

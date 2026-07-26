@@ -34,7 +34,6 @@ except ModuleNotFoundError as exc:
 
 
 LAUNCH_SEATS = ("director", "director2", "operator", "operator2", "coordinator")
-SERVICE_TIERS = ("fast", "default")
 DEFAULT_CONFIG_PATH = Path("~/.agy/pipeline-seat-launcher.toml")
 _FOREIGN_AUTHORITY_PREFIXES = (
     "CLAUDE_",
@@ -81,7 +80,6 @@ class LaunchError(RuntimeError):
 @dataclass(frozen=True)
 class SeatSettings:
     model: str
-    service_tier: str
 
 
 @dataclass(frozen=True)
@@ -109,12 +107,17 @@ def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
     settings: dict[str, SeatSettings] = {}
     for seat in LAUNCH_SEATS:
         value = seats[seat]
-        if not isinstance(value, dict) or set(value) != {"model", "service_tier"}:
-            raise ConfigError(
-                f"[seats.{seat}] must contain exactly model and service_tier"
-            )
+        # `service_tier` is accepted and ignored rather than required. The
+        # installed CLI exposes no service-tier option, so validating one made
+        # the launcher advertise a speed control that selected nothing:
+        # changing `fast` to `default` altered no launch behaviour. Existing
+        # configs still load; the field may be deleted.
+        if not isinstance(value, dict) or not {"model"} <= set(value) <= {
+            "model",
+            "service_tier",
+        }:
+            raise ConfigError(f"[seats.{seat}] must contain exactly model")
         model = value["model"]
-        service_tier = value["service_tier"]
         if (
             not isinstance(model, str)
             or not model
@@ -122,11 +125,7 @@ def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
             or any(character.isspace() or ord(character) < 32 for character in model)
         ):
             raise ConfigError(f"[seats.{seat}].model must be a non-empty model name")
-        if service_tier not in SERVICE_TIERS:
-            raise ConfigError(
-                f"[seats.{seat}].service_tier must be fast or default"
-            )
-        settings[seat] = SeatSettings(model=model, service_tier=service_tier)
+        settings[seat] = SeatSettings(model=model)
     return settings
 
 
@@ -263,7 +262,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         # The CLI has no working-root flag, so the seat inherits this process's
         # directory. Without the chdir a seat launched from anywhere else would
         # silently operate on whatever repository the caller happened to be in.
-        os.chdir(spec.repo_root)
+        # An unreadable or missing root must surface as the launcher's own error
+        # contract, not an uncaught OSError traceback past the handler below.
+        try:
+            os.chdir(spec.repo_root)
+        except OSError as exc:
+            raise LaunchError(f"cannot enter reviewed root {spec.repo_root}: {exc}") from exc
         os.execvpe(spec.argv[0], list(spec.argv), spec.env)
     except (ConfigError, LaunchError) as exc:
         print(f"agy-seat: {exc}", file=sys.stderr)

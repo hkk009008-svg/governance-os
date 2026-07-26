@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified: 2026-07-26 @ 5ad43edcfb4043b235d7c3a3b00891b8794e12e5*
+*Last verified: 2026-07-26 @ 492fcab*
 
 ## 1. Purpose
 
@@ -73,7 +73,10 @@ Notable per-host constraints:
   no test asserts `SKILL.md` parity. Review, not a gate, catches divergence.
 - Codex carries the spawnable seat roles because host task tools dispatch them.
   Other sides carry only the read-only advisors.
-- AGY keeps a launcher because it selects a per-seat model and service tier.
+- AGY keeps a launcher because it selects a per-seat model. It carried a
+  per-seat service tier until 2026-07-26; the installed CLI exposes no such
+  option, so the setting selected nothing and was removed rather than left as
+  a control that appeared to work.
 
 ## 4. Executable seams
 

@@ -151,8 +151,15 @@ def test_build_launch_spec_rejects_unknown_seat(tmp_path: Path) -> None:
         )
 
 
-def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
-    overrides = {seat: (f"model-{seat}", "fast" if seat == "coordinator" else "default") for seat in SEATS}
+def test_each_seat_uses_only_its_own_model(tmp_path: Path) -> None:
+    """Model is the only per-seat control the CLI can actually apply.
+
+    `service_tier` was mandatory, validated and advertised as a speed control
+    while nothing consumed it: changing `fast` to `default` altered no launch
+    behaviour. A validated setting that selects nothing is a false capability,
+    so it is no longer part of the settings a seat carries.
+    """
+    overrides = {seat: (f"model-{seat}", "default") for seat in SEATS}
     settings = _settings(tmp_path, overrides)
 
     for seat in SEATS:
@@ -165,11 +172,19 @@ def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
             forwarded_args=[],
         )
         assert f"model-{seat}" in spec.argv
-        # The installed CLI exposes no service-tier option, so the configured
-        # tier stays recorded settings rather than an invented flag.
-        expected_tier = "fast" if seat == "coordinator" else "default"
-        assert settings[seat].service_tier == expected_tier
         assert not any("service_tier" in token for token in spec.argv)
+        assert not hasattr(settings[seat], "service_tier")
+
+
+def test_a_stale_service_tier_still_loads_and_is_ignored(tmp_path: Path) -> None:
+    """Existing configs must keep working; the field simply selects nothing."""
+    config_path = tmp_path / "seats.toml"
+    _write_config(config_path, {seat: (f"model-{seat}", "fast") for seat in SEATS})
+
+    settings = launcher.load_seat_settings(config_path)
+
+    assert set(settings) == set(SEATS)
+    assert all(not hasattr(value, "service_tier") for value in settings.values())
 
 
 def test_forwarded_agy_arguments_remain_literal(tmp_path: Path) -> None:
@@ -203,16 +218,34 @@ def test_config_rejects_incomplete_or_unknown_settings(tmp_path: Path, body: str
         launcher.load_seat_settings(config_path)
 
 
-def test_config_rejects_bad_model_or_tier(tmp_path: Path) -> None:
+def test_config_rejects_bad_model(tmp_path: Path) -> None:
+    """Model is still strictly validated; only the inert tier stopped being.
+
+    An arbitrary tier value is now accepted precisely because it selects
+    nothing — rejecting `turbo` would be the launcher pretending to gate a
+    control it does not apply.
+    """
     for overrides in (
         {"director": ("", "default")},
         {"director": (" leading-space", "default")},
-        {"director": ("model", "turbo")},
     ):
         config_path = tmp_path / "seats.toml"
         _write_config(config_path, overrides)
         with pytest.raises(launcher.ConfigError):
             launcher.load_seat_settings(config_path)
+
+
+def test_config_still_rejects_unknown_per_seat_keys(tmp_path: Path) -> None:
+    config_path = tmp_path / "seats.toml"
+    config_path.write_text(
+        "\n".join(
+            f'[seats.{seat}]\nmodel = "m"\nspeed = "fast"\n' for seat in SEATS
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(launcher.ConfigError):
+        launcher.load_seat_settings(config_path)
 
 
 def test_dry_run_prints_identity_and_does_not_start_agy(
@@ -314,20 +347,48 @@ def test_launcher_emits_only_flags_the_agy_cli_defines(tmp_path: Path) -> None:
         assert emitted <= launcher.AGY_CLI_FLAGS, (seat, emitted - launcher.AGY_CLI_FLAGS)
 
 
-def test_declared_agy_flag_set_matches_the_installed_cli() -> None:
-    """Pin the declared set against the binary that will actually run.
+CLI_FLAG_SNAPSHOT = Path(__file__).resolve().parents[1] / "fixtures/agy-cli-flags.txt"
 
-    Without this the flag list is just another copy that can rot, which is the
-    exact failure it exists to prevent. Parsing `--help` costs no model call.
+
+def _snapshot_flags() -> set[str]:
+    return {
+        line.strip()
+        for line in CLI_FLAG_SNAPSHOT.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    }
+
+
+def test_declared_agy_flag_set_matches_the_committed_cli_snapshot() -> None:
+    """Always runs, including where the CLI is absent.
+
+    The previous form skipped when `agy` was missing, and the unit job installs
+    only `requirements-dev.txt` — so a flag added to both the argv and
+    `AGY_CLI_FLAGS`, or removed upstream, passed CI untouched. Checking against
+    a committed snapshot of the real `--help` keeps a real assertion in every
+    environment; `test_cli_snapshot_matches_the_installed_cli` is what keeps the
+    snapshot itself honest wherever the binary exists.
     """
+    defined = _snapshot_flags()
+
+    assert defined, "the committed CLI snapshot is empty"
+    assert launcher.AGY_CLI_FLAGS <= defined, launcher.AGY_CLI_FLAGS - defined
+
+
+def test_cli_snapshot_matches_the_installed_cli() -> None:
+    """Catch upstream drift where the binary exists; never the only guard."""
     executable = shutil.which("agy") or shutil.which("antigravity")
     if executable is None:
-        pytest.skip("agy CLI is not installed on this machine")
+        pytest.skip("agy CLI absent; the snapshot assertion above still ran")
 
     helped = subprocess.run(
         [executable, "--help"], capture_output=True, text=True, check=False
     )
     text = helped.stdout + helped.stderr
     defined = set(re.findall(r"^\s+(--[a-z][a-z0-9-]*)", text, re.MULTILINE))
+
     assert defined, "could not parse any flags from agy --help"
-    assert launcher.AGY_CLI_FLAGS <= defined, launcher.AGY_CLI_FLAGS - defined
+    drifted = _snapshot_flags() - defined
+    assert not drifted, (
+        f"tests/fixtures/agy-cli-flags.txt lists flags the CLI no longer defines: "
+        f"{sorted(drifted)}"
+    )

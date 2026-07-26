@@ -75,9 +75,9 @@ def check_codex(root: Path) -> list[Result]:
         Result("codex", bool(binary), f"binary {binary or 'NOT FOUND on PATH'}",
                "" if binary else "install the Codex CLI")
     )
-    if not binary:
-        return results
-
+    # Capability checks below read files, not the binary, so they run even where
+    # it is absent. Returning early here is what made the equivalent launcher
+    # test vacuous in CI, which installs no harness CLI at all.
     config = root / ".codex/config.toml"
     ambient: list[str] = []
     if config.is_file():
@@ -115,9 +115,6 @@ def check_agy(settings_path: Path = AGY_SETTINGS) -> list[Result]:
         Result("agy", bool(binary), f"binary {binary or 'NOT FOUND on PATH'}",
                "" if binary else "install the AGY CLI")
     )
-    if not binary:
-        return results
-
     path = settings_path.expanduser()
     if not path.is_file():
         return results + [
@@ -165,9 +162,6 @@ def check_cursor(seat: str, registry_path: Path = CURSOR_REGISTRY) -> list[Resul
         Result("cursor", bool(binary), f"binary {binary or 'NOT FOUND on PATH'}",
                "" if binary else "install the Cursor agent CLI")
     )
-    if not binary:
-        return results
-
     path = registry_path.expanduser()
     try:
         record = json.loads(path.read_text(encoding="utf-8"))["bindings"][seat]
