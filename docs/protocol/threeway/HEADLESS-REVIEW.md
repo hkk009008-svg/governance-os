@@ -22,8 +22,18 @@ env -u GIT_INDEX_FILE .venv/bin/python -c "import sys; sys.path.insert(0,'script
 ## Codex
 
 ```bash
-codex exec -C /Users/hyungkoookkim/Pipeline --sandbox workspace-write --add-dir /Users/hyungkoookkim/Pipeline/.git "<brief>" < /dev/null
+codex exec -C /Users/hyungkoookkim/Pipeline --sandbox workspace-write -c approval_policy="never" --add-dir /Users/hyungkoookkim/Pipeline/.git "<brief>" < /dev/null
 ```
+
+Pin sandbox and approval policy on the invocation, never in `.codex/config.toml`.
+`test_project_codex_config_does_not_claim_runtime_permissions` asserts that the
+project config carries no `approval_policy`, `sandbox_mode` or `features` key,
+precisely so a checked-in file cannot silently grant a launch full disk access
+with approvals off. With no policy pinned the default is `approval: on-request`,
+which in a non-interactive run means an escalation nobody can answer.
+
+`--add-dir …/.git` is what lets the reviewer commit its own report; without it
+the sandbox covers only the workdir and `/tmp`.
 
 `< /dev/null` is required, not tidiness. `codex exec` reads stdin to append a
 `<stdin>` block even when the prompt is an argument, so an inherited open pipe
