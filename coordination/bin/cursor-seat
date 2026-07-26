@@ -5,12 +5,26 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
-# Selected the same way as its siblings, though this one was latent rather than
-# broken: `cursor_seat_launcher.py` imports no 3.11-only module, so even system
-# 3.9 ran it. It still took `python3` from ambient state, and leaving one shim
-# to drift while the other two are fixed is how the original divergence started.
-# The floor is the repo's, not this file's: a seat should not run on an
-# interpreter its siblings refuse. Exit 2 matches the launcher's refusal code.
+# Prefer the repo venv, and prove whatever we land on can actually run the
+# launcher. It previously exec'd an ambient interpreter resolved from PATH.
+# Unlike its siblings this one was latent rather than broken: it imports no
+# 3.11-only module, so even system 3.9 ran it. It is held to the repo floor
+# anyway -- a seat should not run on an interpreter its siblings refuse, and
+# leaving one shim to drift is how they diverged in the first place.
+#
+# Read the limit honestly: when no venv exists this still selects from PATH, and
+# a probe run by that same interpreter cannot establish where it came from. This
+# is a *capability* check, not a provenance control -- it answers "can this
+# thing run the launcher", not "is this thing trustworthy". An absolute pin
+# would answer neither for CI, which provisions Python via actions/setup-python
+# and never creates .venv.
+#
+# So the probe imports what the launcher imports rather than asking for a
+# version number: an interpreter that reports 3.11 but cannot import them -- a
+# shadowing PYTHONPATH, a broken install -- is refused here rather than
+# tracebacking later. This shim exports PYTHONPATH itself, which makes that
+# failure mode reachable rather than hypothetical. Exit 2 matches the
+# launcher's own refusal code.
 PYTHON="$ROOT/.venv/bin/python"
 if [ ! -x "$PYTHON" ]; then
   PYTHON=$(command -v python3 || true)
@@ -19,8 +33,8 @@ if [ -z "$PYTHON" ]; then
   echo "cursor-seat: no python3 found in $ROOT/.venv/bin or on PATH" >&2
   exit 2
 fi
-if ! "$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'; then
-  echo "cursor-seat: $PYTHON is $("$PYTHON" -V 2>&1); this repo needs 3.11+" >&2
+if ! "$PYTHON" -c 'import sys, json, argparse; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "cursor-seat: $PYTHON ($("$PYTHON" -V 2>&1)) cannot run this launcher; needs 3.11+ and importable stdlib" >&2
   exit 2
 fi
 

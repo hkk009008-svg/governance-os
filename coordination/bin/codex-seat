@@ -3,17 +3,23 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 
-# Choose the interpreter deterministically, then prove it is adequate. This was
-# `exec /usr/bin/env python3`, which took whatever the caller's PATH offered:
-# the repo venv normally, macOS system 3.9.6 in a stripped environment. The
-# launcher imports `tomllib`, stdlib only since 3.11, so that case died on a
-# ModuleNotFoundError traceback rather than the launcher's own error contract.
+# Prefer the repo venv, and prove whatever we land on can actually run the
+# launcher. It previously exec'd an ambient interpreter resolved from the
+# caller's PATH -- the venv normally, macOS system 3.9.6 stripped, where
+# the `tomllib` this launcher imports does not exist and the seat died on a
+# ModuleNotFoundError instead of its own error contract.
 #
-# An absolute pin to .venv is not available: CI provisions Python with
-# actions/setup-python and never creates .venv, and a seat shim that only works
-# on a developer laptop is its own defect. So prefer the repo venv, fall back to
-# PATH, and refuse explicitly if what we land on is too old. Exit 2 matches the
-# refusal code the launcher itself returns.
+# Read the limit honestly: when no venv exists this still selects from PATH, and
+# a probe run by that same interpreter cannot establish where it came from. This
+# is a *capability* check, not a provenance control -- it answers "can this
+# thing run the launcher", not "is this thing trustworthy". An absolute pin
+# would answer neither for CI, which provisions Python via actions/setup-python
+# and never creates .venv.
+#
+# So the probe imports what the launcher imports rather than asking for a
+# version number: an interpreter that reports 3.11 but cannot import `tomllib`
+# -- a shadowing PYTHONPATH, a broken install -- is refused here rather than
+# tracebacking later. Exit 2 matches the launcher's own refusal code.
 PYTHON="$ROOT/.venv/bin/python"
 if [ ! -x "$PYTHON" ]; then
   PYTHON=$(command -v python3 || true)
@@ -22,8 +28,8 @@ if [ -z "$PYTHON" ]; then
   echo "codex-seat: no python3 found in $ROOT/.venv/bin or on PATH" >&2
   exit 2
 fi
-if ! "$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'; then
-  echo "codex-seat: $PYTHON is $("$PYTHON" -V 2>&1); this launcher needs 3.11+ for tomllib" >&2
+if ! "$PYTHON" -c 'import sys, tomllib; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "codex-seat: $PYTHON ($("$PYTHON" -V 2>&1)) cannot run this launcher; needs 3.11+ and an importable tomllib" >&2
   exit 2
 fi
 
