@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import itertools
 import os
 import re
 import shutil
+import string
 import subprocess
 import tempfile
 import tomllib
@@ -177,6 +179,147 @@ def _git_exit_code(*arguments: str) -> int:
         ).returncode
     except (OSError, subprocess.SubprocessError):
         return -1
+
+
+def _git_ignore_record(
+    relative: str, root: Path = ROOT
+) -> tuple[str, str, str] | None:
+    """The `(source, line, pattern)` git reports for *relative*; None if none.
+
+    A 0 exit says the path is ignored. It does not say the repository is what
+    ignores it. `$GIT_DIR/info/exclude` is untracked, lives in the common git
+    dir every worktree shares, and on at least one machine here carries
+    `.claude/worktrees/` a second time, so a control resting on the exit code
+    alone keeps passing after the committed rule is deleted — machine state
+    answering in the repository's name, which is the same class of defect as
+    reading one checkout's layout as a fact about the repository.
+
+    Framed with NUL rather than split on a delimiter that can occur inside the
+    data. `-v` prints `<source>:<line>:<pattern>\\t<pathname>`, and a source may
+    contain a colon: `core.excludesFile=.gitignore:shadow` is answered as
+    `.gitignore:shadow:1:…`, whose first field up to a colon is `.gitignore`.
+    Splitting there reports an untracked file under a tracked file's name,
+    which is a forged provenance rather than a wrong one. `-z` removes the
+    ambiguity and requires `--stdin`, so the path is fed that way. The echoed
+    pathname is checked against the question, because a reply about another
+    path is not an answer to this one.
+    """
+    environment = {
+        name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
+    }
+    try:
+        completed = subprocess.run(
+            ("git", "check-ignore", "-v", "-z", "--stdin"),
+            cwd=root,
+            env=environment,
+            input=f"{relative}\0".encode(),
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError, UnicodeEncodeError):
+        return None
+    if completed.returncode != 0:
+        return None
+    fields = completed.stdout.split(b"\0")
+    # `<source>\0<line>\0<pattern>\0<pathname>\0`, so a complete record leaves
+    # at least four fields plus the empty tail of the final terminator.
+    if len(fields) < 5 or fields[3] != relative.encode():
+        return None
+    try:
+        return (
+            fields[0].decode("utf-8"),
+            fields[1].decode("utf-8"),
+            fields[2].decode("utf-8"),
+        )
+    except UnicodeDecodeError:
+        return None
+
+
+def _git_committed_lines(path: str, root: Path = ROOT) -> list[str] | None:
+    """Lines of *path* as committed at HEAD; None when it is not committed."""
+    environment = {
+        name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
+    }
+    try:
+        completed = subprocess.run(
+            ("git", "show", f"HEAD:{path}"),
+            cwd=root,
+            env=environment,
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        return completed.stdout.decode("utf-8").split("\n")
+    except UnicodeDecodeError:
+        return None
+
+
+def _committed_pattern(line: str) -> str:
+    """One committed exclude line reduced the way git reports its pattern.
+
+    Exactly one trailing carriage return is removed, never more. Splitting a
+    committed blob on newlines leaves one CR on a CRLF file and git strips one
+    the same way, but a line ending `\\r\\r` is a pattern *ending in a carriage
+    return* and does not match what a bare pattern matches. Stripping every
+    trailing CR would let such a line authenticate a machine-local rule it does
+    not correspond to, which is the masking this check exists to catch,
+    reintroduced by the comparison rather than by the lookup.
+
+    Unescaped trailing spaces are removed because git removes them before
+    reporting: a committed `target/   ` is reported as `target/`, and comparing
+    raw would reject a rule that is genuinely committed.
+
+    A trailing space escaped by a backslash is kept, which matches git rather
+    than merely erring against it: `one\\ ` is reported as `one\\ `, so keeping
+    it is what makes such a rule compare equal and be accepted. The reduction is
+    deliberately not carried further. A line mixing the two, `two\\  `, is
+    reduced by git to `two\\ ` and is left here as `two\\  `, so it compares
+    unequal and is refused. That is the safe direction — a loud refusal on a
+    pattern shape this repository does not use, never a silent acceptance — but
+    it is a refusal of something genuinely committed, so it is a limit of this
+    comparison rather than a property worth relying on.
+    """
+    if line.endswith("\r"):
+        line = line[:-1]
+    without_spaces = line.rstrip(" ")
+    if without_spaces.endswith("\\"):
+        return line
+    return without_spaces
+
+
+def _git_ignore_rule_is_committed(relative: str, root: Path = ROOT) -> bool:
+    """Whether the rule that ignored *relative* is committed, bytes and all.
+
+    Trackedness of the answering file is not enough, and asserting its name is
+    both too strict and too weak. Too strict because `.gitignore` and a nested
+    `.claude/.gitignore` are equally committed and either may answer depending
+    on precedence. Too weak because `core.excludesFile` may select a *tracked*
+    path whose working copy carries the rule while the committed copy does not:
+    the index then confirms a pathname while the rule that actually matched
+    exists only on this machine, which is the masking this check exists to
+    catch, one level in from where it was first found.
+
+    So the whole record is used. Git reports the source, the line number and the
+    pattern together, and the committed blob is read at that path and that line
+    and required to be that pattern. A source outside the repository, or one
+    whose committed bytes differ, has no such line and fails.
+    """
+    record = _git_ignore_record(relative, root)
+    if record is None:
+        return False
+    source, line, pattern = record
+    committed = _git_committed_lines(source, root)
+    if committed is None:
+        return False
+    try:
+        index = int(line) - 1
+    except ValueError:
+        return False
+    if not 0 <= index < len(committed):
+        return False
+    return _committed_pattern(committed[index]) == pattern
 
 
 def _git_confirms_prunable(relative: str) -> bool:
@@ -494,13 +637,33 @@ PROBE_BODY = f"{EXACT_NEXT_TRIGGER}: run superpowers:brainstorming next.\n"
 def _ignored_probe(relative_root: str, *, self_ignore: bool) -> Iterator[Path]:
     """Plant a forbidden-string file in a nested tree under a git-ignored path.
 
-    Only *relative_root* is ever removed. Its parent may be a live
-    `.claude/worktrees/` holding real checkouts, so the parent is rmdir'd — a
-    no-op on any non-empty directory — only when this helper created it.
+    Cleanup removes *relative_root* whole, so the root has to be one this
+    helper created. It is a fixed name under `.claude/worktrees/`, which is
+    exactly where live checkouts are parked, and an unlucky name or a probe
+    left by an interrupted run would otherwise be deleted by a passing test.
+    Scoping a delete to one path was never the same as knowing that path is
+    ours.
+
+    An exclusive `mkdir` is what knows, rather than a prior `exists()` test:
+    asking and then creating leaves a window in which content arriving between
+    the two answers is adopted and then deleted, so the check has to be the
+    creation. Cleanup is reached only on the far side of it.
+
+    The parent may be a live `.claude/worktrees/` holding real checkouts, so it
+    is rmdir'd — a no-op on any non-empty directory — only when this helper
+    created it.
     """
     probe_root = ROOT / relative_root
     parent = probe_root.parent
     parent_existed = parent.is_dir()
+    try:
+        probe_root.mkdir(parents=True)
+    except FileExistsError as exc:
+        raise AssertionError(
+            f"refusing to plant a probe over existing content at {probe_root}: "
+            "cleanup would delete it. Confirm by hand that it is not a live "
+            "checkout, then remove it."
+        ) from exc
     probe = probe_root / PROBE_NESTED_FILE
     try:
         probe.parent.mkdir(parents=True, exist_ok=True)
@@ -1060,30 +1223,251 @@ def test_an_unlistable_directory_fails_loudly() -> None:
         shutil.rmtree(blocked, ignore_errors=True)
 
 
+# The magic signature space. Three review rounds each named a form the previous
+# list omitted — `:/` beside `:(top)`, then `:x` and `::x`, then two-character
+# signatures such as `://x` — so the list is generated from the grammar rather
+# than extended one discovery at a time: a leading colon, zero or more signature
+# symbols, optionally closed by a colon.
+MAGIC_SIGNATURE_SYMBOLS = string.punctuation
+MAGIC_SIGNATURES = (
+    "",
+    "(top)",
+    "(top,literal)",
+    *MAGIC_SIGNATURE_SYMBOLS,
+    *("".join(pair) for pair in itertools.product(MAGIC_SIGNATURE_SYMBOLS, repeat=2)),
+)
+
+# The floor the sweep rests on: signatures measured to win both confirmations on
+# git 2.50.1 against a planted ignored directory. Membership is what makes the
+# refusal sweep non-vacuous, so it is measured rather than assumed — but only
+# for these, because each measurement costs two subprocesses while a refusal
+# costs none, which is what lets the sweep above be wide and this list short.
+# Asserted by equality: a change here is git moving under this module and is
+# worth a loud re-measurement rather than a threshold loose enough to absorb it.
+WINNABLE_MAGIC_SIGNATURES = frozenset({"", "(top)", "/", ":", "//"})
+
+
 def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A candidate carrying pathspec magic never becomes a prune.
 
-    `--` ends option parsing but leaves magic alive, so `:(top)x` is answered
-    as a pattern rooted at the top of the repository rather than as a directory
-    literally named `:(top)x`. Both confirmations would then be about a path
-    that is not the one being skipped. `--literal-pathspecs` fixes this for
-    `ls-files` but `git check-ignore` rejects that flag outright, so the magic
-    is refused at the door instead.
-    """
-    # Measured, not assumed: without the guard this exact string wins both
-    # confirmations against the real repository.
-    assert _git_confirms_prunable(":(top).claude/worktrees") is False
-    assert _git_exit_code("check-ignore", "-q", "--", ":(top).claude/worktrees") == 0
+    `--` ends option parsing but leaves magic alive, so `:(top)x` and `:/x` are
+    answered as patterns rooted at the top of the repository rather than as
+    directories literally bearing those names. Both confirmations would then be
+    about a path that is not the one being skipped. `--literal-pathspecs` fixes
+    this for `ls-files` but `git check-ignore` rejects that flag outright, so
+    the magic is refused at the door instead.
 
-    forged = f":(top).claude/worktrees/{PROBE_NAME}"
-    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
+    The refusal is worth asserting only if git would otherwise have answered
+    yes, so that answer is measured. Four things are needed before the
+    measurement means what it claims, and each of them was missing once:
+
+    A generated signature space rather than the forms someone remembered, and
+    every candidate in it refused. Naming forms let a guard narrowed to `:(`
+    pass while `:/` won, then a guard narrowed to four prefixes pass while `:x`
+    and `::x` won, then a one-character sweep pass while `://x` won. What no
+    finite sweep can exclude is a carve-out aimed at exactly the shape it does
+    not generate, so the sweep is paired with the property it approximates: the
+    leading colon decides, and the same path without it is not refused at all.
+    Beyond that the completeness of the refusal rests on git's grammar, in which
+    magic is introduced by a leading colon and by nothing else, and that is an
+    argument rather than a measurement here.
+
+    An answer whose rule is committed, bytes and all. A bare exit code cannot
+    tell `.gitignore` from `$GIT_DIR/info/exclude`, and trackedness of the
+    answering *file* is not enough either, because `core.excludesFile` can
+    select a tracked path whose working copy carries the rule while the
+    committed copy does not. Git reports source, line and pattern together, so
+    the committed blob is read at that line and required to be that pattern.
+
+    A query that does not depend on the checkout. `.claude/worktrees/` is
+    directory-only, and `check-ignore` applies a directory-only rule to a bare
+    path only where it can see a directory, so a bare query is answered 0 in
+    the main checkout and 1 from a linked worktree. Naming a path *under* the
+    ignored directory is what removes that dependency, because the same rule
+    matches a descendant whether or not the parent exists on disk. The probe is
+    planted for other reasons — the sweep below needs a real file, and a
+    candidate reaching `_git_confirms_prunable` in production always names
+    something git just listed off disk — and not to make these exits hold.
+
+    Git actually left unasked. That is this test's name, and nothing pinned it:
+    a guard that refused only after consulting git would satisfy every
+    assertion above. Stubbing git to fail cannot pin it either, because
+    `_git_exit_code` maps a failure to -1 and the conjunction then refuses for
+    the wrong reason. So git is stubbed to *grant* both confirmations, and the
+    calls are counted.
+    """
+    root_relative = f".claude/worktrees/{PROBE_NAME}"
+    with _ignored_probe(root_relative, self_ignore=False) as probe:
         relative = probe.relative_to(ROOT).as_posix()
+
+        # The floor. Without at least one form that would otherwise win, every
+        # refusal below is satisfied by git rather than by the guard.
+        winnable: set[str] = set()
+        for signature in sorted(WINNABLE_MAGIC_SIGNATURES):
+            forged = f":{signature}{root_relative}"
+            # The literal path is pinned absent: that is what makes any 0 here
+            # an answer about some other path, which is the hazard the guard
+            # closes rather than a coincidence about this one.
+            assert not (ROOT / forged).exists(), forged
+            ignored = _git_exit_code("check-ignore", "-q", "--", forged)
+            tracked = _git_exit_code(
+                "ls-files", "--cached", "--error-unmatch", "--", forged
+            )
+            # Both halves are pinned separately, because
+            # `_git_confirms_prunable` needs both and a False from either one
+            # is indistinguishable from the refusal under test.
+            if ignored == 0 and tracked == NO_PATHSPEC_MATCH:
+                winnable.add(signature)
+                assert _git_ignore_rule_is_committed(forged), forged
+        assert winnable == WINNABLE_MAGIC_SIGNATURES
+
+        # Refusal over the whole generated space. Cheap, because a refused
+        # candidate never reaches a subprocess.
+        for signature in MAGIC_SIGNATURES:
+            forged = f":{signature}{root_relative}"
+            assert _git_confirms_prunable(forged) is False, forged
+
+        # The property the enumeration only approximates: the leading colon is
+        # what decides, and nothing further along. The same path without it is
+        # not refused here at all — it reaches git and is answered on its
+        # merits — so a guard keyed on any longer prefix has to disagree with
+        # one of these two lines.
+        assert _git_confirms_prunable(root_relative) is True
+
+        granting = _stub_git(ignored=True, tracked=False)
+        asked: list[tuple[str, ...]] = []
+
+        def counting(arguments, *a, **k) -> subprocess.CompletedProcess:
+            asked.append(tuple(arguments))
+            return granting(arguments, *a, **k)
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(subprocess, "run", counting)
+            for signature in MAGIC_SIGNATURES:
+                candidate = f":{signature}{root_relative}"
+                assert _git_confirms_prunable(candidate) is False, candidate
+        assert asked == []
+
+        forged = f":(top){root_relative}"
         monkeypatch.setattr(subprocess, "run", _stub_listing_only(f"{forged}/\0".encode()))
         assert relative in _protocol_sweep_relatives()
 
 
+def test_ignore_provenance_requires_a_committed_rule() -> None:
+    """An exclude rule that is not committed may not answer for the repository.
+
+    Built in a throwaway repository rather than in this one. Every earlier shape
+    of this test planted fixed-name fixtures in the reviewed checkout, and one
+    rewrote a tracked file and restored it from a snapshot: a concurrent reader
+    could observe that file empty or modified, a crash mid-test would leave it
+    so, and a concurrent writer's change would be lost to the restore. This
+    repository has concurrent sessions in it. A test that needs a repository in
+    a particular state should build one.
+
+    Four sources answer the same query, and only one is a rule the repository
+    carries. Each defeats a different version of this check that has already
+    been shipped and found wanting:
+
+    - an untracked file whose name up to its first colon spells a tracked one,
+      which defeats a parser that splits there;
+    - a *tracked* file whose working copy carries the rule while its committed
+      copy does not, which defeats a check that asks only whether the source
+      pathname is in the index;
+    - a file whose committed line ends in two carriage returns while its working
+      line ends in none. Git answers from the working bytes; the committed line
+      is a pattern ending in a carriage return and matches nothing the bare
+      pattern matches. This defeats a comparison that strips every trailing CR
+      instead of the single one a CRLF file leaves behind.
+
+    The committed rule is then required to be accepted, carrying the trailing
+    spaces git strips before reporting, so the check is pinned in the direction
+    that would otherwise fail a rule the repository really does carry.
+    """
+    repository = Path(tempfile.mkdtemp(prefix="ignore-provenance-"))
+    environment = {
+        name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
+    }
+
+    def git(*arguments: str) -> None:
+        subprocess.run(
+            ("git", *arguments),
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            env={**environment, "GIT_CONFIG_GLOBAL": "/dev/null"},
+        )
+
+    def rule_is_committed(excludes: str | None) -> bool:
+        if excludes is None:
+            return _git_ignore_rule_is_committed(TARGET, repository)
+        with pytest.MonkeyPatch.context() as scoped:
+            scoped.setenv("GIT_CONFIG_COUNT", "1")
+            scoped.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
+            scoped.setenv("GIT_CONFIG_VALUE_0", excludes)
+            return _git_ignore_rule_is_committed(TARGET, repository)
+
+    TARGET = "ignored-by-probe"
+    try:
+        git("init", "-q", ".")
+        git("config", "user.email", "probe@example.invalid")
+        git("config", "user.name", "probe")
+        (repository / TARGET).mkdir()
+
+        # Committed carrying the trailing spaces git strips before reporting.
+        (repository / ".gitignore").write_text(f"{TARGET}/   \n", encoding="utf-8")
+        # Tracked, and committed with no rule in it at all.
+        (repository / "tracked.txt").write_text("nothing here\n", encoding="utf-8")
+        # Committed as a pattern ending in a carriage return.
+        (repository / "crlf.txt").write_bytes(f"{TARGET}/\r\r\n".encode())
+        git("add", ".gitignore", "tracked.txt", "crlf.txt")
+        git("commit", "-qm", "probe")
+
+        # The committed rule answers, is reported with its spaces removed, and
+        # is accepted. Without this the three refusals below could all be a
+        # check that never says yes to anything.
+        record = _git_ignore_record(TARGET, repository)
+        assert record is not None, "the committed rule did not answer"
+        assert record[0] == ".gitignore", record
+        assert record[2] == f"{TARGET}/", record
+        assert rule_is_committed(None) is True
+
+        # Move the committed rule out of the way so the shadows are what answer.
+        (repository / ".gitignore").write_text("unrelated/\n", encoding="utf-8")
+        assert _git_ignore_record(TARGET, repository) is None
+
+        shadow = ".gitignore:shadow"
+        (repository / shadow).write_text(f"{TARGET}/\n", encoding="utf-8")
+        assert shadow.split(":", 1)[0] == ".gitignore"
+        assert rule_is_committed(shadow) is False
+
+        (repository / "tracked.txt").write_text(
+            f"nothing here\n{TARGET}/\n", encoding="utf-8"
+        )
+        assert (
+            _git_exit_code(
+                "--literal-pathspecs", "-C", str(repository), "ls-files", "--cached",
+                "--error-unmatch", "--", "tracked.txt",
+            )
+            == 0
+        ), "the tracked-source case needs its source to really be tracked"
+        assert rule_is_committed("tracked.txt") is False
+
+        (repository / "crlf.txt").write_bytes(f"{TARGET}/\n".encode())
+        assert rule_is_committed("crlf.txt") is False
+    finally:
+        shutil.rmtree(repository, ignore_errors=True)
+
+    assert _committed_pattern(f"{TARGET}/\r\r") == f"{TARGET}/\r"
+    assert _committed_pattern(f"{TARGET}/\r") == f"{TARGET}/"
+    assert _committed_pattern(f"{TARGET}/   ") == f"{TARGET}/"
+    # An escaped trailing space is kept because git keeps it, so such a rule is
+    # accepted. Mixing the two is where this comparison stops following git: it
+    # reduces `x\  ` to `x\ ` and this does not, so the rule is refused. Both
+    # are pinned so the docstring cannot drift from either again.
+    assert _committed_pattern(f"{TARGET}/\\ ") == f"{TARGET}/\\ "
+    assert _committed_pattern(f"{TARGET}/\\  ") == f"{TARGET}/\\  "
 def test_only_an_exact_no_match_exit_confirms_nothing_tracked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
