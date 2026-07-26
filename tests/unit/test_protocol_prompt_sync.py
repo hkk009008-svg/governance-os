@@ -948,6 +948,90 @@ def test_a_nested_git_directory_is_never_swept() -> None:
     assert buried not in swept
 
 
+def test_explicitly_named_file_roots_are_swept() -> None:
+    """A root named as a file is admitted because it was named, not found.
+
+    `AGENTS.md` and `CLAUDE.md` are roots rather than directories, so no walk
+    ever reaches them and `root.is_file()` is their only admission path. Losing
+    it would drop two of the most load-bearing instruction surfaces in the
+    repository with no directory-level symptom to notice.
+    """
+    swept = {
+        path.relative_to(ROOT).as_posix()
+        for path in _sweep_active_files(ACTIVE_INSTRUCTION_ROOTS, {".md", ".toml"})
+    }
+    for named in ("AGENTS.md", "CLAUDE.md"):
+        assert named in ACTIVE_INSTRUCTION_ROOTS
+        assert (ROOT / named).is_file()
+        assert named in swept
+
+
+def test_only_configured_suffixes_are_swept() -> None:
+    """The suffix set decides what counts as surface, so it needs its own test.
+
+    Widening it does not hide anything — it scans more — but it is still an
+    independent scope control, and a guard that quietly began reading every
+    file under an active root would report violations in material that was
+    never instruction text.
+    """
+    base = ROOT / ".claude/agents"
+    wanted = base / f"{PROBE_NAME}-wanted.md"
+    unwanted = base / f"{PROBE_NAME}-unwanted.txt"
+    try:
+        wanted.write_text("ordinary\n", encoding="utf-8")
+        unwanted.write_text("ordinary\n", encoding="utf-8")
+        swept = {
+            path.relative_to(ROOT).as_posix()
+            for path in _sweep_active_files(ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"})
+        }
+        wanted_relative = wanted.relative_to(ROOT).as_posix()
+        unwanted_relative = unwanted.relative_to(ROOT).as_posix()
+    finally:
+        wanted.unlink(missing_ok=True)
+        unwanted.unlink(missing_ok=True)
+
+    assert wanted_relative in swept
+    assert unwanted_relative not in swept
+
+
+def test_an_individually_named_ignored_file_is_not_swept() -> None:
+    """The file half of the ignore listing has to actually exclude something.
+
+    git names an ignored file individually exactly when its directory holds
+    tracked content and so could not be collapsed — which is why the probe goes
+    under `.claude/agents`, a directory with tracked files, rather than into a
+    throwaway tree that git would collapse whole. The visible file beside it is
+    the control: without it this would also pass on a sweep returning nothing.
+    """
+    base = ROOT / ".claude/agents"
+    rules = base / ".gitignore"
+    hidden = base / f"{PROBE_NAME}-ignored.md"
+    visible = base / f"{PROBE_NAME}-visible.md"
+    try:
+        rules.write_text(f"{hidden.name}\n", encoding="utf-8")
+        hidden.write_text("ordinary\n", encoding="utf-8")
+        visible.write_text("ordinary\n", encoding="utf-8")
+
+        hidden_relative = hidden.relative_to(ROOT).as_posix()
+        visible_relative = visible.relative_to(ROOT).as_posix()
+        _, ignored_files = _git_ignored_entries()
+        # Pin the precondition: git must be naming it as a file, not collapsing
+        # its directory, or this test would prove nothing about that branch.
+        assert hidden_relative in ignored_files
+
+        swept = {
+            path.relative_to(ROOT).as_posix()
+            for path in _sweep_active_files(ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"})
+        }
+    finally:
+        rules.unlink(missing_ok=True)
+        hidden.unlink(missing_ok=True)
+        visible.unlink(missing_ok=True)
+
+    assert visible_relative in swept
+    assert hidden_relative not in swept
+
+
 def test_an_unlistable_directory_fails_loudly() -> None:
     """A directory the sweep cannot list must raise, not disappear.
 
