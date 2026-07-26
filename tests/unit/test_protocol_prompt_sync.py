@@ -1071,15 +1071,40 @@ def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
     that is not the one being skipped. `--literal-pathspecs` fixes this for
     `ls-files` but `git check-ignore` rejects that flag outright, so the magic
     is refused at the door instead.
-    """
-    # Measured, not assumed: without the guard this exact string wins both
-    # confirmations against the real repository.
-    assert _git_confirms_prunable(":(top).claude/worktrees") is False
-    assert _git_exit_code("check-ignore", "-q", "--", ":(top).claude/worktrees") == 0
 
-    forged = f":(top).claude/worktrees/{PROBE_NAME}"
-    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
+    The refusal is only worth asserting if git would otherwise have answered
+    yes, so that answer is measured — which means it has to be measured
+    somewhere the answer actually holds. It does not hold everywhere by itself:
+    the committed rule is `.claude/worktrees/`, and a trailing slash makes a
+    rule directory-only, which `check-ignore` applies only where it can see a
+    directory. Given a query carrying no trailing slash of its own it looks in
+    the working tree, so the same string it answers 0 for in the main checkout
+    it answers 1 for from a linked worktree, where nothing has created that
+    directory. That is a fact about one checkout rather than about the
+    repository, and reading a `False` produced by it as the guard's work would
+    be the vacuity this control exists to prevent. So the directory is planted
+    here and the answer is pinned, rather than inherited from whichever tree
+    pytest happened to start in.
+    """
+    root_relative = f".claude/worktrees/{PROBE_NAME}"
+    forged = f":(top){root_relative}"
+    with _ignored_probe(root_relative, self_ignore=False) as probe:
         relative = probe.relative_to(ROOT).as_posix()
+
+        # Measured, not assumed: without the guard this exact string wins both
+        # confirmations. Each half is pinned on its own, because
+        # `_git_confirms_prunable` needs both and a `False` from either one is
+        # indistinguishable from the refusal under test. The literal path is
+        # pinned absent too: that is what makes the 0 an answer about some
+        # other path, which is the whole hazard the guard closes.
+        assert not (ROOT / forged).exists()
+        assert _git_exit_code("check-ignore", "-q", "--", forged) == 0
+        assert (
+            _git_exit_code("ls-files", "--cached", "--error-unmatch", "--", forged)
+            == NO_PATHSPEC_MATCH
+        )
+        assert _git_confirms_prunable(forged) is False
+
         monkeypatch.setattr(subprocess, "run", _stub_listing_only(f"{forged}/\0".encode()))
         assert relative in _protocol_sweep_relatives()
 
