@@ -2,4 +2,29 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-exec /usr/bin/env python3 "$ROOT/scripts/agy_seat_launcher.py" "$@"
+
+# Choose the interpreter deterministically, then prove it is adequate. This was
+# `exec /usr/bin/env python3`, which took whatever the caller's PATH offered:
+# the repo venv normally, macOS system 3.9.6 in a stripped environment. The
+# launcher imports `tomllib`, stdlib only since 3.11, so that case died on a
+# ModuleNotFoundError traceback rather than the launcher's own error contract.
+#
+# An absolute pin to .venv is not available: CI provisions Python with
+# actions/setup-python and never creates .venv, and a seat shim that only works
+# on a developer laptop is its own defect. So prefer the repo venv, fall back to
+# PATH, and refuse explicitly if what we land on is too old. Exit 2 matches the
+# refusal code the launcher itself returns.
+PYTHON="$ROOT/.venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+  PYTHON=$(command -v python3 || true)
+fi
+if [ -z "$PYTHON" ]; then
+  echo "agy-seat: no python3 found in $ROOT/.venv/bin or on PATH" >&2
+  exit 2
+fi
+if ! "$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'; then
+  echo "agy-seat: $PYTHON is $("$PYTHON" -V 2>&1); this launcher needs 3.11+ for tomllib" >&2
+  exit 2
+fi
+
+exec "$PYTHON" "$ROOT/scripts/agy_seat_launcher.py" "$@"

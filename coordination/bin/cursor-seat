@@ -4,4 +4,24 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 "$ROOT/scripts/cursor_seat_launcher.py" "$@"
+
+# Selected the same way as its siblings, though this one was latent rather than
+# broken: `cursor_seat_launcher.py` imports no 3.11-only module, so even system
+# 3.9 ran it. It still took `python3` from ambient state, and leaving one shim
+# to drift while the other two are fixed is how the original divergence started.
+# The floor is the repo's, not this file's: a seat should not run on an
+# interpreter its siblings refuse. Exit 2 matches the launcher's refusal code.
+PYTHON="$ROOT/.venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+  PYTHON=$(command -v python3 || true)
+fi
+if [ -z "$PYTHON" ]; then
+  echo "cursor-seat: no python3 found in $ROOT/.venv/bin or on PATH" >&2
+  exit 2
+fi
+if ! "$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'; then
+  echo "cursor-seat: $PYTHON is $("$PYTHON" -V 2>&1); this repo needs 3.11+" >&2
+  exit 2
+fi
+
+exec "$PYTHON" "$ROOT/scripts/cursor_seat_launcher.py" "$@"
