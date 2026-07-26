@@ -169,11 +169,18 @@ def list_models(agy_executable: str) -> frozenset[str]:
             f"cannot run `{' '.join(MODEL_LISTING_COMMAND)}` to check the seat model: {exc}"
         ) from exc
     if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout).strip().splitlines()
+        # Keep the whole stream, not a chosen line. AGY ends a failed listing
+        # with a generic Go stack summary (`Error types: ... syscall.Errno`)
+        # and puts the cause -- `bind: operation not permitted`, an
+        # authentication complaint, `flags provided but not defined` -- further
+        # up, so tailing the last line reliably reported nothing useful. The
+        # caller decides which failures are environmental, and it can only do
+        # that if the real text survives.
+        detail = (completed.stderr or completed.stdout).strip()
         raise LaunchError(
             f"`{' '.join(MODEL_LISTING_COMMAND)}` failed (exit {completed.returncode}), "
             "so the seat model cannot be checked"
-            + (f": {detail[-1]}" if detail else "")
+            + (f":\n{detail}" if detail else "")
         )
     return frozenset(
         line.strip() for line in completed.stdout.splitlines() if line.strip()
@@ -188,6 +195,41 @@ def require_listed_model(model: str, listed: frozenset[str]) -> None:
         f"model {model!r} is not offered by `{' '.join(MODEL_LISTING_COMMAND)}`; "
         "choose one of: " + ", ".join(sorted(listed))
     )
+
+
+def _flag_name(token: str) -> str:
+    """Normalize one argv token to the flag it names, or '' if it names none.
+
+    Go's flag package accepts `-flag`, `--flag`, `-flag=v` and `--flag=v`
+    interchangeably, so a check that only looks for the `--flag value` spelling
+    is trivially evaded.
+    """
+    if not token.startswith("-") or token == "-" or token == "--":
+        return ""
+    return "--" + token.lstrip("-").split("=", 1)[0]
+
+
+def reject_forwarded_launcher_flags(forwarded_args: Sequence[str]) -> None:
+    """Refuse forwarded arguments that restate a flag the launcher owns.
+
+    Forwarded tokens land after the launcher's own flags, and AGY resolves a
+    repeated flag to the *last* occurrence. `agy-seat operator -- --model X`
+    therefore ran on X while `AGY_MODEL` still advertised the configured model,
+    so a verification report could cite a model that never ran -- the same
+    unsubstantiated identity the listing check exists to prevent, reached
+    through the forwarding seam instead of the config file.
+
+    Seat identity is the config's to state. Forwarding stays open for prompts
+    and everything else AGY accepts; it just cannot redefine the seat.
+    """
+    for token in forwarded_args:
+        name = _flag_name(token)
+        if name in EMITTED_CLI_FLAGS:
+            raise LaunchError(
+                f"forwarded argument {token!r} restates {name}, which the launcher "
+                "sets from the seat config; AGY would honour the forwarded value "
+                "while the seat kept advertising the configured one"
+            )
 
 
 def build_launch_spec(
@@ -207,6 +249,7 @@ def build_launch_spec(
         raise LaunchError(f"missing settings for seat: {seat}")
     if mode not in MODES:
         raise LaunchError(f"unsupported AGY mode: {mode}")
+    reject_forwarded_launcher_flags(forwarded_args)
 
     try:
         runtime = infer_runtime_env(profile=seat, mode=mode)

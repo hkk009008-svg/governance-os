@@ -67,14 +67,22 @@ def _listing_probe() -> tuple[frozenset[str], str]:
 
 _LIVE_LISTING, _LIVE_BLOCKED_REASON = _listing_probe()
 
+# pytest prints only the first line of a skip reason, and the launcher error
+# deliberately carries the whole stderr stream, so the cause has to be folded
+# onto one line or `-rs` shows a bare "cannot be checked:" and hides it.
+_LIVE_BLOCKED_SUMMARY = " ".join(_LIVE_BLOCKED_REASON.split())
+
 # An `agy` that is installed but cannot run here -- a sandbox that forbids its
 # language-server socket, a missing login -- is an environment limitation, not
-# a defect in the launcher. Skip on that, loudly, quoting the real cause. A
-# genuinely rejected flag is a different thing and still fails, because the
-# tests below assert on `UNDEFINED_FLAG_MARKER` rather than on exit status
-# alone. The hermetic tests never skip, so this cannot go quietly vacuous.
+# a defect in the launcher. Skip on that, loudly, quoting the real cause.
+#
+# The dangerous case is the other one: if AGY stopped accepting the listing
+# command itself, skipping would bury the interface defect the live tests exist
+# to find. `test_live_listing_failure_is_never_an_interface_rejection` runs
+# unconditionally and fails on exactly that, so this gate cannot swallow it.
+# The hermetic tests never skip either, so nothing here goes quietly vacuous.
 _needs_agy = pytest.mark.skipif(
-    not _LIVE_LISTING, reason=f"cannot run the live agy listing: {_LIVE_BLOCKED_REASON}"
+    not _LIVE_LISTING, reason=f"cannot run the live agy listing: {_LIVE_BLOCKED_SUMMARY}"
 )
 
 
@@ -286,6 +294,90 @@ def test_emitted_flags_are_exactly_the_declared_cli_flag_set(tmp_path: Path) -> 
 
     assert launcher.EMITTED_CLI_FLAGS, "the declared flag set must not be empty"
     assert _emitted_flags(spec.argv) == set(launcher.EMITTED_CLI_FLAGS)
+
+
+@pytest.mark.parametrize(
+    "override",
+    (
+        ["--model", "definitely-not-an-agy-model"],
+        ["--model=definitely-not-an-agy-model"],
+        # Go accepts the single-dash spelling identically.
+        ["-model", "definitely-not-an-agy-model"],
+        ["-model=definitely-not-an-agy-model"],
+        ["--effort", "low"],
+        ["--add-dir", "/somewhere/else"],
+    ),
+)
+def test_forwarded_arguments_cannot_restate_a_launcher_owned_flag(
+    tmp_path: Path, override: list[str]
+) -> None:
+    """Forwarding must not be able to redefine the seat's own identity.
+
+    Forwarded tokens land after the launcher's flags and AGY honours the last
+    occurrence, so `agy-seat operator -- --model X` ran on X while `AGY_MODEL`
+    still advertised the configured model. Checking the config value alone
+    never saw it: the config was fine, the command line was not.
+    """
+    with pytest.raises(launcher.LaunchError, match="restates"):
+        launcher.build_launch_spec(
+            repo_root=tmp_path,
+            seat="operator",
+            settings=_settings(tmp_path),
+            inherited_env={"PATH": "/bin"},
+            agy_executable="/opt/agy",
+            forwarded_args=override,
+        )
+
+
+def test_forwarding_still_carries_prompts_and_other_agy_flags(tmp_path: Path) -> None:
+    """The guard is aimed at identity, not at forwarding generally."""
+    forwarded = ["--dangerously-skip-permissions", "-p", "continue as operator"]
+
+    spec = launcher.build_launch_spec(
+        repo_root=tmp_path,
+        seat="operator",
+        settings=_settings(tmp_path),
+        inherited_env={"PATH": "/bin"},
+        agy_executable="/opt/agy",
+        forwarded_args=forwarded,
+    )
+
+    assert list(spec.argv)[-len(forwarded) :] == forwarded
+
+
+def test_live_listing_failure_is_never_an_interface_rejection() -> None:
+    """A live skip must mean "this machine cannot run agy", never "we called it wrong".
+
+    `_needs_agy` turns any listing failure into a skip. That is right for a
+    blocked socket or a missing login and wrong for AGY rejecting the listing
+    command itself, which is precisely the rot the live tests guard. This runs
+    unconditionally so that case fails instead of skipping.
+    """
+    assert UNDEFINED_FLAG_MARKER not in _LIVE_BLOCKED_REASON, _LIVE_BLOCKED_REASON
+
+
+def test_failed_listing_reports_the_whole_error_stream(tmp_path: Path) -> None:
+    """The cause must survive, wherever in the stream it appeared.
+
+    AGY ends a failed listing with a generic Go stack summary and puts the real
+    cause further up, so keeping only the last stderr line reported
+    `Error types: ... syscall.Errno` and dropped
+    `bind: operation not permitted` -- and every skip reason inherited that.
+    """
+    failing = tmp_path / "failing-agy"
+    failing.write_text(
+        "#!/bin/sh\n"
+        "echo 'listen tcp 127.0.0.1:0: bind: operation not permitted' >&2\n"
+        "echo 'Error types: (1) *withstack.withStack (4) syscall.Errno' >&2\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    failing.chmod(0o755)
+
+    with pytest.raises(launcher.LaunchError) as blocked:
+        launcher.list_models(str(failing))
+
+    assert "bind: operation not permitted" in str(blocked.value)
 
 
 def test_codex_only_flags_never_return_to_the_agy_command_line(tmp_path: Path) -> None:
