@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import string
 import subprocess
 import tempfile
 import tomllib
@@ -179,10 +180,6 @@ def _git_exit_code(*arguments: str) -> int:
         return -1
 
 
-# The exclude file a control may rest on, because it is the only one committed.
-COMMITTED_IGNORE_SOURCE = ".gitignore"
-
-
 def _git_ignore_source(relative: str) -> str:
     """Which exclude file answered `check-ignore` for *relative*; "" if none.
 
@@ -194,31 +191,70 @@ def _git_ignore_source(relative: str) -> str:
     answering in the repository's name, which is the same class of defect as
     reading one checkout's layout as a fact about the repository.
 
-    `-v` names the source, and a work-tree `.gitignore` outranks
-    `$GIT_DIR/info/exclude`, so the committed rule is what answers while it
-    exists and its deletion is visible here rather than masked.
+    Framed with NUL rather than split on a delimiter that can occur inside the
+    data. `-v` prints `<source>:<line>:<pattern>\\t<pathname>`, and a source may
+    contain a colon: `core.excludesFile=.gitignore:shadow` is answered as
+    `.gitignore:shadow:1:…`, whose first field up to a colon is `.gitignore`.
+    Splitting there reports an untracked file under a tracked file's name,
+    which is a forged provenance rather than a wrong one. `-z` removes the
+    ambiguity and requires `--stdin`, so the path is fed that way. The echoed
+    pathname is checked against the question, because a reply about another
+    path is not an answer to this one.
     """
     environment = {
         name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
     }
     try:
         completed = subprocess.run(
-            ("git", "check-ignore", "-v", "--", relative),
+            ("git", "check-ignore", "-v", "-z", "--stdin"),
             cwd=ROOT,
             env=environment,
+            input=f"{relative}\0".encode(),
             capture_output=True,
         )
     except (OSError, subprocess.SubprocessError):
         return ""
     if completed.returncode != 0:
         return ""
+    fields = completed.stdout.split(b"\0")
+    # `<source>\0<line>\0<pattern>\0<pathname>\0`, so a complete record leaves
+    # at least four fields plus the empty tail of the final terminator.
+    if len(fields) < 5 or fields[3] != relative.encode():
+        return ""
     try:
-        first = completed.stdout.decode("utf-8").split("\n", 1)[0]
+        return fields[0].decode("utf-8")
     except UnicodeDecodeError:
         return ""
-    # `<source>:<line>:<pattern>\t<pathname>`; the source never contains a
-    # colon, and the pathname routinely does, so only the first split is safe.
-    return first.split(":", 1)[0]
+
+
+def _git_ignore_source_is_committed(relative: str) -> bool:
+    """Whether the exclude file that answered for *relative* is tracked.
+
+    Trackedness is the property worth asserting, not a filename. `.gitignore`
+    and a nested `.claude/.gitignore` are both committed and either may answer
+    depending on precedence, so pinning the spelling would fail on a lawful
+    relocation of the rule while still admitting an untracked
+    `core.excludesFile` that merely spells itself convincingly. Asking the index
+    separates repository state from machine state exactly.
+
+    `--literal-pathspecs` is required because the source is itself a path this
+    module then hands back to git, and a source beginning with a colon would
+    otherwise be read as magic — the same defect one layer along.
+    """
+    source = _git_ignore_source(relative)
+    if not source:
+        return False
+    return (
+        _git_exit_code(
+            "--literal-pathspecs",
+            "ls-files",
+            "--cached",
+            "--error-unmatch",
+            "--",
+            source,
+        )
+        == 0
+    )
 
 
 def _git_confirms_prunable(relative: str) -> bool:
@@ -536,26 +572,33 @@ PROBE_BODY = f"{EXACT_NEXT_TRIGGER}: run superpowers:brainstorming next.\n"
 def _ignored_probe(relative_root: str, *, self_ignore: bool) -> Iterator[Path]:
     """Plant a forbidden-string file in a nested tree under a git-ignored path.
 
-    Cleanup removes *relative_root* whole and unconditionally, so this refuses
-    to run when something is already there. The root is a fixed name under
-    `.claude/worktrees/`, which is exactly where live checkouts are parked, and
-    an unlucky name or a probe left behind by an interrupted run would
-    otherwise be deleted by a passing test. Scoping the removal to one path was
-    never the same as knowing that path is ours; the guard is what knows.
+    Cleanup removes *relative_root* whole, so the root has to be one this
+    helper created. It is a fixed name under `.claude/worktrees/`, which is
+    exactly where live checkouts are parked, and an unlucky name or a probe
+    left by an interrupted run would otherwise be deleted by a passing test.
+    Scoping a delete to one path was never the same as knowing that path is
+    ours.
 
-    Its parent may be a live `.claude/worktrees/` holding real checkouts, so
-    the parent is rmdir'd — a no-op on any non-empty directory — only when this
-    helper created it.
+    An exclusive `mkdir` is what knows, rather than a prior `exists()` test:
+    asking and then creating leaves a window in which content arriving between
+    the two answers is adopted and then deleted, so the check has to be the
+    creation. Cleanup is reached only on the far side of it.
+
+    The parent may be a live `.claude/worktrees/` holding real checkouts, so it
+    is rmdir'd — a no-op on any non-empty directory — only when this helper
+    created it.
     """
     probe_root = ROOT / relative_root
-    if probe_root.exists():
+    parent = probe_root.parent
+    parent_existed = parent.is_dir()
+    try:
+        probe_root.mkdir(parents=True)
+    except FileExistsError as exc:
         raise AssertionError(
             f"refusing to plant a probe over existing content at {probe_root}: "
             "cleanup would delete it. Confirm by hand that it is not a live "
             "checkout, then remove it."
-        )
-    parent = probe_root.parent
-    parent_existed = parent.is_dir()
+        ) from exc
     probe = probe_root / PROBE_NESTED_FILE
     try:
         probe.parent.mkdir(parents=True, exist_ok=True)
@@ -1115,14 +1158,24 @@ def test_an_unlistable_directory_fails_loudly() -> None:
         shutil.rmtree(blocked, ignore_errors=True)
 
 
-# Which magic forms can actually win a confirmation, measured rather than
-# reasoned about. `:(top)` and `:/` both root a pattern at the top of the
-# repository, so both are answered 0 for an ignored path. `:!` and `:^` are
-# negative pathspecs that `check-ignore` rejects outright, so they cannot win;
-# the guard refuses them anyway, and that they cannot win is pinned rather than
-# assumed, so a widening is visible if git ever starts answering one.
-WINNABLE_PATHSPEC_MAGIC = (":(top)", ":/")
-UNWINNABLE_PATHSPEC_MAGIC = (":!", ":^")
+# The magic signature space, swept rather than enumerated. A hand-written list
+# of the forms known to win is exactly what a narrowed guard survives, and two
+# review rounds each named a form the previous list had omitted: first `:/`
+# beside `:(top)`, then the empty signature `:x` and the explicitly-empty `::x`.
+# The short form is a leading colon, zero or more signature characters, and an
+# optional closing colon, so sweeping every punctuation character as a
+# one-character signature — plus the empty one and the long forms — covers the
+# grammar instead of tracking discoveries about it.
+MAGIC_SIGNATURES = ("", "(top)", "(top,literal)", *string.punctuation)
+
+# Which of those git actually answers for, measured on git 2.50.1 against a
+# planted ignored directory: nothing, `(top)`, `/`, and a bare `:` closing an
+# empty signature. Every other signature is either rejected outright or is a
+# negative pathspec `check-ignore` will not answer, so it cannot win.
+# Asserted as an equality rather than a floor: a change here is git changing
+# under this module, which is worth a loud failure and a re-measurement rather
+# than a threshold loose enough to absorb it.
+WINNABLE_MAGIC_SIGNATURES = frozenset({"", "(top)", "/", ":"})
 
 
 def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
@@ -1141,15 +1194,18 @@ def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
     yes, so that answer is measured. Four things are needed before the
     measurement means what it claims, and each of them was missing once:
 
-    Every winnable form, not one of them. A guard narrowed to `:(` leaves `:/`
-    winning both calls, so a control naming only the long form stays green
-    against a refusal that is no longer complete, while the module's own claim
-    is that refusing the leading colon covers every form there is.
+    The whole signature space, not the forms someone remembered. Every
+    signature is swept and every one of them must be refused, because a guard
+    narrowed to any proper subset of prefixes then leaves some winnable form
+    unrefused and fails here. Naming forms instead let a guard narrowed to `:(`
+    pass while `:/` won, and then a guard narrowed to four listed prefixes pass
+    while `:x` and `::x` won.
 
-    An answer that comes from the committed rule. A bare exit code cannot tell
-    `.gitignore` from `$GIT_DIR/info/exclude`, so `_git_ignore_source` is what
-    stops a machine-local duplicate of the rule from answering in the
-    repository's name.
+    An answer that comes from committed state. A bare exit code cannot tell
+    `.gitignore` from `$GIT_DIR/info/exclude`, so the source is required to be
+    tracked — trackedness rather than spelling, since a nested `.gitignore` may
+    lawfully answer instead while a `core.excludesFile` may spell itself into
+    looking committed.
 
     A query that does not depend on the checkout. `.claude/worktrees/` is
     directory-only, and `check-ignore` applies a directory-only rule to a bare
@@ -1172,26 +1228,28 @@ def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
     with _ignored_probe(root_relative, self_ignore=False) as probe:
         relative = probe.relative_to(ROOT).as_posix()
 
-        for magic in WINNABLE_PATHSPEC_MAGIC:
-            forged = f"{magic}{root_relative}"
-            # Measured, not assumed: without the guard this string wins both
-            # confirmations. Each half is pinned on its own, because
-            # `_git_confirms_prunable` needs both and a `False` from either one
-            # is indistinguishable from the refusal under test. The literal
-            # path is pinned absent too: that is what makes the 0 an answer
-            # about some other path, which is the hazard the guard closes.
+        winnable: set[str] = set()
+        for signature in MAGIC_SIGNATURES:
+            forged = f":{signature}{root_relative}"
+            # The literal path is pinned absent: that is what makes any 0 here
+            # an answer about some other path, which is the hazard the guard
+            # closes rather than a coincidence about this one.
             assert not (ROOT / forged).exists(), forged
-            assert _git_exit_code("check-ignore", "-q", "--", forged) == 0, forged
-            assert _git_ignore_source(forged) == COMMITTED_IGNORE_SOURCE, forged
-            assert (
-                _git_exit_code("ls-files", "--cached", "--error-unmatch", "--", forged)
-                == NO_PATHSPEC_MATCH
-            ), forged
+            ignored = _git_exit_code("check-ignore", "-q", "--", forged)
+            tracked = _git_exit_code(
+                "ls-files", "--cached", "--error-unmatch", "--", forged
+            )
+            if ignored == 0 and tracked == NO_PATHSPEC_MATCH:
+                # Both halves are pinned separately, because
+                # `_git_confirms_prunable` needs both and a False from either
+                # one is indistinguishable from the refusal under test.
+                winnable.add(signature)
+                assert _git_ignore_source_is_committed(forged), forged
             assert _git_confirms_prunable(forged) is False, forged
 
-        for magic in UNWINNABLE_PATHSPEC_MAGIC:
-            forged = f"{magic}{root_relative}"
-            assert _git_exit_code("check-ignore", "-q", "--", forged) != 0, forged
+        # Without this the sweep proves nothing: if no signature could win,
+        # every refusal above is satisfied by git rather than by the guard.
+        assert winnable == WINNABLE_MAGIC_SIGNATURES
 
         granting = _stub_git(ignored=True, tracked=False)
         asked: list[tuple[str, ...]] = []
@@ -1202,13 +1260,64 @@ def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
 
         with monkeypatch.context() as scoped:
             scoped.setattr(subprocess, "run", counting)
-            for magic in (*WINNABLE_PATHSPEC_MAGIC, *UNWINNABLE_PATHSPEC_MAGIC):
-                assert _git_confirms_prunable(f"{magic}{root_relative}") is False, magic
+            for signature in MAGIC_SIGNATURES:
+                candidate = f":{signature}{root_relative}"
+                assert _git_confirms_prunable(candidate) is False, candidate
         assert asked == []
 
         forged = f":(top){root_relative}"
         monkeypatch.setattr(subprocess, "run", _stub_listing_only(f"{forged}/\0".encode()))
         assert relative in _protocol_sweep_relatives()
+
+
+def test_ignore_provenance_requires_a_tracked_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An untracked exclude file may not answer in the repository's name.
+
+    The control above rests on provenance, so provenance gets its own test. The
+    file planted here is named `.gitignore:<probe>`, which is untracked but
+    whose text up to its first colon is a tracked file, so a parser splitting on
+    that colon reports it as committed. That is not a wrong answer, it is a
+    forged one, and it is the shape `core.excludesFile` can take on any machine.
+
+    Both directions are pinned. Before the shadow is configured nothing ignores
+    the path at all, which is what makes the second half an observation about
+    the shadow rather than about some rule that was already there.
+    """
+    shadow = ROOT / f".gitignore:{PROBE_NAME}"
+    target = ROOT / ".claude/agents" / f"{PROBE_NAME}-shadowed"
+    try:
+        target.mkdir(parents=True)
+        shadow.write_text(f"{target.name}/\n", encoding="utf-8")
+        relative = target.relative_to(ROOT).as_posix()
+
+        # The forgery is only interesting because the prefix names a real
+        # tracked file, so that is measured rather than asserted by eye.
+        assert shadow.name.split(":", 1)[0] == ".gitignore"
+        assert (
+            _git_exit_code(
+                "--literal-pathspecs", "ls-files", "--cached", "--error-unmatch",
+                "--", ".gitignore",
+            )
+            == 0
+        )
+
+        assert _git_exit_code("check-ignore", "-q", "--", relative) == NO_PATHSPEC_MATCH
+        assert _git_ignore_source(relative) == ""
+        assert _git_ignore_source_is_committed(relative) is False
+
+        monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+        monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
+        monkeypatch.setenv("GIT_CONFIG_VALUE_0", shadow.name)
+
+        assert _git_exit_code("check-ignore", "-q", "--", relative) == 0
+        assert _git_ignore_source(relative) == shadow.name
+        assert _git_ignore_source_is_committed(relative) is False
+    finally:
+        shadow.unlink(missing_ok=True)
+        with suppress(OSError):
+            target.rmdir()
 
 
 def test_only_an_exact_no_match_exit_confirms_nothing_tracked(
