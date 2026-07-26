@@ -49,7 +49,44 @@ DEFAULT_CONFIG_PATH = Path("~/.agy/pipeline-seat-launcher.toml")
 # committed so `tests/unit/test_agy_seat_launcher.py` can hold the emitted argv
 # to it hermetically, and separately feed a real argv through the installed
 # CLI's parser instead of trusting that this set is still true.
-EMITTED_CLI_FLAGS = frozenset({"--model", "--effort", "--add-dir"})
+EMITTED_CLI_FLAGS = frozenset({"--model", "--effort"})
+
+# Flags a seat may forward after `--`, by normalized name. This is a positive
+# control on purpose. A denylist was tried first and leaked twice: a forwarded
+# `--model` overrode the checked one because AGY resolves a repeated flag to its
+# last occurrence, and then a `--` consumed as `--log-file`'s value defeated the
+# obvious guard against that. Both were found by independent review rather than
+# by this launcher's own reasoning.
+#
+# The residual weakness of any denylist is what settles it: a flag AGY has not
+# shipped yet cannot be enumerated, so a future short alias for `--model` would
+# be admitted silently. An allowlist refuses it by default instead. Adding an
+# entry here is a deliberate act; forgetting to add one is a launch failure with
+# a clear message, not a silent identity override.
+#
+# Excluded and why:
+#   --model, --effort            set from the seat config; forwarding one lets
+#                                the seat run on something it does not report
+#   --agent, --mode, --project   behaviour and session identity the seat's own
+#                                AGY_* runtime already declares
+#   --add-dir, --new-project,    workspace and filesystem side effects beyond
+#   --log-file                   the repository the seat was launched for
+#   --dangerously-skip-...       blanket tool approval; an external-effect
+#                                amplifier that needs its own authorization
+FORWARDABLE_FLAG_NAMES = frozenset(
+    {
+        "p",
+        "print",
+        "prompt",
+        "i",
+        "prompt-interactive",
+        "c",
+        "continue",
+        "conversation",
+        "print-timeout",
+        "sandbox",
+    }
+)
 
 # AGY exposes no service-tier flag. Speed is expressed as reasoning effort,
 # both as a `--effort` value and as a suffix on the model IDs that
@@ -80,6 +117,31 @@ _FOREIGN_AUTHORITY_PREFIXES = (
     "GIT_",
 )
 _PRESERVED_AGY_CREDENTIALS = frozenset({"AGY_API_KEY"})
+# Options the installed AGY CLI actually defines, per `agy --help`. This exists
+# because the launcher and the binary are separate artifacts: a flag removed
+# upstream, or invented here, produces `flags provided but not defined` and the
+# seat never starts. Nothing in a pure-Python test can see that on its own, so
+# the emitted argv is checked against this set and this set against `agy --help`.
+AGY_CLI_FLAGS = frozenset(
+    {
+        "--add-dir",
+        "--agent",
+        "--continue",
+        "--conversation",
+        "--dangerously-skip-permissions",
+        "--effort",
+        "--log-file",
+        "--mode",
+        "--model",
+        "--new-project",
+        "--print",
+        "--print-timeout",
+        "--project",
+        "--prompt",
+        "--prompt-interactive",
+        "--sandbox",
+    }
+)
 
 
 class ConfigError(ValueError):
@@ -198,19 +260,29 @@ def require_listed_model(model: str, listed: frozenset[str]) -> None:
 
 
 def _flag_name(token: str) -> str:
-    """Normalize one argv token to the flag it names, or '' if it names none.
+    """Return the bare flag name one argv token spells, or '' if it spells none.
 
     Go's flag package accepts `-flag`, `--flag`, `-flag=v` and `--flag=v`
     interchangeably, so a check that only looks for the `--flag value` spelling
-    is trivially evaded.
+    is trivially evaded. `-` and `--` name no flag.
     """
-    if not token.startswith("-") or token == "-" or token == "--":
+    if not token.startswith("-") or token in ("-", "--"):
         return ""
-    return "--" + token.lstrip("-").split("=", 1)[0]
+    return token.lstrip("-").split("=", 1)[0]
 
 
-def reject_forwarded_launcher_flags(forwarded_args: Sequence[str]) -> None:
-    """Refuse forwarded arguments that restate a flag the launcher owns.
+_LAUNCHER_OWNED_FLAG_NAMES = frozenset(
+    flag.lstrip("-") for flag in EMITTED_CLI_FLAGS
+)
+
+
+def _spell(name: str) -> str:
+    """Render a bare flag name the way AGY documents it: `-p`, but `--print`."""
+    return f"-{name}" if len(name) == 1 else f"--{name}"
+
+
+def reject_unforwardable_flags(forwarded_args: Sequence[str]) -> None:
+    """Allow only the flags a seat is permitted to forward after `--`.
 
     Forwarded tokens land after the launcher's own flags, and AGY resolves a
     repeated flag to the *last* occurrence. `agy-seat operator -- --model X`
@@ -219,34 +291,41 @@ def reject_forwarded_launcher_flags(forwarded_args: Sequence[str]) -> None:
     unsubstantiated identity the listing check exists to prevent, reached
     through the forwarding seam instead of the config file.
 
-    Seat identity is the config's to state. Forwarding stays open for prompts
-    and everything else AGY accepts; it just cannot redefine the seat.
+    This is an allowlist because two denylists leaked here first. The second
+    leak is the instructive one: it returned early on a bare `--`, reasoning
+    that AGY's terminator makes later tokens positional. That is false, because
+    whether `--` terminates depends on what precedes it. `--log-file --`
+    consumes the bare token as the log *filename*, so it terminates nothing, and
+    a following `--model X` was still a flag AGY resolved -- observed on AGY
+    1.1.7 as `Model ID X not in local config, defaulting to CCPA`. `--agent`,
+    `--conversation`, `--project` and `--mode` behave the same way.
 
-    The check reads spelling and nothing else, deliberately. An earlier version
-    tried to be smarter and returned early on a bare `--`, reasoning that AGY's
-    terminator makes every later token positional. That is false: whether `--`
-    terminates depends on what precedes it. `--log-file --` consumes the bare
-    token as the log *filename*, so it terminates nothing, and a following
-    `--model X` was still a flag that AGY resolved -- observed on AGY 1.1.7 as
-    `Model ID X not in local config, defaulting to CCPA` while the seat went on
-    advertising its configured model. `--agent`, `--conversation`, `--project`
-    and `--mode` all consume a bare token the same way.
-
-    Deciding which forwarded tokens are really flags therefore means modelling
-    AGY's parser, including every value-taking flag it may add later. This
-    launcher does not attempt that. It refuses any token *spelled* like a flag
-    it owns, wherever that token appears, and accepts the cost: a command line
-    AGY would have parsed harmlessly is sometimes rejected. That failure is
-    loud, immediate, and has a documented workaround; an admitted identity
-    override is silent and falsifies a verification report.
+    Deciding which forwarded tokens are really flags means modelling AGY's
+    parser, including every value-taking flag it may add later. This launcher
+    does not attempt that, and does not need to: it reads spelling only, and
+    anything it does not recognize is refused rather than guessed at. The cost
+    is that a command line AGY would have parsed harmlessly is sometimes
+    rejected -- loudly, immediately, with a documented workaround. An admitted
+    identity override is silent and falsifies a report.
     """
     for token in forwarded_args:
         name = _flag_name(token)
-        if name in EMITTED_CLI_FLAGS:
+        if not name:
+            continue
+        if name in _LAUNCHER_OWNED_FLAG_NAMES:
             raise LaunchError(
-                f"forwarded argument {token!r} restates {name}, which the launcher "
-                "sets from the seat config; AGY would honour the forwarded value "
-                "while the seat kept advertising the configured one"
+                f"forwarded argument {token!r} restates {_spell(name)}, which the "
+                "launcher sets from the seat config; AGY would honour the forwarded "
+                "value while the seat kept advertising the configured one"
+            )
+        if name not in FORWARDABLE_FLAG_NAMES:
+            raise LaunchError(
+                f"forwarded argument {token!r} is not a flag a seat may forward; "
+                "allowed: "
+                + ", ".join(_spell(allowed) for allowed in sorted(FORWARDABLE_FLAG_NAMES))
+                + ". To pass it as text, keep it inside another flag's value. If "
+                f"{_spell(name)} should be forwardable, add it to "
+                "FORWARDABLE_FLAG_NAMES deliberately rather than widening the check."
             )
 
 
@@ -267,7 +346,7 @@ def build_launch_spec(
         raise LaunchError(f"missing settings for seat: {seat}")
     if mode not in MODES:
         raise LaunchError(f"unsupported AGY mode: {mode}")
-    reject_forwarded_launcher_flags(forwarded_args)
+    reject_unforwardable_flags(forwarded_args)
 
     try:
         runtime = infer_runtime_env(profile=seat, mode=mode)
@@ -280,17 +359,21 @@ def build_launch_spec(
     # drops an ambient AGY_MODEL so a launched seat reads back the same string
     # that reached `--model` and can cite it verbatim in a verification report.
     env["AGY_MODEL"] = selected.model
-    # `--add-dir` puts the repository in the AGY workspace. It does not set the
-    # process working directory the way the old (nonexistent) `--cd` intended
-    # to, so `main` also chdirs to `repo_root` before exec.
+    # `--config` and `--cd` were emitted here but the installed CLI defines
+    # neither, so every seat launch died at argument parsing. The working root
+    # comes from the process cwd set just before exec instead; `--add-dir` was
+    # tried too and dropped, because it adds the repository to the workspace
+    # without moving the process and the chdir already covers that.
+    #
+    # The per-seat speed setting does have a CLI surface -- `--effort` -- so it
+    # is passed rather than recorded and discarded. A validated config field
+    # that reaches nothing is the same class of defect as the flags above.
     argv = (
         agy_executable,
         "--model",
         selected.model,
         "--effort",
         selected.effort,
-        "--add-dir",
-        str(repo_root),
         *forwarded_args,
     )
     return LaunchSpec(
@@ -391,8 +474,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
 
-        # AGY has no working-directory flag; the seat must simply start in the
-        # repository it was launched for.
+        # The CLI has no working-root flag, so the seat inherits this process's
+        # directory. Without the chdir a seat launched from anywhere else would
+        # silently operate on whatever repository the caller happened to be in.
         os.chdir(spec.repo_root)
         os.execvpe(spec.argv[0], list(spec.argv), spec.env)
     except (ConfigError, LaunchError) as exc:

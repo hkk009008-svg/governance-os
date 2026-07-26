@@ -31,9 +31,15 @@ docs/protocol/agents/director-operator.md
 docs/protocol/protocol-assembly-map.md
 
 # Skill definition files (contain placeholder examples for skill authors)
-# (.claude/skills/seat-director/*, .claude/skills/four-seat-protocol/SKILL.md were
-#  bound to Pipeline on 2026-07-10 and removed per the adoption workflow above)
+# (.claude/skills/seat-director/SKILL.md and .claude/skills/four-seat-protocol/SKILL.md
+#  were bound to Pipeline on 2026-07-10 and removed per the adoption workflow above)
+# r-brief-template.md was re-added on 2026-07-26 by user ruling: the Claude and
+# Codex copies are now one generic template rather than a bound copy plus a
+# transfer-bundle copy, so the Claude path carries the same placeholders the
+# .agents path always has. This deliberately reverses the 2026-07-10 binding for
+# that one file; the two are kept byte-identical.
 .claude/skills/create-regression-pin/SKILL.md
+.claude/skills/seat-director/r-brief-template.md
 # (.claude/agents/money-gate-reviewer.md was bound on 2026-07-11 per ADR-012)
 .agents/skills/seat-director/SKILL.md
 .agents/skills/seat-director/r-brief-template.md

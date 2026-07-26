@@ -14,9 +14,16 @@ env -u GIT_INDEX_FILE git log --oneline -5
 env -u GIT_INDEX_FILE git status --short
 ```
 
-Surface unread count and read mailbox bodies. Only a concrete live seat consumes
-its cursor; coordinator has no cursor. Durable events use the fixed mailbox
-writer `coordination/bin/send-event`.
+Surface unread count and read mailbox bodies. The mailbox is authoritative
+unless a live signed-bus event ref and matching seat cursor ref are both
+verified; transport ambiguity fails visibly rather than resolving to the
+convenient source. Only a concrete live seat consumes its cursor; coordinator
+has no cursor. Durable events use the fixed mailbox writer
+`coordination/bin/send-event`, never raw mailbox or cursor edits.
+
+Optional ChatGPT Pro consultation is parent-only and advisory: follow the
+`chatgpt-pro-consultation` skill; it grants no protocol or side-effect
+authority.
 
 Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
 Own the routed outcome and choose the method. Seats may reroute or exchange

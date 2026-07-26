@@ -22,21 +22,47 @@ exactly this for non-Claude agents).
 
 ---
 
-## 1. The headline: Antigravity holds no Layer-1 seat — and that is the design, not an omission
+## 1. The headline: Antigravity may hold Layer-1 seats in both modes — superseding the original Mode-1 exclusion
+
+**Superseded 2026-07-26, by user ruling.** This section previously read
+"Antigravity holds no Layer-1 seat — and that is the design, not an omission",
+excluding it from every Layer-1 path in Mode 1. That exclusion no longer holds.
+What it protected, and what accepting the change costs, is recorded below
+rather than deleted, because the original decision was security-motivated.
 
 The three-way protocol's correctness rests on **cross-provider independence**, and **both** of the
 two audit CRITICALs that motivated the redesign lived on **Antigravity's CLI write path** (spec §1). The
-ratified design therefore **removes Antigravity from every Layer-1 path** (D11: "no Antigravity CLI on
-any path"; "Antigravity CLI as an autonomous seat" is an explicit non-goal, §2):
+ratified design therefore removed Antigravity from every Layer-1 path (D11: "no Antigravity CLI on
+any path"; "Antigravity CLI as an autonomous seat" was an explicit non-goal, §2).
 
-- Antigravity is **not** `director`/`director2` (build), **not** `operator`/`operator2` (verify),
-  **not** `coordinator`/`coordinator2` (integrate), **not** the `overseer`, and **not** the
-  merge-gate.
-- The **overseer is a mechanical process**, not Antigravity. Strategic advisory apps are
-  human-relayed and hold no protocol authority.
+**What changed.** Antigravity now occupies Layer-1 seats in both modes:
 
-So "how does agy adopt the protocol?" has a precise answer: **by participating in one of two modes**. 
-Mode 1 is the **Multi-Model Three-Way Protocol**, where it plays non-seat roles (strategic reasoner or read-only observer) and honors the cross-provider boundary.
+- Antigravity **may** hold `director`/`director2`, `operator`/`operator2`, and
+  `coordinator`/`coordinator2`. It remains **not** the `overseer` and **not** the merge-gate.
+- The **overseer is a mechanical process**, not Antigravity.
+- Independence is enforced where it decides something, not by provider
+  exclusion: `compact_pair_loop.py` binds a verdict to a reviewer seat that is
+  not the author seat and, for `high-risk-control`, a different model *family*
+  as decided by `codex_protocol_model.models_are_independent`. `gemini` is
+  independent of `claude`, `gpt`, `composer`, and `grok`.
+
+**What this accepts.** The original exclusion was not about independence
+arithmetic; it was about the CLI write path that carried both audit CRITICALs.
+Seating Antigravity in Mode 1 puts that write path back on a Layer-1 route, so
+the protection is now the same fail-closed publication validation every other
+provider relies on, rather than exclusion. Anyone revisiting this should read
+spec §1 and D11 before widening further.
+
+**Evidence this was already happening.** Antigravity published a schema-valid
+`GO` as seat `operator` at `5ad43ed`, reviewing a Claude-authored range — a
+cross-provider act, therefore Mode 1. `scripts/agy_seat_launcher.py` launches
+all five seats, and `.agents/skills/antigravity-harness/SKILL.md` states that
+Antigravity natively occupies them. The documented exclusion and the shipped
+capability had diverged; this section now matches the code.
+
+So "how does agy adopt the protocol?" still has two modes, and seats are
+available in both.
+Mode 1 is the **Multi-Model Three-Way Protocol**, where it may hold a Layer-1 seat and honors the cross-provider independence rule.
 Mode 2 is the **Single-Model Autonomous Unit**, where Antigravity functions independently as a full 5-seat unit.
 
 > **Do not** replicate the external ChatGPT plan that cast Antigravity as a read-only "strategic hub"

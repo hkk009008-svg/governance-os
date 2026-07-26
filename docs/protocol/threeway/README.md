@@ -8,8 +8,9 @@ unified system on top of the cross-provider three-way protocol.
 | [`ONBOARDING.md`](ONBOARDING.md) | **Start here.** A copy-paste prompt to bring any Codex / Claude / Antigravity session into the system, the reading order, the non-negotiables, per-provider quick-start, and a self-conformance check. |
 | [`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md) | The shared rules all three providers follow — Layer 1 (the cross-provider protocol/topology) and Layer 2 (the portable operating doctrine), plus the per-provider capability-mapping table. |
 | [`CODEX-ADOPTION.md`](CODEX-ADOPTION.md) | Operating Codex against the protocol. Codex already mirrors Layer 2; this covers its Layer-1 seats (`director`, `operator2`, `coordinator2`) and the migration. |
-| [`ANTIGRAVITY-ADOPTION.md`](ANTIGRAVITY-ADOPTION.md) | Operating Antigravity ("agy"). It holds **no Layer-1 seat** by design; it participates as a human-relayed strategic reasoner / read-only observer and adopts Layer 2 for any work it does. |
+| [`ANTIGRAVITY-ADOPTION.md`](ANTIGRAVITY-ADOPTION.md) | Operating Antigravity ("agy"). It **may hold Layer-1 seats in both modes** as of 2026-07-26, superseding the original Mode-1 exclusion; §1 records what that exclusion protected and what widening it accepts. |
 | [`ARCHITECTURE-DIAGRAM.md`](ARCHITECTURE-DIAGRAM.md) | The canonical topology diagram (mermaid) — legend + the six load-bearing reads + what it corrects vs the draft diagrams. |
+| [`HEADLESS-REVIEW.md`](HEADLESS-REVIEW.md) | Dispatching a non-author Operator review from Codex, AGY, or Cursor without a human driving that app — verified invocations, the per-harness constraints that block them, and what each can and cannot publish. |
 
 **Truth sources (these win over the manuals on any factual disagreement):**
 - Current Codex adoption status: [`docs/protocol/threeway/CODEX-ADOPTION.md`](CODEX-ADOPTION.md)

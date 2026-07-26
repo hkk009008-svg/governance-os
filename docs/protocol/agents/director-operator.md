@@ -33,7 +33,7 @@ between directors or escalate to the user.
 boss of the other. When agents disagree, escalate to user (per
 Disagreement protocol below). When user direction is given, it
 overrides any agent's discretion (per "Instruction Priority"
-hierarchy: user > git > mailbox > STATE.md > default).
+hierarchy: user > git > mailbox > default).
 
 The labels below ("Strategic-seat-default," "Operational-seat-default,"
 "Cross-cutting (proposal cycle)") replace prior v1-v4 labels
@@ -203,10 +203,10 @@ remains supervisor via retroactive audit of
 sent, user signals via direct instruction (which by the above priority
 overrides the mailbox event).
 
-**Session-bootstrap awareness gate.** On session start, if `STATE.md`'s
-`unread mailbox` field shows N ≥ 1 events for your role, you MUST
-surface the count to the user in your first user-facing turn BEFORE
-processing events:
+**Session-bootstrap awareness gate.** On session start, compute the unread
+count live — `python scripts/status.py mailbox-unread <seat>` — and if it
+shows N ≥ 1 events for your role, you MUST surface the count to the user in
+your first user-facing turn BEFORE processing events:
 
 > "Mailbox has N unread event(s) for {role}; processing now per Rule #8."
 
@@ -217,16 +217,19 @@ preserved.
 
 **Authority precedence (full).** User direct instructions > git
 commits (durable record of what happened) > mailbox `sent/` events
-(filesystem-true claims about coordination) > STATE.md fields
-(hook-derived snapshot; informational against the above) > default
-behavior.
+(filesystem-true claims about coordination) > default behavior.
+
+There is no generated state cache in this precedence, because none is
+generated. Any locally derived snapshot is informational against every tier
+above it; recompute rather than trust one.
 
 Practical implications:
 
-- When STATE.md and `git rev-parse HEAD` disagree on HEAD SHA → git
-  wins. STATE.md is stale; re-verify.
-- When STATE.md `unread mailbox` count and `ls coordination/mailbox/sent/`
-  disagree → filesystem wins. STATE.md is stale; re-verify.
+- Any cached HEAD disagreeing with `git rev-parse HEAD` → git wins; the
+  cache is stale, re-verify.
+- Any cached unread count disagreeing with the mailbox on disk → the
+  filesystem wins; recompute with `python scripts/status.py mailbox-unread
+  <seat>`.
 - When a mailbox event claims a commit landed (e.g., "I dispatched
   Session 9 implementer") but `git log` shows no matching commit
   within ~5 minutes of the event's timestamp → git wins. Mailbox
@@ -339,7 +342,7 @@ cognitive-load distribution, not hierarchy.
   adjustments) go through the proposal cycle.
 - When agents disagree after 2 REPLY cycles, escalate to user.
 - User direction overrides agent discretion (per "Instruction
-  Priority" hierarchy: user > git > mailbox > STATE.md > default).
+  Priority" hierarchy: user > git > mailbox > default).
 - Both seats use the same commit-body etiquette + Rule #7 + Rule #5
   — these are TEAM disciplines.
 
@@ -1079,10 +1082,12 @@ review, thinking) read as "offline." Rule #19 replaces inference with a signal.
 
 1. **Each seat maintains `coordination/presence/<seat>.md`** (gitignored,
    per-clone; flat `key: value`: `seat`, `status` (active|wrapping|away),
-   `current_task`, `head_at_write`, `updated`). The hook bumps
-   `updated`/`head_at_write` every tool call (operator-shipped M2/M3); the
-   **agent owns `status` + `current_task`** and updates `current_task` at each
-   task boundary.
+   `current_task`, `head_at_write`, `updated`). The **seat owns every field**
+   and writes the file itself; nothing stamps it automatically, because
+   repository lifecycle hooks are absent by design. Refresh
+   `updated`/`head_at_write` as you work, and update `current_task` at each
+   task boundary. An unrefreshed file reads stale no matter how active the
+   seat is.
 2. **Liveness is read from presence freshness + `current_task`, NOT from commit
    recency.** "Offline" = presence `updated` stale > T (default 10 min). A seat
    mid-implementation with a fresh presence file is active, not idle.
@@ -1093,26 +1098,31 @@ review, thinking) read as "offline." Rule #19 replaces inference with a signal.
    conversation" reliance in Rule #2 §Signaling** (Rule #2's narration is
    retained for the user; the peer learns intent from `current_task` + mailbox).
 
-**`current_task`-rot guard.** The hook bumps freshness every tool call, so a
-file can read *fresh* while `current_task` is *semantically stale* ("drafting X"
+**`current_task`-rot guard.** Refreshing `updated` without revising the prose
+lets a file read *fresh* while `current_task` is *semantically stale* ("drafting X"
 long after you moved on) — a maintained-looking artifact that lies (cf. the
 GitNexus phantom, ADR-016). Mitigations: (a) agent updates `current_task` at
 task boundaries; (b) the Rule #8 bootstrap awareness gate surfaces "peer
 presence fresh but `current_task` unchanged since HEAD <X>" as a soft warning;
 (c) session-wrap checklist clears `current_task`.
 
-**Topology (D-a).** Rule #19's presence files + STATE.md + `coordination/`
-assume **one shared working tree**; the seats isolate *staging* via per-seat
-`GIT_INDEX_FILE` (NOT separate worktrees — those force separate branches and
-make gitignored presence peer-invisible). See `coordination/README.md`
-§"Per-seat launch (D-a)".
+**Topology.** The per-seat staging-isolation model described here is retired,
+along with the local state cache it assumed. No side binds a per-seat Git index; every
+worktree uses its native index (`ARCHITECTURE.md` section 5). The per-clone
+hook that once fast-forwarded a seat index on peer-commit staleness is gone
+with the rest of the repository lifecycle hooks, and so is the manual
+`git read-tree` seeding it depended on.
 
-Per-seat index freshness is hook-maintained (v5.8): `update-state.sh`
-fast-forwards a seat's `GIT_INDEX_FILE` index to HEAD on peer-commit
-staleness (and only then — staged work is never touched; see the decision
-table in the hook). Manual `git read-tree HEAD` is retired except for the
-mixed case (staged work + peer commit), where `git read-tree -m` remains a
-manual call.
+Never bind a per-seat index by hand: setting `GIT_INDEX_FILE` in a shell
+silently rebinds every later Git command in that session including commits, and
+follows `cd` into unrelated repositories. Prefix ordinary Git and pytest with
+`env -u GIT_INDEX_FILE`, and work in a native worktree you are willing to
+commit from — each one already has the staging isolation the retired mechanism
+was reaching for. The earlier objection that separate worktrees make gitignored
+presence peer-invisible assumed hook-stamped presence; seats now write their own
+presence files. When seats do share one tree, commit scope stays load-bearing:
+always commit with an explicit pathspec. See `coordination/README.md`
+§"Claude-only seat launch".
 
 **Beneficiary (per R11): `both`** — symmetric. Both seats owe presence
 maintenance; both gain accurate peer-liveness. No asymmetric-veto path;
@@ -1123,7 +1133,7 @@ the chicken-and-egg precedent — v2 `3e57ddf` … v5.6 `4eecb72`). Empirical ba
 user-principal-reported 2026-05-30 "both seats keep seeing each other
 offline/unaware" failure; operator-seat corroborated RC1–RC5 firing in one
 session (inferred director offline while director fixed Bug #4; Rule-#2
-narration inert; STATE.md `director=4`-vs-1; cursor lag; ref-race ×2). v5.7
+narration inert; state-cache `director=4`-vs-1; cursor lag; ref-race ×2). v5.7
 proposal `e353479` → operator REPLY `ab9925d` (CONSENT) → user Q4=D-a
 adjudication → greenlight `f9ae567`.
 
@@ -1132,7 +1142,7 @@ adjudication → greenlight `f9ae567`.
 **Rule #20: Shared-state-accuracy.**
 *(Subtitle: the awareness gate computes truth; it does not trust a stale snapshot.)*
 
-STATE.md is gitignored/local, refreshes only on a HEAD move, and (pre-v5.7) its
+The retired local state cache refreshed only on a HEAD move, and its
 `unread mailbox` count used `find -newer <cursor-file-mtime>` — no `to:` filter
 (counted **both directions**, including the role's own sends) and mtime-vs-
 content (decoupled from the cursor's ISO timestamp). This produced `director=4`
@@ -1140,10 +1150,9 @@ when the actionable count was 1.
 
 1. **The Rule #8 awareness gate recomputes unread LIVE** — count events
    `*-to-<me>-*` whose filename-timestamp is strictly newer than the cursor's
-   **content** timestamp — rather than trusting STATE.md's possibly-frozen
-   field. STATE.md is a convenience cache; the gate verifies. (The M2 hook fix,
-   operator-shipped, makes STATE.md's own field correct; the gate verifies
-   regardless.) **Advisory (2026-06-09, operator-drafted, director-consented):**
+   **content** timestamp — rather than trusting a cached field. No such cache is
+   generated any more, so the live recompute is the only path; there is nothing
+   left to fall back to. **Advisory (2026-06-09, operator-drafted, director-consented):**
    the live recompute SHOULD use `scripts/status.py mailbox-unread <seat>`
    (`3fa29c9`) over a hand-rolled `ls | awk`. The hand-rolled form had two
    proven sharp edges this session — it counted both directions (incl. the
@@ -1151,9 +1160,9 @@ when the actionable count was 1.
    timestamp. The tool encapsulates the correct `*-to-<me>-*` + content-timestamp
    comparison this rule specifies; SHOULD not MUST (a correct hand-rolled
    equivalent remains valid).
-2. **Until M2 is live, reconcile STATE.md against the filesystem** before acting
-   on its count (Rule #8 §F "filesystem wins" as a positive step, not a
-   fallback).
+2. **Never act on a cached count.** There is no generated cache left to
+   reconcile; read the mailbox on disk (Rule #8 §F "filesystem wins" as a
+   positive step, not a fallback).
 3. **Cursors support per-event acknowledgment** — partial/deferred processing
    must be representable, so a lagged single-timestamp cursor cannot masquerade
    as "peer never saw it." Cursor advance is part of *processing* an event,
@@ -1163,7 +1172,7 @@ when the actionable count was 1.
 `ab9925d`).
 
 **Codified SHA:** `cec6d72` (filled next session-close).
-Empirical basis: same session as Rule #19 — RC3 (STATE.md broken count, observed
+Empirical basis: same session as Rule #19 — RC3 (state-cache broken count, observed
 `director=4`-vs-1) + RC4 (cursor lag `T10:23:57Z` vs the handoff's `T11:52:06Z`).
 The M2 fix validated on controlled data (old over-counts 3, new correct 1;
 `docs/DRAFT-v5.7-phase1-implementation-2026-05-30.md` §1).

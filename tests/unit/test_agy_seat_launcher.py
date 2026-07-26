@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -269,11 +270,14 @@ def test_each_seat_uses_only_its_own_model_and_effort(tmp_path: Path) -> None:
         argv = list(spec.argv)
         expected_effort = "low" if seat == "coordinator" else "high"
         assert argv[argv.index("--model") + 1] == f"model-{seat}"
+        # AGY has no service tier, but it does have `--effort`, so the per-seat
+        # speed setting reaches the CLI rather than being recorded and dropped.
         assert argv[argv.index("--effort") + 1] == expected_effort
+        assert not any("service_tier" in token for token in spec.argv)
 
 
 def test_forwarded_agy_arguments_remain_literal(tmp_path: Path) -> None:
-    forwarded = ["--resume", "--", "weird arg with spaces", "$(touch pwned)"]
+    forwarded = ["--sandbox", "--", "weird arg with spaces", "$(touch pwned)"]
 
     spec = launcher.build_launch_spec(
         repo_root=tmp_path,
@@ -316,7 +320,7 @@ def test_emitted_flags_are_exactly_the_declared_cli_flag_set(tmp_path: Path) -> 
         ["-model", "definitely-not-an-agy-model"],
         ["-model=definitely-not-an-agy-model"],
         ["--effort", "low"],
-        ["--add-dir", "/somewhere/else"],
+        ["-effort=low"],
     ),
 )
 def test_forwarded_arguments_cannot_restate_a_launcher_owned_flag(
@@ -340,9 +344,11 @@ def test_forwarded_arguments_cannot_restate_a_launcher_owned_flag(
         )
 
 
-def test_forwarding_still_carries_prompts_and_other_agy_flags(tmp_path: Path) -> None:
-    """The guard is aimed at identity, not at forwarding generally."""
-    forwarded = ["--dangerously-skip-permissions", "-p", "continue as operator"]
+def test_forwarding_still_carries_prompts_and_allowlisted_agy_flags(
+    tmp_path: Path,
+) -> None:
+    """The documented use case has to keep working."""
+    forwarded = ["--sandbox", "-p", "continue as operator"]
 
     spec = launcher.build_launch_spec(
         repo_root=tmp_path,
@@ -354,6 +360,52 @@ def test_forwarding_still_carries_prompts_and_other_agy_flags(tmp_path: Path) ->
     )
 
     assert list(spec.argv)[-len(forwarded) :] == forwarded
+
+
+@pytest.mark.parametrize(
+    "refused",
+    (
+        # Behaviour and session identity the seat's own AGY_* runtime declares.
+        "--agent",
+        "--mode",
+        "--project",
+        # Workspace and filesystem effects beyond the launched repository.
+        "--add-dir",
+        "--new-project",
+        "--log-file",
+        # An external-effect amplifier needing its own authorization.
+        "--dangerously-skip-permissions",
+        # A flag AGY does not define at all, and one it has not shipped yet.
+        "--resume",
+        "-m",
+    ),
+)
+def test_flags_outside_the_allowlist_are_refused(tmp_path: Path, refused: str) -> None:
+    """The allowlist is the point: unrecognized means refused, not forwarded.
+
+    A denylist could only name flags that already exist, so a future short alias
+    for `--model` such as `-m` would have been admitted silently. `-m` is in this
+    list precisely because AGY does not define it today.
+    """
+    with pytest.raises(launcher.LaunchError, match="not a flag a seat may forward"):
+        launcher.build_launch_spec(
+            repo_root=tmp_path,
+            seat="operator",
+            settings=_settings(tmp_path),
+            inherited_env={"PATH": "/bin"},
+            agy_executable="/opt/agy",
+            forwarded_args=[refused, "x"],
+        )
+
+
+def test_every_forwardable_flag_is_one_the_cli_defines() -> None:
+    """The allowlist may not invent flags, and may not claim launcher-owned ones.
+
+    Short aliases are spelled with one dash, which is how AGY documents them.
+    """
+    for name in launcher.FORWARDABLE_FLAG_NAMES:
+        assert launcher._spell(name) in launcher.AGY_CLI_FLAGS or len(name) == 1, name
+        assert name not in launcher._LAUNCHER_OWNED_FLAG_NAMES, name
 
 
 def test_live_listing_is_available_absent_or_explicitly_waived() -> None:
@@ -376,7 +428,11 @@ def test_live_listing_is_available_absent_or_explicitly_waived() -> None:
 
 
 @pytest.mark.parametrize(
-    "value_taking", ("--log-file", "--agent", "--conversation", "--project", "--mode")
+    "value_taking",
+    # Allowlisted flags that take a value, so they can still eat a bare `--`.
+    # The non-forwardable ones (`--log-file`, `--agent`, `--mode`, `--project`)
+    # are refused a step earlier by `test_flags_outside_the_allowlist_are_refused`.
+    ("--print-timeout", "--conversation", "-p", "--prompt-interactive"),
 )
 def test_a_value_consumed_bare_token_cannot_smuggle_a_model_override(
     tmp_path: Path, value_taking: str
@@ -387,11 +443,11 @@ def test_a_value_consumed_bare_token_cannot_smuggle_a_model_override(
     nothing after AGY's terminator can be a flag. Real AGY 1.1.7 disproved it:
     `--log-file --` takes the bare token as the log filename, so `--model X`
     after it stayed a flag and AGY resolved it (`defaulting to CCPA`) while
-    `AGY_MODEL` still advertised the configured model. Each flag here was
-    observed consuming the bare token that way.
+    `AGY_MODEL` still advertised the configured model.
 
-    The guard reads spelling only and must scan the whole list, so the `--`
-    buys the override nothing.
+    That shape survives the allowlist, because a flag a seat *may* forward can
+    consume the bare token just as well. The guard reads spelling only and scans
+    the whole list, so the `--` buys the override nothing either way.
     """
     forwarded = [value_taking, "--", "--model", "definitely-not-an-agy-model"]
 
@@ -749,6 +805,38 @@ def test_dry_run_prints_the_model_string_a_report_must_cite(
     assert argv[argv.index("--model") + 1] == launcher.REFERENCE_MODEL
 
 
+def test_agy_guides_never_teach_manual_index_binding(repo_root: Path) -> None:
+    """The doc-side counterpart to the launcher's no-index assertion.
+
+    `test_launch_spec_binds_no_index_and_scrubs_inherited_git_authority` proves
+    the launcher exports no `GIT_INDEX_FILE`, but a seat reads its guides too. A
+    stale guide bullet survived the `09d04fb` retirement telling AGY seats they
+    each own `.git/index-agy-<seat>`; a seat obeying it hand-rolls
+    `export GIT_INDEX_FILE=...`, which silently rebinds every later Git command
+    in the session including commits, and follows `cd` into unrelated
+    repositories.
+
+    `.agy/agents/*.toml` is covered by `test_agy_agent_surfaces.py` and the
+    Claude guides by `test_claude_seat_launcher.py`. These two trees were the
+    uncovered surface, which is why the drift landed here.
+    """
+    guides: list[Path] = []
+    for root in (repo_root / ".agents/skills", repo_root / "docs/protocol/agy"):
+        # rglob and a per-root nonempty check, not a combined one: a plain glob
+        # lets a nested stale guide through, and a combined check stays green
+        # when one root disappears because the other still supplies files.
+        found = sorted(root.rglob("*.md"))
+        assert found, f"no guides under {root.relative_to(repo_root)}"
+        guides.extend(found)
+
+    for guide in guides:
+        text = guide.read_text(encoding="utf-8")
+        relative = guide.relative_to(repo_root)
+        assert "export GIT_INDEX_FILE=" not in text, relative
+        for retired in ("index-agy-", "index-claude-", "index-codex-", "index-cursor-"):
+            assert retired not in text, f"{relative}: {retired}"
+
+
 def test_continuation_documents_read_only_bridge_and_stdin_writer(
     repo_root: Path,
 ) -> None:
@@ -768,3 +856,48 @@ def test_continuation_documents_read_only_bridge_and_stdin_writer(
     )
     assert "<body-file>" not in text
     assert "scripts/codex_protocol_model.py" in text
+
+
+def test_launcher_emits_only_flags_the_agy_cli_defines(tmp_path: Path) -> None:
+    """The launcher and the binary are separate artifacts that can disagree.
+
+    `--config` and `--cd` were emitted here for every seat while the installed
+    CLI defined neither, so `coordination/bin/agy-seat <seat>` died at argument
+    parsing before any model call. Nothing in the repository could observe that:
+    the launcher was internally consistent and fully tested against itself.
+    """
+    config_path = tmp_path / "seats.toml"
+    _write_config(config_path)
+    settings = launcher.load_seat_settings(config_path)
+
+    for seat in SEATS:
+        spec = launcher.build_launch_spec(
+            repo_root=tmp_path,
+            seat=seat,
+            settings=settings,
+            inherited_env={"PATH": "/bin"},
+            agy_executable="/opt/agy",
+            forwarded_args=[],
+        )
+        emitted = {token for token in spec.argv if token.startswith("--")}
+        assert emitted, seat
+        assert emitted <= launcher.AGY_CLI_FLAGS, (seat, emitted - launcher.AGY_CLI_FLAGS)
+
+
+def test_declared_agy_flag_set_matches_the_installed_cli() -> None:
+    """Pin the declared set against the binary that will actually run.
+
+    Without this the flag list is just another copy that can rot, which is the
+    exact failure it exists to prevent. Parsing `--help` costs no model call.
+    """
+    executable = shutil.which("agy") or shutil.which("antigravity")
+    if executable is None:
+        pytest.skip("agy CLI is not installed on this machine")
+
+    helped = subprocess.run(
+        [executable, "--help"], capture_output=True, text=True, check=False
+    )
+    text = helped.stdout + helped.stderr
+    defined = set(re.findall(r"^\s+(--[a-z][a-z0-9-]*)", text, re.MULTILINE))
+    assert defined, "could not parse any flags from agy --help"
+    assert launcher.AGY_CLI_FLAGS <= defined, launcher.AGY_CLI_FLAGS - defined

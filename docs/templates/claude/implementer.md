@@ -71,7 +71,7 @@ If <X happens>, report BLOCKED with what you tried.
 - Files changed (paths only)
 - Verification command output
 - Pin selectors run — the exact pytest node-ids / `xfail-pin` column values you executed (so an independent reviewer can re-run them with `--runxfail` + a one-fact mutation non-vacuity check)
-- Commit SHA — `git commit` stdout's SHA is authoritative as of cycle-8 B-003 Option E (the post-commit hook no longer amends; STATE.md is gitignored and regenerated locally). Use `git log --oneline -3` to double-check if desired, but the SHA from commit stdout matches HEAD.
+- Commit SHA — `git commit` stdout's SHA is authoritative. No repository lifecycle hook runs, so nothing rewrites a commit after you make it. Use `git log --oneline -3` to double-check if desired, but the SHA from commit stdout matches HEAD.
 - Self-review findings
 ```
 
@@ -116,14 +116,14 @@ template, do NOT trim these:
   cost ~234k tokens (cycle-6 dispatch) + the F1 fix commit's
   developer-time. Front-load is cheap.
 - **Commit SHA capture** — historical context: cycle-5 dispatch surfaced
-  that implementer-reported SHAs were sometimes 1 commit stale because
-  the project's `.claude/hooks/update-state.sh` post-commit hook AMENDED
-  STATE.md into the just-made commit, changing its SHA. The Item 5
-  Report-Format guidance directed implementers to capture from
-  `git log --oneline -3` after the hook settled. **Resolved at cycle-8
-  B-003 Option E** — hook no longer amends; STATE.md is gitignored;
-  `git commit` stdout's SHA is now authoritative again. Guidance kept
-  for the audit trail but the stale-by-one failure mode no longer exists.
+  that implementer-reported SHAs were sometimes 1 commit stale because a
+  post-commit hook AMENDED a generated state file into the just-made
+  commit, changing its SHA. The Item 5 Report-Format guidance directed
+  implementers to capture from `git log --oneline -3` after the hook
+  settled. **Resolved** — that hook and the file it generated are both
+  gone, and no repository lifecycle hook runs at all, so `git commit`
+  stdout's SHA is authoritative. Guidance kept for the audit trail but
+  the stale-by-one failure mode no longer exists.
 - **Pattern-doc uniformity pass** — when a canonical migration/pattern doc
   accumulates enough sites to drift, the implementer must not only apply
   the current site change; it must also carry the documented uniformity

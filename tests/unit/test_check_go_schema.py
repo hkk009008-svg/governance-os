@@ -482,3 +482,157 @@ def test_scan_rejects_fifo_without_blocking(tmp_path: Path) -> None:
 
     with pytest.raises(OSError):
         schema.scan_repository_reports(tmp_path)
+
+
+# An absolute path on the machine that authored the event. It must never exist
+# on the machine running these tests — that is the whole point of the case.
+AUTHORING_MACHINE_PATH = "/nonexistent-authoring-machine/pipeline"
+
+
+def _pair_naming_an_unavailable_repository(
+    tmp_path: Path, *, reachable: bool
+) -> tuple[Path, schema.RawReport]:
+    """Build a pair whose Reviewed repository path does not exist here.
+
+    This is the shape every event authored on a developer machine has once it
+    reaches CI: the reviewed range is in *this* repository, but the recorded
+    path points at a checkout that only existed where the review ran. With
+    ``reachable`` false the recorded range is absent from this repository too,
+    which must still fail.
+    """
+    root = tmp_path / "pipeline"
+    root.mkdir()
+    _git(root, "init", "-q")
+    _git(root, "config", "user.name", "Portability Test")
+    _git(root, "config", "user.email", "portability@example.invalid")
+    (root / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(root, "add", "feature.py")
+    _git(root, "commit", "-q", "-m", "chore: base")
+    base = _git(root, "rev-parse", "HEAD")
+    (root / "feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _git(root, "add", "feature.py")
+    _git(root, "commit", "-q", "-m", "feat: reviewed change")
+    head = _git(root, "rev-parse", "HEAD")
+    if not reachable:
+        base, head = "0" * 40, "f" * 40
+
+    request_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-25T10-00-00Z-director-to-operator-verify-request.md"
+    )
+    request = root / request_path
+    request.parent.mkdir(parents=True)
+    request.write_text(
+        f"""\
+# Director -> Operator: portability fixture
+
+**When:** 2026-07-25T10:00:00Z · **From:** director (online)
+
+Event type: verify-request
+Reviewed repository: {AUTHORING_MACHINE_PATH}
+Reviewed head: {head}
+Reviewed base: {base}
+Author seat: director
+Author model: gpt-5.6-sol
+Assigned operator: operator
+
+## Outcome
+
+Verify the exact range recorded against an absent authoring checkout.
+
+## Finding Refs
+
+Cursor at send: 0
+""",
+        encoding="utf-8",
+    )
+    _git(root, "add", request_path)
+    _git(root, "commit", "-q", "-m", "coord: request review")
+    trigger = _git(root, "rev-parse", "HEAD")
+
+    report_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-25T10-01-00Z-operator-to-director-verification-report.md"
+    )
+    report = root / report_path
+    report.write_text(
+        f"""\
+# Operator -> Director: portability fixture verdict
+
+**When:** 2026-07-25T10:01:00Z · **From:** operator (online)
+
+Event type: verification-report
+VERDICT: GO
+Verification request: {request_path}@{trigger}
+Reviewed repository: {AUTHORING_MACHINE_PATH}
+Reviewed head: {head}
+Reviewed base: {base}
+Reviewer seat: operator
+Reviewer model: gpt-5.6-terra
+
+## Finding Refs
+
+## Finding Dispositions
+
+## Evidence
+
+$ synthetic exact-range review
+→ exact range satisfies the requested outcome
+
+## Findings
+
+None.
+
+Cursor at send: 0
+""",
+        encoding="utf-8",
+    )
+    return root, schema.RawReport(report_path, report.read_bytes())
+
+
+def test_authoring_machine_path_is_absent_so_the_fixtures_are_not_vacuous() -> None:
+    # If this path ever exists, both tests below stop exercising the absent
+    # -checkout branch and start passing for the ordinary reason instead.
+    assert not Path(AUTHORING_MACHINE_PATH).exists()
+
+
+def test_pair_naming_an_absent_authoring_checkout_still_validates(
+    tmp_path: Path,
+) -> None:
+    root, report = _pair_naming_an_unavailable_repository(tmp_path, reachable=True)
+
+    assert schema.repository_report_violations(root, [report], _manifest(), None) == []
+
+
+def test_absent_authoring_checkout_does_not_skip_range_validation(
+    tmp_path: Path,
+) -> None:
+    root, report = _pair_naming_an_unavailable_repository(tmp_path, reachable=False)
+
+    violations = schema.repository_report_violations(root, [report], _manifest(), None)
+    assert [item for item in violations if "request binding invalid" in item], violations
+
+
+def test_retired_worktree_shell_absent_here_is_accepted(tmp_path: Path) -> None:
+    """The CI case: the inert shell exists only where the target was retired.
+
+    `git worktree remove` leaves the shell behind on one machine. A runner or a
+    fresh clone never had it, and refusing the binding there made this branch
+    pass only on the machine that did the retiring.
+    """
+    root, report, retired, target = _retired_pair(tmp_path)
+    retired["retired_worktree_shells"] = [target.as_posix()]
+    assert not target.exists()
+
+    assert schema.repository_report_violations(
+        root, [report], _manifest(), retired
+    ) == []
+
+
+def test_absent_shell_still_fails_when_the_target_reappears(tmp_path: Path) -> None:
+    root, report, retired, target = _retired_pair(tmp_path)
+    retired["retired_worktree_shells"] = [target.as_posix()]
+    target.mkdir()
+    _git(target, "init", "-q")
+
+    assert schema.repository_report_violations(root, [report], _manifest(), retired)
