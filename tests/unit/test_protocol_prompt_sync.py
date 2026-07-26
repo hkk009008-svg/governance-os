@@ -249,10 +249,11 @@ def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[P
         return path.relative_to(ROOT).as_posix()
 
     def descend(branch: Path) -> None:
-        try:
-            children = sorted(branch.iterdir())
-        except OSError:
-            return
+        # A directory that cannot be listed is deliberately not caught. Swallowing
+        # the error would drop its whole subtree with no signal, which is the
+        # silent-narrowing failure this module exists to prevent; raising says
+        # plainly that the sweep could not cover something.
+        children = sorted(branch.iterdir())
         for child in children:
             relative = relative_of(child)
             if child.is_dir():
@@ -873,6 +874,106 @@ def test_symlinked_file_is_swept_and_symlinked_directory_is_not_followed() -> No
     assert link_relative in swept
     assert f"{directory_relative}/inside.md" not in swept
     assert not any(path.startswith(f"{directory_relative}/") for path in swept)
+
+
+def test_only_regular_files_are_swept() -> None:
+    """A matching suffix is not enough — the entry has to be a regular file.
+
+    A FIFO or a device node named `x.md` under an active root matches on
+    suffix, and the guards open every path this returns. Reading a FIFO with no
+    writer blocks forever, so admitting one would hang the sweep rather than
+    fail it, and a device node would return bytes that are not the file's.
+    Neither is an instruction surface.
+
+    The regular file planted alongside them is the control: without it this
+    test would also pass on a sweep that returned nothing at all.
+    """
+    base = ROOT / ".claude/agents"
+    fifo = base / f"{PROBE_NAME}-fifo.md"
+    device = base / f"{PROBE_NAME}-device.md"
+    regular = base / f"{PROBE_NAME}-regular.md"
+    try:
+        os.mkfifo(fifo)
+        device.symlink_to(Path("/dev/null"))
+        regular.write_text("ordinary\n", encoding="utf-8")
+
+        swept = {
+            path.relative_to(ROOT).as_posix()
+            for path in _sweep_active_files(
+                ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"}
+            )
+        }
+        relatives = {
+            name: path.relative_to(ROOT).as_posix()
+            for name, path in (("fifo", fifo), ("device", device), ("regular", regular))
+        }
+    finally:
+        fifo.unlink(missing_ok=True)
+        device.unlink(missing_ok=True)
+        regular.unlink(missing_ok=True)
+
+    assert relatives["regular"] in swept
+    assert relatives["fifo"] not in swept
+    assert relatives["device"] not in swept
+
+
+def test_a_nested_git_directory_is_never_swept() -> None:
+    """`.git` is repository plumbing, not instruction surface.
+
+    A nested checkout or submodule under an active root brings its own `.git`,
+    whose contents are neither authored nor read as protocol text. Nothing in
+    the ignore listing excludes it — git does not report its own directory as
+    ignored — so the skip is by name and needs its own test.
+    """
+    repository = ROOT / ".claude/agents" / f"{PROBE_NAME}-nested"
+    plumbing = repository / ".git"
+    try:
+        plumbing.mkdir(parents=True)
+        (plumbing / "config.toml").write_text("x\n", encoding="utf-8")
+        (repository / "kept.md").write_text("ordinary\n", encoding="utf-8")
+
+        swept = {
+            path.relative_to(ROOT).as_posix()
+            for path in _sweep_active_files(
+                ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"}
+            )
+        }
+        kept = (repository / "kept.md").relative_to(ROOT).as_posix()
+        buried = (plumbing / "config.toml").relative_to(ROOT).as_posix()
+    finally:
+        shutil.rmtree(repository, ignore_errors=True)
+
+    # The control: the tree itself is walked, so the skip below is specific.
+    assert kept in swept
+    assert buried not in swept
+
+
+def test_an_unlistable_directory_fails_loudly() -> None:
+    """A directory the sweep cannot list must raise, not disappear.
+
+    Catching the error would drop that whole subtree with no signal — the same
+    silent narrowing that a hardcoded prune list produced, arriving through an
+    exception handler instead. Failing loudly says plainly that the sweep could
+    not cover something, which is the one direction this module never regrets.
+    """
+    blocked = ROOT / ".claude/agents" / f"{PROBE_NAME}-blocked"
+    try:
+        blocked.mkdir(parents=True)
+        (blocked / "hidden.md").write_text("x\n", encoding="utf-8")
+        blocked.chmod(0o000)
+        try:
+            list(blocked.iterdir())
+        except PermissionError:
+            pass
+        else:  # pragma: no cover - depends on filesystem and privilege
+            pytest.skip("this filesystem lets the owner list a 0o000 directory")
+
+        with pytest.raises(OSError):
+            _sweep_active_files(ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"})
+    finally:
+        with suppress(OSError):
+            blocked.chmod(0o755)
+        shutil.rmtree(blocked, ignore_errors=True)
 
 
 def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
