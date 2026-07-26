@@ -49,8 +49,24 @@ def _capability_rows(results) -> list:
     return [result for result in results if not result.detail.startswith("binary ")]
 
 
+# Every capability row a fully granted `check_agy` must report, named rather
+# than counted. A non-empty check passes on one row, so an early return after
+# the first passing grant would leave the rest unreported and still look
+# covered: with only `command(git diff)` granted, the missing pytest, send-event
+# and commit grants were never named. The tuple is what notices that.
+AGY_CAPABILITY_DETAILS = ("read_file granted", "review commands granted")
+
+
+def _grant_everything(tmp_path: Path) -> Path:
+    return _settings(
+        tmp_path,
+        ["read_file", *(f"command({command})" for command in preflight.REVIEW_COMMANDS)],
+    )
+
+
+@pytest.mark.parametrize("installed", ("agy", "antigravity"))
 def test_agy_with_every_review_grant_is_ready(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, installed: str
 ) -> None:
     """Full readiness, with the binary's presence supplied rather than borrowed.
 
@@ -58,22 +74,26 @@ def test_agy_with_every_review_grant_is_ready(
     `check_agy` also reports whether the CLI is on PATH, so the assertion only
     held on a host that happened to have AGY installed. Committed CI installs
     `requirements-dev.txt` and no AGY, so it failed there while passing for
-    whoever wrote it. `shutil.which` is stubbed rather than `_binary`, so the
-    real lookup still runs, including its fall back to the `antigravity` name.
+    whoever wrote it.
+
+    `shutil.which` is stubbed rather than `_binary`, so the real lookup runs.
+    Both accepted names are driven, because a stub answering the first one never
+    reaches the second: `_binary` falls back from `agy` to `antigravity`, and a
+    regression dropping that fallback is invisible to a host where the first
+    name resolves.
     """
     monkeypatch.setattr(
         preflight.shutil,
         "which",
-        lambda name: f"/probe/bin/{name}" if name in ("agy", "antigravity") else None,
-    )
-    settings = _settings(
-        tmp_path,
-        ["read_file", *(f"command({command})" for command in preflight.REVIEW_COMMANDS)],
+        lambda name: f"/probe/bin/{name}" if name == installed else None,
     )
 
-    results = preflight.check_agy(settings)
+    results = preflight.check_agy(_grant_everything(tmp_path))
 
     assert _failures(results) == []
+    assert [result.detail for result in _binary_rows(results)] == [
+        f"binary /probe/bin/{installed}"
+    ]
 
 
 def test_agy_capability_rows_run_when_the_binary_is_absent(
@@ -87,27 +107,56 @@ def test_agy_capability_rows_run_when_the_binary_is_absent(
     capability rows reading PASS is precisely what would be mistaken for
     readiness — the reason the early return was removed in the first place.
 
-    Both halves are asserted, and the capability rows are required to be present
-    as well as passing. Asserting only that the binary row is the sole failure
-    would hold just as well if `check_agy` returned early and ran no capability
-    check at all, which is the regression this is here to catch.
+    Every expected capability row is named, not merely counted as non-empty. An
+    early return after the first passing grant satisfied a non-empty check while
+    leaving the remaining grants unreported, which is the same defect this test
+    exists to catch arriving one row later.
     """
     monkeypatch.setattr(preflight.shutil, "which", lambda _name: None)
-    settings = _settings(
-        tmp_path,
-        ["read_file", *(f"command({command})" for command in preflight.REVIEW_COMMANDS)],
-    )
 
-    results = preflight.check_agy(settings)
+    results = preflight.check_agy(_grant_everything(tmp_path))
 
     assert [result.ok for result in _binary_rows(results)] == [False]
     capability = _capability_rows(results)
-    assert capability, "no capability row ran, so this proves nothing about them"
+    assert tuple(result.detail for result in capability) == AGY_CAPABILITY_DETAILS
     assert [result.ok for result in capability] == [True] * len(capability)
     # Exactly the binary row fails, so every capability check ran and passed.
     assert _failures(results) == ["binary NOT FOUND on PATH"]
-    # What `main` aggregates on: one failing row is NOT READY and exit 1.
-    assert not all(result.ok for result in results)
+
+
+def test_main_is_not_ready_when_only_the_binary_row_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Readiness is `main`'s to decide, so `main` is what gets asked.
+
+    Recomputing `all(result.ok ...)` inside a test asserts nothing about the
+    program: it restates rows the test already inspected. Measured against a
+    `main` that treated a failed AGY binary row as non-fatal, that restatement
+    stayed green while `main` printed READY and exited 0 — the exact shape this
+    is meant to stop, since a capability-rich report beside a missing binary is
+    what reads as readiness.
+
+    `check_agy` is replaced rather than driven, because `main` calls it with no
+    argument and so with the real user settings path, which would put this test
+    back on the host. What is under test here is the aggregation, not the rows.
+    """
+    rows = [
+        preflight.Result("agy", False, "binary NOT FOUND on PATH", "install the AGY CLI"),
+        *(preflight.Result("agy", True, detail) for detail in AGY_CAPABILITY_DETAILS),
+    ]
+    monkeypatch.setattr(preflight, "check_agy", lambda *_a, **_k: rows)
+
+    code = preflight.main(["agy"])
+
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "NOT READY" in printed
+    assert "READY\n" not in printed
+    # The capability rows still have to be shown; a not-ready verdict that hid
+    # what was satisfied would send the operator hunting for the wrong thing.
+    for detail in AGY_CAPABILITY_DETAILS:
+        assert f"PASS  agy     {detail}" in printed
+    assert "FAIL  agy     binary NOT FOUND on PATH" in printed
 
 
 def test_agy_missing_read_file_is_reported_separately(tmp_path: Path) -> None:
