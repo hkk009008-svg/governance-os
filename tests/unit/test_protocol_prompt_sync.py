@@ -149,8 +149,22 @@ def _git_ignored_entries() -> tuple[frozenset[str], frozenset[str]]:
     return directories, files
 
 
+NO_PATHSPEC_MATCH = 1
+# Pathspec magic is introduced by a leading colon and by nothing else — the
+# long form `:(top)`, and the short forms `:!`, `:^`, `:/`. A candidate
+# carrying one would be answered as a pattern rooted somewhere else rather than
+# as the directory literally bearing that name, so a forged `:(top)foo` could
+# win a confirmation about a path git never examined. `--` ends option parsing
+# and leaves magic alive. `--literal-pathspecs` disables it, but `git
+# check-ignore` rejects that flag outright, so the flag cannot be the defence
+# on both calls and refusing the colon is. Since every magic form starts here,
+# that refusal is complete, and the flag would be unreachable belt-and-braces
+# no test could keep honest.
+PATHSPEC_MAGIC_PREFIX = ":"
+
+
 def _git_exit_code(*arguments: str) -> int:
-    """Exit status of one git call; non-zero when git cannot be run at all."""
+    """Exit status of one git call; -1 when git cannot be run at all."""
     environment = {
         name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
     }
@@ -166,81 +180,96 @@ def _git_exit_code(*arguments: str) -> int:
 
 
 def _git_confirms_prunable(relative: str) -> bool:
-    """Whether git, asked directly about this path, sanctions skipping it.
+    """Whether git, asked directly about this exact path, sanctions skipping it.
 
-    Decided on exit codes, never on parsed output. The candidate arrived in a
-    stream that corruption can make name a directory git never reported; an
-    exit code carries no path to forge, so a candidate surviving this is one
-    git named twice, the second time in answer to a question about that exact
-    path. Both questions must agree: the tree is ignored, and no tracked file
-    matches it.
+    Decided on exit codes, never on parsed output, because the forgery this
+    defends against is a parse: an exit code carries no path to forge. Both
+    questions must agree — the tree is ignored, and no tracked file matches it.
 
-    Asked during the walk so the answer is as fresh as it can be made. It
-    cannot be made fresh enough to close the window: content committed between
-    this call and the descent below it is still missed, because any design that
-    reads state and then acts on it has that gap. That residue is carried as a
-    known finding rather than claimed closed. Every failure to answer — git
-    missing, git erroring — leaves the directory unpruned and walked.
+    A candidate carrying pathspec magic is refused before either question, so
+    neither is ever asked about a path other than the one being skipped.
+
+    Each answer is required to be the specific one that means what it must,
+    never merely non-zero. `--error-unmatch` exits exactly 1 when a pathspec
+    matched nothing; every other non-zero exit is an error, and an error is not
+    evidence that a directory is empty of tracked content. Reading any non-zero
+    as "nothing tracked" turned a broken call into permission to skip.
+
+    Asked immediately before descending into the directory, not in advance for
+    a whole set of siblings, so no other confirmation runs in between. Two
+    residues remain and are carried rather than claimed closed: these are two
+    calls, so the tree can stop being ignored between them, which risks
+    skipping untracked content in a directory that just became live; and
+    anything committed between the second answer and the descent below it is
+    missed. No procedure that reads repository state and then acts on it closes
+    that second one.
     """
-    ignored = _git_exit_code("check-ignore", "-q", "--", relative) == 0
+    if relative.startswith(PATHSPEC_MAGIC_PREFIX):
+        return False
+    if _git_exit_code("check-ignore", "-q", "--", relative) != 0:
+        return False
     tracked = _git_exit_code("ls-files", "--cached", "--error-unmatch", "--", relative)
-    return ignored and tracked != 0
+    return tracked == NO_PATHSPEC_MATCH
 
 
 def _sweep_active_files(roots: Iterable[str], suffixes: Iterable[str]) -> list[Path]:
     """Files under *roots* carrying *suffixes*, skipping anything git ignores.
 
-    `os.walk` rather than `rglob` because the prune has to happen *before*
-    descending: an ignored worktree must never be walked, not merely filtered
-    out afterwards. A root named explicitly is always swept even when ignored —
-    naming it is the opt-in.
+    A hand-written descent rather than `os.walk`, because `os.walk` requires
+    the whole sibling list to be filtered before it enters the first of them.
+    That made every sibling's confirmation older than the descent it governed,
+    and the staleness grew with the number of siblings. Here each directory is
+    confirmed and then immediately entered, so nothing runs in between.
 
-    A directory is pruned only when the collapsed listing proposes it *and*
-    git, asked again about that exact path at walk time, confirms it by exit
-    code. Nothing is skipped on this module's own authority, and nothing is
-    skipped on a parsed pathname alone.
+    A directory is skipped only when the collapsed listing proposes it *and*
+    git, asked again about that exact path an instant earlier, confirms it.
+    Nothing is skipped on this module's own authority, nothing on a parsed
+    pathname alone, and a root named in *roots* is always swept — naming it is
+    the opt-in.
 
     Every way this can go wrong subtracts. A git that fails, is missing,
     returns nothing, or returns a listing cut at a record boundary yields fewer
-    candidates; a corrupted listing that invents a candidate is refused at
-    confirmation; and a confirmation that cannot be obtained leaves the tree
-    walked. A guard that inspects too much fails loudly; one that inspects too
-    little does not fail at all.
+    candidates; a listing corrupted into inventing one is refused at
+    confirmation; a confirmation that errors leaves the tree walked. A guard
+    that inspects too much fails loudly; one that inspects too little does not
+    fail at all.
 
-    One gap is known and not closed: content committed between a directory's
-    confirmation and the descent below it is still missed. Confirming at walk
-    time shrinks that window from the whole sweep to one directory, and no
-    read-then-act design removes it.
+    Symlinked directories are not followed, matching the previous walk and
+    keeping the descent free of cycles.
     """
     wanted = frozenset(suffixes)
     candidate_directories, ignored_files = _git_ignored_entries()
+    found: list[Path] = []
 
-    def relative_to_root(path: Path) -> str:
+    def relative_of(path: Path) -> str:
         return path.relative_to(ROOT).as_posix()
 
-    def is_pruned(path: Path) -> bool:
-        relative = relative_to_root(path)
-        return relative in candidate_directories and _git_confirms_prunable(relative)
+    def descend(branch: Path) -> None:
+        try:
+            children = sorted(branch.iterdir())
+        except OSError:
+            return
+        for child in children:
+            relative = relative_of(child)
+            if child.is_symlink():
+                continue
+            if child.is_dir():
+                if child.name == ".git":
+                    continue
+                if relative in candidate_directories and _git_confirms_prunable(
+                    relative
+                ):
+                    continue
+                descend(child)
+            elif child.suffix in wanted and relative not in ignored_files:
+                found.append(child)
 
-    found: list[Path] = []
     for relative in roots:
         root = ROOT / relative
         if root.is_file():
             found.append(root)
-            continue
-        for parent, directories, filenames in os.walk(root):
-            branch = Path(parent)
-            directories[:] = sorted(
-                name
-                for name in directories
-                if name != ".git" and not is_pruned(branch / name)
-            )
-            found.extend(
-                branch / name
-                for name in sorted(filenames)
-                if (branch / name).suffix in wanted
-                and relative_to_root(branch / name) not in ignored_files
-            )
+        elif root.is_dir():
+            descend(root)
     return found
 
 
@@ -792,6 +821,109 @@ def test_fragment_payload_is_discarded_whole(monkeypatch: pytest.MonkeyPatch) ->
         subprocess, "run", _stub_git(b".claude/hooks/\0.claude/worktrees")
     )
     assert _git_ignored_entries() == (frozenset(), frozenset())
+
+
+def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A candidate carrying pathspec magic never becomes a prune.
+
+    `--` ends option parsing but leaves magic alive, so `:(top)x` is answered
+    as a pattern rooted at the top of the repository rather than as a directory
+    literally named `:(top)x`. Both confirmations would then be about a path
+    that is not the one being skipped. `--literal-pathspecs` fixes this for
+    `ls-files` but `git check-ignore` rejects that flag outright, so the magic
+    is refused at the door instead.
+    """
+    # Measured, not assumed: without the guard this exact string wins both
+    # confirmations against the real repository.
+    assert _git_confirms_prunable(":(top).claude/worktrees") is False
+    assert _git_exit_code("check-ignore", "-q", "--", ":(top).claude/worktrees") == 0
+
+    forged = f":(top).claude/worktrees/{PROBE_NAME}"
+    with _ignored_probe(f".claude/worktrees/{PROBE_NAME}", self_ignore=False) as probe:
+        relative = probe.relative_to(ROOT).as_posix()
+        monkeypatch.setattr(subprocess, "run", _stub_listing_only(f"{forged}/\0".encode()))
+        assert relative in _protocol_sweep_relatives()
+
+
+def test_only_an_exact_no_match_exit_confirms_nothing_tracked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An errored `ls-files` is not evidence that a directory is empty.
+
+    `--error-unmatch` exits exactly 1 when the pathspec matched nothing. Every
+    other non-zero exit is a failure to answer, and reading any non-zero as
+    "nothing tracked" turned a broken call into permission to skip a tree.
+    """
+    root_relative = f".claude/worktrees/{PROBE_NAME}"
+    listing = f"{root_relative}/\0".encode()
+
+    def stub_with_tracked_exit(code: int):
+        def run(arguments, *_a, **_k) -> subprocess.CompletedProcess:
+            argv = tuple(arguments)
+            if "check-ignore" in argv:
+                return subprocess.CompletedProcess(argv, 0)
+            if "--error-unmatch" in argv:
+                return subprocess.CompletedProcess(argv, code)
+            return subprocess.CompletedProcess(argv, 0, stdout=listing, stderr=b"")
+
+        return run
+
+    with _ignored_probe(root_relative, self_ignore=False) as probe:
+        relative = probe.relative_to(ROOT).as_posix()
+        for code in (128, 129, -1):
+            monkeypatch.setattr(subprocess, "run", stub_with_tracked_exit(code))
+            assert _git_confirms_prunable(root_relative) is False, code
+            assert relative in _protocol_sweep_relatives(), code
+
+        monkeypatch.setattr(subprocess, "run", stub_with_tracked_exit(NO_PATHSPEC_MATCH))
+        assert _git_confirms_prunable(root_relative) is True
+        assert relative not in _protocol_sweep_relatives()
+
+
+def test_each_candidate_is_confirmed_immediately_before_its_own_descent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Confirmations follow the descent, rather than running a level ahead of it.
+
+    `os.walk` requires a parent's whole sibling list to be filtered before it
+    enters the first sibling, so every candidate's answer aged by one
+    confirmation for each later sibling, and the operator measured that as a
+    widening of the race. The two layouts are distinguishable by order alone: a
+    nested candidate under an earlier sibling is confirmed *before* a later
+    top-level sibling only if the descent is depth-first and lazy.
+    """
+    outer = ROOT / ".claude/agents" / f"aaa-{PROBE_NAME}"
+    nested = outer / "inner"
+    later = ROOT / ".claude/agents" / f"zzz-{PROBE_NAME}"
+    order: list[str] = []
+
+    def recording(relative: str) -> bool:
+        order.append(relative)
+        return False
+
+    try:
+        nested.mkdir(parents=True)
+        (nested / ".gitignore").write_text("*\n", encoding="utf-8")
+        (nested / "probe.md").write_text("x\n", encoding="utf-8")
+        later.mkdir(parents=True)
+        (later / ".gitignore").write_text("*\n", encoding="utf-8")
+        (later / "probe.md").write_text("x\n", encoding="utf-8")
+
+        directories, _ = _git_ignored_entries()
+        assert nested.relative_to(ROOT).as_posix() in directories
+        assert later.relative_to(ROOT).as_posix() in directories
+
+        monkeypatch.setattr(f"{__name__}._git_confirms_prunable", recording)
+        _sweep_active_files((".claude/agents",), {".md"})
+    finally:
+        shutil.rmtree(outer, ignore_errors=True)
+        shutil.rmtree(later, ignore_errors=True)
+
+    assert order.index(nested.relative_to(ROOT).as_posix()) < order.index(
+        later.relative_to(ROOT).as_posix()
+    ), order
 
 
 def test_boundary_truncated_listing_only_prunes_less(
