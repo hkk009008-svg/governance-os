@@ -120,8 +120,16 @@ _PRESERVED_AGY_CREDENTIALS = frozenset({"AGY_API_KEY"})
 # Options the installed AGY CLI actually defines, per `agy --help`. This exists
 # because the launcher and the binary are separate artifacts: a flag removed
 # upstream, or invented here, produces `flags provided but not defined` and the
-# seat never starts. Nothing in a pure-Python test can see that on its own, so
-# the emitted argv is checked against this set and this set against `agy --help`.
+# seat never starts.
+#
+# Two different checks, in two places, because they can live in different ones.
+# The emitted argv is held to this set hermetically by
+# `tests/unit/test_agy_seat_launcher.py`, which needs no binary and so runs in
+# CI. This set is held to the real `agy --help` by `harness_preflight.py`, which
+# runs where the binary is guaranteed; a test cannot hold it, because AGY has no
+# package or pinned download here and every such test skipped in CI — which is
+# every CI run. This comment previously claimed the second check without one
+# existing, after the snapshot test that had performed it was removed.
 AGY_CLI_FLAGS = frozenset(
     {
         "--add-dir",
