@@ -181,7 +181,9 @@ def _git_exit_code(*arguments: str) -> int:
         return -1
 
 
-def _git_ignore_record(relative: str) -> tuple[str, str, str] | None:
+def _git_ignore_record(
+    relative: str, root: Path = ROOT
+) -> tuple[str, str, str] | None:
     """The `(source, line, pattern)` git reports for *relative*; None if none.
 
     A 0 exit says the path is ignored. It does not say the repository is what
@@ -208,7 +210,7 @@ def _git_ignore_record(relative: str) -> tuple[str, str, str] | None:
     try:
         completed = subprocess.run(
             ("git", "check-ignore", "-v", "-z", "--stdin"),
-            cwd=ROOT,
+            cwd=root,
             env=environment,
             input=f"{relative}\0".encode(),
             capture_output=True,
@@ -232,7 +234,7 @@ def _git_ignore_record(relative: str) -> tuple[str, str, str] | None:
         return None
 
 
-def _git_committed_lines(path: str) -> list[str] | None:
+def _git_committed_lines(path: str, root: Path = ROOT) -> list[str] | None:
     """Lines of *path* as committed at HEAD; None when it is not committed."""
     environment = {
         name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
@@ -240,7 +242,7 @@ def _git_committed_lines(path: str) -> list[str] | None:
     try:
         completed = subprocess.run(
             ("git", "show", f"HEAD:{path}"),
-            cwd=ROOT,
+            cwd=root,
             env=environment,
             capture_output=True,
         )
@@ -254,7 +256,33 @@ def _git_committed_lines(path: str) -> list[str] | None:
         return None
 
 
-def _git_ignore_rule_is_committed(relative: str) -> bool:
+def _committed_pattern(line: str) -> str:
+    """One committed exclude line reduced the way git reports its pattern.
+
+    Exactly one trailing carriage return is removed, never more. Splitting a
+    committed blob on newlines leaves one CR on a CRLF file and git strips one
+    the same way, but a line ending `\\r\\r` is a pattern *ending in a carriage
+    return* and does not match what a bare pattern matches. Stripping every
+    trailing CR would let such a line authenticate a machine-local rule it does
+    not correspond to, which is the masking this check exists to catch,
+    reintroduced by the comparison rather than by the lookup.
+
+    Unescaped trailing spaces are removed because git removes them before
+    reporting: a committed `target/   ` is reported as `target/`, and comparing
+    raw would reject a rule that is genuinely committed. A backslash-escaped
+    trailing space is left alone and will simply not compare equal, which is a
+    loud failure on a pattern shape this repository does not use rather than a
+    silent acceptance.
+    """
+    if line.endswith("\r"):
+        line = line[:-1]
+    without_spaces = line.rstrip(" ")
+    if without_spaces.endswith("\\"):
+        return line
+    return without_spaces
+
+
+def _git_ignore_rule_is_committed(relative: str, root: Path = ROOT) -> bool:
     """Whether the rule that ignored *relative* is committed, bytes and all.
 
     Trackedness of the answering file is not enough, and asserting its name is
@@ -271,11 +299,11 @@ def _git_ignore_rule_is_committed(relative: str) -> bool:
     and required to be that pattern. A source outside the repository, or one
     whose committed bytes differ, has no such line and fails.
     """
-    record = _git_ignore_record(relative)
+    record = _git_ignore_record(relative, root)
     if record is None:
         return False
     source, line, pattern = record
-    committed = _git_committed_lines(source)
+    committed = _git_committed_lines(source, root)
     if committed is None:
         return False
     try:
@@ -284,7 +312,7 @@ def _git_ignore_rule_is_committed(relative: str) -> bool:
         return False
     if not 0 <= index < len(committed):
         return False
-    return committed[index].rstrip("\r") == pattern
+    return _committed_pattern(committed[index]) == pattern
 
 
 def _git_confirms_prunable(relative: str) -> bool:
@@ -1320,102 +1348,114 @@ def test_pathspec_magic_candidate_is_refused_before_git_is_asked(
         assert relative in _protocol_sweep_relatives()
 
 
-def test_ignore_provenance_requires_a_tracked_source(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An untracked exclude file may not answer in the repository's name.
+def test_ignore_provenance_requires_a_committed_rule() -> None:
+    """An exclude rule that is not committed may not answer for the repository.
 
-    The control above rests on provenance, so provenance gets its own test. The
-    file planted here is named `.gitignore:<probe>`, which is untracked but
-    whose text up to its first colon is a tracked file, so a parser splitting on
-    that colon reports it as committed. That is not a wrong answer, it is a
-    forged one, and it is the shape `core.excludesFile` can take on any machine.
+    Built in a throwaway repository rather than in this one. Every earlier shape
+    of this test planted fixed-name fixtures in the reviewed checkout, and one
+    rewrote a tracked file and restored it from a snapshot: a concurrent reader
+    could observe that file empty or modified, a crash mid-test would leave it
+    so, and a concurrent writer's change would be lost to the restore. This
+    repository has concurrent sessions in it. A test that needs a repository in
+    a particular state should build one.
 
-    Both directions are pinned. Before the shadow is configured nothing ignores
-    the path at all, which is what makes the second half an observation about
-    the shadow rather than about some rule that was already there.
+    Four sources answer the same query, and only one is a rule the repository
+    carries. Each defeats a different version of this check that has already
+    been shipped and found wanting:
 
-    A tracked source is covered too, because trackedness of the file is not the
-    property: `core.excludesFile` may name a tracked path whose working copy
-    carries the rule while the committed copy does not, and the index would
-    confirm that pathname while the rule lives only on this machine.
+    - an untracked file whose name up to its first colon spells a tracked one,
+      which defeats a parser that splits there;
+    - a *tracked* file whose working copy carries the rule while its committed
+      copy does not, which defeats a check that asks only whether the source
+      pathname is in the index;
+    - a file whose committed line ends in two carriage returns while its working
+      line ends in none. Git answers from the working bytes; the committed line
+      is a pattern ending in a carriage return and matches nothing the bare
+      pattern matches. This defeats a comparison that strips every trailing CR
+      instead of the single one a CRLF file leaves behind.
 
-    Both fixture paths are created exclusively and removed only if this test
-    created them. They are fixed names, and a fixture that overwrites whatever
-    it finds is the same defect `_ignored_probe` was just fixed for.
+    The committed rule is then required to be accepted, carrying the trailing
+    spaces git strips before reporting, so the check is pinned in the direction
+    that would otherwise fail a rule the repository really does carry.
     """
-    shadow = ROOT / f".gitignore:{PROBE_NAME}"
-    target = ROOT / ".claude/agents" / f"{PROBE_NAME}-shadowed"
-    tracked_shadow = ROOT / "requirements-dev.txt"
-    made_target = made_shadow = False
-    original = tracked_shadow.read_bytes()
-    try:
-        try:
-            target.mkdir(parents=True)
-            made_target = True
-            with shadow.open("x", encoding="utf-8") as handle:
-                made_shadow = True
-                handle.write(f"{target.name}/\n")
-        except FileExistsError as exc:
-            raise AssertionError(
-                f"refusing to overwrite existing content at {exc.filename}: "
-                "this fixture removes what it creates. Confirm by hand that it "
-                "is not wanted, then remove it."
-            ) from exc
-        relative = target.relative_to(ROOT).as_posix()
+    repository = Path(tempfile.mkdtemp(prefix="ignore-provenance-"))
+    environment = {
+        name: value for name, value in os.environ.items() if name != "GIT_INDEX_FILE"
+    }
 
-        # The forgery is only interesting because the prefix names a real
-        # tracked file, so that is measured rather than asserted by eye.
-        assert shadow.name.split(":", 1)[0] == ".gitignore"
-        assert (
-            _git_exit_code(
-                "--literal-pathspecs", "ls-files", "--cached", "--error-unmatch",
-                "--", ".gitignore",
-            )
-            == 0
+    def git(*arguments: str) -> None:
+        subprocess.run(
+            ("git", *arguments),
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            env={**environment, "GIT_CONFIG_GLOBAL": "/dev/null"},
         )
 
-        assert _git_exit_code("check-ignore", "-q", "--", relative) == NO_PATHSPEC_MATCH
-        assert _git_ignore_record(relative) is None
-        assert _git_ignore_rule_is_committed(relative) is False
-
-        with monkeypatch.context() as scoped:
+    def rule_is_committed(excludes: str | None) -> bool:
+        if excludes is None:
+            return _git_ignore_rule_is_committed(TARGET, repository)
+        with pytest.MonkeyPatch.context() as scoped:
             scoped.setenv("GIT_CONFIG_COUNT", "1")
             scoped.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
-            scoped.setenv("GIT_CONFIG_VALUE_0", shadow.name)
+            scoped.setenv("GIT_CONFIG_VALUE_0", excludes)
+            return _git_ignore_rule_is_committed(TARGET, repository)
 
-            assert _git_exit_code("check-ignore", "-q", "--", relative) == 0
-            record = _git_ignore_record(relative)
-            assert record is not None and record[0] == shadow.name
-            assert _git_ignore_rule_is_committed(relative) is False
+    TARGET = "ignored-by-probe"
+    try:
+        git("init", "-q", ".")
+        git("config", "user.email", "probe@example.invalid")
+        git("config", "user.name", "probe")
+        (repository / TARGET).mkdir()
 
-        # The tracked-but-uncommitted case: the source is in the index, so a
-        # check that asked only about the pathname would be satisfied, while
-        # the rule that matched exists nowhere in the commit.
-        tracked_shadow.write_bytes(original + f"\n{target.name}/\n".encode())
-        with monkeypatch.context() as scoped:
-            scoped.setenv("GIT_CONFIG_COUNT", "1")
-            scoped.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
-            scoped.setenv("GIT_CONFIG_VALUE_0", tracked_shadow.name)
+        # Committed carrying the trailing spaces git strips before reporting.
+        (repository / ".gitignore").write_text(f"{TARGET}/   \n", encoding="utf-8")
+        # Tracked, and committed with no rule in it at all.
+        (repository / "tracked.txt").write_text("nothing here\n", encoding="utf-8")
+        # Committed as a pattern ending in a carriage return.
+        (repository / "crlf.txt").write_bytes(f"{TARGET}/\r\r\n".encode())
+        git("add", ".gitignore", "tracked.txt", "crlf.txt")
+        git("commit", "-qm", "probe")
 
-            assert _git_exit_code("check-ignore", "-q", "--", relative) == 0
-            assert (
-                _git_exit_code(
-                    "--literal-pathspecs", "ls-files", "--cached",
-                    "--error-unmatch", "--", tracked_shadow.name,
-                )
-                == 0
+        # The committed rule answers, is reported with its spaces removed, and
+        # is accepted. Without this the three refusals below could all be a
+        # check that never says yes to anything.
+        record = _git_ignore_record(TARGET, repository)
+        assert record is not None, "the committed rule did not answer"
+        assert record[0] == ".gitignore", record
+        assert record[2] == f"{TARGET}/", record
+        assert rule_is_committed(None) is True
+
+        # Move the committed rule out of the way so the shadows are what answer.
+        (repository / ".gitignore").write_text("unrelated/\n", encoding="utf-8")
+        assert _git_ignore_record(TARGET, repository) is None
+
+        shadow = ".gitignore:shadow"
+        (repository / shadow).write_text(f"{TARGET}/\n", encoding="utf-8")
+        assert shadow.split(":", 1)[0] == ".gitignore"
+        assert rule_is_committed(shadow) is False
+
+        (repository / "tracked.txt").write_text(
+            f"nothing here\n{TARGET}/\n", encoding="utf-8"
+        )
+        assert (
+            _git_exit_code(
+                "--literal-pathspecs", "-C", str(repository), "ls-files", "--cached",
+                "--error-unmatch", "--", "tracked.txt",
             )
-            assert _git_ignore_rule_is_committed(relative) is False
+            == 0
+        ), "the tracked-source case needs its source to really be tracked"
+        assert rule_is_committed("tracked.txt") is False
+
+        (repository / "crlf.txt").write_bytes(f"{TARGET}/\n".encode())
+        assert rule_is_committed("crlf.txt") is False
     finally:
-        tracked_shadow.write_bytes(original)
-        if made_shadow:
-            shadow.unlink(missing_ok=True)
-        if made_target:
-            with suppress(OSError):
-                target.rmdir()
+        shutil.rmtree(repository, ignore_errors=True)
 
-
+    assert _committed_pattern(f"{TARGET}/\r\r") == f"{TARGET}/\r"
+    assert _committed_pattern(f"{TARGET}/\r") == f"{TARGET}/"
+    assert _committed_pattern(f"{TARGET}/   ") == f"{TARGET}/"
+    assert _committed_pattern(f"{TARGET}/\\ ") == f"{TARGET}/\\ "
 def test_only_an_exact_no_match_exit_confirms_nothing_tracked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
