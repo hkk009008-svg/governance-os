@@ -28,6 +28,25 @@ Use the smallest sufficient verification profile and do not repeat an unchanged
 review question. A deferred confirmed defect needs a strict xfail or a
 `test-infeasible` reason.
 
+## Work from the skills, and write the next one
+
+Default, not an option. Before starting, check `.claude/skills/` for one that
+covers the work and follow it — those files exist because the lesson in them was
+paid for once already, usually by a review round that found what self-review had
+missed. `prove-a-control` before claiming any guard, gate, or negative control
+holds. `create-regression-pin` before deferring a confirmed defect.
+`seat-operator` before issuing a verdict.
+
+When the work is in a domain no skill covers, do it, then write the skill. The
+bar is a lesson that would have changed how the work went, stated concretely
+enough to act on: the trap, one measured instance of it, and what to do instead.
+Not a summary of what happened. A skill nobody could follow is a worse artifact
+than none, because it reads as covered ground.
+
+When a skill's advice turns out to be wrong or narrower than its name, correct
+that file in the same session rather than working around it. A skill that
+outlived its mechanism is the same defect as a docstring that did.
+
 ## Proportional independence
 
 For parseable/executable composition, authority or security enforcement,
