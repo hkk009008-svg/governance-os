@@ -154,3 +154,55 @@ def test_review_profiles_are_closed_and_risk_proportional() -> None:
 
     with pytest.raises(ValueError, match="unknown Codex review risk class"):
         model.review_profile_for("invented")
+
+
+def test_work_modes_are_closed_and_phase_proportional() -> None:
+    explore = model.work_profile_for("explore")
+    validate = model.work_profile_for("validate")
+    promote = model.work_profile_for("promote")
+
+    assert explore.rerun_policy == "recorded-reruns-allowed"
+    assert explore.canonical_mutation_policy == "forbidden"
+    assert explore.review_policy == "none-until-transfer-or-phase-change"
+    assert explore.claim_policy == "phase-transition-claims-only"
+    assert explore.record_policy == (
+        "one-campaign-brief-plus-automatic-attempt-log"
+    )
+    assert not explore.requires_frozen_inputs
+    assert not explore.requires_non_author_review
+    assert not explore.requires_rollback_point
+
+    assert validate.rerun_policy == "frozen-input-reproduction"
+    assert validate.canonical_mutation_policy == "forbidden"
+    assert validate.review_policy == "one-non-author-candidate-review"
+    assert validate.claim_policy == "load-bearing-candidate-claims"
+    assert validate.record_policy == "frozen-report-plus-generated-manifest"
+    assert validate.requires_frozen_inputs
+    assert validate.requires_non_author_review
+    assert not validate.requires_rollback_point
+
+    assert promote.rerun_policy == "reviewed-candidate-only"
+    assert promote.canonical_mutation_policy == "separately-authorized"
+    assert promote.review_policy == "reviewed-candidate-plus-effect-authority"
+    assert promote.claim_policy == (
+        "load-bearing-claims-plus-independent-review"
+    )
+    assert promote.record_policy == "rollback-record-plus-approval-evidence"
+    assert promote.requires_frozen_inputs
+    assert promote.requires_non_author_review
+    assert promote.requires_rollback_point
+
+    with pytest.raises(ValueError, match="unknown Codex work mode"):
+        model.work_profile_for("invented")
+
+
+def test_explore_profile_cannot_be_presented_as_promote() -> None:
+    explore = model.work_profile_for("explore")
+    promote = model.work_profile_for("promote")
+
+    assert explore.work_mode == "explore"
+    assert promote.work_mode == "promote"
+    assert explore.canonical_mutation_policy != promote.canonical_mutation_policy
+    assert explore.review_policy != promote.review_policy
+    assert not explore.requires_rollback_point
+    assert promote.requires_rollback_point

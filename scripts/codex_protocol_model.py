@@ -78,6 +78,71 @@ def review_profile_for(risk_class: str) -> ReviewProfile:
         raise ValueError(f"unknown Codex review risk class: {risk_class}") from exc
 
 
+@dataclass(frozen=True)
+class WorkModeProfile:
+    """Iteration and evidence contract for one closed phase of product work.
+
+    Work mode is orthogonal to review risk. It controls how cheaply a task may
+    learn, what record is proportionate, and when a candidate must cross a
+    review boundary. It never grants canonical mutation or an external effect.
+    """
+
+    work_mode: str
+    rerun_policy: str
+    canonical_mutation_policy: str
+    review_policy: str
+    claim_policy: str
+    record_policy: str
+    requires_frozen_inputs: bool
+    requires_non_author_review: bool
+    requires_rollback_point: bool
+
+
+WORK_MODE_PROFILES = {
+    "explore": WorkModeProfile(
+        work_mode="explore",
+        rerun_policy="recorded-reruns-allowed",
+        canonical_mutation_policy="forbidden",
+        review_policy="none-until-transfer-or-phase-change",
+        claim_policy="phase-transition-claims-only",
+        record_policy="one-campaign-brief-plus-automatic-attempt-log",
+        requires_frozen_inputs=False,
+        requires_non_author_review=False,
+        requires_rollback_point=False,
+    ),
+    "validate": WorkModeProfile(
+        work_mode="validate",
+        rerun_policy="frozen-input-reproduction",
+        canonical_mutation_policy="forbidden",
+        review_policy="one-non-author-candidate-review",
+        claim_policy="load-bearing-candidate-claims",
+        record_policy="frozen-report-plus-generated-manifest",
+        requires_frozen_inputs=True,
+        requires_non_author_review=True,
+        requires_rollback_point=False,
+    ),
+    "promote": WorkModeProfile(
+        work_mode="promote",
+        rerun_policy="reviewed-candidate-only",
+        canonical_mutation_policy="separately-authorized",
+        review_policy="reviewed-candidate-plus-effect-authority",
+        claim_policy="load-bearing-claims-plus-independent-review",
+        record_policy="rollback-record-plus-approval-evidence",
+        requires_frozen_inputs=True,
+        requires_non_author_review=True,
+        requires_rollback_point=True,
+    ),
+}
+
+
+def work_profile_for(work_mode: str) -> WorkModeProfile:
+    """Return one closed work-mode profile or reject an invented phase."""
+    try:
+        return WORK_MODE_PROFILES[work_mode]
+    except KeyError as exc:
+        raise ValueError(f"unknown Codex work mode: {work_mode}") from exc
+
+
 # Harness/vendor decorations that describe where a model runs, not which model
 # it is. `codex-gpt-5.6-terra` and `gpt-5.6-terra` are one model behind two
 # labels; independence must not be satisfiable by the prefix alone.

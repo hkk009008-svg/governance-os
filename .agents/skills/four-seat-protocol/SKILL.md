@@ -10,8 +10,8 @@ subagent from the explicit prompt. Do not infer a live role.
 
 Use the executable seam that owns the claim:
 
-- `scripts/codex_protocol_model.py` for identity, ownership, risk profile, and
-  external-effect shape.
+- `scripts/codex_protocol_model.py` for identity, ownership, work mode, risk
+  profile, and external-effect shape.
 - `scripts/compact_pair_loop.py` for formal exact-range review.
 - `scripts/mailbox_writer.py` through `coordination/bin/send-event` for
   publication.
@@ -28,6 +28,12 @@ a live signed-bus event ref and matching seat cursor ref are both verified;
 transport ambiguity fails visibly. Only the assigned live role consumes its
 cursor; coordinator has no cursor. Use `coordination/bin/send-event` and
 `coordination/bin/consume-events`, never raw mailbox or cursor edits.
+
+Select the product-work phase through `docs/protocol/work-modes.md` separately
+from the review risk. Ordinary Explore work does not instantiate seats or
+formal review artifacts. A real transfer, frozen Validate candidate, Promote
+boundary, or explicitly assigned role activates only the seats that boundary
+needs. Work mode grants no role or external-effect authority.
 
 Role deltas:
 

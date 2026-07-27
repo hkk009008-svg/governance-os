@@ -30,6 +30,12 @@ Codex starts as a readiness bridge. It adopts a live role or coordinator role
 only when the user or parent explicitly assigns it. Parent-scoped helpers never
 inherit that authority.
 
+Choose the product-work phase independently from the review risk. Use
+`explore` for reversible sandbox learning, `validate` for one frozen candidate,
+and `promote` for a reviewed candidate moving toward canonical or live state.
+The closed profiles live in `scripts/codex_protocol_model.py`; application
+guidance is in `docs/protocol/work-modes.md`. A work mode grants no authority.
+
 For tier 2, refresh the native worktree before changing it:
 
 ```bash
@@ -50,6 +56,7 @@ topology or relies on an `ARCHITECTURE.md` invariant.
 | Operations | `OPERATIONS.md` |
 | Decision history | `DECISIONS.md` |
 | Universal protocol | `docs/protocol/agents/` |
+| Work modes | `docs/protocol/work-modes.md` |
 | Codex mechanics | `docs/protocol/codex/continuation.md` |
 | Protocol entry skill | `.agents/skills/four-seat-protocol/SKILL.md` |
 | Evidence-ledger bridge | `docs/protocol/codex/ledger-cli-adoption.md` |
@@ -85,8 +92,8 @@ alone is not a trigger.
 Use the executable seam that owns the claim:
 
 - Autonomous Seat Outcome Contract: `scripts/codex_protocol_model.py`.
-- Runtime identity, ownership lineage, risk profiles, and structural
-  external-effect shape: `scripts/codex_protocol_model.py`.
+- Runtime identity, ownership lineage, work modes, risk profiles, and
+  structural external-effect shape: `scripts/codex_protocol_model.py`.
 - Formal request/report parsing and exact-range review:
   `scripts/compact_pair_loop.py`.
 - Event construction, validation, and serialized publication:
@@ -109,6 +116,8 @@ The following boundaries remain mandatory:
 
 Review depth follows risk:
 
+- Work mode does not replace risk classification: Explore controls iteration,
+  while Validate and Promote identify candidate and effect boundaries.
 - Ordinary reversible local work needs focused verification.
 - Material behavior changes need non-author review of the exact range.
 - Authority, security, executable composition, side-effect gates, and
