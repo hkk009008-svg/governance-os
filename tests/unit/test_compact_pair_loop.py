@@ -1313,6 +1313,24 @@ def _publish_as_send_event(root: Path, body: str) -> Path:
     return candidate
 
 
+def _commit_an_event(root: Path, relative: str) -> str:
+    """Commit one mailbox-shaped file in *root* and return its commit SHA.
+
+    Composing now requires a `path@commit` finding reference to resolve in the
+    repository being composed against, so a test that cites evidence has to
+    create it rather than borrow a real Pipeline reference a throwaway
+    repository has never heard of.
+    """
+    target = root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "Event type: verification-report\nVERDICT: FAIL\n", encoding="utf-8"
+    )
+    _git(root, "add", relative)
+    _git(root, "commit", "-q", "-m", "review: cited evidence")
+    return _git(root, "rev-parse", "HEAD")
+
+
 def test_composed_request_round_trips_through_the_candidate_parser(
     tmp_path: Path,
 ) -> None:
@@ -1323,7 +1341,14 @@ def test_composed_request_round_trips_through_the_candidate_parser(
     parser change is not mirrored in `compose_request`, this round trip is what
     fails instead of the next author's publication attempt.
     """
-    root, base, head = _compose_repo(tmp_path)
+    root, _, _ = _compose_repo(tmp_path)
+    # Cite evidence this repository actually contains. Citing `FINDING_A`, a real
+    # Pipeline event, composed cleanly while shape was the only check — which is
+    # the fabricated-provenance shape the composer now refuses.
+    cited_path = FINDING_A.rpartition("@")[0]
+    cited = f"{cited_path}@{_commit_an_event(root, cited_path)}"
+    base = _git(root, "rev-parse", "HEAD~1")
+    head = _git(root, "rev-parse", "HEAD")
     body = pair.compose_request(
         root,
         author_seat="director",
@@ -1334,7 +1359,7 @@ def test_composed_request_round_trips_through_the_candidate_parser(
         head_rev="HEAD",
         outcome="Composed outcome under test.",
         abuse_assessments=("Composer emits a body the parser rejects.",),
-        finding_refs=(FINDING_A,),
+        finding_refs=(cited,),
     )
 
     candidate = _publish_as_send_event(root, body)
@@ -1355,7 +1380,7 @@ def test_composed_request_round_trips_through_the_candidate_parser(
     assert request.abuse_class_assessment == (
         "Composer emits a body the parser rejects.",
     )
-    assert request.finding_refs == (FINDING_A,)
+    assert request.finding_refs == (cited,)
     assert pair.validate_request_candidate(root, request) == []
 
 
@@ -1472,6 +1497,81 @@ def test_compose_rejects_malformed_inputs_before_emitting_anything(
     arguments.update(kwargs)
     with pytest.raises(pair.CompactPairError, match=expected):
         pair.compose_request(root, **arguments)
+
+
+def test_compose_refuses_a_finding_ref_whose_object_does_not_exist(
+    tmp_path: Path,
+) -> None:
+    """A well-formed reference is not a resolvable one, and shape was the only check.
+
+    Forty hex characters satisfy the canonical form, so a commit invented while
+    transcribing composed cleanly. Three such references were written in one
+    session; each read as provenance and resolved to nothing, which is worse than
+    a missing reference because a reader cannot tell by reading the request.
+
+    Both halves of the pair are driven, because validating only the commit would
+    leave the path unchecked and a reference is the pair.
+    """
+    root, _, _ = _compose_repo(tmp_path)
+    relative = (
+        "coordination/mailbox/sent/"
+        "2026-07-26T00-00-00Z-operator-to-director-verification-report.md"
+    )
+    real_commit = _commit_an_event(root, relative)
+    arguments: dict[str, object] = {
+        "author_seat": "director",
+        "author_model": "claude-opus-5",
+        "assigned_operator": "operator",
+        "risk_class": "material-behavior",
+        "base_rev": "HEAD~1",
+        "head_rev": "HEAD",
+        "outcome": "Cites evidence.",
+    }
+
+    # The resolvable reference composes, so the refusals below are about
+    # resolvability rather than a guard that refuses everything.
+    body = pair.compose_request(
+        root, **arguments, finding_refs=(f"{relative}@{real_commit}",)
+    )
+    assert f"{relative}@{real_commit}" in body
+
+    absent_path = (
+        "coordination/mailbox/sent/"
+        "2026-01-01T00-00-00Z-operator-to-director-verification-report.md"
+    )
+    for reference in (f"{relative}@{'0' * 40}", f"{absent_path}@{real_commit}"):
+        with pytest.raises(
+            pair.CompactPairError, match="names an object that does not exist"
+        ):
+            pair.compose_request(root, **arguments, finding_refs=(reference,))
+
+
+def test_compose_still_accepts_a_digest_reference_it_cannot_verify(
+    tmp_path: Path,
+) -> None:
+    """The gap is deliberate, and stated rather than papered over.
+
+    Nothing in the composer holds the bytes a `sha256:` reference digests, so it
+    cannot be resolved the way a `path@commit` reference can. The third bad
+    reference of that session was exactly this shape — a digest naming the wrong
+    document — and this guard does not catch it. Pinned so the limit stays visible
+    to whoever next assumes references are verified.
+    """
+    root, _, _ = _compose_repo(tmp_path)
+
+    body = pair.compose_request(
+        root,
+        author_seat="director",
+        author_model="claude-opus-5",
+        assigned_operator="operator",
+        risk_class="material-behavior",
+        base_rev="HEAD~1",
+        head_rev="HEAD",
+        outcome="Cites a digest.",
+        finding_refs=("sha256:" + "b" * 64,),
+    )
+
+    assert "sha256:" + "b" * 64 in body
 
 
 def test_compose_refuses_a_self_addressed_routing_the_writer_would_reject(
