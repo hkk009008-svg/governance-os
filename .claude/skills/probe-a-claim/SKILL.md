@@ -38,30 +38,42 @@ author's recall, because recall is the broken faculty.
    "what single command would most embarrass this?" and run it. Every failure
    this skill encodes was one command away.
 
-4. **Probe with an amnesiac.** Cross-family, seconds:
+4. **Probe with an amnesiac.** Cross-family, one to four minutes measured
+   against the current lane — and a real provider launch, so the spend is
+   authorized like any provider launch, not implied by this skill:
    ```bash
    coordination/bin/probe-claim "<claim>"
    ```
-   Same-family fallback: spawn the `amnesiac-prober` agent with ONLY the claim
-   sentence. Never include the code, the diff, or your reasoning — context is
-   contamination; the probe's value is that the reader has not made your
-   assumptions.
+   The primary probe launches from an empty directory with repository pointers
+   scrubbed (no PWD, no GIT_*), pinned by a subprocess-boundary test. The
+   same-family fallback (`amnesiac-prober`, ONLY the claim sentence) is weaker
+   by design: its restraint is instruction, not enforcement. Either way, never
+   include the code, the diff, or your reasoning — context is contamination.
 
 5. **Record, so the blank cells exist.**
    ```bash
-   echo '{"claim": "...", "premises": [{"key": "...", "status": "MEASURED", "cite": "$ ... → ..."}], "kills_attempted": ["..."]}' \
-     | env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py record
+   env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py record \
+     --claim "..." \
+     --premise invoked-on-path MEASURED '$ grep -n caller → main:12' \
+     --kill "deleted the call site; test failed"
    ```
+   (JSON on stdin still works; the flag form exists because stdin-JSON was
+   clunky enough to skip under pressure, and pressure is when it matters.)
+   `record` refuses duplicate keys, unknown keys, strong statuses with empty
+   citations, and blank kills — the laundering shapes an audit once believed.
    Unsupplied grammar premises are written ASSUMED by construction. `audit`
    lists them and every claim nothing tried to kill; `lottery` samples recorded
    claims for fresh probes later.
 
-6. **Sweep the range before publishing it.**
+6. **Sweep the range — an optional lens, not a publication step.**
    ```bash
    env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py sweep --base <base> --head <head>
    ```
-   Flags overclaim vocabulary with no citation marker nearby. Vocabulary only:
-   a finding means "a strong word with no instrument in sight", not "false".
+   Flags overclaim vocabulary with no citation on the same line. Scoped to
+   where claims live — prose files whole-line, code and extensionless files on
+   comment lines, data files never — because its first run returned 73 flags
+   of mention-not-use noise from code literals. Vocabulary only: a finding
+   means "a strong word with no instrument in sight", not "false".
 
 ## What counts as a kill
 An attempt to make the claim fail while believing it true: delete the call
@@ -80,9 +92,13 @@ with the claim's own artifact count zero — same source, no information.
   of a new shape will not be named until someone adds it. When that happens,
   extend `SHAPES` and add the instance to the fixture in
   `tests/unit/test_claim_check.py` — the fixture is the grammar's tether.
-- The sweep is a vocabulary heuristic over prose. That is the honest tool for
-  prose, and useless about code semantics — `prove-a-control` trap 3 governs
-  there.
+- The sweep is a vocabulary heuristic over prose, scoped to comment and
+  document lines; docstring prose inside code is missed here, and code
+  semantics are `prove-a-control` trap 3's business.
+- The probe's isolation scrubs pointers, not access: HOME survives for the
+  lane's credentials, and a read-only sandbox could still roam the disk if it
+  guessed a path. What is enforced — and tested — is that nothing in cwd or
+  env points anywhere.
 - The ledger is self-reported. Its audit catches what you wrote down, not what
   you didn't; the lottery plus probes exist to attack exactly that gap.
 - The premise keys were authored by the same mind whose blind spots they

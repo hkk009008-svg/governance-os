@@ -42,8 +42,10 @@ import json
 import os
 import random
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -81,7 +83,7 @@ SHAPES: tuple[Shape, ...] = (
         "enforced",
         re.compile(
             r"\benforc\w+\b|\bgate[sd]?\b|\bon every\b|\bevery (launch|call|run|dispatch|path)\b"
-            r"|\brefus\w+ (?:every|all)\b|\bblocks?\b|\brequir\w+ on\b",
+            r"|\brefus\w+\b|\brejects?\b|\bprevents?\b|\bden(?:y|ies)\b|\brequir\w+ on\b",
             re.IGNORECASE,
         ),
         (
@@ -157,8 +159,8 @@ SHAPES: tuple[Shape, ...] = (
     Shape(
         "complete",
         re.compile(
-            r"\bcomplete\w*\b|\bcovers? (?:all|every)\b|\bexhaustive\w*\b|\ball (?:cases|forms|paths)\b"
-            r"|\bno other\b|\bonly way\b",
+            r"\bcomplete(?:ly)?\b(?!\s+the\b)|\bcovers? (?:all|every)\b|\bexhaustive\w*\b"
+            r"|\ball (?:cases|forms|paths)\b|\bno other\b|\bonly way\b",
             re.IGNORECASE,
         ),
         (
@@ -184,7 +186,7 @@ SHAPES: tuple[Shape, ...] = (
         "absence",
         re.compile(
             r"\bnever\b|\bnothing\b|\bcannot\b|\bimpossible\b|\bno \w+ (?:exists|calls|reaches|remains)\b"
-            r"|\bcosts? nothing\b|\bfree\b|\bno-op\b|\bspends? nothing\b",
+            r"|\bcosts? nothing\b|\bfor free\b|\bno-op\b|\bspends? nothing\b",
             re.IGNORECASE,
         ),
         (
@@ -294,30 +296,51 @@ def build_probe_prompt(claim: str) -> str:
 
 
 def _run_probe(claim: str, timeout: int) -> int:
+    """Launch the reader from an empty directory with repo pointers scrubbed.
+
+    The first shipped version claimed a context-free reader while launching it
+    in the author's cwd with the author's environment — the child sat inside
+    the repository whose absence was the claimed property. Now it starts in an
+    empty scratch directory with an environment reduced to PATH, HOME and TERM:
+    no PWD, no GIT_*, no session variables, nothing that hands it the repo.
+
+    Stated as what it is: pointer scrubbing, not access denial. HOME survives
+    because the CLI's credentials live there, and a read-only sandbox could
+    still roam the disk if it guessed a path. The enforced property is that
+    nothing in cwd or env points anywhere, and the test pins exactly that
+    subprocess boundary.
+    """
     prompt = build_probe_prompt(claim)
+    codex = shutil.which("codex")
+    if codex is None:
+        print(
+            "probe: codex CLI not found; run the printed prompt through any "
+            "reader given only the claim",
+            file=sys.stderr,
+        )
+        print(prompt)
+        return 2
+    scratch = Path(tempfile.mkdtemp(prefix="amnesiac-probe-"))
     environment = {
-        key: value for key, value in os.environ.items() if key != "GIT_INDEX_FILE"
+        "PATH": "/usr/bin:/bin",
+        "HOME": os.environ.get("HOME", str(scratch)),
+        "TERM": os.environ.get("TERM", "dumb"),
     }
     try:
         completed = subprocess.run(
-            ["codex", "exec", "-s", "read-only", "--skip-git-repo-check", "-"],
+            [codex, "exec", "-s", "read-only", "--skip-git-repo-check", "-"],
             input=prompt,
             capture_output=True,
             text=True,
             timeout=timeout,
             env=environment,
+            cwd=scratch,
         )
-    except FileNotFoundError:
-        print(
-            "probe: codex CLI not found; run the printed prompt through any "
-            "context-free reader instead",
-            file=sys.stderr,
-        )
-        print(prompt)
-        return 2
     except subprocess.SubprocessError as exc:
         print(f"probe: could not run codex: {exc}", file=sys.stderr)
         return 2
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
     sys.stdout.write(completed.stdout)
     if completed.returncode != 0:
         sys.stderr.write(completed.stderr)
@@ -335,9 +358,18 @@ def record_entry(payload: dict, ledger: Path) -> dict:
     claim = str(payload.get("claim", "")).strip()
     if not claim:
         raise ValueError("entry needs a nonempty 'claim'")
-    supplied = {
-        str(item.get("key")): item for item in payload.get("premises", ())
-    }
+    expected_keys = {premise.key for _, premise in premises_for(claim)}
+    supplied: dict[str, dict] = {}
+    for item in payload.get("premises", ()):
+        key = str(item.get("key"))
+        if key in supplied:
+            raise ValueError(f"duplicate premise key {key!r}; last-wins is how evidence launders")
+        if key not in expected_keys:
+            raise ValueError(f"unknown premise key {key!r} for this claim's shape")
+        supplied[key] = item
+    kills = [str(kill) for kill in payload.get("kills_attempted", ())]
+    if any(not kill.strip() for kill in kills):
+        raise ValueError("a blank kill entry counts a kill that was not attempted")
     rows = []
     for _, premise in premises_for(claim):
         item = supplied.get(premise.key)
@@ -349,6 +381,11 @@ def record_entry(payload: dict, ledger: Path) -> dict:
             raise ValueError(
                 f"premise {premise.key!r} has unknown status {status!r}; "
                 f"use one of {', '.join(PROVENANCE)}"
+            )
+        if status in STRONG_PROVENANCE and not str(item.get("cite", "")).strip():
+            raise ValueError(
+                f"premise {premise.key!r} is {status} with an empty citation; "
+                "a strong status without an instrument is a memory wearing a label"
             )
         rows.append(
             {
@@ -362,7 +399,7 @@ def record_entry(payload: dict, ledger: Path) -> dict:
         "claim": claim,
         "shapes": classify(claim) or ["generic"],
         "premises": rows,
-        "kills_attempted": list(payload.get("kills_attempted", ())),
+        "kills_attempted": kills,
     }
     ledger.parent.mkdir(parents=True, exist_ok=True)
     with ledger.open("a", encoding="utf-8") as handle:
@@ -382,17 +419,60 @@ def audit_ledger(ledger: Path) -> list[str]:
             continue
         entry = json.loads(line)
         claim = entry.get("claim", "")[:70]
+        # Reconstruct what the claim requires rather than trusting what the
+        # entry brought: a hand-written line with zero premises audited clean
+        # once, which is absent evidence laundered into a good report.
+        expected = {premise.key for _, premise in premises_for(entry.get("claim", ""))}
+        seen_keys: list[str] = []
         for premise in entry.get("premises", ()):
-            if premise.get("status") not in STRONG_PROVENANCE:
+            key = premise.get("key")
+            seen_keys.append(key)
+            status = premise.get("status")
+            if status not in STRONG_PROVENANCE:
                 problems.append(
-                    f"{ledger}:{line_number}: [{premise.get('status')}] "
-                    f"{premise.get('key')} — {claim}"
+                    f"{ledger}:{line_number}: [{status}] {key} — {claim}"
                 )
-        if not entry.get("kills_attempted"):
+            elif not str(premise.get("cite", "")).strip():
+                problems.append(
+                    f"{ledger}:{line_number}: [UNCITED-STRONG] {key} — {claim}"
+                )
+        for missing in sorted(expected - set(seen_keys)):
+            problems.append(
+                f"{ledger}:{line_number}: [MISSING] {missing} — {claim}"
+            )
+        if len(seen_keys) != len(set(seen_keys)):
+            problems.append(
+                f"{ledger}:{line_number}: [DUPLICATE-KEY] — {claim}"
+            )
+        kills = [str(kill).strip() for kill in entry.get("kills_attempted", ())]
+        if not any(kills):
             problems.append(
                 f"{ledger}:{line_number}: [NO-KILL] nothing tried to falsify — {claim}"
             )
     return problems
+
+
+_DATA_SUFFIXES = frozenset({".json", ".jsonl", ".toml", ".lock", ".txt"})
+_PROSE_SUFFIXES = frozenset({".md", ".rst"})
+
+
+def _claim_bearing_text(file_name: str, line: str) -> str | None:
+    """The part of an added line where a published claim could live, or None.
+
+    Mention is not use: overclaim vocabulary inside a code string literal or a
+    data file is somebody talking *about* claims, and sweeping it produced 73
+    flags of noise on the kit's own first range. Prose files carry claims on
+    any line; code carries them in comments; data carries none.
+    """
+    suffix = Path(file_name).suffix
+    if suffix in _DATA_SUFFIXES:
+        return None
+    if suffix in _PROSE_SUFFIXES:
+        return line
+    comment = line.find("#")
+    if comment == -1:
+        return None
+    return line[comment:]
 
 
 def sweep_range(root: Path, base: str, head: str) -> list[str]:
@@ -401,6 +481,19 @@ def sweep_range(root: Path, base: str, head: str) -> list[str]:
     Vocabulary only, and said plainly: this flags words, judges nothing, and a
     finding means "a strong word appeared with no instrument in sight", not
     "the sentence is false". Its value is where it points, not what it proves.
+    Measured on its own first range: 73 flags, dominated by fixture strings —
+    an optional lens, not a publication step.
+
+    Scope follows the cause of the noise, not the file list of the moment. The
+    sweep's target is published prose claims; its first run returned 73 flags
+    dominated by *mentions* — vocabulary inside code string literals and test
+    fixtures — which are not claims and had no reason to be in scope. So: prose
+    files are swept whole-line; code and extensionless files only on comment
+    lines (the wrapper's claims live there); data files (.json/.jsonl/.toml/
+    .lock) are excluded, because data carries no claims. Docstring prose in code
+    is therefore missed here — that failure class is prove-a-control's beat.
+    The citation must sit on the same line: proximity never bound a citation to
+    a claim, and an unrelated `$ echo` two lines down once satisfied the check.
     """
     environment = {
         key: value
@@ -408,15 +501,7 @@ def sweep_range(root: Path, base: str, head: str) -> list[str]:
         if not key.startswith("GIT_")
     }
     completed = subprocess.run(
-        [
-            "git",
-            "--no-replace-objects",
-            "diff",
-            f"{base}..{head}",
-            "--",
-            "*.py",
-            "*.md",
-        ],
+        ["git", "--no-replace-objects", "diff", f"{base}..{head}"],
         cwd=root,
         env=environment,
         capture_output=True,
@@ -434,16 +519,16 @@ def sweep_range(root: Path, base: str, head: str) -> list[str]:
             current_file = raw[6:]
         elif raw.startswith("+") and not raw.startswith("+++"):
             added.append((current_file, raw[1:]))
-    for index, (file_name, line) in enumerate(added):
-        match = OVERCLAIM_WORDS.search(line)
+    for file_name, line in added:
+        scoped = _claim_bearing_text(file_name, line)
+        if scoped is None:
+            continue
+        match = OVERCLAIM_WORDS.search(scoped)
         if not match:
             continue
-        window = [line] + [
-            text for name, text in added[index + 1 : index + 3] if name == file_name
-        ]
-        if any(CITATION_MARK.search(part) for part in window):
+        if CITATION_MARK.search(scoped):
             continue
-        findings.append(f"{file_name}: {match.group(0)!r} uncited near: {line.strip()[:90]}")
+        findings.append(f"{file_name}: {match.group(0)!r} uncited near: {scoped.strip()[:90]}")
     return findings
 
 
@@ -470,8 +555,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--execute", action="store_true")
     p.add_argument("--timeout", type=int, default=180)
 
-    p = sub.add_parser("record", help="append one claim entry (JSON on stdin) to the ledger")
+    p = sub.add_parser(
+        "record",
+        help="append one claim entry (flags, or JSON on stdin when no --claim)",
+    )
     p.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)
+    p.add_argument("--claim")
+    p.add_argument(
+        "--premise", nargs=3, action="append", metavar=("KEY", "STATUS", "CITE"),
+        default=[],
+    )
+    p.add_argument("--kill", action="append", default=[])
 
     p = sub.add_parser("audit", help="list ASSUMED/weak premises and unkilled claims")
     p.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)
@@ -497,7 +591,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "record":
         try:
-            payload = json.loads(sys.stdin.read())
+            if args.claim:
+                payload = {
+                    "claim": args.claim,
+                    "premises": [
+                        {"key": key, "status": status, "cite": cite}
+                        for key, status, cite in args.premise
+                    ],
+                    "kills_attempted": args.kill,
+                }
+            else:
+                payload = json.loads(sys.stdin.read())
             entry = record_entry(payload, args.ledger)
         except (ValueError, json.JSONDecodeError) as exc:
             print(f"record: {exc}", file=sys.stderr)

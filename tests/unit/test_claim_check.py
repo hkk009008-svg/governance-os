@@ -257,3 +257,199 @@ def test_lottery_samples_only_recorded_claims(tmp_path: Path) -> None:
 
     assert len(sampled) == 2
     assert set(sampled) == {"claim one is measured", "claim two is enforced on every run"}
+
+
+# --- round-2 controls, from the operator FAIL on c34c7af..1be2808 ---------------
+
+# Real prose, both directions. The reviewer defeated the fixture by replacing a
+# shape trigger with `\b(is|this)\b` — every fixture row still passed, because
+# nothing constrained what a trigger must NOT match. These sentences are the
+# constraint: the positives are claims from this repository's own idiom that
+# MUST classify, the negatives are ordinary prose that MUST NOT. A degenerate
+# trigger now fails here instead of surviving everything.
+SHAPE_POSITIVES = (
+    # One sentence per trigger family, or deleting a family survives the corpus:
+    # dropping \benforc\w+\b stayed green once because every enforced positive
+    # reached the shape through a synonym.
+    ("the validator enforces the schema at publication", "enforced"),
+    ("the guard rejects unsafe paths", "enforced"),
+    ("the hook prevents two directors from binding", "enforced"),
+    ("the writer hard-denies direct mailbox edits", "enforced"),
+    ("36 tests passed on the reviewed range", "measured"),
+    ("the fix is verified by the suite", "measured"),
+    ("the report is anchored at sha256:0f2a", "reference"),
+    ("the sweep covers every form and coverage is complete", "complete"),
+    ("the launcher never spends during dry-run", "absence"),
+    ("the CLI parses --model as its own flag", "semantics"),
+)
+NEUTRAL_PROSE = (
+    "complete the unification of the two templates",
+    "the free-form mailbox body carries prose",
+    "wrap the output in a code block",
+    "this is the config the seat loads",
+    "read the file and move on to the next one",
+)
+
+
+@pytest.mark.parametrize("sentence,shape", SHAPE_POSITIVES)
+def test_repository_idiom_claims_classify_to_their_shape(sentence: str, shape: str) -> None:
+    assert shape in claim_check.classify(sentence), (sentence, claim_check.classify(sentence))
+
+
+@pytest.mark.parametrize("sentence", NEUTRAL_PROSE)
+def test_ordinary_repository_prose_classifies_to_nothing(sentence: str) -> None:
+    assert claim_check.classify(sentence) == [], (sentence, claim_check.classify(sentence))
+
+
+def test_probe_subprocess_starts_pointerless(monkeypatch, tmp_path: Path) -> None:
+    """The claimed property, pinned at the subprocess boundary it lives at.
+
+    The first shipped probe claimed a context-free reader while launching it in
+    the author's cwd with the author's environment — the prompt was clean and
+    the process sat inside the repository. Amnesia is a property of the launch,
+    so the launch is what gets asserted: an empty working directory that is not
+    ours, and an environment with no PWD, no GIT_*, nothing but PATH/HOME/TERM.
+    """
+    seen: dict = {}
+
+    def recorder(argv, **kwargs):
+        seen.update(kwargs)
+        seen["argv"] = argv
+        seen["cwd_contents"] = list(Path(kwargs["cwd"]).iterdir())
+        return subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr(claim_check.subprocess, "run", recorder)
+    monkeypatch.setattr(claim_check.shutil, "which", lambda _name: "/probe/bin/codex")
+
+    code = claim_check._run_probe("the gate is enforced on every launch", 5)
+
+    assert code == 0
+    cwd = Path(seen["cwd"])
+    assert cwd != Path.cwd()
+    assert seen["cwd_contents"] == []
+    environment = seen["env"]
+    assert set(environment) <= {"PATH", "HOME", "TERM"}
+    assert "PWD" not in environment
+    assert not any(key.startswith("GIT_") for key in environment)
+
+
+def test_record_refuses_the_laundering_shapes(tmp_path: Path) -> None:
+    """Each rejection is a way absent evidence once audited clean.
+
+    Duplicate keys were last-wins, a MEASURED status accepted an empty
+    citation, an unknown key rode along unexamined, and a blank kill string
+    counted as an attempt. Every one is a strong-looking entry with nothing
+    inside, which is worse than a weak entry because audit believed it.
+    """
+    ledger = tmp_path / "ledger.jsonl"
+    base = {"claim": "the gate is enforced on every launch"}
+
+    for premises, kills, why in (
+        ([{"key": "invoked-on-path", "status": "MEASURED", "cite": "a"},
+          {"key": "invoked-on-path", "status": "ASSUMED", "cite": ""}], ["k"], "duplicate"),
+        ([{"key": "invoked-on-path", "status": "MEASURED", "cite": ""}], ["k"], "empty citation"),
+        ([{"key": "not-a-premise", "status": "MEASURED", "cite": "a"}], ["k"], "unknown key"),
+        ([], [""], "blank kill"),
+    ):
+        with pytest.raises(ValueError):
+            claim_check.record_entry(
+                {**base, "premises": premises, "kills_attempted": kills}, ledger
+            )
+    assert not ledger.exists(), why
+
+
+def test_audit_reconstructs_instead_of_trusting_the_entry(tmp_path: Path) -> None:
+    """A hand-written ledger line with zero premises once audited clean.
+
+    audit now rederives the claim's required premises and flags every missing
+    row, every strong status with an empty citation, and kills that are only
+    blank strings — the entry is checked against the grammar, not against
+    itself.
+    """
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    ledger.write_text(
+        json.dumps(
+            {
+                "claim": "the gate is enforced on every launch",
+                "premises": [
+                    {"key": "invoked-on-path", "status": "MEASURED", "cite": ""}
+                ],
+                "kills_attempted": ["", "  "],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    problems = claim_check.audit_ledger(ledger)
+
+    assert any("[UNCITED-STRONG] invoked-on-path" in problem for problem in problems)
+    assert any("[MISSING] mechanism-correct" in problem for problem in problems)
+    assert any("[NO-KILL]" in problem for problem in problems)
+
+
+def test_sweep_scopes_to_where_claims_live(tmp_path: Path) -> None:
+    """Mention is not use: the 73-flag noise came from sweeping code literals.
+
+    Prose files are swept whole-line; code and extensionless files only on
+    comment lines; data files not at all. And the citation must share the
+    claim's line — an unrelated `$ echo` two lines below once suppressed a
+    finding, so that exact shape is pinned as still-flagged.
+    """
+    root = _throwaway_repo(tmp_path)
+    (root / "fixture_test.py").write_text(
+        'CLAIM = "the gate is always enforced here"\n'
+        "# this comment is guaranteed uncited prose\n",
+        encoding="utf-8",
+    )
+    (root / "probe-tool").write_text(
+        "#!/bin/bash\n# this wrapper always launches the reader\necho run\n",
+        encoding="utf-8",
+    )
+    (root / "ledger.jsonl").write_text(
+        '{"status": "MEASURED", "note": "always"}\n', encoding="utf-8"
+    )
+    (root / "notes.md").write_text(
+        "plain start\n"
+        "the claim here is never checked\n"
+        "\n"
+        "$ echo unrelated evidence two lines away\n",
+        encoding="utf-8",
+    )
+    environment = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True, capture_output=True, env=environment)
+    subprocess.run(["git", "commit", "-q", "-m", "claims"], cwd=root, check=True, capture_output=True, env=environment)
+
+    findings = claim_check.sweep_range(root, "HEAD~1", "HEAD")
+    joined = "\n".join(findings)
+
+    assert "always enforced here" not in joined, "string literal is mention, not use"
+    assert "ledger.jsonl" not in joined, "data files carry no claims"
+    assert any("fixture_test.py" in f and "guaranteed" in f for f in findings)
+    assert any("probe-tool" in f and "always" in f for f in findings)
+    assert any("never checked" in f for f in findings), "same-line rule: distant $ echo suppresses nothing"
+
+
+def test_record_accepts_the_flag_form(tmp_path: Path, monkeypatch, capsys) -> None:
+    """The stdin-JSON form was clunky enough to skip under pressure.
+
+    Pressure is when recording matters, so the flag form exists; it must build
+    the same entry the JSON form does, blank cells included.
+    """
+    ledger = tmp_path / "ledger.jsonl"
+    code = claim_check.main(
+        [
+            "record", "--ledger", str(ledger),
+            "--claim", "the gate is enforced on every launch",
+            "--premise", "invoked-on-path", "MEASURED", "$ grep -n caller → main:12",
+            "--kill", "deleted the call site; test failed",
+        ]
+    )
+
+    assert code == 0
+    entry = json.loads(ledger.read_text(encoding="utf-8").splitlines()[0])
+    statuses = {row["key"]: row["status"] for row in entry["premises"]}
+    assert statuses["invoked-on-path"] == "MEASURED"
+    assert statuses["mechanism-correct"] == "ASSUMED"
+    assert "ASSUMED" in capsys.readouterr().out

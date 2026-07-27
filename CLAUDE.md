@@ -56,10 +56,11 @@ writing one as fact: derive the premises
 (`env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py premises "<claim>"`),
 cite each with the command that measured it, run the one command most likely
 to embarrass the claim, and attack it with a context-free reader
-(`coordination/bin/probe-claim "<claim>"`, or the `amnesiac-prober` agent given
-only the sentence). Before publishing a range, sweep it for uncited overclaim
-vocabulary (`scripts/claim_check.py sweep --base <base> --head <head>`). All
-advisory, none a gate; the full loop is `.claude/skills/probe-a-claim`.
+(`coordination/bin/probe-claim "<claim>"` — a real provider launch, authorized
+like any provider launch — or the `amnesiac-prober` agent given only the
+sentence). `scripts/claim_check.py sweep` is an optional lens over a range's
+uncited overclaim vocabulary. All advisory, none a gate; the full loop is
+`.claude/skills/probe-a-claim`.
 
 ## Proportional independence
 
