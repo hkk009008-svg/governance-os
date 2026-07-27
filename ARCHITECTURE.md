@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified: 2026-07-26 @ 492fcab*
+*Last verified: 2026-07-27 @ 3d4cf8b*
 
 ## 1. Purpose
 
@@ -24,6 +24,7 @@ in runtime mechanics, never in policy.
 user or parent task
   -> optional explicit role
   -> one compact current-state snapshot
+  -> Explore, Validate, or Promote work mode
   -> scoped work in a native Git worktree
   -> risk classification and focused verification
   -> exact committed request/report only when formal review is required
@@ -33,6 +34,12 @@ user or parent task
 Read-only questions do not enter this flow. Ordinary local edits do not need a
 mailbox event, role ceremony, capacity packet, handoff, or independent review
 unless their actual risk or transfer boundary requires one.
+
+Work mode is orthogonal to review risk. Explore permits recorded iteration only
+inside a declared non-canonical scope. Validate freezes one candidate and
+requires its non-author review. Promote adds rollback and separately authorized
+canonical or external-effect scope. The mode itself grants no authority; see
+`docs/protocol/work-modes.md`.
 
 ## 3. Repository topology
 
@@ -89,7 +96,7 @@ The table names stable symbols instead of volatile line numbers.
 | `inspect_current_verify_requests` | `scripts/check_coordination.py` | Find and validate current committed review requests. |
 | `validate_event_candidate`, `writer_fence` | `scripts/mailbox_writer.py` | Validate and serialize event/cursor publication. |
 | `parse_verify_request`, `validate_report` | `scripts/compact_pair_loop.py` | Bind formal review to one committed request and exact range. |
-| `RuntimeIdentity`, `review_profile_for` | `scripts/codex_protocol_model.py` | Close runtime identity and select a finite review policy. |
+| `RuntimeIdentity`, `work_profile_for`, `review_profile_for` | `scripts/codex_protocol_model.py` | Close runtime identity and select finite work-mode and review policies. |
 | `model_family`, `models_are_independent` | `scripts/codex_protocol_model.py` | Decide reviewer independence by model family, so a harness prefix or version suffix cannot buy it. |
 | `build_launch_spec` | `scripts/codex_seat_launcher.py`, `scripts/agy_seat_launcher.py` | Launch a named role in the caller-selected native worktree. Neither binds an index. |
 | `resolve_unread` | `scripts/bus_unread.py` | Answer unread from the proven authority, falling back to the canonical mailbox order so an absent bus never renders `0 unread`. |
@@ -119,6 +126,8 @@ The table names stable symbols instead of volatile line numbers.
   `operator`, and `operator2` own consumable compatibility cursors.
 - Capacity boards, handoffs, and protocol doctors are optional diagnostics.
   They never grant task, review, or effect authority.
+- Explore does not allocate seats or create formal review artifacts unless a
+  real transfer or phase change requires them.
 - Editing, staging, committing, publishing an event, consuming a cursor,
   pushing, merging, locking, launching a provider, spending, and mutating live
   data are distinct actions.

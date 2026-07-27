@@ -26,6 +26,12 @@ Optional ChatGPT Pro consultation is parent-only and advisory: follow the
 authority.
 
 Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
+Select Explore, Validate, or Promote through `docs/protocol/work-modes.md`
+separately from review risk. Ordinary Explore work does not instantiate seats
+or formal review artifacts. A real transfer, frozen Validate candidate,
+Promote boundary, or explicitly assigned role activates only the seats that
+boundary needs. Work mode grants no role or external-effect authority.
+
 Own the routed outcome and choose the method. Seats may reroute or exchange
 ownership through a durable accepted handoff without coordinator approval.
 Preflight is advisory. Preserve material findings, require non-author Operator

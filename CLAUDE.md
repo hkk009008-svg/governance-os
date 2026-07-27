@@ -28,6 +28,22 @@ Use the smallest sufficient verification profile and do not repeat an unchanged
 review question. A deferred confirmed defect needs a strict xfail or a
 `test-infeasible` reason.
 
+## Work mode before ceremony
+
+Select `explore`, `validate`, or `promote` from
+`docs/protocol/work-modes.md`; the closed profiles live in
+`scripts/codex_protocol_model.py`.
+
+- Explore is the default for reversible sandbox learning: one campaign brief,
+  automatic attempt logs, recorded reruns, and no formal review until transfer
+  or phase change.
+- Validate freezes one candidate and uses one non-author candidate review.
+- Promote carries the reviewed candidate, rollback point, and separately
+  authorized canonical or external effect.
+
+Mode is separate from review risk and grants no seat, write, provider launch,
+merge, push, or external-effect authority.
+
 ## Work from the skills, and write the next one
 
 Default, not an option. Before starting, check `.claude/skills/` for one that
@@ -51,15 +67,22 @@ outlived its mechanism is the same defect as a docstring that did.
 
 A load-bearing claim — "enforced", "measured", "complete", "never", a cited
 reference — is a conjunction whose premises come from its shape, not from
-memory, and whose check must be able to disagree with its author. Before
-writing one as fact: derive the premises
+memory, and whose check must be able to disagree with its author. Apply that
+discipline at the boundary selected by the work mode:
+
+- Explore: use it for a claim that stops the campaign, selects a candidate, or
+  changes phase; cite routine observations directly.
+- Validate: use the full loop for the candidate's load-bearing conclusion.
+- Promote: retain the full loop and the independent review.
+
+For the full loop, derive the premises
 (`env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py premises "<claim>"`),
 cite each with the command that measured it, run the one command most likely
-to embarrass the claim, and attack it with a reduced-context reader
-(`coordination/bin/probe-claim "<claim>"` — a real provider launch, authorized
-like any provider launch — or the `amnesiac-prober` agent given only the
-sentence). `scripts/claim_check.py sweep` is an optional lens over a range's
-uncited overclaim vocabulary. All advisory, none a gate; the full loop is
+to embarrass the claim, and attack it with a reduced-context reader when useful
+and separately authorized (`coordination/bin/probe-claim "<claim>"` — a real
+provider launch — or the `amnesiac-prober` agent given only the sentence).
+`scripts/claim_check.py sweep` is an optional lens over a range's uncited
+overclaim vocabulary. All advisory, none a gate; the full loop is
 `.claude/skills/probe-a-claim`.
 
 ## Proportional independence

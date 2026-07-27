@@ -47,6 +47,30 @@ def test_every_provider_entrypoint_points_to_the_canonical_policy_model():
         assert pointer in compact, path
 
 
+def test_work_mode_docs_point_to_the_executable_profiles_and_keep_explore_light():
+    work_modes = _compact(_read("docs/protocol/work-modes.md"))
+
+    assert "scripts/codex_protocol_model.py" in work_modes
+    assert "work_profile_for" in work_modes
+    assert "work mode is separate from review risk" in work_modes.lower()
+    assert "one campaign brief" in work_modes.lower()
+    assert "no formal review inside explore" in work_modes.lower()
+    assert "provider launch remains separately authorized" in work_modes.lower()
+
+    for path in (
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+        ".claude/skills/four-seat-protocol/SKILL.md",
+        "docs/protocol/claude/continuation.md",
+    ):
+        text = _compact(_read(path))
+        assert "docs/protocol/work-modes.md" in text, path
+        assert "explore" in text.lower(), path
+        assert "validate" in text.lower(), path
+        assert "promote" in text.lower(), path
+
+
 def test_independence_first_doc_tracks_mechanized_gate_and_remaining_followup():
     text = (ROOT / "docs/protocol/claude/independence-first.md").read_text(
         encoding="utf-8"

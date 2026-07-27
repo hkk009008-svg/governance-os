@@ -11,6 +11,12 @@ contain only their local deltas.
 - Coordinator: only for explicit observation, reconciliation, or mediation.
 - Subagent: bounded by its parent and never inherits live-role authority.
 
+These runtime identities are separate from product-work modes. Select Explore,
+Validate, or Promote through `docs/protocol/work-modes.md`. Explore is the
+default for reversible sandbox iteration and does not create seat ceremony;
+Validate freezes one candidate; Promote carries the reviewed candidate toward
+a separately authorized canonical or external effect.
+
 **Claude has no session-start seat binding, and does not need one.** Naming a
 role here is convention: no launcher, registry, or hook records or validates a
 Claude seat at startup. Cursor enforces an app-seat registry because its hooks
@@ -50,8 +56,8 @@ classification or second doctrine dump.
 ## Executable contracts
 
 - `scripts/codex_protocol_model.py` validates runtime identity, ownership
-  lineage, risk profiles, model-family independence, and external-effect token
-  shape.
+  lineage, work modes, risk profiles, model-family independence, and
+  external-effect token shape.
 - `scripts/compact_pair_loop.py` validates formal requests, reports, and exact
   reviewed ranges.
 - `scripts/mailbox_writer.py` validates and serializes event publication.
