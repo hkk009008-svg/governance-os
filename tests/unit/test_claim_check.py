@@ -210,10 +210,10 @@ def _throwaway_repo(tmp_path: Path) -> Path:
 
 def test_sweep_flags_uncited_overclaims_and_spares_cited_ones(tmp_path: Path) -> None:
     root = _throwaway_repo(tmp_path)
-    # The cited claim first: a citation may legitimately trail its claim by up
-    # to two lines, so an uncited claim directly above a cited one would be
-    # spared by its neighbour's citation — placement here mirrors the design
-    # rather than fighting it.
+    # Citations bind on the same line only — proximity never bound a citation
+    # to a claim, and an unrelated `$ echo` two lines below once suppressed a
+    # finding. The uncited line here sits right beside cited ones to pin that
+    # neighbours spare nothing.
     (root / "notes.md").write_text(
         "plain start\n"
         "the module is verified — per `pytest tests/unit -q`\n"
@@ -346,9 +346,13 @@ def test_record_refuses_the_laundering_shapes(tmp_path: Path) -> None:
 
     for premises, kills, why in (
         ([{"key": "invoked-on-path", "status": "MEASURED", "cite": "a"},
-          {"key": "invoked-on-path", "status": "ASSUMED", "cite": ""}], ["k"], "duplicate"),
-        ([{"key": "invoked-on-path", "status": "MEASURED", "cite": ""}], ["k"], "empty citation"),
-        ([{"key": "not-a-premise", "status": "MEASURED", "cite": "a"}], ["k"], "unknown key"),
+          {"key": "invoked-on-path", "status": "ASSUMED", "cite": ""}], ["mutated; test failed"], "duplicate"),
+        ([{"key": "invoked-on-path", "status": "MEASURED", "cite": ""}], ["mutated; test failed"], "empty citation"),
+        ([{"key": "invoked-on-path", "status": "MEASURED",
+           "cite": "trust me; this is obvious"}], ["mutated; test failed"], "prose citation"),
+        ([{"key": "invoked-on-path", "status": "MEASURED",
+           "cite": "$ grep -n caller → main:12"}], ["thought about it"], "vacuous kill"),
+        ([{"key": "not-a-premise", "status": "MEASURED", "cite": "a"}], ["mutated; test failed"], "unknown key"),
         ([], [""], "blank kill"),
     ):
         with pytest.raises(ValueError):
@@ -384,7 +388,7 @@ def test_audit_reconstructs_instead_of_trusting_the_entry(tmp_path: Path) -> Non
 
     problems = claim_check.audit_ledger(ledger)
 
-    assert any("[UNCITED-STRONG] invoked-on-path" in problem for problem in problems)
+    assert any("[PROSE-CITE] invoked-on-path" in problem for problem in problems)
     assert any("[MISSING] mechanism-correct" in problem for problem in problems)
     assert any("[NO-KILL]" in problem for problem in problems)
 
@@ -453,3 +457,157 @@ def test_record_accepts_the_flag_form(tmp_path: Path, monkeypatch, capsys) -> No
     assert statuses["invoked-on-path"] == "MEASURED"
     assert statuses["mechanism-correct"] == "ASSUMED"
     assert "ASSUMED" in capsys.readouterr().out
+
+
+# --- round-3 controls, from the second operator FAIL -----------------------------
+
+def test_every_trigger_alternative_carries_an_exclusive_witness() -> None:
+    """Coverage derived from the grammar's own table, not remembered beside it.
+
+    Round two measured 37 of 46 hand-listed trigger alternatives deletable with
+    every test green — each shape was reachable through a synonym, so no single
+    deletion moved any assertion. Alternatives now carry their witness in the
+    source table, and this test holds both directions for every one of them:
+    the witness classifies to its shape, and removing exactly its alternative
+    stops it classifying. An alternative that cannot satisfy this cannot exist,
+    which is the rule that deleted bare `means`, `no-op`, and the redundant
+    costs/spends-nothing forms.
+    """
+    import re as _re
+
+    for shape in claim_check.SHAPES:
+        assert shape.alternatives, shape.name
+        for fragment, witness in shape.alternatives:
+            assert shape.name in claim_check.classify(witness), (shape.name, witness)
+            others = [f for f, _ in shape.alternatives if f is not fragment]
+            reduced = _re.compile("|".join(others) or r"(?!x)x", _re.IGNORECASE)
+            assert not reduced.search(witness), (
+                shape.name, fragment, witness,
+                "witness is reachable without its alternative, so deleting the "
+                "alternative would survive",
+            )
+
+
+def test_probe_argv_skips_the_lanes_user_config(monkeypatch, tmp_path: Path) -> None:
+    """The lane's own config carried repository paths; the probe must not load it.
+
+    Round two showed HOME and the resolved binary remain pointers, and the
+    inherited user config pointed straight at this repository's projects and
+    hooks. The flag that skips it is part of the launch contract, so it is
+    pinned beside the cwd/env boundary.
+    """
+    seen: dict = {}
+
+    def recorder(argv, **kwargs):
+        seen["argv"] = argv
+        return subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr(claim_check.subprocess, "run", recorder)
+    monkeypatch.setattr(claim_check.shutil, "which", lambda _name: "/probe/bin/codex")
+
+    assert claim_check._run_probe("the gate is enforced on every launch", 5) == 0
+    assert "--ignore-user-config" in seen["argv"]
+
+
+def test_sweep_ignores_hash_inside_python_strings_and_reads_toml_prose(
+    tmp_path: Path,
+) -> None:
+    """The two scope defects round two measured, pinned in both directions.
+
+    A `#` inside a Python string was treated as a comment start, reintroducing
+    the literal noise the scoping exists to remove; and TOML was binned as data
+    while this repository's agent TOMLs carry claim-bearing instructions.
+    """
+    root = _throwaway_repo(tmp_path)
+    (root / "module.py").write_text(
+        'MESSAGE = "always include a # marker in output"\n'
+        "# a full-line comment that is never cited\n",
+        encoding="utf-8",
+    )
+    (root / "agent.toml").write_text(
+        'instructions = "this agent always verifies the range"\n', encoding="utf-8"
+    )
+    environment = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True, capture_output=True, env=environment)
+    subprocess.run(["git", "commit", "-q", "-m", "claims"], cwd=root, check=True, capture_output=True, env=environment)
+
+    findings = claim_check.sweep_range(root, "HEAD~1", "HEAD")
+    joined = "\n".join(findings)
+
+    assert "always include a #" not in joined, "a # inside a string is not a comment"
+    assert any("module.py" in f and "never" in f for f in findings)
+    assert any("agent.toml" in f and "always" in f for f in findings)
+
+
+# The independent anchor for the grammar's alternative set. Witnesses moved into
+# the source table so coverage is derived — which made deleting a
+# (fragment, witness) pair silent again, since the witness vanishes with the
+# alternative it was pinning. This copy is the anchor the source cannot take
+# with it: an alternative deleted or added in scripts/claim_check.py without a
+# matching, deliberate edit here is a red test, not a quiet narrowing. That is
+# the same two-file-change rule the nine-failure fixture already applies to
+# premises.
+EXPECTED_ALTERNATIVES = {
+    'enforced': (
+        '\\bblocks\\b',
+        '\\bden(?:y|ies)\\b',
+        '\\benforc\\w+\\b',
+        '\\bevery (launch|call|run|dispatch|path)\\b',
+        '\\bgate[sd]?\\b',
+        '\\bprevents?\\b',
+        '\\brefus\\w+\\b',
+        '\\brejects?\\b',
+        '\\brequir\\w+ on\\b',
+    ),
+    'measured': (
+        '\\bconfirm\\w+\\b',
+        '\\bgreen\\b',
+        '\\bmeasur\\w+\\b',
+        '\\bnon-vacuous\\b',
+        '\\bpass(?:es|ed)\\b',
+        '\\bproves?\\b',
+        '\\btest(?:ed|s)?\\b',
+        '\\bverif\\w+\\b',
+    ),
+    'reference': (
+        '@[0-9a-f]{7,40}\\b',
+        '\\banchors?\\b',
+        '\\bcite[sd]?\\b',
+        '\\bfinding ref\\b',
+        '\\bprovenance\\b',
+        '\\bsha256:',
+    ),
+    'complete': (
+        '\\ball (?:cases|forms|paths)\\b',
+        '\\bcomplete(?:ly)?\\b(?!\\s+the\\b)',
+        '\\bcovers? (?:all|every)\\b',
+        '\\bexhaustive\\w*\\b',
+        '\\bno other\\b',
+        '\\bonly way\\b',
+    ),
+    'absence': (
+        '\\bcannot\\b',
+        '\\bfor free\\b',
+        '\\bimpossible\\b',
+        '\\bnever\\b',
+        '\\bno \\w+ (?:exists|calls|reaches|remains)\\b',
+        '\\bnothing\\b',
+    ),
+    'semantics': (
+        '\\baccepts?\\b',
+        '\\bconsumes?\\b',
+        '\\bdefines?\\b',
+        '\\binterprets?\\b',
+        '\\bparses?\\b',
+        '\\bresolves? to\\b',
+        '\\btreats?\\b',
+    ),
+}
+
+
+def test_the_alternative_table_matches_the_independent_anchor() -> None:
+    actual = {
+        shape.name: tuple(sorted(fragment for fragment, _ in shape.alternatives))
+        for shape in claim_check.SHAPES
+    }
+    assert actual == EXPECTED_ALTERNATIVES

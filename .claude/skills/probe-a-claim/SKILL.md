@@ -1,6 +1,6 @@
 ---
 name: probe-a-claim
-description: Formation-time discipline for load-bearing claims — derive the premises from the claim's shape, cite each with the command that measured it, attack it with a context-free reader, and record the blank cells. Use BEFORE writing "verified", "enforced", "complete", "never", "measured", or citing a reference as provenance; prove-a-control is for the mechanism, this is for the belief.
+description: Formation-time discipline for load-bearing claims — derive the premises from the claim's shape, cite each with the command that measured it, attack it with a reduced-context reader, and record the blank cells. Use BEFORE writing "verified", "enforced", "complete", "never", "measured", or citing a reference as provenance; prove-a-control is for the mechanism, this is for the belief.
 disable-model-invocation: true
 ---
 
@@ -16,7 +16,7 @@ and a reader holding only the claim caught all nine, because it never made the
 assumption. The failure is circularity at belief formation: the claim and its
 check both derived from the same artifact, so their agreement carried no
 information. The remedy is otherness — from the claim's shape, from a
-context-free reader, from an exit code — none of which is sourced from the
+reduced-context reader, from an exit code — none of which is sourced from the
 author's recall, because recall is the broken faculty.
 
 ## The loop, per load-bearing claim
@@ -44,8 +44,11 @@ author's recall, because recall is the broken faculty.
    ```bash
    coordination/bin/probe-claim "<claim>"
    ```
-   The primary probe launches from an empty directory with repository pointers
-   scrubbed (no PWD, no GIT_*), pinned by a subprocess-boundary test. The
+   The primary probe launches from an empty directory with a minimal
+   environment and the lane's user config skipped (`--ignore-user-config` —
+   it carried repository paths), pinned by a subprocess-boundary test.
+   Reduced-context, not context-free: HOME and the binary path remain
+   pointers, and the limits section says so. The
    same-family fallback (`amnesiac-prober`, ONLY the claim sentence) is weaker
    by design: its restraint is instruction, not enforcement. Either way, never
    include the code, the diff, or your reasoning — context is contamination.
@@ -95,10 +98,10 @@ with the claim's own artifact count zero — same source, no information.
 - The sweep is a vocabulary heuristic over prose, scoped to comment and
   document lines; docstring prose inside code is missed here, and code
   semantics are `prove-a-control` trap 3's business.
-- The probe's isolation scrubs pointers, not access: HOME survives for the
-  lane's credentials, and a read-only sandbox could still roam the disk if it
-  guessed a path. What is enforced — and tested — is that nothing in cwd or
-  env points anywhere.
+- The probe is reduced-context, not context-free: cwd is empty, env is
+  PATH/HOME/TERM, the lane's user config is skipped — but HOME and the binary
+  path remain pointers a determined reader could follow. What the boundary
+  test enforces is that nothing *defaults* it into our context.
 - The ledger is self-reported. Its audit catches what you wrote down, not what
   you didn't; the lottery plus probes exist to attack exactly that gap.
 - The premise keys were authored by the same mind whose blind spots they

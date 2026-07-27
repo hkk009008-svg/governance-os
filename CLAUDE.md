@@ -55,7 +55,7 @@ memory, and whose check must be able to disagree with its author. Before
 writing one as fact: derive the premises
 (`env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py premises "<claim>"`),
 cite each with the command that measured it, run the one command most likely
-to embarrass the claim, and attack it with a context-free reader
+to embarrass the claim, and attack it with a reduced-context reader
 (`coordination/bin/probe-claim "<claim>"` — a real provider launch, authorized
 like any provider launch — or the `amnesiac-prober` agent given only the
 sentence). `scripts/claim_check.py sweep` is an optional lens over a range's

@@ -27,7 +27,13 @@ passed reversion and died to evasion. If you find no evasion route, say so —
 that is a finding, not an omission.
 
 Restore every mutation from a byte snapshot and prove it with sha256 before and
-after. Never restore from `HEAD:` — it moves.
+after. Never restore from `HEAD:` — it moves. And defeat import caching: a
+byte-exact restore with colliding mtime and size replays the *mutant* from
+stale bytecode — measured: the restored source passed as the mutated value
+until mtime advanced one second. Run mutation matrices with
+`PYTHONDONTWRITEBYTECODE=1` and delete `__pycache__` between mutate and
+restore; `-p no:cacheprovider` governs pytest's cache, not Python's import
+bytecode, and is not a remedy for this.
 
 ## Trap 1 — the control is correct but nothing calls it
 Test the mechanism and never the wiring, and deleting the call site stays green.

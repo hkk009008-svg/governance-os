@@ -69,22 +69,38 @@ class Premise:
 @dataclass(frozen=True)
 class Shape:
     name: str
-    trigger: re.Pattern
+    # (regex alternative, exclusive witness sentence). The trigger is derived by
+    # joining the alternatives, and the witness is a real claim idiom that ONLY
+    # its own alternative matches within the shape — so an alternative cannot
+    # exist without evidence it earns its keep, and the test suite derives
+    # per-alternative coverage from this table instead of remembering it.
+    # Round-2 measured why: 37 of 46 hand-listed alternatives could be deleted
+    # with every test green, because the corpus reached each shape through a
+    # synonym. An alternative with no exclusive witness is deleted, not kept:
+    # that rule removed bare `means` (natural language over-trigger), `no-op`
+    # (a coordination label, not a claim), and the redundant costs/spends
+    # nothing forms already carried by `nothing`.
+    alternatives: tuple[tuple[str, str], ...]
     premises: tuple[Premise, ...]
 
+    @property
+    def trigger(self) -> re.Pattern:
+        return re.compile("|".join(fragment for fragment, _ in self.alternatives), re.IGNORECASE)
 
-# The grammar. Each shape's premises are the ones whose omission produced a
-# measured failure; the docstring of tests/unit/test_claim_check.py maps each
-# of the nine to the premise that would have named it. Editing a shape means
-# re-running that fixture — it is the grammar's tether to what actually
-# happened, and a grammar that drifts from it is a checklist again.
+
 SHAPES: tuple[Shape, ...] = (
     Shape(
         "enforced",
-        re.compile(
-            r"\benforc\w+\b|\bgate[sd]?\b|\bon every\b|\bevery (launch|call|run|dispatch|path)\b"
-            r"|\brefus\w+\b|\brejects?\b|\bprevents?\b|\bden(?:y|ies)\b|\brequir\w+ on\b",
-            re.IGNORECASE,
+        (
+            (r"\benforc\w+\b", "the validator enforces the schema at publication"),
+            (r"\bgate[sd]?\b", "the merge is gated on review"),
+            (r"\bevery (launch|call|run|dispatch|path)\b", "the check runs before every dispatch"),
+            (r"\brefus\w+\b", "the writer refuses a self-addressed event"),
+            (r"\brejects?\b", "the guard rejects unsafe paths"),
+            (r"\bprevents?\b", "the hook prevents two directors from binding"),
+            (r"\bden(?:y|ies)\b", "the policy denies ambient authority"),
+            (r"\bblocks\b", "the hook blocks unsigned pushes"),
+            (r"\brequir\w+ on\b", "a GO is required on behavior-changing ranges"),
         ),
         (
             Premise(
@@ -111,10 +127,15 @@ SHAPES: tuple[Shape, ...] = (
     ),
     Shape(
         "measured",
-        re.compile(
-            r"\bmeasur\w+\b|\bverif\w+\b|\btest(?:ed|s)?\b|\bpass(?:es|ed)\b|\bgreen\b"
-            r"|\bconfirm\w+\b|\bproves?\b|\bnon-vacuous\b",
-            re.IGNORECASE,
+        (
+            (r"\bmeasur\w+\b", "the latency is measured at four minutes"),
+            (r"\bverif\w+\b", "the fix is verified by the suite"),
+            (r"\btest(?:ed|s)?\b", "the migration is tested end to end"),
+            (r"\bpass(?:es|ed)\b", "the suite passes on the range"),
+            (r"\bgreen\b", "the pipeline is green on main"),
+            (r"\bconfirm\w+\b", "the defect is confirmed by rerun"),
+            (r"\bproves?\b", "the fixture proves the binding"),
+            (r"\bnon-vacuous\b", "the control is non-vacuous"),
         ),
         (
             Premise(
@@ -137,9 +158,13 @@ SHAPES: tuple[Shape, ...] = (
     ),
     Shape(
         "reference",
-        re.compile(
-            r"@[0-9a-f]{7,40}\b|\bsha256:|\bprovenance\b|\bcite[sd]?\b|\bfinding ref\b|\banchors?\b",
-            re.IGNORECASE,
+        (
+            (r"@[0-9a-f]{7,40}\b", "the report is pinned at events.md@2ae144202a84"),
+            (r"\bsha256:", "the blob digest is sha256:0f2a"),
+            (r"\bprovenance\b", "the entry carries its provenance"),
+            (r"\bcite[sd]?\b", "the outcome cites its instrument"),
+            (r"\bfinding ref\b", "the finding ref binds the FAIL"),
+            (r"\banchors?\b", "the digest anchors the report"),
         ),
         (
             Premise(
@@ -158,10 +183,13 @@ SHAPES: tuple[Shape, ...] = (
     ),
     Shape(
         "complete",
-        re.compile(
-            r"\bcomplete(?:ly)?\b(?!\s+the\b)|\bcovers? (?:all|every)\b|\bexhaustive\w*\b"
-            r"|\ball (?:cases|forms|paths)\b|\bno other\b|\bonly way\b",
-            re.IGNORECASE,
+        (
+            (r"\bcomplete(?:ly)?\b(?!\s+the\b)", "coverage is complete"),
+            (r"\bcovers? (?:all|every)\b", "the sweep covers every form"),
+            (r"\bexhaustive\w*\b", "the matrix is exhaustive"),
+            (r"\ball (?:cases|forms|paths)\b", "all paths are enumerated"),
+            (r"\bno other\b", "no other route bypasses the writer"),
+            (r"\bonly way\b", "the allowlist is the only way through"),
         ),
         (
             Premise(
@@ -184,10 +212,13 @@ SHAPES: tuple[Shape, ...] = (
     ),
     Shape(
         "absence",
-        re.compile(
-            r"\bnever\b|\bnothing\b|\bcannot\b|\bimpossible\b|\bno \w+ (?:exists|calls|reaches|remains)\b"
-            r"|\bcosts? nothing\b|\bfor free\b|\bno-op\b|\bspends? nothing\b",
-            re.IGNORECASE,
+        (
+            (r"\bnever\b", "the launcher never spends during dry-run"),
+            (r"\bnothing\b", "nothing consumes the cursor"),
+            (r"\bcannot\b", "a stub cannot reach the writer"),
+            (r"\bimpossible\b", "replay is impossible after consumption"),
+            (r"\bno \w+ (?:exists|calls|reaches|remains)\b", "no caller reaches the gate"),
+            (r"\bfor free\b", "the probe rides the listing for free"),
         ),
         (
             Premise(
@@ -206,10 +237,14 @@ SHAPES: tuple[Shape, ...] = (
     ),
     Shape(
         "semantics",
-        re.compile(
-            r"\bparses?\b|\bdefines?\b|\baccepts?\b|\binterprets?\b|\bmeans\b|\btreats?\b"
-            r"|\bconsumes?\b|\bresolves? to\b",
-            re.IGNORECASE,
+        (
+            (r"\bparses?\b", "the CLI parses --model as its own flag"),
+            (r"\bdefines?\b", "the help defines sixteen flags"),
+            (r"\baccepts?\b", "the parser accepts the emitted argv"),
+            (r"\binterprets?\b", "the shell interprets the token as live"),
+            (r"\btreats?\b", "git treats the rule as directory-only"),
+            (r"\bconsumes?\b", "the flag consumes the next token"),
+            (r"\bresolves? to\b", "the alias resolves to the last occurrence"),
         ),
         (
             Premise(
@@ -257,6 +292,11 @@ OVERCLAIM_WORDS = re.compile(
 # prose, applied to prose — the one domain where pattern-matching text is the
 # honest tool, because the subject matter *is* the text.
 CITATION_MARK = re.compile(r"per `|→|\$ |exit [0-9]|sha256:")
+# What a citation or kill must carry to count as an instrument rather than
+# prose: a command, an observed-output arrow, an exit code, or a digest.
+# "trust me; this is obvious" audited clean once; text with none of these is a
+# memory wearing a strong label.
+INSTRUMENT_MARK = re.compile(r"\$ |`[^`]+`|→|exit [0-9]|sha256:|failed|refused|passed")
 
 
 def classify(claim: str) -> list[str]:
@@ -304,11 +344,14 @@ def _run_probe(claim: str, timeout: int) -> int:
     empty scratch directory with an environment reduced to PATH, HOME and TERM:
     no PWD, no GIT_*, no session variables, nothing that hands it the repo.
 
-    Stated as what it is: pointer scrubbing, not access denial. HOME survives
-    because the CLI's credentials live there, and a read-only sandbox could
-    still roam the disk if it guessed a path. The enforced property is that
-    nothing in cwd or env points anywhere, and the test pins exactly that
-    subprocess boundary.
+    Stated as what it is: reduced pointers, not absence of them. HOME survives
+    because the lane's credentials live there — and HOME is itself a pointer,
+    as is the resolved binary path; the lane's own user config additionally
+    carried repository paths, so it is skipped via --ignore-user-config. What
+    is enforced and tested at the subprocess boundary: empty cwd that is not
+    ours, an environment of PATH/HOME/TERM only, no PWD, no GIT_*, and the
+    config-skipping flag present. A reader determined to find the repository
+    still can; one merely defaulting to inherited context cannot.
     """
     prompt = build_probe_prompt(claim)
     codex = shutil.which("codex")
@@ -328,7 +371,10 @@ def _run_probe(claim: str, timeout: int) -> int:
     }
     try:
         completed = subprocess.run(
-            [codex, "exec", "-s", "read-only", "--skip-git-repo-check", "-"],
+            [
+                codex, "exec", "-s", "read-only", "--skip-git-repo-check",
+                "--ignore-user-config", "-",
+            ],
             input=prompt,
             capture_output=True,
             text=True,
@@ -368,8 +414,14 @@ def record_entry(payload: dict, ledger: Path) -> dict:
             raise ValueError(f"unknown premise key {key!r} for this claim's shape")
         supplied[key] = item
     kills = [str(kill) for kill in payload.get("kills_attempted", ())]
-    if any(not kill.strip() for kill in kills):
-        raise ValueError("a blank kill entry counts a kill that was not attempted")
+    for kill in kills:
+        if not kill.strip():
+            raise ValueError("a blank kill entry counts a kill that was not attempted")
+        if not INSTRUMENT_MARK.search(kill):
+            raise ValueError(
+                f"kill {kill[:40]!r} names no observed outcome; 'thought about it' "
+                "is not an attempt to make the claim fail"
+            )
     rows = []
     for _, premise in premises_for(claim):
         item = supplied.get(premise.key)
@@ -382,10 +434,12 @@ def record_entry(payload: dict, ledger: Path) -> dict:
                 f"premise {premise.key!r} has unknown status {status!r}; "
                 f"use one of {', '.join(PROVENANCE)}"
             )
-        if status in STRONG_PROVENANCE and not str(item.get("cite", "")).strip():
+        cite = str(item.get("cite", ""))
+        if status in STRONG_PROVENANCE and not INSTRUMENT_MARK.search(cite):
             raise ValueError(
-                f"premise {premise.key!r} is {status} with an empty citation; "
-                "a strong status without an instrument is a memory wearing a label"
+                f"premise {premise.key!r} is {status} but its citation carries no "
+                "instrument (no command, arrow, exit code, or digest); prose is "
+                "a memory wearing a strong label"
             )
         rows.append(
             {
@@ -432,9 +486,9 @@ def audit_ledger(ledger: Path) -> list[str]:
                 problems.append(
                     f"{ledger}:{line_number}: [{status}] {key} — {claim}"
                 )
-            elif not str(premise.get("cite", "")).strip():
+            elif not INSTRUMENT_MARK.search(str(premise.get("cite", ""))):
                 problems.append(
-                    f"{ledger}:{line_number}: [UNCITED-STRONG] {key} — {claim}"
+                    f"{ledger}:{line_number}: [PROSE-CITE] {key} — {claim}"
                 )
         for missing in sorted(expected - set(seen_keys)):
             problems.append(
@@ -444,16 +498,20 @@ def audit_ledger(ledger: Path) -> list[str]:
             problems.append(
                 f"{ledger}:{line_number}: [DUPLICATE-KEY] — {claim}"
             )
-        kills = [str(kill).strip() for kill in entry.get("kills_attempted", ())]
-        if not any(kills):
+        kills = [str(kill) for kill in entry.get("kills_attempted", ())]
+        if not any(INSTRUMENT_MARK.search(kill) for kill in kills):
             problems.append(
-                f"{ledger}:{line_number}: [NO-KILL] nothing tried to falsify — {claim}"
+                f"{ledger}:{line_number}: [NO-KILL] nothing with an observed outcome "
+                f"tried to falsify — {claim}"
             )
     return problems
 
 
-_DATA_SUFFIXES = frozenset({".json", ".jsonl", ".toml", ".lock", ".txt"})
-_PROSE_SUFFIXES = frozenset({".md", ".rst"})
+_DATA_SUFFIXES = frozenset({".json", ".jsonl", ".lock"})
+# TOML and txt are prose here by measurement, not taxonomy: this repository's
+# agent TOMLs carry claim-bearing instructions, and .txt carries prose.
+_PROSE_SUFFIXES = frozenset({".md", ".rst", ".toml", ".txt"})
+_SLASH_COMMENT_SUFFIXES = frozenset({".js", ".ts"})
 
 
 def _claim_bearing_text(file_name: str, line: str) -> str | None:
@@ -462,17 +520,23 @@ def _claim_bearing_text(file_name: str, line: str) -> str | None:
     Mention is not use: overclaim vocabulary inside a code string literal or a
     data file is somebody talking *about* claims, and sweeping it produced 73
     flags of noise on the kit's own first range. Prose files carry claims on
-    any line; code carries them in comments; data carries none.
+    any line; code carries them on full-line comments; data carries none.
+
+    Full-line comments only, deliberately: `line.find("#")` once treated a `#`
+    inside a Python string as a comment start, which reintroduced the literal
+    noise this function exists to remove. Trailing same-line comments are
+    therefore missed, and that trade is stated rather than hidden.
     """
     suffix = Path(file_name).suffix
     if suffix in _DATA_SUFFIXES:
         return None
     if suffix in _PROSE_SUFFIXES:
         return line
-    comment = line.find("#")
-    if comment == -1:
-        return None
-    return line[comment:]
+    stripped = line.lstrip()
+    marker = "//" if suffix in _SLASH_COMMENT_SUFFIXES else "#"
+    if stripped.startswith(marker):
+        return stripped
+    return None
 
 
 def sweep_range(root: Path, base: str, head: str) -> list[str]:
