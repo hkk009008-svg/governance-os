@@ -107,5 +107,7 @@ sessions in it.
 - [ ] Every reference resolves and is the document named.
 - [ ] Limits you did not close are written down as limits.
 
-Related: `create-regression-pin` for deferring a confirmed defect;
-`seat-operator` for issuing the verdict once the evidence exists.
+Related: `probe-a-claim` for the belief upstream of the mechanism — premises
+from claim shape, amnesiac probes; `create-regression-pin` for deferring a
+confirmed defect; `seat-operator` for issuing the verdict once the evidence
+exists.

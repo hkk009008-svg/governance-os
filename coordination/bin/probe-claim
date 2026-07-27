@@ -1,0 +1,31 @@
+#!/bin/bash
+# probe-claim — one claim in, its premises and an amnesiac's attack out.
+#
+# The premises come from the claim's shape (claim_check.py grammar), so the
+# author does not have to remember them. The probe goes to a cross-family
+# reader that receives ONLY the claim text — no context, which is the point:
+# every one of the nine 2026-07-26/27 failures was visible to a cold reader
+# holding nothing but the sentence. Advisory on both counts; this gates
+# nothing and substitutes for no review.
+set -euo pipefail
+
+if [ $# -lt 1 ] || [ -z "${1:-}" ]; then
+  echo "usage: probe-claim \"<one load-bearing claim sentence>\"" >&2
+  exit 2
+fi
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+PYTHON="$ROOT/.venv/bin/python"
+if [ ! -x "$PYTHON" ]; then
+  PYTHON=$(command -v python3 || true)
+fi
+if [ -z "$PYTHON" ]; then
+  echo "probe-claim: no python3 found in $ROOT/.venv/bin or on PATH" >&2
+  exit 2
+fi
+
+echo "== premises (from claim shape, not memory) =="
+env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/scripts/claim_check.py" premises "$1"
+echo
+echo "== amnesiac probe (cross-family, claim only) =="
+env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/scripts/claim_check.py" probe --execute "$1"

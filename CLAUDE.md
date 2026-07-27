@@ -47,6 +47,20 @@ When a skill's advice turns out to be wrong or narrower than its name, correct
 that file in the same session rather than working around it. A skill that
 outlived its mechanism is the same defect as a docstring that did.
 
+## Formation gate for claims
+
+A load-bearing claim — "enforced", "measured", "complete", "never", a cited
+reference — is a conjunction whose premises come from its shape, not from
+memory, and whose check must be able to disagree with its author. Before
+writing one as fact: derive the premises
+(`env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py premises "<claim>"`),
+cite each with the command that measured it, run the one command most likely
+to embarrass the claim, and attack it with a context-free reader
+(`coordination/bin/probe-claim "<claim>"`, or the `amnesiac-prober` agent given
+only the sentence). Before publishing a range, sweep it for uncited overclaim
+vocabulary (`scripts/claim_check.py sweep --base <base> --head <head>`). All
+advisory, none a gate; the full loop is `.claude/skills/probe-a-claim`.
+
 ## Proportional independence
 
 For parseable/executable composition, authority or security enforcement,
