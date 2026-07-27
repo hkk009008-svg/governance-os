@@ -57,7 +57,7 @@ def _capability_rows(results) -> list:
 # with only `command(git diff)` granted, the missing pytest, send-event and
 # commit grants were never named. The tuple is what notices that.
 AGY_GRANT_DETAILS = ("read_file granted", "review commands granted")
-AGY_PARITY_OK = "declared flags all defined by the installed CLI"
+AGY_PARITY_OK = preflight.PARITY_OK_DETAIL
 
 
 def _grant_everything(tmp_path: Path) -> Path:
@@ -77,7 +77,14 @@ def _install(monkeypatch: pytest.MonkeyPatch, name: str | None) -> None:
 
 
 def _cli_defines(monkeypatch: pytest.MonkeyPatch, flags) -> None:
-    monkeypatch.setattr(preflight, "_agy_defined_flags", lambda _exe: flags)
+    """Make the installed CLI appear to define exactly *flags*.
+
+    Stubbed at the launcher's `defined_cli_flags`, which is where the parse lives,
+    so the comparison and the refusal both really run. Preflight only reports what
+    the launcher enforces, so stubbing preflight would test the reporting and
+    leave the enforcement unexercised.
+    """
+    monkeypatch.setattr(launcher, "defined_cli_flags", lambda _exe: frozenset(flags))
 
 
 @pytest.mark.parametrize("installed", ("agy", "antigravity"))
@@ -99,7 +106,7 @@ def test_agy_with_every_review_grant_is_ready(
     name resolves.
     """
     _install(monkeypatch, installed)
-    _cli_defines(monkeypatch, launcher.AGY_CLI_FLAGS)
+    _cli_defines(monkeypatch, launcher.EMITTABLE_CLI_FLAGS)
 
     results = preflight.check_agy(_grant_everything(tmp_path))
 
@@ -159,66 +166,93 @@ def test_agy_flag_parity_fails_when_the_cli_drops_a_declared_flag(
     a CLI without it starts no seat at all.
     """
     _install(monkeypatch, "agy")
-    _cli_defines(monkeypatch, launcher.AGY_CLI_FLAGS - {"--model"})
+    _cli_defines(monkeypatch, launcher.EMITTABLE_CLI_FLAGS - {"--model"})
 
     results = preflight.check_agy(_grant_everything(tmp_path))
 
-    assert _failures(results) == [
-        "declared flags the installed CLI does not define: --model"
-    ]
+    assert len(_failures(results)) == 1
+    assert "--model" in _failures(results)[0]
     assert not all(result.ok for result in results)
 
 
-def test_agy_flag_parity_is_unchecked_rather_than_clean_when_help_is_unreadable(
+def test_agy_flag_parity_refuses_an_unanswerable_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """An unanswerable CLI is not a CLI that agrees with us.
 
-    `_agy_defined_flags` returns None for that, kept apart from the empty set,
-    because an empty parse would make every declared flag look undefined and
-    turn one broken invocation into a flood of false parity failures. Neither may
-    read as parity holding, so both fail — this one for being unanswered.
+    The launcher raises rather than returning a partial answer, and preflight
+    reports that refusal. A nonzero exit, an empty parse and a subprocess failure
+    are all refusals, because each of them once read — or could have read — as
+    agreement: an exit-2 help text mentioning flag-like tokens parsed as complete
+    agreement and produced READY.
     """
     _install(monkeypatch, "agy")
-    _cli_defines(monkeypatch, None)
+
+    def refuse(_exe):
+        raise launcher.LaunchError("`agy --help` exited 2; its output cannot be read")
+
+    monkeypatch.setattr(launcher, "defined_cli_flags", refuse)
 
     results = preflight.check_agy(_grant_everything(tmp_path))
 
-    assert _failures(results) == [
-        "cannot read `agy --help`, so flag parity is unchecked"
-    ]
+    assert len(_failures(results)) == 1
+    assert "exited 2" in _failures(results)[0]
 
 
-def test_agy_defined_flags_reads_the_installed_cli(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The parse itself, driven against a captured help shape rather than a host.
+def test_agy_grant_row_names_every_missing_review_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The grant row is a claim about every review command, so all are named.
 
-    `subprocess.run` is stubbed so this runs in CI, where no AGY exists. The
-    shape is AGY's real `--help` layout: a leading-whitespace flag column with
-    long names, short aliases and a repeatable default suffix.
+    Reporting "review commands granted" is a statement about the whole set. A
+    production loop checking only `REVIEW_COMMANDS[:1]` said exactly that while
+    only `command(git diff)` was granted, and passed the entire module — the row
+    was pinned as a string, not as a claim about its contents. Granting only the
+    first command and requiring each of the rest by name is what notices.
     """
-    help_text = (
-        "Usage of agy:\n"
-        "  --add-dir                Add a directory (repeatable) (default [])\n"
-        "  --model                  Model for the current CLI session\n"
-        "  -c                       Short alias for --continue\n"
-        "  not-a-flag               ignored\n"
-    )
+    _install(monkeypatch, "agy")
+    _cli_defines(monkeypatch, launcher.EMITTABLE_CLI_FLAGS)
+    granted_first = preflight.REVIEW_COMMANDS[0]
+    settings = _settings(tmp_path, ["read_file", f"command({granted_first})"])
 
-    def fake_run(_argv, **_kwargs):
-        return subprocess.CompletedProcess(_argv, 0, stdout=help_text, stderr="")
+    results = preflight.check_agy(settings)
 
-    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+    failures = _failures(results)
+    assert len(failures) == 1, failures
+    for command in preflight.REVIEW_COMMANDS[1:]:
+        assert command in failures[0], command
+    assert granted_first not in failures[0]
 
-    assert preflight._agy_defined_flags("/probe/bin/agy") == frozenset(
-        {"--add-dir", "--model", "-c"}
-    )
 
-    monkeypatch.setattr(
-        preflight.subprocess, "run",
-        lambda _argv, **_k: subprocess.CompletedProcess(_argv, 0, stdout="", stderr=""),
-    )
-    # Empty is unanswered, never "defines nothing".
-    assert preflight._agy_defined_flags("/probe/bin/agy") is None
+@pytest.mark.parametrize(
+    "failing",
+    ("binary NOT FOUND on PATH", "flag parity: `agy --help` does not define -p"),
+)
+def test_main_is_not_ready_whichever_row_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys, failing: str
+) -> None:
+    """Any failing row is NOT READY, named row by row rather than in aggregate.
+
+    A `main` that discounted one specific row printed READY and exited 0 while
+    that row's FAIL was visible in its own output, and every test passed. Once for
+    the binary row and once for parity, because discounting either is a distinct
+    mutation and a single case only catches the one it names.
+    """
+    rows = [
+        preflight.Result("agy", False, failing, "fix it"),
+        *(preflight.Result("agy", True, detail) for detail in AGY_GRANT_DETAILS),
+    ]
+    monkeypatch.setattr(preflight, "check_agy", lambda *_a, **_k: rows)
+
+    code = preflight.main(["agy"])
+
+    printed = capsys.readouterr().out
+    assert code == 1
+    assert "NOT READY" in printed
+    assert "READY\n" not in printed
+    assert f"FAIL  agy     {failing}" in printed
+    for detail in AGY_GRANT_DETAILS:
+        assert f"PASS  agy     {detail}" in printed
 
 
 def test_main_is_not_ready_when_only_the_binary_row_fails(

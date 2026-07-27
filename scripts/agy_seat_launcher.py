@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -122,14 +123,20 @@ _PRESERVED_AGY_CREDENTIALS = frozenset({"AGY_API_KEY"})
 # upstream, or invented here, produces `flags provided but not defined` and the
 # seat never starts.
 #
-# Two different checks, in two places, because they can live in different ones.
-# The emitted argv is held to this set hermetically by
+# This set is a hermetic upper bound on the emitted argv, held by
 # `tests/unit/test_agy_seat_launcher.py`, which needs no binary and so runs in
-# CI. This set is held to the real `agy --help` by `harness_preflight.py`, which
-# runs where the binary is guaranteed; a test cannot hold it, because AGY has no
-# package or pinned download here and every such test skipped in CI — which is
-# every CI run. This comment previously claimed the second check without one
-# existing, after the snapshot test that had performed it was removed.
+# CI. It is *not* what the live parity check compares: see
+# `EMITTABLE_CLI_FLAGS`, which is the set a seat can actually put on a command
+# line, and `require_emittable_flags_defined`, which refuses a launch when the
+# installed CLI no longer defines one of them.
+#
+# The distinction was a defect twice. A comment here claimed this set was checked
+# against `agy --help` after the snapshot test that did so was deleted, so the
+# claim outlived its mechanism. The replacement then compared *this* set, which is
+# wrong in both directions: it carries no short aliases, so a CLI dropping `-p`
+# compared clean while a seat forwarded it, and seven members are never emitted or
+# forwarded, so removing one upstream would have refused a launch that could not
+# have used it.
 AGY_CLI_FLAGS = frozenset(
     {
         "--add-dir",
@@ -292,9 +299,94 @@ _LAUNCHER_OWNED_FLAG_NAMES = frozenset(
 )
 
 
+_HELP_FLAG = re.compile(r"^\s+(--?[A-Za-z][\w-]*)", re.MULTILINE)
+
+
 def _spell(name: str) -> str:
     """Render a bare flag name the way AGY documents it: `-p`, but `--print`."""
     return f"-{name}" if len(name) == 1 else f"--{name}"
+
+
+# Every flag that can actually reach an `agy` command line from here: the two
+# this launcher always emits, plus everything a seat is allowed to forward.
+#
+# This, and not `AGY_CLI_FLAGS`, is what a parity check against the real CLI must
+# compare. `AGY_CLI_FLAGS` is the wrong set in both directions. It carries no
+# short aliases, so a CLI that dropped `-p` compared clean while a seat forwarded
+# it; and seven of its members are never emitted or forwarded, so an upstream
+# removal of one would have failed a launch that could not have used it.
+EMITTABLE_CLI_FLAGS = frozenset(EMITTED_CLI_FLAGS) | frozenset(
+    _spell(name) for name in FORWARDABLE_FLAG_NAMES
+)
+
+
+def defined_cli_flags(agy_executable: str) -> frozenset[str]:
+    """Flags the installed CLI defines, per its own `--help`.
+
+    Raises `LaunchError` rather than returning a partial answer, because every
+    caller uses this to *refuse* a launch and a wrong answer here is the one that
+    lets a bad command line through. Three ways to be wrong are refused
+    explicitly:
+
+    A nonzero exit is not a help text. A failed `--help` whose output happens to
+    mention flag-like tokens once parsed as complete agreement, so a run exiting
+    2 while describing every flag as removed read as parity holding.
+
+    An empty parse is not "defines nothing". Treating it as an answer would mark
+    every emittable flag undefined and refuse every launch, turning one broken
+    invocation into a total outage.
+
+    The streams are joined with a newline. Concatenating them raw lets the first
+    stderr line continue the last stdout line when stdout has no trailing
+    newline, which loses a flag silently. AGY 1.1.7 prints its help on stderr.
+    """
+    try:
+        completed = subprocess.run(
+            [agy_executable, "--help"], capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise LaunchError(
+            f"cannot read `{agy_executable} --help` to check flag parity: {exc}"
+        ) from exc
+    if completed.returncode != 0:
+        raise LaunchError(
+            f"`{agy_executable} --help` exited {completed.returncode}; its output "
+            "cannot be read as the flag set this launcher must match"
+        )
+    defined = frozenset(
+        _HELP_FLAG.findall(completed.stdout + "\n" + completed.stderr)
+    )
+    if not defined:
+        raise LaunchError(
+            f"`{agy_executable} --help` named no flags, so flag parity is unknown; "
+            "refusing to guess at what the CLI accepts"
+        )
+    return defined
+
+
+def require_emittable_flags_defined(agy_executable: str) -> None:
+    """Refuse to launch when the CLI no longer defines a flag we could emit.
+
+    The launcher and the binary are separate artifacts, and AGY aborts the whole
+    invocation on the first undefined flag, so a drifted flag is a seat that
+    never starts. This is checked here rather than in a test because no test can
+    hold it: AGY ships as a platform executable with no package, formula or
+    pinned download in this repository, so every such test skipped wherever AGY
+    is absent — which is every CI run. It is checked *here* rather than in
+    `harness_preflight.py` because nothing invokes that on a launch path, so a
+    gate living there is advisory no matter how it is worded.
+
+    Only emittable-minus-defined is a defect. A CLI defining more than a seat can
+    use is ordinary, and the short aliases are exactly that.
+    """
+    missing = sorted(EMITTABLE_CLI_FLAGS - defined_cli_flags(agy_executable))
+    if missing:
+        raise LaunchError(
+            f"`{agy_executable} --help` does not define "
+            + ", ".join(missing)
+            + ", which a seat can emit or forward; reconcile EMITTED_CLI_FLAGS "
+            "and FORWARDABLE_FLAG_NAMES with this CLI version before launching"
+        )
 
 
 def reject_unforwardable_flags(forwarded_args: Sequence[str]) -> None:
@@ -459,6 +551,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         # verification report quotes its `Reviewer model:` from, so an unchecked
         # dry-run would hand out exactly the unsubstantiated identity that
         # citing a live listing is meant to prevent.
+        # Both live-CLI checks run before any launch, dry-run included. The
+        # model check keeps a report from citing a model that never ran; this one
+        # keeps a seat from emitting a flag the installed CLI would abort on.
+        require_emittable_flags_defined(agy_executable)
         require_listed_model(settings[args.seat].model, list_models(agy_executable))
         spec = build_launch_spec(
             repo_root,
