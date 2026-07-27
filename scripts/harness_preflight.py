@@ -31,12 +31,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-try:
-    from scripts import agy_seat_launcher
-except ModuleNotFoundError as exc:  # direct-script mode puts scripts/ on sys.path
-    if exc.name != "scripts":
-        raise
-    import agy_seat_launcher  # type: ignore[no-redef]
 
 HARNESSES = ("codex", "agy", "cursor")
 AGY_SETTINGS = Path("~/.gemini/antigravity-cli/settings.json")
@@ -56,8 +50,12 @@ REVIEW_COMMANDS = (
 # checked-in file cannot grant approvals-off with full disk access; a preflight
 # that ignored them would call a dangerous launch ready.
 CODEX_AMBIENT_KEYS = ("approval_policy", "sandbox_mode", "features")
-# Kept as a constant so the test naming it and the row producing it cannot drift.
-PARITY_OK_DETAIL = "every flag a seat can emit is defined by the installed CLI"
+# Flag parity is deliberately not a row here. It was one, and the row had to
+# either duplicate the launcher's flag set — which drifted, in both directions —
+# or reimplement its parse, which was defeated by help-text formatting. The
+# launcher now probes the real argv through the real parser on every launch,
+# `--dry-run` included, so `agy-seat <seat> --dry-run` is the pre-dispatch way to
+# ask, and it asks the only authority there is.
 
 
 @dataclass(frozen=True)
@@ -116,29 +114,6 @@ def check_codex(root: Path) -> list[Result]:
     return results
 
 
-def _agy_flag_parity(binary: str) -> Result:
-    """Report what the launcher enforces, without being the enforcement.
-
-    The comparison itself lives in `agy_seat_launcher.require_emittable_flags_defined`
-    and runs on every launch, dry-run included, because nothing invokes this
-    module on a launch path: `coordination/bin/agy-seat` execs the launcher
-    directly, so a gate worded as pre-dispatch here was advisory in fact. This row
-    exists so the same answer is visible *before* dispatch rather than only at it,
-    and it calls the enforcing code rather than reimplementing it — a second parse
-    would be a second thing to drift, which is how this line of work started.
-    """
-    try:
-        agy_seat_launcher.require_emittable_flags_defined(binary)
-    except agy_seat_launcher.LaunchError as exc:
-        return Result(
-            "agy", False, f"flag parity: {exc}",
-            "reconcile EMITTED_CLI_FLAGS and FORWARDABLE_FLAG_NAMES in "
-            "scripts/agy_seat_launcher.py with this CLI version; a launch refuses "
-            "until they agree",
-        )
-    return Result("agy", True, PARITY_OK_DETAIL)
-
-
 def check_agy(settings_path: Path = AGY_SETTINGS) -> list[Result]:
     """AGY is ready when its own settings grant the tools a review needs."""
     results: list[Result] = []
@@ -147,8 +122,6 @@ def check_agy(settings_path: Path = AGY_SETTINGS) -> list[Result]:
         Result("agy", bool(binary), f"binary {binary or 'NOT FOUND on PATH'}",
                "" if binary else "install the AGY CLI")
     )
-    if binary:
-        results.append(_agy_flag_parity(binary))
     path = settings_path.expanduser()
     if not path.is_file():
         return results + [

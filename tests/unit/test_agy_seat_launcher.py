@@ -115,14 +115,11 @@ def _stub_installed_cli(
     if listed is None:
         listed = tuple(f"gemini-{seat}" for seat in SEATS) + (launcher.REFERENCE_MODEL,)
     monkeypatch.setattr(launcher.shutil, "which", lambda name: "/opt/agy")
-    monkeypatch.setattr(launcher, "list_models", lambda executable: frozenset(listed))
-    # `main` now has a second live-CLI dependency for the same reason as the
-    # first: it refuses to launch when the installed CLI no longer defines a flag
-    # a seat can emit. Neutralized here too, or every main-path test below would
-    # again be measuring the developer's PATH. The refusal itself is driven
-    # directly in the parity tests at the end of this module.
+    # Two parameters, because `main` now passes the seat's own argv so the real
+    # parser judges the real command line. A one-parameter stub here would hide
+    # that the flags are passed at all.
     monkeypatch.setattr(
-        launcher, "defined_cli_flags", lambda executable: launcher.EMITTABLE_CLI_FLAGS
+        launcher, "list_models", lambda executable, flags=(): frozenset(listed)
     )
 
 
@@ -954,152 +951,127 @@ def test_launcher_emits_only_flags_the_agy_cli_defines(tmp_path: Path) -> None:
 # rather than by a second copy of what it was once believed to accept.
 
 
-# --- live-CLI flag parity, enforced by the launcher on every launch ------------
+# --- live-CLI flag parity, enforced on every launch by asking the parser --------
 #
-# These drive the parse and the refusal through a stubbed subprocess, so they run
-# in CI where AGY does not exist. The comparison they cover cannot be tested
-# against the real binary anywhere CI can reach it: AGY ships as a platform
-# executable with no package, formula or pinned download in this repository, and
-# every test that tried skipped in CI, which is every CI run. So the enforcement
-# moved onto the launch path itself and the reasoning is pinned here.
+# The check is `list_models(exe, spec.argv[1:])`: the argv a seat is about to run,
+# fed to the real parser ahead of a local `models` subcommand. It replaced a
+# comparison of flag names against `agy --help`, which was deciding what a Go
+# parser accepts by pattern-matching prose. That version passed five reversion
+# controls and was defeated by two evasion routes — a wrapped description line
+# beginning with the removed flag, and a `Removed flags:` section listing it — so
+# both control kinds are run here.
 
-_AGY_HELP = (
-    "Usage of agy:\n"
-    "  --add-dir                Add a directory (repeatable) (default [])\n"
-    "  --continue               Continue\n"
-    "  --conversation           Conversation\n"
-    "  --effort                 Effort\n"
-    "  --model                  Model for the current CLI session\n"
-    "  --print                  Print\n"
-    "  --print-timeout          Print timeout\n"
-    "  --prompt                 Prompt\n"
-    "  --prompt-interactive     Prompt interactive\n"
-    "  --sandbox                Sandbox\n"
-    "  -c                       Short alias for --continue\n"
-    "  -i                       Short alias for --prompt-interactive\n"
-    "  -p                       Short alias for --print\n"
-    "  not-a-flag               ignored\n"
-)
+def _stub_listing(monkeypatch, *, stdout="", stderr="", returncode=0):
+    seen: list[list[str]] = []
 
-
-def _stub_help(monkeypatch, *, stdout="", stderr="", returncode=0, error=None):
     def run(argv, **_kwargs):
-        if error is not None:
-            raise error
+        seen.append(list(argv))
         return subprocess.CompletedProcess(argv, returncode, stdout=stdout, stderr=stderr)
 
     monkeypatch.setattr(launcher.subprocess, "run", run)
+    return seen
 
 
-def test_emittable_flags_are_the_ones_a_seat_can_actually_put_on_a_command_line() -> None:
-    """The parity set is what can be emitted or forwarded, not what is declared.
+def test_the_listing_call_carries_the_seats_own_argv(monkeypatch) -> None:
+    """The probe must run the real command line, not a stand-in for it.
 
-    `AGY_CLI_FLAGS` was compared once and is wrong in both directions: it holds no
-    short aliases, so a CLI that dropped `-p` compared clean while a seat forwarded
-    it, and several members can never be emitted or forwarded at all, so an
-    upstream removal would have refused a launch that could not have used them.
+    A set of flag names is an approximation; the argv is the thing that either
+    parses or does not. So the flags reach the parser positionally ahead of
+    `models`, and this pins that they are actually passed rather than dropped.
     """
-    assert launcher.EMITTED_CLI_FLAGS <= launcher.EMITTABLE_CLI_FLAGS
-    for name in launcher.FORWARDABLE_FLAG_NAMES:
-        assert launcher._spell(name) in launcher.EMITTABLE_CLI_FLAGS, name
-    # The short aliases are the concrete regression: present here, absent there.
-    assert {"-p", "-i", "-c"} <= launcher.EMITTABLE_CLI_FLAGS
-    assert not {"-p", "-i", "-c"} & launcher.AGY_CLI_FLAGS
-    # And nothing unreachable is carried, which is the false-failure direction.
-    assert launcher.EMITTABLE_CLI_FLAGS <= (
-        launcher.EMITTED_CLI_FLAGS
-        | {launcher._spell(name) for name in launcher.FORWARDABLE_FLAG_NAMES}
+    seen = _stub_listing(monkeypatch, stdout="gemini-3.1-pro-high\n")
+
+    listed = launcher.list_models("/probe/agy", ["--model", "m", "--effort", "high"])
+
+    assert listed == frozenset({"gemini-3.1-pro-high"})
+    assert seen == [["/probe/agy", "--model", "m", "--effort", "high", "models"]]
+
+
+def test_an_undefined_flag_is_named_as_such_not_as_a_listing_failure(monkeypatch) -> None:
+    """Go aborts on the first undefined flag, so that is a distinct diagnosis.
+
+    Reported separately from a generic listing failure because the remedy differs:
+    an undefined flag means the launcher and the binary have drifted, while a
+    failed listing may be environmental. Conflating them sent an earlier round
+    hunting the wrong cause.
+    """
+    _stub_listing(
+        monkeypatch, returncode=1,
+        stderr="flags provided but not defined: -p\nUsage of agy:\n",
     )
 
-
-def test_defined_cli_flags_reads_help_from_either_stream(monkeypatch) -> None:
-    """AGY 1.1.7 prints help on stderr, so both streams are read and separated.
-
-    Joined with a newline rather than concatenated: without it the first stderr
-    line continues the last stdout line whenever stdout lacks a trailing newline,
-    which drops a flag silently rather than loudly.
-    """
-    _stub_help(monkeypatch, stderr=_AGY_HELP)
-    assert launcher.EMITTABLE_CLI_FLAGS <= launcher.defined_cli_flags("/probe/agy")
-
-    _stub_help(monkeypatch, stdout="  --model  m", stderr="  --effort  e\n")
-    assert launcher.defined_cli_flags("/probe/agy") == frozenset({"--model", "--effort"})
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    (
-        {"returncode": 2, "stderr": _AGY_HELP},
-        {"stdout": "", "stderr": ""},
-        {"stderr": "no flags here at all\n"},
-        {"error": OSError("boom")},
-    ),
-    ids=("nonzero-exit", "empty", "no-flags-parsed", "cannot-run"),
-)
-def test_defined_cli_flags_refuses_rather_than_answering_partially(monkeypatch, kwargs) -> None:
-    """Every way of not knowing is a refusal, never an agreement.
-
-    The nonzero-exit case is the measured one: a help run exiting 2 while naming
-    every flag as removed was parsed as complete agreement and produced a ready
-    verdict. An empty parse is refused too, because treating it as "defines
-    nothing" would refuse every launch instead of one.
-    """
-    _stub_help(monkeypatch, **kwargs)
-    with pytest.raises(launcher.LaunchError):
-        launcher.defined_cli_flags("/probe/agy")
-
-
-def test_launch_is_refused_when_the_cli_drops_a_forwardable_alias(monkeypatch) -> None:
-    """The defect the old parity set missed, now on the launch path.
-
-    `-p` is forwardable but was never in `AGY_CLI_FLAGS`, so a CLI without it
-    passed the old comparison while `agy-seat operator -- -p review` still emitted
-    it and died at AGY's parser.
-    """
-    without_p = _AGY_HELP.replace("  -p                       Short alias for --print\n", "")
-    _stub_help(monkeypatch, stderr=without_p)
-
     with pytest.raises(launcher.LaunchError) as caught:
-        launcher.require_emittable_flags_defined("/probe/agy")
+        launcher.list_models("/probe/agy", ["-p"])
 
-    assert "-p" in str(caught.value)
+    message = str(caught.value)
+    assert "rejects this seat's command line" in message
+    assert "-p" in message
 
 
-def test_launch_is_allowed_when_the_cli_defines_everything_emittable(monkeypatch) -> None:
-    """The positive control: a complete CLI must not be refused.
+def test_help_prose_cannot_talk_the_probe_out_of_a_rejection(monkeypatch) -> None:
+    """Evasion control: the routes that defeated the text-matching version.
 
-    Without this the refusal above passes just as well from a check that refuses
-    everything, and a launcher that never launches is its own outage.
+    Neither can work here, and the reason is structural rather than careful
+    pattern design: nothing reads the help text. The parser's own verdict arrives
+    as a nonzero exit carrying the marker, and prose in the same stream cannot
+    turn a rejection into an acceptance. Both routes are driven anyway, because
+    "structurally impossible" is the claim most worth a measurement.
     """
-    _stub_help(monkeypatch, stderr=_AGY_HELP)
-    launcher.require_emittable_flags_defined("/probe/agy")
+    for prose in (
+        "flags provided but not defined: -p\n  --sandbox  see also\n  -p for print\n",
+        "flags provided but not defined: -p\nRemoved flags:\n  -p  no longer supported\n",
+    ):
+        _stub_listing(monkeypatch, returncode=1, stderr=prose)
+        with pytest.raises(launcher.LaunchError):
+            launcher.list_models("/probe/agy", ["-p"])
+
+
+def test_a_clean_listing_is_not_read_as_a_rejection(monkeypatch) -> None:
+    """Positive control: prose mentioning the marker must not fail a clean exit.
+
+    Without this the rejection above is satisfied by a check that fails
+    everything, and a launcher that never launches is its own outage. Exit 0 is
+    the parser saying it accepted the line, whatever the text says.
+    """
+    _stub_listing(
+        monkeypatch, returncode=0,
+        stdout="gemini-3.1-pro-high\n",
+        stderr="note: flags provided but not defined is what we print on failure\n",
+    )
+
+    assert launcher.list_models("/probe/agy", ["-p"]) == frozenset({"gemini-3.1-pro-high"})
 
 
 @pytest.mark.parametrize("dry_run", (False, True), ids=("launch", "dry-run"))
-def test_main_refuses_the_launch_when_a_forwardable_flag_is_undefined(
+def test_main_refuses_when_the_parser_rejects_the_seats_command_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, dry_run: bool
 ) -> None:
-    """The gate has to be *called*, not merely to exist and be correct.
+    """The probe has to be *called* on the launch path, not merely be correct.
 
-    Deleting the `require_emittable_flags_defined` call from `main` left every
-    other test in this module green, because they drive the refusal directly. That
-    is the same defect as the one this whole gate answers — a check nothing
-    invokes — reached one level in, so the call site gets its own test.
-
-    Dry-run is covered too, for the reason the model check already is: dry-run is
-    the surface a verification report quotes, and a dry-run that printed an argv
-    the installed CLI would reject is a report citing a launch that could not
-    happen.
+    Deleting the earlier gate's call from `main` left every other test green,
+    because they drove it directly. Dry-run is covered for the reason the model
+    check already is: dry-run is the surface a report quotes, and one printing an
+    argv the CLI would reject cites a launch that could not happen.
     """
     config_path = tmp_path / "seats.toml"
     _write_config(config_path)
-    _stub_installed_cli(monkeypatch)
-    # Override the helper's complete set: this CLI no longer defines `-p`, which
-    # a seat may forward.
-    monkeypatch.setattr(
-        launcher, "defined_cli_flags",
-        lambda executable: launcher.EMITTABLE_CLI_FLAGS - {"-p"},
-    )
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: "/opt/agy")
+    # Rejects only when the seat's own flags actually arrive. A stub that threw
+    # unconditionally passed just as well after the argv was dropped from the
+    # call site, which is the wiring this test exists to pin: a probe that is
+    # correct and is handed nothing checks nothing.
+    seen: list[tuple[str, ...]] = []
+
+    def listing(executable, flags=()):
+        seen.append(tuple(flags))
+        if not flags:
+            return frozenset({f"gemini-{seat}" for seat in SEATS})
+        raise launcher.LaunchError(
+            "the installed CLI rejects this seat's command line: "
+            "flags provided but not defined: -p"
+        )
+
+    monkeypatch.setattr(launcher, "list_models", listing)
     started: list[object] = []
     monkeypatch.setattr(launcher.os, "execvpe", lambda *a, **k: started.append(a))
     monkeypatch.setattr(launcher.os, "chdir", lambda path: None)
@@ -1112,5 +1084,7 @@ def test_main_refuses_the_launch_when_a_forwardable_flag_is_undefined(
     captured = capsys.readouterr()
     assert code == 2
     assert "-p" in captured.err
-    assert started == [], "the launch proceeded past a refused parity check"
+    assert started == [], "the launch proceeded past a rejected command line"
     assert captured.out == "", "a refused launch must not print an argv to cite"
+    assert seen and seen[0], "main called the probe without the seat's own argv"
+    assert "--model" in seen[0]

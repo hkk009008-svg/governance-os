@@ -57,7 +57,6 @@ def _capability_rows(results) -> list:
 # with only `command(git diff)` granted, the missing pytest, send-event and
 # commit grants were never named. The tuple is what notices that.
 AGY_GRANT_DETAILS = ("read_file granted", "review commands granted")
-AGY_PARITY_OK = preflight.PARITY_OK_DETAIL
 
 
 def _grant_everything(tmp_path: Path) -> Path:
@@ -74,17 +73,6 @@ def _install(monkeypatch: pytest.MonkeyPatch, name: str | None) -> None:
         "which",
         lambda probe: f"/probe/bin/{probe}" if probe == name else None,
     )
-
-
-def _cli_defines(monkeypatch: pytest.MonkeyPatch, flags) -> None:
-    """Make the installed CLI appear to define exactly *flags*.
-
-    Stubbed at the launcher's `defined_cli_flags`, which is where the parse lives,
-    so the comparison and the refusal both really run. Preflight only reports what
-    the launcher enforces, so stubbing preflight would test the reporting and
-    leave the enforcement unexercised.
-    """
-    monkeypatch.setattr(launcher, "defined_cli_flags", lambda _exe: frozenset(flags))
 
 
 @pytest.mark.parametrize("installed", ("agy", "antigravity"))
@@ -106,7 +94,6 @@ def test_agy_with_every_review_grant_is_ready(
     name resolves.
     """
     _install(monkeypatch, installed)
-    _cli_defines(monkeypatch, launcher.EMITTABLE_CLI_FLAGS)
 
     results = preflight.check_agy(_grant_everything(tmp_path))
 
@@ -114,9 +101,6 @@ def test_agy_with_every_review_grant_is_ready(
     assert [result.detail for result in _binary_rows(results)] == [
         f"binary /probe/bin/{installed}"
     ]
-    # Readiness may not be reachable without the external gate having run, so
-    # its passing row is required here rather than merely permitted.
-    assert AGY_PARITY_OK in [result.detail for result in results]
 
 
 def test_agy_capability_rows_run_when_the_binary_is_absent(
@@ -141,62 +125,14 @@ def test_agy_capability_rows_run_when_the_binary_is_absent(
 
     assert [result.ok for result in _binary_rows(results)] == [False]
     capability = _capability_rows(results)
-    # The grant rows, all of them, and no parity row: parity is a question about
-    # a binary that is not there, and asking it would report a second failure
-    # for one cause.
+    # Every grant row, named. Flag parity is deliberately not among them: the
+    # launcher probes the real argv through the real parser on every launch, and a
+    # row here could only duplicate that set or reimplement its check, both of
+    # which were tried and both of which drifted.
     assert tuple(result.detail for result in capability) == AGY_GRANT_DETAILS
     assert [result.ok for result in capability] == [True] * len(capability)
     # Exactly the binary row fails, so every capability check ran and passed.
     assert _failures(results) == ["binary NOT FOUND on PATH"]
-
-
-def test_agy_flag_parity_fails_when_the_cli_drops_a_declared_flag(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The external gate, and the reason it lives here rather than in a test.
-
-    `AGY_CLI_FLAGS` is a committed copy of another program's interface. Every
-    check of it against the real CLI was written as a test and therefore skipped
-    wherever AGY is absent, which is every CI run, because AGY ships as a
-    platform executable with no package or pinned download in this repository.
-    So the comparison moved to the place where the binary is guaranteed: the
-    pre-dispatch check, which the binary row already fails when it is missing.
-
-    Dropping `--model` is the control because it is the flag every seat emits, so
-    a CLI without it starts no seat at all.
-    """
-    _install(monkeypatch, "agy")
-    _cli_defines(monkeypatch, launcher.EMITTABLE_CLI_FLAGS - {"--model"})
-
-    results = preflight.check_agy(_grant_everything(tmp_path))
-
-    assert len(_failures(results)) == 1
-    assert "--model" in _failures(results)[0]
-    assert not all(result.ok for result in results)
-
-
-def test_agy_flag_parity_refuses_an_unanswerable_cli(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An unanswerable CLI is not a CLI that agrees with us.
-
-    The launcher raises rather than returning a partial answer, and preflight
-    reports that refusal. A nonzero exit, an empty parse and a subprocess failure
-    are all refusals, because each of them once read — or could have read — as
-    agreement: an exit-2 help text mentioning flag-like tokens parsed as complete
-    agreement and produced READY.
-    """
-    _install(monkeypatch, "agy")
-
-    def refuse(_exe):
-        raise launcher.LaunchError("`agy --help` exited 2; its output cannot be read")
-
-    monkeypatch.setattr(launcher, "defined_cli_flags", refuse)
-
-    results = preflight.check_agy(_grant_everything(tmp_path))
-
-    assert len(_failures(results)) == 1
-    assert "exited 2" in _failures(results)[0]
 
 
 def test_agy_grant_row_names_every_missing_review_command(
@@ -211,7 +147,6 @@ def test_agy_grant_row_names_every_missing_review_command(
     first command and requiring each of the rest by name is what notices.
     """
     _install(monkeypatch, "agy")
-    _cli_defines(monkeypatch, launcher.EMITTABLE_CLI_FLAGS)
     granted_first = preflight.REVIEW_COMMANDS[0]
     settings = _settings(tmp_path, ["read_file", f"command({granted_first})"])
 
@@ -226,7 +161,7 @@ def test_agy_grant_row_names_every_missing_review_command(
 
 @pytest.mark.parametrize(
     "failing",
-    ("binary NOT FOUND on PATH", "flag parity: `agy --help` does not define -p"),
+    ("binary NOT FOUND on PATH", "settings absent at /nowhere/settings.json"),
 )
 def test_main_is_not_ready_whichever_row_fails(
     monkeypatch: pytest.MonkeyPatch, capsys, failing: str
