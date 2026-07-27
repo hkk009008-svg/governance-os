@@ -246,6 +246,73 @@ def _identity(value: str, label: str) -> str:
     return value
 
 
+def _object_exists(root: Path, commit: str, path: str) -> bool:
+    """Whether `<commit>:<path>` names an object in *root*'s object store.
+
+    `cat-file -e` answers by exit code and prints nothing, so no output is
+    parsed. It reads the object store rather than any branch, which is what a
+    finding reference needs: evidence committed on a branch invisible from the
+    default one is still citable, and a fabricated commit is in no store at all.
+    """
+    completed = subprocess.run(
+        ["/usr/bin/git", "--no-replace-objects", "cat-file", "-e", f"{commit}:{path}"],
+        cwd=root,
+        env={key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
+        capture_output=True,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
+def _require_path_references_resolve(
+    root: Path, reviewed_root: Path, references: Sequence[str]
+) -> None:
+    """Refuse to compose a `path@commit` reference whose object does not exist.
+
+    Canonical shape was the only check, and shape is satisfied by any forty hex
+    characters. Three references were composed in one session that were
+    well-formed and wrong: two named commits that do not exist, invented while
+    transcribing, and the shape check accepted both. A reference is the one part
+    of a request a reader cannot verify by reading the request, so a fabricated
+    one is worse than a missing one — it reads as provenance and resolves to
+    nothing.
+
+    Deliberately only at compose time, not in the shared parser. Of 581
+    `path@commit` references across committed events, 23 no longer resolve
+    because the history they named was rewritten. Those are frozen artifacts and
+    re-judging them would turn the historical-report gate in `ci_smoke` red for
+    events nobody can now amend. New references are the ones an author can still
+    get right, and this is where they are written.
+
+    Either root satisfies it. A cross-repository review may cite evidence from
+    the reviewed repository or from this one, and a fabricated commit resolves in
+    neither, so accepting both keeps the check free of false refusals without
+    weakening it.
+
+    A `sha256:` digest is not checked, because nothing here holds the bytes it
+    digests. That is a real gap and the reason it stays a gap is worth stating:
+    the third bad reference of that session was a digest naming the wrong
+    document, and this guard would not have caught it.
+    """
+    for reference in references:
+        if "@" not in reference or reference.startswith("sha256:"):
+            continue
+        path, _, commit = reference.rpartition("@")
+        if not path or not commit:
+            continue
+        if any(
+            _object_exists(candidate, commit, path)
+            for candidate in dict.fromkeys((root, reviewed_root))
+        ):
+            continue
+        raise CompactPairError(
+            f"finding ref names an object that does not exist: {reference}. "
+            "A reference is the part of a request a reader cannot check by "
+            "reading it, so a well-formed one that resolves to nothing reads as "
+            "provenance and is not. Verify the commit and path before citing them."
+        )
+
+
 def _finding_refs(lines: list[str], *, required: bool) -> tuple[str, ...]:
     body = _section_optional(lines, "## Finding Refs")
     if body is None:
@@ -615,6 +682,7 @@ def compose_request(
         raise CompactPairError("finding refs must be unique")
 
     reviewed_root = _reviewed_root(root.resolve(), reviewed_repository)
+    _require_path_references_resolve(root.resolve(), reviewed_root, references)
     base, head = _resolve_range(reviewed_root, base_rev, head_rev)
 
     lines = ["Event type: verify-request"]
