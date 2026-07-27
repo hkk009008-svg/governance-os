@@ -26,15 +26,12 @@ Use the smallest applicable tier:
 - `tier-3-governed-side-effect`: refresh live authority and external state for
   the exact governed action.
 
-Codex starts as a readiness bridge. It adopts a live role or coordinator role
-only when the user or parent explicitly assigns it. Parent-scoped helpers never
-inherit that authority.
+Codex starts as a readiness bridge. It adopts a live role or coordinator only
+when explicitly assigned; parent-scoped helpers never inherit that authority.
 
-Choose the product-work phase independently from the review risk. Use
-`explore` for reversible sandbox learning, `validate` for one frozen candidate,
-and `promote` for a reviewed candidate moving toward canonical or live state.
-The closed profiles live in `scripts/codex_protocol_model.py`; application
-guidance is in `docs/protocol/work-modes.md`. A work mode grants no authority.
+Choose product-work phase independently from review risk: `explore` for sandbox
+learning, `validate` for one frozen candidate, and `promote` for a reviewed
+candidate. See `docs/protocol/work-modes.md`; modes grant no authority.
 
 For tier 2, refresh the native worktree before changing it:
 
@@ -43,8 +40,7 @@ git status --short --branch
 git log --oneline -5 -- <relevant-paths>
 ```
 
-Run `python scripts/ci_smoke.py` from the active development environment when work changes governance/runtime
-topology or relies on an `ARCHITECTURE.md` invariant.
+Run `python scripts/ci_smoke.py` from the active development environment when work changes governance/runtime topology or relies on an `ARCHITECTURE.md` invariant.
 
 ## Project sources
 
@@ -64,9 +60,8 @@ topology or relies on an `ARCHITECTURE.md` invariant.
 ## Engineering discipline
 
 Before changing a symbol, use `rg` to find its definition, writes, callers,
-imports, string references, and relevant siblings. Read those sites before
-editing. Preserve unrelated user and peer work, compare the actual diff with
-the requested scope, and stage explicit paths only.
+imports, string references, and relevant siblings. Preserve unrelated work,
+compare the actual diff with the requested scope, and stage explicit paths.
 
 Factual inventory claims cite the command and result that proves the scope.
 Gate-controlling numbers come from a committed instrument and citable evidence.
@@ -91,9 +86,8 @@ alone is not a trigger.
 
 Use the executable seam that owns the claim:
 
-- Autonomous Seat Outcome Contract: `scripts/codex_protocol_model.py`.
-- Runtime identity, ownership lineage, work modes, risk profiles, and
-  structural external-effect shape: `scripts/codex_protocol_model.py`.
+- Seat outcome, runtime identity, ownership, work modes, review risk, and
+  external-effect shape: `scripts/codex_protocol_model.py`.
 - Formal request/report parsing and exact-range review:
   `scripts/compact_pair_loop.py`.
 - Event construction, validation, and serialized publication:
@@ -102,8 +96,7 @@ Use the executable seam that owns the claim:
   `docs/protocol/codex/continuation.md`.
 
 When a seat, mailbox, route, handoff, wave, continuation, or protocol decision
-is explicitly in scope, load `.agents/skills/four-seat-protocol/SKILL.md` and
-the concrete role skill.
+is in scope, load `.agents/skills/four-seat-protocol/SKILL.md` and its role skill.
 
 The following boundaries remain mandatory:
 
@@ -116,8 +109,7 @@ The following boundaries remain mandatory:
 
 Review depth follows risk:
 
-- Work mode does not replace risk classification: Explore controls iteration,
-  while Validate and Promote identify candidate and effect boundaries.
+- Work mode controls iteration; risk classification controls review depth.
 - Ordinary reversible local work needs focused verification.
 - Material behavior changes need non-author review of the exact range.
 - Authority, security, executable composition, side-effect gates, and
@@ -125,12 +117,10 @@ Review depth follows risk:
   review plus explicit abuse-class analysis.
 - External effects need live authorization for the executor, target, and scope.
 
-When formal review is triggered, its committed request retains the complete
-Compact Pair binding. An author cannot approve its own work.
+Formal review retains a committed Compact Pair binding; authors cannot self-approve.
 
-Host task tools own discovery, dispatch, and waiting mechanics. Repository
-doctrine must not prescribe a particular host API or ask the user to relay a
-task that the active host can deliver.
+Host task tools own discovery, dispatch, and waiting. Repository doctrine must
+not prescribe a host API or ask the user to relay work the host can deliver.
 
 ## Target repositories
 
