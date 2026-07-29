@@ -1291,6 +1291,28 @@ malformed authority defaults to a blocker or bounded preflight evidence.
 If the trigger is ambiguous, do not speculate. Refresh mailbox and git, then
 stand by unless a fresh artifact creates ownership.
 
+## Binding failure: re-issue and supersede, never patch
+
+When a machine binding fails — a verify-request or report that fails
+compact-pair parsing, a duplicated footer, a missing exact field — the
+operator blocks per the taxonomy above, and the author side's recovery is:
+
+1. Re-issue the artifact as a NEW committed request naming the same reviewed
+   repository/base/head. Never patch the malformed file in place; the
+   committed trail stays immutable.
+2. The re-issued request states plainly which prior artifact it replaces and
+   why the prior binding is invalid.
+3. Any verdict bound to the malformed artifact is an **orphan**: it has no
+   machine-valid binding and MUST NOT count toward acceptance. The
+   superseding report names the orphan explicitly.
+
+Specimen (2026-07-25): a duplicate `Cursor at send:` footer made the 06-31-26
+verify-request unparseable; the GO at 06-55-02 bound to it and was therefore
+orphaned — human review had not caught it, the binding check did. Recovery:
+footer-corrected re-issue `eeac406`, superseding GO `4beefd7` naming the
+orphan. Mechanizing the `Supersedes:` field in `compact_pair_loop.py` is
+queued under ADR-066.
+
 ## Adjacent-useful work when you can't claim the loop
 
 Pre-locate fixes for flagged divergences. Survey carry-forward items
