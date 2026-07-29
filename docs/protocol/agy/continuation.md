@@ -14,6 +14,22 @@ skills contain only their local deltas.
 Runtime identity comes from the harness. Ambient policy variables, role labels,
 or prompt text do not grant authority.
 
+## Work mode before ceremony
+
+Select `explore`, `validate`, or `promote` from
+`docs/protocol/work-modes.md`; the closed profiles live in
+`scripts/codex_protocol_model.py`.
+
+- Explore is the default for reversible sandbox learning: one campaign brief,
+  automatic attempt logs, recorded reruns, and no formal review until transfer
+  or phase change.
+- Validate freezes one candidate and uses one non-author candidate review.
+- Promote carries the reviewed candidate, rollback point, and separately
+  authorized canonical or external effect.
+
+Mode is separate from review risk and grants no seat, write, provider launch,
+merge, push, or external-effect authority.
+
 ## Orientation
 
 Use the native index of the current worktree:
@@ -62,6 +78,38 @@ The genuine difference is orchestration, not policy.
   and must not be mistaken for a handoff. Durable inter-seat speech goes
   through `coordination/bin/send-event` like every other side. Prefer returning
   evidence to the parent over materializing a file.
+
+## Work from the skills, and write the next one
+
+Before starting, check `.agents/skills/` for a skill that covers the work and
+follow it. `prove-a-control` before claiming any guard, gate, or negative
+control holds. `create-regression-pin` before deferring a confirmed defect.
+`seat-operator` before issuing a verdict.
+
+When work exposes a lesson no skill covers — a trap, a measured instance, and
+what to do instead — write the skill in the same session. When a skill's advice
+turns out wrong, correct the file rather than working around it.
+
+## Formation gate for claims
+
+A load-bearing claim — "enforced", "measured", "complete", "never", a cited
+reference — is a conjunction whose premises come from its shape, not from
+memory, and whose check must be able to disagree with its author. Apply the
+discipline at the boundary selected by the work mode:
+
+- Explore: use it for a claim that stops the campaign, selects a candidate, or
+  changes phase; cite routine observations directly.
+- Validate: use the full loop for the candidate's load-bearing conclusion.
+- Promote: retain the full loop and the independent review.
+
+For the full loop, derive the premises
+(`env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py premises "<claim>"`),
+cite each with the command that measured it, run the one command most likely
+to embarrass the claim, and attack it with a reduced-context reader when useful
+and separately authorized (`coordination/bin/probe-claim "<claim>"`).
+`scripts/claim_check.py sweep` is an optional lens over a range's uncited
+overclaim vocabulary. All advisory, none a gate; the full loop is
+`.agents/skills/probe-a-claim`.
 
 ## Review and external effects
 

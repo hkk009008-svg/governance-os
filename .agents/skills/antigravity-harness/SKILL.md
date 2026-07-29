@@ -1,6 +1,6 @@
 ---
 name: antigravity-harness
-description: Use this skill when operating as Antigravity within Pipeline. Defines Layer-2 operating doctrine bindings, direct autonomous seating, native subagent mesh (define_subagent/invoke_subagent), and structured artifact mesh conventions (implementation_plan.md, walkthrough.md).
+description: Use this skill when operating as Antigravity within Pipeline. Defines Layer-2 operating doctrine bindings, direct autonomous seating, native subagent mesh (define_subagent/invoke_subagent), structured artifact mesh conventions (implementation_plan.md, walkthrough.md), work-mode selection, claim formation discipline, and shared-tree staging hygiene.
 ---
 
 # Antigravity Protocol Harness & Native Subagent Mesh
@@ -33,6 +33,36 @@ When performing substantive work, adhere to the unified operating doctrine bound
 - **Background Tasks**: Use `schedule` and `manage_task` tools for background command and timer execution.
 - **User Delegation**: Use `ask_question` rather than deciding policy or cross-cutting changes on your own.
 - **Smoke Tests**: Run `scripts/ci_smoke.py --fast` for session-start preflight verification; run full `scripts/ci_smoke.py` before final verification.
+- **Claim Formation**: Before writing a load-bearing claim ("enforced", "measured", "complete", "never", a cited reference), follow `.agents/skills/probe-a-claim/SKILL.md`. Before claiming a guard or gate holds, follow `.agents/skills/prove-a-control/SKILL.md`. Scale rigor to work mode: routine `explore` observations cite the command; `validate` applies the full formation loop.
+- **Work Mode Selection**: Declare `explore`, `validate`, or `promote` per `docs/protocol/work-modes.md`. Mode controls iteration and record granularity; risk controls review depth. Mode grants no authority.
+
+## Skill-First Work
+
+Before starting, check `.agents/skills/` for a skill that covers the work and
+follow it — those files exist because the lesson was paid for once already.
+When work exposes a lesson no skill covers — a trap, a measured instance, and
+what to do instead — write the skill in the same session. When a skill's advice
+turns out wrong or narrower than its name, correct the file rather than working
+around it.
+
+## Shared-Tree Staging Hygiene
+
+This repo has concurrent sessions across providers. Surgical, named-file
+staging is mandatory:
+
+- **Never `git add -A`, `git add .`, or `git add --all`.** Stage by explicit path: `git add path/to/file1 path/to/file2`.
+- **Never force-push.** If a force-push is truly needed, obtain explicit user consent and prefer `--force-with-lease`.
+- **Refresh before staging.** Run `git log --oneline -3` and scoped `git status` before writes and gate decisions.
+- **Preserve peer work.** First landed shared-file commit wins; refresh and narrow rather than recreate.
+- **Edit → stage → commit → push are separate acts.** Each requires its own decision.
+
+## Model-Family Independence Constraint
+
+All AGY seat profiles resolve to the `gemini` model family.
+`codex_protocol_model.models_are_independent` compares families, not labels.
+This means AGY **cannot satisfy `high-risk-control` review on its own** —
+route those reviews to a seat on a different model family (Claude, GPT, etc.).
+State the author/reviewer model as the exact ID from `agy models`, undecorated.
 
 ## Hard Boundaries & User Consent
 

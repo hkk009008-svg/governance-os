@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Antigravity (agy) read-only observer: a summary of the threeway coordination bus.
 
-agy holds no Layer-1 seat (ANTIGRAVITY-ADOPTION.md) — this is a read-only situational view. It
-reports the RAW event stream (it does NOT verify signatures); for an authority-checked view use the
-gate's reducer (threeway.gate.verify_and_reduce). Fields are the REAL envelope — `ev.kind`,
+A read-only situational view of the RAW event stream (it does NOT verify signatures); for an
+authority-checked view use the gate's reducer (threeway.gate.verify_and_reduce). Fields are the REAL envelope — `ev.kind`,
 `ev.candidate_id`, `ev.subject_sha` (never `event_type` / `subject`).
 """
 from __future__ import annotations
