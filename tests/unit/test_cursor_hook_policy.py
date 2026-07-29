@@ -84,6 +84,17 @@ def test_session_start_fails_to_readiness_on_binding_error(
     assert "conflict" in result["additional_context"]
 
 
+def test_session_start_names_workspace_root_desync(tmp_path: Path) -> None:
+    # No monkeypatching: the real registration path must surface a wrong-root
+    # session anchor as visible context, not silently run unbound (ADR-066).
+    payload = _payload("sessionStart", workspace_roots=[str(tmp_path / "elsewhere")])
+    result = policy.evaluate(payload, {}, root=tmp_path)
+    context = result["additional_context"]
+    assert "readiness-bridge" in context
+    assert "does not match the project hook root" in context
+    assert "env" not in result
+
+
 def test_inherited_legacy_index_never_gets_seat_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
