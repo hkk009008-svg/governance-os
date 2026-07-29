@@ -23,6 +23,7 @@ Reviewer seat: operator | operator2
 Reviewer model: <system-visible model; different family from Author model for high-risk-control>
 Risk class: material-behavior | high-risk-control
 <high-risk-control only: add `Abuse Class Assessment: bound-to-request` here>
+<re-issue only: add `Supersedes: coordination/mailbox/sent/<superseded-report>.md@<its-introduction-commit>` — names the verdict this report replaces; a seat supersedes only its own verdicts, and the named verdict stops counting toward acceptance>
 Verification harness: <optional evidence note; not authority>
 Verification context: <optional evidence note; not identity proof>
 

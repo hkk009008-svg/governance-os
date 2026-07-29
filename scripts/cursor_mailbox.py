@@ -203,8 +203,10 @@ def _reported_request_refs(
 
     Malformed reports and reports that fail structural validation are skipped.
     They must neither abort next-review nor mark a request as already reviewed.
+    A verdict a later valid report supersedes is dead: it suppresses nothing,
+    though its own supersession still counts.
     """
-    refs: set[str] = set()
+    valid: list[tuple[str, str, compact_pair_loop.VerificationReport]] = []
     scratch = root / ".pytest-verify-tmp"
     scratch.mkdir(parents=True, exist_ok=True)
     for path, commit in events:
@@ -234,11 +236,21 @@ def _reported_request_refs(
             violations = compact_pair_loop.validate_report_structure(root, report)
             if violations:
                 continue
-            refs.add(f"{report.request_path}@{report.request_commit}")
+            valid.append((path, commit, report))
         finally:
             if temporary_name:
                 Path(temporary_name).unlink(missing_ok=True)
-    return frozenset(refs)
+    superseded = {
+        f"{path}@{commit}"
+        for _, _, report in valid
+        if report.supersedes is not None
+        for path, commit in (report.supersedes,)
+    }
+    return frozenset(
+        f"{report.request_path}@{report.request_commit}"
+        for path, commit, report in valid
+        if f"{path}@{commit}" not in superseded
+    )
 
 
 def next_verify_request(

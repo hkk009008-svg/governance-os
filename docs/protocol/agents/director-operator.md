@@ -1311,7 +1311,9 @@ verify-request unparseable; the GO at 06-55-02 bound to it and was therefore
 orphaned — human review had not caught it, the binding check did. Recovery:
 footer-corrected re-issue `eeac406`, superseding GO `4beefd7` naming the
 orphan. Mechanizing the `Supersedes:` field in `compact_pair_loop.py` is
-queued under ADR-066.
+mechanized under ADR-066: the field is parsed and seat-scoped by
+`compact_pair_loop.py`, and a superseded verdict suppresses nothing in the
+mailbox's reviewed-request counting.
 
 ## Adjacent-useful work when you can't claim the loop
 
