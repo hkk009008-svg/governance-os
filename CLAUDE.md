@@ -63,6 +63,14 @@ When a skill's advice turns out to be wrong or narrower than its name, correct
 that file in the same session rather than working around it. A skill that
 outlived its mechanism is the same defect as a docstring that did.
 
+Instruction prose is executable on models and is the least-gated surface here.
+The first field trial measured it → a 6.5 h transcript with zero tool
+invocations yet unprompted hash-citations and a handoff doc: doctrine text
+shaped the worker's habits while the reviewed tools sat unused. When the goal is behavior
+change, change the prose surface first — and give a changed instruction surface
+at least a reduced-context probe of its central claim, because its only other
+test is a field trial someone pays for.
+
 ## Formation gate for claims
 
 A load-bearing claim — "enforced", "measured", "complete", "never", a cited
@@ -141,6 +149,10 @@ governance kernel and evidence-ledger owns product-local truth.
 ## Shared-tree hygiene
 
 - Refresh `git log --oneline -3` and scoped status before writes and gates.
+- Diff the doctrine before submitting a range, not only the code:
+  `env -u GIT_INDEX_FILE git log <base>..main -- docs/protocol .claude/skills CLAUDE.md AGENTS.md`
+  — an obligation can land mid-flight and bind your in-progress work; one did
+  (the evasion-control requirement) and killed a mechanism built hours earlier.
 - Use `env -u GIT_INDEX_FILE` and explicit pathspecs.
 - Preserve peer/user dirt; first landed shared-file commit wins.
 - Edit, stage, commit, push, merge, consume, lock, and spend are separate acts.
