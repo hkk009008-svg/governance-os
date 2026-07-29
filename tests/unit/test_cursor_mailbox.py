@@ -403,3 +403,167 @@ def test_next_review_is_operator_only(tmp_path: Path) -> None:
         binding_resolver=_resolver(_binding("director")),
     )
     assert result == 2
+
+
+def _repo_pair(tmp_path: Path) -> tuple[Path, str, str]:
+    root = tmp_path / "pair-repo"
+    root.mkdir()
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "tests@example.invalid")
+    _git(root, "config", "user.name", "Tests")
+    (root / "payload.txt").write_text("base\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "base")
+    base = _git(root, "rev-parse", "HEAD")
+    (root / "payload.txt").write_text("head\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "head")
+    head = _git(root, "rev-parse", "HEAD")
+    return root, base, head
+
+
+def _commit_explicit_request(
+    root: Path, base: str, head: str, path: str, when: str
+) -> str:
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "\n".join(
+            (
+                "# Director → Operator: test",
+                "",
+                f"**When:** {when} · **From:** director (online)",
+                "",
+                "Event type: verify-request",
+                f"Reviewed repository: {root}",
+                f"Reviewed base: {base}",
+                f"Reviewed head: {head}",
+                "Author seat: director",
+                "Author model: composer-2.5",
+                "Assigned operator: operator",
+                "Risk class: material-behavior",
+                "",
+                "## Outcome",
+                "",
+                "Verify the test range.",
+                "",
+                "## Finding Refs",
+                "",
+                "- sha256:" + "1" * 64,
+                "",
+                "Cursor at send: 0",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    _git(root, "add", path)
+    _git(root, "commit", "-q", "-m", "verify request")
+    return _git(root, "rev-parse", "HEAD")
+
+
+def _commit_explicit_report(
+    root: Path,
+    base: str,
+    head: str,
+    request_path: str,
+    request_commit: str,
+    path: str,
+    when: str,
+    *,
+    supersedes: str | None = None,
+) -> str:
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    supersedes_line = () if supersedes is None else (f"Supersedes: {supersedes}",)
+    target.write_text(
+        "\n".join(
+            (
+                "# Operator → Director: test",
+                "",
+                f"**When:** {when} · **From:** operator (online)",
+                "",
+                "Event type: verification-report",
+                "VERDICT: GO",
+                f"Verification request: {request_path}@{request_commit}",
+                *supersedes_line,
+                f"Reviewed repository: {root}",
+                f"Reviewed head: {head}",
+                f"Reviewed base: {base}",
+                "Reviewer seat: operator",
+                "Reviewer model: claude-sonnet-5",
+                "Risk class: material-behavior",
+                "",
+                "## Finding Refs",
+                "",
+                "- sha256:" + "1" * 64,
+                "",
+                "## Finding Dispositions",
+                "",
+                f"- sha256:{'1' * 64}: addressed",
+                "",
+                "## Evidence",
+                "",
+                "$ independent actual-diff inspection",
+                "→ reviewed range satisfies the outcome",
+                "",
+                "## Findings",
+                "",
+                "None.",
+                "",
+                "Cursor at send: 0",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    _git(root, "add", path)
+    _git(root, "commit", "-q", "-m", "verification report")
+    return _git(root, "rev-parse", "HEAD")
+
+
+def test_superseded_verdict_suppresses_nothing(tmp_path: Path) -> None:
+    root, base, head = _repo_pair(tmp_path)
+    request_one = (
+        "coordination/mailbox/sent/"
+        "2026-07-24T01-00-00Z-director-to-operator-verify-request.md"
+    )
+    report_one = (
+        "coordination/mailbox/sent/"
+        "2026-07-24T01-10-00Z-operator-to-director-verification-report.md"
+    )
+    request_two = (
+        "coordination/mailbox/sent/"
+        "2026-07-24T02-00-00Z-director-to-operator-verify-request.md"
+    )
+    report_two = (
+        "coordination/mailbox/sent/"
+        "2026-07-24T02-10-00Z-operator-to-director-verification-report.md"
+    )
+    c1 = _commit_explicit_request(root, base, head, request_one, "2026-07-24T01:00:00Z")
+    c2 = _commit_explicit_report(
+        root, base, head, request_one, c1, report_one, "2026-07-24T01:10:00Z"
+    )
+    reported = mailbox._reported_request_refs(
+        root, {}, mailbox._committed_mailbox_events(root, {})
+    )
+    assert f"{request_one}@{c1}" in reported  # live verdict counts
+
+    c3 = _commit_explicit_request(root, base, head, request_two, "2026-07-24T02:00:00Z")
+    _commit_explicit_report(
+        root,
+        base,
+        head,
+        request_two,
+        c3,
+        report_two,
+        "2026-07-24T02:10:00Z",
+        supersedes=f"{report_one}@{c2}",
+    )
+    reported = mailbox._reported_request_refs(
+        root, {}, mailbox._committed_mailbox_events(root, {})
+    )
+    # The superseded verdict is dead: it no longer marks its request reviewed.
+    assert f"{request_one}@{c1}" not in reported
+    # The re-issued verdict binds and counts on its own request.
+    assert f"{request_two}@{c3}" in reported

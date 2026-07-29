@@ -84,6 +84,7 @@ class VerificationReport:
     evidence: tuple[str, ...]
     finding_refs: tuple[str, ...]
     finding_dispositions: tuple[tuple[str, str], ...]
+    supersedes: tuple[str, str] | None
     filename_reviewer: str
     envelope_sender: str
 
@@ -715,6 +716,7 @@ def _parse_verification_report_bytes(
         finding_dispositions=_finding_dispositions(
             lines, finding_refs, required=not legacy
         ),
+        supersedes=_supersedes(root, lines, path),
         filename_reviewer=match.group("reviewer"),
         envelope_sender=_envelope_sender(text),
     )
@@ -811,7 +813,9 @@ def validate_report_structure(root: Path, report: VerificationReport) -> list[st
         )
     except CompactPairError as exc:
         return [f"request binding invalid: {exc}"]
-    return _report_structure_violations(report, request)
+    return _report_structure_violations(report, request) + _supersedes_violations(
+        root, report
+    )
 
 
 def validate_report(root: Path, report: VerificationReport) -> list[str]:
@@ -821,6 +825,7 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
     except CompactPairError as exc:
         return [f"request binding invalid: {exc}"]
     violations = _report_structure_violations(report, request)
+    violations += _supersedes_violations(root, report)
     try:
         reviewed_root = _reviewed_root(root, request.reviewed_repository)
         base = _full_commit(reviewed_root, request.reviewed_base, "Reviewed base")
@@ -951,6 +956,67 @@ def _evidence(lines: list[str]) -> tuple[str, ...]:
     if body is None:
         return ()
     return tuple(line for line in body if line.strip())
+
+
+def _supersedes(
+    root: Path, lines: list[str], report_path: str
+) -> tuple[str, str] | None:
+    """Parse the optional `Supersedes: <report-path>@<commit>` re-issue field.
+
+    A verdict a later report supersedes is dead: re-issued artifacts name the
+    orphan explicitly instead of leaving consumers to infer it from prose
+    (2026-07-25 duplicate-footer incident, ADR-066). Grammar checks only —
+    resolution against Git history is `_supersedes_violations`, so committed
+    artifacts stay parseable on a shallow read.
+    """
+    value = _optional_one(lines, "Supersedes: ", "Supersedes")
+    if value is None:
+        return None
+    path, separator, commit = value.rpartition("@")
+    if not separator:
+        raise CompactPairError("Supersedes must bind report-path@commit")
+    path = _repo_path(root, path)
+    if REPORT_RE.fullmatch(path) is None:
+        raise CompactPairError("Supersedes path is not a canonical verification-report")
+    if SHA_RE.fullmatch(commit) is None:
+        raise CompactPairError("Supersedes commit must be one full lowercase commit SHA")
+    if path == report_path:
+        raise CompactPairError("Supersedes must not name the report itself")
+    return path, commit
+
+
+def _supersedes_violations(root: Path, report: VerificationReport) -> list[str]:
+    """Resolve a Supersedes claim against Git: it names the seat's own dead verdict."""
+    if report.supersedes is None:
+        return []
+    path, commit = report.supersedes
+    try:
+        resolved = _full_commit(root, commit, "Supersedes commit")
+        change = _git(
+            root,
+            "diff-tree",
+            "--root",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            resolved,
+            "--",
+            path,
+        ).decode("utf-8", errors="strict").splitlines()
+        if change != [f"A\t{path}"]:
+            raise CompactPairError(
+                "Supersedes commit must be the named report's introduction commit"
+            )
+        if not _is_ancestor(root, resolved, "HEAD"):
+            raise CompactPairError("Supersedes commit is not in this history")
+        superseded = _parse_verification_report_bytes(
+            root, path, _git(root, "show", f"{resolved}:{path}")
+        )
+        if superseded.reviewer_seat != report.reviewer_seat:
+            raise CompactPairError("a seat supersedes only its own verdicts")
+    except CompactPairError as exc:
+        return [f"supersession binding invalid: {exc}"]
+    return []
 
 
 def _git_blob(root: Path, commit: str, path: str) -> bytes | None:

@@ -1336,3 +1336,63 @@ blinding each check. Readiness is not authority: passing the preflight says a
 harness can act, never that it may. Provider launch, paid spend, publication and
 push remain separate authorities, and a persistent tool grant in a harness
 config is an authority change rather than a configuration convenience.
+
+---
+
+## ADR-066: Verify your own anchor first; enforcement binds where it decides (2026-07-29)
+
+**Status:** Accepted (user-directed; coordinator-authored under the
+four-seat-extension §4 explicit-direction clause, coordinator seat on Cursor
+app, model kimi-k3)
+
+**Context:** Two same-week evidences converged on one doctrine. First, the
+Claude-side cutover (`23669fd` / `fe0875b` / `143b6fa`, following Codex in
+ADR-064) deleted every repository lifecycle hook and the env-var seat binding
+after measuring that the guard gated shell strings against a variable any
+process can forge, carried three live bypasses, and never validated review
+identity — session-start binding never prevented a bad GO, while
+publication-time validation in `compact_pair_loop.py` does. Rather than build
+machinery to match an overstated doc sentence, the docs were corrected.
+Second, on 2026-07-29 a coordinator session opened anchored to a deleted
+worktree path: every workspace-anchored tool failed against the ghost root,
+and the `.cursor/` hook layer registered under that root was silently absent
+with it — no denial, no warning, just no policy. Recovery came from exactly
+the doctrine the cutover codified: native state plus explicit verification
+commands. The same day the Claude side landed six work-shape rules
+(`29f6966`) from its own measured record; those govern how findings are
+answered and ranges submitted, and are complementary to this entry, which
+governs where enforcement binds.
+
+**Decision.** The agent-agnostic protocol layer gains four amendments, all
+prose, zero new mechanism (per the subtraction-over-addition rule landed in
+`29f6966`):
+
+- `docs/protocol/agents/core.md` R-START gains step 0: verify your own
+  anchor (workspace root, worktree, registry record) with one explicit
+  ground-truth command before trusting it; on desync, surface immediately
+  and fall back to explicit verification.
+- `core.md` gains "Guard admission": a proposed guard must name the effect
+  it blocks and survive the bypass question; authority lives in fixed
+  writers, wrappers, and publication-time validators, never in
+  pattern-matching over agent-typed command strings; enforcement points may
+  differ per side (Cursor hooks gate real in-app effects fail-closed; Claude
+  and Codex enforce at publication); cross-side compat shims are banned.
+- `docs/protocol/agents/director-operator.md` gains the author-side
+  binding-failure recovery: re-issue the artifact, never patch in place, and
+  name orphaned verdicts explicitly so they never count toward acceptance.
+- `core.md` "When you change something" gains the stale-claim sweep: a
+  change that retires a mechanism greps docs AND test docstrings for the old
+  claim in the same change.
+
+**Consequences.** Queued mechanization (separate, risk-classed
+verify-requests): a `Supersedes:` field in `compact_pair_loop.py` so orphan
+verdicts stop being prose-repaired (today the loop has zero supersession
+handling); visible desync warning in `cursor_hook_policy.py` sessionStart
+(fail-loud, not fail-closed — a desynced seat must be able to report the
+problem); a retired-claim lint in the `check_doc_claims.py` family.
+Explicitly NOT built: a `check_no_ceremony.py` rule for the preventive-hook
+class — hooks are already absent across `.claude/`, `.codex/`, and `.agy/`,
+absence guards cover reintroduction on the Claude side, and the principle
+now lives in prose. Review of this amendment set follows the standing
+non-author operator rule; the coordinator holds no mailbox cursor and
+returns to observation after the wave lands.

@@ -22,6 +22,16 @@ don't let a wrong claim survive your session.
 
 Concrete protocol at session start (≤2 minutes):
 
+0. **Verify your own anchor before trusting it.** Session-start identity is a
+   claim, not a fact: workspace roots get renamed, worktrees get deleted,
+   registry records go stale. Run one explicit ground-truth command
+   (`pwd` + `git rev-parse --show-toplevel`, or `ls` on the path your
+   tools are anchored to). On desync, surface it immediately to the user and
+   fall back to explicit verification commands against real paths — do not
+   let workspace-anchored tools fail quietly against a ghost. Specimen:
+   2026-07-29, a coordinator session anchored to a deleted worktree path ran
+   its first minute blind, and the hook layer registered under that dead root
+   was silently absent with it (ADR-066).
 1. Run the project smoke block in `ARCHITECTURE.md` (<project smoke invariants — implemented in scripts/ci_smoke.py _project_smoke()>). If it fails, the doc is
    stale OR the working tree is broken — fix one or the other before
    proceeding with the user's task.
@@ -140,11 +150,45 @@ Beyond the impact-analysis checks above:
 - One commit per logical slice. Run the project smoke block in `ARCHITECTURE.md` (<project smoke invariants — implemented in scripts/ci_smoke.py _project_smoke()>)
   before declaring a slice done.
 - Don't combine concerns. A bug fix isn't a refactor isn't a feature.
+- If your change retires or renames a mechanism, grep docs AND test
+  docstrings for the old claim in the same change — both rot, and docstrings
+  rot invisibly (the seat-binding overstatement survived in two test
+  docstrings after the mechanism was gone; `143b6fa`).
 - If your change touches a documented subsystem, update the relevant
   section in `ARCHITECTURE.md` in the same PR.
 - For multi-task work (≥5 sub-tasks or ≥800 LOC of total change), don't
   implement everything in your current context — orchestrate via fresh
   contexts. See "Multi-task orchestration" below.
+
+# Guard admission: enforcement binds where it decides
+*Codified 2026-07-29 after the Claude-side cutover (`23669fd` / `fe0875b` /
+`143b6fa`) and the coordinator dead-anchor incident; see DECISIONS.md ADR-066.*
+
+Any proposed guard must answer two questions before it is built: **what
+effect does it actually block, and can that block be bypassed?** A guard
+that cannot name its effect is theater — appearance of enforcement without
+an enforcement path — and is deleted, not maintained. The retired Claude
+PreToolUse guard is the specimen: it gated shell command strings against a
+forgeable environment variable and carried three live bypasses (`FOO=1 git
+commit` beat its token-0 command parse; `git -c k=v commit` returned
+unparseable-and-pass; its cross-side compat branch printed deny while
+exiting 0, the status its host read as allow).
+
+Consequences:
+
+- **Authority lives in fixed writers, wrappers, and publication-time
+  validators** (`scripts/compact_pair_loop.py`, the `coordination/bin/`
+  seat wrappers), never in pattern-matching over agent-typed command
+  strings.
+- **Enforcement points may differ per side.** Cursor keeps fail-closed
+  hooks because they gate real in-app effects through a fixed policy
+  script; Claude and Codex enforce at publication. The test is per-guard,
+  not per-side.
+- **No cross-side compat shims.** Shared logic lives in validated scripts
+  each side calls natively; a shim branch inside another side's guard rots
+  silently (the exit-0-while-denying defect).
+- **When docs overstate a mechanism, correct the docs rather than build
+  machinery to match the sentence** (`143b6fa`).
 
 # Session-wrap & handoff hygiene
 *Capacity lever #2 (audit `wf_6be2ee18-f4b`). Cuts stale-filename churn — 119

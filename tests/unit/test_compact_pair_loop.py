@@ -101,6 +101,7 @@ def _report_text(
     reviewer_model: str = "gpt-5.6-terra",
     risk_class: str = "material-behavior",
     abuse_class_assessment_binding: str | None = None,
+    supersedes: str | None = None,
     finding_refs: tuple[str, ...] = (FINDING_A,),
     dispositions: tuple[tuple[str, str], ...] = ((FINDING_A, "addressed"),),
     evidence: bool = True,
@@ -120,6 +121,7 @@ $ independent actual-diff inspection
         if abuse_class_assessment_binding is None
         else f"Abuse Class Assessment: {abuse_class_assessment_binding}\n"
     )
+    supersedes_line = "" if supersedes is None else f"Supersedes: {supersedes}\n"
     return f"""\
 # Operator -> Pair seat: outcome verification
 
@@ -128,7 +130,7 @@ $ independent actual-diff inspection
 Event type: verification-report
 VERDICT: {verdict}
 Verification request: {request_path}@{trigger}
-{_reviewed_repository_line(reviewed_repository)}Reviewed head: {head}
+{supersedes_line}{_reviewed_repository_line(reviewed_repository)}Reviewed head: {head}
 Reviewed base: {base}
 Reviewer seat: {reviewer_seat}
 Reviewer model: {reviewer_model}
@@ -1550,3 +1552,167 @@ def test_compose_refuses_a_range_assembled_from_two_repository_states(
     )
     assert f"Reviewed base: {base}" in body
     assert f"Reviewed head: {head}" in body
+
+
+SECOND_REPORT_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-07-18T08-20-00Z-operator-to-all-verification-report.md"
+)
+OPERATOR2_REPORT_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-07-18T08-15-00Z-operator2-to-all-verification-report.md"
+)
+
+
+def _commit_report(
+    root: Path,
+    base: str,
+    head: str,
+    trigger: str,
+    *,
+    report_path: str = REPORT_PATH,
+    **overrides: object,
+) -> tuple[str, str]:
+    _write_report(root, base, head, trigger, report_path=report_path, **overrides)
+    _git(root, "add", report_path)
+    _git(root, "commit", "-q", "-m", "coord(pair): report verification")
+    return report_path, _git(root, "rev-parse", "HEAD")
+
+
+def test_report_supersedes_round_trip_and_binds(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    orphan_path, orphan_commit = _commit_report(root, base, head, trigger)
+    reference = f"{orphan_path}@{orphan_commit}"
+    candidate = _write_report(
+        root, base, head, trigger, report_path=SECOND_REPORT_PATH, supersedes=reference
+    )
+    report = pair.parse_verification_report_candidate(
+        root, str(candidate), SECOND_REPORT_PATH
+    )
+    assert report.supersedes == (orphan_path, orphan_commit)
+    assert pair.validate_report_structure(root, report) == []
+    assert pair.validate_report(root, report) == []
+
+
+def test_report_supersedes_must_name_a_report_path(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        supersedes=f"{REQUEST_PATH}@{trigger}",
+    )
+    with pytest.raises(pair.CompactPairError, match="not a canonical verification-report"):
+        pair.parse_verification_report_candidate(root, str(candidate), SECOND_REPORT_PATH)
+
+
+def test_report_supersedes_requires_full_sha(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    orphan_path, orphan_commit = _commit_report(root, base, head, trigger)
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        supersedes=f"{orphan_path}@{orphan_commit[:12]}",
+    )
+    with pytest.raises(pair.CompactPairError, match="full lowercase commit SHA"):
+        pair.parse_verification_report_candidate(root, str(candidate), SECOND_REPORT_PATH)
+
+
+def test_report_supersedes_never_names_itself(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        supersedes=f"{SECOND_REPORT_PATH}@{'0' * 40}",
+    )
+    with pytest.raises(pair.CompactPairError, match="must not name the report itself"):
+        pair.parse_verification_report_candidate(root, str(candidate), SECOND_REPORT_PATH)
+
+
+def test_report_supersedes_duplicate_field_rejected(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    orphan_path, orphan_commit = _commit_report(root, base, head, trigger)
+    reference = f"{orphan_path}@{orphan_commit}"
+    candidate = root / SECOND_REPORT_PATH
+    candidate.write_text(
+        _report_text(
+            base, head, trigger, supersedes=reference
+        ).replace(
+            f"Supersedes: {reference}",
+            f"Supersedes: {reference}\nSupersedes: {reference}",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(pair.CompactPairError, match="duplicate Supersedes"):
+        pair.parse_verification_report_candidate(root, str(candidate), SECOND_REPORT_PATH)
+
+
+def test_superseded_commit_must_introduce_the_report(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    orphan_path, _ = _commit_report(root, base, head, trigger)
+    (root / "scripts/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
+    _git(root, "add", "scripts/feature.py")
+    _git(root, "commit", "-q", "-m", "feat: unrelated later work")
+    wrong_commit = _git(root, "rev-parse", "HEAD")
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        supersedes=f"{orphan_path}@{wrong_commit}",
+    )
+    report = pair.parse_verification_report_candidate(
+        root, str(candidate), SECOND_REPORT_PATH
+    )
+    violations = pair.validate_report_structure(root, report)
+    assert any("introduction commit" in violation for violation in violations)
+    # Non-vacuity: the true introduction commit binds cleanly (same fixture).
+    correct = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        supersedes=f"{orphan_path}@{_git(root, 'rev-parse', 'HEAD~1')}",
+    )
+    correct_report = pair.parse_verification_report_candidate(
+        root, str(correct), SECOND_REPORT_PATH
+    )
+    assert pair.validate_report_structure(root, correct_report) == []
+
+
+def test_supersession_is_seat_scoped(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path)
+    orphan_path, orphan_commit = _commit_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=OPERATOR2_REPORT_PATH,
+        reviewer_seat="operator2",
+    )
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        reviewer_seat="operator",
+        supersedes=f"{orphan_path}@{orphan_commit}",
+    )
+    report = pair.parse_verification_report_candidate(
+        root, str(candidate), SECOND_REPORT_PATH
+    )
+    violations = pair.validate_report_structure(root, report)
+    assert any("only its own verdicts" in violation for violation in violations)
+    # Non-vacuity: same-seat supersession carries no such violation (the
+    # round-trip test asserts the full clean pass on this fixture shape).
