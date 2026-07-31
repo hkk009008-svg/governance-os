@@ -17,10 +17,21 @@ Metrics and sources:
                             counts once; the three counters partition the
                             disposed set, never exceed candidates_total).
 4. supersession_rate      — candidates carrying Supersedes / candidates_total.
-5. promotion_linkage      — accepted candidates whose event path appears in no
-                            verify-request body at HEAD (ADVISORY WARN).
-6. staleness              — accepted candidates with a Target whose recorded
-                            base hash no longer matches HEAD bytes.
+5. promotion_linkage      — live accepted candidates whose ref appears as a
+                            Finding Refs ENTRY of no verify-request at HEAD
+                            (ADVISORY WARN); prose mentions are not linkage.
+                            A candidate whose ACCEPTED replacement exists is
+                            RETIRED (ADR-066 re-issue idiom) and owes
+                            nothing; a proposed or declined supersession
+                            retires nothing.
+6. staleness/promotion    — a live accepted candidate whose target moved is
+                            reported under promoted_target_moved when
+                            Finding-Refs-linked (the move its acceptance
+                            authorized; a partial view — promoted candidates
+                            whose target has not yet moved do not appear)
+                            and is STALE (WARN) only when unlinked — the
+                            target changed underneath it outside the
+                            governed path.
 7. contradictions         — live (non-superseded) candidates sharing a Target
                             with different Proposed content hash.
 8. index_coverage         — rows and built-at commit of the local Stage 1
@@ -129,8 +140,17 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
         if by_ref.get(c.event.path) is not None
         and by_ref[c.event.path].disposition == "accepted"
     ]
+    # Retirement keys on the superseding candidate's OWN acceptance — a
+    # merely proposed (undisposed) or declined supersession replaces nothing,
+    # so the original keeps its linkage debt and its target alarm (review
+    # finding: proposal-keyed retirement let any seat unilaterally silence an
+    # accepted candidate by composing an undisposed superseder).
     superseded_paths = {
-        c.supersedes.rsplit("@", 1)[0] for c in candidates if c.supersedes
+        c.supersedes.rsplit("@", 1)[0]
+        for c in candidates
+        if c.supersedes
+        and by_ref.get(c.event.path) is not None
+        and by_ref[c.event.path].disposition == "accepted"
     }
     live = [c for c in candidates if c.event.path not in superseded_paths]
 
@@ -138,14 +158,39 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
     for path in _sent_names(root, resolved):
         if path.endswith("-verify-request.md"):
             request_texts.append(_git(root, "show", f"{resolved}:{path}"))
+
+    # Lifecycle classification of accepted candidates. A candidate whose
+    # accepted replacement exists is RETIRED (ADR-066 re-issue idiom): it
+    # neither owes a promotion nor alarms about its target. A live accepted
+    # candidate whose ref appears as a Finding Refs ENTRY of a verify-request
+    # — the contract I3 promotion linkage, `- <path>@<sha>` — and whose
+    # target moved is PROMOTED: the move the acceptance authorized. A prose
+    # mention anywhere in a request body (a citation, an orphaning note, a
+    # decline) is NOT linkage (review finding: the substring predicate let a
+    # non-promoting mention silence the stale alarm). The stale WARN keeps
+    # the genuinely alarming case: accepted, unpromoted, target moved
+    # underneath it outside the governed path.
+    retired = [c for c in accepted if c.event.path in superseded_paths]
+    live_accepted = [c for c in accepted if c.event.path not in superseded_paths]
+    finding_ref_paths: set[str] = set()
+    for text in request_texts:
+        finding_ref_paths.update(
+            re.findall(
+                r"^- (coordination/mailbox/sent/\S+\.md)@[0-9a-f]{40}\s*$",
+                text,
+                re.MULTILINE,
+            )
+        )
+    linked_paths = {
+        c.event.path for c in live_accepted if c.event.path in finding_ref_paths
+    }
     linkage_gaps = [
-        c.event.path
-        for c in accepted
-        if not any(c.event.path in text for text in request_texts)
+        c.event.path for c in live_accepted if c.event.path not in linked_paths
     ]
 
+    promoted = []
     stale = []
-    for c in accepted:
+    for c in live_accepted:
         if c.target is None:
             continue
         try:
@@ -156,11 +201,18 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
                 check=True,
             ).stdout
         except subprocess.CalledProcessError:
-            stale.append(f"{c.event.path} (target absent: {c.target})")
+            data = None
+        moved = (
+            data is None
+            or "sha256:" + hashlib.sha256(data).hexdigest() != c.target_base_hash
+        )
+        if not moved:
             continue
-        digest = "sha256:" + hashlib.sha256(data).hexdigest()
-        if digest != c.target_base_hash:
-            stale.append(f"{c.event.path} (target moved: {c.target})")
+        detail = "target absent" if data is None else "target moved"
+        if c.event.path in linked_paths:
+            promoted.append(f"{c.event.path} ({detail}: {c.target})")
+        else:
+            stale.append(f"{c.event.path} ({detail}: {c.target})")
 
     by_target: dict[str, list[protocol_mailbox.LearningCandidateStatement]] = {}
     for c in live:
@@ -215,6 +267,8 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
             f"{sum(1 for c in candidates if c.supersedes)}/{len(candidates)}"
         ),
         "promotion_linkage_gaps": linkage_gaps,
+        "promoted_target_moved": promoted,
+        "retired_superseded": [c.event.path for c in retired],
         "stale_accepted": stale,
         "contradicted_targets": contradictions,
         "index_state": index_state,
@@ -248,6 +302,10 @@ def main(argv: list[str] | None = None) -> int:
           f"  [docs/PROTOCOL-RULES-LOG.md]")
     print(f"  recorded outcomes: {metrics['outcome_rows']}"
           f"  [logs/learning/outcomes.jsonl]")
+    for item in metrics["promoted_target_moved"]:
+        print(f"  promoted (target moved as authorized): {item}")
+    for path in metrics["retired_superseded"]:
+        print(f"  retired (accepted replacement exists): {path}")
     for gap in metrics["promotion_linkage_gaps"]:
         print(f"  WARN accepted candidate not named by any verify-request: {gap}")
     for item in metrics["stale_accepted"]:
