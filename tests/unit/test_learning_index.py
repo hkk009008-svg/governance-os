@@ -215,3 +215,30 @@ def test_query_availability_survives_a_corrupt_index(tmp_path: Path) -> None:
     db = tmp_path / "index.sqlite"
     db.write_bytes(b"this is not a sqlite database")
     assert learning_index.query_index(root, "flaky", db_path=db) is None
+
+
+def test_broken_schema_store_is_unavailable_not_a_query_error(
+    tmp_path: Path,
+) -> None:
+    """A structurally broken store must not blame the caller's query text."""
+
+    import sqlite3
+
+    root = _throwaway_repo(tmp_path)
+    # Store with meta but no rows table at all.
+    missing_rows = tmp_path / "missing-rows.sqlite"
+    connection = sqlite3.connect(missing_rows)
+    connection.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+    connection.execute("INSERT INTO meta VALUES ('built_at_commit', 'abc')")
+    connection.commit()
+    connection.close()
+    assert learning_index.query_index(root, "flaky", db_path=missing_rows) is None
+    # Store whose rows table is not the FTS5 schema this module writes.
+    non_fts = tmp_path / "non-fts.sqlite"
+    connection = sqlite3.connect(non_fts)
+    connection.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+    connection.execute("INSERT INTO meta VALUES ('built_at_commit', 'abc')")
+    connection.execute("CREATE TABLE rows (text TEXT)")
+    connection.commit()
+    connection.close()
+    assert learning_index.query_index(root, "flaky", db_path=non_fts) is None

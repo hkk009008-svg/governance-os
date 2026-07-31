@@ -479,18 +479,25 @@ def compute_learning_candidate_id(fields: dict[str, str | None]) -> str:
     """sha256 of the normalized payload — the candidate's identity/dedup key.
 
     Normalization: the schema fields in fixed order, absent optionals
-    omitted, each rendered ``Label: value`` with stripped values, joined by
-    newlines. Content-derived identity makes a byte-identical duplicate
-    detectable from committed events alone (contract §3).
+    omitted, each rendered ``Label: value`` with stripped values — and
+    ``Source refs`` recanonicalized to comma-space separation, the same form
+    the parser reconstructs, so an author writing ``a,b`` gets the identical
+    ID the parser will recompute (round-two NIT: hashing the raw separator
+    made the helper emit IDs its own parser refused). Content-derived
+    identity makes a byte-identical duplicate detectable from committed
+    events alone (contract §3).
     """
 
     import hashlib
 
-    lines = [
-        f"{label}: {fields[label].strip()}"
-        for label in _LEARNING_ID_FIELD_ORDER
-        if fields.get(label) is not None
-    ]
+    lines = []
+    for label in _LEARNING_ID_FIELD_ORDER:
+        value = fields.get(label)
+        if value is None:
+            continue
+        if label == "Source refs":
+            value = ", ".join(part.strip() for part in value.split(","))
+        lines.append(f"{label}: {value.strip()}")
     return hashlib.sha256(("\n".join(lines) + "\n").encode("utf-8")).hexdigest()
 
 

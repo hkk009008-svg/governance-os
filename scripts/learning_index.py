@@ -243,9 +243,8 @@ def build_index(
         connection.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
         skipped: list[str] = []
         for path, sha in sources:
+            # _tracked_sources appended only paths with a known kind.
             kind = _source_kind(path)
-            if kind is None:
-                kind = "extra"
             text = texts.get(sha)
             if text is None:
                 skipped.append(f"{path} (unavailable: blob unreadable)")
@@ -319,9 +318,18 @@ def query_index(
             meta = connection.execute(
                 "SELECT value FROM meta WHERE key = 'built_at_commit'"
             ).fetchone()
+            # A store whose rows table is missing or not the FTS5 schema this
+            # module writes is UNAVAILABLE, not a query error — otherwise a
+            # structurally broken index would blame the caller's query text
+            # (round-two NIT). The check is against our own schema string,
+            # not a guess about foreign SQL.
+            schema = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type IN ('table', 'view')"
+                " AND name = 'rows'"
+            ).fetchone()
         except sqlite3.Error:
             return None
-        if meta is None:
+        if meta is None or schema is None or "fts5" not in (schema[0] or "").lower():
             return None
         try:
             cursor = connection.execute(

@@ -80,38 +80,17 @@ def _event(fields: dict[str, str | None], *, candidate_id: str | None = None,
     )
 
 
-def test_kernel_validators_import_no_learning_module() -> None:
-    """Contract I1: the two validation kernels import no learning_* module."""
+def _learning_offenders(source: str) -> list[str]:
+    """The ONE collector both I1 tests exercise.
 
-    for kernel in ("scripts/mailbox_writer.py", "scripts/compact_pair_loop.py"):
-        tree = ast.parse((_REPO_ROOT / kernel).read_text(encoding="utf-8"))
-        imported: list[str] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imported.extend(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                # `from scripts import learning_x` binds learning_x: the
-                # alias names carry the module, not node.module (round-one
-                # FAIL: recording only node.module let exactly that form
-                # evade the control).
-                for alias in node.names:
-                    imported.append(alias.name)
-                    if node.module:
-                        imported.append(f"{node.module}.{alias.name}")
-        offenders = [
-            name
-            for name in imported
-            if any(part.startswith("learning_") for part in name.split("."))
-        ]
-        assert offenders == [], f"{kernel} imports learning modules: {offenders}"
+    `from scripts import learning_x` binds learning_x through the alias
+    names, not node.module (round-one FAIL: recording only node.module let
+    exactly that form evade the control). The evasion pin below calls THIS
+    function — a retyped copy would let the real collector regress while the
+    pin stayed green (round-two NIT, closed by sharing the collector).
+    """
 
-
-def test_i1_collector_catches_the_package_style_import(tmp_path: Path) -> None:
-    """The collector itself is exercised against the form that evaded it."""
-
-    probe = tmp_path / "kernel_probe.py"
-    probe.write_text("from scripts import learning_index\n", encoding="utf-8")
-    tree = ast.parse(probe.read_text(encoding="utf-8"))
+    tree = ast.parse(source)
     imported: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -121,12 +100,34 @@ def test_i1_collector_catches_the_package_style_import(tmp_path: Path) -> None:
                 imported.append(alias.name)
                 if node.module:
                     imported.append(f"{node.module}.{alias.name}")
-    offenders = [
+    return [
         name
         for name in imported
         if any(part.startswith("learning_") for part in name.split("."))
     ]
-    assert offenders, "the package-style learning import must be caught"
+
+
+def test_kernel_validators_import_no_learning_module() -> None:
+    """Contract I1: the two validation kernels import no learning_* module."""
+
+    for kernel in ("scripts/mailbox_writer.py", "scripts/compact_pair_loop.py"):
+        offenders = _learning_offenders(
+            (_REPO_ROOT / kernel).read_text(encoding="utf-8")
+        )
+        assert offenders == [], f"{kernel} imports learning modules: {offenders}"
+
+
+def test_i1_collector_catches_the_evading_import_forms() -> None:
+    """The SHARED collector is exercised against the forms that could evade."""
+
+    for evading in (
+        "from scripts import learning_index\n",
+        "from scripts import learning_index as li\n",
+        "import learning_index\n",
+        "import scripts.learning_index\n",
+    ):
+        assert _learning_offenders(evading), f"must catch: {evading!r}"
+    assert _learning_offenders("import os\nfrom pathlib import Path\n") == []
 
 
 def test_registry_has_learning_candidate_and_not_memory_candidate() -> None:
@@ -159,6 +160,23 @@ def test_candidate_id_must_match_normalized_payload() -> None:
         protocol_mailbox.parse_learning_candidate_statement(
             _event(_candidate_fields(), candidate_id="e" * 64)
         )
+
+
+def test_candidate_id_normalization_is_separator_insensitive() -> None:
+    """An author writing 'a,b' refs gets the same ID the parser recomputes."""
+
+    second = (
+        "coordination/mailbox/sent/"
+        "2026-07-29T00-00-00Z-operator-to-director-status.md@" + "b" * 40
+    )
+    tight = _candidate_fields(**{"Source refs": f"{_SOURCE_REF},{second}"})
+    spaced = _candidate_fields(**{"Source refs": f"{_SOURCE_REF}, {second}"})
+    assert protocol_mailbox.compute_learning_candidate_id(
+        tight
+    ) == protocol_mailbox.compute_learning_candidate_id(spaced)
+    # The tight-separator body parses: the embedded ID matches recomputation.
+    statement = protocol_mailbox.parse_learning_candidate_statement(_event(tight))
+    assert statement.source_refs == (_SOURCE_REF, second)
 
 
 def test_target_requires_base_hash_and_vice_versa() -> None:
