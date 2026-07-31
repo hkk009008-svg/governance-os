@@ -137,8 +137,9 @@ def test_metrics_report_counts_and_advisory_warns(tmp_path: Path) -> None:
     (sent / request).write_text(
         _event_text(
             "director", "operator", "2026-07-30T03-00-00Z",
-            "Event type: verify-request\n"
-            f"promotes coordination/mailbox/sent/{name_a} in Finding Refs",
+            "Event type: verify-request\n\n"
+            "## Finding Refs\n\n"
+            f"- coordination/mailbox/sent/{name_a}@{candidate_commit}",
         ),
         encoding="utf-8",
     )
@@ -173,7 +174,7 @@ def test_metrics_report_counts_and_advisory_warns(tmp_path: Path) -> None:
     git("-c", "user.name=F", "-c", "user.email=f@example.invalid",
         "commit", "-q", "-m", "move target")
     moved = learning_metrics.collect_metrics(root)
-    assert moved["promoted"] == [
+    assert moved["promoted_target_moved"] == [
         f"coordination/mailbox/sent/{name_a} (target moved: README.md)"
     ]
     assert moved["stale_accepted"] == []
@@ -213,13 +214,37 @@ def test_metrics_report_counts_and_advisory_warns(tmp_path: Path) -> None:
     assert third["stale_accepted"] == [
         f"coordination/mailbox/sent/{name_c} (target moved: README.md)"
     ]
-    assert not any(name_c in item for item in third["promoted"])
+    assert not any(name_c in item for item in third["promoted_target_moved"])
     assert third["promotion_linkage_gaps"] == [
         f"coordination/mailbox/sent/{name_b}",
         f"coordination/mailbox/sent/{name_c}",
     ]
 
-    # Candidate D supersedes B: B RETIRES — no linkage debt, no stale scan.
+    # Review-finding evasion, pinned: a NON-promoting prose mention of C in a
+    # verify-request body (citation, orphaning, decline) is not linkage and
+    # must not silence C's stale WARN. Only a Finding Refs ENTRY links.
+    evasion = "2026-07-30T06-30-00Z-director-to-operator-verify-request.md"
+    (sent / evasion).write_text(
+        _event_text(
+            "director", "operator", "2026-07-30T06-30-00Z",
+            "Event type: verify-request\n"
+            "Unrelated range. NOT promoting, explicitly DECLINED and "
+            f"orphaned: coordination/mailbox/sent/{name_c}",
+        ),
+        encoding="utf-8",
+    )
+    git("add", "-A")
+    git("-c", "user.name=F", "-c", "user.email=f@example.invalid",
+        "commit", "-q", "-m", "non-promoting mention of C")
+    mentioned = learning_metrics.collect_metrics(root)
+    assert mentioned["stale_accepted"] == [
+        f"coordination/mailbox/sent/{name_c} (target moved: README.md)"
+    ], "a prose mention must not silence the stale WARN"
+
+    # Candidate D proposes to supersede B. While D is UNDISPOSED (and if it
+    # were declined), B retires NOTHING: a proposal replaces nothing, so B
+    # keeps its linkage debt (review finding: proposal-keyed retirement let
+    # any seat unilaterally clear an accepted candidate's alarms).
     fields_d = _candidate_fields(
         source_ref,
         Statement="Replacement for B per the re-issue idiom.",
@@ -235,15 +260,35 @@ def test_metrics_report_counts_and_advisory_warns(tmp_path: Path) -> None:
     )
     git("add", "-A")
     git("-c", "user.name=F", "-c", "user.email=f@example.invalid",
-        "commit", "-q", "-m", "candidate D supersedes B")
+        "commit", "-q", "-m", "candidate D proposes to supersede B")
+    d_commit = git("rev-parse", "HEAD").strip()
+    proposed = learning_metrics.collect_metrics(root)
+    assert proposed["retired_superseded"] == []
+    assert f"coordination/mailbox/sent/{name_b}" in (
+        proposed["promotion_linkage_gaps"]
+    )
+
+    # Only D's own ACCEPTANCE retires B.
+    (sent / "2026-07-30T08-00-00Z-director-to-all-decision.md").write_text(
+        _event_text(
+            "director", "all", "2026-07-30T08-00-00Z",
+            f"Candidate: coordination/mailbox/sent/{name_d}@{d_commit}\n"
+            "Disposition: accepted",
+        ),
+        encoding="utf-8",
+    )
+    git("add", "-A")
+    git("-c", "user.name=F", "-c", "user.email=f@example.invalid",
+        "commit", "-q", "-m", "accept D")
     fourth = learning_metrics.collect_metrics(root)
     assert fourth["retired_superseded"] == [
         f"coordination/mailbox/sent/{name_b}"
     ]
-    # B leaves the gap list by retirement; C stays; undisposed D is not
-    # accepted and owes nothing.
+    # B leaves the gap list by real retirement; C stays; the now-accepted,
+    # unlinked D joins it.
     assert fourth["promotion_linkage_gaps"] == [
-        f"coordination/mailbox/sent/{name_c}"
+        f"coordination/mailbox/sent/{name_c}",
+        f"coordination/mailbox/sent/{name_d}",
     ]
 
 
