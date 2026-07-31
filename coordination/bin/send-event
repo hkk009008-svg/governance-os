@@ -114,6 +114,18 @@ if [ "$KIND" = "verify-request" ]; then
       ;;
   esac
 fi
+# Wrapper-side gate only: bypassable by hand-authoring until the Stage 2b
+# writer-side branch lands (ADR-067, contract I4), exactly as today's
+# non-compact-pair kinds are.
+if [ "$KIND" = "learning-candidate" ]; then
+  case "$FROM" in
+    director|director2|operator|operator2) ;;
+    *)
+      echo "send-event: only pair seats may publish learning-candidate" >&2
+      exit 2
+      ;;
+  esac
+fi
 
 TS_DASH=$(/bin/date -u +%Y-%m-%dT%H-%M-%SZ)
 TS_COLON="${TS_DASH:0:11}$(printf '%s' "${TS_DASH:11:8}" | /usr/bin/tr '-' ':')Z"

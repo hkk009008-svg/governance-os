@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 
@@ -391,3 +391,292 @@ def committed_event_is_strict_ancestor(
     except ValueError:
         return False
     return True
+
+
+# ---------------------------------------------------------------------------
+# Learning-candidate lifecycle (read side) — ADR-067, contract §3.
+#
+# These parsers are typed readers over committed events; nothing here refuses
+# a publication. Until the Stage 2b writer-side branch lands in
+# scripts/mailbox_writer.py, a malformed or self-approved candidate/decision
+# publishes durably and is caught only when a reader runs these functions
+# (contract I4 states this; do not describe these checks as binding).
+# ---------------------------------------------------------------------------
+
+LEARNING_CATEGORIES = (
+    "fact",
+    "preference",
+    "procedure",
+    "episode-summary",
+    "governance-rule",
+)
+LEARNING_SCOPES = ("repository", "workspace", "user")
+LEARNING_DISPOSITIONS = ("accepted", "declined", "expired")
+
+_CANDIDATE_ID_RE = re.compile(r"[0-9a-f]{64}")
+_PROVIDER_SCOPE_RE = re.compile(r"provider:[a-z][a-z0-9-]*")
+_LEARNING_ID_FIELD_ORDER = (
+    "Category",
+    "Scope",
+    "Statement",
+    "Proposed content hash",
+    "Target",
+    "Target base hash",
+    "Source refs",
+    "Evidence provenance",
+    "Applicability",
+    "Exclusions",
+    "Risk class",
+    "Supersedes",
+    "Producer seat",
+    "Producer model",
+)
+
+
+@dataclass(frozen=True)
+class LearningCandidateStatement:
+    event: CommittedEventRef
+    candidate_id: str
+    category: str
+    scope: str
+    statement: str
+    proposed_content_hash: str | None
+    target: str | None
+    target_base_hash: str | None
+    source_refs: tuple[str, ...]
+    evidence_provenance: str
+    applicability: str
+    exclusions: str
+    risk_class: str
+    supersedes: str | None
+    producer_seat: str
+    producer_model: str
+
+
+@dataclass(frozen=True)
+class LearningDispositionStatement:
+    event: CommittedEventRef
+    candidate_ref: str
+    disposition: str
+    disposer_seat: str
+
+
+def _optional_single_body_field(event: CommittedEventRef, label: str) -> str | None:
+    prefix = f"{label}:"
+    matches = [
+        line[len(prefix) :].strip()
+        for line in event.text.splitlines()
+        if line.startswith(prefix)
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1 or not matches[0]:
+        raise ValueError(f"event allows at most one nonblank {label!r} field")
+    return matches[0]
+
+
+def compute_learning_candidate_id(fields: dict[str, str | None]) -> str:
+    """sha256 of the normalized payload — the candidate's identity/dedup key.
+
+    Normalization: the schema fields in fixed order, absent optionals
+    omitted, each rendered ``Label: value`` with stripped values, joined by
+    newlines. Content-derived identity makes a byte-identical duplicate
+    detectable from committed events alone (contract §3).
+    """
+
+    import hashlib
+
+    lines = [
+        f"{label}: {fields[label]}"
+        for label in _LEARNING_ID_FIELD_ORDER
+        if fields.get(label) is not None
+    ]
+    return hashlib.sha256(("\n".join(lines) + "\n").encode("utf-8")).hexdigest()
+
+
+def _learning_identity(value: str, label: str) -> str:
+    if len(value) > 120 or any(ord(character) < 0x20 for character in value):
+        raise ValueError(f"invalid {label}")
+    return value
+
+
+def parse_learning_candidate_statement(
+    event: CommittedEventRef,
+) -> LearningCandidateStatement:
+    # Kernel import surface stays flat: the closed vocabularies are imported
+    # (not re-declared, contract §3) but only when a learning event is read.
+    import claim_check
+    import codex_protocol_model
+
+    _require_kind(event, "learning-candidate")
+    candidate_id = _single_body_field(event, "Candidate ID")
+    if not _CANDIDATE_ID_RE.fullmatch(candidate_id):
+        raise ValueError("Candidate ID must be a lowercase sha256 hex digest")
+    category = _single_body_field(event, "Category")
+    if category not in LEARNING_CATEGORIES:
+        raise ValueError("Category must be one of the closed learning categories")
+    scope = _single_body_field(event, "Scope")
+    if scope not in LEARNING_SCOPES and not _PROVIDER_SCOPE_RE.fullmatch(scope):
+        raise ValueError("Scope must be repository|workspace|user|provider:<name>")
+    statement = _single_body_field(event, "Statement")
+    proposed_content_hash = _optional_single_body_field(
+        event, "Proposed content hash"
+    )
+    if proposed_content_hash is not None and not _DIGEST_REF_RE.fullmatch(
+        proposed_content_hash
+    ):
+        raise ValueError("Proposed content hash must be sha256:<64-hex>")
+    target = _optional_single_body_field(event, "Target")
+    if target is not None:
+        pure = PurePosixPath(target)
+        if pure.is_absolute() or ".." in pure.parts or target.startswith("~"):
+            raise ValueError("Target must be a repository-relative path")
+    target_base_hash = _optional_single_body_field(event, "Target base hash")
+    if (target is None) != (target_base_hash is None):
+        raise ValueError("Target and Target base hash are present together")
+    if target_base_hash is not None and not _DIGEST_REF_RE.fullmatch(
+        target_base_hash
+    ):
+        raise ValueError("Target base hash must be sha256:<64-hex>")
+    raw_refs = _single_body_field(event, "Source refs")
+    source_refs = tuple(part.strip() for part in raw_refs.split(","))
+    if not source_refs or any(
+        not immutable_reference_is_canonical(value) for value in source_refs
+    ):
+        raise ValueError(
+            "Source refs must be immutable full-SHA event refs or sha256 digests"
+        )
+    if len(source_refs) != len(set(source_refs)):
+        raise ValueError("Source refs must be unique")
+    evidence_provenance = _single_body_field(event, "Evidence provenance")
+    if evidence_provenance not in claim_check.PROVENANCE:
+        raise ValueError(
+            "Evidence provenance must be one of the claim_check ladder"
+        )
+    applicability = _single_body_field(event, "Applicability")
+    exclusions = _single_body_field(event, "Exclusions")
+    risk_class = _single_body_field(event, "Risk class")
+    if risk_class not in codex_protocol_model.RISK_BASED_REVIEW_PROFILES:
+        raise ValueError("Risk class must come from the closed set")
+    supersedes = _optional_single_body_field(event, "Supersedes")
+    if supersedes is not None:
+        if not immutable_reference_is_canonical(supersedes):
+            raise ValueError("Supersedes must be an immutable committed event ref")
+        superseded_path = supersedes.rsplit("@", 1)[0]
+        match = _EVENT_PATH_RE.fullmatch(superseded_path)
+        if match is None or match.group("kind") != "learning-candidate":
+            raise ValueError("Supersedes must name a learning-candidate event")
+    producer_seat = _single_body_field(event, "Producer seat")
+    if producer_seat not in SEATS:
+        raise ValueError("Producer seat must be a pair seat")
+    producer_model = _learning_identity(
+        _single_body_field(event, "Producer model"), "Producer model"
+    )
+    expected = compute_learning_candidate_id(
+        {
+            "Category": category,
+            "Scope": scope,
+            "Statement": statement,
+            "Proposed content hash": proposed_content_hash,
+            "Target": target,
+            "Target base hash": target_base_hash,
+            "Source refs": ", ".join(source_refs),
+            "Evidence provenance": evidence_provenance,
+            "Applicability": applicability,
+            "Exclusions": exclusions,
+            "Risk class": risk_class,
+            "Supersedes": supersedes,
+            "Producer seat": producer_seat,
+            "Producer model": producer_model,
+        }
+    )
+    if candidate_id != expected:
+        raise ValueError(
+            "Candidate ID does not match the sha256 of the normalized payload"
+        )
+    return LearningCandidateStatement(
+        event=event,
+        candidate_id=candidate_id,
+        category=category,
+        scope=scope,
+        statement=statement,
+        proposed_content_hash=proposed_content_hash,
+        target=target,
+        target_base_hash=target_base_hash,
+        source_refs=source_refs,
+        evidence_provenance=evidence_provenance,
+        applicability=applicability,
+        exclusions=exclusions,
+        risk_class=risk_class,
+        supersedes=supersedes,
+        producer_seat=producer_seat,
+        producer_model=producer_model,
+    )
+
+
+def load_learning_candidate_statement(
+    root: Path, value: str
+) -> LearningCandidateStatement:
+    return parse_learning_candidate_statement(load_committed_event_ref(root, value))
+
+
+def parse_learning_disposition_statement(
+    event: CommittedEventRef,
+) -> LearningDispositionStatement:
+    """Type a ``decision`` event that disposes a learning candidate.
+
+    A ``decision`` event is a learning disposition exactly when it carries a
+    ``Candidate:`` field; other decision events are untouched by this parser.
+    """
+
+    _require_kind(event, "decision")
+    candidate_ref = _single_body_field(event, "Candidate")
+    if not immutable_reference_is_canonical(candidate_ref):
+        raise ValueError("Candidate must be an immutable committed event ref")
+    candidate_path = candidate_ref.rsplit("@", 1)[0]
+    match = _EVENT_PATH_RE.fullmatch(candidate_path)
+    if match is None or match.group("kind") != "learning-candidate":
+        raise ValueError("Candidate must name a learning-candidate event")
+    disposition = _single_body_field(event, "Disposition")
+    if disposition not in LEARNING_DISPOSITIONS:
+        raise ValueError("Disposition must be accepted|declined|expired")
+    return LearningDispositionStatement(
+        event=event,
+        candidate_ref=candidate_ref,
+        disposition=disposition,
+        disposer_seat=event.sender,
+    )
+
+
+def load_learning_disposition_statement(
+    root: Path, value: str
+) -> LearningDispositionStatement:
+    return parse_learning_disposition_statement(load_committed_event_ref(root, value))
+
+
+def committed_learning_candidate_ids(root: Path, commit: str) -> dict[str, str]:
+    """Map Candidate ID -> event path for every committed candidate at *commit*.
+
+    Dedup derives from committed ``sent/`` events at the pinned commit — a
+    deterministic scan of the same substrate the parsers read — never from
+    the gitignored local index, which gives checkout-dependent verdicts
+    (contract §3). Malformed committed candidates are skipped, not fatal:
+    this is a read-side projection, not a gate.
+    """
+
+    resolved = _git(root, "rev-parse", commit).stdout.strip()
+    listing = _git(
+        root, "ls-tree", "-r", resolved, "--name-only", "coordination/mailbox/sent"
+    ).stdout
+    ids: dict[str, str] = {}
+    for path in listing.splitlines():
+        if not path.endswith("-learning-candidate.md"):
+            continue
+        try:
+            statement = load_learning_candidate_statement(
+                root, f"{path}@{resolved}"
+            )
+        except ValueError:
+            continue
+        ids.setdefault(statement.candidate_id, path)
+    return ids

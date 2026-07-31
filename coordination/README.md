@@ -315,11 +315,16 @@ the committed request/report binding and Operator-only verdict authority.
 - **v4 additions:** `verify-request` | `verification-report` |
   `doc-sync-notice` (Lanes V + D active) | `scout-request` |
   `scout-report` (Lane S scaffolded in v4, **active in v5**)
-- **v5 addition:** `memory-candidate` — operator-seat surfaces
-  memory-worthy observations (recurring failure modes, tool quirks,
-  project-specific gotchas) for director-seat to write or decline
-  via `decision`. Closes the latency on operator-observed memory
-  candidates without changing memory write authority.
+- **v5 addition, superseded by ADR-067:** `learning-candidate` — any pair
+  seat surfaces an evidence-backed lesson (schema:
+  `docs/protocol/learning/contract.md` §3) for director-side disposition
+  via a `decision` event carrying `Candidate:` and `Disposition:`. Replaces
+  `memory-candidate`, retired in the same change with zero committed
+  instances (ADR-067 baseline). Read-side typing is
+  `scripts/protocol_mailbox.py` (`parse_learning_candidate_statement`,
+  `parse_learning_disposition_statement`); refusals are advisory until the
+  Stage 2b writer-side branch lands (contract I4). Grants no memory write
+  authority.
 - **Observed-in-practice additions:** `acknowledgement` | `convergence` |
   `coordination` | `discussion` | `fyi` | `measurement-report` | `proposal` |
   `proposal-reply` | `reply` | `verify-addendum` | `verify-readiness` |
