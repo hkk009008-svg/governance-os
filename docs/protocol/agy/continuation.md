@@ -126,11 +126,16 @@ labels. Route those reviews to a seat on a different family.
 Headless review dispatch (measured 2026-07-31; accepted learning candidate
 `335883e68861…`, superseding `2c906ea580a9…` whose mechanism clause the
 round-one promotion review falsified): in headless mode `agy -p` auto-denies
-any tool permission the machine's `permissions.allow` has not granted.
-Scoped grants exist — `docs/protocol/threeway/HEADLESS-REVIEW.md` documents
-them and `scripts/harness_preflight.py agy` names the exact missing entries
-as its remedy — so the preferred path is granting what the review needs
-BEFORE dispatch. The blanket skip flag is not an alternative: the launcher
+tool permissions that the machine's `permissions.allow` has not granted (per
+`docs/protocol/threeway/HEADLESS-REVIEW.md`; this range measured the denial,
+that doc states the rule). Scoped grants exist — the same doc documents them
+and `scripts/harness_preflight.py agy` names the exact missing entries as
+its remedy — so the preferred path is granting what the review needs BEFORE
+dispatch, minding the standing-authority cost that doc attaches: grants like
+`command(git commit)` and `command(coordination/bin/send-event)` outlive the
+task and apply to every later AGY session, so they need their own
+authorization, not a review's momentum. The blanket skip flag is not an
+alternative: the launcher
 refuses to forward it (`scripts/agy_seat_launcher.py`,
 `FORWARDABLE_FLAG_NAMES`). When the grants are absent and editing the
 user-owned settings file is not authorized mid-review, the measured fallback
