@@ -127,19 +127,87 @@ def test_absent_index_is_labeled_unavailable_not_empty(tmp_path: Path) -> None:
     assert learning_index.query_index(root, "zzzunmatchable", db_path=db) == []
 
 
-def test_build_refuses_a_user_scope_source_path(tmp_path: Path) -> None:
-    root = _throwaway_repo(tmp_path)
-    db = tmp_path / "index.sqlite"
+def test_repository_scope_guard_refuses_user_scope_shapes() -> None:
+    """Defense-in-depth unit: the guard refuses the shapes the contract names.
+
+    Honest scope: the production ingest stream is `git ls-tree` output, which
+    cannot emit these shapes — the load-bearing boundary is
+    committed-tree-only reads, pinned by
+    test_index_reads_committed_tree_never_worktree below. This guard exists
+    so a future source route cannot silently widen scope.
+    """
+
     for user_scope in (
         "/Users/someone/.claude/projects/memory/MEMORY.md",
         "~/.claude/CLAUDE.md",
         "../outside/notes.md",
+        "",
     ):
         with pytest.raises(learning_index.LearningIndexError):
-            learning_index.build_index(
-                root, db_path=db, extra_source_paths=(user_scope,)
-            )
-        assert not db.exists(), "a refused build must not leave an index behind"
+            learning_index._require_repository_scope(user_scope)
+    assert learning_index._require_repository_scope("docs/x.md") == "docs/x.md"
+
+
+def test_index_reads_committed_tree_never_worktree(tmp_path: Path) -> None:
+    """The central Stage 1 claim, pinned: only committed bytes are ingested."""
+
+    root = _throwaway_repo(tmp_path)
+    # Mutate a committed file in the worktree and add an uncommitted event;
+    # neither may reach the index.
+    (root / "docs" / "HANDOFF-operator-2026-07-29-flaky.md").write_text(
+        "# Handoff\n\nWORKTREEWORD only exists uncommitted.\n", encoding="utf-8"
+    )
+    (
+        root / "coordination" / "mailbox" / "sent"
+        / "2026-07-31T00-00-00Z-operator-to-director-status.md"
+    ).write_text(
+        "# Operator → Director: s\n\n"
+        "**When:** 2026-07-31T00:00:00Z · **From:** operator (online)\n\n"
+        "UNCOMMITTEDWORD\n\nCursor at send: 0\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "index.sqlite"
+    learning_index.build_index(root, db_path=db)
+    assert learning_index.query_index(root, "WORKTREEWORD", db_path=db) == []
+    assert learning_index.query_index(root, "UNCOMMITTEDWORD", db_path=db) == []
+    # The committed version of the mutated file is what got indexed.
+    rows = learning_index.query_index(root, "flaky", db_path=db)
+    assert any(r.path == "docs/HANDOFF-operator-2026-07-29-flaky.md" for r in rows)
+
+
+def test_malformed_query_raises_instead_of_reporting_unavailable(
+    tmp_path: Path,
+) -> None:
+    """A healthy index must never call itself unavailable on bad query text."""
+
+    root = _throwaway_repo(tmp_path)
+    db = tmp_path / "index.sqlite"
+    learning_index.build_index(root, db_path=db)
+    for bad in ("flaky AND", '"unterminated', "NEAR("):
+        with pytest.raises(learning_index.LearningIndexError, match="FTS5"):
+            learning_index.query_index(root, bad, db_path=db)
+    # Availability is untouched in both directions.
+    assert learning_index.query_index(root, "flaky", db_path=db)
+    assert learning_index.built_at_commit(root, db_path=db) is not None
+
+
+def test_non_md_handoff_lookalikes_are_not_ingested(tmp_path: Path) -> None:
+    root = _throwaway_repo(tmp_path)
+    binary = root / "docs" / "HANDOFF-binaryish.png"
+    binary.write_bytes(b"\x89PNG fake")
+    subprocess.run(
+        ["git", "add", "-A"], cwd=root, check=True, capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "binary lookalike"],
+        cwd=root, check=True, capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+    )
+    db = tmp_path / "index.sqlite"
+    learning_index.build_index(root, db_path=db)
+    rows = learning_index.query_index(root, "PNG", db_path=db)
+    assert rows == []
 
 
 def test_query_availability_survives_a_corrupt_index(tmp_path: Path) -> None:

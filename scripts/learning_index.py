@@ -25,9 +25,17 @@ the build commit, never the worktree):
 
 Every row carries: source path, scope label, timestamp, timestamp rule, the
 git blob SHA at the build commit (content hash), and the build commit itself
-(meta table). Query availability follows the bus_unread taxonomy: an absent
-or unreadable index is ``None`` (rendered ``(unavailable: …)``), never an
-empty list — an empty list is a real zero from a proven-built index.
+(meta table). Query outcomes are three-valued and never conflated: an absent
+or unreadable index is ``None`` (rendered ``(unavailable: …)``); an empty
+list is a real zero from a proven-built index; a malformed FTS query raises
+:class:`LearningIndexError` — a healthy index must never report itself
+unavailable because the query text was bad.
+
+The ingest boundary is structural: sources are exactly the committed tree at
+the build commit (``git ls-tree``), which cannot emit absolute paths, ``~``
+expansions, or parent escapes. :func:`_require_repository_scope` still runs
+over every ingested path as defense in depth, and refuses those shapes if a
+future source route ever introduces them.
 
 No embeddings. No automatic prompt injection. FTS5 only.
 """
@@ -85,8 +93,11 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
 def _require_repository_scope(relative: str) -> str:
     """Refuse any source path that is not a repository-relative committed path.
 
-    This is the I1 ingest boundary: user-scope sources (absolute paths, home
-    expansions, parent escapes) must never enter the index.
+    Defense in depth on the ingest stream: the production source of paths is
+    ``git ls-tree`` output, which cannot emit absolute paths, home
+    expansions, or parent escapes — the real I1 boundary is that only the
+    committed tree is read at all. This guard exists so a future source
+    route cannot silently widen scope.
     """
 
     if not isinstance(relative, str) or not relative:
@@ -110,9 +121,13 @@ def _source_kind(relative: str) -> str | None:
         if match is None:
             return None
         return f"mailbox:{match.group('kind')}"
-    if pure.parent.as_posix() == "docs" and pure.name.startswith("HANDOFF-"):
+    if (
+        pure.parent.as_posix() == "docs"
+        and pure.name.startswith("HANDOFF-")
+        and pure.suffix == ".md"
+    ):
         return "handoff"
-    if pure.parent.as_posix() == "docs/superpowers/plans":
+    if pure.parent.as_posix() == "docs/superpowers/plans" and pure.suffix == ".md":
         return "plan"
     if pure.parts and pure.parts[0] == "logs" and pure.suffix == ".jsonl":
         return "log"
@@ -198,14 +213,8 @@ def build_index(
     *,
     commit: str = "HEAD",
     db_path: Path | None = None,
-    extra_source_paths: tuple[str, ...] = (),
 ) -> dict[str, object]:
-    """Build the index from the committed tree at *commit*.
-
-    ``extra_source_paths`` exist so callers (and the ingest-boundary test) can
-    name additional committed paths explicitly; every one passes the same
-    repository-scope refusal as the derived set.
-    """
+    """Build the index from the committed tree at *commit*, and only it."""
 
     resolved = (
         _git(root, "rev-parse", commit).stdout.decode("ascii").strip()
@@ -215,22 +224,7 @@ def build_index(
         .stdout.decode("ascii")
         .strip()
     )
-    for value in extra_source_paths:
-        _require_repository_scope(value)
     sources = _tracked_sources(root, resolved)
-    for value in extra_source_paths:
-        out = _git(root, "ls-tree", resolved, "--", value).stdout.decode(
-            "utf-8", "replace"
-        )
-        try:
-            metadata, path = out.rstrip("\n").split("\t", 1)
-            _mode, object_type, sha = metadata.split(" ", 2)
-        except ValueError as exc:
-            raise LearningIndexError(
-                f"extra source path is not committed at {resolved}: {value!r}"
-            ) from exc
-        if object_type == "blob":
-            sources.append((path, sha))
     for path, _sha in sources:
         _require_repository_scope(path)
 
@@ -305,42 +299,56 @@ def query_index(
     limit: int = 20,
     db_path: Path | None = None,
 ) -> list[IndexRow] | None:
-    """Query the index. ``None`` means unavailable — never conflate with []."""
+    """Query the index — three outcomes, never conflated.
+
+    ``None`` means the store is absent or unreadable; ``[]`` is a real zero
+    from a proven-built index; a malformed FTS query raises
+    :class:`LearningIndexError` — a healthy index must never report itself
+    unavailable because the query text was bad.
+    """
 
     target = db_path if db_path is not None else root / DB_RELATIVE
     if not target.exists():
         return None
     try:
         connection = sqlite3.connect(f"file:{target}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
         try:
             meta = connection.execute(
                 "SELECT value FROM meta WHERE key = 'built_at_commit'"
             ).fetchone()
-            if meta is None:
-                return None
+        except sqlite3.Error:
+            return None
+        if meta is None:
+            return None
+        try:
             cursor = connection.execute(
                 "SELECT path, kind, scope, ts, ts_rule, blob_sha,"
                 " snippet(rows, 0, '[', ']', ' … ', 12)"
                 " FROM rows WHERE rows MATCH ? ORDER BY rank LIMIT ?",
                 (terms, limit),
             )
-            results = [
-                IndexRow(
-                    path=row[0],
-                    kind=row[1],
-                    scope=row[2],
-                    timestamp=row[3],
-                    timestamp_rule=row[4],
-                    blob_sha=row[5],
-                    snippet=row[6],
-                )
-                for row in cursor.fetchall()
-            ]
-        finally:
-            connection.close()
-    except sqlite3.Error:
-        return None
-    return results
+            fetched = cursor.fetchall()
+        except sqlite3.OperationalError as exc:
+            raise LearningIndexError(f"query is not valid FTS5: {exc}") from exc
+        except sqlite3.Error:
+            return None
+        return [
+            IndexRow(
+                path=row[0],
+                kind=row[1],
+                scope=row[2],
+                timestamp=row[3],
+                timestamp_rule=row[4],
+                blob_sha=row[5],
+                snippet=row[6],
+            )
+            for row in fetched
+        ]
+    finally:
+        connection.close()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -364,7 +372,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  skipped {line}")
         return 0
 
-    rows = query_index(arguments.repo_root, arguments.terms, limit=arguments.limit)
+    try:
+        rows = query_index(
+            arguments.repo_root, arguments.terms, limit=arguments.limit
+        )
+    except LearningIndexError as error:
+        print(f"(query error: {error})")
+        return 2
     if rows is None:
         print("(unavailable: index not built — run learning_index.py build)")
         return 1

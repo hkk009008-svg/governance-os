@@ -89,12 +89,44 @@ def test_kernel_validators_import_no_learning_module() -> None:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 imported.extend(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imported.append(node.module)
+            elif isinstance(node, ast.ImportFrom):
+                # `from scripts import learning_x` binds learning_x: the
+                # alias names carry the module, not node.module (round-one
+                # FAIL: recording only node.module let exactly that form
+                # evade the control).
+                for alias in node.names:
+                    imported.append(alias.name)
+                    if node.module:
+                        imported.append(f"{node.module}.{alias.name}")
         offenders = [
-            name for name in imported if name.split(".")[-1].startswith("learning_")
+            name
+            for name in imported
+            if any(part.startswith("learning_") for part in name.split("."))
         ]
         assert offenders == [], f"{kernel} imports learning modules: {offenders}"
+
+
+def test_i1_collector_catches_the_package_style_import(tmp_path: Path) -> None:
+    """The collector itself is exercised against the form that evaded it."""
+
+    probe = tmp_path / "kernel_probe.py"
+    probe.write_text("from scripts import learning_index\n", encoding="utf-8")
+    tree = ast.parse(probe.read_text(encoding="utf-8"))
+    imported: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                imported.append(alias.name)
+                if node.module:
+                    imported.append(f"{node.module}.{alias.name}")
+    offenders = [
+        name
+        for name in imported
+        if any(part.startswith("learning_") for part in name.split("."))
+    ]
+    assert offenders, "the package-style learning import must be caught"
 
 
 def test_registry_has_learning_candidate_and_not_memory_candidate() -> None:
@@ -255,19 +287,145 @@ def test_dedup_scan_reads_committed_events_at_the_pinned_commit(
     }
 
 
-def test_send_event_wrapper_refuses_non_pair_learning_candidate_sender() -> None:
-    """The wrapper-side sender gate refuses before any file is created.
+def test_send_event_wrapper_refuses_non_pair_learning_candidate_sender(
+    tmp_path: Path,
+) -> None:
+    """The wrapper-side sender gate refuses, and nothing is written.
 
-    Advisory strength only (bypassable by hand-authoring, contract I4);
-    exercised here as the executable behavior of the refusal path.
+    Advisory strength only (bypassable by hand-authoring, contract I4). Runs
+    against a repository built for the test — never this checkout — so a
+    reverted gate publishes into a throwaway mailbox, not the reviewed one
+    (round-one FAIL: the earlier form ran against the live checkout).
     """
+
+    import sys as _sys
+
+    root = tmp_path / "repo"
+    root.mkdir()
+
+    def git(*arguments: str) -> None:
+        subprocess.run(
+            ["git", *arguments],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "probe@example.invalid")
+    git("config", "user.name", "probe")
+    venv = root / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").symlink_to(_sys.executable)
+    mailbox = root / "coordination" / "mailbox"
+    (mailbox / "sent").mkdir(parents=True)
+    (mailbox / "seen").mkdir()
+    (mailbox / "kinds.txt").write_text("learning-candidate\n", encoding="utf-8")
+    (mailbox / "seen" / "coordinator.txt").write_text("0\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "fixture")
 
     result = subprocess.run(
         [str(_REPO_ROOT / "coordination/bin/send-event"),
          "coordinator", "all", "learning-candidate", "probe"],
         input=b"Candidate ID: probe\n",
         capture_output=True,
-        cwd=_REPO_ROOT,
+        cwd=root,
     )
     assert result.returncode == 2
     assert b"only pair seats may publish learning-candidate" in result.stderr
+    assert list((mailbox / "sent").iterdir()) == [], "refusal must write nothing"
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+    ).stdout
+    assert status == b"", "refusal must stage nothing"
+
+
+def test_producer_seat_must_match_envelope_sender() -> None:
+    """A self-declared producer differing from the sender is refused at parse."""
+
+    with pytest.raises(ValueError, match="match the envelope sender"):
+        protocol_mailbox.parse_learning_candidate_statement(
+            _event(_candidate_fields(**{"Producer seat": "operator"}))
+        )
+
+
+def test_dedup_scan_collapses_duplicate_ids_to_the_first_path(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+
+    def git(*arguments: str) -> None:
+        subprocess.run(
+            ["git", *arguments],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "probe@example.invalid")
+    git("config", "user.name", "probe")
+    sent = root / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True)
+    fields = _candidate_fields()
+    first = "2026-07-30T02-03-04Z-director2-to-operator-learning-candidate.md"
+    second = "2026-07-30T09-09-09Z-director2-to-operator-learning-candidate.md"
+    (sent / first).write_text(_event_text(fields), encoding="utf-8")
+    (sent / second).write_text(
+        _event_text(fields).replace("02:03:04", "09:09:09"), encoding="utf-8"
+    )
+    git("add", "-A")
+    git("commit", "-q", "-m", "duplicate republish")
+    ids = protocol_mailbox.committed_learning_candidate_ids(root, "HEAD")
+    expected_id = protocol_mailbox.compute_learning_candidate_id(fields)
+    assert ids == {expected_id: f"coordination/mailbox/sent/{first}"}
+
+
+def test_parsers_work_under_package_style_import(tmp_path: Path) -> None:
+    """`from scripts import protocol_mailbox` with only the repo root on
+    sys.path must still parse a candidate (round-one FAIL: the flat-only lazy
+    imports raised ModuleNotFoundError in that shape)."""
+
+    script = tmp_path / "probe.py"
+    script.write_text(
+        "import sys\n"
+        "sys.path = [p for p in sys.path"
+        " if not p.rstrip('/').endswith('scripts')]\n"
+        f"sys.path.insert(0, {str(_REPO_ROOT)!r})\n"
+        "from scripts import protocol_mailbox\n"
+        "fields = {\n"
+        "    'Category': 'procedure', 'Scope': 'repository',\n"
+        "    'Statement': 's', 'Source refs': "
+        f"{_SOURCE_REF!r},\n"
+        "    'Evidence provenance': 'MEASURED', 'Applicability': 'a',\n"
+        "    'Exclusions': 'e', 'Risk class': 'material-behavior',\n"
+        "    'Producer seat': 'director2', 'Producer model': 'm',\n"
+        "}\n"
+        "cid = protocol_mailbox.compute_learning_candidate_id(fields)\n"
+        "lines = [f'Candidate ID: {cid}'] + "
+        "[f'{k}: {v}' for k, v in fields.items()]\n"
+        "text = ('# Director2 → Operator: c\\n\\n'\n"
+        "        '**When:** 2026-07-30T02:03:04Z · **From:** director2 (online)\\n\\n'\n"
+        "        + '\\n'.join(lines) + '\\n\\nCursor at send: 0\\n')\n"
+        "path = ('coordination/mailbox/sent/'\n"
+        "        '2026-07-30T02-03-04Z-director2-to-operator-learning-candidate.md')\n"
+        "event = protocol_mailbox.parse_committed_event_text(path + '@' + 'd'*40, text)\n"
+        "statement = protocol_mailbox.parse_learning_candidate_statement(event)\n"
+        "print('OK', statement.candidate_id == cid)\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, "-P", str(script)],
+        capture_output=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    assert b"OK True" in result.stdout

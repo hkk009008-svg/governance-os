@@ -487,7 +487,7 @@ def compute_learning_candidate_id(fields: dict[str, str | None]) -> str:
     import hashlib
 
     lines = [
-        f"{label}: {fields[label]}"
+        f"{label}: {fields[label].strip()}"
         for label in _LEARNING_ID_FIELD_ORDER
         if fields.get(label) is not None
     ]
@@ -503,10 +503,15 @@ def _learning_identity(value: str, label: str) -> str:
 def parse_learning_candidate_statement(
     event: CommittedEventRef,
 ) -> LearningCandidateStatement:
-    # Kernel import surface stays flat: the closed vocabularies are imported
-    # (not re-declared, contract §3) but only when a learning event is read.
-    import claim_check
-    import codex_protocol_model
+    # The closed vocabularies are imported (not re-declared, contract §3) but
+    # only when a learning event is read, and in both supported import
+    # shapes: flat (scripts/ on sys.path) and package-style (repo root only).
+    try:
+        import claim_check
+        import codex_protocol_model
+    except ModuleNotFoundError:
+        from scripts import claim_check
+        from scripts import codex_protocol_model
 
     _require_kind(event, "learning-candidate")
     candidate_id = _single_body_field(event, "Candidate ID")
@@ -569,6 +574,12 @@ def parse_learning_candidate_statement(
     producer_seat = _single_body_field(event, "Producer seat")
     if producer_seat not in SEATS:
         raise ValueError("Producer seat must be a pair seat")
+    if producer_seat != event.sender:
+        # A self-declared producer that differs from the envelope sender
+        # would pre-defeat the Stage 2b self-approval refusal: publish under
+        # a false label, then dispose your own candidate. No relay allowance
+        # exists in the contract, so the binding is exact.
+        raise ValueError("Producer seat must match the envelope sender")
     producer_model = _learning_identity(
         _single_body_field(event, "Producer model"), "Producer model"
     )
@@ -655,13 +666,16 @@ def load_learning_disposition_statement(
 
 
 def committed_learning_candidate_ids(root: Path, commit: str) -> dict[str, str]:
-    """Map Candidate ID -> event path for every committed candidate at *commit*.
+    """Map Candidate ID -> event path for parseable committed candidates.
 
     Dedup derives from committed ``sent/`` events at the pinned commit — a
     deterministic scan of the same substrate the parsers read — never from
     the gitignored local index, which gives checkout-dependent verdicts
     (contract §3). Malformed committed candidates are skipped, not fatal:
-    this is a read-side projection, not a gate.
+    this is a read-side projection, not a gate. When two committed events
+    carry the same Candidate ID (a byte-idempotent republish that predates
+    Stage 2b, or one that bypassed the writer), the FIRST path in tree order
+    wins — the ID names one content, so either path serves it.
     """
 
     resolved = _git(root, "rev-parse", commit).stdout.strip()
