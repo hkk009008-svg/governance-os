@@ -552,13 +552,25 @@ def parse_verify_request_candidate(
     root = root.resolve()
     candidate = _repo_path(root, candidate_path)
     final = _repo_path(root, final_path)
-    return _parse_verify_request_bytes(
+    request = _parse_verify_request_bytes(
         root,
         final,
         _read_regular(root, candidate),
         trigger_commit="",
         allow_frozen_legacy=False,
     )
+    # Publication-time resolvability. The compose hook alone left the route
+    # the defect actually travels: a hand-written body through send-event
+    # (measured 2026-07-31 — two fabricated Finding Ref tails published that
+    # way; one caught only by post-compose hand verification). Candidates
+    # only: committed events use the committed parsers, which stay untouched
+    # so the historical gates keep judging frozen artifacts as frozen.
+    _require_path_references_resolve(
+        root,
+        _reviewed_root(root, request.reviewed_repository),
+        request.finding_refs,
+    )
+    return request
 
 
 def validate_request_candidate(root: Path, request: VerifyRequest) -> list[str]:
@@ -807,12 +819,21 @@ def parse_verification_report_candidate(
     root = root.resolve()
     candidate = _repo_path(root, candidate_path)
     final = _repo_path(root, final_path)
-    return _parse_verification_report_bytes(
+    report = _parse_verification_report_bytes(
         root,
         final,
         _read_regular(root, candidate),
         allow_legacy_missing_risk=False,
     )
+    # Same publication-time resolvability as request candidates. Root-only:
+    # a report's ref targets are mailbox events of this repository. The
+    # report's own `Verification request:` binding ref is already resolved
+    # by validate_report on the publication path.
+    _require_path_references_resolve(root, root, report.finding_refs)
+    _require_path_references_resolve(
+        root, root, tuple(ref for ref, _ in report.finding_dispositions)
+    )
+    return report
 
 
 
