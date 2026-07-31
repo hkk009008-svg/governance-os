@@ -358,10 +358,13 @@ Owner ruling 2026-07-31: adopt the plan defaults for every decision that has
 one. Recorded per item:
 - O1 (Stage 2) — RULED, default adopted: new `learning-candidate` kind, with
   `memory-candidate` retired in the same commit.
-- O2 (Stage 3a) — STILL OPEN by construction: no default exists. Adjudication
-  is per pair at Stage 3a (git log per pair; where the two trees' doctrine
-  genuinely diverges, the owner rules on that pair before its commit lands).
-  The blanket "use defaults" ruling deliberately does not cover this.
+- O2 (Stage 3a) — was OPEN by construction at plan time (no default existed;
+  the blanket "use defaults" ruling deliberately did not cover it). RULED
+  2026-07-31 at Stage 3a, as designed: four mechanically-drifted pairs were
+  reconciled and stubbed; the five genuinely-divergent seat-family pairs
+  were ruled "declared adaptations" — provider-native by intent, semantics
+  canonical in `.agents`. Ruling provenance and record: DECISIONS.md ADR-067
+  addendum 2026-07-31.
 - O3 (deferred maintenance) — RULED as its default state: the mailbox archive
   change stays out of this plan; retention/cadence are set when that
   standalone change is filed.

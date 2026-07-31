@@ -79,15 +79,21 @@ Role deltas:
 These are the only places Claude differs from the shared contract, and each is
 forced by the harness rather than chosen:
 
-- Claude Code discovers skills only under `.claude/skills/`. It cannot read
-  `.agents/skills/`, so seat procedures are mirrored there. The mirrors are
-  adapted, not byte-equal: they carry `env -u GIT_INDEX_FILE` and
-  `.venv/bin/python` invocations, Claude tool names, and
-  `disable-model-invocation` where a procedure is user-triggered only. Only
-  `seat-operator/verification-report-format.md` is asserted byte-identical, by
-  `test_verification_report_templates_remain_identical`; no test asserts parity
-  for any `SKILL.md`. Divergence beyond those harness mechanics is drift, and
-  review is the only thing that catches it.
+- Claude Code discovers skills only under `.claude/skills/` — discovery is
+  scoped there, reading never was. Since ADR-067 Stage 3, four skills there
+  (create-regression-pin, probe-a-claim, prove-a-control,
+  chatgpt-pro-consultation) are reference stubs: frontmatter plus
+  Claude-native deltas (`env -u GIT_INDEX_FILE`, `.venv/bin/python`, Claude
+  tool names, `disable-model-invocation`) pointing at the canonical body in
+  `.agents/skills/`, which the session reads and follows. The five
+  seat-family pairs are declared provider-native adaptations (O2 ruling
+  2026-07-31, ADR-067 addendum): protocol semantics are canonical in
+  `.agents`, and semantic divergence resolves toward `.agents` in the same
+  change — divergence beyond the declared deltas is still drift, and review
+  still catches it. Only `seat-operator/verification-report-format.md` is
+  asserted byte-identical, by
+  `test_verification_report_templates_remain_identical`; stub targets are
+  asserted to exist by `test_claude_stub_targets_exist`.
 - Agent definitions are Markdown with a `tools:` list, not TOML with
   `sandbox_mode`. Withholding Write and Edit from `tools:` is how a read-only
   advisor is expressed.

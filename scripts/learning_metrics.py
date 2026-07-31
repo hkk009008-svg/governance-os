@@ -12,8 +12,10 @@ Metrics and sources:
 1. review_friction        — verification-reports per verify-request, mailbox
                             filename scan at HEAD (baseline 162/186 at 29db6aa).
 2. candidates_total       — committed learning-candidate events at HEAD.
-3. acceptance             — dispositions (decision events carrying Candidate:)
-                            split accepted/declined/expired.
+3. acceptance             — disposed candidates split by each candidate's
+                            LATEST disposition (a re-disposed candidate
+                            counts once; the three counters partition the
+                            disposed set, never exceed candidates_total).
 4. supersession_rate      — candidates carrying Supersedes / candidates_total.
 5. promotion_linkage      — accepted candidates whose event path appears in no
                             verify-request body at HEAD (ADVISORY WARN).
@@ -203,8 +205,12 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
         "review_friction": f"{reports}/{requests}",
         "candidates_total": len(candidates),
         "accepted": len(accepted),
-        "declined": sum(1 for d in dispositions if d.disposition == "declined"),
-        "expired": sum(1 for d in dispositions if d.disposition == "expired"),
+        "declined": sum(
+            1 for d in by_ref.values() if d.disposition == "declined"
+        ),
+        "expired": sum(
+            1 for d in by_ref.values() if d.disposition == "expired"
+        ),
         "supersession_rate": (
             f"{sum(1 for c in candidates if c.supersedes)}/{len(candidates)}"
         ),

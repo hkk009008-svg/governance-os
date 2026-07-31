@@ -600,6 +600,27 @@ def test_reviewer_template_keeps_machine_readable_result_schema() -> None:
     assert "authority" in text
 
 
+def test_claude_stub_targets_exist() -> None:
+    """Every .claude reference stub points at a canonical body that exists.
+
+    A renamed or deleted canonical `.agents` body must not silently empty a
+    Claude skill behind a green suite (ADR-067 Stage 3).
+    """
+
+    stubs = 0
+    for skill in sorted((ROOT / ".claude/skills").glob("*/SKILL.md")):
+        text = skill.read_text(encoding="utf-8")
+        if "canonical body of this skill is" not in text.casefold():
+            continue
+        stubs += 1
+        target = ROOT / ".agents/skills" / skill.parent.name / "SKILL.md"
+        assert target.is_file(), f"{skill} points at a missing body: {target}"
+        assert f".agents/skills/{skill.parent.name}/SKILL.md" in text, (
+            f"{skill} does not name its own canonical path"
+        )
+    assert stubs >= 4, "the four ADR-067 Stage 3 stubs must be present"
+
+
 def test_verification_report_templates_remain_identical() -> None:
     agent = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
     claude = ROOT / ".claude/skills/seat-operator/verification-report-format.md"

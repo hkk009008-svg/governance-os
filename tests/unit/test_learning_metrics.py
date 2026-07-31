@@ -117,16 +117,19 @@ def test_metrics_report_counts_and_advisory_warns(tmp_path: Path) -> None:
         "commit", "-q", "-m", "candidates")
     candidate_commit = git("rev-parse", "HEAD").strip()
 
-    for stamp, name in (
-        ("2026-07-30T01-00-00Z", name_a),
-        ("2026-07-30T02-00-00Z", name_b),
+    # Candidate B is declined first, then accepted: the counters must follow
+    # each candidate's LATEST disposition and partition the disposed set.
+    for stamp, name, disposition in (
+        ("2026-07-30T01-00-00Z", name_a, "accepted"),
+        ("2026-07-30T01-30-00Z", name_b, "declined"),
+        ("2026-07-30T02-00-00Z", name_b, "accepted"),
     ):
         decision = f"{stamp}-director-to-all-decision.md"
         (sent / decision).write_text(
             _event_text(
                 "director", "all", stamp,
                 f"Candidate: coordination/mailbox/sent/{name}@{candidate_commit}\n"
-                "Disposition: accepted",
+                f"Disposition: {disposition}",
             ),
             encoding="utf-8",
         )
@@ -149,6 +152,7 @@ def test_metrics_report_counts_and_advisory_warns(tmp_path: Path) -> None:
         "commit", "-q", "-m", "dispositions and pair thread")
 
     metrics = learning_metrics.collect_metrics(root)
+    assert metrics["declined"] == 0, "latest disposition wins; counters partition"
     assert metrics["review_friction"] == "1/1"
     assert metrics["candidates_total"] == 2
     assert metrics["accepted"] == 2

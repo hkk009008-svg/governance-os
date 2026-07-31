@@ -209,3 +209,33 @@ def test_measured_claim_shape_without_instrument_mark_is_refused(
         )
     )
     assert draft_path.exists()
+
+
+def test_cli_main_covers_both_exit_paths(tmp_path: Path) -> None:
+    """The argparse wiring and exit codes are executed, not assumed."""
+
+    root = _throwaway_repo(tmp_path)
+    scratch = tmp_path / "scratch"
+    common = [
+        "--repo-root", str(root),
+        "--scratch", str(scratch),
+        "--trigger", "user-correction",
+        "--statement", "Run the doctrine diff before every range submit.",
+        "--category", "procedure",
+        "--provenance", "RELAYED",
+        "--applicability", "any compact-pair range",
+        "--exclusions", "scratch worktrees",
+        "--risk-class", "material-behavior",
+        "--producer-seat", "director2",
+        "--producer-model", "claude-fable-5",
+    ]
+    # Missing evidence ref: EXIT_NO_TRIGGER, and no scratch dir appears.
+    assert learning_extract.main(common) == learning_extract.EXIT_NO_TRIGGER
+    assert not scratch.exists()
+    # With evidence: EXIT_DRAFTED and exactly one draft file.
+    assert (
+        learning_extract.main(common + ["--evidence-ref", _EVIDENCE_REF])
+        == learning_extract.EXIT_DRAFTED
+    )
+    drafts = list(scratch.iterdir())
+    assert len(drafts) == 1 and drafts[0].name.startswith("learning-candidate-")

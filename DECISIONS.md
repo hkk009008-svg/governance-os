@@ -1469,3 +1469,18 @@ Stage 2. The governance floor for `governance-rule` candidates remains
 operator risk-class judgment (contract I5). Any future revision of the
 contract travels as an ordinary reviewed change to
 `docs/protocol/learning/contract.md` naming this ADR.
+
+**Addendum 2026-07-31 — O2 ruled; recording follow-ups.** After Stage 0
+landed, the owner ruled O2 in-session (option "Declared adaptations",
+selected 2026-07-31 in the driving Claude session's decision prompt): the
+five seat-family pairs (four-seat-protocol, seat-coordinator,
+seat-director, seat-operator, wave-gate) are intentional provider-native
+adaptations, not drift; protocol semantics are canonical in
+`.agents/skills/`, and semantic disagreement resolves toward `.agents` in
+the same change. The five declaration headers landed in the stages-3-5
+range, whose NITS review correctly found the ruling had no durable record —
+this addendum is that record, and the plan's §9 O2 entry is updated in the
+same change. Also recorded from the stages-1-2 round-two review, as
+compact-pair listing convention: a range's own verify-request and
+verification-report envelopes necessarily ride it and are declared in the
+request's Outcome rather than silently omitted from the allowed paths.

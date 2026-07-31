@@ -47,9 +47,9 @@ same-commit-as-GO release, `git rm` the lock manually in the GO commit
 A pin that never actually exercises the defect is invisible-green theater.
 Before you trust it:
 - Run `python -m pytest <file> --runxfail -q` from the active development
-  environment and selected native worktree.
-  and confirm it goes **RED** against the current (unfixed) code — that proves
-  the assertion really catches the defect.
+  environment and selected native worktree, and confirm it goes **RED**
+  against the current (unfixed) code — that proves the assertion really
+  catches the defect.
 - Confirm the failure reason is the defect, not a setup error / import skip /
   `importorskip` swallow.
 - Confirm it would flip to XPASS once the fix lands (the assertion is the

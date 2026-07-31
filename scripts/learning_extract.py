@@ -14,7 +14,11 @@ ref, and the `recurrence` trigger additionally demands the Stage 1 index
 return the pattern from at least two distinct committed sources — an
 unavailable index is not evidence. A MEASURED statement whose shape is
 claim-bearing (claim_check's grammar) must carry an instrument mark somewhere
-in the record; prose is not a citation (laundering defense, contract §4).
+in the record (laundering defense, contract §4) — honestly scoped:
+INSTRUMENT_MARK is a coarse vocabulary heuristic that refuses the absent
+citation, not a validity check on the citation offered; any backticked
+token satisfies it, and the disposition review is what judges citation
+quality.
 """
 
 from __future__ import annotations

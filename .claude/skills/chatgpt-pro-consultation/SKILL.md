@@ -9,10 +9,10 @@ The canonical body of this skill is
 `.agents/skills/chatgpt-pro-consultation/SKILL.md` (repo-relative). Read that
 file now and follow it exactly as if its content were written here.
 
-Claude-native deltas when executing it: drive the page with the in-app
-Browser tools (`mcp__Claude_Browser__*`) where the canonical body says
-"in-app Browser", and run the reserve/finish commands from the repository
-root as:
+Claude-native deltas when executing it: in place of the canonical body's
+"Load `browser:control-in-app-browser`" line (a Codex-host skill name),
+drive the page with the in-app Browser tools (`mcp__Claude_Browser__*`),
+and run the reserve/finish commands from the repository root as:
 
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python scripts/chatgpt_pro_consult.py reserve --repo-root .

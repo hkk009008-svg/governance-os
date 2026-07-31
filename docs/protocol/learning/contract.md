@@ -126,7 +126,10 @@ parser following the ownership-record pattern
     Risk class: from the closed set (`scripts/codex_protocol_model.py:33-70`)
     Supersedes: optional `<learning-candidate path>@<commit>` (ADR-066
       re-issue idiom: never patch in place, name what is replaced)
-    Producer seat / Producer model
+    Producer seat / Producer model (Producer seat must equal the envelope
+      sender — no relay allowance exists; a mismatch is refused at parse,
+      because a false producer label would pre-defeat the self-approval
+      refusal below)
 
 Dedup derives from committed `coordination/mailbox/sent/` events at the
 pinned commit — never from the local index, which gives checkout-dependent
