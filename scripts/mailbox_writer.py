@@ -15,8 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
+import hashlib
+
 import bus_unread
 import compact_pair_loop
+import protocol_mailbox
 
 _LOCK_NAME = "protocol-kernel-writer.lock"
 _EVENT_RE = re.compile(
@@ -162,6 +165,146 @@ def validate_event_envelope(
     return match
 
 
+_PSEUDO_COMMIT = "0" * 40
+
+
+def _typed_candidate_event(
+    candidate: Path, relative: str
+) -> protocol_mailbox.CommittedEventRef:
+    """Type an uncommitted candidate's exact bytes with the committed parser.
+
+    The pseudo commit marks "not committed yet"; every check that needs repo
+    state resolves against HEAD explicitly, never through this placeholder.
+    """
+
+    return protocol_mailbox.parse_committed_event_text(
+        f"{relative}@{_PSEUDO_COMMIT}",
+        candidate.read_text(encoding="utf-8"),
+    )
+
+
+def _validate_learning_candidate_payload(
+    root: Path, candidate: Path, relative: str
+) -> None:
+    """Stage 2b: the learning-candidate refusals bind at publication.
+
+    Refuses malformed payloads, unresolvable path@sha source refs and
+    Supersedes, and duplicate Candidate IDs against the committed scan at
+    HEAD. ``sha256:`` digest refs are shape-only by construction — they name
+    content, not a committed object, so resolution cannot be demanded.
+    """
+
+    try:
+        statement = protocol_mailbox.parse_learning_candidate_statement(
+            _typed_candidate_event(candidate, relative)
+        )
+    except ValueError as exc:
+        raise MailboxWriterError(
+            f"learning-candidate candidate is invalid: {exc}"
+        ) from exc
+    for reference in statement.source_refs:
+        if "@" not in reference:
+            continue
+        try:
+            protocol_mailbox.load_committed_event_ref(root, reference)
+        except ValueError as exc:
+            raise MailboxWriterError(
+                f"learning-candidate source ref does not resolve: {reference}"
+            ) from exc
+    if statement.supersedes is not None:
+        try:
+            protocol_mailbox.load_learning_candidate_statement(
+                root, statement.supersedes
+            )
+        except ValueError as exc:
+            raise MailboxWriterError(
+                f"learning-candidate Supersedes does not resolve: "
+                f"{statement.supersedes}"
+            ) from exc
+    try:
+        committed = protocol_mailbox.committed_learning_candidate_ids(root, "HEAD")
+    except ValueError as exc:
+        raise MailboxWriterError(
+            f"learning-candidate dedup scan failed: {exc}"
+        ) from exc
+    existing = committed.get(statement.candidate_id)
+    if existing is not None:
+        raise MailboxWriterError(
+            "learning-candidate duplicates committed candidate "
+            f"{existing} (byte-idempotent; use Supersedes to replace)"
+        )
+
+
+def _validate_learning_disposition_payload(
+    root: Path, candidate: Path, relative: str
+) -> None:
+    """Stage 2b: disposition refusals bind at publication.
+
+    A ``decision`` event is a learning disposition exactly when it carries a
+    ``Candidate:`` field; every other decision publishes exactly as before.
+    Self-approval (disposer == producer) is refused for every disposition,
+    strictest reading of the contract — a producer replaces its own candidate
+    via Supersedes, it does not dispose it. The acceptance-only refusals
+    (ASSUMED provenance, governance-rule below the high-risk-control floor,
+    stale target base hash) evaluate against HEAD at publication — the parent
+    of the disposition's own commit; a reader re-verifying later evaluates at
+    the disposition commit itself and must agree unless the same commit
+    changed the target, which the fixed writer never does.
+    """
+
+    raw = candidate.read_text(encoding="utf-8")
+    if not any(line.startswith("Candidate:") for line in raw.splitlines()):
+        return
+    try:
+        disposition = protocol_mailbox.parse_learning_disposition_statement(
+            _typed_candidate_event(candidate, relative)
+        )
+    except ValueError as exc:
+        raise MailboxWriterError(
+            f"decision disposition is invalid: {exc}"
+        ) from exc
+    try:
+        statement = protocol_mailbox.load_learning_candidate_statement(
+            root, disposition.candidate_ref
+        )
+    except ValueError as exc:
+        raise MailboxWriterError(
+            "decision Candidate does not resolve to a committed "
+            f"learning-candidate: {exc}"
+        ) from exc
+    if disposition.disposer_seat == statement.producer_seat:
+        raise MailboxWriterError(
+            "decision disposer equals candidate producer (self-approval)"
+        )
+    if disposition.disposition == "accepted":
+        if statement.evidence_provenance == "ASSUMED":
+            raise MailboxWriterError(
+                "ASSUMED-provenance candidate may not be accepted"
+            )
+        if (
+            statement.category == "governance-rule"
+            and statement.risk_class != "high-risk-control"
+        ):
+            raise MailboxWriterError(
+                "governance-rule candidate below the high-risk-control "
+                "floor may not be accepted"
+            )
+        if statement.target is not None:
+            try:
+                data = _git(root, "cat-file", "blob", f"HEAD:{statement.target}")
+            except MailboxWriterError as exc:
+                raise MailboxWriterError(
+                    "decision target is absent at the publication commit: "
+                    f"{statement.target}"
+                ) from exc
+            digest = "sha256:" + hashlib.sha256(data).hexdigest()
+            if digest != statement.target_base_hash:
+                raise MailboxWriterError(
+                    "decision target base hash is stale at the publication "
+                    "commit (CAS)"
+                )
+
+
 def validate_event_candidate(
     root: Path,
     candidate: Path,
@@ -207,6 +350,10 @@ def validate_event_candidate(
                 "verification-report candidate is invalid: "
                 + "; ".join(violations)
             )
+    elif match.group("kind") == "learning-candidate":
+        _validate_learning_candidate_payload(root, candidate, relative)
+    elif match.group("kind") == "decision":
+        _validate_learning_disposition_payload(root, candidate, relative)
 
 
 def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
