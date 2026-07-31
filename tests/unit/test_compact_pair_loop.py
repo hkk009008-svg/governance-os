@@ -149,6 +149,25 @@ Cursor at send: 0
 """
 
 
+MINTED_EVIDENCE_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-07-18T06-05-32Z-operator-to-director-findings.md"
+)
+
+
+def _minted_repo_ref(root: Path) -> str:
+    """The resolving ref for the evidence `_repo(mint_finding_ref=True)` made.
+
+    Candidate parsing now refuses a `path@commit` reference whose object does
+    not exist, so tests exercising candidate parsers cite evidence the
+    throwaway repository actually contains instead of the fixed-SHA
+    FINDING_A constant, which resolves nowhere by construction.
+    """
+
+    commit = _git(root, "log", "-1", "--format=%H", "--", MINTED_EVIDENCE_PATH)
+    return f"{MINTED_EVIDENCE_PATH}@{commit}"
+
+
 def _repo(
     tmp_path: Path,
     *,
@@ -159,6 +178,7 @@ def _repo(
     risk_class: str = "material-behavior",
     abuse_class_assessment: tuple[str, ...] = (),
     finding_refs: tuple[str, ...] = (FINDING_A,),
+    mint_finding_ref: bool = False,
     transform_request=lambda text: text,
 ) -> tuple[Path, str, str, str]:
     root = tmp_path / "repo"
@@ -179,6 +199,9 @@ def _repo(
 
     request = root / request_path
     request.parent.mkdir(parents=True)
+    if mint_finding_ref:
+        _commit_an_event(root, MINTED_EVIDENCE_PATH)
+        finding_refs = (_minted_repo_ref(root),)
     request.write_text(
         transform_request(
             _request_text(
@@ -219,9 +242,12 @@ def _write_report(
 def test_verify_request_candidate_uses_intended_final_path_as_identity(
     tmp_path: Path,
 ) -> None:
-    root, base, head, _trigger = _repo(tmp_path)
+    root, base, head, _trigger = _repo(tmp_path, mint_finding_ref=True)
     candidate = root / "coordination/mailbox/sent/.request-candidate.tmp"
-    candidate.write_text(_request_text(base, head), encoding="utf-8")
+    candidate.write_text(
+        _request_text(base, head, finding_refs=(_minted_repo_ref(root),)),
+        encoding="utf-8",
+    )
 
     request = pair.parse_verify_request_candidate(root, candidate, REQUEST_PATH)
 
@@ -267,7 +293,9 @@ def test_high_risk_request_requires_abuse_assessment_and_report_binds_it(
         tmp_path,
         risk_class="high-risk-control",
         abuse_class_assessment=("untrusted request fields cannot widen authority",),
+        mint_finding_ref=True,
     )
+    minted = _minted_repo_ref(root)
     candidate = root / "coordination/mailbox/sent/.report-candidate.tmp"
     candidate.write_text(
         _report_text(
@@ -279,6 +307,8 @@ def test_high_risk_request_requires_abuse_assessment_and_report_binds_it(
             reviewer_model="claude-opus-5",
             risk_class="high-risk-control",
             abuse_class_assessment_binding="bound-to-request",
+            finding_refs=(minted,),
+            dispositions=((minted, "addressed"),),
         ),
         encoding="utf-8",
     )
@@ -317,17 +347,26 @@ def test_high_risk_candidate_rejects_missing_assessment_or_report_binding(
 
 
 def test_report_candidate_requires_matching_explicit_risk_class(tmp_path: Path) -> None:
-    root, base, head, trigger = _repo(tmp_path)
+    root, base, head, trigger = _repo(tmp_path, mint_finding_ref=True)
+    minted = _minted_repo_ref(root)
     candidate = root / "coordination/mailbox/sent/.report-candidate.tmp"
     candidate.write_text(
-        _report_text(base, head, trigger).replace("Risk class: material-behavior\n", ""),
+        _report_text(
+            base, head, trigger,
+            finding_refs=(minted,), dispositions=((minted, "addressed"),),
+        ).replace("Risk class: material-behavior\n", ""),
         encoding="utf-8",
     )
     with pytest.raises(pair.CompactPairError, match="missing Risk class"):
         pair.parse_verification_report_candidate(root, candidate, REPORT_PATH)
 
     candidate.write_text(
-        _report_text(base, head, trigger, risk_class="high-risk-control", abuse_class_assessment_binding="bound-to-request"),
+        _report_text(
+            base, head, trigger,
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+            finding_refs=(minted,), dispositions=((minted, "addressed"),),
+        ),
         encoding="utf-8",
     )
     report = pair.parse_verification_report_candidate(root, candidate, REPORT_PATH)
@@ -1313,6 +1352,24 @@ def _publish_as_send_event(root: Path, body: str) -> Path:
     return candidate
 
 
+def _commit_an_event(root: Path, relative: str) -> str:
+    """Commit one mailbox-shaped file in *root* and return its commit SHA.
+
+    Composing now requires a `path@commit` finding reference to resolve in the
+    repository being composed against, so a test that cites evidence has to
+    create it rather than borrow a real Pipeline reference a throwaway
+    repository has never heard of.
+    """
+    target = root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "Event type: verification-report\nVERDICT: FAIL\n", encoding="utf-8"
+    )
+    _git(root, "add", relative)
+    _git(root, "commit", "-q", "-m", "review: cited evidence")
+    return _git(root, "rev-parse", "HEAD")
+
+
 def test_composed_request_round_trips_through_the_candidate_parser(
     tmp_path: Path,
 ) -> None:
@@ -1323,7 +1380,14 @@ def test_composed_request_round_trips_through_the_candidate_parser(
     parser change is not mirrored in `compose_request`, this round trip is what
     fails instead of the next author's publication attempt.
     """
-    root, base, head = _compose_repo(tmp_path)
+    root, _, _ = _compose_repo(tmp_path)
+    # Cite evidence this repository actually contains. Citing `FINDING_A`, a real
+    # Pipeline event, composed cleanly while shape was the only check — which is
+    # the fabricated-provenance shape the composer now refuses.
+    cited_path = FINDING_A.rpartition("@")[0]
+    cited = f"{cited_path}@{_commit_an_event(root, cited_path)}"
+    base = _git(root, "rev-parse", "HEAD~1")
+    head = _git(root, "rev-parse", "HEAD")
     body = pair.compose_request(
         root,
         author_seat="director",
@@ -1334,7 +1398,7 @@ def test_composed_request_round_trips_through_the_candidate_parser(
         head_rev="HEAD",
         outcome="Composed outcome under test.",
         abuse_assessments=("Composer emits a body the parser rejects.",),
-        finding_refs=(FINDING_A,),
+        finding_refs=(cited,),
     )
 
     candidate = _publish_as_send_event(root, body)
@@ -1355,7 +1419,7 @@ def test_composed_request_round_trips_through_the_candidate_parser(
     assert request.abuse_class_assessment == (
         "Composer emits a body the parser rejects.",
     )
-    assert request.finding_refs == (FINDING_A,)
+    assert request.finding_refs == (cited,)
     assert pair.validate_request_candidate(root, request) == []
 
 
@@ -1474,6 +1538,187 @@ def test_compose_rejects_malformed_inputs_before_emitting_anything(
         pair.compose_request(root, **arguments)
 
 
+def test_compose_refuses_a_finding_ref_whose_object_does_not_exist(
+    tmp_path: Path,
+) -> None:
+    """A well-formed reference is not a resolvable one, and shape was the only check.
+
+    Forty hex characters satisfy the canonical form, so a commit invented while
+    transcribing composed cleanly. Three such references were written in one
+    session; each read as provenance and resolved to nothing, which is worse than
+    a missing reference because a reader cannot tell by reading the request.
+
+    Both halves of the pair are driven, because validating only the commit would
+    leave the path unchecked and a reference is the pair.
+    """
+    root, _, _ = _compose_repo(tmp_path)
+    relative = (
+        "coordination/mailbox/sent/"
+        "2026-07-26T00-00-00Z-operator-to-director-verification-report.md"
+    )
+    real_commit = _commit_an_event(root, relative)
+    arguments: dict[str, object] = {
+        "author_seat": "director",
+        "author_model": "claude-opus-5",
+        "assigned_operator": "operator",
+        "risk_class": "material-behavior",
+        "base_rev": "HEAD~1",
+        "head_rev": "HEAD",
+        "outcome": "Cites evidence.",
+    }
+
+    # The resolvable reference composes, so the refusals below are about
+    # resolvability rather than a guard that refuses everything.
+    body = pair.compose_request(
+        root, **arguments, finding_refs=(f"{relative}@{real_commit}",)
+    )
+    assert f"{relative}@{real_commit}" in body
+
+    absent_path = (
+        "coordination/mailbox/sent/"
+        "2026-01-01T00-00-00Z-operator-to-director-verification-report.md"
+    )
+    for reference in (f"{relative}@{'0' * 40}", f"{absent_path}@{real_commit}"):
+        with pytest.raises(
+            pair.CompactPairError, match="names an object that does not exist"
+        ):
+            pair.compose_request(root, **arguments, finding_refs=(reference,))
+
+
+def test_compose_still_accepts_a_digest_reference_it_cannot_verify(
+    tmp_path: Path,
+) -> None:
+    """The gap is deliberate, and stated rather than papered over.
+
+    Nothing in the composer holds the bytes a `sha256:` reference digests, so it
+    cannot be resolved the way a `path@commit` reference can. The third bad
+    reference of that session was exactly this shape — a digest naming the wrong
+    document — and this guard does not catch it. Pinned so the limit stays visible
+    to whoever next assumes references are verified.
+    """
+    root, _, _ = _compose_repo(tmp_path)
+
+    body = pair.compose_request(
+        root,
+        author_seat="director",
+        author_model="claude-opus-5",
+        assigned_operator="operator",
+        risk_class="material-behavior",
+        base_rev="HEAD~1",
+        head_rev="HEAD",
+        outcome="Cites a digest.",
+        finding_refs=("sha256:" + "b" * 64,),
+    )
+
+    assert "sha256:" + "b" * 64 in body
+
+
+def test_request_candidate_refuses_a_fabricated_finding_ref(tmp_path: Path) -> None:
+    """The publication path is guarded, not only compose.
+
+    The compose hook alone left the route the defect actually travels: a
+    hand-written body through send-event's candidate validation (measured
+    2026-07-31 — two fabricated Finding Ref tails published that way, one
+    caught only by post-compose hand verification).
+    """
+
+    root, base, head, _trigger = _repo(tmp_path, mint_finding_ref=True)
+    fabricated = (
+        "coordination/mailbox/sent/"
+        "2026-07-30T00-00-00Z-operator-to-director-findings.md@" + "e" * 40
+    )
+    candidate = root / "coordination/mailbox/sent/.request-candidate.tmp"
+    candidate.write_text(
+        _request_text(base, head, finding_refs=(fabricated,)), encoding="utf-8"
+    )
+    with pytest.raises(pair.CompactPairError, match="does not exist"):
+        pair.parse_verify_request_candidate(root, candidate, REQUEST_PATH)
+    # Non-vacuity both ways: the same body with resolving evidence parses.
+    candidate.write_text(
+        _request_text(base, head, finding_refs=(_minted_repo_ref(root),)),
+        encoding="utf-8",
+    )
+    request = pair.parse_verify_request_candidate(root, candidate, REQUEST_PATH)
+    assert request.finding_refs == (_minted_repo_ref(root),)
+
+
+def test_report_candidate_refuses_fabricated_refs_in_both_sections(
+    tmp_path: Path,
+) -> None:
+    """Report candidates guard Finding Refs AND Finding Dispositions refs."""
+
+    root, base, head, trigger = _repo(tmp_path, mint_finding_ref=True)
+    minted = _minted_repo_ref(root)
+    fabricated = (
+        "coordination/mailbox/sent/"
+        "2026-07-30T00-00-00Z-operator-to-director-findings.md@" + "e" * 40
+    )
+    candidate = root / "coordination/mailbox/sent/.report-candidate.tmp"
+    candidate.write_text(
+        _report_text(
+            base, head, trigger,
+            finding_refs=(fabricated,), dispositions=((fabricated, "addressed"),),
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(pair.CompactPairError, match="does not exist"):
+        pair.parse_verification_report_candidate(root, candidate, REPORT_PATH)
+    candidate.write_text(
+        _report_text(
+            base, head, trigger,
+            finding_refs=(minted,), dispositions=((minted, "addressed"),),
+        ),
+        encoding="utf-8",
+    )
+    report = pair.parse_verification_report_candidate(root, candidate, REPORT_PATH)
+    assert report.finding_refs == (minted,)
+
+
+def test_reviewed_repository_cannot_launder_a_finding_ref(tmp_path: Path) -> None:
+    """Round-one high-risk FAIL, pinned: the either-root policy is deleted.
+
+    The reviewed-repository field comes from the candidate's own unvalidated
+    bytes, so a reference resolving ONLY in an author-chosen repository is
+    fabricated provenance from the governance root's point of view and must
+    refuse exactly like any other nonexistent object.
+    """
+
+    root, base, head, _trigger = _repo(tmp_path, mint_finding_ref=True)
+    laundry = tmp_path / "laundry"
+    laundry.mkdir()
+    _git(laundry, "init", "-q")
+    _git(laundry, "config", "user.name", "Laundry")
+    _git(laundry, "config", "user.email", "laundry@example.invalid")
+    laundered_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-18T07-07-07Z-operator-to-director-findings.md"
+    )
+    laundered = f"{laundered_path}@{_commit_an_event(laundry, laundered_path)}"
+    # The object genuinely exists in the laundry repository...
+    assert pair._object_exists(
+        laundry, laundered.rsplit("@", 1)[1], laundered_path
+    )
+    candidate = root / "coordination/mailbox/sent/.request-candidate.tmp"
+    candidate.write_text(
+        _request_text(
+            base,
+            head,
+            reviewed_repository=str(laundry),
+            finding_refs=(laundered,),
+        ),
+        encoding="utf-8",
+    )
+    # ...and the governance root still refuses it.
+    with pytest.raises(pair.CompactPairError, match="does not exist"):
+        pair.parse_verify_request_candidate(root, candidate, REQUEST_PATH)
+
+
+def test_object_exists_treats_a_missing_root_as_no_object(tmp_path: Path) -> None:
+    """An unreadable cwd is a refusal, never an unhandled OSError."""
+
+    assert pair._object_exists(tmp_path / "absent", "e" * 40, "x.md") is False
+
+
 def test_compose_refuses_a_self_addressed_routing_the_writer_would_reject(
     tmp_path: Path, repo_root: Path
 ) -> None:
@@ -1580,11 +1825,14 @@ def _commit_report(
 
 
 def test_report_supersedes_round_trip_and_binds(tmp_path: Path) -> None:
-    root, base, head, trigger = _repo(tmp_path)
+    root, base, head, trigger = _repo(tmp_path, mint_finding_ref=True)
+    minted = _minted_repo_ref(root)
     orphan_path, orphan_commit = _commit_report(root, base, head, trigger)
     reference = f"{orphan_path}@{orphan_commit}"
     candidate = _write_report(
-        root, base, head, trigger, report_path=SECOND_REPORT_PATH, supersedes=reference
+        root, base, head, trigger, report_path=SECOND_REPORT_PATH,
+        supersedes=reference,
+        finding_refs=(minted,), dispositions=((minted, "addressed"),),
     )
     report = pair.parse_verification_report_candidate(
         root, str(candidate), SECOND_REPORT_PATH
@@ -1656,7 +1904,8 @@ def test_report_supersedes_duplicate_field_rejected(tmp_path: Path) -> None:
 
 
 def test_superseded_commit_must_introduce_the_report(tmp_path: Path) -> None:
-    root, base, head, trigger = _repo(tmp_path)
+    root, base, head, trigger = _repo(tmp_path, mint_finding_ref=True)
+    minted = _minted_repo_ref(root)
     orphan_path, _ = _commit_report(root, base, head, trigger)
     (root / "scripts/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
     _git(root, "add", "scripts/feature.py")
@@ -1669,6 +1918,8 @@ def test_superseded_commit_must_introduce_the_report(tmp_path: Path) -> None:
         trigger,
         report_path=SECOND_REPORT_PATH,
         supersedes=f"{orphan_path}@{wrong_commit}",
+        finding_refs=(minted,),
+        dispositions=((minted, "addressed"),),
     )
     report = pair.parse_verification_report_candidate(
         root, str(candidate), SECOND_REPORT_PATH
@@ -1683,6 +1934,8 @@ def test_superseded_commit_must_introduce_the_report(tmp_path: Path) -> None:
         trigger,
         report_path=SECOND_REPORT_PATH,
         supersedes=f"{orphan_path}@{_git(root, 'rev-parse', 'HEAD~1')}",
+        finding_refs=(minted,),
+        dispositions=((minted, "addressed"),),
     )
     correct_report = pair.parse_verification_report_candidate(
         root, str(correct), SECOND_REPORT_PATH
@@ -1691,7 +1944,8 @@ def test_superseded_commit_must_introduce_the_report(tmp_path: Path) -> None:
 
 
 def test_supersession_is_seat_scoped(tmp_path: Path) -> None:
-    root, base, head, trigger = _repo(tmp_path)
+    root, base, head, trigger = _repo(tmp_path, mint_finding_ref=True)
+    minted = _minted_repo_ref(root)
     orphan_path, orphan_commit = _commit_report(
         root,
         base,
@@ -1708,6 +1962,8 @@ def test_supersession_is_seat_scoped(tmp_path: Path) -> None:
         report_path=SECOND_REPORT_PATH,
         reviewer_seat="operator",
         supersedes=f"{orphan_path}@{orphan_commit}",
+        finding_refs=(minted,),
+        dispositions=((minted, "addressed"),),
     )
     report = pair.parse_verification_report_candidate(
         root, str(candidate), SECOND_REPORT_PATH

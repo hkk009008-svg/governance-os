@@ -247,6 +247,79 @@ def _identity(value: str, label: str) -> str:
     return value
 
 
+def _object_exists(root: Path, commit: str, path: str) -> bool:
+    """Whether `<commit>:<path>` names an object in *root*'s object store.
+
+    `cat-file -e` answers by exit code and prints nothing, so no output is
+    parsed. It reads the object store rather than any branch, which is what a
+    finding reference needs: evidence committed on a branch invisible from the
+    default one is still citable, and a fabricated commit is in no store at all.
+    """
+    try:
+        completed = subprocess.run(
+            ["/usr/bin/git", "--no-replace-objects", "cat-file", "-e", f"{commit}:{path}"],
+            cwd=root,
+            env={key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        # A missing or unreadable cwd is "no such object", not a crash: the
+        # caller turns False into a clean CompactPairError refusal.
+        return False
+    return completed.returncode == 0
+
+
+def _require_path_references_resolve(
+    root: Path, references: Sequence[str]
+) -> None:
+    """Refuse to compose a `path@commit` reference whose object does not exist.
+
+    Canonical shape was the only check, and shape is satisfied by any forty hex
+    characters. Three references were composed in one session that were
+    well-formed and wrong: two named commits that do not exist, invented while
+    transcribing, and the shape check accepted both. A reference is the one part
+    of a request a reader cannot verify by reading the request, so a fabricated
+    one is worse than a missing one — it reads as provenance and resolves to
+    nothing.
+
+    Deliberately only at compose time, not in the shared parser. Of 581
+    `path@commit` references across committed events, 23 no longer resolve
+    because the history they named was rewritten. Those are frozen artifacts and
+    re-judging them would turn the historical-report gate in `ci_smoke` red for
+    events nobody can now amend. New references are the ones an author can still
+    get right, and this is where they are written.
+
+    The governance root is the ONLY store consulted. A finding reference is a
+    fixed-writer mailbox path of this repository, and the round-one
+    high-risk review showed why an either-root allowance is a laundering
+    route, not a convenience: the reviewed-repository field comes from the
+    candidate's own unvalidated bytes and `_reviewed_root` accepts any
+    existing local path, so an author-controlled repository could make a
+    fabricated reference "resolve". Cross-repository evidence travels as a
+    `sha256:` digest, which the next paragraph is honest about.
+
+    A `sha256:` digest is not checked, because nothing here holds the bytes it
+    digests. That is a real gap and the reason it stays a gap is worth stating:
+    the third bad reference of that session was a digest naming the wrong
+    document, and this guard would not have caught it.
+    """
+    for reference in references:
+        if "@" not in reference or reference.startswith("sha256:"):
+            continue
+        path, _, commit = reference.rpartition("@")
+        if not path or not commit:
+            continue
+        if _object_exists(root, commit, path):
+            continue
+        raise CompactPairError(
+            f"finding ref names an object that does not exist: {reference}. "
+            "A reference is the part of a request a reader cannot check by "
+            "reading it, so a well-formed one that resolves to nothing reads as "
+            "provenance and is not. Verify the commit and path before citing them."
+        )
+
+
 def _finding_refs(lines: list[str], *, required: bool) -> tuple[str, ...]:
     body = _section_optional(lines, "## Finding Refs")
     if body is None:
@@ -485,13 +558,21 @@ def parse_verify_request_candidate(
     root = root.resolve()
     candidate = _repo_path(root, candidate_path)
     final = _repo_path(root, final_path)
-    return _parse_verify_request_bytes(
+    request = _parse_verify_request_bytes(
         root,
         final,
         _read_regular(root, candidate),
         trigger_commit="",
         allow_frozen_legacy=False,
     )
+    # Publication-time resolvability. The compose hook alone left the route
+    # the defect actually travels: a hand-written body through send-event
+    # (measured 2026-07-31 — two fabricated Finding Ref tails published that
+    # way; one caught only by post-compose hand verification). Candidates
+    # only: committed events use the committed parsers, which stay untouched
+    # so the historical gates keep judging frozen artifacts as frozen.
+    _require_path_references_resolve(root, request.finding_refs)
+    return request
 
 
 def validate_request_candidate(root: Path, request: VerifyRequest) -> list[str]:
@@ -616,6 +697,7 @@ def compose_request(
         raise CompactPairError("finding refs must be unique")
 
     reviewed_root = _reviewed_root(root.resolve(), reviewed_repository)
+    _require_path_references_resolve(root.resolve(), references)
     base, head = _resolve_range(reviewed_root, base_rev, head_rev)
 
     lines = ["Event type: verify-request"]
@@ -739,12 +821,21 @@ def parse_verification_report_candidate(
     root = root.resolve()
     candidate = _repo_path(root, candidate_path)
     final = _repo_path(root, final_path)
-    return _parse_verification_report_bytes(
+    report = _parse_verification_report_bytes(
         root,
         final,
         _read_regular(root, candidate),
         allow_legacy_missing_risk=False,
     )
+    # Same publication-time resolvability as request candidates. Root-only:
+    # a report's ref targets are mailbox events of this repository. The
+    # report's own `Verification request:` binding ref is already resolved
+    # by validate_report on the publication path.
+    _require_path_references_resolve(root, report.finding_refs)
+    _require_path_references_resolve(
+        root, tuple(ref for ref, _ in report.finding_dispositions)
+    )
+    return report
 
 
 
