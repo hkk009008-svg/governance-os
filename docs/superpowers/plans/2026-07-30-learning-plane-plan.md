@@ -354,18 +354,21 @@ Adopted: candidates never canonical; `.agents/skills` canonical;
 committed-vs-local split; FTS-first; fail-closed exact-hash disposition bound at
 Stage 2b; governance rules always independent-review; the dormant Threeway bus
 is not required (mailbox carries candidate refs).
-Open, needing the owner's ruling before the named stage:
-- O1 (Stage 2): new `learning-candidate` kind vs overloading `memory-candidate`.
-  Plan default: new kind, with `memory-candidate` retired in the same commit.
-- O2 (Stage 3a): per-pair adjudication of the 9 drifted skill pairs — which
-  side's doctrine is intended. A human ruling per pair; the survey adjudicated
-  none.
-- O3 (deferred maintenance): retention window and archive cadence for the
-  mailbox archive change, which is now out of this plan.
+Owner ruling 2026-07-31: adopt the plan defaults for every decision that has
+one. Recorded per item:
+- O1 (Stage 2) — RULED, default adopted: new `learning-candidate` kind, with
+  `memory-candidate` retired in the same commit.
+- O2 (Stage 3a) — STILL OPEN by construction: no default exists. Adjudication
+  is per pair at Stage 3a (git log per pair; where the two trees' doctrine
+  genuinely diverges, the owner rules on that pair before its commit lands).
+  The blanket "use defaults" ruling deliberately does not cover this.
+- O3 (deferred maintenance) — RULED as its default state: the mailbox archive
+  change stays out of this plan; retention/cadence are set when that
+  standalone change is filed.
 - O4 (Stage 4): whether the extractor may ever publish candidates directly.
-  Plan default: drafts only.
-- O5 (Stage 5): the retrieval-precision threshold that would justify embeddings.
-  Undefined until Stage 5 baselines exist.
+  RULED, default adopted: drafts only; the author publishes.
+- O5 (Stage 5) — RULED as its default state: no embeddings; the threshold
+  question is re-opened only when Stage 5 baselines exist to answer it.
 
 ## 10. Explicitly rejected (verified reason)
 Tool-loop-count triggers and default-on skill updates
