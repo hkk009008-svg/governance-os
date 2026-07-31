@@ -240,8 +240,16 @@ def _validate_learning_disposition_payload(
 ) -> None:
     """Stage 2b: disposition refusals bind at publication.
 
-    A ``decision`` event is a learning disposition exactly when it carries a
-    ``Candidate:`` field; every other decision publishes exactly as before.
+    A ``decision`` event is a learning disposition exactly when it names a
+    canonical learning-candidate ref on a ``Candidate:`` line AND carries a
+    ``Disposition:`` line — the same fields the read-side parser grants
+    meaning to. Every other decision publishes exactly as before: free prose
+    that merely contains ``Candidate:`` (a hiring note, a list item) never
+    enters disposition parsing (round-one FAIL: the earlier any-line sniff
+    refused such events — an availability regression on a historical kind).
+    An event that quotes a real ref without a Disposition line is prose to
+    readers too, so it publishes; one that quotes both is exactly what a
+    reader would parse as a disposition, so validating it is correct.
     Self-approval (disposer == producer) is refused for every disposition,
     strictest reading of the contract — a producer replaces its own candidate
     via Supersedes, it does not dispose it. The acceptance-only refusals
@@ -252,8 +260,20 @@ def _validate_learning_disposition_payload(
     changed the target, which the fixed writer never does.
     """
 
-    raw = candidate.read_text(encoding="utf-8")
-    if not any(line.startswith("Candidate:") for line in raw.splitlines()):
+    lines = candidate.read_text(encoding="utf-8").splitlines()
+    named_refs = [
+        line[len("Candidate:") :].strip()
+        for line in lines
+        if line.startswith("Candidate:")
+    ]
+    names_learning_candidate = any(
+        protocol_mailbox.immutable_reference_is_canonical(value)
+        and value.rsplit("@", 1)[0].endswith("-learning-candidate.md")
+        for value in named_refs
+    )
+    if not names_learning_candidate or not any(
+        line.startswith("Disposition:") for line in lines
+    ):
         return
     try:
         disposition = protocol_mailbox.parse_learning_disposition_statement(

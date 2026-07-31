@@ -305,3 +305,44 @@ def test_ordinary_decision_without_candidate_field_still_publishes(
         root, "director", "all", "decision", "2026-07-30T00-00-03Z",
         "Ruling: adopt the defaults for every open item.",
     )
+
+
+def test_prose_candidate_lines_do_not_trigger_disposition_validation(
+    tmp_path: Path,
+) -> None:
+    """Round-one FAIL regression: free prose is never refused as a disposition."""
+
+    root = _repo(tmp_path)
+    # A hiring-style note: Candidate + Disposition lines, neither machine-shaped.
+    _publish(
+        root, "director", "all", "decision", "2026-07-30T00-00-03Z",
+        "Candidate: Jane Doe for the ops role\n"
+        "Disposition: hired, starts Monday",
+    )
+    # Quoting a real canonical ref in discussion, with no Disposition line,
+    # is prose to readers and must publish.
+    quoted = (
+        "coordination/mailbox/sent/"
+        "2026-07-29T00-00-00Z-operator-to-director-learning-candidate.md@"
+        + "b" * 40
+    )
+    _publish(
+        root, "director", "all", "decision", "2026-07-30T00-00-04Z",
+        f"Discussing Candidate: {quoted} before any ruling.",
+    )
+
+
+def test_machine_shaped_disposition_still_validates(tmp_path: Path) -> None:
+    """The intent predicate must not have loosened the real refusals."""
+
+    root = _repo(tmp_path)
+    phantom = (
+        "coordination/mailbox/sent/"
+        "2026-07-29T00-00-00Z-operator-to-director-learning-candidate.md@"
+        + "e" * 40
+    )
+    _refuse(
+        root, "director", "all", "decision", "2026-07-30T00-00-05Z",
+        f"Candidate: {phantom}\nDisposition: accepted",
+        match="does not resolve to a committed",
+    )
