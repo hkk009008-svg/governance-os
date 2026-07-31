@@ -128,3 +128,7 @@ STATE.md
 # side. .agents/skills/ is the shared seat-procedure tree and stays tracked.
 .agents/*/
 !.agents/skills/
+
+# Learning-plane episodic index: derived, rebuildable, workspace-scope
+# projection with no authority (ADR-067); never committed.
+coordination/learning/

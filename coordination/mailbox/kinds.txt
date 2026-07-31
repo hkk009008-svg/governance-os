@@ -8,8 +8,8 @@ doc-sync-notice
 findings
 fold-notice
 fyi
+learning-candidate
 measurement-report
-memory-candidate
 proposal
 proposal-reply
 query
