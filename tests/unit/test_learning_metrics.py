@@ -165,14 +165,85 @@ def test_metrics_report_counts_and_advisory_warns(tmp_path: Path) -> None:
     assert metrics["contradicted_targets"] == []
     assert metrics["index_state"] == "(unavailable: index not built)"
 
-    # The target moves: candidate A's acceptance becomes stale.
+    # The target moves. Candidate A is LINKED (named by the request), so the
+    # move is what its acceptance authorized: PROMOTED fact, never a stale
+    # WARN (the first live promotion tripped the old conflated WARN forever).
     (root / "README.md").write_text("target v2\n", encoding="utf-8")
     git("add", "README.md")
     git("-c", "user.name=F", "-c", "user.email=f@example.invalid",
         "commit", "-q", "-m", "move target")
     moved = learning_metrics.collect_metrics(root)
-    assert moved["stale_accepted"] == [
+    assert moved["promoted"] == [
         f"coordination/mailbox/sent/{name_a} (target moved: README.md)"
+    ]
+    assert moved["stale_accepted"] == []
+
+    # Candidate C: accepted against README v2, NOT named by any request. When
+    # the target moves again, C is the genuinely alarming case — stale WARN.
+    v2_hash = "sha256:" + hashlib.sha256(
+        (root / "README.md").read_bytes()
+    ).hexdigest()
+    fields_c = _candidate_fields(
+        source_ref, Statement="An unpromoted lesson anchored to v2.",
+        Target="README.md", **{"Target base hash": v2_hash},
+    )
+    name_c = "2026-07-30T05-00-00Z-operator-to-director-learning-candidate.md"
+    (sent / name_c).write_text(
+        _event_text("operator", "director", "2026-07-30T05-00-00Z",
+                    _candidate_body(fields_c)),
+        encoding="utf-8",
+    )
+    git("add", "-A")
+    git("-c", "user.name=F", "-c", "user.email=f@example.invalid",
+        "commit", "-q", "-m", "candidate C")
+    c_commit = git("rev-parse", "HEAD").strip()
+    (sent / "2026-07-30T06-00-00Z-director-to-all-decision.md").write_text(
+        _event_text(
+            "director", "all", "2026-07-30T06-00-00Z",
+            f"Candidate: coordination/mailbox/sent/{name_c}@{c_commit}\n"
+            "Disposition: accepted",
+        ),
+        encoding="utf-8",
+    )
+    (root / "README.md").write_text("target v3\n", encoding="utf-8")
+    git("add", "-A")
+    git("-c", "user.name=F", "-c", "user.email=f@example.invalid",
+        "commit", "-q", "-m", "accept C then move target again")
+    third = learning_metrics.collect_metrics(root)
+    assert third["stale_accepted"] == [
+        f"coordination/mailbox/sent/{name_c} (target moved: README.md)"
+    ]
+    assert not any(name_c in item for item in third["promoted"])
+    assert third["promotion_linkage_gaps"] == [
+        f"coordination/mailbox/sent/{name_b}",
+        f"coordination/mailbox/sent/{name_c}",
+    ]
+
+    # Candidate D supersedes B: B RETIRES — no linkage debt, no stale scan.
+    fields_d = _candidate_fields(
+        source_ref,
+        Statement="Replacement for B per the re-issue idiom.",
+        Supersedes=(
+            f"coordination/mailbox/sent/{name_b}@{candidate_commit}"
+        ),
+    )
+    name_d = "2026-07-30T07-00-00Z-operator-to-director-learning-candidate.md"
+    (sent / name_d).write_text(
+        _event_text("operator", "director", "2026-07-30T07-00-00Z",
+                    _candidate_body(fields_d)),
+        encoding="utf-8",
+    )
+    git("add", "-A")
+    git("-c", "user.name=F", "-c", "user.email=f@example.invalid",
+        "commit", "-q", "-m", "candidate D supersedes B")
+    fourth = learning_metrics.collect_metrics(root)
+    assert fourth["retired_superseded"] == [
+        f"coordination/mailbox/sent/{name_b}"
+    ]
+    # B leaves the gap list by retirement; C stays; undisposed D is not
+    # accepted and owes nothing.
+    assert fourth["promotion_linkage_gaps"] == [
+        f"coordination/mailbox/sent/{name_c}"
     ]
 
 

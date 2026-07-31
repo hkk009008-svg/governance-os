@@ -17,10 +17,16 @@ Metrics and sources:
                             counts once; the three counters partition the
                             disposed set, never exceed candidates_total).
 4. supersession_rate      — candidates carrying Supersedes / candidates_total.
-5. promotion_linkage      — accepted candidates whose event path appears in no
-                            verify-request body at HEAD (ADVISORY WARN).
-6. staleness              — accepted candidates with a Target whose recorded
-                            base hash no longer matches HEAD bytes.
+5. promotion_linkage      — live accepted candidates whose event path appears
+                            in no verify-request body at HEAD (ADVISORY WARN).
+                            Superseded candidates are RETIRED — replaced per
+                            the ADR-066 re-issue idiom — and owe nothing.
+6. staleness/promotion    — a live accepted candidate whose target moved is
+                            PROMOTED when a verify-request names it (the move
+                            is what the acceptance authorized; reported as
+                            fact) and STALE (WARN) only when unpromoted — the
+                            target changed underneath it outside the governed
+                            path.
 7. contradictions         — live (non-superseded) candidates sharing a Target
                             with different Proposed content hash.
 8. index_coverage         — rows and built-at commit of the local Stage 1
@@ -138,14 +144,30 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
     for path in _sent_names(root, resolved):
         if path.endswith("-verify-request.md"):
             request_texts.append(_git(root, "show", f"{resolved}:{path}"))
-    linkage_gaps = [
+
+    # Lifecycle classification of accepted candidates. A superseded candidate
+    # is RETIRED: its lifecycle ended by replacement (ADR-066 re-issue idiom),
+    # so it neither owes a promotion nor alarms about its target — the first
+    # live Supersedes left the dead candidate WARNing stale forever until this
+    # split. A live accepted candidate that is named by a verify-request and
+    # whose target moved is PROMOTED — the move is what the acceptance
+    # authorized, reported as fact, not decay. The stale WARN keeps only the
+    # genuinely alarming case: accepted, unpromoted, and the target moved
+    # underneath it outside the governed path.
+    retired = [c for c in accepted if c.event.path in superseded_paths]
+    live_accepted = [c for c in accepted if c.event.path not in superseded_paths]
+    linked_paths = {
         c.event.path
-        for c in accepted
-        if not any(c.event.path in text for text in request_texts)
+        for c in live_accepted
+        if any(c.event.path in text for text in request_texts)
+    }
+    linkage_gaps = [
+        c.event.path for c in live_accepted if c.event.path not in linked_paths
     ]
 
+    promoted = []
     stale = []
-    for c in accepted:
+    for c in live_accepted:
         if c.target is None:
             continue
         try:
@@ -156,11 +178,18 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
                 check=True,
             ).stdout
         except subprocess.CalledProcessError:
-            stale.append(f"{c.event.path} (target absent: {c.target})")
+            data = None
+        moved = (
+            data is None
+            or "sha256:" + hashlib.sha256(data).hexdigest() != c.target_base_hash
+        )
+        if not moved:
             continue
-        digest = "sha256:" + hashlib.sha256(data).hexdigest()
-        if digest != c.target_base_hash:
-            stale.append(f"{c.event.path} (target moved: {c.target})")
+        detail = "target absent" if data is None else "target moved"
+        if c.event.path in linked_paths:
+            promoted.append(f"{c.event.path} ({detail}: {c.target})")
+        else:
+            stale.append(f"{c.event.path} ({detail}: {c.target})")
 
     by_target: dict[str, list[protocol_mailbox.LearningCandidateStatement]] = {}
     for c in live:
@@ -215,6 +244,8 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
             f"{sum(1 for c in candidates if c.supersedes)}/{len(candidates)}"
         ),
         "promotion_linkage_gaps": linkage_gaps,
+        "promoted": promoted,
+        "retired_superseded": [c.event.path for c in retired],
         "stale_accepted": stale,
         "contradicted_targets": contradictions,
         "index_state": index_state,
@@ -248,6 +279,10 @@ def main(argv: list[str] | None = None) -> int:
           f"  [docs/PROTOCOL-RULES-LOG.md]")
     print(f"  recorded outcomes: {metrics['outcome_rows']}"
           f"  [logs/learning/outcomes.jsonl]")
+    for item in metrics["promoted"]:
+        print(f"  promoted (target moved as authorized): {item}")
+    for path in metrics["retired_superseded"]:
+        print(f"  retired (superseded): {path}")
     for gap in metrics["promotion_linkage_gaps"]:
         print(f"  WARN accepted candidate not named by any verify-request: {gap}")
     for item in metrics["stale_accepted"]:
