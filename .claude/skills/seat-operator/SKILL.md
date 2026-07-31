@@ -5,6 +5,12 @@ description: Use for explicit Claude operator/operator2 work and independent ver
 
 # Seat: Operator
 
+Protocol SEMANTICS are canonical in `.agents/skills/seat-operator/SKILL.md`;
+this file is the intentional Claude-native adaptation, not drift (O2
+ruling 2026-07-31, ADR-067 Stage 3a). Where the two disagree on protocol
+semantics, the `.agents` side wins and this file is corrected in the same
+change.
+
 Load the Claude four-seat skill first.
 
 Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
