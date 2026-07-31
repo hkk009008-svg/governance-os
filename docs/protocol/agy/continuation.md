@@ -123,6 +123,21 @@ AGY cannot satisfy `high-risk-control` on its own, because
 `codex_protocol_model.models_are_independent` compares families rather than
 labels. Route those reviews to a seat on a different family.
 
+Headless review dispatch (measured 2026-07-31; accepted learning candidate
+`2c906ea580a9…`): `agy -p` in headless mode auto-denies every tool permission
+request — there is no scoped allow-rule, only a blanket skip flag that must
+not be used for review work. An AGY operator review therefore runs
+**tool-less**: the dispatcher packages the committed verify-request, the
+verbatim range diff (`git show`/`git diff` piped in the same pipeline that
+builds the prompt, never hand-edited), and any reader-side context into the
+prompt; the reviewer judges the diff as ground truth, lists every check that
+would need execution under an explicit "unanswerable without execution"
+heading instead of assuming it, and the published report discloses the
+tool-less constraint. Author evidence for previously-unanswerable items is
+supplied in later rounds as commands-plus-output, for the reviewer to accept
+or challenge. Measured working across a FAIL and a GO round on a
+high-risk-control range.
+
 State the model as the exact ID `agy models` lists, undecorated — the same
 string `coordination/bin/agy-seat --dry-run <seat>` prints as `AGY_MODEL` and
 passes to `--model`. `Author model:` and `Reviewer model:` are read by people
