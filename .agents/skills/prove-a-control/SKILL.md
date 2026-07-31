@@ -103,6 +103,25 @@ written *in the same commit*. Prefer exclusive creation (`mkdir()` without
 rather than mutating the checkout under review — this repo has concurrent
 sessions in it.
 
+## Answering findings
+
+Fix by subtraction converges; fix by addition reopens. Measured → FAIL one
+returned 4 findings, its fixes added mechanism (a parser, a gate row, a flag
+set), and FAIL two returned 6: each addition was fresh attack surface.
+Every converged line closed by deletion → the text heuristic removed with
+the check moved onto a call the launch already made, and unwitnessed trigger
+alternatives deleted rather than defended. Before repairing anything a
+finding names, ask what can be deleted instead, and say in the commit which
+it was.
+
+When your measurement disagrees with an independent reviewer's, re-measure
+narrowly — change one variable — before defending. Session score when this
+was written: reviewer measurement errors across nine reports, zero; author
+self-inflicted measurement errors, three (a stripped PATH resolving a python
+without `tomllib`, stale bytecode surviving a byte-exact restore, a count
+taken on the working tree instead of the committed range). The burden of
+proof starts on the author's harness.
+
 ## Before you say "verified"
 - [ ] Reversion run; the control failed for the right reason.
 - [ ] Evasion attempted; route found and closed, or absence stated.
