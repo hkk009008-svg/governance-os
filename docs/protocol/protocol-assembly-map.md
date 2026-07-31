@@ -46,6 +46,7 @@ flowchart TD
 | Cursor review command | `.cursor/skills/review-next/SKILL.md` | `/review-next` | The assigned Operator resolves committed work without copied prompts or event refs. |
 | Cursor app binding | `scripts/cursor_app_binding.py` | `~/.cursor/pipeline-app-seats.json` | One helper exclusively owns the user-local conversation/model registry. |
 | Cursor diagnostics + mailbox wrappers | `scripts/cursor_seat_launcher.py`, `coordination/bin/cursor-*` | `cursor-seat status`, `cursor-publish`, `cursor-consume` | The former launcher is read-only; mailbox wrappers delegate effects to fixed writers. |
+| Learning-plane contract | `docs/protocol/learning/contract.md` | Candidate schema, authority invariants I1–I7 | The learning lifecycle (ADR-067) is provider-neutral policy; provider adapters translate it, never fork it. |
 | Cursor session guardrails | `.cursor/hooks.json` and `.cursor/hooks/` | `.cursor/hooks/seat-policy` -> `scripts/cursor_hook_policy.py` | Hooks are fail-closed lifecycle/tool boundaries, not protocol prose or mailbox state. |
 | Target-repo start guard | `scripts/ledger_start_guard.py` | Enforced Pipeline-first ledger seat startup | Executable proof belongs in scripts, then docs/skills/prompts link to it. |
 | Start-session router | `AGENTS.md` | Codex start-session inhabitance block | The root file should route agents before task-specific docs are loaded. |
@@ -69,6 +70,7 @@ Use this quick routing check before adding or moving protocol material:
 
 ```text
 Universal rule?             -> docs/protocol/agents/
+Learning-plane rule?        -> docs/protocol/learning/contract.md
 Codex-only rule?            -> docs/protocol/codex/
 Target-repo Codex bridge?   -> docs/protocol/codex/ledger-cli-adoption.md
 Cursor protocol mapping?    -> docs/protocol/cursor/continuation.md

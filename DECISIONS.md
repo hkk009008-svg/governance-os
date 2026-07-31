@@ -1426,26 +1426,30 @@ verification-report 162, `memory-candidate` 0 (review-friction baseline
 per-pair `diff -q`, 2 skills `.agents`-only, 0 Claude-only;
 `logs/claims/ledger.jsonl` 1 row.
 
-**The Stage 3 experiment — PASSED.** A reduced-context read-only agent, given
-only a defer-a-confirmed-defect scenario and the worktree path, with
+**The Stage 3 experiment — reference-following PASSED at the
+doctrine-routing layer; harness-listing carried as a revert trigger.** Full
+record, including the exact stub bytes and the probe's read order:
+`docs/protocol/learning/experiment-2026-07-31-skill-discovery.md`. A
+reduced-context read-only agent, given only a defer-a-confirmed-defect
+scenario and the worktree path, with
 `.claude/skills/create-regression-pin/SKILL.md` temporarily replaced by a
-reference stub (frontmatter preserved; body = one pointer to the canonical
-`.agents` file plus the Claude-native deltas): the agent entered via the
-router, identified the stub as "a pointer, not the body," read the canonical
+reference stub, entered via the router, identified the stub as "a pointer,
+not the body," read the canonical
 `.agents/skills/create-regression-pin/SKILL.md`, and reported a procedure
-composing canonical-only content (all three traps, `--runxfail` non-vacuity,
-the infeasibility fallback) with stub-only deltas (`env -u GIT_INDEX_FILE`,
-`.venv/bin/python`). The original file was restored byte-identical (sha256
-`897530ae6cdd50499559f82821bf0eca0b376f22cc3ab8d5265aa3f151c45cb9` before and
-after). Limit stated honestly: this verifies
-doctrine-routed discovery and reference-following by a fresh agent, plus
-structural frontmatter equivalence; it does not re-launch a top-level harness
-session. Consequence per plan §5 Stage 3: skill distribution is **reference
-stubs** — no manifest, no materializer, no mechanical instruction-surface
-writer. Incidental finding for Stage 3a: the probe surfaced a real ownership
-tension between the skill's step 6 (seat updates the inventory row) and
-`wave-gate`'s coordinator-owned-inventory rule, on an inventory that
-currently has zero data rows.
+composing canonical-only content with stub-only deltas. The original file
+was restored byte-identical (sha256
+`897530ae6cdd50499559f82821bf0eca0b376f22cc3ab8d5265aa3f151c45cb9` before
+and after). The plan's full criterion — "the harness discovers and follows
+it" — is met only at the doctrine-routing layer: no top-level harness
+session was re-launched. Consequence per plan §5 Stage 3: skill
+distribution proceeds as **reference stubs** — no manifest, no
+materializer — with the residual risk bound to an explicit falsifier: if a
+live session routed to a stubbed skill fails to reach the canonical body,
+the stub decision reverts and plan §5 Stage 3b/3c reopens. Incidental
+finding for Stage 3a: the probe surfaced a real ownership tension between
+the skill's step 6 (seat updates the inventory row) and `wave-gate`'s
+coordinator-owned-inventory rule, on an inventory that currently has zero
+data rows.
 
 **Decision.** Build order 0 → 1 → 2 → 2b → 3 → 4 → 5 as specified in the
 plan: Stage 1 read-only episodic index; Stage 2 `learning-candidate` registry

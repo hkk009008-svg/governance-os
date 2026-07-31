@@ -125,7 +125,9 @@ concurrent implementers on shared files. Details:
 
 When a seat, mailbox, route, wave, handoff, continuation, or protocol decision
 is named, load `docs/protocol/claude/continuation.md` and the concrete
-`.claude/skills/seat-*` skill. Read mailbox bodies before decisions. Live seat
+`.claude/skills/seat-*` skill. When learning-plane work (episodic index,
+learning candidates, extraction, learning metrics, skill distribution) is
+named, load `docs/protocol/learning/contract.md` (ADR-067). Read mailbox bodies before decisions. Live seat
 cursors are per-seat state; coordinator has no cursor. Ordinary Git and pytest
 use `env -u GIT_INDEX_FILE`.
 
