@@ -94,9 +94,9 @@ entire mailbox corpus that the fixed writer force-adds past it
   episodic index must not ingest it — absolute paths, `~` expansions, and
   parent escapes are refused at the ingest boundary.
 - **Scoped episodic index** (workspace scope): derived, rebuildable,
-  local-only, gitignored (`coordination/learning/`), a projection with no
-  authority (alongside the git-common-dir ref-bus, presence heartbeats,
-  locks). Never committed.
+  local-only, a projection with no authority (alongside the git-common-dir
+  ref-bus, presence heartbeats, locks). Never committed; the
+  `coordination/learning/` ignore rule lands with Stage 1.
 
 ## 3. The candidate record
 
@@ -160,8 +160,8 @@ resolves in-tree.
   scope; drift-prone facts are rechecked against source before use.
 - **Sediment** (Hermes `background_review.py:181` "most sessions produce a
   skill update"; tool-loop counter `turn_finalizer.py:634`): evidence
-  triggers only; `test_no_trigger_no_candidate`; acceptance rate watched in
-  Stage 5 metrics.
+  triggers only; `test_no_trigger_no_candidate` (lands with Stage 4);
+  acceptance rate watched in Stage 5 metrics.
 - **Foreground bypass** (Hermes guards bind only the background path,
   `skill_manager_tool.py:310`): canonical writes go through review regardless
   of origin — the guard is at publication, not in the author.

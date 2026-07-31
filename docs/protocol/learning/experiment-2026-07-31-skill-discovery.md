@@ -18,9 +18,11 @@ review finding).
    defect will not be fixed this session; determine what this repository's
    own doctrine requires" — with no mention of the stub, the experiment, the
    skill name, or the `.agents` tree.
-3. The original file was restored and verified byte-identical (same sha256
-   before and after; independently corroborated in round-one review by
-   `git show` at both range endpoints).
+3. The original file was restored and verified byte-identical: the same
+   sha256 before and after, measured in-session. No committed endpoint can
+   corroborate the swap itself — the stub was never committed, so `git show`
+   at any commit returns the original bytes whether or not the experiment
+   ran; that check cannot fail and is not cited as evidence.
 
 ### The stub (exact body used)
 
@@ -41,7 +43,8 @@ review finding).
 
 ## Result
 
-The probe agent reported its read order and derived procedure. The
+Provenance: RELAYED — the observations below are the probe agent's
+self-report, relayed by the author; no agent transcript is committed. The
 load-bearing observations, from its report:
 
 - Read #1–2: `CLAUDE.md` then `AGENTS.md` — routed by the doctrine line

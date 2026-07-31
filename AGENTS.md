@@ -14,6 +14,7 @@ Provider entrypoints:
 - Cursor: `docs/protocol/cursor/continuation.md`, then `.cursor/rules/` and
   `docs/protocol/cursor/roles/`.
 - Cross-provider work: `docs/protocol/threeway/`.
+- Learning plane: `docs/protocol/learning/contract.md` (ADR-067).
 - Artifact ownership: `docs/protocol/protocol-assembly-map.md`.
 
 ## Codex applicability
