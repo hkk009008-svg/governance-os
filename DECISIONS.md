@@ -1396,3 +1396,72 @@ absence guards cover reintroduction on the Claude side, and the principle
 now lives in prose. Review of this amendment set follows the standing
 non-author operator rule; the coordinator holds no mailbox cursor and
 returns to observation after the wave lands.
+
+## ADR-067: Learning plane — contract adopted, staged build authorized (2026-07-31)
+
+**Status:** Accepted (user-directed: "proceed end to end" 2026-07-31, following
+the plan-default rulings recorded in
+`docs/superpowers/plans/2026-07-30-learning-plane-plan.md` §9 — O1/O3/O4/O5 to
+defaults, O2 open per pair)
+
+**Number assignment.** Re-grepped in this change per ADR-035:
+`git grep -n "ADR-067"` before this entry returned exactly one match, the
+plan's own reservation sentence
+(`docs/superpowers/plans/2026-07-30-learning-plane-plan.md:4`). This entry
+consumes the number.
+
+**Context.** The plan (committed `ca0fef9`, rulings `29db6aa`) specifies the
+learning lifecycle on the governance spine, built from the codex-side Hermes
+0.19.0 study, an eight-agent survey, and a three-skeptic adversarial pass (25
+findings folded). This entry adopts `docs/protocol/learning/contract.md` as
+the normative contract (copy of plan §2/§3/§4/§7) and records the Stage 0
+measurements the plan required at the bound commit.
+
+**Baselines** (measured at `29db6aa`, this entry's parent, in the same change
+that records them): 847 sent events
+(`git ls-tree -r HEAD --name-only coordination/mailbox/sent/ | grep -v .gitkeep | wc -l`);
+filename-suffix kind counts coordination 430, verify-request 186,
+verification-report 162, `memory-candidate` 0 (review-friction baseline
+162/186); 9/9 mirrored `.claude`↔`.agents` `SKILL.md` pairs differ by
+per-pair `diff -q`, 2 skills `.agents`-only, 0 Claude-only;
+`logs/claims/ledger.jsonl` 1 row.
+
+**The Stage 3 experiment — PASSED.** A reduced-context read-only agent, given
+only a defer-a-confirmed-defect scenario and the worktree path, with
+`.claude/skills/create-regression-pin/SKILL.md` temporarily replaced by a
+reference stub (frontmatter preserved; body = one pointer to the canonical
+`.agents` file plus the Claude-native deltas): the agent entered via the
+router, identified the stub as "a pointer, not the body," read the canonical
+`.agents/skills/create-regression-pin/SKILL.md`, and reported a procedure
+composing canonical-only content (all three traps, `--runxfail` non-vacuity,
+the infeasibility fallback) with stub-only deltas (`env -u GIT_INDEX_FILE`,
+`.venv/bin/python`). The original file was restored byte-identical (sha256
+`897530ae6cdd50499559f82821bf0eca0b376f22cc3ab8d5265aa3f151c45cb9` before and
+after). Limit stated honestly: this verifies
+doctrine-routed discovery and reference-following by a fresh agent, plus
+structural frontmatter equivalence; it does not re-launch a top-level harness
+session. Consequence per plan §5 Stage 3: skill distribution is **reference
+stubs** — no manifest, no materializer, no mechanical instruction-surface
+writer. Incidental finding for Stage 3a: the probe surfaced a real ownership
+tension between the skill's step 6 (seat updates the inventory row) and
+`wave-gate`'s coordinator-owned-inventory rule, on an inventory that
+currently has zero data rows.
+
+**Decision.** Build order 0 → 1 → 2 → 2b → 3 → 4 → 5 as specified in the
+plan: Stage 1 read-only episodic index; Stage 2 `learning-candidate` registry
+kind with read-side statement parsers, retiring `memory-candidate` in the
+same commit; Stage 2b writer-side promotion validation in
+`scripts/mailbox_writer.py` (high-risk-control, different-family operator),
+where the six refusals and the disposition-commit CAS bind; Stage 3 reference
+stubs plus per-pair reconciliation of the 9 drifted pairs (O2: genuinely
+divergent pairs go to the owner before their commit lands); Stage 4
+evidence-triggered extractor, drafts only (O4); Stage 5 read-only metrics
+with frozen packs, no embeddings (O5). The mailbox archive stays out (O3,
+plan §5 Stage 6).
+
+**Consequences.** Everything before Stage 2b is advisory and must say so
+where it describes refusals (contract I4). The I1 import test lands with
+Stage 2. The governance floor for `governance-rule` candidates remains
+operator risk-class judgment (contract I5). Any future revision of the
+contract travels as an ordinary reviewed change to
+`docs/protocol/learning/contract.md` naming this ADR.
