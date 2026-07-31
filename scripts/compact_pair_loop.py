@@ -255,18 +255,23 @@ def _object_exists(root: Path, commit: str, path: str) -> bool:
     finding reference needs: evidence committed on a branch invisible from the
     default one is still citable, and a fabricated commit is in no store at all.
     """
-    completed = subprocess.run(
-        ["/usr/bin/git", "--no-replace-objects", "cat-file", "-e", f"{commit}:{path}"],
-        cwd=root,
-        env={key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
-        capture_output=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["/usr/bin/git", "--no-replace-objects", "cat-file", "-e", f"{commit}:{path}"],
+            cwd=root,
+            env={key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        # A missing or unreadable cwd is "no such object", not a crash: the
+        # caller turns False into a clean CompactPairError refusal.
+        return False
     return completed.returncode == 0
 
 
 def _require_path_references_resolve(
-    root: Path, reviewed_root: Path, references: Sequence[str]
+    root: Path, references: Sequence[str]
 ) -> None:
     """Refuse to compose a `path@commit` reference whose object does not exist.
 
@@ -285,10 +290,14 @@ def _require_path_references_resolve(
     events nobody can now amend. New references are the ones an author can still
     get right, and this is where they are written.
 
-    Either root satisfies it. A cross-repository review may cite evidence from
-    the reviewed repository or from this one, and a fabricated commit resolves in
-    neither, so accepting both keeps the check free of false refusals without
-    weakening it.
+    The governance root is the ONLY store consulted. A finding reference is a
+    fixed-writer mailbox path of this repository, and the round-one
+    high-risk review showed why an either-root allowance is a laundering
+    route, not a convenience: the reviewed-repository field comes from the
+    candidate's own unvalidated bytes and `_reviewed_root` accepts any
+    existing local path, so an author-controlled repository could make a
+    fabricated reference "resolve". Cross-repository evidence travels as a
+    `sha256:` digest, which the next paragraph is honest about.
 
     A `sha256:` digest is not checked, because nothing here holds the bytes it
     digests. That is a real gap and the reason it stays a gap is worth stating:
@@ -301,10 +310,7 @@ def _require_path_references_resolve(
         path, _, commit = reference.rpartition("@")
         if not path or not commit:
             continue
-        if any(
-            _object_exists(candidate, commit, path)
-            for candidate in dict.fromkeys((root, reviewed_root))
-        ):
+        if _object_exists(root, commit, path):
             continue
         raise CompactPairError(
             f"finding ref names an object that does not exist: {reference}. "
@@ -565,11 +571,7 @@ def parse_verify_request_candidate(
     # way; one caught only by post-compose hand verification). Candidates
     # only: committed events use the committed parsers, which stay untouched
     # so the historical gates keep judging frozen artifacts as frozen.
-    _require_path_references_resolve(
-        root,
-        _reviewed_root(root, request.reviewed_repository),
-        request.finding_refs,
-    )
+    _require_path_references_resolve(root, request.finding_refs)
     return request
 
 
@@ -695,7 +697,7 @@ def compose_request(
         raise CompactPairError("finding refs must be unique")
 
     reviewed_root = _reviewed_root(root.resolve(), reviewed_repository)
-    _require_path_references_resolve(root.resolve(), reviewed_root, references)
+    _require_path_references_resolve(root.resolve(), references)
     base, head = _resolve_range(reviewed_root, base_rev, head_rev)
 
     lines = ["Event type: verify-request"]
@@ -829,9 +831,9 @@ def parse_verification_report_candidate(
     # a report's ref targets are mailbox events of this repository. The
     # report's own `Verification request:` binding ref is already resolved
     # by validate_report on the publication path.
-    _require_path_references_resolve(root, root, report.finding_refs)
+    _require_path_references_resolve(root, report.finding_refs)
     _require_path_references_resolve(
-        root, root, tuple(ref for ref, _ in report.finding_dispositions)
+        root, tuple(ref for ref, _ in report.finding_dispositions)
     )
     return report
 

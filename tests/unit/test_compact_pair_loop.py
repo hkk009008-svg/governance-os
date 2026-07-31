@@ -1674,6 +1674,51 @@ def test_report_candidate_refuses_fabricated_refs_in_both_sections(
     assert report.finding_refs == (minted,)
 
 
+def test_reviewed_repository_cannot_launder_a_finding_ref(tmp_path: Path) -> None:
+    """Round-one high-risk FAIL, pinned: the either-root policy is deleted.
+
+    The reviewed-repository field comes from the candidate's own unvalidated
+    bytes, so a reference resolving ONLY in an author-chosen repository is
+    fabricated provenance from the governance root's point of view and must
+    refuse exactly like any other nonexistent object.
+    """
+
+    root, base, head, _trigger = _repo(tmp_path, mint_finding_ref=True)
+    laundry = tmp_path / "laundry"
+    laundry.mkdir()
+    _git(laundry, "init", "-q")
+    _git(laundry, "config", "user.name", "Laundry")
+    _git(laundry, "config", "user.email", "laundry@example.invalid")
+    laundered_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-18T07-07-07Z-operator-to-director-findings.md"
+    )
+    laundered = f"{laundered_path}@{_commit_an_event(laundry, laundered_path)}"
+    # The object genuinely exists in the laundry repository...
+    assert pair._object_exists(
+        laundry, laundered.rsplit("@", 1)[1], laundered_path
+    )
+    candidate = root / "coordination/mailbox/sent/.request-candidate.tmp"
+    candidate.write_text(
+        _request_text(
+            base,
+            head,
+            reviewed_repository=str(laundry),
+            finding_refs=(laundered,),
+        ),
+        encoding="utf-8",
+    )
+    # ...and the governance root still refuses it.
+    with pytest.raises(pair.CompactPairError, match="does not exist"):
+        pair.parse_verify_request_candidate(root, candidate, REQUEST_PATH)
+
+
+def test_object_exists_treats_a_missing_root_as_no_object(tmp_path: Path) -> None:
+    """An unreadable cwd is a refusal, never an unhandled OSError."""
+
+    assert pair._object_exists(tmp_path / "absent", "e" * 40, "x.md") is False
+
+
 def test_compose_refuses_a_self_addressed_routing_the_writer_would_reject(
     tmp_path: Path, repo_root: Path
 ) -> None:
