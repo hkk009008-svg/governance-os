@@ -90,6 +90,18 @@ site, restore the defect, run the divergent input, feed the parser the case
 your pattern assumes away. Confirmations by the claim's own author agreeing
 with the claim's own artifact count zero — same source, no information.
 
+## A hedge you wrote is an unrecorded ASSUMED row
+
+"Judge whether this is circular", written in the author's own review brief,
+shipped beside the circular assertion it doubted; the finding came back MAJOR
+one round later. A doubt you can write down is a premise you already know is
+unverified — writing it is the timestamp, not the discharge. Before submitting
+anything, sweep your own outgoing text (brief, outcome, commit message) for
+hedge vocabulary — "possibly", "may be", "I suspect", "judge whether", "should
+probably" — and give each the treatment any premise gets: resolve it with an
+instrument, or record it as ASSUMED so the blank cell is visible instead of
+shipped.
+
 ## Division of labour
 - `probe-a-claim` — the *belief*: what must be true, who checked, who disagreed.
 - `prove-a-control` — the *mechanism*: reversion and evasion controls on guards.
