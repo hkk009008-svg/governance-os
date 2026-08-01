@@ -11,7 +11,7 @@ Provider entrypoints:
   `.codex/agents/`.
 - AGY (Antigravity): `docs/protocol/agy/continuation.md`, then
   `.agents/skills/antigravity-harness/` and `.agy/agents/`.
-  *Automated Session Entry Posture*: AGY automatically begins every session in Pipeline as Harness Root / Coordinator, running `python scripts/status.py snapshot coordinator`, checking `git status --short --branch`, and orchestrating 4-seat tasks via native subagents (`define_subagent` / `invoke_subagent`).
+  *Automated Session Entry Protocol*: AGY automatically executes the full 4-step readiness sequence on its very first turn in every session (run `python scripts/status.py snapshot coordinator`, check `git status --short --branch` and `git log --oneline -5`, run `python scripts/ci_smoke.py --fast`, and register `pipeline_director` & `pipeline_operator` via `define_subagent`) so the 4-seat mesh is 100% armed and ready.
 - Cursor: `docs/protocol/cursor/continuation.md`, then `.cursor/rules/` and
   `docs/protocol/cursor/roles/`.
 - Cross-provider work: `docs/protocol/threeway/`.

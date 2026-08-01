@@ -10,7 +10,11 @@ This skill is the Antigravity-specific runtime harness for Pipeline. AGY operate
 ## Operating Posture & Seating Roles
 
 - **Direct Autonomous Mode (Default)**: AGY operates natively in direct autonomous mode by default. Seat launchers (`coordination/bin/agy-seat <seat>`) execute directly without requiring mandatory advisory posture flags.
-- **Automated Session Entry Posture (Default)**: Upon initiating ANY new AGY chat session in Pipeline, AGY automatically assumes the **Pipeline Coordinator & Harness Root** posture without requiring manual user input. It runs `python scripts/status.py snapshot coordinator`, checks `git status --short --branch`, and orchestrates 4-seat tasks (`director`, `operator`) via native subagents (`define_subagent` / `invoke_subagent`).
+- **Automated Session Entry Protocol (Mandatory First Turn)**: Upon initiating ANY new AGY chat session in Pipeline, AGY MUST automatically execute the complete 4-step initialization sequence on its very first turn before taking user directives:
+  1. **Status Snapshot**: Run `python scripts/status.py snapshot coordinator` to inspect unhandled events & active work mode.
+  2. **Git Hygiene Check**: Run `git status --short --branch` and `git log --oneline -5` to inspect worktree status & commit history.
+  3. **Fast Preflight Smoke Check**: Run `python scripts/ci_smoke.py --fast` to verify governance invariants.
+  4. **Register Seat Mesh**: Register `pipeline_director` and `pipeline_operator` using `define_subagent` so the 4-seat subagent mesh is 100% armed and ready.
 - **Seated Role Occupancy**: AGY natively occupies Pipeline seats (`director`, `operator`, `coordinator`, `director2`, `operator2`) under unified operating doctrine.
 
 ## Operating Doctrine (Layer-2) Bindings & Native Mesh Rules
