@@ -11,6 +11,7 @@ Provider entrypoints:
   `.codex/agents/`.
 - AGY (Antigravity): `docs/protocol/agy/continuation.md`, then
   `.agents/skills/antigravity-harness/` and `.agy/agents/`.
+  *Automated Session Entry Posture*: AGY automatically begins every session in Pipeline as Harness Root / Coordinator, running `python scripts/status.py snapshot coordinator`, checking `git status --short --branch`, and orchestrating 4-seat tasks via native subagents (`define_subagent` / `invoke_subagent`).
 - Cursor: `docs/protocol/cursor/continuation.md`, then `.cursor/rules/` and
   `docs/protocol/cursor/roles/`.
 - Cross-provider work: `docs/protocol/threeway/`.
