@@ -69,9 +69,47 @@ def _repository_state(root: Path) -> tuple[Path, str, bytes, str]:
         raise RuntimeError("HEAD is not one full lowercase commit SHA")
     dirty = _git(root, "status", "--porcelain", "--untracked-files=normal")
     reflog = _git(root, "reflog", "show", "-32", "--format=%H%x00%gs", "HEAD")
+    if not reflog:
+        raise RuntimeError("HEAD reflog signal is unavailable")
     if len(reflog) > MAX_REFLOG_SIGNAL_BYTES:
         raise RuntimeError("bounded HEAD reflog identity signal is too large")
+    latest_reflog_head = reflog.split(b"\n", 1)[0].split(b"\0", 1)[0]
+    if latest_reflog_head != head.encode("ascii"):
+        raise RuntimeError("HEAD reflog signal does not match current HEAD")
     return top, head, dirty, hashlib.sha256(reflog).hexdigest()
+
+
+def _validate_snapshot_repository_binding(
+    root: Path,
+    snapshot: dict,
+    pinned_head: str,
+) -> None:
+    git_observation = snapshot.get("git")
+    if not isinstance(git_observation, dict):
+        raise RuntimeError("snapshot Git observation is absent")
+    dirty = git_observation.get("dirty")
+    if type(dirty) is not int or dirty != 0:
+        raise RuntimeError("snapshot Git dirty observation is not typed integer zero")
+    sha = git_observation.get("sha")
+    if (
+        not isinstance(sha, str)
+        or not 4 <= len(sha) <= 40
+        or any(character not in "0123456789abcdef" for character in sha)
+    ):
+        raise RuntimeError("snapshot Git SHA is not a lowercase commit prefix")
+    if not pinned_head.startswith(sha):
+        raise RuntimeError("snapshot Git SHA does not prefix benchmark pinned HEAD")
+    try:
+        resolved = _git(root, "rev-parse", "--verify", f"{sha}^{{commit}}")
+    except RuntimeError as exc:
+        raise RuntimeError("snapshot Git SHA is not an unambiguous commit prefix") from exc
+    if resolved.decode("ascii", errors="strict").strip() != pinned_head:
+        raise RuntimeError("snapshot Git SHA does not resolve to benchmark pinned HEAD")
+    projection = snapshot.get("projection")
+    if not isinstance(projection, dict) or projection.get("head") != pinned_head:
+        raise RuntimeError(
+            "snapshot projection HEAD does not match benchmark pinned HEAD"
+        )
 
 
 def _nearest_rank(values: list[float], probability: float) -> float:
@@ -92,7 +130,7 @@ def benchmark(
     runs: int = 10,
     seat: str = "coordinator",
 ) -> dict:
-    """Measure N direct snapshots from one clean, unchanged committed state."""
+    """Measure direct snapshots that agree at explicit Git checkpoints."""
 
     if runs < 2:
         raise ValueError("runs must be at least 2 for a non-vacuous stability observation")
@@ -143,11 +181,7 @@ def benchmark(
             raise RuntimeError(
                 "repository identity or cleanliness changed during benchmark run"
             )
-        projection = snapshot.get("projection")
-        if not isinstance(projection, dict) or projection.get("head") != head:
-            raise RuntimeError(
-                "snapshot projection HEAD does not match benchmark pinned HEAD"
-            )
+        _validate_snapshot_repository_binding(root, snapshot, head)
         elapsed_values.append(elapsed)
         process_counts.append(len(calls))
         git_process_counts.append(sum(_is_git_process(call) for call in calls))
@@ -165,7 +199,17 @@ def benchmark(
         "repository": {
             "root": str(root),
             "head": head,
-            "dirty": False,
+            "observed_clean_at_all_checkpoints": True,
+            "observation_boundaries": [
+                "setup and each pre-run: full HEAD, porcelain status, HEAD reflog signal",
+                "snapshot collect_git: unambiguous SHA prefix and typed integer dirty count",
+                "snapshot committed projection: exact full HEAD",
+                "each post-run and final: full HEAD, porcelain status, HEAD reflog signal",
+            ],
+            "limitation": (
+                "same-user mutation introduced and restored wholly between every "
+                "consumed checkpoint is not detectable"
+            ),
         },
         "runtime": {
             "python_implementation": platform.python_implementation(),
