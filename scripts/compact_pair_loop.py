@@ -505,6 +505,27 @@ def parse_verify_request_structure(
     )
 
 
+def parse_verify_request_committed_bytes(
+    root: Path,
+    request_path: str | os.PathLike[str],
+    trigger_commit: str,
+    raw: bytes,
+) -> VerifyRequest:
+    """Parse bytes from a caller's committed mailbox projection."""
+
+    root = root.resolve()
+    path = _repo_path(root, request_path)
+    if SHA_RE.fullmatch(trigger_commit) is None:
+        raise CompactPairError("request trigger must be one full lowercase commit SHA")
+    return _parse_verify_request_bytes(
+        root,
+        path,
+        raw,
+        trigger_commit=trigger_commit,
+        allow_frozen_legacy=True,
+    )
+
+
 def parse_verify_request(
     root: Path, request_path: str | os.PathLike[str], trigger_commit: str
 ) -> VerifyRequest:
@@ -812,6 +833,18 @@ def parse_verification_report(
     return _parse_verification_report_bytes(root, path, _read_regular(root, path))
 
 
+def parse_verification_report_committed_bytes(
+    root: Path,
+    report_path: str | os.PathLike[str],
+    raw: bytes,
+) -> VerificationReport:
+    """Parse bytes from a caller's committed mailbox projection."""
+
+    root = root.resolve()
+    path = _repo_path(root, report_path)
+    return _parse_verification_report_bytes(root, path, raw)
+
+
 def parse_verification_report_candidate(
     root: Path,
     candidate_path: str | os.PathLike[str],
@@ -904,9 +937,25 @@ def validate_report_structure(root: Path, report: VerificationReport) -> list[st
         )
     except CompactPairError as exc:
         return [f"request binding invalid: {exc}"]
-    return _report_structure_violations(report, request) + _supersedes_violations(
-        root, report
-    )
+    return validate_report_structure_against_request(root, report, request)
+
+
+def validate_report_structure_against_request(
+    root: Path,
+    report: VerificationReport,
+    request: VerifyRequest,
+) -> list[str]:
+    """Validate a report against an already parsed exact request binding."""
+
+    violations: list[str] = []
+    if (
+        report.request_path != request.path
+        or report.request_commit != request.trigger_commit
+    ):
+        violations.append("report Verification request does not match indexed request")
+    violations += _report_structure_violations(report, request)
+    violations += _supersedes_violations(root, report)
+    return violations
 
 
 def validate_report(root: Path, report: VerificationReport) -> list[str]:

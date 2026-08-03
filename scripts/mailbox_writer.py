@@ -105,13 +105,22 @@ def validate_event_envelope(
     step, while new candidates use :func:`validate_event_candidate`.
     """
 
+    return validate_event_envelope_bytes(root, candidate.read_bytes(), relative)
+
+
+def validate_event_envelope_bytes(
+    root: Path,
+    raw: bytes,
+    relative: str,
+) -> re.Match[str]:
+    """Validate canonical event bytes without materializing a scratch file."""
+
     match = _EVENT_RE.fullmatch(Path(relative).name)
     if (
         match is None
         or Path(relative).parent.as_posix() != "coordination/mailbox/sent"
     ):
         raise MailboxWriterError("send-event candidate path is not canonical")
-    raw = candidate.read_bytes()
     if len(raw) > compact_pair_loop.MAX_EVENT_BYTES or b"\x00" in raw:
         raise MailboxWriterError("send-event candidate is not one bounded text event")
     try:

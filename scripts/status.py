@@ -549,16 +549,26 @@ def collect_orientation_snapshot(
     # recursive at import time.
     import check_coordination  # type: ignore
 
-    requests = check_coordination.inspect_current_verify_requests(repo_root)
+    review_state = check_coordination.inspect_verify_review_state(repo_root)
+    requests = list(review_state.pending)
+    failed_reviews = list(review_state.failed)
     if seat in {"operator", "operator2"}:
         requests = [
             request for request in requests
             if request.assigned_operator == seat
         ]
+        failed_reviews = [
+            failed for failed in failed_reviews
+            if failed.assigned_operator == seat
+        ]
     current = max(requests, key=lambda request: request.path, default=None)
+    failed = max(
+        failed_reviews, key=lambda review: review.report_path, default=None
+    )
     issues = check_coordination.run(
         repo_root / "coordination",
         docs_root=repo_root / "docs",
+        review_state=review_state,
     )
     fatals = [issue for issue in issues if issue.severity == "FATAL"]
     advisories = [issue for issue in issues if issue.severity == "ADVISORY"]
@@ -569,11 +579,22 @@ def collect_orientation_snapshot(
             f"invalid current request for {current.assigned_operator}: "
             f"{current.problem}"
         )
+    elif failed is not None:
+        blocker = (
+            f"failed review for {failed.assigned_operator}: "
+            f"{failed.report_path}@{failed.report_commit}"
+        )
     elif fatals:
         blocker = f"{fatals[0].kind}: {fatals[0].message}"
 
     if blocker is not None:
-        next_action = "repair the blocker before implementation or review"
+        if failed is not None:
+            next_action = (
+                f"remediate failed review for {failed.request_path}@"
+                f"{failed.request_commit}"
+            )
+        else:
+            next_action = "repair the blocker before implementation or review"
     elif current is not None:
         next_action = (
             f"{current.assigned_operator} reviews the exact committed request"
@@ -591,6 +612,15 @@ def collect_orientation_snapshot(
             "grandfathered": current.grandfathered,
             "problem": current.problem,
         }
+    failed_data = None
+    if failed is not None:
+        failed_data = {
+            "request_path": failed.request_path,
+            "request_commit": failed.request_commit,
+            "report_path": failed.report_path,
+            "report_commit": failed.report_commit,
+            "assigned_operator": failed.assigned_operator,
+        }
     gate_status = "FAIL" if fatals else ("WARN" if advisories else "PASS")
     return {
         "generated_at": now,
@@ -601,6 +631,7 @@ def collect_orientation_snapshot(
         },
         "unread": unread,
         "current_request": current_data,
+        "failed_review": failed_data,
         "gate": {
             "status": gate_status,
             "fatal": len(fatals),
@@ -634,6 +665,12 @@ def render_orientation_snapshot(snapshot: dict) -> str:
         lines.append(
             f"Request: {current['path']}@{commit} "
             f"assigned={current['assigned_operator']} {state}"
+        )
+    failed = snapshot.get("failed_review")
+    if failed is not None:
+        lines.append(
+            f"Failed review: {failed['report_path']}@{failed['report_commit']} "
+            f"request={failed['request_path']}@{failed['request_commit']}"
         )
     gate = snapshot["gate"]
     lines.append(
