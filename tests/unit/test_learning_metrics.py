@@ -316,3 +316,112 @@ def test_reporter_is_read_only(tmp_path: Path) -> None:
     learning_metrics.collect_metrics(root)
     after = {p: p.stat().st_mtime_ns for p in root.rglob("*") if p.is_file()}
     assert before == after, "the reporter must not write or touch anything"
+
+
+def test_malformed_learning_events_remain_visible_in_metrics(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    sent = root / "coordination/mailbox/sent"
+    sent.mkdir(parents=True)
+    subprocess.run(["/usr/bin/git", "-C", str(root), "init", "-q"], check=True)
+    candidate = "2026-08-03T01-00-00Z-operator-to-director-learning-candidate.md"
+    decision = "2026-08-03T01-01-00Z-director-to-all-decision.md"
+    (sent / candidate).write_text(
+        _event_text(
+            "operator",
+            "director",
+            "2026-08-03T01-00-00Z",
+            "Candidate ID: malformed",
+        ),
+        encoding="utf-8",
+    )
+    phantom = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T00-00-00Z-operator-to-director-learning-candidate.md@"
+        + "e" * 40
+    )
+    (sent / decision).write_text(
+        _event_text(
+            "director",
+            "all",
+            "2026-08-03T01-01-00Z",
+            f"Candidate: {phantom}\nDisposition: hired",
+        ),
+        encoding="utf-8",
+    )
+    subprocess.run(["/usr/bin/git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "/usr/bin/git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Metrics Test",
+            "-c",
+            "user.email=metrics@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "malformed learning events",
+        ],
+        check=True,
+    )
+
+    metrics = learning_metrics.collect_metrics(root)
+
+    assert metrics["candidate_events"] == {
+        "seen": 1,
+        "valid": 0,
+        "malformed": 1,
+    }
+    assert metrics["disposition_events"] == {
+        "seen": 1,
+        "valid": 0,
+        "malformed": 1,
+    }
+    assert metrics["candidate_event_errors"][0]["path"].endswith(candidate)
+    assert "Candidate ID" in metrics["candidate_event_errors"][0]["error"]
+    assert metrics["disposition_event_errors"][0]["path"].endswith(decision)
+    assert "Disposition" in metrics["disposition_event_errors"][0]["error"]
+
+
+def test_non_utf8_machine_disposition_is_recorded_not_crashed(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    sent = root / "coordination/mailbox/sent"
+    sent.mkdir(parents=True)
+    subprocess.run(["/usr/bin/git", "-C", str(root), "init", "-q"], check=True)
+    path = "2026-08-03T02-00-00Z-director-to-all-decision.md"
+    phantom = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T00-00-00Z-operator-to-director-learning-candidate.md@"
+        + "e" * 40
+    )
+    raw = _event_text(
+        "director",
+        "all",
+        "2026-08-03T02-00-00Z",
+        f"Candidate: {phantom}\nDisposition: accepted",
+    ).encode("utf-8") + b"\xff\n"
+    (sent / path).write_bytes(raw)
+    subprocess.run(["/usr/bin/git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "/usr/bin/git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Metrics Test",
+            "-c",
+            "user.email=metrics@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "non-UTF-8 disposition",
+        ],
+        check=True,
+    )
+
+    metrics = learning_metrics.collect_metrics(root)
+
+    assert metrics["disposition_events"] == {"seen": 1, "valid": 0, "malformed": 1}
+    assert metrics["disposition_event_errors"][0]["path"].endswith(path)
+    assert "readable" in metrics["disposition_event_errors"][0]["error"]
