@@ -147,15 +147,49 @@ def work_profile_for(work_mode: str) -> WorkModeProfile:
 # it is. `codex-gpt-5.6-terra` and `gpt-5.6-terra` are one model behind two
 # labels; independence must not be satisfiable by the prefix alone.
 MODEL_HARNESS_PREFIXES = ("codex-", "antigravity-", "cursor-", "agy-", "claude-code-")
-MODEL_FAMILY_ALIASES = {
-    "chatgpt": "gpt",
+MODEL_PROVIDER_FAMILIES = {
+    "anthropic-": "claude",
+    "openai-": "gpt",
+    "google-": "gemini",
+    "xai-": "grok",
+}
+MODEL_ID_REGISTRY = {
+    "claude-fable-5": "claude",
+    "claude-opus-5": "claude",
+    "claude-sonnet-5": "claude",
+    "claude-sonnet-4-6": "claude",
+    "claude-opus-4-6-thinking": "claude",
+    "gpt-5": "gpt",
+    "gpt-5-codex": "gpt",
+    "gpt-5.6-sol": "gpt",
+    "gpt-5.6-terra": "gpt",
+    "chatgpt-4o": "gpt",
     "o1": "gpt",
     "o3": "gpt",
+    "o3-mini": "gpt",
     "o4": "gpt",
+    "gpt-oss-120b": "gpt",
+    "gpt-oss-120b-medium": "gpt",
+    "gemini-3.6": "gemini",
+    "gemini-3.6-flash": "gemini",
+    "gemini-3.6-flash-high": "gemini",
+    "gemini-3.6-flash-medium": "gemini",
+    "gemini-3.6-flash-low": "gemini",
+    "gemini-3.5-flash-high": "gemini",
+    "gemini-3.5-flash-medium": "gemini",
+    "gemini-3.5-flash-low": "gemini",
+    "gemini-3.1-pro-high": "gemini",
+    "gemini-3.1-pro-low": "gemini",
+    "grok-4": "grok",
+    "grok-4.5": "grok",
+}
+MODEL_DISPLAY_ALIASES = {
+    "GPT-5 Codex": "gpt-5-codex",
+    "Gemini 3.1 Pro (High)": "gemini-3.1-pro-high",
 }
 
 
-def model_family(model_id: str) -> str:
+def model_family(model_id: str) -> str | None:
     """Collapse one system-visible model ID to its provider family.
 
     Independence is a property of the underlying model, not of the label a
@@ -164,26 +198,46 @@ def model_family(model_id: str) -> str:
     inequality accepts them. This normalizer exists so the acceptance rule can
     ask the question it actually means.
 
-    Unknown or malformed identifiers collapse toward *more* collisions, never
-    fewer, so an unrecognized label cannot buy independence it has not earned.
+    Only the closed model-ID registry is recognized. Unknown or malformed
+    labels return ``None`` so they cannot buy independence from any other
+    label; adding a future model is an explicit policy update.
     """
-    token = model_id.strip().casefold().replace("_", "-").replace(" ", "-")
-    changed = True
-    while changed:
-        changed = False
+    if not model_id or model_id != model_id.strip():
+        return None
+    token = MODEL_DISPLAY_ALIASES.get(model_id, model_id.casefold())
+    while True:
+        original = token
         for prefix in MODEL_HARNESS_PREFIXES:
             if token.startswith(prefix) and len(token) > len(prefix):
                 token = token[len(prefix) :]
-                changed = True
-    head = token.split("-", 1)[0].strip()
-    if not head:
-        return token
-    return MODEL_FAMILY_ALIASES.get(head, head)
+                break
+        if token == original:
+            break
+
+    provider_family = None
+    for prefix, family in MODEL_PROVIDER_FAMILIES.items():
+        if token.startswith(prefix) and len(token) > len(prefix):
+            provider_family = family
+            token = token[len(prefix) :]
+            break
+
+    family = MODEL_ID_REGISTRY.get(token)
+    if family is None:
+        return None
+    if provider_family is not None and provider_family != family:
+        return None
+    return family
 
 
 def models_are_independent(author_model: str, reviewer_model: str) -> bool:
     """Return whether two system-visible model IDs are different families."""
-    return model_family(author_model) != model_family(reviewer_model)
+    author_family = model_family(author_model)
+    reviewer_family = model_family(reviewer_model)
+    return (
+        author_family is not None
+        and reviewer_family is not None
+        and author_family != reviewer_family
+    )
 
 
 SEATS = protocol_mailbox.SEATS

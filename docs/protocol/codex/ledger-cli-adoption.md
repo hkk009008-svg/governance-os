@@ -1,18 +1,19 @@
 # Evidence-ledger bridge for Codex
 
 Use this bridge only when a user or parent task routes work from Pipeline to
-`/Users/hyungkoookkim/evidence-ledger`.
+the registered `evidence-ledger` target.
 
 Pipeline remains the Codex four-seat governance kernel. Evidence-ledger remains
 the product repository and owns product-local truth. Do not start ledger work
-from `/Users/hyungkoookkim/Content`.
+from the user Content checkout.
 
 ## Start
 
 Use one compact Pipeline snapshot, then the ordinary target guard:
 
 ```bash
-cd /Users/hyungkoookkim/Pipeline
+PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
+cd "$PIPELINE_ROOT"
 python scripts/status.py snapshot <seat>
 python scripts/ledger_start_guard.py --seat <seat> --wave 2
 ```
@@ -62,8 +63,9 @@ git -C /absolute/route/worktree log --oneline -5
 Otherwise inspect the registered target checkout:
 
 ```bash
-git -C /Users/hyungkoookkim/evidence-ledger status --short --branch
-git -C /Users/hyungkoookkim/evidence-ledger log --oneline -5
+TARGET_ROOT="$(python scripts/target_binding.py --target evidence-ledger --print-path)"
+git -C "$TARGET_ROOT" status --short --branch
+git -C "$TARGET_ROOT" log --oneline -5
 ```
 
 Preserve unrelated dirty work and use explicit pathspecs for separately

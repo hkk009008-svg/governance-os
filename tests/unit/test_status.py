@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+import check_coordination as cc
 import status
 
 
@@ -236,6 +237,111 @@ def test_collect_mailbox_surfaces_calendar_invalid_cursor(
 
     assert data["mailbox_operator_unread"].startswith("(unavailable:")
     assert data["mailbox_operator_transport"] == "incoherent"
+
+
+def _orientation_mailbox() -> dict[str, object]:
+    data: dict[str, object] = {}
+    for seat in status._CURSOR_SEATS:
+        data.update({
+            f"mailbox_{seat}_cursor": "0",
+            f"mailbox_{seat}_unread": 0,
+            f"mailbox_{seat}_source": "mailbox-fallback",
+            f"mailbox_{seat}_transport": "absent",
+            f"mailbox_{seat}_detail": "test fixture",
+        })
+    return data
+
+
+def test_repository_global_failed_review_forces_seat_snapshot_gate_fail(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    failed = cc.FailedVerifyRequest(
+        request_path="coordination/mailbox/sent/request.md",
+        request_commit="a" * 40,
+        report_path="coordination/mailbox/sent/report.md",
+        report_commit="b" * 40,
+        assigned_operator="operator2",
+    )
+    review_state = cc.VerifyReviewState(pending=(), failed=(failed,))
+    monkeypatch.setattr(
+        status,
+        "collect_git",
+        lambda _root: {"git_sha": "abc1234", "git_branch": "test", "git_dirty": 0},
+    )
+    monkeypatch.setattr(status, "collect_mailbox", lambda _root: _orientation_mailbox())
+    monkeypatch.setattr(
+        cc, "committed_mailbox_projection", lambda _root: (None, "fixture")
+    )
+    monkeypatch.setattr(
+        cc,
+        "inspect_verify_review_state",
+        lambda _root, **_kwargs: review_state,
+    )
+    monkeypatch.setattr(
+        cc,
+        "run",
+        lambda *_args, **_kwargs: [
+            cc.CoordIssue("report.md", "failed_verify_review", "ADVISORY", "failed")
+        ],
+    )
+
+    snapshot = status.collect_orientation_snapshot(tmp_path, "operator")
+
+    assert snapshot["gate"] == {
+        "status": "FAIL",
+        "fatal": 0,
+        "advisory": 1,
+        "failed_review": 1,
+    }
+    assert snapshot["failed_review"]["report_commit"] == "b" * 40
+    assert snapshot["failed_review"]["assigned_operator"] == "operator2"
+
+
+def test_structural_fatal_outranks_failed_review_without_dropping_failure_data(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    failed = cc.FailedVerifyRequest(
+        request_path="coordination/mailbox/sent/request.md",
+        request_commit="a" * 40,
+        report_path="coordination/mailbox/sent/report.md",
+        report_commit="b" * 40,
+        assigned_operator="operator",
+    )
+    review_state = cc.VerifyReviewState(pending=(), failed=(failed,))
+    monkeypatch.setattr(
+        status,
+        "collect_git",
+        lambda _root: {"git_sha": "abc1234", "git_branch": "test", "git_dirty": 0},
+    )
+    monkeypatch.setattr(status, "collect_mailbox", lambda _root: _orientation_mailbox())
+    monkeypatch.setattr(
+        cc, "committed_mailbox_projection", lambda _root: (None, "fixture")
+    )
+    monkeypatch.setattr(
+        cc,
+        "inspect_verify_review_state",
+        lambda _root, **_kwargs: review_state,
+    )
+    monkeypatch.setattr(
+        cc,
+        "run",
+        lambda *_args, **_kwargs: [
+            cc.CoordIssue("kinds.txt", "unknown_kind", "FATAL", "structural break"),
+            cc.CoordIssue("report.md", "failed_verify_review", "ADVISORY", "failed"),
+        ],
+    )
+
+    snapshot = status.collect_orientation_snapshot(tmp_path, "operator")
+
+    assert snapshot["blocker"] == "unknown_kind: structural break"
+    assert snapshot["next_action"] == "repair the blocker before implementation or review"
+    assert snapshot["failed_review"]["report_commit"] == "b" * 40
+    assert snapshot["gate"] == {
+        "status": "FAIL",
+        "fatal": 1,
+        "advisory": 1,
+        "failed_review": 1,
+    }
 
 
 def test_compact_orientation_render_is_bounded_and_names_authority_source() -> None:

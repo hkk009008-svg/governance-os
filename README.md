@@ -14,7 +14,8 @@ keeps the shared protocol machinery honest and executable.
 Activate a Python environment satisfying `requirements-dev.txt`, then:
 
 ```bash
-cd /Users/hyungkoookkim/Pipeline
+PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
+cd "$PIPELINE_ROOT"
 python scripts/status.py snapshot
 ```
 

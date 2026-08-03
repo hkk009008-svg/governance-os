@@ -181,23 +181,39 @@ def forbidden_roots(root: Path | str | None = None) -> tuple[Path, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Validate the governance.toml target-binding registry (read-only).",
+        description="Inspect the governance.toml target-binding registry (read-only).",
     )
     parser.add_argument("--root", default=str(_REPO_ROOT))
     parser.add_argument(
+        "--target",
+        help="registered target name (default: env override, then registry default)",
+    )
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument(
         "--check",
         action="store_true",
-        help="validate the registry (the default and only action)",
+        help="validate and describe the registry (default)",
+    )
+    action.add_argument(
+        "--print-path",
+        action="store_true",
+        help="print only the selected target's resolved checkout path",
     )
     args = parser.parse_args(argv)
+    if args.target and not args.print_path:
+        parser.error("--target requires --print-path")
 
     try:
+        if args.print_path:
+            target = resolve_target(args.root, name=args.target)
+            print(target.path.as_posix())
+            return 0
         config = load_config(args.root)
         targets = list_targets(args.root)
         roots = forbidden_roots(args.root)
     except BindingError as exc:
-        print("TARGET BINDING — FAIL")
-        print(f"- {exc}")
+        print("TARGET BINDING — FAIL", file=sys.stderr)
+        print(f"- {exc}", file=sys.stderr)
         return 1
 
     default = config["binding"]["default_target"]

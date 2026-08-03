@@ -177,14 +177,19 @@ Cursor never reimplements mailbox finalization:
 Publication requires a regular non-symlink body file under
 `.pytest-verify-tmp/`. Bound Director/Operator sessions publish without a
 mailbox approval prompt; readiness, coordinator, and subagents do not get that
-grant. The wrapper resolves the bound seat from the worktree and app registry,
-uses `subprocess.run`, and delegates the body on stdin. Direct fixed-writer
-calls from agent tools stay denied.
+grant. For Compact Pair events the wrapper also requires `Author model:` or
+`Reviewer model:` to equal the registered app-session `model_id` byte-for-byte;
+same-family aliases are not identity. The wrapper resolves the bound seat from
+the worktree and app registry, uses `subprocess.run`, and delegates the body on
+stdin. Direct fixed-writer calls from agent tools stay denied.
 
 `next-review` is read-only: it finds the newest pending committed request for
 the bound Operator across all `refs/heads/cursor-seat/*` tips, skips requests
-already referenced by a committed report, and refuses same-model review. Seats
-do not merge mailbox-only commits merely to discover them.
+already referenced by a committed report, and enforces recognized different
+families only when the request's risk profile requires it. Unknown families
+fail that high-risk gate. Structured output reports both recognized families
+and `model_independence`; ordinary/material requests do not acquire a new model
+gate. Seats do not merge mailbox-only commits merely to discover them.
 
 Push, pull, fetch, merge, rebase, cherry-pick, lock, and spend remain separate
 remote/irreversible effects and still ask. A subagent or foreign `-C` target is

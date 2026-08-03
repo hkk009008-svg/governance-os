@@ -73,6 +73,14 @@ def _git(root: Path, *args: str) -> str:
     ).stdout.decode("utf-8", "replace")
 
 
+def _git_bytes(root: Path, *args: str) -> bytes:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        check=True,
+    ).stdout
+
+
 def _sent_names(root: Path, commit: str) -> list[str]:
     out = _git(
         root, "ls-tree", "-r", commit, "--name-only", "coordination/mailbox/sent"
@@ -82,9 +90,12 @@ def _sent_names(root: Path, commit: str) -> list[str]:
 
 def _candidate_statements(
     root: Path, commit: str
-) -> list[protocol_mailbox.LearningCandidateStatement]:
+) -> tuple[
+    list[protocol_mailbox.LearningCandidateStatement], list[dict[str, str]]
+]:
     resolved = _git(root, "rev-parse", commit).strip()
     statements = []
+    errors: list[dict[str, str]] = []
     for path in _sent_names(root, resolved):
         if not path.endswith("-learning-candidate.md"):
             continue
@@ -94,36 +105,44 @@ def _candidate_statements(
                     root, f"{path}@{resolved}"
                 )
             )
-        except ValueError:
-            continue
-    return statements
+        except ValueError as exc:
+            errors.append({"path": path, "error": str(exc)})
+    return statements, errors
 
 
 def _dispositions(
     root: Path, commit: str
-) -> list[protocol_mailbox.LearningDispositionStatement]:
+) -> tuple[
+    list[protocol_mailbox.LearningDispositionStatement], list[dict[str, str]]
+]:
     resolved = _git(root, "rev-parse", commit).strip()
     dispositions = []
+    errors: list[dict[str, str]] = []
     for path in _sent_names(root, resolved):
         if not path.endswith("-decision.md"):
+            continue
+        raw = _git_bytes(root, "show", f"{resolved}:{path}")
+        try:
+            text = raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            errors.append({"path": path, "error": "decision event is not UTF-8"})
+            continue
+        if not protocol_mailbox.learning_disposition_intent(text):
             continue
         try:
             event = protocol_mailbox.load_committed_event_ref(
                 root, f"{path}@{resolved}"
             )
-        except ValueError:
-            continue
-        if not any(
-            line.startswith("Candidate:") for line in event.text.splitlines()
-        ):
+        except ValueError as exc:
+            errors.append({"path": path, "error": str(exc)})
             continue
         try:
             dispositions.append(
                 protocol_mailbox.parse_learning_disposition_statement(event)
             )
-        except ValueError:
-            continue
-    return dispositions
+        except ValueError as exc:
+            errors.append({"path": path, "error": str(exc)})
+    return dispositions, errors
 
 
 def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
@@ -132,8 +151,8 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
     requests = sum(1 for n in names if n.endswith("-verify-request.md"))
     reports = sum(1 for n in names if n.endswith("-verification-report.md"))
 
-    candidates = _candidate_statements(root, resolved)
-    dispositions = _dispositions(root, resolved)
+    candidates, candidate_errors = _candidate_statements(root, resolved)
+    dispositions, disposition_errors = _dispositions(root, resolved)
     by_ref = {d.candidate_ref.rsplit("@", 1)[0]: d for d in dispositions}
     accepted = [
         c for c in candidates
@@ -256,6 +275,18 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
         "commit": resolved,
         "review_friction": f"{reports}/{requests}",
         "candidates_total": len(candidates),
+        "candidate_events": {
+            "seen": len(candidates) + len(candidate_errors),
+            "parse_valid": len(candidates),
+            "malformed": len(candidate_errors),
+        },
+        "candidate_event_errors": candidate_errors,
+        "disposition_events": {
+            "seen": len(dispositions) + len(disposition_errors),
+            "parse_valid": len(dispositions),
+            "malformed": len(disposition_errors),
+        },
+        "disposition_event_errors": disposition_errors,
         "accepted": len(accepted),
         "declined": sum(
             1 for d in by_ref.values() if d.disposition == "declined"
@@ -294,6 +325,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  candidates: {metrics['candidates_total']}"
           f" (accepted {metrics['accepted']}, declined {metrics['declined']},"
           f" expired {metrics['expired']})  [committed events]")
+    for event_type in ("candidate", "disposition"):
+        counts = metrics[f"{event_type}_events"]
+        print(
+            f"  {event_type} events: seen {counts['seen']}, "
+            f"parse-valid {counts['parse_valid']}, "
+            f"malformed {counts['malformed']}  [committed parse syntax only]"
+        )
+        for record in metrics[f"{event_type}_event_errors"]:
+            print(f"  WARN malformed {event_type}: {record['path']} — {record['error']}")
     print(f"  supersession: {metrics['supersession_rate']}  [Supersedes fields]")
     print(f"  index: {metrics['index_state']}  [coordination/learning/]")
     print(f"  claims ledger rows: {metrics['claims_ledger_rows']}"

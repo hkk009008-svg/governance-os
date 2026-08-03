@@ -115,9 +115,10 @@ def test_pr_template_matches_current_governance_repo_surfaces():
 def test_pipeline_docs_do_not_launch_live_seats_from_content():
     text = _read("coordination/README.md")
 
-    assert "cd /Users/hyungkoookkim/Content" not in text
+    assert "/Users/" not in text
     assert "absolute/path/to/Content" not in text
-    assert "cd /Users/hyungkoookkim/Pipeline" in text
+    assert 'PIPELINE_ROOT="$(git rev-parse --show-toplevel)"' in text
+    assert 'cd "$PIPELINE_ROOT"' in text
 
 
 def test_incident_log_exists_for_emergency_protocol():

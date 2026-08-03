@@ -8,6 +8,141 @@ from scripts import codex_protocol_model as model
 
 
 @pytest.mark.parametrize(
+    ("model_id", "family"),
+    (
+        ("claude-fable-5", "claude"),
+        ("claude-opus-5", "claude"),
+        ("anthropic-claude-opus-5", "claude"),
+        ("claude-code-anthropic-claude-sonnet-5", "claude"),
+        ("gpt-5", "gpt"),
+        ("gpt-5.6-sol", "gpt"),
+        ("gpt-5.6-terra", "gpt"),
+        ("codex-gpt-5.6-terra", "gpt"),
+        ("openai-gpt-5.6-sol", "gpt"),
+        ("GPT-5 Codex", "gpt"),
+        ("chatgpt-4o", "gpt"),
+        ("o1", "gpt"),
+        ("o3-mini", "gpt"),
+        ("o4", "gpt"),
+        ("gpt-oss-120b", "gpt"),
+        ("gpt-oss-120b-medium", "gpt"),
+        ("codex-cursor-openai-gpt-5.6-terra", "gpt"),
+        ("antigravity-gemini-3.6", "gemini"),
+        ("google-gemini-3.1-pro-high", "gemini"),
+        ("gemini-3.6-flash", "gemini"),
+        ("gemini-3.6-flash-high", "gemini"),
+        ("gemini-3.6-flash-medium", "gemini"),
+        ("gemini-3.6-flash-low", "gemini"),
+        ("gemini-3.5-flash-high", "gemini"),
+        ("gemini-3.5-flash-medium", "gemini"),
+        ("gemini-3.5-flash-low", "gemini"),
+        ("gemini-3.1-pro-low", "gemini"),
+        ("claude-sonnet-4-6", "claude"),
+        ("claude-opus-4-6-thinking", "claude"),
+        ("Gemini 3.1 Pro (High)", "gemini"),
+        ("cursor-agy-google-gemini-3.1-pro-high", "gemini"),
+        ("grok-4.5", "grok"),
+        ("xai-grok-4", "grok"),
+    ),
+)
+def test_model_family_recognizes_only_registered_model_ids(
+    model_id: str, family: str,
+) -> None:
+    assert model.model_family(model_id) == family
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    (
+        "",
+        "   ",
+        "-gpt-5",
+        ".claude-opus-5",
+        "_gemini-3.1",
+        "composer-2.5",
+        "fixture",
+        "claudex-5",
+        "claude-mystery-5",
+        "gem-3.1-pro",
+        "gemini-pro",
+        "gpt-forged",
+        "gpt-5-forged",
+        "chatgpt-4o-counterfeit",
+        "o3-counterfeit",
+        "gpt-oss-forged",
+        "gpt-oss-120x",
+        "claude-opus-5-forged",
+        "gemini-3.1-forged",
+        "grok-beta",
+        "grok-4-forged",
+        "openai-claude-opus-5",
+        "anthropic-gpt-5",
+        "google-grok-4",
+        "xai-gemini-3.1",
+        "openai-openai-gpt-5",
+        "gpt--5",
+        "gpt_5",
+        "gpt/5",
+        "antigravity",
+        "claude",
+        "gpt",
+        "chatgpt",
+        "gpt-oss",
+        "gemini",
+        "grok",
+        " gpt-5",
+        "gpt-5 ",
+        "\tgpt-5",
+        "gpt-5\n",
+        " Gemini 3.1 Pro (High) ",
+        "gpt-\x1f5",
+        "gpt-5-999999",
+        "claude-opus-5-999999",
+        "gemini-3-999999",
+        "grok-4-999999",
+        "gpt-5-sol-terra",
+        "gpt-5-preview-preview",
+        "gpt-5-mini-sol",
+        "gemini-3.1-pro-flash",
+        "gemini-3.1-high-low",
+        "gpt-999",
+        "chatgpt-999",
+        "claude-opus-999",
+        "gemini-999",
+        "grok-999",
+        "gpt-5 codex",
+        "gemini 3.1 pro (high)",
+    ),
+)
+def test_model_family_rejects_unknown_invented_or_malformed_labels(
+    model_id: str,
+) -> None:
+    assert model.model_family(model_id) is None
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    (
+        ("claude-opus-5", "anthropic-claude-sonnet-5"),
+        ("gpt-5.6-sol", "openai-gpt-5.6-terra"),
+        ("gemini-3.1-pro-high", "google-gemini-3.6-flash"),
+        ("grok-4", "xai-grok-4.5"),
+        ("invented-a", "claude-opus-5"),
+        ("gpt-5", "invented-b"),
+        ("invented-a", "invented-b"),
+    ),
+)
+def test_model_independence_fails_conservatively(
+    left: str, right: str,
+) -> None:
+    assert model.models_are_independent(left, right) is False
+
+
+def test_model_independence_requires_two_recognized_distinct_families() -> None:
+    assert model.models_are_independent("claude-opus-5", "openai-gpt-5") is True
+
+
+@pytest.mark.parametrize(
     ("environ", "expected"),
     [
         (

@@ -16,11 +16,11 @@ Two halves run in sequence:
     transfer bundle:
 
     - Doc-anchor drift gate: check_doc_claims on ARCHITECTURE.md
-      (hard-fail locally; warn in CI).
+      (fatal kinds hard-fail locally and in CI; advisory kinds warn).
     - PROGRAM-MANUAL anchor-drift WARN (advisory; never a hard-fail).
     - Commit-SHA ref drift baseline (git-backed; changed drift hard-fails).
-    - Coordination-state gate: check_coordination (FATAL hard-fails locally,
-      warns in CI; ADVISORY warns everywhere).
+    - Coordination-state gate: check_coordination (FATAL hard-fails locally
+      and in CI; ADVISORY warns everywhere).
     - Anti-ceremony gate: check_no_ceremony (hard-fail local + CI — ADR-028).
     - Reviewer-result schema validation: consume_reviewer_result smoke_check
       (schema-validation only; never re-runs pytest — ADR-032).
@@ -97,6 +97,52 @@ def _project_smoke() -> int:
     return 0
 
 
+def _coordination_gate(repo_root: Path) -> int:
+    """Print canonical coordination dispositions and fail on every FATAL."""
+
+    import check_coordination as _cc
+
+    issues = _cc.run(
+        repo_root / "coordination", docs_root=repo_root / "docs"
+    )
+    advisories = [issue for issue in issues if issue.severity == "ADVISORY"]
+    fatals = [issue for issue in issues if issue.severity == "FATAL"]
+    for issue in advisories:
+        print(
+            f"WARNING: coordination ADVISORY [{issue.kind}] "
+            f"{issue.path} — {issue.message}"
+        )
+    if not fatals:
+        return 0
+    for issue in fatals:
+        print(f"COORDINATION FATAL [{issue.kind}] {issue.path} — {issue.message}")
+    print("\nRun: .venv/bin/python scripts/check_coordination.py")
+    return 1
+
+
+def _architecture_gate(repo_root: Path) -> int:
+    """Apply check_doc_claims' canonical fatal/advisory split to ARCHITECTURE."""
+
+    import check_doc_claims as _cdc
+
+    drifts = _cdc.run(["ARCHITECTURE.md"], repo_root)
+    fatal, advisory = _cdc._split_advisories(drifts)
+    for drift in advisory:
+        print(
+            f"WARNING: ARCHITECTURE advisory [{drift.kind}] "
+            f"{drift.target_file}:{drift.target_line} — {drift.message}"
+        )
+    if not fatal:
+        return 0
+    print(f"\nDOC-ANCHOR DRIFT: {len(fatal)} fatal issue(s) found in ARCHITECTURE.md")
+    for drift in fatal:
+        hint = f"  → suggested line {drift.suggested_line}" if drift.suggested_line else ""
+        print(f"  [{drift.kind}] {drift.target_file}:{drift.target_line}{hint}")
+        print(f"    {drift.message}")
+    print("\nRun: .venv/bin/python scripts/check_doc_claims.py --fix")
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     fast_mode = False
     args = argv if argv is not None else sys.argv[1:]
@@ -110,18 +156,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if fast_mode:
         # Fast preflight mode: run essential coordination, ceremony, and placeholder checks
-        import check_coordination as _cc
         import check_no_ceremony as _cnc
         import check_placeholders as _cp
 
         _repo_root = Path(_REPO_ROOT)
-        _coord_issues = _cc.run(_repo_root / "coordination", docs_root=_repo_root / "docs")
-        _coord_fatal = [_i for _i in _coord_issues if _i.severity == "FATAL"]
-        if _coord_fatal:
-            for _i in _coord_fatal:
-                print(f"COORDINATION FATAL [{_i.kind}] {_i.path} — {_i.message}")
-            if not os.environ.get("CI"):
-                return 1
+        _coordination_exit = _coordination_gate(_repo_root)
+        if _coordination_exit:
+            return _coordination_exit
 
         _ceremony_exit = _cnc.main()
         if _ceremony_exit:
@@ -138,31 +179,14 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- HALF B: governance gates (fully portable) ---
 
-    # Doc-anchor drift gate (check_doc_claims on ARCHITECTURE.md).
-    # Hard-fail locally; warn-only in CI.
+    # Doc-anchor drift gate (check_doc_claims on ARCHITECTURE.md). Canonical
+    # fatal kinds block locally and in CI; canonical advisories warn everywhere.
     import check_doc_claims as _cdc
 
     _repo_root = Path(_REPO_ROOT)
-    _drifts = _cdc.run(["ARCHITECTURE.md"], _repo_root)
-    if _drifts:
-        _n = len(_drifts)
-        if os.environ.get("CI"):
-            print(
-                f"WARNING: {_n} doc-anchor drift(s) found (non-blocking in CI; "
-                f"run .venv/bin/python scripts/check_doc_claims.py --fix to repair)"
-            )
-            for _d in _drifts:
-                print(f"  [{_d.kind}] {_d.target_file}:{_d.target_line} — {_d.message}")
-        else:
-            print(f"\nDOC-ANCHOR DRIFT: {_n} issue(s) found in ARCHITECTURE.md")
-            for _d in _drifts:
-                _hint = f"  → suggested line {_d.suggested_line}" if _d.suggested_line else ""
-                print(f"  [{_d.kind}] {_d.target_file}:{_d.target_line}{_hint}")
-                print(f"    {_d.message}")
-            print(
-                "\nRun: .venv/bin/python scripts/check_doc_claims.py --fix"
-            )
-            return 1
+    _architecture_exit = _architecture_gate(_repo_root)
+    if _architecture_exit:
+        return _architecture_exit
 
     # PROGRAM-MANUAL anchor-drift WARN (never a hard-fail): the ungated manual
     # decays at code-churn rate — warn-in-smoke + fix-on-touch. The hard gate
@@ -217,24 +241,11 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  ... and {len(_sha_drifts) - 20} more")
                 return 1
 
-    # Coordination-state gate (protocol v6.0, check_coordination).
-    # FATAL (broken cursor / filename-convention violation) hard-fails locally,
-    # warns in CI; ADVISORY warns everywhere; INFO (unread counts) is silent
-    # here — the CLI prints it.
-    import check_coordination as _cc
-
-    _coord_issues = _cc.run(_repo_root / "coordination", docs_root=_repo_root / "docs")
-    _coord_fatal = [_i for _i in _coord_issues if _i.severity == "FATAL"]
-    _coord_adv = [_i for _i in _coord_issues if _i.severity == "ADVISORY"]
-    for _i in _coord_adv:
-        print(f"WARNING: coordination ADVISORY [{_i.kind}] {_i.path} — {_i.message}")
-    if _coord_fatal:
-        for _i in _coord_fatal:
-            print(f"COORDINATION FATAL [{_i.kind}] {_i.path} — {_i.message}")
-        if not os.environ.get("CI"):
-            print("\nRun: .venv/bin/python scripts/check_coordination.py")
-            return 1
-        print("WARNING: coordination FATALs are non-blocking in CI")
+    # Coordination-state gate (protocol v6.0, check_coordination). FATAL blocks
+    # locally and in CI; ADVISORY warns; INFO is silent here (the CLI prints it).
+    _coordination_exit = _coordination_gate(_repo_root)
+    if _coordination_exit:
+        return _coordination_exit
 
     # ADR-028: hard-fail local/CI smoke when verification ceremony is detected.
     import check_no_ceremony as _cnc

@@ -33,9 +33,10 @@ CURRENT_PROTOCOL_TESTS = (
 )
 REQUIRED_LEDGER_DOC_PHRASES = (
     "Pipeline remains the Codex four-seat governance kernel.",
-    "/Users/hyungkoookkim/evidence-ledger",
+    "registered `evidence-ledger` target",
     "Do not start ledger work",
-    "/Users/hyungkoookkim/Content",
+    "user Content checkout",
+    "scripts/target_binding.py --target evidence-ledger --print-path",
     "scripts/ledger_start_guard.py --seat <seat> --wave 2",
     "native Git index",
     "Read the route body and the target repository's `CLAUDE.md` and `AGENTS.md`",

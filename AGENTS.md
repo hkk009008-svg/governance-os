@@ -9,9 +9,8 @@ Provider entrypoints:
 - Claude Code: `CLAUDE.md`, then `docs/protocol/claude/` and `.claude/`.
 - Codex: `docs/protocol/codex/continuation.md`, then `.agents/skills/` and
   `.codex/agents/`.
-- AGY (Antigravity): `docs/protocol/agy/continuation.md`, then
-  `.agents/skills/antigravity-harness/` and `.agy/agents/`.
-  *Automated Session Entry Protocol*: AGY automatically executes the full 4-step readiness sequence on its very first turn in every session (run `python scripts/status.py snapshot coordinator`, check `git status --short --branch` and `git log --oneline -5`, run `python scripts/ci_smoke.py --fast`, and register `pipeline_director` & `pipeline_operator` via `define_subagent`) so the 4-seat mesh is 100% armed and ready.
+- AGY (Antigravity): `docs/protocol/agy/continuation.md`, then `.agents/skills/antigravity-harness/`
+  and `.agy/agents/`. Root sessions start as a readiness bridge; roles require explicit assignment, and native helpers stay parent-scoped rather than becoming formal seats.
 - Cursor: `docs/protocol/cursor/continuation.md`, then `.cursor/rules/` and
   `docs/protocol/cursor/roles/`.
 - Cross-provider work: `docs/protocol/threeway/`.
@@ -28,8 +27,8 @@ Use the smallest applicable tier:
 - `tier-3-governed-side-effect`: refresh live authority and external state for
   the exact governed action.
 
-Codex starts as a readiness bridge. It adopts a live role or coordinator only
-when explicitly assigned; parent-scoped helpers never inherit that authority.
+Codex starts as a readiness bridge. It adopts a live role or coordinator only when explicitly
+assigned; parent-scoped helpers never inherit that authority.
 
 Choose product-work phase independently from review risk: `explore` for sandbox
 learning, `validate` for one frozen candidate, and `promote` for a reviewed

@@ -41,7 +41,7 @@ for the full discipline (Rules #7–#23).
 - `scripts/check_coordination.py` (repo root) — lints all of the above (cursor
   parseable/non-future/non-orphan, filename convention, envelope, registered
   kind, unread report). Wired into `scripts/ci_smoke.py`: FATAL hard-fails
-  locally, warns in CI; ADVISORY warns; INFO silent.
+  locally and in CI; ADVISORY warns; INFO silent.
 - `mailbox/archive/` — Old events moved out of `sent/` for log hygiene (manual
   move by operator).
 - `presence/<seat>-heartbeat.ts` — legacy/provider-specific liveness hint. Codex
@@ -402,12 +402,13 @@ corruption. Prefix ordinary Git and pytest with `env -u GIT_INDEX_FILE`.
 Instead, work in a native Git worktree you are willing to commit from:
 
 ```bash
-cd /Users/hyungkoookkim/Pipeline
+PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
+cd "$PIPELINE_ROOT"
 env -u GIT_INDEX_FILE git worktree add ../pipeline-<seat> -b <branch>
 ```
 
 Pipeline is the governance kernel and the base for these worktrees; do not route
-this work through `/Users/hyungkoookkim/Content`.
+this work through the user Content checkout.
 
 Each worktree has its own native index, which is the staging isolation the
 retired mechanism was reaching for. The earlier objection that separate

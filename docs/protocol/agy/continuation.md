@@ -68,10 +68,11 @@ a formal verdict.
 
 The genuine difference is orchestration, not policy.
 
-- **Native subagent mesh.** Seats compose work with `define_subagent` /
-  `invoke_subagent` rather than by polling files. Tiers: `flash_lite` for
-  search and file reads, `flash` for orientation and multi-file research,
-  `pro` / `inherit` for implementation and independent analysis.
+- **Native helpers.** An assigned parent may delegate bounded work with
+  `define_subagent` / `invoke_subagent` rather than polling files. These
+  helpers are parent-scoped, not formal seats: they return evidence locally
+  and cannot author a verdict, publish an event, consume a cursor, or inherit
+  the parent's authority. Tiers select cost/capability, not protocol standing.
 - **Workspace artifacts.** A subagent may keep working notes under
   `.agents/<agent_folder>/`. These are scratch inputs, not protocol events:
   they grant no authority, are not a mailbox, are not durable protocol state,
@@ -79,16 +80,25 @@ The genuine difference is orchestration, not policy.
   through `coordination/bin/send-event` like every other side. Prefer returning
   evidence to the parent over materializing a file.
 
-## Work from the skills, and write the next one
+## Work from skills; route new lessons through candidates
 
 Before starting, check `.agents/skills/` for a skill that covers the work and
 follow it. `prove-a-control` before claiming any guard, gate, or negative
 control holds. `create-regression-pin` before deferring a confirmed defect.
 `seat-operator` before issuing a verdict.
 
-When work exposes a lesson no skill covers — a trap, a measured instance, and
-what to do instead — write the skill in the same session. When a skill's advice
-turns out wrong, correct the file rather than working around it.
+Current code and higher-priority instructions remain controlling. If a loaded
+skill conflicts with either, stop relying on it and record the conflict in the
+task evidence; do not silently work around it. Correct canonical skill bytes
+only when the current accepted task authorizes that correction and its required
+review completes.
+
+Finish the scoped task before extracting a lesson. Then draft and, only with the
+applicable publication authority, publish an evidence-backed
+`learning-candidate` with truthful provider scope. There is no canonical skill
+creation or edit solely because a lesson arose. Promotion into a canonical
+skill is a separately accepted, risk-classed Compact Pair change; the candidate
+is evidence for that later decision, not authority to make it.
 
 ## Formation gate for claims
 
@@ -121,33 +131,40 @@ handoff, or independent review.
 constraint: when every configured seat profile resolves to one model family,
 AGY cannot satisfy `high-risk-control` on its own, because
 `codex_protocol_model.models_are_independent` compares families rather than
-labels. Route those reviews to a seat on a different family.
+labels. The current local AGY seat configuration is all Gemini; that is a local
+configuration fact, not a claim that the installed `agy models` catalog can
+never offer another recognized family. Route reviews according to the exact
+configured IDs and the executable fail-conservative family result.
 
-Headless review dispatch (measured 2026-07-31; accepted learning candidate
-`335883e68861…`, superseding `2c906ea580a9…` whose mechanism clause the
-round-one promotion review falsified): in headless mode `agy -p` auto-denies
-tool permissions that the machine's `permissions.allow` has not granted (per
-`docs/protocol/threeway/HEADLESS-REVIEW.md`; this range measured the denial,
-that doc states the rule). Scoped grants exist — the same doc documents them
-and `scripts/harness_preflight.py agy` names the exact missing entries as
-its remedy — so the preferred path is granting what the review needs BEFORE
-dispatch, minding the standing-authority cost that doc attaches: grants like
-`command(git commit)` and `command(coordination/bin/send-event)` outlive the
-task and apply to every later AGY session, so they need their own
-authorization, not a review's momentum. The blanket skip flag is not an
-alternative: the launcher
-refuses to forward it (`scripts/agy_seat_launcher.py`,
-`FORWARDABLE_FLAG_NAMES`). When the grants are absent and editing the
-user-owned settings file is not authorized mid-review, the measured fallback
-is a **tool-less** review: the dispatcher packages the committed
-verify-request and the verbatim range diff (`git diff` piped in the same
-pipeline that builds the prompt, never hand-edited) into the prompt; the
-reviewer judges the diff as ground truth, states explicitly which checks
-would need execution instead of assuming them, and the published report
-discloses the tool-less constraint. Author evidence for those items arrives
-in later rounds as labeled evidence lines for the reviewer to accept or
-challenge. Measured across a FAIL and a GO round on one high-risk-control
-range.
+Headless review dispatch has two explicit capability scopes. Run
+`scripts/harness_preflight.py agy --agy-scope evidence` for read-only exact-range
+inspection: it requires `read_file(<resolved repository root>)`, Git
+diff/show/status/rev-parse/merge-base, `rg`, and focused pytest grants. Bare
+`read_file` is not a valid AGY 1.1.10 grant. Run `--agy-scope publishing` only
+when the session is separately intended and authorized to commit and publish;
+it adds `git commit` and `coordination/bin/send-event` capability checks.
+Publishing is the unchanged full default, so an omitted scope never silently
+weakens the old gate. Either result measures capability only, never authority.
+
+AGY settings grants persist into future sessions. Do not add commit,
+send-event, or a blanket permission skip merely to gather review evidence. In
+headless mode a missing grant may return exit 0 with denial text or no output,
+so the live probe requires the exact nonempty artifact from a real read-only
+`git rev-parse --show-toplevel --short HEAD` command: the exact two-line root and
+HEAD artifact prevents another checkout at the same commit from satisfying the
+probe. The canonical form is `<resolved-root>\n<short-head>\n`; leading or
+trailing whitespace is a failure. It sanitizes inherited `GIT_*`, pins plan mode,
+`gemini-3.6-flash-low`, and low effort. AGY has no working-directory flag, so
+the launch binds the exact repository through `--add-dir` and the prompt
+requires that same absolute path as the command tool's `Cwd`, with no retry or
+sandbox bypass. Every flag precedes the final `--print <prompt>`. When settings
+cannot be changed, use
+`scripts/harness_preflight.py agy --package-request <path>@<full-sha>` to emit a
+bounded tool-less prompt from the committed request and verbatim exact-range
+diff. Packaging launches no provider. Its analysis remains advisory until
+separately relayed and published through the canonical exact-authority path;
+the package itself cannot formalize a verdict. Full commands and grant lists
+are in `docs/protocol/threeway/HEADLESS-REVIEW.md`.
 
 State the model as the exact ID `agy models` lists, undecorated — the same
 string `coordination/bin/agy-seat --dry-run <seat>` prints as `AGY_MODEL` and

@@ -541,6 +541,34 @@ def test_pipeline_policy_is_execution_first_and_proportional() -> None:
     assert "task-count or line-count mandate" not in agents
 
 
+def test_claude_and_agy_route_new_lessons_through_learning_candidates() -> None:
+    for path in (
+        "CLAUDE.md",
+        "docs/protocol/agy/continuation.md",
+        ".agents/skills/antigravity-harness/SKILL.md",
+    ):
+        text = _compact(_read(path))
+        for required in (
+            "finish the scoped task",
+            "learning-candidate",
+            "truthful provider scope",
+            "no canonical skill creation or edit solely because a lesson arose",
+            "separately accepted, risk-classed Compact Pair",
+            "stop relying on it",
+            "record the conflict",
+            "current accepted task authorizes",
+            "review completes",
+            "current code and higher-priority instructions remain controlling",
+        ):
+            assert required.casefold() in text.casefold(), (path, required)
+        for retired in (
+            "then write the skill",
+            "write the skill in the same session",
+            "correct that file in the same session",
+        ):
+            assert retired.casefold() not in text.casefold(), (path, retired)
+
+
 def test_project_codex_config_does_not_claim_runtime_permissions() -> None:
     config = tomllib.loads(_read(".codex/config.toml"))
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import stat
@@ -15,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 import codex_protocol_model
+import git_commit_projection
 import protocol_mailbox
 
 
@@ -32,6 +34,14 @@ REPORT_RE = re.compile(
 )
 MAX_EVENT_BYTES = 262_144
 LEGACY_VERBOSE_CUTOFF = "ab7fd77081448008f1de30c17a8aaf156a9506c5"
+_FROZEN_MODEL_LABEL_EXCEPTION = {
+    "path": (
+        "coordination/mailbox/sent/"
+        "2026-08-01T05-02-15Z-operator-to-director2-verification-report.md"
+    ),
+    "introduction": "8471c6d6c35daa74dd24cc24d6ece3eea48f3f22",
+    "sha256": "90586eb9d2399ed69a2f1bc0af7bb7c43ba9187e61fedc734e58fc32ce21f48c",
+}
 PAIR_SEATS = frozenset({"director", "director2", "operator", "operator2"})
 OPERATOR_SEATS = frozenset({"operator", "operator2"})
 MATERIAL_BEHAVIOR_RISK = codex_protocol_model.review_profile_for(
@@ -87,6 +97,7 @@ class VerificationReport:
     supersedes: tuple[str, str] | None
     filename_reviewer: str
     envelope_sender: str
+    frozen_model_label_exception: bool
 
 
 def _repo_path(root: Path, value: str | os.PathLike[str]) -> str:
@@ -128,9 +139,48 @@ def _git(root: Path, *arguments: str, check: bool = True) -> bytes:
     return completed.stdout
 
 
-def _full_commit(root: Path, value: str, label: str) -> str:
+def _is_frozen_model_label_exception(root: Path, path: str, raw: bytes) -> bool:
+    """Accept one immutable historical label without widening current grammar."""
+
+    exception = _FROZEN_MODEL_LABEL_EXCEPTION
+    if (
+        path != exception["path"]
+        or hashlib.sha256(raw).hexdigest() != exception["sha256"]
+    ):
+        return False
+    introductions = _git(
+        root,
+        "log",
+        "--diff-filter=A",
+        "--format=%H",
+        "--",
+        path,
+    ).decode("ascii", errors="strict").splitlines()
+    if introductions != [exception["introduction"]]:
+        return False
+    introduced = _git(root, "show", f"{exception['introduction']}:{path}")
+    return hashlib.sha256(introduced).hexdigest() == exception["sha256"]
+
+
+def _full_commit(
+    root: Path,
+    value: str,
+    label: str,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> str:
     if SHA_RE.fullmatch(value) is None:
         raise CompactPairError(f"{label} must be one full lowercase commit SHA")
+    if commit_projection is not None and commit_projection.matches_root(root):
+        try:
+            return commit_projection.require_commit(value, label)
+        except git_commit_projection.CommitGraphProjectionError as exc:
+            raise CompactPairError(str(exc)) from exc
+    if not allow_git_fallback:
+        raise CompactPairError(
+            f"{label} cannot use a commit projection for the reviewed repository"
+        )
     resolved = _git(root, "rev-parse", "--verify", f"{value}^{{commit}}").decode().strip()
     if resolved != value:
         raise CompactPairError(f"{label} commit does not resolve exactly")
@@ -179,7 +229,23 @@ def _resolve_range(root: Path, base_rev: str, head_rev: str) -> tuple[str, str]:
     return first
 
 
-def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
+def _is_ancestor(
+    root: Path,
+    ancestor: str,
+    descendant: str,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> bool:
+    if commit_projection is not None and commit_projection.matches_root(root):
+        try:
+            return commit_projection.is_ancestor(ancestor, descendant)
+        except git_commit_projection.CommitGraphProjectionError as exc:
+            raise CompactPairError(str(exc)) from exc
+    if not allow_git_fallback:
+        raise CompactPairError(
+            "ancestry cannot use a commit projection for the reviewed repository"
+        )
     environment = {
         key: value for key, value in os.environ.items() if not key.startswith("GIT_")
     }
@@ -207,7 +273,7 @@ def _decode(raw: bytes, label: str) -> str:
 
 
 def _one(lines: list[str], prefix: str, label: str) -> str:
-    occurrences = _normalized_field_occurrences(lines, label)
+    occurrences = normalized_field_occurrences(lines, label)
     if len(occurrences) != 1:
         state = "missing" if not occurrences else "duplicate"
         raise CompactPairError(f"{state} {label}")
@@ -403,6 +469,8 @@ def _parse_verify_request_bytes(
     *,
     trigger_commit: str,
     allow_frozen_legacy: bool,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
 ) -> VerifyRequest:
     """Parse request fields once for committed artifacts and new candidates."""
 
@@ -445,7 +513,13 @@ def _parse_verify_request_bytes(
         and _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) is not None
         and _section_optional(lines, "## Finding Refs") is None
     )
-    if legacy and not _is_ancestor(root, trigger_commit, LEGACY_VERBOSE_CUTOFF):
+    if legacy and not _is_ancestor(
+        root,
+        trigger_commit,
+        LEGACY_VERBOSE_CUTOFF,
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    ):
         raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
     outcome_heading = "## Acceptance Question" if legacy else "## Outcome"
     if _section_optional(lines, outcome_heading) is not None:
@@ -505,21 +579,108 @@ def parse_verify_request_structure(
     )
 
 
+def parse_verify_request_committed_bytes(
+    root: Path,
+    request_path: str | os.PathLike[str],
+    trigger_commit: str,
+    raw: bytes,
+    *,
+    allow_frozen_legacy: bool = True,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> VerifyRequest:
+    """Parse bytes from a caller's committed mailbox projection."""
+
+    root = root.resolve()
+    path = _repo_path(root, request_path)
+    if SHA_RE.fullmatch(trigger_commit) is None:
+        raise CompactPairError("request trigger must be one full lowercase commit SHA")
+    return _parse_verify_request_bytes(
+        root,
+        path,
+        raw,
+        trigger_commit=trigger_commit,
+        allow_frozen_legacy=allow_frozen_legacy,
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    )
+
+
+def _validate_request_range(
+    root: Path,
+    request: VerifyRequest,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> None:
+    root = root.resolve()
+    reviewed_root = _reviewed_root(
+        root,
+        request.reviewed_repository,
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    )
+    head = _full_commit(
+        reviewed_root,
+        request.reviewed_head,
+        "Reviewed head",
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    )
+    base = _full_commit(
+        reviewed_root,
+        request.reviewed_base,
+        "Reviewed base",
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    )
+    if reviewed_root == root and (
+        head == request.trigger_commit
+        or not _is_ancestor(
+            root,
+            head,
+            request.trigger_commit,
+            commit_projection=commit_projection,
+            allow_git_fallback=allow_git_fallback,
+        )
+    ):
+        raise CompactPairError("request trigger must be strictly after Reviewed head")
+    if base == head or not _is_ancestor(
+        reviewed_root,
+        base,
+        head,
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    ):
+        raise CompactPairError("Reviewed base must be a strict ancestor of Reviewed head")
+
+
+def validate_request_range(
+    root: Path,
+    request: VerifyRequest,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> list[str]:
+    """Validate one already parsed request's repository and exact range."""
+
+    try:
+        _validate_request_range(
+            root,
+            request,
+            commit_projection=commit_projection,
+            allow_git_fallback=allow_git_fallback,
+        )
+    except CompactPairError as exc:
+        return [str(exc)]
+    return []
+
+
 def parse_verify_request(
     root: Path, request_path: str | os.PathLike[str], trigger_commit: str
 ) -> VerifyRequest:
     request = parse_verify_request_structure(root, request_path, trigger_commit)
-    root = root.resolve()
-    reviewed_root = _reviewed_root(root, request.reviewed_repository)
-    head = _full_commit(reviewed_root, request.reviewed_head, "Reviewed head")
-    base = _full_commit(reviewed_root, request.reviewed_base, "Reviewed base")
-    if reviewed_root == root and (
-        head == request.trigger_commit
-        or not _is_ancestor(root, head, request.trigger_commit)
-    ):
-        raise CompactPairError("request trigger must be strictly after Reviewed head")
-    if base == head or not _is_ancestor(reviewed_root, base, head):
-        raise CompactPairError("Reviewed base must be a strict ancestor of Reviewed head")
+    _validate_request_range(root, request)
     return request
 
 
@@ -730,7 +891,12 @@ def compose_request(
 
 
 def _parse_verification_report_bytes(
-    root: Path, path: str, raw: bytes, *, allow_legacy_missing_risk: bool = True
+    root: Path,
+    path: str,
+    raw: bytes,
+    *,
+    allow_legacy_missing_risk: bool = True,
+    frozen_legacy: bool | None = None,
 ) -> VerificationReport:
     match = REPORT_RE.fullmatch(path)
     if match is None:
@@ -777,8 +943,14 @@ def _parse_verification_report_bytes(
             "Abuse Class Assessment binding is only valid for high-risk-control reports"
         )
     legacy = _section_optional(lines, "## Finding Refs") is None
-    if legacy and not _is_frozen_verbose_report(root, path, raw):
-        raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
+    if legacy:
+        is_frozen_legacy = (
+            _is_frozen_verbose_report(root, path, raw)
+            if frozen_legacy is None
+            else frozen_legacy
+        )
+        if not is_frozen_legacy:
+            raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
     finding_refs = _finding_refs(lines, required=not legacy)
     return VerificationReport(
         path=path,
@@ -801,6 +973,9 @@ def _parse_verification_report_bytes(
         supersedes=_supersedes(root, lines, path),
         filename_reviewer=match.group("reviewer"),
         envelope_sender=_envelope_sender(text),
+        frozen_model_label_exception=_is_frozen_model_label_exception(
+            root, path, raw
+        ),
     )
 
 
@@ -810,6 +985,25 @@ def parse_verification_report(
     root = root.resolve()
     path = _repo_path(root, report_path)
     return _parse_verification_report_bytes(root, path, _read_regular(root, path))
+
+
+def parse_verification_report_committed_bytes(
+    root: Path,
+    report_path: str | os.PathLike[str],
+    raw: bytes,
+    *,
+    frozen_legacy: bool | None = None,
+) -> VerificationReport:
+    """Parse bytes from a caller's committed mailbox projection."""
+
+    root = root.resolve()
+    path = _repo_path(root, report_path)
+    return _parse_verification_report_bytes(
+        root,
+        path,
+        raw,
+        frozen_legacy=frozen_legacy,
+    )
 
 
 def parse_verification_report_candidate(
@@ -857,7 +1051,7 @@ def _report_structure_violations(
             # different reviewer.
             if not codex_protocol_model.models_are_independent(
                 request.author_model, report.reviewer_model
-            ):
+            ) and not report.frozen_model_label_exception:
                 violations.append("reviewer model shares the author model family")
         elif report.reviewer_model.casefold() == request.author_model.casefold():
             # Legacy artifacts predate the Risk class field and are graded on
@@ -904,9 +1098,52 @@ def validate_report_structure(root: Path, report: VerificationReport) -> list[st
         )
     except CompactPairError as exc:
         return [f"request binding invalid: {exc}"]
-    return _report_structure_violations(report, request) + _supersedes_violations(
-        root, report
-    )
+    return validate_report_structure_against_request(root, report, request)
+
+
+def validate_report_structure_against_request(
+    root: Path,
+    report: VerificationReport,
+    request: VerifyRequest,
+) -> list[str]:
+    """Validate a report against an already parsed exact request binding."""
+
+    violations = validate_report_binding(report, request)
+    violations += _supersedes_violations(root, report)
+    return violations
+
+
+def validate_report_binding(
+    report: VerificationReport,
+    request: VerifyRequest,
+) -> list[str]:
+    """Validate report fields against an already parsed request, without Git."""
+
+    violations: list[str] = []
+    if (
+        report.request_path != request.path
+        or report.request_commit != request.trigger_commit
+    ):
+        violations.append("report Verification request does not match indexed request")
+    violations += _report_structure_violations(report, request)
+    return violations
+
+
+def supersession_report_violations(
+    report: VerificationReport,
+    superseded: VerificationReport,
+) -> list[str]:
+    """Validate the pure report-to-report portion of a Supersedes binding."""
+
+    violations: list[str] = []
+    if superseded.reviewer_seat != report.reviewer_seat:
+        violations.append("a seat supersedes only its own verdicts")
+    if (
+        superseded.request_path != report.request_path
+        or superseded.request_commit != report.request_commit
+    ):
+        violations.append("a report supersedes only a verdict for the same exact request")
+    return violations
 
 
 def validate_report(root: Path, report: VerificationReport) -> list[str]:
@@ -931,7 +1168,7 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
 
 
 def _optional_one(lines: list[str], prefix: str, label: str) -> str | None:
-    occurrences = _normalized_field_occurrences(lines, label)
+    occurrences = normalized_field_occurrences(lines, label)
     if len(occurrences) > 1:
         raise CompactPairError(f"duplicate {label}")
     if not occurrences:
@@ -947,7 +1184,13 @@ def _optional_one(lines: list[str], prefix: str, label: str) -> str | None:
     return value
 
 
-def _reviewed_root(pipeline_root: Path, repository_field: str | None) -> Path:
+def _reviewed_root(
+    pipeline_root: Path,
+    repository_field: str | None,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> Path:
     pipeline_root = pipeline_root.resolve()
     if repository_field is None:
         return pipeline_root
@@ -973,6 +1216,12 @@ def _reviewed_root(pipeline_root: Path, repository_field: str | None) -> Path:
         return pipeline_root
     if not resolved.is_dir() or resolved.as_posix() != repository_field:
         raise CompactPairError("Reviewed repository must be one canonical directory")
+    if commit_projection is not None and commit_projection.matches_root(resolved):
+        return resolved
+    if not allow_git_fallback:
+        raise CompactPairError(
+            "Reviewed repository does not match the committed projection root"
+        )
     top_level = _git(resolved, "rev-parse", "--show-toplevel").decode().strip()
     if top_level != repository_field:
         raise CompactPairError("Reviewed repository must be a Git worktree root")
@@ -1002,7 +1251,9 @@ def _section_optional(lines: list[str], heading: str) -> list[str] | None:
     return _section(lines, heading)
 
 
-def _normalized_field_occurrences(lines: list[str], label: str) -> list[str]:
+def normalized_field_occurrences(lines: list[str], label: str) -> list[str]:
+    """Return every canonical or normalized-lookalike occurrence of a field."""
+
     words = r"\s+".join(re.escape(word) for word in label.split())
     pattern = re.compile(rf"^\s*(?:[-*+]\s+)?{words}\s*(?::.*)?\s*$", re.IGNORECASE)
     return [line for line in lines if pattern.fullmatch(line)]
@@ -1103,8 +1354,9 @@ def _supersedes_violations(root: Path, report: VerificationReport) -> list[str]:
         superseded = _parse_verification_report_bytes(
             root, path, _git(root, "show", f"{resolved}:{path}")
         )
-        if superseded.reviewer_seat != report.reviewer_seat:
-            raise CompactPairError("a seat supersedes only its own verdicts")
+        report_violations = supersession_report_violations(report, superseded)
+        if report_violations:
+            raise CompactPairError("; ".join(report_violations))
     except CompactPairError as exc:
         return [f"supersession binding invalid: {exc}"]
     return []

@@ -549,31 +549,69 @@ def collect_orientation_snapshot(
     # recursive at import time.
     import check_coordination  # type: ignore
 
-    requests = check_coordination.inspect_current_verify_requests(repo_root)
+    projection_result = check_coordination.committed_mailbox_projection(repo_root)
+    review_state = check_coordination.inspect_verify_review_state(
+        repo_root, projection_result=projection_result
+    )
+    requests = list(review_state.pending)
+    # Pending work is seat-scoped. Active failed reviews are intentionally not:
+    # they are repository-global governance blockers, with their assigned seat
+    # retained in the structured record for routing.
+    failed_reviews = list(review_state.failed)
     if seat in {"operator", "operator2"}:
         requests = [
             request for request in requests
             if request.assigned_operator == seat
         ]
     current = max(requests, key=lambda request: request.path, default=None)
+    failed = max(
+        failed_reviews, key=lambda review: review.report_path, default=None
+    )
     issues = check_coordination.run(
         repo_root / "coordination",
         docs_root=repo_root / "docs",
+        review_state=review_state,
+        committed_projection=projection_result,
     )
+    projection = projection_result[0]
+    if (
+        projection is not None
+        and (
+            not isinstance(git["git_sha"], str)
+            or not projection.commits.head.startswith(git["git_sha"])
+        )
+    ):
+        issues.append(check_coordination.CoordIssue(
+            "coordination/mailbox/sent/",
+            "commit_projection_identity_drift",
+            "FATAL",
+            "Git status and committed mailbox projection observed different HEADs",
+        ))
     fatals = [issue for issue in issues if issue.severity == "FATAL"]
     advisories = [issue for issue in issues if issue.severity == "ADVISORY"]
 
     blocker = None
-    if current is not None and not current.valid:
+    if fatals:
+        blocker = f"{fatals[0].kind}: {fatals[0].message}"
+    elif current is not None and not current.valid:
         blocker = (
             f"invalid current request for {current.assigned_operator}: "
             f"{current.problem}"
         )
-    elif fatals:
-        blocker = f"{fatals[0].kind}: {fatals[0].message}"
+    elif failed is not None:
+        blocker = (
+            f"failed review for {failed.assigned_operator}: "
+            f"{failed.report_path}@{failed.report_commit}"
+        )
 
     if blocker is not None:
-        next_action = "repair the blocker before implementation or review"
+        if fatals or (current is not None and not current.valid):
+            next_action = "repair the blocker before implementation or review"
+        elif failed is not None:
+            next_action = (
+                f"remediate failed review for {failed.request_path}@"
+                f"{failed.request_commit}"
+            )
     elif current is not None:
         next_action = (
             f"{current.assigned_operator} reviews the exact committed request"
@@ -591,7 +629,18 @@ def collect_orientation_snapshot(
             "grandfathered": current.grandfathered,
             "problem": current.problem,
         }
-    gate_status = "FAIL" if fatals else ("WARN" if advisories else "PASS")
+    failed_data = None
+    if failed is not None:
+        failed_data = {
+            "request_path": failed.request_path,
+            "request_commit": failed.request_commit,
+            "report_path": failed.report_path,
+            "report_commit": failed.report_commit,
+            "assigned_operator": failed.assigned_operator,
+        }
+    gate_status = (
+        "FAIL" if fatals or failed_reviews else ("WARN" if advisories else "PASS")
+    )
     return {
         "generated_at": now,
         "git": {
@@ -599,12 +648,23 @@ def collect_orientation_snapshot(
             "branch": git["git_branch"],
             "dirty": git["git_dirty"],
         },
+        "projection": (
+            {
+                "head": projection.commits.head,
+                "root": str(projection.commits.identity.root),
+                "git_dir": str(projection.commits.identity.git_dir),
+            }
+            if projection is not None
+            else None
+        ),
         "unread": unread,
         "current_request": current_data,
+        "failed_review": failed_data,
         "gate": {
             "status": gate_status,
             "fatal": len(fatals),
             "advisory": len(advisories),
+            "failed_review": len(failed_reviews),
         },
         "blocker": blocker,
         "next_action": next_action,
@@ -635,10 +695,17 @@ def render_orientation_snapshot(snapshot: dict) -> str:
             f"Request: {current['path']}@{commit} "
             f"assigned={current['assigned_operator']} {state}"
         )
+    failed = snapshot.get("failed_review")
+    if failed is not None:
+        lines.append(
+            f"Failed review: {failed['report_path']}@{failed['report_commit']} "
+            f"request={failed['request_path']}@{failed['request_commit']}"
+        )
     gate = snapshot["gate"]
     lines.append(
         f"Gate: {gate['status']} ({gate['fatal']} fatal, "
-        f"{gate['advisory']} advisory)"
+        f"{gate['advisory']} advisory, "
+        f"{gate.get('failed_review', 0)} failed review)"
     )
     lines.append(f"Blocker: {snapshot.get('blocker') or 'none'}")
     lines.append(f"Next: {snapshot['next_action']}")
