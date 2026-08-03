@@ -13,6 +13,11 @@ import check_coordination as cc
 import status
 
 
+_PRE_REMEDIATION_REVIEW_BASELINE = (
+    "ead5fa5c12b898f6402c4456e7f1f49f425ce00f"
+)
+
+
 @pytest.fixture(autouse=True)
 def _supply_synthetic_active_failure_cutover(
     tmp_path: Path, monkeypatch,
@@ -244,6 +249,17 @@ def _git(root: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _clone_pre_remediation_review_baseline(
+    repo_root: Path, tmp_path: Path, name: str
+) -> Path:
+    """Freeze live-mailbox regression fixtures before the remediation review."""
+
+    clone = tmp_path / name
+    _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
+    _git(clone, "checkout", "--detach", "-q", _PRE_REMEDIATION_REVIEW_BASELINE)
+    return clone
+
+
 def _review_repo(
     tmp_path: Path, *, include_history_manifest: bool = True
 ) -> tuple[Path, Path, str, str]:
@@ -273,6 +289,7 @@ def _commit_request(
     *,
     timestamp: str = "2026-07-25T07-00-00Z",
     finding_refs: bool = True,
+    remediates_failed_report: str | None = None,
 ) -> tuple[str, str]:
     path = (
         "coordination/mailbox/sent/"
@@ -284,6 +301,11 @@ def _commit_request(
         "## Finding Refs",
         "",
         "- sha256:" + "1" * 64,
+    )
+    remediation_lines = (
+        ()
+        if remediates_failed_report is None
+        else (f"Remediates failed report: {remediates_failed_report}",)
     )
     (root / path).write_text(
         "\n".join(
@@ -300,6 +322,7 @@ def _commit_request(
                 "Author model: composer-2.5",
                 "Assigned operator: operator",
                 "Risk class: material-behavior",
+                *remediation_lines,
                 "",
                 "## Outcome",
                 "",
@@ -1087,6 +1110,227 @@ def test_valid_same_request_superseding_report_clears_fail(
 
     assert state.pending == ()
     assert state.failed == ()
+
+
+@pytest.mark.parametrize("verdict", ("GO", "NITS"))
+def test_explicit_different_request_remediation_clears_active_fail(
+    tmp_path: Path, verdict: str,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_request_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="FAIL",
+    )
+    (root / "payload.txt").write_text("remediated\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "fix: remediate active fail")
+    remediation_head = _git(root, "rev-parse", "HEAD")
+    failed_ref = f"{fail_path}@{fail_commit}"
+    request_path, request_commit = _commit_request(
+        root,
+        fail_commit,
+        remediation_head,
+        timestamp="2026-07-25T08-00-00Z",
+        remediates_failed_report=failed_ref,
+    )
+    _commit_report(
+        root,
+        fail_commit,
+        remediation_head,
+        request_path,
+        request_commit,
+        verdict=verdict,
+        timestamp="2026-07-25T08-10-00Z",
+        supersedes=failed_ref,
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is None
+    assert state.pending == ()
+    assert state.failed == ()
+
+
+def test_sibling_branch_remediation_report_cannot_clear_active_fail(
+    tmp_path: Path,
+) -> None:
+    """A report must descend from the exact request commit it names.
+
+    Tree projection alone sees both sibling events after their branches merge.
+    Without introduction ancestry, the report can bind bytes from the sibling
+    request object and launder the active FAIL despite never observing that
+    request in its own history.
+    """
+
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_request_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="FAIL",
+    )
+    (root / "payload.txt").write_text("remediated\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "fix: remediate active fail")
+    common = _git(root, "rev-parse", "HEAD")
+    failed_ref = f"{fail_path}@{fail_commit}"
+
+    _git(root, "switch", "-q", "-c", "request-branch")
+    request_path, request_commit = _commit_request(
+        root,
+        fail_commit,
+        common,
+        timestamp="2026-07-25T08-00-00Z",
+        remediates_failed_report=failed_ref,
+    )
+
+    _git(root, "switch", "-q", "-c", "report-branch", common)
+    _report_path, report_commit = _commit_report(
+        root,
+        fail_commit,
+        common,
+        request_path,
+        request_commit,
+        verdict="GO",
+        timestamp="2026-07-25T08-10-00Z",
+        supersedes=failed_ref,
+    )
+    ancestry = subprocess.run(
+        [
+            "env",
+            "-u",
+            "GIT_INDEX_FILE",
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            request_commit,
+            report_commit,
+        ],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    assert request_commit != report_commit
+    assert ancestry.returncode == 1
+    _git(root, "merge", "-q", "--no-ff", "-m", "merge sibling events", "request-branch")
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is None
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (request_path, request_commit)
+    ]
+    assert [(item.report_path, item.report_commit) for item in state.failed] == [
+        (fail_path, fail_commit)
+    ]
+
+
+def test_different_request_remediation_cannot_reuse_inactive_fail(
+    tmp_path: Path,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_request_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="FAIL",
+    )
+    failed_ref = f"{fail_path}@{fail_commit}"
+    _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="GO",
+        timestamp="2026-07-25T07-20-00Z",
+        supersedes=failed_ref,
+    )
+    (root / "payload.txt").write_text("later\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "fix: later work")
+    remediation_head = _git(root, "rev-parse", "HEAD")
+    request_path, request_commit = _commit_request(
+        root,
+        fail_commit,
+        remediation_head,
+        timestamp="2026-07-25T08-00-00Z",
+        remediates_failed_report=failed_ref,
+    )
+    _commit_report(
+        root,
+        fail_commit,
+        remediation_head,
+        request_path,
+        request_commit,
+        verdict="GO",
+        timestamp="2026-07-25T08-10-00Z",
+        supersedes=failed_ref,
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (request_path, request_commit)
+    ]
+    assert state.failed == ()
+
+
+def test_different_request_fail_report_cannot_clear_active_fail(
+    tmp_path: Path,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_request_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="FAIL",
+    )
+    (root / "payload.txt").write_text("attempted\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "fix: attempted remediation")
+    remediation_head = _git(root, "rev-parse", "HEAD")
+    failed_ref = f"{fail_path}@{fail_commit}"
+    request_path, request_commit = _commit_request(
+        root,
+        fail_commit,
+        remediation_head,
+        timestamp="2026-07-25T08-00-00Z",
+        remediates_failed_report=failed_ref,
+    )
+    _commit_report(
+        root,
+        fail_commit,
+        remediation_head,
+        request_path,
+        request_commit,
+        verdict="FAIL",
+        timestamp="2026-07-25T08-10-00Z",
+        supersedes=failed_ref,
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (request_path, request_commit)
+    ]
+    assert [(item.report_path, item.report_commit) for item in state.failed] == [
+        (fail_path, fail_commit)
+    ]
 
 
 def test_review_projection_uses_bounded_git_processes(
@@ -1913,9 +2157,12 @@ def test_projection_wires_strict_archive_parser(
     assert "unexpected member type" in state.problem
 
 
-def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
-    repo_root: Path,
+def test_pre_remediation_snapshot_surfaces_failed_review_and_history_exceptions(
+    repo_root: Path, tmp_path: Path,
 ) -> None:
+    baseline = _clone_pre_remediation_review_baseline(
+        repo_root, tmp_path, "pre-remediation-snapshot"
+    )
     request_path = (
         "coordination/mailbox/sent/"
         "2026-07-27T02-57-16Z-director2-to-operator2-verify-request.md"
@@ -1927,9 +2174,9 @@ def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
     )
     report_commit = "e0fbefdb56af03b8c04b6df58245f7533a3d83c0"
 
-    state = cc.inspect_verify_review_state(repo_root)
-    projection, projection_problem = cc._committed_mailbox_projection(repo_root)
-    snapshot = status.collect_orientation_snapshot(repo_root, "operator2")
+    state = cc.inspect_verify_review_state(baseline)
+    projection, projection_problem = cc._committed_mailbox_projection(baseline)
+    snapshot = status.collect_orientation_snapshot(baseline, "operator2")
 
     assert projection_problem is None
     assert projection is not None
@@ -1971,8 +2218,9 @@ def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
 def test_post_cutover_fail_and_newer_pending_coexist_with_live_e0fb_baseline(
     repo_root: Path, tmp_path: Path,
 ) -> None:
-    clone = tmp_path / "post-cutover"
-    _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
+    clone = _clone_pre_remediation_review_baseline(
+        repo_root, tmp_path, "post-cutover"
+    )
     _git(clone, "config", "user.name", "Coord Test")
     _git(clone, "config", "user.email", "coord@example.invalid")
     source_request_path = (
@@ -2056,8 +2304,9 @@ def test_post_cutover_fail_and_newer_pending_coexist_with_live_e0fb_baseline(
 def test_post_cutover_fail_for_pre_cutover_request_survives_newer_request(
     repo_root: Path, tmp_path: Path, report_timestamp: str,
 ) -> None:
-    clone = tmp_path / f"report-boundary-{report_timestamp}"
-    _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
+    clone = _clone_pre_remediation_review_baseline(
+        repo_root, tmp_path, f"report-boundary-{report_timestamp}"
+    )
     _git(clone, "config", "user.name", "Coord Test")
     _git(clone, "config", "user.email", "coord@example.invalid")
     request_path = (

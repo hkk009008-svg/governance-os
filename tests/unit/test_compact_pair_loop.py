@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import subprocess
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -60,11 +62,17 @@ def _request_text(
     risk_class: str = "material-behavior",
     abuse_class_assessment: tuple[str, ...] = (),
     finding_refs: tuple[str, ...] = (FINDING_A,),
+    remediates_failed_report: str | None = None,
 ) -> str:
     abuse_assessment = (
         ""
         if not abuse_class_assessment
         else "\n" + _bullet_section("Abuse Class Assessment", abuse_class_assessment)
+    )
+    remediation_line = (
+        ""
+        if remediates_failed_report is None
+        else f"Remediates failed report: {remediates_failed_report}\n"
     )
     return f"""\
 # Pair seat -> Operator: verify outcome
@@ -78,6 +86,7 @@ Author seat: {author_seat}
 Author model: {author_model}
 Assigned operator: {assigned_operator}
 Risk class: {risk_class}
+{remediation_line}
 
 ## Outcome
 
@@ -1887,6 +1896,10 @@ SECOND_REPORT_PATH = (
     "coordination/mailbox/sent/"
     "2026-07-18T08-20-00Z-operator-to-all-verification-report.md"
 )
+SECOND_REQUEST_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-07-18T08-05-00Z-director-to-operator-verify-request.md"
+)
 OPERATOR2_REPORT_PATH = (
     "coordination/mailbox/sent/"
     "2026-07-18T08-15-00Z-operator2-to-all-verification-report.md"
@@ -1906,6 +1919,365 @@ def _commit_report(
     _git(root, "add", report_path)
     _git(root, "commit", "-q", "-m", "coord(pair): report verification")
     return report_path, _git(root, "rev-parse", "HEAD")
+
+
+def _remediation_fixture(
+    tmp_path: Path,
+    *,
+    request_transform=lambda text: text,
+    use_failed_report_base: bool = True,
+    use_descendant_head: bool = True,
+    target_verdict: str = "FAIL",
+    carry_failed_finding: bool = True,
+) -> tuple[Path, str, str, str, str, str]:
+    root, base, reviewed_head, trigger = _repo(tmp_path, mint_finding_ref=True)
+    finding_ref = _minted_repo_ref(root)
+    fail_path, fail_commit = _commit_report(
+        root,
+        base,
+        reviewed_head,
+        trigger,
+        verdict=target_verdict,
+        finding_refs=(finding_ref,),
+        dispositions=(
+            (
+                finding_ref,
+                "counter-evidence" if target_verdict == "FAIL" else "addressed",
+            ),
+        ),
+    )
+    (root / "scripts/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
+    _git(root, "add", "scripts/feature.py")
+    _git(root, "commit", "-q", "-m", "fix: remediate failed review")
+    remediation_head = (
+        _git(root, "rev-parse", "HEAD") if use_descendant_head else base
+    )
+    failed_ref = f"{fail_path}@{fail_commit}"
+    request_finding_ref = (
+        finding_ref if carry_failed_finding else "sha256:" + "2" * 64
+    )
+    request_text = _request_text(
+            fail_commit if use_failed_report_base else base,
+            remediation_head,
+            finding_refs=(request_finding_ref,),
+            remediates_failed_report=failed_ref,
+        )
+    (root / SECOND_REQUEST_PATH).write_text(
+        request_transform(request_text),
+        encoding="utf-8",
+    )
+    _git(root, "add", SECOND_REQUEST_PATH)
+    _git(root, "commit", "-q", "-m", "coord(pair): request remediation review")
+    remediation_trigger = _git(root, "rev-parse", "HEAD")
+    return (
+        root,
+        fail_commit,
+        remediation_head,
+        remediation_trigger,
+        failed_ref,
+        request_finding_ref,
+    )
+
+
+def test_different_request_can_supersede_explicit_failed_remediation(
+    tmp_path: Path,
+) -> None:
+    root, base, head, trigger, failed_ref, finding_ref = _remediation_fixture(
+        tmp_path
+    )
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        request_path=SECOND_REQUEST_PATH,
+        verdict="GO",
+        supersedes=failed_ref,
+        finding_refs=(finding_ref,),
+        dispositions=((finding_ref, "addressed"),),
+    )
+
+    request = pair.parse_verify_request(
+        root, SECOND_REQUEST_PATH, trigger
+    )
+    report = pair.parse_verification_report_candidate(
+        root, candidate, SECOND_REPORT_PATH
+    )
+
+    assert request.remediates_failed_report == tuple(failed_ref.rsplit("@", 1))
+    assert pair.validate_report(root, report) == []
+
+
+def test_compose_cli_carries_exact_failed_remediation_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root, base, head, _trigger, failed_ref, finding_ref = _remediation_fixture(
+        tmp_path
+    )
+    monkeypatch.setattr(pair.sys, "stdin", io.StringIO("Review the repair."))
+
+    result = pair._main(
+        [
+            "compose-request",
+            "--repo-root",
+            str(root),
+            "--author",
+            "director",
+            "--author-model",
+            "gpt-5.6-sol",
+            "--operator",
+            "operator",
+            "--risk-class",
+            "material-behavior",
+            "--base",
+            base,
+            "--head",
+            head,
+            "--finding-ref",
+            finding_ref,
+            "--remediates-failed-report",
+            failed_ref,
+        ]
+    )
+
+    assert result == 0
+    assert f"Remediates failed report: {failed_ref}" in capsys.readouterr().out
+
+
+def test_remediation_request_must_explicitly_name_failed_report(
+    tmp_path: Path,
+) -> None:
+    root, base, head, trigger, failed_ref, finding_ref = _remediation_fixture(
+        tmp_path,
+        request_transform=lambda text: text.replace(
+            "Remediates failed report: ", "Ignored: "
+        ),
+    )
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        request_path=SECOND_REQUEST_PATH,
+        supersedes=failed_ref,
+        finding_refs=(finding_ref,),
+        dispositions=((finding_ref, "addressed"),),
+    )
+    report = pair.parse_verification_report_candidate(
+        root, candidate, SECOND_REPORT_PATH
+    )
+
+    assert any(
+        "explicitly name" in violation
+        for violation in pair.validate_report(root, report)
+    )
+
+
+def test_remediation_base_must_equal_failed_report_introduction(
+    tmp_path: Path,
+) -> None:
+    root, base, head, trigger, failed_ref, finding_ref = _remediation_fixture(
+        tmp_path,
+        use_failed_report_base=False,
+    )
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        request_path=SECOND_REQUEST_PATH,
+        supersedes=failed_ref,
+        finding_refs=(finding_ref,),
+        dispositions=((finding_ref, "addressed"),),
+    )
+    report = pair.parse_verification_report_candidate(
+        root, candidate, SECOND_REPORT_PATH
+    )
+
+    assert any(
+        "failed report introduction commit" in violation
+        for violation in pair.validate_report(root, report)
+    )
+
+
+def test_remediation_target_must_be_fail(tmp_path: Path) -> None:
+    root, base, head, trigger, failed_ref, finding_ref = _remediation_fixture(
+        tmp_path,
+        target_verdict="GO",
+    )
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        request_path=SECOND_REQUEST_PATH,
+        supersedes=failed_ref,
+        finding_refs=(finding_ref,),
+        dispositions=((finding_ref, "addressed"),),
+    )
+    report = pair.parse_verification_report_candidate(
+        root, candidate, SECOND_REPORT_PATH
+    )
+
+    assert any("not a FAIL" in item for item in pair.validate_report(root, report))
+
+
+def test_remediation_request_must_carry_failed_finding_refs(tmp_path: Path) -> None:
+    root, base, head, trigger, failed_ref, request_ref = _remediation_fixture(
+        tmp_path,
+        carry_failed_finding=False,
+    )
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        request_path=SECOND_REQUEST_PATH,
+        supersedes=failed_ref,
+        finding_refs=(request_ref,),
+        dispositions=((request_ref, "addressed"),),
+    )
+    report = pair.parse_verification_report_candidate(
+        root, candidate, SECOND_REPORT_PATH
+    )
+
+    assert any(
+        "carry every failed finding ref" in item
+        for item in pair.validate_report(root, report)
+    )
+
+
+def test_remediation_request_must_preserve_risk_class(tmp_path: Path) -> None:
+    assessment = "remediation cannot lower the failed review risk"
+    root, base, head, trigger, failed_ref, finding_ref = _remediation_fixture(
+        tmp_path,
+        request_transform=lambda text: text.replace(
+            "Author model: gpt-5.6-sol\n",
+            "Author model: claude-opus-5\n",
+        ).replace(
+            "Risk class: material-behavior\n",
+            "Risk class: high-risk-control\n",
+        ).replace(
+            "## Finding Refs\n",
+            "## Abuse Class Assessment\n\n"
+            f"- {assessment}\n\n"
+            "## Finding Refs\n",
+        ),
+    )
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        request_path=SECOND_REQUEST_PATH,
+        reviewer_model="gpt-5.6-terra",
+        risk_class="high-risk-control",
+        abuse_class_assessment_binding="bound-to-request",
+        supersedes=failed_ref,
+        finding_refs=(finding_ref,),
+        dispositions=((finding_ref, "addressed"),),
+    )
+    report = pair.parse_verification_report_candidate(
+        root, candidate, SECOND_REPORT_PATH
+    )
+
+    violations = pair.validate_report(root, report)
+    assert any(
+        "Risk class does not match failed report" in item
+        for item in violations
+    ), violations
+
+
+def test_remediation_reviewer_seat_must_match_failed_report(tmp_path: Path) -> None:
+    root, _base, _head, trigger, failed_ref, _finding_ref = _remediation_fixture(
+        tmp_path
+    )
+    request = pair.parse_verify_request(root, SECOND_REQUEST_PATH, trigger)
+    failed_path, failed_commit = failed_ref.rsplit("@", 1)
+    failed_report = pair.parse_verification_report(root, failed_path)
+
+    violations = pair.remediation_request_violations(
+        replace(request, assigned_operator="operator2"),
+        failed_report,
+        failed_commit,
+    )
+
+    assert "remediation reviewer seat does not match failed report" in violations
+
+
+def test_remediation_head_must_descend_from_failed_report(tmp_path: Path) -> None:
+    root, base, head, trigger, failed_ref, finding_ref = _remediation_fixture(
+        tmp_path,
+        use_descendant_head=False,
+    )
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        request_path=SECOND_REQUEST_PATH,
+        supersedes=failed_ref,
+        finding_refs=(finding_ref,),
+        dispositions=((finding_ref, "addressed"),),
+    )
+    report = pair.parse_verification_report_candidate(
+        root, candidate, SECOND_REPORT_PATH
+    )
+
+    assert any(
+        "strict ancestor" in item for item in pair.validate_report(root, report)
+    )
+
+
+@pytest.mark.parametrize(
+    ("verdict", "supersedes", "expected"),
+    (
+        ("FAIL", "target", "GO or NITS"),
+        ("GO", None, "explicitly supersede"),
+        ("GO", "wrong", "introduction commit"),
+    ),
+)
+def test_remediation_report_binding_fails_closed(
+    tmp_path: Path,
+    verdict: str,
+    supersedes: str | None,
+    expected: str,
+) -> None:
+    root, base, head, trigger, failed_ref, finding_ref = _remediation_fixture(
+        tmp_path
+    )
+    supersedes_ref = {
+        "target": failed_ref,
+        "wrong": f"{REPORT_PATH}@{trigger}",
+    }.get(supersedes, supersedes)
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        trigger,
+        report_path=SECOND_REPORT_PATH,
+        request_path=SECOND_REQUEST_PATH,
+        verdict=verdict,
+        supersedes=supersedes_ref,
+        finding_refs=(finding_ref,),
+        dispositions=(
+            (finding_ref, "counter-evidence" if verdict == "FAIL" else "addressed"),
+        ),
+    )
+    report = pair.parse_verification_report_candidate(
+        root, candidate, SECOND_REPORT_PATH
+    )
+
+    assert any(expected in violation for violation in pair.validate_report(root, report))
 
 
 def test_report_supersedes_round_trip_and_binds(tmp_path: Path) -> None:

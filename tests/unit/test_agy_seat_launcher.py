@@ -144,6 +144,10 @@ def test_build_launch_spec_defaults_to_single_model_autonomous_and_cleans_author
         "AGY_BEHAVIOR_SOURCE": "wrong-source",
         "AGY_UNKNOWN_FUTURE_FIELD": "stale",
         "AGY_API_KEY": "agy-test-key",
+        "AGY_CONFIG": "/ambient/config",
+        "AGY_HOME": "/ambient/home",
+        "AGY_LOG_LEVEL": "debug",
+        "AGY_PROJECT_DIR": "/foreign/project",
         "CLAUDE_CODE_ENTRYPOINT": "foreign-authority",
         "CURSOR_SEAT": "operator",
         "CODEX_SEAT": "director",
@@ -174,6 +178,10 @@ def test_build_launch_spec_defaults_to_single_model_autonomous_and_cleans_author
         for key in spec.env
     )
     assert "AGY_UNKNOWN_FUTURE_FIELD" not in spec.env
+    assert "AGY_CONFIG" not in spec.env
+    assert "AGY_HOME" not in spec.env
+    assert "AGY_LOG_LEVEL" not in spec.env
+    assert "AGY_PROJECT_DIR" not in spec.env
     assert "GIT_DIR" not in spec.env
     assert "GIT_WORK_TREE" not in spec.env
 
@@ -674,6 +682,17 @@ def test_unavailable_model_listing_fails_closed(tmp_path: Path) -> None:
         launcher.list_models(str(tmp_path / "no-such-executable"))
 
 
+def test_empty_model_listing_fails_closed(tmp_path: Path) -> None:
+    """Exit zero without any IDs is not evidence that a model is available."""
+
+    empty_executable = tmp_path / "empty-agy"
+    empty_executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    empty_executable.chmod(0o755)
+
+    with pytest.raises(launcher.LaunchError, match="returned no model IDs"):
+        launcher.list_models(str(empty_executable))
+
+
 def test_configured_model_reaches_the_cli_and_the_report_surface_verbatim(
     tmp_path: Path,
 ) -> None:
@@ -956,6 +975,12 @@ def test_agy_guides_keep_explicit_role_and_parent_scoped_helper_boundaries(
     for guide, boundaries in required.items():
         for boundary in boundaries:
             assert boundary.casefold() in texts[guide].casefold(), (guide, boundary)
+
+
+def test_unrelated_agy_product_tree_remains_outside_pipeline(repo_root: Path) -> None:
+    """The preserved patch's Dr.Rootem web product is not Pipeline protocol."""
+
+    assert not (repo_root / "agy").exists()
 
 
 def test_launcher_emits_only_flags_the_agy_cli_defines(tmp_path: Path) -> None:

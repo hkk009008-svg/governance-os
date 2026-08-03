@@ -23,7 +23,8 @@ Reviewer seat: operator | operator2
 Reviewer model: <system-visible model; different family from Author model for high-risk-control>
 Risk class: material-behavior | high-risk-control
 <high-risk-control only: add `Abuse Class Assessment: bound-to-request` here>
-<re-issue only: add `Supersedes: coordination/mailbox/sent/<superseded-report>.md@<its-introduction-commit>` — names the verdict this report replaces; a seat supersedes only its own verdicts, and the named verdict stops counting toward acceptance>
+<same-request re-issue: add `Supersedes: coordination/mailbox/sent/<superseded-report>.md@<its-introduction-commit>` — a seat supersedes only its own verdicts for that exact request>
+<different-request remediation only: the request must contain the matching `Remediates failed report:` ref and the GO/NITS report must `Supersedes:` that exact active FAIL>
 Verification harness: <optional evidence note; not authority>
 Verification context: <optional evidence note; not identity proof>
 
@@ -63,6 +64,14 @@ prefix or version suffix is not a different reviewer, and
 `codex_protocol_model.models_are_independent` decides the question. NITS and
 FAIL remain publishable without successful evidence, but still preserve every
 binding.
+
+A different-request remediation is narrower than an ordinary re-issue. The
+request's reviewed base is the failed report introduction commit, its head is a
+strict descendant, and it preserves the failed report's repository, risk
+class, assigned reviewer seat, and finding refs. The new GO or NITS report
+dispositions those refs and supersedes the exact active FAIL. Missing, inactive,
+wrong-seat, unrelated, non-descendant, and FAIL-shaped replacements do not
+clear the blocker.
 
 `Reviewer model:` is the model that actually performed the review, as the
 reviewer reports it at review time. A launcher or seat-config pin is a request,

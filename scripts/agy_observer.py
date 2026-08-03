@@ -19,6 +19,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from threeway.refstore import RefEventStore
+from scripts import status
 
 
 def summarize(store) -> dict:
@@ -76,8 +77,14 @@ def _print_summary(s: dict) -> None:
               f"ci={s['ci_results'].get(c['integration_sha'], 'PENDING')}")
 
 
-def summarize_bus(repo_dir=".") -> dict:
-    s = summarize(RefEventStore(Path(repo_dir)))
+def summarize_bus(repo_dir=".", snapshot: bool = False) -> dict:
+    repo_path = Path(repo_dir)
+    s = summarize(RefEventStore(repo_path))
+    if snapshot:
+        print("=== Compact Orientation Snapshot ===")
+        orientation = status.collect_orientation_snapshot(repo_path)
+        print(status.render_orientation_snapshot(orientation), end="")
+        print("=== RAW Event Bus Summary ===")
     _print_summary(s)
     return s
 
@@ -85,8 +92,13 @@ def summarize_bus(repo_dir=".") -> dict:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Antigravity read-only threeway bus summary.")
     ap.add_argument("--repo-dir", default=".")
+    ap.add_argument(
+        "--snapshot",
+        action="store_true",
+        help="Prepend the compact Pipeline orientation snapshot",
+    )
     args = ap.parse_args(argv)
-    summarize_bus(args.repo_dir)
+    summarize_bus(args.repo_dir, snapshot=args.snapshot)
     return 0
 
 

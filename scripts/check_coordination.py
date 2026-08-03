@@ -1273,22 +1273,125 @@ def inspect_verify_review_state(
             continue
         if compact_pair_loop.validate_report_binding(report, request):
             continue
-        if commit is not None:
-            parsed_reports[f"{path}@{commit}"] = (path, commit, report)
+        if commit is None:
+            continue
+        # A report binds a committed request it must have been able to observe.
+        # Both objects can coexist in a later merge tree even when their
+        # introduction commits are siblings; field validation alone then lets
+        # the sibling report consume the request and clear its pending/failed
+        # state. Require strict request-before-report history for every current
+        # report, not filename order or mere membership in the projected tree.
+        if (
+            request.trigger_commit == commit
+            or not projection.commits.is_ancestor(request.trigger_commit, commit)
+        ):
+            continue
+        parsed_reports[f"{path}@{commit}"] = (path, commit, report)
 
-    valid_reports: list[
+    invalid_remediation_requests: dict[str, str] = {}
+    for request_ref, request in parsed_requests.items():
+        if request.remediates_failed_report is None:
+            continue
+        failed_ref = (
+            f"{request.remediates_failed_report[0]}@"
+            f"{request.remediates_failed_report[1]}"
+        )
+        target = parsed_reports.get(failed_ref)
+        if target is None:
+            invalid_remediation_requests[request_ref] = (
+                "remediation binding does not name a valid committed report"
+            )
+            continue
+        violations = compact_pair_loop.remediation_request_violations(
+            request,
+            target[2],
+            target[1],
+        )
+        if violations:
+            invalid_remediation_requests[request_ref] = "; ".join(violations)
+
+    for operator, current in tuple(requests.items()):
+        request_ref = f"{current.path}@{current.commit}" if current.commit else ""
+        problem = invalid_remediation_requests.get(request_ref)
+        if problem is not None:
+            requests[operator] = CurrentVerifyRequest(
+                path=current.path,
+                commit=current.commit,
+                assigned_operator=current.assigned_operator,
+                valid=False,
+                problem=problem,
+                grandfathered=current.grandfathered,
+            )
+
+    preliminary_reports: list[
         tuple[str, str, compact_pair_loop.VerificationReport]
     ] = []
     for path, commit, report in parsed_reports.values():
+        request_ref = f"{report.request_path}@{report.request_commit}"
+        request = parsed_requests[request_ref]
+        if request_ref in invalid_remediation_requests:
+            continue
+        if request.remediates_failed_report is not None and report.supersedes is None:
+            continue
         if report.supersedes is not None:
             target_ref = f"{report.supersedes[0]}@{report.supersedes[1]}"
             target = parsed_reports.get(target_ref)
             if target is None:
                 continue
             if compact_pair_loop.supersession_report_violations(
-                report, target[2]
+                report,
+                target[2],
+                request=request,
+                superseded_commit=target[1],
             ):
                 continue
+            different_request = (
+                target[2].request_path != report.request_path
+                or target[2].request_commit != report.request_commit
+            )
+            if different_request and (
+                target[1] == commit
+                or not projection.commits.is_ancestor(target[1], commit)
+            ):
+                continue
+        preliminary_reports.append((path, commit, report))
+
+    preliminary_refs = {
+        f"{path}@{commit}" for path, commit, _report in preliminary_reports
+    }
+    valid_reports: list[
+        tuple[str, str, compact_pair_loop.VerificationReport]
+    ] = []
+    for path, commit, report in preliminary_reports:
+        request_ref = f"{report.request_path}@{report.request_commit}"
+        request = parsed_requests[request_ref]
+        if request.remediates_failed_report is None:
+            valid_reports.append((path, commit, report))
+            continue
+        target_ref = (
+            f"{request.remediates_failed_report[0]}@"
+            f"{request.remediates_failed_report[1]}"
+        )
+        target_commit = request.remediates_failed_report[1]
+        if (
+            target_ref not in preliminary_refs
+            or (
+                target_ref not in _BASELINE_ACTIVE_FAILURE_REPORTS
+                and target_commit not in post_cutover_review_commits
+            )
+        ):
+            continue
+        superseded_before = any(
+            other_report.supersedes == request.remediates_failed_report
+            and (other_path != path or other_commit != commit)
+            and (
+                other_commit == commit
+                or projection.commits.is_ancestor(other_commit, commit)
+            )
+            for other_path, other_commit, other_report in preliminary_reports
+        )
+        if superseded_before:
+            continue
         valid_reports.append((path, commit, report))
 
     superseded_reports = {

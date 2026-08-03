@@ -39,8 +39,13 @@ When performing substantive work, adhere to the unified operating doctrine bound
     Operator and the committed Compact Pair. Helper analysis is advisory and
     cannot satisfy or author the formal verdict.
 - **Event publication**: When separately authorized, assigned live roles use
-  `coordination/bin/send-event`; helpers never publish.
-- **Environment Isolation & Native Index**: Each seat gets an isolated process environment; `scripts/agy_seat_launcher.py` emits only `AGY_SEAT`, `AGY_AGENT_MODE`, `AGY_AGENT_ROLE`, and `AGY_BEHAVIOR_SOURCE`, and drops inherited `GIT_*` authority rather than replacing it. No seat binds a per-seat Git index: every worktree uses its native index and `index-<provider>-<seat>` is retired. Never hand-roll a `GIT_INDEX_FILE` export — it silently rebinds every later Git command in the session including commits, and follows `cd` into unrelated repositories. Prefix ordinary Git and pytest with `env -u GIT_INDEX_FILE`.
+  `coordination/bin/send-event`; helpers never publish. `scripts/agy_emit.py
+  --dispatch` prints a routing hint only and does not execute or prove a
+  dispatch.
+- **Read-only observer**: `python scripts/agy_observer.py --snapshot` prints a
+  labelled compact status snapshot before the labelled raw, unverified bus
+  summary; it does not consume a cursor or grant authority.
+- **Environment Isolation & Native Index**: Each seat gets an isolated process environment; `scripts/agy_seat_launcher.py` emits only `AGY_SEAT`, `AGY_AGENT_MODE`, `AGY_AGENT_ROLE`, and `AGY_BEHAVIOR_SOURCE`, preserves the explicit `AGY_API_KEY` credential, and drops inherited `GIT_*` plus other ambient `AGY_*` identity or project state rather than replacing it. Model discovery fails closed when `agy models` errors or returns no IDs. No seat binds a per-seat Git index: every worktree uses its native index and `index-<provider>-<seat>` is retired. Never hand-roll a `GIT_INDEX_FILE` export — it silently rebinds every later Git command in the session including commits, and follows `cd` into unrelated repositories. Prefix ordinary Git and pytest with `env -u GIT_INDEX_FILE`.
 - **Background Tasks**: Use `schedule` and `manage_task` tools for background command and timer execution.
 - **User Delegation**: Use `ask_question` rather than deciding policy or cross-cutting changes on your own.
 - **Smoke Tests**: Run full `scripts/ci_smoke.py` when a change affects

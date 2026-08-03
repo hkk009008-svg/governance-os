@@ -1315,6 +1315,28 @@ mechanized under ADR-066: the field is parsed and seat-scoped by
 `compact_pair_loop.py`, and a superseded verdict suppresses nothing in the
 mailbox's reviewed-request counting.
 
+### Active-FAIL remediation through a new exact request
+
+An immutable FAIL cannot truthfully review repairs that postdate its original
+request. A different request may close that active FAIL only through the
+explicit Compact Pair remediation binding:
+
+- the request adds `Remediates failed report: <report-path>@<introduction>`;
+- `Reviewed base` is that failed report introduction commit and `Reviewed head`
+  is its strict descendant;
+- repository, risk class, assigned reviewer seat, and every failed finding ref
+  are preserved;
+- the same-seat GO or NITS report binds the new request, dispositions every
+  carried ref, and adds `Supersedes:` naming that exact failed report; and
+- the committed projection confirms the target FAIL was valid and active, and
+  both the target and bound request introductions strictly precede the
+  remediation report.
+
+This exception does not widen ordinary `Supersedes:`. Without the explicit
+request binding, reports still supersede only the same exact request. A FAIL,
+inactive or unrelated target, wrong seat/ref, invalid target, non-descendant
+range, changed binding, or self-authored review remains non-clearing.
+
 ## Adjacent-useful work when you can't claim the loop
 
 Pre-locate fixes for flagged divergences. Survey carry-forward items
