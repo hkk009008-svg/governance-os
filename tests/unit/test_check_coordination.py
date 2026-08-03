@@ -1633,3 +1633,70 @@ def test_post_cutover_fail_and_newer_pending_coexist_with_live_e0fb_baseline(
         for item in state.failed
     }
     assert any(item.report_commit == "e0fbefdb56af03b8c04b6df58245f7533a3d83c0" for item in state.failed)
+
+
+def test_post_cutover_fail_for_pre_cutover_request_survives_newer_request(
+    repo_root: Path, tmp_path: Path,
+) -> None:
+    clone = tmp_path / "report-boundary"
+    _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
+    _git(clone, "config", "user.name", "Coord Test")
+    _git(clone, "config", "user.email", "coord@example.invalid")
+    request_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-31T08-05-55Z-director2-to-operator-verify-request.md"
+    )
+    request_commit = "bc7914bfe0326dea701153fb8fc76af2cf19fd0f"
+    source_report_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-31T08-08-59Z-operator-to-director2-verification-report.md"
+    )
+    report_path = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T13-00-00Z-operator-to-director2-verification-report.md"
+    )
+    report_body = (clone / source_report_path).read_text(encoding="utf-8").replace(
+        "**When:** 2026-07-31T08:08:59Z",
+        "**When:** 2026-08-03T13:00:00Z",
+        1,
+    )
+    (clone / report_path).write_text(report_body, encoding="utf-8")
+    _git(clone, "add", "-f", report_path)
+    _git(clone, "commit", "-q", "-m", "post-cutover fail for older request")
+    report_commit = _git(clone, "rev-parse", "HEAD")
+
+    source_pending_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-31T08-11-42Z-director2-to-operator-verify-request.md"
+    )
+    pending_path = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T13-10-00Z-director2-to-operator-verify-request.md"
+    )
+    pending_body = (clone / source_pending_path).read_text(
+        encoding="utf-8"
+    ).replace(
+        "**When:** 2026-07-31T08:11:42Z",
+        "**When:** 2026-08-03T13:10:00Z",
+        1,
+    )
+    (clone / pending_path).write_text(pending_body, encoding="utf-8")
+    _git(clone, "add", "-f", pending_path)
+    _git(clone, "commit", "-q", "-m", "newer request after older-request fail")
+    pending_commit = _git(clone, "rev-parse", "HEAD")
+
+    state = cc.inspect_verify_review_state(clone)
+
+    assert state.problem is None
+    assert (pending_path, pending_commit) in {
+        (item.path, item.commit) for item in state.pending
+    }
+    assert (request_path, request_commit, report_path, report_commit) in {
+        (
+            item.request_path,
+            item.request_commit,
+            item.report_path,
+            item.report_commit,
+        )
+        for item in state.failed
+    }

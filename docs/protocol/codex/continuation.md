@@ -78,10 +78,11 @@ Active-failure continuity is frozen at implementation base
 `8d05a76489b8609634e1635ebfad12792abc8119`: the already-active
 `e0fbefdb56af03b8c04b6df58245f7533a3d83c0` FAIL remains active, historical
 FAILs that were not active at that base do not become retroactive blockers, and
-requests introduced after the base receive multi-request tracking. A newer
-request for the same Operator may therefore be pending alongside an older
-active FAIL. Only a valid GO or NITS report bound to that exact request and
-explicitly superseding its FAIL clears the failure.
+valid FAIL reports introduced after the base receive multi-request tracking,
+even when their request predates the base. A newer request for the same Operator
+may therefore be pending alongside an older active FAIL. Only a valid GO or NITS
+report bound to that exact request and explicitly superseding its FAIL clears
+the failure.
 
 `scripts/baselines/immutable_review_history_exceptions.json` is a frozen,
 one-way exception manifest bound to its sole Git introduction. Never repair or

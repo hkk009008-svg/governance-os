@@ -737,7 +737,7 @@ def inspect_verify_review_state(
     cutover_exists = _projection_git(
         root, "cat-file", "-e", f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}^{{commit}}"
     )
-    post_cutover_request_commits: frozenset[str] | None = None
+    post_cutover_review_commits: frozenset[str] | None = None
     if cutover_exists.returncode == 0:
         ancestry = _projection_git(
             root,
@@ -784,7 +784,7 @@ def inspect_verify_review_state(
                 failed=(),
                 problem="post-cutover review history contains an invalid commit",
             )
-        post_cutover_request_commits = frozenset(post_cutover_lines)
+        post_cutover_review_commits = frozenset(post_cutover_lines)
 
     newest_paths: dict[str, str] = {}
     candidate_paths: list[tuple[str, str]] = []
@@ -939,9 +939,9 @@ def inspect_verify_review_state(
             path, commit, report = max(active_failures, key=lambda item: item[0])
             report_ref = f"{path}@{commit}"
             if (
-                post_cutover_request_commits is not None
+                post_cutover_review_commits is not None
                 and report_ref not in _BASELINE_ACTIVE_FAILURE_REPORTS
-                and report.request_commit not in post_cutover_request_commits
+                and commit not in post_cutover_review_commits
             ):
                 continue
             failed.append(FailedVerifyRequest(
