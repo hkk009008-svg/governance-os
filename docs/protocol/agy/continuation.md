@@ -129,18 +129,21 @@ configured IDs and the executable fail-conservative family result.
 
 Headless review dispatch has two explicit capability scopes. Run
 `scripts/harness_preflight.py agy --agy-scope evidence` for read-only exact-range
-inspection: it requires `read_file`, Git diff/show/status/rev-parse/merge-base,
-`rg`, and focused pytest grants. Run `--agy-scope publishing` only when the
-session is separately intended and authorized to commit and publish; it adds
-`git commit` and `coordination/bin/send-event` capability checks. Publishing is
-the unchanged full default, so an omitted scope never silently weakens the old
-gate. Either result measures capability only, never authority.
+inspection: it requires `read_file(<resolved repository root>)`, Git
+diff/show/status/rev-parse/merge-base, `rg`, and focused pytest grants. Bare
+`read_file` is not a valid AGY 1.1.10 grant. Run `--agy-scope publishing` only
+when the session is separately intended and authorized to commit and publish;
+it adds `git commit` and `coordination/bin/send-event` capability checks.
+Publishing is the unchanged full default, so an omitted scope never silently
+weakens the old gate. Either result measures capability only, never authority.
 
 AGY settings grants persist into future sessions. Do not add commit,
 send-event, or a blanket permission skip merely to gather review evidence. In
 headless mode a missing grant may return exit 0 with denial text or no output,
 so the live probe requires the exact nonempty artifact from a real read-only
-range command. When settings cannot be changed, use
+`git rev-parse --short HEAD` command. It sanitizes inherited `GIT_*`, pins plan
+mode, `gemini-3.6-flash-low`, low effort, and puts every flag before the final
+`--print <prompt>`. When settings cannot be changed, use
 `scripts/harness_preflight.py agy --package-request <path>@<full-sha>` to emit a
 bounded tool-less prompt from the committed request and verbatim exact-range
 diff. Packaging launches no provider. Its analysis remains advisory until

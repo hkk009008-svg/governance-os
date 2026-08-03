@@ -26,9 +26,10 @@ def _failures(results) -> list[str]:
     return [result.detail for result in results if not result.ok]
 
 
-def _evidence_grants() -> list[str]:
+def _evidence_grants(root: Path | None = None) -> list[str]:
+    resolved_root = (root or Path.cwd()).resolve()
     return [
-        "read_file",
+        f"read_file({resolved_root})",
         *(f"command({command})" for command in preflight.AGY_EVIDENCE_COMMANDS),
     ]
 
@@ -36,11 +37,11 @@ def _evidence_grants() -> list[str]:
 def test_agy_missing_command_grants_is_not_ready(tmp_path: Path) -> None:
     """AGY auto-denies a tool it cannot prompt for and still exits 0.
 
-    Granting read_file alone got the observed run past its first denial and
-    straight into a second one, so a check that stopped at file reads would
+    Granting scoped read_file alone got the observed run past its first denial
+    and straight into a second one, so a check that stopped at file reads would
     have called a harness ready that cannot run a single evidence command.
     """
-    settings = _settings(tmp_path, ["read_file"])
+    settings = _settings(tmp_path, [f"read_file({Path.cwd().resolve()})"])
 
     results = preflight.check_agy(settings, scope="evidence")
 
@@ -186,9 +187,11 @@ def test_agy_default_scope_remains_full_publishing_check(tmp_path: Path) -> None
 
 def test_agy_cli_passes_and_prints_explicit_scope(monkeypatch, capsys) -> None:
     selected: list[str] = []
+    roots: list[Path] = []
 
-    def check(*, scope: str):
+    def check(*, scope: str, repo_root: Path):
         selected.append(scope)
+        roots.append(repo_root)
         return [preflight.Result("agy", True, f"selected {scope} scope")]
 
     monkeypatch.setattr(preflight, "check_agy", check)
@@ -196,6 +199,7 @@ def test_agy_cli_passes_and_prints_explicit_scope(monkeypatch, capsys) -> None:
 
     assert code == 0
     assert selected == ["evidence"]
+    assert roots == [Path.cwd().resolve()]
     assert "selected evidence scope" in capsys.readouterr().out
 
 
@@ -208,6 +212,36 @@ def test_agy_missing_read_file_is_reported_separately(tmp_path: Path) -> None:
     results = preflight.check_agy(settings)
 
     assert any("read_file NOT granted" in detail for detail in _failures(results))
+
+
+def test_agy_rejects_legacy_bare_read_file_grant(tmp_path: Path) -> None:
+    settings = _settings(
+        tmp_path,
+        [
+            "read_file",
+            *(f"command({command})" for command in preflight.AGY_EVIDENCE_COMMANDS),
+        ],
+    )
+
+    results = preflight.check_agy(
+        settings, scope="evidence", repo_root=tmp_path,
+    )
+
+    failures = _failures(results)
+    assert any("scoped read_file" in detail for detail in failures)
+    assert any(f"read_file({tmp_path.resolve()})" in detail for detail in failures)
+
+
+def test_agy_read_grant_must_match_resolved_repo_root(tmp_path: Path) -> None:
+    granted_root = tmp_path / "granted"
+    requested_root = tmp_path / "requested"
+    settings = _settings(tmp_path, _evidence_grants(granted_root))
+
+    results = preflight.check_agy(
+        settings, scope="evidence", repo_root=requested_root,
+    )
+
+    assert any("scoped read_file" in detail for detail in _failures(results))
 
 
 def test_agy_absent_settings_is_not_ready(tmp_path: Path) -> None:
@@ -460,7 +494,7 @@ def test_live_probe_rejects_exit_zero_without_exact_positive_artifact(
 
 def test_live_probe_accepts_only_exact_nonempty_head_artifact(tmp_path: Path) -> None:
     root, _, _, _ = _review_request_repo(tmp_path)
-    expected = _git(root, "diff", "--name-status", "HEAD^", "HEAD", "--")
+    expected = _git(root, "rev-parse", "--short", "HEAD")
 
     def runner(*args, **kwargs):
         return subprocess.CompletedProcess(args[0], 0, stdout=expected + "\n", stderr="")
@@ -468,6 +502,39 @@ def test_live_probe_accepts_only_exact_nonempty_head_artifact(tmp_path: Path) ->
     result = preflight.live_probe("agy", root, runner=runner)
 
     assert result.ok is True
+
+
+def test_agy_live_probe_places_all_flags_before_print_and_sanitizes_git_env(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    root, _, _, _ = _review_request_repo(tmp_path)
+    expected = _git(root, "rev-parse", "--short", "HEAD")
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("GIT_INDEX_FILE", "/tmp/poisoned-index")
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", "/tmp/poisoned-objects")
+
+    def runner(argv, **kwargs):
+        captured["argv"] = argv
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(
+            argv, 0, stdout=expected + "\n", stderr="",
+        )
+
+    result = preflight.live_probe("agy", root, runner=runner)
+
+    assert result.ok is True
+    argv = captured["argv"]
+    assert isinstance(argv, list)
+    assert argv[-2] == "--print"
+    assert "git rev-parse --short HEAD" in argv[-1]
+    assert "env -u" not in argv[-1]
+    assert argv[argv.index("--mode") + 1] == "plan"
+    assert argv[argv.index("--model") + 1] == preflight.AGY_PROBE_MODEL
+    assert argv[argv.index("--effort") + 1] == "low"
+    assert argv.index("--disable-slash-commands") < argv.index("--print")
+    environment = captured["env"]
+    assert isinstance(environment, dict)
+    assert not any(key.startswith("GIT_") for key in environment)
 
 
 def test_package_cli_never_calls_live_provider(tmp_path: Path, monkeypatch, capsys) -> None:

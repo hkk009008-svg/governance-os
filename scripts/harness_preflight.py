@@ -16,8 +16,8 @@ and Codex's ambient authority from the project config the launch would inherit.
 A copy of an external interface rots exactly the way the launcher flags did.
 
 `--live` additionally spends one trivial tool-using prompt per harness and
-requires the exact nonempty `HEAD^..HEAD` name-status artifact because exit 0
-is not evidence that anything ran.
+requires the exact nonempty short HEAD artifact because exit 0 is not evidence
+that anything ran.
 """
 
 from __future__ import annotations
@@ -167,6 +167,7 @@ def check_agy(
     settings_path: Path = AGY_SETTINGS,
     *,
     scope: str = "publishing",
+    repo_root: Path | None = None,
 ) -> list[Result]:
     """Check one explicit AGY capability scope without granting authority."""
     if scope not in AGY_SCOPES:
@@ -204,10 +205,20 @@ def check_agy(
         ]
 
     granted = {str(entry) for entry in allow}
-    reads = "read_file" in granted
+    resolved_root = (repo_root or Path.cwd()).resolve()
+    required_read = f"read_file({resolved_root})"
+    reads = required_read in granted
     results.append(
-        Result("agy", reads, "read_file granted" if reads else "read_file NOT granted",
-               "" if reads else 'add "read_file" to permissions.allow')
+        Result(
+            "agy",
+            reads,
+            f"scoped read_file granted for {resolved_root}"
+            if reads
+            else f"scoped read_file NOT granted; required {required_read}",
+            ""
+            if reads
+            else f'add "{required_read}" to permissions.allow; bare read_file is invalid',
+        )
     )
     missing = [
         command
@@ -438,13 +449,7 @@ def live_probe(
     """
     try:
         expected = _git_bytes(
-            root,
-            "diff",
-            "--name-status",
-            "HEAD^",
-            "HEAD",
-            "--",
-            max_bytes=65_536,
+            root, "rev-parse", "--short", "HEAD", max_bytes=65_536,
         ).decode("utf-8", errors="strict").strip()
     except (PreflightError, UnicodeDecodeError) as exc:
         return Result(harness, False, f"could not resolve probe range: {exc}")
@@ -453,7 +458,7 @@ def live_probe(
 
     prompt = (
         "Run exactly this command and reply with ONLY its output: "
-        "env -u GIT_INDEX_FILE git diff --name-status HEAD^ HEAD --"
+        "git rev-parse --short HEAD"
     )
     commands = {
         "codex": ["codex", "exec", "-C", str(root), "--sandbox", "workspace-write",
@@ -461,17 +466,25 @@ def live_probe(
         "agy": [
             "agy",
             "--sandbox",
-            "--print",
+            "--mode",
+            "plan",
             "--model",
             AGY_PROBE_MODEL,
+            "--effort",
+            "low",
+            "--disable-slash-commands",
+            "--print",
             prompt,
         ],
         "cursor": ["cursor-agent", "-p", "-f", "--trust", prompt],
     }
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
     try:
         completed = runner(
             commands[harness], cwd=root, capture_output=True, text=True,
-            stdin=subprocess.DEVNULL, timeout=600, check=False,
+            stdin=subprocess.DEVNULL, timeout=600, check=False, env=environment,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return Result(harness, False, f"probe failed to run: {exc}")
@@ -524,7 +537,7 @@ def main(argv: list[str] | None = None) -> int:
         if harness == "codex":
             results += check_codex(root)
         elif harness == "agy":
-            results += check_agy(scope=args.agy_scope)
+            results += check_agy(scope=args.agy_scope, repo_root=root)
         else:
             results += check_cursor(args.seat)
         if args.live:

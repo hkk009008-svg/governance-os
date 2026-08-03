@@ -77,7 +77,7 @@ mode cannot prompt for, so it was auto-denied.
 
 — and the first such run produced no output at all. Exit status and denial text
 are not interpreted as success: `--live` requires the exact nonempty output of
-an actual `git diff --name-status HEAD^ HEAD --` probe.
+an actual `git rev-parse --short HEAD` probe with inherited `GIT_*` removed.
 
 Choose the capability scope explicitly:
 
@@ -89,13 +89,17 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/harness_preflight.py agy --agy-sc
 env -u GIT_INDEX_FILE .venv/bin/python scripts/harness_preflight.py agy --agy-scope publishing
 ```
 
-Evidence scope requires `read_file` and command grants for `git diff`,
-`git show`, `git status`, `git rev-parse`, `git merge-base`, `rg`, and
-`.venv/bin/python -m pytest`. These settings persist into future sessions. Do
-not add `command(git commit)`, `command(coordination/bin/send-event)`, or a
-blanket permission skip merely to gather evidence. Publishing scope checks the
-two effect commands separately, and even a green result still requires exact
-commit/publication authority at execution time.
+Evidence scope requires `read_file(<resolved repository root>)` and command
+grants for `git diff`, `git show`, `git status`, `git rev-parse`, `git
+merge-base`, `rg`, and `.venv/bin/python -m pytest`. The installed AGY 1.1.10
+binary exposes `read_file(target)` grants, and local logs load the scoped form
+while warning that bare `read_file` is invalid; the preflight requires the exact
+resolved root and infers no wildcard. These settings persist into future
+sessions. Do not add `command(git commit)`,
+`command(coordination/bin/send-event)`, or a blanket permission skip merely to
+gather evidence. Publishing scope checks the two effect commands separately,
+and even a green result still requires exact commit/publication authority at
+execution time.
 
 When user-owned settings may not be changed, package an already committed
 request and its exact range without launching a provider:
@@ -117,9 +121,10 @@ positional and then reports `flags provided but not defined` for anything after
 it. That error text is also the fastest way to check whether a flag exists,
 because it happens at parse time and costs no model call.
 
-The low-cost live probe pins `gemini-3.6-flash-low`; it is a capability probe,
-not the identity of any later review. A formal review records the exact model
-ID its actual launch selected. Seat launch is
+The low-cost live probe puts every flag before its final `--print <prompt>` and
+pins sandboxed plan mode, `gemini-3.6-flash-low`, and low effort; it is a
+capability probe, not the identity of any later review. A formal review records
+the exact model ID its actual launch selected. Seat launch is
 `coordination/bin/agy-seat <seat>`; it emitted two undefined flags until
 `c6f017b`.
 
