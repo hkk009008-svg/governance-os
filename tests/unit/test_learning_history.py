@@ -499,6 +499,10 @@ def test_cutover_modified_candidate_bytes_still_block_duplicate_reissue(
         "/README.md",
         "~user/README.md",
         "dir\\README.md",
+        "README.md\x00suffix",
+        "README.md\tsuffix",
+        "README.md\x1fsuffix",
+        "README.md\x7fsuffix",
     ),
 )
 def test_noncanonical_target_is_rejected_by_parser_writer_and_replay(
@@ -522,11 +526,38 @@ def test_noncanonical_target_is_rejected_by_parser_writer_and_replay(
 
     with pytest.raises(ValueError, match="Target"):
         protocol_mailbox.parse_learning_candidate_statement(event)
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="Target"):
+    with pytest.raises(
+        mailbox_writer.MailboxWriterError, match="Target|bounded text"
+    ):
         mailbox_writer.validate_event_candidate_bytes(root, raw, path)
     _commit(root, "bypass writer with noncanonical target")
 
     assert any("Target" in message for message in _fatal_messages(root))
+
+
+def test_printable_unicode_target_remains_supported_with_cas(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, _cutover = _repo(tmp_path, monkeypatch)
+    target = root / "docs/한글.md"
+    target.parent.mkdir()
+    target.write_text("printable unicode target\n", encoding="utf-8")
+    _commit(root, "add printable unicode target")
+    source = _source_ref(root)
+    base_hash = "sha256:" + hashlib.sha256(target.read_bytes()).hexdigest()
+    path, _fields = _candidate(
+        root,
+        source,
+        Target="docs/한글.md",
+        **{"Target base hash": base_hash},
+    )
+    raw = (root / path).read_bytes()
+    mailbox_writer.validate_event_candidate_bytes(root, raw, path)
+    candidate_commit = _commit(root, "unicode-target candidate")
+    _disposition(root, f"{path}@{candidate_commit}")
+    _commit(root, "accept unicode-target candidate")
+
+    assert _fatal_messages(root) == []
 
 
 @pytest.mark.parametrize("change", ["modified", "deleted"])

@@ -772,6 +772,10 @@ def parse_learning_candidate_statement(
             or pure.as_posix() != target
             or "\\" in target
             or target.startswith("~")
+            or any(
+                ord(character) < 0x20 or ord(character) == 0x7F
+                for character in target
+            )
         ):
             raise ValueError("Target must be a canonical repository-relative POSIX path")
     target_base_hash = _optional_single_body_field(event, "Target base hash")
