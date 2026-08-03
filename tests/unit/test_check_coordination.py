@@ -1208,5 +1208,5 @@ def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
         "report_commit": report_commit,
         "assigned_operator": "operator2",
     }
-    assert snapshot["gate"] == "WARN"
+    assert snapshot["gate"] == {"status": "WARN", "fatal": 0, "advisory": 7}
     assert "remediate failed review" in snapshot["next_action"]
