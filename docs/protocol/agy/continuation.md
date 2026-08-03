@@ -36,6 +36,7 @@ Use the native index of the current worktree:
 
 ```bash
 python scripts/status.py snapshot <seat>
+python scripts/agy_observer.py --snapshot  # compact status plus labelled RAW bus view
 ```
 
 Read actionable event bodies before a decision. Only the assigned live role
@@ -57,6 +58,16 @@ coordination/bin/consume-events <seat> [--to <timestamp>]
   reviewed ranges.
 - `scripts/mailbox_writer.py` validates and serializes event publication.
 - `scripts/agy_protocol_model.py` carries only AGY-local deltas.
+- `scripts/agy_seat_launcher.py` preserves ordinary process state and the
+  explicit `AGY_API_KEY` credential, while dropping ambient provider, Git, and
+  other `AGY_*` identity or project state. Its live model listing fails closed
+  on an error or on a successful response containing no model IDs.
+- `scripts/agy_observer.py --snapshot` combines two clearly labelled read-only
+  views: the compact authority-aware status snapshot and the raw, unverified
+  threeway event-bus summary.
+- `scripts/agy_emit.py --dispatch` retains its historical CLI spelling but only
+  prints a follow-up launch hint. It never executes that command or proves a
+  seat was dispatched.
 
 Role deltas match the shared contract: Director owns an accepted outcome and
 submits its actual committed range; Operator may implement but stays non-author

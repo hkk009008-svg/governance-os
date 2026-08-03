@@ -252,9 +252,15 @@ def list_models(agy_executable: str) -> frozenset[str]:
             "so the seat model cannot be checked"
             + (f":\n{detail}" if detail else "")
         )
-    return frozenset(
+    models = frozenset(
         line.strip() for line in completed.stdout.splitlines() if line.strip()
     )
+    if not models:
+        raise LaunchError(
+            f"`{' '.join(MODEL_LISTING_COMMAND)}` returned no model IDs, "
+            "so the seat model cannot be checked"
+        )
+    return models
 
 
 def require_listed_model(model: str, listed: frozenset[str]) -> None:
