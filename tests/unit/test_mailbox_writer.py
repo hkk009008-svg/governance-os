@@ -560,7 +560,10 @@ def test_send_event_finalizer_reports_nonvalidated_index_when_real_lock_blocks_r
     try:
         with pytest.raises(
             mailbox_writer.MailboxWriterError,
-            match="index retained with nonvalidated bytes",
+            match=(
+                "current index state and bytes unconfirmed.*"
+                "last observed: nonvalidated bytes"
+            ),
         ):
             mailbox_writer._send_event_finalize(root, candidate, relative)
     finally:
@@ -568,6 +571,45 @@ def test_send_event_finalizer_reports_nonvalidated_index_when_real_lock_blocks_r
 
     assert _index_bytes(root, relative) == corrupt
     assert _index_bytes(root, relative) != raw
+    assert not (root / relative).exists()
+    assert candidate.exists()
+    assert _writer_temps(sent) == []
+
+
+def test_send_event_finalizer_reports_index_unconfirmed_after_observed_stage_changes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _repo(tmp_path)
+    sent, relative, candidate, raw = _send_fixture(root)
+    corrupt = b"corrupt staged bytes after observation\n"
+    lock = root / ".git/index.lock"
+    real_staged_snapshot = mailbox_writer._staged_event_snapshot
+
+    def observe_then_replace_index(root_arg: Path, relative_arg: str) -> bytes:
+        observed = real_staged_snapshot(root_arg, relative_arg)
+        assert observed == raw
+        _put_index_bytes(root_arg, relative_arg, corrupt)
+        lock.write_text("real lock\n", encoding="utf-8")
+        (root_arg / relative_arg).chmod(0o644)
+        return observed
+
+    monkeypatch.setattr(
+        mailbox_writer, "_staged_event_snapshot", observe_then_replace_index
+    )
+
+    try:
+        with pytest.raises(
+            mailbox_writer.MailboxWriterError,
+            match=(
+                "current index state and bytes unconfirmed.*"
+                "last observed: validated snapshot"
+            ),
+        ):
+            mailbox_writer._send_event_finalize(root, candidate, relative)
+    finally:
+        lock.unlink(missing_ok=True)
+
+    assert _index_bytes(root, relative) == corrupt
     assert not (root / relative).exists()
     assert candidate.exists()
     assert _writer_temps(sent) == []

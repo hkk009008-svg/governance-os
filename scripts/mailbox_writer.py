@@ -726,8 +726,9 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
                         index_state = "index rolled back"
                     except MailboxWriterError as rollback_exc:
                         index_state = (
-                            f"index retained with {index_observation} "
-                            f"(rollback failed: {rollback_exc})"
+                            "index rollback failed; current index state and bytes "
+                            f"unconfirmed (last observed: {index_observation}; "
+                            f"rollback failed: {rollback_exc})"
                         )
                 try:
                     removed = _unlink_if_identity(
