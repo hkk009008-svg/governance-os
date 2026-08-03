@@ -648,6 +648,15 @@ def collect_orientation_snapshot(
             "branch": git["git_branch"],
             "dirty": git["git_dirty"],
         },
+        "projection": (
+            {
+                "head": projection.commits.head,
+                "root": str(projection.commits.identity.root),
+                "git_dir": str(projection.commits.identity.git_dir),
+            }
+            if projection is not None
+            else None
+        ),
         "unread": unread,
         "current_request": current_data,
         "failed_review": failed_data,

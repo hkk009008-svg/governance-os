@@ -612,6 +612,14 @@ def _committed_mailbox_projection(
 ) -> tuple[CommittedMailboxProjection | None, str | None]:
     """Project immutable HEAD mailbox bytes and introduction facts."""
 
+    try:
+        pinned_identity = git_commit_projection.capture_repository_identity(
+            repo_root
+        )
+    except git_commit_projection.CommitGraphProjectionError as exc:
+        return None, f"commit projection unavailable: {exc}"
+    pinned_head = pinned_identity.head
+
     history = _projection_git(
         repo_root,
         "log",
@@ -622,7 +630,7 @@ def _committed_mailbox_projection(
         "--diff-filter=A",
         "--abbrev=40",
         "--format=COMMIT %H%x00",
-        "HEAD",
+        pinned_head,
         "--",
         "coordination/mailbox/sent",
         _ARCHIVE_HISTORY_EXCEPTIONS,
@@ -679,7 +687,7 @@ def _committed_mailbox_projection(
         repo_root,
         "archive",
         "--format=tar",
-        "HEAD",
+        pinned_head,
         "coordination/mailbox/sent",
         _ARCHIVE_KINDS_PATH,
         _ARCHIVE_REPORT_BASELINE,
@@ -712,7 +720,9 @@ def _committed_mailbox_projection(
         )
     try:
         commits = git_commit_projection.CommitGraphProjection.build(
-            repo_root, candidate_objects
+            repo_root,
+            candidate_objects,
+            expected_identity=pinned_identity,
         )
         cutoff_ancestors = (
             commits.ancestors_of(compact_pair_loop.LEGACY_VERBOSE_CUTOFF)
@@ -1115,7 +1125,7 @@ def inspect_verify_review_state(
     post_cutover = _projection_git(
         root,
         "rev-list",
-        f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}..HEAD",
+        f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}..{projection.commits.head}",
         "--",
         "coordination/mailbox/sent",
     )

@@ -103,6 +103,17 @@ def _identity(root: Path, runner: GitRunner) -> RepositoryIdentity:
     return RepositoryIdentity(reported_root, git_dir, lines[2])
 
 
+def capture_repository_identity(
+    repo_root: Path | str,
+    *,
+    runner: GitRunner = _run_git,
+) -> RepositoryIdentity:
+    """Capture one exact root/git-dir/HEAD identity before projection reads."""
+
+    root = Path(repo_root).resolve(strict=True)
+    return _identity(root, runner)
+
+
 @dataclass(frozen=True)
 class CommitGraphProjection:
     """One bounded graph projection, never cached or reused across HEAD changes."""
@@ -119,9 +130,18 @@ class CommitGraphProjection:
         candidate_object_ids: Iterable[str],
         *,
         runner: GitRunner = _run_git,
+        expected_identity: RepositoryIdentity | None = None,
     ) -> "CommitGraphProjection":
         root = Path(repo_root).resolve(strict=True)
-        before = _identity(root, runner)
+        observed = _identity(root, runner)
+        if expected_identity is not None:
+            if expected_identity.root != root or observed != expected_identity:
+                raise CommitGraphProjectionError(
+                    "repository identity changed before commit graph projection"
+                )
+            before = expected_identity
+        else:
+            before = observed
         candidates = set(candidate_object_ids)
         if len(candidates) > MAX_CANDIDATES:
             raise CommitGraphProjectionError(

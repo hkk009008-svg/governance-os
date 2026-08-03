@@ -137,7 +137,9 @@ def _supply_synthetic_active_failure_cutover(
         if (
             inside_fixture
             and root in synthetic_roots
-            and arguments[:2] == ("rev-list", f"{review_cutover}..HEAD")
+            and len(arguments) >= 2
+            and arguments[0] == "rev-list"
+            and arguments[1].startswith(f"{review_cutover}..")
         ):
             return real_projection_git(
                 root, "rev-list", "HEAD", "--", "coordination/mailbox/sent"
@@ -387,7 +389,8 @@ def _commit_report(
 def test_status_snapshot_reuses_one_committed_mailbox_projection(
     tmp_path: Path, monkeypatch
 ) -> None:
-    root, _coord, _base, _head = _review_repo(tmp_path)
+    root, _coord, base, head = _review_repo(tmp_path)
+    _commit_request(root, base, head)
     real_projection = cc._committed_mailbox_projection
     calls: list[Path] = []
 
@@ -397,9 +400,10 @@ def test_status_snapshot_reuses_one_committed_mailbox_projection(
 
     monkeypatch.setattr(cc, "_committed_mailbox_projection", counted_projection)
 
-    status.collect_orientation_snapshot(root, "operator")
+    snapshot = status.collect_orientation_snapshot(root, "operator")
 
     assert calls == [root.resolve()]
+    assert snapshot["projection"]["head"] == _git(root, "rev-parse", "HEAD")
 
 
 def test_live_seat_event_without_terminal_trigger_heading_is_accepted(tmp_path: Path):
@@ -1160,14 +1164,14 @@ def test_production_snapshot_process_count_is_candidate_independent(
     process_counts: list[int] = []
     for root in fixtures:
         calls: list[tuple[str, ...]] = []
-        real_run = subprocess.run
+        real_popen = subprocess.Popen
 
-        def counted_run(*args, **kwargs):
+        def counted_popen(*args, **kwargs):
             calls.append(tuple(str(part) for part in args[0]))
-            return real_run(*args, **kwargs)
+            return real_popen(*args, **kwargs)
 
         with monkeypatch.context() as scoped:
-            scoped.setattr(subprocess, "run", counted_run)
+            scoped.setattr(subprocess, "Popen", counted_popen)
             snapshot = status.collect_orientation_snapshot(root, "coordinator")
             assert snapshot["gate"]["fatal"] == 0, snapshot["blocker"]
         process_counts.append(len(calls))
@@ -1238,6 +1242,79 @@ def test_run_fails_closed_when_head_changes_after_projection(tmp_path: Path) -> 
         for issue in issues
         if issue.kind == "commit_projection_identity_drift"
     ] == [("commit_projection_identity_drift", "FATAL")]
+
+
+def test_projection_refuses_head_move_between_identity_and_mailbox_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    _commit_request(root, base, head)
+    pinned_head = _git(root, "rev-parse", "HEAD")
+    raced_path = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T15-00-00Z-director-to-all-status.md"
+    )
+    real_projection_git = cc._projection_git
+    observed_revisions: list[str] = []
+    moved = False
+
+    def racing_projection_git(repo_root: Path, *arguments: str):
+        nonlocal moved
+        if arguments and arguments[0] in {"log", "archive"}:
+            observed_revisions.extend(
+                value for value in arguments if value == pinned_head
+            )
+        if arguments and arguments[0] == "log" and not moved:
+            moved = True
+            _write_event(
+                coord,
+                Path(raced_path).name,
+                "# Director race status\n\n"
+                "**When:** 2026-08-03T15:00:00Z · **From:** director (online)\n\n"
+                "Race-only B event.\n\nCursor at send: 0\n",
+            )
+            _git(root, "add", raced_path)
+            _git(root, "commit", "-q", "-m", "race HEAD")
+        return real_projection_git(repo_root, *arguments)
+
+    monkeypatch.setattr(cc, "_projection_git", racing_projection_git)
+    projection, problem = cc.committed_mailbox_projection(root)
+
+    assert projection is None
+    assert problem is not None
+    assert "identity changed before commit graph projection" in problem
+    assert _git(root, "rev-parse", "HEAD") != pinned_head
+    assert observed_revisions == [pinned_head, pinned_head]
+    literal_archive = real_projection_git(
+        root,
+        "archive",
+        "--format=tar",
+        "HEAD",
+        "coordination/mailbox/sent",
+        cc._ARCHIVE_KINDS_PATH,
+        cc._ARCHIVE_REPORT_BASELINE,
+        cc._ARCHIVE_HISTORY_EXCEPTIONS,
+    )
+    literal_files, literal_problem = cc._parse_mailbox_archive(
+        literal_archive.stdout
+    )
+    assert literal_problem is None
+    assert literal_files is not None and raced_path in literal_files
+    pinned_archive = real_projection_git(
+        root,
+        "archive",
+        "--format=tar",
+        pinned_head,
+        "coordination/mailbox/sent",
+        cc._ARCHIVE_KINDS_PATH,
+        cc._ARCHIVE_REPORT_BASELINE,
+        cc._ARCHIVE_HISTORY_EXCEPTIONS,
+    )
+    pinned_files, pinned_problem = cc._parse_mailbox_archive(
+        pinned_archive.stdout
+    )
+    assert pinned_problem is None
+    assert pinned_files is not None and raced_path not in pinned_files
 
 
 def test_projection_git_scrubs_ambient_repository_and_config_overrides(

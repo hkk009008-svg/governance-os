@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import platform
@@ -17,6 +18,7 @@ import status
 
 
 SCHEMA_VERSION = "status-benchmark/v1"
+MAX_REFLOG_SIGNAL_BYTES = 65_536
 
 
 def _git(root: Path, *arguments: str) -> bytes:
@@ -48,7 +50,7 @@ def _git(root: Path, *arguments: str) -> bytes:
     return completed.stdout
 
 
-def _repository_state(root: Path) -> tuple[Path, str, bytes]:
+def _repository_state(root: Path) -> tuple[Path, str, bytes, str]:
     output = _git(
         root,
         "rev-parse",
@@ -66,7 +68,10 @@ def _repository_state(root: Path) -> tuple[Path, str, bytes]:
     if len(head) != 40 or any(character not in "0123456789abcdef" for character in head):
         raise RuntimeError("HEAD is not one full lowercase commit SHA")
     dirty = _git(root, "status", "--porcelain", "--untracked-files=normal")
-    return top, head, dirty
+    reflog = _git(root, "reflog", "show", "-32", "--format=%H%x00%gs", "HEAD")
+    if len(reflog) > MAX_REFLOG_SIGNAL_BYTES:
+        raise RuntimeError("bounded HEAD reflog identity signal is too large")
+    return top, head, dirty, hashlib.sha256(reflog).hexdigest()
 
 
 def _nearest_rank(values: list[float], probability: float) -> float:
@@ -89,10 +94,10 @@ def benchmark(
 ) -> dict:
     """Measure N direct snapshots from one clean, unchanged committed state."""
 
-    if runs < 1:
-        raise ValueError("runs must be positive")
+    if runs < 2:
+        raise ValueError("runs must be at least 2 for a non-vacuous stability observation")
     root = Path(repo_root).resolve(strict=True)
-    _top, head, dirty = _repository_state(root)
+    _top, head, dirty, initial_ref_signal = _repository_state(root)
     if dirty:
         raise RuntimeError(
             "benchmark refuses a dirty worktree because timing would not bind "
@@ -103,28 +108,53 @@ def benchmark(
     process_counts: list[int] = []
     git_process_counts: list[int] = []
     observed_gates: list[dict] = []
-    real_run = subprocess.run
+    real_popen = subprocess.Popen
     for _index in range(runs):
+        _before_top, before_head, before_dirty, before_ref_signal = _repository_state(
+            root
+        )
+        if (
+            before_head != head
+            or before_dirty
+            or before_ref_signal != initial_ref_signal
+        ):
+            raise RuntimeError(
+                "repository identity or cleanliness changed before benchmark run"
+            )
         calls: list[object] = []
 
-        def counted_run(*args, **kwargs):
+        def counted_popen(*args, **kwargs):
             calls.append(args[0] if args else kwargs.get("args"))
-            return real_run(*args, **kwargs)
+            return real_popen(*args, **kwargs)
 
-        subprocess.run = counted_run
+        subprocess.Popen = counted_popen
         started = time.perf_counter()
         try:
             snapshot = status.collect_orientation_snapshot(root, seat)
         finally:
             elapsed = time.perf_counter() - started
-            subprocess.run = real_run
+            subprocess.Popen = real_popen
+        _after_top, after_head, after_dirty, after_ref_signal = _repository_state(root)
+        if (
+            after_head != head
+            or after_dirty
+            or after_ref_signal != before_ref_signal
+        ):
+            raise RuntimeError(
+                "repository identity or cleanliness changed during benchmark run"
+            )
+        projection = snapshot.get("projection")
+        if not isinstance(projection, dict) or projection.get("head") != head:
+            raise RuntimeError(
+                "snapshot projection HEAD does not match benchmark pinned HEAD"
+            )
         elapsed_values.append(elapsed)
         process_counts.append(len(calls))
         git_process_counts.append(sum(_is_git_process(call) for call in calls))
         observed_gates.append(dict(snapshot["gate"]))
 
-    _top_after, head_after, dirty_after = _repository_state(root)
-    if head_after != head or dirty_after:
+    _top_after, head_after, dirty_after, final_ref_signal = _repository_state(root)
+    if head_after != head or dirty_after or final_ref_signal != initial_ref_signal:
         raise RuntimeError("repository HEAD or cleanliness changed during benchmark")
     if any(gate != observed_gates[0] for gate in observed_gates[1:]):
         raise RuntimeError("snapshot gate counts changed during benchmark")
@@ -148,7 +178,7 @@ def benchmark(
         "processes": {
             "per_run": process_counts,
             "git_per_run": git_process_counts,
-            "candidate_independent_observation": len(set(process_counts)) == 1,
+            "repeated_run_process_count_stable": len(set(process_counts)) == 1,
         },
         "timing_seconds": {
             "per_run": elapsed_values,
