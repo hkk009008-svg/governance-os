@@ -935,15 +935,17 @@ def inspect_verify_review_state(
             pending.append(request)
     for request_ref, reports in active_reports_by_request.items():
         active_failures = [item for item in reports if item[2].verdict == "FAIL"]
+        if post_cutover_review_commits is not None:
+            active_failures = [
+                item
+                for item in active_failures
+                if (
+                    f"{item[0]}@{item[1]}" in _BASELINE_ACTIVE_FAILURE_REPORTS
+                    or item[1] in post_cutover_review_commits
+                )
+            ]
         if active_failures:
             path, commit, report = max(active_failures, key=lambda item: item[0])
-            report_ref = f"{path}@{commit}"
-            if (
-                post_cutover_review_commits is not None
-                and report_ref not in _BASELINE_ACTIVE_FAILURE_REPORTS
-                and commit not in post_cutover_review_commits
-            ):
-                continue
             failed.append(FailedVerifyRequest(
                 request_path=report.request_path,
                 request_commit=report.request_commit,

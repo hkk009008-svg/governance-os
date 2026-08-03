@@ -1635,10 +1635,14 @@ def test_post_cutover_fail_and_newer_pending_coexist_with_live_e0fb_baseline(
     assert any(item.report_commit == "e0fbefdb56af03b8c04b6df58245f7533a3d83c0" for item in state.failed)
 
 
+@pytest.mark.parametrize(
+    "report_timestamp",
+    ("2026-08-03T13-00-00Z", "2026-07-31T08-07-00Z"),
+)
 def test_post_cutover_fail_for_pre_cutover_request_survives_newer_request(
-    repo_root: Path, tmp_path: Path,
+    repo_root: Path, tmp_path: Path, report_timestamp: str,
 ) -> None:
-    clone = tmp_path / "report-boundary"
+    clone = tmp_path / f"report-boundary-{report_timestamp}"
     _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
     _git(clone, "config", "user.name", "Coord Test")
     _git(clone, "config", "user.email", "coord@example.invalid")
@@ -1653,11 +1657,12 @@ def test_post_cutover_fail_for_pre_cutover_request_survives_newer_request(
     )
     report_path = (
         "coordination/mailbox/sent/"
-        "2026-08-03T13-00-00Z-operator-to-director2-verification-report.md"
+        f"{report_timestamp}-operator-to-director2-verification-report.md"
     )
+    report_when = report_timestamp[:11] + report_timestamp[11:].replace("-", ":")
     report_body = (clone / source_report_path).read_text(encoding="utf-8").replace(
         "**When:** 2026-07-31T08:08:59Z",
-        "**When:** 2026-08-03T13:00:00Z",
+        f"**When:** {report_when}",
         1,
     )
     (clone / report_path).write_text(report_body, encoding="utf-8")
