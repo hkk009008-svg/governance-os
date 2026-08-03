@@ -158,11 +158,21 @@ class CommittedMailboxProjection:
     history_exceptions: dict[str, ImmutableHistoryException]
 
 
+_REVIEW_STATE_CUTOVER_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-07-25T05-45-10Z-coordinator-to-operator-verify-request.md"
+)
+_REVIEW_STATE_CUTOVER_COMMIT = "61786501e26f7e1bac92efbdcd4ff0ea468a7bbb"
+_ACTIVE_FAILURE_CUTOVER_COMMIT = "8d05a76489b8609634e1635ebfad12792abc8119"
+_BASELINE_ACTIVE_FAILURE_REPORTS = frozenset({
+    "coordination/mailbox/sent/"
+    "2026-07-27T03-26-01Z-operator2-to-director2-verification-report.md@"
+    "e0fbefdb56af03b8c04b6df58245f7533a3d83c0"
+})
 _PRE_CUTOVER_INVALID_REQUESTS = {
     (
-        "coordination/mailbox/sent/"
-        "2026-07-25T05-45-10Z-coordinator-to-operator-verify-request.md",
-        "61786501e26f7e1bac92efbdcd4ff0ea468a7bbb",
+        _REVIEW_STATE_CUTOVER_PATH,
+        _REVIEW_STATE_CUTOVER_COMMIT,
     ): "d77efcb26159733b31b1159fba6bb83c9b62b8ef3937ed8432ddff54fc224f7c",
 }
 
@@ -710,18 +720,89 @@ def inspect_verify_review_state(
         if immutable_problem is not None:
             return VerifyReviewState(pending=(), failed=(), problem=immutable_problem)
 
+    cutover_introduction = projection.introductions.get(_REVIEW_STATE_CUTOVER_PATH)
+    if (
+        cutover_introduction is not None
+        and cutover_introduction[0] != _REVIEW_STATE_CUTOVER_COMMIT
+    ):
+        return VerifyReviewState(
+            pending=(),
+            failed=(),
+            problem=(
+                "review-state cutover marker introduction mismatch: "
+                f"{_REVIEW_STATE_CUTOVER_PATH}@{cutover_introduction[0]}"
+            ),
+        )
+
+    cutover_exists = _projection_git(
+        root, "cat-file", "-e", f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}^{{commit}}"
+    )
+    post_cutover_request_commits: frozenset[str] | None = None
+    if cutover_exists.returncode == 0:
+        ancestry = _projection_git(
+            root,
+            "merge-base",
+            "--is-ancestor",
+            _ACTIVE_FAILURE_CUTOVER_COMMIT,
+            "HEAD",
+        )
+        if ancestry.returncode != 0:
+            return VerifyReviewState(
+                pending=(),
+                failed=(),
+                problem="active-failure cutover commit is not an ancestor of HEAD",
+            )
+        post_cutover = _projection_git(
+            root,
+            "rev-list",
+            f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}..HEAD",
+            "--",
+            "coordination/mailbox/sent",
+        )
+        if post_cutover.returncode != 0:
+            return VerifyReviewState(
+                pending=(),
+                failed=(),
+                problem="post-cutover review history is unavailable",
+            )
+        try:
+            post_cutover_lines = post_cutover.stdout.decode(
+                "ascii", errors="strict"
+            ).splitlines()
+        except UnicodeDecodeError:
+            return VerifyReviewState(
+                pending=(),
+                failed=(),
+                problem="post-cutover review history is not ASCII",
+            )
+        if any(
+            compact_pair_loop.SHA_RE.fullmatch(line) is None
+            for line in post_cutover_lines
+        ):
+            return VerifyReviewState(
+                pending=(),
+                failed=(),
+                problem="post-cutover review history contains an invalid commit",
+            )
+        post_cutover_request_commits = frozenset(post_cutover_lines)
+
     newest_paths: dict[str, str] = {}
+    candidate_paths: list[tuple[str, str]] = []
     for path in projection.events:
+        if path <= _REVIEW_STATE_CUTOVER_PATH:
+            continue
         name = Path(path).name
         for operator in ("operator", "operator2"):
             if name.endswith(f"-to-{operator}-verify-request.md"):
+                candidate_paths.append((operator, path))
                 previous = newest_paths.get(operator)
                 if previous is None or path > previous:
                     newest_paths[operator] = path
 
     requests: dict[str, CurrentVerifyRequest] = {}
     parsed_requests: dict[str, compact_pair_loop.VerifyRequest] = {}
-    for recipient, path in sorted(newest_paths.items()):
+    request_operators: dict[str, str] = {}
+    for recipient, path in sorted(candidate_paths, key=lambda item: item[1]):
         raw = projection.events[path]
         commit, immutable_problem = _immutable_event(projection, path)
         if immutable_problem is not None:
@@ -772,9 +853,12 @@ def inspect_verify_review_state(
             problem=problem,
             grandfathered=grandfathered,
         )
-        requests[recipient] = current
+        if newest_paths[recipient] == path:
+            requests[recipient] = current
         if request is not None and commit is not None and problem is None:
-            parsed_requests[f"{path}@{commit}"] = request
+            request_ref = f"{path}@{commit}"
+            parsed_requests[request_ref] = request
+            request_operators[request_ref] = request.assigned_operator
 
     parsed_reports: dict[
         str, tuple[str, str, compact_pair_loop.VerificationReport]
@@ -849,16 +933,23 @@ def inspect_verify_review_state(
         reports = active_reports_by_request.get(request_ref or "", [])
         if not reports:
             pending.append(request)
-            continue
+    for request_ref, reports in active_reports_by_request.items():
         active_failures = [item for item in reports if item[2].verdict == "FAIL"]
         if active_failures:
             path, commit, report = max(active_failures, key=lambda item: item[0])
+            report_ref = f"{path}@{commit}"
+            if (
+                post_cutover_request_commits is not None
+                and report_ref not in _BASELINE_ACTIVE_FAILURE_REPORTS
+                and report.request_commit not in post_cutover_request_commits
+            ):
+                continue
             failed.append(FailedVerifyRequest(
                 request_path=report.request_path,
                 request_commit=report.request_commit,
                 report_path=path,
                 report_commit=commit,
-                assigned_operator=operator,
+                assigned_operator=request_operators[request_ref],
             ))
     return VerifyReviewState(
         pending=tuple(sorted(pending, key=lambda item: item.assigned_operator)),

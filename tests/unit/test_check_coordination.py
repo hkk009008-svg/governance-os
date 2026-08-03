@@ -446,6 +446,112 @@ def test_valid_fail_is_terminal_but_surfaces_remediation_blocker(
     ]
 
 
+def test_newer_pending_request_does_not_hide_active_fail(tmp_path: Path) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_commit = _commit_request(root, base, head)
+    report_path, report_commit = _commit_report(
+        root, base, head, failed_path, failed_commit, verdict="FAIL"
+    )
+    pending_path, pending_commit = _commit_request(
+        root, base, head, timestamp="2026-07-25T08-00-00Z"
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (pending_path, pending_commit)
+    ]
+    assert [
+        (item.request_path, item.request_commit, item.report_path, item.report_commit)
+        for item in state.failed
+    ] == [(failed_path, failed_commit, report_path, report_commit)]
+
+
+@pytest.mark.parametrize("verdict", ("GO", "NITS"))
+def test_newer_request_terminal_report_does_not_clear_older_fail(
+    tmp_path: Path, verdict: str,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_commit = _commit_request(root, base, head)
+    report_path, report_commit = _commit_report(
+        root, base, head, failed_path, failed_commit, verdict="FAIL"
+    )
+    newer_path, newer_commit = _commit_request(
+        root, base, head, timestamp="2026-07-25T08-00-00Z"
+    )
+    _commit_report(
+        root,
+        base,
+        head,
+        newer_path,
+        newer_commit,
+        verdict=verdict,
+        timestamp="2026-07-25T08-10-00Z",
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.pending == ()
+    assert [(item.report_path, item.report_commit) for item in state.failed] == [
+        (report_path, report_commit)
+    ]
+
+
+@pytest.mark.parametrize("verdict", ("GO", "NITS"))
+def test_exact_same_request_terminal_can_clear_fail_while_newer_stays_pending(
+    tmp_path: Path, verdict: str,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_commit = _commit_request(root, base, head)
+    report_path, report_commit = _commit_report(
+        root, base, head, failed_path, failed_commit, verdict="FAIL"
+    )
+    _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_commit,
+        verdict=verdict,
+        timestamp="2026-07-25T07-20-00Z",
+        supersedes=f"{report_path}@{report_commit}",
+    )
+    pending_path, pending_commit = _commit_request(
+        root, base, head, timestamp="2026-07-25T08-00-00Z"
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (pending_path, pending_commit)
+    ]
+    assert state.failed == ()
+
+
+def test_pre_cutover_fail_does_not_flood_active_review_state(tmp_path: Path) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    legacy_path, legacy_commit = _commit_request(
+        root, base, head, timestamp="2026-07-25T05-00-00Z"
+    )
+    _commit_report(
+        root,
+        base,
+        head,
+        legacy_path,
+        legacy_commit,
+        verdict="FAIL",
+        timestamp="2026-07-25T05-10-00Z",
+    )
+    pending_path, pending_commit = _commit_request(root, base, head)
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (pending_path, pending_commit)
+    ]
+    assert state.failed == ()
+
+
 def test_same_request_go_without_supersedes_leaves_fail_active(
     tmp_path: Path,
 ) -> None:
@@ -1439,5 +1545,91 @@ def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
         "report_commit": report_commit,
         "assigned_operator": "operator2",
     }
-    assert snapshot["gate"] == {"status": "WARN", "fatal": 0, "advisory": 7}
+    assert snapshot["gate"] == {
+        "status": "FAIL",
+        "fatal": 0,
+        "advisory": 7,
+        "failed_review": 1,
+    }
     assert "remediate failed review" in snapshot["next_action"]
+
+
+def test_post_cutover_fail_and_newer_pending_coexist_with_live_e0fb_baseline(
+    repo_root: Path, tmp_path: Path,
+) -> None:
+    clone = tmp_path / "post-cutover"
+    _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
+    _git(clone, "config", "user.name", "Coord Test")
+    _git(clone, "config", "user.email", "coord@example.invalid")
+    source_request_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-27T02-57-16Z-director2-to-operator2-verify-request.md"
+    )
+    source_report_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-27T03-26-01Z-operator2-to-director2-verification-report.md"
+    )
+    request_path = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T12-10-00Z-director2-to-operator2-verify-request.md"
+    )
+    request_body = (clone / source_request_path).read_text(encoding="utf-8").replace(
+        "**When:** 2026-07-27T02:57:16Z",
+        "**When:** 2026-08-03T12:10:00Z",
+        1,
+    )
+    (clone / request_path).write_text(request_body, encoding="utf-8")
+    _git(clone, "add", "-f", request_path)
+    _git(clone, "commit", "-q", "-m", "post-cutover request")
+    request_commit = _git(clone, "rev-parse", "HEAD")
+
+    report_path = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T12-20-00Z-operator2-to-director2-verification-report.md"
+    )
+    report_body = (clone / source_report_path).read_text(encoding="utf-8")
+    report_body = report_body.replace(
+        "**When:** 2026-07-27T03:26:01Z",
+        "**When:** 2026-08-03T12:20:00Z",
+        1,
+    ).replace(
+        f"Verification request: {source_request_path}@"
+        "eb05a76f79599b93cbc8dafa0ce1e4a42d6d5e7f",
+        f"Verification request: {request_path}@{request_commit}",
+        1,
+    )
+    (clone / report_path).write_text(report_body, encoding="utf-8")
+    _git(clone, "add", "-f", report_path)
+    _git(clone, "commit", "-q", "-m", "post-cutover fail")
+    report_commit = _git(clone, "rev-parse", "HEAD")
+
+    pending_path = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T12-30-00Z-director2-to-operator2-verify-request.md"
+    )
+    pending_body = request_body.replace(
+        "**When:** 2026-08-03T12:10:00Z",
+        "**When:** 2026-08-03T12:30:00Z",
+        1,
+    )
+    (clone / pending_path).write_text(pending_body, encoding="utf-8")
+    _git(clone, "add", "-f", pending_path)
+    _git(clone, "commit", "-q", "-m", "newer pending request")
+    pending_commit = _git(clone, "rev-parse", "HEAD")
+
+    state = cc.inspect_verify_review_state(clone)
+
+    assert state.problem is None
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (pending_path, pending_commit)
+    ]
+    assert (request_path, request_commit, report_path, report_commit) in {
+        (
+            item.request_path,
+            item.request_commit,
+            item.report_path,
+            item.report_commit,
+        )
+        for item in state.failed
+    }
+    assert any(item.report_commit == "e0fbefdb56af03b8c04b6df58245f7533a3d83c0" for item in state.failed)

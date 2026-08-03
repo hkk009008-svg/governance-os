@@ -557,10 +557,6 @@ def collect_orientation_snapshot(
             request for request in requests
             if request.assigned_operator == seat
         ]
-        failed_reviews = [
-            failed for failed in failed_reviews
-            if failed.assigned_operator == seat
-        ]
     current = max(requests, key=lambda request: request.path, default=None)
     failed = max(
         failed_reviews, key=lambda review: review.report_path, default=None
@@ -574,7 +570,9 @@ def collect_orientation_snapshot(
     advisories = [issue for issue in issues if issue.severity == "ADVISORY"]
 
     blocker = None
-    if current is not None and not current.valid:
+    if fatals:
+        blocker = f"{fatals[0].kind}: {fatals[0].message}"
+    elif current is not None and not current.valid:
         blocker = (
             f"invalid current request for {current.assigned_operator}: "
             f"{current.problem}"
@@ -584,17 +582,15 @@ def collect_orientation_snapshot(
             f"failed review for {failed.assigned_operator}: "
             f"{failed.report_path}@{failed.report_commit}"
         )
-    elif fatals:
-        blocker = f"{fatals[0].kind}: {fatals[0].message}"
 
     if blocker is not None:
-        if failed is not None:
+        if fatals or (current is not None and not current.valid):
+            next_action = "repair the blocker before implementation or review"
+        elif failed is not None:
             next_action = (
                 f"remediate failed review for {failed.request_path}@"
                 f"{failed.request_commit}"
             )
-        else:
-            next_action = "repair the blocker before implementation or review"
     elif current is not None:
         next_action = (
             f"{current.assigned_operator} reviews the exact committed request"
@@ -621,7 +617,9 @@ def collect_orientation_snapshot(
             "report_commit": failed.report_commit,
             "assigned_operator": failed.assigned_operator,
         }
-    gate_status = "FAIL" if fatals else ("WARN" if advisories else "PASS")
+    gate_status = (
+        "FAIL" if fatals or failed_reviews else ("WARN" if advisories else "PASS")
+    )
     return {
         "generated_at": now,
         "git": {
@@ -636,6 +634,7 @@ def collect_orientation_snapshot(
             "status": gate_status,
             "fatal": len(fatals),
             "advisory": len(advisories),
+            "failed_review": len(failed_reviews),
         },
         "blocker": blocker,
         "next_action": next_action,
@@ -675,7 +674,8 @@ def render_orientation_snapshot(snapshot: dict) -> str:
     gate = snapshot["gate"]
     lines.append(
         f"Gate: {gate['status']} ({gate['fatal']} fatal, "
-        f"{gate['advisory']} advisory)"
+        f"{gate['advisory']} advisory, "
+        f"{gate.get('failed_review', 0)} failed review)"
     )
     lines.append(f"Blocker: {snapshot.get('blocker') or 'none'}")
     lines.append(f"Next: {snapshot['next_action']}")
