@@ -910,6 +910,54 @@ def test_continuation_documents_read_only_bridge_and_stdin_writer(
     assert "scripts/codex_protocol_model.py" in text
 
 
+def test_agy_guides_keep_explicit_role_and_parent_scoped_helper_boundaries(
+    repo_root: Path,
+) -> None:
+    guides = (
+        repo_root / "AGENTS.md",
+        repo_root / "docs/protocol/agy/continuation.md",
+        repo_root / ".agents/skills/antigravity-harness/SKILL.md",
+        repo_root / ".agy/agents/README.md",
+    )
+    texts = {
+        path.name if path.name != "README.md" else ".agy/agents/README.md":
+        " ".join(path.read_text(encoding="utf-8").split())
+        for path in guides
+    }
+    forbidden = (
+        "Automated Session Entry Protocol",
+        "Mandatory First Turn",
+        "Register Seat Mesh",
+        "4-seat subagent mesh",
+        "natively occupies Pipeline seats",
+        "direct autonomous mode by default",
+        "helpers may issue a binding",
+        "helpers can publish",
+        "helpers are formal seats",
+    )
+    combined = "\n".join(texts.values())
+
+    for phrase in forbidden:
+        assert phrase.casefold() not in combined.casefold(), phrase
+    required = {
+        "AGENTS.md": ("readiness bridge", "explicit assignment", "parent-scoped"),
+        "continuation.md": (
+            "readiness bridge",
+            "only when a concrete Director or Operator role is assigned",
+            "parent-scoped, not formal seats",
+        ),
+        "SKILL.md": (
+            "readiness bridge",
+            "only when the user explicitly assigns one",
+            "never issue a binding GO, NITS, or FAIL",
+        ),
+        ".agy/agents/README.md": ("parent-scoped helper", "not a formal seat"),
+    }
+    for guide, boundaries in required.items():
+        for boundary in boundaries:
+            assert boundary.casefold() in texts[guide].casefold(), (guide, boundary)
+
+
 def test_launcher_emits_only_flags_the_agy_cli_defines(tmp_path: Path) -> None:
     """The launcher and the binary are separate artifacts that can disagree.
 

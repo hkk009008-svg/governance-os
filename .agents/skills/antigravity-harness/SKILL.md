@@ -1,21 +1,24 @@
 ---
 name: antigravity-harness
-description: Use this skill when operating as Antigravity within Pipeline. Defines Layer-2 operating doctrine bindings, direct autonomous seating, native subagent mesh (define_subagent/invoke_subagent), structured artifact mesh conventions (implementation_plan.md, walkthrough.md), work-mode selection, claim formation discipline, and shared-tree staging hygiene.
+description: Use this skill when operating as Antigravity within Pipeline. Defines readiness-bridge posture, explicit role adoption, parent-scoped native helpers, work-mode selection, claim formation discipline, and shared-tree staging hygiene.
 ---
 
-# Antigravity Protocol Harness & Native Subagent Mesh
+# Antigravity protocol harness
 
-This skill is the Antigravity-specific runtime harness for Pipeline. AGY operates natively in direct autonomous posture, executing seated roles (`director`, `operator`, `coordinator`, `director2`, `operator2`) and leveraging native subagent orchestration and structured artifact mesh conventions.
+This is the AGY-specific adapter to Pipeline's shared executable policy. A
+repository-root AGY session starts as a readiness bridge. It adopts a live role
+or coordinator posture only when the user explicitly assigns one.
 
-## Operating Posture & Seating Roles
+## Operating posture
 
-- **Direct Autonomous Mode (Default)**: AGY operates natively in direct autonomous mode by default. Seat launchers (`coordination/bin/agy-seat <seat>`) execute directly without requiring mandatory advisory posture flags.
-- **Automated Session Entry Protocol (Mandatory First Turn)**: Upon initiating ANY new AGY chat session in Pipeline, AGY MUST automatically execute the complete 4-step initialization sequence on its very first turn before taking user directives:
-  1. **Status Snapshot**: Run `python scripts/status.py snapshot coordinator` to inspect unhandled events & active work mode.
-  2. **Git Hygiene Check**: Run `git status --short --branch` and `git log --oneline -5` to inspect worktree status & commit history.
-  3. **Fast Preflight Smoke Check**: Run `python scripts/ci_smoke.py --fast` to verify governance invariants.
-  4. **Register Seat Mesh**: Register `pipeline_director` and `pipeline_operator` using `define_subagent` so the 4-seat subagent mesh is 100% armed and ready.
-- **Seated Role Occupancy**: AGY natively occupies Pipeline seats (`director`, `operator`, `coordinator`, `director2`, `operator2`) under unified operating doctrine.
+- **Readiness bridge by default.** Inspect only the evidence needed for the
+  request. Do not claim a role or run a mandatory root-startup sequence.
+- **Explicit roles only.** A concrete Director, Operator, or Coordinator
+  assignment selects that role's shared skill and current status view. A label,
+  prompt fragment, launcher, or helper definition grants no authority.
+- **Parent-scoped helpers.** Native AGY helpers are not formal seats. They return
+  bounded evidence to their parent and never issue a binding GO, NITS, or FAIL,
+  publish mailbox events, consume cursors, or inherit authority.
 
 ## Operating Doctrine (Layer-2) Bindings & Native Mesh Rules
 
@@ -26,18 +29,22 @@ When performing substantive work, adhere to the unified operating doctrine bound
   - `flash_lite`: Directory listing, `rg` searching, file reading, and log extraction (fastest).
   - `flash`: Multi-file research, codebase orientation, and doc inspection.
   - `pro` / `inherit`: Complex reasoning, heavy refactoring, and independent verifier analysis.
-- **Native Subagent Mesh (`define_subagent` / `invoke_subagent`)**: Delegate sub-tasks dynamically using `define_subagent` and `invoke_subagent`. Avoid spinning external OS chat processes or polling disk mailbox files for internal task coordination.
-- **Structured Artifact Mesh**:
-  - **`implementation_plan.md`**: Formulate for multi-file/architectural initiatives (>50 lines or material ambiguity). Skip for routine single-file edits or minor fixes.
-  - **`walkthrough.md`**: Formulate upon completion to summarize executed changes, test logs, and verification proof.
-  - Save artifacts in designated working directories (`.agents/<agent_folder>/`). Legacy `brain/<conversation-id>/` paths are deprecated.
+- **Native helpers (`define_subagent` / `invoke_subagent`)**: Delegate bounded
+  local tasks when useful. Helper output returns to the parent; it is not a
+  formal handoff, review verdict, seat claim, or durable protocol event.
+- **Working notes**: Optional scratch notes under `.agents/<agent_folder>/`
+  grant no authority and do not replace repository evidence or mailbox events.
 - **Seating Doctrine & Non-Author Verification**:
-  - **impl ≠ verifier**: Candidate code authored by an implementer subagent/seat (`director`) MUST be verified by a distinct verifier subagent/seat (`operator`).
-- **Programmatic Event Emission**: Use `scripts/agy_emit.py --to <seat> --kind <kind> --subject <subj> --body <body>` or `coordination/bin/send-event` to emit schema-compliant events programmatically when milestone records are required.
+  - **impl ≠ verifier**: Formal review uses the explicitly assigned non-author
+    Operator and the committed Compact Pair. Helper analysis is advisory and
+    cannot satisfy or author the formal verdict.
+- **Event publication**: When separately authorized, assigned live roles use
+  `coordination/bin/send-event`; helpers never publish.
 - **Environment Isolation & Native Index**: Each seat gets an isolated process environment; `scripts/agy_seat_launcher.py` emits only `AGY_SEAT`, `AGY_AGENT_MODE`, `AGY_AGENT_ROLE`, and `AGY_BEHAVIOR_SOURCE`, and drops inherited `GIT_*` authority rather than replacing it. No seat binds a per-seat Git index: every worktree uses its native index and `index-<provider>-<seat>` is retired. Never hand-roll a `GIT_INDEX_FILE` export — it silently rebinds every later Git command in the session including commits, and follows `cd` into unrelated repositories. Prefix ordinary Git and pytest with `env -u GIT_INDEX_FILE`.
 - **Background Tasks**: Use `schedule` and `manage_task` tools for background command and timer execution.
 - **User Delegation**: Use `ask_question` rather than deciding policy or cross-cutting changes on your own.
-- **Smoke Tests**: Run `scripts/ci_smoke.py --fast` for session-start preflight verification; run full `scripts/ci_smoke.py` before final verification.
+- **Smoke Tests**: Run full `scripts/ci_smoke.py` when a change affects
+  governance/runtime topology or relies on an `ARCHITECTURE.md` invariant.
 - **Claim Formation**: Before writing a load-bearing claim ("enforced", "measured", "complete", "never", a cited reference), follow `.agents/skills/probe-a-claim/SKILL.md`. Before claiming a guard or gate holds, follow `.agents/skills/prove-a-control/SKILL.md`. Scale rigor to work mode: routine `explore` observations cite the command; `validate` applies the full formation loop.
 - **Work Mode Selection**: Declare `explore`, `validate`, or `promote` per `docs/protocol/work-modes.md`. Mode controls iteration and record granularity; risk controls review depth. Mode grants no authority.
 
@@ -72,4 +79,6 @@ State the author/reviewer model as the exact ID from `agy models`, undecorated.
 ## Hard Boundaries & User Consent
 
 - **User-Gated Side Effects**: Pushing to `main`, merging candidates, locking resources, or initiating paid spend MUST receive explicit user consent (`ask_question`).
-- **No Self-Approval**: Candidate code built by an implementer subagent/seat (`director`) MUST be verified by a distinct verifier subagent/seat (`operator`). Verifiers must strictly evaluate candidates using reproducible test runs and record actual terminal evidence in verification reports.
+- **No Self-Approval**: The author never issues the formal verdict for authored
+  work. Native helper separation does not create reviewer independence or a
+  formal seat.

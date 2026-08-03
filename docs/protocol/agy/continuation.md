@@ -68,10 +68,11 @@ a formal verdict.
 
 The genuine difference is orchestration, not policy.
 
-- **Native subagent mesh.** Seats compose work with `define_subagent` /
-  `invoke_subagent` rather than by polling files. Tiers: `flash_lite` for
-  search and file reads, `flash` for orientation and multi-file research,
-  `pro` / `inherit` for implementation and independent analysis.
+- **Native helpers.** An assigned parent may delegate bounded work with
+  `define_subagent` / `invoke_subagent` rather than polling files. These
+  helpers are parent-scoped, not formal seats: they return evidence locally
+  and cannot author a verdict, publish an event, consume a cursor, or inherit
+  the parent's authority. Tiers select cost/capability, not protocol standing.
 - **Workspace artifacts.** A subagent may keep working notes under
   `.agents/<agent_folder>/`. These are scratch inputs, not protocol events:
   they grant no authority, are not a mailbox, are not durable protocol state,

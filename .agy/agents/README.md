@@ -1,8 +1,9 @@
 # AGY advisory catalog
 
 This directory contains read-only advisory profiles for local analysis. Each
-profile returns findings only to its parent or local caller and has no authority
-over Pipeline coordination or provider state.
+profile is a parent-scoped helper, not a formal seat. It returns findings only
+to its parent or local caller and has no authority over Pipeline coordination or
+provider state.
 
 Available profiles:
 
