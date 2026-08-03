@@ -75,6 +75,7 @@ class VerifyRequest:
     abuse_class_assessment: tuple[str, ...]
     outcome: str
     finding_refs: tuple[str, ...]
+    remediates_failed_report: tuple[str, str] | None
 
 
 @dataclass(frozen=True)
@@ -546,6 +547,7 @@ def _parse_verify_request_bytes(
         abuse_class_assessment=abuse_class_assessment,
         outcome=outcome,
         finding_refs=_finding_refs(lines, required=False),
+        remediates_failed_report=_remediates_failed_report(root, lines),
     )
 
 
@@ -733,6 +735,11 @@ def parse_verify_request_candidate(
     # only: committed events use the committed parsers, which stay untouched
     # so the historical gates keep judging frozen artifacts as frozen.
     _require_path_references_resolve(root, request.finding_refs)
+    if request.remediates_failed_report is not None:
+        _require_path_references_resolve(
+            root,
+            (f"{request.remediates_failed_report[0]}@{request.remediates_failed_report[1]}",),
+        )
     return request
 
 
@@ -749,7 +756,7 @@ def validate_request_candidate(root: Path, request: VerifyRequest) -> list[str]:
             )
     except CompactPairError as exc:
         return [str(exc)]
-    return []
+    return _remediation_request_target_violations(root.resolve(), request)
 
 
 def _compose_self_check(
@@ -800,6 +807,7 @@ def compose_request(
     reviewed_repository: str | None = None,
     abuse_assessments: Sequence[str] = (),
     finding_refs: Sequence[str] = (),
+    remediates_failed_report: str | None = None,
 ) -> str:
     """Build one verify-request body that this module's own parser accepts.
 
@@ -857,6 +865,14 @@ def compose_request(
     if len(references) != len(set(references)):
         raise CompactPairError("finding refs must be unique")
 
+    remediation_ref = None
+    if remediates_failed_report is not None:
+        remediation_ref = _parse_report_reference(
+            root.resolve(),
+            remediates_failed_report,
+            "Remediates failed report",
+        )
+
     reviewed_root = _reviewed_root(root.resolve(), reviewed_repository)
     _require_path_references_resolve(root.resolve(), references)
     base, head = _resolve_range(reviewed_root, base_rev, head_rev)
@@ -871,11 +887,13 @@ def compose_request(
         f"Author model: {author_model}",
         f"Assigned operator: {assigned_operator}",
         f"Risk class: {risk_class}",
-        "",
-        "## Outcome",
-        "",
-        outcome,
     ]
+    if remediation_ref is not None:
+        lines.append(
+            "Remediates failed report: "
+            f"{remediation_ref[0]}@{remediation_ref[1]}"
+        )
+    lines += ["", "## Outcome", "", outcome]
     if assessments:
         lines += ["", "## Abuse Class Assessment", ""]
         lines += [f"- {entry}" for entry in assessments]
@@ -1109,7 +1127,7 @@ def validate_report_structure_against_request(
     """Validate a report against an already parsed exact request binding."""
 
     violations = validate_report_binding(report, request)
-    violations += _supersedes_violations(root, report)
+    violations += _supersedes_violations(root, report, request)
     return violations
 
 
@@ -1132,17 +1150,76 @@ def validate_report_binding(
 def supersession_report_violations(
     report: VerificationReport,
     superseded: VerificationReport,
+    *,
+    request: VerifyRequest | None = None,
+    superseded_commit: str | None = None,
 ) -> list[str]:
     """Validate the pure report-to-report portion of a Supersedes binding."""
 
     violations: list[str] = []
     if superseded.reviewer_seat != report.reviewer_seat:
         violations.append("a seat supersedes only its own verdicts")
-    if (
+    different_request = (
         superseded.request_path != report.request_path
         or superseded.request_commit != report.request_commit
-    ):
+    )
+    if not different_request:
+        return violations
+    if request is None:
         violations.append("a report supersedes only a verdict for the same exact request")
+        return violations
+    if request.remediates_failed_report is None:
+        violations.append(
+            "a report supersedes only a verdict for the same exact request unless "
+            "the different-request remediation request explicitly names the failed report"
+        )
+        return violations
+    expected = request.remediates_failed_report
+    if report.supersedes != expected:
+        violations.append("a remediation report must supersede the exact failed report")
+    if superseded_commit is None or expected != (superseded.path, superseded_commit):
+        violations.append("remediation request does not bind the superseded report")
+        return violations
+    violations += remediation_request_violations(
+        request,
+        superseded,
+        superseded_commit,
+    )
+    if report.verdict not in {"GO", "NITS"}:
+        violations.append("a remediation supersession verdict must be GO or NITS")
+    return violations
+
+
+def remediation_request_violations(
+    request: VerifyRequest,
+    failed_report: VerificationReport,
+    failed_report_commit: str,
+) -> list[str]:
+    """Validate the pure request-to-failed-report remediation binding."""
+
+    violations: list[str] = []
+    expected = (failed_report.path, failed_report_commit)
+    if request.remediates_failed_report != expected:
+        violations.append("request must explicitly name the exact failed report")
+    if failed_report.verdict != "FAIL":
+        violations.append("remediation target is not a FAIL report")
+    if request.assigned_operator != failed_report.reviewer_seat:
+        violations.append("remediation reviewer seat does not match failed report")
+    if request.reviewed_repository != failed_report.reviewed_repository:
+        violations.append("remediation repository does not match failed report")
+    if request.risk_class != failed_report.risk_class:
+        violations.append("remediation Risk class does not match failed report")
+    if request.reviewed_base != failed_report_commit:
+        violations.append(
+            "remediation Reviewed base must equal the failed report introduction commit"
+        )
+    missing_refs = tuple(
+        reference
+        for reference in failed_report.finding_refs
+        if reference not in request.finding_refs
+    )
+    if missing_refs:
+        violations.append("remediation request does not carry every failed finding ref")
     return violations
 
 
@@ -1153,7 +1230,7 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
     except CompactPairError as exc:
         return [f"request binding invalid: {exc}"]
     violations = _report_structure_violations(report, request)
-    violations += _supersedes_violations(root, report)
+    violations += _supersedes_violations(root, report, request)
     try:
         reviewed_root = _reviewed_root(root, request.reviewed_repository)
         base = _full_commit(reviewed_root, request.reviewed_base, "Reviewed base")
@@ -1314,49 +1391,136 @@ def _supersedes(
     value = _optional_one(lines, "Supersedes: ", "Supersedes")
     if value is None:
         return None
-    path, separator, commit = value.rpartition("@")
-    if not separator:
-        raise CompactPairError("Supersedes must bind report-path@commit")
-    path = _repo_path(root, path)
-    if REPORT_RE.fullmatch(path) is None:
-        raise CompactPairError("Supersedes path is not a canonical verification-report")
-    if SHA_RE.fullmatch(commit) is None:
-        raise CompactPairError("Supersedes commit must be one full lowercase commit SHA")
+    path, commit = _parse_report_reference(root, value, "Supersedes")
     if path == report_path:
         raise CompactPairError("Supersedes must not name the report itself")
     return path, commit
 
 
-def _supersedes_violations(root: Path, report: VerificationReport) -> list[str]:
+def _parse_report_reference(
+    root: Path,
+    value: str,
+    label: str,
+) -> tuple[str, str]:
+    path, separator, commit = value.rpartition("@")
+    if not separator:
+        raise CompactPairError(f"{label} must bind report-path@commit")
+    path = _repo_path(root, path)
+    if REPORT_RE.fullmatch(path) is None:
+        raise CompactPairError(
+            f"{label} path is not a canonical verification-report"
+        )
+    if SHA_RE.fullmatch(commit) is None:
+        raise CompactPairError(
+            f"{label} commit must be one full lowercase commit SHA"
+        )
+    return path, commit
+
+
+def _remediates_failed_report(
+    root: Path,
+    lines: list[str],
+) -> tuple[str, str] | None:
+    value = _optional_one(
+        lines,
+        "Remediates failed report: ",
+        "Remediates failed report",
+    )
+    if value is None:
+        return None
+    return _parse_report_reference(root, value, "Remediates failed report")
+
+
+def _load_report_at_introduction(
+    root: Path,
+    path: str,
+    commit: str,
+) -> VerificationReport:
+    resolved = _full_commit(root, commit, "report introduction commit")
+    change = _git(
+        root,
+        "diff-tree",
+        "--root",
+        "--no-commit-id",
+        "--name-status",
+        "-r",
+        resolved,
+        "--",
+        path,
+    ).decode("utf-8", errors="strict").splitlines()
+    if change != [f"A\t{path}"]:
+        raise CompactPairError(
+            "report reference commit must be the named report's introduction commit"
+        )
+    if not _is_ancestor(root, resolved, "HEAD"):
+        raise CompactPairError("report introduction commit is not in this history")
+    return _parse_verification_report_bytes(
+        root,
+        path,
+        _git(root, "show", f"{resolved}:{path}"),
+    )
+
+
+def _remediation_request_target_violations(
+    root: Path,
+    request: VerifyRequest,
+) -> list[str]:
+    if request.remediates_failed_report is None:
+        return []
+    path, commit = request.remediates_failed_report
+    try:
+        failed_report = _load_report_at_introduction(root, path, commit)
+        target_violations = validate_report(root, failed_report)
+        if target_violations:
+            raise CompactPairError(
+                "remediation target report is invalid: " + "; ".join(target_violations)
+            )
+        request_violations = remediation_request_violations(
+            request,
+            failed_report,
+            commit,
+        )
+        if request_violations:
+            raise CompactPairError("; ".join(request_violations))
+    except CompactPairError as exc:
+        return [f"remediation binding invalid: {exc}"]
+    return []
+
+
+def _supersedes_violations(
+    root: Path,
+    report: VerificationReport,
+    request: VerifyRequest,
+) -> list[str]:
     """Resolve a Supersedes claim against Git: it names the seat's own dead verdict."""
     if report.supersedes is None:
+        if request.remediates_failed_report is not None:
+            return [
+                "supersession binding invalid: remediation report must explicitly "
+                "supersede the failed report"
+            ]
         return []
     path, commit = report.supersedes
     try:
-        resolved = _full_commit(root, commit, "Supersedes commit")
-        change = _git(
-            root,
-            "diff-tree",
-            "--root",
-            "--no-commit-id",
-            "--name-status",
-            "-r",
-            resolved,
-            "--",
-            path,
-        ).decode("utf-8", errors="strict").splitlines()
-        if change != [f"A\t{path}"]:
-            raise CompactPairError(
-                "Supersedes commit must be the named report's introduction commit"
-            )
-        if not _is_ancestor(root, resolved, "HEAD"):
-            raise CompactPairError("Supersedes commit is not in this history")
-        superseded = _parse_verification_report_bytes(
-            root, path, _git(root, "show", f"{resolved}:{path}")
+        superseded = _load_report_at_introduction(root, path, commit)
+        different_request = (
+            superseded.request_path != report.request_path
+            or superseded.request_commit != report.request_commit
         )
-        report_violations = supersession_report_violations(report, superseded)
+        report_violations = supersession_report_violations(
+            report,
+            superseded,
+            request=request,
+            superseded_commit=commit,
+        )
         if report_violations:
             raise CompactPairError("; ".join(report_violations))
+        if different_request:
+            target_violations = validate_report(root, superseded)
+            if target_violations:
+                raise CompactPairError(
+                    "superseded report is invalid: " + "; ".join(target_violations)
+                )
     except CompactPairError as exc:
         return [f"supersession binding invalid: {exc}"]
     return []
@@ -1410,6 +1574,7 @@ def _main(argv: list[str] | None = None) -> int:
     compose.add_argument("--reviewed-repository")
     compose.add_argument("--abuse-class", action="append", default=[])
     compose.add_argument("--finding-ref", action="append", default=[])
+    compose.add_argument("--remediates-failed-report")
     arguments = parser.parse_args(argv)
 
     if arguments.command == "compose-request":
@@ -1426,6 +1591,7 @@ def _main(argv: list[str] | None = None) -> int:
                 reviewed_repository=arguments.reviewed_repository,
                 abuse_assessments=arguments.abuse_class,
                 finding_refs=arguments.finding_ref,
+                remediates_failed_report=arguments.remediates_failed_report,
             )
         except (CompactPairError, OSError) as exc:
             print(f"compose-request failed: {exc}", file=sys.stderr)

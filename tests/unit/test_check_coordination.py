@@ -273,6 +273,7 @@ def _commit_request(
     *,
     timestamp: str = "2026-07-25T07-00-00Z",
     finding_refs: bool = True,
+    remediates_failed_report: str | None = None,
 ) -> tuple[str, str]:
     path = (
         "coordination/mailbox/sent/"
@@ -284,6 +285,11 @@ def _commit_request(
         "## Finding Refs",
         "",
         "- sha256:" + "1" * 64,
+    )
+    remediation_lines = (
+        ()
+        if remediates_failed_report is None
+        else (f"Remediates failed report: {remediates_failed_report}",)
     )
     (root / path).write_text(
         "\n".join(
@@ -300,6 +306,7 @@ def _commit_request(
                 "Author model: composer-2.5",
                 "Assigned operator: operator",
                 "Risk class: material-behavior",
+                *remediation_lines,
                 "",
                 "## Outcome",
                 "",
@@ -1087,6 +1094,150 @@ def test_valid_same_request_superseding_report_clears_fail(
 
     assert state.pending == ()
     assert state.failed == ()
+
+
+@pytest.mark.parametrize("verdict", ("GO", "NITS"))
+def test_explicit_different_request_remediation_clears_active_fail(
+    tmp_path: Path, verdict: str,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_request_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="FAIL",
+    )
+    (root / "payload.txt").write_text("remediated\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "fix: remediate active fail")
+    remediation_head = _git(root, "rev-parse", "HEAD")
+    failed_ref = f"{fail_path}@{fail_commit}"
+    request_path, request_commit = _commit_request(
+        root,
+        fail_commit,
+        remediation_head,
+        timestamp="2026-07-25T08-00-00Z",
+        remediates_failed_report=failed_ref,
+    )
+    _commit_report(
+        root,
+        fail_commit,
+        remediation_head,
+        request_path,
+        request_commit,
+        verdict=verdict,
+        timestamp="2026-07-25T08-10-00Z",
+        supersedes=failed_ref,
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is None
+    assert state.pending == ()
+    assert state.failed == ()
+
+
+def test_different_request_remediation_cannot_reuse_inactive_fail(
+    tmp_path: Path,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_request_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="FAIL",
+    )
+    failed_ref = f"{fail_path}@{fail_commit}"
+    _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="GO",
+        timestamp="2026-07-25T07-20-00Z",
+        supersedes=failed_ref,
+    )
+    (root / "payload.txt").write_text("later\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "fix: later work")
+    remediation_head = _git(root, "rev-parse", "HEAD")
+    request_path, request_commit = _commit_request(
+        root,
+        fail_commit,
+        remediation_head,
+        timestamp="2026-07-25T08-00-00Z",
+        remediates_failed_report=failed_ref,
+    )
+    _commit_report(
+        root,
+        fail_commit,
+        remediation_head,
+        request_path,
+        request_commit,
+        verdict="GO",
+        timestamp="2026-07-25T08-10-00Z",
+        supersedes=failed_ref,
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (request_path, request_commit)
+    ]
+    assert state.failed == ()
+
+
+def test_different_request_fail_report_cannot_clear_active_fail(
+    tmp_path: Path,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_request_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="FAIL",
+    )
+    (root / "payload.txt").write_text("attempted\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "fix: attempted remediation")
+    remediation_head = _git(root, "rev-parse", "HEAD")
+    failed_ref = f"{fail_path}@{fail_commit}"
+    request_path, request_commit = _commit_request(
+        root,
+        fail_commit,
+        remediation_head,
+        timestamp="2026-07-25T08-00-00Z",
+        remediates_failed_report=failed_ref,
+    )
+    _commit_report(
+        root,
+        fail_commit,
+        remediation_head,
+        request_path,
+        request_commit,
+        verdict="FAIL",
+        timestamp="2026-07-25T08-10-00Z",
+        supersedes=failed_ref,
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (request_path, request_commit)
+    ]
+    assert [(item.report_path, item.report_commit) for item in state.failed] == [
+        (fail_path, fail_commit)
+    ]
 
 
 def test_review_projection_uses_bounded_git_processes(
