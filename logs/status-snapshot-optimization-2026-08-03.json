@@ -1,0 +1,134 @@
+{
+  "artifact_kind": "status-snapshot-optimization-and-effectiveness-comparison",
+  "schema_version": "status-snapshot-optimization/v1",
+  "recorded_at": "2026-08-03T19:19:17+09:00",
+  "benchmark": {
+    "interpretation": "Report-only machine-local observation; timing is not a gate.",
+    "before": {
+      "provenance": "Parent-provided direct status.collect_orientation_snapshot(root, 'coordinator') observation on the same machine, ten runs with global subprocess.run counting.",
+      "head": "4bf77010506cedd350bc72a74f0bc7b9052bea67",
+      "runs": 10,
+      "processes_per_run": 231,
+      "git_processes_per_run": 231,
+      "gate": {
+        "fatal": 0,
+        "advisory": 7
+      },
+      "timing_seconds": {
+        "min": 1.848291041,
+        "max": 1.933721333,
+        "p50": 1.873105667,
+        "p95_nearest_rank": 1.933721333
+      }
+    },
+    "after": {
+      "instrument": {
+        "path": "scripts/status_benchmark.py",
+        "commit": "3b13f2e231704f1ff23fb1660e3095b9ee31b0b6",
+        "git_blob": "19ec0f96eef327932819fe4117a6e04b2fa436a9",
+        "sha256": "cd9f1c733918040f418890fe31f30f1f1f65d5371a5e2b29549a345cc1af79f1",
+        "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/status_benchmark.py --root /Users/hyungkoookkim/Pipeline/.worktrees/governance-hardening-2026-08-03 --runs 10 --seat coordinator"
+      },
+      "repository": {
+        "root": "/Users/hyungkoookkim/Pipeline/.worktrees/governance-hardening-2026-08-03",
+        "head": "3b13f2e231704f1ff23fb1660e3095b9ee31b0b6",
+        "dirty": false
+      },
+      "runtime": {
+        "python_implementation": "CPython",
+        "python_version": "3.13.13",
+        "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+        "system": "Darwin",
+        "machine": "arm64"
+      },
+      "gate": {
+        "status": "FAIL",
+        "fatal": 0,
+        "advisory": 7,
+        "failed_review": 1
+      },
+      "processes": {
+        "candidate_independent_observation": true,
+        "per_run": [32, 32, 32, 32, 32, 32, 32, 32, 32, 32],
+        "git_per_run": [32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
+      },
+      "timing_seconds": {
+        "per_run": [
+          0.8207960840009036,
+          0.7833310409987462,
+          0.7891987920011161,
+          0.7930972079993808,
+          0.7912177920006798,
+          0.7836352079975768,
+          0.7895035420006025,
+          0.7898527910001576,
+          0.7948662909984705,
+          0.791748584000743
+        ],
+        "min": 0.7833310409987462,
+        "max": 0.8207960840009036,
+        "p50": 0.7905352915004187,
+        "p95_nearest_rank": 0.8207960840009036
+      }
+    },
+    "percent_change": {
+      "processes_per_run": -86.14718614718615,
+      "git_processes_per_run": -86.14718614718615,
+      "timing_min": -57.61863128578978,
+      "timing_max": -57.55354869425506,
+      "timing_p50": -57.795478096745,
+      "timing_p95_nearest_rank": -57.55354869425506
+    }
+  },
+  "protocol_effectiveness": {
+    "historical_artifact": {
+      "path": "logs/protocol-effectiveness-2026-07-11T22-55-22+09-00.json",
+      "introduction_commit": "1a618bc4ce4e98cfe537641bc8745e09ac13f24a",
+      "current_commit": "1a618bc4ce4e98cfe537641bc8745e09ac13f24a",
+      "sha256": "a197cf7d76c6ca9a2caa2896dc07b36de386a8e3ddfdca01a419bd3a24cff3b2",
+      "reported_head": "a198734 docs(plan): governance-brief audit verdicts + typed-route slice-1 plan (ADR-014 reserved)",
+      "generated_at": "2026-07-11T22:55:22+09:00"
+    },
+    "historical_instrument": {
+      "revision_expression": "411c2af^:scripts/protocol_effectiveness_report.py",
+      "source_commit": "d434a0d3ed5c47deb6855571d740a3b05ba9c257",
+      "git_blob": "34888f344d9898ce984688903fb9e412c5a983fb",
+      "sha256": "4e5334a8075f3cb2a147e0e1f1ffc000dc6ffa722b6c0c5a0aeab32efc470c4b",
+      "parameters": {
+        "wave": 2,
+        "commits": 25,
+        "mailbox_events": 120,
+        "gate_timeout_seconds": 300,
+        "stdout_only": true
+      }
+    },
+    "baseline_metrics": {
+      "duplicate_verification_count": 21,
+      "handoff_commits_per_verified_row": 19,
+      "mailbox_events_per_verified_row": 120,
+      "route_to_go_seconds_avg": 677.0,
+      "route_to_go_observation_count": 12,
+      "stale_claim_count": 68
+    },
+    "current_replay": {
+      "head": "3b13f2e231704f1ff23fb1660e3095b9ee31b0b6",
+      "status": "completed_read_only",
+      "verified_rows_delta": 0,
+      "handoff_commits_per_verified_row": null,
+      "handoff_commits_per_verified_row_status": "not_observed",
+      "mailbox_events_per_verified_row": null,
+      "mailbox_events_per_verified_row_status": "not_observed",
+      "route_to_go_seconds_avg": 2137.875,
+      "route_to_go_observation_count": 16,
+      "duplicate_verification_count": null,
+      "duplicate_verification_count_status": "not_observed",
+      "duplicate_verification_reason_heuristic_count": 46,
+      "stale_claim_count": 25
+    },
+    "comparison": {
+      "denominator_compatibility": "not_comparable",
+      "route_to_go_seconds_avg_percent_change_under_legacy_heuristic": 215.78655834564256,
+      "conclusion": "The old verified-row denominator vanished, so the handoff and mailbox ratios and exact duplicate-verification metric are non-comparable. Route-to-GO average latency worsened under the historical heuristic. Governance effectiveness improvement is not empirically established by these observations."
+    }
+  }
+}
