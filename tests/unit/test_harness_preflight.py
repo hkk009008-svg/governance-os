@@ -494,7 +494,7 @@ def test_live_probe_rejects_exit_zero_without_exact_positive_artifact(
 
 def test_live_probe_accepts_only_exact_nonempty_head_artifact(tmp_path: Path) -> None:
     root, _, _, _ = _review_request_repo(tmp_path)
-    expected = _git(root, "rev-parse", "--short", "HEAD")
+    expected = _git(root, "rev-parse", "--show-toplevel", "--short", "HEAD")
 
     def runner(*args, **kwargs):
         return subprocess.CompletedProcess(args[0], 0, stdout=expected + "\n", stderr="")
@@ -508,7 +508,7 @@ def test_agy_live_probe_places_all_flags_before_print_and_sanitizes_git_env(
     tmp_path: Path, monkeypatch,
 ) -> None:
     root, _, _, _ = _review_request_repo(tmp_path)
-    expected = _git(root, "rev-parse", "--short", "HEAD")
+    expected = _git(root, "rev-parse", "--show-toplevel", "--short", "HEAD")
     captured: dict[str, object] = {}
     monkeypatch.setenv("GIT_INDEX_FILE", "/tmp/poisoned-index")
     monkeypatch.setenv("GIT_OBJECT_DIRECTORY", "/tmp/poisoned-objects")
@@ -526,7 +526,7 @@ def test_agy_live_probe_places_all_flags_before_print_and_sanitizes_git_env(
     argv = captured["argv"]
     assert isinstance(argv, list)
     assert argv[-2] == "--print"
-    assert "git rev-parse --short HEAD" in argv[-1]
+    assert "git rev-parse --show-toplevel --short HEAD" in argv[-1]
     assert "env -u" not in argv[-1]
     assert argv[argv.index("--mode") + 1] == "plan"
     assert argv[argv.index("--model") + 1] == preflight.AGY_PROBE_MODEL
@@ -535,7 +535,10 @@ def test_agy_live_probe_places_all_flags_before_print_and_sanitizes_git_env(
     assert argv.index("--add-dir") < argv.index("--print")
     assert argv.index("--disable-slash-commands") < argv.index("--print")
     assert f'Cwd set to {json.dumps(str(root.resolve()))}' in argv[-1]
-    assert 'CommandLine set to "git rev-parse --short HEAD"' in argv[-1]
+    assert (
+        'CommandLine set to "git rev-parse --show-toplevel --short HEAD"'
+        in argv[-1]
+    )
     assert "do not retry" in argv[-1]
     assert "do not request sandbox bypass" in argv[-1]
     environment = captured["env"]
@@ -547,7 +550,7 @@ def test_agy_live_probe_positive_artifact_depends_on_exact_root_binding(
     tmp_path: Path,
 ) -> None:
     root, _, _, _ = _review_request_repo(tmp_path)
-    expected = _git(root, "rev-parse", "--short", "HEAD")
+    expected = _git(root, "rev-parse", "--show-toplevel", "--short", "HEAD")
 
     def runner(argv, **kwargs):
         root_text = str(root.resolve())
@@ -562,6 +565,28 @@ def test_agy_live_probe_positive_artifact_depends_on_exact_root_binding(
     result = preflight.live_probe("agy", root, runner=runner)
 
     assert result.ok is True
+
+
+def test_agy_live_probe_rejects_same_head_artifact_from_wrong_root(
+    tmp_path: Path,
+) -> None:
+    root, _, _, _ = _review_request_repo(tmp_path)
+    wrong_root = tmp_path / "same-head-wrong-root"
+    _git(tmp_path, "clone", "-q", str(root), str(wrong_root))
+    assert _git(root, "rev-parse", "--short", "HEAD") == _git(
+        wrong_root, "rev-parse", "--short", "HEAD",
+    )
+    wrong_artifact = _git(wrong_root, "rev-parse", "--short", "HEAD")
+
+    def runner(argv, **kwargs):
+        return subprocess.CompletedProcess(
+            argv, 0, stdout=wrong_artifact + "\n", stderr="",
+        )
+
+    result = preflight.live_probe("agy", root, runner=runner)
+
+    assert result.ok is False
+    assert "positive artifact" in result.detail
 
 
 def test_package_cli_never_calls_live_provider(tmp_path: Path, monkeypatch, capsys) -> None:

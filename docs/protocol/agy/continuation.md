@@ -141,9 +141,11 @@ AGY settings grants persist into future sessions. Do not add commit,
 send-event, or a blanket permission skip merely to gather review evidence. In
 headless mode a missing grant may return exit 0 with denial text or no output,
 so the live probe requires the exact nonempty artifact from a real read-only
-`git rev-parse --short HEAD` command. It sanitizes inherited `GIT_*`, pins plan
-mode, `gemini-3.6-flash-low`, and low effort. AGY has no working-directory flag,
-so the launch binds the exact repository through `--add-dir` and the prompt
+`git rev-parse --show-toplevel --short HEAD` command: the exact two-line root and
+HEAD artifact prevents another checkout at the same commit from satisfying the
+probe. It sanitizes inherited `GIT_*`, pins plan mode,
+`gemini-3.6-flash-low`, and low effort. AGY has no working-directory flag, so
+the launch binds the exact repository through `--add-dir` and the prompt
 requires that same absolute path as the command tool's `Cwd`, with no retry or
 sandbox bypass. Every flag precedes the final `--print <prompt>`. When settings
 cannot be changed, use

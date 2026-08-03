@@ -16,8 +16,8 @@ and Codex's ambient authority from the project config the launch would inherit.
 A copy of an external interface rots exactly the way the launcher flags did.
 
 `--live` additionally spends one trivial tool-using prompt per harness and
-requires the exact nonempty short HEAD artifact because exit 0 is not evidence
-that anything ran.
+requires the exact nonempty resolved-root plus short-HEAD artifact because exit
+0 is not evidence that anything ran.
 """
 
 from __future__ import annotations
@@ -450,14 +450,26 @@ def live_probe(
     root = root.resolve()
     try:
         expected = _git_bytes(
-            root, "rev-parse", "--short", "HEAD", max_bytes=65_536,
+            root,
+            "rev-parse",
+            "--show-toplevel",
+            "--short",
+            "HEAD",
+            max_bytes=65_536,
         ).decode("utf-8", errors="strict").strip()
     except (PreflightError, UnicodeDecodeError) as exc:
         return Result(harness, False, f"could not resolve probe range: {exc}")
     if not expected:
         return Result(harness, False, "probe range produced no positive artifact")
+    artifact_lines = expected.splitlines()
+    if len(artifact_lines) != 2 or artifact_lines[0] != str(root):
+        return Result(
+            harness,
+            False,
+            "local probe could not bind exact resolved repository root and HEAD",
+        )
 
-    command = "git rev-parse --short HEAD"
+    command = "git rev-parse --show-toplevel --short HEAD"
     prompt = (
         "Use the command tool exactly once with Cwd set to "
         f"{json.dumps(str(root))} and CommandLine set to {json.dumps(command)}. "

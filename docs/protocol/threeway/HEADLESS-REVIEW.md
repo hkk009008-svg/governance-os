@@ -77,7 +77,9 @@ mode cannot prompt for, so it was auto-denied.
 
 — and the first such run produced no output at all. Exit status and denial text
 are not interpreted as success: `--live` requires the exact nonempty output of
-an actual `git rev-parse --short HEAD` probe with inherited `GIT_*` removed.
+an actual `git rev-parse --show-toplevel --short HEAD` probe with inherited
+`GIT_*` removed. Both resolved-root and short-HEAD lines must match, so the same
+commit in another checkout cannot satisfy the gate.
 
 Choose the capability scope explicitly:
 
@@ -125,8 +127,9 @@ The low-cost live probe puts every flag before its final `--print <prompt>` and
 pins sandboxed plan mode, `gemini-3.6-flash-low`, and low effort. AGY 1.1.10 has
 no working-directory flag: the probe passes the exact repository through
 `--add-dir`, requires the command tool to use that same absolute `Cwd`, and
-forbids a retry or sandbox bypass. The command remains `git rev-parse --short
-HEAD`, so the scoped `command(git rev-parse)` grant covers what actually runs.
+forbids a retry or sandbox bypass. The command remains `git rev-parse
+--show-toplevel --short HEAD`, so the scoped `command(git rev-parse)` grant
+covers what actually runs.
 This is a capability probe, not the identity of any later review. A formal
 review records the exact model ID its actual launch selected. Seat launch is
 `coordination/bin/agy-seat <seat>`; it emitted two undefined flags until
