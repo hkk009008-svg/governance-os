@@ -1140,6 +1140,83 @@ def test_explicit_different_request_remediation_clears_active_fail(
     assert state.failed == ()
 
 
+def test_sibling_branch_remediation_report_cannot_clear_active_fail(
+    tmp_path: Path,
+) -> None:
+    """A report must descend from the exact request commit it names.
+
+    Tree projection alone sees both sibling events after their branches merge.
+    Without introduction ancestry, the report can bind bytes from the sibling
+    request object and launder the active FAIL despite never observing that
+    request in its own history.
+    """
+
+    root, coord, base, head = _review_repo(tmp_path)
+    failed_path, failed_request_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root,
+        base,
+        head,
+        failed_path,
+        failed_request_commit,
+        verdict="FAIL",
+    )
+    (root / "payload.txt").write_text("remediated\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "fix: remediate active fail")
+    common = _git(root, "rev-parse", "HEAD")
+    failed_ref = f"{fail_path}@{fail_commit}"
+
+    _git(root, "switch", "-q", "-c", "request-branch")
+    request_path, request_commit = _commit_request(
+        root,
+        fail_commit,
+        common,
+        timestamp="2026-07-25T08-00-00Z",
+        remediates_failed_report=failed_ref,
+    )
+
+    _git(root, "switch", "-q", "-c", "report-branch", common)
+    _report_path, report_commit = _commit_report(
+        root,
+        fail_commit,
+        common,
+        request_path,
+        request_commit,
+        verdict="GO",
+        timestamp="2026-07-25T08-10-00Z",
+        supersedes=failed_ref,
+    )
+    ancestry = subprocess.run(
+        [
+            "env",
+            "-u",
+            "GIT_INDEX_FILE",
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            request_commit,
+            report_commit,
+        ],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    assert request_commit != report_commit
+    assert ancestry.returncode == 1
+    _git(root, "merge", "-q", "--no-ff", "-m", "merge sibling events", "request-branch")
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is None
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (request_path, request_commit)
+    ]
+    assert [(item.report_path, item.report_commit) for item in state.failed] == [
+        (fail_path, fail_commit)
+    ]
+
+
 def test_different_request_remediation_cannot_reuse_inactive_fail(
     tmp_path: Path,
 ) -> None:

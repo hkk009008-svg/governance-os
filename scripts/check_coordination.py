@@ -1273,8 +1273,20 @@ def inspect_verify_review_state(
             continue
         if compact_pair_loop.validate_report_binding(report, request):
             continue
-        if commit is not None:
-            parsed_reports[f"{path}@{commit}"] = (path, commit, report)
+        if commit is None:
+            continue
+        # A report binds a committed request it must have been able to observe.
+        # Both objects can coexist in a later merge tree even when their
+        # introduction commits are siblings; field validation alone then lets
+        # the sibling report consume the request and clear its pending/failed
+        # state. Require strict request-before-report history for every current
+        # report, not filename order or mere membership in the projected tree.
+        if (
+            request.trigger_commit == commit
+            or not projection.commits.is_ancestor(request.trigger_commit, commit)
+        ):
+            continue
+        parsed_reports[f"{path}@{commit}"] = (path, commit, report)
 
     invalid_remediation_requests: dict[str, str] = {}
     for request_ref, request in parsed_requests.items():

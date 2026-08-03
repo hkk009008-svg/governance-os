@@ -1328,8 +1328,9 @@ explicit Compact Pair remediation binding:
   are preserved;
 - the same-seat GO or NITS report binds the new request, dispositions every
   carried ref, and adds `Supersedes:` naming that exact failed report; and
-- the committed projection confirms the target FAIL was valid and active and
-  its introduction strictly precedes the remediation report.
+- the committed projection confirms the target FAIL was valid and active, and
+  both the target and bound request introductions strictly precede the
+  remediation report.
 
 This exception does not widen ordinary `Supersedes:`. Without the explicit
 request binding, reports still supersede only the same exact request. A FAIL,
