@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import check_coordination as cc
+import mailbox_writer
 import protocol_mailbox
 
 
@@ -79,7 +80,7 @@ def _repo(tmp_path: Path, monkeypatch) -> tuple[Path, str]:
 def _event_text(sender: str, recipient: str, stamp: str, body: str) -> str:
     when = stamp[:11] + stamp[11:19].replace("-", ":") + "Z"
     return (
-        f"# {sender} to {recipient}\n\n"
+        f"# {sender.capitalize()} → {recipient.capitalize()}: Fixture\n\n"
         f"**When:** {when} · **From:** {sender} (online)\n\n"
         f"{body}\n\nCursor at send: 0\n"
     )
@@ -236,6 +237,24 @@ def test_unresolvable_candidate_refs_are_fatal(
     assert any(expected in message for message in _fatal_messages(root))
 
 
+def test_candidate_source_ref_rejects_historical_symlink(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, _cutover = _repo(tmp_path, monkeypatch)
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T00-00-01Z-director-to-operator-status.md"
+    )
+    (root / path).symlink_to("../kinds.txt")
+    source_commit = _commit(root, "historical symlink-shaped event")
+    (root / path).unlink()
+    _commit(root, "remove historical symlink-shaped event")
+    _candidate(root, f"{path}@{source_commit}")
+    _commit(root, "candidate cites historical symlink")
+
+    assert any("source ref does not resolve" in message for message in _fatal_messages(root))
+
+
 def test_duplicate_candidate_ids_in_one_commit_are_fatal(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -375,6 +394,61 @@ def test_candidate_introduced_and_deleted_before_cutover_is_grandfathered(
     assert _fatal_messages(root) == []
 
 
+def test_extinct_pre_cutover_candidate_id_can_be_reissued(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, _initial_cutover = _repo(tmp_path, monkeypatch)
+    source = _source_ref(root)
+    old_path, fields = _candidate(root, source)
+    _commit(root, "legacy candidate introduction")
+    (root / old_path).unlink()
+    cutover = _commit(root, "reviewed cutover after legacy candidate deletion")
+    monkeypatch.setattr(cc, "_LEARNING_HISTORY_CUTOVER_COMMIT", cutover)
+
+    new_path = _write_event(
+        root,
+        sender="operator",
+        recipient="director",
+        kind="learning-candidate",
+        stamp="2026-08-03T00-00-04Z",
+        body=_candidate_body(fields),
+    )
+    mailbox_writer.validate_event_candidate_bytes(
+        root, (root / new_path).read_bytes(), new_path
+    )
+    _commit(root, "reissue extinct candidate ID")
+
+    assert _fatal_messages(root) == []
+
+
+def test_cutover_present_candidate_id_still_blocks_reissue(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, _initial_cutover = _repo(tmp_path, monkeypatch)
+    source = _source_ref(root)
+    _old_path, fields = _candidate(root, source)
+    _commit(root, "legacy candidate introduction")
+    (root / "learning-cutover.txt").write_text("reviewed v2\n", encoding="utf-8")
+    cutover = _commit(root, "reviewed cutover with live candidate")
+    monkeypatch.setattr(cc, "_LEARNING_HISTORY_CUTOVER_COMMIT", cutover)
+
+    new_path = _write_event(
+        root,
+        sender="operator",
+        recipient="director",
+        kind="learning-candidate",
+        stamp="2026-08-03T00-00-04Z",
+        body=_candidate_body(fields),
+    )
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="duplicates"):
+        mailbox_writer.validate_event_candidate_bytes(
+            root, (root / new_path).read_bytes(), new_path
+        )
+    _commit(root, "bypass writer with duplicate cutover candidate ID")
+
+    assert any("duplicate Candidate ID" in message for message in _fatal_messages(root))
+
+
 @pytest.mark.parametrize("change", ["modified", "deleted"])
 def test_cutover_baseline_disposition_bytes_are_immutable(
     tmp_path: Path, monkeypatch, change: str
@@ -487,6 +561,71 @@ def test_old_base_branch_add_delete_merged_after_cutover_is_fatal(
     )
 
     assert any("deleted" in message for message in _fatal_messages(root))
+
+
+def test_wired_learning_replay_git_processes_are_candidate_count_bounded(
+    tmp_path: Path, monkeypatch
+) -> None:
+    process_counts: list[int] = []
+    for candidate_count in (0, 5, 20):
+        root, _cutover = _repo(tmp_path / f"candidates-{candidate_count}", monkeypatch)
+        source = _source_ref(root)
+        base_hash = "sha256:" + hashlib.sha256(
+            (root / "README.md").read_bytes()
+        ).hexdigest()
+        candidate_refs: list[str] = []
+        for index in range(candidate_count):
+            path, _fields = _candidate(
+                root,
+                source,
+                stamp=f"2026-08-03T01-{index:02d}-00Z",
+                Statement=f"Bounded replay candidate {index}.",
+                Target="README.md",
+                **{"Target base hash": base_hash},
+            )
+            candidate_refs.append(
+                f"{path}@{_commit(root, f'candidate {index}')}"
+            )
+        for index, candidate_ref in enumerate(candidate_refs):
+            _disposition(
+                root,
+                candidate_ref,
+                stamp=f"2026-08-03T02-{index:02d}-00Z",
+            )
+        if candidate_refs:
+            _commit(root, "disposition batch")
+
+        real_popen = subprocess.Popen
+        calls: list[tuple[object, ...]] = []
+
+        def counted_popen(*args, **kwargs):
+            calls.append(args)
+            return real_popen(*args, **kwargs)
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(subprocess, "Popen", counted_popen)
+            projection_result = cc.committed_mailbox_projection(root)
+            review_state = cc.inspect_verify_review_state(
+                root, projection_result=projection_result
+            )
+            issues = cc.run(
+                root / "coordination",
+                now="2026-08-03T03:00:00Z",
+                docs_root=root / "docs",
+                review_state=review_state,
+                committed_projection=projection_result,
+            )
+        assert not [
+            issue
+            for issue in issues
+            if issue.kind == "invalid_committed_learning_history"
+        ]
+        process_counts.append(len(calls))
+
+    assert process_counts[0] == process_counts[1] == process_counts[2]
+    # This is the complete status-style projection/review/replay seam, not
+    # only the learning helper. Its fixed envelope is sixteen processes.
+    assert process_counts[0] <= 16
 
 
 def test_prose_decision_is_not_machine_disposition(tmp_path: Path, monkeypatch) -> None:

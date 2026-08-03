@@ -131,6 +131,229 @@ class _CommittedEventBatchBackend:
     ) -> bool:
         raise NotImplementedError
 
+    def _protocol_load_committed_blob(self, commit: str, path: str) -> bytes:
+        raise NotImplementedError
+
+
+class CommittedObjectBatchReader(_CommittedEventBatchBackend):
+    """Resolve exact committed refs through one immutable Git object stream."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = Path(root)
+        self._entered = False
+        self._process: subprocess.Popen[bytes] | None = None
+        # These are process-local memoized immutable Git objects, not an
+        # authority index or a worktree-derived cache.
+        self._objects: dict[str, tuple[str, str, bytes] | None] = {}
+        self._trees: dict[str, dict[bytes, tuple[str, str]]] = {}
+        self._commits: dict[str, tuple[str, tuple[str, ...]]] = {}
+
+    @staticmethod
+    def _clean_env() -> dict[str, str]:
+        env = {
+            key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+        }
+        env.update({"LANG": "C", "LC_ALL": "C"})
+        return env
+
+    def __enter__(self) -> CommittedObjectBatchReader:
+        if self._entered:
+            raise RuntimeError("CommittedObjectBatchReader cannot be entered twice")
+        self._entered = True
+        try:
+            self._process = subprocess.Popen(
+                [
+                    "/usr/bin/git",
+                    "--no-replace-objects",
+                    "--no-optional-locks",
+                    "-C",
+                    str(self.root),
+                    "cat-file",
+                    "--batch",
+                ],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self._clean_env(),
+            )
+        except OSError as exc:
+            raise ValueError("batch committed-object reader is unavailable") from exc
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        process = self._process
+        self._process = None
+        if process is None:
+            return
+        if process.stdin is not None and not process.stdin.closed:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
+
+    def _cat(self, expression: str) -> tuple[str, str, bytes] | None:
+        if expression in self._objects:
+            return self._objects[expression]
+        process = self._process
+        if process is None or process.stdin is None or process.stdout is None:
+            raise ValueError("batch committed-object reader is not active")
+        try:
+            process.stdin.write(expression.encode("utf-8") + b"\n")
+            process.stdin.flush()
+            header = process.stdout.readline()
+            if not header:
+                raise ValueError("batch committed-object reader ended unexpectedly")
+            fields = header.rstrip(b"\n").split(b" ")
+            if fields[-1:] == [b"missing"]:
+                self._objects[expression] = None
+                return None
+            if (
+                len(fields) != 3
+                or _FULL_SHA_RE.fullmatch(fields[0].decode("ascii")) is None
+                or fields[1] not in {b"blob", b"tree", b"commit", b"tag"}
+                or not fields[2].isdigit()
+            ):
+                raise ValueError("batch committed-object metadata is malformed")
+            object_id = fields[0].decode("ascii")
+            object_type = fields[1].decode("ascii")
+            size = int(fields[2])
+            body = process.stdout.read(size)
+            terminator = process.stdout.read(1)
+            if len(body) != size or terminator != b"\n":
+                raise ValueError("batch committed-object content is truncated")
+        except (BrokenPipeError, OSError, UnicodeError, ValueError) as exc:
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError("batch committed-object reader failed") from exc
+        result = (object_id, object_type, body)
+        self._objects[expression] = result
+        return result
+
+    def _tree_entries(self, tree_id: str) -> dict[bytes, tuple[str, str]]:
+        if tree_id in self._trees:
+            return self._trees[tree_id]
+        loaded = self._cat(tree_id)
+        if loaded is None or loaded[1] != "tree":
+            raise ValueError("committed path tree is not readable")
+        raw = loaded[2]
+        entries: dict[bytes, tuple[str, str]] = {}
+        cursor = 0
+        try:
+            while cursor < len(raw):
+                space = raw.index(b" ", cursor)
+                nul = raw.index(b"\0", space + 1)
+                mode = raw[cursor:space].decode("ascii")
+                name = raw[space + 1 : nul]
+                object_id = raw[nul + 1 : nul + 21].hex()
+                if len(object_id) != 40 or name in entries:
+                    raise ValueError
+                entries[name] = (mode, object_id)
+                cursor = nul + 21
+        except (UnicodeError, ValueError) as exc:
+            raise ValueError("committed tree object is malformed") from exc
+        self._trees[tree_id] = entries
+        return entries
+
+    def _commit_tree_and_parents(self, commit: str) -> tuple[str, tuple[str, ...]]:
+        if commit in self._commits:
+            return self._commits[commit]
+        loaded = self._cat(commit)
+        if loaded is None or loaded[1] != "commit":
+            raise ValueError("committed event reference must name a commit object")
+        try:
+            header = loaded[2].split(b"\n\n", 1)[0].decode("ascii")
+        except UnicodeError as exc:
+            raise ValueError("commit object headers are malformed") from exc
+        tree: str | None = None
+        parents: list[str] = []
+        for line in header.splitlines():
+            if line.startswith("tree "):
+                tree = line[5:]
+            elif line.startswith("parent "):
+                parents.append(line[7:])
+        if tree is None or not _FULL_SHA_RE.fullmatch(tree):
+            raise ValueError("commit object has no canonical tree")
+        if any(not _FULL_SHA_RE.fullmatch(parent) for parent in parents):
+            raise ValueError("commit object has a malformed parent")
+        result = (tree, tuple(parents))
+        self._commits[commit] = result
+        return result
+
+    def _path_entry(self, commit: str, path: str) -> tuple[str, str, str, bytes]:
+        tree_id, _parents = self._commit_tree_and_parents(commit)
+        parts = path.split("/")
+        for index, part in enumerate(parts):
+            entry = self._tree_entries(tree_id).get(part.encode("utf-8"))
+            if entry is None:
+                raise ValueError("path is absent from the named commit")
+            mode, object_id = entry
+            if index < len(parts) - 1:
+                if mode not in {"40000", "040000"}:
+                    raise ValueError("committed path crosses a non-tree object")
+                tree_id = object_id
+                continue
+            loaded = self._cat(object_id)
+            if loaded is None:
+                raise ValueError("committed path object is unreadable")
+            return mode, loaded[1], object_id, loaded[2]
+        raise ValueError("path is absent from the named commit")
+
+    def _protocol_load_committed_event_ref(self, value: str) -> CommittedEventRef:
+        path, commit, _match = _committed_event_parts(value)
+        mode, object_type, _object_id, raw = self._path_entry(commit, path)
+        if mode != "100644" or object_type != "blob":
+            raise ValueError("event path is not a regular fixed-writer blob")
+        try:
+            text = raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise ValueError("committed event body is not UTF-8") from exc
+        return parse_committed_event_text(value, text)
+
+    def _protocol_committed_event_is_strict_ancestor(
+        self,
+        earlier: CommittedEventRef,
+        later: CommittedEventRef,
+    ) -> bool:
+        if earlier.commit == later.commit:
+            return False
+        pending = [later.commit]
+        seen: set[str] = set()
+        while pending:
+            commit = pending.pop()
+            if commit in seen:
+                continue
+            seen.add(commit)
+            try:
+                _tree, parents = self._commit_tree_and_parents(commit)
+            except ValueError:
+                return False
+            if earlier.commit in parents:
+                return True
+            pending.extend(parents)
+        return False
+
+    def _protocol_load_committed_blob(self, commit: str, path: str) -> bytes:
+        try:
+            _mode, object_type, _object_id, raw = self._path_entry(commit, path)
+        except ValueError as exc:
+            raise ValueError(f"target is absent at commit {commit}: {path}") from exc
+        if object_type != "blob":
+            raise ValueError(f"target is absent at commit {commit}: {path}")
+        return raw
+
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     clean_env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
@@ -721,6 +944,8 @@ def validate_learning_candidate_unique(
 
 
 def _committed_blob(root: Path, commit: str, path: str) -> bytes:
+    if isinstance(root, _CommittedEventBatchBackend):
+        return root._protocol_load_committed_blob(commit, path)
     clean_env = {
         key: value for key, value in os.environ.items() if not key.startswith("GIT_")
     }

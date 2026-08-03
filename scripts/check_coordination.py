@@ -950,11 +950,8 @@ def _check_committed_learning_history(
         str, protocol_mailbox.LearningCandidateStatement
     ] = {}
     candidates_by_id: dict[str, list[str]] = {}
-    for path in sorted(
-        candidate
-        for candidate in projection.introductions
-        if candidate.endswith("-learning-candidate.md")
-    ):
+    enforced_candidates = all_introduced_candidates - extinct_pre_cutover
+    for path in sorted(enforced_candidates):
         try:
             statement = protocol_mailbox.parse_learning_candidate_statement(
                 _parse_introduced_event(projection, path)
@@ -968,36 +965,48 @@ def _check_committed_learning_history(
         parsed_candidates[path] = statement
         candidates_by_id.setdefault(statement.candidate_id, []).append(path)
 
-    for path in sorted(new_candidates & immutable_paths):
-        statement = parsed_candidates.get(path)
-        if statement is None:
-            continue
-        try:
-            protocol_mailbox.validate_learning_candidate_references(
-                repo_root, statement
-            )
-            protocol_mailbox.validate_learning_candidate_unique(
-                statement,
-                {
-                    candidate_id: tuple(paths)
-                    for candidate_id, paths in candidates_by_id.items()
-                },
-            )
-        except ValueError as exc:
-            issues.append(_learning_issue(path, str(exc)))
+    try:
+        with protocol_mailbox.CommittedObjectBatchReader(repo_root) as proof_root:
+            for path in sorted(new_candidates & immutable_paths):
+                statement = parsed_candidates.get(path)
+                if statement is None:
+                    continue
+                try:
+                    protocol_mailbox.validate_learning_candidate_references(
+                        proof_root, statement
+                    )
+                    protocol_mailbox.validate_learning_candidate_unique(
+                        statement,
+                        {
+                            candidate_id: tuple(paths)
+                            for candidate_id, paths in candidates_by_id.items()
+                        },
+                    )
+                except ValueError as exc:
+                    issues.append(_learning_issue(path, str(exc)))
 
-    for path in sorted(new_dispositions & immutable_paths):
-        try:
-            protocol_mailbox.validate_learning_disposition(
-                repo_root,
-                _parse_introduced_event(projection, path),
-                target_commit=projection.introductions[path][0],
-                target_context="disposition introduction commit",
+            for path in sorted(new_dispositions & immutable_paths):
+                try:
+                    protocol_mailbox.validate_learning_disposition(
+                        proof_root,
+                        _parse_introduced_event(projection, path),
+                        target_commit=projection.introductions[path][0],
+                        target_context="disposition introduction commit",
+                    )
+                except ValueError as exc:
+                    issues.append(
+                        _learning_issue(
+                            path,
+                            f"committed learning disposition is invalid: {exc}",
+                        )
+                    )
+    except ValueError as exc:
+        issues.append(
+            _learning_issue(
+                "coordination/mailbox/sent/",
+                f"committed learning proof batch is unavailable: {exc}",
             )
-        except ValueError as exc:
-            issues.append(
-                _learning_issue(path, f"committed learning disposition is invalid: {exc}")
-            )
+        )
     return issues
 
 
