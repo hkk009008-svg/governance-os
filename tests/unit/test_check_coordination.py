@@ -21,7 +21,8 @@ def _supply_synthetic_active_failure_cutover(
 
     real_projection_git = cc._projection_git
     synthetic_roots: set[Path] = set()
-    cutover = cc._ACTIVE_FAILURE_CUTOVER_COMMIT
+    review_cutover = cc._ACTIVE_FAILURE_CUTOVER_COMMIT
+    learning_cutover = cc._LEARNING_HISTORY_CUTOVER_COMMIT
 
     def projection_git(repo_root: Path, *arguments: str):
         root = Path(repo_root).resolve()
@@ -29,13 +30,17 @@ def _supply_synthetic_active_failure_cutover(
         if (
             inside_fixture
             and root in synthetic_roots
-            and arguments[:3] == ("merge-base", "--is-ancestor", cutover)
+            and arguments[:3]
+            in {
+                ("merge-base", "--is-ancestor", review_cutover),
+                ("merge-base", "--is-ancestor", learning_cutover),
+            }
         ):
             return subprocess.CompletedProcess(arguments, 0, stdout=b"", stderr=b"")
         if (
             inside_fixture
             and root in synthetic_roots
-            and arguments[:2] == ("rev-list", f"{cutover}..HEAD")
+            and arguments[:2] == ("rev-list", f"{review_cutover}..HEAD")
         ):
             return real_projection_git(
                 root, "rev-list", "HEAD", "--", "coordination/mailbox/sent"
@@ -43,11 +48,22 @@ def _supply_synthetic_active_failure_cutover(
         result = real_projection_git(root, *arguments)
         if (
             inside_fixture
-            and arguments == ("cat-file", "-e", f"{cutover}^{{commit}}")
+            and arguments
+            in {
+                ("cat-file", "-e", f"{review_cutover}^{{commit}}"),
+                ("cat-file", "-e", f"{learning_cutover}^{{commit}}"),
+            }
             and result.returncode != 0
         ):
             synthetic_roots.add(root)
             return subprocess.CompletedProcess(arguments, 0, stdout=b"", stderr=b"")
+        if (
+            inside_fixture
+            and root in synthetic_roots
+            and arguments
+            == ("rev-list", "--ancestry-path", f"{learning_cutover}..HEAD")
+        ):
+            return real_projection_git(root, "rev-list", "HEAD")
         return result
 
     monkeypatch.setattr(cc, "_projection_git", projection_git)
@@ -237,6 +253,24 @@ def _commit_report(
     _git(root, "add", path)
     _git(root, "commit", "-q", "-m", f"{verdict.lower()} report")
     return path, _git(root, "rev-parse", "HEAD")
+
+
+def test_status_snapshot_reuses_one_committed_mailbox_projection(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, _coord, _base, _head = _review_repo(tmp_path)
+    real_projection = cc._committed_mailbox_projection
+    calls: list[Path] = []
+
+    def counted_projection(repo_root: Path):
+        calls.append(Path(repo_root).resolve())
+        return real_projection(repo_root)
+
+    monkeypatch.setattr(cc, "_committed_mailbox_projection", counted_projection)
+
+    status.collect_orientation_snapshot(root, "operator")
+
+    assert calls == [root.resolve()]
 
 
 def test_live_seat_event_without_terminal_trigger_heading_is_accepted(tmp_path: Path):

@@ -549,7 +549,10 @@ def collect_orientation_snapshot(
     # recursive at import time.
     import check_coordination  # type: ignore
 
-    review_state = check_coordination.inspect_verify_review_state(repo_root)
+    projection_result = check_coordination.committed_mailbox_projection(repo_root)
+    review_state = check_coordination.inspect_verify_review_state(
+        repo_root, projection_result=projection_result
+    )
     requests = list(review_state.pending)
     # Pending work is seat-scoped. Active failed reviews are intentionally not:
     # they are repository-global governance blockers, with their assigned seat
@@ -568,6 +571,7 @@ def collect_orientation_snapshot(
         repo_root / "coordination",
         docs_root=repo_root / "docs",
         review_state=review_state,
+        committed_projection=projection_result,
     )
     fatals = [issue for issue in issues if issue.severity == "FATAL"]
     advisories = [issue for issue in issues if issue.severity == "ADVISORY"]

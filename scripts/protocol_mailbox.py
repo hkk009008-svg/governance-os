@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -664,6 +665,123 @@ def parse_learning_disposition_statement(
         disposition=disposition,
         disposer_seat=event.sender,
     )
+
+
+def learning_disposition_intent(text: str) -> bool:
+    """Return whether decision text carries the canonical machine intent shape."""
+
+    if not isinstance(text, str):
+        return False
+    candidate_values = [
+        line.removeprefix("Candidate:").strip()
+        for line in text.splitlines()
+        if line.startswith("Candidate:")
+    ]
+    return any(line.startswith("Disposition:") for line in text.splitlines()) and any(
+        immutable_reference_is_canonical(value)
+        and value.rsplit("@", 1)[0].endswith("-learning-candidate.md")
+        for value in candidate_values
+    )
+
+
+def validate_learning_candidate_references(
+    root: Path, statement: LearningCandidateStatement
+) -> None:
+    """Resolve every path ref; sha256 refs intentionally carry no local preimage."""
+
+    for reference in statement.source_refs:
+        if reference.startswith("sha256:"):
+            continue
+        try:
+            load_committed_event_ref(root, reference)
+        except ValueError as exc:
+            raise ValueError(f"source ref does not resolve: {reference}") from exc
+    if statement.supersedes is not None:
+        try:
+            load_learning_candidate_statement(root, statement.supersedes)
+        except ValueError as exc:
+            raise ValueError(
+                f"Supersedes ref does not resolve: {statement.supersedes}"
+            ) from exc
+
+
+def validate_learning_candidate_unique(
+    statement: LearningCandidateStatement,
+    candidate_paths_by_id: dict[str, tuple[str, ...]],
+) -> None:
+    peers = tuple(
+        path
+        for path in candidate_paths_by_id.get(statement.candidate_id, ())
+        if path != statement.event.path
+    )
+    if peers:
+        raise ValueError(
+            f"duplicate Candidate ID {statement.candidate_id}; peers: {', '.join(peers)}"
+        )
+
+
+def _committed_blob(root: Path, commit: str, path: str) -> bytes:
+    clean_env = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+    clean_env.update({"LANG": "C", "LC_ALL": "C"})
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/git",
+                "--no-replace-objects",
+                "-C",
+                str(root),
+                "cat-file",
+                "blob",
+                f"{commit}:{path}",
+            ],
+            capture_output=True,
+            check=True,
+            env=clean_env,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"target is absent at commit {commit}: {path}") from exc
+    return result.stdout
+
+
+def validate_learning_disposition(
+    root: Path,
+    event: CommittedEventRef,
+    *,
+    target_commit: str,
+    target_context: str = "disposition commit",
+) -> tuple[LearningDispositionStatement, LearningCandidateStatement]:
+    """Apply the shared disposition policy at one exact target-tree commit."""
+
+    disposition = parse_learning_disposition_statement(event)
+    try:
+        candidate = load_learning_candidate_statement(root, disposition.candidate_ref)
+    except ValueError as exc:
+        raise ValueError(
+            "Candidate does not resolve to a committed learning-candidate"
+        ) from exc
+    if disposition.disposer_seat == candidate.producer_seat:
+        raise ValueError("disposer equals candidate producer (self-approval)")
+    if disposition.disposition != "accepted":
+        return disposition, candidate
+    if candidate.evidence_provenance == "ASSUMED":
+        raise ValueError("ASSUMED-provenance candidate may not be accepted")
+    if (
+        candidate.category == "governance-rule"
+        and candidate.risk_class != "high-risk-control"
+    ):
+        raise ValueError(
+            "governance-rule candidate below the high-risk-control floor may not be accepted"
+        )
+    if candidate.target is not None:
+        data = _committed_blob(root, target_commit, candidate.target)
+        digest = "sha256:" + hashlib.sha256(data).hexdigest()
+        if digest != candidate.target_base_hash:
+            raise ValueError(
+                f"target base hash is stale at the {target_context} (CAS)"
+            )
+    return disposition, candidate
 
 
 def load_learning_disposition_statement(

@@ -48,6 +48,7 @@ from pathlib import Path, PurePosixPath
 import compact_pair_loop
 import check_go_schema
 import mailbox_writer
+import protocol_mailbox
 from protocol_mailbox import KNOWN_KINDS, SEATS
 import bus_unread
 
@@ -153,6 +154,7 @@ class ImmutableHistoryException:
 class CommittedMailboxProjection:
     events: dict[str, bytes]
     introductions: dict[str, tuple[str, str]]
+    introduction_events: dict[str, bytes]
     kinds: frozenset[str]
     frozen_legacy_reports: frozenset[str]
     history_exceptions: dict[str, ImmutableHistoryException]
@@ -164,6 +166,7 @@ _REVIEW_STATE_CUTOVER_PATH = (
 )
 _REVIEW_STATE_CUTOVER_COMMIT = "61786501e26f7e1bac92efbdcd4ff0ea468a7bbb"
 _ACTIVE_FAILURE_CUTOVER_COMMIT = "8d05a76489b8609634e1635ebfad12792abc8119"
+_LEARNING_HISTORY_CUTOVER_COMMIT = "13616d843e4e55beed405de69db4e953d0831767"
 _BASELINE_ACTIVE_FAILURE_REPORTS = frozenset({
     "coordination/mailbox/sent/"
     "2026-07-27T03-26-01Z-operator2-to-director2-verification-report.md@"
@@ -320,6 +323,63 @@ def _projection_git(
         check=False,
         env=mailbox_writer.sanitized_git_environment(),
     )
+
+
+def _projection_blobs(
+    repo_root: Path, object_ids: set[str]
+) -> tuple[dict[str, bytes] | None, str | None]:
+    """Read exact Git blobs in one sanitized batch without another history scan."""
+
+    ordered = sorted(object_ids)
+    if not ordered:
+        return {}, None
+    try:
+        result = subprocess.run(
+            [
+                "/usr/bin/git",
+                "--no-replace-objects",
+                "--literal-pathspecs",
+                "--no-optional-locks",
+                "-C",
+                str(repo_root),
+                "cat-file",
+                "--batch",
+            ],
+            input=("\n".join(ordered) + "\n").encode("ascii"),
+            capture_output=True,
+            check=False,
+            env=mailbox_writer.sanitized_git_environment(),
+        )
+    except OSError as exc:
+        return None, f"mailbox introduction blob reader unavailable: {exc}"
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        return None, detail or "mailbox introduction blobs unavailable"
+    blobs: dict[str, bytes] = {}
+    position = 0
+    for expected in ordered:
+        line_end = result.stdout.find(b"\n", position)
+        if line_end < 0:
+            return None, "mailbox introduction blob batch is truncated"
+        header = result.stdout[position:line_end].decode("ascii", errors="replace")
+        fields = header.split()
+        if (
+            len(fields) != 3
+            or fields[0] != expected
+            or fields[1] != "blob"
+            or not fields[2].isdecimal()
+        ):
+            return None, f"mailbox introduction object is not a blob: {expected}"
+        size = int(fields[2])
+        start = line_end + 1
+        end = start + size
+        if end >= len(result.stdout) or result.stdout[end : end + 1] != b"\n":
+            return None, "mailbox introduction blob batch has invalid framing"
+        blobs[expected] = result.stdout[start:end]
+        position = end + 1
+    if position != len(result.stdout):
+        return None, "mailbox introduction blob batch has trailing data"
+    return blobs, None
 
 
 _ARCHIVE_DIRECTORIES = frozenset(
@@ -540,6 +600,16 @@ def _committed_mailbox_projection(
             introductions[value] = (commit, introduced_blob)
             introduced_blob = None
 
+    introduction_blobs, blob_problem = _projection_blobs(
+        repo_root, {blob for _commit, blob in introductions.values()}
+    )
+    if blob_problem is not None or introduction_blobs is None:
+        return None, blob_problem or "mailbox introduction blobs unavailable"
+    introduction_events = {
+        path: introduction_blobs[blob]
+        for path, (_commit, blob) in introductions.items()
+    }
+
     cutoff_history = _projection_git(
         repo_root,
         "rev-list",
@@ -665,10 +735,19 @@ def _committed_mailbox_projection(
     return CommittedMailboxProjection(
         events,
         introductions,
+        introduction_events,
         kinds,
         frozen_legacy_reports,
         history_exceptions,
     ), None
+
+
+def committed_mailbox_projection(
+    repo_root: Path | str,
+) -> tuple[CommittedMailboxProjection | None, str | None]:
+    """Public one-pass projection API shared by status and coordination checks."""
+
+    return _committed_mailbox_projection(Path(repo_root).resolve())
 
 
 def _immutable_event(
@@ -685,6 +764,175 @@ def _immutable_event(
             return commit, None
         return None, f"immutable mailbox event changed after introduction: {path}"
     return commit, None
+
+
+def _learning_disposition_intent(path: str, raw: bytes) -> bool:
+    """Match the publication predicate without treating ordinary prose as intent."""
+
+    if not path.endswith("-decision.md"):
+        return False
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return False
+    return protocol_mailbox.learning_disposition_intent(text)
+
+
+def _learning_post_cutover_commits(
+    repo_root: Path,
+) -> tuple[frozenset[str] | None, str | None]:
+    cutover = _LEARNING_HISTORY_CUTOVER_COMMIT
+    exists = _projection_git(repo_root, "cat-file", "-e", f"{cutover}^{{commit}}")
+    if exists.returncode != 0:
+        return None, f"learning-history cutover commit is unavailable: {cutover}"
+    ancestry = _projection_git(repo_root, "merge-base", "--is-ancestor", cutover, "HEAD")
+    if ancestry.returncode == 1:
+        # A parallel branch that does not descend from the reviewed cutover is
+        # outside the new enforcement regime regardless of commit timestamps.
+        return frozenset(), None
+    if ancestry.returncode != 0:
+        detail = ancestry.stderr.decode("utf-8", errors="replace").strip()
+        return None, detail or "learning-history cutover ancestry is unavailable"
+    history = _projection_git(
+        repo_root, "rev-list", "--ancestry-path", f"{cutover}..HEAD"
+    )
+    if history.returncode != 0:
+        detail = history.stderr.decode("utf-8", errors="replace").strip()
+        return None, detail or "learning-history post-cutover ancestry is unavailable"
+    try:
+        commits = history.stdout.decode("ascii", errors="strict").splitlines()
+    except UnicodeDecodeError:
+        return None, "learning-history post-cutover ancestry is not ASCII"
+    if any(compact_pair_loop.SHA_RE.fullmatch(commit) is None for commit in commits):
+        return None, "learning-history post-cutover ancestry has an invalid commit"
+    return frozenset({cutover, *commits}), None
+
+
+def _learning_issue(path: str, message: str) -> CoordIssue:
+    return CoordIssue(
+        path.removeprefix("coordination/"),
+        "invalid_committed_learning_history",
+        "FATAL",
+        message,
+    )
+
+
+def _parse_introduced_event(
+    projection: CommittedMailboxProjection, path: str
+) -> protocol_mailbox.CommittedEventRef:
+    commit, _blob = projection.introductions[path]
+    raw = projection.introduction_events[path]
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ValueError("introduced event is not UTF-8") from exc
+    return protocol_mailbox.parse_committed_event_text(f"{path}@{commit}", text)
+
+
+def _check_committed_learning_history(
+    repo_root: Path, projection: CommittedMailboxProjection
+) -> list[CoordIssue]:
+    """Replay post-cutover learning events from their exact introduction bytes."""
+
+    issues: list[CoordIssue] = []
+    post_cutover, ancestry_problem = _learning_post_cutover_commits(repo_root)
+    if ancestry_problem is not None or post_cutover is None:
+        return [
+            _learning_issue(
+                "coordination/mailbox/sent/",
+                ancestry_problem or "learning-history cutover ancestry unavailable",
+            )
+        ]
+
+    introduced_candidates = {
+        path
+        for path, (commit, _blob) in projection.introductions.items()
+        if commit in post_cutover and path.endswith("-learning-candidate.md")
+    }
+    introduced_dispositions = {
+        path
+        for path, (commit, _blob) in projection.introductions.items()
+        if commit in post_cutover
+        and _learning_disposition_intent(path, projection.introduction_events[path])
+    }
+    current_dispositions = {
+        path
+        for path, raw in projection.events.items()
+        if projection.introductions.get(path, (None, None))[0] in post_cutover
+        and _learning_disposition_intent(path, raw)
+    }
+    governed_paths = (
+        introduced_candidates | introduced_dispositions | current_dispositions
+    )
+
+    immutable_paths: set[str] = set()
+    for path in sorted(governed_paths):
+        current = projection.events.get(path)
+        introduced = projection.introduction_events[path]
+        if current is None:
+            issues.append(
+                _learning_issue(path, f"committed learning event deleted after introduction: {path}")
+            )
+        elif current != introduced:
+            issues.append(
+                _learning_issue(path, f"committed learning event modified after introduction: {path}")
+            )
+        else:
+            immutable_paths.add(path)
+
+    parsed_candidates: dict[
+        str, protocol_mailbox.LearningCandidateStatement
+    ] = {}
+    candidates_by_id: dict[str, list[str]] = {}
+    for path in sorted(
+        candidate
+        for candidate in projection.introductions
+        if candidate.endswith("-learning-candidate.md")
+    ):
+        try:
+            statement = protocol_mailbox.parse_learning_candidate_statement(
+                _parse_introduced_event(projection, path)
+            )
+        except ValueError as exc:
+            if path in introduced_candidates and path in immutable_paths:
+                issues.append(
+                    _learning_issue(path, f"committed learning candidate is invalid: {exc}")
+                )
+            continue
+        parsed_candidates[path] = statement
+        candidates_by_id.setdefault(statement.candidate_id, []).append(path)
+
+    for path in sorted(introduced_candidates & immutable_paths):
+        statement = parsed_candidates.get(path)
+        if statement is None:
+            continue
+        try:
+            protocol_mailbox.validate_learning_candidate_references(
+                repo_root, statement
+            )
+            protocol_mailbox.validate_learning_candidate_unique(
+                statement,
+                {
+                    candidate_id: tuple(paths)
+                    for candidate_id, paths in candidates_by_id.items()
+                },
+            )
+        except ValueError as exc:
+            issues.append(_learning_issue(path, str(exc)))
+
+    for path in sorted(introduced_dispositions & immutable_paths):
+        try:
+            protocol_mailbox.validate_learning_disposition(
+                repo_root,
+                _parse_introduced_event(projection, path),
+                target_commit=projection.introductions[path][0],
+                target_context="disposition introduction commit",
+            )
+        except ValueError as exc:
+            issues.append(
+                _learning_issue(path, f"committed learning disposition is invalid: {exc}")
+            )
+    return issues
 
 
 def _single_field(raw: bytes, prefix: str) -> str | None:
@@ -708,13 +956,20 @@ def _mapped_request_operator(
 def inspect_verify_review_state(
     repo_root: Path | str,
     coord_root: Path | str | None = None,
+    *,
+    projection_result: tuple[CommittedMailboxProjection | None, str | None]
+    | None = None,
 ) -> VerifyReviewState:
     """Index pending requests and active failed verdicts from committed mail."""
 
     root = Path(repo_root).resolve()
     if not (root / ".git").exists():
         return VerifyReviewState(pending=(), failed=())
-    projection, projection_problem = _committed_mailbox_projection(root)
+    projection, projection_problem = (
+        projection_result
+        if projection_result is not None
+        else _committed_mailbox_projection(root)
+    )
     if projection_problem is not None or projection is None:
         return VerifyReviewState(
             pending=(),
@@ -1114,7 +1369,10 @@ def _check_coordinator_handoff_theater(docs_root: Path | str | None) -> list[Coo
 def run(coord_root: Path | str, since: str = "2026-06-11",
         now: str | None = None, git_root: Path | str | None = None,
         docs_root: Path | str | None = None,
-        review_state: VerifyReviewState | None = None) -> list[CoordIssue]:
+        review_state: VerifyReviewState | None = None,
+        committed_projection: tuple[
+            CommittedMailboxProjection | None, str | None
+        ] | None = None) -> list[CoordIssue]:
     coord_root = Path(coord_root).resolve()
     if now is None:
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -1125,10 +1383,30 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
     # The bus lives at the git repo root; coord_root is <repo>/coordination, so its
     # parent is the repo root unless an explicit git_root is given (ADR-062).
     bus_repo_root = Path(git_root) if git_root else coord_root.parent
+    projection_result = committed_projection
+    if projection_result is None and (bus_repo_root / ".git").exists():
+        projection_result = committed_mailbox_projection(bus_repo_root)
+    if review_state is None and projection_result is not None:
+        review_state = inspect_verify_review_state(
+            bus_repo_root,
+            coord_root,
+            projection_result=projection_result,
+        )
     issues += _unread_report(coord_root, names, bus_repo_root)
     issues += _check_current_verify_requests(
         bus_repo_root, coord_root, review_state=review_state
     )
+    if projection_result is not None:
+        projection, projection_problem = projection_result
+        if projection_problem is not None or projection is None:
+            issues.append(
+                _learning_issue(
+                    "coordination/mailbox/sent/",
+                    projection_problem or "committed mailbox projection unavailable",
+                )
+            )
+        else:
+            issues += _check_committed_learning_history(bus_repo_root, projection)
     if git_root is not None:
         issues += _check_standalone_cursor_commits(git_root)
     issues += _check_coordinator_handoff_theater(docs_root)

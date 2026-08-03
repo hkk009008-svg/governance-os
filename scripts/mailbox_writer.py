@@ -16,7 +16,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Collection, Iterator
 
-import hashlib
 
 import bus_unread
 import compact_pair_loop
@@ -221,37 +220,26 @@ def _validate_learning_candidate_payload(
         raise MailboxWriterError(
             f"learning-candidate candidate is invalid: {exc}"
         ) from exc
-    for reference in statement.source_refs:
-        if "@" not in reference:
-            continue
-        try:
-            protocol_mailbox.load_committed_event_ref(root, reference)
-        except ValueError as exc:
-            raise MailboxWriterError(
-                f"learning-candidate source ref does not resolve: {reference}"
-            ) from exc
-    if statement.supersedes is not None:
-        try:
-            protocol_mailbox.load_learning_candidate_statement(
-                root, statement.supersedes
-            )
-        except ValueError as exc:
-            raise MailboxWriterError(
-                f"learning-candidate Supersedes does not resolve: "
-                f"{statement.supersedes}"
-            ) from exc
+    try:
+        protocol_mailbox.validate_learning_candidate_references(root, statement)
+    except ValueError as exc:
+        raise MailboxWriterError(f"learning-candidate {exc}") from exc
     try:
         committed = protocol_mailbox.committed_learning_candidate_ids(root, "HEAD")
     except ValueError as exc:
         raise MailboxWriterError(
             f"learning-candidate dedup scan failed: {exc}"
         ) from exc
-    existing = committed.get(statement.candidate_id)
-    if existing is not None:
-        raise MailboxWriterError(
-            "learning-candidate duplicates committed candidate "
-            f"{existing} (byte-idempotent; use Supersedes to replace)"
+    try:
+        protocol_mailbox.validate_learning_candidate_unique(
+            statement,
+            {candidate_id: (path,) for candidate_id, path in committed.items()},
         )
+    except ValueError as exc:
+        raise MailboxWriterError(
+            f"learning-candidate duplicates committed candidate: {exc}; "
+            "use Supersedes to replace"
+        ) from exc
 
 
 def _validate_learning_disposition_payload(
@@ -279,69 +267,19 @@ def _validate_learning_disposition_payload(
     changed the target, which the fixed writer never does.
     """
 
-    lines = raw.decode("utf-8").splitlines()
-    named_refs = [
-        line[len("Candidate:") :].strip()
-        for line in lines
-        if line.startswith("Candidate:")
-    ]
-    names_learning_candidate = any(
-        protocol_mailbox.immutable_reference_is_canonical(value)
-        and value.rsplit("@", 1)[0].endswith("-learning-candidate.md")
-        for value in named_refs
-    )
-    if not names_learning_candidate or not any(
-        line.startswith("Disposition:") for line in lines
-    ):
+    if not protocol_mailbox.learning_disposition_intent(raw.decode("utf-8")):
         return
     try:
-        disposition = protocol_mailbox.parse_learning_disposition_statement(
-            _typed_candidate_event(raw, relative)
+        protocol_mailbox.validate_learning_disposition(
+            root,
+            _typed_candidate_event(raw, relative),
+            target_commit="HEAD",
+            target_context="publication commit",
         )
     except ValueError as exc:
         raise MailboxWriterError(
             f"decision disposition is invalid: {exc}"
         ) from exc
-    try:
-        statement = protocol_mailbox.load_learning_candidate_statement(
-            root, disposition.candidate_ref
-        )
-    except ValueError as exc:
-        raise MailboxWriterError(
-            "decision Candidate does not resolve to a committed "
-            f"learning-candidate: {exc}"
-        ) from exc
-    if disposition.disposer_seat == statement.producer_seat:
-        raise MailboxWriterError(
-            "decision disposer equals candidate producer (self-approval)"
-        )
-    if disposition.disposition == "accepted":
-        if statement.evidence_provenance == "ASSUMED":
-            raise MailboxWriterError(
-                "ASSUMED-provenance candidate may not be accepted"
-            )
-        if (
-            statement.category == "governance-rule"
-            and statement.risk_class != "high-risk-control"
-        ):
-            raise MailboxWriterError(
-                "governance-rule candidate below the high-risk-control "
-                "floor may not be accepted"
-            )
-        if statement.target is not None:
-            try:
-                data = _git(root, "cat-file", "blob", f"HEAD:{statement.target}")
-            except MailboxWriterError as exc:
-                raise MailboxWriterError(
-                    "decision target is absent at the publication commit: "
-                    f"{statement.target}"
-                ) from exc
-            digest = "sha256:" + hashlib.sha256(data).hexdigest()
-            if digest != statement.target_base_hash:
-                raise MailboxWriterError(
-                    "decision target base hash is stale at the publication "
-                    "commit (CAS)"
-                )
 
 
 def validate_event_candidate(

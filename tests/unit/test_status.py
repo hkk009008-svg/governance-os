@@ -269,7 +269,14 @@ def test_repository_global_failed_review_forces_seat_snapshot_gate_fail(
         lambda _root: {"git_sha": "abc1234", "git_branch": "test", "git_dirty": 0},
     )
     monkeypatch.setattr(status, "collect_mailbox", lambda _root: _orientation_mailbox())
-    monkeypatch.setattr(cc, "inspect_verify_review_state", lambda _root: review_state)
+    monkeypatch.setattr(
+        cc, "committed_mailbox_projection", lambda _root: (None, "fixture")
+    )
+    monkeypatch.setattr(
+        cc,
+        "inspect_verify_review_state",
+        lambda _root, **_kwargs: review_state,
+    )
     monkeypatch.setattr(
         cc,
         "run",
@@ -307,7 +314,14 @@ def test_structural_fatal_outranks_failed_review_without_dropping_failure_data(
         lambda _root: {"git_sha": "abc1234", "git_branch": "test", "git_dirty": 0},
     )
     monkeypatch.setattr(status, "collect_mailbox", lambda _root: _orientation_mailbox())
-    monkeypatch.setattr(cc, "inspect_verify_review_state", lambda _root: review_state)
+    monkeypatch.setattr(
+        cc, "committed_mailbox_projection", lambda _root: (None, "fixture")
+    )
+    monkeypatch.setattr(
+        cc,
+        "inspect_verify_review_state",
+        lambda _root, **_kwargs: review_state,
+    )
     monkeypatch.setattr(
         cc,
         "run",
