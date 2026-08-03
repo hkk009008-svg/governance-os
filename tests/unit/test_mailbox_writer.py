@@ -78,6 +78,30 @@ def _index_bytes(root: Path, relative: str) -> bytes | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def _put_index_bytes(root: Path, relative: str, raw: bytes) -> None:
+    blob = subprocess.run(
+        ["/usr/bin/git", "-C", str(root), "hash-object", "-w", "--stdin"],
+        input=raw,
+        capture_output=True,
+        check=True,
+    ).stdout.decode("ascii").strip()
+    subprocess.run(
+        [
+            "/usr/bin/git",
+            "-C",
+            str(root),
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "100644",
+            blob,
+            relative,
+        ],
+        capture_output=True,
+        check=True,
+    )
+
+
 def test_writer_fence_is_shared_by_linked_worktrees_and_mode_0600(
     tmp_path: Path,
 ) -> None:
@@ -485,6 +509,67 @@ def test_send_event_finalizer_stages_snapshot_then_rejects_final_alias_mutation(
     assert not final.exists()
     assert candidate.exists()
     assert _index_bytes(root, relative) is None
+    assert _writer_temps(sent) == []
+
+
+def test_send_event_finalizer_rejects_final_mode_change_after_publication(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _repo(tmp_path)
+    sent, relative, candidate, _raw = _send_fixture(root)
+    final = root / relative
+    real_fsync = os.fsync
+    injected = False
+
+    def chmod_at_directory_fsync(fd: int) -> None:
+        nonlocal injected
+        real_fsync(fd)
+        if stat.S_ISDIR(os.fstat(fd).st_mode) and not injected:
+            injected = True
+            final.chmod(0o644)
+
+    monkeypatch.setattr(mailbox_writer.os, "fsync", chmod_at_directory_fsync)
+
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="final mode changed"):
+        mailbox_writer._send_event_finalize(root, candidate, relative)
+
+    assert not final.exists()
+    assert candidate.exists()
+    assert _index_bytes(root, relative) is None
+    assert _writer_temps(sent) == []
+
+
+def test_send_event_finalizer_reports_nonvalidated_index_when_real_lock_blocks_rollback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _repo(tmp_path)
+    sent, relative, candidate, raw = _send_fixture(root)
+    corrupt = b"corrupt staged bytes\n"
+    lock = root / ".git/index.lock"
+
+    def stage_corrupt_then_lock(
+        root_arg: Path, relative_arg: str, _raw_arg: bytes
+    ) -> None:
+        _put_index_bytes(root_arg, relative_arg, corrupt)
+        lock.write_text("real lock\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        mailbox_writer, "_stage_event_snapshot", stage_corrupt_then_lock
+    )
+
+    try:
+        with pytest.raises(
+            mailbox_writer.MailboxWriterError,
+            match="index retained with nonvalidated bytes",
+        ):
+            mailbox_writer._send_event_finalize(root, candidate, relative)
+    finally:
+        lock.unlink(missing_ok=True)
+
+    assert _index_bytes(root, relative) == corrupt
+    assert _index_bytes(root, relative) != raw
+    assert not (root / relative).exists()
+    assert candidate.exists()
     assert _writer_temps(sent) == []
 
 

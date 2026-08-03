@@ -554,6 +554,8 @@ def _verify_final_snapshot(
             or (before.st_dev, before.st_ino) != writer_identity
         ):
             raise MailboxWriterError("send-event final identity changed after validation")
+        if stat.S_IMODE(before.st_mode) != 0o600:
+            raise MailboxWriterError("send-event final mode changed after validation")
         chunks: list[bytes] = []
         remaining = compact_pair_loop.MAX_EVENT_BYTES + 1
         while remaining:
@@ -565,9 +567,13 @@ def _verify_final_snapshot(
         after = os.fstat(descriptor)
         observed = b"".join(chunks)
         if (
-            (after.st_dev, after.st_ino) != writer_identity
-            or observed != expected
+            not stat.S_ISREG(after.st_mode)
+            or (after.st_dev, after.st_ino) != writer_identity
         ):
+            raise MailboxWriterError("send-event final identity changed after validation")
+        if stat.S_IMODE(after.st_mode) != 0o600:
+            raise MailboxWriterError("send-event final mode changed after validation")
+        if observed != expected:
             raise MailboxWriterError("send-event final bytes changed after validation")
     finally:
         os.close(descriptor)
@@ -693,12 +699,16 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
                 stage_error = exc
 
             integrity_error: MailboxWriterError | None = None
+            index_observation = "unknown bytes"
             if staged:
                 try:
-                    if _staged_event_snapshot(root, relative) != raw:
+                    staged_raw = _staged_event_snapshot(root, relative)
+                    if staged_raw != raw:
+                        index_observation = "nonvalidated bytes"
                         raise MailboxWriterError(
                             "send-event staged bytes differ from validated snapshot"
                         )
+                    index_observation = "validated snapshot"
                 except MailboxWriterError as exc:
                     integrity_error = exc
             try:
@@ -716,7 +726,7 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
                         index_state = "index rolled back"
                     except MailboxWriterError as rollback_exc:
                         index_state = (
-                            "index retained with validated snapshot "
+                            f"index retained with {index_observation} "
                             f"(rollback failed: {rollback_exc})"
                         )
                 try:
