@@ -48,14 +48,22 @@ When performing substantive work, adhere to the unified operating doctrine bound
 - **Claim Formation**: Before writing a load-bearing claim ("enforced", "measured", "complete", "never", a cited reference), follow `.agents/skills/probe-a-claim/SKILL.md`. Before claiming a guard or gate holds, follow `.agents/skills/prove-a-control/SKILL.md`. Scale rigor to work mode: routine `explore` observations cite the command; `validate` applies the full formation loop.
 - **Work Mode Selection**: Declare `explore`, `validate`, or `promote` per `docs/protocol/work-modes.md`. Mode controls iteration and record granularity; risk controls review depth. Mode grants no authority.
 
-## Skill-First Work
+## Skill-First Work and Learning Candidates
 
 Before starting, check `.agents/skills/` for a skill that covers the work and
 follow it — those files exist because the lesson was paid for once already.
-When work exposes a lesson no skill covers — a trap, a measured instance, and
-what to do instead — write the skill in the same session. When a skill's advice
-turns out wrong or narrower than its name, correct the file rather than working
-around it.
+Current code and higher-priority instructions remain controlling. If a loaded
+skill conflicts with either, stop relying on it and record the conflict in the
+task evidence; do not silently work around it. Correct canonical skill bytes
+only when the current accepted task authorizes that correction and its required
+review completes.
+
+Finish the scoped task before extracting a lesson. Then draft and, only with the
+applicable publication authority, publish an evidence-backed
+`learning-candidate` with truthful provider scope. There is no canonical skill
+creation or edit solely because a lesson arose. Promotion into a canonical
+skill is a separately accepted, risk-classed Compact Pair change; the candidate
+is evidence for that later decision, not authority to make it.
 
 ## Shared-Tree Staging Hygiene
 

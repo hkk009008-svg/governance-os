@@ -29,6 +29,48 @@ def _supply_synthetic_active_failure_cutover(
         inside_fixture = root.is_relative_to(tmp_path.resolve())
         if (
             inside_fixture
+            and arguments
+            == (
+                "archive",
+                "--format=tar",
+                learning_cutover,
+                "coordination/mailbox/sent",
+            )
+        ):
+            return real_projection_git(
+                root,
+                "archive",
+                "--format=tar",
+                "HEAD",
+                "coordination/mailbox/sent",
+            )
+        if inside_fixture and arguments == ("rev-list", learning_cutover):
+            return real_projection_git(root, "rev-list", "HEAD")
+        if (
+            inside_fixture
+            and arguments
+            == (
+                "ls-tree",
+                "-r",
+                "-z",
+                "--full-tree",
+                learning_cutover,
+                "--",
+                "coordination/mailbox/sent",
+            )
+        ):
+            return real_projection_git(
+                root,
+                "ls-tree",
+                "-r",
+                "-z",
+                "--full-tree",
+                "HEAD",
+                "--",
+                "coordination/mailbox/sent",
+            )
+        if (
+            inside_fixture
             and root in synthetic_roots
             and arguments[:3]
             in {
@@ -66,8 +108,35 @@ def _supply_synthetic_active_failure_cutover(
             return real_projection_git(root, "rev-list", "HEAD")
         return result
 
+    def learning_only_projection_git(repo_root: Path, *arguments: str):
+        """Keep the learning cutover synthetic while exposing review-cutover failure."""
+
+        root = Path(repo_root).resolve()
+        if arguments == ("rev-list", learning_cutover):
+            return real_projection_git(root, "rev-list", "HEAD")
+        if arguments == (
+            "ls-tree",
+            "-r",
+            "-z",
+            "--full-tree",
+            learning_cutover,
+            "--",
+            "coordination/mailbox/sent",
+        ):
+            return real_projection_git(
+                root,
+                "ls-tree",
+                "-r",
+                "-z",
+                "--full-tree",
+                "HEAD",
+                "--",
+                "coordination/mailbox/sent",
+            )
+        return real_projection_git(root, *arguments)
+
     monkeypatch.setattr(cc, "_projection_git", projection_git)
-    return real_projection_git
+    return learning_only_projection_git
 
 
 def _seed_coordination(
@@ -979,7 +1048,9 @@ def test_review_projection_uses_bounded_git_processes(
     assert [(item.path, item.commit) for item in state.pending] == [
         (current_path, current_commit)
     ]
-    assert calls <= 12
+    # One bounded cutover tree projection and one ancestor-set query extend
+    # the constant projection budget without making it mailbox-size dependent.
+    assert calls <= 14
 
 
 def test_replace_ref_cannot_rewrite_committed_fail_projection(tmp_path: Path) -> None:
@@ -1096,7 +1167,7 @@ def test_legacy_reports_do_not_add_per_artifact_git_processes(
             assert [item.report_path for item in state.failed] == [fail_path]
 
     assert process_counts[0] == process_counts[1] == process_counts[2]
-    assert process_counts[0] <= 12
+    assert process_counts[0] <= 14
 
 
 def _history_exception_entry(

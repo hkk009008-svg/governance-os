@@ -73,6 +73,14 @@ def _git(root: Path, *args: str) -> str:
     ).stdout.decode("utf-8", "replace")
 
 
+def _git_bytes(root: Path, *args: str) -> bytes:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        check=True,
+    ).stdout
+
+
 def _sent_names(root: Path, commit: str) -> list[str]:
     out = _git(
         root, "ls-tree", "-r", commit, "--name-only", "coordination/mailbox/sent"
@@ -113,7 +121,12 @@ def _dispositions(
     for path in _sent_names(root, resolved):
         if not path.endswith("-decision.md"):
             continue
-        text = _git(root, "show", f"{resolved}:{path}")
+        raw = _git_bytes(root, "show", f"{resolved}:{path}")
+        try:
+            text = raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            errors.append({"path": path, "error": "decision event is not UTF-8"})
+            continue
         if not protocol_mailbox.learning_disposition_intent(text):
             continue
         try:
@@ -264,13 +277,13 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
         "candidates_total": len(candidates),
         "candidate_events": {
             "seen": len(candidates) + len(candidate_errors),
-            "valid": len(candidates),
+            "parse_valid": len(candidates),
             "malformed": len(candidate_errors),
         },
         "candidate_event_errors": candidate_errors,
         "disposition_events": {
             "seen": len(dispositions) + len(disposition_errors),
-            "valid": len(dispositions),
+            "parse_valid": len(dispositions),
             "malformed": len(disposition_errors),
         },
         "disposition_event_errors": disposition_errors,
@@ -315,8 +328,9 @@ def main(argv: list[str] | None = None) -> int:
     for event_type in ("candidate", "disposition"):
         counts = metrics[f"{event_type}_events"]
         print(
-            f"  {event_type} events: seen {counts['seen']}, valid {counts['valid']}, "
-            f"malformed {counts['malformed']}  [committed events]"
+            f"  {event_type} events: seen {counts['seen']}, "
+            f"parse-valid {counts['parse_valid']}, "
+            f"malformed {counts['malformed']}  [committed parse syntax only]"
         )
         for record in metrics[f"{event_type}_event_errors"]:
             print(f"  WARN malformed {event_type}: {record['path']} — {record['error']}")

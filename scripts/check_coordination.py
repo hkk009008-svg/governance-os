@@ -155,6 +155,8 @@ class CommittedMailboxProjection:
     events: dict[str, bytes]
     introductions: dict[str, tuple[str, str]]
     introduction_events: dict[str, bytes]
+    learning_cutover_events: dict[str, bytes]
+    learning_cutover_ancestors: frozenset[str]
     kinds: frozenset[str]
     frozen_legacy_reports: frozenset[str]
     history_exceptions: dict[str, ImmutableHistoryException]
@@ -382,6 +384,62 @@ def _projection_blobs(
     return blobs, None
 
 
+def _learning_cutover_projection(
+    repo_root: Path,
+) -> tuple[dict[str, bytes] | None, str | None]:
+    """Project exact learning-cutover mailbox bytes from one bounded tree listing."""
+
+    listing = _projection_git(
+        repo_root,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--full-tree",
+        _LEARNING_HISTORY_CUTOVER_COMMIT,
+        "--",
+        "coordination/mailbox/sent",
+    )
+    if listing.returncode != 0:
+        detail = listing.stderr.decode("utf-8", errors="replace").strip()
+        return None, detail or "learning-history cutover tree unavailable"
+    entries: dict[str, str] = {}
+    for record in listing.stdout.split(b"\0"):
+        if not record:
+            continue
+        try:
+            metadata, raw_path = record.split(b"\t", 1)
+            mode, object_type, raw_oid = metadata.split(b" ", 2)
+            path = raw_path.decode("utf-8", errors="strict")
+            object_id = raw_oid.decode("ascii", errors="strict")
+        except (ValueError, UnicodeDecodeError):
+            return None, "learning-history cutover tree has invalid framing"
+        if not path.endswith(".md"):
+            # The sent tree carries a tracked .gitkeep before its first event;
+            # it is not a protocol event and is intentionally outside scope.
+            continue
+        if (
+            mode != b"100644"
+            or object_type != b"blob"
+            or compact_pair_loop.SHA_RE.fullmatch(object_id) is None
+            or not path.startswith(_ARCHIVE_SENT_PREFIX)
+            or path in entries
+        ):
+            return None, f"learning-history cutover tree has invalid entry: {path}"
+        entries[path] = object_id
+    blobs, blob_problem = _projection_blobs(repo_root, set(entries.values()))
+    if blob_problem is not None or blobs is None:
+        return None, blob_problem or "learning-history cutover blobs unavailable"
+    events = {path: blobs[object_id] for path, object_id in entries.items()}
+    for path, raw in events.items():
+        if len(raw) > compact_pair_loop.MAX_EVENT_BYTES:
+            return None, f"learning-history cutover event is too large: {path}"
+        try:
+            raw.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            return None, f"learning-history cutover event is not UTF-8: {path}"
+    return events, None
+
+
 _ARCHIVE_DIRECTORIES = frozenset(
     {
         "coordination",
@@ -551,6 +609,7 @@ def _committed_mailbox_projection(
     history = _projection_git(
         repo_root,
         "log",
+        "--full-history",
         "--raw",
         "-z",
         "--no-renames",
@@ -643,6 +702,27 @@ def _committed_mailbox_projection(
     archive_files, archive_problem = _parse_mailbox_archive(archive_result.stdout)
     if archive_problem is not None or archive_files is None:
         return None, archive_problem or "committed mailbox archive is unavailable"
+    learning_cutover_events, cutover_problem = _learning_cutover_projection(repo_root)
+    if cutover_problem is not None or learning_cutover_events is None:
+        return None, cutover_problem or "learning-history cutover projection unavailable"
+    cutover_history = _projection_git(
+        repo_root, "rev-list", _LEARNING_HISTORY_CUTOVER_COMMIT
+    )
+    if cutover_history.returncode != 0:
+        detail = cutover_history.stderr.decode("utf-8", errors="replace").strip()
+        return None, detail or "learning-history cutover ancestors unavailable"
+    try:
+        cutover_ancestor_lines = cutover_history.stdout.decode(
+            "ascii", errors="strict"
+        ).splitlines()
+    except UnicodeDecodeError:
+        return None, "learning-history cutover ancestors are not ASCII"
+    if any(
+        compact_pair_loop.SHA_RE.fullmatch(commit) is None
+        for commit in cutover_ancestor_lines
+    ):
+        return None, "learning-history cutover ancestors contain an invalid commit"
+    learning_cutover_ancestors = frozenset(cutover_ancestor_lines)
     exception_raw = archive_files.get(_ARCHIVE_HISTORY_EXCEPTIONS)
     if exception_raw is None:
         return None, "committed immutable-history exception manifest is absent"
@@ -736,6 +816,8 @@ def _committed_mailbox_projection(
         events,
         introductions,
         introduction_events,
+        learning_cutover_events,
+        learning_cutover_ancestors,
         kinds,
         frozen_legacy_reports,
         history_exceptions,
@@ -778,36 +860,6 @@ def _learning_disposition_intent(path: str, raw: bytes) -> bool:
     return protocol_mailbox.learning_disposition_intent(text)
 
 
-def _learning_post_cutover_commits(
-    repo_root: Path,
-) -> tuple[frozenset[str] | None, str | None]:
-    cutover = _LEARNING_HISTORY_CUTOVER_COMMIT
-    exists = _projection_git(repo_root, "cat-file", "-e", f"{cutover}^{{commit}}")
-    if exists.returncode != 0:
-        return None, f"learning-history cutover commit is unavailable: {cutover}"
-    ancestry = _projection_git(repo_root, "merge-base", "--is-ancestor", cutover, "HEAD")
-    if ancestry.returncode == 1:
-        # A parallel branch that does not descend from the reviewed cutover is
-        # outside the new enforcement regime regardless of commit timestamps.
-        return frozenset(), None
-    if ancestry.returncode != 0:
-        detail = ancestry.stderr.decode("utf-8", errors="replace").strip()
-        return None, detail or "learning-history cutover ancestry is unavailable"
-    history = _projection_git(
-        repo_root, "rev-list", "--ancestry-path", f"{cutover}..HEAD"
-    )
-    if history.returncode != 0:
-        detail = history.stderr.decode("utf-8", errors="replace").strip()
-        return None, detail or "learning-history post-cutover ancestry is unavailable"
-    try:
-        commits = history.stdout.decode("ascii", errors="strict").splitlines()
-    except UnicodeDecodeError:
-        return None, "learning-history post-cutover ancestry is not ASCII"
-    if any(compact_pair_loop.SHA_RE.fullmatch(commit) is None for commit in commits):
-        return None, "learning-history post-cutover ancestry has an invalid commit"
-    return frozenset({cutover, *commits}), None
-
-
 def _learning_issue(path: str, message: str) -> CoordIssue:
     return CoordIssue(
         path.removeprefix("coordination/"),
@@ -835,45 +887,59 @@ def _check_committed_learning_history(
     """Replay post-cutover learning events from their exact introduction bytes."""
 
     issues: list[CoordIssue] = []
-    post_cutover, ancestry_problem = _learning_post_cutover_commits(repo_root)
-    if ancestry_problem is not None or post_cutover is None:
-        return [
-            _learning_issue(
-                "coordination/mailbox/sent/",
-                ancestry_problem or "learning-history cutover ancestry unavailable",
-            )
-        ]
-
-    introduced_candidates = {
+    all_introduced_candidates = {
         path
-        for path, (commit, _blob) in projection.introductions.items()
-        if commit in post_cutover and path.endswith("-learning-candidate.md")
+        for path in projection.introductions
+        if path.endswith("-learning-candidate.md")
     }
-    introduced_dispositions = {
+    all_introduced_dispositions = {
         path
-        for path, (commit, _blob) in projection.introductions.items()
-        if commit in post_cutover
-        and _learning_disposition_intent(path, projection.introduction_events[path])
+        for path in projection.introductions
+        if _learning_disposition_intent(path, projection.introduction_events[path])
     }
-    current_dispositions = {
+    all_current_dispositions = {
         path
         for path, raw in projection.events.items()
-        if projection.introductions.get(path, (None, None))[0] in post_cutover
-        and _learning_disposition_intent(path, raw)
+        if _learning_disposition_intent(path, raw)
     }
-    governed_paths = (
-        introduced_candidates | introduced_dispositions | current_dispositions
+    cutover_dispositions = {
+        path
+        for path, raw in projection.learning_cutover_events.items()
+        if _learning_disposition_intent(path, raw)
+    }
+    relevant_paths = (
+        all_introduced_candidates
+        | all_introduced_dispositions
+        | all_current_dispositions
+        | cutover_dispositions
+    )
+    cutover_paths = frozenset(projection.learning_cutover_events)
+    extinct_pre_cutover = {
+        path
+        for path, (commit, _blob) in projection.introductions.items()
+        if path not in cutover_paths
+        and path not in projection.events
+        and commit in projection.learning_cutover_ancestors
+    }
+    relevant_paths -= extinct_pre_cutover
+    new_candidates = all_introduced_candidates - cutover_paths - extinct_pre_cutover
+    new_dispositions = (
+        all_introduced_dispositions - cutover_paths - extinct_pre_cutover
     )
 
     immutable_paths: set[str] = set()
-    for path in sorted(governed_paths):
+    for path in sorted(relevant_paths):
         current = projection.events.get(path)
-        introduced = projection.introduction_events[path]
+        expected = (
+            projection.learning_cutover_events[path]
+            if path in cutover_paths
+            else projection.introduction_events[path]
+        )
         if current is None:
             issues.append(
                 _learning_issue(path, f"committed learning event deleted after introduction: {path}")
             )
-        elif current != introduced:
+        elif current != expected:
             issues.append(
                 _learning_issue(path, f"committed learning event modified after introduction: {path}")
             )
@@ -894,7 +960,7 @@ def _check_committed_learning_history(
                 _parse_introduced_event(projection, path)
             )
         except ValueError as exc:
-            if path in introduced_candidates and path in immutable_paths:
+            if path in new_candidates and path in immutable_paths:
                 issues.append(
                     _learning_issue(path, f"committed learning candidate is invalid: {exc}")
                 )
@@ -902,7 +968,7 @@ def _check_committed_learning_history(
         parsed_candidates[path] = statement
         candidates_by_id.setdefault(statement.candidate_id, []).append(path)
 
-    for path in sorted(introduced_candidates & immutable_paths):
+    for path in sorted(new_candidates & immutable_paths):
         statement = parsed_candidates.get(path)
         if statement is None:
             continue
@@ -920,7 +986,7 @@ def _check_committed_learning_history(
         except ValueError as exc:
             issues.append(_learning_issue(path, str(exc)))
 
-    for path in sorted(introduced_dispositions & immutable_paths):
+    for path in sorted(new_dispositions & immutable_paths):
         try:
             protocol_mailbox.validate_learning_disposition(
                 repo_root,

@@ -370,12 +370,12 @@ def test_malformed_learning_events_remain_visible_in_metrics(tmp_path: Path) -> 
 
     assert metrics["candidate_events"] == {
         "seen": 1,
-        "valid": 0,
+        "parse_valid": 0,
         "malformed": 1,
     }
     assert metrics["disposition_events"] == {
         "seen": 1,
-        "valid": 0,
+        "parse_valid": 0,
         "malformed": 1,
     }
     assert metrics["candidate_event_errors"][0]["path"].endswith(candidate)
@@ -422,6 +422,57 @@ def test_non_utf8_machine_disposition_is_recorded_not_crashed(tmp_path: Path) ->
 
     metrics = learning_metrics.collect_metrics(root)
 
-    assert metrics["disposition_events"] == {"seen": 1, "valid": 0, "malformed": 1}
+    assert metrics["disposition_events"] == {
+        "seen": 1,
+        "parse_valid": 0,
+        "malformed": 1,
+    }
     assert metrics["disposition_event_errors"][0]["path"].endswith(path)
-    assert "readable" in metrics["disposition_event_errors"][0]["error"]
+    assert "UTF-8" in metrics["disposition_event_errors"][0]["error"]
+
+
+def test_non_utf8_inside_disposition_marker_is_not_concealed(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    sent = root / "coordination/mailbox/sent"
+    sent.mkdir(parents=True)
+    subprocess.run(["/usr/bin/git", "-C", str(root), "init", "-q"], check=True)
+    path = "2026-08-03T03-00-00Z-director-to-all-decision.md"
+    phantom = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T00-00-00Z-operator-to-director-learning-candidate.md@"
+        + "e" * 40
+    )
+    prefix = _event_text(
+        "director",
+        "all",
+        "2026-08-03T03-00-00Z",
+        f"Candidate: {phantom}\nPLACEHOLDER accepted",
+    ).encode("utf-8")
+    (sent / path).write_bytes(prefix.replace(b"PLACEHOLDER", b"Dispo\xffsition:"))
+    subprocess.run(["/usr/bin/git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "/usr/bin/git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Metrics Test",
+            "-c",
+            "user.email=metrics@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "concealed non-UTF-8 disposition",
+        ],
+        check=True,
+    )
+
+    metrics = learning_metrics.collect_metrics(root)
+
+    assert metrics["disposition_events"] == {
+        "seen": 1,
+        "parse_valid": 0,
+        "malformed": 1,
+    }
+    assert metrics["disposition_event_errors"][0]["path"].endswith(path)
+    assert "UTF-8" in metrics["disposition_event_errors"][0]["error"]

@@ -542,7 +542,11 @@ def test_pipeline_policy_is_execution_first_and_proportional() -> None:
 
 
 def test_claude_and_agy_route_new_lessons_through_learning_candidates() -> None:
-    for path in ("CLAUDE.md", "docs/protocol/agy/continuation.md"):
+    for path in (
+        "CLAUDE.md",
+        "docs/protocol/agy/continuation.md",
+        ".agents/skills/antigravity-harness/SKILL.md",
+    ):
         text = _compact(_read(path))
         for required in (
             "finish the scoped task",

@@ -44,6 +44,7 @@ def _repo(tmp_path: Path, monkeypatch) -> tuple[Path, str]:
     sent.mkdir(parents=True)
     seen.mkdir()
     baselines.mkdir(parents=True)
+    (sent / ".gitkeep").write_text("", encoding="utf-8")
     for seat in cc.ROLES:
         (seen / f"{seat}.txt").write_text("0\n", encoding="utf-8")
     (root / "coordination/mailbox/kinds.txt").write_text(
@@ -68,6 +69,8 @@ def _repo(tmp_path: Path, monkeypatch) -> tuple[Path, str]:
     )
     (root / "README.md").write_text("target v1\n", encoding="utf-8")
     _git(root, "init", "-q")
+    _commit(root, "pre-cutover baseline")
+    (root / "learning-cutover.txt").write_text("reviewed\n", encoding="utf-8")
     cutover = _commit(root, "reviewed learning-history cutover")
     monkeypatch.setattr(cc, "_LEARNING_HISTORY_CUTOVER_COMMIT", cutover)
     return root, cutover
@@ -319,7 +322,80 @@ def test_post_cutover_learning_event_is_immutable(
     assert any(change in message for message in _fatal_messages(root))
 
 
-def test_pre_cutover_and_parallel_branch_introductions_are_grandfathered(
+@pytest.mark.parametrize("change", ["modified", "deleted"])
+def test_cutover_baseline_candidate_bytes_are_immutable(
+    tmp_path: Path, monkeypatch, change: str
+) -> None:
+    root, _initial_cutover = _repo(tmp_path, monkeypatch)
+    path, _fields = _candidate(root, _source_ref(root))
+    _commit(root, "legacy candidate introduction")
+    (root / "learning-cutover.txt").write_text("reviewed v2\n", encoding="utf-8")
+    cutover = _commit(root, "reviewed cutover after candidate introduction")
+    monkeypatch.setattr(cc, "_LEARNING_HISTORY_CUTOVER_COMMIT", cutover)
+    if change == "modified":
+        (root / path).write_text("changed after cutover\n", encoding="utf-8")
+    else:
+        (root / path).unlink()
+    _commit(root, f"{change} cutover candidate")
+
+    assert any(change in message for message in _fatal_messages(root))
+
+
+def test_unchanged_malformed_cutover_bytes_are_semantically_grandfathered(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, _initial_cutover = _repo(tmp_path, monkeypatch)
+    path, fields = _candidate(root, _source_ref(root))
+    _commit(root, "legacy valid candidate introduction")
+    valid_id = protocol_mailbox.compute_learning_candidate_id(fields)
+    malformed = (root / path).read_text(encoding="utf-8").replace(
+        valid_id, "f" * 64, 1
+    )
+    (root / path).write_text(malformed, encoding="utf-8")
+    cutover = _commit(root, "reviewed cutover with malformed legacy bytes")
+    monkeypatch.setattr(cc, "_LEARNING_HISTORY_CUTOVER_COMMIT", cutover)
+    (root / "after.txt").write_text("after cutover\n", encoding="utf-8")
+    _commit(root, "post-cutover unrelated change")
+
+    assert _fatal_messages(root) == []
+
+
+def test_candidate_introduced_and_deleted_before_cutover_is_grandfathered(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, _initial_cutover = _repo(tmp_path, monkeypatch)
+    path, _fields = _candidate(
+        root, _source_ref(root), candidate_id="f" * 64
+    )
+    _commit(root, "legacy malformed candidate introduction")
+    (root / path).unlink()
+    cutover = _commit(root, "reviewed cutover after legacy candidate deletion")
+    monkeypatch.setattr(cc, "_LEARNING_HISTORY_CUTOVER_COMMIT", cutover)
+
+    assert _fatal_messages(root) == []
+
+
+@pytest.mark.parametrize("change", ["modified", "deleted"])
+def test_cutover_baseline_disposition_bytes_are_immutable(
+    tmp_path: Path, monkeypatch, change: str
+) -> None:
+    root, _initial_cutover = _repo(tmp_path, monkeypatch)
+    ref = _candidate_ref(root, _source_ref(root))
+    path = _disposition(root, ref)
+    _commit(root, "legacy disposition introduction")
+    (root / "learning-cutover.txt").write_text("reviewed v2\n", encoding="utf-8")
+    cutover = _commit(root, "reviewed cutover after disposition introduction")
+    monkeypatch.setattr(cc, "_LEARNING_HISTORY_CUTOVER_COMMIT", cutover)
+    if change == "modified":
+        (root / path).write_text("changed after cutover\n", encoding="utf-8")
+    else:
+        (root / path).unlink()
+    _commit(root, f"{change} cutover disposition")
+
+    assert any(change in message for message in _fatal_messages(root))
+
+
+def test_old_base_parallel_branch_introduction_is_not_grandfathered(
     tmp_path: Path, monkeypatch
 ) -> None:
     root = tmp_path / "repo"
@@ -366,7 +442,7 @@ def test_pre_cutover_and_parallel_branch_introductions_are_grandfathered(
     _git(root, "merge", "-q", "--no-ff", parallel, "-m", "merge parallel history")
     assert (root / parallel_path).exists()
 
-    assert _fatal_messages(root) == []
+    assert any("invalid" in message for message in _fatal_messages(root))
 
     _write_event(
         root,
@@ -378,7 +454,39 @@ def test_pre_cutover_and_parallel_branch_introductions_are_grandfathered(
     )
     _commit(root, "descendant malformed introduction")
 
-    assert any("invalid" in message for message in _fatal_messages(root))
+    assert len([message for message in _fatal_messages(root) if "invalid" in message]) == 2
+
+
+def test_old_base_branch_add_delete_merged_after_cutover_is_fatal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, cutover = _repo(tmp_path, monkeypatch)
+    base = _git(root, "rev-parse", f"{cutover}^")
+    _git(root, "checkout", "-q", "-b", "extinct-parallel", base)
+    (root / "coordination/mailbox/sent").mkdir(parents=True, exist_ok=True)
+    path = _write_event(
+        root,
+        sender="operator",
+        recipient="director",
+        kind="learning-candidate",
+        stamp="2026-08-03T00-00-09Z",
+        body="malformed extinct parallel candidate",
+    )
+    _commit(root, "parallel candidate introduction")
+    (root / path).unlink()
+    parallel_tip = _commit(root, "parallel candidate deletion")
+    _git(root, "checkout", "-q", "main")
+    _git(
+        root,
+        "merge",
+        "-q",
+        "--no-ff",
+        parallel_tip,
+        "-m",
+        "merge extinct parallel history",
+    )
+
+    assert any("deleted" in message for message in _fatal_messages(root))
 
 
 def test_prose_decision_is_not_machine_disposition(tmp_path: Path, monkeypatch) -> None:
