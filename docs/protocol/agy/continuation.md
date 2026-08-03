@@ -80,16 +80,25 @@ The genuine difference is orchestration, not policy.
   through `coordination/bin/send-event` like every other side. Prefer returning
   evidence to the parent over materializing a file.
 
-## Work from the skills, and write the next one
+## Work from skills; route new lessons through candidates
 
 Before starting, check `.agents/skills/` for a skill that covers the work and
 follow it. `prove-a-control` before claiming any guard, gate, or negative
 control holds. `create-regression-pin` before deferring a confirmed defect.
 `seat-operator` before issuing a verdict.
 
-When work exposes a lesson no skill covers — a trap, a measured instance, and
-what to do instead — write the skill in the same session. When a skill's advice
-turns out wrong, correct the file rather than working around it.
+Current code and higher-priority instructions remain controlling. If a loaded
+skill conflicts with either, stop relying on it and record the conflict in the
+task evidence; do not silently work around it. Correct canonical skill bytes
+only when the current accepted task authorizes that correction and its required
+review completes.
+
+Finish the scoped task before extracting a lesson. Then draft and, only with the
+applicable publication authority, publish an evidence-backed
+`learning-candidate` with truthful provider scope. There is no canonical skill
+creation or edit solely because a lesson arose. Promotion into a canonical
+skill is a separately accepted, risk-classed Compact Pair change; the candidate
+is evidence for that later decision, not authority to make it.
 
 ## Formation gate for claims
 

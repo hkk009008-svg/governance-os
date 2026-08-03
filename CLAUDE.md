@@ -44,7 +44,7 @@ Select `explore`, `validate`, or `promote` from
 Mode is separate from review risk and grants no seat, write, provider launch,
 merge, push, or external-effect authority.
 
-## Work from the skills, and write the next one
+## Work from skills; route new lessons through candidates
 
 Default, not an option. Before starting, check `.claude/skills/` for one that
 covers the work and follow it — those files exist because the lesson in them was
@@ -53,15 +53,18 @@ missed. `prove-a-control` before claiming any guard, gate, or negative control
 holds. `create-regression-pin` before deferring a confirmed defect.
 `seat-operator` before issuing a verdict.
 
-When the work is in a domain no skill covers, do it, then write the skill. The
-bar is a lesson that would have changed how the work went, stated concretely
-enough to act on: the trap, one measured instance of it, and what to do instead.
-Not a summary of what happened. A skill nobody could follow is a worse artifact
-than none, because it reads as covered ground.
+Current code and higher-priority instructions remain controlling. If a loaded
+skill conflicts with either, stop relying on it and record the conflict in the
+task evidence; do not silently work around it. Correct canonical skill bytes
+only when the current accepted task authorizes that correction and its required
+review completes.
 
-When a skill's advice turns out to be wrong or narrower than its name, correct
-that file in the same session rather than working around it. A skill that
-outlived its mechanism is the same defect as a docstring that did.
+Finish the scoped task before extracting a lesson. Then draft and, only with the
+applicable publication authority, publish an evidence-backed
+`learning-candidate` with truthful provider scope. There is no canonical skill
+creation or edit solely because a lesson arose. Promotion into a canonical
+skill is a separately accepted, risk-classed Compact Pair change; the candidate
+is evidence for that later decision, not authority to make it.
 
 Instruction prose is executable on models and is the least-gated surface here.
 The first field trial measured it → a 6.5 h transcript with zero tool
