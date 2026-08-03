@@ -127,31 +127,26 @@ configuration fact, not a claim that the installed `agy models` catalog can
 never offer another recognized family. Route reviews according to the exact
 configured IDs and the executable fail-conservative family result.
 
-Headless review dispatch (measured 2026-07-31; accepted learning candidate
-`335883e68861…`, superseding `2c906ea580a9…` whose mechanism clause the
-round-one promotion review falsified): in headless mode `agy -p` auto-denies
-tool permissions that the machine's `permissions.allow` has not granted (per
-`docs/protocol/threeway/HEADLESS-REVIEW.md`; this range measured the denial,
-that doc states the rule). Scoped grants exist — the same doc documents them
-and `scripts/harness_preflight.py agy` names the exact missing entries as
-its remedy — so the preferred path is granting what the review needs BEFORE
-dispatch, minding the standing-authority cost that doc attaches: grants like
-`command(git commit)` and `command(coordination/bin/send-event)` outlive the
-task and apply to every later AGY session, so they need their own
-authorization, not a review's momentum. The blanket skip flag is not an
-alternative: the launcher
-refuses to forward it (`scripts/agy_seat_launcher.py`,
-`FORWARDABLE_FLAG_NAMES`). When the grants are absent and editing the
-user-owned settings file is not authorized mid-review, the measured fallback
-is a **tool-less** review: the dispatcher packages the committed
-verify-request and the verbatim range diff (`git diff` piped in the same
-pipeline that builds the prompt, never hand-edited) into the prompt; the
-reviewer judges the diff as ground truth, states explicitly which checks
-would need execution instead of assuming them, and the published report
-discloses the tool-less constraint. Author evidence for those items arrives
-in later rounds as labeled evidence lines for the reviewer to accept or
-challenge. Measured across a FAIL and a GO round on one high-risk-control
-range.
+Headless review dispatch has two explicit capability scopes. Run
+`scripts/harness_preflight.py agy --agy-scope evidence` for read-only exact-range
+inspection: it requires `read_file`, Git diff/show/status/rev-parse/merge-base,
+`rg`, and focused pytest grants. Run `--agy-scope publishing` only when the
+session is separately intended and authorized to commit and publish; it adds
+`git commit` and `coordination/bin/send-event` capability checks. Publishing is
+the unchanged full default, so an omitted scope never silently weakens the old
+gate. Either result measures capability only, never authority.
+
+AGY settings grants persist into future sessions. Do not add commit,
+send-event, or a blanket permission skip merely to gather review evidence. In
+headless mode a missing grant may return exit 0 with denial text or no output,
+so the live probe requires the exact nonempty artifact from a real read-only
+range command. When settings cannot be changed, use
+`scripts/harness_preflight.py agy --package-request <path>@<full-sha>` to emit a
+bounded tool-less prompt from the committed request and verbatim exact-range
+diff. Packaging launches no provider. Its analysis remains advisory until
+separately relayed and published through the canonical exact-authority path;
+the package itself cannot formalize a verdict. Full commands and grant lists
+are in `docs/protocol/threeway/HEADLESS-REVIEW.md`.
 
 State the model as the exact ID `agy models` lists, undecorated — the same
 string `coordination/bin/agy-seat --dry-run <seat>` prints as `AGY_MODEL` and

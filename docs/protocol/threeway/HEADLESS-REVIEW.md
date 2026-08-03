@@ -7,13 +7,15 @@ repository on 2026-07-26; the constraints are observed behaviour, not inference.
 **Run the check, do not read this file from memory (ADR-065):**
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/harness_preflight.py all
+env -u GIT_INDEX_FILE .venv/bin/python scripts/harness_preflight.py all --agy-scope publishing
 ```
 
-It fails closed and names the specific remedy. This page is the remediation
-reference it points at, not the thing you are expected to remember — every
-harness failure below exits 0 and produces silence, and this file was already
-wrong twice within hours of being written.
+`publishing` is the unchanged full default. Use `--agy-scope evidence` when the
+AGY session will only inspect and test an exact range. The result states the
+selected scope: evidence readiness does not mean the session can publish or
+formalize a verdict, and publishing readiness still grants no authority to use
+its persistent effect capabilities. The check fails closed and names the
+specific remedy.
 
 Provider launch and paid spend remain separately authorized. Readiness is not
 authority: the preflight says a harness *can* act, never that it *may*.
@@ -71,23 +73,51 @@ no output produced — a tool required the "read_file" permission that headless
 mode cannot prompt for, so it was auto-denied.
 ```
 
-— and the first such run produced no output at all. Grant what a review needs
-in `~/.gemini/antigravity-cli/settings.json` under `permissions.allow`:
-`read_file`, plus a `command(...)` entry per command it must run. The preflight
-checks these against that file directly.
+— and the first such run produced no output at all. Exit status and denial text
+are not interpreted as success: `--live` requires the exact nonempty output of
+an actual `git diff --name-status HEAD^ HEAD --` probe.
 
-Note what each grant costs. `read_file` is an observation grant;
-`command(git commit)` and `command(coordination/bin/send-event)` are *authority*
-grants that outlive the task and apply to every later AGY session, unlike the
-per-run limits in a prompt. `--dangerously-skip-permissions` grants everything
-at once and should be a deliberate choice, not a shortcut past a denial.
+Choose the capability scope explicitly:
+
+```bash
+# Read files, inspect the exact range, and run focused tests only.
+env -u GIT_INDEX_FILE .venv/bin/python scripts/harness_preflight.py agy --agy-scope evidence
+
+# Adds persistent commit and send-event capability checks; still no authority.
+env -u GIT_INDEX_FILE .venv/bin/python scripts/harness_preflight.py agy --agy-scope publishing
+```
+
+Evidence scope requires `read_file` and command grants for `git diff`,
+`git show`, `git status`, `git rev-parse`, `git merge-base`, `rg`, and
+`.venv/bin/python -m pytest`. These settings persist into future sessions. Do
+not add `command(git commit)`, `command(coordination/bin/send-event)`, or a
+blanket permission skip merely to gather evidence. Publishing scope checks the
+two effect commands separately, and even a green result still requires exact
+commit/publication authority at execution time.
+
+When user-owned settings may not be changed, package an already committed
+request and its exact range without launching a provider:
+
+```bash
+env -u GIT_INDEX_FILE .venv/bin/python scripts/harness_preflight.py agy \
+  --package-request 'coordination/mailbox/sent/<request>.md@<full-commit-sha>'
+```
+
+The helper validates the full request commit, strict range ancestry, sanitized
+Git environment, disabled replacement refs, nonempty UTF-8 diff, and fixed byte
+limit. It prints a prompt only and spends nothing. The resulting tool-less
+analysis is advisory until a separately authorized actor relays and publishes
+it through the canonical Compact Pair path; the package itself cannot create a
+formal verdict.
 
 Flags must precede the prompt: it is a Go flag parser, which stops at the first
 positional and then reports `flags provided but not defined` for anything after
 it. That error text is also the fastest way to check whether a flag exists,
 because it happens at parse time and costs no model call.
 
-Reported model `Gemini 3.1 Pro (High)`, family `gemini`. Seat launch is
+The low-cost live probe pins `gemini-3.6-flash-low`; it is a capability probe,
+not the identity of any later review. A formal review records the exact model
+ID its actual launch selected. Seat launch is
 `coordination/bin/agy-seat <seat>`; it emitted two undefined flags until
 `c6f017b`.
 
@@ -98,9 +128,9 @@ what seating it in Mode 1 accepts, so an AGY verdict now rests on the same
 fail-closed publication validation as every other provider rather than on
 provider exclusion. The GO at `5ad43ed` stands.
 
-Its model identity also appears in four forms — `antigravity-gemini-3.6`,
-`gemini-3.6-flash`, `gemini-2.5-pro`, `Gemini 3.1 Pro (High)` — and
-independence keys on that string.
+Model-family independence uses the closed registry in
+`scripts/codex_protocol_model.py`; harness decorations do not create a new
+family, and an unregistered invented model ID buys no independence.
 
 ## Cursor
 

@@ -8,6 +8,7 @@ test that passed while the check was blind would defeat it entirely.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,13 @@ def _failures(results) -> list[str]:
     return [result.detail for result in results if not result.ok]
 
 
+def _evidence_grants() -> list[str]:
+    return [
+        "read_file",
+        *(f"command({command})" for command in preflight.AGY_EVIDENCE_COMMANDS),
+    ]
+
+
 def test_agy_missing_command_grants_is_not_ready(tmp_path: Path) -> None:
     """AGY auto-denies a tool it cannot prompt for and still exits 0.
 
@@ -34,27 +42,77 @@ def test_agy_missing_command_grants_is_not_ready(tmp_path: Path) -> None:
     """
     settings = _settings(tmp_path, ["read_file"])
 
-    results = preflight.check_agy(settings)
+    results = preflight.check_agy(settings, scope="evidence")
 
     failures = _failures(results)
-    assert any("missing grants" in detail for detail in failures)
+    assert any("missing evidence grants" in detail for detail in failures)
     assert any(command in detail for detail in failures for command in ("git diff", "pytest"))
 
 
-def test_agy_with_every_review_grant_is_ready(tmp_path: Path) -> None:
+def test_agy_evidence_scope_is_ready_without_publication_grants(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, _evidence_grants())
+
+    results = preflight.check_agy(settings, scope="evidence")
+
+    assert _failures(results) == []
+    assert any("evidence-only" in result.detail for result in results)
+    assert not any("publishing-ready" in result.detail for result in results)
+
+
+def test_agy_publishing_scope_additionally_requires_effect_commands(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path, _evidence_grants())
+
+    results = preflight.check_agy(settings, scope="publishing")
+
+    failures = _failures(results)
+    assert any("send-event" in detail for detail in failures)
+    assert any("git commit" in detail for detail in failures)
+
+
+def test_agy_with_every_publishing_grant_is_capability_ready(tmp_path: Path) -> None:
     settings = _settings(
         tmp_path,
-        ["read_file", *(f"command({command})" for command in preflight.REVIEW_COMMANDS)],
+        [
+            *_evidence_grants(),
+            *(f"command({command})" for command in preflight.AGY_PUBLISH_COMMANDS),
+        ],
     )
+
+    results = preflight.check_agy(settings, scope="publishing")
+
+    assert _failures(results) == []
+    assert any("separate authority" in result.detail for result in results)
+
+
+def test_agy_default_scope_remains_full_publishing_check(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, _evidence_grants())
 
     results = preflight.check_agy(settings)
 
-    assert _failures(results) == []
+    assert any("git commit" in detail for detail in _failures(results))
+
+
+def test_agy_cli_passes_and_prints_explicit_scope(monkeypatch, capsys) -> None:
+    selected: list[str] = []
+
+    def check(*, scope: str):
+        selected.append(scope)
+        return [preflight.Result("agy", True, f"selected {scope} scope")]
+
+    monkeypatch.setattr(preflight, "check_agy", check)
+    code = preflight.main(["agy", "--agy-scope", "evidence"])
+
+    assert code == 0
+    assert selected == ["evidence"]
+    assert "selected evidence scope" in capsys.readouterr().out
 
 
 def test_agy_missing_read_file_is_reported_separately(tmp_path: Path) -> None:
     settings = _settings(
-        tmp_path, [f"command({command})" for command in preflight.REVIEW_COMMANDS]
+        tmp_path,
+        [f"command({command})" for command in preflight.AGY_EVIDENCE_COMMANDS],
     )
 
     results = preflight.check_agy(settings)
@@ -149,16 +207,195 @@ def test_main_fails_closed_when_any_check_fails(tmp_path: Path, capsys) -> None:
     assert "NOT READY" in capsys.readouterr().out
 
 
-def test_review_commands_cover_evidence_and_publication() -> None:
-    """A harness that reads but cannot publish is not a usable Operator.
+def test_agy_scope_command_sets_do_not_conflate_evidence_with_publication() -> None:
+    evidence = " ".join(preflight.AGY_EVIDENCE_COMMANDS)
+    publishing = " ".join(preflight.AGY_PUBLISH_COMMANDS)
 
-    Evidence-only readiness is exactly Cursor's real posture, so the grant list
-    has to span both halves or the check would pass a harness that can never
-    issue a verdict.
-    """
-    joined = " ".join(preflight.REVIEW_COMMANDS)
+    for command in (
+        "git diff",
+        "git show",
+        "git status",
+        "git rev-parse",
+        "git merge-base",
+        "rg",
+        ".venv/bin/python -m pytest",
+    ):
+        assert command in evidence
+    assert "send-event" not in evidence
+    assert "git commit" not in evidence
+    assert "send-event" in publishing
+    assert "git commit" in publishing
 
-    assert "git diff" in joined
-    assert "pytest" in joined
-    assert "send-event" in joined
-    assert "git commit" in joined
+
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _review_request_repo(
+    tmp_path: Path,
+    *,
+    empty_range: bool = False,
+    non_utf8_diff: bool = False,
+    invalid_ancestry: bool = False,
+) -> tuple[Path, str, str, str]:
+    root = tmp_path / "repo"
+    root.mkdir()
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "tests@example.invalid")
+    _git(root, "config", "user.name", "Tests")
+    payload = root / "payload.txt"
+    payload.write_text("base\n", encoding="utf-8")
+    _git(root, "add", "payload.txt")
+    _git(root, "commit", "-q", "-m", "base")
+    base = _git(root, "rev-parse", "HEAD")
+    if empty_range:
+        _git(root, "commit", "-q", "--allow-empty", "-m", "empty head")
+    else:
+        if non_utf8_diff:
+            payload.write_bytes(b"head-\xff\n")
+        else:
+            payload.write_text("head\n", encoding="utf-8")
+        _git(root, "add", "payload.txt")
+        _git(root, "commit", "-q", "-m", "head")
+    head = _git(root, "rev-parse", "HEAD")
+    request_base, request_head = (head, base) if invalid_ancestry else (base, head)
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-08-03T05-00-00Z-director-to-operator-verify-request.md"
+    )
+    target = root / path
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        "\n".join(
+            (
+                "# Director → Operator: packaged review",
+                "",
+                "**When:** 2026-08-03T05:00:00Z · **From:** director (online)",
+                "",
+                "Event type: verify-request",
+                f"Reviewed head: {request_head}",
+                f"Reviewed base: {request_base}",
+                "Author seat: director",
+                "Author model: gpt-5.6-sol",
+                "Assigned operator: operator",
+                "Risk class: material-behavior",
+                "",
+                "## Outcome",
+                "",
+                "Review the exact committed range.",
+                "",
+                "## Finding Refs",
+                "",
+                f"- sha256:{'1' * 64}",
+                "",
+                "Cursor at send: 0",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    _git(root, "add", path)
+    _git(root, "commit", "-q", "-m", "request")
+    trigger = _git(root, "rev-parse", "HEAD")
+    return root, f"{path}@{trigger}", base, head
+
+
+def test_toolless_package_binds_committed_request_and_exact_range(
+    tmp_path: Path,
+) -> None:
+    root, request_ref, base, head = _review_request_repo(tmp_path)
+
+    prompt = preflight.package_toolless_review(root, request_ref)
+
+    assert request_ref in prompt
+    assert f"{base}..{head}" in prompt
+    assert "-base" in prompt
+    assert "+head" in prompt
+    assert "advisory" in prompt.casefold()
+
+
+@pytest.mark.parametrize("failure", ("empty", "ancestry", "oversize", "non_utf8"))
+def test_toolless_package_fails_closed_on_invalid_range_or_bytes(
+    tmp_path: Path, failure: str,
+) -> None:
+    root, request_ref, _, _ = _review_request_repo(
+        tmp_path,
+        empty_range=failure == "empty",
+        non_utf8_diff=failure == "non_utf8",
+        invalid_ancestry=failure == "ancestry",
+    )
+
+    with pytest.raises(preflight.PreflightError):
+        preflight.package_toolless_review(
+            root,
+            request_ref,
+            max_bytes=128 if failure == "oversize" else preflight.MAX_PACKAGE_BYTES,
+        )
+
+
+def test_toolless_package_requires_full_request_commit(tmp_path: Path) -> None:
+    root, request_ref, _, _ = _review_request_repo(tmp_path)
+    path, _, commit = request_ref.rpartition("@")
+
+    with pytest.raises(preflight.PreflightError, match="full"):
+        preflight.package_toolless_review(root, f"{path}@{commit[:12]}")
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    (
+        "",
+        'no output produced — a tool required the "command(git rev-parse)" '
+        "permission and was auto-denied.\n",
+    ),
+)
+def test_live_probe_rejects_exit_zero_without_exact_positive_artifact(
+    tmp_path: Path, stdout: str,
+) -> None:
+    root, _, _, _ = _review_request_repo(tmp_path)
+
+    def runner(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 0, stdout=stdout, stderr="")
+
+    result = preflight.live_probe("agy", root, runner=runner)
+
+    assert result.ok is False
+    assert "positive artifact" in result.detail
+
+
+def test_live_probe_accepts_only_exact_nonempty_head_artifact(tmp_path: Path) -> None:
+    root, _, _, _ = _review_request_repo(tmp_path)
+    expected = _git(root, "diff", "--name-status", "HEAD^", "HEAD", "--")
+
+    def runner(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 0, stdout=expected + "\n", stderr="")
+
+    result = preflight.live_probe("agy", root, runner=runner)
+
+    assert result.ok is True
+
+
+def test_package_cli_never_calls_live_provider(tmp_path: Path, monkeypatch, capsys) -> None:
+    root, request_ref, _, _ = _review_request_repo(tmp_path)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("packaging must not launch a provider")
+
+    monkeypatch.setattr(preflight, "live_probe", forbidden)
+    code = preflight.main(
+        [
+            "agy",
+            "--repo-root",
+            str(root),
+            "--package-request",
+            request_ref,
+        ]
+    )
+
+    assert code == 0
+    assert request_ref in capsys.readouterr().out

@@ -16,7 +16,7 @@ and Codex's ambient authority from the project config the launch would inherit.
 A copy of an external interface rots exactly the way the launcher flags did.
 
 `--live` additionally spends one trivial tool-using prompt per harness and
-requires a positive artifact — the repository HEAD echoed back — because exit 0
+requires the exact nonempty `HEAD^..HEAD` name-status artifact because exit 0
 is not evidence that anything ran.
 """
 
@@ -25,22 +25,41 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+try:
+    from scripts import compact_pair_loop
+except ModuleNotFoundError as exc:
+    if exc.name != "scripts":
+        raise
+    import compact_pair_loop  # type: ignore[no-redef]
+
 HARNESSES = ("codex", "agy", "cursor")
 AGY_SETTINGS = Path("~/.gemini/antigravity-cli/settings.json")
 CURSOR_REGISTRY = Path("~/.cursor/pipeline-app-seats.json")
 RUNBOOK = "docs/protocol/threeway/HEADLESS-REVIEW.md"
+AGY_SCOPES = ("evidence", "publishing")
+MAX_PACKAGE_BYTES = 1_048_576
+FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+AGY_PROBE_MODEL = "gemini-3.6-flash-low"
 
 # What a review actually runs. AGY grants are matched against these because a
 # harness that can read files but not run pytest still cannot produce evidence.
-REVIEW_COMMANDS = (
+AGY_EVIDENCE_COMMANDS = (
     "git diff",
+    "git show",
+    "git status",
+    "git rev-parse",
+    "git merge-base",
+    "rg",
     ".venv/bin/python -m pytest",
+)
+AGY_PUBLISH_COMMANDS = (
     "coordination/bin/send-event",
     "git commit",
 )
@@ -57,6 +76,10 @@ class Result:
     ok: bool
     detail: str
     remedy: str = ""
+
+
+class PreflightError(ValueError):
+    """One preflight or tool-less packaging boundary failed closed."""
 
 
 def _binary(*names: str) -> str | None:
@@ -107,20 +130,43 @@ def check_codex(root: Path) -> list[Result]:
     return results
 
 
-def check_agy(settings_path: Path = AGY_SETTINGS) -> list[Result]:
-    """AGY is ready when its own settings grant the tools a review needs."""
+def _command_granted(command: str, granted: set[str]) -> bool:
+    exact = f"command({command})"
+    prefix = f"command({command} "
+    return any(entry == exact or entry.startswith(prefix) for entry in granted)
+
+
+def check_agy(
+    settings_path: Path = AGY_SETTINGS,
+    *,
+    scope: str = "publishing",
+) -> list[Result]:
+    """Check one explicit AGY capability scope without granting authority."""
+    if scope not in AGY_SCOPES:
+        raise ValueError(f"unknown AGY capability scope: {scope}")
     results: list[Result] = []
     binary = _binary("agy", "antigravity")
     results.append(
         Result("agy", bool(binary), f"binary {binary or 'NOT FOUND on PATH'}",
                "" if binary else "install the AGY CLI")
     )
+    results.append(
+        Result(
+            "agy",
+            True,
+            "capability scope evidence selected — evidence-only; cannot publish "
+            "or formalize a verdict"
+            if scope == "evidence"
+            else "capability scope publishing selected — persistent grants are "
+            "capability only; execution still requires separate authority",
+        )
+    )
     path = settings_path.expanduser()
     if not path.is_file():
         return results + [
             Result("agy", False, f"settings absent at {path}",
-                   "create it with a permissions.allow list, or pass "
-                   "--dangerously-skip-permissions per invocation")
+                   "create it with a scoped permissions.allow list, or use the "
+                   "tool-less package fallback")
         ]
     try:
         allow = json.loads(path.read_text(encoding="utf-8"))["permissions"]["allow"]
@@ -137,20 +183,41 @@ def check_agy(settings_path: Path = AGY_SETTINGS) -> list[Result]:
                "" if reads else 'add "read_file" to permissions.allow')
     )
     missing = [
-        command for command in REVIEW_COMMANDS
-        if not any(entry.startswith(f"command({command}") for entry in granted)
+        command
+        for command in AGY_EVIDENCE_COMMANDS
+        if not _command_granted(command, granted)
     ]
     results.append(
         Result(
             "agy",
             not missing,
-            "review commands granted" if not missing
-            else f"missing grants: {', '.join(missing)}",
+            "evidence commands granted"
+            if not missing
+            else f"missing evidence grants: {', '.join(missing)}",
             "" if not missing
-            else "add command(...) entries for these, or dispatch a harness that "
-                 "does not need a persistent grant",
+            else "add only the required read-only command(...) entries, or use the "
+            "tool-less package fallback",
         )
     )
+    if scope == "publishing":
+        missing_publish = [
+            command
+            for command in AGY_PUBLISH_COMMANDS
+            if not _command_granted(command, granted)
+        ]
+        results.append(
+            Result(
+                "agy",
+                not missing_publish,
+                "publishing commands granted; execution still requires separate authority"
+                if not missing_publish
+                else f"missing publishing grants: {', '.join(missing_publish)}",
+                ""
+                if not missing_publish
+                else "add persistent effect grants only under separate publication and "
+                "commit authority; evidence scope does not require them",
+            )
+        )
     return results
 
 
@@ -239,43 +306,157 @@ def _cursor_policy(seat_root: Path) -> dict[str, str] | None:
     return verdicts
 
 
-def live_probe(harness: str, root: Path) -> Result:
+def _git_bytes(root: Path, *arguments: str, max_bytes: int) -> bytes:
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+    try:
+        process = subprocess.Popen(
+            ["/usr/bin/git", "--no-replace-objects", *arguments],
+            cwd=root,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        raise PreflightError(f"git {' '.join(arguments[:2])} failed: {exc}") from exc
+    assert process.stdout is not None
+    try:
+        output = process.stdout.read(max_bytes + 1)
+    finally:
+        process.stdout.close()
+    if len(output) > max_bytes:
+        process.kill()
+        process.wait()
+        raise PreflightError(f"git {' '.join(arguments[:2])} output is oversized")
+    returncode = process.wait()
+    if returncode != 0:
+        raise PreflightError(f"git {' '.join(arguments[:2])} failed")
+    return output
+
+
+def package_toolless_review(
+    root: Path,
+    request_ref: str,
+    *,
+    max_bytes: int = MAX_PACKAGE_BYTES,
+) -> str:
+    """Build one bounded, no-provider prompt from committed request and diff bytes."""
+    root = root.resolve()
+    path, separator, trigger = request_ref.rpartition("@")
+    if not separator or not path or FULL_SHA_RE.fullmatch(trigger) is None:
+        raise PreflightError("package request must be path@full lowercase commit SHA")
+    if max_bytes <= 0:
+        raise PreflightError("package byte limit must be positive")
+    try:
+        request = compact_pair_loop.parse_verify_request(root, path, trigger)
+    except compact_pair_loop.CompactPairError as exc:
+        raise PreflightError(f"committed request is invalid: {exc}") from exc
+
+    reviewed_root = root
+    if request.reviewed_repository is not None:
+        recorded_root = Path(request.reviewed_repository)
+        if recorded_root.is_dir():
+            reviewed_root = recorded_root.resolve()
+    request_bytes = _git_bytes(
+        root, "show", f"{trigger}:{path}", max_bytes=max_bytes
+    )
+    diff_bytes = _git_bytes(
+        reviewed_root,
+        "diff",
+        "--binary",
+        "--no-ext-diff",
+        "--no-textconv",
+        request.reviewed_base,
+        request.reviewed_head,
+        "--",
+        max_bytes=max_bytes,
+    )
+    if not diff_bytes.strip():
+        raise PreflightError("reviewed range produced an empty diff")
+
+    header = (
+        "TOOL-LESS ADVISORY REVIEW PACKAGE\n"
+        "No repository tools are available to the reviewer. Treat the committed "
+        "request and verbatim diff below as ground truth; report any check that "
+        "requires execution as unavailable. This package cannot publish or "
+        "formalize a verdict.\n\n"
+        f"Verification request: {request_ref}\n"
+        f"Exact reviewed range: {request.reviewed_base}..{request.reviewed_head}\n\n"
+        "--- COMMITTED VERIFY REQUEST ---\n"
+    ).encode("utf-8")
+    separator_bytes = b"\n--- EXACT COMMITTED RANGE DIFF ---\n"
+    package = header + request_bytes + separator_bytes + diff_bytes
+    if len(package) > max_bytes:
+        raise PreflightError(
+            f"tool-less review package exceeds {max_bytes} bytes"
+        )
+    try:
+        return package.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise PreflightError("tool-less review package is not UTF-8") from exc
+
+
+def live_probe(
+    harness: str,
+    root: Path,
+    *,
+    runner=subprocess.run,
+) -> Result:
     """Spend one prompt and require a positive artifact, never exit 0.
 
     Each silent failure mode returns success at the exit code, so the only
     trustworthy signal is the harness echoing something it could not have
     produced without running a tool.
     """
-    expected = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"], cwd=root,
-        capture_output=True, text=True, check=False,
-    ).stdout.strip()
+    try:
+        expected = _git_bytes(
+            root,
+            "diff",
+            "--name-status",
+            "HEAD^",
+            "HEAD",
+            "--",
+            max_bytes=65_536,
+        ).decode("utf-8", errors="strict").strip()
+    except (PreflightError, UnicodeDecodeError) as exc:
+        return Result(harness, False, f"could not resolve probe range: {exc}")
     if not expected:
-        return Result(harness, False, "could not resolve HEAD for the probe")
+        return Result(harness, False, "probe range produced no positive artifact")
 
     prompt = (
         "Run exactly this command and reply with ONLY its output: "
-        "env -u GIT_INDEX_FILE git rev-parse --short HEAD"
+        "env -u GIT_INDEX_FILE git diff --name-status HEAD^ HEAD --"
     )
     commands = {
         "codex": ["codex", "exec", "-C", str(root), "--sandbox", "workspace-write",
                   "-c", 'approval_policy="never"', prompt],
-        "agy": ["agy", "--sandbox", "--print", prompt],
+        "agy": [
+            "agy",
+            "--sandbox",
+            "--print",
+            "--model",
+            AGY_PROBE_MODEL,
+            prompt,
+        ],
         "cursor": ["cursor-agent", "-p", "-f", "--trust", prompt],
     }
     try:
-        completed = subprocess.run(
+        completed = runner(
             commands[harness], cwd=root, capture_output=True, text=True,
             stdin=subprocess.DEVNULL, timeout=600, check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return Result(harness, False, f"probe failed to run: {exc}")
-    body = completed.stdout + completed.stderr
-    hit = expected in body
+    stdout = completed.stdout or ""
+    stderr = completed.stderr or ""
+    hit = completed.returncode == 0 and stdout.strip() == expected
     return Result(
         harness, hit,
-        f"live probe {'echoed HEAD' if hit else 'produced no HEAD'} "
-        f"(exit {completed.returncode}, {len(body)} bytes)",
+        f"live probe {'returned exact positive artifact' if hit else 'produced no exact positive artifact'} "
+        f"({'model ' + AGY_PROBE_MODEL + ', ' if harness == 'agy' else ''}"
+        f"exit {completed.returncode}, stdout {len(stdout)} bytes, "
+        f"stderr {len(stderr)} bytes)",
         "" if hit else f"exit code is not evidence; see {RUNBOOK}",
     )
 
@@ -285,18 +466,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("harness", choices=(*HARNESSES, "all"))
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--seat", default="operator")
+    parser.add_argument(
+        "--agy-scope",
+        choices=AGY_SCOPES,
+        default="publishing",
+        help="explicit AGY capability scope (default: publishing, the full check)",
+    )
+    parser.add_argument(
+        "--package-request",
+        metavar="PATH@COMMIT",
+        help="print one bounded tool-less AGY review package without provider launch",
+    )
     parser.add_argument("--live", action="store_true",
                         help="also spend one tool-using prompt per harness")
     args = parser.parse_args(argv)
 
     root = args.repo_root.resolve()
+    if args.package_request is not None:
+        if args.harness != "agy" or args.live:
+            parser.error("--package-request requires harness=agy and cannot use --live")
+        try:
+            print(package_toolless_review(root, args.package_request), end="")
+        except PreflightError as exc:
+            print(f"FAIL  agy     {exc}")
+            return 1
+        return 0
     selected = HARNESSES if args.harness == "all" else (args.harness,)
     results: list[Result] = []
     for harness in selected:
         if harness == "codex":
             results += check_codex(root)
         elif harness == "agy":
-            results += check_agy()
+            results += check_agy(scope=args.agy_scope)
         else:
             results += check_cursor(args.seat)
         if args.live:

@@ -701,20 +701,20 @@ def test_configured_model_reaches_the_cli_and_the_report_surface_verbatim(
 def test_harness_decorated_model_ids_buy_no_independence(tmp_path: Path) -> None:
     """Why the bare `agy models` ID is canonical rather than a prefixed form.
 
-    The mailbox recorded `antigravity-gemini-3.6` while the one committed AGY
-    report said `gemini-3.6-flash` and the launcher config said
-    `gemini-2.5-pro`. `model_family` strips harness prefixes, so all of these
-    already key the same independence decision -- the divergence never changed
-    a verdict, it only made the cited string unverifiable against `agy models`.
+    Harness prefixes normalize only onto a registry-backed model ID. The
+    installed `gemini-3.1-pro-low` remains Gemini, while the formerly cited but
+    uninstalled `gemini-2.5-pro` is deliberately unverifiable and cannot buy
+    independence.
     """
     family = codex_protocol_model.model_family
     assert (
         family("antigravity-gemini-3.6")
         == family("gemini-3.6-flash")
-        == family("gemini-2.5-pro")
+        == family("gemini-3.1-pro-low")
         == family("gemini-3.1-pro-high")
         == "gemini"
     )
+    assert family("gemini-2.5-pro") is None
     assert codex_protocol_model.models_are_independent(
         "claude-opus-5", "gemini-3.1-pro-high"
     )
