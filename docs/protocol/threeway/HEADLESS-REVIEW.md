@@ -79,7 +79,9 @@ mode cannot prompt for, so it was auto-denied.
 are not interpreted as success: `--live` requires the exact nonempty output of
 an actual `git rev-parse --show-toplevel --short HEAD` probe with inherited
 `GIT_*` removed. Both resolved-root and short-HEAD lines must match, so the same
-commit in another checkout cannot satisfy the gate.
+commit in another checkout cannot satisfy the gate. The only accepted text is
+the canonical `<resolved-root>\n<short-head>\n`; no `.strip()` normalization or
+extra whitespace is allowed.
 
 Choose the capability scope explicitly:
 

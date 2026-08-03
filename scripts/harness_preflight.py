@@ -456,13 +456,19 @@ def live_probe(
             "--short",
             "HEAD",
             max_bytes=65_536,
-        ).decode("utf-8", errors="strict").strip()
+        ).decode("utf-8", errors="strict")
     except (PreflightError, UnicodeDecodeError) as exc:
         return Result(harness, False, f"could not resolve probe range: {exc}")
     if not expected:
         return Result(harness, False, "probe range produced no positive artifact")
     artifact_lines = expected.splitlines()
-    if len(artifact_lines) != 2 or artifact_lines[0] != str(root):
+    canonical = (
+        len(artifact_lines) == 2
+        and artifact_lines[0] == str(root)
+        and re.fullmatch(r"[0-9a-f]{4,40}", artifact_lines[1]) is not None
+        and expected == f"{artifact_lines[0]}\n{artifact_lines[1]}\n"
+    )
+    if not canonical:
         return Result(
             harness,
             False,
@@ -508,7 +514,7 @@ def live_probe(
         return Result(harness, False, f"probe failed to run: {exc}")
     stdout = completed.stdout or ""
     stderr = completed.stderr or ""
-    hit = completed.returncode == 0 and stdout.strip() == expected
+    hit = completed.returncode == 0 and stdout == expected
     return Result(
         harness, hit,
         f"live probe {'returned exact positive artifact' if hit else 'produced no exact positive artifact'} "

@@ -576,11 +576,42 @@ def test_agy_live_probe_rejects_same_head_artifact_from_wrong_root(
     assert _git(root, "rev-parse", "--short", "HEAD") == _git(
         wrong_root, "rev-parse", "--short", "HEAD",
     )
-    wrong_artifact = _git(wrong_root, "rev-parse", "--short", "HEAD")
+    wrong_artifact = _git(
+        wrong_root, "rev-parse", "--show-toplevel", "--short", "HEAD",
+    )
 
     def runner(argv, **kwargs):
         return subprocess.CompletedProcess(
             argv, 0, stdout=wrong_artifact + "\n", stderr="",
+        )
+
+    result = preflight.live_probe("agy", root, runner=runner)
+
+    assert result.ok is False
+    assert "positive artifact" in result.detail
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    (
+        lambda artifact: "\n" + artifact,
+        lambda artifact: artifact + "\n",
+        lambda artifact: " " + artifact,
+        lambda artifact: artifact.removesuffix("\n") + " \n",
+    ),
+    ids=("leading-blank", "trailing-blank", "root-space", "head-space"),
+)
+def test_agy_live_probe_rejects_noncanonical_artifact_whitespace(
+    tmp_path: Path, mutate,
+) -> None:
+    root, _, _, _ = _review_request_repo(tmp_path)
+    artifact = _git(
+        root, "rev-parse", "--show-toplevel", "--short", "HEAD",
+    ) + "\n"
+
+    def runner(argv, **kwargs):
+        return subprocess.CompletedProcess(
+            argv, 0, stdout=mutate(artifact), stderr="",
         )
 
     result = preflight.live_probe("agy", root, runner=runner)

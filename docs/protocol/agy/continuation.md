@@ -143,7 +143,8 @@ headless mode a missing grant may return exit 0 with denial text or no output,
 so the live probe requires the exact nonempty artifact from a real read-only
 `git rev-parse --show-toplevel --short HEAD` command: the exact two-line root and
 HEAD artifact prevents another checkout at the same commit from satisfying the
-probe. It sanitizes inherited `GIT_*`, pins plan mode,
+probe. The canonical form is `<resolved-root>\n<short-head>\n`; leading or
+trailing whitespace is a failure. It sanitizes inherited `GIT_*`, pins plan mode,
 `gemini-3.6-flash-low`, and low effort. AGY has no working-directory flag, so
 the launch binds the exact repository through `--add-dir` and the prompt
 requires that same absolute path as the command tool's `Cwd`, with no retry or
