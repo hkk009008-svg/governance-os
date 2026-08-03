@@ -13,6 +13,11 @@ import check_coordination as cc
 import status
 
 
+_PRE_REMEDIATION_REVIEW_BASELINE = (
+    "ead5fa5c12b898f6402c4456e7f1f49f425ce00f"
+)
+
+
 @pytest.fixture(autouse=True)
 def _supply_synthetic_active_failure_cutover(
     tmp_path: Path, monkeypatch,
@@ -242,6 +247,17 @@ def _git(root: Path, *args: str) -> str:
         check=True,
     )
     return completed.stdout.strip()
+
+
+def _clone_pre_remediation_review_baseline(
+    repo_root: Path, tmp_path: Path, name: str
+) -> Path:
+    """Freeze live-mailbox regression fixtures before the remediation review."""
+
+    clone = tmp_path / name
+    _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
+    _git(clone, "checkout", "--detach", "-q", _PRE_REMEDIATION_REVIEW_BASELINE)
+    return clone
 
 
 def _review_repo(
@@ -2141,9 +2157,12 @@ def test_projection_wires_strict_archive_parser(
     assert "unexpected member type" in state.problem
 
 
-def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
-    repo_root: Path,
+def test_pre_remediation_snapshot_surfaces_failed_review_and_history_exceptions(
+    repo_root: Path, tmp_path: Path,
 ) -> None:
+    baseline = _clone_pre_remediation_review_baseline(
+        repo_root, tmp_path, "pre-remediation-snapshot"
+    )
     request_path = (
         "coordination/mailbox/sent/"
         "2026-07-27T02-57-16Z-director2-to-operator2-verify-request.md"
@@ -2155,9 +2174,9 @@ def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
     )
     report_commit = "e0fbefdb56af03b8c04b6df58245f7533a3d83c0"
 
-    state = cc.inspect_verify_review_state(repo_root)
-    projection, projection_problem = cc._committed_mailbox_projection(repo_root)
-    snapshot = status.collect_orientation_snapshot(repo_root, "operator2")
+    state = cc.inspect_verify_review_state(baseline)
+    projection, projection_problem = cc._committed_mailbox_projection(baseline)
+    snapshot = status.collect_orientation_snapshot(baseline, "operator2")
 
     assert projection_problem is None
     assert projection is not None
@@ -2199,8 +2218,9 @@ def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
 def test_post_cutover_fail_and_newer_pending_coexist_with_live_e0fb_baseline(
     repo_root: Path, tmp_path: Path,
 ) -> None:
-    clone = tmp_path / "post-cutover"
-    _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
+    clone = _clone_pre_remediation_review_baseline(
+        repo_root, tmp_path, "post-cutover"
+    )
     _git(clone, "config", "user.name", "Coord Test")
     _git(clone, "config", "user.email", "coord@example.invalid")
     source_request_path = (
@@ -2284,8 +2304,9 @@ def test_post_cutover_fail_and_newer_pending_coexist_with_live_e0fb_baseline(
 def test_post_cutover_fail_for_pre_cutover_request_survives_newer_request(
     repo_root: Path, tmp_path: Path, report_timestamp: str,
 ) -> None:
-    clone = tmp_path / f"report-boundary-{report_timestamp}"
-    _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
+    clone = _clone_pre_remediation_review_baseline(
+        repo_root, tmp_path, f"report-boundary-{report_timestamp}"
+    )
     _git(clone, "config", "user.name", "Coord Test")
     _git(clone, "config", "user.email", "coord@example.invalid")
     request_path = (
