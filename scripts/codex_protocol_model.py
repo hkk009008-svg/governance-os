@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
@@ -147,15 +148,33 @@ def work_profile_for(work_mode: str) -> WorkModeProfile:
 # it is. `codex-gpt-5.6-terra` and `gpt-5.6-terra` are one model behind two
 # labels; independence must not be satisfiable by the prefix alone.
 MODEL_HARNESS_PREFIXES = ("codex-", "antigravity-", "cursor-", "agy-", "claude-code-")
-MODEL_FAMILY_ALIASES = {
-    "chatgpt": "gpt",
-    "o1": "gpt",
-    "o3": "gpt",
-    "o4": "gpt",
+MODEL_PROVIDER_FAMILIES = {
+    "anthropic-": "claude",
+    "openai-": "gpt",
+    "google-": "gemini",
+    "xai-": "grok",
 }
+_MODEL_TOKEN_RE = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*$")
+_MODEL_VERSION = r"[0-9]+[a-z]?(?:[.-][0-9]+[a-z]?)*"
+_CLAUDE_MODEL_RE = re.compile(
+    rf"^claude-(?:opus|sonnet|haiku|fable)-{_MODEL_VERSION}$"
+)
+_GPT_MODEL_RE = re.compile(
+    rf"^(?:gpt|chatgpt)-{_MODEL_VERSION}"
+    r"(?:-(?:codex|sol|terra|mini|nano|turbo|preview|latest))*$"
+)
+_GPT_OSS_MODEL_RE = re.compile(r"^gpt-oss(?:-[0-9]+b)?$")
+_OPENAI_REASONING_MODEL_RE = re.compile(r"^o[134](?:-(?:mini|pro|preview))?$")
+_GEMINI_MODEL_RE = re.compile(
+    rf"^gemini-{_MODEL_VERSION}"
+    r"(?:-(?:pro|flash|lite|ultra|nano|exp|preview|high|low))*$"
+)
+_GROK_MODEL_RE = re.compile(
+    rf"^grok-{_MODEL_VERSION}(?:-(?:mini|fast|beta|preview))?$"
+)
 
 
-def model_family(model_id: str) -> str:
+def model_family(model_id: str) -> str | None:
     """Collapse one system-visible model ID to its provider family.
 
     Independence is a property of the underlying model, not of the label a
@@ -164,26 +183,66 @@ def model_family(model_id: str) -> str:
     inequality accepts them. This normalizer exists so the acceptance rule can
     ask the question it actually means.
 
-    Unknown or malformed identifiers collapse toward *more* collisions, never
-    fewer, so an unrecognized label cannot buy independence it has not earned.
+    Only closed family grammars are recognized. Unknown or malformed labels
+    return ``None`` so they cannot buy independence from any other label.
     """
-    token = model_id.strip().casefold().replace("_", "-").replace(" ", "-")
-    changed = True
-    while changed:
-        changed = False
+    token = model_id.strip().casefold()
+    if not token:
+        return None
+    while True:
+        original = token
         for prefix in MODEL_HARNESS_PREFIXES:
             if token.startswith(prefix) and len(token) > len(prefix):
                 token = token[len(prefix) :]
-                changed = True
-    head = token.split("-", 1)[0].strip()
-    if not head:
-        return token
-    return MODEL_FAMILY_ALIASES.get(head, head)
+                break
+        if token == original:
+            break
+
+    provider_family = None
+    for prefix, family in MODEL_PROVIDER_FAMILIES.items():
+        if token.startswith(prefix) and len(token) > len(prefix):
+            provider_family = family
+            token = token[len(prefix) :]
+            break
+
+    if token.endswith(" (high)") and token.startswith("gemini "):
+        token = token.removesuffix(" (high)") + "-high"
+    elif "(" in token or ")" in token:
+        return None
+    token = token.replace(" ", "-")
+    if _MODEL_TOKEN_RE.fullmatch(token) is None:
+        return None
+
+    if token == "claude" or _CLAUDE_MODEL_RE.fullmatch(token):
+        family = "claude"
+    elif (
+        token == "gpt"
+        or token == "chatgpt"
+        or _GPT_MODEL_RE.fullmatch(token)
+        or _GPT_OSS_MODEL_RE.fullmatch(token)
+        or _OPENAI_REASONING_MODEL_RE.fullmatch(token)
+    ):
+        family = "gpt"
+    elif token == "gemini" or _GEMINI_MODEL_RE.fullmatch(token):
+        family = "gemini"
+    elif token == "grok" or _GROK_MODEL_RE.fullmatch(token):
+        family = "grok"
+    else:
+        return None
+    if provider_family is not None and provider_family != family:
+        return None
+    return family
 
 
 def models_are_independent(author_model: str, reviewer_model: str) -> bool:
     """Return whether two system-visible model IDs are different families."""
-    return model_family(author_model) != model_family(reviewer_model)
+    author_family = model_family(author_model)
+    reviewer_family = model_family(reviewer_model)
+    return (
+        author_family is not None
+        and reviewer_family is not None
+        and author_family != reviewer_family
+    )
 
 
 SEATS = protocol_mailbox.SEATS

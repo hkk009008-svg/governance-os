@@ -960,6 +960,10 @@ def test_same_model_across_operator_seats_is_not_independent(tmp_path: Path) -> 
         ("gpt-5.6-sol", "GPT-5 Codex"),
         ("antigravity-gemini-3.6", "gemini-3.6-flash"),
         ("claude-opus-5", "claude-sonnet-5"),
+        ("claude-opus-5", "anthropic-claude-sonnet-5"),
+        ("gpt-5.6-sol", "openai-gpt-5.6-terra"),
+        ("gemini-3.1-pro-high", "google-gemini-3.6-flash"),
+        ("grok-4", "xai-grok-4.5"),
     ),
 )
 def test_high_risk_control_rejects_same_family_reviewer(
@@ -1004,7 +1008,7 @@ def test_high_risk_control_rejects_same_family_reviewer(
         ("gpt-5.6-sol", "claude-opus-5"),
         ("gpt-5.6-sol", "antigravity-gemini-3.6"),
         ("claude-opus-5", "gpt-5.6-terra"),
-        ("grok-4.5", "composer-2.5"),
+        ("grok-4.5", "gemini-3.1-pro-high"),
     ),
 )
 def test_high_risk_control_accepts_distinct_family_reviewer(
@@ -1072,6 +1076,86 @@ def test_material_behavior_permits_same_model_for_non_author_reviewer(
     )
 
     assert pair.validate_report(root, report) == []
+
+
+@pytest.mark.parametrize(
+    ("author_model", "reviewer_model"),
+    (
+        ("invented-author", "claude-opus-5"),
+        ("gpt-5.6-sol", "invented-reviewer"),
+        ("invented-author", "invented-reviewer"),
+        ("claude-opus-5", "gpt-5-forged"),
+        ("claude-opus-5-forged", "gemini-3.1-pro-high"),
+    ),
+)
+def test_high_risk_control_rejects_unrecognized_model_relabels(
+    tmp_path: Path, author_model: str, reviewer_model: str
+) -> None:
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        author_model=author_model,
+        assigned_operator="operator2",
+        risk_class="high-risk-control",
+        abuse_class_assessment=("model relabels cannot manufacture independence",),
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+            reviewer_model=reviewer_model,
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+        ),
+    )
+
+    assert "reviewer model shares the author model family" in pair.validate_report(
+        root, report
+    )
+
+
+def test_exact_historical_unknown_model_label_exception_cannot_widen(
+    repo_root: Path,
+) -> None:
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-08-01T05-02-15Z-operator-to-director2-verification-report.md"
+    )
+    report = pair.parse_verification_report(repo_root, path)
+
+    assert report.frozen_model_label_exception is True
+    assert "reviewer model shares the author model family" not in pair.validate_report(
+        repo_root, report
+    )
+
+    candidate = repo_root / ".pytest-verify-tmp/model-label-mutation.md"
+    candidate.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        candidate.write_text(
+            (repo_root / path).read_text(encoding="utf-8").replace(
+                "Reviewer model: antigravity",
+                "Reviewer model: antigravity-forged",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        mutated = pair.parse_verification_report_candidate(repo_root, candidate, path)
+    finally:
+        candidate.unlink(missing_ok=True)
+
+    assert mutated.frozen_model_label_exception is False
+    assert "reviewer model shares the author model family" in pair.validate_report(
+        repo_root, mutated
+    )
 
 
 @pytest.mark.parametrize(

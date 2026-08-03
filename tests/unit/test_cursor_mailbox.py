@@ -102,6 +102,119 @@ def test_publish_dry_run_reports_bound_app_identity(
     assert payload["requires_app_approval"] is True
 
 
+@pytest.mark.parametrize(
+    ("kind", "field"),
+    (
+        ("verify-request", "Author model"),
+        ("verification-report", "Reviewer model"),
+    ),
+)
+def test_pair_publish_accepts_exact_registered_model_identity(
+    tmp_path: Path, kind: str, field: str,
+) -> None:
+    _writers(tmp_path)
+    called = False
+
+    def runner(*args, **kwargs):
+        nonlocal called
+        called = True
+        return subprocess.CompletedProcess([], 0)
+
+    result = mailbox.main(
+        [
+            "publish",
+            "--to",
+            "operator",
+            "--kind",
+            kind,
+            "--subject",
+            "bound model",
+            "--body-file",
+            str(_body(tmp_path, f"{field}: openai-gpt-5\n")),
+        ],
+        root=tmp_path,
+        environ={},
+        binding_resolver=_resolver(_binding(model="openai-gpt-5")),
+        runner=runner,
+    )
+
+    assert result == 0
+    assert called is True
+
+
+@pytest.mark.parametrize(
+    ("kind", "body"),
+    (
+        ("verify-request", "no model field\n"),
+        ("verify-request", "Author model: openai-gpt-5\nAuthor model: openai-gpt-5\n"),
+        ("verify-request", "Author model: gpt-5\n"),
+        ("verification-report", "no model field\n"),
+        (
+            "verification-report",
+            "Reviewer model: openai-gpt-5\nReviewer model: openai-gpt-5\n",
+        ),
+        ("verification-report", "Reviewer model: gpt-5\n"),
+    ),
+)
+def test_pair_publish_rejects_unbound_model_identity_before_delegate(
+    tmp_path: Path, kind: str, body: str,
+) -> None:
+    _writers(tmp_path)
+    called = False
+
+    def runner(*args, **kwargs):
+        nonlocal called
+        called = True
+        return subprocess.CompletedProcess([], 0)
+
+    result = mailbox.main(
+        [
+            "publish",
+            "--to",
+            "operator",
+            "--kind",
+            kind,
+            "--subject",
+            "unbound model",
+            "--body-file",
+            str(_body(tmp_path, body)),
+        ],
+        root=tmp_path,
+        environ={},
+        binding_resolver=_resolver(_binding(model="openai-gpt-5")),
+        runner=runner,
+    )
+
+    assert result == 2
+    assert called is False
+
+
+def test_pair_publish_dry_run_still_rejects_model_alias_mismatch(
+    tmp_path: Path,
+) -> None:
+    _writers(tmp_path)
+
+    result = mailbox.main(
+        [
+            "publish",
+            "--to",
+            "operator",
+            "--kind",
+            "verify-request",
+            "--subject",
+            "unbound alias",
+            "--body-file",
+            str(_body(tmp_path, "Author model: gpt-5\n")),
+            "--dry-run",
+        ],
+        root=tmp_path,
+        environ={},
+        binding_resolver=_resolver(_binding(model="openai-gpt-5")),
+    )
+
+    assert result == 2
+
+
 def test_default_subprocess_runner_accepts_body_input(tmp_path: Path) -> None:
     captured = _writers(tmp_path, functional=True)
     body = _body(tmp_path, "real runner body\n")
@@ -167,7 +280,11 @@ def _git(root: Path, *args: str) -> str:
     ).stdout.strip()
 
 
-def _repo_with_request(tmp_path: Path, author_model: str = "composer-2.5") -> Path:
+def _repo_with_request(
+    tmp_path: Path,
+    author_model: str = "gpt-5.6-sol",
+    risk_class: str = "material-behavior",
+) -> Path:
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-q")
@@ -189,6 +306,16 @@ def _repo_with_request(tmp_path: Path, author_model: str = "composer-2.5") -> Pa
         / "2026-07-24T01-00-00Z-director-to-operator-verify-request.md"
     )
     path.parent.mkdir(parents=True)
+    abuse_lines = (
+        (
+            "",
+            "## Abuse Class Assessment",
+            "",
+            "- model relabeling cannot manufacture reviewer independence",
+        )
+        if risk_class == "high-risk-control"
+        else ()
+    )
     path.write_text(
         "\n".join(
             (
@@ -203,10 +330,12 @@ def _repo_with_request(tmp_path: Path, author_model: str = "composer-2.5") -> Pa
                 "Author seat: director",
                 f"Author model: {author_model}",
                 "Assigned operator: operator",
+                f"Risk class: {risk_class}",
                 "",
                 "## Outcome",
                 "",
                 "Verify the test range.",
+                *abuse_lines,
                 "",
                 "## Finding Refs",
                 "",
@@ -236,7 +365,10 @@ def test_next_review_resolves_latest_pending_committed_request(
     payload = json.loads(capsys.readouterr().out)
     assert result == 0
     assert payload["assigned_operator"] == "operator"
-    assert payload["models_differ"] is True
+    assert payload["author_model_family"] == "gpt"
+    assert payload["reviewer_model_family"] == "claude"
+    assert payload["model_independence"] is True
+    assert "models_differ" not in payload
     assert payload["verify_request"].endswith(_git(root, "rev-parse", "HEAD"))
 
 
@@ -273,15 +405,58 @@ def test_next_review_discovers_request_on_director_worktree_branch(
 def test_next_review_rejects_same_runtime_model(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    root = _repo_with_request(tmp_path, author_model="composer-2.5")
+    root = _repo_with_request(
+        tmp_path,
+        author_model="gpt-5.6-sol",
+        risk_class="high-risk-control",
+    )
     result = mailbox.main(
         ["next-review"],
         root=root,
         environ={},
-        binding_resolver=_resolver(_binding("operator", "composer-2.5")),
+        binding_resolver=_resolver(_binding("operator", "openai-gpt-5.6-terra")),
     )
     assert result == 2
-    assert "must differ" in capsys.readouterr().err
+    assert "independent" in capsys.readouterr().err
+
+
+def test_next_review_high_risk_rejects_unrecognized_model(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _repo_with_request(
+        tmp_path,
+        author_model="gpt-5.6-sol",
+        risk_class="high-risk-control",
+    )
+
+    result = mailbox.main(
+        ["next-review"],
+        root=root,
+        environ={},
+        binding_resolver=_resolver(_binding("operator", "invented-reviewer")),
+    )
+
+    assert result == 2
+    assert "independent" in capsys.readouterr().err
+
+
+def test_next_review_material_request_does_not_invent_model_gate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _repo_with_request(tmp_path, author_model="gpt-5.6-sol")
+
+    result = mailbox.main(
+        ["next-review"],
+        root=root,
+        environ={},
+        binding_resolver=_resolver(_binding("operator", "openai-gpt-5.6-sol")),
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert payload["author_model_family"] == "gpt"
+    assert payload["reviewer_model_family"] == "gpt"
+    assert payload["model_independence"] is False
 
 
 def test_invalid_report_cannot_suppress_pending_request(

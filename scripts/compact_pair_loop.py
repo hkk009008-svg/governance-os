@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import stat
@@ -32,6 +33,14 @@ REPORT_RE = re.compile(
 )
 MAX_EVENT_BYTES = 262_144
 LEGACY_VERBOSE_CUTOFF = "ab7fd77081448008f1de30c17a8aaf156a9506c5"
+_FROZEN_MODEL_LABEL_EXCEPTION = {
+    "path": (
+        "coordination/mailbox/sent/"
+        "2026-08-01T05-02-15Z-operator-to-director2-verification-report.md"
+    ),
+    "introduction": "8471c6d6c35daa74dd24cc24d6ece3eea48f3f22",
+    "sha256": "90586eb9d2399ed69a2f1bc0af7bb7c43ba9187e61fedc734e58fc32ce21f48c",
+}
 PAIR_SEATS = frozenset({"director", "director2", "operator", "operator2"})
 OPERATOR_SEATS = frozenset({"operator", "operator2"})
 MATERIAL_BEHAVIOR_RISK = codex_protocol_model.review_profile_for(
@@ -87,6 +96,7 @@ class VerificationReport:
     supersedes: tuple[str, str] | None
     filename_reviewer: str
     envelope_sender: str
+    frozen_model_label_exception: bool
 
 
 def _repo_path(root: Path, value: str | os.PathLike[str]) -> str:
@@ -126,6 +136,29 @@ def _git(root: Path, *arguments: str, check: bool = True) -> bytes:
         detail = completed.stderr.decode("utf-8", errors="backslashreplace").strip()
         raise CompactPairError(f"Git commit or path validation failed: {detail}")
     return completed.stdout
+
+
+def _is_frozen_model_label_exception(root: Path, path: str, raw: bytes) -> bool:
+    """Accept one immutable historical label without widening current grammar."""
+
+    exception = _FROZEN_MODEL_LABEL_EXCEPTION
+    if (
+        path != exception["path"]
+        or hashlib.sha256(raw).hexdigest() != exception["sha256"]
+    ):
+        return False
+    introductions = _git(
+        root,
+        "log",
+        "--diff-filter=A",
+        "--format=%H",
+        "--",
+        path,
+    ).decode("ascii", errors="strict").splitlines()
+    if introductions != [exception["introduction"]]:
+        return False
+    introduced = _git(root, "show", f"{exception['introduction']}:{path}")
+    return hashlib.sha256(introduced).hexdigest() == exception["sha256"]
 
 
 def _full_commit(root: Path, value: str, label: str) -> str:
@@ -849,6 +882,9 @@ def _parse_verification_report_bytes(
         supersedes=_supersedes(root, lines, path),
         filename_reviewer=match.group("reviewer"),
         envelope_sender=_envelope_sender(text),
+        frozen_model_label_exception=_is_frozen_model_label_exception(
+            root, path, raw
+        ),
     )
 
 
@@ -924,7 +960,7 @@ def _report_structure_violations(
             # different reviewer.
             if not codex_protocol_model.models_are_independent(
                 request.author_model, report.reviewer_model
-            ):
+            ) and not report.frozen_model_label_exception:
                 violations.append("reviewer model shares the author model family")
         elif report.reviewer_model.casefold() == request.author_model.casefold():
             # Legacy artifacts predate the Risk class field and are graded on

@@ -122,7 +122,10 @@ handoff, or independent review.
 constraint: when every configured seat profile resolves to one model family,
 AGY cannot satisfy `high-risk-control` on its own, because
 `codex_protocol_model.models_are_independent` compares families rather than
-labels. Route those reviews to a seat on a different family.
+labels. The current local AGY seat configuration is all Gemini; that is a local
+configuration fact, not a claim that the installed `agy models` catalog can
+never offer another recognized family. Route reviews according to the exact
+configured IDs and the executable fail-conservative family result.
 
 Headless review dispatch (measured 2026-07-31; accepted learning candidate
 `335883e68861…`, superseding `2c906ea580a9…` whose mechanism clause the

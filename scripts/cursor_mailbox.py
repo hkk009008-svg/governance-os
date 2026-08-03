@@ -14,7 +14,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 try:
-    from scripts import compact_pair_loop
+    from scripts import codex_protocol_model, compact_pair_loop
     from scripts.cursor_app_binding import (
         OPERATOR_SEATS,
         AppBindingError,
@@ -24,6 +24,7 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != "scripts":
         raise
+    import codex_protocol_model  # type: ignore[no-redef]
     import compact_pair_loop
     from cursor_app_binding import (  # type: ignore[no-redef]
         OPERATOR_SEATS,
@@ -55,6 +56,25 @@ def build_publish_argv(
     if to == seat:
         raise MailboxBindingError("refusing self-addressed event")
     return [str(_writer(root, "send-event")), seat, to, kind, subject]
+
+
+def validate_publish_model_binding(kind: str, body: str, model_id: str) -> None:
+    """Bind Compact Pair model identity to the registered Cursor session."""
+
+    field = {
+        "verify-request": "Author model: ",
+        "verification-report": "Reviewer model: ",
+    }.get(kind)
+    if field is None:
+        return
+    values = [line.removeprefix(field) for line in body.splitlines() if line.startswith(field)]
+    label = field.rstrip(": ")
+    if len(values) != 1:
+        raise MailboxBindingError(f"{label} must appear exactly once")
+    if values[0] != model_id:
+        raise MailboxBindingError(
+            f"{label} must exactly match the registered app model_id"
+        )
 
 
 def build_consume_argv(root: Path, *, seat: str, extra: Sequence[str]) -> list[str]:
@@ -334,6 +354,7 @@ def main(
             raise MailboxBindingError(str(exc)) from exc
         if args.command == "publish":
             body = read_body_file(repo_root, args.body_file)
+            validate_publish_model_binding(args.kind, body, binding.model_id)
             delegate = build_publish_argv(
                 repo_root,
                 seat=binding.seat,
@@ -395,9 +416,15 @@ def main(
             request = next_verify_request(
                 repo_root, seat=binding.seat, environ=env
             )
-            if request.author_model.casefold() == binding.model_id.casefold():
+            author_family = codex_protocol_model.model_family(request.author_model)
+            reviewer_family = codex_protocol_model.model_family(binding.model_id)
+            model_independence = codex_protocol_model.models_are_independent(
+                request.author_model, binding.model_id
+            )
+            profile = codex_protocol_model.review_profile_for(request.risk_class)
+            if profile.requires_different_model and not model_independence:
                 raise MailboxBindingError(
-                    "Operator selected model ID must differ from the author model"
+                    "high-risk review requires recognized independent model families"
                 )
             print(
                 json.dumps(
@@ -408,12 +435,11 @@ def main(
                         "reviewed_head": request.reviewed_head,
                         "author_seat": request.author_seat,
                         "author_model": request.author_model,
+                        "author_model_family": author_family,
                         "assigned_operator": request.assigned_operator,
                         "reviewer_model": binding.model_id,
-                        "models_differ": (
-                            request.author_model.casefold()
-                            != binding.model_id.casefold()
-                        ),
+                        "reviewer_model_family": reviewer_family,
+                        "model_independence": model_independence,
                         "outcome": request.outcome,
                         "finding_refs": list(request.finding_refs),
                     },
