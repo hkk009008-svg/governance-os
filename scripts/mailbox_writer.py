@@ -8,6 +8,7 @@ import contextlib
 import fcntl
 import os
 import re
+import secrets
 import stat
 import subprocess
 import sys
@@ -187,7 +188,7 @@ _PSEUDO_COMMIT = "0" * 40
 
 
 def _typed_candidate_event(
-    candidate: Path, relative: str
+    raw: bytes, relative: str
 ) -> protocol_mailbox.CommittedEventRef:
     """Type an uncommitted candidate's exact bytes with the committed parser.
 
@@ -197,12 +198,12 @@ def _typed_candidate_event(
 
     return protocol_mailbox.parse_committed_event_text(
         f"{relative}@{_PSEUDO_COMMIT}",
-        candidate.read_text(encoding="utf-8"),
+        raw.decode("utf-8"),
     )
 
 
 def _validate_learning_candidate_payload(
-    root: Path, candidate: Path, relative: str
+    root: Path, raw: bytes, relative: str
 ) -> None:
     """Stage 2b: the learning-candidate refusals bind at publication.
 
@@ -214,7 +215,7 @@ def _validate_learning_candidate_payload(
 
     try:
         statement = protocol_mailbox.parse_learning_candidate_statement(
-            _typed_candidate_event(candidate, relative)
+            _typed_candidate_event(raw, relative)
         )
     except ValueError as exc:
         raise MailboxWriterError(
@@ -254,7 +255,7 @@ def _validate_learning_candidate_payload(
 
 
 def _validate_learning_disposition_payload(
-    root: Path, candidate: Path, relative: str
+    root: Path, raw: bytes, relative: str
 ) -> None:
     """Stage 2b: disposition refusals bind at publication.
 
@@ -278,7 +279,7 @@ def _validate_learning_disposition_payload(
     changed the target, which the fixed writer never does.
     """
 
-    lines = candidate.read_text(encoding="utf-8").splitlines()
+    lines = raw.decode("utf-8").splitlines()
     named_refs = [
         line[len("Candidate:") :].strip()
         for line in lines
@@ -295,7 +296,7 @@ def _validate_learning_disposition_payload(
         return
     try:
         disposition = protocol_mailbox.parse_learning_disposition_statement(
-            _typed_candidate_event(candidate, relative)
+            _typed_candidate_event(raw, relative)
         )
     except ValueError as exc:
         raise MailboxWriterError(
@@ -352,11 +353,33 @@ def validate_event_candidate(
 ) -> None:
     """Validate one new event's canonical envelope and kind-specific structure."""
 
-    match = validate_event_envelope(root, candidate, relative)
+    validate_event_candidate_bytes(
+        root, candidate.read_bytes(), relative, validate_range=validate_range
+    )
+
+
+def validate_event_candidate_bytes(
+    root: Path,
+    raw: bytes,
+    relative: str,
+    *,
+    validate_range: bool = True,
+) -> None:
+    """Validate the exact candidate snapshot that publication will copy."""
+
+    root = root.resolve()
+    match = validate_event_envelope_bytes(root, raw, relative)
     if match.group("kind") == "verify-request":
         try:
-            request = compact_pair_loop.parse_verify_request_candidate(
-                root, candidate, relative
+            request = compact_pair_loop._parse_verify_request_bytes(
+                root,
+                relative,
+                raw,
+                trigger_commit="",
+                allow_frozen_legacy=False,
+            )
+            compact_pair_loop._require_path_references_resolve(
+                root, request.finding_refs
             )
             violations = (
                 compact_pair_loop.validate_request_candidate(root, request)
@@ -371,8 +394,17 @@ def validate_event_candidate(
             )
     elif match.group("kind") == "verification-report":
         try:
-            report = compact_pair_loop.parse_verification_report_candidate(
-                root, candidate, relative
+            report = compact_pair_loop._parse_verification_report_bytes(
+                root,
+                relative,
+                raw,
+                allow_legacy_missing_risk=False,
+            )
+            compact_pair_loop._require_path_references_resolve(
+                root, report.finding_refs
+            )
+            compact_pair_loop._require_path_references_resolve(
+                root, tuple(ref for ref, _ in report.finding_dispositions)
             )
             violations = (
                 compact_pair_loop.validate_report(root, report)
@@ -389,49 +421,172 @@ def validate_event_candidate(
                 + "; ".join(violations)
             )
     elif match.group("kind") == "learning-candidate":
-        _validate_learning_candidate_payload(root, candidate, relative)
+        _validate_learning_candidate_payload(root, raw, relative)
     elif match.group("kind") == "decision":
-        _validate_learning_disposition_payload(root, candidate, relative)
+        _validate_learning_disposition_payload(root, raw, relative)
+
+
+def _read_candidate_snapshot(
+    directory_fd: int, candidate_name: str
+) -> tuple[bytes, tuple[int, int]]:
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        candidate_fd = os.open(candidate_name, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise MailboxWriterError("send-event candidate could not be pinned") from exc
+    try:
+        observed = os.fstat(candidate_fd)
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_IMODE(observed.st_mode) != 0o600
+        ):
+            raise MailboxWriterError(
+                "send-event candidate must be one mode-0600 regular file"
+            )
+        chunks: list[bytes] = []
+        remaining = compact_pair_loop.MAX_EVENT_BYTES + 1
+        while remaining:
+            chunk = os.read(candidate_fd, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if len(raw) > compact_pair_loop.MAX_EVENT_BYTES:
+            raise MailboxWriterError(
+                "send-event candidate is not one bounded text event"
+            )
+        return raw, (observed.st_dev, observed.st_ino)
+    finally:
+        os.close(candidate_fd)
+
+
+def _open_writer_temp(directory_fd: int) -> tuple[str, int]:
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    for _ in range(16):
+        name = f".mailbox-writer-{os.getpid()}-{secrets.token_hex(12)}.tmp"
+        try:
+            descriptor = os.open(name, flags, 0o600, dir_fd=directory_fd)
+        except FileExistsError:
+            continue
+        try:
+            os.fchmod(descriptor, 0o600)
+        except OSError:
+            os.close(descriptor)
+            os.unlink(name, dir_fd=directory_fd)
+            raise
+        return name, descriptor
+    raise MailboxWriterError("send-event could not allocate writer-owned temp")
+
+
+def _write_all(descriptor: int, raw: bytes) -> None:
+    view = memoryview(raw)
+    while view:
+        written = os.write(descriptor, view)
+        if written <= 0:
+            raise OSError("write returned no progress")
+        view = view[written:]
+
+
+def _unlink_if_identity(
+    directory_fd: int, name: str, identity: tuple[int, int]
+) -> bool:
+    try:
+        current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    if (current.st_dev, current.st_ino) != identity:
+        return False
+    os.unlink(name, dir_fd=directory_fd)
+    return True
 
 
 def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
+    root = root.resolve(strict=True)
     match = _EVENT_RE.fullmatch(Path(relative).name)
     sent = root / "coordination" / "mailbox" / "sent"
     if (
         match is None
         or Path(relative).parent.as_posix() != "coordination/mailbox/sent"
-        or candidate.parent.resolve(strict=True) != sent.resolve(strict=True)
+        or not candidate.is_absolute()
+        or candidate.parent != sent
         or not candidate.name.startswith(f".{Path(relative).stem}.")
         or not candidate.name.endswith(".tmp")
     ):
         raise MailboxWriterError("send-event finalizer received a noncanonical path")
-    observed = candidate.lstat()
-    if not stat.S_ISREG(observed.st_mode) or stat.S_IMODE(observed.st_mode) != 0o600:
-        raise MailboxWriterError("send-event candidate must be one mode-0600 regular file")
-    validate_event_candidate(root, candidate, relative)
-    final = root / relative
+
     with writer_fence(root):
-        directory_fd = os.open(sent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        directory_flags = (
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
         try:
-            os.link(
-                candidate.name,
-                final.name,
-                src_dir_fd=directory_fd,
-                dst_dir_fd=directory_fd,
-                follow_symlinks=False,
+            directory_fd = os.open(sent, directory_flags)
+        except OSError as exc:
+            raise MailboxWriterError("send-event sent directory could not be pinned") from exc
+        try:
+            if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
+                raise MailboxWriterError("send-event sent path is not a directory")
+            raw, candidate_identity = _read_candidate_snapshot(
+                directory_fd, candidate.name
             )
-            final_fd = os.open(
-                final.name,
-                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
-                dir_fd=directory_fd,
-            )
+            validate_event_candidate_bytes(root, raw, relative)
+
+            writer_name: str | None = None
+            writer_fd: int | None = None
+            final_linked = False
             try:
-                os.fsync(final_fd)
-            finally:
-                os.close(final_fd)
-            os.fsync(directory_fd)
-            os.unlink(candidate.name, dir_fd=directory_fd)
-            os.fsync(directory_fd)
+                writer_name, writer_fd = _open_writer_temp(directory_fd)
+                writer_identity = os.fstat(writer_fd)
+                _write_all(writer_fd, raw)
+                os.fsync(writer_fd)
+                os.close(writer_fd)
+                writer_fd = None
+                os.link(
+                    writer_name,
+                    Path(relative).name,
+                    src_dir_fd=directory_fd,
+                    dst_dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                final_linked = True
+                os.fsync(directory_fd)
+            except OSError as exc:
+                if writer_fd is not None:
+                    os.close(writer_fd)
+                    writer_fd = None
+                if final_linked:
+                    try:
+                        _unlink_if_identity(
+                            directory_fd,
+                            Path(relative).name,
+                            (writer_identity.st_dev, writer_identity.st_ino),
+                        )
+                    except OSError:
+                        pass
+                if writer_name is not None:
+                    try:
+                        os.unlink(writer_name, dir_fd=directory_fd)
+                    except FileNotFoundError:
+                        pass
+                raise MailboxWriterError(f"send-event publish failed: {exc}") from exc
+
+            assert writer_name is not None
+            os.unlink(writer_name, dir_fd=directory_fd)
+            _unlink_if_identity(directory_fd, candidate.name, candidate_identity)
             try:
                 _stage(root, relative, force=True)
             except MailboxWriterError:
