@@ -69,6 +69,15 @@ def _writer_temps(sent: Path) -> list[Path]:
     return [path for path in sent.iterdir() if path.name.startswith(".mailbox-writer-")]
 
 
+def _index_bytes(root: Path, relative: str) -> bytes | None:
+    result = subprocess.run(
+        ["/usr/bin/git", "-C", str(root), "show", f":{relative}"],
+        capture_output=True,
+        check=False,
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
 def test_writer_fence_is_shared_by_linked_worktrees_and_mode_0600(
     tmp_path: Path,
 ) -> None:
@@ -316,7 +325,7 @@ def test_send_event_finalizer_rolls_back_partial_write_failure(
 
     monkeypatch.setattr(mailbox_writer.os, "write", fail_after_partial)
 
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="publish"):
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="public"):
         mailbox_writer._send_event_finalize(root, candidate, relative)
 
     assert candidate.exists()
@@ -342,7 +351,7 @@ def test_send_event_finalizer_rolls_back_fsync_failure(
 
     monkeypatch.setattr(mailbox_writer.os, "fsync", fail_selected)
 
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="publish"):
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="public"):
         mailbox_writer._send_event_finalize(root, candidate, relative)
 
     assert candidate.exists()
@@ -370,7 +379,7 @@ def test_send_event_finalizer_rolls_back_link_failure_without_clobber(
             ),
         )
 
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="publish"):
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="public"):
         mailbox_writer._send_event_finalize(root, candidate, relative)
 
     assert candidate.exists()
@@ -385,7 +394,7 @@ def test_send_event_main_reports_exact_final_bytes_and_unstaged_contract(
     _sent, relative, candidate, raw = _send_fixture(root)
     monkeypatch.setattr(
         mailbox_writer,
-        "_stage",
+        "_stage_event_snapshot",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             mailbox_writer.MailboxWriterError("injected git add failure")
         ),
@@ -407,6 +416,136 @@ def test_send_event_main_reports_exact_final_bytes_and_unstaged_contract(
     assert capsys.readouterr().out == f"unstaged:{relative}\n"
     assert (root / relative).read_bytes() == raw
     assert not candidate.exists()
+
+
+def test_send_event_finalizer_rejects_final_path_swap_before_staging(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _repo(tmp_path)
+    sent, relative, candidate, _raw = _send_fixture(root)
+    final = root / relative
+    replacement = b"unowned replacement must survive\n"
+    real_fsync = os.fsync
+    injected = False
+
+    def swap_at_directory_fsync(fd: int) -> None:
+        nonlocal injected
+        real_fsync(fd)
+        if stat.S_ISDIR(os.fstat(fd).st_mode) and not injected:
+            injected = True
+            final.unlink()
+            final.write_bytes(replacement)
+            final.chmod(0o600)
+
+    monkeypatch.setattr(mailbox_writer.os, "fsync", swap_at_directory_fsync)
+
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="final.*changed"):
+        mailbox_writer._send_event_finalize(root, candidate, relative)
+
+    assert final.read_bytes() == replacement
+    assert candidate.exists()
+    assert _index_bytes(root, relative) is None
+    assert _writer_temps(sent) == []
+
+
+def test_send_event_finalizer_stages_snapshot_then_rejects_final_alias_mutation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _repo(tmp_path)
+    sent, relative, candidate, raw = _send_fixture(root)
+    final = root / relative
+    alias = sent / "writer-inode-alias"
+    corrupted = b"Y" * len(raw)
+    staged_observations: list[bytes | None] = []
+    real_fsync = os.fsync
+    injected = False
+
+    def mutate_at_directory_fsync(fd: int) -> None:
+        nonlocal injected
+        real_fsync(fd)
+        if stat.S_ISDIR(os.fstat(fd).st_mode) and not injected:
+            injected = True
+            os.link(final, alias)
+            alias.write_bytes(corrupted)
+
+    stage_snapshot = mailbox_writer._stage_event_snapshot
+
+    def observe_stage(root_arg: Path, relative_arg: str, raw_arg: bytes) -> None:
+        stage_snapshot(root_arg, relative_arg, raw_arg)
+        staged_observations.append(_index_bytes(root_arg, relative_arg))
+
+    monkeypatch.setattr(mailbox_writer.os, "fsync", mutate_at_directory_fsync)
+    monkeypatch.setattr(mailbox_writer, "_stage_event_snapshot", observe_stage)
+
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="final.*changed"):
+        mailbox_writer._send_event_finalize(root, candidate, relative)
+
+    assert staged_observations == [raw]
+    assert alias.read_bytes() == corrupted
+    assert not final.exists()
+    assert candidate.exists()
+    assert _index_bytes(root, relative) is None
+    assert _writer_temps(sent) == []
+
+
+def test_send_event_finalizer_reports_retained_state_on_writer_temp_cleanup_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _repo(tmp_path)
+    sent, relative, candidate, raw = _send_fixture(root)
+    real_unlink = os.unlink
+
+    def fail_writer_temp(name, *args, **kwargs):
+        if str(name).startswith(".mailbox-writer-"):
+            raise OSError("injected writer temp cleanup failure")
+        return real_unlink(name, *args, **kwargs)
+
+    monkeypatch.setattr(mailbox_writer.os, "unlink", fail_writer_temp)
+
+    with pytest.raises(
+        mailbox_writer.MailboxWriterError,
+        match="final retained.*index staged.*candidate retained.*writer temp retained",
+    ):
+        mailbox_writer._send_event_finalize(root, candidate, relative)
+
+    assert (root / relative).read_bytes() == raw
+    assert _index_bytes(root, relative) == raw
+    assert candidate.exists()
+    assert len(_writer_temps(sent)) == 1
+
+
+def test_send_event_finalizer_reports_incomplete_rollback_after_directory_fsync_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _repo(tmp_path)
+    sent, relative, candidate, raw = _send_fixture(root)
+    final = root / relative
+    real_fsync = os.fsync
+    real_unlink = os.unlink
+
+    def fail_directory_fsync(fd: int) -> None:
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError("injected directory fsync failure")
+        real_fsync(fd)
+
+    def fail_final_rollback(name, *args, **kwargs):
+        if str(name) == final.name:
+            raise OSError("injected final rollback failure")
+        return real_unlink(name, *args, **kwargs)
+
+    monkeypatch.setattr(mailbox_writer.os, "fsync", fail_directory_fsync)
+    monkeypatch.setattr(mailbox_writer.os, "unlink", fail_final_rollback)
+
+    with pytest.raises(
+        mailbox_writer.MailboxWriterError,
+        match="publication failed.*final retained.*durability unconfirmed.*candidate retained",
+    ):
+        mailbox_writer._send_event_finalize(root, candidate, relative)
+
+    assert final.read_bytes() == raw
+    assert candidate.exists()
+    assert _index_bytes(root, relative) is None
+    assert _writer_temps(sent) == []
 
 
 def test_consume_scalar_cursor_falls_back_to_mailbox_and_converts_to_iso(

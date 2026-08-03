@@ -512,6 +512,81 @@ def _unlink_if_identity(
     return True
 
 
+def _stage_event_snapshot(root: Path, relative: str, raw: bytes) -> None:
+    """Stage the validated bytes without reopening the mutable final path."""
+
+    blob = _git(root, "hash-object", "-w", "--stdin", input_bytes=raw).decode(
+        "ascii", "strict"
+    ).strip()
+    if re.fullmatch(r"[0-9a-f]{40,64}", blob) is None:
+        raise MailboxWriterError("sanitized Git returned an invalid event blob id")
+    _git(root, "update-index", "--add", "--cacheinfo", "100644", blob, relative)
+
+
+def _staged_event_snapshot(root: Path, relative: str) -> bytes:
+    return _git(root, "show", f":{relative}")
+
+
+def _rollback_staged_event(root: Path, relative: str) -> None:
+    _git(root, "update-index", "--force-remove", "--", relative)
+
+
+def _verify_final_snapshot(
+    directory_fd: int,
+    final_name: str,
+    writer_identity: tuple[int, int],
+    expected: bytes,
+) -> None:
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        descriptor = os.open(final_name, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise MailboxWriterError("send-event final changed after validation") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or (before.st_dev, before.st_ino) != writer_identity
+        ):
+            raise MailboxWriterError("send-event final identity changed after validation")
+        chunks: list[bytes] = []
+        remaining = compact_pair_loop.MAX_EVENT_BYTES + 1
+        while remaining:
+            chunk = os.read(descriptor, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        observed = b"".join(chunks)
+        if (
+            (after.st_dev, after.st_ino) != writer_identity
+            or observed != expected
+        ):
+            raise MailboxWriterError("send-event final bytes changed after validation")
+    finally:
+        os.close(descriptor)
+
+
+def _retained_final_state(
+    directory_fd: int, final_name: str, writer_identity: tuple[int, int]
+) -> str:
+    try:
+        current = os.stat(final_name, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return "final absent"
+    except OSError as exc:
+        return f"final state unavailable ({exc})"
+    if (current.st_dev, current.st_ino) == writer_identity:
+        return "final retained"
+    return "unowned final replacement retained"
+
+
 def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
     root = root.resolve(strict=True)
     match = _EVENT_RE.fullmatch(Path(relative).name)
@@ -544,13 +619,19 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
                 directory_fd, candidate.name
             )
             validate_event_candidate_bytes(root, raw, relative)
+            if _git(root, "ls-files", "--stage", "--", relative):
+                raise MailboxWriterError(
+                    "send-event final path already has an index entry"
+                )
 
             writer_name: str | None = None
             writer_fd: int | None = None
+            writer_identity: tuple[int, int] | None = None
             final_linked = False
             try:
                 writer_name, writer_fd = _open_writer_temp(directory_fd)
-                writer_identity = os.fstat(writer_fd)
+                writer_stat = os.fstat(writer_fd)
+                writer_identity = (writer_stat.st_dev, writer_stat.st_ino)
                 _write_all(writer_fd, raw)
                 os.fsync(writer_fd)
                 os.close(writer_fd)
@@ -564,32 +645,124 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
                 )
                 final_linked = True
                 os.fsync(directory_fd)
-            except OSError as exc:
+            except (OSError, MailboxWriterError) as exc:
                 if writer_fd is not None:
                     os.close(writer_fd)
                     writer_fd = None
-                if final_linked:
+                final_state = "final not published"
+                if final_linked and writer_identity is not None:
                     try:
-                        _unlink_if_identity(
+                        removed = _unlink_if_identity(
                             directory_fd,
                             Path(relative).name,
-                            (writer_identity.st_dev, writer_identity.st_ino),
+                            writer_identity,
                         )
-                    except OSError:
-                        pass
+                        final_state = (
+                            "final rolled back"
+                            if removed
+                            else _retained_final_state(
+                                directory_fd, Path(relative).name, writer_identity
+                            )
+                        )
+                    except OSError as rollback_exc:
+                        final_state = (
+                            "final retained (durability unconfirmed; rollback failed: "
+                            f"{rollback_exc})"
+                        )
+                temp_state = "writer temp absent"
                 if writer_name is not None:
                     try:
                         os.unlink(writer_name, dir_fd=directory_fd)
                     except FileNotFoundError:
                         pass
-                raise MailboxWriterError(f"send-event publish failed: {exc}") from exc
+                    except OSError as cleanup_exc:
+                        temp_state = f"writer temp retained ({cleanup_exc})"
+                raise MailboxWriterError(
+                    f"send-event publication failed: {exc}; {final_state}; "
+                    f"candidate retained; {temp_state}"
+                ) from exc
 
             assert writer_name is not None
-            os.unlink(writer_name, dir_fd=directory_fd)
-            _unlink_if_identity(directory_fd, candidate.name, candidate_identity)
+            assert writer_identity is not None
+            staged = False
+            stage_error: MailboxWriterError | None = None
             try:
-                _stage(root, relative, force=True)
-            except MailboxWriterError:
+                _stage_event_snapshot(root, relative, raw)
+                staged = True
+            except MailboxWriterError as exc:
+                stage_error = exc
+
+            integrity_error: MailboxWriterError | None = None
+            if staged:
+                try:
+                    if _staged_event_snapshot(root, relative) != raw:
+                        raise MailboxWriterError(
+                            "send-event staged bytes differ from validated snapshot"
+                        )
+                except MailboxWriterError as exc:
+                    integrity_error = exc
+            try:
+                _verify_final_snapshot(
+                    directory_fd, Path(relative).name, writer_identity, raw
+                )
+            except MailboxWriterError as exc:
+                integrity_error = exc
+
+            if integrity_error is not None:
+                index_state = "index unstaged"
+                if staged:
+                    try:
+                        _rollback_staged_event(root, relative)
+                        index_state = "index rolled back"
+                    except MailboxWriterError as rollback_exc:
+                        index_state = (
+                            "index retained with validated snapshot "
+                            f"(rollback failed: {rollback_exc})"
+                        )
+                try:
+                    removed = _unlink_if_identity(
+                        directory_fd, Path(relative).name, writer_identity
+                    )
+                    final_state = (
+                        "writer final removed"
+                        if removed
+                        else _retained_final_state(
+                            directory_fd, Path(relative).name, writer_identity
+                        )
+                    )
+                except OSError as cleanup_exc:
+                    final_state = f"final retained (cleanup failed: {cleanup_exc})"
+                try:
+                    os.unlink(writer_name, dir_fd=directory_fd)
+                    temp_state = "writer temp removed"
+                except FileNotFoundError:
+                    temp_state = "writer temp absent"
+                except OSError as cleanup_exc:
+                    temp_state = f"writer temp retained ({cleanup_exc})"
+                raise MailboxWriterError(
+                    f"{integrity_error}; {index_state}; {final_state}; "
+                    f"candidate retained; {temp_state}"
+                ) from integrity_error
+
+            try:
+                os.unlink(writer_name, dir_fd=directory_fd)
+            except OSError as cleanup_exc:
+                index_state = "index staged" if staged else "index unstaged"
+                raise MailboxWriterError(
+                    "send-event cleanup failed after durable publication; "
+                    f"final retained; {index_state}; candidate retained; "
+                    f"writer temp retained ({cleanup_exc})"
+                ) from cleanup_exc
+            try:
+                _unlink_if_identity(directory_fd, candidate.name, candidate_identity)
+            except OSError as cleanup_exc:
+                index_state = "index staged" if staged else "index unstaged"
+                raise MailboxWriterError(
+                    "send-event candidate cleanup failed after durable publication; "
+                    f"final retained; {index_state}; candidate retained; "
+                    f"writer temp removed ({cleanup_exc})"
+                ) from cleanup_exc
+            if stage_error is not None:
                 return False
         finally:
             os.close(directory_fd)
