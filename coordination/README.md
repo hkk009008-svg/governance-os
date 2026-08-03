@@ -41,7 +41,7 @@ for the full discipline (Rules #7–#23).
 - `scripts/check_coordination.py` (repo root) — lints all of the above (cursor
   parseable/non-future/non-orphan, filename convention, envelope, registered
   kind, unread report). Wired into `scripts/ci_smoke.py`: FATAL hard-fails
-  locally, warns in CI; ADVISORY warns; INFO silent.
+  locally and in CI; ADVISORY warns; INFO silent.
 - `mailbox/archive/` — Old events moved out of `sent/` for log hygiene (manual
   move by operator).
 - `presence/<seat>-heartbeat.ts` — legacy/provider-specific liveness hint. Codex

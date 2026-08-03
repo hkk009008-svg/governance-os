@@ -7,8 +7,10 @@
 # invariants change, update that script + ARCHITECTURE.md §15 together.
 #
 # Gates run by `python scripts/ci_smoke.py` (smoke job):
-#   - Doc-anchor drift (check_doc_claims on ARCHITECTURE.md; hard-fail local, warn CI)
-#   - Coordination-state (check_coordination; FATAL hard-fails local, warns CI)
+#   - Doc-anchor drift (check_doc_claims on ARCHITECTURE.md; fatal kinds hard-fail
+#     local + CI, advisory kinds warn)
+#   - Coordination-state (check_coordination; FATAL hard-fails local + CI,
+#     ADVISORY warns)
 #   - Anti-ceremony (check_no_ceremony; hard-fail local + CI)
 #   - Reviewer-result schema (consume_reviewer_result smoke_check)
 #   - Adoption-placeholder (check_placeholders; hard-fail local + CI — ADR-002)
