@@ -573,6 +573,20 @@ def collect_orientation_snapshot(
         review_state=review_state,
         committed_projection=projection_result,
     )
+    projection = projection_result[0]
+    if (
+        projection is not None
+        and (
+            not isinstance(git["git_sha"], str)
+            or not projection.commits.head.startswith(git["git_sha"])
+        )
+    ):
+        issues.append(check_coordination.CoordIssue(
+            "coordination/mailbox/sent/",
+            "commit_projection_identity_drift",
+            "FATAL",
+            "Git status and committed mailbox projection observed different HEADs",
+        ))
     fatals = [issue for issue in issues if issue.severity == "FATAL"]
     advisories = [issue for issue in issues if issue.severity == "ADVISORY"]
 

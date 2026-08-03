@@ -23,6 +23,61 @@ def _supply_synthetic_active_failure_cutover(
     synthetic_roots: set[Path] = set()
     review_cutover = cc._ACTIVE_FAILURE_CUTOVER_COMMIT
     learning_cutover = cc._LEARNING_HISTORY_CUTOVER_COMMIT
+    review_state_cutover = cc._REVIEW_STATE_CUTOVER_COMMIT
+    legacy_cutover = cc.compact_pair_loop.LEGACY_VERBOSE_CUTOFF
+    real_projection_build = cc.git_commit_projection.CommitGraphProjection.build
+
+    class SyntheticCutoverProjection:
+        def __init__(self, projection):
+            self._projection = projection
+            self.identity = projection.identity
+            self.object_types = projection.object_types
+            self.parents = projection.parents
+
+        @property
+        def head(self):
+            return self._projection.head
+
+        def matches_root(self, root):
+            return self._projection.matches_root(root)
+
+        def require_commit(self, value, label):
+            if value in {review_cutover, learning_cutover, review_state_cutover}:
+                return self.head
+            return self._projection.require_commit(value, label)
+
+        def is_ancestor(self, ancestor, descendant):
+            if ancestor in {review_cutover, learning_cutover, review_state_cutover}:
+                ancestor = self.head
+            return self._projection.is_ancestor(ancestor, descendant)
+
+        def ancestors_of(self, value):
+            if value == learning_cutover:
+                return self._projection.ancestors_of("HEAD")
+            if value == legacy_cutover:
+                return frozenset()
+            return self._projection.ancestors_of(value)
+
+        def assert_current(self):
+            return self._projection.assert_current()
+
+    def projection_build(repo_root, candidate_object_ids, **kwargs):
+        root = Path(repo_root).resolve()
+        if not root.is_relative_to(tmp_path.resolve()):
+            return real_projection_build(repo_root, candidate_object_ids, **kwargs)
+        if real_projection_git(
+            root, "cat-file", "-e", f"{review_cutover}^{{commit}}"
+        ).returncode != 0:
+            synthetic_roots.add(root)
+        candidates = set(candidate_object_ids) - {
+            review_cutover,
+            learning_cutover,
+            review_state_cutover,
+            legacy_cutover,
+        }
+        return SyntheticCutoverProjection(
+            real_projection_build(repo_root, candidates, **kwargs)
+        )
 
     def projection_git(repo_root: Path, *arguments: str):
         root = Path(repo_root).resolve()
@@ -136,6 +191,11 @@ def _supply_synthetic_active_failure_cutover(
         return real_projection_git(root, *arguments)
 
     monkeypatch.setattr(cc, "_projection_git", projection_git)
+    monkeypatch.setattr(
+        cc.git_commit_projection.CommitGraphProjection,
+        "build",
+        staticmethod(projection_build),
+    )
     return learning_only_projection_git
 
 
@@ -477,6 +537,22 @@ def test_missing_active_failure_cutover_fails_projection_without_fail_flood(
     )
     monkeypatch.setattr(
         cc, "_projection_git", _supply_synthetic_active_failure_cutover
+    )
+    real_build = cc.git_commit_projection.CommitGraphProjection.build
+
+    def missing_cutover(*args, **kwargs):
+        projection = real_build(*args, **kwargs)
+        projection.require_commit = lambda value, label: (_ for _ in ()).throw(
+            cc.git_commit_projection.CommitGraphProjectionError(
+                "active-failure cutover is missing"
+            )
+        )
+        return projection
+
+    monkeypatch.setattr(
+        cc.git_commit_projection.CommitGraphProjection,
+        "build",
+        staticmethod(missing_cutover),
     )
 
     state = cc.inspect_verify_review_state(root, coord)
@@ -1053,6 +1129,55 @@ def test_review_projection_uses_bounded_git_processes(
     assert calls <= 14
 
 
+def test_production_snapshot_process_count_is_candidate_independent(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """The real orientation seam must not fork Git once per valid request."""
+
+    fixtures: list[Path] = []
+    for request_count in (1, 8):
+        root, _coord, base, head = _review_repo(
+            tmp_path / f"snapshot-{request_count}"
+        )
+        for index in range(request_count):
+            request_path, request_commit = _commit_request(
+                root,
+                base,
+                head,
+                timestamp=f"2026-08-03T14-{index * 2:02d}-00Z",
+            )
+            _commit_report(
+                root,
+                base,
+                head,
+                request_path,
+                request_commit,
+                verdict="GO",
+                timestamp=f"2026-08-03T14-{index * 2 + 1:02d}-00Z",
+            )
+        fixtures.append(root)
+
+    process_counts: list[int] = []
+    for root in fixtures:
+        calls: list[tuple[str, ...]] = []
+        real_run = subprocess.run
+
+        def counted_run(*args, **kwargs):
+            calls.append(tuple(str(part) for part in args[0]))
+            return real_run(*args, **kwargs)
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(subprocess, "run", counted_run)
+            snapshot = status.collect_orientation_snapshot(root, "coordinator")
+            assert snapshot["gate"]["fatal"] == 0, snapshot["blocker"]
+        process_counts.append(len(calls))
+
+    assert process_counts[0] == process_counts[1]
+    # Fixed snapshot setup currently measures 34 process launches in this
+    # fixture. Leave bounded headroom without turning timing into a gate.
+    assert process_counts[0] <= 40
+
+
 def test_replace_ref_cannot_rewrite_committed_fail_projection(tmp_path: Path) -> None:
     root, coord, base, head = _review_repo(tmp_path)
     request_path, request_commit = _commit_request(root, base, head)
@@ -1089,6 +1214,30 @@ def test_replace_ref_cannot_rewrite_committed_fail_projection(tmp_path: Path) ->
     assert [(item.report_path, item.report_commit) for item in state.failed] == [
         (report_path, report_commit)
     ]
+
+
+def test_run_fails_closed_when_head_changes_after_projection(tmp_path: Path) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    _commit_request(root, base, head)
+    projection_result = cc.committed_mailbox_projection(root)
+    state = cc.inspect_verify_review_state(
+        root, coord, projection_result=projection_result
+    )
+    assert state.problem is None
+    _git(root, "commit", "--allow-empty", "-q", "-m", "move HEAD")
+
+    issues = cc.run(
+        coord,
+        docs_root=root / "docs",
+        review_state=state,
+        committed_projection=projection_result,
+    )
+
+    assert [
+        (issue.kind, issue.severity)
+        for issue in issues
+        if issue.kind == "commit_projection_identity_drift"
+    ] == [("commit_projection_identity_drift", "FATAL")]
 
 
 def test_projection_git_scrubs_ambient_repository_and_config_overrides(

@@ -47,6 +47,7 @@ from pathlib import Path, PurePosixPath
 
 import compact_pair_loop
 import check_go_schema
+import git_commit_projection
 import mailbox_writer
 import protocol_mailbox
 from protocol_mailbox import KNOWN_KINDS, SEATS
@@ -160,6 +161,7 @@ class CommittedMailboxProjection:
     kinds: frozenset[str]
     frozen_legacy_reports: frozenset[str]
     history_exceptions: dict[str, ImmutableHistoryException]
+    commits: git_commit_projection.CommitGraphProjection
 
 
 _REVIEW_STATE_CUTOVER_PATH = (
@@ -180,6 +182,10 @@ _PRE_CUTOVER_INVALID_REQUESTS = {
         _REVIEW_STATE_CUTOVER_COMMIT,
     ): "d77efcb26159733b31b1159fba6bb83c9b62b8ef3937ed8432ddff54fc224f7c",
 }
+
+_FULL_OBJECT_TOKEN_RE = re.compile(
+    rb"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])"
+)
 
 
 def _dash(ts: str) -> str:
@@ -669,22 +675,6 @@ def _committed_mailbox_projection(
         for path, (_commit, blob) in introductions.items()
     }
 
-    cutoff_history = _projection_git(
-        repo_root,
-        "rev-list",
-        compact_pair_loop.LEGACY_VERBOSE_CUTOFF,
-    )
-    if cutoff_history.returncode == 0:
-        try:
-            cutoff_lines = cutoff_history.stdout.decode("ascii", errors="strict").splitlines()
-        except UnicodeDecodeError:
-            return None, "legacy cutoff history is not ASCII"
-        if any(compact_pair_loop.SHA_RE.fullmatch(line) is None for line in cutoff_lines):
-            return None, "legacy cutoff history contains an invalid commit"
-        cutoff_ancestors = frozenset(cutoff_lines)
-    else:
-        cutoff_ancestors = frozenset()
-
     archive_result = _projection_git(
         repo_root,
         "archive",
@@ -705,24 +695,36 @@ def _committed_mailbox_projection(
     learning_cutover_events, cutover_problem = _learning_cutover_projection(repo_root)
     if cutover_problem is not None or learning_cutover_events is None:
         return None, cutover_problem or "learning-history cutover projection unavailable"
-    cutover_history = _projection_git(
-        repo_root, "rev-list", _LEARNING_HISTORY_CUTOVER_COMMIT
-    )
-    if cutover_history.returncode != 0:
-        detail = cutover_history.stderr.decode("utf-8", errors="replace").strip()
-        return None, detail or "learning-history cutover ancestors unavailable"
-    try:
-        cutover_ancestor_lines = cutover_history.stdout.decode(
-            "ascii", errors="strict"
-        ).splitlines()
-    except UnicodeDecodeError:
-        return None, "learning-history cutover ancestors are not ASCII"
-    if any(
-        compact_pair_loop.SHA_RE.fullmatch(commit) is None
-        for commit in cutover_ancestor_lines
+    candidate_objects = {
+        compact_pair_loop.LEGACY_VERBOSE_CUTOFF,
+        _LEARNING_HISTORY_CUTOVER_COMMIT,
+        _ACTIVE_FAILURE_CUTOVER_COMMIT,
+        _REVIEW_STATE_CUTOVER_COMMIT,
+        *(commit for commit, _blob in introductions.values()),
+    }
+    for raw in (
+        *archive_files.values(),
+        *introduction_events.values(),
+        *learning_cutover_events.values(),
     ):
-        return None, "learning-history cutover ancestors contain an invalid commit"
-    learning_cutover_ancestors = frozenset(cutover_ancestor_lines)
+        candidate_objects.update(
+            token.decode("ascii") for token in _FULL_OBJECT_TOKEN_RE.findall(raw)
+        )
+    try:
+        commits = git_commit_projection.CommitGraphProjection.build(
+            repo_root, candidate_objects
+        )
+        cutoff_ancestors = (
+            commits.ancestors_of(compact_pair_loop.LEGACY_VERBOSE_CUTOFF)
+            if commits.object_types.get(compact_pair_loop.LEGACY_VERBOSE_CUTOFF)
+            == "commit"
+            else frozenset()
+        )
+        learning_cutover_ancestors = commits.ancestors_of(
+            _LEARNING_HISTORY_CUTOVER_COMMIT
+        )
+    except git_commit_projection.CommitGraphProjectionError as exc:
+        return None, f"commit projection unavailable: {exc}"
     exception_raw = archive_files.get(_ARCHIVE_HISTORY_EXCEPTIONS)
     if exception_raw is None:
         return None, "committed immutable-history exception manifest is absent"
@@ -813,14 +815,15 @@ def _committed_mailbox_projection(
         and introductions[path][0] in cutoff_ancestors
     )
     return CommittedMailboxProjection(
-        events,
-        introductions,
-        introduction_events,
-        learning_cutover_events,
-        learning_cutover_ancestors,
-        kinds,
-        frozen_legacy_reports,
-        history_exceptions,
+        events=events,
+        introductions=introductions,
+        introduction_events=introduction_events,
+        learning_cutover_events=learning_cutover_events,
+        learning_cutover_ancestors=learning_cutover_ancestors,
+        kinds=kinds,
+        frozen_legacy_reports=frozen_legacy_reports,
+        history_exceptions=history_exceptions,
+        commits=commits,
     ), None
 
 
@@ -1089,28 +1092,21 @@ def inspect_verify_review_state(
             ),
         )
 
-    cutover_exists = _projection_git(
-        root, "cat-file", "-e", f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}^{{commit}}"
-    )
-    if cutover_exists.returncode != 0:
-        detail = cutover_exists.stderr.decode("utf-8", errors="replace").strip()
+    try:
+        projection.commits.require_commit(
+            _ACTIVE_FAILURE_CUTOVER_COMMIT, "active-failure cutover"
+        )
+    except git_commit_projection.CommitGraphProjectionError as exc:
         return VerifyReviewState(
             pending=(),
             failed=(),
             problem=(
                 "active-failure cutover commit is unavailable: "
                 f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}"
-                + (f" ({detail})" if detail else "")
+                f" ({exc})"
             ),
         )
-    ancestry = _projection_git(
-        root,
-        "merge-base",
-        "--is-ancestor",
-        _ACTIVE_FAILURE_CUTOVER_COMMIT,
-        "HEAD",
-    )
-    if ancestry.returncode != 0:
+    if not projection.commits.is_ancestor(_ACTIVE_FAILURE_CUTOVER_COMMIT, "HEAD"):
         return VerifyReviewState(
             pending=(),
             failed=(),
@@ -1182,13 +1178,24 @@ def inspect_verify_review_state(
                     "request is not introduced by a committed revision"
                 )
             request = compact_pair_loop.parse_verify_request_committed_bytes(
-                root, path, commit, raw, allow_frozen_legacy=False
+                root,
+                path,
+                commit,
+                raw,
+                allow_frozen_legacy=False,
+                commit_projection=projection.commits,
+                allow_git_fallback=False,
             )
             if request.assigned_operator != recipient:
                 raise mailbox_writer.MailboxWriterError(
                     "request recipient does not match assigned Operator"
                 )
-            range_violations = compact_pair_loop.validate_request_range(root, request)
+            range_violations = compact_pair_loop.validate_request_range(
+                root,
+                request,
+                commit_projection=projection.commits,
+                allow_git_fallback=False,
+            )
             if range_violations:
                 raise compact_pair_loop.CompactPairError(
                     "; ".join(range_violations)
@@ -1323,6 +1330,14 @@ def inspect_verify_review_state(
                 report_commit=commit,
                 assigned_operator=assigned_operator,
             ))
+    try:
+        projection.commits.assert_current()
+    except git_commit_projection.CommitGraphProjectionError as exc:
+        return VerifyReviewState(
+            pending=(),
+            failed=(),
+            problem=f"commit projection identity drift: {exc}",
+        )
     return VerifyReviewState(
         pending=tuple(sorted(pending, key=lambda item: item.assigned_operator)),
         failed=tuple(sorted(failed, key=lambda item: item.report_path)),
@@ -1501,6 +1516,16 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
     if git_root is not None:
         issues += _check_standalone_cursor_commits(git_root)
     issues += _check_coordinator_handoff_theater(docs_root)
+    if projection_result is not None and projection_result[0] is not None:
+        try:
+            projection_result[0].commits.assert_current()
+        except git_commit_projection.CommitGraphProjectionError as exc:
+            issues.append(CoordIssue(
+                "coordination/mailbox/sent/",
+                "commit_projection_identity_drift",
+                "FATAL",
+                str(exc),
+            ))
     return issues
 
 

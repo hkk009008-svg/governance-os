@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 import codex_protocol_model
+import git_commit_projection
 import protocol_mailbox
 
 
@@ -161,9 +162,25 @@ def _is_frozen_model_label_exception(root: Path, path: str, raw: bytes) -> bool:
     return hashlib.sha256(introduced).hexdigest() == exception["sha256"]
 
 
-def _full_commit(root: Path, value: str, label: str) -> str:
+def _full_commit(
+    root: Path,
+    value: str,
+    label: str,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> str:
     if SHA_RE.fullmatch(value) is None:
         raise CompactPairError(f"{label} must be one full lowercase commit SHA")
+    if commit_projection is not None and commit_projection.matches_root(root):
+        try:
+            return commit_projection.require_commit(value, label)
+        except git_commit_projection.CommitGraphProjectionError as exc:
+            raise CompactPairError(str(exc)) from exc
+    if not allow_git_fallback:
+        raise CompactPairError(
+            f"{label} cannot use a commit projection for the reviewed repository"
+        )
     resolved = _git(root, "rev-parse", "--verify", f"{value}^{{commit}}").decode().strip()
     if resolved != value:
         raise CompactPairError(f"{label} commit does not resolve exactly")
@@ -212,7 +229,23 @@ def _resolve_range(root: Path, base_rev: str, head_rev: str) -> tuple[str, str]:
     return first
 
 
-def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
+def _is_ancestor(
+    root: Path,
+    ancestor: str,
+    descendant: str,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> bool:
+    if commit_projection is not None and commit_projection.matches_root(root):
+        try:
+            return commit_projection.is_ancestor(ancestor, descendant)
+        except git_commit_projection.CommitGraphProjectionError as exc:
+            raise CompactPairError(str(exc)) from exc
+    if not allow_git_fallback:
+        raise CompactPairError(
+            "ancestry cannot use a commit projection for the reviewed repository"
+        )
     environment = {
         key: value for key, value in os.environ.items() if not key.startswith("GIT_")
     }
@@ -436,6 +469,8 @@ def _parse_verify_request_bytes(
     *,
     trigger_commit: str,
     allow_frozen_legacy: bool,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
 ) -> VerifyRequest:
     """Parse request fields once for committed artifacts and new candidates."""
 
@@ -478,7 +513,13 @@ def _parse_verify_request_bytes(
         and _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) is not None
         and _section_optional(lines, "## Finding Refs") is None
     )
-    if legacy and not _is_ancestor(root, trigger_commit, LEGACY_VERBOSE_CUTOFF):
+    if legacy and not _is_ancestor(
+        root,
+        trigger_commit,
+        LEGACY_VERBOSE_CUTOFF,
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    ):
         raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
     outcome_heading = "## Acceptance Question" if legacy else "## Outcome"
     if _section_optional(lines, outcome_heading) is not None:
@@ -545,6 +586,8 @@ def parse_verify_request_committed_bytes(
     raw: bytes,
     *,
     allow_frozen_legacy: bool = True,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
 ) -> VerifyRequest:
     """Parse bytes from a caller's committed mailbox projection."""
 
@@ -558,28 +601,76 @@ def parse_verify_request_committed_bytes(
         raw,
         trigger_commit=trigger_commit,
         allow_frozen_legacy=allow_frozen_legacy,
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
     )
 
 
-def _validate_request_range(root: Path, request: VerifyRequest) -> None:
+def _validate_request_range(
+    root: Path,
+    request: VerifyRequest,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> None:
     root = root.resolve()
-    reviewed_root = _reviewed_root(root, request.reviewed_repository)
-    head = _full_commit(reviewed_root, request.reviewed_head, "Reviewed head")
-    base = _full_commit(reviewed_root, request.reviewed_base, "Reviewed base")
+    reviewed_root = _reviewed_root(
+        root,
+        request.reviewed_repository,
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    )
+    head = _full_commit(
+        reviewed_root,
+        request.reviewed_head,
+        "Reviewed head",
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    )
+    base = _full_commit(
+        reviewed_root,
+        request.reviewed_base,
+        "Reviewed base",
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    )
     if reviewed_root == root and (
         head == request.trigger_commit
-        or not _is_ancestor(root, head, request.trigger_commit)
+        or not _is_ancestor(
+            root,
+            head,
+            request.trigger_commit,
+            commit_projection=commit_projection,
+            allow_git_fallback=allow_git_fallback,
+        )
     ):
         raise CompactPairError("request trigger must be strictly after Reviewed head")
-    if base == head or not _is_ancestor(reviewed_root, base, head):
+    if base == head or not _is_ancestor(
+        reviewed_root,
+        base,
+        head,
+        commit_projection=commit_projection,
+        allow_git_fallback=allow_git_fallback,
+    ):
         raise CompactPairError("Reviewed base must be a strict ancestor of Reviewed head")
 
 
-def validate_request_range(root: Path, request: VerifyRequest) -> list[str]:
+def validate_request_range(
+    root: Path,
+    request: VerifyRequest,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> list[str]:
     """Validate one already parsed request's repository and exact range."""
 
     try:
-        _validate_request_range(root, request)
+        _validate_request_range(
+            root,
+            request,
+            commit_projection=commit_projection,
+            allow_git_fallback=allow_git_fallback,
+        )
     except CompactPairError as exc:
         return [str(exc)]
     return []
@@ -1093,7 +1184,13 @@ def _optional_one(lines: list[str], prefix: str, label: str) -> str | None:
     return value
 
 
-def _reviewed_root(pipeline_root: Path, repository_field: str | None) -> Path:
+def _reviewed_root(
+    pipeline_root: Path,
+    repository_field: str | None,
+    *,
+    commit_projection: git_commit_projection.CommitGraphProjection | None = None,
+    allow_git_fallback: bool = True,
+) -> Path:
     pipeline_root = pipeline_root.resolve()
     if repository_field is None:
         return pipeline_root
@@ -1119,6 +1216,12 @@ def _reviewed_root(pipeline_root: Path, repository_field: str | None) -> Path:
         return pipeline_root
     if not resolved.is_dir() or resolved.as_posix() != repository_field:
         raise CompactPairError("Reviewed repository must be one canonical directory")
+    if commit_projection is not None and commit_projection.matches_root(resolved):
+        return resolved
+    if not allow_git_fallback:
+        raise CompactPairError(
+            "Reviewed repository does not match the committed projection root"
+        )
     top_level = _git(resolved, "rev-parse", "--show-toplevel").decode().strip()
     if top_level != repository_field:
         raise CompactPairError("Reviewed repository must be a Git worktree root")

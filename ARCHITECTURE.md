@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified: 2026-07-31 @ 0103ac4*
+*Last verified: 2026-08-03 @ 4bf7701*
 
 ## 1. Purpose
 
@@ -99,6 +99,7 @@ The table names stable symbols instead of volatile line numbers.
 | `collect_orientation_snapshot`, `render_orientation_snapshot` | `scripts/status.py` | Produce the bounded current-state view. |
 | `resolve_unread` | `scripts/bus_unread.py` | Select one proven unread authority and expose ambiguity. |
 | `inspect_current_verify_requests` | `scripts/check_coordination.py` | Find and validate current committed review requests. |
+| `CommitGraphProjection` | `scripts/git_commit_projection.py` | Pin one repository identity and HEAD, batch-check candidate object types, and answer committed-range ancestry from one bounded in-memory graph. |
 | `validate_event_candidate`, `writer_fence` | `scripts/mailbox_writer.py` | Validate and serialize event/cursor publication. |
 | `parse_verify_request`, `validate_report` | `scripts/compact_pair_loop.py` | Bind formal review to one committed request and exact range. |
 | `RuntimeIdentity`, `work_profile_for`, `review_profile_for` | `scripts/codex_protocol_model.py` | Close runtime identity and select finite work-mode and review policies. |
