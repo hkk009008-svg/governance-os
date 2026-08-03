@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import io
+import json
 import os
 import re
 import subprocess
@@ -42,9 +43,10 @@ import sys
 import tarfile
 import time
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import compact_pair_loop
+import check_go_schema
 import mailbox_writer
 from protocol_mailbox import KNOWN_KINDS, SEATS
 import bus_unread
@@ -132,6 +134,19 @@ class VerifyReviewState:
     pending: tuple[CurrentVerifyRequest, ...]
     failed: tuple[FailedVerifyRequest, ...]
     problem: str | None = None
+    grandfathered_history: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ImmutableHistoryException:
+    path: str
+    artifact_class: str
+    introduction_commit: str
+    introduction_blob: str
+    accepted_current_blob: str
+    accepted_current_sha256: str
+    digest_authority: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -139,6 +154,8 @@ class CommittedMailboxProjection:
     events: dict[str, bytes]
     introductions: dict[str, tuple[str, str]]
     kinds: frozenset[str]
+    frozen_legacy_reports: frozenset[str]
+    history_exceptions: dict[str, ImmutableHistoryException]
 
 
 _PRE_CUTOVER_INVALID_REQUESTS = {
@@ -273,34 +290,206 @@ def _git_blob_oid(raw: bytes) -> str:
     return hashlib.sha1(header + raw).hexdigest()
 
 
-def _committed_mailbox_projection(
+def _projection_git(
     repo_root: Path,
-) -> tuple[CommittedMailboxProjection | None, str | None]:
-    """Project HEAD bytes plus introduction commit/blob in two Git processes."""
+    *arguments: str,
+) -> subprocess.CompletedProcess[bytes]:
+    """Run the known system Git without replacement objects or ambient Git state."""
 
-    environment = {
-        key: value for key, value in os.environ.items() if key != "GIT_INDEX_FILE"
-    }
-    history = subprocess.run(
+    return subprocess.run(
         [
-            "git",
+            "/usr/bin/git",
+            "--no-replace-objects",
+            "--literal-pathspecs",
             "--no-optional-locks",
             "-C",
             str(repo_root),
-            "log",
-            "--raw",
-            "-z",
-            "--no-renames",
-            "--diff-filter=A",
-            "--abbrev=40",
-            "--format=COMMIT %H%x00",
-            "HEAD",
-            "--",
-            "coordination/mailbox/sent",
+            *arguments,
         ],
         capture_output=True,
         check=False,
-        env=environment,
+        env=mailbox_writer.sanitized_git_environment(),
+    )
+
+
+_ARCHIVE_DIRECTORIES = frozenset(
+    {
+        "coordination",
+        "coordination/mailbox",
+        "coordination/mailbox/sent",
+        "scripts",
+        "scripts/baselines",
+    }
+)
+_ARCHIVE_KINDS_PATH = "coordination/mailbox/kinds.txt"
+_ARCHIVE_SENT_PREFIX = "coordination/mailbox/sent/"
+_ARCHIVE_REPORT_BASELINE = "scripts/baselines/lane_v_reports_pre_v3.json"
+_ARCHIVE_HISTORY_EXCEPTIONS = (
+    "scripts/baselines/immutable_review_history_exceptions.json"
+)
+_HISTORY_EXCEPTION_SCHEMA = "immutable-review-history-exceptions/v1"
+
+
+def _canonical_archive_path(name: str) -> bool:
+    if not name or name.startswith("/") or "\\" in name:
+        return False
+    try:
+        name.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        return False
+    pure = PurePosixPath(name)
+    return (
+        all(part not in {"", ".", ".."} for part in pure.parts)
+        and pure.as_posix() == name
+    )
+
+
+def _parse_mailbox_archive(
+    raw_archive: bytes,
+) -> tuple[dict[str, bytes] | None, str | None]:
+    """Read one Git archive without extracting or accepting ambiguous members."""
+
+    files: dict[str, bytes] = {}
+    seen: set[str] = set()
+    try:
+        with tarfile.open(fileobj=io.BytesIO(raw_archive), mode="r:") as archive:
+            for member in archive:
+                name = member.name
+                if not _canonical_archive_path(name):
+                    return None, f"committed mailbox archive path is not canonical: {name!r}"
+                if name in seen:
+                    return None, f"committed mailbox archive has duplicate path: {name}"
+                seen.add(name)
+                if member.isdir():
+                    if name not in _ARCHIVE_DIRECTORIES:
+                        return None, f"committed mailbox archive has unexpected directory: {name}"
+                    continue
+                if not member.isreg():
+                    return None, f"committed mailbox archive has unexpected member type: {name}"
+                if (
+                    name not in {
+                        _ARCHIVE_KINDS_PATH,
+                        _ARCHIVE_REPORT_BASELINE,
+                        _ARCHIVE_HISTORY_EXCEPTIONS,
+                    }
+                    and not name.startswith(_ARCHIVE_SENT_PREFIX)
+                ):
+                    return None, f"committed mailbox archive path is outside scope: {name}"
+                if member.size > compact_pair_loop.MAX_EVENT_BYTES:
+                    return None, f"committed mailbox archive member is too large: {name}"
+                extracted = archive.extractfile(member)
+                if extracted is None:
+                    return None, f"committed mailbox archive member is unreadable: {name}"
+                value = extracted.read(compact_pair_loop.MAX_EVENT_BYTES + 1)
+                if len(value) != member.size:
+                    return None, f"committed mailbox archive member changed size: {name}"
+                if name.endswith(".md"):
+                    try:
+                        value.decode("utf-8", errors="strict")
+                    except UnicodeDecodeError:
+                        return None, f"committed mailbox event is not UTF-8: {name}"
+                files[name] = value
+    except (tarfile.TarError, OSError) as exc:
+        return None, f"committed mailbox archive is invalid: {exc}"
+    return files, None
+
+
+def _canonical_review_event(path: str) -> bool:
+    return (
+        compact_pair_loop.REQUEST_RE.fullmatch(path) is not None
+        or compact_pair_loop.REPORT_RE.fullmatch(path) is not None
+    )
+
+
+def _strict_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate key: {key}")
+        value[key] = item
+    return value
+
+
+def _parse_history_exceptions(
+    raw: bytes,
+) -> tuple[dict[str, ImmutableHistoryException] | None, str | None]:
+    try:
+        value = json.loads(raw, object_pairs_hook=_strict_json_object)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+        return None, f"invalid immutable-history exception manifest: {exc}"
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"schema_version", "entries"}
+        or value.get("schema_version") != _HISTORY_EXCEPTION_SCHEMA
+        or not isinstance(value.get("entries"), list)
+    ):
+        return None, "invalid immutable-history exception manifest schema"
+    expected_fields = {
+        "path",
+        "artifact_class",
+        "introduction_commit",
+        "introduction_blob",
+        "accepted_current_blob",
+        "accepted_current_sha256",
+        "digest_authority",
+        "reason",
+    }
+    exceptions: dict[str, ImmutableHistoryException] = {}
+    for entry in value["entries"]:
+        if not isinstance(entry, dict) or set(entry) != expected_fields:
+            return None, "invalid immutable-history exception entry fields"
+        if not all(isinstance(entry[field], str) for field in expected_fields):
+            return None, "immutable-history exception fields must be strings"
+        exception = ImmutableHistoryException(**entry)
+        is_report = compact_pair_loop.REPORT_RE.fullmatch(exception.path) is not None
+        is_request = compact_pair_loop.REQUEST_RE.fullmatch(exception.path) is not None
+        if not (is_report or is_request):
+            return None, "immutable-history exception path is not canonical"
+        if exception.path in exceptions:
+            return None, f"duplicate immutable-history exception path: {exception.path}"
+        if (
+            compact_pair_loop.SHA_RE.fullmatch(exception.introduction_commit) is None
+            or compact_pair_loop.SHA_RE.fullmatch(exception.introduction_blob) is None
+            or compact_pair_loop.SHA_RE.fullmatch(exception.accepted_current_blob) is None
+            or re.fullmatch(r"[0-9a-f]{64}", exception.accepted_current_sha256) is None
+            or not exception.reason.strip()
+        ):
+            return None, "immutable-history exception has invalid digest or reason"
+        if is_report and (
+            exception.artifact_class != "pre-v3-report-schema-repair"
+            or exception.digest_authority != _ARCHIVE_REPORT_BASELINE
+        ):
+            return None, "report immutable-history exception has invalid class or authority"
+        if is_request and (
+            exception.artifact_class
+            not in {
+                "pre-enforcement-terminal-supersession",
+                "pre-enforcement-request-schema-format",
+            }
+            or exception.digest_authority != _ARCHIVE_HISTORY_EXCEPTIONS
+        ):
+            return None, "request immutable-history exception has invalid class or authority"
+        exceptions[exception.path] = exception
+    return exceptions, None
+
+
+def _committed_mailbox_projection(
+    repo_root: Path,
+) -> tuple[CommittedMailboxProjection | None, str | None]:
+    """Project immutable HEAD mailbox bytes and introduction facts."""
+
+    history = _projection_git(
+        repo_root,
+        "log",
+        "--raw",
+        "-z",
+        "--no-renames",
+        "--diff-filter=A",
+        "--abbrev=40",
+        "--format=COMMIT %H%x00",
+        "HEAD",
+        "--",
+        "coordination/mailbox/sent",
     )
     if history.returncode != 0:
         detail = history.stderr.decode("utf-8", errors="replace").strip()
@@ -337,55 +526,124 @@ def _committed_mailbox_projection(
             introductions[value] = (commit, introduced_blob)
             introduced_blob = None
 
-    archive_result = subprocess.run(
-        [
-            "git",
-            "--no-optional-locks",
-            "-C",
-            str(repo_root),
-            "archive",
-            "--format=tar",
-            "HEAD",
-            "coordination/mailbox/sent",
-            "coordination/mailbox/kinds.txt",
-        ],
-        capture_output=True,
-        check=False,
-        env=environment,
+    cutoff_history = _projection_git(
+        repo_root,
+        "rev-list",
+        compact_pair_loop.LEGACY_VERBOSE_CUTOFF,
+    )
+    if cutoff_history.returncode == 0:
+        try:
+            cutoff_lines = cutoff_history.stdout.decode("ascii", errors="strict").splitlines()
+        except UnicodeDecodeError:
+            return None, "legacy cutoff history is not ASCII"
+        if any(compact_pair_loop.SHA_RE.fullmatch(line) is None for line in cutoff_lines):
+            return None, "legacy cutoff history contains an invalid commit"
+        cutoff_ancestors = frozenset(cutoff_lines)
+    else:
+        cutoff_ancestors = frozenset()
+
+    archive_result = _projection_git(
+        repo_root,
+        "archive",
+        "--format=tar",
+        "HEAD",
+        "coordination/mailbox/sent",
+        _ARCHIVE_KINDS_PATH,
+        _ARCHIVE_REPORT_BASELINE,
+        _ARCHIVE_HISTORY_EXCEPTIONS,
     )
     if archive_result.returncode != 0:
         detail = archive_result.stderr.decode("utf-8", errors="replace").strip()
         return None, detail or "committed mailbox archive unavailable"
 
-    events: dict[str, bytes] = {}
-    kinds_raw: bytes | None = None
-    try:
-        with tarfile.open(
-            fileobj=io.BytesIO(archive_result.stdout), mode="r:"
-        ) as archive:
-            for member in archive.getmembers():
-                if not member.isfile():
-                    continue
-                extracted = archive.extractfile(member)
-                if extracted is None:
-                    continue
-                raw = extracted.read()
-                if member.name == "coordination/mailbox/kinds.txt":
-                    kinds_raw = raw
-                elif (
-                    member.name.startswith("coordination/mailbox/sent/")
-                    and member.name.endswith(".md")
-                ):
-                    events[member.name] = raw
-    except tarfile.TarError as exc:
-        return None, f"committed mailbox archive is invalid: {exc}"
+    archive_files, archive_problem = _parse_mailbox_archive(archive_result.stdout)
+    if archive_problem is not None or archive_files is None:
+        return None, archive_problem or "committed mailbox archive is unavailable"
+    kinds_raw = archive_files.get(_ARCHIVE_KINDS_PATH)
     if kinds_raw is None:
         return None, "committed mailbox kind registry is absent"
     try:
         kinds = frozenset(kinds_raw.decode("utf-8").splitlines())
     except UnicodeDecodeError:
         return None, "committed mailbox kind registry is not UTF-8"
-    return CommittedMailboxProjection(events, introductions, kinds), None
+    baseline_raw = archive_files.get(_ARCHIVE_REPORT_BASELINE)
+    if baseline_raw is None:
+        return None, "committed pre-v3 report baseline is absent"
+    try:
+        baseline = check_go_schema.parse_baseline_manifest_bytes(baseline_raw)
+    except check_go_schema.BaselineGenerationError as exc:
+        return None, f"committed pre-v3 report baseline is invalid: {exc}"
+    baseline_entries = {
+        entry["path"]: entry["sha256"]
+        for entry in baseline["reports"]
+    }
+    exception_raw = archive_files.get(_ARCHIVE_HISTORY_EXCEPTIONS)
+    if exception_raw is None:
+        return None, "committed immutable-history exception manifest is absent"
+    history_exceptions, exception_problem = _parse_history_exceptions(exception_raw)
+    if exception_problem is not None or history_exceptions is None:
+        return None, exception_problem or "immutable-history exceptions are unavailable"
+    events = {
+        path: raw
+        for path, raw in archive_files.items()
+        if path.startswith(_ARCHIVE_SENT_PREFIX) and path.endswith(".md")
+    }
+    introduced_review_events = {
+        path for path in introductions if _canonical_review_event(path)
+    }
+    current_review_events = {
+        path for path in events if _canonical_review_event(path)
+    }
+    missing = sorted(introduced_review_events - current_review_events)
+    if missing:
+        return None, (
+            "immutable mailbox event is absent or renamed at HEAD: " + missing[0]
+        )
+    unintroduced = sorted(current_review_events - introduced_review_events)
+    if unintroduced:
+        return None, "committed mailbox event lacks an introduction: " + unintroduced[0]
+    mismatched_events = {
+        path
+        for path in current_review_events
+        if _git_blob_oid(events[path]) != introductions[path][1]
+    }
+    unmeasured_exceptions = sorted(set(history_exceptions) - mismatched_events)
+    if unmeasured_exceptions:
+        return None, (
+            "immutable-history exception does not name a measured mismatch: "
+            + unmeasured_exceptions[0]
+        )
+    for path, exception in sorted(history_exceptions.items()):
+        introduction = introductions.get(path)
+        if introduction != (
+            exception.introduction_commit,
+            exception.introduction_blob,
+        ):
+            return None, f"immutable-history exception introduction mismatch: {path}"
+        raw = events[path]
+        if (
+            _git_blob_oid(raw) != exception.accepted_current_blob
+            or hashlib.sha256(raw).hexdigest() != exception.accepted_current_sha256
+        ):
+            return None, f"immutable-history exception current digest mismatch: {path}"
+        if (
+            compact_pair_loop.REPORT_RE.fullmatch(path) is not None
+            and baseline_entries.get(path) != exception.accepted_current_sha256
+        ):
+            return None, f"immutable-history report digest authority mismatch: {path}"
+    frozen_legacy_reports = frozenset(
+        path
+        for path in current_review_events
+        if compact_pair_loop.REPORT_RE.fullmatch(path) is not None
+        and introductions[path][0] in cutoff_ancestors
+    )
+    return CommittedMailboxProjection(
+        events,
+        introductions,
+        kinds,
+        frozen_legacy_reports,
+        history_exceptions,
+    ), None
 
 
 def _immutable_event(
@@ -398,6 +656,8 @@ def _immutable_event(
         return None, f"committed mailbox event lacks an introduction: {path}"
     commit, introduced_blob = introduction
     if _git_blob_oid(raw) != introduced_blob:
+        if path in projection.history_exceptions:
+            return commit, None
         return None, f"immutable mailbox event changed after introduction: {path}"
     return commit, None
 
@@ -427,6 +687,13 @@ def inspect_verify_review_state(
             failed=(),
             problem=projection_problem or "committed mailbox projection unavailable",
         )
+
+    for path in sorted(
+        candidate for candidate in projection.events if _canonical_review_event(candidate)
+    ):
+        _commit, immutable_problem = _immutable_event(projection, path)
+        if immutable_problem is not None:
+            return VerifyReviewState(pending=(), failed=(), problem=immutable_problem)
 
     newest_paths: dict[str, str] = {}
     for path in projection.events:
@@ -512,7 +779,10 @@ def inspect_verify_review_state(
                 root, raw, path, kinds=projection.kinds
             )
             report = compact_pair_loop.parse_verification_report_committed_bytes(
-                root, path, raw
+                root,
+                path,
+                raw,
+                frozen_legacy=path in projection.frozen_legacy_reports,
             )
         except (
             mailbox_writer.MailboxWriterError,
@@ -578,6 +848,7 @@ def inspect_verify_review_state(
     return VerifyReviewState(
         pending=tuple(sorted(pending, key=lambda item: item.assigned_operator)),
         failed=tuple(sorted(failed, key=lambda item: item.report_path)),
+        grandfathered_history=tuple(sorted(projection.history_exceptions)),
     )
 
 
@@ -619,6 +890,13 @@ def _check_current_verify_requests(
             "invalid_current_verify_request",
             severity,
             f"{prefix} for {request.assigned_operator}: {request.problem}",
+        ))
+    for path in state.grandfathered_history:
+        issues.append(CoordIssue(
+            path.removeprefix("coordination/"),
+            "grandfathered_review_history",
+            "ADVISORY",
+            f"exact pre-enforcement immutable-history exception remains active: {path}",
         ))
     for failed in state.failed:
         issues.append(CoordIssue(

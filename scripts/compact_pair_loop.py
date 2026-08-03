@@ -767,7 +767,12 @@ def compose_request(
 
 
 def _parse_verification_report_bytes(
-    root: Path, path: str, raw: bytes, *, allow_legacy_missing_risk: bool = True
+    root: Path,
+    path: str,
+    raw: bytes,
+    *,
+    allow_legacy_missing_risk: bool = True,
+    frozen_legacy: bool | None = None,
 ) -> VerificationReport:
     match = REPORT_RE.fullmatch(path)
     if match is None:
@@ -814,8 +819,14 @@ def _parse_verification_report_bytes(
             "Abuse Class Assessment binding is only valid for high-risk-control reports"
         )
     legacy = _section_optional(lines, "## Finding Refs") is None
-    if legacy and not _is_frozen_verbose_report(root, path, raw):
-        raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
+    if legacy:
+        is_frozen_legacy = (
+            _is_frozen_verbose_report(root, path, raw)
+            if frozen_legacy is None
+            else frozen_legacy
+        )
+        if not is_frozen_legacy:
+            raise CompactPairError("missing ## Finding Refs or frozen historical provenance")
     finding_refs = _finding_refs(lines, required=not legacy)
     return VerificationReport(
         path=path,
@@ -853,12 +864,19 @@ def parse_verification_report_committed_bytes(
     root: Path,
     report_path: str | os.PathLike[str],
     raw: bytes,
+    *,
+    frozen_legacy: bool | None = None,
 ) -> VerificationReport:
     """Parse bytes from a caller's committed mailbox projection."""
 
     root = root.resolve()
     path = _repo_path(root, report_path)
-    return _parse_verification_report_bytes(root, path, raw)
+    return _parse_verification_report_bytes(
+        root,
+        path,
+        raw,
+        frozen_legacy=frozen_legacy,
+    )
 
 
 def parse_verification_report_candidate(

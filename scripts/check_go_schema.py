@@ -97,8 +97,11 @@ def _read_regular(path: Path, *, maximum: int) -> bytes:
         os.close(descriptor)
 
 
-def load_baseline_manifest(path: Path = DEFAULT_MANIFEST) -> dict[str, object]:
-    raw = _read_regular(path, maximum=MAX_MANIFEST_BYTES)
+def parse_baseline_manifest_bytes(raw: bytes) -> dict[str, object]:
+    """Validate committed baseline bytes without consulting the worktree."""
+
+    if len(raw) > MAX_MANIFEST_BYTES:
+        raise BaselineGenerationError("historical manifest exceeds size limit")
     try:
         value = json.loads(raw, object_pairs_hook=_strict_object)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -129,6 +132,11 @@ def load_baseline_manifest(path: Path = DEFAULT_MANIFEST) -> dict[str, object]:
         paths.add(report_path)
         digests.add(digest)
     return value
+
+
+def load_baseline_manifest(path: Path = DEFAULT_MANIFEST) -> dict[str, object]:
+    raw = _read_regular(path, maximum=MAX_MANIFEST_BYTES)
+    return parse_baseline_manifest_bytes(raw)
 
 
 def _validate_retired_review_targets(value: object) -> dict[str, object]:

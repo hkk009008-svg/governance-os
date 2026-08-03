@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import io
+import json
 from pathlib import Path
 import subprocess
+import tarfile
 
 import pytest
 
@@ -17,6 +21,20 @@ def _seed_coordination(tmp_path: Path) -> Path:
     seen.mkdir(parents=True)
     for seat in cc.ROLES:
         (seen / f"{seat}.txt").write_text("0", encoding="utf-8")
+    baselines = tmp_path / "scripts/baselines"
+    baselines.mkdir(parents=True)
+    (baselines / "lane_v_reports_pre_v3.json").write_text(
+        json.dumps(
+            {"schema_version": "lane-v-report-pre-v3-baseline/v1", "reports": []}
+        ),
+        encoding="utf-8",
+    )
+    (baselines / "immutable_review_history_exceptions.json").write_text(
+        json.dumps(
+            {"schema_version": "immutable-review-history-exceptions/v1", "entries": []}
+        ),
+        encoding="utf-8",
+    )
     return coord
 
 
@@ -59,12 +77,19 @@ def _commit_request(
     head: str,
     *,
     timestamp: str = "2026-07-25T07-00-00Z",
+    finding_refs: bool = True,
 ) -> tuple[str, str]:
     path = (
         "coordination/mailbox/sent/"
         f"{timestamp}-director-to-operator-verify-request.md"
     )
     when = timestamp[:11] + timestamp[11:].replace("-", ":")
+    finding_lines = () if not finding_refs else (
+        "",
+        "## Finding Refs",
+        "",
+        "- sha256:" + "1" * 64,
+    )
     (root / path).write_text(
         "\n".join(
             (
@@ -84,10 +109,7 @@ def _commit_request(
                 "## Outcome",
                 "",
                 "Review the exact range.",
-                "",
-                "## Finding Refs",
-                "",
-                "- sha256:" + "1" * 64,
+                *finding_lines,
                 "",
                 "Cursor at send: 0",
                 "",
@@ -110,6 +132,7 @@ def _commit_report(
     verdict: str,
     timestamp: str = "2026-07-25T07-10-00Z",
     supersedes: str | None = None,
+    legacy: bool = False,
 ) -> tuple[str, str]:
     path = (
         "coordination/mailbox/sent/"
@@ -117,6 +140,18 @@ def _commit_report(
     )
     when = timestamp[:11] + timestamp[11:].replace("-", ":")
     supersedes_line = () if supersedes is None else (f"Supersedes: {supersedes}",)
+    risk_lines = ("Risk class: material-behavior",)
+    finding_lines = () if legacy else (
+        "",
+        "## Finding Refs",
+        "",
+        "- sha256:" + "1" * 64,
+        "",
+        "## Finding Dispositions",
+        "",
+        f"- sha256:{'1' * 64}: "
+        + ("addressed" if verdict != "FAIL" else "counter-evidence"),
+    )
     (root / path).write_text(
         "\n".join(
             (
@@ -133,16 +168,8 @@ def _commit_report(
                 f"Reviewed base: {base}",
                 "Reviewer seat: operator",
                 "Reviewer model: claude-sonnet-5",
-                "Risk class: material-behavior",
-                "",
-                "## Finding Refs",
-                "",
-                "- sha256:" + "1" * 64,
-                "",
-                "## Finding Dispositions",
-                "",
-                f"- sha256:{'1' * 64}: "
-                + ("addressed" if verdict != "FAIL" else "counter-evidence"),
+                *risk_lines,
+                *finding_lines,
                 "",
                 "## Evidence",
                 "",
@@ -549,6 +576,79 @@ def test_modified_terminal_event_fails_immutable_projection(tmp_path: Path) -> N
     ]
 
 
+@pytest.mark.parametrize("target", ("request", "report"))
+def test_deleted_canonical_review_event_fails_projection(
+    tmp_path: Path, target: str,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    report_path, _report_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    deleted = request_path if target == "request" else report_path
+    _git(root, "rm", "-q", deleted)
+    _git(root, "commit", "-q", "-m", f"delete {target}")
+
+    state = cc.inspect_verify_review_state(root, coord)
+    issues = cc._check_current_verify_requests(root, coord, state)
+
+    assert state.pending == ()
+    assert state.failed == ()
+    assert state.problem is not None
+    assert deleted in state.problem
+    assert [(issue.kind, issue.severity) for issue in issues] == [
+        ("review_projection_unavailable", "FATAL")
+    ]
+
+
+def test_renamed_terminal_report_fails_projection(tmp_path: Path) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    report_path, _report_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    renamed = report_path.replace("-verification-report.md", "-status.md")
+    _git(root, "mv", report_path, renamed)
+    _git(root, "commit", "-q", "-m", "rename terminal report")
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.pending == ()
+    assert state.failed == ()
+    assert state.problem is not None
+    assert report_path in state.problem
+
+
+@pytest.mark.parametrize("mutation", ("removed", "empty", "duplicate"))
+def test_mutated_report_request_binding_fails_projection_before_filtering(
+    tmp_path: Path, mutation: str,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    report_path, _report_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    report = root / report_path
+    text = report.read_text(encoding="utf-8")
+    binding = f"Verification request: {request_path}@{request_commit}"
+    if mutation == "removed":
+        text = text.replace(binding + "\n", "")
+    elif mutation == "empty":
+        text = text.replace(binding, "Verification request: ")
+    else:
+        text = text.replace(binding, binding + "\n" + binding)
+    report.write_text(text, encoding="utf-8")
+    _git(root, "add", report_path)
+    _git(root, "commit", "-q", "-m", f"mutate binding {mutation}")
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.pending == ()
+    assert state.failed == ()
+    assert state.problem is not None
+    assert "immutable" in state.problem
+
+
 def test_dirty_worktree_deletion_does_not_hide_committed_fail(tmp_path: Path) -> None:
     root, coord, base, head = _review_repo(tmp_path)
     request_path, request_commit = _commit_request(root, base, head)
@@ -652,7 +752,424 @@ def test_review_projection_uses_bounded_git_processes(
     assert calls <= 12
 
 
-def test_live_snapshot_surfaces_real_failed_review_not_false_pending(
+def test_replace_ref_cannot_rewrite_committed_fail_projection(tmp_path: Path) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    report_path, report_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    original_head = _git(root, "rev-parse", "HEAD")
+    report = root / report_path
+    report.write_text(
+        report.read_text(encoding="utf-8")
+        .replace("# Operator → Director: FAIL", "# Operator → Director: GO")
+        .replace("VERDICT: FAIL", "VERDICT: GO"),
+        encoding="utf-8",
+    )
+    _git(root, "add", report_path)
+    replacement_tree = _git(root, "write-tree")
+    _git(root, "restore", "--staged", "--worktree", "--", report_path)
+    replacement_commit = _git(
+        root,
+        "commit-tree",
+        replacement_tree,
+        "-p",
+        _git(root, "rev-parse", f"{original_head}^"),
+        "-m",
+        "replacement GO tree",
+    )
+    _git(root, "replace", original_head, replacement_commit)
+    assert "VERDICT: GO" in _git(root, "show", f"HEAD:{report_path}")
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is None
+    assert state.pending == ()
+    assert [(item.report_path, item.report_commit) for item in state.failed] == [
+        (report_path, report_commit)
+    ]
+
+
+def test_projection_git_scrubs_ambient_repository_and_config_overrides(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    root, _coord, _base, _head = _review_repo(tmp_path)
+    expected = _git(root, "rev-parse", "HEAD")
+    poisoned = {
+        "GIT_INDEX_FILE": "/missing/index",
+        "GIT_DIR": "/missing/git-dir",
+        "GIT_WORK_TREE": "/missing/work-tree",
+        "GIT_OBJECT_DIRECTORY": "/missing/objects",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/missing/alternate",
+        "GIT_REPLACE_REF_BASE": "refs/hostile/replace/",
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "core.repositoryformatversion",
+        "GIT_CONFIG_VALUE_0": "999",
+        "GIT_CONFIG_GLOBAL": "/missing/global-config",
+        "GIT_CONFIG_SYSTEM": "/missing/system-config",
+        "GIT_CONFIG_NOSYSTEM": "0",
+    }
+    for name, value in poisoned.items():
+        monkeypatch.setenv(name, value)
+
+    result = cc._projection_git(root, "rev-parse", "HEAD")
+
+    assert result.returncode == 0
+    assert result.stdout.decode().strip() == expected
+
+
+def test_legacy_reports_do_not_add_per_artifact_git_processes(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    fixtures: list[tuple[Path, Path, str, str | None]] = []
+    for report_count in (0, 5, 20):
+        root, coord, base, head = _review_repo(tmp_path / f"reports-{report_count}")
+        request_path, request_commit = _commit_request(
+            root, base, head, finding_refs=False
+        )
+        fail_path = None
+        for index in range(report_count):
+            path, _commit = _commit_report(
+                root,
+                base,
+                head,
+                request_path,
+                request_commit,
+                verdict="FAIL" if index == 0 else "GO",
+                timestamp=f"2026-07-25T07-{index + 10:02d}-00Z",
+                legacy=True,
+            )
+            fail_path = fail_path or path
+        _git(root, "commit", "--allow-empty", "-q", "-m", "legacy cutoff")
+        fixtures.append((root, coord, _git(root, "rev-parse", "HEAD"), fail_path))
+
+    process_counts: list[int] = []
+    for root, coord, cutoff, fail_path in fixtures:
+        calls: list[tuple[str, ...]] = []
+        real_run = subprocess.run
+
+        def counted_run(*args, **kwargs):
+            calls.append(tuple(args[0]))
+            return real_run(*args, **kwargs)
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(cc.compact_pair_loop, "LEGACY_VERBOSE_CUTOFF", cutoff)
+            scoped.setattr(cc.subprocess, "run", counted_run)
+            state = cc.inspect_verify_review_state(root, coord)
+        process_counts.append(len(calls))
+        assert not [command for command in calls if "show" in command]
+        if fail_path is None:
+            assert len(state.pending) == 1
+            assert state.failed == ()
+        else:
+            assert state.pending == ()
+            assert [item.report_path for item in state.failed] == [fail_path]
+
+    assert process_counts[0] == process_counts[1] == process_counts[2]
+    assert process_counts[0] <= 12
+
+
+def _history_exception_entry(
+    path: str,
+    introduction_commit: str,
+    introduction_blob: str,
+    accepted_current_blob: str,
+    accepted_current_sha256: str,
+) -> dict[str, str]:
+    is_report = path.endswith("-verification-report.md")
+    return {
+        "path": path,
+        "artifact_class": (
+            "pre-v3-report-schema-repair"
+            if is_report
+            else "pre-enforcement-request-schema-format"
+        ),
+        "introduction_commit": introduction_commit,
+        "introduction_blob": introduction_blob,
+        "accepted_current_blob": accepted_current_blob,
+        "accepted_current_sha256": accepted_current_sha256,
+        "digest_authority": (
+            "scripts/baselines/lane_v_reports_pre_v3.json"
+            if is_report
+            else "scripts/baselines/immutable_review_history_exceptions.json"
+        ),
+        "reason": "measured pre-enforcement fixture repair",
+    }
+
+
+def _commit_history_exception(
+    root: Path,
+    path: str,
+    introduction_commit: str,
+) -> dict[str, str]:
+    raw = (root / path).read_bytes()
+    entry = _history_exception_entry(
+        path,
+        introduction_commit,
+        _git(root, "rev-parse", f"{introduction_commit}:{path}"),
+        _git(root, "rev-parse", f"HEAD:{path}"),
+        hashlib.sha256(raw).hexdigest(),
+    )
+    baselines = root / "scripts/baselines"
+    if path.endswith("-verification-report.md"):
+        (baselines / "lane_v_reports_pre_v3.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "lane-v-report-pre-v3-baseline/v1",
+                    "reports": [
+                        {"path": path, "sha256": entry["accepted_current_sha256"]}
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+    (baselines / "immutable_review_history_exceptions.json").write_text(
+        json.dumps(
+            {"schema_version": "immutable-review-history-exceptions/v1", "entries": [entry]}
+        ),
+        encoding="utf-8",
+    )
+    _git(root, "add", "scripts/baselines")
+    _git(root, "commit", "-q", "-m", "bind exact history exception")
+    return entry
+
+
+def test_exact_history_exception_surfaces_advisory_and_preserves_fail(
+    tmp_path: Path,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    report_path, report_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    report = root / report_path
+    report.write_text(
+        report.read_text(encoding="utf-8").replace(
+            "# Operator → Director: FAIL", "# Operator → Director: amended FAIL"
+        ),
+        encoding="utf-8",
+    )
+    _git(root, "add", report_path)
+    _git(root, "commit", "-q", "-m", "pre-enforcement report repair")
+    _commit_history_exception(root, report_path, report_commit)
+
+    state = cc.inspect_verify_review_state(root, coord)
+    issues = cc._check_current_verify_requests(root, coord, state)
+
+    assert state.problem is None
+    assert [item.report_path for item in state.failed] == [report_path]
+    assert state.grandfathered_history == (report_path,)
+    assert [
+        (issue.kind, issue.severity)
+        for issue in issues
+        if issue.kind == "grandfathered_review_history"
+    ] == [("grandfathered_review_history", "ADVISORY")]
+
+
+@pytest.mark.parametrize("corruption", ("path", "digest", "introduction"))
+def test_history_exception_refuses_binding_corruption(
+    tmp_path: Path, corruption: str,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    report_path, report_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    report = root / report_path
+    report.write_text(
+        report.read_text(encoding="utf-8").replace("Remediation required.", "Repair recorded."),
+        encoding="utf-8",
+    )
+    _git(root, "add", report_path)
+    _git(root, "commit", "-q", "-m", "pre-enforcement report repair")
+    entry = _commit_history_exception(root, report_path, report_commit)
+    if corruption == "path":
+        entry["path"] = report_path.replace("07-10-00Z", "07-11-00Z")
+    elif corruption == "digest":
+        entry["accepted_current_sha256"] = "0" * 64
+    else:
+        entry["introduction_blob"] = "0" * 40
+    manifest = root / "scripts/baselines/immutable_review_history_exceptions.json"
+    manifest.write_text(
+        json.dumps(
+            {"schema_version": "immutable-review-history-exceptions/v1", "entries": [entry]}
+        ),
+        encoding="utf-8",
+    )
+    _git(root, "add", str(manifest.relative_to(root)))
+    _git(root, "commit", "-q", "-m", f"corrupt exception {corruption}")
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is not None
+    assert state.pending == ()
+    assert state.failed == ()
+
+
+@pytest.mark.parametrize("evasion", ("delete", "change"))
+def test_history_exception_refuses_later_artifact_evasion(
+    tmp_path: Path, evasion: str,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    report_path, report_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    report = root / report_path
+    report.write_text(
+        report.read_text(encoding="utf-8").replace("Remediation required.", "Repair recorded."),
+        encoding="utf-8",
+    )
+    _git(root, "add", report_path)
+    _git(root, "commit", "-q", "-m", "pre-enforcement report repair")
+    _commit_history_exception(root, report_path, report_commit)
+    if evasion == "delete":
+        _git(root, "rm", "-q", report_path)
+    else:
+        report.write_text(
+            report.read_text(encoding="utf-8") + "later drift\n", encoding="utf-8"
+        )
+        _git(root, "add", report_path)
+    _git(root, "commit", "-q", "-m", f"later artifact {evasion}")
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is not None
+    assert state.pending == ()
+    assert state.failed == ()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        {"schema_version": "wrong", "entries": []},
+        {
+            "schema_version": "immutable-review-history-exceptions/v1",
+            "entries": [
+                _history_exception_entry(
+                    "../bad-verification-report.md", "1" * 40, "2" * 40, "3" * 40, "4" * 64
+                )
+            ],
+        },
+    ),
+)
+def test_history_exception_loader_rejects_schema_and_noncanonical_paths(
+    mutation: dict[str, object],
+) -> None:
+    exceptions, problem = cc._parse_history_exceptions(json.dumps(mutation).encode())
+
+    assert exceptions is None
+    assert problem is not None
+
+
+def test_history_exception_loader_rejects_duplicate_paths() -> None:
+    entry = _history_exception_entry(
+        "coordination/mailbox/sent/"
+        "2026-07-01T00-00-00Z-operator-to-director-verification-report.md",
+        "1" * 40,
+        "2" * 40,
+        "3" * 40,
+        "4" * 64,
+    )
+    raw = json.dumps(
+        {
+            "schema_version": "immutable-review-history-exceptions/v1",
+            "entries": [entry, entry],
+        }
+    ).encode()
+
+    exceptions, problem = cc._parse_history_exceptions(raw)
+
+    assert exceptions is None
+    assert problem is not None
+    assert "duplicate" in problem
+
+
+def _tar_bytes(*members: tuple[tarfile.TarInfo, bytes]) -> bytes:
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:") as archive:
+        for member, raw in members:
+            member.size = len(raw)
+            archive.addfile(member, io.BytesIO(raw))
+    return output.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("name", "kind"),
+    (
+        ("/coordination/mailbox/kinds.txt", "file"),
+        ("coordination/mailbox/sent/../escape.md", "file"),
+        ("coordination/mailbox/sent/link.md", "symlink"),
+    ),
+)
+def test_mailbox_archive_rejects_unsafe_members(name: str, kind: str) -> None:
+    member = tarfile.TarInfo(name)
+    if kind == "symlink":
+        member.type = tarfile.SYMTYPE
+        member.linkname = "coordination/mailbox/kinds.txt"
+
+    files, problem = cc._parse_mailbox_archive(_tar_bytes((member, b"body\n")))
+
+    assert files is None
+    assert problem is not None
+
+
+def test_mailbox_archive_rejects_duplicate_paths() -> None:
+    name = "coordination/mailbox/kinds.txt"
+
+    files, problem = cc._parse_mailbox_archive(
+        _tar_bytes((tarfile.TarInfo(name), b"one\n"), (tarfile.TarInfo(name), b"two\n"))
+    )
+
+    assert files is None
+    assert problem is not None
+    assert "duplicate" in problem
+
+
+def test_mailbox_archive_rejects_non_utf8_event_bytes() -> None:
+    name = (
+        "coordination/mailbox/sent/"
+        "2026-07-25T07-10-00Z-operator-to-director-verification-report.md"
+    )
+
+    files, problem = cc._parse_mailbox_archive(
+        _tar_bytes((tarfile.TarInfo(name), b"\xff\xfe"))
+    )
+
+    assert files is None
+    assert problem is not None
+    assert "UTF-8" in problem
+
+
+def test_projection_wires_strict_archive_parser(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    root, coord, _base, _head = _review_repo(tmp_path)
+    member = tarfile.TarInfo("coordination/mailbox/sent/hostile.md")
+    member.type = tarfile.SYMTYPE
+    member.linkname = "coordination/mailbox/kinds.txt"
+    hostile_archive = _tar_bytes((member, b""))
+    real_projection_git = cc._projection_git
+
+    def hostile_projection_git(repo_root: Path, *arguments: str):
+        if arguments and arguments[0] == "archive":
+            return subprocess.CompletedProcess(
+                args=arguments,
+                returncode=0,
+                stdout=hostile_archive,
+                stderr=b"",
+            )
+        return real_projection_git(repo_root, *arguments)
+
+    monkeypatch.setattr(cc, "_projection_git", hostile_projection_git)
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is not None
+    assert "unexpected member type" in state.problem
+
+
+def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
     repo_root: Path,
 ) -> None:
     request_path = (
@@ -669,6 +1186,7 @@ def test_live_snapshot_surfaces_real_failed_review_not_false_pending(
     state = cc.inspect_verify_review_state(repo_root)
     snapshot = status.collect_orientation_snapshot(repo_root, "operator2")
 
+    assert state.problem is None
     assert (request_path, request_commit) not in {
         (item.path, item.commit) for item in state.pending
     }
@@ -681,6 +1199,7 @@ def test_live_snapshot_surfaces_real_failed_review_not_false_pending(
         )
         for item in state.failed
     }
+    assert len(state.grandfathered_history) == 6
     assert snapshot["current_request"] is None
     assert snapshot["failed_review"] == {
         "request_path": request_path,
@@ -689,4 +1208,5 @@ def test_live_snapshot_surfaces_real_failed_review_not_false_pending(
         "report_commit": report_commit,
         "assigned_operator": "operator2",
     }
+    assert snapshot["gate"] == "WARN"
     assert "remediate failed review" in snapshot["next_action"]

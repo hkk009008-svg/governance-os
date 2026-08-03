@@ -46,6 +46,12 @@ class MailboxWriterError(RuntimeError):
     """The fixed mailbox writer or repository boundary is invalid."""
 
 
+def sanitized_git_environment() -> dict[str, str]:
+    """Return the fixed read/write Git environment without ambient GIT_* state."""
+
+    return dict(_GIT_ENV)
+
+
 def _git(root: Path, *arguments: str, input_bytes: bytes | None = None) -> bytes:
     completed = subprocess.run(
         [
@@ -55,7 +61,7 @@ def _git(root: Path, *arguments: str, input_bytes: bytes | None = None) -> bytes
         input=input_bytes,
         capture_output=True,
         check=False,
-        env=_GIT_ENV,
+        env=sanitized_git_environment(),
     )
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip()
