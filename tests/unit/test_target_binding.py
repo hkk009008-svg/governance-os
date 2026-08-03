@@ -211,9 +211,68 @@ def test_check_cli_fails_closed_on_structural_error(tmp_path, capsys):
         '[targets.real]\nrepository = "x/real"\npath = "/tmp/real"\n',
     )
     rc = target_binding.main(["--root", str(tmp_path)])
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
     assert rc == 1
-    assert "ghost" in out
+    assert captured.out == ""
+    assert "ghost" in captured.err
+
+
+def test_print_path_cli_resolves_explicit_target_to_stdout_only(tmp_path, capsys):
+    root = _demo_root(tmp_path)
+    rc = target_binding.main(
+        ["--root", str(root), "--target", "beta-app", "--print-path"]
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.out == f"{(tmp_path / 'beta-app').resolve()}\n"
+    assert captured.err == ""
+
+
+def test_print_path_cli_uses_default_and_path_override(tmp_path, capsys, monkeypatch):
+    root = _demo_root(tmp_path)
+    override = tmp_path / "override"
+    monkeypatch.delenv("GOVERNANCE_TARGET", raising=False)
+    monkeypatch.setenv("GOVERNANCE_TARGET_PATH", str(override))
+    rc = target_binding.main(["--root", str(root), "--print-path"])
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.out == f"{override.resolve()}\n"
+    assert captured.err == ""
+
+
+def test_print_path_cli_errors_go_to_stderr(tmp_path, capsys):
+    root = _demo_root(tmp_path)
+    rc = target_binding.main(
+        ["--root", str(root), "--target", "ghost", "--print-path"]
+    )
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.out == ""
+    assert "unknown target `ghost`" in captured.err
+
+
+def test_print_path_cli_honors_target_name_environment(tmp_path, capsys, monkeypatch):
+    root = _demo_root(tmp_path)
+    monkeypatch.setenv("GOVERNANCE_TARGET", "beta-app")
+    rc = target_binding.main(["--root", str(root), "--print-path"])
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.out == f"{(tmp_path / 'beta-app').resolve()}\n"
+    assert captured.err == ""
+
+
+def test_target_without_print_path_fails_argument_validation(tmp_path):
+    root = _demo_root(tmp_path)
+    with pytest.raises(SystemExit) as excinfo:
+        target_binding.main(["--root", str(root), "--target", "beta-app"])
+    assert excinfo.value.code == 2
+
+
+def test_print_path_and_check_are_mutually_exclusive(tmp_path):
+    root = _demo_root(tmp_path)
+    with pytest.raises(SystemExit) as excinfo:
+        target_binding.main(["--root", str(root), "--check", "--print-path"])
+    assert excinfo.value.code == 2
 
 
 # --- start-guard integration: future works start here ------------------------
