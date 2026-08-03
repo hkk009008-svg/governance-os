@@ -1,7 +1,7 @@
 # Ledger CLI Adoption Bridge — Claude Code
 
-This bridge is for Claude Code sessions working on
-`/Users/hyungkoookkim/evidence-ledger` while Pipeline remains the governance
+This bridge is for Claude Code sessions working on the registered
+`evidence-ledger` target while Pipeline remains the governance
 kernel. It is the Claude-native analog of
 `docs/protocol/codex/ledger-cli-adoption.md` (which scopes itself to Codex
 sessions and emits `.agents/...` paths — do not follow that copy from a
@@ -10,16 +10,16 @@ Claude seat).
 Pipeline remains the four-seat governance kernel. Evidence-ledger remains the
 product repo and owns product-local truth.
 
-Use this bridge only when the user or parent prompt routes work to
-`/Users/hyungkoookkim/evidence-ledger`.
+Use this bridge only when the user or parent prompt routes work to that target.
 
 Canonical path: `docs/protocol/claude/ledger-cli-adoption.md`.
 
-Do not start ledger work from `/Users/hyungkoookkim/Content`.
-Ledger-routed Claude seats start from `/Users/hyungkoookkim/Pipeline`, then run
+Do not start ledger work from the user Content checkout.
+Ledger-routed Claude seats start from the current Pipeline checkout, then run
 
 ```bash
-cd /Users/hyungkoookkim/Pipeline
+PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
+cd "$PIPELINE_ROOT"
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2
 ```
 
@@ -74,8 +74,9 @@ Before product edits, inspect the target repo from a clean command
 environment:
 
 ```bash
-env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger status --short
-env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger log --oneline -5
+TARGET_ROOT="$(env -u GIT_INDEX_FILE .venv/bin/python scripts/target_binding.py --target evidence-ledger --print-path)"
+env -u GIT_INDEX_FILE git -C "$TARGET_ROOT" status --short
+env -u GIT_INDEX_FILE git -C "$TARGET_ROOT" log --oneline -5
 ```
 
 Read evidence-ledger `CLAUDE.md` (and `AGENTS.md`) before product edits. If
@@ -97,13 +98,14 @@ mechanics.
 ## Handoffs
 
 Cross-repo handoffs record both repo heads. Use this minimum body when active
-work spans both repos:
+work spans both repos. Resolve `TARGET_ROOT` with `target_binding.py` as shown
+above before collecting these fields:
 
 ```text
 Pipeline HEAD: paste output from `env -u GIT_INDEX_FILE git log -1 --oneline`
-Evidence-ledger HEAD: paste output from `env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger log -1 --oneline`
+Evidence-ledger HEAD: paste output from `env -u GIT_INDEX_FILE git -C "$TARGET_ROOT" log -1 --oneline`
 Pipeline status: paste output from `env -u GIT_INDEX_FILE git status --short`, or write `clean`
-Evidence-ledger status: paste output from `env -u GIT_INDEX_FILE git -C /Users/hyungkoookkim/evidence-ledger status --short`, or write `clean`
+Evidence-ledger status: paste output from `env -u GIT_INDEX_FILE git -C "$TARGET_ROOT" status --short`, or write `clean`
 Seat: write one of `director`, `director2`, `operator`, `operator2`, or `coordinator`
 Authority used: write one of `orientation report`, `live-seat route`, `operator verification`, or `coordinator reconciliation`
 Evidence run: paste commands and results

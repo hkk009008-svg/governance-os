@@ -145,7 +145,7 @@ Push, merge, locks, cursor consumption, provider launch, paid spend, and other
 external effects each require separate explicit authority. Structural tokens
 never grant execution permission.
 
-For evidence-ledger work, start from `/Users/hyungkoookkim/Pipeline`, read
+For evidence-ledger work, start from the current Pipeline checkout, read
 `docs/protocol/claude/ledger-cli-adoption.md`, run
 `env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`,
 then read evidence-ledger `CLAUDE.md` and `AGENTS.md`. Pipeline remains the

@@ -83,7 +83,7 @@ code; the frozen manifest remains byte-for-byte unchanged.
 
 ## Evidence-ledger bridge
 
-For `/Users/hyungkoookkim/evidence-ledger`, read
+For the registered `evidence-ledger` target, read
 `docs/protocol/codex/ledger-cli-adoption.md`, then the target repo's instructions.
 Start from Pipeline; do not infer product authority from the bridge.
 

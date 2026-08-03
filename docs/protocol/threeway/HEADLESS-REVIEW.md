@@ -37,7 +37,9 @@ env -u GIT_INDEX_FILE .venv/bin/python -c "import sys; sys.path.insert(0,'script
 ## Codex
 
 ```bash
-codex exec -C /Users/hyungkoookkim/Pipeline --sandbox workspace-write -c approval_policy="never" --add-dir /Users/hyungkoookkim/Pipeline/.git "<brief>" < /dev/null
+PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
+PIPELINE_GIT_DIR="$(git rev-parse --absolute-git-dir)"
+codex exec -C "$PIPELINE_ROOT" --sandbox workspace-write -c approval_policy="never" --add-dir "$PIPELINE_GIT_DIR" "<brief>" < /dev/null
 ```
 
 Pin sandbox and approval policy on the invocation, never in `.codex/config.toml`.
@@ -47,8 +49,8 @@ precisely so a checked-in file cannot silently grant a launch full disk access
 with approvals off. With no policy pinned the default is `approval: on-request`,
 which in a non-interactive run means an escalation nobody can answer.
 
-`--add-dir …/.git` is what lets the reviewer commit its own report; without it
-the sandbox covers only the workdir and `/tmp`.
+`--add-dir "$PIPELINE_GIT_DIR"` is what lets the reviewer commit its own report;
+without it the sandbox covers only the workdir and `/tmp`.
 
 `< /dev/null` is required, not tidiness. `codex exec` reads stdin to append a
 `<stdin>` block even when the prompt is an argument, so an inherited open pipe
@@ -151,7 +153,9 @@ family, and an unregistered invented model ID buys no independence.
 ## Cursor
 
 ```bash
-cursor-agent -p -f --model composer-2.5 --trust --workspace /Users/hyungkoookkim/Pipeline-cursor-seats/operator "<brief>"
+coordination/bin/cursor-seat status
+CURSOR_SEAT_ROOT="<operator root reported by cursor-seat status>"
+cursor-agent -p -f --model composer-2.5 --trust --workspace "$CURSOR_SEAT_ROOT" "<brief>"
 ```
 
 All four flags carry weight:

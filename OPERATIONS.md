@@ -12,15 +12,16 @@ governance-kernel truth.
 ## 1. Prerequisites
 
 - An activated Python environment satisfying `requirements-dev.txt`.
-- Git checkout at `/Users/hyungkoookkim/Pipeline`.
+- A current Pipeline Git checkout.
 - Run mutating Codex work in a task-specific native Git worktree. Do not export
   a persistent per-seat `GIT_INDEX_FILE`.
-- Do not route ledger work through `/Users/hyungkoookkim/Content`.
+- Do not route ledger work through the user Content checkout.
 
 ## 2. Orientation And Completion Checks
 
 ```bash
-cd /Users/hyungkoookkim/Pipeline
+PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
+cd "$PIPELINE_ROOT"
 python scripts/status.py snapshot
 ```
 
@@ -53,13 +54,14 @@ question. It is not a startup or route-authority requirement.
 
 ## 5. Ledger-Routed Target Work
 
-When a route points at `/Users/hyungkoookkim/evidence-ledger`, stay in Pipeline
+When a route points at the registered `evidence-ledger` target, stay in Pipeline
 until the guard and active route say which base or worktree is lawful. Inspect
 target state with explicit `git -C` commands:
 
 ```bash
-git -C /Users/hyungkoookkim/evidence-ledger status --short --branch
-git -C /Users/hyungkoookkim/evidence-ledger log --oneline -5
+TARGET_ROOT="$(python scripts/target_binding.py --target evidence-ledger --print-path)"
+git -C "$TARGET_ROOT" status --short --branch
+git -C "$TARGET_ROOT" log --oneline -5
 ```
 
 If the route names an isolated worktree, inspect that worktree before the normal

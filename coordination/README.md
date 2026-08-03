@@ -402,12 +402,13 @@ corruption. Prefix ordinary Git and pytest with `env -u GIT_INDEX_FILE`.
 Instead, work in a native Git worktree you are willing to commit from:
 
 ```bash
-cd /Users/hyungkoookkim/Pipeline
+PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
+cd "$PIPELINE_ROOT"
 env -u GIT_INDEX_FILE git worktree add ../pipeline-<seat> -b <branch>
 ```
 
 Pipeline is the governance kernel and the base for these worktrees; do not route
-this work through `/Users/hyungkoookkim/Content`.
+this work through the user Content checkout.
 
 Each worktree has its own native index, which is the staging isolation the
 retired mechanism was reaching for. The earlier objection that separate
