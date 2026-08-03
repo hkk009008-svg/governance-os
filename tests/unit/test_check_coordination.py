@@ -13,6 +13,47 @@ import check_coordination as cc
 import status
 
 
+@pytest.fixture(autouse=True)
+def _supply_synthetic_active_failure_cutover(
+    tmp_path: Path, monkeypatch,
+):
+    """Give isolated fixture repositories an explicit synthetic cutover history."""
+
+    real_projection_git = cc._projection_git
+    synthetic_roots: set[Path] = set()
+    cutover = cc._ACTIVE_FAILURE_CUTOVER_COMMIT
+
+    def projection_git(repo_root: Path, *arguments: str):
+        root = Path(repo_root).resolve()
+        inside_fixture = root.is_relative_to(tmp_path.resolve())
+        if (
+            inside_fixture
+            and root in synthetic_roots
+            and arguments[:3] == ("merge-base", "--is-ancestor", cutover)
+        ):
+            return subprocess.CompletedProcess(arguments, 0, stdout=b"", stderr=b"")
+        if (
+            inside_fixture
+            and root in synthetic_roots
+            and arguments[:2] == ("rev-list", f"{cutover}..HEAD")
+        ):
+            return real_projection_git(
+                root, "rev-list", "HEAD", "--", "coordination/mailbox/sent"
+            )
+        result = real_projection_git(root, *arguments)
+        if (
+            inside_fixture
+            and arguments == ("cat-file", "-e", f"{cutover}^{{commit}}")
+            and result.returncode != 0
+        ):
+            synthetic_roots.add(root)
+            return subprocess.CompletedProcess(arguments, 0, stdout=b"", stderr=b"")
+        return result
+
+    monkeypatch.setattr(cc, "_projection_git", projection_git)
+    return real_projection_git
+
+
 def _seed_coordination(
     tmp_path: Path, *, include_history_manifest: bool = True
 ) -> Path:
@@ -321,6 +362,48 @@ def test_review_projection_failure_is_not_an_empty_pending_queue(
     assert [(issue.kind, issue.severity) for issue in issues] == [
         ("review_projection_unavailable", "FATAL")
     ]
+
+
+def test_missing_active_failure_cutover_fails_projection_without_fail_flood(
+    tmp_path: Path, monkeypatch, _supply_synthetic_active_failure_cutover,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    monkeypatch.setattr(
+        cc, "_projection_git", _supply_synthetic_active_failure_cutover
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+    issues = cc.run(
+        coord,
+        now="2026-07-25T08:00:00Z",
+        docs_root=root / "docs",
+        review_state=state,
+    )
+
+    assert state.pending == ()
+    assert state.failed == ()
+    assert state.problem is not None
+    assert "active-failure cutover commit is unavailable" in state.problem
+    assert [
+        (issue.kind, issue.severity)
+        for issue in issues
+        if issue.kind == "review_projection_unavailable"
+    ] == [
+        ("review_projection_unavailable", "FATAL")
+    ]
+
+
+def test_missing_request_operator_mapping_is_an_explicit_projection_problem() -> None:
+    operator, problem = cc._mapped_request_operator({}, "request.md@" + "a" * 40)
+
+    assert operator is None
+    assert problem == (
+        "active report has no mapped request operator: request.md@" + "a" * 40
+    )
 
 
 def test_coordinator_cursor_files_are_not_required_or_actionable(

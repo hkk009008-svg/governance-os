@@ -696,6 +696,15 @@ def _single_field(raw: bytes, prefix: str) -> str | None:
     return values[0] if len(values) == 1 else None
 
 
+def _mapped_request_operator(
+    request_operators: dict[str, str], request_ref: str,
+) -> tuple[str | None, str | None]:
+    operator = request_operators.get(request_ref)
+    if operator not in {"operator", "operator2"}:
+        return None, f"active report has no mapped request operator: {request_ref}"
+    return operator, None
+
+
 def inspect_verify_review_state(
     repo_root: Path | str,
     coord_root: Path | str | None = None,
@@ -737,54 +746,63 @@ def inspect_verify_review_state(
     cutover_exists = _projection_git(
         root, "cat-file", "-e", f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}^{{commit}}"
     )
-    post_cutover_review_commits: frozenset[str] | None = None
-    if cutover_exists.returncode == 0:
-        ancestry = _projection_git(
-            root,
-            "merge-base",
-            "--is-ancestor",
-            _ACTIVE_FAILURE_CUTOVER_COMMIT,
-            "HEAD",
+    if cutover_exists.returncode != 0:
+        detail = cutover_exists.stderr.decode("utf-8", errors="replace").strip()
+        return VerifyReviewState(
+            pending=(),
+            failed=(),
+            problem=(
+                "active-failure cutover commit is unavailable: "
+                f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}"
+                + (f" ({detail})" if detail else "")
+            ),
         )
-        if ancestry.returncode != 0:
-            return VerifyReviewState(
-                pending=(),
-                failed=(),
-                problem="active-failure cutover commit is not an ancestor of HEAD",
-            )
-        post_cutover = _projection_git(
-            root,
-            "rev-list",
-            f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}..HEAD",
-            "--",
-            "coordination/mailbox/sent",
+    ancestry = _projection_git(
+        root,
+        "merge-base",
+        "--is-ancestor",
+        _ACTIVE_FAILURE_CUTOVER_COMMIT,
+        "HEAD",
+    )
+    if ancestry.returncode != 0:
+        return VerifyReviewState(
+            pending=(),
+            failed=(),
+            problem="active-failure cutover commit is not an ancestor of HEAD",
         )
-        if post_cutover.returncode != 0:
-            return VerifyReviewState(
-                pending=(),
-                failed=(),
-                problem="post-cutover review history is unavailable",
-            )
-        try:
-            post_cutover_lines = post_cutover.stdout.decode(
-                "ascii", errors="strict"
-            ).splitlines()
-        except UnicodeDecodeError:
-            return VerifyReviewState(
-                pending=(),
-                failed=(),
-                problem="post-cutover review history is not ASCII",
-            )
-        if any(
-            compact_pair_loop.SHA_RE.fullmatch(line) is None
-            for line in post_cutover_lines
-        ):
-            return VerifyReviewState(
-                pending=(),
-                failed=(),
-                problem="post-cutover review history contains an invalid commit",
-            )
-        post_cutover_review_commits = frozenset(post_cutover_lines)
+    post_cutover = _projection_git(
+        root,
+        "rev-list",
+        f"{_ACTIVE_FAILURE_CUTOVER_COMMIT}..HEAD",
+        "--",
+        "coordination/mailbox/sent",
+    )
+    if post_cutover.returncode != 0:
+        return VerifyReviewState(
+            pending=(),
+            failed=(),
+            problem="post-cutover review history is unavailable",
+        )
+    try:
+        post_cutover_lines = post_cutover.stdout.decode(
+            "ascii", errors="strict"
+        ).splitlines()
+    except UnicodeDecodeError:
+        return VerifyReviewState(
+            pending=(),
+            failed=(),
+            problem="post-cutover review history is not ASCII",
+        )
+    if any(
+        compact_pair_loop.SHA_RE.fullmatch(line) is None
+        for line in post_cutover_lines
+    ):
+        return VerifyReviewState(
+            pending=(),
+            failed=(),
+            problem="post-cutover review history contains an invalid commit",
+        )
+    post_cutover_review_commits = frozenset(post_cutover_lines)
 
     newest_paths: dict[str, str] = {}
     candidate_paths: list[tuple[str, str]] = []
@@ -935,23 +953,29 @@ def inspect_verify_review_state(
             pending.append(request)
     for request_ref, reports in active_reports_by_request.items():
         active_failures = [item for item in reports if item[2].verdict == "FAIL"]
-        if post_cutover_review_commits is not None:
-            active_failures = [
-                item
-                for item in active_failures
-                if (
-                    f"{item[0]}@{item[1]}" in _BASELINE_ACTIVE_FAILURE_REPORTS
-                    or item[1] in post_cutover_review_commits
-                )
-            ]
+        active_failures = [
+            item
+            for item in active_failures
+            if (
+                f"{item[0]}@{item[1]}" in _BASELINE_ACTIVE_FAILURE_REPORTS
+                or item[1] in post_cutover_review_commits
+            )
+        ]
         if active_failures:
+            assigned_operator, operator_problem = _mapped_request_operator(
+                request_operators, request_ref
+            )
+            if operator_problem is not None or assigned_operator is None:
+                return VerifyReviewState(
+                    pending=(), failed=(), problem=operator_problem
+                )
             path, commit, report = max(active_failures, key=lambda item: item[0])
             failed.append(FailedVerifyRequest(
                 request_path=report.request_path,
                 request_commit=report.request_commit,
                 report_path=path,
                 report_commit=commit,
-                assigned_operator=request_operators[request_ref],
+                assigned_operator=assigned_operator,
             ))
     return VerifyReviewState(
         pending=tuple(sorted(pending, key=lambda item: item.assigned_operator)),

@@ -84,6 +84,12 @@ may therefore be pending alongside an older active FAIL. Only a valid GO or NITS
 report bound to that exact request and explicitly superseding its FAIL clears
 the failure.
 
+Pending/current request display is seat-filtered. Active failed reviews are
+repository-global governance blockers, so a seat snapshot may display another
+Operator's failure; `assigned_operator` remains explicit in structured output.
+The active-failure cutover commit must resolve and be an ancestor of HEAD, or
+review-state projection fails closed.
+
 `scripts/baselines/immutable_review_history_exceptions.json` is a frozen,
 one-way exception manifest bound to its sole Git introduction. Never repair or
 extend that file in place. A future legitimate history exception requires a

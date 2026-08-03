@@ -551,6 +551,9 @@ def collect_orientation_snapshot(
 
     review_state = check_coordination.inspect_verify_review_state(repo_root)
     requests = list(review_state.pending)
+    # Pending work is seat-scoped. Active failed reviews are intentionally not:
+    # they are repository-global governance blockers, with their assigned seat
+    # retained in the structured record for routing.
     failed_reviews = list(review_state.failed)
     if seat in {"operator", "operator2"}:
         requests = [

@@ -252,7 +252,7 @@ def _orientation_mailbox() -> dict[str, object]:
     return data
 
 
-def test_active_failed_review_forces_structured_gate_fail(
+def test_repository_global_failed_review_forces_seat_snapshot_gate_fail(
     tmp_path: Path, monkeypatch,
 ) -> None:
     failed = cc.FailedVerifyRequest(
