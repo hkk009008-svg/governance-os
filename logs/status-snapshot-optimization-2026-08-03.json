@@ -1,11 +1,11 @@
 {
   "artifact_kind": "status-snapshot-optimization-and-effectiveness-comparison",
   "schema_version": "status-snapshot-optimization/v1",
-  "recorded_at": "2026-08-03T19:19:17+09:00",
+  "recorded_at": "2026-08-03T19:51:10+09:00",
   "benchmark": {
     "interpretation": "Report-only machine-local observation; timing is not a gate.",
     "before": {
-      "provenance": "Parent-provided direct status.collect_orientation_snapshot(root, 'coordinator') observation on the same machine, ten runs with global subprocess.run counting.",
+      "provenance": "Parent-provided direct status.collect_orientation_snapshot(root, 'coordinator') observation on the same machine, ten runs counted once at the subprocess.Popen boundary; 231 is the exact actual-launch baseline.",
       "head": "4bf77010506cedd350bc72a74f0bc7b9052bea67",
       "runs": 10,
       "processes_per_run": 231,
@@ -24,14 +24,14 @@
     "after": {
       "instrument": {
         "path": "scripts/status_benchmark.py",
-        "commit": "3b13f2e231704f1ff23fb1660e3095b9ee31b0b6",
-        "git_blob": "19ec0f96eef327932819fe4117a6e04b2fa436a9",
-        "sha256": "cd9f1c733918040f418890fe31f30f1f1f65d5371a5e2b29549a345cc1af79f1",
+        "commit": "919ec6fcf17b69c41a77050e3c1f437bf8493dc6",
+        "git_blob": "0237c2f12a7451f2f6550d1e4e6ff8ed5de68154",
+        "sha256": "14ffaebbf11f380d3794a7b20cfbdc60180c7b40116e9cec11aa14bf52289f65",
         "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/status_benchmark.py --root /Users/hyungkoookkim/Pipeline/.worktrees/governance-hardening-2026-08-03 --runs 10 --seat coordinator"
       },
       "repository": {
         "root": "/Users/hyungkoookkim/Pipeline/.worktrees/governance-hardening-2026-08-03",
-        "head": "3b13f2e231704f1ff23fb1660e3095b9ee31b0b6",
+        "head": "919ec6fcf17b69c41a77050e3c1f437bf8493dc6",
         "dirty": false
       },
       "runtime": {
@@ -48,36 +48,48 @@
         "failed_review": 1
       },
       "processes": {
-        "candidate_independent_observation": true,
-        "per_run": [32, 32, 32, 32, 32, 32, 32, 32, 32, 32],
-        "git_per_run": [32, 32, 32, 32, 32, 32, 32, 32, 32, 32]
+        "repeated_run_process_count_stable": true,
+        "per_run": [34, 34, 34, 34, 34, 34, 34, 34, 34, 34],
+        "git_per_run": [34, 34, 34, 34, 34, 34, 34, 34, 34, 34]
       },
       "timing_seconds": {
         "per_run": [
-          0.8207960840009036,
-          0.7833310409987462,
-          0.7891987920011161,
-          0.7930972079993808,
-          0.7912177920006798,
-          0.7836352079975768,
-          0.7895035420006025,
-          0.7898527910001576,
-          0.7948662909984705,
-          0.791748584000743
+          0.8146526250056922,
+          0.7925468749963329,
+          0.7950645000018994,
+          0.7966996670002118,
+          0.8480347500008065,
+          0.8014887919998728,
+          0.7982047500045155,
+          0.7980871249965276,
+          0.7947368750028545,
+          0.7997010830004001
         ],
-        "min": 0.7833310409987462,
-        "max": 0.8207960840009036,
-        "p50": 0.7905352915004187,
-        "p95_nearest_rank": 0.8207960840009036
+        "min": 0.7925468749963329,
+        "max": 0.8480347500008065,
+        "p50": 0.7981459375005215,
+        "p95_nearest_rank": 0.8480347500008065
       }
     },
+    "candidate_population_control": {
+      "interpretation": "Explicit production-seam population contrast; not inferred from repeated benchmark runs.",
+      "test_path": "tests/unit/test_check_coordination.py",
+      "test_name": "test_production_snapshot_process_count_is_candidate_independent",
+      "commit": "919ec6fcf17b69c41a77050e3c1f437bf8493dc6",
+      "git_blob": "8f26dc1d59e05daff6544b11bf3e3bb050cb904b",
+      "sha256": "47d612b80a98001a9c85b610edc32cfc55b4c0944083f080c3b363a418bb3ff5",
+      "counting_boundary": "subprocess.Popen",
+      "valid_request_report_populations": [1, 8],
+      "actual_launch_counts": [37, 37],
+      "result": "candidate_population_independent_in_fixture"
+    },
     "percent_change": {
-      "processes_per_run": -86.14718614718615,
-      "git_processes_per_run": -86.14718614718615,
-      "timing_min": -57.61863128578978,
-      "timing_max": -57.55354869425506,
-      "timing_p50": -57.795478096745,
-      "timing_p95_nearest_rank": -57.55354869425506
+      "processes_per_run": -85.28138528138528,
+      "git_processes_per_run": -85.28138528138528,
+      "timing_min": -57.120017496403975,
+      "timing_max": -56.14493487098503,
+      "timing_p50": -57.389166475650754,
+      "timing_p95_nearest_rank": -56.14493487098503
     }
   },
   "protocol_effectiveness": {
@@ -111,7 +123,8 @@
       "stale_claim_count": 68
     },
     "current_replay": {
-      "head": "3b13f2e231704f1ff23fb1660e3095b9ee31b0b6",
+      "head": "919ec6fcf17b69c41a77050e3c1f437bf8493dc6",
+      "generated_at": "2026-08-03T19:51:08+09:00",
       "status": "completed_read_only",
       "verified_rows_delta": 0,
       "handoff_commits_per_verified_row": null,
