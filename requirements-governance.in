@@ -1,0 +1,3 @@
+# Minimal governance runtime and CI signer dependencies.
+cryptography==50.0.0
+rfc8785==0.1.4
