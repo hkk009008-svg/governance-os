@@ -1,7 +1,7 @@
 {
   "artifact_kind": "status-snapshot-optimization-and-effectiveness-comparison",
   "schema_version": "status-snapshot-optimization/v1",
-  "recorded_at": "2026-08-03T19:51:10+09:00",
+  "recorded_at": "2026-08-03T20:16:57+09:00",
   "benchmark": {
     "interpretation": "Report-only machine-local observation; timing is not a gate.",
     "before": {
@@ -24,15 +24,22 @@
     "after": {
       "instrument": {
         "path": "scripts/status_benchmark.py",
-        "commit": "919ec6fcf17b69c41a77050e3c1f437bf8493dc6",
-        "git_blob": "0237c2f12a7451f2f6550d1e4e6ff8ed5de68154",
-        "sha256": "14ffaebbf11f380d3794a7b20cfbdc60180c7b40116e9cec11aa14bf52289f65",
+        "commit": "dc4c8d73b509b881395b0e43decf69b0f4fe5b0e",
+        "git_blob": "a08dc168c609fa7363ec91e7756c55c1ba2cd143",
+        "sha256": "e603b8ca4b7ad0145a49c157820ec61f68c1b951de263da89d19a0540b42216e",
         "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/status_benchmark.py --root /Users/hyungkoookkim/Pipeline/.worktrees/governance-hardening-2026-08-03 --runs 10 --seat coordinator"
       },
       "repository": {
         "root": "/Users/hyungkoookkim/Pipeline/.worktrees/governance-hardening-2026-08-03",
-        "head": "919ec6fcf17b69c41a77050e3c1f437bf8493dc6",
-        "dirty": false
+        "head": "dc4c8d73b509b881395b0e43decf69b0f4fe5b0e",
+        "observed_clean_at_all_checkpoints": true,
+        "observation_boundaries": [
+          "setup and each pre-run: full HEAD, porcelain status, HEAD reflog signal",
+          "snapshot collect_git: unambiguous SHA prefix and typed integer dirty count",
+          "snapshot committed projection: exact full HEAD",
+          "each post-run and final: full HEAD, porcelain status, HEAD reflog signal"
+        ],
+        "limitation": "Same-user mutation introduced and restored wholly between every consumed checkpoint is not detectable."
       },
       "runtime": {
         "python_implementation": "CPython",
@@ -54,22 +61,36 @@
       },
       "timing_seconds": {
         "per_run": [
-          0.8146526250056922,
-          0.7925468749963329,
-          0.7950645000018994,
-          0.7966996670002118,
-          0.8480347500008065,
-          0.8014887919998728,
-          0.7982047500045155,
-          0.7980871249965276,
-          0.7947368750028545,
-          0.7997010830004001
+          0.806430457996612,
+          0.7964617920006276,
+          0.8163166669983184,
+          0.7992112089996226,
+          0.8055932499992196,
+          0.7976166669977829,
+          0.7983465829966008,
+          0.7988144999981159,
+          0.7960305000015069,
+          0.800495374998718
         ],
-        "min": 0.7925468749963329,
-        "max": 0.8480347500008065,
-        "p50": 0.7981459375005215,
-        "p95_nearest_rank": 0.8480347500008065
+        "min": 0.7960305000015069,
+        "max": 0.8163166669983184,
+        "p50": 0.7990128544988693,
+        "p95_nearest_rank": 0.8163166669983184
       }
+    },
+    "state_checkpoint_control": {
+      "interpretation": "Production snapshot Git and projection observations are checked independently against the benchmark's pinned full HEAD; HEAD reflog availability is mandatory at setup.",
+      "test_path": "tests/unit/test_status_benchmark.py",
+      "test_names": [
+        "test_production_snapshot_dirty_observation_is_rejected_after_exact_restore",
+        "test_reflog_absence_refuses_setup_and_snapshot_binding_rejects_observed_b",
+        "test_benchmark_rejects_untyped_snapshot_clean_observation"
+      ],
+      "commit": "dc4c8d73b509b881395b0e43decf69b0f4fe5b0e",
+      "git_blob": "8222e883a9a2c14d4b80d65353485b543af15729",
+      "sha256": "c9d9e64ee5bad12571b29846f53eaabb3a8fc0deb71560698a65259701474a66",
+      "reversion_result": "Removing the snapshot Git dirty and SHA checks while retaining projection validation made the production dirty-observation test fail because no RuntimeError was raised.",
+      "observation_limit": "A same-user mutation wholly introduced and restored between all consumed checkpoints without changing a consumed Git or reflog state is not detectable."
     },
     "candidate_population_control": {
       "interpretation": "Explicit production-seam population contrast; not inferred from repeated benchmark runs.",
@@ -86,10 +107,10 @@
     "percent_change": {
       "processes_per_run": -85.28138528138528,
       "git_processes_per_run": -85.28138528138528,
-      "timing_min": -57.120017496403975,
-      "timing_max": -56.14493487098503,
-      "timing_p50": -57.389166475650754,
-      "timing_p95_nearest_rank": -56.14493487098503
+      "timing_min": -56.93153933317654,
+      "timing_max": -57.785196187918444,
+      "timing_p50": -57.34288414285869,
+      "timing_p95_nearest_rank": -57.785196187918444
     }
   },
   "protocol_effectiveness": {
