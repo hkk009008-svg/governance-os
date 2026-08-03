@@ -522,7 +522,7 @@ def _commit_explicit_report(
     return _git(root, "rev-parse", "HEAD")
 
 
-def test_superseded_verdict_suppresses_nothing(tmp_path: Path) -> None:
+def test_cross_request_supersession_is_ignored(tmp_path: Path) -> None:
     root, base, head = _repo_pair(tmp_path)
     request_one = (
         "coordination/mailbox/sent/"
@@ -563,7 +563,7 @@ def test_superseded_verdict_suppresses_nothing(tmp_path: Path) -> None:
     reported = mailbox._reported_request_refs(
         root, {}, mailbox._committed_mailbox_events(root, {})
     )
-    # The superseded verdict is dead: it no longer marks its request reviewed.
-    assert f"{request_one}@{c1}" not in reported
-    # The re-issued verdict binds and counts on its own request.
-    assert f"{request_two}@{c3}" in reported
+    # A report cannot retire a verdict from another exact request binding.
+    assert f"{request_one}@{c1}" in reported
+    # The invalid cross-request report does not complete its own request either.
+    assert f"{request_two}@{c3}" not in reported

@@ -134,6 +134,13 @@ class VerifyReviewState:
     problem: str | None = None
 
 
+@dataclass(frozen=True)
+class CommittedMailboxProjection:
+    events: dict[str, bytes]
+    introductions: dict[str, tuple[str, str]]
+    kinds: frozenset[str]
+
+
 _PRE_CUTOVER_INVALID_REQUESTS = {
     (
         "coordination/mailbox/sent/"
@@ -261,45 +268,76 @@ def _unread_report(coord_root: Path, names: list[str],
     return issues
 
 
-def _introduction_commits(repo_root: Path) -> dict[str, str]:
-    """Index mailbox introduction commits with one history traversal."""
+def _git_blob_oid(raw: bytes) -> str:
+    header = f"blob {len(raw)}\0".encode("ascii")
+    return hashlib.sha1(header + raw).hexdigest()
 
-    completed = subprocess.run(
+
+def _committed_mailbox_projection(
+    repo_root: Path,
+) -> tuple[CommittedMailboxProjection | None, str | None]:
+    """Project HEAD bytes plus introduction commit/blob in two Git processes."""
+
+    environment = {
+        key: value for key, value in os.environ.items() if key != "GIT_INDEX_FILE"
+    }
+    history = subprocess.run(
         [
             "git",
             "--no-optional-locks",
             "-C",
             str(repo_root),
             "log",
+            "--raw",
+            "-z",
+            "--no-renames",
             "--diff-filter=A",
-            "--format=COMMIT %H",
-            "--name-only",
+            "--abbrev=40",
+            "--format=COMMIT %H%x00",
             "HEAD",
             "--",
             "coordination/mailbox/sent",
         ],
         capture_output=True,
-        text=True,
         check=False,
-        env={key: value for key, value in os.environ.items() if key != "GIT_INDEX_FILE"},
+        env=environment,
     )
-    if completed.returncode != 0:
-        return {}
-    introductions: dict[str, str] = {}
+    if history.returncode != 0:
+        detail = history.stderr.decode("utf-8", errors="replace").strip()
+        return None, detail or "mailbox introduction history unavailable"
+
+    introductions: dict[str, tuple[str, str]] = {}
     commit: str | None = None
-    for line in completed.stdout.splitlines():
-        if line.startswith("COMMIT "):
-            candidate = line.removeprefix("COMMIT ")
+    introduced_blob: str | None = None
+    for token in history.stdout.split(b"\0"):
+        value = token.decode("utf-8", errors="replace")
+        if value.startswith("COMMIT "):
+            candidate = value.removeprefix("COMMIT ")
             commit = candidate if re.fullmatch(r"[0-9a-f]{40}", candidate) else None
-        elif commit is not None and line.startswith("coordination/mailbox/sent/"):
-            introductions.setdefault(line, commit)
-    return introductions
+            introduced_blob = None
+            continue
+        descriptor = value.lstrip("\n")
+        if descriptor.startswith(":"):
+            fields = descriptor.split()
+            introduced_blob = (
+                fields[3]
+                if len(fields) >= 5
+                and fields[4] == "A"
+                and re.fullmatch(r"[0-9a-f]{40}", fields[3])
+                else None
+            )
+            continue
+        if (
+            value.startswith("coordination/mailbox/sent/")
+            and commit is not None
+            and introduced_blob is not None
+        ):
+            if value in introductions:
+                return None, f"mailbox event has multiple introductions: {value}"
+            introductions[value] = (commit, introduced_blob)
+            introduced_blob = None
 
-
-def _committed_mailbox_projection(repo_root: Path) -> tuple[dict[str, bytes], str | None]:
-    """Read the HEAD mailbox in one Git archive operation."""
-
-    completed = subprocess.run(
+    archive_result = subprocess.run(
         [
             "git",
             "--no-optional-locks",
@@ -309,26 +347,68 @@ def _committed_mailbox_projection(repo_root: Path) -> tuple[dict[str, bytes], st
             "--format=tar",
             "HEAD",
             "coordination/mailbox/sent",
+            "coordination/mailbox/kinds.txt",
         ],
         capture_output=True,
         check=False,
-        env={key: value for key, value in os.environ.items() if key != "GIT_INDEX_FILE"},
+        env=environment,
     )
-    if completed.returncode != 0:
-        detail = completed.stderr.decode("utf-8", errors="replace").strip()
-        return {}, detail or "git archive failed"
-    projection: dict[str, bytes] = {}
+    if archive_result.returncode != 0:
+        detail = archive_result.stderr.decode("utf-8", errors="replace").strip()
+        return None, detail or "committed mailbox archive unavailable"
+
+    events: dict[str, bytes] = {}
+    kinds_raw: bytes | None = None
     try:
-        with tarfile.open(fileobj=io.BytesIO(completed.stdout), mode="r:") as archive:
+        with tarfile.open(
+            fileobj=io.BytesIO(archive_result.stdout), mode="r:"
+        ) as archive:
             for member in archive.getmembers():
-                if not member.isfile() or not member.name.endswith(".md"):
+                if not member.isfile():
                     continue
                 extracted = archive.extractfile(member)
-                if extracted is not None:
-                    projection[member.name] = extracted.read()
+                if extracted is None:
+                    continue
+                raw = extracted.read()
+                if member.name == "coordination/mailbox/kinds.txt":
+                    kinds_raw = raw
+                elif (
+                    member.name.startswith("coordination/mailbox/sent/")
+                    and member.name.endswith(".md")
+                ):
+                    events[member.name] = raw
     except tarfile.TarError as exc:
-        return {}, f"committed mailbox archive is invalid: {exc}"
-    return projection, None
+        return None, f"committed mailbox archive is invalid: {exc}"
+    if kinds_raw is None:
+        return None, "committed mailbox kind registry is absent"
+    try:
+        kinds = frozenset(kinds_raw.decode("utf-8").splitlines())
+    except UnicodeDecodeError:
+        return None, "committed mailbox kind registry is not UTF-8"
+    return CommittedMailboxProjection(events, introductions, kinds), None
+
+
+def _immutable_event(
+    projection: CommittedMailboxProjection,
+    path: str,
+) -> tuple[str | None, str | None]:
+    raw = projection.events.get(path)
+    introduction = projection.introductions.get(path)
+    if raw is None or introduction is None:
+        return None, f"committed mailbox event lacks an introduction: {path}"
+    commit, introduced_blob = introduction
+    if _git_blob_oid(raw) != introduced_blob:
+        return None, f"immutable mailbox event changed after introduction: {path}"
+    return commit, None
+
+
+def _single_field(raw: bytes, prefix: str) -> str | None:
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return None
+    values = [line.removeprefix(prefix) for line in lines if line.startswith(prefix)]
+    return values[0] if len(values) == 1 else None
 
 
 def inspect_verify_review_state(
@@ -338,48 +418,53 @@ def inspect_verify_review_state(
     """Index pending requests and active failed verdicts from committed mail."""
 
     root = Path(repo_root).resolve()
-    coordination = Path(coord_root) if coord_root is not None else root / "coordination"
-    sent = coordination / "mailbox" / "sent"
-    if not sent.is_dir():
+    if not (root / ".git").exists():
         return VerifyReviewState(pending=(), failed=())
-    if not any(
-        path.name.endswith(("-verify-request.md", "-verification-report.md"))
-        for path in sent.iterdir()
-    ):
-        return VerifyReviewState(pending=(), failed=())
-
     projection, projection_problem = _committed_mailbox_projection(root)
-    if projection_problem is not None:
+    if projection_problem is not None or projection is None:
         return VerifyReviewState(
-            pending=(), failed=(), problem=projection_problem
+            pending=(),
+            failed=(),
+            problem=projection_problem or "committed mailbox projection unavailable",
         )
-    introductions = _introduction_commits(root)
-    requests: list[CurrentVerifyRequest] = []
-    parsed_requests: dict[str, compact_pair_loop.VerifyRequest] = {}
-    for path, raw in sorted(projection.items()):
+
+    newest_paths: dict[str, str] = {}
+    for path in projection.events:
         name = Path(path).name
-        if not name.endswith(
-            ("-to-operator-verify-request.md", "-to-operator2-verify-request.md")
-        ):
-            continue
-        commit = introductions.get(path)
-        recipient = name.split("-to-", 1)[1].split(
-            "-verify-request.md", 1
-        )[0]
+        for operator in ("operator", "operator2"):
+            if name.endswith(f"-to-{operator}-verify-request.md"):
+                previous = newest_paths.get(operator)
+                if previous is None or path > previous:
+                    newest_paths[operator] = path
+
+    requests: dict[str, CurrentVerifyRequest] = {}
+    parsed_requests: dict[str, compact_pair_loop.VerifyRequest] = {}
+    for recipient, path in sorted(newest_paths.items()):
+        raw = projection.events[path]
+        commit, immutable_problem = _immutable_event(projection, path)
+        if immutable_problem is not None:
+            return VerifyReviewState(pending=(), failed=(), problem=immutable_problem)
         problem: str | None = None
         request = None
         try:
-            mailbox_writer.validate_event_envelope_bytes(root, raw, path)
+            mailbox_writer.validate_event_envelope_bytes(
+                root, raw, path, kinds=projection.kinds
+            )
             if commit is None:
                 raise mailbox_writer.MailboxWriterError(
                     "request is not introduced by a committed revision"
                 )
             request = compact_pair_loop.parse_verify_request_committed_bytes(
-                root, path, commit, raw
+                root, path, commit, raw, allow_frozen_legacy=False
             )
             if request.assigned_operator != recipient:
                 raise mailbox_writer.MailboxWriterError(
                     "request recipient does not match assigned Operator"
+                )
+            range_violations = compact_pair_loop.validate_request_range(root, request)
+            if range_violations:
+                raise compact_pair_loop.CompactPairError(
+                    "; ".join(range_violations)
                 )
         except (
             mailbox_writer.MailboxWriterError,
@@ -405,21 +490,27 @@ def inspect_verify_review_state(
             problem=problem,
             grandfathered=grandfathered,
         )
-        requests.append(current)
+        requests[recipient] = current
         if request is not None and commit is not None and problem is None:
             parsed_requests[f"{path}@{commit}"] = request
 
-    valid_reports: list[
-        tuple[str, str, compact_pair_loop.VerificationReport]
-    ] = []
-    for path, raw in sorted(projection.items()):
+    parsed_reports: dict[
+        str, tuple[str, str, compact_pair_loop.VerificationReport]
+    ] = {}
+    for path, raw in sorted(projection.events.items()):
         if not path.endswith("-verification-report.md"):
             continue
-        commit = introductions.get(path)
-        if commit is None:
+        request_ref = _single_field(raw, "Verification request: ")
+        request = parsed_requests.get(request_ref or "")
+        if request is None:
             continue
+        commit, immutable_problem = _immutable_event(projection, path)
+        if immutable_problem is not None:
+            return VerifyReviewState(pending=(), failed=(), problem=immutable_problem)
         try:
-            mailbox_writer.validate_event_envelope_bytes(root, raw, path)
+            mailbox_writer.validate_event_envelope_bytes(
+                root, raw, path, kinds=projection.kinds
+            )
             report = compact_pair_loop.parse_verification_report_committed_bytes(
                 root, path, raw
             )
@@ -430,15 +521,24 @@ def inspect_verify_review_state(
             UnicodeError,
         ):
             continue
-        request = parsed_requests.get(
-            f"{report.request_path}@{report.request_commit}"
-        )
-        if request is None:
+        if compact_pair_loop.validate_report_binding(report, request):
             continue
-        if compact_pair_loop.validate_report_structure_against_request(
-            root, report, request
-        ):
-            continue
+        if commit is not None:
+            parsed_reports[f"{path}@{commit}"] = (path, commit, report)
+
+    valid_reports: list[
+        tuple[str, str, compact_pair_loop.VerificationReport]
+    ] = []
+    for path, commit, report in parsed_reports.values():
+        if report.supersedes is not None:
+            target_ref = f"{report.supersedes[0]}@{report.supersedes[1]}"
+            target = parsed_reports.get(target_ref)
+            if target is None:
+                continue
+            if compact_pair_loop.supersession_report_violations(
+                report, target[2]
+            ):
+                continue
         valid_reports.append((path, commit, report))
 
     superseded_reports = {
@@ -447,12 +547,6 @@ def inspect_verify_review_state(
         if report.supersedes is not None
         for superseded_path, superseded_commit in (report.supersedes,)
     }
-    newest_requests: dict[str, CurrentVerifyRequest] = {}
-    for request in requests:
-        previous = newest_requests.get(request.assigned_operator)
-        if previous is None or request.path > previous.path:
-            newest_requests[request.assigned_operator] = request
-
     pending: list[CurrentVerifyRequest] = []
     failed: list[FailedVerifyRequest] = []
     active_reports_by_request: dict[
@@ -465,14 +559,15 @@ def inspect_verify_review_state(
         active_reports_by_request.setdefault(request_ref, []).append(
             (path, commit, report)
         )
-    for operator, request in newest_requests.items():
+    for operator, request in requests.items():
         request_ref = f"{request.path}@{request.commit}" if request.commit else None
         reports = active_reports_by_request.get(request_ref or "", [])
         if not reports:
             pending.append(request)
             continue
-        path, commit, report = max(reports, key=lambda item: item[0])
-        if report.verdict == "FAIL":
+        active_failures = [item for item in reports if item[2].verdict == "FAIL"]
+        if active_failures:
+            path, commit, report = max(active_failures, key=lambda item: item[0])
             failed.append(FailedVerifyRequest(
                 request_path=report.request_path,
                 request_commit=report.request_commit,

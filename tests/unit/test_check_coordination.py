@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import subprocess
 
+import pytest
+
 import check_coordination as cc
 import status
 
@@ -265,6 +267,7 @@ def test_review_projection_failure_is_not_an_empty_pending_queue(
     tmp_path: Path, monkeypatch
 ) -> None:
     coord = _seed_coordination(tmp_path)
+    _git(tmp_path, "init", "-q")
     _write_event(
         coord,
         "2026-07-25T07-00-00Z-director-to-operator-verify-request.md",
@@ -273,7 +276,7 @@ def test_review_projection_failure_is_not_an_empty_pending_queue(
     monkeypatch.setattr(
         cc,
         "_committed_mailbox_projection",
-        lambda _root: ({}, "projection unavailable"),
+        lambda _root: (None, "projection unavailable"),
     )
 
     state = cc.inspect_verify_review_state(tmp_path, coord)
@@ -307,6 +310,9 @@ def test_coordinator_cursor_files_are_not_required_or_actionable(
 
 def test_new_invalid_current_verify_request_is_fatal(tmp_path: Path) -> None:
     coord = _seed_coordination(tmp_path)
+    (coord / "mailbox/kinds.txt").write_text(
+        "verify-request\n", encoding="utf-8"
+    )
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "config", "user.name", "Coord Test")
     _git(tmp_path, "config", "user.email", "coord@example.invalid")
@@ -406,6 +412,62 @@ def test_valid_fail_is_terminal_but_surfaces_remediation_blocker(
     ]
 
 
+def test_same_request_go_without_supersedes_leaves_fail_active(
+    tmp_path: Path,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    _commit_report(
+        root,
+        base,
+        head,
+        request_path,
+        request_commit,
+        verdict="GO",
+        timestamp="2026-07-25T07-20-00Z",
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.pending == ()
+    assert [(item.report_path, item.report_commit) for item in state.failed] == [
+        (fail_path, fail_commit)
+    ]
+
+
+def test_unrelated_request_go_cannot_supersede_current_fail(
+    tmp_path: Path,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    older_path, older_commit = _commit_request(
+        root, base, head, timestamp="2026-07-25T06-00-00Z"
+    )
+    current_path, current_commit = _commit_request(root, base, head)
+    fail_path, fail_commit = _commit_report(
+        root, base, head, current_path, current_commit, verdict="FAIL"
+    )
+    _commit_report(
+        root,
+        base,
+        head,
+        older_path,
+        older_commit,
+        verdict="GO",
+        timestamp="2026-07-25T07-20-00Z",
+        supersedes=f"{fail_path}@{fail_commit}",
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.pending == ()
+    assert [(item.report_path, item.report_commit) for item in state.failed] == [
+        (fail_path, fail_commit)
+    ]
+
+
 def test_malformed_or_mismatched_report_does_not_clear_pending(
     tmp_path: Path,
 ) -> None:
@@ -467,8 +529,64 @@ def test_malformed_report_does_not_clear_pending(tmp_path: Path) -> None:
     assert state.failed == ()
 
 
-def test_superseded_terminal_request_stays_complete_and_go_clears_fail(
-    tmp_path: Path,
+def test_modified_terminal_event_fails_immutable_projection(tmp_path: Path) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    _commit_report(
+        root, base, head, request_path, request_commit, verdict="GO"
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+    issues = cc._check_current_verify_requests(root, coord, state)
+
+    assert state.problem is not None
+    assert "immutable" in state.problem
+    assert [(issue.kind, issue.severity) for issue in issues] == [
+        ("review_projection_unavailable", "FATAL")
+    ]
+
+
+def test_dirty_worktree_deletion_does_not_hide_committed_fail(tmp_path: Path) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    report_path, report_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    (root / request_path).unlink()
+    (root / report_path).unlink()
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is None
+    assert state.pending == ()
+    assert [(item.report_path, item.report_commit) for item in state.failed] == [
+        (report_path, report_commit)
+    ]
+
+
+def test_nonexistent_reviewed_range_does_not_clear_pending(tmp_path: Path) -> None:
+    root, coord, _base, _head = _review_repo(tmp_path)
+    base, head = "0" * 40, "f" * 40
+    request_path, request_commit = _commit_request(root, base, head)
+    _commit_report(
+        root, base, head, request_path, request_commit, verdict="GO"
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.failed == ()
+    assert len(state.pending) == 1
+    assert state.pending[0].path == request_path
+    assert state.pending[0].valid is False
+    assert state.pending[0].problem
+
+
+@pytest.mark.parametrize("verdict", ("GO", "NITS"))
+def test_valid_same_request_superseding_report_clears_fail(
+    tmp_path: Path, verdict: str,
 ) -> None:
     root, coord, base, head = _review_repo(tmp_path)
     request_path, request_commit = _commit_request(root, base, head)
@@ -481,7 +599,7 @@ def test_superseded_terminal_request_stays_complete_and_go_clears_fail(
         head,
         request_path,
         request_commit,
-        verdict="GO",
+        verdict=verdict,
         timestamp="2026-07-25T07-20-00Z",
         supersedes=f"{fail_path}@{fail_commit}",
     )
@@ -490,6 +608,48 @@ def test_superseded_terminal_request_stays_complete_and_go_clears_fail(
 
     assert state.pending == ()
     assert state.failed == ()
+
+
+def test_review_projection_uses_bounded_git_processes(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    current_path, current_commit = _commit_request(root, base, head)
+    template = (root / current_path).read_text(encoding="utf-8")
+    unrelated: list[str] = []
+    for minute in range(40):
+        stamp = f"2026-07-24T06-{minute:02d}-00Z"
+        when = f"2026-07-24T06:{minute:02d}:00Z"
+        path = (
+            "coordination/mailbox/sent/"
+            f"{stamp}-director-to-operator-verify-request.md"
+        )
+        (root / path).write_text(
+            template.replace(
+                "**When:** 2026-07-25T07:00:00Z",
+                f"**When:** {when}",
+            ),
+            encoding="utf-8",
+        )
+        unrelated.append(path)
+    _git(root, "add", *unrelated)
+    _git(root, "commit", "-q", "-m", "unrelated old requests")
+
+    real_run = subprocess.run
+    calls = 0
+
+    def counted_run(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(cc.subprocess, "run", counted_run)
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert [(item.path, item.commit) for item in state.pending] == [
+        (current_path, current_commit)
+    ]
+    assert calls <= 12
 
 
 def test_live_snapshot_surfaces_real_failed_review_not_false_pending(

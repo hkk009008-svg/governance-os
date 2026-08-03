@@ -510,6 +510,8 @@ def parse_verify_request_committed_bytes(
     request_path: str | os.PathLike[str],
     trigger_commit: str,
     raw: bytes,
+    *,
+    allow_frozen_legacy: bool = True,
 ) -> VerifyRequest:
     """Parse bytes from a caller's committed mailbox projection."""
 
@@ -522,14 +524,11 @@ def parse_verify_request_committed_bytes(
         path,
         raw,
         trigger_commit=trigger_commit,
-        allow_frozen_legacy=True,
+        allow_frozen_legacy=allow_frozen_legacy,
     )
 
 
-def parse_verify_request(
-    root: Path, request_path: str | os.PathLike[str], trigger_commit: str
-) -> VerifyRequest:
-    request = parse_verify_request_structure(root, request_path, trigger_commit)
+def _validate_request_range(root: Path, request: VerifyRequest) -> None:
     root = root.resolve()
     reviewed_root = _reviewed_root(root, request.reviewed_repository)
     head = _full_commit(reviewed_root, request.reviewed_head, "Reviewed head")
@@ -541,6 +540,23 @@ def parse_verify_request(
         raise CompactPairError("request trigger must be strictly after Reviewed head")
     if base == head or not _is_ancestor(reviewed_root, base, head):
         raise CompactPairError("Reviewed base must be a strict ancestor of Reviewed head")
+
+
+def validate_request_range(root: Path, request: VerifyRequest) -> list[str]:
+    """Validate one already parsed request's repository and exact range."""
+
+    try:
+        _validate_request_range(root, request)
+    except CompactPairError as exc:
+        return [str(exc)]
+    return []
+
+
+def parse_verify_request(
+    root: Path, request_path: str | os.PathLike[str], trigger_commit: str
+) -> VerifyRequest:
+    request = parse_verify_request_structure(root, request_path, trigger_commit)
+    _validate_request_range(root, request)
     return request
 
 
@@ -947,6 +963,17 @@ def validate_report_structure_against_request(
 ) -> list[str]:
     """Validate a report against an already parsed exact request binding."""
 
+    violations = validate_report_binding(report, request)
+    violations += _supersedes_violations(root, report)
+    return violations
+
+
+def validate_report_binding(
+    report: VerificationReport,
+    request: VerifyRequest,
+) -> list[str]:
+    """Validate report fields against an already parsed request, without Git."""
+
     violations: list[str] = []
     if (
         report.request_path != request.path
@@ -954,7 +981,23 @@ def validate_report_structure_against_request(
     ):
         violations.append("report Verification request does not match indexed request")
     violations += _report_structure_violations(report, request)
-    violations += _supersedes_violations(root, report)
+    return violations
+
+
+def supersession_report_violations(
+    report: VerificationReport,
+    superseded: VerificationReport,
+) -> list[str]:
+    """Validate the pure report-to-report portion of a Supersedes binding."""
+
+    violations: list[str] = []
+    if superseded.reviewer_seat != report.reviewer_seat:
+        violations.append("a seat supersedes only its own verdicts")
+    if (
+        superseded.request_path != report.request_path
+        or superseded.request_commit != report.request_commit
+    ):
+        violations.append("a report supersedes only a verdict for the same exact request")
     return violations
 
 
@@ -1152,8 +1195,9 @@ def _supersedes_violations(root: Path, report: VerificationReport) -> list[str]:
         superseded = _parse_verification_report_bytes(
             root, path, _git(root, "show", f"{resolved}:{path}")
         )
-        if superseded.reviewer_seat != report.reviewer_seat:
-            raise CompactPairError("a seat supersedes only its own verdicts")
+        report_violations = supersession_report_violations(report, superseded)
+        if report_violations:
+            raise CompactPairError("; ".join(report_violations))
     except CompactPairError as exc:
         return [f"supersession binding invalid: {exc}"]
     return []

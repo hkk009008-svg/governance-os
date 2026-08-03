@@ -13,7 +13,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
+from typing import Collection, Iterator
 
 import hashlib
 
@@ -112,6 +112,8 @@ def validate_event_envelope_bytes(
     root: Path,
     raw: bytes,
     relative: str,
+    *,
+    kinds: Collection[str] | None = None,
 ) -> re.Match[str]:
     """Validate canonical event bytes without materializing a scratch file."""
 
@@ -129,9 +131,10 @@ def validate_event_envelope_bytes(
         raise MailboxWriterError("send-event candidate is not UTF-8") from exc
     sender, recipient = match.group("sender"), match.group("recipient")
     stamp = _colon(match.group("stamp"))
-    kinds = (root / "coordination/mailbox/kinds.txt").read_text(
-        encoding="utf-8"
-    ).splitlines()
+    if kinds is None:
+        kinds = (root / "coordination/mailbox/kinds.txt").read_text(
+            encoding="utf-8"
+        ).splitlines()
     h1_lines = [line for line in lines if line.startswith("# ")]
     envelope_lines = [
         line

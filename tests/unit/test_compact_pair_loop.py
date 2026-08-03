@@ -1972,3 +1972,37 @@ def test_supersession_is_seat_scoped(tmp_path: Path) -> None:
     assert any("only its own verdicts" in violation for violation in violations)
     # Non-vacuity: same-seat supersession carries no such violation (the
     # round-trip test asserts the full clean pass on this fixture shape).
+
+
+def test_supersession_requires_same_exact_request_binding(tmp_path: Path) -> None:
+    root, base, head, trigger = _repo(tmp_path, mint_finding_ref=True)
+    minted = _minted_repo_ref(root)
+    orphan_path, orphan_commit = _commit_report(root, base, head, trigger)
+    second_request_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-18T08-05-00Z-director-to-operator-verify-request.md"
+    )
+    (root / second_request_path).write_text(
+        _request_text(base, head, finding_refs=(minted,)), encoding="utf-8"
+    )
+    _git(root, "add", second_request_path)
+    _git(root, "commit", "-q", "-m", "coord(pair): unrelated request")
+    second_trigger = _git(root, "rev-parse", "HEAD")
+    candidate = _write_report(
+        root,
+        base,
+        head,
+        second_trigger,
+        report_path=SECOND_REPORT_PATH,
+        request_path=second_request_path,
+        supersedes=f"{orphan_path}@{orphan_commit}",
+        finding_refs=(minted,),
+        dispositions=((minted, "addressed"),),
+    )
+    report = pair.parse_verification_report_candidate(
+        root, str(candidate), SECOND_REPORT_PATH
+    )
+
+    violations = pair.validate_report_structure(root, report)
+
+    assert any("same exact request" in violation for violation in violations)
