@@ -193,6 +193,10 @@ def test_load_committed_event_ref_uses_exact_committed_fixed_writer_blob(tmp_pat
         "docs/not-mail.md@" + "0" * 40,
         "coordination/mailbox/sent/event.md@abcdef0",
         "coordination/mailbox/sent/../event.md@" + "0" * 40,
+        "./coordination/mailbox/sent/event.md@" + "0" * 40,
+        "coordination//mailbox/sent/event.md@" + "0" * 40,
+        "coordination\\mailbox\\sent\\event.md@" + "0" * 40,
+        "/coordination/mailbox/sent/event.md@" + "0" * 40,
     ],
 )
 def test_load_committed_event_ref_rejects_missing_nonmailbox_or_nonfull_refs(

@@ -874,10 +874,16 @@ def _parse_introduced_event(
 ) -> protocol_mailbox.CommittedEventRef:
     commit, _blob = projection.introductions[path]
     raw = projection.introduction_events[path]
+    return _parse_projected_event(path, commit, raw, context="introduced")
+
+
+def _parse_projected_event(
+    path: str, commit: str, raw: bytes, *, context: str
+) -> protocol_mailbox.CommittedEventRef:
     try:
         text = raw.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
-        raise ValueError("introduced event is not UTF-8") from exc
+        raise ValueError(f"{context} event is not UTF-8") from exc
     return protocol_mailbox.parse_committed_event_text(f"{path}@{commit}", text)
 
 
@@ -953,8 +959,18 @@ def _check_committed_learning_history(
     enforced_candidates = all_introduced_candidates - extinct_pre_cutover
     for path in sorted(enforced_candidates):
         try:
+            event = (
+                _parse_projected_event(
+                    path,
+                    _LEARNING_HISTORY_CUTOVER_COMMIT,
+                    projection.learning_cutover_events[path],
+                    context="cutover",
+                )
+                if path in cutover_paths
+                else _parse_introduced_event(projection, path)
+            )
             statement = protocol_mailbox.parse_learning_candidate_statement(
-                _parse_introduced_event(projection, path)
+                event
             )
         except ValueError as exc:
             if path in new_candidates and path in immutable_paths:

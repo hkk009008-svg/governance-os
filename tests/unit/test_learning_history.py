@@ -449,6 +449,86 @@ def test_cutover_present_candidate_id_still_blocks_reissue(
     assert any("duplicate Candidate ID" in message for message in _fatal_messages(root))
 
 
+def test_cutover_modified_candidate_bytes_still_block_duplicate_reissue(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, _initial_cutover = _repo(tmp_path, monkeypatch)
+    source = _source_ref(root)
+    old_path, _old_fields = _candidate(root, source)
+    _commit(root, "candidate A introduction")
+    fields_b = _candidate_fields(source, Statement="Candidate B at cutover.")
+    (root / old_path).write_text(
+        _event_text(
+            "operator",
+            "director",
+            "2026-08-03T00-00-02Z",
+            _candidate_body(fields_b),
+        ),
+        encoding="utf-8",
+    )
+    cutover = _commit(root, "reviewed cutover with candidate B bytes")
+    monkeypatch.setattr(cc, "_LEARNING_HISTORY_CUTOVER_COMMIT", cutover)
+
+    new_path = _write_event(
+        root,
+        sender="operator",
+        recipient="director",
+        kind="learning-candidate",
+        stamp="2026-08-03T00-00-04Z",
+        body=_candidate_body(fields_b),
+    )
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="duplicates"):
+        mailbox_writer.validate_event_candidate_bytes(
+            root, (root / new_path).read_bytes(), new_path
+        )
+    _commit(root, "bypass writer with duplicate candidate B ID")
+
+    assert any("duplicate Candidate ID" in message for message in _fatal_messages(root))
+
+
+@pytest.mark.parametrize(
+    "target",
+    (
+        "",
+        ".",
+        "./README.md",
+        "dir/./README.md",
+        "dir/../README.md",
+        "dir//README.md",
+        "README.md/",
+        "/README.md",
+        "~user/README.md",
+        "dir\\README.md",
+    ),
+)
+def test_noncanonical_target_is_rejected_by_parser_writer_and_replay(
+    tmp_path: Path, monkeypatch, target: str
+) -> None:
+    root, _cutover = _repo(tmp_path, monkeypatch)
+    source = _source_ref(root)
+    base_hash = "sha256:" + hashlib.sha256(
+        (root / "README.md").read_bytes()
+    ).hexdigest()
+    path, _fields = _candidate(
+        root,
+        source,
+        Target=target,
+        **{"Target base hash": base_hash},
+    )
+    raw = (root / path).read_bytes()
+    event = protocol_mailbox.parse_committed_event_text(
+        f"{path}@{'0' * 40}", raw.decode("utf-8")
+    )
+
+    with pytest.raises(ValueError, match="Target"):
+        protocol_mailbox.parse_learning_candidate_statement(event)
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="Target"):
+        mailbox_writer.validate_event_candidate_bytes(root, raw, path)
+    _commit(root, "bypass writer with noncanonical target")
+
+    assert any("Target" in message for message in _fatal_messages(root))
+
+
 @pytest.mark.parametrize("change", ["modified", "deleted"])
 def test_cutover_baseline_disposition_bytes_are_immutable(
     tmp_path: Path, monkeypatch, change: str

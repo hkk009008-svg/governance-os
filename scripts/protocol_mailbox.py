@@ -765,8 +765,15 @@ def parse_learning_candidate_statement(
     target = _optional_single_body_field(event, "Target")
     if target is not None:
         pure = PurePosixPath(target)
-        if pure.is_absolute() or ".." in pure.parts or target.startswith("~"):
-            raise ValueError("Target must be a repository-relative path")
+        if (
+            pure.is_absolute()
+            or not pure.parts
+            or any(part in {"", ".", ".."} for part in pure.parts)
+            or pure.as_posix() != target
+            or "\\" in target
+            or target.startswith("~")
+        ):
+            raise ValueError("Target must be a canonical repository-relative POSIX path")
     target_base_hash = _optional_single_body_field(event, "Target base hash")
     if (target is None) != (target_base_hash is None):
         raise ValueError("Target and Target base hash are present together")
