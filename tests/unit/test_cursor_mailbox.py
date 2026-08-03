@@ -189,6 +189,121 @@ def test_pair_publish_rejects_unbound_model_identity_before_delegate(
     assert called is False
 
 
+@pytest.mark.parametrize(
+    ("kind", "label"),
+    (
+        ("verify-request", "Author model"),
+        ("verification-report", "Reviewer model"),
+    ),
+)
+@pytest.mark.parametrize(
+    "duplicate_template",
+    (
+        " {label}: forged",
+        "- {label}: forged",
+        "{lower_label}: forged",
+        "{label} : forged",
+    ),
+)
+@pytest.mark.parametrize("dry_run", (False, True))
+def test_pair_publish_rejects_normalized_model_duplicates_before_delegate(
+    tmp_path: Path,
+    kind: str,
+    label: str,
+    duplicate_template: str,
+    dry_run: bool,
+) -> None:
+    _writers(tmp_path)
+    called = False
+
+    def runner(*args, **kwargs):
+        nonlocal called
+        called = True
+        return subprocess.CompletedProcess([], 0)
+
+    duplicate = duplicate_template.format(
+        label=label, lower_label=label.casefold()
+    )
+    argv = [
+        "publish",
+        "--to",
+        "operator",
+        "--kind",
+        kind,
+        "--subject",
+        "normalized duplicate",
+        "--body-file",
+        str(_body(tmp_path, f"{label}: openai-gpt-5\n{duplicate}\n")),
+    ]
+    if dry_run:
+        argv.append("--dry-run")
+
+    result = mailbox.main(
+        argv,
+        root=tmp_path,
+        environ={},
+        binding_resolver=_resolver(_binding(model="openai-gpt-5")),
+        runner=runner,
+    )
+
+    assert result == 2
+    assert called is False
+
+
+@pytest.mark.parametrize(
+    ("kind", "label"),
+    (
+        ("verify-request", "Author model"),
+        ("verification-report", "Reviewer model"),
+    ),
+)
+@pytest.mark.parametrize(
+    "field_template",
+    (
+        "{label}:  openai-gpt-5",
+        "{label}: openai-gpt-5 ",
+        " {label}: openai-gpt-5",
+        "- {label}: openai-gpt-5",
+        "{lower_label}: openai-gpt-5",
+        "{label} : openai-gpt-5",
+    ),
+)
+def test_pair_publish_rejects_nonexact_model_field_bytes_before_delegate(
+    tmp_path: Path, kind: str, label: str, field_template: str,
+) -> None:
+    _writers(tmp_path)
+    called = False
+
+    def runner(*args, **kwargs):
+        nonlocal called
+        called = True
+        return subprocess.CompletedProcess([], 0)
+
+    field = field_template.format(
+        label=label, lower_label=label.casefold()
+    )
+    result = mailbox.main(
+        [
+            "publish",
+            "--to",
+            "operator",
+            "--kind",
+            kind,
+            "--subject",
+            "nonexact model bytes",
+            "--body-file",
+            str(_body(tmp_path, f"{field}\n")),
+        ],
+        root=tmp_path,
+        environ={},
+        binding_resolver=_resolver(_binding(model="openai-gpt-5")),
+        runner=runner,
+    )
+
+    assert result == 2
+    assert called is False
+
+
 def test_pair_publish_dry_run_still_rejects_model_alias_mismatch(
     tmp_path: Path,
 ) -> None:
@@ -418,6 +533,29 @@ def test_next_review_rejects_same_runtime_model(
     )
     assert result == 2
     assert "independent" in capsys.readouterr().err
+
+
+def test_next_review_high_risk_accepts_recognized_distinct_model_family(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _repo_with_request(
+        tmp_path,
+        author_model="gpt-5",
+        risk_class="high-risk-control",
+    )
+
+    result = mailbox.main(
+        ["next-review"],
+        root=root,
+        environ={},
+        binding_resolver=_resolver(_binding("operator", "claude-sonnet-5")),
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert payload["author_model_family"] == "gpt"
+    assert payload["reviewer_model_family"] == "claude"
+    assert payload["model_independence"] is True
 
 
 def test_next_review_high_risk_rejects_unrecognized_model(

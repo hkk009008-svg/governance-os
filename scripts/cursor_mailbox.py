@@ -61,17 +61,26 @@ def build_publish_argv(
 def validate_publish_model_binding(kind: str, body: str, model_id: str) -> None:
     """Bind Compact Pair model identity to the registered Cursor session."""
 
-    field = {
-        "verify-request": "Author model: ",
-        "verification-report": "Reviewer model: ",
+    label = {
+        "verify-request": "Author model",
+        "verification-report": "Reviewer model",
     }.get(kind)
-    if field is None:
+    if label is None:
         return
-    values = [line.removeprefix(field) for line in body.splitlines() if line.startswith(field)]
-    label = field.rstrip(": ")
-    if len(values) != 1:
-        raise MailboxBindingError(f"{label} must appear exactly once")
-    if values[0] != model_id:
+    occurrences = compact_pair_loop.normalized_field_occurrences(
+        body.splitlines(), label
+    )
+    if len(occurrences) != 1:
+        state = "missing" if not occurrences else "duplicate"
+        raise MailboxBindingError(f"{state} {label}")
+    prefix = f"{label}: "
+    line = occurrences[0]
+    if not line.startswith(prefix):
+        raise MailboxBindingError(f"invalid {label}")
+    value = line[len(prefix) :]
+    if not value or value != value.strip():
+        raise MailboxBindingError(f"invalid {label}")
+    if value != model_id:
         raise MailboxBindingError(
             f"{label} must exactly match the registered app model_id"
         )

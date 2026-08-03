@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
@@ -154,24 +153,40 @@ MODEL_PROVIDER_FAMILIES = {
     "google-": "gemini",
     "xai-": "grok",
 }
-_MODEL_TOKEN_RE = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*$")
-_MODEL_VERSION = r"[0-9]+[a-z]?(?:[.-][0-9]+[a-z]?)*"
-_CLAUDE_MODEL_RE = re.compile(
-    rf"^claude-(?:opus|sonnet|haiku|fable)-{_MODEL_VERSION}$"
-)
-_GPT_MODEL_RE = re.compile(
-    rf"^(?:gpt|chatgpt)-{_MODEL_VERSION}"
-    r"(?:-(?:codex|sol|terra|mini|nano|turbo|preview|latest))*$"
-)
-_GPT_OSS_MODEL_RE = re.compile(r"^gpt-oss(?:-[0-9]+b)?$")
-_OPENAI_REASONING_MODEL_RE = re.compile(r"^o[134](?:-(?:mini|pro|preview))?$")
-_GEMINI_MODEL_RE = re.compile(
-    rf"^gemini-{_MODEL_VERSION}"
-    r"(?:-(?:pro|flash|lite|ultra|nano|exp|preview|high|low))*$"
-)
-_GROK_MODEL_RE = re.compile(
-    rf"^grok-{_MODEL_VERSION}(?:-(?:mini|fast|beta|preview))?$"
-)
+MODEL_ID_REGISTRY = {
+    "claude-fable-5": "claude",
+    "claude-opus-5": "claude",
+    "claude-sonnet-5": "claude",
+    "claude-sonnet-4-6": "claude",
+    "claude-opus-4-6-thinking": "claude",
+    "gpt-5": "gpt",
+    "gpt-5-codex": "gpt",
+    "gpt-5.6-sol": "gpt",
+    "gpt-5.6-terra": "gpt",
+    "chatgpt-4o": "gpt",
+    "o1": "gpt",
+    "o3": "gpt",
+    "o3-mini": "gpt",
+    "o4": "gpt",
+    "gpt-oss-120b": "gpt",
+    "gpt-oss-120b-medium": "gpt",
+    "gemini-3.6": "gemini",
+    "gemini-3.6-flash": "gemini",
+    "gemini-3.6-flash-high": "gemini",
+    "gemini-3.6-flash-medium": "gemini",
+    "gemini-3.6-flash-low": "gemini",
+    "gemini-3.5-flash-high": "gemini",
+    "gemini-3.5-flash-medium": "gemini",
+    "gemini-3.5-flash-low": "gemini",
+    "gemini-3.1-pro-high": "gemini",
+    "gemini-3.1-pro-low": "gemini",
+    "grok-4": "grok",
+    "grok-4.5": "grok",
+}
+MODEL_DISPLAY_ALIASES = {
+    "GPT-5 Codex": "gpt-5-codex",
+    "Gemini 3.1 Pro (High)": "gemini-3.1-pro-high",
+}
 
 
 def model_family(model_id: str) -> str | None:
@@ -183,12 +198,13 @@ def model_family(model_id: str) -> str | None:
     inequality accepts them. This normalizer exists so the acceptance rule can
     ask the question it actually means.
 
-    Only closed family grammars are recognized. Unknown or malformed labels
-    return ``None`` so they cannot buy independence from any other label.
+    Only the closed model-ID registry is recognized. Unknown or malformed
+    labels return ``None`` so they cannot buy independence from any other
+    label; adding a future model is an explicit policy update.
     """
-    token = model_id.strip().casefold()
-    if not token:
+    if not model_id or model_id != model_id.strip():
         return None
+    token = MODEL_DISPLAY_ALIASES.get(model_id, model_id.casefold())
     while True:
         original = token
         for prefix in MODEL_HARNESS_PREFIXES:
@@ -205,29 +221,8 @@ def model_family(model_id: str) -> str | None:
             token = token[len(prefix) :]
             break
 
-    if token.endswith(" (high)") and token.startswith("gemini "):
-        token = token.removesuffix(" (high)") + "-high"
-    elif "(" in token or ")" in token:
-        return None
-    token = token.replace(" ", "-")
-    if _MODEL_TOKEN_RE.fullmatch(token) is None:
-        return None
-
-    if token == "claude" or _CLAUDE_MODEL_RE.fullmatch(token):
-        family = "claude"
-    elif (
-        token == "gpt"
-        or token == "chatgpt"
-        or _GPT_MODEL_RE.fullmatch(token)
-        or _GPT_OSS_MODEL_RE.fullmatch(token)
-        or _OPENAI_REASONING_MODEL_RE.fullmatch(token)
-    ):
-        family = "gpt"
-    elif token == "gemini" or _GEMINI_MODEL_RE.fullmatch(token):
-        family = "gemini"
-    elif token == "grok" or _GROK_MODEL_RE.fullmatch(token):
-        family = "grok"
-    else:
+    family = MODEL_ID_REGISTRY.get(token)
+    if family is None:
         return None
     if provider_family is not None and provider_family != family:
         return None

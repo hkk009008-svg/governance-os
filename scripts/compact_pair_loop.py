@@ -240,7 +240,7 @@ def _decode(raw: bytes, label: str) -> str:
 
 
 def _one(lines: list[str], prefix: str, label: str) -> str:
-    occurrences = _normalized_field_occurrences(lines, label)
+    occurrences = normalized_field_occurrences(lines, label)
     if len(occurrences) != 1:
         state = "missing" if not occurrences else "duplicate"
         raise CompactPairError(f"{state} {label}")
@@ -1077,7 +1077,7 @@ def validate_report(root: Path, report: VerificationReport) -> list[str]:
 
 
 def _optional_one(lines: list[str], prefix: str, label: str) -> str | None:
-    occurrences = _normalized_field_occurrences(lines, label)
+    occurrences = normalized_field_occurrences(lines, label)
     if len(occurrences) > 1:
         raise CompactPairError(f"duplicate {label}")
     if not occurrences:
@@ -1148,7 +1148,9 @@ def _section_optional(lines: list[str], heading: str) -> list[str] | None:
     return _section(lines, heading)
 
 
-def _normalized_field_occurrences(lines: list[str], label: str) -> list[str]:
+def normalized_field_occurrences(lines: list[str], label: str) -> list[str]:
+    """Return every canonical or normalized-lookalike occurrence of a field."""
+
     words = r"\s+".join(re.escape(word) for word in label.split())
     pattern = re.compile(rf"^\s*(?:[-*+]\s+)?{words}\s*(?::.*)?\s*$", re.IGNORECASE)
     return [line for line in lines if pattern.fullmatch(line)]
