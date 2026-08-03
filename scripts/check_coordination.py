@@ -490,6 +490,7 @@ def _committed_mailbox_projection(
         "HEAD",
         "--",
         "coordination/mailbox/sent",
+        _ARCHIVE_HISTORY_EXCEPTIONS,
     )
     if history.returncode != 0:
         detail = history.stderr.decode("utf-8", errors="replace").strip()
@@ -517,7 +518,10 @@ def _committed_mailbox_projection(
             )
             continue
         if (
-            value.startswith("coordination/mailbox/sent/")
+            (
+                value.startswith("coordination/mailbox/sent/")
+                or value == _ARCHIVE_HISTORY_EXCEPTIONS
+            )
             and commit is not None
             and introduced_blob is not None
         ):
@@ -559,6 +563,17 @@ def _committed_mailbox_projection(
     archive_files, archive_problem = _parse_mailbox_archive(archive_result.stdout)
     if archive_problem is not None or archive_files is None:
         return None, archive_problem or "committed mailbox archive is unavailable"
+    exception_raw = archive_files.get(_ARCHIVE_HISTORY_EXCEPTIONS)
+    if exception_raw is None:
+        return None, "committed immutable-history exception manifest is absent"
+    exception_introduction = introductions.get(_ARCHIVE_HISTORY_EXCEPTIONS)
+    if exception_introduction is None:
+        return None, "immutable-history exception manifest lacks one introduction"
+    if _git_blob_oid(exception_raw) != exception_introduction[1]:
+        return None, (
+            "immutable-history exception manifest changed after introduction: "
+            + _ARCHIVE_HISTORY_EXCEPTIONS
+        )
     kinds_raw = archive_files.get(_ARCHIVE_KINDS_PATH)
     if kinds_raw is None:
         return None, "committed mailbox kind registry is absent"
@@ -577,9 +592,9 @@ def _committed_mailbox_projection(
         entry["path"]: entry["sha256"]
         for entry in baseline["reports"]
     }
-    exception_raw = archive_files.get(_ARCHIVE_HISTORY_EXCEPTIONS)
-    if exception_raw is None:
-        return None, "committed immutable-history exception manifest is absent"
+    # The frozen exception manifest below is the sole membership/digest
+    # authority. This older report baseline is only a fail-closed provenance
+    # cross-check and can never add or rewrite an accepted exception.
     history_exceptions, exception_problem = _parse_history_exceptions(exception_raw)
     if exception_problem is not None or history_exceptions is None:
         return None, exception_problem or "immutable-history exceptions are unavailable"

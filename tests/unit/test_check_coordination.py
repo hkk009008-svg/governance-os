@@ -13,7 +13,9 @@ import check_coordination as cc
 import status
 
 
-def _seed_coordination(tmp_path: Path) -> Path:
+def _seed_coordination(
+    tmp_path: Path, *, include_history_manifest: bool = True
+) -> Path:
     coord = tmp_path / "coordination"
     sent = coord / "mailbox" / "sent"
     seen = coord / "mailbox" / "seen"
@@ -29,12 +31,13 @@ def _seed_coordination(tmp_path: Path) -> Path:
         ),
         encoding="utf-8",
     )
-    (baselines / "immutable_review_history_exceptions.json").write_text(
-        json.dumps(
-            {"schema_version": "immutable-review-history-exceptions/v1", "entries": []}
-        ),
-        encoding="utf-8",
-    )
+    if include_history_manifest:
+        (baselines / "immutable_review_history_exceptions.json").write_text(
+            json.dumps(
+                {"schema_version": "immutable-review-history-exceptions/v1", "entries": []}
+            ),
+            encoding="utf-8",
+        )
     return coord
 
 
@@ -53,8 +56,12 @@ def _git(root: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
-def _review_repo(tmp_path: Path) -> tuple[Path, Path, str, str]:
-    coord = _seed_coordination(tmp_path)
+def _review_repo(
+    tmp_path: Path, *, include_history_manifest: bool = True
+) -> tuple[Path, Path, str, str]:
+    coord = _seed_coordination(
+        tmp_path, include_history_manifest=include_history_manifest
+    )
     (coord / "mailbox/kinds.txt").write_text(
         "verification-report\nverify-request\n", encoding="utf-8"
     )
@@ -934,10 +941,99 @@ def _commit_history_exception(
     return entry
 
 
+@pytest.mark.parametrize("mutation", ("delete", "rename", "change", "reintroduce"))
+def test_frozen_history_manifest_refuses_committed_lifecycle_mutation(
+    tmp_path: Path, mutation: str,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    _commit_request(root, base, head)
+    relative = "scripts/baselines/immutable_review_history_exceptions.json"
+    manifest = root / relative
+    original = manifest.read_bytes()
+    if mutation == "delete":
+        _git(root, "rm", "-q", relative)
+        _git(root, "commit", "-q", "-m", "delete history manifest")
+    elif mutation == "rename":
+        _git(root, "mv", relative, relative + ".moved")
+        _git(root, "commit", "-q", "-m", "rename history manifest")
+    elif mutation == "change":
+        manifest.write_bytes(original + b"\n")
+        _git(root, "add", relative)
+        _git(root, "commit", "-q", "-m", "mutate history manifest")
+    else:
+        _git(root, "rm", "-q", relative)
+        _git(root, "commit", "-q", "-m", "delete history manifest")
+        manifest.write_bytes(original)
+        _git(root, "add", relative)
+        _git(root, "commit", "-q", "-m", "reintroduce history manifest")
+
+    state = cc.inspect_verify_review_state(root, coord)
+    issues = cc._check_current_verify_requests(root, coord, state)
+
+    assert state.problem is not None
+    assert relative in state.problem
+    assert state.pending == ()
+    assert state.failed == ()
+    assert [(issue.kind, issue.severity) for issue in issues] == [
+        ("review_projection_unavailable", "FATAL")
+    ]
+
+
+def test_replace_ref_and_ambient_git_env_cannot_hide_manifest_mutation(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    root, coord, base, head = _review_repo(tmp_path)
+    _commit_request(root, base, head)
+    relative = "scripts/baselines/immutable_review_history_exceptions.json"
+    manifest = root / relative
+    introduced = manifest.read_bytes()
+    manifest.write_bytes(introduced + b"\n")
+    _git(root, "add", relative)
+    _git(root, "commit", "-q", "-m", "mutate history manifest")
+    mutated_head = _git(root, "rev-parse", "HEAD")
+
+    manifest.write_bytes(introduced)
+    _git(root, "add", relative)
+    replacement_tree = _git(root, "write-tree")
+    _git(root, "restore", "--staged", "--worktree", "--", relative)
+    replacement_commit = _git(
+        root,
+        "commit-tree",
+        replacement_tree,
+        "-p",
+        _git(root, "rev-parse", f"{mutated_head}^"),
+        "-m",
+        "replacement frozen manifest tree",
+    )
+    _git(root, "replace", mutated_head, replacement_commit)
+    assert _git(root, "show", f"HEAD:{relative}").encode() == introduced
+    for name, value in {
+        "GIT_DIR": "/missing/git-dir",
+        "GIT_WORK_TREE": "/missing/work-tree",
+        "GIT_OBJECT_DIRECTORY": "/missing/objects",
+        "GIT_REPLACE_REF_BASE": "refs/hostile/replace/",
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "core.repositoryformatversion",
+        "GIT_CONFIG_VALUE_0": "999",
+    }.items():
+        monkeypatch.setenv(name, value)
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem == (
+        "immutable-history exception manifest changed after introduction: "
+        + relative
+    )
+    assert state.pending == ()
+    assert state.failed == ()
+
+
 def test_exact_history_exception_surfaces_advisory_and_preserves_fail(
     tmp_path: Path,
 ) -> None:
-    root, coord, base, head = _review_repo(tmp_path)
+    root, coord, base, head = _review_repo(
+        tmp_path, include_history_manifest=False
+    )
     request_path, request_commit = _commit_request(root, base, head)
     report_path, report_commit = _commit_report(
         root, base, head, request_path, request_commit, verdict="FAIL"
@@ -966,11 +1062,137 @@ def test_exact_history_exception_surfaces_advisory_and_preserves_fail(
     ] == [("grandfathered_review_history", "ADVISORY")]
 
 
+def _rewrite_exception_and_companion_for_current_report(
+    root: Path,
+    entry: dict[str, str],
+) -> None:
+    report_path = entry["path"]
+    raw = (root / report_path).read_bytes()
+    entry["accepted_current_blob"] = _git(root, "hash-object", report_path)
+    entry["accepted_current_sha256"] = hashlib.sha256(raw).hexdigest()
+    baselines = root / "scripts/baselines"
+    (baselines / "lane_v_reports_pre_v3.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "lane-v-report-pre-v3-baseline/v1",
+                "reports": [
+                    {"path": report_path, "sha256": entry["accepted_current_sha256"]}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (baselines / "immutable_review_history_exceptions.json").write_text(
+        json.dumps(
+            {"schema_version": "immutable-review-history-exceptions/v1", "entries": [entry]}
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize("rewrite_manifest", (False, True))
+def test_frozen_exception_authority_refuses_event_and_companion_co_update(
+    tmp_path: Path, rewrite_manifest: bool,
+) -> None:
+    root, coord, base, head = _review_repo(
+        tmp_path, include_history_manifest=False
+    )
+    request_path, request_commit = _commit_request(root, base, head)
+    report_path, report_commit = _commit_report(
+        root, base, head, request_path, request_commit, verdict="FAIL"
+    )
+    report = root / report_path
+    report.write_text(
+        report.read_text(encoding="utf-8").replace("Remediation required.", "Repair recorded."),
+        encoding="utf-8",
+    )
+    _git(root, "add", report_path)
+    _git(root, "commit", "-q", "-m", "pre-enforcement report repair")
+    entry = _commit_history_exception(root, report_path, report_commit)
+
+    report.write_text(
+        report.read_text(encoding="utf-8")
+        .replace("# Operator → Director: FAIL", "# Operator → Director: GO")
+        .replace("VERDICT: FAIL", "VERDICT: GO"),
+        encoding="utf-8",
+    )
+    _git(root, "add", report_path)
+    if rewrite_manifest:
+        _rewrite_exception_and_companion_for_current_report(root, entry)
+        _git(root, "add", "scripts/baselines")
+    else:
+        lane = root / "scripts/baselines/lane_v_reports_pre_v3.json"
+        companion = json.loads(lane.read_text(encoding="utf-8"))
+        companion["reports"][0]["sha256"] = hashlib.sha256(
+            report.read_bytes()
+        ).hexdigest()
+        lane.write_text(json.dumps(companion), encoding="utf-8")
+        _git(root, "add", str(lane.relative_to(root)))
+    _git(root, "commit", "-q", "-m", "attempt authority co-update")
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert state.problem is not None
+    assert state.pending == ()
+    assert state.failed == ()
+
+
+def test_frozen_six_refuse_active_fail_go_plus_seventh_exception(
+    repo_root: Path, tmp_path: Path,
+) -> None:
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "--no-local", "-q", str(repo_root), str(clone))
+    _git(clone, "config", "user.name", "Coord Test")
+    _git(clone, "config", "user.email", "coord@example.invalid")
+    report_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-27T03-26-01Z-operator2-to-director2-verification-report.md"
+    )
+    report_commit = "e0fbefdb56af03b8c04b6df58245f7533a3d83c0"
+    report = clone / report_path
+    report.write_text(
+        report.read_text(encoding="utf-8")
+        .replace("VERDICT: FAIL", "VERDICT: GO")
+        .replace(": counter-evidence", ": addressed"),
+        encoding="utf-8",
+    )
+    _git(clone, "add", report_path)
+    raw = report.read_bytes()
+    manifest_path = clone / "scripts/baselines/immutable_review_history_exceptions.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["entries"].append(
+        _history_exception_entry(
+            report_path,
+            report_commit,
+            _git(clone, "rev-parse", f"{report_commit}:{report_path}"),
+            _git(clone, "hash-object", report_path),
+            hashlib.sha256(raw).hexdigest(),
+        )
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    lane_path = clone / "scripts/baselines/lane_v_reports_pre_v3.json"
+    lane = json.loads(lane_path.read_text(encoding="utf-8"))
+    lane["reports"].append(
+        {"path": report_path, "sha256": hashlib.sha256(raw).hexdigest()}
+    )
+    lane_path.write_text(json.dumps(lane), encoding="utf-8")
+    _git(clone, "add", "scripts/baselines")
+    _git(clone, "commit", "-q", "-m", "attempt seventh exception")
+
+    state = cc.inspect_verify_review_state(clone)
+
+    assert state.problem is not None
+    assert state.pending == ()
+    assert state.failed == ()
+
+
 @pytest.mark.parametrize("corruption", ("path", "digest", "introduction"))
 def test_history_exception_refuses_binding_corruption(
     tmp_path: Path, corruption: str,
 ) -> None:
-    root, coord, base, head = _review_repo(tmp_path)
+    root, coord, base, head = _review_repo(
+        tmp_path, include_history_manifest=False
+    )
     request_path, request_commit = _commit_request(root, base, head)
     report_path, report_commit = _commit_report(
         root, base, head, request_path, request_commit, verdict="FAIL"
@@ -1010,7 +1232,9 @@ def test_history_exception_refuses_binding_corruption(
 def test_history_exception_refuses_later_artifact_evasion(
     tmp_path: Path, evasion: str,
 ) -> None:
-    root, coord, base, head = _review_repo(tmp_path)
+    root, coord, base, head = _review_repo(
+        tmp_path, include_history_manifest=False
+    )
     request_path, request_commit = _commit_request(root, base, head)
     report_path, report_commit = _commit_report(
         root, base, head, request_path, request_commit, verdict="FAIL"
@@ -1184,8 +1408,15 @@ def test_live_snapshot_surfaces_failed_review_and_exact_history_exceptions(
     report_commit = "e0fbefdb56af03b8c04b6df58245f7533a3d83c0"
 
     state = cc.inspect_verify_review_state(repo_root)
+    projection, projection_problem = cc._committed_mailbox_projection(repo_root)
     snapshot = status.collect_orientation_snapshot(repo_root, "operator2")
 
+    assert projection_problem is None
+    assert projection is not None
+    assert projection.introductions[cc._ARCHIVE_HISTORY_EXCEPTIONS] == (
+        "14ddd1f78c5ba46775c44882b1725adf5cc72ec7",
+        "9e6808ff83f9c9cc88b87ea05fce4331fa715a2c",
+    )
     assert state.problem is None
     assert (request_path, request_commit) not in {
         (item.path, item.commit) for item in state.pending
