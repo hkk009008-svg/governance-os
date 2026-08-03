@@ -12,6 +12,12 @@ import pytest
 import mailbox_writer
 
 
+_FINDING_PATH = (
+    "coordination/mailbox/sent/"
+    "2026-07-16T07-00-00Z-operator-to-director-findings.md"
+)
+
+
 def _run(
     args: list[str | Path],
     cwd: Path,
@@ -59,8 +65,23 @@ def _init_repo(repo: Path, repo_root: Path) -> None:
     )
     for seat in ("director", "director2", "operator", "operator2", "coordinator"):
         (mailbox / "seen" / f"{seat}.txt").write_text("0\n", encoding="utf-8")
+    (repo / _FINDING_PATH).write_text(
+        "# Operator → Director: fixture finding\n\n"
+        "**When:** 2026-07-16T07:00:00Z · **From:** operator (online)\n\n"
+        "Fixture evidence for finalizer tests.\n\n"
+        "Cursor at send: 0\n",
+        encoding="utf-8",
+    )
     _git(repo, "add", ".")
     _git(repo, "commit", "-q", "-m", "chore: fixture")
+
+
+def _finding_ref(repo: Path) -> str:
+    introductions = _git(
+        repo, "log", "--format=%H", "--diff-filter=A", "--", _FINDING_PATH
+    ).splitlines()
+    assert len(introductions) == 1
+    return f"{_FINDING_PATH}@{introductions[0]}"
 
 
 def _prepare_verify_request(
@@ -70,6 +91,7 @@ def _prepare_verify_request(
     reviewed_range: tuple[str, str] | None = None,
 ) -> tuple[str, str, str, str]:
     base = _git(repo, "rev-parse", "HEAD")
+    finding_ref = _finding_ref(repo)
     (repo / "scripts/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(repo, "add", "scripts/feature.py")
     _git(repo, "commit", "-q", "-m", "feat: candidate")
@@ -105,7 +127,7 @@ The committed change satisfies the routed maintenance outcome.
 
 ## Finding Refs
 
-- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe37f042045e844c2a7de90437445ccd6e0e
+- {finding_ref}
 
 Cursor at send: 0
 """,
@@ -123,6 +145,7 @@ def _report_body(
     trigger: str,
     *,
     verdict: str,
+    finding_ref: str,
     reviewer_seat: str = "operator",
     reviewed_repository: str | None = None,
 ) -> str:
@@ -152,11 +175,11 @@ Risk class: material-behavior
 
 ## Finding Refs
 
-- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe37f042045e844c2a7de90437445ccd6e0e
+- {finding_ref}
 
 ## Finding Dispositions
 
-- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe37f042045e844c2a7de90437445ccd6e0e: addressed
+- {finding_ref}: addressed
 {evidence}
 
 ## Findings
@@ -169,6 +192,7 @@ def _request_body(
     base: str,
     head: str,
     *,
+    finding_ref: str,
     author: str = "director",
     assigned: str = "operator",
 ) -> str:
@@ -187,7 +211,7 @@ The committed change satisfies the routed maintenance outcome.
 
 ## Finding Refs
 
-- coordination/mailbox/sent/2026-07-18T06-05-32Z-operator-to-director-findings.md@fedfbe37f042045e844c2a7de90437445ccd6e0e
+- {finding_ref}
 """
 
 
@@ -255,7 +279,7 @@ def test_valid_verify_request_is_validated_before_finalization(
             "validate candidate",
         ],
         repo,
-        input_text=_request_body(base, head),
+        input_text=_request_body(base, head, finding_ref=_finding_ref(repo)),
     )
 
     assert result.returncode == 0, result.stderr
@@ -282,7 +306,9 @@ def test_verify_request_without_formal_risk_class_fails_before_finalization(
             "missing risk class",
         ],
         repo,
-        input_text=_request_body(base, head).replace(
+        input_text=_request_body(
+            base, head, finding_ref=_finding_ref(repo)
+        ).replace(
             "Risk class: material-behavior\n", ""
         ),
     )
@@ -311,7 +337,11 @@ def test_coordinator_verify_request_fails_before_finalization(
         ],
         repo,
         input_text=_request_body(
-            base, head, author="coordinator", assigned="operator"
+            base,
+            head,
+            finding_ref=_finding_ref(repo),
+            author="coordinator",
+            assigned="operator",
         ),
     )
 
@@ -364,7 +394,12 @@ def test_valid_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
         ],
         repo,
         input_text=_report_body(
-            base, head, request_path, trigger, verdict=verdict
+            base,
+            head,
+            request_path,
+            trigger,
+            verdict=verdict,
+            finding_ref=_finding_ref(repo),
         ),
     )
 
@@ -397,7 +432,12 @@ def test_fixed_finalizer_revalidates_report_changed_after_prevalidation(
         "# Operator → All: prevalidated report\n\n"
         "**When:** 2026-07-17T08:10:00Z · **From:** operator (online)\n\n"
         + _report_body(
-            base, head, request_path, trigger, verdict="FAIL"
+            base,
+            head,
+            request_path,
+            trigger,
+            verdict="FAIL",
+            finding_ref=_finding_ref(repo),
         )
         + "\nCursor at send: 0\n"
     )
@@ -462,6 +502,7 @@ def test_cross_repository_verification_report_uses_fixed_finalizer(
             request_path,
             trigger,
             verdict="GO",
+            finding_ref=_finding_ref(repo),
             reviewed_repository=target.as_posix(),
         ),
     )
@@ -494,6 +535,7 @@ def test_misassigned_verification_report_fails_before_finalization(
             request_path,
             trigger,
             verdict="FAIL",
+            finding_ref=_finding_ref(repo),
             reviewer_seat="operator2",
         ),
     )
@@ -514,7 +556,12 @@ def test_go_with_bare_evidence_markers_fails_before_staging(
     _init_repo(repo, repo_root)
     base, head, request_path, trigger = _prepare_verify_request(repo)
     body = _report_body(
-        base, head, request_path, trigger, verdict="GO"
+        base,
+        head,
+        request_path,
+        trigger,
+        verdict="GO",
+        finding_ref=_finding_ref(repo),
     ).replace(
         "$ env -u GIT_INDEX_FILE python -m pytest tests/unit/test_feature.py -q\n"
         "→ 1 passed",
@@ -584,6 +631,7 @@ def test_send_event_keeps_final_event_when_index_is_locked(
                 request_path,
                 trigger,
                 verdict="NITS",
+                finding_ref=_finding_ref(repo),
             ),
         )
     finally:
