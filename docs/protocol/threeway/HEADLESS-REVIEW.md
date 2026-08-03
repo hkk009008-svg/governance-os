@@ -122,9 +122,13 @@ it. That error text is also the fastest way to check whether a flag exists,
 because it happens at parse time and costs no model call.
 
 The low-cost live probe puts every flag before its final `--print <prompt>` and
-pins sandboxed plan mode, `gemini-3.6-flash-low`, and low effort; it is a
-capability probe, not the identity of any later review. A formal review records
-the exact model ID its actual launch selected. Seat launch is
+pins sandboxed plan mode, `gemini-3.6-flash-low`, and low effort. AGY 1.1.10 has
+no working-directory flag: the probe passes the exact repository through
+`--add-dir`, requires the command tool to use that same absolute `Cwd`, and
+forbids a retry or sandbox bypass. The command remains `git rev-parse --short
+HEAD`, so the scoped `command(git rev-parse)` grant covers what actually runs.
+This is a capability probe, not the identity of any later review. A formal
+review records the exact model ID its actual launch selected. Seat launch is
 `coordination/bin/agy-seat <seat>`; it emitted two undefined flags until
 `c6f017b`.
 

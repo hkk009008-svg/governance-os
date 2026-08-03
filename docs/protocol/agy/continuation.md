@@ -142,8 +142,11 @@ send-event, or a blanket permission skip merely to gather review evidence. In
 headless mode a missing grant may return exit 0 with denial text or no output,
 so the live probe requires the exact nonempty artifact from a real read-only
 `git rev-parse --short HEAD` command. It sanitizes inherited `GIT_*`, pins plan
-mode, `gemini-3.6-flash-low`, low effort, and puts every flag before the final
-`--print <prompt>`. When settings cannot be changed, use
+mode, `gemini-3.6-flash-low`, and low effort. AGY has no working-directory flag,
+so the launch binds the exact repository through `--add-dir` and the prompt
+requires that same absolute path as the command tool's `Cwd`, with no retry or
+sandbox bypass. Every flag precedes the final `--print <prompt>`. When settings
+cannot be changed, use
 `scripts/harness_preflight.py agy --package-request <path>@<full-sha>` to emit a
 bounded tool-less prompt from the committed request and verbatim exact-range
 diff. Packaging launches no provider. Its analysis remains advisory until

@@ -531,10 +531,37 @@ def test_agy_live_probe_places_all_flags_before_print_and_sanitizes_git_env(
     assert argv[argv.index("--mode") + 1] == "plan"
     assert argv[argv.index("--model") + 1] == preflight.AGY_PROBE_MODEL
     assert argv[argv.index("--effort") + 1] == "low"
+    assert argv[argv.index("--add-dir") + 1] == str(root.resolve())
+    assert argv.index("--add-dir") < argv.index("--print")
     assert argv.index("--disable-slash-commands") < argv.index("--print")
+    assert f'Cwd set to {json.dumps(str(root.resolve()))}' in argv[-1]
+    assert 'CommandLine set to "git rev-parse --short HEAD"' in argv[-1]
+    assert "do not retry" in argv[-1]
+    assert "do not request sandbox bypass" in argv[-1]
     environment = captured["env"]
     assert isinstance(environment, dict)
     assert not any(key.startswith("GIT_") for key in environment)
+
+
+def test_agy_live_probe_positive_artifact_depends_on_exact_root_binding(
+    tmp_path: Path,
+) -> None:
+    root, _, _, _ = _review_request_repo(tmp_path)
+    expected = _git(root, "rev-parse", "--short", "HEAD")
+
+    def runner(argv, **kwargs):
+        root_text = str(root.resolve())
+        add_dir_bound = any(
+            argv[index : index + 2] == ["--add-dir", root_text]
+            for index in range(len(argv) - 1)
+        )
+        prompt_bound = f'Cwd set to {json.dumps(root_text)}' in argv[-1]
+        stdout = expected + "\n" if add_dir_bound and prompt_bound else ""
+        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+    result = preflight.live_probe("agy", root, runner=runner)
+
+    assert result.ok is True
 
 
 def test_package_cli_never_calls_live_provider(tmp_path: Path, monkeypatch, capsys) -> None:

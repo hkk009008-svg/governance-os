@@ -447,6 +447,7 @@ def live_probe(
     trustworthy signal is the harness echoing something it could not have
     produced without running a tool.
     """
+    root = root.resolve()
     try:
         expected = _git_bytes(
             root, "rev-parse", "--short", "HEAD", max_bytes=65_536,
@@ -456,9 +457,12 @@ def live_probe(
     if not expected:
         return Result(harness, False, "probe range produced no positive artifact")
 
+    command = "git rev-parse --short HEAD"
     prompt = (
-        "Run exactly this command and reply with ONLY its output: "
-        "git rev-parse --short HEAD"
+        "Use the command tool exactly once with Cwd set to "
+        f"{json.dumps(str(root))} and CommandLine set to {json.dumps(command)}. "
+        "Reply with ONLY stdout; do not retry; do not change Cwd; do not request "
+        "sandbox bypass."
     )
     commands = {
         "codex": ["codex", "exec", "-C", str(root), "--sandbox", "workspace-write",
@@ -472,6 +476,8 @@ def live_probe(
             AGY_PROBE_MODEL,
             "--effort",
             "low",
+            "--add-dir",
+            str(root),
             "--disable-slash-commands",
             "--print",
             prompt,
