@@ -55,8 +55,98 @@ def test_agy_evidence_scope_is_ready_without_publication_grants(tmp_path: Path) 
     results = preflight.check_agy(settings, scope="evidence")
 
     assert _failures(results) == []
-    assert any("evidence-only" in result.detail for result in results)
-    assert not any("publishing-ready" in result.detail for result in results)
+    scope_results = [
+        result for result in results if "capability scope" in result.detail
+    ]
+    assert len(scope_results) == 1
+    assert "evidence selected" in scope_results[0].detail
+    assert "evidence-only" in scope_results[0].detail
+    assert "cannot publish" in scope_results[0].detail
+    assert not any(
+        "publishing commands granted" in result.detail
+        or "missing publishing grants" in result.detail
+        for result in results
+    )
+
+
+@pytest.mark.parametrize("command", preflight.AGY_EVIDENCE_COMMANDS)
+def test_agy_narrower_evidence_grant_cannot_satisfy_required_command(
+    tmp_path: Path, command: str,
+) -> None:
+    grants = _evidence_grants()
+    grants.remove(f"command({command})")
+    grants.append(f"command({command} --unrelated-only)")
+    settings = _settings(tmp_path, grants)
+
+    results = preflight.check_agy(settings, scope="evidence")
+
+    failures = _failures(results)
+    assert any("missing evidence grants" in detail for detail in failures)
+    assert any(command in detail for detail in failures)
+
+
+@pytest.mark.parametrize("command", preflight.AGY_PUBLISH_COMMANDS)
+def test_agy_narrower_publish_grant_cannot_satisfy_required_command(
+    tmp_path: Path, command: str,
+) -> None:
+    grants = [
+        *_evidence_grants(),
+        *(f"command({item})" for item in preflight.AGY_PUBLISH_COMMANDS),
+    ]
+    grants.remove(f"command({command})")
+    grants.append(f"command({command} --unrelated-only)")
+    settings = _settings(tmp_path, grants)
+
+    results = preflight.check_agy(settings, scope="publishing")
+
+    failures = _failures(results)
+    assert any("missing publishing grants" in detail for detail in failures)
+    assert any(command in detail for detail in failures)
+
+
+@pytest.mark.parametrize(
+    ("required", "grant"),
+    (
+        ("git diff --name-status HEAD^ HEAD --", "command(git diff)"),
+        (
+            ".venv/bin/python -m pytest -q tests/unit/test_harness_preflight.py",
+            "command(.venv/bin/python -m pytest)",
+        ),
+    ),
+)
+def test_agy_broader_grant_token_prefix_covers_required_invocation(
+    required: str, grant: str,
+) -> None:
+    assert preflight._command_granted(required, {grant})
+
+
+@pytest.mark.parametrize(
+    "grant",
+    (
+        "command()",
+        "command(git diff",
+        "command(git diff))",
+        "prefix-command(git diff)",
+        "command(git 'diff)",
+    ),
+)
+def test_agy_malformed_command_grant_fails_closed(grant: str) -> None:
+    assert not preflight._command_granted("git diff", {grant})
+
+
+@pytest.mark.parametrize(
+    ("required", "grant"),
+    (
+        ("git diff", "command(git dif)"),
+        ("git diff", "command(git difference)"),
+        ("git diff", "command(git diff-extra)"),
+        ("rg", "command(r)"),
+    ),
+)
+def test_agy_command_grants_do_not_use_string_prefixes(
+    required: str, grant: str,
+) -> None:
+    assert not preflight._command_granted(required, {grant})
 
 
 def test_agy_publishing_scope_additionally_requires_effect_commands(

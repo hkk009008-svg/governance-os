@@ -1,8 +1,10 @@
 # Headless review dispatch
 
 How to obtain a non-author Operator review from another harness without a human
-driving that harness's app. Every command here was executed against this
-repository on 2026-07-26; the constraints are observed behaviour, not inference.
+driving that harness's app. The original harness failures and invocations below
+were observed against this repository on 2026-07-26. The capability scopes,
+strict live probe, and tool-less package added on 2026-08-03 are enforced by
+executable regression tests and the current preflight; dates are not conflated.
 
 **Run the check, do not read this file from memory (ADR-065):**
 

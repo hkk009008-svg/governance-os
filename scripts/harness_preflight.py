@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -131,9 +132,35 @@ def check_codex(root: Path) -> list[Result]:
 
 
 def _command_granted(command: str, granted: set[str]) -> bool:
-    exact = f"command({command})"
-    prefix = f"command({command} "
-    return any(entry == exact or entry.startswith(prefix) for entry in granted)
+    """Return whether one AGY grant covers the required invocation.
+
+    AGY interprets a shorter granted token sequence as covering invocations
+    beneath that prefix. The direction matters: ``command(git diff)`` covers
+    ``git diff --name-status``, while ``command(git diff --cached)`` cannot
+    satisfy a requirement for unrestricted ``git diff``.
+    """
+    try:
+        required = tuple(shlex.split(command, posix=True))
+    except ValueError:
+        return False
+    if not required:
+        return False
+
+    for entry in granted:
+        match = re.fullmatch(r"command\(([^()\r\n]+)\)", entry)
+        if match is None:
+            continue
+        try:
+            grant = tuple(shlex.split(match.group(1), posix=True))
+        except ValueError:
+            continue
+        if (
+            grant
+            and len(grant) <= len(required)
+            and required[: len(grant)] == grant
+        ):
+            return True
+    return False
 
 
 def check_agy(
