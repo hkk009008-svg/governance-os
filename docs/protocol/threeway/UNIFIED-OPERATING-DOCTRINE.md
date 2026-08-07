@@ -18,8 +18,8 @@ binds the shared rules to its own primitives.
 
 ## 0. The two layers (read this first)
 
-The system has **two layers**. Keeping them separate is what lets "unified rules" and "Antigravity
-holds no seat" both be true at once.
+The system has **two layers**. Keeping them separate is what lets "unified rules" and a
+provider-fixed seat topology both be true at once.
 
 | Layer | What it governs | Cross-provider? | Where it lives |
 |---|---|---|---|
@@ -69,8 +69,10 @@ surface intentionally does not restate its lifecycle grammar.
 
 **Codex occupies:** `director` (Pair A builder), `operator2` (Pair B verifier), `coordinator2`
 (Pair B integrator). **Claude occupies:** `director2` (Pair B builder), `operator` (Pair A
-verifier), `coordinator` (Pair A integrator). **Antigravity occupies no seat in the cross-provider configuration**, but may occupy all seats when running as a **Single-Model Autonomous Unit** — see Part IV / the
-Antigravity manual.
+verifier), `coordinator` (Pair A integrator). **Antigravity may hold Layer-1 seats in both modes**
+(superseded 2026-07-26, user ruling — see `ANTIGRAVITY-ADOPTION.md` §1): any director/operator/
+coordinator seat, never the overseer or merge-gate; it may also run all seats as a
+**Single-Model Autonomous Unit** — see Part IV / the Antigravity manual.
 
 **Emergent independence property:** the provider that wrote a change is locked out of the *primary*
 verification and the *executing* integration of its own work.
@@ -373,10 +375,10 @@ your provider's mechanism. Antigravity bindings have been explicitly established
 | **Session verification** | explicit smoke/history/status refresh at start of non-trivial work | explicit focused checks during work and `scripts/ci_smoke.py` at the completion gate | run `scripts/ci_smoke.py` manually | explicit refresh per continuation; `sessionStart` registers identity, it does not verify |
 | **Per-worker staging isolation** | native worktree index; ordinary Git/pytest run `env -u GIT_INDEX_FILE` (per-seat indexes are retired) | native task worktrees and indexes; the shared root is read-only or limited to explicit coordination pathspecs | `env -u GIT_INDEX_FILE` or `Workspace: 'branch'` | one linked worktree per seat with its native index; `GIT_INDEX_FILE` rejected |
 | **Durable coordination channel + read cursor** | mailbox `coordination/mailbox/sent/` + `seen/<seat>.txt` | same mailbox + `coordination/bin/{send-event,consume-events}` | same mailbox via `send-event`/`consume-events` when explicitly seated; otherwise N/A | same mailbox via bound `cursor-publish` / `cursor-consume` wrappers |
-| **Liveness signal separate from intent** | agent-written presence artifacts | host task/thread activity; repository hooks do not manufacture liveness | N/A (holds no seat) | pinned top-level chat + user-local registry record |
+| **Liveness signal separate from intent** | agent-written presence artifacts | host task/thread activity; repository hooks do not manufacture liveness | launch-scoped env identity; no durable registry | pinned top-level chat + user-local registry record |
 | **Background long task without polling** | `run_in_background: true`; harness notifies | background command support | `schedule` and `manage_task` tools | background subagents; optional Cloud Agents/Automations (separately authorized) |
 | **Ask the user vs decide** | `AskUserQuestion` (only for cross-cutting/policy/hard-to-reverse) | surface the choice in prose | `ask_question` interactive modal tool | in-app approval cards for governed effects; chat for decisions |
-| **Cross-cutting edit lock** | `coordination/bin/claim-lock` (4 modules only) | same `claim-lock`/`release-lock` | N/A (holds no seat) | hook-denied in app seats; lock claims run in a terminal with explicit user authority |
+| **Cross-cutting edit lock** | `coordination/bin/claim-lock` (4 modules only) | same `claim-lock`/`release-lock` | same `claim-lock`/`release-lock` when explicitly seated | hook-denied in app seats; lock claims run in a terminal with explicit user authority |
 | **Optional outside reasoning (ChatGPT Pro)** | in-app Browser tools per the canonical skill | `browser:control-in-app-browser` skill | native in-app browser | built-in browser tool |
 
 **Invariant across the table:** the *authority rules never change with the mechanism.* A subagent has
