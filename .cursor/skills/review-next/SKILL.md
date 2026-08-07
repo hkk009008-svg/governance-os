@@ -36,9 +36,14 @@ disable-model-invocation: true
    and never against a seat HEAD that differs from `reviewed_head`.
 8. Draft one canonical GO/NITS/FAIL body under `.pytest-verify-tmp/`, disposition
    every finding ref, and show the verdict plus evidence.
-9. Publish only after an explicit in-app approval through
+9. Publish through
    `coordination/bin/cursor-publish --to <director-seat> --kind verification-report
-   --subject <subject> --body-file <scratch-file>`. Commit only the staged event
-   path returned by the fixed writer, using `git commit --only -- <event-path>`.
+   --subject <subject> --body-file <scratch-file>`. The bound Operator wrapper
+   inherits the seat-start mailbox grant, so no second in-app approval is
+   requested; do not ask the user to re-authorize it in chat. Commit only the
+   staged event path returned by the fixed writer, using
+   `git commit --only -- <event-path>`.
 
+Read-only parent-scoped subagents may be used for diff inspection or test
+legwork; their findings are advisory input to this seat, never the verdict.
 The committed report is binding. Test output alone is not a verdict.

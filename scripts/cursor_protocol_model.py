@@ -70,7 +70,8 @@ def render_runtime_env_contract(
             "- each seat uses its linked worktree's native Git index; GIT_INDEX_FILE is rejected.",
             "- Director seats may implement; Operator and Coordinator seats are repository-tree read-only.",
             "- custom subagents are advisors and never publish verdicts or inherit seat authority.",
-            "- mailbox publication goes through cursor-publish and requires an in-app approval.",
+            "- mailbox publication goes through cursor-publish; bound Director/Operator"
+            " seats inherit the seat-start grant, every other posture gets one in-app approval.",
             "- review-next resolves the next committed request without copied prompt bodies or refs.",
             "- activating another existing local top-level chat is the one manual app handoff.",
             "- provider_side=cursor",

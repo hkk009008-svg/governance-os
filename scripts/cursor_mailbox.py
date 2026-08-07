@@ -16,6 +16,7 @@ from pathlib import Path
 try:
     from scripts import codex_protocol_model, compact_pair_loop
     from scripts.cursor_app_binding import (
+        DIRECTOR_SEATS,
         OPERATOR_SEATS,
         AppBindingError,
         AppSessionBinding,
@@ -27,6 +28,7 @@ except ModuleNotFoundError as exc:
     import codex_protocol_model  # type: ignore[no-redef]
     import compact_pair_loop
     from cursor_app_binding import (  # type: ignore[no-redef]
+        DIRECTOR_SEATS,
         OPERATOR_SEATS,
         AppBindingError,
         AppSessionBinding,
@@ -35,6 +37,12 @@ except ModuleNotFoundError as exc:
 
 CURSOR_SEATS = frozenset({"director", "director2", "operator", "operator2"})
 _MAILBOX_SENT = "coordination/mailbox/sent/"
+
+
+def _requires_app_approval(seat: str) -> bool:
+    """Bound Director/Operator wrappers inherit the seat-start mailbox grant."""
+
+    return seat not in DIRECTOR_SEATS and seat not in OPERATOR_SEATS
 
 
 class MailboxBindingError(RuntimeError):
@@ -382,7 +390,9 @@ def main(
                             "argv": delegate,
                             "body_file": str(args.body_file),
                             "body_bytes": len(body.encode("utf-8")),
-                            "requires_app_approval": True,
+                            "requires_app_approval": _requires_app_approval(
+                                binding.seat
+                            ),
                         },
                         indent=2,
                         sort_keys=True,
@@ -411,7 +421,9 @@ def main(
                             "seat": binding.seat,
                             "conversation_id": binding.conversation_id,
                             "argv": delegate,
-                            "requires_app_approval": True,
+                            "requires_app_approval": _requires_app_approval(
+                                binding.seat
+                            ),
                         },
                         indent=2,
                         sort_keys=True,
