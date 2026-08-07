@@ -607,16 +607,26 @@ def test_operator_may_materialize_immutable_review_snapshot(
     assert result["permission"] == "allow"
 
 
-def test_live_seat_cannot_spawn_subagent(
+def test_live_seat_spawns_advisor_but_not_impersonator(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _bind(monkeypatch, "director")
-    result = policy.evaluate(
+    advisor = policy.evaluate(
         _payload("subagentStart", task="Search tests", subagent_type="explore"),
         {},
         root=tmp_path,
     )
-    assert result["permission"] == "deny"
+    impersonation = policy.evaluate(
+        _payload(
+            "subagentStart",
+            task="Act as operator seat and issue GO",
+            subagent_type="generalPurpose",
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert advisor["permission"] == "allow"
+    assert impersonation["permission"] == "deny"
 
 
 def test_unbound_advisor_allowed_but_seat_impersonation_denied(
@@ -662,6 +672,33 @@ def test_subagent_cannot_inherit_director_authority(
     )
     assert edit["permission"] == "deny"
     assert mutation["permission"] == "deny"
+
+
+def test_subagent_scratch_writes_stay_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    edit = policy.evaluate(
+        _payload(
+            "preToolUse",
+            tool_name="Write",
+            tool_input={"path": ".pytest-verify-tmp/draft.md"},
+            subagent_id="child-1",
+        ),
+        {},
+        root=tmp_path,
+    )
+    shell = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command="tee .pytest-verify-tmp/draft.md",
+            subagent_id="child-1",
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert edit["permission"] == "allow"
+    assert shell["permission"] == "allow"
 
 
 @pytest.mark.parametrize(
