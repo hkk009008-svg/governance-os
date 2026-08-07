@@ -50,7 +50,12 @@ def test_agy_missing_command_grants_is_not_ready(tmp_path: Path) -> None:
     assert any(command in detail for detail in failures for command in ("git diff", "pytest"))
 
 
-def test_agy_evidence_scope_is_ready_without_publication_grants(tmp_path: Path) -> None:
+def test_agy_evidence_scope_is_ready_without_publication_grants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Capability-policy assertion, so binary discovery is pinned: a clean CI
+    # runner has no AGY installation, and host readiness is a separate check.
+    monkeypatch.setattr(preflight, "_binary", lambda *names: "/opt/fake/agy")
     settings = _settings(tmp_path, _evidence_grants())
 
     results = preflight.check_agy(settings, scope="evidence")
@@ -162,7 +167,10 @@ def test_agy_publishing_scope_additionally_requires_effect_commands(
     assert any("git commit" in detail for detail in failures)
 
 
-def test_agy_with_every_publishing_grant_is_capability_ready(tmp_path: Path) -> None:
+def test_agy_with_every_publishing_grant_is_capability_ready(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(preflight, "_binary", lambda *names: "/opt/fake/agy")
     settings = _settings(
         tmp_path,
         [
@@ -175,6 +183,25 @@ def test_agy_with_every_publishing_grant_is_capability_ready(tmp_path: Path) -> 
 
     assert _failures(results) == []
     assert any("separate authority" in result.detail for result in results)
+
+
+def test_agy_absent_binary_is_reported_as_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Host readiness stays loud: complete grants cannot hide a missing CLI."""
+    monkeypatch.setattr(preflight, "_binary", lambda *names: None)
+    settings = _settings(
+        tmp_path,
+        [
+            *_evidence_grants(),
+            *(f"command({command})" for command in preflight.AGY_PUBLISH_COMMANDS),
+        ],
+    )
+
+    results = preflight.check_agy(settings, scope="publishing")
+
+    failures = _failures(results)
+    assert failures == ["binary NOT FOUND on PATH"]
 
 
 def test_agy_default_scope_remains_full_publishing_check(tmp_path: Path) -> None:

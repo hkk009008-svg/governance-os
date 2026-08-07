@@ -104,6 +104,10 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:
+      # One version's failure must not cancel the others: the surviving jobs
+      # are the evidence that distinguishes a version-specific regression from
+      # a general one.
+      fail-fast: false
       matrix:
         python-version: ['3.11', '3.12', '3.13']
     env:
