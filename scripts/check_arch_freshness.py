@@ -2,8 +2,15 @@
 """check_arch_freshness.py — block ARCHITECTURE.md edits that forget the Last-verified bump.
 
 R-GATE-ARCH-FRESHNESS (ADR-003): any commit that changes the substantive body of
-ARCHITECTURE.md MUST also change at least one `*Last verified:` stamp line.
+ARCHITECTURE.md MUST also change at least one `*Last verified …*` stamp line.
 Editing facts without bumping the stamp leaves stale provenance on the truth layer.
+
+Stamp semantics: the SHA names the repository state the claims were verified
+against — normally the base/parent the change was built on. It cannot be the
+landing commit's own SHA, because editing the file changes that SHA. A new
+stamp must also be real provenance, not just the right shape: when git is
+available, the gate additionally verifies the SHA resolves to a commit and is
+an ancestor of (or equal to) HEAD.
 
 The gate is INERT unless ARCHITECTURE.md is actually in the changeset — the
 unbound bundle's placeholder stamp never triggers a spurious failure.
@@ -17,7 +24,9 @@ Usage:  .venv/bin/python scripts/check_arch_freshness.py [--base REF]
 Exit codes:
     0 — ARCHITECTURE.md is not in the changeset, or the body + stamp both
         changed (or only the stamp changed, or nothing changed) — clean.
-    1 — ARCHITECTURE.md body changed but the Last-verified stamp was NOT bumped.
+    1 — ARCHITECTURE.md body changed but the Last-verified stamp was NOT
+        bumped, or a new stamp names a SHA that does not resolve to an
+        ancestor commit.
 """
 from __future__ import annotations
 
@@ -25,17 +34,20 @@ import argparse
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ARCH_FILE = ROOT / "ARCHITECTURE.md"
 
-_STAMP_RE = re.compile(r"^\*Last verified:[^\n]*$", re.MULTILINE)
+# Matches the historical `*Last verified: …*` form and the explicit
+# `*Last verified against base: …*` form; both are stamp lines.
+_STAMP_RE = re.compile(r"^\*Last verified[^\n]*$", re.MULTILINE)
 
 # A VALID stamp payload: a real `YYYY-MM-DD @ <7-40 hex sha>`. The skeleton
 # placeholders (`<date> @ <sha>`, `<YYYY-MM-DD> @ <git-sha>`) do NOT match — only a
-# real binding edit supplies a real stamp. Searched within a `*Last verified:` line.
-_VALID_STAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}\s*@\s*[0-9a-f]{7,40}")
+# real binding edit supplies a real stamp. Searched within a stamp line.
+_VALID_STAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}\s*@\s*(?P<sha>[0-9a-f]{7,40})")
 
 
 # ---------------------------------------------------------------------------
@@ -65,15 +77,49 @@ def arch_freshness_violation(old_text: str, new_text: str) -> bool:
     if not body_changed:
         return False
 
-    old_stamps = set(_STAMP_RE.findall(old_text))
-    new_stamps = _STAMP_RE.findall(new_text)
-
     # A real bump: at least one stamp line in `new` is valid AND new (not already in old).
-    has_new_valid_stamp = any(
-        _VALID_STAMP_RE.search(s) and s not in old_stamps for s in new_stamps
-    )
+    return not new_valid_stamps(old_text, new_text)
 
-    return not has_new_valid_stamp
+
+def new_valid_stamps(old_text: str, new_text: str) -> list[str]:
+    """Return valid stamp lines present in ``new_text`` but not ``old_text``."""
+
+    old_stamps = set(_STAMP_RE.findall(old_text))
+    return [
+        stamp
+        for stamp in _STAMP_RE.findall(new_text)
+        if _VALID_STAMP_RE.search(stamp) and stamp not in old_stamps
+    ]
+
+
+def stamp_provenance_violations(
+    stamps: list[str],
+    resolve: Callable[[str], tuple[bool, bool]],
+) -> list[str]:
+    """Validate that each new stamp's SHA is real, cheap provenance.
+
+    ``resolve(sha)`` answers ``(is_commit, is_ancestor_of_head)``. A stamp
+    whose SHA does not resolve to a commit, or resolves to a commit HEAD has
+    never seen, is syntactic freshness over fabricated provenance.
+    """
+
+    violations: list[str] = []
+    for stamp in stamps:
+        match = _VALID_STAMP_RE.search(stamp)
+        if match is None:
+            continue
+        sha = match.group("sha")
+        is_commit, is_ancestor = resolve(sha)
+        if not is_commit:
+            violations.append(
+                f"stamp names {sha}, which does not resolve to a commit"
+            )
+        elif not is_ancestor:
+            violations.append(
+                f"stamp names {sha}, which is not an ancestor of HEAD — it "
+                "cannot be the state these claims were verified against"
+            )
+    return violations
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +168,36 @@ def _show_at_base(base: str) -> str | None:
         return result.stdout.decode("utf-8", errors="replace")
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
+
+
+def _git_resolve_stamp(sha: str) -> tuple[bool, bool]:
+    """Answer (is_commit, is_ancestor_of_head) for one stamp SHA via git."""
+
+    try:
+        is_commit = (
+            subprocess.run(
+                ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+                cwd=str(ROOT),
+                capture_output=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+        if not is_commit:
+            return False, False
+        is_ancestor = (
+            subprocess.run(
+                ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+                cwd=str(ROOT),
+                capture_output=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+        return True, is_ancestor
+    except FileNotFoundError:
+        # Git unavailable: shape validation already passed; skip provenance.
+        return True, True
 
 
 # ---------------------------------------------------------------------------
@@ -175,15 +251,34 @@ def main() -> int:
         print(
             "ARCH-FRESHNESS CHECK — FAIL\n"
             "\n"
-            "  ARCHITECTURE.md body changed but no *Last verified:* stamp was bumped.\n"
+            "  ARCHITECTURE.md body changed but no *Last verified …* stamp was bumped.\n"
             "\n"
-            "  Remedy: update the *Last verified: <YYYY-MM-DD> @ <git-sha>* line(s)\n"
-            "  (header ~line 9 and footer ~last line) to today's date and your\n"
-            "  commit SHA before pushing.\n"
+            "  Remedy: update the stamp line to\n"
+            "  *Last verified against base: <YYYY-MM-DD> @ <git-sha>*\n"
+            "  where <git-sha> is the state you verified the claims against —\n"
+            "  normally the base/parent commit this change was built on. It\n"
+            "  cannot be the landing commit's own SHA: editing the file changes\n"
+            "  that SHA.\n"
         )
         return 1
 
-    print("ARCH-FRESHNESS CHECK — PASS (stamp bump detected or body unchanged).")
+    provenance = stamp_provenance_violations(
+        new_valid_stamps(old_text, new_text), _git_resolve_stamp
+    )
+    if provenance:
+        print("ARCH-FRESHNESS CHECK — FAIL\n")
+        for violation in provenance:
+            print(f"  {violation}")
+        print(
+            "\n  Remedy: stamp the SHA of the state actually verified against"
+            " (an ancestor of HEAD, normally the base/parent commit)."
+        )
+        return 1
+
+    print(
+        "ARCH-FRESHNESS CHECK — PASS "
+        "(stamp bump with resolvable ancestor provenance, or body unchanged)."
+    )
     return 0
 
 
