@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified: 2026-08-03 @ 4bf7701*
+*Last verified: 2026-08-07 @ 5d044e2*
 
 ## 1. Purpose
 
@@ -67,6 +67,7 @@ by the host, not chosen, and each adapter states its own.
 | Lifecycle hook | none | `seat-policy` | none | none |
 | Launcher | `codex-seat` | `cursor-seat` | none | `agy-seat` |
 | Seat roles | `.codex/agents/*.toml` | `/review-next` skill | `.claude/skills/seat-*` | `.agy/agents/*.toml` |
+| Subagent advisors | `.codex/agents/*.toml` | `.cursor/agents/*.md` | `.claude/agents/*.md` | `.agy/agents/*.toml` |
 
 Notable per-host constraints:
 
