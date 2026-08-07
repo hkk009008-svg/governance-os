@@ -382,17 +382,30 @@ def main(argv: list[str] | None = None) -> int:
                 print(
                     "ARCH-FRESHNESS CHECK — FAIL\n"
                     "\n"
-                    "  ARCHITECTURE.md body changed but no *Last verified:* stamp was bumped.\n"
+                    "  ARCHITECTURE.md body changed but no *Last verified …* stamp was bumped.\n"
                     "\n"
-                    "  Remedy: update the *Last verified: <YYYY-MM-DD> @ <git-sha>* line(s)\n"
-                    "  (header ~line 9 and footer ~last line) to today's date and your\n"
-                    "  commit SHA before pushing.\n"
+                    "  Remedy: update the stamp line to\n"
+                    "  *Last verified against base: <YYYY-MM-DD> @ <git-sha>*\n"
+                    "  where <git-sha> is the state you verified against — normally the\n"
+                    "  base/parent commit, never the landing commit's own SHA.\n"
                 )
                 return 1
-            else:
+            _af_provenance = _caf.stamp_provenance_violations(
+                _caf.new_valid_stamps(_af_old, _af_new), _caf._git_resolve_stamp
+            )
+            if _af_provenance:
+                print("ARCH-FRESHNESS CHECK — FAIL\n")
+                for _af_violation in _af_provenance:
+                    print(f"  {_af_violation}")
                 print(
-                    "ARCH-FRESHNESS CHECK — PASS (stamp bump detected or body unchanged)."
+                    "\n  Remedy: stamp the SHA of the state actually verified"
+                    " against (an ancestor of HEAD)."
                 )
+                return 1
+            print(
+                "ARCH-FRESHNESS CHECK — PASS "
+                "(stamp bump with resolvable ancestor provenance, or body unchanged)."
+            )
 
     print("OK")
     return 0

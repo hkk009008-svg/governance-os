@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified: 2026-08-07 @ 5d044e2*
+*Last verified against base: 2026-08-07 @ 3410f83*
 
 ## 1. Purpose
 

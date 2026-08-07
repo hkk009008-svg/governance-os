@@ -229,3 +229,66 @@ def test_skeleton_placeholder_is_not_a_valid_stamp():
     old = "# Arch\n\n*Last verified: 2026-01-01 @ deadbee*\n\nOriginal body.\n"
     new = "# Arch\n\n*Last verified: <YYYY-MM-DD> @ <git-sha>*\n\nChanged body.\n"
     assert caf.arch_freshness_violation(old, new) is True
+
+
+# ---------------------------------------------------------------------------
+# Explicit-semantics label and provenance validation
+# ---------------------------------------------------------------------------
+
+def test_against_base_label_is_a_stamp_line():
+    """The explicit `against base` form counts as a stamp bump."""
+    new = _BODY_CHANGED.replace(
+        "*Last verified: <date> @ <sha>*",
+        "*Last verified against base: 2026-08-07 @ abc1234*",
+    )
+    assert caf.arch_freshness_violation(_BASE, new) is False
+
+
+def test_new_valid_stamps_returns_only_new_valid_lines():
+    stamps = caf.new_valid_stamps(_BASE, _BODY_CHANGED_STAMP_BUMPED)
+    # The fixture bumps the header and footer stamps to the same value; both
+    # lines are new and valid, and both get provenance-validated.
+    assert stamps == ["*Last verified: 2026-06-30 @ abc1234*"] * 2
+    assert caf.new_valid_stamps(_BASE, _BODY_CHANGED) == []
+
+
+def test_stamp_provenance_rejects_unresolvable_sha():
+    violations = caf.stamp_provenance_violations(
+        ["*Last verified against base: 2026-08-07 @ abc1234*"],
+        lambda sha: (False, False),
+    )
+    assert violations == [
+        "stamp names abc1234, which does not resolve to a commit"
+    ]
+
+
+def test_stamp_provenance_rejects_non_ancestor_sha():
+    violations = caf.stamp_provenance_violations(
+        ["*Last verified against base: 2026-08-07 @ abc1234*"],
+        lambda sha: (True, False),
+    )
+    assert len(violations) == 1
+    assert "not an ancestor of HEAD" in violations[0]
+
+
+def test_stamp_provenance_accepts_ancestor_commit():
+    violations = caf.stamp_provenance_violations(
+        ["*Last verified against base: 2026-08-07 @ abc1234*"],
+        lambda sha: (True, True),
+    )
+    assert violations == []
+
+
+def test_git_resolver_answers_for_real_repository_shas():
+    """HEAD's parent is a commit and an ancestor; a fabricated SHA is neither."""
+    import subprocess
+
+    head_parent = subprocess.run(
+        ["git", "rev-parse", "HEAD^"],
+        cwd=str(caf.ROOT),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert caf._git_resolve_stamp(head_parent) == (True, True)
+    assert caf._git_resolve_stamp("deadbeef" * 5) == (False, False)
