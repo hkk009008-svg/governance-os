@@ -33,3 +33,26 @@ Coordinator may facilitate but is not a route-approval or convergence gate.
 
 Use sequential implementation for overlapping write sets. Independent
 read-only investigations may run concurrently when they ask distinct questions.
+
+## One mailbox across provider sides
+
+Seat names are provider-agnostic identities. Any side — Claude, Codex, AGY, or
+Cursor — may hold any seat, and the standing pair may span two different apps.
+Work passes between seats, and therefore between providers, through the same
+durable surfaces on every side:
+
+- committed mailbox events through the fixed writer
+  (`coordination/bin/send-event`; Cursor app seats use their bound wrappers);
+- ownership exchange through a durable accepted handoff
+  (`scripts/draft_handoff.py` drafts one from live evidence);
+- the committed verify-request / verification-report Compact Pair for review.
+
+The receiving seat needs no knowledge of which app authored an event; the
+committed body and Git state carry everything load-bearing. Cross-provider
+review is first-class: a Director hosted on one side may assign its
+verify-request to an Operator hosted on another, and the different-model
+independence requirement is often easiest to satisfy that way.
+
+Communication never launches anything. Passing work is publishing an event,
+not spawning a process; provider launch stays a separately authorized external
+effect on every side.
