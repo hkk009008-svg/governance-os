@@ -10,5 +10,6 @@ Available profiles:
 - readiness-bridge.toml
 - lane-v-verifier.toml
 - money-gate-reviewer.toml
+- amnesiac-prober.toml
 
 No direct launch instructions are provided.

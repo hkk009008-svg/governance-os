@@ -99,7 +99,8 @@ def test_publish_dry_run_reports_bound_app_identity(
     assert result == 0
     assert payload["seat"] == "director"
     assert payload["model_id"] == "composer-2.5"
-    assert payload["requires_app_approval"] is True
+    # Bound Director/Operator wrappers inherit the seat-start mailbox grant.
+    assert payload["requires_app_approval"] is False
 
 
 @pytest.mark.parametrize(

@@ -97,10 +97,11 @@ stale versus the code, the code wins — fix the doc in the same change that exp
   `CODEX-ADOPTION.md` for current authority and migration mechanics.
 - **Claude** — `CLAUDE.md` + `docs/protocol/claude/` are your mechanics; you hold `director2` /
   `operator` / `coordinator`. Use the `Agent`/`Workflow`/`Skill` tools as your Layer-2 primitives.
-- **Antigravity (agy)** — you hold **no seat**. Operate as a read-only observer or a human-relayed
-  strategy app (one voice, never the decider). If you do any coding work, follow Layer 2 fully and
-  route the code to a different-provider verifier — never self-verify, never push, never sign the
-  bus. See `ANTIGRAVITY-ADOPTION.md`.
+- **Antigravity (agy)** — you may hold Layer-1 seats in both modes (superseded 2026-07-26; see
+  `ANTIGRAVITY-ADOPTION.md` §1) — any director/operator/coordinator seat, never the overseer or
+  merge-gate. Follow Layer 2 fully. All configured AGY seats are one Gemini family, so
+  `high-risk-control` review still needs a different-family reviewer — never self-verify, never
+  push without separate authority.
 
 ## Self-conformance check (run before you stop)
 

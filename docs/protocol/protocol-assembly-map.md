@@ -44,6 +44,7 @@ flowchart TD
 | Cursor protocol mapping | `docs/protocol/cursor/continuation.md` | Agents Window/worktree/mailbox adapter | Cursor mechanics translate universal rules into app-native worktrees, hooks, and top-level chats without forking policy. |
 | Cursor seat role prompts | `docs/protocol/cursor/roles/*.md` | `docs/protocol/cursor/roles/operator.md` | The session-start hook injects the role matching the validated worktree, conversation, and model. |
 | Cursor review command | `.cursor/skills/review-next/SKILL.md` | `/review-next` | The assigned Operator resolves committed work without copied prompts or event refs. |
+| Cursor subagent advisors | `.cursor/agents/*.md` | `.cursor/agents/lane-v-verifier.md` | Read-only parent-scoped advisors are native Cursor subagent definitions; they return evidence and never inherit seat authority. |
 | Cursor app binding | `scripts/cursor_app_binding.py` | `~/.cursor/pipeline-app-seats.json` | One helper exclusively owns the user-local conversation/model registry. |
 | Cursor diagnostics + mailbox wrappers | `scripts/cursor_seat_launcher.py`, `coordination/bin/cursor-*` | `cursor-seat status`, `cursor-publish`, `cursor-consume` | The former launcher is read-only; mailbox wrappers delegate effects to fixed writers. |
 | Learning-plane contract | `docs/protocol/learning/contract.md` | Candidate schema, authority invariants I1–I7 | The learning lifecycle (ADR-067) is provider-neutral policy; provider adapters translate it, never fork it. |

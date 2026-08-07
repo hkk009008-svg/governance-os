@@ -895,10 +895,6 @@ def evaluate(
         payload=payload,
     )
     if event == "subagentStart":
-        if binding is not None:
-            return _deny(
-                "Durable Cursor app seats are top-level chats; use an unbound advisor chat."
-            )
         task = payload.get("task", "")
         if isinstance(task, str) and re.search(
             r"\b(director2?|operator2?|coordinator)\s+seat\b|\bissue\s+(go|nits|fail)\b",
@@ -906,6 +902,9 @@ def evaluate(
             re.IGNORECASE,
         ):
             return _deny("Cursor subagents are advisors and cannot impersonate a seat.")
+        # Bound seats may launch parent-scoped advisors/capacity workers; the
+        # child rules still deny repo mutation, mailbox effects, opaque shell,
+        # and seat authority inheritance regardless of who launched them.
         return _allow()
     if event == "beforeShellExecution":
         return _shell_decision(
@@ -929,11 +928,12 @@ def evaluate(
                 return _deny(
                     "Direct edits to mailbox, lock, or Cursor runtime state are forbidden."
                 )
+            if all(_scratch(path, root=workspace) for path in paths):
+                # Scratch is free everywhere, matching the shell rule.
+                return _allow()
             if _subagent(payload):
                 return _deny("Cursor subagents cannot inherit top-level seat authority.")
             if binding is not None and binding.seat in DIRECTOR_SEATS:
-                return _allow()
-            if all(_scratch(path, root=workspace) for path in paths):
                 return _allow()
             posture = binding.seat if binding is not None else "readiness"
             return _ask(

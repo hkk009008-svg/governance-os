@@ -28,6 +28,7 @@ NUMBERED_AGENT_FILES = tuple(
     f".codex/agents/agent{number:02}.toml" for number in range(1, 5)
 )
 CORE_CODEX_AGENTS = {
+    "amnesiac-prober",
     "lane-v-verifier",
     "money-gate-reviewer",
     "protocol-coordinator",

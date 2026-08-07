@@ -177,13 +177,17 @@ account of itself:
 
 | verdict | commands |
 | --- | --- |
-| allow | `git log`, `git diff`, `git status`, `pytest`, `ci_smoke.py` |
+| allow | `git log`, `git diff`, `git status`, `pytest`, `ci_smoke.py`, `cursor-publish` (bound pair seat) |
 | ask | `git commit`, `git push` |
-| deny | `send-event`, `cursor-publish` |
+| deny | `send-event` (direct fixed-writer call) |
 
-So Cursor can produce review evidence headlessly but **cannot publish a
-verdict** headlessly. That is the design: it is the only side with an in-app
-approval surface, and publication is what that surface exists to gate.
+Bound Director/Operator mailbox wrappers inherit the seat-start grant, so
+`cursor-publish` itself does not prompt. What still gates a headless verdict is
+the app-session binding: publication requires the seat's registered newest
+conversation and a report whose `Reviewer model:` byte-matches the registered
+`model_id`, and a headless run that re-registers the seat displaces the pinned
+chat the user set up. Remote Git effects keep asking, and the in-app approval
+surface remains the gate for them.
 
 ## Briefing rules that earned their place
 
