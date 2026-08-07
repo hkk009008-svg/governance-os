@@ -10,6 +10,7 @@ Choose the smallest agent whose explicit role matches the task:
 | `protocol-coordinator` | Observation, reconciliation, and mediation |
 | `lane-v-verifier` | Read-only advisory review returned to the live Operator |
 | `money-gate-reviewer` | Read-only adversarial review of spend enforcement |
+| `amnesiac-prober` | Reduced-context premise attack on one claim sentence |
 
 Canonical policy lives in `scripts/codex_protocol_model.py`; these files contain
 only role-specific deltas. A generic parent-scoped subagent needs no project

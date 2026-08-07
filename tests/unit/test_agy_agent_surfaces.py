@@ -12,6 +12,7 @@ CATALOG = {
     "readiness-bridge.toml": "readiness-bridge",
     "lane-v-verifier.toml": "lane-v-verifier",
     "money-gate-reviewer.toml": "money-gate-reviewer",
+    "amnesiac-prober.toml": "amnesiac-prober",
 }
 REMOVED_LIVE_SEATS = {
     "protocol-director.toml",
