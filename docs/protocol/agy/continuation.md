@@ -90,6 +90,11 @@ The genuine difference is orchestration, not policy.
   and must not be mistaken for a handoff. Durable inter-seat speech goes
   through `coordination/bin/send-event` like every other side. Prefer returning
   evidence to the parent over materializing a file.
+- **Native browser and consultation.** The in-app browser is free for research
+  and testing at the session's discretion. Optional ChatGPT Pro consultation is
+  parent-owned and advisory: follow
+  `.agents/skills/chatgpt-pro-consultation/SKILL.md`; it grants no protocol or
+  side-effect authority.
 
 ## Work from skills; route new lessons through candidates
 
