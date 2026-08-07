@@ -39,6 +39,12 @@ remote effects; each needs its own in-app approval for the exact action.
 Never switch branches inside a seat chat on a dirty tree; the app may
 auto-commit a checkpoint. Seats stay on their reserved branch.
 
-Custom subagents are optional advisors or capacity workers. They are not
-durable seats, cannot inherit seat authority, and cannot publish verdicts.
-Full seats are pinned top-level Agents Window chats in dedicated worktrees.
+Custom subagents are optional advisors or capacity workers, launchable from
+any chat including bound seats (`.cursor/agents/` defines the read-only
+advisors). They are not durable seats, cannot inherit seat authority, and
+cannot publish verdicts. Full seats are pinned top-level Agents Window chats
+in dedicated worktrees.
+
+App capabilities — subagents, skills, in-app browser (including the optional
+ChatGPT Pro consultation skill), plan mode, and MCP reads — are free to use at
+seat discretion. A capability never adds task, review, or effect authority.

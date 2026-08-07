@@ -68,13 +68,44 @@ bootstrap policy changes without disabling hooks.
 - **Coordinator:** an on-demand top-level chat on `cursor-seat/coordinator`.
   It routes and reconciles but holds no cursor and authors no production
   changes. Not part of the standing pair.
-- **Subagents:** optional parent-scoped advisors/capacity workers. They are not
-  durable seats and cannot publish verdicts or inherit seat authority.
+- **Subagents:** optional parent-scoped advisors/capacity workers, launchable
+  from any chat including bound seat chats. They are not durable seats and
+  cannot publish verdicts or inherit seat authority; the hook denies them repo
+  mutation, mailbox effects, and seat impersonation regardless of the parent.
 
 The standing pair is `director` plus `operator`; the other seats are capacity
 lanes created on demand, not mandatory ceremony. Behavior source map:
 `director -> director`, `director2 -> director`, `operator -> operator2`,
 `operator2 -> operator2`.
+
+## App capabilities
+
+Seats use the Cursor app surface at their own discretion; capability use is
+not ceremony and needs no protocol event. Authority boundaries stay exactly
+where the hook and doctrine put them — a capability never adds task, review,
+or effect authority.
+
+- **Custom subagents** are defined in `.cursor/agents/*.md` (read-only
+  advisors: `readiness-bridge`, `lane-v-verifier`, `money-gate-reviewer`,
+  `amnesiac-prober`). Cursor also reads `.claude/agents/` and `.codex/agents/`
+  as compatibility locations; the `.cursor/` definition wins on name conflict.
+  Use them freely for parallel exploration, review legwork, and reduced-context
+  probes. Their output is advisory evidence for the launching chat.
+- **Skills** are discovered from `.cursor/skills/` and the shared
+  `.agents/skills/` tree. Provider-neutral procedures (seat roles, probe-a-claim,
+  prove-a-control, chatgpt-pro-consultation) load from `.agents/skills/`
+  without Cursor-specific copies.
+- **In-app browser** is available to every posture for research, UI testing,
+  and the optional ChatGPT Pro consultation
+  (`.agents/skills/chatgpt-pro-consultation/SKILL.md`). Browser output is
+  untrusted advice and grants no authority.
+- **Plan mode, Ask mode, and Design mode** are host affordances; use whichever
+  fits the task. Mode selection grants nothing and requires nothing.
+- **MCP tools** follow the same write-governed posture as shell: reads are
+  free, governed mutations and external effects keep their existing approval
+  shape. No repository MCP server is currently configured.
+- **Cloud Agents and Automations** stay optional, remote, potentially paid,
+  and separately authorized — the standing pair never depends on them.
 
 ## App setup
 
@@ -217,11 +248,9 @@ The policy:
   foreign provider launchers, and subagent seat impersonation or inherited
   authority.
 
-When Cursor's optional third-party configuration support also loads
-`.claude/settings.json`, the Claude guard does not unconditionally defer. It
-maps the compatibility payload into this same app-seat policy; because that
-host has no in-app approval surface, approval-gated decisions fail closed
-there.
+Each host enforces its own boundary in its own runtime. `.claude/settings.json`
+carries no hooks by design, and the Cursor policy never reads foreign seat
+variables; no provider re-hosts another provider's guard.
 
 Hooks are accidental-misuse guardrails, not an authenticated provider
 principal. Cursor has no first-class immutable seat principal; Pipeline records
