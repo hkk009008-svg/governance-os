@@ -148,6 +148,31 @@ jobs:
       - name: Run no-ceremony detector (ADR-028)
         run: python scripts/check_no_ceremony.py
 
+  # Risk-aware admission (audit P0): a PR range that touches an authority
+  # surface (hook policy, fixed writers, launchers, CI itself — the list lives
+  # in scripts/ci_admission_gate.py) must carry a committed GO/NITS
+  # high-risk-control verification-report covering those commits, validated by
+  # the existing compact_pair_loop machinery. Ranges that touch no authority
+  # surface are admitted without any new requirement. Stdlib-only: no pip
+  # install. Reads no github.event.* data; the range comes from git itself.
+  admission-gate:
+    name: risk-aware admission (authority surfaces)
+    runs-on: macos-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Run admission gate (existing Compact Pair machinery)
+        run: python scripts/ci_admission_gate.py
+
   threeway-ci-result:
     name: Emit threeway ci_result
     runs-on: macos-latest

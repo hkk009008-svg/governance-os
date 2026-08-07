@@ -22,10 +22,12 @@ def _job(workflow: str, name: str, next_name: str | None) -> str:
 def test_actions_are_full_sha_pinned_with_version_annotations(repo_root):
     workflow = _workflow(repo_root)
     uses = re.findall(r"^\s*- uses:\s*([^\s#]+)(?:\s+#\s*(\S+))?$", workflow, re.MULTILINE)
+    # smoke, pytest-unit, admission-gate, and the signer each check out and
+    # set up Python from the same immutable pins.
     assert uses == [
         (f"actions/checkout@{CHECKOUT_SHA}", "v6.1.0"),
         (f"actions/setup-python@{SETUP_PYTHON_SHA}", "v6.3.0"),
-    ] * 3
+    ] * 4
 
 
 def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):
@@ -33,9 +35,10 @@ def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):
     assert re.search(r"^permissions:\n  contents: read$", workflow, re.MULTILINE)
 
     smoke = _job(workflow, "smoke", "pytest-unit")
-    pytest_job = _job(workflow, "pytest-unit", "threeway-ci-result")
+    pytest_job = _job(workflow, "pytest-unit", "admission-gate")
+    admission = _job(workflow, "admission-gate", "threeway-ci-result")
     signer = _job(workflow, "threeway-ci-result", None)
-    for job in (smoke, pytest_job):
+    for job in (smoke, pytest_job, admission):
         assert "persist-credentials: false" in job
         assert "contents: write" not in job
     assert "permissions:\n      contents: write" in signer
@@ -45,7 +48,7 @@ def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):
 def test_python_matrix_and_job_versions_are_explicit(repo_root):
     workflow = _workflow(repo_root)
     smoke = _job(workflow, "smoke", "pytest-unit")
-    pytest_job = _job(workflow, "pytest-unit", "threeway-ci-result")
+    pytest_job = _job(workflow, "pytest-unit", "admission-gate")
     signer = _job(workflow, "threeway-ci-result", None)
     assert "python-version: '3.13'" in smoke
     assert re.search(
@@ -59,11 +62,15 @@ def test_python_matrix_and_job_versions_are_explicit(repo_root):
 def test_ci_installs_hash_locked_and_signer_uses_minimal_lock(repo_root):
     workflow = _workflow(repo_root)
     smoke = _job(workflow, "smoke", "pytest-unit")
-    pytest_job = _job(workflow, "pytest-unit", "threeway-ci-result")
+    pytest_job = _job(workflow, "pytest-unit", "admission-gate")
+    admission = _job(workflow, "admission-gate", "threeway-ci-result")
     signer = _job(workflow, "threeway-ci-result", None)
     for job in (smoke, pytest_job):
         assert "pip install --require-hashes -r requirements-dev.txt" in job
         assert "cache-dependency-path: requirements-dev.txt" in job
+    # The admission gate is stdlib-only by design: no dependency install
+    # means no third-party code runs before the authority-surface check.
+    assert "pip install" not in admission
     assert "pip install --require-hashes -r requirements-governance.txt" in signer
     assert "cache-dependency-path: requirements-governance.txt" in signer
     assert "requirements-dev.txt" not in signer
