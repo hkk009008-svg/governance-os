@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Governance smoke checks + project-runtime stub for this repo.
+"""governance_verify_all — the full governance verification aggregate.
+
+Formerly scripts/ci_smoke.py (a thin deprecated alias remains at that path:
+CI job vocabulary and historical commands keep resolving). The rename states
+what this is: the FULL aggregate, run in CI, before a release or
+high-risk-control acceptance, or when work changes governance/runtime
+topology — not a cheap session-start preflight. For ordinary changes run the
+focused checker that owns the touched boundary (see CHECKER_REGISTRY).
 
 Two halves run in sequence:
 
@@ -30,8 +37,8 @@ Two halves run in sequence:
       ARCHITECTURE.md changed vs merge-base; hard-fail when it fires).
 
 Usage:
-    .venv/bin/python scripts/ci_smoke.py    # local
-    python scripts/ci_smoke.py              # CI (after pip install)
+    .venv/bin/python scripts/governance_verify_all.py    # local
+    python scripts/governance_verify_all.py              # CI (after pip install)
 
 Exit codes:
     0 — all checks pass
@@ -49,6 +56,80 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 for _p in (_REPO_ROOT, _SCRIPTS_DIR):
     if _p not in sys.path: sys.path.insert(0, _p)
+
+# Checker -> owned boundary map (guard admission for selective invocation:
+# the map itself is a control, so tests/unit/test_governance_verify_registry.py
+# pins that every named checker and owned path exists). Severity names what a
+# red result blocks. This registry is descriptive routing for humans and
+# agents choosing the focused checker; it does not gate anything by itself.
+CHECKER_REGISTRY = {
+    "project_smoke": {
+        "entry": "scripts/governance_verify_all.py",
+        "owned_paths": ("threeway/", "scripts/", "coordination/mailbox/kinds.txt"),
+        "trigger": "governance/runtime topology change",
+        "severity": "hard-fail",
+        "blocked_effect": "landing a broken governance-OS runtime invariant",
+    },
+    "doc_anchor_drift": {
+        "entry": "scripts/check_doc_claims.py",
+        "owned_paths": (
+            "ARCHITECTURE.md", "CLAUDE.md", "AGENTS.md", "DECISIONS.md",
+            "docs/protocol/agents/director-operator.md",
+        ),
+        "trigger": "editing SHA-citing truth docs",
+        "severity": "hard-fail (fatal kinds) / warn (advisory kinds)",
+        "blocked_effect": "stale anchors answering for current truth",
+    },
+    "coordination_state": {
+        "entry": "scripts/check_coordination.py",
+        "owned_paths": ("coordination/", "scripts/baselines/review_history_boundary.json"),
+        "trigger": "mailbox/review/coordination state change",
+        "severity": "hard-fail (FATAL) / warn (ADVISORY)",
+        "blocked_effect": "corrupt or ambiguous durable coordination state",
+    },
+    "anti_ceremony": {
+        "entry": "scripts/check_no_ceremony.py",
+        "owned_paths": ("tests/", "docs/REMEDIATION-INVENTORY.md"),
+        "trigger": "xfail pins / remediation inventory / reviewer schema change",
+        "severity": "hard-fail",
+        "blocked_effect": "appearance-of-verification without substance (ADR-028)",
+    },
+    "reviewer_result_schema": {
+        "entry": "scripts/consume_reviewer_result.py",
+        "owned_paths": ("coordination/mailbox/",),
+        "trigger": "reviewer-result blocks in mailbox events",
+        "severity": "hard-fail",
+        "blocked_effect": "malformed reviewer results consumed as verdicts",
+    },
+    "placeholders": {
+        "entry": "scripts/check_placeholders.py",
+        "owned_paths": (".",),
+        "trigger": "any adoption-surface edit",
+        "severity": "hard-fail",
+        "blocked_effect": "unbound placeholder tokens shipping as truth (ADR-002)",
+    },
+    "go_schema": {
+        "entry": "scripts/check_go_schema.py",
+        "owned_paths": ("coordination/mailbox/sent/",),
+        "trigger": "verification-report publication",
+        "severity": "hard-fail",
+        "blocked_effect": "malformed GO evidence admitted as review",
+    },
+    "mechanism_ledger": {
+        "entry": "scripts/threeway_mechanism_ledger.py",
+        "owned_paths": ("threeway/", "docs/protocol/threeway/MECHANISM-LEDGER.md"),
+        "trigger": "threeway mechanism or ledger change",
+        "severity": "hard-fail",
+        "blocked_effect": "ledger drifting from executable mechanisms",
+    },
+    "arch_freshness": {
+        "entry": "scripts/check_arch_freshness.py",
+        "owned_paths": ("ARCHITECTURE.md",),
+        "trigger": "ARCHITECTURE.md in the changeset",
+        "severity": "hard-fail when it fires",
+        "blocked_effect": "editing truth-layer facts without bumping provenance",
+    },
+}
 
 def _project_smoke() -> int:
     """Project-runtime smoke: the governance OS's own load-bearing invariants.

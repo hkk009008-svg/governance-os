@@ -94,7 +94,7 @@ using the smallest focused tests and one completion gate:
 
 ```bash
 python -m pytest tests/unit/test_codex_ledger_bridge.py -q
-python scripts/ci_smoke.py
+python scripts/governance_verify_all.py
 ```
 
 Use evidence-ledger's own verification commands for product changes. Formal

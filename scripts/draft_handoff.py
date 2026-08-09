@@ -183,10 +183,10 @@ def collect_context(root: Path, seat: str, wave: int, smoke: bool = False) -> Ha
         py = sys.executable
     _, wave_out, wave_err = run([py, "scripts/wave_gate_check.py", str(wave)], root)
     if smoke:
-        _, smoke_out, smoke_err = run([py, "scripts/ci_smoke.py"], root, timeout=180)
+        _, smoke_out, smoke_err = run([py, "scripts/governance_verify_all.py"], root, timeout=180)
         smoke_text = smoke_out or smoke_err or "(no output)"
     else:
-        smoke_text = "not run; pass --smoke to include scripts/ci_smoke.py"
+        smoke_text = "not run; pass --smoke to include scripts/governance_verify_all.py"
 
     return HandoffContext(
         repo=root,

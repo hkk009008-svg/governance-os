@@ -296,7 +296,7 @@ def render(data: dict) -> str:
 
     # --- Smoke pointer ---
     a("## Smoke test")
-    a("  smoke: run `python scripts/ci_smoke.py`")
+    a("  smoke: run `python scripts/governance_verify_all.py`")
     a("  (not run inline — too heavy for a status command)")
 
     return "\n".join(lines) + "\n"
