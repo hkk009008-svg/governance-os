@@ -74,7 +74,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--from", "-f", dest="sender", required=True, help="Explicit assigned sender role")
     parser.add_argument("--to", "-t", required=True, help="Recipient seat or 'all'")
-    parser.add_argument("--kind", "-k", default="coordination", help="Mailbox kind (default: coordination)")
+    parser.add_argument(
+        "--kind",
+        "-k",
+        default="findings",
+        help="Mailbox kind (default: findings; the fixed writer only accepts new-write allowlist kinds)",
+    )
     parser.add_argument("--subject", "-s", required=True, help="Event subject")
     parser.add_argument("--body", "-b", help="Event body string (reads stdin if omitted)")
     parser.add_argument("--root", help="Repository root directory")

@@ -61,7 +61,7 @@ def _init_repo(repo: Path, repo_root: Path) -> None:
     (mailbox / "sent").mkdir(parents=True)
     (mailbox / "seen").mkdir()
     (mailbox / "kinds.txt").write_text(
-        "status\nverify-request\nverification-report\n", encoding="utf-8"
+        "findings\nverify-request\nverification-report\n", encoding="utf-8"
     )
     for seat in ("director", "director2", "operator", "operator2", "coordinator"):
         (mailbox / "seen" / f"{seat}.txt").write_text("0\n", encoding="utf-8")
@@ -223,14 +223,14 @@ def test_send_event_stages_ordinary_event_through_fixed_finalizer(
     _init_repo(repo, repo_root)
 
     result = _run(
-        [repo_root / "coordination/bin/send-event", "director", "operator", "status", "hello"],
+        [repo_root / "coordination/bin/send-event", "director", "operator", "findings", "hello"],
         repo,
         input_text="body\n",
     )
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith("-director-to-operator-status.md")
+    assert staged.endswith("-director-to-operator-findings.md")
 
 
 @pytest.mark.parametrize("coordinator", ("coordinator", "coordinator2"))
@@ -246,7 +246,7 @@ def test_coordinator_sender_uses_explicit_cursorless_marker(
             repo_root / "coordination/bin/send-event",
             coordinator,
             "director",
-            "status",
+            "findings",
             "cursorless sender",
         ],
         repo,
@@ -255,7 +255,7 @@ def test_coordinator_sender_uses_explicit_cursorless_marker(
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith(f"-{coordinator}-to-director-status.md")
+    assert staged.endswith(f"-{coordinator}-to-director-findings.md")
     event = repo / staged
     assert event.read_text(encoding="utf-8").endswith(
         "Cursor at send: cursorless\n"
@@ -362,7 +362,7 @@ def test_duplicate_cursor_footer_fails_before_publication(
             repo_root / "coordination/bin/send-event",
             "director",
             "operator",
-            "status",
+            "findings",
             "duplicate footer",
         ],
         repo,
