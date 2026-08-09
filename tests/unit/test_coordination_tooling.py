@@ -612,7 +612,7 @@ def test_non_operator_fails_before_verification_report_publication(
     assert _git(repo, "diff", "--cached", "--name-only") == ""
 
 
-def test_send_event_keeps_final_event_when_index_is_locked(
+def test_send_event_keeps_final_event_but_fails_when_index_is_locked(
     tmp_path: Path, repo_root: Path
 ) -> None:
     repo = tmp_path / "repo"
@@ -637,6 +637,6 @@ def test_send_event_keeps_final_event_when_index_is_locked(
     finally:
         lock.unlink()
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode != 0
     assert "not staged" in result.stdout
     assert len(list((repo / "coordination/mailbox/sent").glob("*verification-report.md"))) == 1

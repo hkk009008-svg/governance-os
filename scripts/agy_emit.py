@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Streamlined CLI mailbox event emitter for Antigravity (AGY).
 
-Constructs schema-compliant mailbox events, invokes coordination/bin/send-event,
-and commits the generated event with an explicit git pathspec.
+Constructs schema-compliant mailbox events and invokes
+coordination/bin/send-event. The fixed writer stages the event; commit remains a
+separate action.
 
 Usage:
-    .venv/bin/python scripts/agy_emit.py --to all --kind coordination --subject "Subject" --body "Body..."
-    cat body.txt | .venv/bin/python scripts/agy_emit.py --to director --kind discussion --subject "Subject"
+    .venv/bin/python scripts/agy_emit.py --from director --to all --kind coordination --subject "Subject" --body "Body..."
+    cat body.txt | .venv/bin/python scripts/agy_emit.py --from operator --to director --kind discussion --subject "Subject"
 """
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import subprocess
 import sys
@@ -23,15 +23,9 @@ _ROUTABLE_SEATS = frozenset(
 )
 
 
-def _clean_git_env() -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env.update({"LANG": "C", "LC_ALL": "C"})
-    return env
-
-
 def emit_event(
     *,
-    sender: str = "agy",
+    sender: str,
     recipient: str,
     kind: str,
     subject: str,
@@ -56,34 +50,29 @@ def emit_event(
         raise RuntimeError(f"send-event failed (code {proc.returncode}): {err_msg}")
 
     stdout = proc.stdout.decode("utf-8", errors="replace").strip()
-    match = re.search(r"created\s+(coordination/mailbox/sent/[^\s]+\.md)", stdout)
+    match = re.fullmatch(
+        r"created\s+(coordination/mailbox/sent/[^\s]+\.md)\s+"
+        r"\(staged; commit with explicit pathspec\)",
+        stdout,
+    )
     if not match:
-        raise RuntimeError(f"Could not parse created event file path from output: {stdout}")
+        detail = proc.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(
+            "send-event did not confirm a staged event"
+            + (f": {detail}" if detail else f": {stdout}")
+        )
 
     relative_path = match.group(1)
     full_path = repo_root / relative_path
-
-    # Commit event with explicit pathspec
-    commit_msg = f"coord({sender}): {subject}"
-    commit_proc = subprocess.run(
-        ["git", "commit", "-m", commit_msg, "--", relative_path],
-        cwd=repo_root,
-        env=_clean_git_env(),
-        capture_output=True,
-        check=False,
-    )
-    if commit_proc.returncode != 0:
-        err_msg = commit_proc.stderr.decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"git commit failed for {relative_path}: {err_msg}")
 
     return full_path
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Streamlined AGY mailbox event emitter + explicit git commit."
+        description="Streamlined AGY mailbox event emitter (stages; never commits)."
     )
-    parser.add_argument("--from", "-f", dest="sender", default="agy", help="Sender seat (default: agy)")
+    parser.add_argument("--from", "-f", dest="sender", required=True, help="Explicit assigned sender role")
     parser.add_argument("--to", "-t", required=True, help="Recipient seat or 'all'")
     parser.add_argument("--kind", "-k", default="coordination", help="Mailbox kind (default: coordination)")
     parser.add_argument("--subject", "-s", required=True, help="Event subject")
@@ -127,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             body=body_text,
             root=repo_root,
         )
-        print(f"OK — emitted and committed event: {created_path.as_posix()}")
+        print(f"OK — created/staged event; commit is separate: {created_path.as_posix()}")
 
         if args.dispatch and args.to in _ROUTABLE_SEATS:
             dispatch_cmd = f".venv/bin/python scripts/agy_seat_launcher.py {args.to}"

@@ -10,6 +10,10 @@ import ast
 import sys
 from pathlib import Path
 
+
+class InventoryParseError(ValueError):
+    """A test file or xfail mark cannot be represented faithfully."""
+
 def _xfail_marks(tree: ast.AST):
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -24,19 +28,34 @@ def find_xfail_pins(tests_root: Path) -> list[dict]:
     pins: list[dict] = []
     for path in sorted(Path(tests_root).rglob("test_*.py")):
         try:
-            tree = ast.parse(path.read_text())
-        except SyntaxError:
-            continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except (OSError, UnicodeError, SyntaxError) as exc:
+            raise InventoryParseError(f"cannot parse {path}: {exc}") from exc
         for call in _xfail_marks(tree):
             reason, strict = "", False
-            # Only literal (ast.Constant) reason=/strict= are captured; an f-string or
-            # variable expression is silently skipped (reason="" / strict=False). All
-            # current pins use literal strings, so this is a non-issue in practice.
             for kw in call.keywords:
-                if kw.arg == "reason" and isinstance(kw.value, ast.Constant):
-                    reason = str(kw.value.value)
-                if kw.arg == "strict" and isinstance(kw.value, ast.Constant):
-                    strict = bool(kw.value.value)
+                if kw.arg is None:
+                    raise InventoryParseError(
+                        f"{path}:{call.lineno}: xfail metadata may not use dynamic **kwargs"
+                    )
+                if kw.arg == "reason":
+                    if not (
+                        isinstance(kw.value, ast.Constant)
+                        and isinstance(kw.value.value, str)
+                    ):
+                        raise InventoryParseError(
+                            f"{path}:{call.lineno}: xfail reason must be a string literal"
+                        )
+                    reason = kw.value.value
+                if kw.arg == "strict":
+                    if not (
+                        isinstance(kw.value, ast.Constant)
+                        and isinstance(kw.value.value, bool)
+                    ):
+                        raise InventoryParseError(
+                            f"{path}:{call.lineno}: xfail strict must be a boolean literal"
+                        )
+                    strict = kw.value.value
             pins.append({"test_file": str(path), "reason": reason, "strict": strict})
     return pins
 

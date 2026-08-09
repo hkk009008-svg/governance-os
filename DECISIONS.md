@@ -265,7 +265,8 @@ The 2026-06-30 handoff blocked Track B ("fill the truth docs, real
 On 2026-07-07 the user-principal designated `hkk009008-svg/evidence-ledger`
 (private) as the bound target — and inspection showed the bind was already
 executed there on 2026-07-03 as that repo's ADR-001 "Option B partial bind"
-(commit `fee5207` on its `phase1-foundation`, merged to its main @ `a5fb526`;
+(commit `evidence-ledger@fee5207` on its `phase1-foundation`, merged to its
+main at `evidence-ledger@a5fb526`;
 verified via `$ git log --oneline origin/phase1-foundation` in that repo).
 Its ARCHITECTURE.md/OPERATIONS.md were filled 2026-07-04; its placeholder
 allowlist is down to 5 entries (verified via `$ git show

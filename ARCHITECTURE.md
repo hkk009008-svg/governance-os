@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified against base: 2026-08-07 @ 3410f83*
+*Last verified against base: 2026-08-09 @ 89b212b*
 
 ## 1. Purpose
 
@@ -50,10 +50,10 @@ canonical or external-effect scope. The mode itself grants no authority; see
 | `coordination/mailbox/seen/` | Compatibility cursors for the four concrete pair seats only. |
 | `.agents/skills/` | On-demand role procedures. Skill presence grants no authority. |
 | `.codex/agents/` | Small reusable role deltas; no numbered pseudo-seat inventory. |
-| Repository lifecycle hooks | Absent on every side except `.cursor/hooks/seat-policy`, which gates a real in-app approval surface. No side depends on a hook for orientation, identity, or state. |
+| Repository lifecycle hooks | Absent on every side except `.cursor/hooks/seat-policy`, which gates enforceable shell/MCP approvals and denies unsupported file-tool asks. No side depends on a hook for orientation or durable state. |
 | `threeway/` | Signed ref-bus substrate used only when its event and matching cursor refs prove it live. Dormant here; still load-bearing, because proving the bus absent is what makes the mailbox fallback correct. |
 | `governance.toml` | Registered product targets. Targets are selected per task, not fixed. |
-| `.claude/`, `.agy/`, `.cursor/` | Provider adapters. Each owns runtime mechanics only; policy comes from `scripts/codex_protocol_model.py`. |
+| `.claude/`, `.codex/`, `.cursor/`, `.agents/agents/`, `.agents/workflows/` | Provider discovery/adaptation surfaces. Each owns runtime mechanics only; policy comes from `scripts/codex_protocol_model.py`. |
 
 ### Provider surfaces
 
@@ -66,15 +66,17 @@ by the host, not chosen, and each adapter states its own.
 | Adapter | `docs/protocol/codex/continuation.md` | `docs/protocol/cursor/continuation.md` | `docs/protocol/claude/continuation.md` | `docs/protocol/agy/continuation.md` |
 | Lifecycle hook | none | `seat-policy` | none | none |
 | Launcher | `codex-seat` | `cursor-seat` | none | `agy-seat` |
-| Seat roles | `.codex/agents/*.toml` | `/review-next` skill | `.claude/skills/seat-*` | `.agy/agents/*.toml` |
-| Subagent advisors | `.codex/agents/*.toml` | `.cursor/agents/*.md` | `.claude/agents/*.md` | `.agy/agents/*.toml` |
+| Seat roles | `.codex/agents/*.toml` | `/review-next` skill | `.claude/skills/seat-*` | explicit assignment + `.agents/skills/seat-*` |
+| Subagent advisors | `.codex/agents/*.toml` | `.cursor/agents/*.md` | `.claude/agents/*.md` | `.agents/agents/*.md` |
 
 Notable per-host constraints:
 
-- Cursor is the only side with a lifecycle hook, because it is the only side
-  with an in-app approval surface to gate.
-- Claude has no launcher and no session registry. A desktop app cannot receive
-  a shell-set variable, so seat naming there is convention.
+- Cursor is the only side with a repository lifecycle hook. Shell and MCP
+  approval hooks are enforceable; `preToolUse` asks are not, so non-Director
+  native file edits deny instead of receiving a false approval.
+- Pipeline has no Claude launcher or governance-seat registry. Claude Desktop's
+  host session registry, automatic worktrees, and peer relay are conveniences;
+  they do not turn a session title or message into role authority.
 - Claude Code discovers skills only under `.claude/skills/`. Since ADR-067
   Stage 3, four `.claude` skills (create-regression-pin, probe-a-claim,
   prove-a-control, chatgpt-pro-consultation) are reference stubs over their
@@ -98,7 +100,6 @@ The table names stable symbols instead of volatile line numbers.
 | Symbol | Source | Responsibility |
 |---|---|---|
 | `collect_orientation_snapshot`, `render_orientation_snapshot` | `scripts/status.py` | Produce the bounded current-state view. |
-| `resolve_unread` | `scripts/bus_unread.py` | Select one proven unread authority and expose ambiguity. |
 | `inspect_current_verify_requests` | `scripts/check_coordination.py` | Find and validate current committed review requests. |
 | `CommitGraphProjection` | `scripts/git_commit_projection.py` | Pin one repository identity and HEAD, batch-check candidate object types, and answer committed-range ancestry from one bounded in-memory graph. |
 | `validate_event_candidate`, `writer_fence` | `scripts/mailbox_writer.py` | Validate and serialize event/cursor publication. |
@@ -123,10 +124,10 @@ The table names stable symbols instead of volatile line numbers.
 - No side binds a per-seat Git index. A launched process inherits the selected
   checkout but not `GIT_INDEX_FILE` or ambient provider policy variables; every
   worktree uses its native index. `index-<provider>-<seat>` is retired.
-- Session start enforces nothing. Claude has no launcher or registry and its
-  seat naming is convention; Cursor's registry exists to gate in-app effects,
-  not to validate a verdict. Review identity is decided at publication by
-  `scripts/compact_pair_loop.py`.
+- Session start grants nothing. Pipeline has no Claude governance-seat launcher
+  or registry, even though Claude Desktop has a host session registry and relay;
+  Cursor's registry exists to gate in-app effects, not to validate a verdict.
+  Review identity is decided at publication by `scripts/compact_pair_loop.py`.
 - Repository hooks do not orient any side, mutate state, refresh doctrine, or
   maintain a second index.
 - One compact snapshot is the normal orientation path. There is no fast-resume
@@ -182,7 +183,7 @@ Activate a development environment containing
 gate:
 
 ```bash
-python -m pytest tests/unit -q
+python -m pytest tests -q
 python scripts/ci_smoke.py
 python scripts/check_coordination.py
 ```

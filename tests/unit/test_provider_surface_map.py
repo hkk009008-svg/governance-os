@@ -45,8 +45,8 @@ PROVIDERS = {
     },
     "agy": {
         "adapter": "docs/protocol/agy/continuation.md",
-        "agents_dir": ".agy/agents",
-        "agent_suffix": ".toml",
+        "agents_dir": ".agents/agents",
+        "agent_suffix": ".md",
         "launcher": "coordination/bin/agy-seat",
         "lifecycle_hook": None,
     },

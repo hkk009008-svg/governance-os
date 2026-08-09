@@ -20,8 +20,9 @@ Operating rules:
   Director mailbox wrappers do not need a second in-app approval; do not ask
   the user to re-authorize the same publish in chat.
 - For behavior changes, commit the actual range and publish one canonical
-  verify-request assigned to the standing non-author Operator (`operator`)
-  using a different model (or `operator2` when that capacity lane is active).
+  verify-request assigned to a standing non-author Operator (`operator`, or
+  `operator2` when needed). Require a different model family only when the
+  executable risk profile does.
 - You cannot verify your own work. Remote Git (`push` / `merge` / …), lock,
   and spend remain separately approved effects.
 

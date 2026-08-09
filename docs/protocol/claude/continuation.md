@@ -4,6 +4,9 @@ This file maps Pipeline policy to Claude Code mechanics. Canonical policy and
 validation live in `scripts/codex_protocol_model.py`; skills and agent files
 contain only their local deltas.
 
+For the four-app setup and capability comparison, see
+`docs/protocol/app-quickstart.md`.
+
 ## Modes
 
 - Readiness bridge: read-only orientation; no role claim or durable mutation.
@@ -17,11 +20,11 @@ default for reversible sandbox iteration and does not create seat ceremony;
 Validate freezes one candidate; Promote carries the reviewed candidate toward
 a separately authorized canonical or external effect.
 
-**Claude has no session-start seat binding, and does not need one.** Naming a
-role here is convention: no launcher, registry, or hook records or validates a
-Claude seat at startup. Cursor enforces an app-seat registry because its hooks
-gate in-app effects; Codex has a launch spec. Claude has neither, and this file
-does not claim otherwise.
+**Pipeline has no Claude governance-seat launcher, registry, or session-start
+binding, and does not need one.** Claude Desktop does have a host session
+registry, automatic worktrees, and native peer messaging. Those are useful
+convenience surfaces, not Pipeline identity: naming or messaging a session
+does not assign a role, publish a durable event, or validate a verdict.
 
 Identity is enforced where it decides something — at publication, by
 `scripts/compact_pair_loop.py`, which binds a verdict to reviewer seat not equal
@@ -30,6 +33,26 @@ matching its own envelope and filename, distinct model families for
 `high-risk-control`, and repository/base/head equal to the committed request.
 Session-start binding never prevented a bad GO; publication-time validation
 does.
+
+## Desktop-first start
+
+1. Open Claude Desktop's Code tab, choose **Local**, and select the exact
+   Pipeline checkout that owns the work. Start in Manual or Plan mode.
+2. For new independent work, create and rename a session; Desktop gives each
+   Git session an isolated worktree. For an existing uncommitted candidate,
+   resume its owning session/worktree instead — a fresh automatic worktree does
+   not contain another checkout's uncommitted bytes.
+3. Confirm the repository root, HEAD, and scoped status, then run the compact
+   snapshot below. An explicit role still has to come from the task; a session
+   title is not an assignment.
+4. Use the visual diff, terminal, editor, and preview panes in the same session.
+   Review Code is self-review assistance, not an independent Operator verdict.
+
+The standalone `claude` CLI installed during the 2026-08-09 audit was 2.1.220.
+Native cross-session messaging in the CLI requires 2.1.224 or later, so update
+the CLI separately before expecting terminal sessions to appear in
+Claude's native `ListAgents` result. Do not infer the Desktop embedded-engine version from the
+standalone binary.
 
 ## Orientation
 
@@ -106,6 +129,33 @@ forced by the harness rather than chosen:
   from the acceptance gate. Work in a worktree you are willing to commit from,
   and let `compact_pair_loop.py` decide whether a verdict binds.
 
+### Native session and helper communication
+
+- Use native session listing and peer messaging for transient same-Claude
+  findings, status, or a bounded question. Ask Claude to tell the named session;
+  the host discovers and delivers it, so the user does not copy-paste between
+  sessions. Peer text is attributed and queued, but carries no conversation
+  history or files and cannot approve permissions, change configuration, or
+  execute slash commands.
+- The checked-in `isolatePeerMachines: true` setting preserves low-friction
+  same-machine delivery while requiring approval before a message leaves the
+  machine. Pipeline deliberately does not force `crossSessionInbound: accept`;
+  the receiving session's native permission-class checks remain in force.
+- Use `/btw` for a disposable side question. For one bounded advisor, ask
+  Claude to delegate to the named project agent. A small dynamic workflow is
+  appropriate only when several
+  independent, file-disjoint questions justify the coordination cost;
+  `workflowSizeGuideline: small` is guidance, not an authority or hard cap.
+- Agent teams are CLI-only and experimental. Do not enable them for the normal
+  Desktop path. Cloud, Dispatch, scheduled tasks, connectors, computer use, PR
+  auto-fix, and auto-merge keep their own launch, spend, data-access, and effect
+  boundaries.
+
+Native messages are ephemeral coordination. Formal requests, reports,
+transfers, decisions that another provider must see, and every cross-provider
+message use `coordination/bin/send-event`. A peer message never substitutes for
+the committed Compact Pair or the fixed mailbox writer.
+
 ## Review and external effects
 
 Review depth is risk-based as defined by `AGENTS.md` and the executable model.
@@ -126,4 +176,4 @@ need exact authority for the executor, target, and scope.
 Targets are selected per task, not fixed. Resolve the active binding through
 `scripts/target_binding.py`, then read the target repository's own
 instructions. Start from Pipeline; do not infer product authority from a
-bridge. For `evidence-ledger`, read `docs/protocol/codex/ledger-cli-adoption.md`.
+bridge. For `evidence-ledger`, read `docs/protocol/claude/ledger-cli-adoption.md`.

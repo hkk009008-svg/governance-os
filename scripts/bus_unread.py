@@ -264,8 +264,8 @@ def bus_unread_events(repo_root, seat: str, *, bus_id: str = "prod") -> list | N
         # over the live bus is ~14s (subprocess git per blob); a dashboard calls this once
         # per seat, so the seq>cursor floor (iter_events_since) is load-bearing for the
         # "status.py NEVER hangs" contract. The seq gate lives in iter_events_since (pinned
-        # non-vacuous in test_threeway_refstore.py); here we apply only the bus_id+addressee
-        # domain filters.
+        # non-vacuous in tests/unit/test_threeway_activation_scripts.py::
+        # test_bus_unread_script); here we apply only the bus_id+addressee domain filters.
         events = list(store.iter_events_since(cursor))
     except Exception:
         # Dashboard never-crash + silent-degradation guard: a corrupt cursor blob or a

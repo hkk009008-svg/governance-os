@@ -25,10 +25,10 @@ or coordinator posture only when the user explicitly assigns one.
 When performing substantive work, adhere to the unified operating doctrine bound to AGY primitives:
 
 - **Evidence & Verification**: Follow R-EVIDENCE (cite exact command output), R-MEASURE (commit test instruments), and R-VERIFY-TIER (cap over-verification, strict xfail pins for deferred defects).
-- **Subagent Model Tiering**: Select native subagent models based on task requirements:
-  - `flash_lite`: Directory listing, `rg` searching, file reading, and log extraction (fastest).
-  - `flash`: Multi-file research, codebase orientation, and doc inspection.
-  - `pro` / `inherit`: Complex reasoning, heavy refactoring, and independent verifier analysis.
+- **Subagent Model Tiering**: Current custom-agent tiers are `inherit`,
+  `flash`, and `pro`. The tracked read-only advisors omit `model` and inherit
+  the parent by default. A tier selects capacity, never seat standing or
+  reviewer independence.
 - **Native helpers (`define_subagent` / `invoke_subagent`)**: Delegate bounded
   local tasks when useful. Helper output returns to the parent; it is not a
   formal handoff, review verdict, seat claim, or durable protocol event.

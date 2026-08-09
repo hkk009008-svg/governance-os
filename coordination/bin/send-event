@@ -169,7 +169,7 @@ case "$RESULT" in
     TMP=""
     echo "send-event: git add failed; kept $REL (not staged; commit with explicit pathspec)" >&2
     echo "created $REL (not staged; git add failed)"
-    exit 0
+    exit 5
     ;;
   *)
     echo "send-event: finalizer output is invalid" >&2

@@ -3,12 +3,15 @@
 
 Classified inspection reads and scratch writes are free. Unknown top-level
 commands ask; unknown subagent commands deny. Repository mutations are
-role-governed: Director worktree chats mutate freely, every other top-level
-posture receives one in-app approval. Bound Director/Operator mailbox
-wrappers inherit the seat-start grant (allow). Remote Git effects (push,
-pull, fetch, merge, rebase, cherry-pick) always ask. Hard denies are reserved
-for protected coordination surfaces, direct fixed-writer calls, foreign
-provider launchers, and subagent seat impersonation.
+role-governed: Director worktree chats mutate freely; Cursor file-tool edits
+outside that posture deny because preToolUse cannot enforce an ask today.
+Governed shell mutations still receive one in-app approval. Bound
+Director/Operator mailbox wrappers inherit the seat-start grant (allow).
+Remote Git effects (push, pull, fetch, merge, rebase, cherry-pick) always ask.
+Top-level MCP calls ask through their separately enforceable hook; subagent MCP
+calls deny. Hard denies are reserved for protected coordination surfaces,
+direct fixed-writer calls, foreign provider launchers, and subagent seat
+impersonation.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
@@ -56,6 +60,14 @@ _PROTECTED_PREFIXES = (
     ".cursor/runtime/",
     ".git/refs/threeway/",
 )
+_PROTECTED_GIT_REF_PREFIXES = (
+    "refs/authority/",
+    "refs/heads/cursor-seat/",
+    "refs/protocol/",
+    "refs/replace/",
+    "refs/threeway/",
+)
+_PROTECTED_GIT_REFS = frozenset({"refs/heads/main"})
 _SCRATCH_PREFIXES = (".pytest-verify-tmp/",)
 _MUTATING_FILE_COMMANDS = frozenset(
     {
@@ -109,6 +121,35 @@ _GIT_TREE_MUTATORS = frozenset(
 )
 _EXTERNAL_GIT_EFFECTS = frozenset(
     {"fetch", "pull", "push", "merge", "rebase", "cherry-pick"}
+)
+_GIT_INSPECTION_COMMANDS = frozenset(
+    {
+        "blame",
+        "cat-file",
+        "check-attr",
+        "check-ignore",
+        "check-ref-format",
+        "diff",
+        "diff-tree",
+        "for-each-ref",
+        "fsck",
+        "grep",
+        "help",
+        "log",
+        "ls-files",
+        "ls-tree",
+        "merge-base",
+        "name-rev",
+        "rev-list",
+        "rev-parse",
+        "show",
+        "show-ref",
+        "status",
+        "verify-commit",
+        "verify-tag",
+        "version",
+        "whatchanged",
+    }
 )
 _MAILBOX_WRAPPERS = frozenset(
     {"cursor-publish", "cursor-consume", "cursor_mailbox.py"}
@@ -174,7 +215,6 @@ _INSPECTION_PROGRAMS = frozenset(
         "find",
         "grep",
         "head",
-        "less",
         "ls",
         "md5",
         "pwd",
@@ -189,6 +229,20 @@ _INSPECTION_PROGRAMS = frozenset(
         "true",
         "uniq",
         "wc",
+    }
+)
+_INERT_ENVIRONMENT_OVERRIDES = frozenset(
+    {
+        "COLUMNS",
+        "LANG",
+        "LC_ALL",
+        "LINES",
+        "NO_COLOR",
+        "PIP_DISABLE_PIP_VERSION_CHECK",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONHASHSEED",
+        "TERM",
+        "TZ",
     }
 )
 _MAILBOX_EVENT_NAME = re.compile(
@@ -333,6 +387,51 @@ def _assignment(token: str) -> bool:
     return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token) is not None
 
 
+def _unsafe_environment_prefix(tokens: list[str]) -> bool:
+    """Reject environment prefixes that can redirect execution or hide parsing."""
+
+    def unsafe_assignment(token: str) -> bool:
+        name = token.split("=", 1)[0]
+        return name not in _INERT_ENVIRONMENT_OVERRIDES
+
+    index = 0
+    while index < len(tokens) and _assignment(tokens[index]):
+        if unsafe_assignment(tokens[index]):
+            return True
+        index += 1
+    if index >= len(tokens) or PurePosixPath(tokens[index]).name != "env":
+        return False
+    index += 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--":
+            return False
+        if token in {"-i", "--ignore-environment"}:
+            index += 1
+            continue
+        if token in {"-u", "--unset"}:
+            if index + 1 >= len(tokens):
+                return True
+            index += 2
+            continue
+        if token.startswith("--unset="):
+            index += 1
+            continue
+        if _assignment(token):
+            if unsafe_assignment(token):
+                return True
+            index += 1
+            continue
+        if token.startswith("-"):
+            return True
+        return False
+    return False
+
+
+def _unresolved_shell_expansion(tokens: list[str]) -> bool:
+    return any("$" in token for token in tokens)
+
+
 def _unwrap_env(tokens: list[str]) -> list[str]:
     index = 0
     while index < len(tokens) and _assignment(tokens[index]):
@@ -402,6 +501,141 @@ def _git_arguments(tokens: list[str]) -> list[str]:
     return []
 
 
+def _git_inline_alias(tokens: list[str]) -> bool:
+    """Detect inline Git config that can change dispatch or execute helpers."""
+
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        config: str | None = None
+        if token == "-c" and index + 1 < len(tokens):
+            config = tokens[index + 1]
+            index += 2
+        elif token.startswith("-c") and token != "-c":
+            config = token[2:]
+            index += 1
+        elif token.startswith("--config-env="):
+            config = token.removeprefix("--config-env=").split("=", 1)[0]
+            index += 1
+        elif token in {"-C", "--git-dir", "--work-tree"} and index + 1 < len(tokens):
+            index += 2
+            continue
+        elif token.startswith("-"):
+            index += 1
+            continue
+        else:
+            break
+        if config is not None:
+            return True
+    return False
+
+
+def _unsafe_git_dispatch(tokens: list[str]) -> bool:
+    """Fail closed on inline aliases and unknown names that may resolve as aliases."""
+
+    if not tokens or PurePosixPath(tokens[0]).name != "git":
+        return False
+    if _git_inline_alias(tokens):
+        return True
+    subcommand = _git_subcommand(tokens)
+    if not subcommand:
+        return not any(token in {"--help", "--version"} for token in tokens[1:])
+    return subcommand not in (
+        _GIT_INSPECTION_COMMANDS | _GIT_TREE_MUTATORS | _EXTERNAL_GIT_EFFECTS
+    )
+
+
+def _protected_git_ref(value: str) -> bool:
+    return value in _PROTECTED_GIT_REFS or any(
+        value.startswith(prefix) for prefix in _PROTECTED_GIT_REF_PREFIXES
+    )
+
+
+def _protected_branch_name(value: str) -> bool:
+    if value.startswith("refs/"):
+        return _protected_git_ref(value)
+    return _protected_git_ref(f"refs/heads/{value}")
+
+
+def _protected_git_ref_mutation(
+    tokens: list[str], binding: AppSessionBinding | None = None
+) -> bool:
+    """Detect direct plumbing writes to refs that carry governance state.
+
+    ``update-ref --stdin`` is denied because the shell payload does not expose
+    the refs carried on standard input. Ordinary feature-branch ref updates
+    remain subject to the normal seat mutation policy.
+    """
+
+    if not tokens or PurePosixPath(tokens[0]).name != "git":
+        return False
+    subcommand = _git_subcommand(tokens)
+    arguments = _git_arguments(tokens)
+    if subcommand == "replace":
+        return not any(argument in {"-l", "--list"} for argument in arguments)
+    if subcommand == "branch":
+        if _git_read_form(tokens, subcommand):
+            return False
+        positional = [
+            argument
+            for argument in arguments
+            if argument != "--" and not argument.startswith("-")
+        ]
+        if (
+            binding is not None
+            and len(positional) < 2
+            and any(
+                argument in {"-m", "-M", "-c", "-C", "--move", "--copy"}
+                for argument in arguments
+            )
+        ):
+            return True
+        return any(
+            _protected_branch_name(argument)
+            for argument in arguments
+            if argument != "--" and not argument.startswith("-")
+        )
+    if subcommand in {"checkout", "switch"}:
+        candidates: list[str] = []
+        for argument in arguments:
+            if argument == "--":
+                break
+            if not argument.startswith("-"):
+                candidates.append(argument)
+        return any(_protected_branch_name(argument) for argument in candidates)
+    if subcommand not in {"symbolic-ref", "update-ref"}:
+        return False
+    if subcommand == "update-ref" and any(
+        argument == "--stdin" or argument.startswith("--stdin=")
+        for argument in arguments
+    ):
+        return True
+
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument == "--":
+            index += 1
+            break
+        if argument in {"-m", "--message"}:
+            index += 2
+            continue
+        if argument.startswith("-"):
+            index += 1
+            continue
+        break
+    positional = [
+        argument
+        for argument in arguments[index:]
+        if argument != "--" and not argument.startswith("-")
+    ]
+    if subcommand == "symbolic-ref":
+        return len(positional) >= 2 and any(
+            _protected_git_ref(argument) for argument in positional[:2]
+        )
+    return bool(positional) and _protected_git_ref(positional[0])
+
+
 def _git_read_form(tokens: list[str], subcommand: str) -> bool:
     """Detect read-only invocations of git subcommands that can also mutate."""
 
@@ -453,7 +687,9 @@ def _git_tree_mutation(tokens: list[str]) -> bool:
 def _read_only_mailbox_invocation(program: str, arguments: list[str]) -> bool:
     if program not in _MAILBOX_WRAPPERS:
         return False
-    return "--dry-run" in arguments or "next-review" in arguments
+    if "--dry-run" in arguments:
+        return True
+    return program == "cursor_mailbox.py" and bool(arguments) and arguments[0] == "next-review"
 
 
 def _python_program(tokens: list[str]) -> tuple[str, list[str]]:
@@ -555,6 +791,8 @@ def _write_paths(tokens: list[str]) -> list[str]:
         if token in {">", ">>", "1>", "1>>", "2>", "2>>"} and index + 1 < len(tokens):
             paths.append(tokens[index + 1])
     program = PurePosixPath(tokens[0]).name if tokens else ""
+    if program == "git":
+        paths.extend(_git_output_paths(tokens))
     if program in _MUTATING_FILE_COMMANDS:
         paths.extend(
             token
@@ -564,19 +802,145 @@ def _write_paths(tokens: list[str]) -> list[str]:
     return paths
 
 
+def _git_output_paths(tokens: list[str]) -> list[str]:
+    paths: list[str] = []
+    for index, token in enumerate(tokens):
+        if token == "--output" and index + 1 < len(tokens):
+            paths.append(tokens[index + 1])
+        elif token.startswith("--output="):
+            paths.append(token.split("=", 1)[1])
+    return paths
+
+
 def _outside_git_mutation(tokens: list[str], *, root: Path) -> bool:
     if not tokens or PurePosixPath(tokens[0]).name != "git":
         return False
     subcommand = _git_subcommand(tokens)
-    if (
-        subcommand not in _GIT_TREE_MUTATORS
-        and subcommand not in _EXTERNAL_GIT_EFFECTS
-    ):
-        return False
-    for index, token in enumerate(tokens[:-1]):
-        if token == "-C":
-            return _outside_workspace(tokens[index + 1], root=root)
+    mutating = (
+        subcommand in _GIT_TREE_MUTATORS or subcommand in _EXTERNAL_GIT_EFFECTS
+    )
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"-C", "--git-dir", "--work-tree"} and index + 1 < len(tokens):
+            if mutating and _outside_workspace(tokens[index + 1], root=root):
+                return True
+            index += 2
+            continue
+        attached = next(
+            (
+                token[len(prefix):]
+                for prefix in ("-C", "--git-dir=", "--work-tree=")
+                if token.startswith(prefix) and token != prefix
+            ),
+            None,
+        )
+        if attached is not None and mutating and _outside_workspace(attached, root=root):
+            return True
+        index += 1
+    if subcommand == "config" and not _git_read_form(tokens, subcommand):
+        arguments = _git_arguments(tokens)
+        if any(argument in {"--global", "--system"} for argument in arguments):
+            return True
+        for index, argument in enumerate(arguments):
+            if argument == "--file" and index + 1 < len(arguments):
+                return _outside_workspace(arguments[index + 1], root=root)
+            if argument.startswith("--file="):
+                return _outside_workspace(argument.split("=", 1)[1], root=root)
+    if any(_outside_workspace(path, root=root) for path in _git_output_paths(tokens)):
+        return True
     return False
+
+
+def _unsafe_inspection_options(tokens: list[str]) -> bool:
+    """Recognize command options that turn an apparent reader into a writer/exec."""
+
+    if not tokens:
+        return False
+    program = PurePosixPath(tokens[0]).name
+    if program == "find":
+        dangerous = ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls")
+        return any(
+            token == option or token.startswith(option)
+            for token in tokens[1:]
+            for option in dangerous
+        )
+    if program == "sort":
+        return any(
+            token == "-o"
+            or (token.startswith("-o") and token != "-o")
+            or token == "--output"
+            or token.startswith("--output=")
+            or token.startswith("--compress-program")
+            for token in tokens[1:]
+        )
+    if program == "rg":
+        return any(token == "--pre" or token.startswith("--pre=") for token in tokens[1:])
+    if program == "git":
+        subcommand = _git_subcommand(tokens)
+        arguments = _git_arguments(tokens)
+        if subcommand == "grep" and any(
+            token == "-O"
+            or (token.startswith("-O") and token != "-O")
+            or token == "--open-files-in-pager"
+            or token.startswith("--open-files-in-pager=")
+            for token in arguments
+        ):
+            return True
+        return any(
+            token in {"--ext-diff", "--textconv", "--paginate"}
+            or token.startswith("--output=")
+            or token == "--output"
+            for token in tokens[1:]
+        )
+    return False
+
+
+def _trusted_inspection_executable(
+    tokens: list[str], *, root: Path, environ: Mapping[str, str]
+) -> bool:
+    """Do not grant reader semantics to a spoofed executable with a trusted basename."""
+
+    if not tokens:
+        return False
+    raw = tokens[0]
+    name = PurePosixPath(raw).name
+    if name in {"[", "cd", "echo", "false", "pwd", "test", "true"}:
+        return "/" not in raw
+    normalized = _normalized_path(raw, root=root) if "/" in raw else ""
+    if normalized == "coordination/bin/cursor-seat":
+        return True
+    if "/" in raw:
+        candidate = Path(raw)
+        if not candidate.is_absolute():
+            candidate = root / candidate
+    else:
+        # An explicitly supplied PATH is part of the command's provenance. If
+        # the hook payload omits PATH, use the platform's non-user default
+        # rather than this policy process's ambient PATH. ``python`` is kept as
+        # a compatibility spelling in that synthetic/no-PATH posture: when it
+        # is absent from os.defpath the shell cannot dispatch an attacker-owned
+        # executable through PATH, and the command will simply fail to launch.
+        resolved = shutil.which(raw, path=environ.get("PATH", os.defpath))
+        if resolved is None:
+            return "PATH" not in environ and (
+                name == "python" or name in _INSPECTION_PROGRAMS
+            )
+        candidate = Path(resolved)
+    absolute = candidate.absolute()
+    if _ephemeral_write(str(absolute)):
+        return False
+    try:
+        resolved_path = candidate.resolve(strict=True)
+    except OSError:
+        return False
+    if _ephemeral_write(str(resolved_path)):
+        return False
+    try:
+        relative = resolved_path.relative_to(root.resolve())
+    except ValueError:
+        return resolved_path.is_file()
+    return len(relative.parts) >= 2 and relative.parts[:2] == (".venv", "bin")
 
 
 def _seat_mailbox_commit(
@@ -691,7 +1055,9 @@ _ORIENTATION_PYTHON = frozenset(
 )
 
 
-def _free_inspection(tokens: list[str]) -> bool:
+def _free_inspection(
+    tokens: list[str], *, root: Path, environ: Mapping[str, str]
+) -> bool:
     """True for classified non-mutating inspection forms that may auto-allow."""
 
     if not tokens:
@@ -701,6 +1067,8 @@ def _free_inspection(tokens: list[str]) -> bool:
     ]
     if durable_writes or _git_tree_mutation(tokens):
         return False
+    if not _trusted_inspection_executable(tokens, root=root, environ=environ):
+        return False
     program = PurePosixPath(tokens[0]).name
     if program == "git":
         subcommand = _git_subcommand(tokens)
@@ -708,7 +1076,7 @@ def _free_inspection(tokens: list[str]) -> bool:
             return False
         if subcommand in _GIT_TREE_MUTATORS:
             return _git_read_form(tokens, subcommand)
-        return True
+        return subcommand in _GIT_INSPECTION_COMMANDS
     name, arguments = _python_program(tokens)
     if name == "pytest" or (
         program.startswith("python")
@@ -756,9 +1124,27 @@ def _shell_decision(
         )
     pending_ask: dict[str, str] | None = None
     for raw in segments:
+        if _unsafe_environment_prefix(raw):
+            return _deny(
+                "Execution-bearing environment overrides are not allowed in Cursor shell commands."
+            )
+        if _unresolved_shell_expansion(raw):
+            if child:
+                return _deny("Cursor subagents may not use unresolved shell expansion.")
+            pending_ask = pending_ask or _ask(
+                f"Approve one shell command with unresolved expansion as {posture}?"
+            )
+            continue
         tokens = _unwrap_prefixes(raw)
         if not tokens:
             return _deny("Cursor hook could not resolve the shell executable.")
+        if len(segments) > 1 and PurePosixPath(tokens[0]).name == "cd":
+            if child:
+                return _deny("Cursor subagents may not change shell context across commands.")
+            pending_ask = pending_ask or _ask(
+                f"Approve one compound command with a directory change as {posture}?"
+            )
+            continue
         if _opaque_execution(tokens):
             if child:
                 return _deny(
@@ -768,6 +1154,11 @@ def _shell_decision(
                 f"Approve one opaque interpreter command in this {posture} session?"
             )
             continue
+        if _unsafe_git_dispatch(tokens):
+            return _deny(
+                "Git inline aliases and unknown subcommands are not auditable; "
+                "use a literal built-in Git command."
+            )
         effect = _effect(tokens)
         if effect == "launcher":
             return _deny("Cursor app seats do not launch CLI or foreign provider seats.")
@@ -802,6 +1193,20 @@ def _shell_decision(
             continue
         if _outside_git_mutation(tokens, root=root):
             return _deny("Git mutations must remain inside the bound app worktree.")
+        if _protected_git_ref_mutation(tokens, binding):
+            return _deny(
+                "Direct mutation of protected governance refs is forbidden; "
+                "use the owning fixed writer or separately authorized gate."
+            )
+        if _unsafe_inspection_options(tokens):
+            if child:
+                return _deny(
+                    "Cursor subagents may not use inspection options that write or execute."
+                )
+            pending_ask = pending_ask or _ask(
+                f"Approve one command whose inspection options can write or execute as {posture}?"
+            )
+            continue
         if _writes_protected(tokens, root=root):
             return _deny(
                 "Direct writes to mailbox, lock, or Cursor runtime state are forbidden."
@@ -836,7 +1241,7 @@ def _shell_decision(
                 f"Approve one repository mutation in this {posture} session?"
             )
             continue
-        if scratch_only or _free_inspection(tokens):
+        if scratch_only or _free_inspection(tokens, root=root, environ=environ):
             continue
         if child:
             return _deny(
@@ -913,6 +1318,28 @@ def evaluate(
             registry_path=registry_path,
             environ=env,
         )
+    if event == "beforeMCPExecution":
+        tool = payload.get("tool_name")
+        raw_input = payload.get("tool_input")
+        server = payload.get("url") or payload.get("command")
+        if not isinstance(tool, str) or not tool.strip():
+            return _deny("Cursor MCP hook received a malformed tool name.")
+        if isinstance(raw_input, str):
+            try:
+                tool_input = json.loads(raw_input)
+            except json.JSONDecodeError:
+                return _deny("Cursor MCP hook received malformed JSON parameters.")
+        else:
+            tool_input = raw_input
+        if not isinstance(tool_input, dict):
+            return _deny("Cursor MCP hook requires object-shaped JSON parameters.")
+        if not isinstance(server, str) or not server.strip():
+            return _deny("Cursor MCP hook could not identify the MCP server.")
+        display_tool = " ".join(tool.split())[:120]
+        return _ask(
+            f"Approve one MCP invocation of {display_tool}? "
+            "This approval does not grant external-effect authority."
+        )
     if event == "preToolUse":
         tool_input = payload.get("tool_input")
         if not isinstance(tool_input, dict):
@@ -936,8 +1363,10 @@ def evaluate(
             if binding is not None and binding.seat in DIRECTOR_SEATS:
                 return _allow()
             posture = binding.seat if binding is not None else "readiness"
-            return _ask(
-                f"Approve one repository file edit in this {posture} session?"
+            return _deny(
+                "Cursor does not currently enforce preToolUse approval for file "
+                f"edits in this {posture} session. Use a bound Director or an "
+                "approved shell mutation."
             )
         return _allow()
     return _allow()
@@ -958,7 +1387,13 @@ def process_bytes(
     except (UnicodeError, json.JSONDecodeError, ValueError):
         result = (
             _deny("Malformed input was denied by the fail-closed Cursor app hook.")
-            if event_hint in {"beforeShellExecution", "preToolUse", "subagentStart"}
+            if event_hint
+            in {
+                "beforeShellExecution",
+                "beforeMCPExecution",
+                "preToolUse",
+                "subagentStart",
+            }
             else {}
         )
         return json.dumps(result), 0

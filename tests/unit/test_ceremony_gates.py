@@ -4,16 +4,18 @@ Covers the pure, mailbox-free helpers (R6 `_pass_reports_missing_runxfail`,
 R5 `_utv_status_violations`, the `_is_xfail_decorator` AST classifier) plus the
 top-level `main()` GO/NO-GO on this repo (currently clean -> exit 0).
 
-Hermetic: no network, no git, no filesystem writes — all inputs are in-memory
-strings / AST nodes, and `main()` only reads committed source.
+Hermetic: no network or repository writes. R3 uses a temporary test module and
+two nested local pytest selectors; other helpers use in-memory inputs.
 """
 from __future__ import annotations
 
 import ast
 import contextlib
 import io
+import sys
 
 import check_no_ceremony as cnc
+import wave_gate_check
 
 
 # --------------------------------------------------------------------------
@@ -34,6 +36,63 @@ def test_main_returns_zero_when_configured_checks_pass():
     assert "no ceremony detected" not in out
 
 
+def test_r3_executes_a_real_selector_through_the_wave_gate():
+    status, details = cnc.rule_gate_executes()
+
+    assert status == "PASS", details
+    assert "executed witnessed strict-xfail controls" in details[0]
+    assert "unresolved UNMET, fixed MET" in details[0]
+
+
+def test_r3_rejects_a_met_report_without_runner_evidence(monkeypatch):
+    """A status-only MET cannot satisfy the behavioral execution control."""
+
+    monkeypatch.setattr(
+        wave_gate_check,
+        "gate_report",
+        lambda *_args, **_kwargs: {
+            "verdict": "MET",
+            "selectors": [],
+            "pytest": None,
+        },
+    )
+
+    status, details = cnc.rule_gate_executes()
+
+    assert status == "FAIL"
+    assert "did not produce" in details[0]
+
+
+def test_r3_rejects_fabricated_pytest_results_without_execution_witness(
+    monkeypatch,
+):
+    def fabricated_runner(selectors: list[str]) -> dict:
+        unresolved = "unresolved_defect" in selectors[0]
+        return {
+            "args": ["pytest", *selectors, "--runxfail"],
+            "command": "pytest " + " ".join(selectors) + " --runxfail",
+            "exit_code": 1 if unresolved else 0,
+            "stdout": "1 failed\n" if unresolved else "1 passed\n",
+            "stderr": "",
+        }
+
+    monkeypatch.setattr(wave_gate_check, "_run_pytest_selectors", fabricated_runner)
+
+    status, details = cnc.rule_gate_executes()
+
+    assert status == "FAIL"
+    assert "did not produce" in details[0]
+
+
+def test_r6_fails_closed_when_its_consumer_is_unavailable(monkeypatch):
+    monkeypatch.setitem(sys.modules, "consume_reviewer_result", None)
+
+    status, details = cnc.rule_report_cites_executed_pin()
+
+    assert status == "FAIL"
+    assert "consumer unavailable" in details[0]
+
+
 # --------------------------------------------------------------------------
 # R6 — _pass_reports_missing_runxfail (pure over (label, result) pairs)
 # --------------------------------------------------------------------------
@@ -47,7 +106,7 @@ def test_pass_with_no_runxfail_command_flags_violation():
 
 
 def test_pass_citing_runxfail_command_is_clean():
-    """A `pass` whose commands[] cites an executed --runxfail run yields no violation."""
+    """A `pass` whose commands[] cites a --runxfail command yields no violation."""
     results = [
         ("r", {"verdict": "pass", "commands": [{"command": "pytest tests/pins --runxfail -q"}]})
     ]

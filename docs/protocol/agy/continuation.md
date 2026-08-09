@@ -4,6 +4,9 @@ This file maps Pipeline policy to AGY (Antigravity) mechanics. Canonical policy
 and validation live in `scripts/codex_protocol_model.py`; role prompts and
 skills contain only their local deltas.
 
+For the desktop-first setup, native capability map, and cross-app handoff
+choices, start with `docs/protocol/app-quickstart.md`.
+
 ## Modes
 
 - Readiness bridge: read-only orientation; no role claim or durable mutation.
@@ -35,8 +38,8 @@ merge, push, or external-effect authority.
 Use the native index of the current worktree:
 
 ```bash
-python scripts/status.py snapshot <seat>
-python scripts/agy_observer.py --snapshot  # compact status plus labelled RAW bus view
+python3 scripts/status.py snapshot <seat>
+python3 scripts/agy_observer.py --snapshot  # compact status plus labelled RAW bus view
 ```
 
 Read actionable event bodies before a decision. Only the assigned live role
@@ -79,11 +82,18 @@ a formal verdict.
 
 The genuine difference is orchestration, not policy.
 
-- **Native helpers.** An assigned parent may delegate bounded work with
-  `define_subagent` / `invoke_subagent` rather than polling files. These
-  helpers are parent-scoped, not formal seats: they return evidence locally
-  and cannot author a verdict, publish an event, consume a cursor, or inherit
-  the parent's authority. Tiers select cost/capability, not protocol standing.
+- **Native helpers and relay.** Workspace custom agents live in
+  `.agents/agents/*.md`; the obsolete `.agy/agents/*.toml` surface is not a
+  current host discovery path. An assigned parent may use `invoke_subagent`,
+  `define_subagent`, `send_message`, and `manage_subagents` instead of polling
+  files or asking the user to relay text. Native messages are transient
+  AGY-local coordination. Helpers remain parent-scoped, not formal seats: they
+  cannot author a verdict, publish an event, consume a cursor, or inherit the
+  parent's authority. Tiers select cost/capability, not protocol standing.
+- **Saved orientation.** Invoke `/pipeline-start` from the tracked
+  `.agents/workflows/pipeline-start.md` workflow for a compact read-only start.
+  Saved workflows remove repeated prompt text; they grant no role or effect
+  authority.
 - **Workspace artifacts.** A subagent may keep working notes under
   `.agents/<agent_folder>/`. These are scratch inputs, not protocol events:
   they grant no authority, are not a mailbox, are not durable protocol state,

@@ -11,10 +11,11 @@ def test_retired_claude_cli_launcher_is_absent(repo_root: Path) -> None:
     inherited environment variable, which a desktop app cannot set and any
     process can forge.
 
-    Nothing replaced it, deliberately. Claude has no launcher and no session
-    registry — unlike Cursor, whose registry exists to gate in-app effects.
-    Claude seat naming is convention; review identity is decided at publication
-    by `scripts/compact_pair_loop.py`.
+    Nothing replaced it, deliberately. Pipeline has no Claude launcher or
+    governance-seat registry. Claude Desktop's host session registry and relay
+    are convenience surfaces, unlike Cursor's Pipeline registry that gates
+    in-app effects. Claude seat naming is convention; review identity is
+    decided at publication by `scripts/compact_pair_loop.py`.
     """
     assert not (repo_root / "scripts/claude_seat_launcher.py").exists()
     assert not (repo_root / "coordination/bin/claude-seat").exists()

@@ -23,12 +23,9 @@ cd "$PIPELINE_ROOT"
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2
 ```
 
-before entering evidence-ledger. Three guard caveats for Claude seats:
-`--seat` accepts the five standing seats only (`coordinator2` is on-demand
-oversight and not in its VALID_SEATS); the guard's printed guidance names the
-`.agents/.../seat_status.py` path — substitute the Claude copy,
-`.claude/skills/four-seat-protocol/scripts/seat_status.py`; and it tells every
-seat to read the Codex bridge doc — Claude seats read THIS document instead.
+before entering evidence-ledger. Claude seats read this bridge, not the Codex
+copy. If guard output contains older adapter paths, the current Claude
+continuation and `scripts/status.py` win.
 
 ## Authority Boundary
 
@@ -42,27 +39,10 @@ seat to read the Codex bridge doc — Claude seats read THIS document instead.
 
 ## Start From Pipeline
 
-Orientation:
+Orientation or named role:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/continuation_readiness.py
-env -u GIT_INDEX_FILE git log --oneline -5
-```
-
-Named live seat:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE git status --short
-```
-
-Coordinator:
-
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py coordinator --wave 2
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/status.py snapshot <seat>
 ```
 
 Read relevant Pipeline mailbox bodies before protocol decisions. Counts alone
@@ -122,7 +102,7 @@ as-is.
 Use current Pipeline protocol checks:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit -q
+env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests -q
 env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
 ```
 

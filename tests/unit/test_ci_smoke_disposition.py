@@ -114,9 +114,9 @@ def test_workflow_keeps_parallel_verification_and_signer_dependencies() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "  smoke:\n" in workflow
-    assert "  pytest-unit:\n" in workflow
+    assert "  pytest:\n" in workflow
     assert "  threeway-ci-result:\n" in workflow
-    assert "    needs: [smoke, pytest-unit]\n" in workflow
+    assert "    needs: [smoke, pytest]\n" in workflow
     assert (
         "    if: github.event_name == 'workflow_dispatch' && "
         "vars.THREEWAY_BUS_LIVE == 'true' && github.ref == 'refs/heads/main'\n"

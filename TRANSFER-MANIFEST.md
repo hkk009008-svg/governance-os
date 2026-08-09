@@ -1,4 +1,9 @@
-# Transfer bundle — multi-agent governance / protocol operating-system
+# Transfer bundle — historical generation snapshot
+
+> This file records the bundle as generated and is not current setup or
+> operating doctrine. Use `AGENTS.md`, `ARCHITECTURE.md`, and
+> `docs/REPOSITORY-MANUAL.md` for current behavior. Preserve the counts and
+> paths below as provenance.
 
 This folder is a **portable, project-neutral copy of the "operating system"** that
 wrapped an AI-cinema-pipeline repo: the harness config, the multi-seat governance

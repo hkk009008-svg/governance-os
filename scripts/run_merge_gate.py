@@ -124,6 +124,8 @@ def main(argv=None) -> int:
                     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {res.outcome} {cid}: {res.reason}")
         except Exception as e:
             print(f"merge-gate iteration error: {e}", file=sys.stderr)
+            if args.run_once:
+                return 1
         if args.run_once:
             break
         time.sleep(args.interval)

@@ -18,8 +18,8 @@
 #   - ARCHITECTURE Last-verified (check_arch_freshness; inert unless ARCHITECTURE.md
 #     changed vs merge-base; fetch-depth: 0 already set for merge-base resolution)
 #
-# Tests run by `pytest tests/unit` (pytest-unit job):
-#   - Unit tests for all governance gate scripts (including A1/A2/A3 gates above)
+# Tests run by `pytest tests` (pytest job):
+#   - Complete unit and integration contract suite
 #
 # Scope intentionally NOT included (per the 2026-05-24 Session 1 brief):
 #   - Linting (ruff, eslint)        - Deployment / release / changelog workflows
@@ -31,9 +31,11 @@
 #   - No untrusted-input interpolation in `run:` blocks. The manual threeway
 #     integration SHA is passed via an env var, validated as a 40-char lowercase
 #     hex SHA, then used only after that check.
-#   - Only ${{ github.workflow }} + ${{ github.ref }} appear in the concurrency
-#     group key (the canonical GitHub pattern); ref is not used in any shell command.
-#   - No reference to github.event.*, github.head_ref, or commit messages.
+#   - The concurrency key separates trusted pull_request_target admission from
+#     candidate pull_request tests, so neither half can cancel the other.
+#   - The trusted admission job receives only PR base/head repository+SHA values
+#     as action inputs/environment, validates both SHAs, and never executes the
+#     candidate checkout. No event value is interpolated directly into shell.
 
 name: CI
 
@@ -41,6 +43,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  pull_request_target:
   workflow_dispatch:
     inputs:
       integration_sha:
@@ -53,7 +56,7 @@ on:
         type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -62,6 +65,7 @@ permissions:
 jobs:
   smoke:
     name: ci_smoke (governance gates + runtime invariants)
+    if: github.event_name != 'pull_request_target'
     runs-on: macos-latest
     timeout-minutes: 15
     env:
@@ -99,8 +103,9 @@ jobs:
       - name: Run ci_smoke (single source of truth for §15 invariants)
         run: python scripts/ci_smoke.py
 
-  pytest-unit:
-    name: pytest tests/unit (Python ${{ matrix.python-version }})
+  pytest:
+    name: pytest tests (Python ${{ matrix.python-version }})
+    if: github.event_name != 'pull_request_target'
     runs-on: macos-latest
     timeout-minutes: 15
     strategy:
@@ -112,6 +117,7 @@ jobs:
         python-version: ['3.11', '3.12', '3.13']
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      PIPELINE_REQUIRE_EXECUTED_TEST: '1'
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -142,8 +148,8 @@ jobs:
       - name: Install dependencies
         run: pip install --require-hashes -r requirements-dev.txt
 
-      - name: Run unit tests
-        run: python -m pytest tests/unit --tb=short -q
+      - name: Run complete test suite
+        run: python -m pytest tests --tb=short -q
 
       - name: Run no-ceremony detector (ADR-028)
         run: python scripts/check_no_ceremony.py
@@ -159,10 +165,22 @@ jobs:
     name: risk-aware admission (authority surfaces)
     runs-on: macos-latest
     timeout-minutes: 10
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request_target'
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Checkout trusted base gate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout candidate objects without executing them
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
           fetch-depth: 0
           persist-credentials: false
 
@@ -170,14 +188,29 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Run admission gate (existing Compact Pair machinery)
-        run: python scripts/ci_admission_gate.py
+      - name: Run trusted admission gate against candidate objects
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          case "$BASE_SHA:$HEAD_SHA" in
+            *[!0-9a-f:]*|'')
+              echo "pull-request SHAs must be lowercase hexadecimal" >&2
+              exit 2
+              ;;
+          esac
+          test "${#BASE_SHA}" -eq 40
+          test "${#HEAD_SHA}" -eq 40
+          test "$(git -C trusted rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git -C candidate rev-parse HEAD)" = "$HEAD_SHA"
+          git -C trusted fetch --no-tags --no-write-fetch-head "$GITHUB_WORKSPACE/candidate/.git" "$HEAD_SHA"
+          python trusted/scripts/ci_admission_gate.py --root trusted --base "$BASE_SHA" --head "$HEAD_SHA"
 
   threeway-ci-result:
     name: Emit threeway ci_result
     runs-on: macos-latest
     timeout-minutes: 10
-    needs: [smoke, pytest-unit]
+    needs: [smoke, pytest]
     if: github.event_name == 'workflow_dispatch' && vars.THREEWAY_BUS_LIVE == 'true' && github.ref == 'refs/heads/main'
     permissions:
       contents: write

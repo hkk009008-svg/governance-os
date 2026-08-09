@@ -155,9 +155,15 @@ def test_hooks_wire_policy_once_and_fail_closed_on_sensitive_events() -> None:
         "sessionStart",
         "preToolUse",
         "beforeShellExecution",
+        "beforeMCPExecution",
         "subagentStart",
     }
-    for event in ("preToolUse", "beforeShellExecution", "subagentStart"):
+    for event in (
+        "preToolUse",
+        "beforeShellExecution",
+        "beforeMCPExecution",
+        "subagentStart",
+    ):
         for entry in hooks[event]:
             assert entry["command"] == ".cursor/hooks/seat-policy"
             assert entry.get("failClosed") is True

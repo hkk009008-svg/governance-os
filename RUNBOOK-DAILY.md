@@ -1,48 +1,30 @@
-# Daily Runbook — Governance OS
+# Daily Runbook
 
-The one visible loop. Everything else is a pointer.
+Use only the branch of this loop that the task needs.
 
----
+1. Understand the requested outcome and hard boundaries.
+2. For local change, refresh the native worktree and affected-path history.
+3. Inspect definitions, writes, callers, and sibling paths before changing
+   behavior.
+4. Add a failing behavior test when feasible, implement the narrow fix, and run
+   focused verification.
+5. Classify the actual diff:
+   - ordinary local work stops after focused verification;
+   - material behavior gets non-author exact-range review;
+   - high-risk control additionally gets different-model-family review and
+     abuse-class analysis;
+   - external effects wait for exact live authorization.
+6. Compare the final diff with the requested scope and report remaining
+   unknowns truthfully.
 
-## The Loop
+Run `scripts/status.py snapshot <seat>` only when current protocol state matters
+and only after explicit role assignment. Mailbox events, handoffs, full smoke,
+and coordination checks are triggered tools, not daily rituals. Historical
+capacity packets are not a live scheduler.
 
-```
-director brief  →  operator verify  →  GO / NITS / FAIL  →  push
-```
+`GO` accepts its bound range; it never authorizes push or another effect.
+Classify documentation and tests by actual behavior/risk, not filename.
 
-1. **Director** scopes the smallest sufficient brief or fix and produces one
-   lawful authority-bearing trigger.
-2. **Operator** independently verifies only from that trigger (Lane V) and returns a
-   verification-report mailbox artifact: GO, NITS, or FAIL.
-3. **Director** acts on the verdict:
-   - GO → push to origin (and only then).
-   - NITS → nit-fix diff, then operator re-verifies.
-   - FAIL → diagnose, re-implement, repeat.
-
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-runbook intentionally does not restate its lifecycle grammar.
-
----
-
-## Four state facts (one line each)
-
-- **Baton passes are mailbox artifacts, not chat** (Rule #19).
-- **First commit to land wins** — always run `git log --oneline -3` + check
-  mailbox before writing a commit or gate decision (R-HOT-TREE).
-- **No push before GO** (R-VERIFY-THEN-PUSH).
-- **docs / status / handoff-only commits skip Lane V** (phase detection).
-
----
-
-## Less-common paths → see these files (trigger → reference)
-
-| Trigger | See |
-|---|---|
-| Uncertainty about any Rule #7–#23 | `docs/protocol/agents/director-operator.md` |
-| Cross-cutting change needs a co-sign (Tier A/B?) | `docs/protocol/agents/four-seat-extension.md` + `docs/protocol/codex/continuation.md` |
-| Acquiring / releasing a cross-cutting lock | `docs/protocol/agents/four-seat-extension.md` |
-| Wave gate, wave sequence, or inventory audit | `.agents/skills/seat-coordinator/SKILL.md` + `docs/protocol/codex/continuation.md` |
-| Emergency / escalation / rollback | `docs/protocol/agents/failure-modes.md` |
-| Git sharp edges (phantom index, pathspec, env flags) | `docs/protocol/agents/core.md` |
-| Measurement behind a GO/NO-GO verdict | `docs/protocol/agents/core.md` (R-MEASURE) |
-| Coordinator seat spawn criteria | `.agents/skills/seat-coordinator/SKILL.md` |
+The policy kernel is `scripts/codex_protocol_model.py`; formal exact-range
+review is `scripts/compact_pair_loop.py`; validated serialized event/cursor
+writes are `scripts/mailbox_writer.py` through the fixed wrappers.

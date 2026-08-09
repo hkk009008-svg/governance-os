@@ -1,199 +1,21 @@
-# Antigravity ("agy") — Three-Way Protocol Adoption Manual
+# AGY Adapter for Optional Threeway Adoption
 
-> ⚠ **Post-adaptation review (read before your next turn):**
-> [`reviews/2026-06-22-antigravity-adaptation-review.md`](reviews/2026-06-22-antigravity-adaptation-review.md) —
-> the prior turn's read-only observer (the right role) read the bus with a fabricated event schema
-> (`event_type`/`subject`) and this turn's docs reported the bus "LIVE/DEPLOYED" while `refs/threeway/`
-> was empty. The review covers what was wrong, what was corrected (`36c72878` / ADR-052), and the
-> realignment rules (read the package; label RAW-vs-verified; status is an artifact; never declare "live"
-> without the oracle).
+Normal AGY work follows [`../agy/continuation.md`](../agy/continuation.md). A
+root session begins as a readiness bridge; a formal role requires explicit
+assignment. Native AGY helpers remain parent-scoped rather than becoming roles.
 
-**Read first:** [`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md)
-(the shared rules), [`CODEX-ADOPTION.md`](CODEX-ADOPTION.md) for current
-signed-bus status, and the `threeway/` package for mechanics.
-The agent-agnostic root contract is [`AGENTS.md`](../../../AGENTS.md) — **Antigravity should read it as
-its source of truth and translate its principles into Antigravity's own mechanisms** (AGENTS.md says
-exactly this for non-Claude agents).
+An explicitly assigned AGY session may hold any supported mailbox role through
+the provider-neutral protocol. That does not make it a signed-bus principal,
+overseer, chief, CI attestor, signer, or merge gate. A target must separately
+bind signed identity, key custody, runner, and effect authority.
 
-> **Evidence note (R-EVIDENCE applied to this manual):** Antigravity's protocol harness and tool
-> surface bindings are formally codified in the project skill at
-> `.agents/skills/antigravity-harness/SKILL.md`. This skill serves as the active config ensuring
-> Antigravity honors the Layer-1 boundaries while executing the Layer-2 operating doctrine.
+Use the native worktree/index and current status projection. Do not infer bus
+deployment from an available command, environment value, role label, source
+package, or green test. Inspect the target's actual refs and deployment
+controls as described in
+[`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md).
 
----
-
-## 1. The headline: Antigravity may hold Layer-1 seats in both modes — superseding the original Mode-1 exclusion
-
-**Superseded 2026-07-26, by user ruling.** This section previously read
-"Antigravity holds no Layer-1 seat — and that is the design, not an omission",
-excluding it from every Layer-1 path in Mode 1. That exclusion no longer holds.
-What it protected, and what accepting the change costs, is recorded below
-rather than deleted, because the original decision was security-motivated.
-
-The three-way protocol's correctness rests on **cross-provider independence**, and **both** of the
-two audit CRITICALs that motivated the redesign lived on **Antigravity's CLI write path** (spec §1). The
-ratified design therefore removed Antigravity from every Layer-1 path (D11: "no Antigravity CLI on
-any path"; "Antigravity CLI as an autonomous seat" was an explicit non-goal, §2).
-
-**What changed.** Antigravity now occupies Layer-1 seats in both modes:
-
-- Antigravity **may** hold `director`/`director2`, `operator`/`operator2`, and
-  `coordinator`/`coordinator2`. It remains **not** the `overseer` and **not** the merge-gate.
-- The **overseer is a mechanical process**, not Antigravity.
-- Independence is enforced where it decides something, not by provider
-  exclusion: `compact_pair_loop.py` binds a verdict to a reviewer seat that is
-  not the author seat and, for `high-risk-control`, a different model *family*
-  as decided by `codex_protocol_model.models_are_independent`. `gemini` is
-  independent of `claude`, `gpt`, `composer`, and `grok`.
-
-**What this accepts.** The original exclusion was not about independence
-arithmetic; it was about the CLI write path that carried both audit CRITICALs.
-Seating Antigravity in Mode 1 puts that write path back on a Layer-1 route, so
-the protection is now the same fail-closed publication validation every other
-provider relies on, rather than exclusion. Anyone revisiting this should read
-spec §1 and D11 before widening further.
-
-**Evidence this was already happening.** Antigravity published a schema-valid
-`GO` as seat `operator` at `5ad43ed`, reviewing a Claude-authored range — a
-cross-provider act, therefore Mode 1. `scripts/agy_seat_launcher.py` launches
-all five seats, and `.agents/skills/antigravity-harness/SKILL.md` states that
-Antigravity natively occupies them. The documented exclusion and the shipped
-capability had diverged; this section now matches the code.
-
-So "how does agy adopt the protocol?" still has two modes, and seats are
-available in both.
-Mode 1 is the **Multi-Model Three-Way Protocol**, where it may hold a Layer-1 seat and honors the cross-provider independence rule.
-Mode 2 is the **Single-Model Autonomous Unit**, where Antigravity functions independently as a full 5-seat unit.
-
-> **Do not** replicate the external ChatGPT plan that cast Antigravity as a read-only "strategic hub"
-> or "overseer" that signs `cycle_go`/`release_order`. That inverts the design: those facts are
-> `overseer`-signed and signer-checked (`threeway/predicate.py:116` (cycle_go), `:140` (release_order)),
-> the overseer is mechanical, and Antigravity signs nothing. Those signer checks are now reinforced by
-> the per-approver, key-bound `human_approval` and the overseer-only `re_verify_challenge` /
-> `approver_roster` (ADR-043) — so even the high-risk T3 approval inputs are overseer-signed, never
-> agy-signed.
-
-## 2. The three roles Antigravity *may* play
-
-### Role 1 — Human-relayed strategic reasoner (the chief axis)
-The dual chief comprises two separately approved, human-relayed external advisory apps.
-The strategic loop's advisory input is "an app, human-relayed" (spec §5.2, D11). If you use the
-Antigravity *app* to reason about strategy, it produces analysis/orders as **prose a human carries
-to the mechanical overseer**. It never writes the bus, never signs, never touches code.
-
-Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
-
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-surface intentionally does not restate its lifecycle grammar.
-
-- Provenance discipline (spec §12, "chief-relay provenance"): when a human relays an Antigravity
-  strategic result, record `{relaying_human, chief_model_label, prompt_or_bundle_digest,
-  response_digest}` so the strategic input is auditable. Treat Antigravity output as **advisory
-  strategic prose**, not an instruction to any seat.
-- High-risk (T2/T3) cycles require **both** chiefs to agree before the overseer issues `cycle_go`;
-  unresolved disagreement escalates to the human. Antigravity-as-chief is one voice, never the
-  decider.
-
-### Role 2 — Read-only observer
-An Antigravity session may **read** repo state, the legacy mailbox, the (eventual) bus, logs, and
-branches to build situational awareness or summarize for a human — strictly **read-only**, with no
-writes, no cursor consumption, no signatures. This mirrors the overseer's *code-read-only* posture but
-is just observation, not the overseer role.
-
-### Role 3 — Single-Model Autonomous Unit
-Antigravity may function independently as a single-model 5-seat unit. In this mode, Antigravity assumes all seats (director, operator, coordinator) via the legacy mailbox protocol, effectively operating the system identically to Codex and Claude. It implements and verifies work autonomously.
-
-**Important:** You must explicitly choose which mode you are operating in. Mode 1 (Roles 1 & 2) maintains cross-provider independence. Mode 2 (Role 3) gives Antigravity full end-to-end authority.
-
-## 3. When an Antigravity session does real work, it adopts Layer-2 in full
-
-You also use Antigravity as a coding agent. Whenever an agy session does *any* substantive work, it
-follows the **entire unified operating doctrine** (unified doc Part II) — the same evidence,
-verification, orchestration, and coordination rules Claude and Codex follow — bound to Antigravity's
-own primitives (unified doc Part III). In particular:
-
-- **R-EVIDENCE / R-MEASURE / R-VERIFY-TIER** — cite the command, commit the instrument, pin unfixed
-  defects with `xfail(strict=True)`.
-- **Impact analysis, R-BRIEF, Rule #12 grep-the-writes, Rule #13 symmetric audit, R-PID** — verbatim.
-- **impl ≠ verifier** — Antigravity's own output is never self-verified; a non-author reads the diff.
-- **Subagents are evidence, not authority; orchestrate at ≥5 sub-tasks / ≥800 LOC; never two
-  implementers in parallel on shared files; one commit per task.**
-- **Verdict vocabulary** `pass | issues | unable_to_verify` (= GO/NITS/FAIL), the run-and-paste
-  evidence preamble, mutation non-vacuity.
-- **Authority precedence** (user > git > coordination events > cache > default); **anti-ceremony**;
-  **user-gated side effects** (push/merge/lock/paid-spend/pod-spend need explicit consent); **flag-before-burn**.
-- **Session start:** run `scripts/ci_smoke.py` (the R-START tripwire) and orient from `git log` +
-  `AGENTS.md` before non-trivial work; if there is no Antigravity hook surface, do this manually.
-
-### The cross-provider independence caveat (surface this to the user)
-Antigravity runs on Gemini. In the three-way design, **a builder's provider must not be the primary
-verifier of its own work.** If an Antigravity session writes code, that code should be verified by a
-**different** provider, not by Antigravity. Two honest regimes — **this is a tradeoff for the user to
-decide, not something to settle silently:**
-
-1. **Legacy mailbox four-seat campaign (live today, provider-agnostic).** `AGENTS.md` invites any AI
-   coding tool to operate a mailbox seat. Antigravity *could* run as a `director`/`operator`/`coordinator`
-   here under the unified doctrine. **Caveat:** the mailbox campaign does not mechanically enforce
-   cross-provider pairing, so an Antigravity-built fix verified by an Antigravity operator would
-   violate the independence spirit. Prefer routing Antigravity-built work to a different-provider
-   verifier.
-2. **Three-way signed-bus end-state (post-migration).** Antigravity holds **no seat**. Its code, if
-   any, enters as a candidate that a cross-provider operator verifies and a cross-provider coordinator
-   integrates — which in practice means a human routes Antigravity's work to the seated providers, or
-   Antigravity simply does not sit on the merge path at all (the design's intent).
-
-**Recommendation:** use Antigravity for read-only analysis, strategic relay, and *non-merge-path*
-exploration; when it produces code intended for `main`, route the candidate to a seated cross-provider
-pair rather than letting Antigravity self-verify.
-
-## 4. Capability mapping for Antigravity
-
-Bind each Layer-2 principle to Antigravity's mechanism. **These mechanisms have been confirmed against the live Antigravity tool surface.**
-
-| Principle | Antigravity binding |
-|---|---|
-| Spawn a bounded subagent | `invoke_subagent` tool |
-| Deterministic orchestration | Concurrent execution using `invoke_subagent` |
-| Structured worker output | Markdown artifacts in `brain/<conversation-id>/` |
-| Load a domain skill | reads `.agents/skills/*/SKILL.md` as markdown (provider-agnostic) |
-| Session-start smoke | run `scripts/ci_smoke.py` manually |
-| Per-worker git staging isolation | `env -u GIT_INDEX_FILE` or `Workspace: 'branch'` for worktrees |
-| Coordination channel + cursor | N/A (holds no seat) |
-| Liveness / presence | N/A (holds no seat) |
-| Background long task | `schedule` and `manage_task` tools |
-| Ask the user vs decide | `ask_question` interactive modal tool |
-
-**Invariant regardless of mechanism:** a subagent has no GO/cursor/lock/push/spend authority; side
-effects are user-gated; impl ≠ verifier. These never change with the tool.
-
-## 5. Antigravity hard rules (do not violate)
-
-**When operating in Multi-Model Three-Way Protocol (Roles 1 & 2):**
-1. **Never sign or write the three-way bus.** Antigravity is off every Layer-1 write path. It is not
-   the overseer and does not emit `cycle_go`, `release_order`, `human_approval`, attestations, or any
-   signed fact.
-2. **Never push to `main`** and never integrate a candidate. Only the mechanical merge-gate writes
-   protected `main` — a posture now hardened by the **TOTAL** `run_gate` (`threeway/gate.py:158`, never
-   raises after the CAS) and the **authority-aware effective-state reducer** (ADR-039..041), so no
-   non-overseer write or insider race can substitute for the merge-gate. The **cutover substrate** that
-   would flip live authority onto this bus is **BUILT + hardened but user-gated** (ADR-044/045; the
-   single authority-flip has NOT been executed) — agy never triggers it.
-3. **No dual-write.** Do not read old tasks from the mailbox while writing new ones to the threeway
-   bus (forbidden for every provider, spec §8 item 8).
-4. **Self-verification is not verification.** Antigravity-built code reaching `main` must be verified
-   by a different provider (§3 caveat) — surface this to the user rather than self-approving.
-5. **Strategic output is advisory prose, relayed by a human** — never a direct instruction to a seat
-   and never a bus write.
-
-**When operating as a Single-Model Autonomous Unit (Role 3):**
-- Antigravity is authorized to assume mailbox seats and perform end-to-end implementation, verification, and integration.
-- The hard boundaries above against self-verification and pushing do not apply, as Antigravity constitutes the full unit in this mode.
-6. **All Layer-2 evidence/verification/side-effect rules apply** (§3) — agy is not exempt from
-   R-EVIDENCE, anti-ceremony, or user-gated spend just because it holds no seat.
-
----
-
-*Provenance: derived from the cross-provider spec (§1, §2, §5.2, D10/D11) and `AGENTS.md`, cross-checked
-by audit `wf_34ae3dc6-731`. To complete the unification at the root, Antigravity has been added
-to the `AGENTS.md` tool list. This package follows the `threeway` protocol; keep both surfaces synchronized
-when the protocol changes.*
+Material behavior gets non-author exact-range review. High-risk signed-bus
+control additionally requires a different model family and abuse-class
+assessment. Provider launch, key mutation, cursor consumption, cutover, push,
+merge, spend, and live-data mutation remain separately authorized effects.

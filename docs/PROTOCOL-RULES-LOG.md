@@ -796,8 +796,9 @@ hardening pass.
   output. Basis: `e6205050 coord(route): notify wave2 seat tasks`, which avoided
   four divergent seat-specific task messages.
   Enforcement: SOFT
-- **R-CODEX-RECEIPT** — after a consolidated task-board event, verify receipt
-  with `seat_status.py <seat> --wave <N>` for each live seat; receipt proves
+- **R-CODEX-RECEIPT** — after a consolidated task-board event, inspect receipt
+  with `python scripts/status.py snapshot <seat>` for each explicitly assigned
+  live pair seat; the snapshot reports
   mailbox/cursor state, not completion of assigned work. Basis: the post-route
   refresh showed a split board (`director=0`, `operator=3`, `director2=1`,
   `operator2=1`) after `e6205050`.

@@ -24,9 +24,9 @@ Rules:
   R3  gate-executes-pins   scripts/wave_gate_check.py must EXECUTE the pins, not read status  [FIX-1]
   R5  utv-not-a-row-status  `unable_to_verify` is a reviewer/operator VERDICT, never an inventory
                            row `status` — else it bypasses wave_gate_check blocking (ADR-027)  [ADR-032]
-  R6  report-cites-exec-pin  a verification-report whose verdict is `pass` must cite an executed
-                           `--runxfail` pin run in commands[] — a GO with no pin re-execution is
-                           ceremony (the consumer re-runs it to detect fabrication)            [ADR-032]
+  R6  report-cites-pin-command  a verification-report whose verdict is `pass` must cite a
+                           `--runxfail` pin command in commands[]; the consumer, not this rule,
+                           re-runs it to detect fabrication                                    [ADR-032]
 
 This script never modifies anything and never relaxes a gate; it only ADDS signal.
 It is NOT itself a status-reader — it parses/executes against live source.
@@ -39,6 +39,7 @@ import ast
 import importlib.util
 import pathlib
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
@@ -136,17 +137,122 @@ def rule_invisible_green() -> tuple[str, list[str], list[str]]:
 
 
 def rule_gate_executes() -> tuple[str, list[str]]:
-    """R3 — wave_gate_check.py must EXECUTE the pins, not merely read the status column."""
+    """R3 — prove that a selected strict-xfail pin is load-bearing.
+
+    This follows the production ``gate_report`` and pytest runner with two
+    temporary strict-xfail controls: an unresolved defect must make the gate
+    UNMET under ``--runxfail``, while the same pin shape with fixed behavior
+    must flip to MET. Looking for runner strings is not execution evidence.
+    """
     gate = ROOT / "scripts" / "wave_gate_check.py"
     if not gate.exists():
-        return "PASS", ["scripts/wave_gate_check.py absent"]
-    src = gate.read_text()
-    markers = ("--runxfail", "subprocess", "pytest.main", "runpy", "import_module")
-    if any(m in src for m in markers):
-        return "PASS", ["wave_gate_check.py executes the pins"]
+        return "FAIL", ["scripts/wave_gate_check.py is absent; the execution control cannot run"]
+
+    try:
+        import wave_gate_check as wave_gate
+    except Exception as exc:  # pragma: no cover - defensive import boundary
+        return "FAIL", [f"cannot import scripts/wave_gate_check.py: {exc}"]
+
+    unresolved_selector = "tests/test_r3_control.py::test_unresolved_defect"
+    fixed_selector = "tests/test_r3_control.py::test_fixed_behavior"
+    header = (
+        "| id | subsystem | file:line | severity | priority | fail-mode | repro | "
+        "xfail-pin | lane-owner | shared-lock | wave | status | verifier | notes |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
+    )
+    def inventory_row(selector: str) -> str:
+        return (
+            "| R3-control | verification | scripts/wave_gate_check.py | CRITICAL | P0 | "
+            f"false green | live control | {selector} | local | none | 1 | done | local | "
+            "behavioral execution control |\n"
+        )
+
+    original_root = wave_gate._REPO_ROOT
+    try:
+        with tempfile.TemporaryDirectory(prefix="pipeline-r3-") as tmp:
+            control_root = pathlib.Path(tmp)
+            tests_dir = control_root / "tests"
+            tests_dir.mkdir()
+            (tests_dir / "test_r3_control.py").write_text(
+                "from pathlib import Path\n\n"
+                "import pytest\n\n"
+                "@pytest.mark.xfail(strict=True, reason='R3 unresolved control')\n"
+                "def test_unresolved_defect():\n"
+                "    Path(__file__).with_name('unresolved.executed').write_text('R3 unresolved executed\\n')\n"
+                "    assert False\n\n"
+                "@pytest.mark.xfail(strict=True, reason='R3 fixed control')\n"
+                "def test_fixed_behavior():\n"
+                "    Path(__file__).with_name('fixed.executed').write_text('R3 fixed executed\\n')\n"
+                "    assert True\n",
+                encoding="utf-8",
+            )
+            unresolved_inventory = control_root / "unresolved.md"
+            fixed_inventory = control_root / "fixed.md"
+            unresolved_inventory.write_text(
+                header + inventory_row(unresolved_selector), encoding="utf-8"
+            )
+            fixed_inventory.write_text(
+                header + inventory_row(fixed_selector), encoding="utf-8"
+            )
+            wave_gate._REPO_ROOT = control_root
+            unresolved_report = wave_gate.gate_report(
+                unresolved_inventory,
+                1,
+                product_oracle_paths=[],
+            )
+            fixed_report = wave_gate.gate_report(
+                fixed_inventory,
+                1,
+                product_oracle_paths=[],
+            )
+            unresolved_witness_path = tests_dir / "unresolved.executed"
+            fixed_witness_path = tests_dir / "fixed.executed"
+            unresolved_witness = (
+                unresolved_witness_path.read_text(encoding="utf-8")
+                if unresolved_witness_path.is_file()
+                else None
+            )
+            fixed_witness = (
+                fixed_witness_path.read_text(encoding="utf-8")
+                if fixed_witness_path.is_file()
+                else None
+            )
+    except Exception as exc:
+        return "FAIL", [f"wave-gate execution control raised: {exc}"]
+    finally:
+        wave_gate._REPO_ROOT = original_root
+
+    unresolved_run = unresolved_report.get("pytest")
+    fixed_run = fixed_report.get("pytest")
+    unresolved_args = (
+        unresolved_run.get("args", []) if isinstance(unresolved_run, dict) else []
+    )
+    fixed_args = fixed_run.get("args", []) if isinstance(fixed_run, dict) else []
+    if (
+        unresolved_report.get("verdict") == "UNMET"
+        and unresolved_report.get("selectors") == [unresolved_selector]
+        and unresolved_report.get("pytest_blocking") is True
+        and isinstance(unresolved_run, dict)
+        and unresolved_run.get("exit_code") != 0
+        and unresolved_selector in unresolved_args
+        and "--runxfail" in unresolved_args
+        and fixed_report.get("verdict") == "MET"
+        and fixed_report.get("selectors") == [fixed_selector]
+        and fixed_report.get("pytest_blocking") is False
+        and isinstance(fixed_run, dict)
+        and fixed_run.get("exit_code") == 0
+        and fixed_selector in fixed_args
+        and "--runxfail" in fixed_args
+        and "passed" in fixed_run.get("stdout", "")
+        and unresolved_witness == "R3 unresolved executed\n"
+        and fixed_witness == "R3 fixed executed\n"
+    ):
+        return "PASS", [
+            "wave_gate_check.py executed witnessed strict-xfail controls: unresolved UNMET, fixed MET"
+        ]
     return "FAIL", [
-        "scripts/wave_gate_check.py reads the inventory `status` string and executes ZERO tests "
-        "(ADR-027). 'GATE MET' is not a correctness claim. [FIX-1: rewrite to run the pins via --runxfail]"
+        "wave_gate_check.py did not produce both selector-bound strict-xfail controls "
+        f"(unresolved={unresolved_report!r}, fixed={fixed_report!r})"
     ]
 
 
@@ -210,7 +316,7 @@ def rule_utv_not_a_row_status() -> tuple[str, list[str]]:
 
 
 def _pass_reports_missing_runxfail(named_results: list[tuple[str, dict]]) -> list[str]:
-    """Violations for `pass`-verdict reviewer-results that cite no executed --runxfail pin.
+    """Violations for ``pass`` results that cite no ``--runxfail`` command.
 
     Pure over (label, result) pairs so the gate logic is unit-testable without a mailbox.
     Only the `pass` verdict is gated: `issues`/`unable_to_verify` make no GO claim, so they
@@ -228,26 +334,23 @@ def _pass_reports_missing_runxfail(named_results: list[tuple[str, dict]]) -> lis
             for c in commands
         ):
             bad.append(
-                f"{label}: verdict 'pass' but no command in commands[] cites an executed "
-                "--runxfail pin run — a GO with no pin re-execution is ceremony (ADR-032 R6)"
+                f"{label}: verdict 'pass' but no command in commands[] cites a "
+                "--runxfail pin run for the consumer to execute (ADR-032 R6)"
             )
     return bad
 
 
 def rule_report_cites_executed_pin(repo_root: pathlib.Path = ROOT) -> tuple[str, list[str]]:
-    """R6 — a `pass` verification-report must cite an executed `--runxfail` pin run.
+    """R6 — a ``pass`` report must cite a ``--runxfail`` command.
 
-    The reviewer Evidence preamble (ADR-032) makes pin re-execution the anti-ceremony
-    keystone: a `pass` that never re-ran the implementer's pins with --runxfail is an
-    appearance-of-verification with no substance. High-precision: fires ONLY on a present
-    `reviewer-result/1` block whose verdict is `pass`. Today's mailbox has zero blocks, so
-    R6 is inert until reviewers begin emitting the schema — at which point it has teeth.
-    Parsing is delegated to the consumer (consume_reviewer_result) so there is ONE parser.
+    This rule validates the report field only. ``consume_reviewer_result`` owns
+    execution and result checking, so this function must not call the cited string
+    "executed". Parsing is delegated to that consumer so there is one parser.
     """
     try:
         import consume_reviewer_result as _crr
     except Exception as exc:  # pragma: no cover - defensive (consumer should always import)
-        return "PASS", [f"reviewer-result consumer unavailable ({exc}); R6 inert"]
+        return "FAIL", [f"reviewer-result consumer unavailable: {exc}"]
     try:
         results = _crr.iter_reviewer_results(repo_root)
     except _crr.ResultParseError as exc:
@@ -258,7 +361,7 @@ def rule_report_cites_executed_pin(repo_root: pathlib.Path = ROOT) -> tuple[str,
         return "FAIL", violations
     if named:
         return "PASS", [
-            f"{len(named)} reviewer-result block(s); every pass cites an executed --runxfail pin"
+            f"{len(named)} reviewer-result block(s); every pass cites a --runxfail command"
         ]
     return "PASS", ["no reviewer-result blocks in the mailbox yet (R6 inert until reviewers emit the schema)"]
 
@@ -292,7 +395,7 @@ def main() -> int:
     hard_fail |= r5_status == "FAIL"
 
     r6_status, r6 = rule_report_cites_executed_pin()
-    print(f"R6 report-cites-exec-pin .. {r6_status}  {r6[0]}")
+    print(f"R6 report-cites-pin-command {r6_status}  {r6[0]}")
     for v in r6[1:]:
         print(f"     ! {v}")
     hard_fail |= r6_status == "FAIL"

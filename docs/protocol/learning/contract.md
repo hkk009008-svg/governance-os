@@ -27,8 +27,7 @@ is itself a contract violation.
   landed with Stage 2 as the named check
   `tests/unit/test_learning_candidate.py::test_kernel_validators_import_no_learning_module`
   — asserting `scripts/mailbox_writer.py` and `scripts/compact_pair_loop.py`
-  import no `learning_*` module; before that test exists in the tree this
-  clause is doctrine, not mechanism. Everything else in I1 is doctrine: any
+  import no `learning_*` module. Everything else in I1 is doctrine: any
   future import of a learning module into those two files is a contract
   change and reviews as one. Live task state is read from durable shared
   state — Git, mailbox, status — never from the index
@@ -38,19 +37,18 @@ is itself a contract violation.
   candidate authority field (`scripts/mailbox_writer.py:165-209`), and any
   change that adds one reviews as a contract change. No executable check
   asserts the absence — a text classifier over agent prose is exactly what
-  guard admission forbids (`docs/protocol/agents/core.md:163-191`).
+  guard admission forbids
+  ([`core.md` — Guard admission](../agents/core.md#guard-admission)).
 - **I3 — canonical writes travel the governed path.** Doctrine riding an
   existing mechanism: promotion IS the compact pair — an ordinary git change
   whose verify-request lists the candidate ref, reviewed at the change's
   risk class, enforced by the same publication-time validators that govern
   every pair. Autonomous learning produces immutable candidates only; there
   is no second approval object.
-- **I4 — fail-closed disposition binds at Stage 2b, not before.** Doctrine
-  until the Stage 2b branch lands in
-  `scripts/mailbox_writer.py:validate_event_candidate`; mechanized there and
-  only there. Until then a stale or self-approved `decision` publishes
-  durably and is caught only if a reader runs the parser. Every pre-2b
-  surface must say "advisory" where it describes refusals. The
+- **I4 — fail-closed disposition is mechanized at publication.**
+  `scripts/mailbox_writer.py:validate_event_candidate` enforces the refusal
+  set through the production finalizer, covered by
+  `tests/unit/test_learning_promotion.py`. The
   target-base-hash CAS compares bytes at the disposition event's own commit,
   never a live worktree — promotion changes worktree bytes by design.
 - **I5 — the governance floor lives in operator judgment.** Doctrine: a
@@ -63,13 +61,14 @@ is itself a contract violation.
 - **I6 — trusted mutation needs fail-closed backup.** Doctrine, scoped as a
   non-build constraint: nothing in the learning plane performs archival or
   destructive maintenance. Where such a change is eventually filed
-  (standalone, per plan §5 Stage 6), backup-failure-blocks and
-  recoverability are new behavior to build; `scripts/archive_handoffs.py` is
-  fail-open and is not a pattern to inherit.
+  (standalone, per plan §5 Stage 6), backup failure must block and recovery
+  must be explicit. `scripts/archive_handoffs.py` now fails closed when its
+  history-preserving `git mv` cannot complete; that narrow behavior is a
+  precedent, not a general backup or rollback mechanism.
 - **I7 — every proposed guard passes guard admission.** Doctrine applied as
   a design filter at review time: name the effect it blocks, survive the
   bypass question, or do not build it
-  (`docs/protocol/agents/core.md:163-191`). ADR-066's explicit non-build (a
+  ([`core.md` — Guard admission](../agents/core.md#guard-admission)). ADR-066's explicit non-build (a
   `check_no_ceremony.py` preventive-hook rule, `DECISIONS.md:1393-1396`)
   stays not-built.
 
@@ -134,7 +133,7 @@ parser following the ownership-record pattern
 Dedup derives from committed `coordination/mailbox/sent/` events at the
 pinned commit — never from the local index, which gives checkout-dependent
 verdicts. Candidate ID is a content hash, so a byte-identical republish
-carries no new information: Stage 2b refuses it naming the committed
+carries no new information: the writer refuses it naming the committed
 original, and Supersedes is the replacement route.
 
 Disposition is a `decision` event carrying `Candidate: path@commit` and
@@ -142,8 +141,7 @@ Disposition is a `decision` event carrying `Candidate: path@commit` and
 convention: `coordination/README.md:318-322`). The refusals — stale target
 base hash, self-approval (disposer == producer), changed-content replay,
 unresolvable source ref, governance-rule-below-floor, duplicate ID — bind at
-Stage 2b (writer-side); before it they are advisory, and every surface
-describing them says so (I4).
+writer publication (I4).
 
 ## 4. Threat model (verified-defect driven)
 
@@ -155,7 +153,7 @@ verified the mechanisms they name; every other citation in this file
 resolves in-tree.
 
 - **Replay without preimage** (Hermes `write_approval.py:120`): the
-  target-base-hash CAS at the disposition commit, bound at Stage 2b,
+  target-base-hash CAS at the disposition commit, bound by the writer,
   mirroring `route_lineage.py` stale-parent and `_change_envelope_matches`
   revision+parent CAS.
 - **Authoritative recall** (Hermes `memory_manager.py:357` labels recalled

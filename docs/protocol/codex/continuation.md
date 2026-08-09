@@ -1,7 +1,7 @@
 # Codex continuation adapter
 
-This maps Pipeline policy to Codex mechanics. Canonical validation lives in
-`scripts/codex_protocol_model.py`; role prompts and skills contain local deltas.
+This maps Pipeline policy to Codex mechanics; canonical validation lives in `scripts/codex_protocol_model.py`.
+Role prompts and skills contain local deltas. Desktop guide: `docs/protocol/app-quickstart.md`.
 
 ## Modes
 

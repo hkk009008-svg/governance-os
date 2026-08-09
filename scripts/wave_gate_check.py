@@ -10,6 +10,7 @@ Read-only - never mutates the inventory.
 """
 from __future__ import annotations
 import argparse
+import ast
 import fnmatch
 import json
 import math
@@ -21,7 +22,11 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
+_MODULE_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = _MODULE_ROOT
+_RUNTIME_OPTION = "--pipeline-wave-gate-runtime"
+_runtime_enabled = False
+_runtime_skips: list[str] = []
 
 _COLS = ("id", "subsystem", "file:line", "severity", "priority", "fail-mode",
          "repro", "xfail-pin", "lane-owner", "shared-lock", "wave", "status",
@@ -35,6 +40,58 @@ _PRODUCT_ORACLE_MIN_WAVE = 2
 _PRODUCT_ORACLE_PATTERN = "logs/product-oracle-*.json"
 
 PytestRunner = Callable[[list[str]], dict]
+
+
+def pytest_addoption(parser) -> None:
+    """Trusted child-pytest option used to prove selected pins are real and execute."""
+
+    parser.getgroup("pipeline-wave-gate").addoption(
+        _RUNTIME_OPTION,
+        action="store_true",
+        default=False,
+        help="require every selected item to carry an active strict xfail marker",
+    )
+
+
+def pytest_configure(config) -> None:
+    global _runtime_enabled, _runtime_skips
+    _runtime_enabled = bool(config.getoption(_RUNTIME_OPTION))
+    _runtime_skips = []
+
+
+def pytest_collection_modifyitems(config, items) -> None:
+    if not config.getoption(_RUNTIME_OPTION):
+        return
+    import pytest
+
+    violations: list[str] = []
+    for item in items:
+        marker = item.get_closest_marker("xfail")
+        if marker is None:
+            violations.append(f"{item.nodeid}: no runtime xfail marker")
+            continue
+        if marker.args or "condition" in marker.kwargs:
+            violations.append(f"{item.nodeid}: conditional runtime xfail marker")
+        if marker.kwargs.get("strict") is not True:
+            violations.append(f"{item.nodeid}: runtime xfail marker is not strict=True")
+        if marker.kwargs.get("run", True) is not True:
+            violations.append(f"{item.nodeid}: runtime xfail marker is not executable")
+        if list(item.iter_markers(name="skip")) or list(item.iter_markers(name="skipif")):
+            violations.append(f"{item.nodeid}: selected pin is also skipped")
+    if violations:
+        raise pytest.UsageError("wave-gate runtime marker check failed: " + "; ".join(violations))
+
+
+def pytest_runtest_logreport(report) -> None:
+    if _runtime_enabled and report.skipped:
+        _runtime_skips.append(report.nodeid)
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    if _runtime_enabled and _runtime_skips and int(session.exitstatus) == 0:
+        import pytest
+
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 def _parse_rows(inventory_path: Path) -> list[dict]:
     rows: list[dict] = []
@@ -94,6 +151,81 @@ def _selectors_from_pin(pin_cell: str) -> list[str]:
 def _gate_row(row: dict) -> bool:
     return row["severity"].upper() in _BLOCK_SEV or row["status"] == "provisional"
 
+
+def _strict_xfail_issue(selector: str) -> str | None:
+    """Return why a selector is not a literal strict-xfail regression pin."""
+
+    pieces = selector.removeprefix("./").split("::")
+    if len(pieces) < 2 or not pieces[1]:
+        return "selector must name one strict-xfail test node"
+    source = (_REPO_ROOT / pieces[0]).resolve()
+    tests_root = (_REPO_ROOT / "tests").resolve()
+    try:
+        source.relative_to(tests_root)
+    except ValueError:
+        return "selector resolves outside the tests tree"
+    try:
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    except (OSError, UnicodeError, SyntaxError) as exc:
+        return f"selector source is unreadable: {exc}"
+
+    body: list[ast.stmt] = tree.body
+    target: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+    for index, raw_name in enumerate(pieces[1:]):
+        name = raw_name.split("[", 1)[0]
+        node = next(
+            (
+                candidate
+                for candidate in body
+                if isinstance(
+                    candidate, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+                )
+                and candidate.name == name
+            ),
+            None,
+        )
+        if node is None:
+            return f"selector node {raw_name!r} does not exist"
+        if index < len(pieces[1:]) - 1:
+            if not isinstance(node, ast.ClassDef):
+                return f"selector component {raw_name!r} is not a test class"
+            body = node.body
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            target = node
+
+    if target is None:
+        return "selector must resolve to one test function"
+    for decorator in target.decorator_list:
+        if not isinstance(decorator, ast.Call):
+            continue
+        func = decorator.func
+        dotted = []
+        while isinstance(func, ast.Attribute):
+            dotted.append(func.attr)
+            func = func.value
+        if isinstance(func, ast.Name):
+            dotted.append(func.id)
+        if list(reversed(dotted)) != ["pytest", "mark", "xfail"]:
+            continue
+        if decorator.args:
+            return "pytest.mark.xfail condition must be absent, not positional"
+        if any(keyword.arg is None for keyword in decorator.keywords):
+            return "pytest.mark.xfail metadata must be literal, not **kwargs"
+        if any(keyword.arg == "condition" for keyword in decorator.keywords):
+            return "pytest.mark.xfail condition must be absent"
+        run_value = next(
+            (kw.value for kw in decorator.keywords if kw.arg == "run"), None
+        )
+        if run_value is not None and not (
+            isinstance(run_value, ast.Constant) and run_value.value is True
+        ):
+            return "pytest.mark.xfail run must be absent or literal True"
+        strict = next((kw.value for kw in decorator.keywords if kw.arg == "strict"), None)
+        if isinstance(strict, ast.Constant) and strict.value is True:
+            return None
+        return "pytest.mark.xfail must declare literal strict=True"
+    return "test is not decorated with literal pytest.mark.xfail(strict=True)"
+
 def _blocker(row: dict, reason: str) -> dict:
     blocked = dict(row)
     blocked["block_reason"] = reason
@@ -104,6 +236,9 @@ def _run_pytest_selectors(selectors: list[str]) -> dict:
         sys.executable,
         "-m",
         "pytest",
+        "-p",
+        "scripts.wave_gate_check",
+        _RUNTIME_OPTION,
         *selectors,
         "--runxfail",
         "-q",
@@ -111,6 +246,10 @@ def _run_pytest_selectors(selectors: list[str]) -> dict:
     ]
     env = os.environ.copy()
     env.pop("GIT_INDEX_FILE", None)
+    pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = str(_MODULE_ROOT) + (
+        os.pathsep + pythonpath if pythonpath else ""
+    )
     proc = subprocess.run(
         args,
         cwd=_REPO_ROOT,
@@ -255,8 +394,18 @@ def gate_report(
     for row in gate_rows:
         row_selectors = _selectors_from_pin(row["xfail-pin"])
         if row_selectors:
-            selectors_by_row[row["id"]] = row_selectors
-            selectors.extend(row_selectors)
+            valid_selectors = []
+            for selector in row_selectors:
+                issue = _strict_xfail_issue(selector)
+                if issue is None:
+                    valid_selectors.append(selector)
+                else:
+                    no_oracle_blockers.append(
+                        _blocker(row, f"invalid xfail-pin {selector}: {issue}")
+                    )
+            if valid_selectors:
+                selectors_by_row[row["id"]] = valid_selectors
+                selectors.extend(valid_selectors)
         else:
             no_oracle_blockers.append(_blocker(row, "no executable xfail-pin selector"))
         if row["status"] == "provisional":
@@ -291,7 +440,18 @@ def gate_report(
             if product_oracles["invalid"]:
                 required += f"; invalid artifacts: {'; '.join(product_oracles['invalid'][:3])}"
             product_oracle_blockers.append(required)
-    blockers = no_oracle_blockers + provisional_blockers
+    empty_wave_blockers = []
+    if not rows:
+        empty_wave_blockers.append(
+            {
+                "id": f"wave-{wave}",
+                "severity": "GATE",
+                "status": "missing",
+                "file:line": str(inventory_path),
+                "block_reason": "wave has no inventory rows",
+            }
+        )
+    blockers = empty_wave_blockers + no_oracle_blockers + provisional_blockers
     return {
         "wave": wave,
         "verdict": (

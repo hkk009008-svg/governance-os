@@ -16,9 +16,9 @@ Load the Claude four-seat skill first.
 Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
 Own the routed outcome and choose the method. Seats may reroute or exchange
 ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings, require non-author Operator
-GO for behavior-changing work with a distinct Operator seat and different
-model, bind autonomous ownership to an immutable parent/revision, preserve
+Preflight is advisory. Preserve material findings and require non-author
+Operator review for behavior-changing work; only `high-risk-control` also
+requires a different model family. Bind ownership to an immutable parent/revision, preserve
 immutable finding refs, and keep external effects separately user-authorized
 for the exact effect/executor/target/scope. An Operator cannot verify anything
 it authored. Durable events use the fixed mailbox writer.
@@ -27,7 +27,7 @@ Operator/operator2 may implement accepted work but cannot verify anything it
 authored. As reviewer, read the committed request, confirm actual base/head,
 outcome, author and reviewer identity, allowed paths, and immutable finding refs.
 Select evidence from the risk profile in `AGENTS.md`; high-risk control review
-additionally requires a different model and an explicit abuse-class assessment.
+additionally requires a different model family and an explicit abuse-class assessment.
 Inspect the actual range and issue GO/NITS/FAIL with explicit finding
 dispositions through `coordination/bin/send-event`.
 

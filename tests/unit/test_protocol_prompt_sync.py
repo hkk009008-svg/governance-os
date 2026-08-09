@@ -39,7 +39,9 @@ CORE_CODEX_AGENTS = {
 ACTIVE_INSTRUCTION_ROOTS = (
     "AGENTS.md",
     "CLAUDE.md",
+    ".agents/agents",
     ".agents/skills",
+    ".agents/workflows",
     ".claude/agents",
     ".claude/skills",
     ".codex/agents",
@@ -584,7 +586,7 @@ def test_provider_routers_remain_discoverable() -> None:
     for marker in (
         "docs/protocol/agy/continuation.md",
         ".agents/skills/antigravity-harness/",
-        ".agy/agents/",
+        ".agents/agents/",
         "docs/protocol/cursor/continuation.md",
         ".cursor/rules/",
         "docs/protocol/cursor/roles/",

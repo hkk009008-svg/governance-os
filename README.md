@@ -38,6 +38,8 @@ Smoke and protocol-doctor commands test the kernel at the completion gate.
 
 | Need | Read |
 |---|---|
+| Comprehensive repository and process map | [docs/REPOSITORY-MANUAL.md](docs/REPOSITORY-MANUAL.md) |
+| Four desktop apps: setup, strengths, and communication | [docs/protocol/app-quickstart.md](docs/protocol/app-quickstart.md) |
 | Verified code and topology facts | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Operating commands and troubleshooting | [OPERATIONS.md](OPERATIONS.md) |
 | User-principal intent for this kernel | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
@@ -53,7 +55,7 @@ Run mutating Codex work in a task-specific native Git worktree. Use the
 checkout's ordinary Git index.
 
 ```bash
-python -m pytest tests/unit -q
+python -m pytest tests -q
 python scripts/ci_smoke.py
 ```
 

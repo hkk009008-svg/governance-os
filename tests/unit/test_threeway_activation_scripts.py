@@ -87,7 +87,8 @@ def temp_git_repo(tmp_path, monkeypatch):
     registry_dir = repo_dir / "coordination" / "threeway" / "keys"
     registry_dir.mkdir(parents=True)
     keystore_dir = tmp_path / "keystore"
-    keystore_dir.mkdir()
+    keystore_dir.mkdir(mode=0o700)
+    keystore_dir.chmod(0o700)
 
     # Bootstrap the seat keys
     seats = [
@@ -117,7 +118,7 @@ def temp_git_repo(tmp_path, monkeypatch):
     # Create dummy commits to use in the tests
     file1 = repo_dir / "file1.txt"
     file1.write_text("base content\n", encoding="utf-8")
-    _git(repo_dir, "add", "file1.txt")
+    _git(repo_dir, "add", "file1.txt", "coordination/threeway/keys")
     _git(repo_dir, "commit", "-m", "initial commit")
     base_sha = _git(repo_dir, "rev-parse", "HEAD")
 

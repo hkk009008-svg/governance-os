@@ -1,3 +1,5 @@
 {
-  "$comment": "Repository lifecycle hooks are absent by design, matching .codex/ and .agy/. A seat is a linked worktree plus an app-visible session identity, which no PreToolUse hook can validate. Personal config stays in .claude/settings.local.json."
+  "$comment": "Repository lifecycle hooks are absent by design. Claude roles are explicit task conventions validated at publication, not app-session bindings. Personal config stays in .claude/settings.local.json.",
+  "isolatePeerMachines": true,
+  "workflowSizeGuideline": "small"
 }

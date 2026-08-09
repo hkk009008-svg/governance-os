@@ -101,29 +101,13 @@ def test_rule_body_routes_state_reads_to_live_sources(repo_root: Path) -> None:
         encoding="utf-8"
     )
 
-    # Any tier inserted into the precedence hierarchy fails, whatever it is
-    # called. This is the check a renamed cache has to get past: the retired
-    # model sat in this hierarchy as its own tier, so reinstating one under any
-    # name puts it back here.
-    tiers = re.findall(r"hierarchy: user > git > mailbox > ([^)]*)\)", text)
-    assert tiers, "Instruction Priority hierarchy not found"
-    assert set(tiers) == {"default"}, tiers
-
-    # Rule #8's session-bootstrap gate must name a live source. Pointing it back
-    # at any stored artifact means dropping this citation, which fails.
-    # Both delimiters must be asserted found. str.partition returns the whole
-    # string with an empty separator when the marker is missing, so a reworded
-    # end heading would silently widen gate_body to the rest of the document —
-    # which cites mailbox-unread at two other lines, letting the assertion pass
-    # while checking nothing.
-    _, start_marker, after_gate = text.partition(
-        "**Session-bootstrap awareness gate.**"
-    )
-    assert start_marker, "session-bootstrap gate heading not found"
-    gate_body, end_marker, _ = after_gate.partition("**Authority precedence")
-    assert end_marker, "authority precedence heading not found"
-    assert "scripts/status.py mailbox-unread" in gate_body, (
-        "Rule #8 bootstrap gate no longer cites a live unread source"
-    )
-
-    assert "no generated state cache in this precedence" in text
+    # The compact contract now routes state directly to one live projection and
+    # the committed bodies that can change the next action. It must not recreate
+    # the retired generated-cache/bootstrap hierarchy under another label.
+    assert "python scripts/status.py snapshot <seat>" in text
+    assert "Read every committed event body" in text
+    assert "Current committed Git" in text
+    assert "Only the assigned receiving role consumes its cursor" in text
+    assert "never edit event or cursor files directly" in text
+    assert "generated state cache" not in text
+    assert "session-bootstrap awareness gate" not in text.lower()

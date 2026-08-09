@@ -17,9 +17,9 @@ behavior-changing production work.
 Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
 Own the routed outcome and choose the method. Seats may reroute or exchange
 ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings, require non-author Operator
-GO for behavior-changing work with a distinct Operator seat and different
-model, bind autonomous ownership to an immutable parent/revision, preserve
+Preflight is advisory. Preserve material findings and require non-author
+Operator review for behavior-changing work; only `high-risk-control` also
+requires a different model family. Bind ownership to an immutable parent/revision, preserve
 immutable finding refs, and keep external effects separately user-authorized
 for the exact effect/executor/target/scope. An Operator cannot verify anything
 it authored. Durable events use the fixed mailbox writer.

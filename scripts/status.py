@@ -9,12 +9,15 @@ Usage
 
 Design constraints
 ------------------
-* NEVER hangs or crashes. Every data source is wrapped so a slow/unreachable/
-  failing source renders "(unavailable: <reason>)" and the rest still prints.
+* Dashboard collectors isolate unavailable external/data sources and render an
+  explicit reason. The governance-bearing ``snapshot`` path fails visibly if
+  its committed projection cannot be built; it must not turn ambiguity into an
+  empty or successful state.
 * stdlib only (urllib, subprocess, re, pathlib, datetime …).
 * Pure helpers (count_unread, latest_adr, render) are fully testable.
 * I/O collectors (collect_*) each return a value or "(unavailable: ...)" string.
-* main(argv=None) -> int always returns 0; the dashboard reports, doesn't gate.
+* A successfully rendered dashboard returns 0; parser and projection failures
+  remain non-zero process failures.
 
 Repo root is resolved as the parent of this file's parent (scripts/ → repo/).
 """
@@ -153,19 +156,24 @@ _MAILBOX_SEATS = protocol_mailbox.RECEIVING_SEATS
 _CURSOR_SEATS = protocol_mailbox.SEATS
 
 
-def render_manifest(components: Optional[list]) -> list[str]:
+def render_manifest(components: Optional[list], error: Optional[str] = None) -> list[str]:
     """Return lines for the '## Pipeline status (manifest)' section.
 
-    *components* is the list returned by check_doc_claims.audit_manifest,
-    or None/[] when no manifest exists.
+    *components* is the list returned by check_doc_claims.audit_manifest; an
+    absent manifest is ``[]`` and collection failure is ``None`` plus *error*.
 
     Returns a list of strings (no trailing newlines).
     """
     lines: list[str] = []
     lines.append("## Pipeline status (manifest)")
 
+    if error:
+        lines.append(f"  (unavailable: {error})")
+        lines.append("  source:  docs/pipeline_status.toml (validated by check_doc_claims.audit_manifest)")
+        return lines
+
     if components is None:
-        lines.append("  (no docs/pipeline_status.toml)")
+        lines.append("  (unavailable: manifest collection returned no state)")
         lines.append("  source:  docs/pipeline_status.toml (validated by check_doc_claims.audit_manifest)")
         return lines
 
@@ -282,7 +290,7 @@ def render(data: dict) -> str:
 
     # --- Pipeline manifest ---
     manifest_components = data.get("manifest_components")
-    manifest_lines = render_manifest(manifest_components)
+    manifest_lines = render_manifest(manifest_components, data.get("manifest_error"))
     lines.extend(manifest_lines)
     a("")
 
@@ -488,7 +496,8 @@ def collect_pod(repo_root: Path) -> dict:
 def collect_manifest(repo_root: Path) -> dict:
     """Load and validate docs/pipeline_status.toml via check_doc_claims.audit_manifest.
 
-    Returns {"manifest_components": list} where list may be:
+    Returns ``manifest_components`` plus a separate ``manifest_error`` where
+    the component value may be:
       - a list of component dicts (from audit_manifest)
       - [] when the manifest file is absent
       - None when unavailable due to an error (rendered as unavailable sentinel)
@@ -501,9 +510,9 @@ def collect_manifest(repo_root: Path) -> dict:
         manifest_path = repo_root / "docs" / "pipeline_status.toml"
         components = check_doc_claims.audit_manifest(manifest_path, repo_root)
         # audit_manifest returns [] if file absent — pass through as-is
-        return {"manifest_components": components}
+        return {"manifest_components": components, "manifest_error": None}
     except Exception as e:
-        return {"manifest_components": None}
+        return {"manifest_components": None, "manifest_error": str(e)}
 
 
 # ===========================================================================

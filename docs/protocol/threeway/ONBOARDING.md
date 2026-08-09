@@ -1,120 +1,31 @@
-# Three-Way Protocol — Onboarding (paste this to any provider session)
+# Opt-In Threeway Onboarding
 
-This is the single entry point for bringing a **Codex, Claude, or Antigravity** session into the
-unified system. Hand the prompt below to the session; it points at everything else.
+Do not onboard the signed bus for ordinary Pipeline work. Use this only when
+the user selected an exact target and authorized activation design.
 
----
+1. Read [`README.md`](README.md) and
+   [`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md).
+2. Inspect the target's actual `refs/threeway/*`, mailbox, cursors, protected
+   branch, CI, runners, registry, and key custody using read-only commands.
+3. Name the executor, target, scope, authority source, rollback boundary, and
+   exact `threeway.cutover --yes` invocation that will be the authority flip.
+4. Prove shadow projection without mutating the live transport.
+5. Review the exact high-risk-control range with a non-author reviewer from a
+   different model family and explicit abuse-class assessment.
+6. Confirm there is no dual-write interval and that every pre-flip failure
+   leaves the previously authoritative transport usable.
+7. Obtain separate live authorization before key mutation, cutover, cursor
+   consumption, provider launch, push, protected merge, or spend.
+8. Verify target post-action state directly; a local return value is not proof.
 
-## ▶ Copy-paste prompt (give this to Codex or Antigravity)
+Provider mechanics:
 
-```text
-You are joining a unified multi-provider engineering system (Claude + Codex + Antigravity) that
-runs under ONE shared operating doctrine and a cross-provider "three-way" protocol. Before doing
-ANY work:
+- Codex: [`CODEX-ADOPTION.md`](CODEX-ADOPTION.md)
+- AGY: [`ANTIGRAVITY-ADOPTION.md`](ANTIGRAVITY-ADOPTION.md)
+- Claude: [`../claude/continuation.md`](../claude/continuation.md)
+- Cursor: [`../cursor/continuation.md`](../cursor/continuation.md)
 
-1. Read, in this order (paths are repo-relative):
-   - docs/protocol/threeway/ONBOARDING.md                 (this map)
-   - docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md  (the shared rules: Layer 1 protocol +
-                                                            Layer 2 portable doctrine + the
-                                                            per-provider capability map)
-   - your provider's manual:
-       * Codex       -> docs/protocol/threeway/CODEX-ADOPTION.md
-       * Antigravity -> docs/protocol/threeway/ANTIGRAVITY-ADOPTION.md
-       * Claude      -> CLAUDE.md + docs/protocol/claude/
-   - docs/protocol/threeway/ARCHITECTURE-DIAGRAM.md        (canonical topology)
-   - AGENTS.md                                             (agent-agnostic principle root)
-   - for any normative detail: docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md,
-     docs/protocol/threeway/CODEX-ADOPTION.md, and the `threeway/` package
-
-   These live under `docs/protocol/threeway/` on `main`. If your checkout predates them, run
-   `git fetch origin && git checkout origin/main -- docs/protocol/threeway`.
-
-2. Before acting, state back to the user:
-   - Your provider, and which seat(s) you may hold (see the seat table in the unified doctrine §I.2).
-   - The non-negotiables (below) you will follow.
-
-3. Non-negotiables you MUST NOT break:
-   a. Evidence before authority: cite the producing command for any factual/inventory claim; never
-      assert an unverified fact with authority (label it "unverified" instead).
-   b. impl != verifier: your own output is never self-verified. A non-author verifies it; in the
-      three-way protocol the verifier is a DIFFERENT provider.
-   c. No dual-write; never push to `main` directly. Only the mechanical merge-gate writes protected
-      `main`.
-   d. User-gated side effects: no push, merge, lock-claim, paid-API spend, or pod/compute spend
-      without explicit user consent.
-   e. Antigravity holds NO Layer-1 seat and is NOT the dual chief. It is an optional
-      human-relayed strategic app (one advisory input, never the decider) or a read-only observer;
-      it stays off the candidate branch, staging ref, and protected main. No external advisory
-      provider tool is installed or authorized by this repository; any future provider tool
-      requires a separately approved design and implementation and grants no protocol or side-effect
-      authority.
-   f. Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
-      surface intentionally does not restate its lifecycle grammar.
-   g. Anti-ceremony: a status / route / handoff / no-op is valid only if it preserves transfer
-      state, changes enforcement, or cites executed evidence.
-
-Confirm you have read these and will follow them before proceeding. If anything in the docs is
-stale versus the code, the code wins — fix the doc in the same change that exposes it.
-```
-
----
-
-## Reading order (why each file)
-
-1. **`ONBOARDING.md`** (this file) — the map + the non-negotiables.
-2. **`UNIFIED-OPERATING-DOCTRINE.md`** — the heart. Layer 1 (the cross-provider protocol: seats,
-   bus, merge-gate) vs Layer 2 (the portable rules every provider follows), plus the **capability
-   map** that tells your provider which primitive implements each rule. Currency note: the
-   `threeway/` package the build-status section (§I.5) routes to is now BUILT, hardened, and
-   test-green. The signed ref-bus is the load-bearing substrate for three-way facts; the
-   free-form mailbox remains the human coordination channel. T1/T2/T3 principal-safe emitters
-   exist for local/test-main operation, while protected-main deployment still requires the
-   fail-closed merge-gate boundary and deployment controls.
-3. **Your provider manual** — Codex / Antigravity / Claude specifics.
-4. **`ARCHITECTURE-DIAGRAM.md`** — the canonical topology picture.
-5. **`AGENTS.md`** — the agent-agnostic principle root (already names all three providers).
-6. **The spec** — normative truth for any detail.
-
-## The non-negotiables (the unified core, expanded)
-
-| # | Rule | One-line test |
-|---|---|---|
-| 1 | **Evidence before authority** (R-EVIDENCE / R-MEASURE) | "Did I paste the command that proves this number/claim?" |
-| 2 | **impl ≠ verifier** | "Is a non-author — ideally a different provider — verifying my diff?" |
-| 3 | **No dual-write; gate writes `main`** | "Am I about to push to main or write two buses? Stop." |
-| 4 | **User-gated side effects** | "Push / merge / lock / paid spend / pod — do I have explicit consent?" |
-| 5 | **Authority precedence** | user > git > coordination events > cached state > default; signal via durable artifacts, not chat |
-| 6 | **Anti-ceremony** | "Does this status/handoff change state, enforcement, or cite executed evidence? If not, don't send it." |
-| 7 | **Antigravity off all Layer-1 paths; not the chief** | "Is agy trying to build/verify/integrate/sign or claim the dual-chief role? Block it." |
-
-## Per-provider quick start
-
-- **Codex** — start as a readiness bridge and accept a live role only from an
-  explicit user or parent assignment. Orient once with
-  `python scripts/status.py snapshot <seat>`, then use the selected task
-  worktree's native index. The signed-bus integrator remains unavailable until
-  the cutover and protected merge-gate deployment are proved. See
-  `CODEX-ADOPTION.md` for current authority and migration mechanics.
-- **Claude** — `CLAUDE.md` + `docs/protocol/claude/` are your mechanics; you hold `director2` /
-  `operator` / `coordinator`. Use the `Agent`/`Workflow`/`Skill` tools as your Layer-2 primitives.
-- **Antigravity (agy)** — you may hold Layer-1 seats in both modes (superseded 2026-07-26; see
-  `ANTIGRAVITY-ADOPTION.md` §1) — any director/operator/coordinator seat, never the overseer or
-  merge-gate. Follow Layer 2 fully. All configured AGY seats are one Gemini family, so
-  `high-risk-control` review still needs a different-family reviewer — never self-verify, never
-  push without separate authority.
-
-## Self-conformance check (run before you stop)
-
-- [ ] I oriented before non-trivial work (smoke / `git log` / read the relevant docs).
-- [ ] Every factual/inventory claim I made cites its producing command.
-- [ ] I applied the review profile required by the actual risk; any required
-      non-author review is bound to the exact range.
-- [ ] I have not pushed / locked / spent without explicit user consent.
-- [ ] I am holding only the seat(s) assigned to me (Codex: bridge unless named).
-- [ ] If I am Antigravity: I stayed off the merge path and did not claim the chief role.
-- [ ] Any stale doc claim I hit, I fixed in the same change (code wins over prose).
-
----
-
-*See the canonical topology in [`ARCHITECTURE-DIAGRAM.md`](ARCHITECTURE-DIAGRAM.md) and the full
-rules in [`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md).*
+All providers start from their ordinary readiness/role adapter. Any supported
+provider may hold an explicitly assigned mailbox role; none becomes a signed
+principal by implication. If a deployment fact or authority is missing, stop
+at capability assessment and retain the existing authority channel.

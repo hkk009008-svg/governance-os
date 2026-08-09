@@ -96,14 +96,11 @@ guard resolves them.
 
 ## 6. Side-Effect Boundaries
 
-The following require explicit user authorization or a valid routed executor:
-- push or force-push;
-- cursor consumption;
-- lock action;
-- paid API spend;
-- pod spend;
-- target checkout refresh;
-- product-target edits outside the active route.
+Every external effect requires live exact authority for the executor, target,
+effect, and scope. A route or role alone is never sufficient. This includes
+push/force-push, merge, cursor consumption, lock mutation, provider launch,
+paid API or pod spend, live-data mutation, target checkout refresh, and edits
+outside the accepted target scope. See `AGENTS.md` for the canonical boundary.
 
 ## 7. Troubleshooting
 

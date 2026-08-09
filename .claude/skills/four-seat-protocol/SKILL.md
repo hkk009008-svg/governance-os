@@ -1,59 +1,41 @@
 ---
 name: four-seat-protocol
-description: Use for explicit Claude seat, mailbox, handoff, wave, continuation, or protocol decisions.
+description: Use for explicit Claude role, mailbox, handoff, wave, continuation, or protocol decisions.
 ---
 
-# Claude four-seat protocol
+# Claude role protocol
 
-Protocol SEMANTICS are canonical in `.agents/skills/four-seat-protocol/SKILL.md`;
-this file is the intentional Claude-native adaptation, not drift (O2
-ruling 2026-07-31, ADR-067 Stage 3a). Where the two disagree on protocol
-semantics, the `.agents` side wins and this file is corrected in the same
-change.
+Protocol semantics are canonical in
+`.agents/skills/four-seat-protocol/SKILL.md`; read and follow that body. This
+adapter adds only Claude-native mechanics.
 
-Choose readiness, named seat, coordinator, or subagent only from the explicit
-prompt. Fresh roles find the newest same-seat handoff, then run:
+Choose readiness bridge, assigned live role, coordinator, or parent-scoped
+subagent from the explicit task. Do not infer a role. For a governed decision,
+orient once:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python .claude/skills/four-seat-protocol/scripts/seat_status.py <seat> --wave 2
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE git status --short
+env -u GIT_INDEX_FILE .venv/bin/python scripts/status.py snapshot <seat>
 ```
 
-Surface unread count and read mailbox bodies. The mailbox is authoritative
-unless a live signed-bus event ref and matching seat cursor ref are both
-verified; transport ambiguity fails visibly rather than resolving to the
-convenient source. Only a concrete live seat consumes its cursor; coordinator
-has no cursor. Durable events use the fixed mailbox writer
-`coordination/bin/send-event`, never raw mailbox or cursor edits.
+Read actionable event bodies. Only an assigned receiving role consumes its
+cursor; coordinators have none. Use `coordination/bin/send-event` and
+`coordination/bin/consume-events`, never raw mailbox/cursor edits.
 
-Optional ChatGPT Pro consultation is parent-only and advisory: follow the
-`chatgpt-pro-consultation` skill; it grants no protocol or side-effect
-authority.
+Explore, Validate, and Promote come from `docs/protocol/work-modes.md` and are
+independent from review risk. Material
+behavior requires non-author exact-range review. Only high-risk control also
+requires a different model family and abuse-class assessment. Preserve the
+complete Compact Pair binding whenever formal review is triggered.
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
-Select Explore, Validate, or Promote through `docs/protocol/work-modes.md`
-separately from review risk. Ordinary Explore work does not instantiate seats
-or formal review artifacts. A real transfer, frozen Validate candidate,
-Promote boundary, or explicitly assigned role activates only the seats that
-boundary needs. Work mode grants no role or external-effect authority.
+Claude helpers and advisors return evidence to their parent. They do not own a
+live role, publish role events or verdicts, consume cursors, lock, push, merge,
+launch providers, or spend. Use the native worktree index; external effects
+remain separately authorized.
 
-Own the routed outcome and choose the method. Seats may reroute or exchange
-ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings, require non-author Operator
-GO for behavior-changing work with a distinct Operator seat and different
-model, bind autonomous ownership to an immutable parent/revision, preserve
-immutable finding refs, and keep external effects separately user-authorized
-for the exact effect/executor/target/scope. An Operator cannot verify anything
-it authored. Durable events use the fixed mailbox writer.
+Use Claude's native peer messages for attributed, transient same-Claude
+findings or status so the user does not manually relay them. They grant no role
+or effect authority and are not durable protocol state. Formal, binding, or
+cross-provider speech still goes through `coordination/bin/send-event`.
 
-Director may implement or transfer. Operator may implement but cannot review
-authored work; as reviewer it issues GO/NITS/FAIL. Coordinator facilitates but
-does not approve routes or author behavior-changing production work. Readiness
-reports without claiming.
-
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
-
-Subagents do not consume cursors, send mailbox events, issue verdicts, claim
-locks, push, merge, start pods, or spend. Ordinary Git/pytest use
-`env -u GIT_INDEX_FILE`. External effects remain separately authorized.
+Optional ChatGPT Pro consultation is parent-only and advisory; follow the
+`chatgpt-pro-consultation` skill.

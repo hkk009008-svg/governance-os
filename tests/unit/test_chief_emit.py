@@ -81,12 +81,15 @@ def temp_git_repo(tmp_path, monkeypatch):
     registry_dir = repo_dir / "coordination" / "threeway" / "keys"
     registry_dir.mkdir(parents=True)
     keystore_dir = tmp_path / "keystore"
-    keystore_dir.mkdir()
+    keystore_dir.mkdir(mode=0o700)
+    keystore_dir.chmod(0o700)
     # chief2 exists to prove the seat check is exact, not a prefix match.
     keys_bootstrap.main([
         "--registry", str(registry_dir), "--keystore", str(keystore_dir),
         "--seats", "chief", "chief2", "operator",
     ])
+    _git(repo_dir, "add", "coordination/threeway/keys")
+    _git(repo_dir, "commit", "-m", "test: committed public-key registry")
     monkeypatch.setenv("THREEWAY_KEYSTORE", str(keystore_dir))
     return {"repo_dir": repo_dir, "registry_dir": registry_dir}
 

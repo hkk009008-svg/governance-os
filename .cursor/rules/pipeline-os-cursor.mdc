@@ -14,10 +14,13 @@ and relevant mailbox bodies. Durable state beats chat memory.
 
 Default posture is readiness. A named seat exists only in its reserved linked
 worktree after the hook registers the top-level conversation and selected
-model ID. Reads are free everywhere. Director seats mutate their worktree
-without per-action approval; bound Director/Operator mailbox wrappers inherit
-the seat-start grant; every other posture gets one in-app approval per
-governed mutation. Remote Git effects always ask.
+model ID. Reads are free everywhere. Director seats use native file tools in
+their worktree without per-action approval; other postures use a bound Director
+or a separately approved shell mutation because Cursor does not enforce
+`preToolUse` asks. Bound Director/Operator mailbox wrappers inherit the
+seat-start grant. Remote Git effects ask. Every well-formed MCP invocation asks
+because that hook has no documented child discriminator; the card is invocation
+consent, not external-effect authority.
 
 Default topology is the standing pair (`director` + `operator`). Do not invent
 five-seat ceremony; capacity seats stay cold until parallel load earns them.
