@@ -151,3 +151,17 @@ bullet; this paragraph is the originating story.
 | `scripts/agy_emit.py` `--kind` default | moved off the frozen `coordination` kind to `findings` |
 | Test fixtures publishing `status` events | retargeted to `findings` where the subject was writer mechanics, not the kind (`test_mailbox_writer`, `test_coordination_tooling`, `test_learning_promotion`); read-side `status` fixtures kept where they prove historical legibility |
 | Compact snapshot projection (`status.py`) | deferred (flagged optional in the plan): the projection change is independent of the write freeze and rides a later change if the slope metrics show conversational noise persisting |
+
+---
+
+# PR 4 — dormant architecture removal
+
+| Change | Disposition |
+|---|---|
+| `governance.toml` `[coordination] transport = "mailbox"` | added: the transport is declarative. Omission defaults to the mailbox — a bus can never activate by omission, and removing the declaration is itself a reviewed authority-surface edit — while an unparsable file or unknown value fails closed (`scripts/bus_unread.py::coordination_transport`). Activating the signed bus is an explicit reviewed change to `"signed-bus"` plus live refs |
+| `scripts/bus_unread.py` liveness inference | retargeted: with the mailbox declared, `bus_authority_state` short-circuits before any `threeway` import (module-level `gitcas` import became lazy). Evasion control: a poisoned `threeway` module proves the mailbox path never consults the package |
+| `governance_verify_all` HALF A threeway import block | retargeted: the transport declaration is validated first; the signed-bus package is exercised in smoke only when it is the configured transport. The package keeps its own unit-test coverage while dormant (`threeway/` stays in-tree; physical extraction is a separate owner decision) |
+| `MODEL_ID_REGISTRY` / `MODEL_PROVIDER_FAMILIES` / `MODEL_DISPLAY_ALIASES` in policy code | moved: `config/model-families.toml` (schema_version 1) with a fail-closed loader. Pins landed in the same change: `config/` added to `AUTHORITY_SURFACES` (TOML edits keep high-risk review class), migration-snapshot subset test (silent drops/re-familying caught; additions free), and unknown-IDs-never-independent test. An empty or malformed registry raises — it cannot silently fail every claim or falsely pass one |
+| Transport doctrine sentences (codex continuation, four-seat skill, ARCHITECTURE.md §6 + invariants + threeway row) | retargeted to the declarative posture; the `test_continuation_keeps_transport_and_fixed_interface_boundaries` pin now asserts the configured-transport sentences; ARCHITECTURE Last-verified stamp bumped (2026-08-10 @ c15ac4b) |
+| Fixtures exercising signed-bus scenarios | declare `transport = "signed-bus"` explicitly (`test_bus_unread_script`, `test_partial_bus_refs_are_fatal_transport_incoherence`); every mailbox-era fixture works unchanged under the omission default |
+| Orphaned prose-parity checks | none found to retire: PR 1–2 retargeted pins in place rather than orphaning them; the remaining pins are live anti-regrowth controls (verified by the green 1,948-test suite against the pruned surfaces) |
