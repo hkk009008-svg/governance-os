@@ -1,6 +1,7 @@
 ---
-description: Cursor app-seat identity, worktree boundaries, and mailbox policy
-alwaysApply: true
+description: Cursor app-seat identity, worktree boundaries, and mailbox policy. Load for seat, mailbox, review, worktree, or coordination protocol work.
+globs: coordination/**,.cursor/runtime/**,.cursor/hooks/**,scripts/cursor_*.py
+alwaysApply: false
 ---
 
 # Cursor app seats

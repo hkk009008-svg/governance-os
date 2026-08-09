@@ -1,163 +1,43 @@
 # Pipeline Claude router
 
-`ARCHITECTURE.md` is factual truth; current code wins when it drifts. This
-file routes Claude sessions to task-specific instructions without loading the
-whole protocol at startup.
+`ARCHITECTURE.md` is factual truth; current code wins when it drifts. The
+universal contract lives in `AGENTS.md`; canonical policy in
+`scripts/codex_protocol_model.py`. This file adds only Claude-specific
+mechanics.
 
-## Start and scope
+## Claude mechanics
 
-Before non-trivial work, run:
+- Ordinary Git and pytest use `env -u GIT_INDEX_FILE` and the repo venv
+  (`.venv/bin/python`).
+- Load a skill only when the task matches its declared trigger.
+  `.claude/skills/` holds Claude discovery surfaces; canonical bodies live in
+  `.agents/skills/`.
+- When a seat, mailbox, route, wave, handoff, continuation, or protocol
+  decision is named, load `docs/protocol/claude/continuation.md` and the
+  concrete `seat-*` skill. When learning-plane work is named, load
+  `docs/protocol/learning/contract.md` (ADR-067).
+- Work modes per `docs/protocol/work-modes.md`: ordinary work declares no
+  mode; a long campaign is `explore`, a frozen candidate `validate`, a
+  canonical or live mutation `promote`.
+- Run `env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py` when work
+  changes governance/runtime topology or relies on an `ARCHITECTURE.md`
+  invariant — it is not a session-start ritual.
+- Refresh scoped `git log`/`git status` before writes and gates, and diff the
+  doctrine paths (`docs/protocol`, `.claude/skills`, `CLAUDE.md`,
+  `AGENTS.md`) before submitting a range: an obligation can land mid-flight
+  and bind in-progress work.
+- External effects (push, merge, locks, cursor consumption, provider launch,
+  paid spend) each need separate explicit authority.
 
-```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
-env -u GIT_INDEX_FILE git log --oneline -5
-env -u GIT_INDEX_FILE git status --short --branch
-```
+## Lessons route through candidates
 
-Read only the task-relevant topology, source, and protocol docs. User intent is
-in `docs/PROGRAM-MANUAL.md`; read
-`docs/protocol/program-manual-guide.md` before loading the full manual.
-
-Before editing, find a symbol's definition, writes, callers, imports, string
-references, and siblings. Preserve unrelated work and inspect the exact diff
-before committing. Factual inventory claims cite their producing command.
-Gate-controlling measurements use committed instruments and citable `logs/`
-artifacts. Tests and diagnostics prove only what they execute.
-
-Use the smallest sufficient verification profile and do not repeat an unchanged
-review question. A deferred confirmed defect needs a strict xfail or a
-`test-infeasible` reason.
-
-## Work mode before ceremony
-
-Select `explore`, `validate`, or `promote` from
-`docs/protocol/work-modes.md`; the closed profiles live in
-`scripts/codex_protocol_model.py`.
-
-- Explore is the default for reversible sandbox learning: one campaign brief,
-  automatic attempt logs, recorded reruns, and no formal review until transfer
-  or phase change.
-- Validate freezes one candidate and uses one non-author candidate review.
-- Promote carries the reviewed candidate, rollback point, and separately
-  authorized canonical or external effect.
-
-Mode is separate from review risk and grants no seat, write, provider launch,
-merge, push, or external-effect authority.
-
-## Work from skills; route new lessons through candidates
-
-Default, not an option. Before starting, check `.claude/skills/` for one that
-covers the work and follow it — those files exist because the lesson in them was
-paid for once already, usually by a review round that found what self-review had
-missed. `prove-a-control` before claiming any guard, gate, or negative control
-holds. `create-regression-pin` before deferring a confirmed defect.
-`seat-operator` before issuing a verdict.
-
-Current code and higher-priority instructions remain controlling. If a loaded
-skill conflicts with either, stop relying on it and record the conflict in the
-task evidence; do not silently work around it. Correct canonical skill bytes
-only when the current accepted task authorizes that correction and its required
-review completes.
-
-Finish the scoped task before extracting a lesson. Then draft and, only with the
-applicable publication authority, publish an evidence-backed
-`learning-candidate` with truthful provider scope. There is no canonical skill
-creation or edit solely because a lesson arose. Promotion into a canonical
-skill is a separately accepted, risk-classed Compact Pair change; the candidate
-is evidence for that later decision, not authority to make it.
-
-Instruction prose is executable on models and is the least-gated surface here.
-The first field trial measured it → a 6.5 h transcript with zero tool
-invocations yet unprompted hash-citations and a handoff doc: doctrine text
-shaped the worker's habits while the reviewed tools sat unused. When the goal is behavior
-change, change the prose surface first — and give a changed instruction surface
-at least a reduced-context probe of its central claim, because its only other
-test is a field trial someone pays for.
-
-## Formation gate for claims
-
-A load-bearing claim — "enforced", "measured", "complete", "never", a cited
-reference — is a conjunction whose premises come from its shape, not from
-memory, and whose check must be able to disagree with its author. Apply that
-discipline at the boundary selected by the work mode:
-
-- Explore: use it for a claim that stops the campaign, selects a candidate, or
-  changes phase; cite routine observations directly.
-- Validate: use the full loop for the candidate's load-bearing conclusion.
-- Promote: retain the full loop and the independent review.
-
-For the full loop, derive the premises
-(`env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py premises "<claim>"`),
-cite each with the command that measured it, run the one command most likely
-to embarrass the claim, and attack it with a reduced-context reader when useful
-and separately authorized (`coordination/bin/probe-claim "<claim>"` — a real
-provider launch — or the `amnesiac-prober` agent given only the sentence).
-`scripts/claim_check.py sweep` is an optional lens over a range's uncited
-overclaim vocabulary. All advisory, none a gate; the full loop is
-`.claude/skills/probe-a-claim`.
-
-## Proportional independence
-
-For parseable/executable composition, authority or security enforcement,
-side-effect gating, or trust-granting schema validation, the owner explicitly
-assesses plausible abuse classes and preserves material independent findings.
-The owner and actual-diff Operator choose proportional review depth. Early
-independent review is encouraged when useful; it is advisory and no universal
-pre-implementation CLEAR gate exists. Behavior-changing acceptance still
-requires a distinct non-author Operator to review the actual commit or range.
-A different model family is required for `high-risk-control`.
-
-Full rationale: `docs/protocol/claude/independence-first.md`.
-
-## Governed seat work
-
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
-Own the routed outcome and choose the method. Seats may reroute or exchange
-ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings and require non-author
-Operator review for behavior-changing work; add a different model family only
-for `high-risk-control`. Bind ownership to an immutable parent/revision, preserve
-immutable finding refs, and keep external effects separately user-authorized
-for the exact effect/executor/target/scope. An Operator cannot verify anything
-it authored. Durable events use the fixed mailbox writer.
-
-Delegation is an owner-chosen capacity tool. Use fresh bounded helpers when they
-add signal or capacity; direct work is valid for tightly coupled work. Never run
-concurrent implementers on shared files. Details:
-`docs/protocol/agents/orchestration.md`.
-
-When a seat, mailbox, route, wave, handoff, continuation, or protocol decision
-is named, load `docs/protocol/claude/continuation.md` and the concrete
-`.claude/skills/seat-*` skill. When learning-plane work (episodic index,
-learning candidates, extraction, learning metrics, or skill distribution)
-is named, load `docs/protocol/learning/contract.md` (ADR-067). Read mailbox bodies before decisions. Live seat
-cursors are per-seat state; coordinator has no cursor. Ordinary Git and pytest
-use `env -u GIT_INDEX_FILE`.
-
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
-
-A committed verify-request binds the actual base/head, outcome, author
-seat/model, assigned non-author Operator, allowed paths, and immutable finding
-refs. Only that Operator issues GO/NITS/FAIL through the fixed mailbox writer.
-Coordinator facilitates but does not author behavior-changing production work.
-
-Push, merge, locks, cursor consumption, provider launch, paid spend, and other
-external effects each require separate explicit authority. Structural tokens
-never grant execution permission.
-
-For evidence-ledger work, start from the current Pipeline checkout, read
-`docs/protocol/claude/ledger-cli-adoption.md`, run
-`env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat <seat> --wave 2`,
-then read evidence-ledger `CLAUDE.md` and `AGENTS.md`. Pipeline remains the
-governance kernel and evidence-ledger owns product-local truth.
-
-## Shared-tree hygiene
-
-- Refresh `git log --oneline -3` and scoped status before writes and gates.
-- Diff the doctrine before submitting a range, not only the code:
-  `env -u GIT_INDEX_FILE git log <base>..main -- docs/protocol .claude/skills CLAUDE.md AGENTS.md`
-  — an obligation can land mid-flight and bind your in-progress work; one did
-  (the evasion-control requirement) and killed a mechanism built hours earlier.
-- Use `env -u GIT_INDEX_FILE` and explicit pathspecs.
-- Preserve peer/user dirt; first landed shared-file commit wins.
-- Edit, stage, commit, push, merge, consume, lock, and spend are separate acts.
+Finish the scoped task before extracting a lesson; then draft and, only with
+the applicable publication authority, publish an evidence-backed
+`learning-candidate` with truthful provider scope. There is no canonical
+skill creation or edit solely because a lesson arose; promotion into a
+canonical skill is a separately accepted, risk-classed Compact Pair change.
+If a loaded skill conflicts with current code or a higher-priority
+instruction, stop relying on it and record the conflict in the task evidence;
+current code and higher-priority instructions remain controlling. Correct
+canonical skill bytes only when the current accepted task authorizes that
+correction and its required review completes.

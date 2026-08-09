@@ -126,8 +126,12 @@ def test_continuation_documents_app_runtime_and_minimal_handoff() -> None:
 
 
 def test_scoped_rule_declares_binding_and_advisor_subagents() -> None:
+    # The seats rule is scoped, not always-applied (context-pruning PR 1):
+    # ordinary Cursor sessions load only the baseline rule, and this rule
+    # loads for seat/mailbox/coordination work via description and globs.
     text = _read(".cursor/rules/cursor-seats.mdc")
-    assert "alwaysApply: true" in text
+    assert "alwaysApply: false" in text
+    assert "globs:" in text
     assert "readiness bridge" in text
     assert "conversation_id" in text
     assert "selected model ID" in text

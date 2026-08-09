@@ -12,7 +12,16 @@ Work mode is separate from review risk:
 Neither a mode name nor a profile grants a write, seat, provider launch,
 canonical mutation, publication, merge, push, spend, or other external effect.
 
-## Choose the smallest useful mode
+## Ordinary work carries no mode
+
+Ordinary, reversible, repository-local work is not a work mode and declares
+nothing: no campaign brief, no mode object, no per-task selection ceremony.
+A mode object exists only at its boundary — a long-running exploratory
+campaign begins an Explore record, freezing one candidate for acceptance
+begins Validate, and moving a reviewed candidate into canonical or live state
+begins Promote.
+
+## Choose the smallest useful mode when a boundary applies
 
 | Mode | Use it for | Proportionate record | Review boundary |
 |---|---|---|---|
@@ -20,8 +29,8 @@ canonical mutation, publication, merge, push, spend, or other external effect.
 | `validate` | A frozen candidate whose result may become accepted | Frozen report plus generated manifest | One non-author candidate review |
 | `promote` | Moving an accepted candidate into canonical or live state | Rollback record plus approval evidence | Reviewed candidate plus separately authorized effect |
 
-Start in `explore` when failure is cheap, writes are isolated, and no output is
-being presented as accepted or canonical. A task may start in `validate` when
+Begin an Explore record when a campaign starts: failure is cheap, writes are
+isolated, and no output is presented as accepted or canonical. A task may start in `validate` when
 the candidate is already frozen. Use `promote` only for a reviewed candidate
 and an exact separately authorized target.
 
