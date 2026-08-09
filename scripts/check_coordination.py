@@ -164,23 +164,96 @@ class CommittedMailboxProjection:
     commits: git_commit_projection.CommitGraphProjection
 
 
-_REVIEW_STATE_CUTOVER_PATH = (
-    "coordination/mailbox/sent/"
-    "2026-07-25T05-45-10Z-coordinator-to-operator-verify-request.md"
+_REVIEW_HISTORY_BOUNDARY_MANIFEST = (
+    Path(__file__).resolve().parent / "baselines" / "review_history_boundary.json"
 )
-_REVIEW_STATE_CUTOVER_COMMIT = "61786501e26f7e1bac92efbdcd4ff0ea468a7bbb"
-_ACTIVE_FAILURE_CUTOVER_COMMIT = "8d05a76489b8609634e1635ebfad12792abc8119"
-_LEARNING_HISTORY_CUTOVER_COMMIT = "13616d843e4e55beed405de69db4e953d0831767"
-_BASELINE_ACTIVE_FAILURE_REPORTS = frozenset({
-    "coordination/mailbox/sent/"
-    "2026-07-27T03-26-01Z-operator2-to-director2-verification-report.md@"
-    "e0fbefdb56af03b8c04b6df58245f7533a3d83c0"
-})
+_FULL_SHA_SHAPE_RE = re.compile(r"^[0-9a-f]{40}$")
+_SHA256_SHAPE_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def load_review_history_boundary(
+    manifest_path: Path = _REVIEW_HISTORY_BOUNDARY_MANIFEST,
+) -> dict:
+    """Load the versioned review-history boundary manifest, failing closed.
+
+    The manifest is a one-way versioned baseline (never edited in place; a
+    future boundary change ships a new schema_version through its own reviewed
+    high-risk-control change). A missing, unparsable, or wrong-shaped manifest
+    raises rather than degrading to permissive defaults: review-state
+    projection without its history boundary must fail visibly.
+    """
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"review-history boundary manifest unavailable or unparsable: {exc}"
+        ) from exc
+    if payload.get("schema_version") != 1:
+        raise RuntimeError(
+            "review-history boundary manifest schema_version must be 1"
+        )
+    cutover = payload.get("review_state_cutover")
+    if (
+        not isinstance(cutover, dict)
+        or not isinstance(cutover.get("path"), str)
+        or not cutover["path"].startswith("coordination/mailbox/sent/")
+        or not isinstance(cutover.get("commit"), str)
+        or _FULL_SHA_SHAPE_RE.fullmatch(cutover["commit"]) is None
+    ):
+        raise RuntimeError(
+            "review-history boundary manifest review_state_cutover is malformed"
+        )
+    for key in ("active_failure_cutover_commit", "learning_history_cutover_commit"):
+        value = payload.get(key)
+        if not isinstance(value, str) or _FULL_SHA_SHAPE_RE.fullmatch(value) is None:
+            raise RuntimeError(
+                f"review-history boundary manifest {key} is malformed"
+            )
+    reports = payload.get("baseline_active_failure_reports")
+    if not isinstance(reports, list) or not all(
+        isinstance(item, str)
+        and item.count("@") == 1
+        and item.startswith("coordination/mailbox/sent/")
+        and _FULL_SHA_SHAPE_RE.fullmatch(item.rsplit("@", 1)[1]) is not None
+        for item in reports
+    ):
+        raise RuntimeError(
+            "review-history boundary manifest baseline_active_failure_reports "
+            "is malformed"
+        )
+    invalid = payload.get("pre_cutover_invalid_requests")
+    if not isinstance(invalid, dict) or not all(
+        isinstance(ref, str)
+        and ref.count("@") == 1
+        and _FULL_SHA_SHAPE_RE.fullmatch(ref.rsplit("@", 1)[1]) is not None
+        and isinstance(digest, str)
+        and _SHA256_SHAPE_RE.fullmatch(digest) is not None
+        for ref, digest in invalid.items()
+    ):
+        raise RuntimeError(
+            "review-history boundary manifest pre_cutover_invalid_requests "
+            "is malformed"
+        )
+    return payload
+
+
+_REVIEW_HISTORY_BOUNDARY = load_review_history_boundary()
+_REVIEW_STATE_CUTOVER_PATH = _REVIEW_HISTORY_BOUNDARY["review_state_cutover"]["path"]
+_REVIEW_STATE_CUTOVER_COMMIT = _REVIEW_HISTORY_BOUNDARY["review_state_cutover"]["commit"]
+_ACTIVE_FAILURE_CUTOVER_COMMIT = _REVIEW_HISTORY_BOUNDARY[
+    "active_failure_cutover_commit"
+]
+_LEARNING_HISTORY_CUTOVER_COMMIT = _REVIEW_HISTORY_BOUNDARY[
+    "learning_history_cutover_commit"
+]
+_BASELINE_ACTIVE_FAILURE_REPORTS = frozenset(
+    _REVIEW_HISTORY_BOUNDARY["baseline_active_failure_reports"]
+)
 _PRE_CUTOVER_INVALID_REQUESTS = {
-    (
-        _REVIEW_STATE_CUTOVER_PATH,
-        _REVIEW_STATE_CUTOVER_COMMIT,
-    ): "d77efcb26159733b31b1159fba6bb83c9b62b8ef3937ed8432ddff54fc224f7c",
+    tuple(reference.rsplit("@", 1)): digest
+    for reference, digest in _REVIEW_HISTORY_BOUNDARY[
+        "pre_cutover_invalid_requests"
+    ].items()
 }
 
 _FULL_OBJECT_TOKEN_RE = re.compile(
