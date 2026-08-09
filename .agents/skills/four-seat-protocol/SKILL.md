@@ -23,9 +23,10 @@ For an assigned role, orient once from current evidence:
 python scripts/status.py snapshot <seat>
 ```
 
-Read relevant event bodies before deciding. The mailbox is authoritative unless
-a live signed-bus event ref and matching seat cursor ref are both verified;
-transport ambiguity fails visibly. Only the assigned live role consumes its
+Read relevant event bodies before deciding. The mailbox is the configured
+coordination transport (`governance.toml` `[coordination]`); a signed-bus
+cutover is an explicit reviewed transport change, and malformed configuration
+fails closed — transport ambiguity fails visibly. Only the assigned live role consumes its
 cursor; coordinator has no cursor. Use `coordination/bin/send-event` and
 `coordination/bin/consume-events`, never raw mailbox or cursor edits.
 

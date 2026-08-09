@@ -143,19 +143,24 @@ def _project_smoke() -> int:
     """
     failures: list[str] = []
 
-    # 1. Signed-bus package imports cleanly + canonicalizer is key-order-stable.
+    # 1. Coordination transport is explicitly configured and fails closed.
+    #    The dormant signed-bus package is exercised here only when it is the
+    #    configured transport; its own unit tests keep covering the package.
     try:
-        import threeway
-        from threeway.canon import canonicalize
-        from threeway import envelope, keys, reducer, gate  # noqa: F401 — import-cleanliness
-        if canonicalize({"b": 1, "a": 2}) != canonicalize({"a": 2, "b": 1}):
-            failures.append("canonicalize is not key-order-stable (RFC-8785 broken)")
-        if not (threeway.LOAD_BEARING_KINDS <= threeway.THREEWAY_KINDS):
-            failures.append("LOAD_BEARING_KINDS is not a subset of THREEWAY_KINDS")
-        if "merge_completed" not in threeway.LOAD_BEARING_KINDS:
-            failures.append("merge_completed missing from LOAD_BEARING_KINDS")
-    except Exception as e:  # surface the real import/runtime error
-        failures.append(f"threeway import/canon failed: {e!r}")
+        import bus_unread as _bus
+        _transport = _bus.coordination_transport(Path(_REPO_ROOT))
+        if _transport == "signed-bus":
+            import threeway
+            from threeway.canon import canonicalize
+            from threeway import envelope, keys, reducer, gate  # noqa: F401 — import-cleanliness
+            if canonicalize({"b": 1, "a": 2}) != canonicalize({"a": 2, "b": 1}):
+                failures.append("canonicalize is not key-order-stable (RFC-8785 broken)")
+            if not (threeway.LOAD_BEARING_KINDS <= threeway.THREEWAY_KINDS):
+                failures.append("LOAD_BEARING_KINDS is not a subset of THREEWAY_KINDS")
+            if "merge_completed" not in threeway.LOAD_BEARING_KINDS:
+                failures.append("merge_completed missing from LOAD_BEARING_KINDS")
+    except Exception as e:  # surface the real config/import error
+        failures.append(f"coordination transport smoke failed: {e!r}")
 
     # 2. Seat roster (single source of truth) + mailbox kind registry are stable.
     try:

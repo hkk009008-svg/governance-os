@@ -498,8 +498,10 @@ def test_codex_owned_surfaces_use_native_worktree_git() -> None:
 def test_continuation_keeps_transport_and_fixed_interface_boundaries() -> None:
     continuation = _compact(_read("docs/protocol/codex/continuation.md"))
 
-    assert "mailbox is authoritative unless a live signed-bus event ref" in continuation
-    assert "matching seat cursor ref" in continuation
+    assert "mailbox is the configured coordination transport" in continuation
+    assert "governance.toml" in continuation
+    assert "explicit reviewed transport change" in continuation
+    assert "fails closed" in continuation
     assert "transport ambiguity fails visibly" in continuation
     assert "coordination/bin/send-event" in continuation
     assert "coordination/bin/consume-events" in continuation

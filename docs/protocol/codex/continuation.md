@@ -16,10 +16,12 @@ Runtime identity comes from the harness; variables, labels, and prompts grant no
 
 Use the native worktree index: `python scripts/status.py snapshot <seat>`.
 
-Read actionable event bodies before a decision. The mailbox is authoritative
-unless a live signed-bus event ref and matching seat cursor ref are both
-verified; transport ambiguity fails visibly. Only the assigned live role
-consumes its cursor, and coordinator has no cursor.
+Read actionable event bodies before a decision. The mailbox is the
+configured coordination transport (`governance.toml` `[coordination]`); a
+signed-bus cutover is an explicit reviewed transport change; omission can
+never activate the bus, and a malformed declaration fails closed — transport
+ambiguity fails visibly. Only the assigned live role consumes its cursor, and coordinator has
+no cursor.
 
 Use `coordination/bin/send-event <sender> <recipient> <kind> <subject...>`
 (body on stdin) and `coordination/bin/consume-events <seat> [--to <timestamp>]`;
