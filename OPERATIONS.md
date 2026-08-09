@@ -26,7 +26,7 @@ python scripts/status.py snapshot
 ```
 
 The compact snapshot is the startup path. Run focused checks while working and
-run `python scripts/ci_smoke.py` at the completion gate for changes
+run `python scripts/governance_verify_all.py` at the completion gate for changes
 that touch governance/runtime topology or an `ARCHITECTURE.md` invariant.
 
 ## 3. Live Seat Startup

@@ -287,7 +287,7 @@ At the start of non-trivial work, refresh smoke, recent Git history, scoped
 status, and relevant mailbox bodies. In app worktrees use normal Git and
 pytest; do not set or unset a per-seat index variable.
 
-Unit tests and `scripts/ci_smoke.py` verify executable invariants but do not
+Unit tests and `scripts/governance_verify_all.py` verify executable invariants but do not
 substitute for the risk-appropriate Operator verdict or desktop acceptance.
 
 ## Target repositories

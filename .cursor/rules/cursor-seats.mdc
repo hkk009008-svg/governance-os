@@ -31,10 +31,11 @@ use their worktree's native Git index and reject `GIT_INDEX_FILE`.
   after a hook approval card.
 - `coordinator` reconciles on demand, authors no production changes, and holds
   no mailbox cursor.
-- Behavior-changing acceptance requires a non-author Operator against one
-  committed verify-request. High-risk control additionally requires a
-  different model family and abuse-class assessment; the selected model ID is
-  app-visible evidence, not provider/backend attestation.
+- Material-behavior acceptance (criteria:
+  `docs/protocol/agents/risk-classes.md`) requires a non-author Operator
+  against one committed verify-request. High-risk control additionally
+  requires a different model family and abuse-class assessment; the selected
+  model ID is app-visible evidence, not provider/backend attestation.
 
 Never edit mailbox, lock, or `.cursor/runtime/` state directly — the hook
 hard-denies that. Push, pull, fetch, merge, rebase, and paid spend are separate

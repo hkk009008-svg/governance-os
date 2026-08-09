@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import check_doc_claims
 import check_placeholders
-import ci_smoke
+import governance_verify_all as ci_smoke
 import mailbox_monitor
 import pytest
 

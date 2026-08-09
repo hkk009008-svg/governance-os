@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _run_smoke(root: Path) -> int:
     result = subprocess.run(
-        [sys.executable, "scripts/ci_smoke.py"],
+        [sys.executable, "scripts/governance_verify_all.py"],
         cwd=root,
         text=True,
         check=False,

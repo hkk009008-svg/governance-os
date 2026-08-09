@@ -8,7 +8,7 @@
 This folder is a **portable, project-neutral copy of the "operating system"** that
 wrapped an AI-cinema-pipeline repo: the harness config, the multi-seat governance
 protocol (director / operator / coordinator), the git-native coordination layer
-(mailbox + signed event bus), the CI-enforced doctrine (`ci_smoke.py`,
+(mailbox + signed event bus), the CI-enforced doctrine (`governance_verify_all.py`,
 `check_no_ceremony.py`), and the dual-runtime harness (`CLAUDE.md` for Claude,
 `AGENTS.md` for Codex / Cursor / Aider / etc.).
 
@@ -64,7 +64,7 @@ cinema skills (`ai-video-gen`, `comfyui-mastery`) were **excluded**.
 | `coordination/threeway/keys/README.md` | Trust-root layout (public keys; regenerate per deployment) |
 | `coordination/workflows/discovery-bughunt.js` | A reusable discovery-bughunt coordination workflow |
 | `threeway/*.py` (20 modules) | The Ed25519-signed event-bus control plane (envelope, canon, gate, reducer, refstore, keys, …) |
-| `scripts/*.py` + `*.sh` (37 files) + `placeholder_allowlist.txt` | Governance scripts: `ci_smoke`, `check_{coordination,doc_claims,no_ceremony}`, the three fail-closed adoption gates `check_{placeholders,go_schema,arch_freshness}` (+ their allowlist), `wave_gate_check`, the `*_emit`/`consume_bus`/`run_merge_gate` bus tools, `draft_handoff`, `protocol_*`, etc. |
+| `scripts/*.py` + `*.sh` (37 files) + `placeholder_allowlist.txt` | Governance scripts: `governance_verify_all` (alias `ci_smoke`), `check_{coordination,doc_claims,no_ceremony}`, the three fail-closed adoption gates `check_{placeholders,go_schema,arch_freshness}` (+ their allowlist), `wave_gate_check`, the `*_emit`/`consume_bus`/`run_merge_gate` bus tools, `draft_handoff`, `protocol_*`, etc. |
 | `tests/` (`conftest.py` + 22 unit modules) | The pytest regression suite — gate scripts, threeway control plane (canon/envelope/keys/reducer), mailbox protocol, activation scripts, and protocol doc-integrity checks |
 
 ---
@@ -92,7 +92,7 @@ cinema skills (`ai-video-gen`, `comfyui-mastery`) were **excluded**.
 **Method:** copy the reusable surface verbatim, then for the 34 files that carried
 cinema references, replace cinema **nouns / paths / examples** with placeholders
 (`<PROJECT>`, `<entrypoint>`, `<domain-skill>`, `TODO(<PROJECT>)`) while preserving
-every rule and mechanism. `ci_smoke.py` was surgically split: the cinema runtime-
+every rule and mechanism. `governance_verify_all.py` was surgically split: the cinema runtime-
 invariant half became a `_project_smoke()` stub; the portable governance-gate half
 (doc-anchor drift, coordination state, anti-ceremony, reviewer-result schema) stayed
 intact. Five truth/intent skeletons (`ARCHITECTURE.md`, `docs/PROGRAM-MANUAL.md`,
@@ -103,13 +103,13 @@ Since then, governance-hardening Track A grew the bundle 164 → **186** tracked
 files (the `tests/` suite, the `check_{placeholders,go_schema,arch_freshness}`
 gates + `placeholder_allowlist.txt`, `RUNBOOK-DAILY.md`), and `_project_smoke()`
 is **no longer a stub** — it asserts the governance OS's own runtime invariants
-(filled in commit `0708c59`; see `scripts/ci_smoke.py`).
+(filled in commit `0708c59`; see `scripts/governance_verify_all.py`).
 
 **Verified at generation time (commands + results):**
 - Zero residual cinema tokens — `grep -rIlE '<35-token cinema regex>' .` → **0 / 162 files**.
 - Python compiles — `ast.parse` over all `.py` → **53 / 53 OK, 0 failures**.
 - Shell valid — `bash -n` over hooks + `bin/` → **0 failures**.
-- **Governance OS boots turn-key** — `python scripts/ci_smoke.py` → `OK`, **exit 0**
+- **Governance OS boots turn-key** — `python scripts/governance_verify_all.py` → `OK`, **exit 0**
   (the `_project_smoke()` stub runs, the doc-anchor gate passes on the skeleton
   `ARCHITECTURE.md`, the coordination gate passes on the seeded cursors, and the
   anti-ceremony gate passes all five checks — R1–R3, R5–R6; R4 was removed with

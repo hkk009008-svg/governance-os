@@ -42,6 +42,7 @@ SURFACE_PROBES = {
     ".cursor/rules/": ".cursor/rules/cursor-seats.mdc",
     ".cursor/skills/": ".cursor/skills/review-next/SKILL.md",
     ".github/workflows/": ".github/workflows/ci.yml",
+    "config/": "config/model-families.toml",
     ":(glob)tests/**/conftest.py": "tests/conftest.py",
     "AGENTS.md": "AGENTS.md",
     "ARCHITECTURE.md": "ARCHITECTURE.md",

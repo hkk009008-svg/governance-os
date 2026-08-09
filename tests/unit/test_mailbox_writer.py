@@ -48,13 +48,13 @@ def _send_fixture(root: Path) -> tuple[Path, str, Path, bytes]:
     sent = root / "coordination/mailbox/sent"
     sent.mkdir(parents=True, exist_ok=True)
     (root / "coordination/mailbox/kinds.txt").write_text(
-        "status\n", encoding="utf-8"
+        "findings\n", encoding="utf-8"
     )
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T01-02-03Z-director-to-operator-status.md"
+        "2026-07-17T01-02-03Z-director-to-operator-findings.md"
     )
-    candidate = sent / ".2026-07-17T01-02-03Z-director-to-operator-status.fixture.tmp"
+    candidate = sent / ".2026-07-17T01-02-03Z-director-to-operator-findings.fixture.tmp"
     raw = (
         "# Director → Operator: snapshot\n\n"
         "**When:** 2026-07-17T01:02:03Z · **From:** director (online)\n\n"
@@ -133,12 +133,12 @@ def test_send_event_finalizer_rejects_filename_envelope_identity_mismatch(
     sent = root / "coordination/mailbox/sent"
     sent.mkdir(parents=True)
     kinds = root / "coordination/mailbox/kinds.txt"
-    kinds.write_text("status\n", encoding="utf-8")
+    kinds.write_text("findings\n", encoding="utf-8")
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T01-02-03Z-director-to-operator-status.md"
+        "2026-07-17T01-02-03Z-director-to-operator-findings.md"
     )
-    candidate = sent / ".2026-07-17T01-02-03Z-director-to-operator-status.fixture.tmp"
+    candidate = sent / ".2026-07-17T01-02-03Z-director-to-operator-findings.fixture.tmp"
     candidate.write_text(
         "# Operator → Director: spoofed identity\n\n"
         "**When:** 2026-07-17T01:02:03Z · **From:** operator (online)\n\n"
@@ -170,13 +170,13 @@ def test_send_event_finalizer_rejects_duplicate_envelope_or_footer(
     sent = root / "coordination/mailbox/sent"
     sent.mkdir(parents=True)
     (root / "coordination/mailbox/kinds.txt").write_text(
-        "status\n", encoding="utf-8"
+        "findings\n", encoding="utf-8"
     )
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T01-02-03Z-director-to-operator-status.md"
+        "2026-07-17T01-02-03Z-director-to-operator-findings.md"
     )
-    candidate = sent / ".2026-07-17T01-02-03Z-director-to-operator-status.fixture.tmp"
+    candidate = sent / ".2026-07-17T01-02-03Z-director-to-operator-findings.fixture.tmp"
     candidate.write_text(
         "# Director → Operator: repeated\n\n"
         "**When:** 2026-07-17T01:02:03Z · **From:** director (online)\n\n"

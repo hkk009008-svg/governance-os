@@ -56,7 +56,7 @@ checkout's ordinary Git index.
 
 ```bash
 python -m pytest tests -q
-python scripts/ci_smoke.py
+python scripts/governance_verify_all.py
 ```
 
 Smoke stays quiet for the reviewed historical commit-SHA baseline. Run

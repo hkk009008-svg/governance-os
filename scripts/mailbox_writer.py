@@ -296,6 +296,29 @@ def validate_event_candidate(
     )
 
 
+# New durable writes are state transitions, not conversation (context-pruning
+# PR 3). The registry in coordination/mailbox/kinds.txt remains the read-side
+# vocabulary — every historical kind keeps parsing — but the fixed writer
+# only publishes kinds that change durable state. Conversational kinds
+# (status, fyi, reply, query, discussion, wrap, acknowledgement, coordination,
+# doc-sync-notice, proposal, proposal-reply, scout-request, scout-report,
+# fold-notice, convergence, verify-readiness, verify-readiness-converged)
+# stay transient chat or derived projections. Extending this allowlist is a
+# reviewed policy change on the fixed writer, not a config edit.
+NEW_WRITE_KINDS = frozenset(
+    {
+        "decision",
+        "dispatch-claim",
+        "findings",
+        "learning-candidate",
+        "measurement-report",
+        "verification-report",
+        "verify-addendum",
+        "verify-request",
+    }
+)
+
+
 def validate_event_candidate_bytes(
     root: Path,
     raw: bytes,
@@ -307,6 +330,13 @@ def validate_event_candidate_bytes(
 
     root = root.resolve()
     match = validate_event_envelope_bytes(root, raw, relative)
+    if match.group("kind") not in NEW_WRITE_KINDS:
+        raise MailboxWriterError(
+            f"kind {match.group('kind')!r} is frozen for new writes: durable "
+            "events persist state transitions, not conversation "
+            f"(new-write allowlist: {', '.join(sorted(NEW_WRITE_KINDS))}); "
+            "historical events keep parsing read-only"
+        )
     if match.group("kind") == "verify-request":
         try:
             request = compact_pair_loop._parse_verify_request_bytes(

@@ -121,3 +121,47 @@ submitting a range, not only the code — an obligation can land mid-flight and
 bind in-progress work; one did (the evasion-control requirement) and killed a
 mechanism built hours earlier. The practice survives as a CLAUDE.md mechanics
 bullet; this paragraph is the originating story.
+
+---
+
+# PR 2 — doctrine deduplication (same disposition discipline)
+
+| Change | Disposition |
+|---|---|
+| Codex/Claude continuation "Role deltas" blocks; AGY "Role deltas match…" | moved: `.agents/skills/four-seat-protocol/SKILL.md` is the single owner; each doc keeps its pinned subagent-boundary sentence |
+| AGY "Work mode before ceremony" section | moved: `docs/protocol/work-modes.md` (implicit-Explore semantics); two-line boundary summary remains |
+| AGY "Formation gate for claims" full loop | moved: `.agents/skills/probe-a-claim` is the stated canonical loop; five-line pointer remains |
+| Codex continuation "Review-state history boundary" SHAs/paths | moved: `scripts/baselines/review_history_boundary.json` (versioned one-way manifest, schema_version 1) consumed fail-closed by `scripts/check_coordination.py::load_review_history_boundary`; adapter keeps a three-sentence summary. Migration equality + fail-closed paths pinned by `tests/unit/test_review_history_boundary.py` |
+| `scripts/ci_smoke.py` | renamed: `scripts/governance_verify_all.py` (the full aggregate, with `CHECKER_REGISTRY` mapping each gate to owned paths/trigger/severity/blocked effect, pinned by `tests/unit/test_governance_verify_registry.py`). A thin deprecated alias remains at the old path so the CI job vocabulary (`threeway/policy.py` `required_ci` "ci_smoke"), historical commands, and muscle memory keep resolving. Live normative docs updated; historical packets/handoffs/mailbox untouched (immutable evidence). CI workflow now runs the canonical name under the unchanged job name |
+| "Behavior-changing acceptance" wording (cursor-seats rule) | retargeted: "Material-behavior acceptance" with criteria at `docs/protocol/agents/risk-classes.md` — the executable model owns profiles per class, prose owned membership; now one reviewed home owns membership (including instruction surfaces as material) |
+| ChatGPT Pro pointer in `AGENTS.md` | retired from the universal router; pointer lives on the load-on-trigger surfaces (codex continuation, four-seat skill). Anti-regrowth pin added: `AGENTS.md` must not mention it |
+| Evidence-ledger route in `AGENTS.md` | retired from the universal router: per-task target routes resolve through `scripts/target_binding.py`; `DOC_SURFACES` retargeted with an anti-regrowth comment |
+| `ARCHITECTURE.md` smoke reference | updated to the canonical name; Last-verified stamp bumped (2026-08-10 @ 3a068b8) per the freshness gate |
+| Seat role skills (`seat-director/operator/coordinator`) | kept: already thin role deltas (~30 lines) whose unique content (verify-request composition, report binding, cursorless rules) exceeds their shared framing; further collapse deferred until a pin-consolidation pass proves worth the churn |
+| Cursor continuation | kept except the smoke rename: already host-mechanics-scoped and densely pinned by `test_cursor_surface_sync` |
+
+---
+
+# PR 3 — durable-state reduction (new-write allowlist)
+
+| Change | Disposition |
+|---|---|
+| `NEW_WRITE_KINDS` in `scripts/mailbox_writer.py` | added at the owning seam (`validate_event_candidate_bytes`, the new-candidate path): 8 state-transition kinds publish (`decision`, `dispatch-claim`, `findings`, `learning-candidate`, `measurement-report`, `verification-report`, `verify-addendum`, `verify-request`); the 17 conversational kinds (incl. `fold-notice` — the audit's open disposition — and `convergence`, derivable from blockers and reports) are frozen for new writes with an error naming the policy. Mutation-checked: disabling the guard flips 17 tests red |
+| `coordination/mailbox/kinds.txt` | unchanged: it remains the read-side vocabulary; every historical event keeps parsing (pinned by `test_historical_conversational_events_keep_parsing_read_only`) |
+| `scripts/agy_emit.py` `--kind` default | moved off the frozen `coordination` kind to `findings` |
+| Test fixtures publishing `status` events | retargeted to `findings` where the subject was writer mechanics, not the kind (`test_mailbox_writer`, `test_coordination_tooling`, `test_learning_promotion`); read-side `status` fixtures kept where they prove historical legibility |
+| Compact snapshot projection (`status.py`) | deferred (flagged optional in the plan): the projection change is independent of the write freeze and rides a later change if the slope metrics show conversational noise persisting |
+
+---
+
+# PR 4 — dormant architecture removal
+
+| Change | Disposition |
+|---|---|
+| `governance.toml` `[coordination] transport = "mailbox"` | added: the transport is declarative. Omission defaults to the mailbox — a bus can never activate by omission, and removing the declaration is itself a reviewed authority-surface edit — while an unparsable file or unknown value fails closed (`scripts/bus_unread.py::coordination_transport`). Activating the signed bus is an explicit reviewed change to `"signed-bus"` plus live refs |
+| `scripts/bus_unread.py` liveness inference | retargeted: with the mailbox declared, `bus_authority_state` short-circuits before any `threeway` import (module-level `gitcas` import became lazy). Evasion control: a poisoned `threeway` module proves the mailbox path never consults the package |
+| `governance_verify_all` HALF A threeway import block | retargeted: the transport declaration is validated first; the signed-bus package is exercised in smoke only when it is the configured transport. The package keeps its own unit-test coverage while dormant (`threeway/` stays in-tree; physical extraction is a separate owner decision) |
+| `MODEL_ID_REGISTRY` / `MODEL_PROVIDER_FAMILIES` / `MODEL_DISPLAY_ALIASES` in policy code | moved: `config/model-families.toml` (schema_version 1) with a fail-closed loader. Pins landed in the same change: `config/` added to `AUTHORITY_SURFACES` (TOML edits keep high-risk review class), migration-snapshot subset test (silent drops/re-familying caught; additions free), and unknown-IDs-never-independent test. An empty or malformed registry raises — it cannot silently fail every claim or falsely pass one |
+| Transport doctrine sentences (codex continuation, four-seat skill, ARCHITECTURE.md §6 + invariants + threeway row) | retargeted to the declarative posture; the `test_continuation_keeps_transport_and_fixed_interface_boundaries` pin now asserts the configured-transport sentences; ARCHITECTURE Last-verified stamp bumped (2026-08-10 @ c15ac4b) |
+| Fixtures exercising signed-bus scenarios | declare `transport = "signed-bus"` explicitly (`test_bus_unread_script`, `test_partial_bus_refs_are_fatal_transport_incoherence`); every mailbox-era fixture works unchanged under the omission default |
+| Orphaned prose-parity checks | none found to retire: PR 1–2 retargeted pins in place rather than orphaning them; the remaining pins are live anti-regrowth controls (verified by the green 1,948-test suite against the pruned surfaces) |

@@ -127,13 +127,13 @@ PYTHONDONTWRITEBYTECODE=1 env -u GIT_INDEX_FILE .venv/bin/python \
 The failures were real integration drift: AGY's current `models` output is a
 tab-separated ID/display-name pair, while the launcher treated the whole line
 as the model ID; and the ChatGPT Pro integration test still expected an older
-reservation contract. `scripts/ci_smoke.py` is a separate invariant bundle and
+reservation contract. `scripts/governance_verify_all.py` is a separate invariant bundle and
 did not run the full suite; the workflow's pytest job covered only `tests/unit`
 at the base. The candidate repairs both failures and makes that job run the
 complete `tests` tree.
 
 Frozen candidate verification completed with `1,889 passed in 174.69s`.
-`scripts/ci_smoke.py` returned zero with no fatal findings and six explicitly
+`scripts/governance_verify_all.py` returned zero with no fatal findings and six explicitly
 grandfathered immutable-history advisories. The focused high-risk slice added
 `356 passed`; structural parsing, shell syntax, relative documentation targets,
 and diff whitespace were also clean.
@@ -335,7 +335,7 @@ does not imply an authority grant.
 
 | File | Responsibility |
 |---|---|
-| `scripts/ci_smoke.py` | Completion bundle for architecture/doc, coordination, no-ceremony, schema, placeholder, and runtime invariants. |
+| `scripts/governance_verify_all.py` | Completion bundle for architecture/doc, coordination, no-ceremony, schema, placeholder, and runtime invariants. |
 | `scripts/ci_admission_gate.py` | Classifies a PR range against active authority/skill/config/baseline surfaces and requires structurally valid committed high-risk Compact Pair evidence when triggered. Declared reviewer fields are not runtime identity attestation. |
 | `scripts/check_doc_claims.py` | Checks line/symbol anchors, manifests, and optional historical commit-SHA citations; can classify reviewed baseline drift. |
 | `scripts/check_arch_freshness.py` | Rejects substantive `ARCHITECTURE.md` changes without a new resolvable verification stamp. |
@@ -663,7 +663,7 @@ The following are evidence-backed opportunities, not new mandatory process:
 
 1. **Split the largest mixed-responsibility functions.**
    `check_coordination.inspect_verify_review_state`, its committed-mailbox
-   projection, `ci_smoke.main`, `mailbox_writer._send_event_finalize`, and
+   projection, `governance_verify_all.main`, `mailbox_writer._send_event_finalize`, and
    `cursor_hook_policy._shell_decision` combine parsing, policy, I/O, and
    presentation. Extract pure typed projections first, then keep one thin I/O
    shell. This would make failure injection and property testing cheaper without
@@ -771,7 +771,7 @@ active Pipeline checkout with the worktree's native Git index.
 | Coordination lint | `python scripts/check_coordination.py` | Read-only. |
 | Mailbox monitor once | `python scripts/mailbox_monitor.py --once` | Read-only. |
 | Full tests | `PYTHONDONTWRITEBYTECODE=1 env -u GIT_INDEX_FILE .venv/bin/python -m pytest -q -p no:cacheprovider` | Local execution only. |
-| Completion smoke | `PYTHONDONTWRITEBYTECODE=1 env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py` | Local execution only. |
+| Completion smoke | `PYTHONDONTWRITEBYTECODE=1 env -u GIT_INDEX_FILE .venv/bin/python scripts/governance_verify_all.py` | Local execution only. |
 | Doc claims | `python scripts/check_doc_claims.py` | Read-only. |
 | Historical SHA citations | `python scripts/check_doc_claims.py --sha-refs` | Read-only Pipeline-local validation; references to another repository must be repository-qualified. |
 | Anti-ceremony controls | `python scripts/check_no_ceremony.py` | Runs local controls, including pytest. |

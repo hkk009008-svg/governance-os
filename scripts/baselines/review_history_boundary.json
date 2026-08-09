@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "introduced_at": "2026-08-10",
+  "policy": "versioned one-way manifest: never edit in place; a future boundary change ships a new schema_version with its own reviewed high-risk-control change",
+  "review_state_cutover": {
+    "path": "coordination/mailbox/sent/2026-07-25T05-45-10Z-coordinator-to-operator-verify-request.md",
+    "commit": "61786501e26f7e1bac92efbdcd4ff0ea468a7bbb"
+  },
+  "active_failure_cutover_commit": "8d05a76489b8609634e1635ebfad12792abc8119",
+  "learning_history_cutover_commit": "13616d843e4e55beed405de69db4e953d0831767",
+  "baseline_active_failure_reports": [
+    "coordination/mailbox/sent/2026-07-27T03-26-01Z-operator2-to-director2-verification-report.md@e0fbefdb56af03b8c04b6df58245f7533a3d83c0"
+  ],
+  "pre_cutover_invalid_requests": {
+    "coordination/mailbox/sent/2026-07-25T05-45-10Z-coordinator-to-operator-verify-request.md@61786501e26f7e1bac92efbdcd4ff0ea468a7bbb": "d77efcb26159733b31b1159fba6bb83c9b62b8ef3937ed8432ddff54fc224f7c"
+  },
+  "frozen_exception_manifest": "scripts/baselines/immutable_review_history_exceptions.json"
+}
