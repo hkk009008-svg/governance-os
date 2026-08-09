@@ -54,7 +54,7 @@ is itself a contract violation.
 - **I5 — the governance floor lives in operator judgment.** Doctrine: a
   `governance-rule` candidate carries a `high-risk-control` review floor,
   enforced by the assigned operator's risk-class judgment on the promoting
-  verify-request (`AGENTS.md:110-118` — authority and security work needs
+  verify-request (`AGENTS.md` Universal contract item 5 — authority and security work needs
   distinct non-author, different-model actual-diff review) — not by
   candidate machinery, because `_finding_refs` is a shape-only regex
   (`scripts/compact_pair_loop.py:250-266`).
