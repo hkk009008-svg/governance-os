@@ -106,6 +106,7 @@ STATE.md
 # scanners) sweep them. A machine-local .git/info/exclude entry is never
 # cloned, so the rule has to live here.
 .claude/worktrees/
+.claude/settings.local.json
 
 # Codex hook runtime state (written on every codex run; never committed)
 
@@ -125,9 +126,11 @@ STATE.md
 # AGY native-subagent workspaces. Scratch inputs for one run: they grant no
 # authority, are not a mailbox, and are not durable protocol state. Durable
 # inter-seat speech goes through coordination/bin/send-event like every other
-# side. .agents/skills/ is the shared seat-procedure tree and stays tracked.
+# side. Skills, host-discovered custom agents, and saved workflows are tracked.
 .agents/*/
 !.agents/skills/
+!.agents/agents/
+!.agents/workflows/
 
 # Learning-plane episodic index: derived, rebuildable, workspace-scope
 # projection with no authority (ADR-067); never committed.

@@ -130,7 +130,14 @@ class RefEventStore:
 
     # _before_cas / _after_cas are test seams (Task 9 fault injection:
     # forced-CAS-loss / lost-ack); None in production.
-    def append(self, ev, private_key, _before_cas=None, _after_cas=None):
+    def append(
+        self,
+        ev,
+        private_key,
+        _before_cas=None,
+        _after_cas=None,
+        _on_commit=None,
+    ):
         target_key = idempotency_key(ev)
         target_fp = _request_fingerprint(ev)
         my_pub_hex = keys.public_hex(private_key)
@@ -175,6 +182,8 @@ class RefEventStore:
             else:
                 won = gitcas.cas_create_or_update_ref(self._repo, self._ref, commit, tip)
             if won:
+                if _on_commit is not None:
+                    _on_commit(tip, commit)
                 if _after_cas is not None:
                     _after_cas(attempt)
                 return ev
@@ -270,7 +279,7 @@ class RefEventStore:
     def cursor_seq(self, seat: str) -> int:
         return self._read_cursor(self._cursor_ref(seat))[1]
 
-    def advance_cursor(self, seat: str, seq: int) -> bool:
+    def advance_cursor(self, seat: str, seq: int, _on_commit=None) -> bool:
         # LOCAL-ONLY BY DESIGN: the cursor blob is written via the LOCAL
         # gitcas.cas_create_or_update_ref, NOT push_cas — unlike append(), which
         # publishes events to the remote authority. A cursor is per-seat "last seq
@@ -297,6 +306,8 @@ class RefEventStore:
                 return False                               # monotonic: regression / no-op
             new_oid = gitcas.write_blob(self._repo, f"{seq}\n".encode())
             if gitcas.cas_create_or_update_ref(self._repo, ref, new_oid, cur_oid):
+                if _on_commit is not None:
+                    _on_commit(cur_oid, new_oid)
                 return True
             self._sleep(self._backoff(attempt))            # CAS lost a concurrent advance; re-read
         raise CursorContentionExceeded(f"cursor CAS lost for {seat}")

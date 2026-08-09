@@ -108,7 +108,7 @@ def test_inherited_legacy_index_never_gets_seat_authority(
         {"GIT_INDEX_FILE": "/tmp/index-cursor-director"},
         root=tmp_path,
     )
-    assert result["permission"] == "ask"
+    assert result["permission"] == "deny"
 
 
 def test_director_may_edit_normal_tree_but_not_protected_state(
@@ -189,7 +189,7 @@ def test_director_file_tools_cannot_write_outside_worktree(
 
 
 @pytest.mark.parametrize("seat", ("operator", "operator2", "coordinator"))
-def test_non_director_seats_write_scratch_freely_and_ask_for_tree(
+def test_non_director_seats_write_scratch_freely_and_deny_file_tool_tree_edit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seat: str
 ) -> None:
     _bind(monkeypatch, seat)
@@ -211,9 +211,71 @@ def test_non_director_seats_write_scratch_freely_and_ask_for_tree(
         {},
         root=tmp_path,
     )
-    assert tree["permission"] == "ask"
+    assert tree["permission"] == "deny"
     assert seat in tree["user_message"]
+    assert "approved shell mutation" in tree["user_message"]
     assert scratch["permission"] == "allow"
+
+
+def test_pretool_file_edits_never_return_unenforced_ask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for seat in ("director", "operator", "coordinator", None):
+        _bind(monkeypatch, seat)
+        for path in (tmp_path / "production.py", tmp_path / ".pytest-verify-tmp/x"):
+            result = policy.evaluate(
+                _payload(
+                    "preToolUse",
+                    tool_name="Write",
+                    tool_input={"path": str(path)},
+                ),
+                {},
+                root=tmp_path,
+            )
+            assert result["permission"] in {"allow", "deny"}, (seat, path, result)
+
+
+def test_every_well_formed_mcp_call_asks_and_malformed_input_denies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    top_level = policy.evaluate(
+        _payload(
+            "beforeMCPExecution",
+            tool_name="calendar_create",
+            tool_input='{"title":"review"}',
+            url="https://mcp.example.test",
+        ),
+        {},
+        root=tmp_path,
+    )
+    child = policy.evaluate(
+        _payload(
+            "beforeMCPExecution",
+            tool_name="calendar_create",
+            tool_input={"title": "review"},
+            command="mcp-server",
+            subagent_id="child-1",
+        ),
+        {},
+        root=tmp_path,
+    )
+    malformed = policy.evaluate(
+        _payload(
+            "beforeMCPExecution",
+            tool_name="calendar_create",
+            tool_input="not-json",
+            url="https://mcp.example.test",
+        ),
+        {},
+        root=tmp_path,
+    )
+
+    assert top_level["permission"] == "ask"
+    assert "calendar_create" in top_level["user_message"]
+    assert "does not grant external-effect authority" in top_level["user_message"]
+    assert child["permission"] == "ask"
+    assert malformed["permission"] == "deny"
 
 
 def test_readiness_reads_are_free_and_mutations_ask(
@@ -283,6 +345,56 @@ def test_git_write_forms_of_read_capable_subcommands_ask(
             root=tmp_path,
         )
         assert result["permission"] == "ask", command
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        f"git update-ref refs/threeway/events {'a' * 40}",
+        "git update-ref -d refs/protocol/kernel-activation",
+        f"git update-ref refs/authority/cursors {'b' * 40}",
+        f"git update-ref refs/heads/main {'c' * 40}",
+        f"git update-ref refs/heads/cursor-seat/operator {'d' * 40}",
+        f"git update-ref refs/replace/{'e' * 40} {'f' * 40}",
+        "git update-ref --stdin",
+        "git symbolic-ref refs/threeway/events refs/heads/feature",
+        "git symbolic-ref HEAD refs/heads/main",
+        f"git branch -f main {'a' * 40}",
+        f"git replace {'a' * 40} {'b' * 40}",
+        "git -c 'alias.pwn=!git update-ref refs/heads/main HEAD' pwn",
+        "git pwn",
+    ),
+)
+def test_protected_governance_ref_mutations_are_hard_denied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+) -> None:
+    for seat in ("director", "operator", None):
+        _bind(monkeypatch, seat)
+        result = policy.evaluate(
+            _payload("beforeShellExecution", command=command),
+            {},
+            root=tmp_path,
+        )
+        assert result["permission"] == "deny", (seat, command)
+
+
+def test_unprotected_direct_ref_update_keeps_normal_role_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command = f"git update-ref refs/heads/feature {'a' * 40}"
+    _bind(monkeypatch, "director")
+    director = policy.evaluate(
+        _payload("beforeShellExecution", command=command), {}, root=tmp_path
+    )
+    _bind(monkeypatch, "operator")
+    operator = policy.evaluate(
+        _payload("beforeShellExecution", command=command), {}, root=tmp_path
+    )
+
+    assert director["permission"] == "allow"
+    assert operator["permission"] == "ask"
 
 
 def test_ephemeral_writes_never_count_as_mutations(
@@ -418,6 +530,192 @@ def test_director_cannot_mutate_another_git_checkout(
     assert result["permission"] == "deny"
 
 
+@pytest.mark.parametrize(
+    "command",
+    (
+        "git --git-dir=/tmp/other.git update-ref refs/heads/feature HEAD",
+        "git --work-tree=/tmp/other checkout -- file.py",
+        "git config --global alias.pwn '!touch /tmp/pwn'",
+        "git config --system alias.pwn '!touch /tmp/pwn'",
+        "git config --file=/tmp/other.config alias.pwn '!touch /tmp/pwn'",
+        "GIT_DIR=/tmp/other.git git update-ref refs/heads/feature HEAD",
+        "GIT_WORK_TREE=/tmp/other git checkout -- file.py",
+    ),
+)
+def test_director_cannot_redirect_git_mutations_outside_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    _bind(monkeypatch, "director")
+
+    result = policy.evaluate(
+        _payload("beforeShellExecution", command=command), {}, root=tmp_path
+    )
+
+    assert result["permission"] == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "GIT_EXTERNAL_DIFF=/tmp/side-effect git diff",
+        "env PYTHONPATH=/tmp/evil python scripts/status.py",
+        "env -S 'python scripts/status.py'",
+    ),
+)
+def test_execution_bearing_environment_prefixes_are_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    _bind(monkeypatch, "director")
+
+    result = policy.evaluate(
+        _payload("beforeShellExecution", command=command), {}, root=tmp_path
+    )
+
+    assert result["permission"] == "deny"
+
+
+def test_unresolved_shell_path_expansion_is_not_auto_allowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    top = policy.evaluate(
+        _payload("beforeShellExecution", command='rm "$TARGET"'),
+        {"TARGET": "/tmp/outside"},
+        root=tmp_path,
+    )
+    child = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command='rm "$TARGET"',
+            subagent_id="child-1",
+        ),
+        {"TARGET": "/tmp/outside"},
+        root=tmp_path,
+    )
+
+    assert top["permission"] == "ask"
+    assert child["permission"] == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "find . -delete",
+        "find . -exec sh -c 'touch /tmp/pwn' ';'",
+        "sort -o /tmp/pwn input",
+    ),
+)
+def test_mutating_inspection_options_are_not_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    _bind(monkeypatch, None)
+    top = policy.evaluate(
+        _payload("beforeShellExecution", command=command), {}, root=tmp_path
+    )
+    child = policy.evaluate(
+        _payload(
+            "beforeShellExecution", command=command, subagent_id="child-1"
+        ),
+        {},
+        root=tmp_path,
+    )
+
+    assert top["permission"] == "ask"
+    assert child["permission"] == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "rg --pre /tmp/evil pattern file",
+        "git grep --open-files-in-pager=/tmp/evil pattern",
+        "git grep -O/tmp/evil pattern",
+    ),
+)
+def test_execution_bearing_reader_options_are_not_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    _bind(monkeypatch, None)
+    top = policy.evaluate(
+        _payload("beforeShellExecution", command=command), {}, root=tmp_path
+    )
+    child = policy.evaluate(
+        _payload(
+            "beforeShellExecution", command=command, subagent_id="child-1"
+        ),
+        {},
+        root=tmp_path,
+    )
+
+    assert top["permission"] == "ask"
+    assert child["permission"] == "deny"
+
+
+def test_spoofed_inspection_executable_is_not_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_bin = tmp_path.parent / "fake-bin"
+    fake_bin.mkdir(exist_ok=True)
+    fake_rg = fake_bin / "rg"
+    fake_rg.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_rg.chmod(0o755)
+    environment = {"PATH": str(fake_bin)}
+    _bind(monkeypatch, None)
+
+    explicit = policy.evaluate(
+        _payload("beforeShellExecution", command=f"{fake_rg} pattern ."),
+        environment,
+        root=tmp_path,
+    )
+    ambient = policy.evaluate(
+        _payload("beforeShellExecution", command="rg pattern ."),
+        environment,
+        root=tmp_path,
+    )
+    child = policy.evaluate(
+        _payload(
+            "beforeShellExecution",
+            command="rg pattern .",
+            subagent_id="child-1",
+        ),
+        environment,
+        root=tmp_path,
+    )
+
+    assert explicit["permission"] == "ask"
+    assert ambient["permission"] == "ask"
+    assert child["permission"] == "deny"
+
+
+def test_git_inspection_output_cannot_escape_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    result = policy.evaluate(
+        _payload(
+            "beforeShellExecution", command="git diff --output=/tmp/pwn"
+        ),
+        {},
+        root=tmp_path,
+    )
+
+    assert result["permission"] == "deny"
+
+
+@pytest.mark.parametrize("flag", ("-m", "-M", "--move"))
+def test_bound_seat_cannot_implicitly_rename_its_reserved_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, flag: str
+) -> None:
+    _bind(monkeypatch, "director")
+    result = policy.evaluate(
+        _payload("beforeShellExecution", command=f"git branch {flag} feature"),
+        {},
+        root=tmp_path,
+    )
+
+    assert result["permission"] == "deny"
+
+
 def test_operator_runs_tests_freely_and_asks_for_git_mutators(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -508,6 +806,30 @@ def test_mailbox_wrapper_allows_bound_pair_and_denies_readiness(
     assert coordinator["permission"] == "ask"
     assert "coordinator" in coordinator["user_message"]
     assert readiness["permission"] == "deny"
+
+
+def test_next_review_subject_cannot_disguise_mailbox_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command = (
+        "python scripts/cursor_mailbox.py publish --to all --kind coordination "
+        "--subject next-review --body-file .pytest-verify-tmp/body.md"
+    )
+    _bind(monkeypatch, "coordinator")
+    coordinator = policy.evaluate(
+        _payload("beforeShellExecution", command=command), {}, root=tmp_path
+    )
+    _bind(monkeypatch, "director")
+    child = policy.evaluate(
+        _payload(
+            "beforeShellExecution", command=command, subagent_id="child-1"
+        ),
+        {},
+        root=tmp_path,
+    )
+
+    assert coordinator["permission"] == "ask"
+    assert child["permission"] == "deny"
 
 
 def test_pretool_shell_is_not_double_evaluated(
@@ -749,10 +1071,16 @@ def test_ask_never_shadows_a_later_denied_segment(
     assert result["permission"] == "deny"
 
 
-def test_malformed_sensitive_payload_fails_closed(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "event",
+    ("beforeShellExecution", "beforeMCPExecution", "preToolUse", "subagentStart"),
+)
+def test_malformed_sensitive_payload_fails_closed(
+    tmp_path: Path, event: str
+) -> None:
     output, status = policy.process_bytes(
         b"{",
-        event_hint="beforeShellExecution",
+        event_hint=event,
         environ={},
         root=tmp_path,
         registry_path=tmp_path / "registry",

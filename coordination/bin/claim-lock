@@ -1,22 +1,87 @@
 #!/usr/bin/env bash
 # coordination/bin/claim-lock <wave> <module> <seat> <defect-id>
-# Git-native shared-module lock claim (spec §6b). Push-first: exit 0 == you won.
+# Git-native shared-module lock claim. Push-first: exit 0 == you won.
 set -euo pipefail
 [ $# -eq 4 ] || { echo "usage: claim-lock <wave> <module> <seat> <defect-id>" >&2; exit 2; }
 wave="$1"; module="$2"; seat="$3"; defect="$4"
+
+safe_atom() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [[ "$1" != "." && "$1" != ".." ]]
+}
+safe_module() {
+  [[ "$1" != /* && "$1" != */ && "$1" != *//* ]] || return 1
+  local segment
+  local -a segments
+  IFS='/' read -r -a segments <<< "$1"
+  for segment in "${segments[@]}"; do safe_atom "$segment" || return 1; done
+}
+encode_module() {
+  local input="$1" encoded="" byte i
+  LC_ALL=C
+  for ((i = 0; i < ${#input}; i++)); do
+    printf -v byte '%02x' "'${input:i:1}"
+    encoded+="$byte"
+  done
+  printf 'm-%s' "$encoded"
+}
+
+safe_atom "$wave" || { echo "invalid wave identifier" >&2; exit 2; }
+safe_module "$module" || { echo "invalid module path" >&2; exit 2; }
+safe_atom "$seat" || { echo "invalid seat identifier" >&2; exit 2; }
+safe_atom "$defect" || { echo "invalid defect identifier" >&2; exit 2; }
+
 cd "$(git rev-parse --show-toplevel)"
-flat="${module//\//__}"               # <PROJECT>/context.py -> <PROJECT>__context.py
+branch="$(git symbolic-ref --quiet --short HEAD)" \
+  || { echo "claim-lock requires an attached branch" >&2; exit 1; }
+[ -z "$(git status --porcelain --untracked-files=normal)" ] \
+  || { echo "claim-lock requires a clean worktree and index" >&2; exit 1; }
+flat="$(encode_module "$module")"     # injective ASCII encoding; no path aliases
 lock="coordination/locks/${wave}-${flat}.lock"
-git fetch -q origin "$(git rev-parse --abbrev-ref HEAD)" \
-  || echo "WARNING: fetch failed, proceeding on stale view (push-first still protects)" >&2
-git merge -q --ff-only "@{u}" 2>/dev/null || true   # best-effort: see peer locks before claiming
-if [ -e "$lock" ]; then echo "LOST: $lock already held" >&2; exit 1; fi
-printf '%s %s %s %s\n' "$seat" "$wave" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$defect" > "$lock"
-git add -- "$lock"
-git commit -q -m "lock(${wave}): ${module} -> ${seat} (${defect})" -- "$lock"
-if git push -q origin "HEAD:$(git rev-parse --abbrev-ref HEAD)"; then
-  echo "WON: $lock"; exit 0
-else
-  git reset -q --hard "@{u}"          # undo local lock commit; we lost the race
-  echo "LOST: push rejected (peer claimed first)" >&2; exit 1
+remote_ref="refs/remotes/origin/${branch}"
+git fetch -q origin "refs/heads/${branch}:${remote_ref}" \
+  || { echo "claim-lock could not refresh origin/${branch}" >&2; exit 1; }
+git merge -q --ff-only "$remote_ref" \
+  || { echo "claim-lock requires a fast-forwardable origin/${branch}" >&2; exit 1; }
+remote_head="$(git rev-parse "$remote_ref")"
+[ "$(git rev-parse HEAD)" = "$remote_head" ] \
+  || { echo "claim-lock requires local HEAD to exactly match origin/${branch}; reconcile local-only commits separately" >&2; exit 1; }
+if [ -e "$lock" ] || [ -L "$lock" ]; then echo "LOST: $lock already held" >&2; exit 1; fi
+base_head="$(git rev-parse HEAD)"
+claim_tmp="$(mktemp "coordination/locks/.claim-${wave}-${flat}.XXXXXX")" \
+  || { echo "claim-lock could not create a private lock candidate" >&2; exit 1; }
+cleanup_claim_tmp() { rm -f -- "$claim_tmp"; }
+trap cleanup_claim_tmp EXIT HUP INT TERM
+printf '%s %s %s %s %s\n' \
+  "$seat" "$wave" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$defect" "$module" > "$claim_tmp"
+if ! ln -- "$claim_tmp" "$lock"; then
+  echo "LOST: $lock appeared while the claim was being created" >&2
+  exit 1
 fi
+if ! git add -f -- "$lock" || ! git commit -q -m "lock(${wave}): ${module} -> ${seat} (${defect})" -- "$lock"; then
+  git rm -q --cached --ignore-unmatch -- "$lock" 2>/dev/null || true
+  if [ "$lock" -ef "$claim_tmp" ]; then rm -f -- "$lock"; fi
+  echo "claim-lock could not create its lock commit" >&2
+  exit 1
+fi
+claim_commit="$(git rev-parse HEAD)"
+if git push -q origin "HEAD:${branch}"; then
+  echo "WON: $lock"; exit 0
+fi
+# A nonzero transport result is not proof that the remote rejected the update:
+# the server may have accepted it before the acknowledgement was lost. Refresh
+# the exact branch and prove ancestry before changing local state.
+if ! git fetch -q origin "refs/heads/${branch}:${remote_ref}"; then
+  echo "UNKNOWN: claim push returned nonzero and origin/${branch} could not be inspected; preserve this clean claim commit and reconcile before retrying" >&2
+  exit 3
+fi
+if git merge-base --is-ancestor "$claim_commit" "$remote_ref"; then
+  echo "WON: $lock (remote accepted; push acknowledgement was lost)"
+  exit 0
+fi
+if [ "$(git rev-parse HEAD)" = "$claim_commit" ]; then
+  git reset -q --soft "$base_head"
+  git rm -q --cached --ignore-unmatch -- "$lock" 2>/dev/null || true
+  if [ "$lock" -ef "$claim_tmp" ]; then rm -f -- "$lock"; fi
+fi
+echo "LOST: push rejected (peer claimed first or remote refused)" >&2
+exit 1

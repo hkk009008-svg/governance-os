@@ -16,8 +16,9 @@ committed review at all. This gate closes exactly that gap and nothing more:
      structurally valid verification-report at HEAD whose verdict is GO or
      NITS and whose bound request declares `high-risk-control`. Validation is
      delegated to the canonical `compact_pair_loop.validate_report`, which
-     already enforces non-author review, the assigned Operator, and
-     model-family independence for explicitly high-risk requests.
+     validates the report's declared non-author seat and model-family fields.
+     Repository bytes cannot attest which provider actually executed a review;
+     protected external review identity/rules remain a separate requirement.
 
 The gate reports capability facts about committed evidence. It grants no
 authority, publishes nothing, and never mutates the repository.
@@ -39,28 +40,52 @@ for _path in (_REPO_ROOT, _SCRIPTS_DIR):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-import compact_pair_loop as pair  # noqa: E402
+from scripts import compact_pair_loop as pair  # noqa: E402
 
 # Authority surfaces: executable authority, side-effect gating, trust-granting
 # composition, and the integration gate itself. Directory entries end with a
 # slash and match by prefix; file entries match exactly. Extending this list
 # is itself an authority-surface change, so the extension gets reviewed.
 AUTHORITY_SURFACES: tuple[str, ...] = (
+    ".agents/agents/",
+    ".agents/skills/",
+    ".agents/workflows/",
+    ".claude/agents/",
+    ".claude/settings.json",
+    ".claude/skills/",
+    ".codex/agents/",
+    ".codex/config.toml",
+    ".cursor/agents/",
     ".cursor/hooks.json",
     ".cursor/hooks/",
+    ".cursor/rules/",
+    ".cursor/skills/",
     ".github/workflows/",
+    ":(glob)tests/**/conftest.py",
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "CLAUDE.md",
+    "OPERATIONS.md",
+    "README.md",
+    "RUNBOOK-DAILY.md",
+    "conftest.py",
     "coordination/bin/",
+    "coordination/mailbox/kinds.txt",
+    "coordination/threeway/keys/",
+    "docs/PROGRAM-MANUAL.md",
+    "docs/REMEDIATION-INVENTORY.md",
+    "docs/protocol/",
+    "governance.toml",
+    "pyproject.toml",
+    "pytest.ini",
+    "requirements-dev.txt",
+    "requirements-governance.txt",
+    "scripts/",
+    "setup.cfg",
+    "sitecustomize.py",
+    "tox.ini",
     "threeway/",
-    "scripts/agy_seat_launcher.py",
-    "scripts/chatgpt_pro_consult.py",
-    "scripts/ci_admission_gate.py",
-    "scripts/codex_protocol_model.py",
-    "scripts/codex_seat_launcher.py",
-    "scripts/compact_pair_loop.py",
-    "scripts/cursor_app_binding.py",
-    "scripts/cursor_hook_policy.py",
-    "scripts/cursor_mailbox.py",
-    "scripts/mailbox_writer.py",
+    "usercustomize.py",
 )
 
 _MAILBOX_SENT = "coordination/mailbox/sent/"
@@ -144,13 +169,14 @@ def authority_commits(root: Path, base: str, head: str) -> dict[str, tuple[str, 
     output = _git(
         root,
         "log",
+        "-m",
         f"--format={marker}%H",
         "--name-only",
         f"{base}..{head}",
         "--",
         *_surface_pathspecs(),
     )
-    commits: dict[str, tuple[str, ...]] = {}
+    commit_paths: dict[str, set[str]] = {}
     current: str | None = None
     paths: list[str] = []
     for line in output.splitlines():
@@ -159,14 +185,17 @@ def authority_commits(root: Path, base: str, head: str) -> dict[str, tuple[str, 
             continue
         if stripped.startswith(marker):
             if current is not None and paths:
-                commits[current] = tuple(sorted(set(paths)))
+                commit_paths.setdefault(current, set()).update(paths)
             current = stripped[len(marker):]
             paths = []
             continue
         paths.append(stripped)
     if current is not None and paths:
-        commits[current] = tuple(sorted(set(paths)))
-    return commits
+        commit_paths.setdefault(current, set()).update(paths)
+    return {
+        commit: tuple(sorted(paths))
+        for commit, paths in commit_paths.items()
+    }
 
 
 def _reports_added_in_range(root: Path, base: str, head: str) -> list[str]:
@@ -298,7 +327,10 @@ def render(outcome: Outcome) -> str:
     for path, reason in outcome.skipped_reports:
         lines.append(f"  non-admitting report: {path} — {reason}")
     if outcome.admitted:
-        lines.append("  RESULT: admitted — every authority commit is covered")
+        lines.append(
+            "  RESULT: structurally admitted — every authority commit is covered "
+            "by declared review evidence (runtime reviewer identity is externally attested)"
+        )
         return "\n".join(lines)
     lines.append(
         "  RESULT: BLOCKED — authority-surface commits lack a committed "
@@ -307,10 +339,10 @@ def render(outcome: Outcome) -> str:
     for commit, paths in sorted(outcome.uncovered.items()):
         lines.append(f"    {commit[:12]} touches {', '.join(paths)}")
     lines.append(
-        "  remedy: run the Compact Pair loop over the exact range (committed "
-        "verify-request assigned to a non-author Operator on a different "
-        "model family; publish the GO/NITS report through the fixed writer "
-        "and commit both events on this branch)"
+        "  remedy: obtain an externally attestable non-author, different-model "
+        "review of the exact range, then publish its Compact Pair verify-request "
+        "and GO/NITS report through the fixed writer and commit both events on "
+        "this branch"
     )
     return "\n".join(lines)
 

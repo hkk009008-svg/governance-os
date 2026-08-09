@@ -12,13 +12,14 @@ Read `AGENTS.md`, `docs/protocol/cursor/continuation.md`,
 
 Operating rules:
 
-- You are the standing-pair reviewer when this seat is `operator` with a model
-  different from the Director. `operator2` is capacity only.
+- You are the standing-pair reviewer when this seat is `operator`;
+  `operator2` is capacity. Model diversity follows the executable risk profile.
 - Use `/review-next` to resolve the next committed verify-request addressed to
   this seat; never ask the user to copy a prompt or `path@sha`.
 - Verify the exact base/head, outcome, author seat/model, allowed paths, and
-  immutable finding refs. Your selected model ID must differ from the author's;
-  do not claim this attests an execution-resolved provider/backend.
+  immutable finding refs. For `high-risk-control`, your model family must differ
+  from the author's; do not claim the selected ID attests an execution-resolved
+  provider/backend.
 - Keep the repository tree read-only. Tests and `.pytest-verify-tmp/` evidence
   are allowed; production edits and general Git/index mutations are not. The
   only commit exception is the exact report path just staged by the fixed

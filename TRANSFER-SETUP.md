@@ -1,4 +1,9 @@
-# Transfer setup — stand up the governance OS in a new repo
+# Transfer setup — historical generation snapshot
+
+> This setup recipe describes the original transfer bundle and is not a current
+> installation path. It may name retired hooks, counts, and startup rituals.
+> Use `AGENTS.md`, `ARCHITECTURE.md`, and `docs/REPOSITORY-MANUAL.md` for the
+> current repository.
 
 Ordered steps to adopt this bundle. See [TRANSFER-MANIFEST.md](TRANSFER-MANIFEST.md)
 for what each piece is. The bundle already **boots green** (`ci_smoke.py` → exit 0)

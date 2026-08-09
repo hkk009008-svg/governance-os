@@ -1,8 +1,6 @@
 # Pipeline agent guide
 
-This is the agent-neutral router for Pipeline. `ARCHITECTURE.md` describes the
-current system, and executable code wins when prose drifts. Load only the
-provider and task doctrine that applies.
+This is the agent-neutral router for Pipeline. `ARCHITECTURE.md` describes the current system, and executable code wins when prose drifts. Load only the provider and task doctrine that applies.
 
 Provider entrypoints:
 
@@ -10,7 +8,7 @@ Provider entrypoints:
 - Codex: `docs/protocol/codex/continuation.md`, then `.agents/skills/` and
   `.codex/agents/`.
 - AGY (Antigravity): `docs/protocol/agy/continuation.md`, then `.agents/skills/antigravity-harness/`
-  and `.agy/agents/`. Root sessions start as a readiness bridge; roles require explicit assignment, and native helpers stay parent-scoped rather than becoming formal seats.
+  and `.agents/agents/`. Root sessions start as a readiness bridge; roles require explicit assignment, and native helpers stay parent-scoped rather than becoming formal seats.
 - Cursor: `docs/protocol/cursor/continuation.md`, then `.cursor/rules/` and
   `docs/protocol/cursor/roles/`.
 - Cross-provider work: `docs/protocol/threeway/`.
@@ -48,6 +46,8 @@ Run `python scripts/ci_smoke.py` from the active development environment when wo
 | Need | Source |
 |---|---|
 | Purpose and quick start | `README.md` |
+| Desktop app setup and capabilities | `docs/protocol/app-quickstart.md` |
+| Comprehensive descriptive repository map | `docs/REPOSITORY-MANUAL.md` |
 | Verified topology and smoke | `ARCHITECTURE.md` |
 | User intent | `docs/PROGRAM-MANUAL.md` |
 | Operations | `OPERATIONS.md` |

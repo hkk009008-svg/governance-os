@@ -693,6 +693,35 @@ def test_empty_model_listing_fails_closed(tmp_path: Path) -> None:
         launcher.list_models(str(empty_executable))
 
 
+def test_model_listing_accepts_legacy_ids_and_current_tab_descriptions() -> None:
+    """The installed CLI decorates IDs; the launcher must compare only IDs."""
+
+    assert launcher._parse_model_listing(
+        "legacy-model\n"
+        "gemini-3.1-pro-high\tGemini 3.1 Pro (High)\n"
+        "gemini-3.6-flash-low\tGemini 3.6 Flash (Low)\n"
+    ) == frozenset(
+        {"legacy-model", "gemini-3.1-pro-high", "gemini-3.6-flash-low"}
+    )
+
+
+@pytest.mark.parametrize(
+    "listing",
+    (
+        "\tDisplay without an ID\n",
+        "model with spaces\n",
+        "model-id\tDisplay\n\tforged second row\n",
+    ),
+)
+def test_model_listing_rejects_malformed_rows_instead_of_weakening_allowlist(
+    listing: str,
+) -> None:
+    """A malformed nonblank row is failed closed, never ignored or admitted."""
+
+    with pytest.raises(launcher.LaunchError, match="malformed model row"):
+        launcher._parse_model_listing(listing)
+
+
 def test_configured_model_reaches_the_cli_and_the_report_surface_verbatim(
     tmp_path: Path,
 ) -> None:
@@ -887,7 +916,7 @@ def test_agy_guides_never_teach_manual_index_binding(repo_root: Path) -> None:
     in the session including commits, and follows `cd` into unrelated
     repositories.
 
-    `.agy/agents/*.toml` is covered by `test_agy_agent_surfaces.py` and the
+    `.agents/agents/*.md` is covered by `test_agy_agent_surfaces.py` and the
     Claude guides by `test_claude_seat_launcher.py`. These two trees were the
     uncovered surface, which is why the drift landed here.
     """
@@ -936,11 +965,14 @@ def test_agy_guides_keep_explicit_role_and_parent_scoped_helper_boundaries(
         repo_root / "AGENTS.md",
         repo_root / "docs/protocol/agy/continuation.md",
         repo_root / ".agents/skills/antigravity-harness/SKILL.md",
-        repo_root / ".agy/agents/README.md",
+        repo_root / ".agents/agents/readiness-bridge.md",
     )
     texts = {
-        path.name if path.name != "README.md" else ".agy/agents/README.md":
-        " ".join(path.read_text(encoding="utf-8").split())
+        (
+            path.name
+            if path.name != "readiness-bridge.md"
+            else ".agents/agents/readiness-bridge.md"
+        ): " ".join(path.read_text(encoding="utf-8").split())
         for path in guides
     }
     forbidden = (
@@ -970,7 +1002,10 @@ def test_agy_guides_keep_explicit_role_and_parent_scoped_helper_boundaries(
             "only when the user explicitly assigns one",
             "never issue a binding GO, NITS, or FAIL",
         ),
-        ".agy/agents/README.md": ("parent-scoped helper", "not a formal seat"),
+        ".agents/agents/readiness-bridge.md": (
+            "Return findings only to the parent or local caller",
+            "Never claim a shared protocol seat",
+        ),
     }
     for guide, boundaries in required.items():
         for boundary in boundaries:

@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
+import tempfile
 from pathlib import Path
 
 # THE shared carrier-event classifier/order (ADR-050): the cursor numbering below derives its
@@ -43,14 +45,77 @@ class CursorBackfillManifestError(ValueError):
     as an opaque wedge (ADR-047)."""
 
 
+def _lexists(path: Path) -> bool:
+    return os.path.lexists(path)
+
+
+def _require_real_directory(path: Path, label: str) -> None:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise CursorBackfillManifestError(f"{label} directory is unavailable: {path}: {exc}") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        raise CursorBackfillManifestError(
+            f"{label} must be a real non-symlink directory: {path}"
+        )
+
+
+def _read_regular_bytes(path: Path, label: str) -> bytes:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise CursorBackfillManifestError(
+            f"{label} must be a readable regular non-symlink file: {path}: {exc}"
+        ) from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise CursorBackfillManifestError(
+                f"{label} must be a regular non-symlink file: {path}"
+            )
+        with os.fdopen(descriptor, "rb", closefd=True) as handle:
+            descriptor = -1
+            return handle.read()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write text atomically: a sibling temp file + os.replace (atomic within a
     filesystem). A crash/ENOSPC mid-write can then never leave a TRUNCATED manifest that
     wedges the readers' json.loads — the final path is either the prior state or the
     COMPLETE new content, never a torn prefix (ADR-047)."""
-    tmp = path.parent / (path.name + ".tmp")
-    tmp.write_text(text)
-    os.replace(tmp, path)
+    _atomic_write_bytes(path, text.encode("utf-8"), suffix=".tmp")
+
+
+def _atomic_write_bytes(path: Path, data: bytes, *, suffix: str = ".rollback.tmp") -> None:
+    """Atomically restore one snapshotted file without reusing the write path
+    that may have caused the original failure."""
+
+    descriptor, temporary = tempfile.mkstemp(prefix=path.name + suffix, dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "wb", closefd=True) as handle:
+            descriptor = -1
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _write_cursor_text(path: Path, text: str) -> None:
+    _atomic_write_text(path, text)
 
 
 def _load_manifest(path: Path) -> dict:
@@ -61,7 +126,7 @@ def _load_manifest(path: Path) -> dict:
     pre-atomicity artifact, and makes recovery inspectable (delete the corrupt manifest to
     re-derive while seen/*.txt are still ISO)."""
     try:
-        obj = json.loads(path.read_text())
+        obj = json.loads(_read_regular_bytes(path, "cursor-backfill manifest").decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         raise CursorBackfillManifestError(
             f"cursor-backfill manifest is not valid JSON at {path}: {e}") from e
@@ -73,6 +138,39 @@ def _load_manifest(path: Path) -> dict:
         if not isinstance(obj.get(key), dict):
             raise CursorBackfillManifestError(
                 f"cursor-backfill manifest missing/!dict key {key!r} at {path}")
+    original_bytes = obj["original_bytes"]
+    original_iso = obj["original_iso"]
+    iso_to_seq = obj["iso_to_seq"]
+    if any(not isinstance(key, str) or not isinstance(value, str)
+           for key, value in original_bytes.items()):
+        raise CursorBackfillManifestError(
+            f"cursor-backfill manifest original_bytes must map filenames to text at {path}")
+    canonical_filenames: set[str] = set()
+    for filename in original_bytes:
+        candidate = Path(filename)
+        stem = filename[:-4] if filename.endswith(".txt") else ""
+        canonical = stem.lower()
+        if candidate.name != filename or canonical not in SEATS or canonical in canonical_filenames:
+            raise CursorBackfillManifestError(
+                f"cursor-backfill manifest has unsafe/duplicate cursor filename {filename!r} at {path}")
+        canonical_filenames.add(canonical)
+    if any(not isinstance(seat, str) or seat not in SEATS or not isinstance(value, str)
+           for seat, value in original_iso.items()):
+        raise CursorBackfillManifestError(
+            f"cursor-backfill manifest original_iso has an invalid seat/value at {path}")
+    if any(
+        not isinstance(seat, str)
+        or seat not in SEATS
+        or isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < 0
+        for seat, value in iso_to_seq.items()
+    ):
+        raise CursorBackfillManifestError(
+            f"cursor-backfill manifest iso_to_seq has an invalid seat/sequence at {path}")
+    if set(original_iso) != set(iso_to_seq) or set(original_iso) != canonical_filenames:
+        raise CursorBackfillManifestError(
+            f"cursor-backfill manifest cursor key sets disagree at {path}")
     return obj
 
 
@@ -80,8 +178,16 @@ def _mailbox_base(coord_root: Path) -> Path:
     """The `.../mailbox` dir for either layout: a root *containing* `coordination/`,
     OR a root that already *is* `coordination`. Single source of truth so the two
     layouts can never diverge across the sent/seen/manifest paths (M-2/M-4)."""
-    base = coord_root / "coordination" if (coord_root / "coordination").is_dir() else coord_root
-    return base / "mailbox"
+    _require_real_directory(coord_root, "coordination root")
+    coordination = coord_root / "coordination"
+    if _lexists(coordination):
+        _require_real_directory(coordination, "coordination")
+        base = coordination
+    else:
+        base = coord_root
+    mailbox = base / "mailbox"
+    _require_real_directory(mailbox, "mailbox")
+    return mailbox
 
 
 def _sent_names(coord_root: Path) -> list[str]:
@@ -90,6 +196,7 @@ def _sent_names(coord_root: Path) -> list[str]:
     # malformed one raises). Pre-fix this returned every .md, so backfill numbered the
     # cursors over a different set than the appended bus.
     d = _mailbox_base(coord_root) / "sent"
+    _require_real_directory(d, "sent mailbox")
     return ordered_event_names(p.name for p in d.iterdir())
 
 
@@ -141,6 +248,14 @@ def _manifest_path(coord_root: Path) -> Path:
     return _mailbox_base(coord_root) / ".migration" / "cursor-backfill.json"
 
 
+def _prepare_migration_directory(path: Path) -> None:
+    if _lexists(path):
+        _require_real_directory(path, "cursor migration")
+        return
+    path.mkdir()
+    _require_real_directory(path, "cursor migration")
+
+
 def canonical_seat_cursors(seen_dir: Path) -> dict[str, str]:
     """seen/<seat>.txt -> stripped cursor value, keyed by the CANONICAL lowercase roster seat.
     THE single source of truth for reading the legacy seen/ cursors, shared by the cutover's
@@ -152,6 +267,7 @@ def canonical_seat_cursors(seen_dir: Path) -> dict[str, str]:
     resolution is FS-dependent). A clean single .txt per seat is normalized to its lowercase
     roster key, so seen/Operator.txt is the 'operator' cursor — never a phantom 'Operator'
     that later falls back to a silent cursor 0."""
+    _require_real_directory(seen_dir, "seen cursor")
     out: dict[str, str] = {}
     for p in sorted(seen_dir.iterdir()):
         if p.suffix != ".txt":
@@ -166,11 +282,14 @@ def canonical_seat_cursors(seen_dir: Path) -> dict[str, str]:
             raise SeatCursorError(
                 f"seen/ has case-colliding cursor files for seat {canon!r} (e.g. {p.name!r}); "
                 f"FS-dependent iterdir order would resolve this differently per host")
-        out[canon] = p.read_text().strip()
+        try:
+            out[canon] = _read_regular_bytes(p, "seen cursor").decode("utf-8").strip()
+        except UnicodeDecodeError as exc:
+            raise SeatCursorError(f"seen cursor is not UTF-8 text: {p}") from exc
     return out
 
 
-def backfill(coord_root: Path) -> None:
+def _backfill_once(coord_root: Path) -> None:
     """Rewrite each seen/<seat>.txt ISO cursor to its scalar seq; archive the EXACT
     original bytes + the iso_to_seq map to the manifest (rollback = restore).
 
@@ -182,20 +301,28 @@ def backfill(coord_root: Path) -> None:
     map and return: safe re-run, AND it completes a partial first run (manifest written,
     some cursors not yet rewritten -> the re-apply finishes them)."""
     seen = _seen_dir(coord_root)
+    _require_real_directory(seen, "seen cursor")
     man = _manifest_path(coord_root)
-    if man.exists():
+    if _lexists(man):
         obj = _load_manifest(man)           # ADR-047: typed error on a corrupt/partial manifest
         for seat, seq in obj["iso_to_seq"].items():
-            (seen / f"{seat}.txt").write_text(f"{seq}\n")
+            target = seen / f"{seat}.txt"
+            if _lexists(target):
+                _read_regular_bytes(target, "seen cursor")
+            _write_cursor_text(target, f"{seq}\n")
         return
     sent_names = _sent_names(coord_root)
     # original_bytes stays keyed by the LITERAL filename (byte-perfect rollback target);
     # original_iso is keyed by the CANONICAL roster seat (ADR-051) — raising on a stray/
     # case-colliding seen/*.txt rather than archiving a phantom seat into the manifest.
-    original_bytes = {p.name: p.read_bytes() for p in seen.iterdir() if p.suffix == ".txt"}
+    original_bytes = {
+        p.name: _read_regular_bytes(p, "seen cursor")
+        for p in seen.iterdir()
+        if p.suffix == ".txt"
+    }
     original_iso = canonical_seat_cursors(seen)
     seq_map = iso_to_seq_map(sent_names, original_iso)
-    man.parent.mkdir(parents=True, exist_ok=True)
+    _prepare_migration_directory(man.parent)
     # ADR-047: write the manifest ATOMICALLY (tmp + os.replace) BEFORE rewriting any
     # cursor, so a crash here leaves NO committed manifest (the seen/*.txt are still ISO)
     # and a retry resumes via the fresh-archive branch — never a truncated manifest that
@@ -209,18 +336,78 @@ def backfill(coord_root: Path) -> None:
         "iso_to_seq": seq_map,
     }, indent=2, sort_keys=True))
     for seat, seq in seq_map.items():
-        (seen / f"{seat}.txt").write_text(f"{seq}\n")
+        target = seen / f"{seat}.txt"
+        _read_regular_bytes(target, "seen cursor")
+        _write_cursor_text(target, f"{seq}\n")
+
+
+def backfill(coord_root: Path) -> None:
+    """Apply cursor backfill as one filesystem transaction.
+
+    ``_backfill_once`` writes the recovery manifest before cursor files, which
+    protects crash recovery but previously let a caught write failure return to
+    cutover with a mixture of ISO and scalar cursors. Snapshot the exact pre-call
+    state and restore it on every raised failure. If restoration itself fails,
+    surface a typed error chained from the original instead of claiming rollback.
+    """
+
+    seen = _seen_dir(coord_root)
+    _require_real_directory(seen, "seen cursor")
+    manifest = _manifest_path(coord_root)
+    before_seen = {
+        path.name: _read_regular_bytes(path, "seen cursor")
+        for path in seen.iterdir()
+        if path.suffix == ".txt"
+    }
+    manifest_existed = _lexists(manifest)
+    before_manifest = (
+        _read_regular_bytes(manifest, "cursor-backfill manifest")
+        if manifest_existed
+        else None
+    )
+    try:
+        _backfill_once(coord_root)
+    except BaseException as original:
+        failures: list[str] = []
+        try:
+            _require_real_directory(seen, "seen cursor")
+            for path in seen.iterdir():
+                if path.suffix == ".txt" and path.name not in before_seen:
+                    path.unlink()
+            for name, data in before_seen.items():
+                _atomic_write_bytes(seen / name, data)
+        except (OSError, CursorBackfillManifestError) as exc:
+            failures.append(f"seen cursor restore failed: {exc}")
+        try:
+            if manifest_existed:
+                assert before_manifest is not None
+                _prepare_migration_directory(manifest.parent)
+                _atomic_write_bytes(manifest, before_manifest)
+            else:
+                manifest.unlink(missing_ok=True)
+        except (OSError, CursorBackfillManifestError) as exc:
+            failures.append(f"manifest restore failed: {exc}")
+        if failures:
+            raise CursorBackfillManifestError(
+                "cursor backfill failed and filesystem rollback was incomplete: "
+                + "; ".join(failures)
+            ) from original
+        raise
 
 
 def restore_from_manifest(coord_root: Path) -> None:
     """Byte-for-byte restore seen/*.txt from the archived manifest (rollback)."""
     path = _manifest_path(coord_root)
-    if not path.exists():
+    if not _lexists(path):
         raise FileNotFoundError(f"no cursor-backfill manifest at {path}; nothing to restore")
     obj = _load_manifest(path)              # ADR-047: typed error on corrupt/partial/wrong-schema
     seen = _seen_dir(coord_root)
+    _require_real_directory(seen, "seen cursor")
     for fname, text in obj["original_bytes"].items():
-        (seen / fname).write_bytes(text.encode("latin-1"))
+        target = seen / fname
+        if _lexists(target):
+            _read_regular_bytes(target, "seen cursor")
+        _atomic_write_bytes(target, text.encode("latin-1"))
 
 
 def archived_seq_map(coord_root: Path) -> dict:

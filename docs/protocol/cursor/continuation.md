@@ -5,6 +5,9 @@ Canonical policy remains in
 `scripts/codex_protocol_model.py`; `scripts/cursor_protocol_model.py` only
 renames the runtime vocabulary.
 
+For the desktop-first setup, native capability map, and cross-app handoff
+choices, start with `docs/protocol/app-quickstart.md`.
+
 Cursor app seats do not require `cursor-agent`, the Cursor SDK, API keys,
 terminal launchers, relay daemons, or shared-checkout per-seat indexes.
 
@@ -25,8 +28,10 @@ worktrees stay available as cold capacity. Coordinator reconciliation is
 on-demand inside Director or a one-off chat when tips diverge—not a required
 convergence mail every cycle.
 
-Do **not** ask chat for a second “authorized” when the hook already showed an
-approval card for the same command. Hook approval is the effect authority.
+Do **not** ask chat for a second “authorized” when the shell hook already showed
+an approval card that names the same exact command, target, and scope. That
+card can carry authority for the displayed shell effect. A generic MCP card is
+invocation consent only; it does not add external-effect authority.
 
 ## Policy model
 
@@ -38,9 +43,12 @@ posture. Authority applies only to writes and effects:
 - **Bound Director/Operator mailbox wrappers** (`cursor-publish` /
   `cursor-consume`) run without a second approval once the seat binding is
   valid; starting the seat chat is the local grant.
-- **Every other top-level posture** (coordinator, readiness) gets one in-app
-  approval per repository mutation instead of a hard deny. Scratch writes
-  under `.pytest-verify-tmp/` are always free.
+- **Every other top-level posture** (Operator, coordinator, readiness) uses a
+  bound Director for native file-tool edits. Cursor currently accepts but does
+  not enforce `preToolUse`'s `ask` result, so the project hook denies those
+  edits instead of pretending an approval occurred. Scratch writes under
+  `.pytest-verify-tmp/` remain free; a separately approved shell mutation keeps
+  its normal `beforeShellExecution` approval card.
 - **Separately authorized remote/irreversible effects** — `git push`, `pull`,
   `fetch`, `merge`, `rebase`, `cherry-pick` — always surface one in-app
   approval naming the acting seat. Structural identity alone never grants
@@ -56,15 +64,16 @@ bootstrap policy changes without disabling hooks.
 ## Runtime topology
 
 - **Readiness bridge:** any chat in the main checkout or on an ordinary branch.
-  It inspects freely, writes scratch freely, and needs one in-app approval per
-  governed mutation or remote effect.
+  It inspects freely and writes scratch freely. Native file-tool edits deny;
+  classified shell mutations and remote effects need one in-app approval.
 - **Director seats:** pinned top-level chats in linked worktrees on
   `cursor-seat/director` (and `cursor-seat/director2` on demand). They
   implement and commit in their worktree.
 - **Operator seats:** pinned top-level chats in linked worktrees on
   `cursor-seat/operator` (and `cursor-seat/operator2` on demand). They review
-  and publish binding verdicts. The standing Operator's selected model ID must
-  differ from the Director's.
+  and publish binding verdicts. High-risk-control reviews require a recognized
+  model family independent from the Director; lower-risk review follows the
+  canonical risk profile without inventing that gate.
 - **Coordinator:** an on-demand top-level chat on `cursor-seat/coordinator`.
   It routes and reconciles but holds no cursor and authors no production
   changes. Not part of the standing pair.
@@ -101,9 +110,12 @@ or effect authority.
   untrusted advice and grants no authority.
 - **Plan mode, Ask mode, and Design mode** are host affordances; use whichever
   fits the task. Mode selection grants nothing and requires nothing.
-- **MCP tools** follow the same write-governed posture as shell: reads are
-  free, governed mutations and external effects keep their existing approval
-  shape. No repository MCP server is currently configured.
+- **MCP tools** use a fail-closed `beforeMCPExecution` hook. Because an
+  arbitrary configured tool cannot be proven read-only from its name and the
+  documented payload does not identify child execution, every well-formed
+  invocation asks once. That approval does not authorize an external effect;
+  the exact target and scope remain separately authorized. No repository MCP
+  server is currently configured.
 - **Cloud Agents and Automations** stay optional, remote, potentially paid,
   and separately authorized — the standing pair never depends on them.
 
@@ -114,11 +126,16 @@ In Cursor Agents Window:
 1. Create a linked worktree per **standing** seat with its reserved
    `cursor-seat/<seat>` branch (two standing: director, operator).
 2. Open and pin one top-level chat in each worktree.
-3. Select the intended model for each chat; the Operator's selected model ID
-   must differ from the Director's.
+3. Select the intended model for each chat; when high-risk-control work is in
+   scope, use recognized independent model families for author and reviewer.
 4. The `sessionStart` hook registers the newest conversation and app-visible
    selected model metadata for that worktree in the user-local
    `~/.cursor/pipeline-app-seats.json`. No initialization message is required.
+
+Use `/side` or `/btw` only in readiness or unreserved workspaces. A side chat
+is another conversation and can fire `sessionStart`; inside a reserved seat
+worktree it may replace the pinned chat as the newest binding. Use a custom
+read-only subagent for a bounded side question inside a live seat.
 
 The newest chat in a seat's worktree becomes active. An older duplicate loses
 authority because its conversation id no longer matches. A live worktree at a
@@ -174,7 +191,7 @@ launch or copied bootstrap prompt is needed.
 3. The user activates the pinned assigned Operator chat and invokes
    `/review-next` (the one baseline manual app handoff; see Autonomy default).
 4. The skill resolves the newest pending committed verify-request addressed to
-   that Operator, validates its selected model ID differs from the author, and
+   that Operator, applies the request's risk-specific model-independence rule, and
    uses `scripts/cursor_review_snapshot.py` to materialize the exact reviewed
    head under scratch without changing the Operator branch. Repository-level
    gates run only on an exact-head host (`--require-exact-head` or a detached
@@ -183,9 +200,9 @@ launch or copied bootstrap prompt is needed.
    the same bound-seat wrapper, then commits only the returned staged report
    path.
 
-No prompt body or `path@sha` is relayed by the user. Cursor currently exposes
-no documented API to wake and submit into another existing local top-level
-chat. Cloud Agents/Automations may automate the Operator click later, but are
+No prompt body or `path@sha` is relayed by the user. The official Cursor
+surfaces reviewed on 2026-08-09 did not document an API to wake and submit into
+another existing local top-level chat. Cloud Agents/Automations may automate the Operator click later, but are
 optional, remote, potentially paid, and separately authorized—skip them when
 setup is non-trivial.
 
@@ -222,28 +239,34 @@ fail that high-risk gate. Structured output reports both recognized families
 and `model_independence`; ordinary/material requests do not acquire a new model
 gate. Seats do not merge mailbox-only commits merely to discover them.
 
-Push, pull, fetch, merge, rebase, cherry-pick, lock, and spend remain separate
-remote/irreversible effects and still ask. A subagent or foreign `-C` target is
-denied outright. Local seat synchronization: run `git merge --ff-only <commit>`
-in the bound seat's own worktree and approve the remote-effect request when it
-is classified as such.
+Push, pull, fetch, merge, rebase, cherry-pick, and spend remain separate
+remote/irreversible effects and still ask. The current hook hard-denies direct
+`claim-lock`/`release-lock` calls because no bound Cursor wrapper exists; use a
+separately authorized external terminal rather than implying an approval card
+will appear. A subagent or foreign `-C` target is denied outright. Local seat
+synchronization: run `git merge --ff-only <commit>` in the bound seat's own
+worktree and approve the remote-effect request when it is classified as such.
 
 ## Hook policy
 
-`.cursor/hooks.json` routes `sessionStart`, sensitive file tools, shell
+`.cursor/hooks.json` routes `sessionStart`, sensitive file tools, shell and MCP
 execution, and subagent creation through `.cursor/hooks/seat-policy` and
 `scripts/cursor_hook_policy.py`. Shell commands are evaluated exactly once, by
-`beforeShellExecution`.
+`beforeShellExecution`; MCP calls use `beforeMCPExecution`.
 
 The policy:
 
 - fails closed on malformed input and unclassifiable identity;
 - allows reads and scratch writes everywhere without approval;
-- permits unattended production mutation only in Director worktree chats, and
-  the Operator's own staged fixed-writer event commit;
+- permits unattended production file-tool mutation only in Director worktree
+  chats, and the Operator's own staged fixed-writer event commit through its
+  classified shell path;
 - allows bound Director/Operator mailbox wrappers without a second ask;
-- converts other governed mutations and remote Git effects into one in-app
-  approval;
+- converts classified shell mutations and remote Git effects into one in-app
+  approval, while denying non-Director file-tool edits because that hook's ask
+  result is not enforced by Cursor today;
+- asks once for every well-formed MCP invocation and treats that card as
+  invocation consent rather than external-effect authority;
 - hard-denies direct mailbox/runtime writes, direct fixed-writer calls,
   foreign provider launchers, and subagent seat impersonation or inherited
   authority.
@@ -265,7 +288,7 @@ status, and relevant mailbox bodies. In app worktrees use normal Git and
 pytest; do not set or unset a per-seat index variable.
 
 Unit tests and `scripts/ci_smoke.py` verify executable invariants but do not
-substitute for a different-model Operator verdict or desktop acceptance.
+substitute for the risk-appropriate Operator verdict or desktop acceptance.
 
 ## Target repositories
 

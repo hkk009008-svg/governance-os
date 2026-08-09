@@ -382,13 +382,15 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/status.py snapshot <seat>
 
 ## Claude-only seat launch
 
-Nothing to launch. Claude Code has no seat launcher, no session registry, and no
-session-start seat binding, and it does not need one: a seat name a session
-asserts about itself is convention, not authority. Review identity is decided at
+Pipeline has no Claude seat launcher, governance-seat registry, or session-start
+seat binding. In Claude Desktop, open Code -> Local -> the exact Pipeline
+checkout and let the app create an isolated worktree for new independent work;
+resume the owning session/worktree for an existing uncommitted candidate.
+Claude's host session registry and peer relay reduce app-to-app copying, but a
+session name remains convention, not authority. Review identity is decided at
 publication by `scripts/compact_pair_loop.py`, which binds a verdict to reviewer
 seat not equal to author seat, reviewer equal to the request's assigned
-operator, and distinct model families for `high-risk-control`. Session-start
-binding never prevented a bad GO; publication-time validation does.
+operator, and distinct model families for `high-risk-control`.
 
 **Never point `GIT_INDEX_FILE` at a per-seat index.** Earlier revisions of this
 file told each seat to export one before launching `claude` and to seed it with
@@ -399,7 +401,8 @@ silently rebinds every later Git command in that session including commits, and
 it follows `cd` into unrelated repositories, where it presents as index
 corruption. Prefix ordinary Git and pytest with `env -u GIT_INDEX_FILE`.
 
-Instead, work in a native Git worktree you are willing to commit from:
+Desktop creates native worktrees automatically. If using the CLI instead, work
+in a native Git worktree you are willing to commit from:
 
 ```bash
 PIPELINE_ROOT="$(git rev-parse --show-toplevel)"

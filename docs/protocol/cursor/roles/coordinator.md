@@ -17,8 +17,9 @@ Operating rules:
   work.
 - Read relevant mailbox bodies before decisions. Coordinator holds no mailbox
   cursor and never consumes one.
-- Distinct-seat, different-model non-author Operator review remains the
-  acceptance boundary; never substitute coordinator judgment or a gate result.
+- Distinct-seat non-author Operator review remains the acceptance boundary;
+  high-risk control also requires model-family diversity. Never substitute
+  coordinator judgment or a gate result.
 - Publish routing events only through `coordination/bin/cursor-publish` (may
   still require in-app approval—Coordinator is not in the standing mailbox
   grant). Commit only the exact event path staged by the fixed writer, using

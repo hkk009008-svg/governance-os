@@ -1512,8 +1512,13 @@ SHA_DEFAULT_DOCS = [
 # byte-identical each time, so no citation was added, removed, or altered.
 # operator2/gpt-5.6-terra independently re-derived the first refresh from a
 # detached base and confirmed zero set or multiset difference.
-SHA_REF_BASELINE_COUNT = 103
-SHA_REF_BASELINE_DIGEST = "70a185e5838b07386f72bfd423e2f75486de489bb776d3f19bab44a0ae670765"
+# 2026-08-09: 103 -> 0 after active doctrine was compacted to current executable
+# seams and historical per-rule citations were removed with the retired copy.
+# The last two apparent misses were commits in evidence-ledger, not Pipeline;
+# DECISIONS now qualifies them as ``evidence-ledger@<sha>`` so this repository's
+# resolver does not pretend it can validate foreign object IDs.
+SHA_REF_BASELINE_COUNT = 0
+SHA_REF_BASELINE_DIGEST = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 
 @dataclass(frozen=True)

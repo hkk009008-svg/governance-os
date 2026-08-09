@@ -17,15 +17,35 @@ fi
 
 echo "=== Three-Way Protocol Cutover ==="
 
-# [1/2] Provision keys ONLY if the registry is empty. Re-keying an existing registry would
-#       invalidate the committed trust root and every signature made under it.
-if ls "$REGISTRY_DIR"/*.pub >/dev/null 2>&1; then
-  echo "[1/2] Keys already provisioned in $REGISTRY_DIR — skipping bootstrap (re-key would invalidate the trust root)."
-else
-  echo "[1/2] Provisioning keys..."
-  mkdir -p "$REGISTRY_DIR" "$KEYSTORE_DIR"
-  "$PY" -m threeway.keys_bootstrap --registry "$REGISTRY_DIR" --keystore "$KEYSTORE_DIR"
-  echo "Public keys -> $REGISTRY_DIR ; private keys -> $KEYSTORE_DIR (NEVER commit private keys)."
+# [1/2] The bootstrap owns exact-roster validation. It creates an absent roster,
+#       leaves a complete matching roster byte-for-byte unchanged, and rejects
+#       partial, mismatched, symlinked, or insecure key state before cutover.
+echo "[1/2] Validating/provisioning exact key roster..."
+"$PY" -m threeway.keys_bootstrap --registry "$REGISTRY_DIR" --keystore "$KEYSTORE_DIR"
+echo "Public keys -> $REGISTRY_DIR ; private keys -> $KEYSTORE_DIR (NEVER commit private keys)."
+
+# Cutover consumes only an object-addressed public-key trust root. A first run
+# may provision keys, but it must stop so those public files can be reviewed and
+# committed before any signed-bus ref becomes live.
+REGISTRY_COMMITTED=1
+PUBLIC_KEY_COUNT=0
+for PUBLIC_KEY in "$REGISTRY_DIR"/*.pub; do
+  if [ ! -f "$PUBLIC_KEY" ]; then
+    continue
+  fi
+  PUBLIC_KEY_COUNT=$((PUBLIC_KEY_COUNT + 1))
+  if ! git ls-files --error-unmatch -- "$PUBLIC_KEY" >/dev/null 2>&1; then
+    REGISTRY_COMMITTED=0
+    continue
+  fi
+  if ! git diff --quiet HEAD -- "$PUBLIC_KEY"; then
+    REGISTRY_COMMITTED=0
+  fi
+done
+if [ "$PUBLIC_KEY_COUNT" -eq 0 ] || [ "$REGISTRY_COMMITTED" -ne 1 ]; then
+  echo "STOP: public-key roster is new, dirty, staged-only, or untracked." >&2
+  echo "Review and commit the exact $REGISTRY_DIR/*.pub roster, then request cutover again." >&2
+  exit 3
 fi
 
 # [2/2] Execute the cutover. The CLI also requires --yes (double-gated).

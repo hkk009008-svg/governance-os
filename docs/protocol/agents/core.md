@@ -1,230 +1,119 @@
-# Core Protocol - Agent-Agnostic
+# Universal Protocol Core
 
-> Agent-agnostic detail document loaded **on trigger**, not at session start.
-> Root routers keep short stubs; this file holds the current expanded rule body.
+This is the small provider-neutral policy layer. Provider adapters translate it
+into host mechanics; they do not redefine authority.
 
----
+## Sources of truth
 
-# Session-start protocol (read me first)
-*Router handle: `R-START` (stub in AGENTS.md routes here).*
+Use the source that owns the claim:
 
-**Truth lives in `ARCHITECTURE.md` at the repo root.** This file (AGENTS.md)
-is the *process layer* — agent-agnostic principles (multi-task
-orchestration, session discipline) shared by all AI coding tools.
-`ARCHITECTURE.md` is the *truth layer* — verified facts about the pipeline,
-with file:line references and a project smoke block. When they disagree about
-facts, `ARCHITECTURE.md` wins.
+1. The user or authorized parent decides permission and task scope.
+2. Executable code and current Git decide runtime facts and enforcement.
+3. [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) records verified topology.
+4. This directory records universal policy; provider continuations record only
+   host-specific mechanics.
+5. Plans, handoffs, reviews, dashboards, and chat are evidence or history, not
+   authority.
 
-Both files drift from the actual code between sessions. Before doing any
-non-trivial work, verify against current source. If a claim is stale,
-**fix the relevant file in the same change** that exposes the staleness —
-don't let a wrong claim survive your session.
+The canonical executable seams are:
 
-Concrete protocol at session start (≤2 minutes):
+- [`scripts/codex_protocol_model.py`](../../../scripts/codex_protocol_model.py):
+  identity, ownership, work modes, review risk, and effect shape.
+- [`scripts/compact_pair_loop.py`](../../../scripts/compact_pair_loop.py): formal
+  request/report parsing and exact-range review binding.
+- [`scripts/mailbox_writer.py`](../../../scripts/mailbox_writer.py), reached
+  through [`coordination/bin/send-event`](../../../coordination/bin/send-event)
+  and [`coordination/bin/consume-events`](../../../coordination/bin/consume-events):
+  validated, serialized event and cursor writes with staging.
+- [`scripts/status.py`](../../../scripts/status.py): read-only current-state
+  projection.
 
-0. **Verify your own anchor before trusting it.** Session-start identity is a
-   claim, not a fact: workspace roots get renamed, worktrees get deleted,
-   registry records go stale. Run one explicit ground-truth command
-   (`pwd` + `git rev-parse --show-toplevel`, or `ls` on the path your
-   tools are anchored to). On desync, surface it immediately to the user and
-   fall back to explicit verification commands against real paths — do not
-   let workspace-anchored tools fail quietly against a ghost. Specimen:
-   2026-07-29, a coordinator session anchored to a deleted worktree path ran
-   its first minute blind, and the hook layer registered under that dead root
-   was silently absent with it (ADR-066).
-1. Run the project smoke block in `ARCHITECTURE.md` (<project smoke invariants — implemented in scripts/ci_smoke.py _project_smoke()>). If it fails, the doc is
-   stale OR the working tree is broken — fix one or the other before
-   proceeding with the user's task.
-2. Skim `ARCHITECTURE.md` §2 component topology. Spot-check:
-   - `ls <PROJECT>/ <PROJECT>/phases/` (adapt to this project's package layout)
-   - `wc -l <entrypoint>.py` (the main orchestrator modules)
-3. `git log --oneline -20` — if any commit touched a module documented in
-   `ARCHITECTURE.md` since it was last edited (the `*Last verified: ...*`
-   timestamp at the file footer), re-read that section against the new code.
-4. **If you find a stale claim:** edit `ARCHITECTURE.md` first, in the same
-   commit (or a `docs:` prep commit right before) the user's task lands.
-   The user has stated this as a standing requirement.
+When prose and an executable seam disagree, follow the seam for runtime facts,
+preserve the user authority boundary, and repair the owning prose.
 
-Trust the code; update the prose when it diverges.
+## Proportional startup
 
-# Verification discipline for factual claims
-*Router handle: `R-EVIDENCE` (stub in AGENTS.md routes here).*
+| Tier | Intended work | Minimum orientation |
+|---|---|---|
+| `tier-0-conversational` | Supplied context is sufficient | Do not orient the repository. |
+| `tier-1-read-only` | Inspect or report | Read only evidence needed for the claim. |
+| `tier-2-local-mutation` | Reversible scoped edits | Confirm the checkout; refresh scoped status and affected-path history. |
+| `tier-3-governed-side-effect` | Publication, cursor consumption, provider launch, push, merge, spend, or live-data mutation | Refresh exact live authority, executor, target, scope, and external state immediately before acting. |
 
-Codified 2026-05-24 after a director-level inventory error: STRATEGIC_REVIEW
-and HANDOFF both claimed "only one unit test file" when there were 24. The
-director wrote those docs from session memory of one scoped pytest run + an
-anchored mental model, without ever running `ls tests/unit/`. Root cause:
-session memory trusted over filesystem. See [DECISIONS.md ADR-013](../../../DECISIONS.md).
+Full smoke is a completion check when a change affects runtime/governance
+topology or relies on an architecture invariant. It is not a session-start
+ritual.
 
-The class of error is fully preventable. These three rules close it.
+## Evidence and implementation
 
-## Rule 1 — No inventory claim without verification output
+- Measure factual inventory claims at the scope claimed. A focused command
+  proves only its focused scope.
+- Before changing a symbol, find its definition, writes, callers, imports,
+  string references, and relevant siblings.
+- For behavior change, begin with a failing behavior test when feasible;
+  otherwise retain characterization evidence or a `test-infeasible` reason.
+- Establish root cause before changing behavior after an unexpected failure.
+- A confirmed defect deliberately deferred gets a strict-xfail pin or a
+  specific `test-infeasible` reason.
+- Run fresh, smallest-sufficient verification. A green check proves only the
+  path it executed.
+- Gate-controlling numbers come from a committed, citable instrument.
 
-Any factual claim in a doc, commit message, or code comment of the shape
-**"X files," "Y functions," "Z tests," "N LOC," "present in <path>,"
-"absent from <path>"** requires the producing command's output captured in
-the same change.
+No plan, handoff, status file, broad smoke run, or commit is required merely to
+make a small reversible edit. Create an artifact only when it preserves state
+that Git, tests, and committed event bodies do not already carry.
 
-- In docs: paste the command + its output in a code block under the claim,
-  OR cite it explicitly (`verified via $ ls tests/unit/ | wc -l → 24`).
-- In commit messages: include the command and result in the body.
-- "Just trust me" is not acceptable. Cite or don't claim.
+## Guard admission
 
-## Rule 2 — Scoped output stays scoped
+A new blocking guard is accepted only when it names the decision or effect it
+protects, sits on the production call path, and has both a reversion control and
+an evasion or bypass control. Missing or ambiguous evidence stays non-success.
+A source-code marker, duplicated checker, or descriptive test name is not an
+enforced control. Prefer strengthening the existing owning seam over adding a
+parallel approval object or startup ritual.
 
-A command scoped to one path produces output about that path only.
-`pytest tests/unit/foo.py` gives you `foo.py`'s test result, NOT the unit
-suite's. `grep X dir/file.py` covers `file.py`, NOT `dir/`. `ls one_file`
-tells you about one file.
+## Work mode is not review risk
 
-When you want a wider claim, **re-run at the wider scope.** Do not
-generalize from a narrow command. The shell never lies about what it ran;
-you can lie to yourself about what it covered.
+[`docs/protocol/work-modes.md`](../work-modes.md) controls iteration phase:
 
-## Rule 3 — Pre-commit trip-wire for strategic docs
+- `explore`: cheap reversible learning; no canonical mutation.
+- `validate`: reproduce one frozen candidate and its evidence.
+- `promote`: move a reviewed candidate toward canonical state with a rollback
+  point and separate effect authority.
 
-Before committing any strategic-review, handoff, ARCHITECTURE.md, or any
-other authority-voice document, the author runs the verifying commands for
-every factual claim and pastes the output (or a representative snippet) in
-the commit message. If a verifying command would take >30 seconds, note
-it explicitly: `verified via <command> on YYYY-MM-DD`.
+Review depth is classified independently by `review_profile_for()`:
 
-Cost: seconds. Cost of skipping: wrong direction for the next operator
-(the 24-vs-1 test error).
-
-## When you cannot comply
-
-If you genuinely cannot run the verifying command (no shell, no
-filesystem, no internet), state the claim as **unverified** explicitly:
-> I believe X based on session memory but did not run the verifying command.
-
-This is honest and lets the next reader treat the claim as a hypothesis,
-not a fact. **Never apply authority-voice over an unverified factual
-claim.** Authority and verification travel together.
-
-## When does this apply?
-
-| Yes — verify before stating | No — verify not required |
+| Risk | Required evidence |
 |---|---|
-| "There are N test files" | "Tests live under tests/unit/" (no count) |
-| "X function is unused" | "X function is referenced in the imports of Y" (your immediate context) |
-| "Y file is N lines" | A general qualitative claim ("this is large", "this is well-tested") |
-| "Z module has no callers" | A directional claim ("this could be deleted if zero callers") |
-| Any specific count, file presence, function existence | Architectural reasoning, design rationale |
+| `ordinary-local` | Focused verification. |
+| `material-behavior` | Non-author review of the exact committed range. |
+| `high-risk-control` | Non-author exact-range review by a different model family, plus abuse-class assessment. |
+| `external-effect` | Live authorization for the exact executor, target, effect, and scope. |
 
-The rule is: **specific factual claims = verification required.**
-Qualitative directional claims = use your judgment but flag uncertainty.
+Different-model-family review is not a universal tax. A verdict never grants
+an external effect.
 
-## Verification tiering (R-VERIFY-TIER)
-*Router handle: `R-VERIFY-TIER` (stub in AGENTS.md). Capacity lever #3, audit `wf_6be2ee18-f4b`.*
+## Authority and durable state
 
-The discipline that prevents UNDER-verification (R-EVIDENCE, Rule #9) has no companion
-that prevents OVER-verification. A doc-only paragraph about an undisputed, deferred
-defect drew ~25–31 adversarial agent-runs across four independent passes (<ref>), producing
-zero fix code. Past the second independent confirmation, more passes on the same question
-add cost, not confidence.
+- A role, route, task structure, event schema, capability label, green test, or
+  commit cannot widen user or parent authority.
+- Current committed Git and committed event bodies outrank summaries and chat
+  recollection for the facts they own.
+- Transport ambiguity remains visible and fails closed; it is not an empty
+  queue or implicit approval.
+- Formal events and cursors use the fixed writers. Do not edit them directly.
+- Editing, staging, committing, publishing, consuming, locking, pushing,
+  merging, launching, spending, and live-data mutation are separate actions.
+- Use the worktree's native Git index; do not create shared or per-seat indexes.
 
-- **(A) Convergence cap for doc-only deferred-defect notes.** Two independent seats
-  confirming the same file:line claims = converged. A Rule #23 co-sign is one of the
-  two. A third adversarial pass is justified ONLY when scoped to a *different* question
-  (e.g. blast-radius mapping beyond the note, as `wf_5d39bbe3` legitimately was) — and
-  the launching seat must state that incremental question first. Applies to
-  `docs(arch)`-class deferred notes only; production code keeps Lane V / Rule #9
-  per-commit verification. <!-- origin: a single doc paragraph drew ~25-31 agent-runs across 4 passes with no new question, adding cost but no confidence -->
-- **(B) RED test at find-time.** When an adversarial workflow or agent-assisted
-  investigation confirms a code defect that is NOT being fixed this session
-  (`fix_with_brief` / `fix_deferred`), the finding seat commits a
-  `pytest.mark.xfail(strict=True, reason='...')` reproducing the failure in the same
-  session. If a faithful test is infeasible within budget, label the finding
-  `test-infeasible` with the specific reason in the handoff. Turns
-  O(agents × sessions) re-verification into O(seconds in CI).
+## Collaboration without ceremony
 
-Keep R-EVIDENCE (cite the command) and R-MEASURE (commit the instrument) distinct —
-they close different gaps. R-VERIFY-TIER caps the *number* of passes; it does not
-weaken any single pass.
+Delegate bounded independent work when it reduces latency or context load.
+Give each implementer explicit ownership and never run concurrent implementers
+on shared files. Helpers inherit task scope only: no live role, publication,
+cursor, verdict, lock, or effect authority.
 
-## When you change something
-
-Beyond the impact-analysis checks above:
-
-- One commit per logical slice. Run the project smoke block in `ARCHITECTURE.md` (<project smoke invariants — implemented in scripts/ci_smoke.py _project_smoke()>)
-  before declaring a slice done.
-- Don't combine concerns. A bug fix isn't a refactor isn't a feature.
-- If your change retires or renames a mechanism, grep docs AND test
-  docstrings for the old claim in the same change — both rot, and docstrings
-  rot invisibly (the seat-binding overstatement survived in two test
-  docstrings after the mechanism was gone; `143b6fa`).
-- If your change touches a documented subsystem, update the relevant
-  section in `ARCHITECTURE.md` in the same PR.
-- For multi-task work (≥5 sub-tasks or ≥800 LOC of total change), don't
-  implement everything in your current context — orchestrate via fresh
-  contexts. See "Multi-task orchestration" below.
-
-# Guard admission: enforcement binds where it decides
-*Codified 2026-07-29 after the Claude-side cutover (`23669fd` / `fe0875b` /
-`143b6fa`) and the coordinator dead-anchor incident; see DECISIONS.md ADR-066.*
-
-Any proposed guard must answer two questions before it is built: **what
-effect does it actually block, and can that block be bypassed?** A guard
-that cannot name its effect is theater — appearance of enforcement without
-an enforcement path — and is deleted, not maintained. The retired Claude
-PreToolUse guard is the specimen: it gated shell command strings against a
-forgeable environment variable and carried three live bypasses (`FOO=1 git
-commit` beat its token-0 command parse; `git -c k=v commit` returned
-unparseable-and-pass; its cross-side compat branch printed deny while
-exiting 0, the status its host read as allow).
-
-Consequences:
-
-- **Authority lives in fixed writers, wrappers, and publication-time
-  validators** (`scripts/compact_pair_loop.py`, the `coordination/bin/`
-  seat wrappers), never in pattern-matching over agent-typed command
-  strings.
-- **Enforcement points may differ per side.** Cursor keeps fail-closed
-  hooks because they gate real in-app effects through a fixed policy
-  script; Claude and Codex enforce at publication. The test is per-guard,
-  not per-side.
-- **No cross-side compat shims.** Shared logic lives in validated scripts
-  each side calls natively; a shim branch inside another side's guard rots
-  silently (the exit-0-while-denying defect).
-- **When docs overstate a mechanism, correct the docs rather than build
-  machinery to match the sentence** (`143b6fa`).
-
-# Session-wrap & handoff hygiene
-*Capacity lever #2 (audit `wf_6be2ee18-f4b`). Cuts stale-filename churn — 119
-handoff docs had accumulated, many with verdicts baked into 100+ char names that
-were false hours later.*
-
-- **Handoff filenames carry NO reversible state.** Name = `HANDOFF-<seat>-YYYY-MM-DD[-PMn].md`
-  only (seat + date + optional sequence). Verdicts, GO/NO-GO, pod/push/HEAD status,
-  blast-radius — all live in the BODY, where they can be corrected without spawning a
-  new file. A name like `...task4-GO-...-pod-BILLING.md` is false hours later and
-  forces "STALE — trust git" caveats downstream.
-- **Body is reconstructable-minus-git.** Record only: last-commit SHA, open
-  carry-forwards with status, session-specific sharp edges not yet promoted to a
-  standing doc, cursor position. Omit anything `git log` already proves.
-- Append-only across sessions is retained (one file per seat per session) — it is the
-  concurrent-write race-detection signal; do not overwrite-in-place.
-
-# Git-tooling sharp edges (standing — stop re-deriving these in handoffs)
-*Capacity lever #2. These are durable environment facts, not session observations.
-Reference this section from a handoff; don't restate it.*
-
-- **Stale per-seat / default index → phantom `MM`/deletions.** `git status` and
-  `git diff --stat HEAD` read the index and can show committed files as
-  modified/deleted. Ground truth: `git cat-file -e HEAD:<f>` (in HEAD?) + `test -f <f>`
-  (on disk?). Reseed with `git read-tree HEAD`.
-- **macOS `core.ignorecase=true` collapses case-only renames.** `git mv Foo.json foo.json`
-  can become a no-op/duplicate. Verify via the object store (`git ls-tree HEAD`), or use
-  `git -c core.ignorecase=false`, or `rm --cached` + `add`.
-- **Partial commits need an explicit pathspec.** `git commit -m … -- <path>` builds a
-  temp index from HEAD and cannot sweep a peer's staged WIP even if HEAD moved under
-  you. A bare `git commit` from a shared/default index CAN sweep peers — always
-  pathspec-scope (`-m` BEFORE `--`).
-- **Subagent git uses `env -u GIT_INDEX_FILE`** (subagent shell state does not
-  persist); main-seat commits go through the per-seat index directly — do NOT apply
-  `env -u` there.
-- **A domain-graph subsystem re-run with identical inputs may return a cached result
-  instead of new output** (false-fail, not a real error). Cache-bust by varying a
-  seed / output-name / request parameter before concluding the subsystem is broken.
-  <!-- TODO(<PROJECT>): replace this placeholder with the specific caching behaviour of your domain-graph subsystem -->
+Material behavior receives non-author actual-diff review. Reviews, handoffs,
+and status reports are produced at real decision or transfer boundaries, not
+after every local step. Provider entrypoints and ownership are mapped in
+[`protocol-assembly-map.md`](../protocol-assembly-map.md).

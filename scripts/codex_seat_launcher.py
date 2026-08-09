@@ -25,6 +25,67 @@ LAUNCH_SEATS = ("director", "director2", "operator", "operator2", "coordinator")
 SERVICE_TIERS = ("fast", "default")
 DEFAULT_CONFIG_PATH = Path("~/.codex/pipeline-seat-launcher.toml")
 
+# The launcher owns runtime identity and repository scope. Approval and sandbox
+# posture remain capabilities of the trusted user/project Codex configuration;
+# this launcher does not attest their effective values. It rejects per-invocation
+# forwarded overrides so an otherwise fixed launch cannot silently change its
+# execution shape. Scan every token, including tokens after a bare ``--``.
+_FORBIDDEN_FORWARDED_LONG_FLAGS = frozenset(
+    {
+        "--add-dir",
+        "--ask-for-approval",
+        "--bypass",
+        "--cd",
+        "--config",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--dangerously-bypass-hook-trust",
+        "--disable",
+        "--enable",
+        "--full-auto",
+        "--ignore-rules",
+        "--local-provider",
+        "--model",
+        "--oss",
+        "--profile",
+        "--remote",
+        "--remote-auth-token-env",
+        "--sandbox",
+        "--yolo",
+    }
+)
+_FORBIDDEN_FORWARDED_SHORT_FLAGS = frozenset({"-C", "-a", "-c", "-m", "-p", "-s"})
+_FORBIDDEN_FORWARDED_SUBCOMMANDS = frozenset(
+    {
+        "a",
+        "app",
+        "app-server",
+        "apply",
+        "archive",
+        "cloud",
+        "completion",
+        "debug",
+        "delete",
+        "doctor",
+        "e",
+        "exec",
+        "exec-server",
+        "features",
+        "fork",
+        "help",
+        "login",
+        "logout",
+        "mcp",
+        "mcp-server",
+        "plugin",
+        "remote-control",
+        "resume",
+        "review",
+        "sandbox",
+        "unarchive",
+        "update",
+    }
+)
+
 
 class ConfigError(ValueError):
     """Raised when the local per-seat configuration is invalid."""
@@ -32,6 +93,37 @@ class ConfigError(ValueError):
 
 class LaunchError(RuntimeError):
     """Raised when local launch preparation fails."""
+
+
+def _forbidden_forwarded_flag(token: str) -> str | None:
+    if token.startswith("--"):
+        name = token.split("=", 1)[0]
+        return name if name in _FORBIDDEN_FORWARDED_LONG_FLAGS else None
+    for name in _FORBIDDEN_FORWARDED_SHORT_FLAGS:
+        if (
+            token == name
+            or token.startswith(name + "=")
+            or (token.startswith(name) and len(token) > 2)
+        ):
+            return name
+    return None
+
+
+def reject_security_overrides(forwarded_args: Sequence[str]) -> None:
+    """Reject child-CLI arguments that can contradict launcher-owned state."""
+
+    for token in forwarded_args:
+        if token in _FORBIDDEN_FORWARDED_SUBCOMMANDS:
+            raise LaunchError(
+                f"forwarded argument {token!r} may not override launcher-owned "
+                "identity, workspace, or security policy (Codex subcommand)"
+            )
+        forbidden = _forbidden_forwarded_flag(token)
+        if forbidden is not None:
+            raise LaunchError(
+                f"forwarded argument {token!r} may not override launcher-owned "
+                f"identity, workspace, or security policy ({forbidden})"
+            )
 
 
 @dataclass(frozen=True)
@@ -100,6 +192,7 @@ def build_launch_spec(
     if seat not in settings:
         raise LaunchError(f"missing settings for seat: {seat}")
 
+    reject_security_overrides(forwarded_args)
     selected = settings[seat]
     identity = RuntimeIdentity.for_seat(seat, model=selected.model)
     env = {

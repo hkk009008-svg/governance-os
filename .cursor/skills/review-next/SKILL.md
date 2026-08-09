@@ -15,7 +15,8 @@ disable-model-invocation: true
    merely to search.
 4. Read the returned committed event and validate its exact base/head, author
    seat/model, assigned Operator, outcome, allowed paths, and finding refs.
-   Refuse same-model or self-authored review.
+   Refuse self-authored review. Refuse same-model-family review when the
+   executable risk profile requires model diversity.
 5. Materialize the reviewed head with
    `python3 scripts/cursor_review_snapshot.py --repository <reviewed-repository>
    --head <reviewed-head> --output

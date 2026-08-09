@@ -1,78 +1,112 @@
-"""Behavioral containment tests for the committed AGY advisory catalog."""
+"""Behavioral containment tests for host-discovered AGY custom agents."""
 
 from __future__ import annotations
 
-import tomllib
+import subprocess
 from pathlib import Path
 
 import pytest
 
 
 CATALOG = {
-    "readiness-bridge.toml": "readiness-bridge",
-    "lane-v-verifier.toml": "lane-v-verifier",
-    "money-gate-reviewer.toml": "money-gate-reviewer",
-    "amnesiac-prober.toml": "amnesiac-prober",
+    "readiness-bridge.md": "readiness-bridge",
+    "lane-v-verifier.md": "lane-v-verifier",
+    "money-gate-reviewer.md": "money-gate-reviewer",
+    "amnesiac-prober.md": "amnesiac-prober",
 }
-REMOVED_LIVE_SEATS = {
-    "protocol-director.toml",
-    "protocol-operator.toml",
-    "protocol-coordinator.toml",
-}
+READ_ONLY_TOOLS = ("view_file", "list_dir", "find_by_name", "grep_search")
+FORBIDDEN_TOOLS = (
+    "run_command",
+    "write_to_file",
+    "replace_file_content",
+    "multi_replace_file_content",
+    "invoke_subagent",
+    "send_message",
+)
 REQUIRED_GUARDRAILS = (
     "Return findings only to the parent or local caller.",
-    "Never claim a shared protocol seat.",
-    "Never use the fixed mailbox writer.",
-    "Never consume shared state.",
-    "Never issue a binding GO, NITS, or FAIL.",
+    "Never claim a shared protocol seat",
+    "use the fixed mailbox writer",
+    "consume shared state",
+    "issue a binding GO, NITS, or FAIL",
 )
 
 
+def _split_document(text: str) -> tuple[list[str], str]:
+    lines = text.splitlines()
+    assert lines and lines[0] == "---"
+    try:
+        closing = lines.index("---", 1)
+    except ValueError as exc:  # pragma: no cover - assertion carries path context
+        raise AssertionError("missing closing YAML frontmatter delimiter") from exc
+    return lines[1:closing], "\n".join(lines[closing + 1 :])
+
+
+def _scalar(frontmatter: list[str], key: str) -> str:
+    prefix = f"{key}:"
+    values = [line[len(prefix) :].strip() for line in frontmatter if line.startswith(prefix)]
+    assert len(values) == 1, (key, values)
+    return values[0]
+
+
+def _tools(frontmatter: list[str]) -> tuple[str, ...]:
+    marker = frontmatter.index("tools:") if "tools:" in frontmatter else None
+    if marker is None:
+        assert "tools: []" in frontmatter
+        return ()
+    values: list[str] = []
+    for line in frontmatter[marker + 1 :]:
+        if line.startswith("  - "):
+            values.append(line.removeprefix("  - "))
+            continue
+        break
+    return tuple(values)
+
+
 def _assert_advisory_instructions(instructions: str) -> None:
+    lowered = " ".join(instructions.casefold().split())
     for guardrail in REQUIRED_GUARDRAILS:
-        assert guardrail in instructions
+        assert guardrail.casefold() in lowered
 
-    lowered = instructions.lower()
-    assert "coordination/bin/send-event" not in lowered
-    assert "consume-events" not in lowered
-    assert "index-agy-" not in lowered
-    # The retired per-seat index is reachable by wording that never names the
-    # index: an instruction to point GIT_INDEX_FILE anywhere reintroduces the
-    # session-wide rebinding hazard, so reject the variable itself, not just
-    # its old provider-prefixed filename.
-    assert "git_index_file" not in lowered
-    assert "protocol-director" not in lowered
-    assert "protocol-operator" not in lowered
-    assert "protocol-coordinator" not in lowered
-    assert "shared director" not in lowered
-    assert "shared operator" not in lowered
-    assert "shared coordinator" not in lowered
-    assert "publish" not in lowered
-    assert "cursor" not in lowered
-    assert lowered.count("fixed mailbox writer") == 1
-    assert lowered.count("shared state") == 1
-    assert lowered.count("binding") == 1
+    for forbidden in (
+        "coordination/bin/send-event",
+        "consume-events",
+        "git_index_file",
+        "protocol-director",
+        "protocol-operator",
+        "protocol-coordinator",
+        "shared director",
+        "shared operator",
+        "shared coordinator",
+    ):
+        assert forbidden not in lowered
+    assert lowered.count("consume shared state") == 1
+    assert lowered.count("binding go") == 1
 
 
-def test_agy_catalog_contains_only_read_only_advisory_profiles(repo_root: Path) -> None:
-    agent_dir = repo_root / ".agy" / "agents"
+def test_agy_catalog_uses_current_markdown_discovery_and_read_only_tools(
+    repo_root: Path,
+) -> None:
+    agent_dir = repo_root / ".agents" / "agents"
 
-    assert {path.name for path in agent_dir.glob("*.toml")} == set(CATALOG)
-    assert not any((agent_dir / name).exists() for name in REMOVED_LIVE_SEATS)
+    assert {path.name for path in agent_dir.glob("*.md")} == set(CATALOG)
+    assert not any((repo_root / ".agy" / "agents").glob("*"))
 
     for filename, profile_name in CATALOG.items():
-        document = tomllib.loads((agent_dir / filename).read_text(encoding="utf-8"))
-        assert set(document) == {
-            "name",
-            "description",
-            "sandbox_mode",
-            "model_reasoning_effort",
-            "developer_instructions",
-        }
-        assert document["name"] == profile_name
-        assert document["sandbox_mode"] == "read-only"
-        instructions = document["developer_instructions"]
-        assert isinstance(instructions, str)
+        text = (agent_dir / filename).read_text(encoding="utf-8")
+        frontmatter, instructions = _split_document(text)
+        assert _scalar(frontmatter, "name") == profile_name
+        assert _scalar(frontmatter, "description")
+        assert _scalar(frontmatter, "mainAgent") == "false"
+        assert _scalar(frontmatter, "subagent") == "true"
+        assert _scalar(frontmatter, "commandExecutionPolicy") == "sandbox"
+        assert _scalar(frontmatter, "mcpServers") == "[]"
+        assert not any(line.startswith("model:") for line in frontmatter)
+
+        tools = _tools(frontmatter)
+        expected = () if profile_name == "amnesiac-prober" else READ_ONLY_TOOLS
+        assert tools == expected
+        assert not set(tools).intersection(FORBIDDEN_TOOLS)
         _assert_advisory_instructions(instructions)
 
 
@@ -83,36 +117,41 @@ def test_agy_catalog_contains_only_read_only_advisory_profiles(repo_root: Path) 
         "Use coordination/bin/send-event to publish findings.",
         "Consume shared state before analyzing the range.",
         "Issue a binding GO after review.",
-        # operator2's probe against 31e5cbf..b1c6c80: the retired binding
-        # reintroduced by wording that never names index-agy-.
         "Export GIT_INDEX_FILE=/tmp/seat-specific-index before inspecting.",
     ],
 )
 def test_catalog_guardrail_check_rejects_contradictory_authority_grants(
     repo_root: Path, grant: str
 ) -> None:
-    document = tomllib.loads(
-        (repo_root / ".agy" / "agents" / "readiness-bridge.toml").read_text(
-            encoding="utf-8"
-        )
+    text = (repo_root / ".agents/agents/readiness-bridge.md").read_text(
+        encoding="utf-8"
     )
-    instructions = document["developer_instructions"]
-    assert isinstance(instructions, str)
+    _, instructions = _split_document(text)
 
     with pytest.raises(AssertionError):
         _assert_advisory_instructions(instructions + "\n" + grant)
 
 
-def test_agy_catalog_readme_describes_advisory_profiles_without_launch_instructions(
-    repo_root: Path,
-) -> None:
-    text = (repo_root / ".agy" / "agents" / "README.md").read_text(encoding="utf-8")
+def test_pipeline_start_is_discoverable_read_only_workflow(repo_root: Path) -> None:
+    workflow = repo_root / ".agents/workflows/pipeline-start.md"
+    text = workflow.read_text(encoding="utf-8")
+    frontmatter, body = _split_document(text)
 
-    assert "read-only advisory profiles" in text
-    assert "parent or local caller" in text
-    assert "No direct launch instructions are provided." in text
-    assert "protocol-director.toml" not in text
-    assert "protocol-operator.toml" not in text
-    assert "protocol-coordinator.toml" not in text
-    assert "coordination/bin/agy-seat" not in text
-    assert "~/.agy" not in text
+    assert _scalar(frontmatter, "description")
+    assert len(text) <= 12_000
+    assert "python3 scripts/status.py snapshot" in body
+    assert "python scripts/status.py snapshot" not in body
+    assert "This workflow is read-only." in body
+    for forbidden in ("send-event ", "consume-events ", "git push", "agy --print"):
+        assert forbidden not in body
+
+    for relative in (
+        ".agents/agents/readiness-bridge.md",
+        ".agents/workflows/pipeline-start.md",
+    ):
+        probe = subprocess.run(
+            ("git", "check-ignore", "--no-index", "--quiet", relative),
+            cwd=repo_root,
+            check=False,
+        )
+        assert probe.returncode == 1, f"host surface is ignored: {relative}"

@@ -212,6 +212,31 @@ def load_seat_settings(path: Path) -> dict[str, SeatSettings]:
     return settings
 
 
+def _parse_model_listing(stdout: str) -> frozenset[str]:
+    """Parse legacy ID-only and current ``ID<TAB>display`` model rows.
+
+    The ID is the CLI argument and report identity.  Display text is advisory;
+    admitting the whole decorated row makes every valid configured ID miss.
+    A nonblank malformed row fails closed so a partial parser cannot silently
+    weaken the installed-model allowlist.
+    """
+    models: set[str] = set()
+    for line_number, raw_line in enumerate(stdout.splitlines(), start=1):
+        if not raw_line.strip():
+            continue
+        model_id = raw_line.partition("\t")[0].strip()
+        if (
+            not model_id
+            or any(character.isspace() or ord(character) < 32 for character in model_id)
+        ):
+            raise LaunchError(
+                f"malformed model row {line_number} from "
+                f"`{' '.join(MODEL_LISTING_COMMAND)}`"
+            )
+        models.add(model_id)
+    return frozenset(models)
+
+
 def list_models(agy_executable: str) -> frozenset[str]:
     """Return the model IDs the installed CLI reports as usable.
 
@@ -252,9 +277,7 @@ def list_models(agy_executable: str) -> frozenset[str]:
             "so the seat model cannot be checked"
             + (f":\n{detail}" if detail else "")
         )
-    models = frozenset(
-        line.strip() for line in completed.stdout.splitlines() if line.strip()
-    )
+    models = _parse_model_listing(completed.stdout)
     if not models:
         raise LaunchError(
             f"`{' '.join(MODEL_LISTING_COMMAND)}` returned no model IDs, "

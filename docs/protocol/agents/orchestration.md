@@ -23,9 +23,10 @@ or authorize external effects. Their output is evidence for the owning seat.
 
 Preflight is advisory. Preserve a material finding, but do not require CLEAR
 before implementation. The owner synthesizes the actual result and submits the
-committed range. Behavior-changing acceptance requires non-author Operator GO
-from a distinct seat and different model; that Operator cannot verify anything
-it authored.
+committed range. Behavior-changing acceptance requires non-author Operator
+review of the actual range. A different model family and abuse-class assessment
+are additionally required for `high-risk-control`. An Operator cannot verify
+anything it authored.
 
 Ownership changes bind the exact task, immutable parent/revision, previous and
 new owners, and finding refs through recipient-authored durable acceptance.

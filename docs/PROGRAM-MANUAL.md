@@ -104,8 +104,9 @@ Director seats scope and implement only inside their route. They send one
 canonical committed verify-request once its structural authority fields are ready.
 
 Operator seats independently verify only from a lawful trigger and return
-GO/NITS/FAIL. They do not duplicate verification for docs-only or status-only
-artifacts.
+GO/NITS/FAIL. Review depth follows actual behavior and risk; documentation and
+status paths are not automatically exempt when they change authority or
+operation.
 
 Coordinator reconciles route, lock, mailbox, capacity, and closeout state.
 Coordinator must not author behavior-changing product fixes.

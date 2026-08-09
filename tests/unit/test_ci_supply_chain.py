@@ -1,7 +1,10 @@
 """Supply-chain invariants for the only GitHub Actions workflow."""
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -21,21 +24,22 @@ def _job(workflow: str, name: str, next_name: str | None) -> str:
 
 def test_actions_are_full_sha_pinned_with_version_annotations(repo_root):
     workflow = _workflow(repo_root)
-    uses = re.findall(r"^\s*- uses:\s*([^\s#]+)(?:\s+#\s*(\S+))?$", workflow, re.MULTILINE)
-    # smoke, pytest-unit, admission-gate, and the signer each check out and
-    # set up Python from the same immutable pins.
-    assert uses == [
-        (f"actions/checkout@{CHECKOUT_SHA}", "v6.1.0"),
-        (f"actions/setup-python@{SETUP_PYTHON_SHA}", "v6.3.0"),
-    ] * 4
+    uses = re.findall(
+        r"^\s*(?:-\s+)?uses:\s*([^\s#]+)(?:\s+#\s*(\S+))?$",
+        workflow,
+        re.MULTILINE,
+    )
+    assert uses.count((f"actions/checkout@{CHECKOUT_SHA}", "v6.1.0")) == 5
+    assert uses.count((f"actions/setup-python@{SETUP_PYTHON_SHA}", "v6.3.0")) == 4
+    assert len(uses) == 9
 
 
 def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):
     workflow = _workflow(repo_root)
     assert re.search(r"^permissions:\n  contents: read$", workflow, re.MULTILINE)
 
-    smoke = _job(workflow, "smoke", "pytest-unit")
-    pytest_job = _job(workflow, "pytest-unit", "admission-gate")
+    smoke = _job(workflow, "smoke", "pytest")
+    pytest_job = _job(workflow, "pytest", "admission-gate")
     admission = _job(workflow, "admission-gate", "threeway-ci-result")
     signer = _job(workflow, "threeway-ci-result", None)
     for job in (smoke, pytest_job, admission):
@@ -47,8 +51,8 @@ def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):
 
 def test_python_matrix_and_job_versions_are_explicit(repo_root):
     workflow = _workflow(repo_root)
-    smoke = _job(workflow, "smoke", "pytest-unit")
-    pytest_job = _job(workflow, "pytest-unit", "admission-gate")
+    smoke = _job(workflow, "smoke", "pytest")
+    pytest_job = _job(workflow, "pytest", "admission-gate")
     signer = _job(workflow, "threeway-ci-result", None)
     assert "python-version: '3.13'" in smoke
     assert re.search(
@@ -61,8 +65,8 @@ def test_python_matrix_and_job_versions_are_explicit(repo_root):
 
 def test_ci_installs_hash_locked_and_signer_uses_minimal_lock(repo_root):
     workflow = _workflow(repo_root)
-    smoke = _job(workflow, "smoke", "pytest-unit")
-    pytest_job = _job(workflow, "pytest-unit", "admission-gate")
+    smoke = _job(workflow, "smoke", "pytest")
+    pytest_job = _job(workflow, "pytest", "admission-gate")
     admission = _job(workflow, "admission-gate", "threeway-ci-result")
     signer = _job(workflow, "threeway-ci-result", None)
     for job in (smoke, pytest_job):
@@ -74,6 +78,76 @@ def test_ci_installs_hash_locked_and_signer_uses_minimal_lock(repo_root):
     assert "pip install --require-hashes -r requirements-governance.txt" in signer
     assert "cache-dependency-path: requirements-governance.txt" in signer
     assert "requirements-dev.txt" not in signer
+
+
+def test_admission_uses_trusted_base_code_and_never_executes_candidate(repo_root):
+    workflow = _workflow(repo_root)
+    admission = _job(workflow, "admission-gate", "threeway-ci-result")
+
+    assert "pull_request_target:" in workflow
+    assert "if: github.event_name == 'pull_request_target'" in admission
+    assert "path: trusted" in admission
+    assert "path: candidate" in admission
+    assert "test \"$(git -C candidate rev-parse HEAD)\" = \"$HEAD_SHA\"" in admission
+    assert "python trusted/scripts/ci_admission_gate.py --root trusted" in admission
+    assert "python candidate/" not in admission
+    assert "persist-credentials: true" not in admission
+
+
+def test_pr_and_trusted_admission_runs_cannot_cancel_each_other(repo_root):
+    workflow = _workflow(repo_root)
+
+    assert (
+        "group: ${{ github.workflow }}-${{ github.event_name }}-"
+        "${{ github.event.pull_request.number || github.ref }}"
+    ) in workflow
+
+
+def test_pytest_job_runs_the_complete_declared_test_root(repo_root):
+    """Integration contracts must not disappear behind a unit-only CI command."""
+
+    workflow = _workflow(repo_root)
+    pytest_job = _job(workflow, "pytest", "admission-gate")
+
+    assert "python -m pytest tests --tb=short -q" in pytest_job
+    assert "python -m pytest tests/unit" not in pytest_job
+    assert "PIPELINE_REQUIRE_EXECUTED_TEST: '1'" in pytest_job
+
+
+def test_ci_execution_guard_rejects_an_all_skipped_suite(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    test_file = tmp_path / "test_only_skip.py"
+    test_file.write_text(
+        "import pytest\n"
+        "@pytest.mark.skip(reason='control')\n"
+        "def test_never_executes():\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env.pop("GIT_INDEX_FILE", None)
+    env["PIPELINE_REQUIRE_EXECUTED_TEST"] = "1"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "tests.conftest",
+            "-p",
+            "no:cacheprovider",
+            str(test_file),
+        ],
+        cwd=repo_root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0, result.stdout + result.stderr
 
 
 def test_requirement_inputs_and_locks_are_pinned_and_hash_locked(repo_root):

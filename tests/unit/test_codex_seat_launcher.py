@@ -183,6 +183,74 @@ def test_forwarded_codex_arguments_remain_literal(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    "forwarded",
+    (
+        ["--model", "other-model"],
+        ["--model=other-model"],
+        ["-m", "other-model"],
+        ["-mother-model"],
+        ["--config", 'approval_policy="never"'],
+        ['--config=approval_policy="never"'],
+        ["-c", 'approval_policy="never"'],
+        ["--cd", "/tmp/other"],
+        ["--cd=/tmp/other"],
+        ["-C", "/tmp/other"],
+        ["--sandbox", "danger-full-access"],
+        ["--sandbox=danger-full-access"],
+        ["-s", "danger-full-access"],
+        ["--ask-for-approval", "never"],
+        ["--ask-for-approval=never"],
+        ["-a", "never"],
+        ["--full-auto"],
+        ["--dangerously-bypass-approvals-and-sandbox"],
+        ["--dangerously-bypass-hook-trust"],
+        ["--enable", "hooks"],
+        ["--disable", "approval-prompts"],
+        ["--oss"],
+        ["--local-provider", "ollama"],
+        ["--remote", "ws://127.0.0.1:9999"],
+        ["--remote-auth-token-env", "TOKEN"],
+        ["--bypass"],
+        ["--yolo"],
+        ["--profile", "unsafe"],
+        ["-p", "unsafe"],
+        ["--add-dir", "/tmp/other"],
+        ["exec", "--ignore-rules", "--help"],
+    ),
+)
+def test_forwarded_launcher_owned_or_security_flags_are_rejected(
+    tmp_path: Path, forwarded: list[str]
+) -> None:
+    config_path = tmp_path / "seats.toml"
+    _write_config(config_path)
+
+    with pytest.raises(launcher.LaunchError, match="may not override"):
+        launcher.build_launch_spec(
+            tmp_path,
+            "operator",
+            launcher.load_seat_settings(config_path),
+            {},
+            "codex",
+            forwarded,
+        )
+
+
+def test_forwarded_terminator_cannot_hide_a_security_override(tmp_path: Path) -> None:
+    config_path = tmp_path / "seats.toml"
+    _write_config(config_path)
+
+    with pytest.raises(launcher.LaunchError, match="may not override"):
+        launcher.build_launch_spec(
+            tmp_path,
+            "operator",
+            launcher.load_seat_settings(config_path),
+            {},
+            "codex",
+            ["--", "--sandbox", "danger-full-access"],
+        )
+
+
+@pytest.mark.parametrize(
     "body",
     [
         "[seats.director]\nmodel='gpt'\nservice_tier='default'\n",

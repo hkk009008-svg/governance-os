@@ -16,12 +16,13 @@ novel or high-consequence surface. It is advisory: there is no universal
 preflight CLEAR. A FINDING is not BLOCKED unless it identifies an
 unresolved hard-boundary violation.
 
-Behavior-changing acceptance always requires a non-author Operator from a
-distinct seat and different system-visible model to review the actual commit or
-range. That Operator cannot verify anything it authored and issues
-GO/NITS/FAIL through the fixed mailbox writer. Review depth is proportional,
-but identity, actual-range binding, finding preservation, and non-authorship are
-not optional.
+Behavior-changing acceptance requires a non-author Operator from a distinct
+seat to review the actual commit or range. High-risk control additionally
+requires a reviewer from a distinct seat and different system-visible model
+family, plus explicit abuse-class assessment. That
+Operator cannot verify authored work and issues GO/NITS/FAIL through the fixed mailbox writer.
+Review depth is proportional; actual-range binding, finding
+preservation, and non-authorship remain strict once review is triggered.
 
 R-VERIFY-TIER still prevents redundant same-question passes. A later reviewer
 must disposition every carried finding ref; changing owners or reviewers cannot
@@ -36,6 +37,7 @@ execution authority.
 - owner abuse assessment and coverage selected for the task;
 - immutable material finding refs, including explicit empty state;
 - committed verify-request bound to the actual base/head and identities;
-- distinct-seat, different-model Operator report with explicit dispositions.
+- distinct-seat Operator report with explicit dispositions and, for
+  `high-risk-control`, a different model family plus abuse-class assessment.
 
 Canonical Compact Pair Invariant: scripts/codex_protocol_model.py

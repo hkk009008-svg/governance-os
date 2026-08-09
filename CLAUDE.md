@@ -104,8 +104,8 @@ assesses plausible abuse classes and preserves material independent findings.
 The owner and actual-diff Operator choose proportional review depth. Early
 independent review is encouraged when useful; it is advisory and no universal
 pre-implementation CLEAR gate exists. Behavior-changing acceptance still
-requires a distinct Operator seat using a different system-visible model to
-review the actual commit or range.
+requires a distinct non-author Operator to review the actual commit or range.
+A different model family is required for `high-risk-control`.
 
 Full rationale: `docs/protocol/claude/independence-first.md`.
 
@@ -114,9 +114,9 @@ Full rationale: `docs/protocol/claude/independence-first.md`.
 Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
 Own the routed outcome and choose the method. Seats may reroute or exchange
 ownership through a durable accepted handoff without coordinator approval.
-Preflight is advisory. Preserve material findings, require non-author Operator
-GO for behavior-changing work with a distinct Operator seat and different
-model, bind autonomous ownership to an immutable parent/revision, preserve
+Preflight is advisory. Preserve material findings and require non-author
+Operator review for behavior-changing work; add a different model family only
+for `high-risk-control`. Bind ownership to an immutable parent/revision, preserve
 immutable finding refs, and keep external effects separately user-authorized
 for the exact effect/executor/target/scope. An Operator cannot verify anything
 it authored. Durable events use the fixed mailbox writer.

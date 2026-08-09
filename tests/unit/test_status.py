@@ -54,6 +54,33 @@ def _init_clean_repo(tmp_path):
     return repo
 
 
+def test_invalid_manifest_is_rendered_as_unavailable_not_absent(
+    tmp_path, monkeypatch
+):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "pipeline_status.toml").write_text("invalid = [", encoding="utf-8")
+
+    import check_doc_claims
+
+    monkeypatch.setattr(
+        check_doc_claims,
+        "audit_manifest",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad manifest")),
+    )
+    collected = status.collect_manifest(tmp_path)
+
+    assert collected["manifest_components"] is None
+    assert "bad manifest" in collected["manifest_error"]
+    rendered = status.render_manifest(
+        collected["manifest_components"], collected["manifest_error"]
+    )
+    assert any("unavailable" in line and "bad manifest" in line for line in rendered)
+    assert all("no docs/pipeline_status.toml" not in line for line in rendered)
+
+
 def test_collect_git_runs_in_requested_repo(tmp_path, monkeypatch):
     repo = _init_clean_repo(tmp_path)
     expected_sha = _git(repo, "rev-parse", "--short", "HEAD")

@@ -14,9 +14,9 @@ from threeway.refstore import (                          # noqa: E402
     CursorContentionExceeded, CursorCorruptionError, RefEventStore,
 )
 
-# The 6 cursor/interactive seats (== cursor_backfill.SEATS), NOT the full keyed-seat universe
-# (which also has overseer/ci/merge-gate); only these 6 have per-seat read cursors.
-SEATS = ("director", "director2", "operator", "operator2", "coordinator", "coordinator2")
+# Only production/review seats own cursors. Coordinators observe and reconcile without
+# consuming state, so accepting them here would manufacture authority the role does not have.
+SEATS = ("director", "director2", "operator", "operator2")
 
 
 def main(argv=None) -> int:
@@ -26,8 +26,20 @@ def main(argv=None) -> int:
     ap.add_argument("--no-advance", action="store_true")
     ap.add_argument("--repo-dir", default=".")
     ap.add_argument("--remote", default="origin")
-    ap.add_argument("--bus-id", default="prod")
+    ap.add_argument(
+        "--bus-id",
+        default=None,
+        help="optional bus filter; filtered reads require --no-advance",
+    )
     a = ap.parse_args(argv)
+    if a.kinds is not None and not a.no_advance:
+        print("REFUSING: --kinds requires --no-advance; a filtered view cannot safely "
+              "advance past events it did not show.", file=sys.stderr)
+        return 2
+    if a.bus_id is not None and not a.no_advance:
+        print("REFUSING: --bus-id requires --no-advance; the cursor is shared "
+              "across bus IDs and cannot advance past events it did not show.", file=sys.stderr)
+        return 2
     remote = (a.remote or None)                          # "" -> None (local); RefEventStore checks `is not None`
     seat = a.seat
     store = RefEventStore(Path(a.repo_dir), remote=remote)
@@ -41,7 +53,8 @@ def main(argv=None) -> int:
     kinds = set(a.kinds.split(",")) if a.kinds else None
     shown = [
         ev for ev in events
-        if ev.seq > cursor and ev.bus_id == a.bus_id and ev.recipient in (seat, "all")
+        if ev.seq > cursor and (a.bus_id is None or ev.bus_id == a.bus_id)
+        and ev.recipient in (seat, "all")
         and (kinds is None or ev.kind in kinds)
     ]
     for ev in shown:
