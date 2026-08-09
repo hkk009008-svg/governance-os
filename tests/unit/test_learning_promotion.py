@@ -41,7 +41,7 @@ def _repo(tmp_path: Path) -> Path:
     sent = root / "coordination" / "mailbox" / "sent"
     sent.mkdir(parents=True)
     (root / "coordination" / "mailbox" / "kinds.txt").write_text(
-        "decision\nlearning-candidate\nstatus\nverify-request\n",
+        "decision\nfindings\nlearning-candidate\nstatus\nverify-request\n",
         encoding="utf-8",
     )
     _git(root, "add", "-A")
@@ -104,7 +104,7 @@ def _refuse(
 
 def _source_ref(root: Path) -> str:
     relative = _publish(
-        root, "operator", "director", "status",
+        root, "operator", "director", "findings",
         "2026-07-30T00-00-01Z", "observed the failure mode",
     )
     commit = _commit(root, "mailbox: source event")

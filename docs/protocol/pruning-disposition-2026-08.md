@@ -139,3 +139,15 @@ bullet; this paragraph is the originating story.
 | `ARCHITECTURE.md` smoke reference | updated to the canonical name; Last-verified stamp bumped (2026-08-10 @ 3a068b8) per the freshness gate |
 | Seat role skills (`seat-director/operator/coordinator`) | kept: already thin role deltas (~30 lines) whose unique content (verify-request composition, report binding, cursorless rules) exceeds their shared framing; further collapse deferred until a pin-consolidation pass proves worth the churn |
 | Cursor continuation | kept except the smoke rename: already host-mechanics-scoped and densely pinned by `test_cursor_surface_sync` |
+
+---
+
+# PR 3 — durable-state reduction (new-write allowlist)
+
+| Change | Disposition |
+|---|---|
+| `NEW_WRITE_KINDS` in `scripts/mailbox_writer.py` | added at the owning seam (`validate_event_candidate_bytes`, the new-candidate path): 8 state-transition kinds publish (`decision`, `dispatch-claim`, `findings`, `learning-candidate`, `measurement-report`, `verification-report`, `verify-addendum`, `verify-request`); the 17 conversational kinds (incl. `fold-notice` — the audit's open disposition — and `convergence`, derivable from blockers and reports) are frozen for new writes with an error naming the policy. Mutation-checked: disabling the guard flips 17 tests red |
+| `coordination/mailbox/kinds.txt` | unchanged: it remains the read-side vocabulary; every historical event keeps parsing (pinned by `test_historical_conversational_events_keep_parsing_read_only`) |
+| `scripts/agy_emit.py` `--kind` default | moved off the frozen `coordination` kind to `findings` |
+| Test fixtures publishing `status` events | retargeted to `findings` where the subject was writer mechanics, not the kind (`test_mailbox_writer`, `test_coordination_tooling`, `test_learning_promotion`); read-side `status` fixtures kept where they prove historical legibility |
+| Compact snapshot projection (`status.py`) | deferred (flagged optional in the plan): the projection change is independent of the write freeze and rides a later change if the slope metrics show conversational noise persisting |
