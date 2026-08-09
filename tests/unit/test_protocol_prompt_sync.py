@@ -612,8 +612,14 @@ def test_chatgpt_consultation_is_an_optional_pointer_not_model_policy() -> None:
         "or side-effect authority."
     )
     assert (ROOT / ".agents/skills/chatgpt-pro-consultation/SKILL.md").is_file()
-    for path in CODEX_ENTRY_SURFACES:
+    # The pointer lives on load-on-trigger surfaces only; the always-loaded
+    # router carries no consultation routing (context-pruning PR 2).
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        ".agents/skills/four-seat-protocol/SKILL.md",
+    ):
         assert _read(path).count(pointer) == 1, path
+    assert "ChatGPT" not in _read("AGENTS.md")
 
     source = _read("scripts/codex_protocol_model.py")
     assert "render_" "chatgpt_pro_consultation" not in source

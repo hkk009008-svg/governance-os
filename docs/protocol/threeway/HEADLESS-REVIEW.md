@@ -177,7 +177,7 @@ account of itself:
 
 | verdict | commands |
 | --- | --- |
-| allow | `git log`, `git diff`, `git status`, `pytest`, `ci_smoke.py`, `cursor-publish` (bound pair seat) |
+| allow | `git log`, `git diff`, `git status`, `pytest`, `governance_verify_all.py`, `cursor-publish` (bound pair seat) |
 | ask | `git commit`, `git push` |
 | deny | `send-event` (direct fixed-writer call) |
 

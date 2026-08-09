@@ -33,7 +33,8 @@ events).
    exact committed range. Authority, security, executable composition,
    side-effect gates, and trust-granting schemas need distinct non-author,
    different-model actual-diff review plus explicit abuse-class analysis.
-   Tests prove only what they execute; a green gate grants no authority.
+   Classification criteria: `docs/protocol/agents/risk-classes.md`. Tests
+   prove only what they execute; a green gate grants no authority.
 6. External effects — push, merge, lock, cursor consumption, provider launch,
    paid spend, live-data mutation — each need separate exact authority for
    the executor, target, effect, and scope. Structural protocol data never
@@ -64,8 +65,6 @@ Load only the adapter for the harness you are in:
   `docs/protocol/cursor/roles/`.
 - Cross-provider: `docs/protocol/threeway/`.
 
-For evidence-ledger work, read `docs/protocol/codex/ledger-cli-adoption.md`
-before entering the target repo; Pipeline owns governance, the target repo
-owns product-local truth.
-
-Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.
+Target-repository routes (evidence-ledger and future destinations) resolve
+per task through `scripts/target_binding.py` and the provider continuation
+docs, not through this router.

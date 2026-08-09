@@ -3,10 +3,10 @@
 # threeway signer job can emit a signed ci_result after they pass during go-live
 # (workflow_dispatch with a validated integration SHA).
 #
-# Single source of truth for the smoke invariants: scripts/ci_smoke.py — if the
+# Single source of truth for the smoke invariants: scripts/governance_verify_all.py — if the
 # invariants change, update that script + ARCHITECTURE.md §15 together.
 #
-# Gates run by `python scripts/ci_smoke.py` (smoke job):
+# Gates run by `python scripts/governance_verify_all.py` (smoke job):
 #   - Doc-anchor drift (check_doc_claims on ARCHITECTURE.md; fatal kinds hard-fail
 #     local + CI, advisory kinds warn)
 #   - Coordination-state (check_coordination; FATAL hard-fails local + CI,
@@ -101,7 +101,7 @@ jobs:
         run: pip install --require-hashes -r requirements-dev.txt
 
       - name: Run ci_smoke (single source of truth for §15 invariants)
-        run: python scripts/ci_smoke.py
+        run: python scripts/governance_verify_all.py
 
   pytest:
     name: pytest tests (Python ${{ matrix.python-version }})

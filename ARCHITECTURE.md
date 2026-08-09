@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified against base: 2026-08-09 @ 89b212b*
+*Last verified against base: 2026-08-10 @ 3a068b8*
 
 ## 1. Purpose
 
@@ -184,7 +184,7 @@ gate:
 
 ```bash
 python -m pytest tests -q
-python scripts/ci_smoke.py
+python scripts/governance_verify_all.py
 python scripts/check_coordination.py
 ```
 

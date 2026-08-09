@@ -36,14 +36,9 @@ classification or second doctrine dump.
 - `scripts/mailbox_writer.py` validates and serializes event publication.
 - This adapter owns host task discovery, dispatch, and waiting behavior.
 
-Role deltas:
-
-- Director owns an accepted outcome and submits its actual committed range.
-- Operator may implement; when reviewing it stays non-author and issues the
-  evidence-backed GO/NITS/FAIL.
-- Coordinator observes, reconciles, and mediates without approving or authoring production work.
-- Readiness bridge reports current evidence without claiming work.
-- Subagents return bounded evidence and never publish a formal verdict or live-role event.
+Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`
+and its role skills. Subagents return bounded evidence and never publish a
+formal verdict or live-role event.
 
 Review depth follows `AGENTS.md` and the executable model. Once formal review is
 triggered, preserve its complete committed Compact Pair binding.
@@ -57,29 +52,15 @@ need exact authority for the executor, target, and scope.
 
 ## Review-state history boundary
 
-Current-schema request parsing begins strictly after the committed marker
-`coordination/mailbox/sent/2026-07-25T05-45-10Z-coordinator-to-operator-verify-request.md@61786501e26f7e1bac92efbdcd4ff0ea468a7bbb`.
-Active-failure continuity is frozen at implementation base
-`8d05a76489b8609634e1635ebfad12792abc8119`: the already-active
-`e0fbefdb56af03b8c04b6df58245f7533a3d83c0` FAIL remains active, historical
-FAILs that were not active at that base do not become retroactive blockers, and
-valid FAIL reports introduced after the base receive multi-request tracking,
-even when their request predates the base. A newer request for the same Operator
-may therefore be pending alongside an older active FAIL. Only a valid GO or NITS
-report bound to that exact request and explicitly superseding its FAIL clears
-the failure.
-
-Pending/current request display is seat-filtered. Active failed reviews are
-repository-global governance blockers, so a seat snapshot may display another
-Operator's failure; `assigned_operator` remains explicit in structured output.
-The active-failure cutover commit must resolve and be an ancestor of HEAD, or
-review-state projection fails closed.
-
-`scripts/baselines/immutable_review_history_exceptions.json` is a frozen,
-one-way exception manifest bound to its sole Git introduction. Never repair or
-extend that file in place. A future legitimate history exception requires a
-new versioned manifest or instrument plus separately reviewed high-risk control
-code; the frozen manifest remains byte-for-byte unchanged.
+Review-state projection is bound to the committed history-boundary manifest
+`scripts/baselines/review_history_boundary.json` (consumed fail-closed by
+`scripts/check_coordination.py`) and to the frozen exception manifest it
+names. Both are one-way versioned baselines: never repaired or extended in
+place — a future boundary change ships a new schema version through its own
+reviewed high-risk-control change. An active FAIL clears only through a valid
+GO or NITS report bound to that exact request and explicitly superseding the
+FAIL; active failed reviews are repository-global blockers, and the cutover
+commit must resolve as an ancestor of HEAD or projection fails closed.
 
 ## Evidence-ledger bridge
 

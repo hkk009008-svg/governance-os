@@ -103,7 +103,7 @@ Use current Pipeline protocol checks:
 
 ```bash
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests -q
-env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py
+env -u GIT_INDEX_FILE .venv/bin/python scripts/governance_verify_all.py
 ```
 
 Use evidence-ledger's own verification commands for product changes after

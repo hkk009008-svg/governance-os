@@ -44,10 +44,12 @@ REQUIRED_LEDGER_DOC_PHRASES = (
     "author behavior-changing product fixes",
     "Record both repository heads only when ownership or context actually transfers",
 )
+# AGENTS.md deliberately absent: the universal router names no product
+# target; per-task routes resolve through scripts/target_binding.py
+# (context-pruning PR 2).
 DOC_SURFACES = (
     "docs/protocol/codex/continuation.md",
     "docs/protocol/protocol-assembly-map.md",
-    "AGENTS.md",
     ".agents/skills/four-seat-protocol/SKILL.md",
 )
 CORE_CODEX_ROLE_PROMPTS = (

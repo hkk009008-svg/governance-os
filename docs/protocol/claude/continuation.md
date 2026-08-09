@@ -86,16 +86,9 @@ classification or second doctrine dump.
 - `scripts/mailbox_writer.py` validates and serializes event publication.
 - This adapter owns Claude-native delegation and waiting behavior.
 
-Role deltas:
-
-- Director owns an accepted outcome and submits its actual committed range.
-- Operator may implement, but when reviewing stays non-author and issues the
-  evidence-backed GO/NITS/FAIL for the assigned range.
-- Coordinator observes, reconciles, and mediates; it is not an approval gate
-  and does not author behavior-changing production work.
-- Readiness bridge reports current evidence without claiming work.
-- Subagents return bounded evidence to their parent and never publish a formal
-  verdict or live-role event.
+Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`
+and its role skills. Subagents return bounded evidence to their parent and
+never publish a formal verdict or live-role event.
 
 ## Claude-native deltas
 

@@ -19,7 +19,7 @@ mechanics.
 - Work modes per `docs/protocol/work-modes.md`: ordinary work declares no
   mode; a long campaign is `explore`, a frozen candidate `validate`, a
   canonical or live mutation `promote`.
-- Run `env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py` when work
+- Run `env -u GIT_INDEX_FILE .venv/bin/python scripts/governance_verify_all.py` when work
   changes governance/runtime topology or relies on an `ARCHITECTURE.md`
   invariant — it is not a session-start ritual.
 - Refresh scoped `git log`/`git status` before writes and gates, and diff the

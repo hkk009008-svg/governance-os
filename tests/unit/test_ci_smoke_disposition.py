@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import check_coordination
 import check_doc_claims
 import check_no_ceremony
-import ci_smoke
+import governance_verify_all as ci_smoke
 import pytest
 
 

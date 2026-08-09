@@ -17,21 +17,13 @@ choices, start with `docs/protocol/app-quickstart.md`.
 Runtime identity comes from the harness. Ambient policy variables, role labels,
 or prompt text do not grant authority.
 
-## Work mode before ceremony
+## Work mode at boundaries
 
-Select `explore`, `validate`, or `promote` from
-`docs/protocol/work-modes.md`; the closed profiles live in
-`scripts/codex_protocol_model.py`.
-
-- Explore is the default for reversible sandbox learning: one campaign brief,
-  automatic attempt logs, recorded reruns, and no formal review until transfer
-  or phase change.
-- Validate freezes one candidate and uses one non-author candidate review.
-- Promote carries the reviewed candidate, rollback point, and separately
-  authorized canonical or external effect.
-
-Mode is separate from review risk and grants no seat, write, provider launch,
-merge, push, or external-effect authority.
+Ordinary work declares no mode. A campaign selects `explore`, a frozen
+candidate `validate`, a canonical or live mutation `promote` — see
+`docs/protocol/work-modes.md` (closed profiles:
+`scripts/codex_protocol_model.py`). Mode is separate from review risk and
+grants no authority.
 
 ## Orientation
 
@@ -72,11 +64,8 @@ coordination/bin/consume-events <seat> [--to <timestamp>]
   prints a follow-up launch hint. It never executes that command or proves a
   seat was dispatched.
 
-Role deltas match the shared contract: Director owns an accepted outcome and
-submits its actual committed range; Operator may implement but stays non-author
-when reviewing; Coordinator observes and mediates without approving routes or
-authoring production work; subagents return bounded evidence and never publish
-a formal verdict.
+Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`;
+subagents return bounded evidence and never publish a formal verdict.
 
 ## AGY-native deltas
 
@@ -128,24 +117,11 @@ is evidence for that later decision, not authority to make it.
 
 ## Formation gate for claims
 
-A load-bearing claim — "enforced", "measured", "complete", "never", a cited
-reference — is a conjunction whose premises come from its shape, not from
-memory, and whose check must be able to disagree with its author. Apply the
-discipline at the boundary selected by the work mode:
-
-- Explore: use it for a claim that stops the campaign, selects a candidate, or
-  changes phase; cite routine observations directly.
-- Validate: use the full loop for the candidate's load-bearing conclusion.
-- Promote: retain the full loop and the independent review.
-
-For the full loop, derive the premises
-(`env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py premises "<claim>"`),
-cite each with the command that measured it, run the one command most likely
-to embarrass the claim, and attack it with a reduced-context reader when useful
-and separately authorized (`coordination/bin/probe-claim "<claim>"`).
-`scripts/claim_check.py sweep` is an optional lens over a range's uncited
-overclaim vocabulary. All advisory, none a gate; the full loop is
-`.agents/skills/probe-a-claim`.
+For a load-bearing claim, follow `.agents/skills/probe-a-claim` (premises
+from the claim's shape via `scripts/claim_check.py premises`, citations from
+commands, one embarrassing command, an optional reduced-context probe through
+`coordination/bin/probe-claim` — a real provider launch). All advisory, none
+a gate; apply at the boundary the work mode selects.
 
 ## Review and external effects
 

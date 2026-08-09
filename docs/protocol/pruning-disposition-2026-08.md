@@ -121,3 +121,21 @@ submitting a range, not only the code — an obligation can land mid-flight and
 bind in-progress work; one did (the evasion-control requirement) and killed a
 mechanism built hours earlier. The practice survives as a CLAUDE.md mechanics
 bullet; this paragraph is the originating story.
+
+---
+
+# PR 2 — doctrine deduplication (same disposition discipline)
+
+| Change | Disposition |
+|---|---|
+| Codex/Claude continuation "Role deltas" blocks; AGY "Role deltas match…" | moved: `.agents/skills/four-seat-protocol/SKILL.md` is the single owner; each doc keeps its pinned subagent-boundary sentence |
+| AGY "Work mode before ceremony" section | moved: `docs/protocol/work-modes.md` (implicit-Explore semantics); two-line boundary summary remains |
+| AGY "Formation gate for claims" full loop | moved: `.agents/skills/probe-a-claim` is the stated canonical loop; five-line pointer remains |
+| Codex continuation "Review-state history boundary" SHAs/paths | moved: `scripts/baselines/review_history_boundary.json` (versioned one-way manifest, schema_version 1) consumed fail-closed by `scripts/check_coordination.py::load_review_history_boundary`; adapter keeps a three-sentence summary. Migration equality + fail-closed paths pinned by `tests/unit/test_review_history_boundary.py` |
+| `scripts/ci_smoke.py` | renamed: `scripts/governance_verify_all.py` (the full aggregate, with `CHECKER_REGISTRY` mapping each gate to owned paths/trigger/severity/blocked effect, pinned by `tests/unit/test_governance_verify_registry.py`). A thin deprecated alias remains at the old path so the CI job vocabulary (`threeway/policy.py` `required_ci` "ci_smoke"), historical commands, and muscle memory keep resolving. Live normative docs updated; historical packets/handoffs/mailbox untouched (immutable evidence). CI workflow now runs the canonical name under the unchanged job name |
+| "Behavior-changing acceptance" wording (cursor-seats rule) | retargeted: "Material-behavior acceptance" with criteria at `docs/protocol/agents/risk-classes.md` — the executable model owns profiles per class, prose owned membership; now one reviewed home owns membership (including instruction surfaces as material) |
+| ChatGPT Pro pointer in `AGENTS.md` | retired from the universal router; pointer lives on the load-on-trigger surfaces (codex continuation, four-seat skill). Anti-regrowth pin added: `AGENTS.md` must not mention it |
+| Evidence-ledger route in `AGENTS.md` | retired from the universal router: per-task target routes resolve through `scripts/target_binding.py`; `DOC_SURFACES` retargeted with an anti-regrowth comment |
+| `ARCHITECTURE.md` smoke reference | updated to the canonical name; Last-verified stamp bumped (2026-08-10 @ 3a068b8) per the freshness gate |
+| Seat role skills (`seat-director/operator/coordinator`) | kept: already thin role deltas (~30 lines) whose unique content (verify-request composition, report binding, cursorless rules) exceeds their shared framing; further collapse deferred until a pin-consolidation pass proves worth the churn |
+| Cursor continuation | kept except the smoke rename: already host-mechanics-scoped and densely pinned by `test_cursor_surface_sync` |

@@ -6,7 +6,7 @@
 > current repository.
 
 Ordered steps to adopt this bundle. See [TRANSFER-MANIFEST.md](TRANSFER-MANIFEST.md)
-for what each piece is. The bundle already **boots green** (`ci_smoke.py` → exit 0)
+for what each piece is. The bundle already **boots green** (`governance_verify_all.py` → exit 0)
 out of the box; these steps make it *yours*.
 
 ---
@@ -48,7 +48,7 @@ python3 -m venv .venv    # any Python >= 3.11 (floor per DECISIONS.md ADR-004)
 ## 3. Run the smoke to confirm it boots
 
 ```bash
-.venv/bin/python scripts/ci_smoke.py     # expect: ... OK  (exit 0)
+.venv/bin/python scripts/governance_verify_all.py     # expect: ... OK  (exit 0)
 ```
 
 This is also the SessionStart hook — it runs automatically at the top of every
@@ -71,7 +71,7 @@ These are the places that need *your code/doctrine*, not just a name swap:
 
 | File | What to supply |
 |---|---|
-| `scripts/ci_smoke.py` (`_project_smoke()`) | your runtime smoke invariants (imports succeed, singletons stable, settings plumb through) |
+| `scripts/governance_verify_all.py` (`_project_smoke()`) | your runtime smoke invariants (imports succeed, singletons stable, settings plumb through) |
 | `scripts/wave_gate_check.py` | your product-oracle metric field names (two metric blocks) |
 | `.github/workflows/ci.yml` | any model-weight / asset cache steps + your pytest/test job |
 | `CLAUDE.md` · `AGENTS.md` (R-SKILL) | your domain-skill load triggers |
@@ -126,7 +126,7 @@ authority.
 ## Acceptance check
 
 ```bash
-python scripts/ci_smoke.py                  # OK, exit 0
+python scripts/governance_verify_all.py                  # OK, exit 0
 python scripts/check_coordination.py        # no FATALs
 python scripts/check_placeholders.py        # exit 0 when all skeletons are filled
 ```
@@ -145,7 +145,7 @@ allowlist is empty and the scan is clean, the repo is **fully bound** — no ske
 placeholders remain. (The gate is enforced by CI; a non-empty allowlist with clean
 scan simply means the corresponding skeletons are still unfilled.)
 
-When `ci_smoke.py` is green **and** `_project_smoke()` asserts something real
+When `governance_verify_all.py` is green **and** `_project_smoke()` asserts something real
 about your code, the kernel is locally testable. That does not prove the signed
 bus, protected merge gate, provider identity, or any external effect is live;
 verify those in their actual deployment before claiming them.

@@ -408,7 +408,7 @@ CODEX_VERIFICATION_COMMANDS = (
     "tests/unit/test_protocol_doc_integrity.py "
     "tests/unit/test_protocol_prompt_sync.py "
     "tests/unit/test_codex_ledger_bridge.py -q",
-    "python scripts/ci_smoke.py",
+    "python scripts/governance_verify_all.py",
 )
 
 
