@@ -505,6 +505,11 @@ def test_scalar_cursor_without_bus_reports_mailbox_fallback_unread(
 
 def test_partial_bus_refs_are_fatal_transport_incoherence(tmp_path: Path) -> None:
     coord = _seed_coordination(tmp_path)
+    # Partial-cutover incoherence only exists under a declared signed-bus
+    # transport; the mailbox default never consults these refs.
+    (tmp_path / "governance.toml").write_text(
+        '[coordination]\ntransport = "signed-bus"\n', encoding="utf-8"
+    )
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "config", "user.name", "Coord Test")
     _git(tmp_path, "config", "user.email", "coord@example.invalid")

@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Resolve unread state without confusing an absent bus with an empty bus.
+"""Resolve unread state through the explicitly configured transport.
 
-The mailbox remains authoritative until the local signed bus is demonstrably live:
-both ``refs/threeway/events`` and the addressed seat's cursor ref must resolve and
-their sequence relationship must be coherent.  A scalar ``seen/<seat>.txt`` cursor
-without that proof is interpreted against the canonical ordered mailbox projection.
-This is the reversible side of the legacy backfill and prevents an absent bus from
-silently rendering ``0 unread``.
+The coordination transport is declarative: ``governance.toml``
+``[coordination] transport`` names the authority, and ``"mailbox"`` (the
+current configuration) short-circuits every signed-bus probe — an unconsulted
+bus cannot be confused with an empty one, and a missing or malformed
+configuration fails closed instead of degrading to inference. Only an
+explicit reviewed cutover to ``"signed-bus"`` re-enables the liveness proof:
+both ``refs/threeway/events`` and the addressed seat's cursor ref must then
+resolve coherently before the ref-bus answers. A scalar ``seen/<seat>.txt``
+cursor without that proof is interpreted against the canonical ordered
+mailbox projection, which prevents an absent bus from silently rendering
+``0 unread``.
 
 Design contract:
 * LOCAL ONLY — ``RefEventStore(remote=None)`` never ``_sync()``s (every ``_sync`` call site
@@ -22,6 +27,7 @@ Design contract:
 from __future__ import annotations
 
 import sys
+import tomllib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -31,7 +37,6 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:                      # ADR-055 self-bootstrap (no PYTHONPATH)
     sys.path.insert(0, str(_REPO_ROOT))
 
-from threeway import gitcas                               # noqa: E402
 
 
 _ISO_CURSOR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -43,6 +48,43 @@ _EVENT_NAME_RE = re.compile(
 )
 _TS_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-")
 _EVENTS_REF = "refs/threeway/events"
+_TRANSPORT_VALUES = frozenset({"mailbox", "signed-bus"})
+
+
+def coordination_transport(repo_root) -> str:
+    """Declared coordination transport; omission can never activate the bus.
+
+    The signed bus activates only through an explicit
+    ``[coordination] transport = "signed-bus"`` declaration in
+    ``governance.toml``. An absent file or absent key defaults to
+    ``"mailbox"`` — the fail-safe direction, and removing the declaration is
+    itself a reviewed authority-surface edit. A file that exists but cannot
+    be parsed, or a declared value outside the closed set, raises: a
+    corrupted declaration is ambiguity and stays visible rather than
+    degrading to inference.
+    """
+    path = Path(repo_root) / "governance.toml"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return "mailbox"
+    except OSError as exc:
+        raise RuntimeError(
+            f"coordination transport declaration unreadable: {exc}"
+        ) from exc
+    try:
+        payload = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise RuntimeError(
+            f"coordination transport declaration unparsable: {exc}"
+        ) from exc
+    transport = payload.get("coordination", {}).get("transport", "mailbox")
+    if transport not in _TRANSPORT_VALUES:
+        raise RuntimeError(
+            "governance.toml [coordination] transport must be one of "
+            f"{sorted(_TRANSPORT_VALUES)}; found {transport!r}"
+        )
+    return transport
 
 
 @dataclass(frozen=True)
@@ -89,6 +131,15 @@ def bus_authority_state(repo_root, seat: str) -> BusAuthority:
     """
 
     root = Path(repo_root)
+    if coordination_transport(root) == "mailbox":
+        return BusAuthority(
+            "absent",
+            "coordination transport is explicitly 'mailbox' "
+            "(governance.toml); signed-bus refs are not consulted",
+        )
+    # Lazy import: only a configured signed-bus transport consults the package.
+    from threeway import gitcas
+
     try:
         tip = gitcas.rev_parse(root, _EVENTS_REF)
         cursor_ref = f"refs/threeway/cursors/{seat}"

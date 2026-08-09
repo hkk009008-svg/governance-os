@@ -17,6 +17,8 @@ import subprocess
 import pytest
 
 import agy_observer
+from pathlib import Path
+
 import bus_unread
 import run_merge_gate
 import sign_ci_result
@@ -287,6 +289,13 @@ def test_run_merge_gate_script(temp_git_repo):
 def test_bus_unread_script(temp_git_repo):
     repo_dir = temp_git_repo["repo_dir"]
     store = RefEventStore(repo_dir)
+
+    # The transport is declarative: this fixture opts into the signed bus
+    # explicitly, because the liveness proof below only runs for a configured
+    # signed-bus transport (mailbox short-circuits it).
+    (Path(repo_dir) / "governance.toml").write_text(
+        '[coordination]\ntransport = "signed-bus"\n', encoding="utf-8"
+    )
 
     # Test migrated cursor classification
     assert bus_unread.is_migrated_cursor("42") is True

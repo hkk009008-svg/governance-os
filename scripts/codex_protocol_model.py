@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import os
+import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 if __package__:
     from scripts import protocol_mailbox
@@ -147,46 +149,60 @@ def work_profile_for(work_mode: str) -> WorkModeProfile:
 # it is. `codex-gpt-5.6-terra` and `gpt-5.6-terra` are one model behind two
 # labels; independence must not be satisfiable by the prefix alone.
 MODEL_HARNESS_PREFIXES = ("codex-", "antigravity-", "cursor-", "agy-", "claude-code-")
-MODEL_PROVIDER_FAMILIES = {
-    "anthropic-": "claude",
-    "openai-": "gpt",
-    "google-": "gemini",
-    "xai-": "grok",
-}
-MODEL_ID_REGISTRY = {
-    "claude-fable-5": "claude",
-    "claude-opus-5": "claude",
-    "claude-sonnet-5": "claude",
-    "claude-sonnet-4-6": "claude",
-    "claude-opus-4-6-thinking": "claude",
-    "gpt-5": "gpt",
-    "gpt-5-codex": "gpt",
-    "gpt-5.6-sol": "gpt",
-    "gpt-5.6-terra": "gpt",
-    "chatgpt-4o": "gpt",
-    "o1": "gpt",
-    "o3": "gpt",
-    "o3-mini": "gpt",
-    "o4": "gpt",
-    "gpt-oss-120b": "gpt",
-    "gpt-oss-120b-medium": "gpt",
-    "gemini-3.6": "gemini",
-    "gemini-3.6-flash": "gemini",
-    "gemini-3.6-flash-high": "gemini",
-    "gemini-3.6-flash-medium": "gemini",
-    "gemini-3.6-flash-low": "gemini",
-    "gemini-3.5-flash-high": "gemini",
-    "gemini-3.5-flash-medium": "gemini",
-    "gemini-3.5-flash-low": "gemini",
-    "gemini-3.1-pro-high": "gemini",
-    "gemini-3.1-pro-low": "gemini",
-    "grok-4": "grok",
-    "grok-4.5": "grok",
-}
-MODEL_DISPLAY_ALIASES = {
-    "GPT-5 Codex": "gpt-5-codex",
-    "Gemini 3.1 Pro (High)": "gemini-3.1-pro-high",
-}
+_MODEL_FAMILIES_CONFIG = (
+    Path(__file__).resolve().parent.parent / "config" / "model-families.toml"
+)
+
+
+def load_model_families(config_path: Path = _MODEL_FAMILIES_CONFIG) -> tuple[
+    dict[str, str], dict[str, str], dict[str, str]
+]:
+    """Load the model-family registry from configuration, failing closed.
+
+    This data feeds ``models_are_independent``, which gates high-risk-control
+    review acceptance — it is a trust-granting schema input, not casual
+    config. A missing, unparsable, or wrong-shaped file raises rather than
+    degrading to an empty registry (an empty registry would silently make
+    every independence claim fail, and a permissive default could make one
+    falsely pass). Unknown model IDs remain family-``None``: free for
+    ordinary work, never sufficient for a different-family claim.
+    """
+    try:
+        payload = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise RuntimeError(
+            f"model-families configuration unavailable or unparsable: {exc}"
+        ) from exc
+    if payload.get("schema_version") != 1:
+        raise RuntimeError("model-families schema_version must be 1")
+    tables = []
+    for key in ("provider_prefixes", "families", "display_aliases"):
+        table = payload.get(key)
+        if not isinstance(table, dict) or not table or not all(
+            isinstance(name, str) and name and isinstance(value, str) and value
+            for name, value in table.items()
+        ):
+            raise RuntimeError(
+                f"model-families [{key}] must be a nonempty string→string table"
+            )
+        tables.append(dict(table))
+    prefixes, families, aliases = tables
+    known_families = set(prefixes.values())
+    unknown = {family for family in families.values() if family not in known_families}
+    if unknown:
+        raise RuntimeError(
+            f"model-families [families] names families with no provider prefix: {sorted(unknown)}"
+        )
+    if unmapped := {alias: model for alias, model in aliases.items() if model not in families}:
+        raise RuntimeError(
+            f"model-families [display_aliases] targets unknown model IDs: {sorted(unmapped)}"
+        )
+    return prefixes, families, aliases
+
+
+MODEL_PROVIDER_FAMILIES, MODEL_ID_REGISTRY, MODEL_DISPLAY_ALIASES = (
+    load_model_families()
+)
 
 
 def model_family(model_id: str) -> str | None:

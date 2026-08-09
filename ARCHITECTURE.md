@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified against base: 2026-08-10 @ 3a068b8*
+*Last verified against base: 2026-08-10 @ c15ac4b*
 
 ## 1. Purpose
 
@@ -51,7 +51,7 @@ canonical or external-effect scope. The mode itself grants no authority; see
 | `.agents/skills/` | On-demand role procedures. Skill presence grants no authority. |
 | `.codex/agents/` | Small reusable role deltas; no numbered pseudo-seat inventory. |
 | Repository lifecycle hooks | Absent on every side except `.cursor/hooks/seat-policy`, which gates enforceable shell/MCP approvals and denies unsupported file-tool asks. No side depends on a hook for orientation or durable state. |
-| `threeway/` | Signed ref-bus substrate used only when its event and matching cursor refs prove it live. Dormant here; still load-bearing, because proving the bus absent is what makes the mailbox fallback correct. |
+| `threeway/` | Signed ref-bus substrate, dormant experimental capacity: the coordination transport is explicitly `mailbox` (`governance.toml`), so the active runtime never consults these refs; activation is a reviewed transport change plus live refs. Covered by its own unit tests while dormant. |
 | `governance.toml` | Registered product targets. Targets are selected per task, not fixed. |
 | `.claude/`, `.codex/`, `.cursor/`, `.agents/agents/`, `.agents/workflows/` | Provider discovery/adaptation surfaces. Each owns runtime mechanics only; policy comes from `scripts/codex_protocol_model.py`. |
 
@@ -146,12 +146,16 @@ The table names stable symbols instead of volatile line numbers.
 
 ## 6. Queue and publication authority
 
-The mailbox is authoritative until both the signed event ref and the addressed
-seat's signed cursor ref exist and form a coherent sequence. An absent or
-partial bus is never interpreted as an empty queue. Legacy scalar cursors are
-resolved against the canonical ordered mailbox projection while the bus is not
-proven live. Malformed state produces an unavailable/failing result, not zero
-unread.
+The mailbox is the explicitly configured coordination transport
+(`governance.toml` `[coordination] transport = "mailbox"`, consumed by
+`scripts/bus_unread.py`: omission defaults to the mailbox, a corrupted
+declaration fails closed); signed-bus probes are not consulted while it is
+configured, so an unconsulted bus can never be confused with an empty one.
+Cutting over to the signed bus is a reviewed transport change plus a live,
+coherent event/cursor ref pair — never an inferred state. Legacy scalar
+cursors resolve against the canonical ordered mailbox projection. Malformed
+transport configuration or state produces an unavailable/failing result, not
+zero unread.
 
 All new events pass through `coordination/bin/send-event` and the fixed writer.
 The writer rejects malformed envelopes, invalid sender/kind combinations, and
@@ -198,7 +202,8 @@ merge, or issue a formal verdict.
   they are not a requirement to allocate four agents to every task.
 - Historical capacity packets, handoffs, events, and SHA citations remain
   evidence and may contain superseded process language.
-- The signed bus is optional until its complete local authority pair is live.
+- The signed bus activates only through an explicit reviewed transport change
+  plus its complete live local authority pair.
 - A configured model name is runtime evidence, not cryptographic provider
   attestation.
 - A normal target checkout may be stale relative to an explicitly routed

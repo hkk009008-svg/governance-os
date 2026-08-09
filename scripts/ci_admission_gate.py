@@ -61,6 +61,7 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
     ".cursor/rules/",
     ".cursor/skills/",
     ".github/workflows/",
+    "config/",
     ":(glob)tests/**/conftest.py",
     "AGENTS.md",
     "ARCHITECTURE.md",
