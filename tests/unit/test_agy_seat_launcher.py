@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts import agy_seat_launcher as launcher
-from scripts import codex_protocol_model
+import agy_seat_launcher as launcher
+import codex_protocol_model
 
 
 SEATS = ("director", "director2", "operator", "operator2", "coordinator")

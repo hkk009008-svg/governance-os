@@ -12,7 +12,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts import ci_admission_gate, codex_protocol_model as model  # noqa: E402
+import ci_admission_gate  # noqa: E402
+import codex_protocol_model as model  # noqa: E402
 
 # Frozen migration snapshot: the registry as it lived in policy code at the
 # relocation commit. Additions are free (subset assertion); silently dropping

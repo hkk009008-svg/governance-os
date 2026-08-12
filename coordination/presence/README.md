@@ -1,15 +1,19 @@
 # Presence files
 
-Each concurrently-running seat publishes a **presence file** here (`<seat>.md`) and a
-**heartbeat** (`<seat>-heartbeat.ts`, an ISO-8601 timestamp written each loop). Together
-they let any other seat answer "who is online, what are they doing, and is their view of
-the tree stale?" without interrupting them — signal via artifacts, not chat.
+Presence is an **optional, manually maintained** convenience. A seat may publish a
+**presence file** here (`<seat>.md`) and, if it chooses, a **heartbeat**
+(`<seat>-heartbeat.ts`, an ISO-8601 timestamp) so other seats can ask "who is online
+and what are they doing?" without interrupting them. There is **no automatic heartbeat
+loop and no lifecycle hook that writes these** — the hooks that once stamped them are
+retired. Absence of a presence file or a stale heartbeat therefore means nothing on its
+own; it is not evidence a seat is offline.
 
-- **Presence files are runtime state**, regenerated every cycle. They are gitignored
-  (see the repo `.gitignore`); only `SEAT.md.template` and this README are committed.
-- Copy `SEAT.md.template` to `<your-seat>.md` and keep it current as you work.
-- A presence file is a **snapshot** — a peer can come online mid-session. Trust git
-  (`git log`), the mailbox, and the coordinator inventory over any presence prose.
+- **Presence files are runtime state** and are gitignored (see the repo `.gitignore`);
+  only `SEAT.md.template` and this README are committed.
+- Copy `SEAT.md.template` to `<your-seat>.md` and update it by hand while you work.
+- A presence file is a **snapshot**, not authority. Trust git (`git log`), the mailbox,
+  and the coordinator inventory over any presence prose. `scripts/mailbox_monitor.py`
+  can still read a heartbeat if one exists, but treats missing/stale as unknown.
 
 ## Seat names
 

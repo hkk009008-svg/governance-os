@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from scripts import agy_observer
+import agy_observer
 
 
 def test_summarize_bus_can_prepend_compact_snapshot(monkeypatch, capsys, tmp_path):

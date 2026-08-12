@@ -7,6 +7,7 @@ update-ref. Every call strips GIT_INDEX_FILE (per-seat index pollution, CLAUDE.m
 from __future__ import annotations
 
 import os
+import pathlib
 import subprocess
 import tempfile
 
@@ -21,18 +22,42 @@ _DET_ENV = {
 }
 
 
+# Ambient variables that can retarget which repository, index, or config a
+# git call answers for. A deliberate mirror of the policy in
+# scripts/git_runner.py (this package must not import scripts/).
+_RETARGETING_GIT_VARS = (
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CEILING_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_CONFIG",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_DIR",
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+    "GIT_INDEX_FILE",
+    "GIT_NAMESPACE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_WORK_TREE",
+)
+
+
 def _env(extra: dict | None = None) -> dict:
     env = dict(os.environ)
-    env.pop("GIT_INDEX_FILE", None)
+    for name in _RETARGETING_GIT_VARS:
+        env.pop(name, None)
     if extra:
         env.update(extra)
     return env
 
 
 def _run(repo, *args, env_extra=None, check=True):
+    env = _env(env_extra)
+    # Discovery pinned to the named repository, matching scripts/git_runner.py.
+    env["GIT_CEILING_DIRECTORIES"] = str(pathlib.Path(repo).resolve().parent)
     return subprocess.run(
         ["git", "-C", str(repo), *args],
-        capture_output=True, text=True, env=_env(env_extra), check=check,
+        capture_output=True, text=True, env=env, check=check,
     )
 
 

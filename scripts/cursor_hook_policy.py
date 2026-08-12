@@ -12,6 +12,19 @@ Top-level MCP calls ask through their separately enforceable hook; subagent MCP
 calls deny. Hard denies are reserved for protected coordination surfaces,
 direct fixed-writer calls, foreign provider launchers, and subagent seat
 impersonation.
+
+This policy is fail-closed at its edges: malformed payloads, unrecognized
+hook events, and preToolUse tools without a rule all deny instead of falling
+through to allow. Tools that own a dedicated hook event (Shell, Task, MCP)
+pass preToolUse untouched so no action is double-evaluated.
+
+Subagent containment lives at ``subagentStart``. Cursor's tool-surface hooks
+(preToolUse / beforeShellExecution / beforeMCPExecution) carry no subagent
+discriminator and a child shares the parent's conversation_id, so a launched
+subagent's tool calls cannot be distinguished from the parent's here; the
+``_subagent`` detector is fail-closed forward-compatibility, not an enforced
+control. See ``docs/protocol/cursor/continuation.md`` and
+``tests/unit/test_cursor_hook_policy.py`` for the schema pin.
 """
 
 from __future__ import annotations
@@ -27,30 +40,16 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-try:
-    from scripts.cursor_app_binding import (
-        DEFAULT_REGISTRY_PATH,
-        DIRECTOR_SEATS,
-        OPERATOR_SEATS,
-        AppBindingError,
-        AppSessionBinding,
-        register_payload_session,
-        resolve_registered_session,
-        session_environment,
-    )
-except ModuleNotFoundError as exc:
-    if exc.name != "scripts":
-        raise
-    from cursor_app_binding import (  # type: ignore[no-redef]
-        DEFAULT_REGISTRY_PATH,
-        DIRECTOR_SEATS,
-        OPERATOR_SEATS,
-        AppBindingError,
-        AppSessionBinding,
-        register_payload_session,
-        resolve_registered_session,
-        session_environment,
-    )
+from cursor_app_binding import (
+    DEFAULT_REGISTRY_PATH,
+    DIRECTOR_SEATS,
+    OPERATOR_SEATS,
+    AppBindingError,
+    AppSessionBinding,
+    register_payload_session,
+    resolve_registered_session,
+    session_environment,
+)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _PROTECTED_PREFIXES = (
@@ -245,10 +244,14 @@ _INERT_ENVIRONMENT_OVERRIDES = frozenset(
         "TZ",
     }
 )
+# Kept in lockstep with the canonical event-name grammar in
+# scripts/protocol_mailbox.py (EVENT_NAME_RE); this local copy exists only
+# because the hook must import nothing heavier than cursor_app_binding.
+# ``coordinator2`` is cold capacity but remains a lawful roster identity.
 _MAILBOX_EVENT_NAME = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-"
-    r"(?P<sender>director2?|operator2?|coordinator)-to-"
-    r"(?:director2?|operator2?|coordinator|all)-[a-z0-9-]+\.md$"
+    r"(?P<sender>director2?|operator2?|coordinator2?)-to-"
+    r"(?:director2?|operator2?|coordinator2?|all)-[a-z0-9-]+\.md$"
 )
 
 
@@ -272,11 +275,29 @@ def _deny(message: str) -> dict[str, str]:
     }
 
 
+# Cursor's published hook schema (cursor.com/docs/hooks) gives the
+# tool-surface events — preToolUse, beforeShellExecution, beforeMCPExecution —
+# only the common base fields (conversation_id, generation_id, model,
+# workspace_roots, ...) plus their tool-specific data. NONE of them carries a
+# subagent discriminator, and a Task-tool child shares its parent's
+# conversation_id. The subagent identity (subagent_type, task,
+# parent_conversation_id) exists ONLY on the subagentStart event. So a child's
+# file edit or shell command is, at the tool hook, indistinguishable from the
+# parent's: the enforceable containment point is subagentStart, not the tool
+# surface. This detector stays as fail-closed forward-compatibility — if a
+# future Cursor version ever tags tool-surface payloads with any child marker,
+# the mutating branches immediately treat it as a child — but it is not the
+# guarantee. It scans for any plausible child marker rather than a fixed list.
+_CHILD_MARKER_SUBSTRINGS = ("subagent", "parent_conversation")
+
+
 def _subagent(payload: Mapping[str, Any]) -> bool:
-    return any(
-        key in payload
-        for key in ("subagent_id", "subagent_type", "parent_conversation_id")
-    )
+    for key, value in payload.items():
+        lowered = key.lower()
+        if any(marker in lowered for marker in _CHILD_MARKER_SUBSTRINGS):
+            if value not in (None, "", False):
+                return True
+    return False
 
 
 def _normalized_path(value: object, *, root: Path) -> str:
@@ -1303,7 +1324,7 @@ def evaluate(
     if event == "subagentStart":
         task = payload.get("task", "")
         if isinstance(task, str) and re.search(
-            r"\b(director2?|operator2?|coordinator)\s+seat\b|\bissue\s+(go|nits|fail)\b",
+            r"\b(director2?|operator2?|coordinator2?)\s+seat\b|\bissue\s+(go|nits|fail)\b",
             task,
             re.IGNORECASE,
         ):
@@ -1346,6 +1367,13 @@ def evaluate(
         if not isinstance(tool_input, dict):
             return _deny("Cursor hook received malformed tool input.")
         tool = payload.get("tool_name")
+        if tool in {"Shell", "Task"} or (
+            isinstance(tool, str) and tool.startswith("MCP")
+        ):
+            # Owned by beforeShellExecution / subagentStart /
+            # beforeMCPExecution; a second preToolUse gate here would
+            # double-evaluate the same action.
+            return _allow()
         if tool in {"Write", "Delete", "Edit", "ApplyPatch"}:
             paths = _tool_paths(tool_input)
             if not paths:
@@ -1369,8 +1397,16 @@ def evaluate(
                 f"edits in this {posture} session. Use a bound Director or an "
                 "approved shell mutation."
             )
-        return _allow()
-    return _allow()
+        return _deny(
+            f"Cursor hook policy has no preToolUse rule for tool {tool!r}; "
+            "denying by default. Extend .cursor/hooks.json and "
+            "cursor_hook_policy.py together for a new mutating tool."
+        )
+    return _deny(
+        f"Cursor hook policy does not handle hook event {event!r}; "
+        "denying by default. Wire new events through .cursor/hooks.json and "
+        "cursor_hook_policy.py together."
+    )
 
 
 def process_bytes(
@@ -1386,18 +1422,17 @@ def process_bytes(
         if not isinstance(payload, dict):
             raise ValueError("hook payload is not an object")
     except (UnicodeError, json.JSONDecodeError, ValueError):
-        result = (
-            _deny("Malformed input was denied by the fail-closed Cursor app hook.")
-            if event_hint
-            in {
-                "beforeShellExecution",
-                "beforeMCPExecution",
-                "preToolUse",
-                "subagentStart",
-            }
-            else {}
+        # Fail closed regardless of which event produced the bytes. For
+        # events without permission semantics (sessionStart) the deny fields
+        # are inert, which still degrades to an unbound readiness session.
+        return (
+            json.dumps(
+                _deny(
+                    "Malformed input was denied by the fail-closed Cursor app hook."
+                )
+            ),
+            0,
         )
-        return json.dumps(result), 0
     if event_hint and "hook_event_name" not in payload:
         payload["hook_event_name"] = event_hint
     return (

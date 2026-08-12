@@ -16,10 +16,12 @@ from pathlib import Path
 
 from threeway.envelope import Event
 
-# Filename grammar — kept in lockstep with check_coordination.py:55 _EVENT_NAME_RE
-# (re-grep both if the seat roster changes; Slice 2.5 Phase A adds coordinator2 there
-# and MUST add it here too). ts is the dash-form timestamp; full filename is the
-# secondary total-order key (spec §6).
+# Filename grammar — a deliberate literal copy of the canonical
+# scripts/protocol_mailbox.py EVENT_NAME_RE (this package must not import
+# scripts/). Behavioral lockstep is enforced by
+# tests/unit/test_event_grammar_sync.py; update both together if the roster
+# changes. ts is the dash-form timestamp; full filename is the secondary
+# total-order key (spec §6).
 _EVENT_NAME_RE = re.compile(
     r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-"
     r"(?P<frm>director|director2|operator|operator2|coordinator|coordinator2)-"

@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from scripts import cursor_app_binding as binding
+import cursor_app_binding as binding
 
 
 def _git(root: Path, *args: str) -> str:

@@ -26,8 +26,9 @@ from threeway.gate import verify_and_reduce              # noqa: E402
 from threeway.keys import load_private                   # noqa: E402
 from threeway.loop import PAIR_A, PAIR_B, build_candidate_events  # noqa: E402
 from threeway.refstore import AppendContentionExceeded, RefEventStore  # noqa: E402
+import protocol_mailbox  # noqa: E402
 
-SEATS = ("director", "director2", "operator", "operator2", "coordinator", "coordinator2")
+SEATS = protocol_mailbox.SENDERS
 
 AUTHORITY = {
     "coordinator":  {"candidate", "release_requested", "candidate_aborted", "attestation_revoked"},

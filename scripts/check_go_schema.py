@@ -11,6 +11,8 @@ import re
 import stat
 import subprocess
 import sys
+
+import git_runner
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -398,11 +400,10 @@ def _retired_report_violations(
             if not stat.S_ISDIR(metadata.st_mode):
                 violations.append(f"{prefix} retired worktree shell is not a directory")
             else:
-                environment = {
-                    key: value
-                    for key, value in os.environ.items()
-                    if not key.startswith("GIT_")
-                }
+                # Ceiling-pinned: the probe asks whether ``repository`` is
+                # itself live. Without the pin, a retired shell directory
+                # inside a real checkout reports the enclosing repository
+                # and produces a false "reappeared" violation.
                 live = subprocess.run(
                     [
                         "/usr/bin/git",
@@ -411,7 +412,7 @@ def _retired_report_violations(
                         "--show-toplevel",
                     ],
                     cwd=repository,
-                    env=environment,
+                    env=git_runner.authority_env(repository),
                     capture_output=True,
                     check=False,
                 )

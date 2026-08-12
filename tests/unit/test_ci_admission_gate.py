@@ -11,7 +11,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from scripts import ci_admission_gate as gate
+import ci_admission_gate as gate
 
 
 REQUEST_PATH = (

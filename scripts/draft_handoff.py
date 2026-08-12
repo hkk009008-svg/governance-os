@@ -13,7 +13,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import protocol_mailbox
@@ -72,7 +72,9 @@ def repo_root() -> Path:
 
 
 def now_local() -> str:
-    return datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
+    # UTC with the trailing Z, matching mailbox/event ISO stamps; a local
+    # offset here would not line up with committed event timestamps.
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _normalize_cursor(cursor: str) -> str:
@@ -336,7 +338,7 @@ def write_output(path: Path, text: str) -> None:
 
 
 def default_output_path(root: Path, seat: str) -> Path:
-    stamp = datetime.now().astimezone().strftime("%Y-%m-%d")
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return root / "docs" / f"HANDOFF-{seat}-{stamp}-automated-draft.md"
 
 

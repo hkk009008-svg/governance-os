@@ -31,6 +31,7 @@ import re
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,13 +55,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _TS_LEN = 20  # length of "2026-05-28T20-38-34Z"
 
-# Pattern: <ts>-<from>-to-<to>-<kind>.md
-# We extract: ts (first 20 chars), to-seat (segment after "-to-")
-_EVENT_RE = re.compile(
-    r'^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)'
-    r'-\w+-to-(?P<to>\w+)-'
-    r'.+\.md$'
-)
+# Canonical event-filename grammar (protocol_mailbox.EVENT_NAME_RE); the
+# previous local copy accepted any ``\w+`` sender/recipient, so count_unread
+# counted filenames the fixed writer would reject.
 
 
 def _normalize_ts(ts: str) -> str:
@@ -100,10 +97,9 @@ def count_unread(cursor_ts: str, event_filenames: list[str], seat: str) -> int:
         m = _EVENT_RE.match(fname)
         if not m:
             continue
-        event_ts = m.group("ts")   # already dashes
-        event_to = m.group("to")
-        # `all` is a broadcast target → addressed to every real seat (4-seat
-        # protocol). _EVENT_RE's (?P<to>\w+) already matches director2/operator2.
+        event_ts = m.group("stamp")   # already dashes
+        event_to = m.group("recipient")
+        # `all` is a broadcast target → addressed to every real seat.
         if event_to != seat and event_to != "all":
             continue
         if event_ts > cursor_norm:
@@ -154,6 +150,7 @@ import bus_unread  # noqa: E402  — de-degrade: real ref-bus unread for migrate
 
 _MAILBOX_SEATS = protocol_mailbox.RECEIVING_SEATS
 _CURSOR_SEATS = protocol_mailbox.SEATS
+_EVENT_RE = protocol_mailbox.EVENT_NAME_RE
 
 
 def render_manifest(components: Optional[list], error: Optional[str] = None) -> list[str]:
@@ -475,6 +472,12 @@ def _parse_env_key(repo_root: Path, key: str) -> Optional[str]:
 def _probe_url(url: str, timeout: int = 3) -> str:
     """Probe <url>/system_stats; return 'UP' or 'DOWN'."""
     try:
+        # The URL comes from .env (a local, possibly less-trusted file). Only
+        # http/https may be probed: without this an attacker-writable .env
+        # could point urlopen at file:// (local read) or another scheme.
+        scheme = urllib.parse.urlsplit(url).scheme.lower()
+        if scheme not in {"http", "https"}:
+            return "DOWN (unsupported URL scheme)"
         probe = url.rstrip("/") + "/system_stats"
         with urllib.request.urlopen(probe, timeout=timeout) as resp:
             if resp.status == 200:

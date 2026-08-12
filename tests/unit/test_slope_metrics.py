@@ -11,7 +11,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts import slope_metrics  # noqa: E402
+import slope_metrics  # noqa: E402
 
 _SENT = "coordination/mailbox/sent"
 _HEX_A = "a" * 40

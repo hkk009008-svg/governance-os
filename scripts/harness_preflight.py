@@ -33,12 +33,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-try:
-    from scripts import compact_pair_loop
-except ModuleNotFoundError as exc:
-    if exc.name != "scripts":
-        raise
-    import compact_pair_loop  # type: ignore[no-redef]
+import compact_pair_loop
 
 HARNESSES = ("codex", "agy", "cursor")
 AGY_SETTINGS = Path("~/.gemini/antigravity-cli/settings.json")

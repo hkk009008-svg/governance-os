@@ -15,8 +15,8 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts import learning_extract  # noqa: E402
-from scripts import learning_index  # noqa: E402
+import learning_extract  # noqa: E402
+import learning_index  # noqa: E402
 import protocol_mailbox  # noqa: E402
 
 

@@ -13,12 +13,12 @@ import sys
 from pathlib import Path
 
 # ADR-055: bare `python scripts/overseer_plan.py` puts scripts/ (not the repo root) on sys.path[0];
-# put the repo root first so `import threeway` / `from scripts import overseer_emit` resolve.
+# put the repo root first so `import threeway` resolves; siblings import flat.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts import overseer_emit
+import overseer_emit
 from threeway.gate import verify_and_reduce
 from threeway.policy import default_policy
 from threeway.refstore import RefEventStore

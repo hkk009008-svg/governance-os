@@ -11,7 +11,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts import bus_unread  # noqa: E402
+import bus_unread  # noqa: E402
 
 
 def test_this_repository_declares_the_mailbox_transport() -> None:

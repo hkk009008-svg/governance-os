@@ -86,12 +86,13 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 import claim_check  # noqa: E402
+import git_runner  # noqa: E402
+import protocol_mailbox  # noqa: E402
 
 SENT_DIR = "coordination/mailbox/sent"
-_EVENT_NAME_RE = re.compile(
-    r"(?P<stamp>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})Z-"
-    r"(?P<sender>[a-z0-9]+)-to-(?P<recipient>[a-z0-9]+)-(?P<kind>[a-z-]+)\.md"
-)
+# Canonical grammar; the previous local copy dropped the Z from the stamp
+# group and forbade digits in kinds.
+_EVENT_NAME_RE = protocol_mailbox.EVENT_NAME_RE
 _VERDICT_RE = re.compile(r"^VERDICT: (?P<verdict>GO|NITS|FAIL)\s*$", re.MULTILINE)
 _REQUEST_REF_RE = re.compile(
     r"^Verification request: (?P<path>\S+\.md)@[0-9a-f]{40}\s*$", re.MULTILINE
@@ -175,12 +176,14 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
         ["git", "-C", str(root), *args],
         capture_output=True,
         check=check,
+        env=git_runner.dashboard_env(root),
     )
 
 
 def _stamp_to_epoch(stamp: str) -> float:
+    # The canonical stamp group includes the trailing Z.
     return (
-        datetime.strptime(stamp, "%Y-%m-%dT%H-%M-%S")
+        datetime.strptime(stamp, "%Y-%m-%dT%H-%M-%SZ")
         .replace(tzinfo=timezone.utc)
         .timestamp()
     )

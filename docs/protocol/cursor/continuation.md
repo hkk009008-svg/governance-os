@@ -79,8 +79,16 @@ bootstrap policy changes without disabling hooks.
   changes. Not part of the standing pair.
 - **Subagents:** optional parent-scoped advisors/capacity workers, launchable
   from any chat including bound seat chats. They are not durable seats and
-  cannot publish verdicts or inherit seat authority; the hook denies them repo
-  mutation, mailbox effects, and seat impersonation regardless of the parent.
+  cannot publish verdicts or inherit seat authority. The enforceable hook
+  boundary is `subagentStart`, which denies seat impersonation at launch.
+  Cursor's tool-surface hooks (`preToolUse`, `beforeShellExecution`,
+  `beforeMCPExecution`) carry no subagent discriminator and a child shares the
+  parent's `conversation_id`, so once a subagent is running its individual
+  tool calls are indistinguishable from the parent's — a subagent of a bound
+  Director can mechanically perform the same worktree edits. Keeping subagents
+  advisory is therefore a behavioral contract reinforced at `subagentStart`,
+  not a per-tool guarantee; the policy's child detector is fail-closed
+  forward-compatibility for a future Cursor that tags those payloads.
 
 The standing pair is `director` plus `operator`; the other seats are capacity
 lanes created on demand, not mandatory ceremony. Behavior source map:

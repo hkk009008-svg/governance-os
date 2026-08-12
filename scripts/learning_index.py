@@ -55,14 +55,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:  # ADR-055 self-bootstrap (no PYTHONPATH)
     sys.path.insert(0, str(_REPO_ROOT))
 
+import protocol_mailbox  # noqa: E402
 
 DB_RELATIVE = "coordination/learning/index.sqlite"
 
-_EVENT_NAME_RE = re.compile(
-    r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-"
-    r"(?P<sender>[a-z][a-z0-9]*)-to-(?P<recipient>[a-z][a-z0-9]*)-"
-    r"(?P<kind>[a-z][a-z0-9-]*)\.md$"
-)
+_EVENT_NAME_RE = protocol_mailbox.EVENT_NAME_RE
 _DATE_PREFIX_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 _ROW_TS_KEYS = ("ts", "when", "timestamp")
 
@@ -139,7 +136,7 @@ def _timestamp_for(relative: str, kind: str, text: str, commit_date: str) -> tup
     if kind.startswith("mailbox:"):
         match = _EVENT_NAME_RE.fullmatch(name)
         assert match is not None  # _source_kind proved this shape
-        raw = match.group("ts")
+        raw = match.group("stamp")
         return raw[:11] + raw[11:19].replace("-", ":") + "Z", "filename"
     if kind in ("handoff", "plan"):
         match = _DATE_PREFIX_RE.search(name)

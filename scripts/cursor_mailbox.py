@@ -13,29 +13,18 @@ import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-try:
-    from scripts import codex_protocol_model, compact_pair_loop
-    from scripts.cursor_app_binding import (
-        DIRECTOR_SEATS,
-        OPERATOR_SEATS,
-        AppBindingError,
-        AppSessionBinding,
-        resolve_registered_session,
-    )
-except ModuleNotFoundError as exc:
-    if exc.name != "scripts":
-        raise
-    import codex_protocol_model  # type: ignore[no-redef]
-    import compact_pair_loop
-    from cursor_app_binding import (  # type: ignore[no-redef]
-        DIRECTOR_SEATS,
-        OPERATOR_SEATS,
-        AppBindingError,
-        AppSessionBinding,
-        resolve_registered_session,
-    )
+import codex_protocol_model
+import compact_pair_loop
+import protocol_mailbox
+from cursor_app_binding import (
+    DIRECTOR_SEATS,
+    OPERATOR_SEATS,
+    AppBindingError,
+    AppSessionBinding,
+    resolve_registered_session,
+)
 
-CURSOR_SEATS = frozenset({"director", "director2", "operator", "operator2"})
+CURSOR_SEATS = frozenset(protocol_mailbox.SEATS)
 _MAILBOX_SENT = "coordination/mailbox/sent/"
 
 

@@ -718,6 +718,63 @@ def test_consume_scalar_cursor_rejects_position_beyond_mailbox_corpus(
     assert _git(root, "diff", "--cached", "--name-only") == ""
 
 
+def _consume_fixture(root: Path) -> Path:
+    sent = root / "coordination/mailbox/sent"
+    seen = root / "coordination/mailbox/seen"
+    sent.mkdir(parents=True)
+    seen.mkdir()
+    cursor = seen / "director.txt"
+    cursor.write_text("2026-07-17T00:00:00Z\n", encoding="ascii")
+    (sent / "2026-07-17T01-02-03Z-operator-to-director-status.md").write_text(
+        "fixture\n", encoding="utf-8"
+    )
+    return cursor
+
+
+def test_consume_directory_pin_failure_leaves_cursor_unadvanced(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # The seen/ directory handle is pinned before os.replace advances the
+    # cursor. If that pin fails after the advance instead, the cursor is
+    # left half-advanced on disk with nothing staged and no rollback.
+    root = _repo(tmp_path)
+    cursor = _consume_fixture(root)
+    seen = cursor.parent
+    real_open = os.open
+
+    def fail_directory_open(path, flags, *args, **kwargs):
+        if flags & getattr(os, "O_DIRECTORY", 0) and Path(path) == seen:
+            raise OSError("injected directory pin failure")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(mailbox_writer.os, "open", fail_directory_open)
+
+    with pytest.raises(OSError, match="injected directory pin failure"):
+        mailbox_writer._consume_events_finalize(root, "director", None)
+
+    assert cursor.read_text(encoding="ascii") == "2026-07-17T00:00:00Z\n"
+    assert list(seen.glob(".director.*")) == []
+    assert _git(root, "diff", "--cached", "--name-only") == ""
+
+
+def test_consume_stage_failure_rolls_back_cursor_bytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _repo(tmp_path)
+    cursor = _consume_fixture(root)
+
+    def fail_stage(*args, **kwargs):
+        raise OSError("injected stage failure")
+
+    monkeypatch.setattr(mailbox_writer, "_stage", fail_stage)
+
+    with pytest.raises(OSError, match="injected stage failure"):
+        mailbox_writer._consume_events_finalize(root, "director", None)
+
+    assert cursor.read_text(encoding="ascii") == "2026-07-17T00:00:00Z\n"
+    assert _git(root, "diff", "--cached", "--name-only") == ""
+
+
 def test_consume_rejects_coordinator_before_cursor_access(tmp_path: Path) -> None:
     root = _repo(tmp_path)
 

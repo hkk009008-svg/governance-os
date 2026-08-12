@@ -19,7 +19,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from threeway.refstore import RefEventStore
-from scripts import status
+import status
 
 
 def summarize(store) -> dict:

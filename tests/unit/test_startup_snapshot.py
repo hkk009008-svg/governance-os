@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from scripts import startup_snapshot
+import startup_snapshot
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -104,6 +104,26 @@ def test_git_snapshot_reports_unavailable_state_instead_of_clean_state(
     assert snapshot.dirty_paths == ()
     assert snapshot.errors
     assert any(error.startswith("dirty paths unavailable:") for error in snapshot.errors)
+
+
+def test_git_snapshot_never_reports_the_enclosing_repository(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # A non-repository root inside a real checkout (e.g. an in-worktree
+    # scratch directory) must answer "unavailable" — never the enclosing
+    # repository's HEAD. The guarantee belongs to the runtime itself, so
+    # drop any ambient ceiling the test session may have installed.
+    monkeypatch.delenv("GIT_CEILING_DIRECTORIES", raising=False)
+    _init_repo(tmp_path)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    snapshot = startup_snapshot.collect_git_snapshot(scratch)
+
+    assert snapshot.head is None
+    assert snapshot.branch is None
+    assert snapshot.recent_commits == ()
+    assert snapshot.errors
 
 
 def test_mailbox_snapshot_uses_live_ref_bus_cursor_without_consuming_it(

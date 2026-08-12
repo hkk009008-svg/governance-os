@@ -169,10 +169,66 @@ def test_hooks_wire_policy_once_and_fail_closed_on_sensitive_events() -> None:
         "subagentStart",
     ):
         for entry in hooks[event]:
-            assert entry["command"] == ".cursor/hooks/seat-policy"
+            # --event pins the payload's event family even when the payload
+            # omits hook_event_name, so an unknown event can never ride an
+            # allow fallthrough.
+            assert entry["command"] == f".cursor/hooks/seat-policy --event {event}"
             assert entry.get("failClosed") is True
+    # sessionStart stays fail-open at the Cursor level by design: a broken
+    # hook must not block every session. The wrapper makes that degraded
+    # start visible via additional_context instead.
+    for entry in hooks["sessionStart"]:
+        assert entry["command"] == ".cursor/hooks/seat-policy --event sessionStart"
+        assert entry.get("failClosed") is not True
     # Shell commands are evaluated exactly once, by beforeShellExecution.
     assert "Shell" not in hooks["preToolUse"][0]["matcher"]
+
+
+def test_seat_policy_wrapper_denies_malformed_input_with_valid_json() -> None:
+    env = dict(os.environ)
+    env.pop("GIT_INDEX_FILE", None)
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            str(ROOT / ".cursor/hooks/seat-policy"),
+            "--event",
+            "beforeShellExecution",
+        ],
+        input="{not json",
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["permission"] == "deny"
+
+
+def test_seat_policy_wrapper_degrades_visibly_when_policy_is_missing(
+    tmp_path: Path,
+) -> None:
+    # Copied to a root without scripts/cursor_hook_policy.py, the wrapper
+    # must emit valid JSON that both denies (permission events) and names
+    # the degraded readiness posture (sessionStart context) — never silence.
+    hooks_dir = tmp_path / ".cursor" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    wrapper = hooks_dir / "seat-policy"
+    wrapper.write_bytes((ROOT / ".cursor/hooks/seat-policy").read_bytes())
+    wrapper.chmod(0o755)
+    result = subprocess.run(
+        ["/bin/bash", str(wrapper), "--event", "sessionStart"],
+        input="{}",
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["permission"] == "deny"
+    assert "readiness-bridge (degraded)" in payload["additional_context"]
 
 
 def test_root_router_points_to_cursor_adoption() -> None:

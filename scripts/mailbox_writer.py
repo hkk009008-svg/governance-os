@@ -22,15 +22,11 @@ import compact_pair_loop
 import protocol_mailbox
 
 _LOCK_NAME = "protocol-kernel-writer.lock"
-_EVENT_RE = re.compile(
-    r"^(?P<stamp>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-"
-    r"(?P<sender>director2?|operator2?|coordinator2?)-to-"
-    r"(?P<recipient>director2?|operator2?|coordinator2?|all)-"
-    r"(?P<kind>[a-z0-9-]+)\.md$"
-)
+_EVENT_RE = protocol_mailbox.EVENT_NAME_RE
 _COLON_ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _DASH_ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z")
-_ROLES = {"director", "director2", "operator", "operator2"}
+# Only the four concrete pair seats own consumable compatibility cursors.
+_ROLES = frozenset(protocol_mailbox.SEATS)
 _GIT_ENV = {
     "PATH": "/usr/bin:/bin",
     "LANG": "C",
@@ -858,22 +854,40 @@ def _consume_events_finalize(root: Path, role: str, target: str | None) -> str:
         flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(temporary, flags, 0o600)
         try:
-            os.write(fd, updated)
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-        os.replace(temporary, cursor)
-        directory_fd = os.open(seen, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-        try:
-            os.fsync(directory_fd)
-            _stage(root, f"coordination/mailbox/seen/{role}.txt")
+            try:
+                _write_all(fd, updated)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
         except Exception:
-            rollback = seen / f".{role}.{os.getpid()}.rollback"
-            rollback.write_bytes(current_raw)
-            rollback.chmod(0o600)
-            os.replace(rollback, cursor)
-            os.fsync(directory_fd)
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
             raise
+        # Pin the directory handle before advancing the cursor: every step
+        # that can fail after os.replace must be covered by the rollback, so
+        # a consume can never strand a half-advanced, unstaged cursor.
+        try:
+            directory_fd = os.open(seen, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        except OSError:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+            raise
+        try:
+            os.replace(temporary, cursor)
+            try:
+                os.fsync(directory_fd)
+                _stage(root, f"coordination/mailbox/seen/{role}.txt")
+            except Exception:
+                rollback = seen / f".{role}.{os.getpid()}.rollback"
+                rollback.write_bytes(current_raw)
+                rollback.chmod(0o600)
+                os.replace(rollback, cursor)
+                os.fsync(directory_fd)
+                raise
         finally:
             os.close(directory_fd)
         unread = sum(name[:20] > target_dash for name in addressed)

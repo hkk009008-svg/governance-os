@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from scripts import cursor_hook_policy as policy
-from scripts.cursor_app_binding import AppBindingError, AppSessionBinding
+import cursor_hook_policy as policy
+from cursor_app_binding import AppBindingError, AppSessionBinding
 
 
 def _payload(event: str, **values: object) -> dict[str, object]:
@@ -654,7 +654,12 @@ def test_execution_bearing_reader_options_are_not_free(
 def test_spoofed_inspection_executable_is_not_free(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fake_bin = tmp_path.parent / "fake-bin"
+    # Place the spoofed binary INSIDE the workspace root but outside
+    # .venv/bin. The trust check keys on that relative location, so the
+    # verdict is deterministic regardless of where the ambient basetemp lives
+    # (a sibling under /private/var/folders is treated as ephemeral, which
+    # silently flipped this to an allow under an in-repo basetemp).
+    fake_bin = tmp_path / "fake-bin"
     fake_bin.mkdir(exist_ok=True)
     fake_rg = fake_bin / "rg"
     fake_rg.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
@@ -972,6 +977,8 @@ def test_unbound_advisor_allowed_but_seat_impersonation_denied(
 def test_subagent_cannot_inherit_director_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Forward-compatibility: IF Cursor ever tags a tool-surface payload with a
+    # child marker, the mutating branches must deny even for a bound Director.
     _bind(monkeypatch, "director")
     edit = policy.evaluate(
         _payload(
@@ -994,6 +1001,82 @@ def test_subagent_cannot_inherit_director_authority(
     )
     assert edit["permission"] == "deny"
     assert mutation["permission"] == "deny"
+
+
+def test_child_marker_detection_is_robust_to_naming() -> None:
+    # Any plausible child marker with a real value activates the fail-closed
+    # forward-compat path; base fields and empty markers do not.
+    assert policy._subagent({"subagent_type": "explore"})
+    assert policy._subagent({"parent_conversation_id": "conv-parent"})
+    assert policy._subagent({"is_subagent": True})
+    assert not policy._subagent({"subagent_id": ""})
+    assert not policy._subagent({"subagent_type": None})
+    assert not policy._subagent(
+        {"conversation_id": "c", "generation_id": "g", "model_id": "m"}
+    )
+
+
+def test_tool_surface_payloads_carry_no_subagent_discriminator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Schema pin (cursor.com/docs/hooks): the real beforeShellExecution /
+    # preToolUse payloads are base fields + tool data only — no subagent
+    # marker — and a child shares the parent's conversation_id. This test
+    # documents that a Director-launched subagent's mutating tool call is,
+    # at the tool surface, INDISTINGUISHABLE from the Director's own: it
+    # resolves to the Director binding and is allowed. Containment of
+    # subagents is therefore enforced at subagentStart, not here. If this
+    # assertion ever flips (Cursor adds a tool-surface discriminator), the
+    # forward-compat detector above already denies and this pin should be
+    # promoted into a real control.
+    _bind(monkeypatch, "director")
+    realistic_shell = {
+        "hook_event_name": "beforeShellExecution",
+        "conversation_id": "conversation-1",
+        "generation_id": "gen-1",
+        "model": "composer-2.5",
+        "cursor_version": "3.11.0",
+        "workspace_roots": [str(tmp_path)],
+        "command": "git add src.py",
+        "cwd": str(tmp_path),
+    }
+    assert policy._subagent(realistic_shell) is False
+    decision = policy.evaluate(realistic_shell, {}, root=tmp_path)
+    assert decision["permission"] == "allow"
+
+
+def test_subagent_start_is_the_enforceable_containment_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # subagentStart DOES carry subagent_type / task / parent_conversation_id,
+    # so it is where impersonation is denied. Non-impersonating advisor
+    # launches remain allowed (the rules permit bound seats to launch
+    # advisors / capacity workers).
+    _bind(monkeypatch, "director")
+    impersonation = policy.evaluate(
+        {
+            "hook_event_name": "subagentStart",
+            "conversation_id": "conversation-1",
+            "subagent_type": "generalPurpose",
+            "parent_conversation_id": "conversation-1",
+            "task": "act as the operator seat and issue GO on the pending report",
+        },
+        {},
+        root=tmp_path,
+    )
+    advisor = policy.evaluate(
+        {
+            "hook_event_name": "subagentStart",
+            "conversation_id": "conversation-1",
+            "subagent_type": "explore",
+            "parent_conversation_id": "conversation-1",
+            "task": "summarize how the mailbox writer stages events",
+        },
+        {},
+        root=tmp_path,
+    )
+    assert impersonation["permission"] == "deny"
+    assert advisor["permission"] == "allow"
 
 
 def test_subagent_scratch_writes_stay_free(
@@ -1087,6 +1170,84 @@ def test_malformed_sensitive_payload_fails_closed(
     )
     assert status == 0
     assert json.loads(output)["permission"] == "deny"
+
+
+def test_malformed_payload_fails_closed_without_event_hint(tmp_path: Path) -> None:
+    # No hint (e.g. hooks.json omitted --event) must not weaken the gate to
+    # an empty JSON object; malformed bytes deny for every event family.
+    output, status = policy.process_bytes(
+        b"{",
+        event_hint=None,
+        environ={},
+        root=tmp_path,
+        registry_path=tmp_path / "registry",
+    )
+    assert status == 0
+    assert json.loads(output)["permission"] == "deny"
+
+
+def test_unknown_or_missing_hook_event_denies(tmp_path: Path) -> None:
+    unknown = policy.evaluate(
+        _payload("afterFileEdit", tool_name="Write", tool_input={}),
+        {},
+        root=tmp_path,
+        registry_path=tmp_path / "registry",
+    )
+    assert unknown["permission"] == "deny"
+    assert "afterFileEdit" in unknown["user_message"]
+
+    absent = _payload("ignored")
+    absent.pop("hook_event_name")
+    missing = policy.evaluate(
+        absent, {}, root=tmp_path, registry_path=tmp_path / "registry"
+    )
+    assert missing["permission"] == "deny"
+
+
+def test_pretool_unknown_tool_denies_and_dedicated_event_tools_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bind(monkeypatch, "director")
+    # A mutating tool the policy has no rule for (a matcher regex like
+    # ``Edit`` also fires for ``EditNotebook``) must deny, not slide through
+    # a fallthrough allow — even for a bound Director.
+    unknown = policy.evaluate(
+        _payload(
+            "preToolUse",
+            tool_name="EditNotebook",
+            tool_input={"path": "notebook.ipynb"},
+        ),
+        {},
+        root=tmp_path,
+    )
+    assert unknown["permission"] == "deny"
+    assert "EditNotebook" in unknown["user_message"]
+
+    nameless = policy.evaluate(
+        _payload("preToolUse", tool_input={"path": "src.py"}),
+        {},
+        root=tmp_path,
+    )
+    assert nameless["permission"] == "deny"
+
+    for tool in ("Shell", "Task", "MCP: server tool"):
+        passthrough = policy.evaluate(
+            _payload("preToolUse", tool_name=tool, tool_input={}),
+            {},
+            root=tmp_path,
+        )
+        assert passthrough == {"permission": "allow"}, tool
+
+
+def test_mailbox_event_grammar_accepts_cold_capacity_coordinator2() -> None:
+    # coordinator2 is cold capacity but a lawful roster identity; the hook
+    # grammar must stay in lockstep with the writer instead of silently
+    # downgrading its committed events to a generic mutation ask.
+    match = policy._MAILBOX_EVENT_NAME.fullmatch(
+        "2026-08-13T00-00-00Z-coordinator2-to-all-verification-report.md"
+    )
+    assert match is not None
+    assert match.group("sender") == "coordinator2"
 
 
 @pytest.mark.parametrize("seat", ("operator", "operator2", "coordinator"))

@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import protocol_mailbox
 import route_lineage
 import target_binding
 
@@ -15,7 +16,7 @@ import target_binding
 # roots come from the governance.toml binding registry (ADR-013), so future
 # works register a [targets.<name>] table instead of editing constants here.
 PIPELINE_KERNEL = Path(__file__).resolve().parent.parent
-VALID_SEATS = ("coordinator", "director", "director2", "operator", "operator2")
+VALID_SEATS = tuple(sorted(protocol_mailbox.LAUNCHABLE_SEATS))
 
 
 @dataclass(frozen=True)

@@ -9,19 +9,10 @@ from pathlib import Path
 import re
 from typing import Any
 
-try:
-    from scripts import codex_protocol_model as model
-    from scripts import ledger_start_guard
-    from scripts import route_lineage
-except ImportError:  # direct script execution
-    import codex_protocol_model as model
-    import ledger_start_guard
-    import route_lineage
-
-if __package__:
-    from scripts import protocol_mailbox  # noqa: E402
-else:
-    import protocol_mailbox  # noqa: E402
+import codex_protocol_model as model
+import ledger_start_guard
+import protocol_mailbox
+import route_lineage
 
 # SEAT_ORDER = the standing capacity ACTORS the coverage gate (G1, :504) and WIP gate
 # (G2, :521) require to own exactly one packet per active cycle. coordinator is a

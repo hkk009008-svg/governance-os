@@ -4,7 +4,7 @@
 # (workflow_dispatch with a validated integration SHA).
 #
 # Single source of truth for the smoke invariants: scripts/governance_verify_all.py — if the
-# invariants change, update that script + ARCHITECTURE.md §15 together.
+# invariants change, update that script + ARCHITECTURE.md (§5 Runtime invariants) together.
 #
 # Gates run by `python scripts/governance_verify_all.py` (smoke job):
 #   - Doc-anchor drift (check_doc_claims on ARCHITECTURE.md; fatal kinds hard-fail
@@ -21,8 +21,13 @@
 # Tests run by `pytest tests` (pytest job):
 #   - Complete unit and integration contract suite
 #
-# Scope intentionally NOT included (per the 2026-05-24 Session 1 brief):
-#   - Linting (ruff, eslint)        - Deployment / release / changelog workflows
+# Advisory (non-gating) jobs: ruff, mypy, and shellcheck run continue-on-error
+# so lint/type/shell findings are visible without blocking a merge. Promote one
+# to gating only after compiling a hashed requirements-lint.txt and driving the
+# findings to zero.
+#
+# Scope intentionally NOT included:
+#   - Gating lint/type checks    - Deployment / release / changelog workflows
 #   - Code coverage reporting
 #
 # Actions are pinned to immutable commits; comments record the verified release tags.
@@ -100,7 +105,7 @@ jobs:
       - name: Install dependencies
         run: pip install --require-hashes -r requirements-dev.txt
 
-      - name: Run ci_smoke (single source of truth for §15 invariants)
+      - name: Run ci_smoke (single source of truth for runtime invariants)
         run: python scripts/governance_verify_all.py
 
   pytest:
@@ -153,6 +158,85 @@ jobs:
 
       - name: Run no-ceremony detector (ADR-028)
         run: python scripts/check_no_ceremony.py
+
+  pytest-linux-hermetic:
+    # One Linux leg with an IN-REPO basetemp. Two things the macOS matrix does
+    # not: (1) it surfaces the Unix-FHS assumptions (/usr/bin/git, /var/empty)
+    # that only bite off-macOS, and (2) it runs scratch dirs inside the
+    # worktree, so the git-discovery ceiling (scripts/git_runner.py,
+    # tests/conftest.py) is proven — without it, a non-repo scratch root would
+    # find the enclosing checkout instead of answering "unavailable".
+    name: pytest (ubuntu, in-repo scratch)
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      PIPELINE_REQUIRE_EXECUTED_TEST: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.integration_ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install --require-hashes -r requirements-dev.txt
+
+      - name: Run suite with in-repo scratch (hermeticity + portability)
+        run: |
+          mkdir -p .pytest-verify-tmp/ci-hermetic
+          python -m pytest tests --tb=short -q \
+            --basetemp=.pytest-verify-tmp/ci-hermetic
+
+  lint-advisory:
+    # Non-gating: ruff / mypy / shellcheck findings are visible but never block
+    # a merge (continue-on-error). ubuntu-latest ships shellcheck preinstalled.
+    # ruff/mypy are installed UNPINNED here on purpose — this job is advisory;
+    # gating requires a hashed requirements-lint.txt first.
+    name: lint (advisory, non-gating)
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.integration_ref || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Install advisory linters (unpinned; advisory only)
+        run: pip install ruff mypy
+
+      - name: ruff (advisory)
+        run: ruff check scripts tests threeway || true
+
+      - name: mypy (advisory)
+        run: mypy --ignore-missing-imports scripts/git_runner.py scripts/protocol_mailbox.py || true
+
+      - name: shellcheck (advisory)
+        run: |
+          shellcheck --severity=warning \
+            coordination/bin/send-event \
+            coordination/bin/consume-events \
+            coordination/bin/claim-lock \
+            coordination/bin/release-lock \
+            coordination/bin/cursor-publish \
+            coordination/bin/cursor-consume \
+            coordination/bin/cursor-seat \
+            .cursor/hooks/seat-policy || true
 
   # Risk-aware admission (audit P0): a PR range that touches an authority
   # surface (hook policy, fixed writers, launchers, CI itself — the list lives

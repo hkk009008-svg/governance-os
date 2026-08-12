@@ -9,7 +9,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts import governance_verify_all  # noqa: E402
+import governance_verify_all  # noqa: E402
 
 
 def test_registry_entries_and_owned_paths_exist() -> None:
@@ -46,6 +46,6 @@ def test_registry_covers_every_rendered_gate() -> None:
 
 
 def test_deprecated_alias_forwards_to_canonical_main() -> None:
-    from scripts import ci_smoke
+    import ci_smoke
 
     assert ci_smoke.main is governance_verify_all.main

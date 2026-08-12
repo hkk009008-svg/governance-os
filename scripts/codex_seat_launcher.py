@@ -13,15 +13,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-try:
-    from scripts.codex_protocol_model import RuntimeIdentity, RUNTIME_SCRUB_ENV_KEYS
-except ModuleNotFoundError as exc:
-    if exc.name != "scripts":
-        raise
-    from codex_protocol_model import RuntimeIdentity, RUNTIME_SCRUB_ENV_KEYS
+from codex_protocol_model import RuntimeIdentity, RUNTIME_SCRUB_ENV_KEYS
+from protocol_mailbox import LAUNCHABLE_SEATS
 
 
-LAUNCH_SEATS = ("director", "director2", "operator", "operator2", "coordinator")
+LAUNCH_SEATS = LAUNCHABLE_SEATS
 SERVICE_TIERS = ("fast", "default")
 DEFAULT_CONFIG_PATH = Path("~/.codex/pipeline-seat-launcher.toml")
 

@@ -14,14 +14,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-try:
-    from scripts.cursor_app_binding import APP_SEATS, DEFAULT_REGISTRY_PATH, load_registry
-    from scripts.cursor_protocol_model import render_runtime_env_contract
-except ModuleNotFoundError as exc:
-    if exc.name != "scripts":
-        raise
-    from cursor_app_binding import APP_SEATS, DEFAULT_REGISTRY_PATH, load_registry
-    from cursor_protocol_model import render_runtime_env_contract
+from cursor_app_binding import APP_SEATS, DEFAULT_REGISTRY_PATH, load_registry
+from cursor_protocol_model import render_runtime_env_contract
 
 
 def status_document(registry_path: Path = DEFAULT_REGISTRY_PATH) -> dict[str, object]:

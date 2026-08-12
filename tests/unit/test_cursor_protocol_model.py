@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from scripts import codex_protocol_model as canonical
-from scripts import cursor_protocol_model as cursor
+import codex_protocol_model as canonical
+import cursor_protocol_model as cursor
 
 
 @pytest.mark.parametrize(

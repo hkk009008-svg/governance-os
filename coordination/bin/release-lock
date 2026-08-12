@@ -29,6 +29,16 @@ safe_atom "$wave" || { echo "invalid wave identifier" >&2; exit 2; }
 safe_module "$module" || { echo "invalid module path" >&2; exit 2; }
 safe_atom "$seat" || { echo "invalid seat identifier" >&2; exit 2; }
 
+# Ambient GIT_* variables can retarget which repository/index the release
+# commit lands in. Strip the repo-retargeting set (mirror of
+# scripts/git_runner.py REPO_RETARGETING_GIT_VARS) while preserving the
+# credential/config environment the push needs.
+for retarget_var in GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CEILING_DIRECTORIES \
+  GIT_COMMON_DIR GIT_DIR GIT_DISCOVERY_ACROSS_FILESYSTEM GIT_INDEX_FILE \
+  GIT_NAMESPACE GIT_OBJECT_DIRECTORY GIT_WORK_TREE; do
+  unset "$retarget_var"
+done
+
 cd "$(git rev-parse --show-toplevel)"
 branch="$(git symbolic-ref --quiet --short HEAD)" \
   || { echo "release-lock requires an attached branch" >&2; exit 1; }

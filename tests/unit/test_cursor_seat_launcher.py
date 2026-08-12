@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts import cursor_seat_launcher as launcher
+import cursor_seat_launcher as launcher
 
 
 def test_status_reports_all_app_seats_without_launching(tmp_path: Path) -> None:

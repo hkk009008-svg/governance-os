@@ -8,13 +8,13 @@ bind an immutable parent and Task 1 validates the ownership evidence.
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import subprocess
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import codex_protocol_model
+import git_runner
 import protocol_mailbox
 
 
@@ -498,15 +498,13 @@ def validate_route_candidate_structure(path: Path, body: str) -> LineageRoute:
 
 
 def _git_output(root: Path, *args: str) -> str:
-    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    env.update({"LANG": "C", "LC_ALL": "C"})
     result = subprocess.run(
         ["git", "--no-replace-objects", "-C", str(root), *args],
         text=True,
         encoding="utf-8",
         capture_output=True,
         check=True,
-        env=env,
+        env=git_runner.authority_env(root),
     )
     return result.stdout
 
@@ -602,7 +600,8 @@ def _route_from_exact_ref(
     if not is_route_event(path, event.text):
         raise ValueError("parent ref is not a route event")
     match = _ROUTE_NAME_RE.fullmatch(path.name)
-    assert match is not None
+    if match is None:
+        raise ValueError(f"route event filename is noncanonical: {path.name}")
     if match.group("sender") in {"coordinator", "coordinator2"}:
         return _legacy_route(root, path, event.text, route_ref=event.ref)
     return _validate_committed_autonomous(root, event, seen | {route_ref}, reader)
@@ -756,21 +755,13 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
         self._validated_cache: dict[str, LineageRoute] = {}
         self._issues: list[RouteCandidateIssue] = []
 
-    @staticmethod
-    def _clean_env() -> dict[str, str]:
-        env = {
-            key: value for key, value in os.environ.items() if not key.startswith("GIT_")
-        }
-        env.update({"LANG": "C", "LC_ALL": "C"})
-        return env
-
     def _run(self, *args: str) -> bytes:
         try:
             return subprocess.run(
                 ["git", "--no-replace-objects", "-C", str(self.root), *args],
                 capture_output=True,
                 check=True,
-                env=self._clean_env(),
+                env=git_runner.authority_env(self.root),
             ).stdout
         except (OSError, subprocess.CalledProcessError) as exc:
             raise ValueError("batch route Git evidence is not readable") from exc
@@ -797,7 +788,7 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=self._clean_env(),
+                env=git_runner.authority_env(self.root),
             )
         except BaseException:
             self.__exit__(None, None, None)
@@ -1081,7 +1072,8 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
                     )
                 continue
             match = _ROUTE_NAME_RE.fullmatch(path.name)
-            assert match is not None
+            if match is None:
+                raise ValueError(f"route event filename is noncanonical: {path.name}")
             if match.group("sender") in {"coordinator", "coordinator2"}:
                 routes.append(_legacy_route(self.root, path, body))
             else:
@@ -1128,7 +1120,8 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
                     )
                 continue
             match = _ROUTE_NAME_RE.fullmatch(path.name)
-            assert match is not None
+            if match is None:
+                raise ValueError(f"route event filename is noncanonical: {path.name}")
             route_ref = self._introduction_ref(relative, object_id)
             if match.group("sender") in {"coordinator", "coordinator2"}:
                 routes.append(
@@ -1154,7 +1147,8 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
         if not is_route_event(path, event.text):
             raise ValueError("committed ref is not a route event")
         match = _ROUTE_NAME_RE.fullmatch(path.name)
-        assert match is not None
+        if match is None:
+            raise ValueError(f"route event filename is noncanonical: {path.name}")
         if match.group("sender") in {"coordinator", "coordinator2"}:
             route = _legacy_route(
                 self.root, path, event.text, route_ref=event.ref

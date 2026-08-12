@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts import codex_protocol_model as model
+import codex_protocol_model as model
 
 
 @pytest.mark.parametrize(

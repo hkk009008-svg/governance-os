@@ -13,10 +13,11 @@ if str(_REPO_ROOT) not in sys.path:                      # ADR-055 self-bootstra
 from threeway.refstore import (                          # noqa: E402
     CursorContentionExceeded, CursorCorruptionError, RefEventStore,
 )
+import protocol_mailbox  # noqa: E402
 
 # Only production/review seats own cursors. Coordinators observe and reconcile without
 # consuming state, so accepting them here would manufacture authority the role does not have.
-SEATS = ("director", "director2", "operator", "operator2")
+SEATS = protocol_mailbox.SEATS
 
 
 def main(argv=None) -> int:
@@ -45,11 +46,21 @@ def main(argv=None) -> int:
     store = RefEventStore(Path(a.repo_dir), remote=remote)
     try:
         cursor = store.cursor_seq(seat)
-        events = list(store.iter_events())              # collect ONCE (iter_events re-fetches per call)
+        if remote is None:
+            # Local mode: read only blobs past the cursor (O(unread)), matching
+            # bus_unread. Every event with seq > cursor is included regardless
+            # of recipient, so its max is still the global tip; an empty result
+            # leaves tip == cursor (a monotonic no-op advance).
+            events = list(store.iter_events_since(cursor))
+            tip = max((ev.seq for ev in events), default=cursor)
+        else:
+            # Remote mode must sync authority first; iter_events_since is
+            # local-only by contract, so the remote path keeps the full read.
+            events = list(store.iter_events())
+            tip = max((ev.seq for ev in events), default=0)
     except CursorCorruptionError as e:
         print(f"cursor blob corrupt for {seat}: {e}", file=sys.stderr)
         return 1
-    tip = max((ev.seq for ev in events), default=0)     # full-snapshot watermark (empty-safe)
     kinds = set(a.kinds.split(",")) if a.kinds else None
     shown = [
         ev for ev in events

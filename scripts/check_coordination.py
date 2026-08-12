@@ -48,6 +48,7 @@ from pathlib import Path, PurePosixPath
 import compact_pair_loop
 import check_go_schema
 import git_commit_projection
+import git_runner
 import mailbox_writer
 import protocol_mailbox
 from protocol_mailbox import KNOWN_KINDS, SEATS
@@ -57,12 +58,7 @@ import bus_unread
 # may read broadcasts and direct messages, but remain cursorless observers.
 ROLES = SEATS
 
-_EVENT_NAME_RE = re.compile(
-    r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-"
-    r"(?P<frm>director|director2|operator|operator2|coordinator|coordinator2)"
-    r"-to-(?P<to>director|director2|operator|operator2|coordinator|coordinator2|all)-"
-    r"(?P<kind>[a-z0-9-]+)\.md$"
-)
+_EVENT_NAME_RE = protocol_mailbox.EVENT_NAME_RE
 
 # Cursor CONTENT is transitionally a scalar `seq` (post Slice-2.5 backfill) OR an
 # ISO-UTC timestamp (pre-backfill, Phase-A-seeded). NB: this gates the cursor FILE
@@ -93,7 +89,8 @@ _LIVE_SEAT_ARTIFACT_RES = {
         re.compile(
             rf"\bcoordination/mailbox/sent/\d{{4}}-\d{{2}}-\d{{2}}T"
             rf"\d{{2}}-\d{{2}}-\d{{2}}Z-{role}-to-"
-            rf"(?:director|director2|operator|operator2|coordinator|coordinator2|all)-[a-z0-9-]+\.md\b",
+            rf"(?:{protocol_mailbox.seat_alternation(protocol_mailbox.RECIPIENTS)})-"
+            rf"[a-z0-9-]+\.md\b",
             re.I,
         ),
     )
@@ -306,8 +303,8 @@ def _check_cursors(coord_root: Path, now: str,
             # consumption). Older-than-everything is also allowed; anything else
             # that matches no event is a hand-typed orphan.
             all_names = names + _event_names(coord_root, "archive")
-            addressed = [m.group("ts") for m in map(_EVENT_NAME_RE.match, all_names)
-                         if m and m.group("to") in (role, "all")]
+            addressed = [m.group("stamp") for m in map(_EVENT_NAME_RE.match, all_names)
+                         if m and m.group("recipient") in (role, "all")]
             cur_dash = _dash(cur)
             if addressed and cur_dash not in addressed and cur_dash > min(addressed):
                 issues.append(CoordIssue(
@@ -327,23 +324,23 @@ def _check_events(coord_root: Path, since: str,
             issues.append(CoordIssue(rel, "bad_filename", "FATAL",
                                      "filename violates <ts>-<from>-to-<to>-<kind>.md"))
             continue
-        if m.group("frm") == m.group("to"):
+        if m.group("sender") == m.group("recipient"):
             issues.append(CoordIssue(rel, "self_addressed", "FATAL",
-                                     f"event addressed to its own sender ({m.group('frm')})"))
+                                     f"event addressed to its own sender ({m.group('sender')})"))
         if m.group("kind") not in KNOWN_KINDS:
             issues.append(CoordIssue(rel, "unknown_kind", "ADVISORY",
                                      f"kind {m.group('kind')!r} not in KNOWN_KINDS"))
-        if m.group("ts") < since:        # pre-adoption: envelope exempt
+        if m.group("stamp") < since:        # pre-adoption: envelope exempt
             continue
         text = (sent / name).read_text(errors="replace")
         when = _WHEN_RE.search(text)
         if not when:
             issues.append(CoordIssue(rel, "missing_when", "ADVISORY",
                                      "no '**When:** <ISO-UTC>' envelope line"))
-        elif _dash(when.group(1)) != m.group("ts"):
+        elif _dash(when.group(1)) != m.group("stamp"):
             issues.append(CoordIssue(
                 rel, "when_mismatch", "ADVISORY",
-                f"**When:** {when.group(1)} != filename ts {_colon(m.group('ts'))}"))
+                f"**When:** {when.group(1)} != filename ts {_colon(m.group('stamp'))}"))
     return issues
 
 
@@ -1599,15 +1596,23 @@ def _check_standalone_cursor_commits(git_root, n: int = 30) -> list[CoordIssue]:
     """
     issues: list[CoordIssue] = []
     try:
-        log = subprocess.run(["git", "log", "--format=%h", f"-{n}"],
-                             cwd=str(git_root), capture_output=True, text=True, timeout=5)
+        env = git_runner.dashboard_env(Path(git_root))
+        # One `git log --name-only` instead of one diff-tree per commit: the
+        # previous shape spent ~N subprocesses (N up to 30) on the coordination
+        # gate's hot path. A NUL record marker prefixes each commit's short
+        # sha; its changed files follow. Merge commits show no files here (as
+        # with the old per-commit diff-tree) and are skipped in both.
+        log = subprocess.run(
+            ["git", "log", f"-{n}", "--format=%x00%h", "--name-only"],
+            cwd=str(git_root), capture_output=True, text=True, timeout=5, env=env,
+        )
         if log.returncode != 0:
             return issues
-        for sha in log.stdout.split():
-            dt = subprocess.run(
-                ["git", "diff-tree", "--no-commit-id", "-r", "--root", "--name-only", sha],
-                cwd=str(git_root), capture_output=True, text=True, timeout=5)
-            files = [f for f in dt.stdout.splitlines() if f.strip()]
+        for record in log.stdout.split("\x00"):
+            lines = [line for line in record.splitlines() if line.strip()]
+            if not lines:
+                continue
+            sha, files = lines[0], lines[1:]
             if files and all(_SEEN_ONLY_RE.match(f) for f in files):
                 issues.append(CoordIssue(
                     "coordination/mailbox/seen/", "standalone_cursor_commit", "ADVISORY",

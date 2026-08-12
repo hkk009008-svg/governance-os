@@ -8,7 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts import consume_bus, run_merge_gate
+import consume_bus
+import run_merge_gate
 from threeway import cursor_backfill, cutover, gitcas
 from threeway.refstore import EVENTS_REF
 

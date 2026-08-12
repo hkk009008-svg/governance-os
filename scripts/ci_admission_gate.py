@@ -40,7 +40,7 @@ for _path in (_REPO_ROOT, _SCRIPTS_DIR):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from scripts import compact_pair_loop as pair  # noqa: E402
+import compact_pair_loop as pair  # noqa: E402
 
 # Authority surfaces: executable authority, side-effect gating, trust-granting
 # composition, and the integration gate itself. Directory entries end with a

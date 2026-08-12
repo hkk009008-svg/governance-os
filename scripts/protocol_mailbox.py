@@ -10,6 +10,8 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 
+import git_runner
+
 
 ROOT = Path(__file__).resolve().parent.parent
 KIND_FILE = ROOT / "coordination" / "mailbox" / "kinds.txt"
@@ -22,6 +24,13 @@ SEATS = ("director", "director2", "operator", "operator2")
 RECEIVING_SEATS = (*SEATS, "coordinator", "coordinator2")
 SENDERS = (*SEATS, "coordinator", "coordinator2")
 RECIPIENTS = (*RECEIVING_SEATS, "all")
+# The seats a provider launcher or app binding may start. coordinator2 is
+# cold capacity: a lawful mailbox identity (it can send, receive, and appear
+# in committed history) that is not launchable and holds no app-seat binding
+# until the standing topology explicitly warms it. This is the single
+# declaration of that split; launchers, guards, and app-surface rosters
+# import or are test-bound to it.
+LAUNCHABLE_SEATS = (*SEATS, "coordinator")
 
 
 def load_known_kinds(root: Path | None = None) -> frozenset[str]:
@@ -40,13 +49,33 @@ COORDINATION_KINDS = KNOWN_KINDS - {"verification-report"}
 
 
 _FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
-_EVENT_PATH_RE = re.compile(
-    r"coordination/mailbox/sent/"
-    r"(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-"
-    r"(?P<sender>[a-z][a-z0-9]*)-to-"
-    r"(?P<recipient>[a-z][a-z0-9]*)-"
-    r"(?P<kind>[a-z][a-z0-9-]*)\.md"
+
+
+def seat_alternation(names: tuple[str, ...]) -> str:
+    """Regex alternation over seat names, longest-first so "director2" is
+    tried before its "director" prefix. Public so composed patterns (e.g.
+    check_coordination's per-role artifact scans) derive from the roster."""
+    return "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
+
+
+# One canonical grammar for committed event filenames, derived from the seat
+# roster above. Every Python parser imports EVENT_NAME_RE (or composes from
+# EVENT_NAME_PATTERN); parser drift was a measured defect class — status
+# accepted any sender, slope_metrics dropped the Z from the stamp and forbade
+# digits in kinds, and the Cursor hook omitted coordinator2. The two
+# import-light surfaces that keep literal copies (scripts/cursor_hook_policy.py
+# and threeway/legacy_projector.py) are bound to this grammar by
+# tests/unit/test_event_grammar_sync.py.
+EVENT_STAMP_PATTERN = r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z"
+EVENT_NAME_PATTERN = (
+    rf"(?P<stamp>{EVENT_STAMP_PATTERN})-"
+    rf"(?P<sender>{seat_alternation(SENDERS)})-to-"
+    rf"(?P<recipient>{seat_alternation(RECIPIENTS)})-"
+    r"(?P<kind>[a-z0-9-]+)\.md"
 )
+EVENT_NAME_RE = re.compile(rf"^{EVENT_NAME_PATTERN}$")
+
+_EVENT_PATH_RE = re.compile(r"coordination/mailbox/sent/" + EVENT_NAME_PATTERN)
 _ENVELOPE_RE = re.compile(
     r"^\*\*When:\*\* (?P<when>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)"
     r" · \*\*From:\*\* (?P<sender>[a-z][a-z0-9]*) \(online\)$",
@@ -356,15 +385,13 @@ class CommittedObjectBatchReader(_CommittedEventBatchBackend):
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    clean_env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    clean_env.update({"LANG": "C", "LC_ALL": "C"})
     try:
         return subprocess.run(
             ["git", "--no-replace-objects", "-C", str(root), *args],
             encoding="utf-8",
             capture_output=True,
             check=True,
-            env=clean_env,
+            env=git_runner.authority_env(root),
         )
     except (OSError, subprocess.CalledProcessError, UnicodeError) as exc:
         raise ValueError("committed event reference is not readable") from exc
@@ -409,7 +436,7 @@ def parse_committed_event_text(value: str, text: str) -> CommittedEventRef:
     when = envelope.group("when")
     if envelope.group("sender") != sender:
         raise ValueError("filename sender does not match committed envelope sender")
-    if when != _filename_timestamp_to_iso(match.group("timestamp")):
+    if when != _filename_timestamp_to_iso(match.group("stamp")):
         raise ValueError("filename timestamp does not match committed envelope timestamp")
     return CommittedEventRef(
         ref=value,
@@ -735,14 +762,10 @@ def parse_learning_candidate_statement(
     event: CommittedEventRef,
 ) -> LearningCandidateStatement:
     # The closed vocabularies are imported (not re-declared, contract §3) but
-    # only when a learning event is read, and in both supported import
-    # shapes: flat (scripts/ on sys.path) and package-style (repo root only).
-    try:
-        import claim_check
-        import codex_protocol_model
-    except ModuleNotFoundError:
-        from scripts import claim_check
-        from scripts import codex_protocol_model
+    # only when a learning event is read. Flat imports are the one supported
+    # convention for scripts/ modules (tests/unit/test_import_identity.py).
+    import claim_check
+    import codex_protocol_model
 
     _require_kind(event, "learning-candidate")
     candidate_id = _single_body_field(event, "Candidate ID")

@@ -9,10 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-if __package__:
-    from scripts import protocol_mailbox
-else:
-    import protocol_mailbox
+import protocol_mailbox
 
 
 MODEL_SOURCE = "scripts/codex_protocol_model.py"

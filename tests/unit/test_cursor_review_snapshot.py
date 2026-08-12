@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from scripts import cursor_review_snapshot as snapshot
+import cursor_review_snapshot as snapshot
 
 
 def _git(root: Path, *args: str) -> str:

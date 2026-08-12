@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import harness_preflight as preflight
+import harness_preflight as preflight
 
 
 def _settings(tmp_path: Path, allow: list[str]) -> Path:

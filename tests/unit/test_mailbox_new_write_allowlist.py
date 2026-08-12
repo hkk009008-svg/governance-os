@@ -11,7 +11,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts import mailbox_writer, protocol_mailbox  # noqa: E402
+import mailbox_writer  # noqa: E402
+import protocol_mailbox  # noqa: E402
 
 _STRUCTURE_FREE_ALLOWED = (
     "findings",

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import codex_seat_launcher as launcher
+import codex_seat_launcher as launcher
 
 
 SEATS = ("director", "director2", "operator", "operator2", "coordinator")

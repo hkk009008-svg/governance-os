@@ -16,6 +16,8 @@ import pathlib
 import subprocess
 import sys
 
+import git_runner
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Allowlist file: one repo-relative path per line; # comments allowed.
@@ -72,11 +74,14 @@ def _enumerate_files(root: pathlib.Path) -> list[pathlib.Path]:
     SKIP_DIRS.  The fallback also skips ``.superpowers/`` explicitly.
     """
     try:
+        # Ceiling-pinned so a non-repository root falls back to the walk
+        # instead of enumerating an enclosing checkout's files.
         result = subprocess.run(
             ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
             cwd=str(root),
             capture_output=True,
             check=True,
+            env=git_runner.dashboard_env(root),
         )
         raw = result.stdout
         paths = []

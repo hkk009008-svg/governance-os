@@ -5,10 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-try:
-    from scripts import codex_protocol_model as canonical
-except ModuleNotFoundError:
-    import codex_protocol_model as canonical
+import codex_protocol_model as canonical
 
 _INPUT_KEYS = {
     "CURSOR_AGENT_MODE": "CODEX_AGENT_MODE",

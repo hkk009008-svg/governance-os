@@ -42,7 +42,7 @@ _FROZEN_MODEL_LABEL_EXCEPTION = {
     "introduction": "8471c6d6c35daa74dd24cc24d6ece3eea48f3f22",
     "sha256": "90586eb9d2399ed69a2f1bc0af7bb7c43ba9187e61fedc734e58fc32ce21f48c",
 }
-PAIR_SEATS = frozenset({"director", "director2", "operator", "operator2"})
+PAIR_SEATS = frozenset(protocol_mailbox.SEATS)
 OPERATOR_SEATS = frozenset({"operator", "operator2"})
 MATERIAL_BEHAVIOR_RISK = codex_protocol_model.review_profile_for(
     "material-behavior"

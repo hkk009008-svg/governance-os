@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from scripts import agy_protocol_model as agy
-from scripts import codex_protocol_model as codex
+import agy_protocol_model as agy
+import codex_protocol_model as codex
 
 
 FOREIGN_PREFIXES = ("AGY", "ANTIGRAVITY", "CLAUDE", "CURSOR")

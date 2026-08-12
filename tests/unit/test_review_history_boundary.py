@@ -12,7 +12,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts import check_coordination  # noqa: E402
+import check_coordination  # noqa: E402
 
 
 def test_manifest_is_the_loaded_boundary() -> None:

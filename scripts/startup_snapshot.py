@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import bus_unread
+import git_runner
 
 
 @dataclass(frozen=True)
@@ -36,33 +37,18 @@ class MailboxSnapshot:
     unavailable_reason: str | None
 
 
-def _git_environment() -> dict[str, str]:
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith("GIT_")
-    }
-    env.update(
-        {
-            "LANG": "C",
-            "LC_ALL": "C",
-            "LANGUAGE": "C",
-            "GIT_OPTIONAL_LOCKS": "0",
-        }
-    )
-    return env
-
-
 def _decode(raw: bytes) -> str:
     return raw.decode("utf-8", errors="surrogateescape")
 
 
 def _run_git(root: Path, args: list[str], label: str) -> tuple[bytes | None, str | None]:
     try:
+        # dashboard_env pins discovery to ``root``: a non-repository root
+        # answers "unavailable" instead of reporting an enclosing checkout.
         completed = subprocess.run(
             ["git", *args],
             cwd=root,
-            env=_git_environment(),
+            env=git_runner.dashboard_env(root),
             capture_output=True,
             timeout=120,
             check=False,
@@ -103,7 +89,12 @@ def _parse_porcelain(raw: bytes) -> tuple[tuple[GitPathState, ...], str | None]:
 
 
 def collect_git_snapshot(root: Path, *, commits: int = 5) -> GitSnapshot:
-    """Describe local Git state without refreshing the index or changing refs."""
+    """Describe local Git state without refreshing the index or changing refs.
+
+    ``root`` must itself be the repository (toplevel or linked worktree).
+    A root that is not a repository reports every fact as unavailable; the
+    snapshot never substitutes an enclosing repository discovered above it.
+    """
     root = Path(root).resolve()
     errors: list[str] = []
 

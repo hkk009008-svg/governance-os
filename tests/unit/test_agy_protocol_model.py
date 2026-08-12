@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 
-from scripts import agy_protocol_model as protocol
+import agy_protocol_model as protocol
 
 
 def test_advisory_runtime_is_agy_named_and_has_no_shared_seat_identity() -> None:

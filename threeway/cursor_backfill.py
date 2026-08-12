@@ -23,9 +23,12 @@ from threeway.legacy_projector import ordered_event_names, ts_of
 _ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")    # a seen/*.txt ISO cursor value
 _SCHEMA = "cursor-backfill/1"
 
-# The fixed 6-seat cursor roster (THE single source — cutover imports this as its _SEATS so
-# the snapshot/advance loop and the seen/ canonicalization agree). Distinct from
-# keys_bootstrap.SEATS, which is the wider 9-entry SIGNING roster (adds overseer/ci/merge-gate).
+# The fixed 6-seat cursor roster (cutover imports this as its _SEATS so the
+# snapshot/advance loop and the seen/ canonicalization agree). A deliberate
+# literal copy of scripts/protocol_mailbox.py RECEIVING_SEATS — this package
+# must not import scripts/ — bound by tests/unit/test_seat_roster_sync.py.
+# Distinct from keys_bootstrap.SEATS, the wider 9-entry SIGNING roster
+# (adds overseer/ci/merge-gate).
 SEATS = ("director", "director2", "operator", "operator2", "coordinator", "coordinator2")
 
 

@@ -86,10 +86,28 @@ def resolve_worktree_seat(
     """Resolve a seat only from a reserved branch in a linked Git worktree."""
 
     workspace = root.expanduser().resolve()
+    # One rev-parse for all three paths instead of three subprocesses: the
+    # seat-policy hook resolves identity on every shell command, so each saved
+    # process is paid back on the hot path. --path-format=absolute applies to
+    # the --git-common-dir that follows it; --show-toplevel and
+    # --absolute-git-dir are already absolute.
     try:
-        top = Path(_git(workspace, "rev-parse", "--show-toplevel", runner=runner)).resolve()
+        paths = _git(
+            workspace,
+            "rev-parse",
+            "--show-toplevel",
+            "--absolute-git-dir",
+            "--path-format=absolute",
+            "--git-common-dir",
+            runner=runner,
+        ).splitlines()
     except AppBindingError:
         return None
+    if len(paths) != 3:
+        raise AppBindingError("git rev-parse did not return the three seat worktree paths")
+    top = Path(paths[0]).resolve()
+    git_dir = Path(paths[1]).resolve()
+    common_dir = Path(paths[2]).resolve()
     if top != workspace:
         raise AppBindingError("Cursor seat workspace must be the linked worktree root")
     branch = _git(
@@ -103,18 +121,6 @@ def resolve_worktree_seat(
     seat = parse_seat_branch(branch)
     if seat is None:
         return None
-    git_dir = Path(
-        _git(workspace, "rev-parse", "--absolute-git-dir", runner=runner)
-    ).resolve()
-    common_dir = Path(
-        _git(
-            workspace,
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-common-dir",
-            runner=runner,
-        )
-    ).resolve()
     if git_dir == common_dir:
         raise AppBindingError(
             "reserved Cursor seat branch must run in a linked worktree, not the main checkout"

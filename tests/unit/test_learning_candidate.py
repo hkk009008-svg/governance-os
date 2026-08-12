@@ -407,18 +407,20 @@ def test_dedup_scan_collapses_duplicate_ids_to_the_first_path(
     assert ids == {expected_id: f"coordination/mailbox/sent/{first}"}
 
 
-def test_parsers_work_under_package_style_import(tmp_path: Path) -> None:
-    """`from scripts import protocol_mailbox` with only the repo root on
-    sys.path must still parse a candidate (round-one FAIL: the flat-only lazy
-    imports raised ModuleNotFoundError in that shape)."""
+def test_parsers_work_under_isolated_cli_import_shape(tmp_path: Path) -> None:
+    """Flat ``import protocol_mailbox`` with only scripts/ on sys.path (the
+    ``python scripts/<tool>.py`` and ``python -E -s -S`` wrapper shape) must
+    parse a candidate, including the lazy vocabulary imports. Package-style
+    ``from scripts import X`` is retired — one import convention, enforced by
+    tests/unit/test_import_identity.py."""
 
     script = tmp_path / "probe.py"
     script.write_text(
         "import sys\n"
         "sys.path = [p for p in sys.path"
         " if not p.rstrip('/').endswith('scripts')]\n"
-        f"sys.path.insert(0, {str(_REPO_ROOT)!r})\n"
-        "from scripts import protocol_mailbox\n"
+        f"sys.path.insert(0, {str(_REPO_ROOT / 'scripts')!r})\n"
+        "import protocol_mailbox\n"
         "fields = {\n"
         "    'Category': 'procedure', 'Scope': 'repository',\n"
         "    'Statement': 's', 'Source refs': "

@@ -15,13 +15,49 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import os
 import re
 import subprocess
 import sys
+import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
+
+import git_runner
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` via temp+fsync+os.replace.
+
+    ``--fix`` rewrites tracked docs in place; a crash mid-write must leave the
+    old bytes intact rather than a truncated document. Mirrors the durability
+    the mailbox writer already uses for event bytes.
+    """
+
+    directory = path.parent
+    handle = tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=directory,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    )
+    temporary = Path(handle.name)
+    try:
+        with handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -1316,7 +1352,7 @@ def _apply_fixes(drifts: list[Drift]) -> list[Drift]:
                 print(f"  FIXED  {doc_path}:{doc_line}  "
                       f"{drift.target_file}:{old} → {drift.target_file}:{new}")
 
-        path.write_text("".join(lines), encoding="utf-8")
+        _atomic_write_text(path, "".join(lines))
 
     return unfixed
 
@@ -1597,6 +1633,7 @@ def _git_run(repo_root: Path, args: list[str], stdin: Optional[str] = None):
         return subprocess.run(
             ["git", "-C", str(repo_root), *args],
             capture_output=True, text=True, input=stdin,
+            env=git_runner.dashboard_env(repo_root),
         )
     except OSError:
         return None

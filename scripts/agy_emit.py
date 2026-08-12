@@ -18,9 +18,10 @@ import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_ROUTABLE_SEATS = frozenset(
-    {"director", "director2", "operator", "operator2", "coordinator"}
-)
+
+import protocol_mailbox  # noqa: E402
+
+_ROUTABLE_SEATS = frozenset(protocol_mailbox.LAUNCHABLE_SEATS)
 
 
 def emit_event(

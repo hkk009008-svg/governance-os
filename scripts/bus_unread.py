@@ -37,15 +37,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:                      # ADR-055 self-bootstrap (no PYTHONPATH)
     sys.path.insert(0, str(_REPO_ROOT))
 
-
+import protocol_mailbox  # noqa: E402
 
 _ISO_CURSOR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
-_EVENT_NAME_RE = re.compile(
-    r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)-"
-    r"(?P<sender>director2?|operator2?|coordinator2?)-to-"
-    r"(?P<recipient>director2?|operator2?|coordinator2?|all)-"
-    r"(?P<kind>[a-z0-9-]+)\.md$"
-)
+_EVENT_NAME_RE = protocol_mailbox.EVENT_NAME_RE
 _TS_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z-")
 _EVENTS_REF = "refs/threeway/events"
 _TRANSPORT_VALUES = frozenset({"mailbox", "signed-bus"})
@@ -198,7 +193,7 @@ def ordered_mailbox_events(event_filenames) -> list[str]:
             )
     return sorted(
         events,
-        key=lambda name: (_EVENT_NAME_RE.fullmatch(name).group("ts"), name),
+        key=lambda name: (_EVENT_NAME_RE.fullmatch(name).group("stamp"), name),
     )
 
 

@@ -29,9 +29,12 @@ def test_actions_are_full_sha_pinned_with_version_annotations(repo_root):
         workflow,
         re.MULTILINE,
     )
-    assert uses.count((f"actions/checkout@{CHECKOUT_SHA}", "v6.1.0")) == 5
-    assert uses.count((f"actions/setup-python@{SETUP_PYTHON_SHA}", "v6.3.0")) == 4
-    assert len(uses) == 9
+    # 7 checkout / 6 setup-python across smoke, pytest, pytest-linux-hermetic,
+    # lint-advisory, admission-gate, and the signer. The two advisory jobs
+    # (Linux hermeticity leg + non-gating lint) reuse the same pinned SHAs.
+    assert uses.count((f"actions/checkout@{CHECKOUT_SHA}", "v6.1.0")) == 7
+    assert uses.count((f"actions/setup-python@{SETUP_PYTHON_SHA}", "v6.3.0")) == 6
+    assert len(uses) == 13
 
 
 def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):

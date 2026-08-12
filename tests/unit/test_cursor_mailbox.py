@@ -6,8 +6,8 @@ import subprocess
 
 import pytest
 
-from scripts import cursor_mailbox as mailbox
-from scripts.cursor_app_binding import AppSessionBinding
+import cursor_mailbox as mailbox
+from cursor_app_binding import AppSessionBinding
 
 
 def _binding(

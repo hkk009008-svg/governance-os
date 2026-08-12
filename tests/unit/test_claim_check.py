@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import claim_check
+import claim_check
 
 
 # (claim as made, premise that would have named the miss)

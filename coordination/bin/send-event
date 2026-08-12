@@ -127,9 +127,26 @@ if [ "$KIND" = "learning-candidate" ]; then
   esac
 fi
 
-TS_DASH=$(/bin/date -u +%Y-%m-%dT%H-%M-%SZ)
+# The mailbox filename is the protocol identity and is parsed by one canonical
+# grammar everywhere; it carries no uniqueness suffix. Two events with the same
+# (from, to, kind) in the same UTC second would collide on the same path and
+# the fixed writer's O_EXCL link would fail closed. Rather than surface that as
+# a hard error on a rapid double-send, wait for the next second (bounded) so
+# each event lands on a distinct canonical name.
+TS_DASH=""
+for _attempt in 1 2 3 4 5; do
+  TS_DASH=$(/bin/date -u +%Y-%m-%dT%H-%M-%SZ)
+  REL="coordination/mailbox/sent/$TS_DASH-$FROM-to-$TO-$KIND.md"
+  if [ ! -e "$ROOT/$REL" ]; then
+    break
+  fi
+  /bin/sleep 1
+done
+if [ -e "$ROOT/$REL" ]; then
+  echo "send-event: $REL already exists after waiting for a fresh second; retry" >&2
+  exit 5
+fi
 TS_COLON="${TS_DASH:0:11}$(printf '%s' "${TS_DASH:11:8}" | /usr/bin/tr '-' ':')Z"
-REL="coordination/mailbox/sent/$TS_DASH-$FROM-to-$TO-$KIND.md"
 FROM_TITLE="$(printf '%s' "${FROM:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${FROM:1}"
 TO_TITLE="$(printf '%s' "${TO:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${TO:1}"
 case "$FROM" in

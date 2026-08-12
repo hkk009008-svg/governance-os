@@ -14,27 +14,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-try:
-    from scripts.agy_protocol_model import (
-        ADVISORY_MODE,
-        MODES,
-        SINGLE_MODEL_MODE,
-        RuntimeIdentityError,
-        infer_runtime_env,
-    )
-except ModuleNotFoundError as exc:
-    if exc.name != "scripts":
-        raise
-    from agy_protocol_model import (  # type: ignore[no-redef]
-        ADVISORY_MODE,
-        MODES,
-        SINGLE_MODEL_MODE,
-        RuntimeIdentityError,
-        infer_runtime_env,
-    )
+from agy_protocol_model import (
+    ADVISORY_MODE,
+    MODES,
+    SINGLE_MODEL_MODE,
+    RuntimeIdentityError,
+    infer_runtime_env,
+)
+from protocol_mailbox import LAUNCHABLE_SEATS
 
 
-LAUNCH_SEATS = ("director", "director2", "operator", "operator2", "coordinator")
+LAUNCH_SEATS = LAUNCHABLE_SEATS
 EFFORT_LEVELS = ("low", "medium", "high")
 DEFAULT_CONFIG_PATH = Path("~/.agy/pipeline-seat-launcher.toml")
 

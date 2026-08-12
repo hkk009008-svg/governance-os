@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import pin_reconciler
+import pin_reconciler
 
 
 # ---------------------------------------------------------------- fixtures
