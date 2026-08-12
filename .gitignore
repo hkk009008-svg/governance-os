@@ -16,6 +16,8 @@ __pycache__/
 .pytest_cache/
 
 # Desktop-app local state
+AGENTS.override.md
+CLAUDE.local.md
 .claude/settings.local.json
 .claude/worktrees/
 .worktrees/

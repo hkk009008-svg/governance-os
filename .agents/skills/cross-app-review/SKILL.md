@@ -1,12 +1,13 @@
 ---
 name: cross-app-review
-description: Review an exact branch, commit, pull request, or working-tree diff produced in the other desktop app. Use for a focused Claude-to-Codex or Codex-to-Claude handoff without taking implementation ownership.
+description: Review an exact committed branch, commit range, or pull request produced in the other desktop app. Use for a focused Claude-to-Codex or Codex-to-Claude handoff without taking implementation ownership.
 ---
 
 # Cross-app review
 
-1. Establish the exact target: pull request, branch and base, commit range, or
-   working-tree diff. Do not review a vague moving target.
+1. Establish the exact target and record its resolved base and head commit
+   SHAs. If the requested target includes uncommitted changes, ask the lead to
+   commit them or label the review as an unreproducible snapshot.
 2. Stay read-only unless the user explicitly asks you to implement fixes.
 3. Inspect the actual diff and enough surrounding code to evaluate behavior,
    regressions, security, and missing tests.

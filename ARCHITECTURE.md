@@ -51,7 +51,9 @@ Claude can list and send attributed text messages to other reachable Claude
 Code sessions. That messaging carries text, not files or conversation history;
 receiver permissions still apply. Cross-session messaging has platform,
 provider, and version constraints, including Claude Code 2.1.224+ and no native
-Windows support in the documented cross-session channel.
+Windows support in the documented cross-session channel. Computer use is a
+macOS/Windows research preview for Pro and Max plans and requires app and OS
+permissions.
 
 Agent teams are unavailable in Desktop, so they are deliberately absent here.
 Claude Desktop's own sessions, side chats, and dynamic workflows cover the
@@ -63,8 +65,10 @@ The current app supports parallel chats, managed and permanent Git worktrees,
 Local/Worktree Handoff, visual diff review with per-hunk stage/revert controls,
 detached review chats, project skills, plugins and MCP tools, a built-in
 browser, optional computer use, local environment setup/actions configured in
-the app, and scheduled background tasks. Scheduled tasks can run against Local
-or an isolated worktree; worktree mode keeps their mutations separate.
+the app, and scheduled background tasks. Computer use is limited to supported
+regions on macOS and Windows, requires its plugin, and keeps system and app
+approvals separate. Scheduled tasks can run against Local or an isolated
+worktree; worktree mode keeps their mutations separate.
 
 Handoff moves one Codex chat and its Git state between Local and its associated
 worktree. It is not a message bus between independent chats. The vendor docs
