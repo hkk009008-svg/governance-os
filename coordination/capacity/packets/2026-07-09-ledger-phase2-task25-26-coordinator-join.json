@@ -1,0 +1,53 @@
+{
+  "id": "coord-ledger-phase2-task25-26-join",
+  "wave": 2,
+  "cycle": "ledger-phase2-task25-26-preintegration-2026-07-09",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "phase2-task2.5a-result-entry-preintegration",
+    "phase2-task2.6a-audit-history-preintegration"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-task25a-result-entry",
+    "operator-ledger-phase2-task25a-lanev",
+    "director2-ledger-phase2-task26a-history-component",
+    "operator2-ledger-phase2-task26a-lanev"
+  ],
+  "acceptance": [
+    "Keep this cycle open until both pre-integration chunks have director/director2 implementation artifacts and operator/operator2 GO/NITS/FAIL reports.",
+    "Do not close the cycle until the capacity board and route validation pass for the active coordinator reconciliation route coordination/mailbox/sent/2026-07-09T02-30-42Z-coordinator-to-all-coordination.md.",
+    "Before any later user-visible integration, route a separate coordinator-owned join for BroadcastDetailView.swift rather than letting either implementation chunk touch it.",
+    "Close with one coordinator synthesis artifact or handoff that cites capacity board, route validation, smoke, implementation commits/ranges, and both verifier verdicts.",
+    "Do not edit evidence-ledger product files as coordinator."
+  ],
+  "done_evidence": [
+    "capacity board evidence: protocol_capacity_board.py --wave 2 after packet-state reconciliation -> valid, packet state closed, and no blocking issues.",
+    "active route validation evidence: protocol_capacity_board.py --wave 2 --validate-route coordination/mailbox/sent/2026-07-09T02-30-42Z-coordinator-to-all-coordination.md -> route valid true; no blocking issues.",
+    "smoke OK evidence: ci_smoke.py -> OK; ceremony, placeholder, GO-schema, and arch-freshness checks pass.",
+    "superseded initial route note: protocol_capacity_board.py --wave 2 --validate-route coordination/mailbox/sent/2026-07-08T22-07-13Z-coordinator-to-all-coordination.md still reports G10, so closeout relies on the later active reconciliation route reported by ledger_start_guard.py.",
+    "Operator2 GO: coordination/mailbox/sent/2026-07-09T02-36-24Z-operator2-to-all-verification-report.md for Task 2.6A range 9deb0f4..c1b5f3e.",
+    "Operator GO: coordination/mailbox/sent/2026-07-09T03-22-34Z-operator-to-all-verification-report.md for Task 2.5A fix range 7503311..0ffcffa; prior FAIL coordination/mailbox/sent/2026-07-09T02-56-43Z-operator-to-all-verification-report.md is resolved by Director fix coordination/mailbox/sent/2026-07-09T03-14-44Z-director-to-operator-verify-request.md.",
+    "handoff artifact: docs/HANDOFF-coordinator-2026-07-09-ledger-phase2-task25-26-closeout.md",
+    "next trigger: continue as coordinator to route the separate integration join for BroadcastDetailView.swift and docs/MANUAL.md, or stand by for future user direction; this closeout issues no executor token."
+  ],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-09-ledger-phase2-task25-26-closeout.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-09-ledger-phase2-task25-26-coordinator-join.json",
+    "coordination/mailbox/sent/2026-07-08T22-07-13Z-coordinator-to-all-coordination.md",
+    "coordination/mailbox/sent/2026-07-09T02-30-42Z-coordinator-to-all-coordination.md",
+    "coordination/mailbox/sent/2026-07-09T03-24-52Z-coordinator-to-all-coordination.md",
+    "docs/HANDOFF-coordinator-2026-07-09-ledger-phase2-task25-26-closeout.md"
+  ]
+}

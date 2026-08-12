@@ -1,0 +1,40 @@
+{
+  "id": "operator2-ledger-phase2-base-preflight",
+  "wave": 2,
+  "cycle": "ledger-phase2-task21-2026-07-08",
+  "owner": "operator2",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "phase2-base-isolation-preflight"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/evidence-ledger/.superpowers/sdd/progress.md",
+    "/Users/hyungkoookkim/evidence-ledger/coordination/presence/",
+    "/Users/hyungkoookkim/evidence-ledger/coordination/locks/",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "coord-ledger-phase2-task21-route"
+  ],
+  "acceptance": [
+    "Run a read-only Phase 2 base/isolation preflight from evidence-ledger after Pipeline ledger_start_guard.",
+    "Verify origin/main resolves to d3e87e64d3e1e4b1f4441e8bac0f69947df64e89, PR #11 is merged, the normal evidence-ledger main checkout is not used as the implementation base if divergent, and no active presence/lock contradicts the route.",
+    "Issue a Pipeline mailbox verification-report GO/NITS/FAIL scoped only to base/isolation readiness.",
+    "No push, lock claim, lock release, coordinator-mail consumption, paid API spend, pod spend, or evidence-ledger product edits."
+  ],
+  "done_evidence": [
+    "GO: coordination/mailbox/sent/2026-07-08T00-19-48Z-operator2-to-all-verification-report.md verifies PR #11 origin/main d3e87e64d3e1e4b1f4441e8bac0f69947df64e89, normal-main divergence boundary, and absence of active presence/lock contradiction for the Phase 2 base/isolation preflight."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-08T00-19-48Z-operator2-to-all-verification-report.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-08T00-10-29Z-coordinator-to-all-coordination.md",
+  "target_commit": "d3e87e64d3e1e4b1f4441e8bac0f69947df64e89",
+  "commit_range": null,
+  "scope_files": [
+    "/Users/hyungkoookkim/evidence-ledger/.superpowers/sdd/progress.md",
+    "/Users/hyungkoookkim/evidence-ledger/coordination/presence/",
+    "/Users/hyungkoookkim/evidence-ledger/coordination/locks/"
+  ]
+}

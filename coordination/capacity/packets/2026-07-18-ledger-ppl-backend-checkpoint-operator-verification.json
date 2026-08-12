@@ -1,0 +1,48 @@
+{
+  "id": "operator-ledger-ppl-backend-checkpoint-verification",
+  "wave": 2,
+  "cycle": "ledger-ppl-backend-checkpoint-reconciliation-2026-07-18",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "allowed_paths": [
+    "/Users/hyungkoookkim/evidence-ledger/.worktrees/codex-ppl-offer-decision-m1/",
+    "coordination/verification/scopes/*.json",
+    "coordination/mailbox/sent/*-director-to-operator-verify-request.md",
+    "coordination/mailbox/sent/*-operator-to-all-verification-report.md",
+    "coordination/capacity/packets/2026-07-18-ledger-ppl-backend-checkpoint-operator-verification.json"
+  ],
+  "dependencies": [
+    "director-ledger-ppl-backend-checkpoint-truth-sync"
+  ],
+  "acceptance": [
+    "Remain blocked until Director sends one committed canonical verify-request for a truth-sync HEAD descended from a93d07196dd8622d753cdd5f8617af7df29eb1cf and names the cumulative base e1c74d683ead132eb3e98e230195c47c7b18c7d1, exact range, author seat, assigned Operator, path inventory, and commands.",
+    "As the sole non-author verifier, independently inspect the actual cumulative range. Answer the genuinely new question: does the final Task-3A correction integrate with the already-reviewed Task-1/Task-2 authorization, immutable-revision, cutoff, receipt, and writer-order interfaces at the exact submitted HEAD; remain fail-closed and policy-inert without owner activation; and does the committed dispatch map accurately name the next lawful slices and blockers?",
+    "Rerun the full DB, import, and unit suites with /Users/hyungkoookkim/evidence-ledger/.venv/bin/python and env -u GIT_INDEX_FILE; run project smoke, architecture and operations anchor checks, API hash, exact range/path manifest, R-DATA/privacy inspection, git diff --check, staged scope, target status, and preservation checks for the pre-existing untracked web/ tree.",
+    "Issue exactly one directly publishable Pipeline verification-report GO, NITS, or FAIL bound to the canonical request and exact reviewed range. Do not repair code or docs, reconstruct missing request fields, mutate target data, activate policy, install dependencies, modify web/, push, merge, deploy, lock, consume cursors, or broaden scope.",
+    "USER-PRIORITY PARK: this packet was blocked on Director before the Pipeline-maintenance pause and remains blocked without a request or verdict. Resume only after the maintenance join authorizes restoration and the original Director dependency is ready again."
+  ],
+  "done_evidence": [],
+  "next_recipient": "coordinator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "ARCHITECTURE.md",
+    "db/tests/test_ppl_decision_policy.py",
+    "db/tests/test_ppl_offer_cutoff.py",
+    "db/tests/test_ppl_offer_domain.py",
+    "db/tests/test_ppl_offer_evaluation.py",
+    "db/tests/test_rls_grants.py",
+    "scripts/configure_ppl_decision_policy.py",
+    "scripts/measure_ppl_offer_decision.py",
+    "supabase/migrations/20260717000500_decision_policy.sql",
+    "supabase/migrations/20260717000600_offer_evaluation.sql",
+    "tests/unit/test_configure_ppl_decision_policy.py",
+    "tests/unit/test_ppl_offer_measurement.py",
+    "docs/superpowers/plans/2026-07-17-ppl-offer-decision-engine-milestone1.md"
+  ]
+}

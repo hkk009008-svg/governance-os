@@ -1,0 +1,261 @@
+# CI for the governance OS (Python-only). Two verification jobs run in parallel
+# on push/PR; both must pass for the workflow to succeed. A third manual-only
+# threeway signer job can emit a signed ci_result after they pass during go-live
+# (workflow_dispatch with a validated integration SHA).
+#
+# Single source of truth for the smoke invariants: scripts/governance_verify_all.py — if the
+# invariants change, update that script + ARCHITECTURE.md §15 together.
+#
+# Gates run by `python scripts/governance_verify_all.py` (smoke job):
+#   - Doc-anchor drift (check_doc_claims on ARCHITECTURE.md; fatal kinds hard-fail
+#     local + CI, advisory kinds warn)
+#   - Coordination-state (check_coordination; FATAL hard-fails local + CI,
+#     ADVISORY warns)
+#   - Anti-ceremony (check_no_ceremony; hard-fail local + CI)
+#   - Reviewer-result schema (consume_reviewer_result smoke_check)
+#   - Adoption-placeholder (check_placeholders; hard-fail local + CI — ADR-002)
+#   - Frozen historical report bytes + current compact-pair reports (check_go_schema; hard-fail local + CI)
+#   - ARCHITECTURE Last-verified (check_arch_freshness; inert unless ARCHITECTURE.md
+#     changed vs merge-base; fetch-depth: 0 already set for merge-base resolution)
+#
+# Tests run by `pytest tests` (pytest job):
+#   - Complete unit and integration contract suite
+#
+# Scope intentionally NOT included (per the 2026-05-24 Session 1 brief):
+#   - Linting (ruff, eslint)        - Deployment / release / changelog workflows
+#   - Code coverage reporting
+#
+# Actions are pinned to immutable commits; comments record the verified release tags.
+#
+# Security review:
+#   - No untrusted-input interpolation in `run:` blocks. The manual threeway
+#     integration SHA is passed via an env var, validated as a 40-char lowercase
+#     hex SHA, then used only after that check.
+#   - The concurrency key separates trusted pull_request_target admission from
+#     candidate pull_request tests, so neither half can cancel the other.
+#   - The trusted admission job receives only PR base/head repository+SHA values
+#     as action inputs/environment, validates both SHAs, and never executes the
+#     candidate checkout. No event value is interpolated directly into shell.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  pull_request_target:
+  workflow_dispatch:
+    inputs:
+      integration_sha:
+        description: Exact CAS-merged integration commit SHA to test and sign
+        required: true
+        type: string
+      integration_ref:
+        description: Fetchable branch, tag, or ref whose HEAD is integration_sha
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: ci_smoke (governance gates + runtime invariants)
+    if: github.event_name != 'pull_request_target'
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.integration_ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify threeway integration checkout
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          INTEGRATION_SHA: ${{ inputs.integration_sha }}
+        run: |
+          case "$INTEGRATION_SHA" in
+            *[!0-9a-f]*|'')
+              echo "integration_sha must be a lowercase 40-hex Git SHA" >&2
+              exit 1
+              ;;
+          esac
+          test "${#INTEGRATION_SHA}" -eq 40
+          test "$(git rev-parse HEAD)" = "$INTEGRATION_SHA"
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install --require-hashes -r requirements-dev.txt
+
+      - name: Run ci_smoke (single source of truth for §15 invariants)
+        run: python scripts/governance_verify_all.py
+
+  pytest:
+    name: pytest tests (Python ${{ matrix.python-version }})
+    if: github.event_name != 'pull_request_target'
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      # One version's failure must not cancel the others: the surviving jobs
+      # are the evidence that distinguishes a version-specific regression from
+      # a general one.
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      PIPELINE_REQUIRE_EXECUTED_TEST: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ inputs.integration_ref || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify threeway integration checkout
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          INTEGRATION_SHA: ${{ inputs.integration_sha }}
+        run: |
+          case "$INTEGRATION_SHA" in
+            *[!0-9a-f]*|'')
+              echo "integration_sha must be a lowercase 40-hex Git SHA" >&2
+              exit 1
+              ;;
+          esac
+          test "${#INTEGRATION_SHA}" -eq 40
+          test "$(git rev-parse HEAD)" = "$INTEGRATION_SHA"
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install --require-hashes -r requirements-dev.txt
+
+      - name: Run complete test suite
+        run: python -m pytest tests --tb=short -q
+
+      - name: Run no-ceremony detector (ADR-028)
+        run: python scripts/check_no_ceremony.py
+
+  # Risk-aware admission (audit P0): a PR range that touches an authority
+  # surface (hook policy, fixed writers, launchers, CI itself — the list lives
+  # in scripts/ci_admission_gate.py) must carry a committed GO/NITS
+  # high-risk-control verification-report covering those commits, validated by
+  # the existing compact_pair_loop machinery. Ranges that touch no authority
+  # surface are admitted without any new requirement. Stdlib-only: no pip
+  # install. Reads no github.event.* data; the range comes from git itself.
+  admission-gate:
+    name: risk-aware admission (authority surfaces)
+    runs-on: macos-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request_target'
+    steps:
+      - name: Checkout trusted base gate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout candidate objects without executing them
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Run trusted admission gate against candidate objects
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          case "$BASE_SHA:$HEAD_SHA" in
+            *[!0-9a-f:]*|'')
+              echo "pull-request SHAs must be lowercase hexadecimal" >&2
+              exit 2
+              ;;
+          esac
+          test "${#BASE_SHA}" -eq 40
+          test "${#HEAD_SHA}" -eq 40
+          test "$(git -C trusted rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git -C candidate rev-parse HEAD)" = "$HEAD_SHA"
+          git -C trusted fetch --no-tags --no-write-fetch-head "$GITHUB_WORKSPACE/candidate/.git" "$HEAD_SHA"
+          python trusted/scripts/ci_admission_gate.py --root trusted --base "$BASE_SHA" --head "$HEAD_SHA"
+
+  threeway-ci-result:
+    name: Emit threeway ci_result
+    runs-on: macos-latest
+    timeout-minutes: 10
+    needs: [smoke, pytest]
+    if: github.event_name == 'workflow_dispatch' && vars.THREEWAY_BUS_LIVE == 'true' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      INTEGRATION_SHA: ${{ inputs.integration_sha }}
+    steps:
+      # Signing runs from trusted main after the integration SHA passed both test
+      # jobs above. The ci private key never runs candidate-controlled code.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: requirements-governance.txt
+
+      - name: Install signing dependencies
+        run: pip install --require-hashes -r requirements-governance.txt
+
+      - name: Emit signed ci_result for tested integration SHA
+        env:
+          THREEWAY_KEYSTORE: ${{ runner.temp }}/threeway_keys
+          CI_PRIVATE_KEY: ${{ secrets.THREEWAY_CI_KEY }}
+        run: |
+          umask 077
+          case "$INTEGRATION_SHA" in
+            *[!0-9a-f]*|'')
+              echo "integration_sha must be a lowercase 40-hex Git SHA" >&2
+              exit 1
+              ;;
+          esac
+          test "${#INTEGRATION_SHA}" -eq 40
+          mkdir -p "$THREEWAY_KEYSTORE"
+          chmod 700 "$THREEWAY_KEYSTORE"
+          printf '%s\n' "$CI_PRIVATE_KEY" > "$THREEWAY_KEYSTORE/ci.ed25519"
+          chmod 600 "$THREEWAY_KEYSTORE/ci.ed25519"
+          case "$(uname -s)" in
+            Darwin) KEY_MODE="$(stat -f '%Lp' "$THREEWAY_KEYSTORE/ci.ed25519")" ;;
+            Linux) KEY_MODE="$(stat -c '%a' "$THREEWAY_KEYSTORE/ci.ed25519")" ;;
+            *) echo "unsupported runner OS for private-key mode check" >&2; exit 1 ;;
+          esac
+          test "$KEY_MODE" = "600"
+          python scripts/sign_ci_result.py --integration-sha "$INTEGRATION_SHA" --result PASS --remote origin

@@ -1,0 +1,43 @@
+{
+  "id": "director-ledger-phase2-detail-integration",
+  "wave": 2,
+  "cycle": "ledger-phase2-detail-integration-2026-07-09",
+  "owner": "director",
+  "packet_type": "director-implementation",
+  "row_ids": [
+    "phase2-task2.5-2.6-detail-integration",
+    "phase2-task2.6-manual-status"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Broadcasts/BroadcastDetailView.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md",
+    "coordination/mailbox/sent/*director-to-operator-verify-request.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "coord-ledger-phase2-task25-26-join"
+  ],
+  "acceptance": [
+    "Start from /Users/hyungkoookkim/Pipeline, run ledger_start_guard.py --seat director --wave 2, read this coordinator route, then use the route worktree at HEAD 0ffcffa.",
+    "Read evidence-ledger AGENTS.md/CLAUDE.md, docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md lines 492-543, design spec sections 4/5/13, and docs/MANUAL.md before product edits.",
+    "Implement only the integration join: wire ResultEntryView entry modes and ResultHistorySection into BroadcastDetailView using row.slotId, EntryAPI.fetchLatestResultHead(slotId:), and ResultHistoryAPI.fetch(slotId:).",
+    "The detail screen must offer the root result-entry flow when no latest head exists, settlement and correction flows when a head exists, refresh latest-head/history state after a save, and render audit-history loading/error/empty/data states without hiding existing P&L/provenance sections.",
+    "Update docs/MANUAL.md so 데이터 입력 화면 truthfully moves from 예정 to 사용 가능 and documents the three result flows plus audit trail, while preserving chat/recommendation 예정 markers and owner-confirmation caveats.",
+    "Do not edit EntryAPI.swift, ResultEntryView.swift, ResultHistoryAPI.swift, ResultHistorySection.swift, SQL, db tests, real-data/config, normal checkout state, or unrelated docs unless a compile-blocking integration defect requires a narrower follow-up explanation in the verify-request.",
+    "Run evidence-ledger smoke, focused Swift build/test commands available in this environment, and git diff --check; if simulator XCTest cannot execute, cite the exact environment boundary separately from product evidence.",
+    "Send exactly one Pipeline verify-request to operator with commit/range, changed files, tests, exclusions, Pair B preflight state if known, and exact next trigger."
+  ],
+  "done_evidence": [
+    "verify-request: coordination/mailbox/sent/2026-07-09T03-47-28Z-director-to-operator-verify-request.md reports detail-integration implementation commit 9d93bca, range 0ffcffa..9d93bca, three changed files, build-for-testing evidence, static route audit, and known simulator/target-smoke environment boundaries."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-09T03-47-28Z-director-to-operator-verify-request.md",
+  "next_recipient": "operator",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-09T03-47-28Z-director-to-operator-verify-request.md",
+  "target_commit": "9d93bca",
+  "commit_range": "0ffcffa..9d93bca",
+  "scope_files": [
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Broadcasts/BroadcastDetailView.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md"
+  ]
+}

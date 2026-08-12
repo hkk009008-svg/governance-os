@@ -1,0 +1,55 @@
+{
+  "id": "director2-control-plane-authority-foundation-task3d-snapshot-cas-closure-preflight",
+  "wave": 2,
+  "cycle": "control-plane-authority-foundation-2026-07-10",
+  "owner": "director2",
+  "packet_type": "director-preflight",
+  "row_ids": [
+    "control-plane-authority-task3d-snapshot-cas-closure-preflight"
+  ],
+  "allowed_paths": [
+    "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "scripts/codex_protocol_model.py",
+    "scripts/protocol_principal.py",
+    "scripts/run_merge_gate.py",
+    "threeway/gate.py",
+    "threeway/gitcas.py",
+    "threeway/refstore.py",
+    "tests/unit/test_service_principals.py",
+    "tests/unit/test_codex_ledger_bridge.py",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director2-control-plane-authority-foundation-identity-interface-closure-preflight"
+  ],
+  "acceptance": [
+    "Start from Pipeline, run the Director2 Wave-2 guard and status, read the fresh route and 2026-07-10T11-43-39Z CONTRADICTION, then perform one focused read-only Task-3D closure preflight. The only questions are snapshot provenance and event-tip/target publication serialization; this is not another broad discovery pass.",
+    "Return CLEAR only if EventSnapshot is acquisition-owned and opaque; local and remote capture retain an isolated bare proof repository; validation independently resolves the retained ref and compares actual tip, tree, ordered bytes, target, and digest; and a valid digest over a subset not reachable from the claimed tip is rejected while honest acquisition remains non-vacuously accepted.",
+    "Return CLEAR only if local event/target refs reach one expected-old multi-ref prepare before exact combined-closure import, same-remote refs bind exactly one effective push endpoint and publish directly to it in one atomic two-ref update with exact leases, and mixed/cross-repository, different-endpoint, fetch/push-substituted, or zero/multiple-push-endpoint authority fails before key load, object import, or ref mutation. A concurrent event append or target change must leave both refs and the input object set unchanged; unsupported remote atomic publication has no sequential fallback; no later retrying store.append is permitted.",
+    "Confirm the eight exact Task-3D selectors named in the plan cover forged-subset provenance, honest acquisition, local and remote positive apply controls, local and remote append races, cross-repository refusal, and atomic-unsupported refusal. Each denial varies one fact from a successful control and asserts RefEventStore.append plus sequential publication are unused. Confirm prior remote-lock, signed-fact, cursor, and publication-grammar closures remain intact and Tasks 4 onward retain SHA-256 8d44798592a4c87fc288f1cf25eff5c21e652574d0ed3a6076c4b72f8c14a6fd.",
+    "Send one CLEAR or CONTRADICTION report to coordinator. Do not implement, issue Operator GO, consume mail, route work, or take a key/ref/cursor/lock/push/spend/pod/production side effect."
+  ],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T13-22-51Z-director2-to-coordinator-coordination.md records CONTRADICTION at reviewed Pipeline commit b17bcf67be01ac145497f4f192d603d28254e0ae: EventSnapshot remained caller-substitutable and proof traversal did not disable Git replacement objects or ambient repository redirection. The same report confirms the local/remote two-ref CAS closure is sufficient."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T13-22-51Z-director2-to-coordinator-coordination.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": "b17bcf67be01ac145497f4f192d603d28254e0ae",
+  "commit_range": null,
+  "scope_files": [
+    "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "scripts/codex_protocol_model.py",
+    "scripts/protocol_principal.py",
+    "scripts/run_merge_gate.py",
+    "threeway/gate.py",
+    "threeway/gitcas.py",
+    "threeway/refstore.py",
+    "tests/unit/test_service_principals.py",
+    "tests/unit/test_codex_ledger_bridge.py"
+  ]
+}

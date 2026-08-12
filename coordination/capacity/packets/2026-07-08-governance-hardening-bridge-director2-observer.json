@@ -1,0 +1,38 @@
+{
+  "id": "director2-governance-hardening-bridge-observer",
+  "wave": 2,
+  "cycle": "governance-hardening-bridge-findings-2026-07-08",
+  "owner": "director2",
+  "packet_type": "idle",
+  "row_ids": [
+    "governance-root-truth-docs",
+    "governance-sha-ref-drift",
+    "governance-mailbox-receipt-unknown",
+    "governance-startup-guard-route-base"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-governance-hardening-bridge-impl"
+  ],
+  "acceptance": [
+    "Stand down as observer unless coordinator explicitly asks for director2 review or live evidence contradicts this route.",
+    "Do not duplicate director implementation work.",
+    "If contradiction is found, report only the contradiction with command evidence."
+  ],
+  "done_evidence": [
+    "Observer-standby closed without duplicate success mail; live mailbox state contained no director2 contradiction, missing-evidence report, changed-boundary report, or explicit coordinator request for this governance-hardening cycle.",
+    "Coordinator closeout accounts for observer standby after operator GO in coordination/mailbox/sent/2026-07-08T15-09-55Z-operator-to-all-verification-report.md."
+  ],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-08-governance-hardening-bridge-closeout.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": "8de7ecb",
+  "commit_range": "06d4987..f3656d0; 60459b8..8de7ecb",
+  "scope_files": [
+    "coordination/mailbox/sent/"
+  ]
+}

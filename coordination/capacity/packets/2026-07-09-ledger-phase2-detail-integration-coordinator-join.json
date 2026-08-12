@@ -1,0 +1,42 @@
+{
+  "id": "coord-ledger-phase2-detail-integration-join",
+  "wave": 2,
+  "cycle": "ledger-phase2-detail-integration-2026-07-09",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "phase2-task2.5-2.6-detail-integration",
+    "phase2-task2.6-manual-status"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-detail-integration",
+    "operator-ledger-phase2-detail-integration-lanev",
+    "director2-ledger-phase2-detail-integration-preflight",
+    "operator2-ledger-phase2-detail-integration-preflight"
+  ],
+  "acceptance": [
+    "Keep this cycle open until Director lands the detail-screen/manual integration, Operator returns GO/NITS/FAIL, Director2 reports bounded integration preflight or contradiction, and Operator2 reports route/preflight readiness or contradiction.",
+    "Close only after the capacity board and route validation pass for coordination/mailbox/sent/2026-07-09T03-33-31Z-coordinator-to-all-coordination.md.",
+    "Close with one coordinator synthesis artifact or handoff that cites capacity board, route validation, smoke, implementation commit/range, Operator verdict, and Pair B preflight disposition.",
+    "Do not edit evidence-ledger product files as coordinator."
+  ],
+  "done_evidence": [
+    "closeout: coordination/mailbox/sent/2026-07-09T05-40-25Z-coordinator-to-all-coordination.md closes the detail-integration cycle after Director commit 9d93bca, Operator GO for 0ffcffa..9d93bca, Director2 preflight GO-for-route, Operator2 preflight GO, capacity board evidence, route validation, smoke OK evidence, protocol doctor evidence, and next trigger to owner-gated Phase 2 Task 2.7 acceptance-run routing."
+  ],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-09-ledger-phase2-detail-integration-closeout.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": "9d93bca",
+  "commit_range": "0ffcffa..9d93bca",
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-09-ledger-phase2-detail-integration-coordinator-join.json",
+    "coordination/mailbox/sent/2026-07-09T03-33-31Z-coordinator-to-all-coordination.md"
+  ]
+}

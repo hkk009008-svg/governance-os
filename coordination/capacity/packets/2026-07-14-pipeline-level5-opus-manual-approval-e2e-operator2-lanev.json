@@ -1,0 +1,47 @@
+{
+  "id": "operator2-pipeline-level5-opus-manual-approval-e2e-lanev",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-manual-approval-e2e-2026-07-14",
+  "row_ids": [
+    "level5-wave1-opus-manual-approval-e2e-transport"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-14T15-53-30Z-operator2-to-all-verification-report.md",
+  "owner": "operator2",
+  "packet_type": "operator-verification",
+  "allowed_paths": [
+    "coordination/mailbox/sent/"
+  ],
+  "dependencies": [
+    "coord-pipeline-level5-opus-manual-approval-e2e-executor-join"
+  ],
+  "acceptance": [
+    "Remain blocked until a canonical committed coordinator-to-Operator2 verify-request binds descriptor 2a876e95-3a87-4203-a613-1a29dd957b5b, immutable range 555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5, one bridge-issued receipt under pipeline-level5-opus-manual-approval-e2e-attempt-2026-07-14, authorization source user-task:pipeline-level5-opus-manual-approval-e2e-2026-07-14, and transport profile anthropic-claude-existing-session-v1.",
+    "Independently inspect the immutable range, bridge and receipt identities, process cardinality, forbidden-environment boundary, one-attempt separation, and every provider finding. Prove none of the four terminal attempt identities was resumed or reused.",
+    "Rerun the descriptor deterministic gates without invoking the provider. Distinguish transport evidence from correctness: receipt presence is not GO, unavailable or uncertain delivery cannot satisfy the real-provider criterion, and every provider finding requires an evidence-backed disposition.",
+    "Return exactly one verification-report GO, NITS, or FAIL. Do not edit production or bridge behavior, rerun the provider, retry a denial, repair findings, merge, push, publish, consume, or mutate receipts, locks, or refs."
+  ],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-14T15-53-30Z-operator2-to-all-verification-report.md reports VERDICT: FAIL for 555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5 after 869 focused tests passed, smoke and protocol doctor passed, and five independent adversarial probes exposed blocking defects.",
+    "The report binds findings in send-event crash cleanup, trusted Git selection, sent-directory no-follow enforcement, verifier-child registration, and receipt-ID validation order. Receipt opr1:b79ded16d73c5c001a811b1377ba8df85e4577c2cb8d0e87535e105548e35a49 is reconciled to Codex FAIL with degraded reason process_failed and must not be retried or reset."
+  ],
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-14T15-17-58Z-coordinator-to-operator2-verify-request.md",
+  "target_commit": "97c270f8f0e630fdaaded672e0da37ed32335de5",
+  "commit_range": "555041477bcdb9a432a1b238d664be0958c5c9ef..97c270f8f0e630fdaaded672e0da37ed32335de5",
+  "scope_files": [
+    "scripts/opus_review_bridge.py",
+    "scripts/opus_review_receipts.py",
+    "tests/unit/test_opus_review_bridge.py",
+    "tests/unit/test_opus_review_receipts.py",
+    "tests/unit/test_check_go_schema.py",
+    "tests/unit/test_verification_report_gate.py",
+    "tests/unit/test_coordination_tooling.py",
+    "tests/unit/test_protocol_prompt_sync.py",
+    "tests/unit/test_protocol_capacity.py",
+    "tests/unit/test_protocol_doc_integrity.py",
+    "coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json",
+    "logs/pipeline-level5-opus-manual-approval-e2e-acceptance-2026-07-14.json"
+  ]
+}

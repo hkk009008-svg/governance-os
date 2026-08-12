@@ -1,0 +1,27 @@
+{
+  "id": "operator-pipeline-level5-opus-receipt-integration-standby",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-receipt-integration-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-receipt-integration"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator",
+  "packet_type": "idle",
+  "allowed_paths": [],
+  "dependencies": [],
+  "acceptance": [
+    "Pair A Operator is excepted because Operator2 owns the one integration-specific Lane V and root-preservation verification. A second same-question verdict would be redundant.",
+    "Do not duplicate Lane V, inspect through a verdict-bearing lane, invoke a provider, reconstruct trigger authority, edit production, publish a report, consume, route, claim locks, merge, or alter the root worktree. Report only a contradiction or explicit coordinator request."
+  ],
+  "done_evidence": [
+    "The prior Operator2 GO verifies the reviewed implementation head only; this route assigns the distinct merge and preservation question to Operator2 once."
+  ],
+  "next_recipient": "coordinator",
+  "status": "excepted",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": []
+}

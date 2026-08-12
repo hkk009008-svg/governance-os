@@ -1,0 +1,92 @@
+{
+  "schema_version": "pipeline-level5-opus-coordinator-e2e-acceptance/v1",
+  "generated_at": "2026-07-14T14:36:36Z",
+  "seat": "coordinator",
+  "task_board": "pipeline-level5-opus-coordinator-e2e-2026-07-14",
+  "packet": "coord-pipeline-level5-opus-coordinator-e2e-executor-join",
+  "route": "coordination/mailbox/sent/2026-07-14T14-19-02Z-coordinator-to-all-coordination.md",
+  "side_effect_id": "pipeline-level5-opus-coordinator-e2e-attempt-2026-07-14",
+  "reviewed_head": "97c270f8f0e630fdaaded672e0da37ed32335de5",
+  "reviewed_base": "555041477bcdb9a432a1b238d664be0958c5c9ef",
+  "descriptor": {
+    "path": "coordination/verification/scopes/2a876e95-3a87-4203-a613-1a29dd957b5b.json",
+    "sha256": "e393655f4ba9ad0dcfa0467fcc54c809c79a1b28b76a2022a7d846acc8996e84"
+  },
+  "scope_digest": "sha256:3a48d63bbd65fe189a47be04a21f4de701b6231274d62ae328f62308f2ebfb14",
+  "attempt_key": "opr1:b79ded16d73c5c001a811b1377ba8df85e4577c2cb8d0e87535e105548e35a49",
+  "bridge": {
+    "path": "scripts/opus_review_bridge.py",
+    "blob_oid": "5e37f668a9e0c401ea8583cd0e07cebfffa9ba67",
+    "receipt_path": "scripts/opus_review_receipts.py",
+    "receipt_blob_oid": "a67da9672d5c94fc2916ad6c17d4d10841f7d122",
+    "transport_profile": "anthropic-claude-existing-session-v1",
+    "authorization_source": "user-task:pipeline-level5-opus-coordinator-e2e-2026-07-14"
+  },
+  "user_approval": {
+    "received": true,
+    "scope": "one_new_private_repository_transmission_and_paid_service_action",
+    "sole_executor": "coordinator",
+    "attempt_limit": 1,
+    "retry_authorized": false,
+    "fallback_authorized": false
+  },
+  "preflight": {
+    "pipeline_head": "ed2529a2d23aa2b2b2a134555427dcfbb5315778",
+    "coordinator_unread": 0,
+    "wave_2_gate": "MET",
+    "route_valid": true,
+    "capacity_valid": true,
+    "locks_empty": true,
+    "receipt_root_absent": true,
+    "forbidden_environment_overrides_present": [],
+    "claude_executable": "/Users/hyungkoookkim/.local/bin/claude",
+    "sandbox_executable": "/usr/bin/sandbox-exec",
+    "review_worktree_clean": true,
+    "review_worktree_head": "97c270f8f0e630fdaaded672e0da37ed32335de5",
+    "reviewed_base_is_ancestor": true,
+    "provider_prompt_sha256": "86bb83ebec8bbfefe04a60af616e414f87ae972ceb3a27fc3f0332500e70f4b4",
+    "provider_prompt_blob_oid": "57df5979559c3c89030f685567bb5729a14d1688",
+    "provider_prompt_authority_sha256": "94768300138a01ca8c74fcd350a15a1557f7131730f7da94565d9566189f8acf",
+    "provider_prompt_authority_blob_oid": "583cdcb5b5129b629ae4ada21627a4fc5bab1b9c",
+    "deterministic_bridge_acceptance": {
+      "result": "pass",
+      "passed": 897,
+      "skipped": 18,
+      "duration_seconds": 392.83
+    },
+    "go_schema": "pass",
+    "sha_ref_baseline": "pass_with_215_known_issues",
+    "ci_smoke": "pass"
+  },
+  "provider_attempt": {
+    "status": "launch_denied",
+    "launch_request_count": 1,
+    "provider_process_started": false,
+    "paid_request_sent": false,
+    "receipt_created": false,
+    "retry_count": 0,
+    "reason_code": "outer_runtime_tenant_policy_denied_external_private_workspace_disclosure_before_create_process",
+    "transport_completion_satisfied": false,
+    "raw_prompt_or_response_persisted": false,
+    "prior_denied_attempt_reused": false,
+    "fallback_or_workaround_used": false
+  },
+  "post_denial": {
+    "retry_or_workaround_requested": true,
+    "additional_external_launch_authority_created": false,
+    "retry_or_workaround_executed": false,
+    "reason": "the one-attempt token was exhausted by the launch denial and the outer runtime expressly prohibited indirect execution or policy circumvention"
+  },
+  "final_state": {
+    "worktree_clean": true,
+    "worktree_head_unchanged": true,
+    "provider_or_bridge_process_absent": true,
+    "receipt_root_absent": true,
+    "route_valid": true,
+    "capacity_valid": true,
+    "locks_empty": true,
+    "operator2_dependency_satisfied": false,
+    "side_effect_id_terminal": true
+  },
+  "exact_next_trigger": "The current runtime cannot complete the private-repository Opus review. Only an external tenant trust-policy change plus a separately authorized distinct future cycle could permit a new launch; do not retry or work around this side-effect identity."
+}

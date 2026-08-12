@@ -1,0 +1,66 @@
+{
+  "id": "director-governance-hardening-bridge-impl",
+  "wave": 2,
+  "cycle": "governance-hardening-bridge-findings-2026-07-08",
+  "owner": "director",
+  "packet_type": "director-implementation",
+  "row_ids": [
+    "governance-root-truth-docs",
+    "governance-sha-ref-drift",
+    "governance-mailbox-receipt-unknown",
+    "governance-startup-guard-route-base"
+  ],
+  "allowed_paths": [
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "README.md",
+    "OPERATIONS.md",
+    "docs/PROGRAM-MANUAL.md",
+    "docs/protocol/",
+    "scripts/ci_smoke.py",
+    "scripts/check_doc_claims.py",
+    "scripts/mailbox_monitor.py",
+    "scripts/ledger_start_guard.py",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "coord-ledger-phase2-task23-join"
+  ],
+  "acceptance": [
+    "Start from /Users/hyungkoookkim/Pipeline and run the coordinator closeout/route evidence before editing.",
+    "Address the root truth-doc placeholder contradiction by replacing placeholder user-facing claims or explicitly reframing non-authoritative templates; do not leave AGENTS.md claiming verified truth that ARCHITECTURE.md does not provide.",
+    "Address the 215 stale commit-SHA warnings with a baseline/new-drift policy or a bounded cleanup plan backed by tests; do not claim clean SHA provenance from warning-only smoke output.",
+    "Make unknown coordinator broadcast receipt visible as unproved in mailbox monitoring, with focused tests.",
+    "Strengthen the startup guard route-base/worktree guidance so routed seats are pointed at the active route base/worktree and not attracted to a known-stale normal target checkout.",
+    "Run focused unit tests for touched scripts plus scripts/ci_smoke.py, scripts/check_coordination.py, protocol_capacity_board.py --wave 2, and git diff --check.",
+    "Send exactly one verify-request to operator with commit/range, changed files, tests, exclusions, and exact next trigger.",
+    "No push, cursor consume, lock claim, pod spend, paid API spend, or product-target code edit unless a later user prompt explicitly widens scope."
+  ],
+  "done_evidence": [
+    "f3656d0 coord(director): harden governance bridge findings implemented the routed root-doc, SHA-ref baseline, mailbox receipt, and startup-guard hardening.",
+    "coordination/mailbox/sent/2026-07-08T14-54-18Z-director-to-operator-verify-request.md issued the initial verify-request for 06d4987..f3656d0.",
+    "coordination/mailbox/sent/2026-07-08T15-00-08Z-operator-to-all-verification-report.md returned FAIL for the ARCHITECTURE.md verification-stamp provenance issue.",
+    "8de7ecb docs(architecture): fix governance bridge stamp landed the focused one-file provenance nit-fix.",
+    "coordination/mailbox/sent/2026-07-08T15-05-04Z-director-to-operator-verify-request.md issued the focused nit-fix verify-request for 60459b8..8de7ecb."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-08T15-05-04Z-director-to-operator-verify-request.md",
+  "next_recipient": "operator",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-08T15-05-04Z-director-to-operator-verify-request.md",
+  "target_commit": "8de7ecb",
+  "commit_range": "06d4987..f3656d0; 60459b8..8de7ecb",
+  "scope_files": [
+    "ARCHITECTURE.md",
+    "README.md",
+    "OPERATIONS.md",
+    "docs/PROGRAM-MANUAL.md",
+    "scripts/ci_smoke.py",
+    "scripts/check_doc_claims.py",
+    "scripts/mailbox_monitor.py",
+    "scripts/ledger_start_guard.py",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ]
+}

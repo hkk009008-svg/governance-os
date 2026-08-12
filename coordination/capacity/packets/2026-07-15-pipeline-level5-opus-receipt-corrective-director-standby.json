@@ -1,0 +1,27 @@
+{
+  "id": "director-pipeline-level5-opus-receipt-corrective-standby",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-receipt-corrective-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-receipt-corrective"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "director",
+  "packet_type": "idle",
+  "allowed_paths": [],
+  "dependencies": [],
+  "acceptance": [
+    "Pair A is excepted because the publication, corpus-authority, process-ownership, and receipt-validation fixes share one self-hosting Lane V boundary and cannot produce two independently trustworthy verification loops before convergence.",
+    "Do not implement, preflight the same five findings, invoke a provider, publish a duplicate trigger, consume, route, claim locks, or edit the corrective branch. Report only a contradiction or newer durable state."
+  ],
+  "done_evidence": [
+    "Coordinator completed the distinct bounded capacity preflight: a dual-pair file split was rejected because each pair would verify through tooling that still lacked the other pair's correction."
+  ],
+  "next_recipient": "coordinator",
+  "status": "excepted",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": []
+}

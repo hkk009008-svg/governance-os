@@ -1,0 +1,40 @@
+{
+  "id": "director2-ledger-phase2-detail-integration-preflight",
+  "wave": 2,
+  "cycle": "ledger-phase2-detail-integration-2026-07-09",
+  "owner": "director2",
+  "packet_type": "director-preflight",
+  "row_ids": [
+    "phase2-task2.5-2.6-detail-integration",
+    "phase2-task2.6-manual-status"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/superpowers/specs/2026-07-02-evidence-ledger-design.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Broadcasts/BroadcastDetailView.swift"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start from /Users/hyungkoookkim/Pipeline, run ledger_start_guard.py --seat director2 --wave 2, read this coordinator route, then inspect only the routed worktree plan/docs/detail-screen state.",
+    "Perform bounded read-only preflight on the integration scope: confirm whether BroadcastDetailView.swift plus docs/MANUAL.md is sufficient, identify any missing integration acceptance that would change the route write set, and cite plan/design/manual evidence.",
+    "Report only contradiction, missing required evidence, changed safety boundary, or a concise GO-for-route status to coordinator; do not duplicate Director implementation work.",
+    "Do not edit evidence-ledger product files, issue Operator GO, consume coordinator mail, take user-gated side effects, or create duplicate success mail."
+  ],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-09T03-39-57Z-director2-to-coordinator-coordination.md reports director2's bounded detail-integration preflight: no contradiction, missing required evidence, or changed safety boundary; route write set remains sufficient for BroadcastDetailView.swift plus docs/MANUAL.md."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-09T03-39-57Z-director2-to-coordinator-coordination.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md"
+  ]
+}

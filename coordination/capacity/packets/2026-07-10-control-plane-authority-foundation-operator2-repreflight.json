@@ -1,0 +1,76 @@
+{
+  "id": "operator2-control-plane-authority-foundation-activation-repreflight",
+  "wave": 2,
+  "cycle": "control-plane-authority-foundation-2026-07-10",
+  "owner": "operator2",
+  "packet_type": "operator-preflight",
+  "row_ids": [
+    "control-plane-authority-task4-6-repreflight"
+  ],
+  "allowed_paths": [
+    "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "threeway/activation.py",
+    "threeway/cutover.py",
+    "threeway/cursor_backfill.py",
+    "threeway/legacy_projector.py",
+    "threeway/keys_bootstrap.py",
+    "threeway/keys.py",
+    "scripts/build_threeway_activation_manifest.py",
+    "scripts/execute_threeway_cutover.sh",
+    "scripts/protocol_capacity.py",
+    "scripts/protocol_executor_token.py",
+    "scripts/bus_unread.py",
+    "coordination/authority.toml",
+    "coordination/threeway/keys/",
+    "coordination/threeway/activation/",
+    "logs/threeway-trust-root-pipeline-local-authority-2026-07-10/",
+    "logs/threeway-activation-pipeline-local-authority-2026-07-10/",
+    "tests/unit/",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-control-plane-authority-foundation-task2u-fail-closed-closure",
+    "director2-control-plane-authority-foundation-task3i-execution-contract-closure-preflight"
+  ],
+  "acceptance": [
+    "Hold the durable CLEAR at 2026-07-10T04-24-26Z without repeating Tasks 4-6C. Reopen only if the corrective coordinator route changes those task bodies or their activation-safety contract; the Task2U cumulative fail-closed correction and Task3I execution-contract closure do not by themselves reopen this preflight. The Task-4-through-EOF SHA-256 remains 8d44798592a4c87fc288f1cf25eff5c21e652574d0ed3a6076c4b72f8c14a6fd.",
+    "Remain blocked/observer-only for this campaign while the Task2U and Task3I dependencies are open. Task3I preserves the already-confirmed topology, bound-file matrix, frame/session, capture/reparse, two-ref CAS, CLI/direct-caller, and exact public-result closures and does not reopen Tasks 4-6C. The orthogonal df5caaa cross-provider verify-request is outside this campaign packet and does not change this CLEAR hold. Send no campaign receipt or duplicate report.",
+    "At coordinator closeout, reuse the attached CLEAR if Tasks 4-6C remain byte-for-byte and semantically unchanged. If a later diff changes those task bodies or their activation contract, stop and await one new focused route before any repeat pass."
+  ],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T04-24-26Z-operator2-to-coordinator-coordination.md records CLEAR for Tasks 4-6C at reviewed Pipeline HEAD e9ad5bee34aa14fea556901780490f720bbcc4d6; reuse remains valid only while those tasks and their activation contract are semantically unchanged.",
+    "SCHEDULING EXCEPTION ONLY: direct user-principal supersession activates the Pipeline Level-5 first cycle. The prior CLEAR remains bounded to its historical contract and grants no current activation or verification authority. A fresh control-plane reroute is required to resume."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T04-24-26Z-operator2-to-coordinator-coordination.md",
+  "next_recipient": "coordinator",
+  "status": "excepted",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "docs/superpowers/specs/2026-07-10-signed-bus-authority-identity-design.md",
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "threeway/activation.py",
+    "threeway/cutover.py",
+    "threeway/cursor_backfill.py",
+    "threeway/legacy_projector.py",
+    "threeway/keys_bootstrap.py",
+    "threeway/keys.py",
+    "scripts/build_threeway_activation_manifest.py",
+    "scripts/execute_threeway_cutover.sh",
+    "scripts/protocol_capacity.py",
+    "scripts/protocol_executor_token.py",
+    "scripts/bus_unread.py",
+    "coordination/authority.toml",
+    "coordination/threeway/keys/",
+    "coordination/threeway/activation/",
+    "logs/threeway-trust-root-pipeline-local-authority-2026-07-10/",
+    "logs/threeway-activation-pipeline-local-authority-2026-07-10/",
+    "tests/unit/test_protocol_executor_token.py",
+    "tests/unit/test_threeway_activation_manifest.py",
+    "tests/unit/test_threeway_cutover.py",
+    "tests/unit/"
+  ]
+}

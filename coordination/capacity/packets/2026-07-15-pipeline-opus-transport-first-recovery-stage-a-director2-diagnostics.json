@@ -1,0 +1,40 @@
+{
+  "id": "director2-pipeline-opus-transport-first-recovery-stage-a-diagnostics",
+  "wave": 2,
+  "cycle": "pipeline-opus-transport-first-recovery-stage-a-2026-07-15",
+  "row_ids": [
+    "level5-wave1-opus-transport-first-recovery-stage-a"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "director2",
+  "packet_type": "director-implementation",
+  "allowed_paths": [
+    "coordination/mailbox/sent/*director2-to-operator2-verify-request.md"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Start only from the committed coordinator request-completion route that consumes the complete blocker coordination/mailbox/sent/2026-07-15T21-42-18Z-director2-to-coordinator-coordination.md at its bound complete-body commit/blob/digest and the amended committed plan. Refresh Director2 mail, HEAD, capacity, route, locks, shared index, root WIP, receipt state, and exact clean Stage-A head before writing.",
+    "Preserve immutable Q2=804aac46f969a5a39acef47832ff53989ea3031b, D=f223aa4e6fe1b89b244fc2f6256f9d2b75b1f46f, and invalid non-authority T0=84bd414cb35b7780206fcce48c19ebbfaf54ab8f byte-for-byte. Append exactly one T whose sole parent is T0 and whose subject is coord(director2): correct Stage A quality verification request. No amend, reset, rewrite, replacement, new descriptor, new request path, new external authority object, new review, Q3, or later request correction is authorized.",
+    "Modify only coordination/mailbox/sent/2026-07-15T21-40-25Z-director2-to-operator2-verify-request.md. Insert exactly one terminal Exact Next Trigger section immediately before the existing cursor line. Preserve every existing H1, envelope, timestamp, event, task-board, wave, reviewed-head/base, descriptor, external-authority, and provider-budget byte. The T0..T diff contains only that section.",
+    "Run scripts/check_coordination.py, scripts/ci_smoke.py, descriptor parsing, external-object validation, request field-count checks, descriptor-digest recomputation, git diff checks, prospective receipt/lock absence, and receipt-manifest equality. Require exactly one Event type, Reviewed head, Reviewed base, Lane-V-Scope, Stage-A-External-Authority, and Exact Next Trigger. Provider process attempts authorized: 0. Receipt mutations authorized: 0.",
+    "Resolve authority provider-free only from final T. Require exact reviewed range R..Q2, the four aggregate changed paths, unchanged descriptor and external authority objects, the two PASS reviews, and a new prospective attempt key with no receipt or lock. T0 must never be supplied as trigger authority merely because its binding fields parse.",
+    "Stop after canonical final T with Operator2 as next owner. Stage A authorizes no production/test/descriptor edit, real provider invocation, receipt/runtime mutation, local integration, external publication, cursor consume, lock action, branch cleanup, or unrelated root-WIP edit. Any scope, schema, secrecy, route, authority, smoke, or no-provider contradiction produces one bounded blocker instead of expansion."
+  ],
+  "done_evidence": [
+    "Q2 804aac46f969a5a39acef47832ff53989ea3031b directly parents Q1 and changes exactly scripts/opus_review_bridge.py plus tests/unit/test_opus_review_bridge.py; aggregate R..Q2 remains exactly four routed paths.",
+    "Final provider-free gate: 863 passed; smoke, compile, diff, topology, two-path/four-path, and receipt-manifest checks passed with provider attempts and receipt mutations at zero.",
+    "Fresh post-Q2 spec and code-quality reviews both returned PASS with empty findings and are bound by external authority object 67373b981d89bb606fc216545e5bf520ab6d8114.",
+    "Descriptor D f223aa4e6fe1b89b244fc2f6256f9d2b75b1f46f retains digest sha256:248eda33fd5574c7dfe094c8a67bd9ddae323882d5bd6b58095d7ffba216a383.",
+    "Initial T0 84bd414cb35b7780206fcce48c19ebbfaf54ab8f is non-authority; final T eb05da5004b5ab8a3ce12187ec2eec12bdf98f15 adds only the terminal transfer section, passes coordination/smoke/provider-free resolution, and has no prospective receipt or lock.",
+    "Canonical verify-request coordination/mailbox/sent/2026-07-15T21-40-25Z-director2-to-operator2-verify-request.md is bound to final T eb05da5004b5ab8a3ce12187ec2eec12bdf98f15 and transfers exact R..Q2 verification to Operator2."
+  ],
+  "next_recipient": "operator2",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-15T21-40-25Z-director2-to-operator2-verify-request.md",
+  "target_commit": "804aac46f969a5a39acef47832ff53989ea3031b",
+  "commit_range": "40fd0a5e43c6b28330ced9ddffe01483cde42b65..804aac46f969a5a39acef47832ff53989ea3031b",
+  "scope_files": [
+    "coordination/mailbox/sent/2026-07-15T21-40-25Z-director2-to-operator2-verify-request.md"
+  ]
+}

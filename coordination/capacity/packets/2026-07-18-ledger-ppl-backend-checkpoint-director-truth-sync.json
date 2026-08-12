@@ -1,0 +1,34 @@
+{
+  "id": "director-ledger-ppl-backend-checkpoint-truth-sync",
+  "wave": 2,
+  "cycle": "ledger-ppl-backend-checkpoint-reconciliation-2026-07-18",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "director",
+  "packet_type": "director-implementation",
+  "allowed_paths": [
+    "/Users/hyungkoookkim/evidence-ledger/.worktrees/codex-ppl-offer-decision-m1/docs/superpowers/plans/2026-07-17-ppl-offer-decision-engine-milestone1.md",
+    "coordination/mailbox/sent/*-director-to-operator-verify-request.md",
+    "coordination/mailbox/sent/*-director-to-coordinator-coordination.md"
+  ],
+  "dependencies": [],
+  "acceptance": [
+    "Start in Pipeline, run the Director Wave-2 ledger guard/status, read the committed route body, then enter only /Users/hyungkoookkim/evidence-ledger/.worktrees/codex-ppl-offer-decision-m1. Stop unless branch codex/ppl-offer-decision-m1 is at exact HEAD a93d07196dd8622d753cdd5f8617af7df29eb1cf and the only visible target WIP is the existing untracked web/ setup.",
+    "Modify only docs/superpowers/plans/2026-07-17-ppl-offer-decision-engine-milestone1.md. Reconcile its stale status and dispatch table to durable truth: Task 2 is complete at 19f5c4ff24e95ef3768bbf0fb242b2de4d43f33c, Task 3A is complete at a93d07196dd8622d753cdd5f8617af7df29eb1cf, the generic engine remains policy-inert, Task 3B remains blocked on Gates B/C, Task 4 remains blocked on Gate D, and Task 5A is the next code slice but dependency-lock generation remains blocked until npm registry access is separately available and authorized.",
+    "Record the fresh coordinator checkpoint without overstating it: DB 433 passed, import 126 passed, unit 91 passed, project smoke OK, architecture and operations anchors clean, API SHA-256 1c0f4f58632e14243f373c36abb3a78b08807cdd9dccd54eeb3cc8a16d5503a6 exact, diff/staged scope clean, and exact Task-3A range e1c74d683ead132eb3e98e230195c47c7b18c7d1..a93d07196dd8622d753cdd5f8617af7df29eb1cf contains twelve paths.",
+    "Preserve the untracked web/ tree byte-for-byte and do not touch the dirty normal checkout /Users/hyungkoookkim/evidence-ledger. Do not edit production code, tests, API/spec files, child plans, ignored progress, owner evidence, private values, credentials, or business data.",
+    "Run the smallest document/scope checks, commit exactly the one truth-sync file locally, then send one canonical verify-request to Operator naming base e1c74d683ead132eb3e98e230195c47c7b18c7d1, the new truth-sync HEAD, the cumulative reviewed range, exact path inventory, author seat, assigned non-author Operator, and the integration question in this packet.",
+    "No Task 3B policy activation, Gate B/C/D ruling, npm install, lockfile generation, web implementation, database mutation, service action, push, merge, deployment, lock, cursor consume, provider action, spend, reset, rebase, amend, or cleanup is authorized.",
+    "USER-PRIORITY PARK: this packet was ready before the Pipeline-maintenance pause. It is now blocked without completion evidence and may return to ready only after the maintenance join authorizes restoration and fresh target preservation checks pass."
+  ],
+  "done_evidence": [],
+  "next_recipient": "operator",
+  "status": "blocked",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "docs/superpowers/plans/2026-07-17-ppl-offer-decision-engine-milestone1.md"
+  ]
+}

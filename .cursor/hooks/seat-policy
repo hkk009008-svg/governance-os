@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Fail-closed wrapper for the Cursor Desktop app-seat policy.
+set -uo pipefail
+
+deny() {
+  printf '{"permission":"deny","user_message":"%s","agent_message":"%s"}\n' "$1" "$1"
+  exit 0
+}
+
+ROOT=$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd) \
+  || deny "Cursor seat hook could not resolve the Pipeline root."
+
+PY="$ROOT/.venv/bin/python"
+[ -x "$PY" ] || PY=$(command -v python3 || true)
+[ -n "$PY" ] || deny "Cursor seat hook found no Python interpreter."
+
+POLICY="$ROOT/scripts/cursor_hook_policy.py"
+[ -f "$POLICY" ] || deny "Cursor seat hook policy script is missing."
+
+POLICY_OUTPUT=""
+if ! POLICY_OUTPUT=$("$PY" "$POLICY" "$@" 2>/dev/null); then
+  deny "Cursor seat hook policy failed to execute."
+fi
+if ! printf '%s' "$POLICY_OUTPUT" | "$PY" -c '
+import json
+import sys
+
+payload = json.load(sys.stdin)
+if not isinstance(payload, dict):
+    raise ValueError("hook output must be a JSON object")
+' 2>/dev/null; then
+  deny "Cursor seat hook policy emitted invalid JSON."
+fi
+
+printf '%s\n' "$POLICY_OUTPUT"

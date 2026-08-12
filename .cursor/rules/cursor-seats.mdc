@@ -1,0 +1,62 @@
+---
+description: Cursor app-seat identity, worktree boundaries, and mailbox policy. Load for seat, mailbox, review, worktree, or coordination protocol work.
+globs: coordination/**,.cursor/runtime/**,.cursor/hooks/**,scripts/cursor_*.py
+alwaysApply: false
+---
+
+# Cursor app seats
+
+Cursor Desktop/Agents Window is the normal runtime. The main checkout and
+ordinary branches are a **readiness bridge**: reads and `.pytest-verify-tmp/`
+scratch are free. Governed shell mutations and remote Git effects surface one
+in-app approval; native file-tool edits outside a bound Director deny because
+Cursor does not currently enforce `preToolUse` approval.
+
+A live seat is one fact: a linked worktree on reserved branch
+`cursor-seat/<seat>` whose user-local registry record (root, active top-level
+app `conversation_id`, app-visible selected model ID) was written by the
+`sessionStart` hook. Wrappers and hooks resolve that identity at point of use;
+environment variables describe it but never grant authority. Cursor app seats
+use their worktree's native Git index and reject `GIT_INDEX_FILE`.
+
+- Standing pair: `director` plus `operator`; `director2` / `operator2` /
+  `coordinator` are cold capacity. Model diversity is required only when the
+  executable risk profile requires it.
+- `director`/`director2` implement without per-action approval in their own
+  worktree.
+- `operator`/`operator2` review and issue GO/NITS/FAIL; their one unattended
+  commit is the exact event path just staged by the fixed writer.
+- Bound Director/Operator `cursor-publish` / `cursor-consume` do not need a
+  second mailbox approval. Do not ask chat to re-authorize the same effect
+  after a hook approval card.
+- `coordinator` reconciles on demand, authors no production changes, and holds
+  no mailbox cursor.
+- Material-behavior acceptance (criteria:
+  `docs/protocol/agents/risk-classes.md`) requires a non-author Operator
+  against one committed verify-request. High-risk control additionally
+  requires a different model family and abuse-class assessment; the selected
+  model ID is app-visible evidence, not provider/backend attestation.
+
+Never edit mailbox, lock, or `.cursor/runtime/` state directly — the hook
+hard-denies that. Push, pull, fetch, merge, rebase, and paid spend are separate
+remote effects; each needs its own in-app approval for the exact action.
+
+Never switch branches inside a seat chat on a dirty tree; the app may
+auto-commit a checkpoint. Seats stay on their reserved branch.
+
+Custom subagents are optional advisors or capacity workers, launchable from
+any chat including bound seats (`.cursor/agents/` defines the read-only
+advisors). They are not durable seats, cannot inherit seat authority, and
+cannot publish verdicts. Full seats are pinned top-level Agents Window chats
+in dedicated worktrees.
+
+App capabilities — subagents, skills, in-app browser (including the optional
+ChatGPT Pro consultation skill), plan mode, and MCP — are available at seat
+discretion. Every well-formed MCP invocation asks through the fail-closed hook
+because that payload has no documented child discriminator. The card is
+invocation consent, not external-effect authority. A capability never adds
+task, review, or effect authority.
+
+Use side chats only in readiness or unreserved workspaces. In a reserved seat
+worktree a new side-chat conversation may supersede the pinned session binding;
+use a custom read-only subagent there instead.

@@ -1,0 +1,43 @@
+{
+  "id": "operator-ledger-phase2-task21-lanev",
+  "wave": 2,
+  "cycle": "ledger-phase2-task21-2026-07-08",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "phase2-task2.1-client-write-path"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/evidence-ledger/supabase/migrations/",
+    "/Users/hyungkoookkim/evidence-ledger/db/tests/",
+    "/Users/hyungkoookkim/evidence-ledger/docs/PROGRAM-MANUAL.md",
+    "/Users/hyungkoookkim/evidence-ledger/ARCHITECTURE.md",
+    "/Users/hyungkoookkim/evidence-ledger/DECISIONS.md",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-task21-write-path"
+  ],
+  "acceptance": [
+    "Remain blocked until director sends a Task 2.1 outcome with commit/range and verify-request.",
+    "After the director outcome, independently verify the named diff against the Phase 2 plan, ADR-007 write-path constraints, R-START truth docs, and committed DB tests.",
+    "Issue exactly one Pipeline mailbox verification-report with GO, NITS, or FAIL for Task 2.1.",
+    "No push, lock release, coordinator-mail consumption, paid API spend, pod spend, or evidence-ledger product edits."
+  ],
+  "done_evidence": [
+    "NITS: coordination/mailbox/sent/2026-07-08T00-48-28Z-operator-to-all-verification-report.md verified Task 2.1 implementation commit 35dc478 with doc/stamp nits only.",
+    "GO: coordination/mailbox/sent/2026-07-08T01-01-21Z-operator-to-all-verification-report.md verifies the narrow nit-fix range 35dc478..e446218 and closes the Task 2.1 operator packet."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-08T01-01-21Z-operator-to-all-verification-report.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-08T00-56-52Z-director-to-operator-verify-request.md",
+  "target_commit": "e446218",
+  "commit_range": "35dc478..e446218",
+  "scope_files": [
+    "/Users/hyungkoookkim/evidence-ledger/supabase/migrations/",
+    "/Users/hyungkoookkim/evidence-ledger/db/tests/",
+    "coordination/mailbox/sent/2026-07-08T01-01-21Z-operator-to-all-verification-report.md"
+  ]
+}

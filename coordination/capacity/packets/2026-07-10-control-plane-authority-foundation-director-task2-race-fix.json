@@ -1,0 +1,58 @@
+{
+  "id": "director-control-plane-authority-foundation-task2-race-fix",
+  "wave": 2,
+  "cycle": "control-plane-authority-foundation-2026-07-10",
+  "owner": "director",
+  "packet_type": "director-implementation",
+  "row_ids": [
+    "control-plane-authority-task2-race-fix"
+  ],
+  "allowed_paths": [
+    "scripts/protocol_mailbox.py",
+    "scripts/protocol_effectiveness_report.py",
+    "scripts/continuation_readiness.py",
+    "scripts/draft_handoff.py",
+    "tests/unit/test_protocol_mailbox.py",
+    "tests/unit/test_check_coordination.py",
+    "tests/unit/test_protocol_effectiveness_report.py",
+    "tests/unit/test_codex_ledger_bridge.py",
+    "tests/unit/test_draft_handoff.py",
+    "ARCHITECTURE.md",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-control-plane-authority-foundation-task2-spec-review-fix"
+  ],
+  "acceptance": [
+    "Start from Pipeline, run the Director Wave-2 guard and status, read the fresh route and 2026-07-10T14-03-14Z report, then confirm the routed worktree is clean at ef76fd11ea61e27778d0cedf65c1a608cf826354 whose sole parent is 92d1fbcd1bb76ccb377d6bca1631374569696626 and which has no other child.",
+    "Preserve 78b48ed, accepted Task 1 e43acc2, failed candidate 205f077, reviewed-but-spec-failed child 92d1fbc, and Task2R candidate ef76fd1 as immutable provenance. Do not amend, reset, rebase, squash, or rewrite them. Land exactly one additive direct child of ef76fd1 and no second routed child.",
+    "Use the same corrective implementer with strict TDD to close exactly the two source-confirmed races: one descriptor-bound no-follow body snapshot for parsing and numeric legacy provenance, and one canonical mailbox scan/body snapshot for every effectiveness classification, route/GO sample, invalid metric, event count, and unread observation.",
+    "Run the exact finding-16 and finding-17 selectors through causal RED, GREEN, their honest unchanged-path controls, each named one-fact flip, restoration, and final GREEN; rerun all fifteen prior Task-2 selectors and the full focused suite. Modify compatibility paths only if the frozen snapshot representation requires them, and modify ARCHITECTURE.md only if current claims or anchors become stale.",
+    "Obtain fresh specification review of ef76fd1..<race-fix-child>; only after it passes obtain fresh code-quality review. Then send one Operator verify-request for 78b48ed493899dd126de2d1764cbdbf022111dfd..<race-fix-child>, citing all five cumulative implementation/provenance commits, all seventeen selectors/flips, exact changed paths, provenance, and exclusions.",
+    "Expected implementation scope is scripts/protocol_mailbox.py, scripts/protocol_effectiveness_report.py, tests/unit/test_protocol_mailbox.py, and tests/unit/test_protocol_effectiveness_report.py, plus ARCHITECTURE.md only on real drift. The other listed Task2R paths are compatibility-test ceilings, not invitations to widen behavior.",
+    "Keep signed-facts authority shadow. No key/ref/secret creation, authority flip, remote activation/publication, cursor consume, lock, target-checkout refresh, push, spend, pod, production generation, or changes outside the listed paths are authorized."
+  ],
+  "done_evidence": [
+    "Commit 8cc4beed2c6c5836f915113ccd5104c3f039c8de is the sole direct child of reviewed-but-spec-failed commit ef76fd11ea61e27778d0cedf65c1a608cf826354 and preserves the accepted earlier topology.",
+    "coordination/mailbox/sent/2026-07-10T15-41-08Z-director-to-coordinator-coordination.md records BLOCKED / FRESH SPECIFICATION REVIEW ISSUES for one source-confirmed global-scan fail-visible gap. Verification not needed because specification review blocked before quality review, verify-request, and Lane V; a normal regression is test-feasible but another commit was unauthorized under the exhausted Task2S route."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T15-41-08Z-director-to-coordinator-coordination.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": "8cc4beed2c6c5836f915113ccd5104c3f039c8de",
+  "commit_range": "ef76fd11ea61e27778d0cedf65c1a608cf826354..8cc4beed2c6c5836f915113ccd5104c3f039c8de",
+  "scope_files": [
+    "scripts/protocol_mailbox.py",
+    "scripts/protocol_effectiveness_report.py",
+    "scripts/continuation_readiness.py",
+    "scripts/draft_handoff.py",
+    "tests/unit/test_protocol_mailbox.py",
+    "tests/unit/test_check_coordination.py",
+    "tests/unit/test_protocol_effectiveness_report.py",
+    "tests/unit/test_codex_ledger_bridge.py",
+    "tests/unit/test_draft_handoff.py",
+    "ARCHITECTURE.md"
+  ]
+}
