@@ -1493,6 +1493,116 @@ def test_run_fails_closed_when_head_changes_after_projection(tmp_path: Path) -> 
     ] == [("commit_projection_identity_drift", "FATAL")]
 
 
+def test_delete_then_identical_reintroduction_keeps_earliest_introduction(
+    tmp_path: Path,
+) -> None:
+    """A revert restoring identical bytes is not mutation (2026-08-12 incident).
+
+    The live corpus was deleted wholesale and byte-identically restored by a
+    merge revert; every event then carried two `--diff-filter=A`
+    introductions. Immutability is a property of bytes, so the projection
+    keeps the earliest introduction fact instead of failing closed.
+    """
+
+    root, _coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+    manifest_path = cc._ARCHIVE_HISTORY_EXCEPTIONS
+    original_bytes = (root / request_path).read_bytes()
+    manifest_bytes = (root / manifest_path).read_bytes()
+
+    _git(root, "rm", "-q", request_path, manifest_path)
+    _git(root, "commit", "-q", "-m", "remove corpus")
+    (root / request_path).parent.mkdir(parents=True, exist_ok=True)
+    (root / request_path).write_bytes(original_bytes)
+    (root / manifest_path).parent.mkdir(parents=True, exist_ok=True)
+    (root / manifest_path).write_bytes(manifest_bytes)
+    _git(root, "add", request_path, manifest_path)
+    _git(root, "commit", "-q", "-m", "revert restore")
+
+    projection, problem = cc.committed_mailbox_projection(root)
+
+    assert problem is None
+    assert projection is not None
+    introduction_commit, introduced_blob = projection.introductions[request_path]
+    assert introduction_commit == request_commit
+    assert introduced_blob == _git(
+        root, "rev-parse", f"{request_commit}:{request_path}"
+    )
+    commit, immutable_problem = cc._immutable_event(projection, request_path)
+    assert immutable_problem is None
+    assert commit == request_commit
+
+
+def test_reintroduction_with_different_bytes_stays_fatal(tmp_path: Path) -> None:
+    root, _coord, base, head = _review_repo(tmp_path)
+    request_path, _request_commit = _commit_request(root, base, head)
+    mutated = (root / request_path).read_text(encoding="utf-8").replace(
+        "Review the exact range.", "Review a different range."
+    )
+
+    _git(root, "rm", "-q", request_path)
+    _git(root, "commit", "-q", "-m", "remove corpus")
+    (root / request_path).parent.mkdir(parents=True, exist_ok=True)
+    (root / request_path).write_text(mutated, encoding="utf-8")
+    _git(root, "add", request_path)
+    _git(root, "commit", "-q", "-m", "reintroduce with changed bytes")
+
+    projection, problem = cc.committed_mailbox_projection(root)
+
+    assert projection is None
+    assert problem is not None
+    assert request_path in problem
+    assert "different bytes" in problem
+
+
+def test_conversational_reintroduction_with_different_bytes_keeps_projection(
+    tmp_path: Path,
+) -> None:
+    """Conversational kinds were never byte-gated by this projection.
+
+    Nine live coordination/findings events carry pre-enforcement mutations
+    that the 2026-08-12 delete/revert cycle surfaced as differing
+    introductions; the review-event and manifest gates stay closed while
+    legible history stays projectable.
+    """
+
+    root, coord, base, head = _review_repo(tmp_path)
+    _commit_request(root, base, head)
+    status_path = (
+        "coordination/mailbox/sent/"
+        "2026-07-25T08-00-00Z-director-to-all-status.md"
+    )
+    _write_event(
+        coord,
+        Path(status_path).name,
+        "# Director status\n\n"
+        "**When:** 2026-07-25T08:00:00Z · **From:** director (online)\n\n"
+        "Original body.\n\nCursor at send: 0\n",
+    )
+    _git(root, "add", status_path)
+    _git(root, "commit", "-q", "-m", "status event")
+    earliest = _git(root, "rev-parse", "HEAD")
+
+    _git(root, "rm", "-q", status_path)
+    _git(root, "commit", "-q", "-m", "remove corpus")
+    (root / status_path).parent.mkdir(parents=True, exist_ok=True)
+    _write_event(
+        coord,
+        Path(status_path).name,
+        "# Director status\n\n"
+        "**When:** 2026-07-25T08:00:00Z · **From:** director (online)\n\n"
+        "Pre-enforcement mutated body.\n\nCursor at send: 0\n",
+    )
+    _git(root, "add", status_path)
+    _git(root, "commit", "-q", "-m", "reintroduce mutated conversational event")
+
+    projection, problem = cc.committed_mailbox_projection(root)
+
+    assert problem is None
+    assert projection is not None
+    assert projection.introductions[status_path][0] == earliest
+
+
 def test_projection_refuses_head_move_between_identity_and_mailbox_reads(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1730,11 +1840,14 @@ def test_frozen_history_manifest_refuses_committed_lifecycle_mutation(
         _git(root, "add", relative)
         _git(root, "commit", "-q", "-m", "mutate history manifest")
     else:
+        # A byte-identical restore is tolerated since the 2026-08-12
+        # delete/revert repair; the pinned laundering vector is
+        # reintroduction with different bytes.
         _git(root, "rm", "-q", relative)
         _git(root, "commit", "-q", "-m", "delete history manifest")
-        manifest.write_bytes(original)
+        manifest.write_bytes(original + b"\n")
         _git(root, "add", relative)
-        _git(root, "commit", "-q", "-m", "reintroduce history manifest")
+        _git(root, "commit", "-q", "-m", "reintroduce mutated history manifest")
 
     state = cc.inspect_verify_review_state(root, coord)
     issues = cc._check_current_verify_requests(root, coord, state)
