@@ -278,6 +278,36 @@ def _validate_learning_disposition_payload(
         ) from exc
 
 
+def _validate_checkpoint_payload(
+    root: Path, raw: bytes, relative: str
+) -> None:
+    """Checkpoint refusals bind at publication.
+
+    A ``findings`` event is a checkpoint exactly when it carries a
+    slug-shaped ``Checkpoint:`` field and a ``Next action:`` field — the
+    same fields the read-side parser grants meaning to
+    (``protocol_mailbox.checkpoint_intent``). Every other findings event
+    publishes exactly as before: free prose that merely mentions
+    ``Checkpoint:`` never enters checkpoint parsing, matching the
+    learning-disposition intent discipline. A checkpoint that publishes is
+    still advisory recall (learning contract I1/I2); this validation
+    refuses malformed durable-continuation records, it grants nothing.
+    """
+
+    if not protocol_mailbox.checkpoint_intent(raw.decode("utf-8")):
+        return
+    try:
+        statement = protocol_mailbox.parse_checkpoint_statement(
+            _typed_candidate_event(raw, relative)
+        )
+    except ValueError as exc:
+        raise MailboxWriterError(f"findings checkpoint is invalid: {exc}") from exc
+    try:
+        protocol_mailbox.validate_checkpoint_references(root, statement)
+    except ValueError as exc:
+        raise MailboxWriterError(f"findings checkpoint {exc}") from exc
+
+
 def validate_event_candidate(
     root: Path,
     candidate: Path,
@@ -388,6 +418,8 @@ def validate_event_candidate_bytes(
         _validate_learning_candidate_payload(root, raw, relative)
     elif match.group("kind") == "decision":
         _validate_learning_disposition_payload(root, raw, relative)
+    elif match.group("kind") == "findings":
+        _validate_checkpoint_payload(root, raw, relative)
 
 
 def _read_candidate_snapshot(

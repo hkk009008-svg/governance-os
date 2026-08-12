@@ -1078,3 +1078,204 @@ def committed_learning_candidate_ids(root: Path, commit: str) -> dict[str, str]:
             continue
         ids.setdefault(statement.candidate_id, path)
     return ids
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint statements (durable continuation records)
+# ---------------------------------------------------------------------------
+
+CHECKPOINT_BOUNDARIES = ("transfer", "interruption", "compaction", "wrap")
+CHECKPOINT_NONE = "none"
+CHECKPOINT_LESSONS_NONE = "none-considered"
+
+_CHECKPOINT_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,79}")
+
+
+@dataclass(frozen=True)
+class CheckpointStatement:
+    """One durable continuation record (AGENTS.md universal contract item 7).
+
+    A checkpoint is a ``findings`` event typed at read time by its
+    ``Checkpoint:`` and ``Next action:`` fields, exactly as a learning
+    disposition is a ``decision`` event typed by ``Candidate:`` plus
+    ``Disposition:``. It carries the payload that must survive a transfer,
+    an interruption, or context compaction: objective, accepted scope,
+    owner, policy revision, base/head, evidence refs, verification status,
+    unresolved blockers, the next executable action, and the boundary
+    lessons answer. Advisory under learning contract I1/I2 — a checkpoint
+    recalls state; it grants no task, review, or effect authority, and
+    current Git plus committed event bodies outrank it.
+    """
+
+    event: CommittedEventRef
+    checkpoint: str
+    boundary: str
+    objective: str
+    accepted_scope: str
+    owner: str
+    policy_revision: str
+    base: str
+    head: str
+    evidence_refs: tuple[str, ...]
+    verification_status: str
+    blockers: str
+    next_action: str
+    lessons: tuple[str, ...]
+
+
+def parse_checkpoint_statement(event: CommittedEventRef) -> CheckpointStatement:
+    _require_kind(event, "findings")
+    checkpoint = _single_body_field(event, "Checkpoint")
+    if not _CHECKPOINT_SLUG_RE.fullmatch(checkpoint):
+        raise ValueError(
+            "Checkpoint must be a lowercase slug (a-z, 0-9, hyphens, <=80)"
+        )
+    boundary = _single_body_field(event, "Boundary")
+    if boundary not in CHECKPOINT_BOUNDARIES:
+        raise ValueError("Boundary must be transfer|interruption|compaction|wrap")
+    objective = _single_body_field(event, "Objective")
+    accepted_scope = _single_body_field(event, "Accepted scope")
+    owner = _single_body_field(event, "Owner")
+    if owner not in SEATS:
+        raise ValueError("Owner must be a pair seat")
+    if owner != event.sender:
+        # A checkpoint claiming another seat's ownership would launder a
+        # transfer that never happened; the binding is exact, mirroring the
+        # learning-candidate producer-seat rule.
+        raise ValueError("Owner must match the envelope sender")
+    policy_revision = _single_body_field(event, "Policy revision")
+    base = _single_body_field(event, "Base")
+    head = _single_body_field(event, "Head")
+    for label, value in (
+        ("Policy revision", policy_revision),
+        ("Base", base),
+        ("Head", head),
+    ):
+        if not _FULL_SHA_RE.fullmatch(value):
+            # Shape only, deliberately: a routed-target range resolves in the
+            # target repository, not in Pipeline, so demanding local
+            # resolution here would refuse honest checkpoints.
+            raise ValueError(f"{label} must be a 40-hex commit SHA")
+    raw_evidence = _single_body_field(event, "Evidence refs")
+    if raw_evidence == CHECKPOINT_NONE:
+        evidence_refs: tuple[str, ...] = ()
+    else:
+        evidence_refs = tuple(part.strip() for part in raw_evidence.split(","))
+        if any(
+            not immutable_reference_is_canonical(value) for value in evidence_refs
+        ):
+            raise ValueError(
+                "Evidence refs must be immutable full-SHA event refs or "
+                "sha256 digests, or the single word none"
+            )
+        if len(evidence_refs) != len(set(evidence_refs)):
+            raise ValueError("Evidence refs must be unique")
+    verification_status = _single_body_field(event, "Verification status")
+    blockers = _single_body_field(event, "Blockers")
+    next_action = _single_body_field(event, "Next action")
+    raw_lessons = _single_body_field(event, "Lessons")
+    if raw_lessons == CHECKPOINT_LESSONS_NONE:
+        lessons: tuple[str, ...] = ()
+    else:
+        lessons = tuple(part.strip() for part in raw_lessons.split(","))
+        for value in lessons:
+            if not immutable_reference_is_canonical(value) or value.startswith(
+                "sha256:"
+            ):
+                raise ValueError(
+                    "Lessons must be learning-candidate event refs or the "
+                    "single word none-considered"
+                )
+            lesson_path = value.rsplit("@", 1)[0]
+            match = _EVENT_PATH_RE.fullmatch(lesson_path)
+            if match is None or match.group("kind") != "learning-candidate":
+                raise ValueError("Lessons refs must name learning-candidate events")
+        if len(lessons) != len(set(lessons)):
+            raise ValueError("Lessons refs must be unique")
+    return CheckpointStatement(
+        event=event,
+        checkpoint=checkpoint,
+        boundary=boundary,
+        objective=objective,
+        accepted_scope=accepted_scope,
+        owner=owner,
+        policy_revision=policy_revision,
+        base=base,
+        head=head,
+        evidence_refs=evidence_refs,
+        verification_status=verification_status,
+        blockers=blockers,
+        next_action=next_action,
+        lessons=lessons,
+    )
+
+
+def checkpoint_intent(text: str) -> bool:
+    """Return whether findings text carries the canonical checkpoint shape.
+
+    Two-field discipline, mirroring ``learning_disposition_intent``: prose
+    that merely mentions ``Checkpoint:`` never enters checkpoint parsing;
+    text carrying both a slug-shaped ``Checkpoint:`` field and a
+    ``Next action:`` field is exactly what a reader would parse as a
+    checkpoint, so validating it at publication is correct.
+    """
+
+    if not isinstance(text, str):
+        return False
+    checkpoint_values = [
+        line.removeprefix("Checkpoint:").strip()
+        for line in text.splitlines()
+        if line.startswith("Checkpoint:")
+    ]
+    return any(
+        line.startswith("Next action:") for line in text.splitlines()
+    ) and any(
+        _CHECKPOINT_SLUG_RE.fullmatch(value) for value in checkpoint_values
+    )
+
+
+def validate_checkpoint_references(
+    root: Path, statement: CheckpointStatement
+) -> None:
+    """Resolve every path ref; sha256 refs intentionally carry no local preimage."""
+
+    for reference in (*statement.evidence_refs, *statement.lessons):
+        if reference.startswith("sha256:"):
+            continue
+        try:
+            load_committed_event_ref(root, reference)
+        except ValueError as exc:
+            raise ValueError(f"checkpoint ref does not resolve: {reference}") from exc
+
+
+def load_checkpoint_statement(root: Path, value: str) -> CheckpointStatement:
+    return parse_checkpoint_statement(load_committed_event_ref(root, value))
+
+
+def committed_checkpoints(root: Path, commit: str) -> tuple[CheckpointStatement, ...]:
+    """Parseable committed checkpoints at the pinned commit, oldest first.
+
+    A read-side projection, not a gate: malformed committed findings are
+    skipped exactly as ``committed_learning_candidate_ids`` skips malformed
+    candidates.
+    """
+
+    resolved = _git(root, "rev-parse", commit).stdout.strip()
+    listing = _git(
+        root, "ls-tree", "-r", resolved, "--name-only", "coordination/mailbox/sent"
+    ).stdout
+    statements: list[CheckpointStatement] = []
+    for path in sorted(listing.splitlines()):
+        if not path.endswith("-findings.md"):
+            continue
+        try:
+            event = load_committed_event_ref(root, f"{path}@{resolved}")
+        except ValueError:
+            continue
+        if not checkpoint_intent(event.text):
+            continue
+        try:
+            statements.append(parse_checkpoint_statement(event))
+        except ValueError:
+            continue
+    return tuple(statements)
