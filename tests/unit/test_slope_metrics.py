@@ -96,6 +96,10 @@ REQ5 = "2026-01-22T12-00-00Z-director-to-operator-verify-request.md"
 REP5G = "2026-01-22T13-00-00Z-operator-to-director-verification-report.md"
 REQ6 = "2026-01-23T10-00-00Z-director-to-operator-verify-request.md"
 REPX = "2026-01-24T10-00-00Z-operator-to-all-verification-report.md"
+CAND = "2026-01-20T09-00-00Z-director2-to-director-learning-candidate.md"
+DISP = "2026-01-20T13-00-00Z-director-to-all-decision.md"
+CKPT = "2026-01-22T14-00-00Z-director-to-all-findings.md"
+NOTE = "2026-01-22T15-00-00Z-operator-to-director-findings.md"
 
 
 def _build_two_window_repo(tmp_path: Path) -> tuple[Path, str, str]:
@@ -128,6 +132,26 @@ def _build_two_window_repo(tmp_path: Path) -> tuple[Path, str, str]:
     (sent / REP5G).write_text(_report("GO", REQ5, head=_HEAD_9), encoding="utf-8")
     (sent / REQ6).write_text(_request(REQ6, head=None), encoding="utf-8")
     (sent / REPX).write_text(_report("GO", None, head=_HEAD_9), encoding="utf-8")
+    (sent / CAND).write_text(
+        "Candidate ID: " + "1" * 64 + "\nStatement: fixture lesson\n",
+        encoding="utf-8",
+    )
+    (sent / DISP).write_text(
+        f"Candidate: {_SENT}/{CAND}@{_HEX_A}\nDisposition: accepted\n",
+        encoding="utf-8",
+    )
+    (sent / CKPT).write_text(
+        "Checkpoint: slope-fixture-campaign\n"
+        "Boundary: wrap\n"
+        f"Base: {_HEX_A}\n"
+        f"Head: {_HEAD_9}\n"
+        "Lessons: none-considered\n"
+        "Next action: resume from the snapshot\n",
+        encoding="utf-8",
+    )
+    (sent / NOTE).write_text(
+        "Checkpoint: reached milestone three, prose only.\n", encoding="utf-8"
+    )
 
     docs = root / "docs"
     docs.mkdir()
@@ -231,6 +255,29 @@ def test_two_window_slope_counts_chains_heads_and_context(tmp_path: Path) -> Non
     assert any("docs/note.md" in item for item in newer["overclaim"]["examples"])
     assert newer["claims_ledger"] == {"rows": 1, "premises": {"INFERRED": 1}}
 
+    assert older["continuity"] == {
+        "checkpoints": 0, "boundaries": {}, "lessons_refs": 0,
+        "none_considered": 0,
+    }
+    assert older["learning"]["candidates"] == 0
+    assert newer["continuity"] == {
+        "checkpoints": 1,
+        "boundaries": {"wrap": 1},
+        "lessons_refs": 0,
+        "none_considered": 1,
+    }, "prose findings without the canonical shape must not count"
+    assert newer["learning"] == {
+        "candidates": 1,
+        "dispositions": {
+            "accepted": 1, "declined": 0, "expired": 0, "unparsed": 0,
+        },
+        "median_disposition_latency_seconds": 14400.0,
+    }
+    assert totals["continuity"] == {
+        "checkpoints": 1, "none_considered": 1, "lessons_refs": 0,
+    }
+    assert totals["learning"] == {"candidates": 1, "dispositions": 1}
+
 
 def test_minimal_repo_without_events_or_ledger(tmp_path: Path) -> None:
     root = _init_repo(tmp_path)
@@ -246,6 +293,8 @@ def test_minimal_repo_without_events_or_ledger(tmp_path: Path) -> None:
     assert newest["claims_ledger"] is None
     assert newest["requests"] == 0
     assert newest["fail_chains"]["fails"] == 0
+    assert newest["continuity"]["checkpoints"] == 0
+    assert newest["learning"]["candidates"] == 0
 
 
 def test_main_is_advisory_and_json_renders(tmp_path: Path, capsys) -> None:

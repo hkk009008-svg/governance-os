@@ -52,6 +52,13 @@ Metrics and sources (each output line names its source):
                                  premise statuses counted per window (ASSUMED
                                  rows are recorded blank cells, not failures).
 
+Continuity and learning throughput are measured from the same committed
+substrate: checkpoint records (findings events carrying the canonical
+``Checkpoint:``/``Next action:`` shape, `protocol_mailbox.checkpoint_intent`)
+bucketed by filename stamp, with their boundary kinds and Lessons answers;
+learning-candidate events and ``Candidate:``/``Disposition:`` decision events
+joined by candidate path for disposition latency.
+
 Deliberately not measured, and said so in the output (`not_measurable`):
 requirement retention over steps, recovery quality after context compaction,
 and hook-approval intervention precision leave no durable artifact today.
@@ -86,6 +93,7 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 import claim_check  # noqa: E402
+import protocol_mailbox  # noqa: E402
 import git_runner  # noqa: E402
 import protocol_mailbox  # noqa: E402
 
@@ -123,6 +131,16 @@ SOURCES = {
     "pins_open": "git grep of anchored strict-xfail decorators under tests/ at the window boundary commit",
     "claims_ledger": "logs/claims/ledger.jsonl at the measured commit, bucketed by row `when`",
     "commits_first_parent": "git log --first-parent commit committer times",
+    "continuity": (
+        "findings events carrying the canonical Checkpoint:/Next action: "
+        "shape (protocol_mailbox.checkpoint_intent) at the measured commit, "
+        "bucketed by filename stamp"
+    ),
+    "learning": (
+        "learning-candidate events plus Candidate:/Disposition: decision "
+        "events at the measured commit, bucketed by filename stamp; "
+        "disposition latency joins each disposition to its candidate's stamp"
+    ),
 }
 
 NOT_MEASURABLE = {
@@ -132,8 +150,10 @@ NOT_MEASURABLE = {
         "is a floor, not a slope"
     ),
     "recovery_after_compaction": (
-        "context compaction and session interruption leave no durable artifact "
-        "in Git, mailbox, or logs"
+        "checkpoint records make boundary coverage measurable (continuity "
+        "series); recovery quality stays unmeasured — no durable artifact "
+        "ties a resumed session to the checkpoint it resumed from, and "
+        "mandating a resume receipt would be ceremony (I7 guard admission)"
     ),
     "hook_intervention_precision": (
         "in-app hook approvals and denials are not durably logged; only review "
@@ -286,6 +306,122 @@ def _scan_events(
                 )
             )
     return requests, reports, warnings
+
+
+_DISPOSITION_VALUE_RE = re.compile(
+    r"^Disposition: (?P<value>accepted|declined|expired)$", re.MULTILINE
+)
+_CANDIDATE_REF_RE = re.compile(
+    r"^Candidate: (?P<path>coordination/mailbox/sent/"
+    r"(?P<stamp>\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)[^@\n]*"
+    r"-learning-candidate\.md)@[0-9a-f]{40}$",
+    re.MULTILINE,
+)
+_BOUNDARY_RE = re.compile(
+    r"^Boundary: (?P<value>transfer|interruption|compaction|wrap)$",
+    re.MULTILINE,
+)
+_LESSONS_RE = re.compile(r"^Lessons: (?P<value>.+)$", re.MULTILINE)
+
+
+@dataclass
+class _CheckpointScan:
+    path: str
+    stamp: float
+    boundary: str | None
+    lessons_refs: int
+    none_considered: bool
+
+
+@dataclass
+class _LearningScan:
+    candidate_stamps: list[tuple[str, float]]
+    dispositions: list[tuple[float, str | None, float | None]]
+
+
+def _scan_continuity(
+    root: Path, commit: str
+) -> tuple[list[_CheckpointScan], _LearningScan]:
+    """Light field scan of committed continuity and learning events.
+
+    Same discipline as _scan_events: filename stamps bucket, field regexes
+    extract, a malformed body degrades to unparsed counters rather than a
+    failure — this reporter is advisory (learning contract I1/I2) and must
+    not become parse-strict where the writer already is.
+    """
+
+    names = _sent_names(root, commit)
+    findings = [name for name in names if name.endswith("-findings.md")]
+    decisions = [name for name in names if name.endswith("-decision.md")]
+    candidates = [
+        name for name in names if name.endswith("-learning-candidate.md")
+    ]
+    blobs = _batch_blobs(root, commit, findings + decisions)
+
+    checkpoints: list[_CheckpointScan] = []
+    for path in findings:
+        match = _EVENT_NAME_RE.fullmatch(Path(path).name)
+        raw = blobs.get(path)
+        if match is None or raw is None:
+            continue
+        body = raw.decode("utf-8", "replace")
+        if not protocol_mailbox.checkpoint_intent(body):
+            continue
+        boundary = _BOUNDARY_RE.search(body)
+        lessons = _LESSONS_RE.search(body)
+        lessons_value = lessons.group("value").strip() if lessons else ""
+        none_considered = lessons_value == protocol_mailbox.CHECKPOINT_LESSONS_NONE
+        checkpoints.append(
+            _CheckpointScan(
+                path=path,
+                stamp=_stamp_to_epoch(match.group("stamp")),
+                boundary=boundary.group("value") if boundary else None,
+                lessons_refs=(
+                    0
+                    if none_considered or not lessons_value
+                    else len(lessons_value.split(","))
+                ),
+                none_considered=none_considered,
+            )
+        )
+
+    candidate_stamps: list[tuple[str, float]] = []
+    stamp_by_candidate_path: dict[str, float] = {}
+    for path in candidates:
+        match = _EVENT_NAME_RE.fullmatch(Path(path).name)
+        if match is None:
+            continue
+        epoch = _stamp_to_epoch(match.group("stamp"))
+        candidate_stamps.append((path, epoch))
+        stamp_by_candidate_path[path] = epoch
+
+    dispositions: list[tuple[float, str | None, float | None]] = []
+    for path in decisions:
+        match = _EVENT_NAME_RE.fullmatch(Path(path).name)
+        raw = blobs.get(path)
+        if match is None or raw is None:
+            continue
+        body = raw.decode("utf-8", "replace")
+        if not protocol_mailbox.learning_disposition_intent(body):
+            continue
+        stamp = _stamp_to_epoch(match.group("stamp"))
+        value = _DISPOSITION_VALUE_RE.search(body)
+        candidate = _CANDIDATE_REF_RE.search(body)
+        latency: float | None = None
+        if candidate is not None:
+            candidate_epoch = stamp_by_candidate_path.get(
+                candidate.group("path")
+            )
+            if candidate_epoch is None:
+                candidate_epoch = _stamp_to_epoch(candidate.group("stamp"))
+            latency = max(0.0, stamp - candidate_epoch)
+        dispositions.append(
+            (stamp, value.group("value") if value else None, latency)
+        )
+
+    return checkpoints, _LearningScan(
+        candidate_stamps=candidate_stamps, dispositions=dispositions
+    )
 
 
 def _fail_chains(
@@ -456,6 +592,7 @@ def collect_slope(
     chains = _fail_chains(requests, reports)
     chains_by_window_stamp = [(c.report.stamp, c) for c in chains]
     ledger = _ledger_rows(root, resolved)
+    checkpoints, learning = _scan_continuity(root, resolved)
 
     reports_by_request: dict[str, list[_ReportScan]] = {}
     for report in sorted(reports, key=lambda r: (r.stamp, r.path)):
@@ -559,6 +696,25 @@ def collect_slope(
                     premise_statuses[status] = premise_statuses.get(status, 0) + 1
             claims = {"rows": len(window_rows), "premises": premise_statuses}
 
+        window_checkpoints = [
+            c for c in checkpoints if start <= c.stamp < end
+        ]
+        boundary_counts: dict[str, int] = {}
+        for item in window_checkpoints:
+            key = item.boundary or "unparsed"
+            boundary_counts[key] = boundary_counts.get(key, 0) + 1
+        window_candidates = sum(
+            1 for _path, epoch in learning.candidate_stamps if start <= epoch < end
+        )
+        window_dispositions = [
+            (value, latency)
+            for stamp, value, latency in learning.dispositions
+            if start <= stamp < end
+        ]
+        disposition_counts = {"accepted": 0, "declined": 0, "expired": 0, "unparsed": 0}
+        for value, _latency in window_dispositions:
+            disposition_counts[value or "unparsed"] += 1
+
         series.append(
             {
                 "window_start": datetime.fromtimestamp(
@@ -579,6 +735,27 @@ def collect_slope(
                 "overclaim": overclaim,
                 "pins_open": pins if pins is not None else "unavailable",
                 "claims_ledger": claims,
+                "continuity": {
+                    "checkpoints": len(window_checkpoints),
+                    "boundaries": boundary_counts,
+                    "lessons_refs": sum(
+                        c.lessons_refs for c in window_checkpoints
+                    ),
+                    "none_considered": sum(
+                        1 for c in window_checkpoints if c.none_considered
+                    ),
+                },
+                "learning": {
+                    "candidates": window_candidates,
+                    "dispositions": disposition_counts,
+                    "median_disposition_latency_seconds": _median(
+                        [
+                            latency
+                            for _value, latency in window_dispositions
+                            if latency is not None
+                        ]
+                    ),
+                },
             }
         )
         prev_boundary = boundary
@@ -617,6 +794,15 @@ def collect_slope(
         "events_before_first_window": {
             "requests": earlier_requests,
             "reports": earlier_reports,
+        },
+        "continuity": {
+            "checkpoints": len(checkpoints),
+            "none_considered": sum(1 for c in checkpoints if c.none_considered),
+            "lessons_refs": sum(c.lessons_refs for c in checkpoints),
+        },
+        "learning": {
+            "candidates": len(learning.candidate_stamps),
+            "dispositions": len(learning.dispositions),
         },
     }
 
@@ -680,7 +866,9 @@ def _render_text(slope: dict) -> str:
             f"/unlanded {window['reviewed_heads']['unlanded']}"
             f"/unresolvable {window['reviewed_heads']['unresolvable']}, "
             f"overclaim {overclaim_text}, pins {window['pins_open']}, "
-            f"commits {window['commits_first_parent']}"
+            f"commits {window['commits_first_parent']}, "
+            f"checkpoints {window['continuity']['checkpoints']}, "
+            f"candidates {window['learning']['candidates']}"
         )
     for name, reason in slope["not_measurable"].items():
         lines.append(f"  not measurable: {name} — {reason}")
