@@ -10,5 +10,5 @@
   session.
 - For a Codex-authored branch or pull request, invoke `/cross-app-review` and
   stay read-only unless the user asks you to implement fixes.
-- Prefer the visual diff, browser preview, file editor, and integrated terminal
-  over instructions for the standalone Claude CLI.
+- Prefer the visual diff, browser preview, file editor, and integrated terminal.
+  Do not add instructions for a separate terminal product.

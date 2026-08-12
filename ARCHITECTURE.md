@@ -20,8 +20,8 @@ runtime.
 | `.claude/settings.json` | Claude Desktop Code | Require approval before peer messages leave the machine |
 | `.github/pull_request_template.md` | Both through GitHub | Small durable handoff shape |
 
-There is no service to start and no repository CLI. Git history preserves the
-removed system's historical record.
+There is no service to start and no separate executable interface. Git history
+preserves the removed system's historical record.
 
 ## Operating flow
 
@@ -35,9 +35,9 @@ user task
   -> lead resolves findings
 ```
 
-The flow intentionally has no permanent director, operator, seat, mode, packet,
-mailbox, cursor, or transport. Those concepts duplicated capabilities now built
-into the desktop apps and made small changes expensive.
+The flow intentionally has no permanent role system or custom coordination
+service. The desktop apps and Git already provide the useful capabilities,
+while the old layers made small changes expensive.
 
 ## Current desktop capabilities
 
@@ -53,7 +53,7 @@ receiver permissions still apply. Cross-session messaging has platform,
 provider, and version constraints, including Claude Code 2.1.224+ and no native
 Windows support in the documented cross-session channel.
 
-Agent teams are documented as CLI-only, so they are deliberately absent here.
+Agent teams are unavailable in Desktop, so they are deliberately absent here.
 Claude Desktop's own sessions, side chats, and dynamic workflows cover the
 app-first use case.
 
@@ -108,11 +108,11 @@ operate the other as a communication channel.
 
 ## Deliberately removed
 
-- Cursor and Antigravity provider surfaces
-- Claude and Codex standalone CLI launchers and adoption layers
-- Four-seat roles, capacity packets, handoffs, and status rituals
-- Custom mailbox, cursors, signed transport, locks, and relay scripts
-- Governance Python package, tests, CI admission machinery, logs, and generated
+- Every provider surface except the two desktop apps
+- Standalone launch and adoption layers
+- Fixed roles, capacity packets, handoffs, and status rituals
+- Custom messaging, transport, locking, and relay services
+- The Python governance package, tests, admission machinery, logs, and generated
   historical artifacts
 - Product-specific target routing and unrelated domain skills
 
