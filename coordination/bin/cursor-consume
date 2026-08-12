@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# Cursor app-seat front door for one separately approved cursor advance.
-set -euo pipefail
-
-ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 "$ROOT/scripts/cursor_mailbox.py" consume "$@"

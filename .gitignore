@@ -1,137 +1,21 @@
-# =============================================================================
-# Python
-# =============================================================================
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
-build/
-.eggs/
-*.egg
-.venv/
-venv/
-env/
-
-# Coverage
-.coverage
-coverage.xml
-htmlcov/
-
-# =============================================================================
-# macOS
-# =============================================================================
+# OS and editor files
 .DS_Store
-.AppleDouble
-.LSOverride
-
-# =============================================================================
-# Editor / IDE
-# =============================================================================
+Thumbs.db
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# =============================================================================
-# Governance OS — coordination runtime state
-# These paths hold ephemeral session state that must not be committed.
-# The !.gitkeep rules ensure scaffolding directories persist in the repo.
-# =============================================================================
-
-# Seat read-cursors (seen/<seat>.txt = scalar seq) are TRACKED, not ignored:
-# cursor advances are part of the durable record (the check_coordination
-# "standalone_cursor_commit" advisory exists because they get committed).
-# Seeded at 0 for the default roster; adjust it in scripts/protocol_mailbox.py
-# (SEATS / RECEIVING_SEATS).
-
-# Outgoing mailbox messages (runtime-generated; committed selectively per protocol)
-coordination/mailbox/sent/*
-!coordination/mailbox/sent/.gitkeep
-
-# Heartbeat presence files (volatile; regenerated each session)
-coordination/presence/*-heartbeat.ts
-
-# Cross-cutting edit locks (released on commit; never persistent)
-coordination/locks/*
-!coordination/locks/.gitkeep
-
-# Threeway ref-bus event blobs (written via git-update-ref; not filesystem files in prod,
-# but guarded here for any local event staging directories)
-coordination/threeway/events/*
-!coordination/threeway/events/.gitkeep
-
-# =============================================================================
-# Session / harness state
-# =============================================================================
-
-# Per-seat git index files (created by D-a launcher; never committed)
-.git/index-codex-*
-.git/index-cursor-*
-.git/index-agy-*
-
-# Hook sync markers (regenerated each hook run)
-.claude/hooks/.last-index-sync-*
-
-# State snapshot (gitignored by convention; local only)
-STATE.md
-
-# =============================================================================
-# Secrets / keys
-# =============================================================================
-
-# Local .env overrides (the .env.example is committed; the live .env is not)
+# Local project state
 .env
-.env.local
-.env.*.local
-
-# pytest
+.env.*
+.venv/
+venv/
+node_modules/
+__pycache__/
 .pytest_cache/
-.pytest-verify-tmp/
 
-# AGY runtime state
-.agy/runtime/
-
-# Subagent-driven-development scratch ledger (skill-owned, never committed)
-.superpowers/
-
-# Project-local git worktrees (created for isolated implementation runs)
-.worktrees/
-
-# Claude Code session worktrees. Each one is a full second checkout of this
-# repo, so without a committed rule a fresh clone reports thousands of
-# untracked duplicates and filesystem-walking tools (tests, linters, doc
-# scanners) sweep them. A machine-local .git/info/exclude entry is never
-# cloned, so the rule has to live here.
-.claude/worktrees/
+# Desktop-app local state
 .claude/settings.local.json
-
-# Codex hook runtime state (written on every codex run; never committed)
-
-# Local ChatGPT Pro consultation lifecycle metadata; never prompt/response content.
-.codex/runtime/chatgpt-pro-consultations.json
-.codex/runtime/chatgpt-pro-consultations.json.lock
-.codex/runtime/opus-review-receipts/
-.codex/runtime/lane-v-report-publications/
-
-# Cursor SDK seat bindings, dispatch ledger, locks, and review outbox.
-.cursor/runtime/
-
-# Retired Claude hook runtime state (the hook layer itself is gone; these linger
-# in existing checkouts and must never be committed)
-.claude/hooks/
-
-# AGY native-subagent workspaces. Scratch inputs for one run: they grant no
-# authority, are not a mailbox, and are not durable protocol state. Durable
-# inter-seat speech goes through coordination/bin/send-event like every other
-# side. Skills, host-discovered custom agents, and saved workflows are tracked.
-.agents/*/
-!.agents/skills/
-!.agents/agents/
-!.agents/workflows/
-
-# Learning-plane episodic index: derived, rebuildable, workspace-scope
-# projection with no authority (ADR-067); never committed.
-coordination/learning/
+.claude/worktrees/
+.worktrees/

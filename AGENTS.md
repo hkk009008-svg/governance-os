@@ -1,70 +1,49 @@
-# Pipeline agent guide
+# Claude + Codex desktop guide
 
-`ARCHITECTURE.md` describes the current system; executable code and committed
-state outrank prose, including this file. Canonical policy seams:
-`scripts/codex_protocol_model.py` (identity, ownership, risk, effect shape),
-`scripts/compact_pair_loop.py` (formal exact-range review), and
-`scripts/mailbox_writer.py` behind `coordination/bin/send-event` (durable
-events).
+This repository supports only Claude Desktop Code and Codex in the ChatGPT
+desktop app. Codex reads this file directly. Claude reads it through the import
+in `CLAUDE.md`.
 
-## Universal contract
+## Default loop
 
-1. For direct, reversible, repository-local work, execute natively: no formal
-   seat, work-mode declaration, mailbox event, or independent review. Execute
-   an accepted exact task without adding a brainstorming or planning cycle
-   unless behavior is materially ambiguous. Use smallest-sufficient
-   verification, fresh, before claiming completion, and inspect the exact
-   diff before committing.
-2. Preserve unrelated work and stage explicit pathspecs. Use each worktree's
-   native Git index; per-seat indexes are retired — do not create or share
-   them. No destructive Git operations without explicit user authorization.
-3. For a behavior change or bug fix, start with a failing behavior test when
-   feasible; otherwise preserve characterization evidence or a
-   `test-infeasible` reason. Establish root cause before changing behavior
-   after an unexpected failure. A confirmed defect deferred from the current
-   scope needs a strict xfail pin.
-4. Load `.agents/skills/four-seat-protocol/SKILL.md` and its role skill only
-   for explicit seat, ownership-transfer, mailbox, wave, durable-continuation,
-   or formal-review work; skill presence alone is not a trigger. Delegation is
-   optional and owner-chosen; never run concurrent implementers on shared
-   files.
-5. Review depth follows risk. Ordinary reversible local work needs focused
-   verification only. Material behavior changes need non-author review of the
-   exact committed range. Authority, security, executable composition,
-   side-effect gates, and trust-granting schemas need distinct non-author,
-   different-model actual-diff review plus explicit abuse-class analysis.
-   Classification criteria: `docs/protocol/agents/risk-classes.md`. Tests
-   prove only what they execute; a green gate grants no authority.
-6. External effects — push, merge, lock, cursor consumption, provider launch,
-   paid spend, live-data mutation — each need separate exact authority for
-   the executor, target, effect, and scope. Structural protocol data never
-   grants it. Transport ambiguity is reported, never converted into an empty
-   queue.
-7. At a long-horizon checkpoint (transfer, interruption, compaction),
-   preserve: objective, accepted scope, owner, policy revision, base/head,
-   evidence refs, verification status, unresolved blockers, and the next
-   executable action. Durable shared state beats chat memory.
+1. Pick one app to lead the task. Do not assign permanent roles or create a
+   coordination ceremony.
+2. Give every independent writer its own app-managed Git worktree and branch.
+   Never let two sessions edit the same checkout or branch concurrently.
+3. Keep one owner responsible for the final result. Parallel work should be
+   read-only or file-disjoint and should return to that owner.
+4. Inspect the exact diff and run the smallest relevant verification before
+   calling work done.
+5. Use the other desktop app for review when the change is broad, risky, or the
+   user asks. Trivial changes do not need a cross-app handoff.
 
-Work modes: ordinary work declares no mode. A long-running campaign selects
-`explore`, a frozen candidate `validate`, a canonical or live mutation
-`promote` — see `docs/protocol/work-modes.md`. Modes grant no authority.
+## Communication
 
-Sessions start as a readiness bridge and adopt a live role only on explicit
-assignment; parent-scoped helpers never inherit that authority. Factual
-inventory claims cite the command and result that prove them.
+- Use native app channels for transient same-app coordination: Claude session
+  messages and side chats, or Codex task/subagent results and Handoff.
+- Use a commit, branch, pull request, or issue for anything the other app must
+  see. Uncommitted files in one worktree are not visible in another.
+- A useful handoff states the goal, exact base and head (or PR), change summary,
+  verification, open risks, and the next requested action.
+- Use `cross-app-review` for a focused read-only review. The authoring app owns
+  any fixes unless the user explicitly transfers implementation.
+- Publish comments, push, merge, schedule work, or mutate external systems only
+  when the task authorizes that effect.
 
-## Provider adapters
+## Working rules
 
-Load only the adapter for the harness you are in:
+- Follow the user's accepted scope; preserve unrelated work.
+- Start behavior changes with a focused failing test when practical. Otherwise
+  record what was checked and why a test was not feasible.
+- Establish root cause before changing behavior after an unexpected failure.
+- Prefer app-native worktrees, diffs, review panes, previews, and connectors to
+  custom orchestration.
+- Report evidence and uncertainty plainly. Do not invent a successful message,
+  review, test, or delivery.
 
-- Claude: `CLAUDE.md`, then `docs/protocol/claude/continuation.md`.
-- Codex: `docs/protocol/codex/continuation.md`, then `.codex/agents/`.
-- AGY: `docs/protocol/agy/continuation.md`, then
-  `.agents/skills/antigravity-harness/` and `.agents/agents/`.
-- Cursor: `docs/protocol/cursor/continuation.md`, then `.cursor/rules/` and
-  `docs/protocol/cursor/roles/`.
-- Cross-provider: `docs/protocol/threeway/`.
+## Scope boundary
 
-Target-repository routes (evidence-ledger and future destinations) resolve
-per task through `scripts/target_binding.py` and the provider continuation
-docs, not through this router.
+Do not add provider launchers, standalone CLI workflows, headless agents, seat
+registries, mailboxes, relay daemons, protocol event schemas, or another
+provider adapter. Normal build, test, Git, and debugging commands may still run
+inside either desktop app's integrated terminal.

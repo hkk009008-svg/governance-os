@@ -1,69 +1,69 @@
-# Governance OS
+# Claude + Codex Desktop
 
-Pipeline is the governance kernel for a multi-seat AI coding protocol. It
-coordinates director, operator, director2, operator2, and coordinator work with
-durable task events, exact-range review gates, and
-Codex/Claude/Antigravity/Cursor adoption docs.
+This repository is a small cooperation layer for exactly two coding surfaces:
 
-This repository is not the private product application. `evidence-ledger` is
-the bound product target for the current ledger-routed work, while Pipeline
-keeps the shared protocol machinery honest and executable.
+- Claude Desktop, **Code** tab
+- Codex in the ChatGPT desktop app
 
-## Quick Start
+It has no provider launcher, command-line interface, seat system, mailbox,
+relay daemon, governance runtime, or Python dependency. The desktop apps may
+still run normal project commands in their integrated terminals.
 
-Activate a Python environment satisfying `requirements-dev.txt`, then:
+## Fast path
 
-```bash
-PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
-cd "$PIPELINE_ROOT"
-python scripts/status.py snapshot
-```
+1. Open the same Git repository in both desktop apps.
+2. Choose one app as the lead for the task. Use an app-managed worktree for
+   every independent writing session.
+3. Let the lead commit to its own branch and open a pull request.
+4. Open that branch or pull request in the other app and invoke
+   `cross-app-review` (`/cross-app-review` in Claude or `$cross-app-review` in
+   Codex).
+5. Return findings through pull-request comments or the review summary. The
+   lead owns fixes and final verification.
 
-For ledger-routed governed work, additionally use the Pipeline guard:
+For a tiny, low-risk change, use one app and skip the handoff.
 
-```bash
-python scripts/ledger_start_guard.py --seat director --wave 2
-```
+## Communication
 
-## How It Works
-
-ARCHITECTURE.md records verified governance-kernel truth. The load-bearing
-runtime is a set of committed Python and shell tools under `scripts/`,
-`coordination/`, `threeway/`, `.agents/`, and `.codex/`. Seats exchange durable
-mailbox events in `coordination/mailbox/sent/`; one effective task/route defines
-current governed work. Capacity packets are optional campaign diagnostics.
-Smoke and protocol-doctor commands test the kernel at the completion gate.
-
-## Doc Map
-
-| Need | Read |
+| Need | Path |
 |---|---|
-| Comprehensive repository and process map | [docs/REPOSITORY-MANUAL.md](docs/REPOSITORY-MANUAL.md) |
-| Four desktop apps: setup, strengths, and communication | [docs/protocol/app-quickstart.md](docs/protocol/app-quickstart.md) |
-| Verified code and topology facts | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Operating commands and troubleshooting | [OPERATIONS.md](OPERATIONS.md) |
-| User-principal intent for this kernel | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
-| Decision history | [DECISIONS.md](DECISIONS.md) |
-| Codex ledger bridge | [docs/protocol/codex/ledger-cli-adoption.md](docs/protocol/codex/ledger-cli-adoption.md) |
-| Cursor Desktop app seats | [docs/protocol/cursor/continuation.md](docs/protocol/cursor/continuation.md) |
-| Cursor seat roles | [docs/protocol/cursor/roles/](docs/protocol/cursor/roles/) |
-| Protocol assembly map | [docs/protocol/protocol-assembly-map.md](docs/protocol/protocol-assembly-map.md) |
+| Question inside one Claude session | Side chat |
+| Message between Claude Desktop sessions | Claude's native attributed session messaging |
+| Work inside one Codex task | Codex's native thread/subagent flow |
+| Move one Codex chat between foreground and isolation | Local/Worktree Handoff |
+| Claude-to-Codex handoff | Branch or pull request with an exact diff |
+| Durable discussion | Pull-request or issue comments |
 
-## Verification
+There is no documented native Claude-session-to-Codex-thread message channel.
+Git and GitHub are therefore the shared source of truth. Do not automate one
+app's GUI from the other or add another messaging service just to relay text.
 
-Run mutating Codex work in a task-specific native Git worktree. Use the
-checkout's ordinary Git index.
+## Use each app where its desktop surface helps
 
-```bash
-python -m pytest tests -q
-python scripts/governance_verify_all.py
-```
+- Claude Desktop is useful for parallel Code sessions, same-app messaging,
+  visual previews, side chats, connectors, and pane-based diff review.
+- Codex desktop is useful for parallel worktrees, Local/Worktree Handoff,
+  detached code review, granular staging/reverting, plugins, and scheduled
+  tasks.
 
-Smoke stays quiet for the reviewed historical commit-SHA baseline. Run
-`python scripts/check_doc_claims.py --sha-refs`
-when you need the full SHA-reference audit report.
+Choose by the task and available app feature, not by fixed roles. For broad or
+risky changes, having the other app review the exact diff is the simplest way
+to combine their perspectives.
+
+## Repository map
+
+- [`AGENTS.md`](AGENTS.md): concise shared instructions read by Codex and
+  imported by Claude.
+- [`CLAUDE.md`](CLAUDE.md): Claude Desktop-specific additions.
+- [`.agents/skills/cross-app-review/`](.agents/skills/cross-app-review/):
+  Codex project skill.
+- [`.claude/skills/cross-app-review/`](.claude/skills/cross-app-review/):
+  equivalent Claude project skill.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md): capability research, limitations, and
+  the reason for the minimal design.
+
+Capability information and vendor sources were checked on 2026-08-12.
 
 ## License
 
-Proprietary. All rights reserved. Access to this private repository does not
-grant a license.
+Proprietary. All rights reserved.
