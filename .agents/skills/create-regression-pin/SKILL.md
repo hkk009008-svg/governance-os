@@ -71,3 +71,11 @@ Before you trust it:
 If the defect cannot be expressed as a runtime test (needs a live GPU compute pod / paid
 external API / non-deterministic output), label it `test-infeasible` with a one-line
 reason in the handoff instead of forcing a vacuous pin.
+## Rule maintenance
+Observed failure: deferred defects shipping without a strict-xfail pin, or
+pins whose assertion never flips (vacuous xfail).
+Mode/risk: ordinary local when pinning; the deferred defect's risk class is
+unchanged. Cost: one xfail test plus a `--runxfail` red proof.
+Owner: the seat deferring the defect. Re-evaluate: if two consecutive
+deferred defects ship without a pin or with a pin that stays xfail after
+the fix.

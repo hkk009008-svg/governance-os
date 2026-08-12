@@ -703,7 +703,7 @@ def test_claude_stub_targets_exist() -> None:
         assert f".agents/skills/{skill.parent.name}/SKILL.md" in text, (
             f"{skill} does not name its own canonical path"
         )
-    assert stubs >= 4, "the four ADR-067 Stage 3 stubs must be present"
+    assert stubs >= 6, "ADR-067 stubs plus writing-skills must be present"
 
 
 def test_verification_report_templates_remain_identical() -> None:

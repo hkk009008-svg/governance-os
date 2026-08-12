@@ -135,3 +135,10 @@ Related: `probe-a-claim` for the belief upstream of the mechanism — premises
 from claim shape, amnesiac probes; `create-regression-pin` for deferring a
 confirmed defect; `seat-operator` for issuing the verdict once the evidence
 exists.
+## Rule maintenance
+Observed failure: green controls that cannot fail (correct-but-uncalled,
+environment-of-record).
+Mode/risk: any assertion described as measured or enforced.
+Cost: reversion run plus evasion attempt.
+Owner: the control's author. Re-evaluate: if deleting the call site leaves
+the suite green.

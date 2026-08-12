@@ -35,3 +35,9 @@ provider launch, spend, and live-data mutation remain separate authorities.
 
 Optional ChatGPT Pro consultation is parent-only and advisory: follow
 `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
+## Rule maintenance
+Observed failure: coordinator authoring a checkpoint (Owner must equal
+the envelope sender, a pair seat).
+Mode/risk: assigned coordinator work. Cost: confirm coverage; never
+author the checkpoint. Owner: the assigned coordinator.
+Re-evaluate: if a coordinator-authored checkpoint publishes.

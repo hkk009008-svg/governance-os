@@ -125,3 +125,11 @@ shipped.
 - The premise keys were authored by the same mind whose blind spots they
   guard against. The amnesiac probe is the counterweight — it is the one step
   sourced from outside, so skipping it collapses the loop back to one party.
+## Rule maintenance
+Observed failure: nine 2026-07-26/27 defects where the author verified the
+property they were thinking about, not the property the claim rested on.
+Mode/risk: claim formation in every mode; `probe-claim` is a separately
+authorized provider launch. Cost: premises command plus one embarrassing
+command; the probe is optional and billed.
+Owner: the claim's author. Re-evaluate: if a load-bearing claim lands with
+blank cells and no recorded kill.

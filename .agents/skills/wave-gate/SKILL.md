@@ -49,3 +49,10 @@ The gate reads the inventory; the inventory drifts. Before declaring a wave MET:
   output next to any GATE-MET claim.
 - The coordinator is on-demand (spawned at multi-pair-wrap boundaries), never an
   in-lane fixer.
+## Rule maintenance
+Observed failure: GATE MET declared from inventory prose without GO
+evidence, or a wave that grows past its planned row count.
+Mode/risk: wave closeout. Cost: one `wave_gate_check.py` run plus SHA/GO
+reconciliation. Owner: coordinator for inventory writes; the owning seat
+for the checkpoint. Re-evaluate: if a MET wave still has open rows on
+`origin/main`.

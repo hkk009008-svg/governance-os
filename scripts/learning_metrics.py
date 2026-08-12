@@ -39,8 +39,11 @@ Metrics and sources:
                             is reported, never treated as zero).
 Context lines: claims-ledger rows (logs/claims/ledger.jsonl), rules-registry
 rows and HARD/SOFT split (docs/PROTOCOL-RULES-LOG.md), recorded outcomes
-(logs/learning/outcomes.jsonl). Retrieval precision is measured by the frozen
-packs under tests/learning_packs/ (tests/unit/test_learning_packs.py), not
+(logs/learning/outcomes.jsonl) including advisory skill-use rows (helped /
+hindered / neutral). Skill-use totals are slope only: they never accept,
+decline, expire, edit, or prune a skill (usage-counts-as-lifecycle-evidence
+stays rejected). Retrieval precision is measured by the frozen packs under
+tests/learning_packs/; skill selection by tests/skill_packs/; neither is
 recomputed here.
 """
 
@@ -63,6 +66,70 @@ if str(_SCRIPTS) not in sys.path:
 
 import learning_index  # noqa: E402
 import protocol_mailbox  # noqa: E402
+
+_SKILL_USE_OUTCOMES = frozenset({"helped", "hindered", "neutral"})
+
+
+def _empty_skill_use() -> dict[str, object]:
+    return {
+        "skill_use_rows": 0,
+        "skill_use_helped": 0,
+        "skill_use_hindered": 0,
+        "skill_use_neutral": 0,
+        "skill_use_malformed": 0,
+        "skill_use_by_skill": {},
+    }
+
+
+def parse_skill_use_rows(path: Path) -> dict[str, object]:
+    """Count advisory skill-use rows. Never writes. Unknown events are skipped."""
+
+    counts = _empty_skill_use()
+    if not path.exists():
+        return counts
+    by_skill: dict[str, dict[str, int]] = {}
+    helped = hindered = neutral = malformed = 0
+    valid = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            malformed += 1
+            continue
+        if not isinstance(row, dict) or row.get("event") != "skill-use":
+            continue
+        skill = row.get("skill")
+        outcome = row.get("outcome")
+        if not isinstance(skill, str) or not skill.strip():
+            malformed += 1
+            continue
+        if outcome not in _SKILL_USE_OUTCOMES:
+            malformed += 1
+            continue
+        valid += 1
+        if outcome == "helped":
+            helped += 1
+        elif outcome == "hindered":
+            hindered += 1
+        else:
+            neutral += 1
+        bucket = by_skill.setdefault(
+            skill, {"helped": 0, "hindered": 0, "neutral": 0}
+        )
+        bucket[str(outcome)] += 1
+    counts.update(
+        {
+            "skill_use_rows": valid,
+            "skill_use_helped": helped,
+            "skill_use_hindered": hindered,
+            "skill_use_neutral": neutral,
+            "skill_use_malformed": malformed,
+            "skill_use_by_skill": by_skill,
+        }
+    )
+    return counts
 
 
 def _git(root: Path, *args: str) -> str:
@@ -270,6 +337,7 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
         if outcomes.exists()
         else None
     )
+    skill_use = parse_skill_use_rows(outcomes)
 
     return {
         "commit": resolved,
@@ -306,6 +374,7 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
         "claims_ledger_rows": ledger_rows,
         "rules_registry": f"{rules_rows} rows ({hard} HARD-marked)",
         "outcome_rows": outcome_rows,
+        **skill_use,
     }
 
 
@@ -342,6 +411,15 @@ def main(argv: list[str] | None = None) -> int:
           f"  [docs/PROTOCOL-RULES-LOG.md]")
     print(f"  recorded outcomes: {metrics['outcome_rows']}"
           f"  [logs/learning/outcomes.jsonl]")
+    print(
+        "  skill-use (advisory, binds nothing): "
+        f"rows {metrics['skill_use_rows']} "
+        f"(helped {metrics['skill_use_helped']}, "
+        f"hindered {metrics['skill_use_hindered']}, "
+        f"neutral {metrics['skill_use_neutral']}, "
+        f"malformed {metrics['skill_use_malformed']})  "
+        "[logs/learning/outcomes.jsonl event=skill-use]"
+    )
     for item in metrics["promoted_target_moved"]:
         print(f"  promoted (target moved as authorized): {item}")
     for path in metrics["retired_superseded"]:

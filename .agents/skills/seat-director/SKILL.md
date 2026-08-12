@@ -35,3 +35,10 @@ live-data mutation remain separate authorities.
 
 Optional ChatGPT Pro consultation is parent-only and advisory: follow
 `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
+## Rule maintenance
+Observed failure: director wrap without a checkpoint, so lessons and next
+action lived only in chat.
+Mode/risk: assigned director work. Cost: one `draft_checkpoint.py` at
+transfer, interruption, or wrap. Owner: the assigned director.
+Re-evaluate: if two consecutive director wraps omit `Checkpoint:` /
+`Next action:`.
