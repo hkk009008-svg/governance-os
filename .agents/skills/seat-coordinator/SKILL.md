@@ -22,6 +22,10 @@ Deduplicate by trigger identity, dispatch once, wait, and reconcile immutable
 artifacts. Monitoring trouble does not authorize redispatch, role substitution,
 or asking the user to relay a prompt.
 
+At a multi-pair wrap, confirm each owning seat's checkpoint `findings` event
+exists and note a gap as a finding; the coordinator never authors one
+(a checkpoint's Owner must equal its envelope sender, a pair seat).
+
 Publish only a real mediation, evidence transfer, or blocker through
 `coordination/bin/send-event`; do not create status churn. Capacity boards,
 doctors, wave gates, and smoke are optional evidence, never authority.
@@ -31,3 +35,9 @@ provider launch, spend, and live-data mutation remain separate authorities.
 
 Optional ChatGPT Pro consultation is parent-only and advisory: follow
 `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
+## Rule maintenance
+Observed failure: coordinator authoring a checkpoint (Owner must equal
+the envelope sender, a pair seat).
+Mode/risk: assigned coordinator work. Cost: confirm coverage; never
+author the checkpoint. Owner: the assigned coordinator.
+Re-evaluate: if a coordinator-authored checkpoint publishes.

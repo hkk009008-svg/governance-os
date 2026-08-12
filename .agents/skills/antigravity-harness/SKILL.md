@@ -95,3 +95,9 @@ State the author/reviewer model as the exact ID from `agy models`, undecorated.
 - **No Self-Approval**: The author never issues the formal verdict for authored
   work. Native helper separation does not create reviewer independence or a
   formal seat.
+## Rule maintenance
+Observed failure: AGY session inferring a live role, or claiming
+high-risk-control independence inside one model family.
+Mode/risk: AGY adapter. Cost: readiness-bridge default; no inferred seat.
+Owner: the AGY session. Re-evaluate: if an AGY session self-assigns a
+seat or a same-family high-risk review.

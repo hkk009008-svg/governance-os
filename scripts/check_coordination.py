@@ -710,6 +710,7 @@ def _committed_mailbox_projection(
         return None, detail or "mailbox introduction history unavailable"
 
     introductions: dict[str, tuple[str, str]] = {}
+    changed_reintroductions: set[str] = set()
     commit: str | None = None
     introduced_blob: str | None = None
     for token in history.stdout.split(b"\0"):
@@ -739,7 +740,21 @@ def _committed_mailbox_projection(
             and introduced_blob is not None
         ):
             if value in introductions:
-                return None, f"mailbox event has multiple introductions: {value}"
+                # The walk yields descendants before ancestors, so a repeated
+                # path is an earlier introduction: a delete/revert cycle
+                # (2026-08-12 corpus restore). Byte-identical restoration is
+                # not mutation, and the earliest introduction stays the
+                # immutable identity for ancestry classification and the
+                # exception manifest. Differing bytes on a review event or
+                # the manifest are adjudicated against the committed
+                # exception manifest after it is parsed below; conversational
+                # kinds were never byte-gated by this projection.
+                _prior_commit, prior_blob = introductions[value]
+                if prior_blob != introduced_blob and (
+                    _canonical_review_event(value)
+                    or value == _ARCHIVE_HISTORY_EXCEPTIONS
+                ):
+                    changed_reintroductions.add(value)
             introductions[value] = (commit, introduced_blob)
             introduced_blob = None
 
@@ -840,6 +855,11 @@ def _committed_mailbox_projection(
     history_exceptions, exception_problem = _parse_history_exceptions(exception_raw)
     if exception_problem is not None or history_exceptions is None:
         return None, exception_problem or "immutable-history exceptions are unavailable"
+    laundered = sorted(changed_reintroductions - set(history_exceptions))
+    if laundered:
+        return None, (
+            "mailbox event was reintroduced with different bytes: " + laundered[0]
+        )
     events = {
         path: raw
         for path, raw in archive_files.items()

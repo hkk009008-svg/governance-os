@@ -172,3 +172,34 @@ resolves in-tree.
   enumeration-for-property, environment-of-record): every learning-plane gate
   is a named test whose review includes a call-site-deletion mutation; every
   recorded count states the commit it was measured at.
+
+## 5. Continuity checkpoints and skill-use (adjacent, ADR-068)
+
+Checkpoints are not a learning kind. They reuse mailbox kind `findings`
+so the writer allowlist does not grow. A body that carries checkpoint
+intent (`Checkpoint:` slug plus `Next action:`) is validated at
+publication (`scripts/mailbox_writer.py`); ordinary findings prose
+without intent still publishes. Drafting is scratch-only
+(`scripts/draft_checkpoint.py`, O4). `Lessons:` is required and
+`none-considered` always publishes — there is no quota (sediment
+threat, contract §4). Resume reads one snapshot plus the newest
+campaign checkpoint; recalled state stays advisory (I1).
+
+Skill-use rows in `logs/learning/outcomes.jsonl` (schema:
+`docs/protocol/learning/skill-use.md`) are seat wrap judgments.
+`scripts/learning_metrics.py` reports them. They never bind accept /
+decline / expire / edit / prune. That absence in the two validation
+kernels is the same I1 check that already forbids `learning_*` imports;
+skill-use counters additionally must not appear in
+`mailbox_writer.py`, `compact_pair_loop.py`, `learning_extract.py`,
+`learning_index.py`, or `protocol_mailbox.py`
+(`tests/unit/test_skill_packs.py::test_usage_counts_are_not_consumed_by_lifecycle_kernels`).
+
+Canonical skill authoring is `.agents/skills/writing-skills/SKILL.md`.
+Promotion into a skill path remains I3 (compact pair at the change's
+risk class). Evaluation packs live under `tests/skill_packs/` and are
+grown, never edited in place.
+
+The mailbox archive stays unexecuted (O3). The standalone proposal is
+`docs/protocol/learning/mailbox-archive-proposal.md`; I6 applies when
+that change is filed, not before.

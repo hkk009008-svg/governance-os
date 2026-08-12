@@ -49,6 +49,9 @@ Explore exists to learn quickly without risking canonical state.
   outside the sandbox.
 - Do not instantiate seats merely because an experiment exists. Use a handoff
   only for a real ownership transfer.
+- At a campaign phase change, interruption, or before context compaction,
+  publish one checkpoint `findings` event (`scripts/draft_checkpoint.py`
+  drafts it); resume from one snapshot plus the newest campaign checkpoint.
 
 An Explore result is provisional. It may guide the next attempt but cannot be
 used as an accepted scientific or production claim.

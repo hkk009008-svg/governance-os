@@ -476,3 +476,92 @@ def test_non_utf8_inside_disposition_marker_is_not_concealed(tmp_path: Path) -> 
     }
     assert metrics["disposition_event_errors"][0]["path"].endswith(path)
     assert "UTF-8" in metrics["disposition_event_errors"][0]["error"]
+
+
+def test_skill_use_rows_are_advisory_counts(tmp_path: Path) -> None:
+    """skill-use rows slope only; malformed lines never coerce into outcomes."""
+
+    root = tmp_path / "repo"
+    sent = root / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True)
+    outcomes = root / "logs" / "learning" / "outcomes.jsonl"
+    outcomes.parent.mkdir(parents=True)
+    outcomes.write_text(
+        "\n".join(
+            [
+                '{"ts": "2026-07-31T03:30:00Z", "event": "stage5-baseline", "note": "other"}',
+                '{"ts": "2026-08-12T01:00:00Z", "event": "skill-use", "skill": "writing-skills", "task_ref": "none", "outcome": "helped", "evidence_ref": "none", "seat": "operator"}',
+                '{"ts": "2026-08-12T02:00:00Z", "event": "skill-use", "skill": "create-regression-pin", "task_ref": "none", "outcome": "hindered", "evidence_ref": "none", "seat": "director"}',
+                '{"ts": "2026-08-12T03:00:00Z", "event": "skill-use", "skill": "writing-skills", "task_ref": "none", "outcome": "neutral", "evidence_ref": "none", "seat": "operator"}',
+                '{"ts": "2026-08-12T04:00:00Z", "event": "skill-use", "skill": "wave-gate", "outcome": "voted-keep"}',
+                "{not json",
+                "",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["/usr/bin/git", "-C", str(root), "init", "-q"], check=True
+    )
+    subprocess.run(
+        ["/usr/bin/git", "-C", str(root), "add", "-A"], check=True
+    )
+    subprocess.run(
+        [
+            "/usr/bin/git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Metrics Test",
+            "-c",
+            "user.email=metrics@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "skill-use rows",
+        ],
+        check=True,
+    )
+    metrics = learning_metrics.collect_metrics(root)
+    assert metrics["skill_use_rows"] == 3
+    assert metrics["skill_use_helped"] == 1
+    assert metrics["skill_use_hindered"] == 1
+    assert metrics["skill_use_neutral"] == 1
+    assert metrics["skill_use_malformed"] == 2
+    assert metrics["skill_use_by_skill"] == {
+        "writing-skills": {"helped": 1, "hindered": 0, "neutral": 1},
+        "create-regression-pin": {"helped": 0, "hindered": 1, "neutral": 0},
+    }
+    # The reporter still writes nothing when skill-use rows exist.
+    before = outcomes.stat().st_mtime_ns
+    learning_metrics.collect_metrics(root)
+    assert outcomes.stat().st_mtime_ns == before
+
+
+def test_missing_outcomes_file_reports_zero_skill_use(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    (root / "coordination" / "mailbox" / "sent").mkdir(parents=True)
+    subprocess.run(["/usr/bin/git", "-C", str(root), "init", "-q"], check=True)
+    (root / "coordination" / "mailbox" / "sent" / ".gitkeep").write_text("")
+    subprocess.run(["/usr/bin/git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "/usr/bin/git",
+            "-C",
+            str(root),
+            "-c",
+            "user.name=Metrics Test",
+            "-c",
+            "user.email=metrics@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "no outcomes",
+        ],
+        check=True,
+    )
+    metrics = learning_metrics.collect_metrics(root)
+    assert metrics["outcome_rows"] is None
+    assert metrics["skill_use_rows"] == 0
+    assert metrics["skill_use_malformed"] == 0

@@ -133,3 +133,9 @@ the register by name, so nobody cites it as a witness later.
 compares against a branch nobody ran, estimated by someone who now knows the
 answer. Report what the chosen path cost and what it eliminated; that is
 measurable, and the comparison is not.
+## Rule maintenance
+Observed failure: serial guesses on works-here-fails-there, treating a
+zero as absence of the effect.
+Mode/risk: diagnosis. Cost: one matrix of candidate differences.
+Owner: the investigator. Re-evaluate: if two consecutive diagnoses convict
+a cause without recording eliminated alternatives.

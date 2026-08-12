@@ -693,7 +693,31 @@ before authoring/reviewing/debugging domain-graph code or configuration, and
 `<domain-skill>` before pipeline-level design work; when a
 skill prior shapes a verdict, name it in the work product.
 
-<!-- TODO(<PROJECT>): add this project's domain-skill triggers -->
+**This repository's skill load triggers** (Pipeline inventory; closes the
+transfer-bundle TODO slot here only — adopter copies keep the placeholder
+per ADR-002). There is no domain-graph skill in this repository.
+
+- `four-seat-protocol` (+ `seat-director` / `seat-operator` /
+  `seat-coordinator`) — explicit seat, mailbox, wave, continuation, or
+  protocol decision; skill presence alone is not a trigger.
+- `create-regression-pin` — confirmed defect deferred this session.
+- `probe-a-claim` — before writing verified / enforced / complete / never /
+  measured.
+- `prove-a-control` — before claiming a guard, gate, or negative control
+  holds.
+- `isolate-a-variable` — works-here-fails-there, or a measurement that
+  reads zero.
+- `wave-gate` — gating a remediation wave or reconciling inventory.
+- `writing-skills` — authoring, revising, or promoting a repository skill
+  (evaluation-first; see `.agents/skills/writing-skills/SKILL.md`).
+- `chatgpt-pro-consultation` — optional parent-owned consultation when
+  asked.
+- `antigravity-harness` — operating as AGY within Pipeline.
+- `kurogane-metahuman-explore` — guarded MetaHuman Explore work.
+
+Author a new skill only through `writing-skills` and a reviewed compact
+pair. Do not invent a domain skill that does not exist.
+
 **Empirical basis:** <ref> GO/NO-GO verdicts on a domain-graph subsystem were
 shaped by `<domain-skill>` priors (documented single-instance constraint →
 identity blending is the expected dual-chain failure mode → a measurable

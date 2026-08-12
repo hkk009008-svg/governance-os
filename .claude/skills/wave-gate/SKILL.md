@@ -43,6 +43,9 @@ The gate reads the inventory; the inventory drifts. Before declaring a wave MET:
   during an open wave.
 - Surface the milestone: `git rev-list --count origin/main..HEAD` to confirm
   nothing MET is left unpushed.
+- A gate closure is a checkpoint boundary: the owning seat publishes one
+  checkpoint `findings` event (`scripts/draft_checkpoint.py`) whose
+  `Lessons:` line carries candidate refs or `none-considered`.
 
 ## Notes
 - `scripts/wave_gate_check.py` is the committed instrument (R-MEASURE); cite its

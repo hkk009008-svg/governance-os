@@ -209,3 +209,9 @@ A hold is safe only when:
 If the Mac is locked while an uncaptured unsaved candidate is live, report the
 lock as an active blocker rather than declaring a safe hold. Continue non-UI
 evidence work when useful, then resume capture after unlock.
+## Rule maintenance
+Observed failure: a preview treated as an accepted asset, or the
+protected source mutated during Explore.
+Mode/risk: explore. Cost: reference-led loop plus capture before hold.
+Owner: the explore operator. Re-evaluate: if a candidate is promoted
+without visual-measurement controls.

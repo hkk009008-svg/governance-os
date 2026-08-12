@@ -546,6 +546,52 @@ def test_pipeline_policy_is_execution_first_and_proportional() -> None:
     assert "task-count or line-count mandate" not in agents
 
 
+def test_checkpoint_contract_is_pinned_across_provider_surfaces() -> None:
+    """Durable-continuation obligations must not silently vanish or fork.
+
+    The checkpoint record is the mechanism behind AGENTS.md universal
+    contract item 7; every provider adapter carries the same boundary
+    trigger, draft tool, resume shape, and advisory-recall posture. The
+    Lessons pin keeps the anti-sediment answer (`none-considered`) legal on
+    every surface that names the mechanism.
+    """
+
+    agents = _compact(_read("AGENTS.md"))
+    for phrase in (
+        "scripts/draft_checkpoint.py",
+        "none-considered",
+        "Durable shared state beats chat memory",
+        "newest campaign checkpoint",
+        "recalled state is advisory",
+    ):
+        assert phrase in agents, phrase
+
+    for path in (
+        "docs/protocol/codex/continuation.md",
+        "docs/protocol/claude/continuation.md",
+        "docs/protocol/agy/continuation.md",
+        "docs/protocol/cursor/continuation.md",
+    ):
+        adapter = _compact(_read(path))
+        for phrase in (
+            "scripts/draft_checkpoint.py",
+            "none-considered",
+            "newest campaign checkpoint",
+            "unread backlog is not an orientation debt",
+            "committed state outranks it",
+        ):
+            assert phrase in adapter, (path, phrase)
+        # Anti-regrowth: recall stays optional and advisory; no surface may
+        # convert the checkpoint or the index into a mandatory startup
+        # ritual or an authority source.
+        assert "must query the index" not in adapter, path
+        assert "mandatory checkpoint" not in adapter, path
+
+    modes = _compact(_read("docs/protocol/work-modes.md"))
+    assert "scripts/draft_checkpoint.py" in modes
+    assert "newest campaign checkpoint" in modes
+
+
 def test_claude_and_agy_route_new_lessons_through_learning_candidates() -> None:
     for path in (
         "CLAUDE.md",
@@ -657,7 +703,7 @@ def test_claude_stub_targets_exist() -> None:
         assert f".agents/skills/{skill.parent.name}/SKILL.md" in text, (
             f"{skill} does not name its own canonical path"
         )
-    assert stubs >= 4, "the four ADR-067 Stage 3 stubs must be present"
+    assert stubs >= 6, "ADR-067 stubs plus writing-skills must be present"
 
 
 def test_verification_report_templates_remain_identical() -> None:

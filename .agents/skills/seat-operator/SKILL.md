@@ -29,3 +29,9 @@ mutation remain separate authorities.
 
 Optional ChatGPT Pro consultation is parent-only and advisory: follow
 `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
+## Rule maintenance
+Observed failure: operator review of authored work; wrap without routing
+lessons. Mode/risk: assigned operator work.
+Cost: bind the request and exact range; checkpoint when this seat owns
+the wrap. Owner: the assigned operator.
+Re-evaluate: if an operator issues GO/NITS/FAIL on a range they authored.

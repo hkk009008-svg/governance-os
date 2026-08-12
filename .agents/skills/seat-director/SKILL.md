@@ -17,6 +17,10 @@ transfer it within the recorded scope. Use focused tests and preserve material
 findings. Publish an ownership change or formal review request only when durable
 state actually changes, and only through `coordination/bin/send-event`.
 
+At a transfer, interruption, or wrap boundary, publish one checkpoint
+`findings` event (`scripts/draft_checkpoint.py`); its `Lessons:` line routes
+lessons through `learning-candidate` events, and `none-considered` is valid.
+
 Review depth comes from `AGENTS.md`. If formal review is required, submit the
 actual committed range with the complete Compact Pair binding. The Director
 never issues GO/NITS/FAIL for authored work. A new request names exactly
@@ -31,3 +35,10 @@ live-data mutation remain separate authorities.
 
 Optional ChatGPT Pro consultation is parent-only and advisory: follow
 `.agents/skills/chatgpt-pro-consultation/SKILL.md`.
+## Rule maintenance
+Observed failure: director wrap without a checkpoint, so lessons and next
+action lived only in chat.
+Mode/risk: assigned director work. Cost: one `draft_checkpoint.py` at
+transfer, interruption, or wrap. Owner: the assigned director.
+Re-evaluate: if two consecutive director wraps omit `Checkpoint:` /
+`Next action:`.

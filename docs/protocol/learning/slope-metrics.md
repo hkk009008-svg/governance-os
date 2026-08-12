@@ -43,16 +43,30 @@ sources are in the module docstring; the load-bearing ones:
   at each boundary commit.
 - **Claims-ledger provenance mix** — premise statuses per window; an ASSUMED
   premise is a recorded blank cell, not a failure.
+- **Continuity coverage** — committed checkpoint records (findings events
+  carrying the canonical `Checkpoint:`/`Next action:` shape,
+  `protocol_mailbox.checkpoint_intent`) per window, with boundary kinds and
+  the Lessons answer split (refs vs `none-considered`). Coverage, not
+  quality: it shows whether long-horizon boundaries left a durable
+  continuation record.
+- **Learning throughput** — learning-candidate events and
+  `Candidate:`/`Disposition:` decisions per window, with median
+  candidate-to-disposition latency. A window of zeros is a valid state,
+  not a deficit (anti-sediment); the slope is for noticing when the plane
+  stops being used at all while execution-health signals degrade.
 
 ## What it deliberately does not measure
 
 The report carries a `not_measurable` block naming requirement retention
-over steps, recovery after context compaction, and hook-approval
-intervention precision, each with the reason (no durable artifact exists
-today). Absence is reported, never silently approximated. Creating durable
-state for those dimensions is future work that must pass guard admission on
-its own; this instrument must not grow a write path to manufacture its own
-inputs.
+over steps, recovery *quality* after context compaction, and hook-approval
+intervention precision, each with the reason. Checkpoint records made
+compaction-boundary *coverage* measurable (continuity series above);
+recovery quality stays unmeasured because no durable artifact ties a
+resumed session to the checkpoint it resumed from, and mandating a resume
+receipt would be ceremony (I7 guard admission). Absence is reported, never
+silently approximated. Creating durable state for the remaining dimensions
+is future work that must pass guard admission on its own; this instrument
+must not grow a write path to manufacture its own inputs.
 
 ## Interpretation discipline
 
