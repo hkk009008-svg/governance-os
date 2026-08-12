@@ -5,9 +5,9 @@ This repository is a small cooperation layer for exactly two coding surfaces:
 - Claude Desktop, **Code** tab
 - Codex in the ChatGPT desktop app
 
-It has no provider launcher, command-line interface, seat system, mailbox,
-relay daemon, governance runtime, or Python dependency. The desktop apps may
-still run normal project commands in their integrated terminals.
+It has no provider launcher, custom coordination service, executable
+runtime, or dependency stack. The desktop apps may still run normal project
+commands in their integrated terminals.
 
 ## Fast path
 

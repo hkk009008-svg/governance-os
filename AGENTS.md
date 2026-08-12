@@ -43,7 +43,6 @@ in `CLAUDE.md`.
 
 ## Scope boundary
 
-Do not add provider launchers, standalone CLI workflows, headless agents, seat
-registries, mailboxes, relay daemons, protocol event schemas, or another
-provider adapter. Normal build, test, Git, and debugging commands may still run
-inside either desktop app's integrated terminal.
+Keep this desktop-only. Do not add another provider, an app launcher, or a
+custom coordination service. Normal build, test, Git, and debugging commands
+may still run inside either desktop app's integrated terminal.
