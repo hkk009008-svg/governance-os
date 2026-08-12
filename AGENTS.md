@@ -43,7 +43,11 @@ events).
 7. At a long-horizon checkpoint (transfer, interruption, compaction),
    preserve: objective, accepted scope, owner, policy revision, base/head,
    evidence refs, verification status, unresolved blockers, and the next
-   executable action. Durable shared state beats chat memory.
+   executable action. Durable shared state beats chat memory. Write it as
+   one checkpoint `findings` event (draft: `scripts/draft_checkpoint.py`);
+   its `Lessons:` line routes lessons toward learning-candidates, and
+   `none-considered` is always a valid answer. Resume from one snapshot
+   plus the newest campaign checkpoint; recalled state is advisory.
 
 Work modes: ordinary work declares no mode. A long-running campaign selects
 `explore`, a frozen candidate `validate`, a canonical or live mutation

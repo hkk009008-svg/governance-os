@@ -76,6 +76,15 @@ Refresh HEAD, relevant events, and scoped status before a write or gate. One
 fresh snapshot is the orientation path; there is no separate fast-resume
 classification or second doctrine dump.
 
+At a real long-horizon boundary — ownership transfer, interruption, wrap, or
+before context compaction — publish one checkpoint `findings` event (draft:
+`scripts/draft_checkpoint.py`; its `Lessons:` line routes lessons toward
+learning-candidates, and `none-considered` is always valid). Resume is one
+snapshot plus the newest campaign checkpoint plus the actionable bodies it
+names; unread backlog is not an orientation debt. Recall from the episodic
+index (`scripts/learning_index.py query`) is optional and advisory (learning
+contract I1) — committed state outranks it.
+
 ## Executable contracts
 
 - `scripts/codex_protocol_model.py` validates runtime identity, ownership
@@ -96,9 +105,10 @@ These are the only places Claude differs from the shared contract, and each is
 forced by the harness rather than chosen:
 
 - Claude Code discovers skills only under `.claude/skills/` — discovery is
-  scoped there, reading never was. Since ADR-067 Stage 3, four skills there
+  scoped there, reading never was. Since ADR-067 Stage 3, five skills there
   (create-regression-pin, probe-a-claim, prove-a-control,
-  chatgpt-pro-consultation) are reference stubs: frontmatter plus
+  isolate-a-variable, chatgpt-pro-consultation) are reference stubs:
+  frontmatter plus
   Claude-native deltas (`env -u GIT_INDEX_FILE`, `.venv/bin/python`, Claude
   tool names, `disable-model-invocation`) pointing at the canonical body in
   `.agents/skills/`, which the session reads and follows. The five

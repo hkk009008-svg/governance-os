@@ -31,6 +31,15 @@ Refresh HEAD, relevant events, and scoped status before a write or gate. One
 fresh snapshot is the orientation path; there is no separate fast-resume
 classification or second doctrine dump.
 
+At a real long-horizon boundary — ownership transfer, interruption, wrap, or
+before context compaction — publish one checkpoint `findings` event (draft:
+`scripts/draft_checkpoint.py`; its `Lessons:` line routes lessons toward
+learning-candidates, and `none-considered` is always valid). Resume is one
+snapshot plus the newest campaign checkpoint plus the actionable bodies it
+names; unread backlog is not an orientation debt. Recall from the episodic
+index (`scripts/learning_index.py query`) is optional and advisory (learning
+contract I1) — committed state outranks it.
+
 ## Executable contracts
 
 - `scripts/codex_protocol_model.py`: identity, ownership, risk, and effect tokens.

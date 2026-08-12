@@ -295,6 +295,15 @@ At the start of non-trivial work, refresh smoke, recent Git history, scoped
 status, and relevant mailbox bodies. In app worktrees use normal Git and
 pytest; do not set or unset a per-seat index variable.
 
+At a real long-horizon boundary — ownership transfer, interruption, wrap, or
+before context compaction — publish one checkpoint `findings` event (draft:
+`scripts/draft_checkpoint.py`; its `Lessons:` line routes lessons toward
+learning-candidates, and `none-considered` is always valid). Resume is one
+snapshot plus the newest campaign checkpoint plus the actionable bodies it
+names; unread backlog is not an orientation debt. Recall from the episodic
+index (`scripts/learning_index.py query`) is optional and advisory (learning
+contract I1) — committed state outranks it.
+
 Unit tests and `scripts/governance_verify_all.py` verify executable invariants but do not
 substitute for the risk-appropriate Operator verdict or desktop acceptance.
 
