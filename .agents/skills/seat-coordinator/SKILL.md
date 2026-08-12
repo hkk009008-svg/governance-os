@@ -22,6 +22,10 @@ Deduplicate by trigger identity, dispatch once, wait, and reconcile immutable
 artifacts. Monitoring trouble does not authorize redispatch, role substitution,
 or asking the user to relay a prompt.
 
+At a multi-pair wrap, confirm each owning seat's checkpoint `findings` event
+exists and note a gap as a finding; the coordinator never authors one
+(a checkpoint's Owner must equal its envelope sender, a pair seat).
+
 Publish only a real mediation, evidence transfer, or blocker through
 `coordination/bin/send-event`; do not create status churn. Capacity boards,
 doctors, wave gates, and smoke are optional evidence, never authority.

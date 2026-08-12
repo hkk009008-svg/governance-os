@@ -31,7 +31,10 @@ findings.
 
 Use `env -u GIT_INDEX_FILE` for ordinary Git/pytest and explicit pathspecs.
 Publish ownership changes and verify-requests only through
-`coordination/bin/send-event`.
+`coordination/bin/send-event`. At a transfer, interruption, or wrap boundary,
+publish one checkpoint `findings` event (`scripts/draft_checkpoint.py`); its
+`Lessons:` line routes lessons through `learning-candidate` events, and
+`none-considered` is valid.
 
 Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
 

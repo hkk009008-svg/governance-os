@@ -31,6 +31,10 @@ effective through the recorded owner/recipient lineage, not coordinator
 approval. Read the newest handoff, current Git, and relevant mailbox bodies.
 Diagnostics are evidence only; preflight is advisory.
 
+At a multi-pair wrap, confirm each owning seat's checkpoint `findings` event
+exists and note a gap as a finding; the coordinator never authors one
+(a checkpoint's Owner must equal its envelope sender, a pair seat).
+
 Use the fixed mailbox writer only for a real mediation, transfer, evidence
 preservation, or blocker; do not create status churn. Preserve exact lineage
 and finding refs. Use `env -u GIT_INDEX_FILE` and explicit paths.
