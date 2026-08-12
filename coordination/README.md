@@ -322,9 +322,10 @@ the committed request/report binding and Operator-only verdict authority.
   `memory-candidate`, retired in the same change with zero committed
   instances (ADR-067 baseline). Read-side typing is
   `scripts/protocol_mailbox.py` (`parse_learning_candidate_statement`,
-  `parse_learning_disposition_statement`); refusals are advisory until the
-  Stage 2b writer-side branch lands (contract I4). Grants no memory write
-  authority.
+  `parse_learning_disposition_statement`); the Stage 2b writer-side branch
+  landed, so the contract I4 refusals bind at publication
+  (`scripts/mailbox_writer.py`, `tests/unit/test_learning_promotion.py`).
+  Grants no memory write authority.
 - **Observed-in-practice additions:** `acknowledgement` | `convergence` |
   `coordination` | `discussion` | `fyi` | `measurement-report` | `proposal` |
   `proposal-reply` | `reply` | `verify-addendum` | `verify-readiness` |
