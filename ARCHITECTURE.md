@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified against base: 2026-08-12 @ fb3a28e*
+*Last verified against base: 2026-08-12 @ b2728b1*
 
 ## 1. Purpose
 
@@ -78,15 +78,17 @@ Notable per-host constraints:
   host session registry, automatic worktrees, and peer relay are conveniences;
   they do not turn a session title or message into role authority.
 - Claude Code discovers skills only under `.claude/skills/`. Since ADR-067
-  Stage 3, five `.claude` skills (create-regression-pin, probe-a-claim,
-  prove-a-control, isolate-a-variable, chatgpt-pro-consultation) are
+  Stage 3, six `.claude` skills (create-regression-pin, probe-a-claim,
+  prove-a-control, isolate-a-variable, chatgpt-pro-consultation,
+  writing-skills) are
   reference stubs over their
   canonical `.agents/skills/` bodies plus Claude-native deltas; the five
   seat-family pairs are declared provider-native adaptations (O2 ruling
   2026-07-31) whose protocol semantics resolve toward `.agents`. Only
   `seat-operator/verification-report-format.md` is asserted byte-identical,
   and no test asserts `SKILL.md` parity. Review, not a gate, catches
-  divergence.
+  divergence. Frozen selection and stub-routing cases live under
+  `tests/skill_packs/` (ADR-068).
 - Codex carries the spawnable seat roles because host task tools dispatch them.
   Other sides carry only the read-only advisors.
 - AGY keeps a launcher because it selects a per-seat model. It carried a
@@ -114,7 +116,9 @@ The table names stable symbols instead of volatile line numbers.
 | `build_index`, `query_index` | `scripts/learning_index.py` | Build and query the derived episodic index from the committed tree; unavailable is `None`, never a silent zero. |
 | `parse_learning_candidate_statement`, `committed_learning_candidate_ids` | `scripts/protocol_mailbox.py` | Type learning candidates and dispositions from committed events; content-hash identity and pinned-commit dedup. |
 | `draft_candidate` | `scripts/learning_extract.py` | Draft one evidence-triggered candidate into scratch; never publishes, never mutates git. |
-| `collect_metrics` | `scripts/learning_metrics.py` | Read-only learning-lifecycle metrics with advisory promotion-linkage WARNs. |
+| `parse_checkpoint_statement`, `checkpoint_intent` | `scripts/protocol_mailbox.py` | Type a continuity checkpoint from a findings body; intent is the two-field slug. |
+| `draft_checkpoint` | `scripts/draft_checkpoint.py` | Draft one checkpoint findings event into scratch; never publishes. |
+| `collect_metrics`, `parse_skill_use_rows` | `scripts/learning_metrics.py` | Read-only learning-lifecycle metrics with advisory promotion-linkage WARNs and advisory skill-use counts that bind nothing. |
 
 ## 5. Runtime invariants
 

@@ -1485,3 +1485,67 @@ same change. Also recorded from the stages-1-2 round-two review, as
 compact-pair listing convention: a range's own verify-request and
 verification-report envelopes necessarily ride it and are declared in the
 request's Outcome rather than silently omitted from the allowed paths.
+
+## ADR-068: Continuity checkpoints, writing-skills, and advisory skill-use (2026-08-12)
+
+**Status:** Accepted (user-directed: analyze then implement memory/skill
+evolution, then fold in adherence — mechanized refusal, pinned prose,
+cheapest-path tools, reduced-context probe, measured adherence, review
+as last catch)
+
+**Number assignment.** Re-grepped in this change per ADR-035:
+`git grep -n "ADR-068"` before this entry returned only same-change
+forward references (the plan reservation
+`docs/superpowers/plans/2026-08-12-memory-skill-evolution-plan.md`,
+`.agents/skills/writing-skills/SKILL.md`, and
+`docs/protocol/learning/skill-use.md`). No prior ADR consumed 068.
+This entry consumes the number.
+
+**Context.** ADR-067 built the learning plane and left three gaps that
+long-horizon work actually hits: (1) AGENTS.md item 7 named a checkpoint
+payload with no typed record and no publication-time check, so wrap
+state died in chat; (2) skill authoring had no evaluation-first
+procedure, R-SKILL was still a transfer TODO, and load was unmeasured;
+(3) the live review projection was FAIL on byte-identical mailbox
+reintroduction after PR #16. Compaction-recovery quality remains
+unmeasurable without a resume-receipt, which would fail I7.
+
+**Decision.**
+
+1. Reuse mailbox kind `findings` for a typed checkpoint statement
+   (`Checkpoint:` + `Next action:` intent). Validate at writer
+   publication. Draft via `scripts/draft_checkpoint.py` (scratch-only,
+   O4). `Lessons:` is required; `none-considered` always publishes.
+   Resume = one snapshot plus the newest campaign checkpoint; recalled
+   state is advisory. No new kind.
+2. Land `.agents/skills/writing-skills/SKILL.md` with a Claude reference
+   stub. Close R-SKILL with this repository's real inventory. Frozen
+   `tests/skill_packs/` encode trigger selection and the ADR-067
+   stub-routing falsifier. Packs are grown, never edited in place.
+3. Document `skill-use` rows in `logs/learning/outcomes.jsonl`.
+   `scripts/learning_metrics.py` reports helped/hindered/neutral as
+   slope only. Usage counts remain rejected as lifecycle evidence:
+   writer, compact-pair, extractor, index, and protocol_mailbox consume
+   none of these counters.
+4. File the O3 mailbox archive as
+   `docs/protocol/learning/mailbox-archive-proposal.md`. Do not execute
+   it. Activation is collector latency, not event count. I6 fail-closed
+   backup is a condition of any future execution.
+5. Adherence is the six-layer architecture in the plan, not a
+   classifier and not a lifecycle hook. A live reduced-context probe
+   was not launched; the experiment record says so.
+
+**Consequences.** Checkpoint malformed → publication refuse (mechanized).
+Instruction-surface drift → prompt-sync fail (doctrine pin). Skill
+description drift → skill-pack fail. Stub that stops pointing at
+`.agents` → stub-routing fail. Skill-use totals → report only.
+Archive → still not done. Compaction-recovery *quality* → still
+`not_measurable`. Risk class of this change: skill paths are authority
+surfaces; writer/parser are high-risk-control; the landing does not
+self-approve and does not publish mailbox events.
+
+**Contract.** Continuity checkpoints are adjacent to the learning plane
+(they route lessons toward candidates) but are not a learning kind.
+Normative additions: `docs/protocol/learning/contract.md` §5,
+`docs/protocol/learning/skill-use.md`. Plan:
+`docs/superpowers/plans/2026-08-12-memory-skill-evolution-plan.md`.
