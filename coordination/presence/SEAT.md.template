@@ -1,9 +1,0 @@
-seat: <seat-name>            # director | operator | coordinator | director2 | operator2 | ...
-status: <one-line status>    # what you are doing right now; READ-FIRST: <pointer to your latest handoff>. Trust git + mailbox over this prose.
-pair: <pair / lane>          # e.g. "Lane-1 (<domain-A>)". Name the sibling seat(s) and whether a coordinator is standing or on-demand.
-STATE: <HEAD sha at write-start>; branch <name> was <N ahead / M behind> origin/<branch>. <your> mailbox cursor consumed through <ISO-8601 ts>; unread <count>.
-delivered-this-cycle: <what you landed/consumed this cycle, with commit shas / event filenames>.
-latest-incoming: <the most recent mailbox event you acted on and its decision>.
-owed-next: <what you owe next, or the condition under which you go idle>.
-sharp: <live hazards — e.g. shared tree dirty -> use `env -u GIT_INDEX_FILE` + explicit pathspecs; push is user-gated>.
-updated: <ISO-8601 ts>

@@ -1,38 +1,15 @@
-## Summary
-<!-- 1-3 sentences. What changed and why, in operator-friendly language. -->
+## Goal
 
-## Why
-<!-- Motivation. Link the governing issue, route, ADR, or handoff if applicable. -->
+<!-- What outcome should this change produce? -->
 
-## Test plan
-- [ ] `.venv/bin/python scripts/ci_smoke.py` passes locally
-- [ ] `.venv/bin/python -m pytest tests/ -q` clean — paste the literal summary line under Verification output
-- [ ] CI (`.github/workflows/ci.yml`) is green on this PR
-- [ ] ARCHITECTURE.md updated if a documented governance or protocol subsystem was touched
-- [ ] [DECISIONS.md](../DECISIONS.md) appended (new ADR) if this is an architectural decision
+## Changes
 
-## Priority / Route (if applicable)
-Name the governing mailbox route, handoff, ADR, or task-board packet.
+<!-- Keep this to the behavior and files that matter. -->
 
-- [ ] **P0** — Ship-blocking risk (test coverage, CI, cost-tracking)
-- [ ] **P1** — Quality risk (observability, orchestrator size, schema validation, frontend resilience)
-- [ ] **P2** — Cost / efficiency (LLM cost default, pod billing, cascade visibility)
-- [ ] **P3** — Code health (concurrency hygiene, dead code, deduplication)
-- [ ] **P4** — Strategic / open (vendor sprawl, multi-user, review fatigue, experiment tracking, console mode)
-- [ ] N/A — Routine fix / cleanup / refactor not tied to a P-priority
+## Verification
 
-## Verification output
-<!--
-Per CLAUDE.md / AGENTS.md "Verification discipline" (Rule 3): if this PR
-makes inventory-shaped claims (counts, file presence, LOC, etc.), paste the
-producing command + output here. Authority-voice claims without verifying
-output get pushed back.
--->
+<!-- State what was checked and any result the reviewer should reproduce. -->
 
-```
-$ <command>
-<output>
-```
+## Review focus
 
-## Out of scope
-<!-- Anything noticed but deliberately not addressed. -->
+<!-- Name uncertain areas, important tradeoffs, or the exact help wanted. -->

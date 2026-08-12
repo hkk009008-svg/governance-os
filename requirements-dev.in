@@ -1,4 +1,0 @@
-# Full local/CI test dependencies. The signer must not install this input.
--r requirements-governance.in
-hypothesis==6.165.0
-pytest==9.1.1
