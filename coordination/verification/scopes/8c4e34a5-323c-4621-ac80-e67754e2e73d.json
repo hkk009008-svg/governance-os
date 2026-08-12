@@ -1,0 +1,29 @@
+{
+  "schema_version": "lane-v-scope/v1",
+  "task_id": "8c4e34a5-323c-4621-ac80-e67754e2e73d",
+  "question_id": "compact-phase4-task2-disposable-rehearsal",
+  "trigger_kind": "verify-request",
+  "verification_mode": "independent-lane-v",
+  "verification_harness": "lane-v:independent-verifier",
+  "review_profile": "independent-lane-v",
+  "reviewed_base": {
+    "policy": "exact",
+    "commit": "c5c758c77d11a934aa5f62b99119b66033b529b2"
+  },
+  "requirement_paths": [
+    "docs/superpowers/plans/2026-07-16-compact-kernel-phase4-activation.md",
+    "docs/superpowers/specs/2026-07-16-simple-cross-model-gptpro-invariants.md"
+  ],
+  "allowed_path_roots": [
+    "docs/superpowers/plans/2026-07-16-compact-kernel-phase4-activation.md",
+    "logs/capability-first/phase4-task2-disposable-rehearsal.json"
+  ],
+  "verification_commands": [
+    "env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -m pytest tests/unit/test_kernel_activation.py -q",
+    "env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python scripts/ci_smoke.py",
+    "env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -c 'import json,pathlib; d=json.loads(pathlib.Path(\"logs/capability-first/phase4-task2-disposable-rehearsal.json\").read_text()); z={\"epoch\":0,\"selector_oid\":None,\"writer\":\"v1\"}; assert d[\"schema\"]==\"compact-phase4-disposable-rehearsal/v1\"; assert d[\"scratch\"][\"git_common_dir_independent\"] is True; assert d[\"scratch\"][\"partial_selector_only\"][\"outcome\"]==\"fail_closed\" and d[\"scratch\"][\"partial_selector_only\"][\"selection_after_abort\"]==z; assert d[\"scratch\"][\"partial_mirror_only\"][\"outcome\"]==\"fail_closed\" and d[\"scratch\"][\"partial_mirror_only\"][\"selection_after_abort\"]==z; f=d[\"scratch\"][\"full_cutover\"]; assert f[\"selection\"][\"epoch\"]==1 and f[\"selection\"][\"writer\"]==\"compact\"; assert f[\"v1_reader\"]==\"denied\" and f[\"v1_writer\"]==\"denied\" and f[\"compact_writer\"]==\"allowed\"; assert d[\"scratch\"][\"restored_selection\"]==z and d[\"scratch\"][\"activation_ref_absent_after_restore\"] is True and d[\"scratch\"][\"worktree_clean_after_restore\"] is True and d[\"scratch\"][\"retained_without_cleanup\"] is True; assert d[\"primary\"][\"selection_before\"]==z==d[\"primary\"][\"selection_after\"] and d[\"primary\"][\"unchanged\"] is True and d[\"primary\"][\"activation_ref_absent_after\"] is True; assert d[\"source\"][\"selection_before\"]==z==d[\"source\"][\"selection_after\"]; assert set(d[\"prohibited_actions\"].values())=={0}; print(\"evidence assertions: PASS\")'",
+    "env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -c 'import subprocess,sys; from pathlib import Path; sys.path.insert(0,\"scripts\"); import kernel_activation as k; roots={\"review\":Path(\".\"),\"primary\":Path(\"/Users/hyungkoookkim/Pipeline\"),\"scratch\":Path(\"/private/tmp/compact-phase4-task2-34d54961-3462-4016-b4e8-b89efad2b1b5-h6iypspi/repo\")}; heads={\"review\":\"a2f03443823acd40a1c4451386595a3fc309aa55\",\"primary\":\"c96c4a13e21dff9e206c4f8fda66fe1ab80de80c\",\"scratch\":\"c5c758c77d11a934aa5f62b99119b66033b529b2\"}; z=(0,\"v1\",None); assert roots[\"scratch\"].is_dir();\nfor name,root in roots.items():\n s=k.read_selection(root); assert (s.epoch,s.writer,s.selector_oid)==z; assert subprocess.check_output([\"git\",\"rev-parse\",\"HEAD\"],cwd=root,text=True).strip()==heads[name]; assert subprocess.run([\"git\",\"show-ref\",\"--verify\",\"--quiet\",\"refs/protocol/kernel-activation\"],cwd=root).returncode==1\nassert subprocess.check_output([\"git\",\"rev-parse\",\"refs/remotes/origin/main\"],cwd=roots[\"primary\"],text=True).strip()==heads[\"primary\"]; assert not subprocess.check_output([\"git\",\"status\",\"--short\"],cwd=roots[\"scratch\"],text=True); print(\"live authority checks: PASS\")'",
+    "env -u GIT_INDEX_FILE /Users/hyungkoookkim/Pipeline/.venv/bin/python -c 'import subprocess; expected=[\"docs/superpowers/plans/2026-07-16-compact-kernel-phase4-activation.md\",\"logs/capability-first/phase4-task2-disposable-rehearsal.json\"]; actual=subprocess.check_output([\"git\",\"diff\",\"--name-only\",\"c5c758c77d11a934aa5f62b99119b66033b529b2..a2f03443823acd40a1c4451386595a3fc309aa55\"],text=True).splitlines(); assert actual==expected, (actual,expected); print(\"candidate paths: PASS\")'",
+    "env -u GIT_INDEX_FILE git diff c5c758c77d11a934aa5f62b99119b66033b529b2..a2f03443823acd40a1c4451386595a3fc309aa55 --check"
+  ]
+}

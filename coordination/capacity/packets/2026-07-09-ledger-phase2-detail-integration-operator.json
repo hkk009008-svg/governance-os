@@ -1,0 +1,41 @@
+{
+  "id": "operator-ledger-phase2-detail-integration-lanev",
+  "wave": 2,
+  "cycle": "ledger-phase2-detail-integration-2026-07-09",
+  "owner": "operator",
+  "packet_type": "operator-verification",
+  "row_ids": [
+    "phase2-task2.5-2.6-detail-integration",
+    "phase2-task2.6-manual-status"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Broadcasts/BroadcastDetailView.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md",
+    "coordination/mailbox/sent/*director-to-operator-verify-request.md",
+    "coordination/mailbox/sent/*operator-to-all-verification-report.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-detail-integration"
+  ],
+  "acceptance": [
+    "Remain blocked until Director sends a detail-integration verify-request with commit/range and evidence.",
+    "Independently verify only the named BroadcastDetailView.swift and docs/MANUAL.md diff against the Phase 2 plan, design spec sections 4/5/13, the prior Task 2.5A/2.6A GO reports, and no extra product write-surface drift.",
+    "Verify result-entry controls use the current latest head, settlement/correction modes supersede the current head, saved entries refresh latest-head/history state, ResultHistorySection is visible on the detail screen, and MANUAL.md status text does not overclaim chat/recommendation or owner-gated real-data readiness.",
+    "Issue exactly one Pipeline mailbox verification-report with GO, NITS, or FAIL for this integration lane.",
+    "Do not edit evidence-ledger product files, verify unrelated ranges, consume coordinator mail, take user-gated side effects, or create duplicate success mail."
+  ],
+  "done_evidence": [
+    "verification-report: coordination/mailbox/sent/2026-07-09T04-23-08Z-operator-to-all-verification-report.md reports VERDICT: GO for evidence-ledger commit 9d93bca and range 0ffcffa..9d93bca, with scope limited to BroadcastDetailView.swift, docs/MANUAL.md, and focused tests; build-for-testing succeeded; simulator and target-smoke environment boundaries are recorded."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-09T04-23-08Z-operator-to-all-verification-report.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-09T03-47-28Z-director-to-operator-verify-request.md",
+  "target_commit": "9d93bca",
+  "commit_range": "0ffcffa..9d93bca",
+  "scope_files": [
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Broadcasts/BroadcastDetailView.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md"
+  ]
+}

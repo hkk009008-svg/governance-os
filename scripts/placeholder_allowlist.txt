@@ -1,0 +1,68 @@
+# Adoption-placeholder allowlist (ADR-002)
+#
+# Files listed here MAY retain placeholder tokens (adoption markers, fill-in slots, etc.).
+# These are skeleton/transfer docs that intentionally contain adoption markers.
+#
+# ADOPTION WORKFLOW:
+#   - When you fill a skeleton, REMOVE its path from this file.
+#   - When this file is empty and `scripts/check_placeholders.py` is clean,
+#     the repo is fully bound — no skeleton placeholders remain.
+#
+# Baseline generated empirically on 2026-06-30 by running:
+#   .venv/bin/python scripts/check_placeholders.py
+# (every path that currently contains ≥1 token was added here)
+
+# Transfer / setup docs (skeleton content for adopters)
+TRANSFER-MANIFEST.md
+TRANSFER-SETUP.md
+DECISIONS.md
+
+# CLAUDE/AGENTS harness docs (contain placeholder load-trigger references)
+# (CLAUDE.md was bound on 2026-07-10 and removed per the adoption workflow)
+AGENTS.md
+
+# Protocol docs (contain placeholder examples for directors/operators to fill)
+# (docs/protocol/claude/core.md was bound on 2026-07-11 per ADR-012 and removed;
+#  four-seat-extension.md's lane slots stay unbound BY DESIGN per ADR-009)
+docs/PROTOCOL-RULES-LOG.md
+docs/protocol/agents/four-seat-extension.md
+docs/protocol/agents/core.md
+docs/protocol/agents/director-operator.md
+docs/protocol/protocol-assembly-map.md
+
+# Skill definition files (contain placeholder examples for skill authors)
+# (.claude/skills/seat-director/SKILL.md and .claude/skills/four-seat-protocol/SKILL.md
+#  were bound to Pipeline on 2026-07-10 and removed per the adoption workflow above)
+# r-brief-template.md was re-added on 2026-07-26 by user ruling: the Claude and
+# Codex copies are now one generic template rather than a bound copy plus a
+# transfer-bundle copy, so the Claude path carries the same placeholders the
+# .agents path always has. This deliberately reverses the 2026-07-10 binding for
+# that one file; the two are kept byte-identical.
+.claude/skills/create-regression-pin/SKILL.md
+.claude/skills/seat-director/r-brief-template.md
+# (.claude/agents/money-gate-reviewer.md was bound on 2026-07-11 per ADR-012)
+.agents/skills/seat-director/SKILL.md
+.agents/skills/seat-director/r-brief-template.md
+.agents/skills/create-regression-pin/SKILL.md
+
+# Session/coordination artifacts
+# NOTE: the HANDOFF below is Pipeline session state (a past hardening session's
+# operator manual), not transfer-bundle content. It is allowlisted only because
+# it quotes placeholder tokens verbatim — its presence here is NOT an unfilled
+# adoption skeleton, and adopters copying the bundle should drop both the file
+# and this entry.
+docs/HANDOFF-governance-hardening-2026-06-30.md
+# Same rationale as the HANDOFF above: a session plan that quotes tokens
+# verbatim (fill-instructions for another repo), not an unfilled skeleton.
+docs/superpowers/plans/2026-07-07-close-user-principal-items.md
+coordination/bin/claim-lock
+coordination/presence/README.md
+coordination/workflows/discovery-bughunt.js
+
+# Scripts with placeholder action-item markers
+scripts/wave_gate_check.py
+threeway/gitcas.py
+threeway/loop.py
+
+# Gate infrastructure (self-references in scanner/test source — expected)
+tests/unit/test_check_placeholders.py

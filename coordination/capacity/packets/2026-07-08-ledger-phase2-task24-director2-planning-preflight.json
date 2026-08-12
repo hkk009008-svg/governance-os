@@ -1,0 +1,42 @@
+{
+  "id": "director2-ledger-phase2-task24-planning-preflight",
+  "wave": 2,
+  "cycle": "ledger-phase2-task24-2026-07-08",
+  "owner": "director2",
+  "packet_type": "director-preflight",
+  "row_ids": [
+    "phase2-task2.4-ios-slot-entry",
+    "phase2-next-brief-preflight"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/.superpowers/sdd/progress.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ARCHITECTURE.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/MANUAL.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/OPERATIONS.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start from /Users/hyungkoookkim/Pipeline, run ledger_start_guard.py --seat director2 --wave 2, read the active coordinator route, then inspect only the routed worktree docs and planning state.",
+    "Perform bounded planning/preflight for the next ledger Phase 2 slice while director owns Task 2.4 implementation; do not edit evidence-ledger product code.",
+    "Identify whether the next slice is divisible into two independently reviewable deliverables, naming candidate Chunk A/Chunk B write sets if it is.",
+    "If the next slice is not divisible, draft the smallest next director brief or owner-question packet and cite the plan/manual/progress evidence used.",
+    "Report only a Pipeline mailbox decision/status artifact to coordinator; do not duplicate director Task 2.4 work, issue operator GO, consume coordinator mail, push, claim locks, spend paid API budget, start pods, or refresh the target checkout."
+  ],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-08T18-09-21Z-director2-to-coordinator-coordination.md reports next-slice planning/preflight, recommends a dual-pair pre-integration split with coordinator-owned join or a single-pair Task 2.5 fast path, and records operator2's preflight FAIL as a closeout blocker."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-08T18-09-21Z-director2-to-coordinator-coordination.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "coordination/mailbox/sent/",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/.superpowers/sdd/progress.md"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "id": "coord-ledger-phase2-task22-join",
+  "wave": 2,
+  "cycle": "ledger-phase2-task22-2026-07-08",
+  "owner": "coordinator",
+  "packet_type": "coordinator-join",
+  "row_ids": [
+    "phase2-task2.2-entry-validations"
+  ],
+  "allowed_paths": [
+    "coordination/capacity/packets/",
+    "coordination/mailbox/sent/",
+    "docs/HANDOFF-coordinator-*.md"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-task22-validations",
+    "director2-ledger-phase2-task22-observer",
+    "operator-ledger-phase2-task22-lanev",
+    "operator2-ledger-phase2-task22-observer"
+  ],
+  "acceptance": [
+    "Wait for director implementation and operator verification-report GO/NITS/FAIL before closing Phase 2 Task 2.2.",
+    "Confirm director2/operator2 observer packets are either standby with no contradiction or have reported only contradiction, missing evidence, changed safety boundary, or explicit coordinator-request output.",
+    "Close with one coordinator synthesis artifact or handoff that cites capacity board, route validation, smoke, implementation commit/range, and operator verdict.",
+    "Do not edit evidence-ledger product files as coordinator."
+  ],
+  "done_evidence": [
+    "operator GO evidence: coordination/mailbox/sent/2026-07-08T13-47-47Z-operator-to-all-verification-report.md issued GO for docs-only nit range 6692131..36f5506 and corrected implementation range e446218..36f5506.",
+    "capacity board evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 -> valid: true; BLOCKING ISSUES - none.",
+    "route validation evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/protocol_capacity_board.py --wave 2 --validate-route coordination/mailbox/sent/2026-07-08T04-35-32Z-coordinator-to-all-coordination.md -> route valid: true; BLOCKING ISSUES - none.",
+    "smoke OK evidence: env -u GIT_INDEX_FILE .venv/bin/python scripts/ci_smoke.py -> OK with pre-existing 215 stale commit-SHA warnings.",
+    "handoff artifact: docs/HANDOFF-coordinator-2026-07-08-ledger-phase2-task22-closeout.md",
+    "next trigger: user requests publication handling for evidence-ledger range e446218740b96561933da66c8808f2a1fd64d253..36f5506, or routes the next Phase 2 task."
+  ],
+  "handoff_artifact": "docs/HANDOFF-coordinator-2026-07-08-ledger-phase2-task22-closeout.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": "36f5506",
+  "commit_range": "e446218..36f5506",
+  "scope_files": [
+    "coordination/capacity/packets/2026-07-08-ledger-phase2-task22-coordinator-join.json",
+    "coordination/mailbox/sent/2026-07-08T04-35-32Z-coordinator-to-all-coordination.md",
+    "coordination/mailbox/sent/2026-07-08T13-51-22Z-coordinator-to-all-coordination.md",
+    "docs/HANDOFF-coordinator-2026-07-08-ledger-phase2-task22-closeout.md"
+  ]
+}

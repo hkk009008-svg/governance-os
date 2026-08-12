@@ -1,0 +1,63 @@
+{
+  "id": "director-pipeline-level5-wave0-p0-containment",
+  "wave": 2,
+  "cycle": "pipeline-level5-wave0-2026-07-14",
+  "owner": "director",
+  "packet_type": "director-implementation",
+  "row_ids": [
+    "level5-wave0-coordinator-authority-containment",
+    "level5-wave0-mechanism-evidence-containment"
+  ],
+  "allowed_paths": [
+    "coordination/bin/consume-events",
+    "scripts/consume_bus.py",
+    "scripts/status.py",
+    "scripts/mailbox_monitor.py",
+    ".agents/skills/four-seat-protocol/scripts/seat_status.py",
+    ".claude/skills/four-seat-protocol/scripts/seat_status.py",
+    "tests/unit/test_coordinator_unpinned_mailbox.py",
+    "tests/unit/test_status.py",
+    "tests/unit/test_seat_status_all.py",
+    "scripts/threeway_mechanism_ledger.py",
+    "tests/unit/test_threeway_mechanism_ledger.py",
+    "docs/protocol/threeway/MECHANISM-LEDGER.md",
+    "docs/protocol/threeway/README.md",
+    "docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start in a new isolated worktree at exact immutable base 807669de25766318554e927c5908d2ccdf0ef684. Later route-metadata commits do not move this base; before worktree creation, fail closed if any Pair-A implementation scope_files path differs between the base and current main, while route, packet, and mailbox metadata use their separate freshness checks. Before editing, grep every human/ref-bus cursor write, consumable-seat roster, and status recommendation; record each sibling as fix, already rejects, read-only compatibility, or route contradiction. The dirty authority-foundation worktree is immutable evidence and must not be opened for writes, staged, checkpointed, cleaned, or transplanted.",
+    "Task A1 uses strict TDD. Both coordinator aliases must be rejected by coordination/bin/consume-events and scripts/consume_bus.py before store construction, cursor read, file write, Git staging, or --to handling. Coordinator status is unpinned/all-scope, never reads seen/coordinator*.txt, and never recommends consumption; all four pair-seat paths remain behaviorally unchanged.",
+    "Task A2 makes scripts/threeway_mechanism_ledger.py reject missing/uncollectable/deleted evidence and verified behavior claims without exact selectors plus an existing committed HEAD-bound Operator execution artifact naming command and success. Collection alone is not execution. Separate implementation, collection, behavior execution, parser/golden, and historical evidence. Downgrade unsupported claims instead of inventing test files, fixture labels, passing rows, or future evidence; regenerate the ledger and correct overclaims in the two overview documents.",
+    "Commit A1 and A2 separately after fresh specification then quality review. Prove one coordinator guard and one evidence-closure rule non-vacuously RED under a focused mutation. Run focused/relevant suites, shell syntax, doc/prompt checks, scripts/ci_smoke.py, and git diff --check. Send one verify-request for the exact two-commit range only after both task reviews pass.",
+    "The route transfers only current-main scripts/consume_bus.py away from the parked Task2U assignment. It transfers no dirty worktree bytes, other Task2U path, correctness claim, commit, or review evidence. Any additional coordinator cursor writer outside this allowed slice is a bounded contradiction, not local scope expansion."
+  ],
+  "done_evidence": [
+    "SCHEDULING SUPERSESSION ONLY: coordination/mailbox/sent/2026-07-14T03-42-01Z-director-to-coordinator-coordination.md remains the binding Pair-A route contradiction. The isolated worktree remains parked clean at 807669de25766318554e927c5908d2ccdf0ef684 with no A1 or A2 implementation.",
+    "The merged existing-session bridge route transfers no Pair-A code, finding, worktree, or correctness claim. Any future Pair-A work requires a separate corrected packet that resolves the out-of-scope cursor writers."
+  ],
+  "handoff_artifact": null,
+  "next_recipient": "operator",
+  "status": "excepted",
+  "verify_request": null,
+  "target_commit": "807669de25766318554e927c5908d2ccdf0ef684",
+  "commit_range": null,
+  "scope_files": [
+    "coordination/bin/consume-events",
+    "scripts/consume_bus.py",
+    "scripts/status.py",
+    "scripts/mailbox_monitor.py",
+    ".agents/skills/four-seat-protocol/scripts/seat_status.py",
+    ".claude/skills/four-seat-protocol/scripts/seat_status.py",
+    "tests/unit/test_coordinator_unpinned_mailbox.py",
+    "tests/unit/test_status.py",
+    "tests/unit/test_seat_status_all.py",
+    "scripts/threeway_mechanism_ledger.py",
+    "tests/unit/test_threeway_mechanism_ledger.py",
+    "docs/protocol/threeway/MECHANISM-LEDGER.md",
+    "docs/protocol/threeway/README.md",
+    "docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md"
+  ]
+}

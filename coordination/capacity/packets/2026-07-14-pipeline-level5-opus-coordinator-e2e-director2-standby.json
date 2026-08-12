@@ -1,0 +1,26 @@
+{
+  "id": "director2-pipeline-level5-opus-coordinator-e2e-standby",
+  "wave": 2,
+  "cycle": "pipeline-level5-opus-coordinator-e2e-2026-07-14",
+  "row_ids": [
+    "level5-wave1-opus-coordinator-e2e-transport"
+  ],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "director2",
+  "packet_type": "idle",
+  "allowed_paths": [],
+  "dependencies": [],
+  "acceptance": [
+    "Director2 has no routed work in this coordinator-executed external transport cycle. Do not invoke the provider, retry any denied identity, consume, route, create a receipt, or duplicate the coordinator's sole-executor action."
+  ],
+  "done_evidence": [
+    "The user directly named coordinator as sole executor. Director2 is excepted after its prior terminal blocker and receives no new side-effect authority."
+  ],
+  "next_recipient": "coordinator",
+  "status": "excepted",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": []
+}

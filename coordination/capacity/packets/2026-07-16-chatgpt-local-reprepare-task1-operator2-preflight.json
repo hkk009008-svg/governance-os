@@ -1,0 +1,27 @@
+{
+  "id": "operator2-chatgpt-local-reprepare-task1-preflight",
+  "wave": 2,
+  "cycle": "chatgpt-local-reprepare-task1-singular-lanev-2026-07-16",
+  "row_ids": [],
+  "lock_keys": [],
+  "handoff_artifact": null,
+  "owner": "operator2",
+  "packet_type": "operator-preflight",
+  "allowed_paths": [],
+  "dependencies": [],
+  "acceptance": [
+    "Operator2 remains exclusively assigned to the unrelated active Opus Stage-A lane and does not duplicate Pair-A Operator's later ChatGPT Task-1 review. This packet provides exact-cycle G1 coverage only.",
+    "Preserve frozen heads 3dcff96948003d510451266b017895b42bd73c2e and 233ef8126bc75dc6a2a13adcb70810b619faa85c, the exact 22-path review range, no-conflict construction rule, review-only candidate firewall, and zero provider-process and receipt-mutation construction boundary.",
+    "Do not create or edit candidate, packet, route, descriptor, request, provider, receipt, verdict, integration, publication, or cleanup state for ChatGPT Task 1. Report only a route-changing contradiction from newer durable evidence; the next recipient is coordinator."
+  ],
+  "done_evidence": [
+    "coordination/capacity/packets/2026-07-15-pipeline-opus-transport-first-recovery-stage-a-operator2-lanev.json records Operator2's separate active Opus Stage-A assignment.",
+    "The user-principal approved an excepted Operator2 preflight packet solely to satisfy exact-cycle G1 coverage without duplicating the Pair-A review."
+  ],
+  "next_recipient": "coordinator",
+  "status": "excepted",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": []
+}

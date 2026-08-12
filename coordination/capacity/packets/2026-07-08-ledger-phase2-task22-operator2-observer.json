@@ -1,0 +1,36 @@
+{
+  "id": "operator2-ledger-phase2-task22-observer",
+  "wave": 2,
+  "cycle": "ledger-phase2-task22-2026-07-08",
+  "owner": "operator2",
+  "packet_type": "idle",
+  "row_ids": [
+    "phase2-task2.2-entry-validations"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-ledger-phase2-task22-validations"
+  ],
+  "acceptance": [
+    "Stand down as observer unless coordinator explicitly asks for a second verification pass or live evidence contradicts the director/operator artifacts.",
+    "Do not create a duplicate success artifact when operator verification and coordinator closeout cover the state.",
+    "If contradiction is found, report only the contradiction with command evidence."
+  ],
+  "done_evidence": [
+    "observer standby closed by coordinator after operator GO in coordination/mailbox/sent/2026-07-08T13-47-47Z-operator-to-all-verification-report.md.",
+    "No coordinator request for operator2 second verification pass was issued in this cycle.",
+    "Coordinator closeout artifact: coordination/mailbox/sent/2026-07-08T13-51-22Z-coordinator-to-all-coordination.md."
+  ],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": "36f5506",
+  "commit_range": "e446218..36f5506",
+  "scope_files": [
+    "coordination/mailbox/sent/"
+  ]
+}

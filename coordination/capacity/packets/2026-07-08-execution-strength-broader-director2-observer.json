@@ -1,0 +1,36 @@
+{
+  "id": "director2-execution-strength-broader-observer",
+  "wave": 2,
+  "cycle": "execution-strength-broader-original-2026-07-08",
+  "owner": "director2",
+  "packet_type": "idle",
+  "row_ids": [
+    "protocol-execution-strength-broader-original"
+  ],
+  "allowed_paths": [
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [
+    "director-execution-strength-broader-impl"
+  ],
+  "acceptance": [
+    "Stand down as observer unless coordinator explicitly asks for a director2 cold review or live evidence contradicts the director implementation route.",
+    "Do not edit shared protocol files in parallel with director.",
+    "If contradiction is found, report only the contradiction with command evidence."
+  ],
+  "done_evidence": [
+    "observer standby closed by coordinator after operator GO in coordination/mailbox/sent/2026-07-08T04-22-57Z-operator-to-all-verification-report.md.",
+    "No coordinator request for director2 cold review was issued in this cycle.",
+    "Coordinator closeout artifact: coordination/mailbox/sent/2026-07-08T04-27-09Z-coordinator-to-all-coordination.md."
+  ],
+  "handoff_artifact": null,
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": "9f2f57f",
+  "commit_range": "14a9a5e..9f2f57f",
+  "scope_files": [
+    "coordination/mailbox/sent/"
+  ]
+}

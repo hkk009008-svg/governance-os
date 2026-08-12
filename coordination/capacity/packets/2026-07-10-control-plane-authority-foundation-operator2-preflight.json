@@ -1,0 +1,56 @@
+{
+  "id": "operator2-control-plane-authority-foundation-cutover-preflight",
+  "wave": 2,
+  "cycle": "control-plane-authority-foundation-2026-07-10",
+  "owner": "operator2",
+  "packet_type": "operator-preflight",
+  "row_ids": [
+    "control-plane-authority-task4-5-preflight"
+  ],
+  "allowed_paths": [
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "threeway/cutover.py",
+    "threeway/cursor_backfill.py",
+    "threeway/keys_bootstrap.py",
+    "threeway/keys.py",
+    "scripts/execute_threeway_cutover.sh",
+    "scripts/bus_unread.py",
+    "coordination/threeway/keys/",
+    "tests/unit/test_threeway_cutover.py",
+    "tests/unit/test_threeway_activation_scripts.py",
+    "tests/unit/test_protocol_authority.py",
+    "tests/unit/test_keys.py",
+    "coordination/mailbox/sent/"
+  ],
+  "lock_keys": [],
+  "dependencies": [],
+  "acceptance": [
+    "Start from Pipeline, run the operator2 Wave-2 start guard and seat status, read this route, then perform only a bounded read-only execution-verification preflight for implementation-plan Tasks 4 and 5.",
+    "Own adversarial environment readiness: verify current refs/threeway state, worktree cleanliness, selector availability, key-registry completeness assumptions, fixture feasibility, and the irreversibility boundaries for cutover and bootstrap.",
+    "Identify exact tests that prove dry-run non-mutation, duplicate-cutover refusal, complete-roster/idempotent key bootstrap, private-key non-tracking, and stop conditions before any later live activation.",
+    "Send one concise coordination report to coordinator with clear/blocked disposition and evidence; do not create keys or refs, execute cutover, edit code, duplicate Task-3 design analysis, issue production GO, consume coordinator mail, or take another user-gated side effect."
+  ],
+  "done_evidence": [
+    "coordination/mailbox/sent/2026-07-10T01-23-27Z-operator2-to-coordinator-coordination.md reports the completed bounded Tasks-4/5 preflight BLOCKED: trust-root/cutover token topology, resume input, and key-state contracts required revision."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-10T01-23-27Z-operator2-to-coordinator-coordination.md",
+  "next_recipient": "coordinator",
+  "status": "done",
+  "verify_request": null,
+  "target_commit": null,
+  "commit_range": null,
+  "scope_files": [
+    "docs/superpowers/plans/2026-07-10-signed-bus-authority-identity.md",
+    "threeway/cutover.py",
+    "threeway/cursor_backfill.py",
+    "threeway/keys_bootstrap.py",
+    "threeway/keys.py",
+    "scripts/execute_threeway_cutover.sh",
+    "scripts/bus_unread.py",
+    "coordination/threeway/keys/",
+    "tests/unit/test_threeway_cutover.py",
+    "tests/unit/test_threeway_activation_scripts.py",
+    "tests/unit/test_protocol_authority.py",
+    "tests/unit/test_keys.py"
+  ]
+}

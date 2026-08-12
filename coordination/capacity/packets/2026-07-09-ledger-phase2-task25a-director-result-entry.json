@@ -1,0 +1,53 @@
+{
+  "id": "director-ledger-phase2-task25a-result-entry",
+  "wave": 2,
+  "cycle": "ledger-phase2-task25-26-preintegration-2026-07-09",
+  "owner": "director",
+  "packet_type": "director-implementation",
+  "row_ids": [
+    "phase2-task2.5a-result-entry-preintegration"
+  ],
+  "allowed_paths": [
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Entry/ResultEntryView.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Services/EntryAPI.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Entry/EntryValidation.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Tests/EntryAPITests.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Tests/EntryValidationTests.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/db/tests/test_rpcs.py",
+    "coordination/mailbox/sent/*director-to-operator-verify-request.md"
+  ],
+  "lock_keys": [
+    "evidence-ledger:phase2-task2.5a-result-entry"
+  ],
+  "dependencies": [
+    "coord-ledger-phase2-task24-join"
+  ],
+  "acceptance": [
+    "Start from /Users/hyungkoookkim/Pipeline, run ledger_start_guard.py --seat director --wave 2, read this coordinator route, then use the route worktree at HEAD 9deb0f4.",
+    "Implement only the pre-integration Task 2.5A result entry, settle, and correction write path from docs/superpowers/plans/2026-07-08-codex-runway-phase2-to-completion.md lines 492-529.",
+    "Add failing tests first for correction reason validation and the db-side biz.record_result supersede/head movement path.",
+    "Add EntryAPI.recordResult(_:) through biz.record_result, EntryValidation.correctionValid(reason:), and ResultEntryView with root, settled, and correction modes.",
+    "Do not edit BroadcastDetailView.swift in this chunk; integration into the detail screen is reserved for a later coordinator join after both chunks have verification.",
+    "Run the evidence-ledger R-START smoke, relevant focused iOS tests, focused db test selector for record_result, SIM_DEVICE=\"iPhone 17 Pro\" scripts/ci_local.sh where available, and git diff --check; report exact blockers with command output if a suite cannot run.",
+    "Send exactly one Pipeline verify-request to operator with commit/range, changed files, tests, exclusions, and exact next trigger.",
+    "No publication, force-push, lock action, paid API spend, pod spend, production generation, target checkout refresh, normal checkout refresh, real-data/config edit, coordinator-mail consume, or BroadcastDetailView.swift edit."
+  ],
+  "done_evidence": [
+    "initial verify-request: coordination/mailbox/sent/2026-07-09T02-45-50Z-director-to-operator-verify-request.md reports Task 2.5A implementation commit 7503311, range c1b5f3e..7503311, six allowed files, smoke/build/syntax/diff evidence, and known DB/simulator boundaries.",
+    "fix verify-request: coordination/mailbox/sent/2026-07-09T03-14-44Z-director-to-operator-verify-request.md reports narrow fix commit 0ffcffa, fix range 7503311..0ffcffa, prior fixed Task 2.5A range c1b5f3e..0ffcffa, and load-bearing snake_case RPC-param evidence."
+  ],
+  "handoff_artifact": "coordination/mailbox/sent/2026-07-09T03-14-44Z-director-to-operator-verify-request.md",
+  "next_recipient": "operator",
+  "status": "done",
+  "verify_request": "coordination/mailbox/sent/2026-07-09T03-14-44Z-director-to-operator-verify-request.md",
+  "target_commit": "0ffcffa",
+  "commit_range": "c1b5f3e..0ffcffa",
+  "scope_files": [
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Entry/ResultEntryView.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Services/EntryAPI.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Sources/Features/Entry/EntryValidation.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Tests/EntryAPITests.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/ios/EvidenceLedger/Tests/EntryValidationTests.swift",
+    "/Users/hyungkoookkim/Pipeline/.worktrees/evidence-ledger-phase2-task23-2026-07-08/db/tests/test_rpcs.py"
+  ]
+}

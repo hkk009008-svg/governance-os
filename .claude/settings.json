@@ -1,3 +1,5 @@
 {
-  "isolatePeerMachines": true
+  "$comment": "Repository lifecycle hooks are absent by design. Claude roles are explicit task conventions validated at publication, not app-session bindings. Personal config stays in .claude/settings.local.json.",
+  "isolatePeerMachines": true,
+  "workflowSizeGuideline": "small"
 }
