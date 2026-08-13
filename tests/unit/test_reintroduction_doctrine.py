@@ -30,12 +30,26 @@ MODEL_LABEL_REPORT = (
 )
 
 
+# Hermetic fixture-git environment: the ambient VM configuration (commit
+# signing via the exec-daemon shim, fsmonitor daemons) must not run inside
+# throwaway test repositories; see tests/unit/test_check_coordination.py.
+_GIT_ENV = {
+    "PATH": "/usr/bin:/bin",
+    "HOME": "/var/empty" if Path("/var/empty").is_dir() else "/nonexistent",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_COUNT": "1",
+    "GIT_CONFIG_KEY_0": "init.defaultBranch",
+    "GIT_CONFIG_VALUE_0": "main",
+}
+
+
 def _git(root: Path, *args: str) -> None:
     subprocess.run(
-        ["env", "-u", "GIT_INDEX_FILE", "git", *args],
+        ["git", *args],
         cwd=root,
         check=True,
         capture_output=True,
+        env=_GIT_ENV,
     )
 
 
@@ -45,6 +59,7 @@ def clone(tmp_path: Path, repo_root: Path) -> Path:
     subprocess.run(
         ["git", "clone", "-q", "--no-hardlinks", str(repo_root), str(clone)],
         check=True,
+        env=_GIT_ENV,
     )
     _git(clone, "config", "user.name", "Doctrine Test")
     _git(clone, "config", "user.email", "doctrine@example.invalid")

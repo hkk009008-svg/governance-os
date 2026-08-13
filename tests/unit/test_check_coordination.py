@@ -238,13 +238,31 @@ def _write_event(coord: Path, name: str, body: str) -> None:
     (coord / "mailbox" / "sent" / name).write_text(body, encoding="utf-8")
 
 
+# Hermetic environment for fixture git. The ambient VM configuration
+# (~/.gitconfig commit signing through the exec-daemon ssh-keygen shim,
+# core.fsmonitor daemons, /etc/gitconfig filters) must not run inside
+# throwaway test repositories: with it inherited, this file's fixture
+# commits produced a deterministic wall of ~29s low-CPU stalls
+# (579.7s twice in a row; the same tests pass in under a second
+# hermetically). Committing fixtures set their own user identity locally.
+_GIT_ENV = {
+    "PATH": "/usr/bin:/bin",
+    "HOME": "/var/empty" if Path("/var/empty").is_dir() else "/nonexistent",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_COUNT": "1",
+    "GIT_CONFIG_KEY_0": "init.defaultBranch",
+    "GIT_CONFIG_VALUE_0": "main",
+}
+
+
 def _git(root: Path, *args: str) -> str:
     completed = subprocess.run(
-        ["env", "-u", "GIT_INDEX_FILE", "git", *args],
+        ["git", *args],
         cwd=root,
         text=True,
         capture_output=True,
         check=True,
+        env=_GIT_ENV,
     )
     return completed.stdout.strip()
 
