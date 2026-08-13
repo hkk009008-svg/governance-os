@@ -40,7 +40,7 @@ events).
    the executor, target, effect, and scope. Structural protocol data never
    grants it. Transport ambiguity is reported, never converted into an empty
    queue.
-7. At a long-horizon checkpoint (transfer, interruption, compaction),
+7. At a long-horizon checkpoint (transfer, interruption, compaction, wrap),
    preserve: objective, accepted scope, owner, policy revision, base/head,
    evidence refs, verification status, unresolved blockers, and the next
    executable action. Durable shared state beats chat memory. Write it as

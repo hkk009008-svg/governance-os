@@ -535,6 +535,43 @@ def _collect_all(repo_root: Path) -> dict:
     return data
 
 
+_CHECKPOINT_DISPLAY_FIELDS = ("Checkpoint", "Boundary", "Next action")
+
+
+def _newest_checkpoint(events: dict) -> Optional[dict]:
+    """Newest committed checkpoint record from already-loaded projection bytes.
+
+    Resume is one snapshot plus the newest campaign checkpoint (AGENTS.md
+    universal contract item 7); this is where the snapshot names that
+    checkpoint, so resuming needs no second discovery command. Advisory
+    display only (learning contract I1): a malformed body is skipped exactly
+    as the read-side checkpoint projection skips it, and nothing here gates.
+    """
+
+    for path in sorted(events, reverse=True):
+        if not path.endswith("-findings.md"):
+            continue
+        try:
+            text = events[path].decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if not protocol_mailbox.checkpoint_intent(text):
+            continue
+        fields = {}
+        for label in _CHECKPOINT_DISPLAY_FIELDS:
+            match = re.search(
+                rf"^{re.escape(label)}: (?P<value>.+)$", text, re.MULTILINE
+            )
+            fields[label] = match.group("value").strip() if match else None
+        return {
+            "path": path,
+            "slug": fields["Checkpoint"],
+            "boundary": fields["Boundary"],
+            "next_action": fields["Next action"],
+        }
+    return None
+
+
 def collect_orientation_snapshot(
     repo_root: Path, seat: str | None = None
 ) -> dict:
@@ -599,6 +636,15 @@ def collect_orientation_snapshot(
             "FATAL",
             "Git status and committed mailbox projection observed different HEADs",
         ))
+    if projection is None:
+        checkpoint_data = {"state": "unavailable"}
+    else:
+        newest_checkpoint = _newest_checkpoint(projection.events)
+        checkpoint_data = (
+            {"state": "present", **newest_checkpoint}
+            if newest_checkpoint
+            else {"state": "none"}
+        )
     fatals = [issue for issue in issues if issue.severity == "FATAL"]
     advisories = [issue for issue in issues if issue.severity == "ADVISORY"]
 
@@ -672,6 +718,7 @@ def collect_orientation_snapshot(
         "unread": unread,
         "current_request": current_data,
         "failed_review": failed_data,
+        "checkpoint": checkpoint_data,
         "gate": {
             "status": gate_status,
             "fatal": len(fatals),
@@ -713,6 +760,14 @@ def render_orientation_snapshot(snapshot: dict) -> str:
             f"Failed review: {failed['report_path']}@{failed['report_commit']} "
             f"request={failed['request_path']}@{failed['request_commit']}"
         )
+    checkpoint = snapshot.get("checkpoint") or {"state": "unavailable"}
+    if checkpoint.get("state") == "present":
+        lines.append(
+            f"Checkpoint: {checkpoint['slug']} ({checkpoint['boundary']}) "
+            f"next={checkpoint['next_action']}"
+        )
+    else:
+        lines.append(f"Checkpoint: {checkpoint.get('state', 'unavailable')}")
     gate = snapshot["gate"]
     lines.append(
         f"Gate: {gate['status']} ({gate['fatal']} fatal, "

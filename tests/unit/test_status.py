@@ -419,3 +419,114 @@ def test_snapshot_json_cli_emits_machine_readable_object(
 
     assert status.main(["snapshot", "operator", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["git"]["sha"] == "abc1234"
+
+
+def _projection_with_events(root: Path, events: dict) -> object:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        events=events,
+        commits=SimpleNamespace(
+            head="abc1234" + "0" * 33,
+            identity=SimpleNamespace(root=root, git_dir=root / ".git"),
+        ),
+    )
+
+
+def _checkpoint_body(slug: str, next_action: str) -> bytes:
+    return (
+        "# Director -> All: checkpoint\n\n"
+        "**When:** 2026-08-13T00:00:00Z · **From:** director (online)\n\n"
+        f"Checkpoint: {slug}\n"
+        "Boundary: wrap\n"
+        "Objective: finish the audit\n"
+        "Accepted scope: audit fixes\n"
+        "Owner: director\n"
+        f"Policy revision: {'a' * 40}\n"
+        f"Base: {'b' * 40}\n"
+        f"Head: {'c' * 40}\n"
+        "Evidence refs: none\n"
+        "Verification status: targeted tests green\n"
+        "Blockers: none\n"
+        f"Next action: {next_action}\n"
+        "Lessons: none-considered\n\n"
+        "Cursor at send: 0\n"
+    ).encode("utf-8")
+
+
+def _orientation_snapshot_with_projection(tmp_path, monkeypatch, projection):
+    monkeypatch.setattr(
+        status,
+        "collect_git",
+        lambda _root: {"git_sha": "abc1234", "git_branch": "test", "git_dirty": 0},
+    )
+    monkeypatch.setattr(status, "collect_mailbox", lambda _root: _orientation_mailbox())
+    monkeypatch.setattr(
+        cc, "committed_mailbox_projection", lambda _root: projection
+    )
+    monkeypatch.setattr(
+        cc,
+        "inspect_verify_review_state",
+        lambda _root, **_kwargs: cc.VerifyReviewState(pending=(), failed=()),
+    )
+    monkeypatch.setattr(cc, "run", lambda *_args, **_kwargs: [])
+    return status.collect_orientation_snapshot(tmp_path, "director")
+
+
+def test_snapshot_surfaces_newest_committed_checkpoint(tmp_path, monkeypatch):
+    """Resume is one snapshot plus the newest campaign checkpoint; the
+    snapshot itself must name that checkpoint, newest-first, skipping
+    findings events that carry no checkpoint intent."""
+    events = {
+        "coordination/mailbox/sent/2026-08-12T00-00-00Z-director-to-all-findings.md":
+            _checkpoint_body("older-campaign", "stale next action"),
+        "coordination/mailbox/sent/2026-08-13T00-00-00Z-director-to-all-findings.md":
+            _checkpoint_body("memory-skill-audit", "land the frozen-history fix"),
+        "coordination/mailbox/sent/2026-08-14T00-00-00Z-director-to-all-findings.md":
+            b"plain findings prose without checkpoint intent\n",
+    }
+    projection = _projection_with_events(tmp_path, events)
+
+    snapshot = _orientation_snapshot_with_projection(
+        tmp_path, monkeypatch, (projection, None)
+    )
+
+    assert snapshot["checkpoint"] == {
+        "state": "present",
+        "path": (
+            "coordination/mailbox/sent/"
+            "2026-08-13T00-00-00Z-director-to-all-findings.md"
+        ),
+        "slug": "memory-skill-audit",
+        "boundary": "wrap",
+        "next_action": "land the frozen-history fix",
+    }
+    rendered = status.render_orientation_snapshot(snapshot)
+    assert (
+        "Checkpoint: memory-skill-audit (wrap) next=land the frozen-history fix"
+        in rendered
+    )
+    assert len(rendered.splitlines()) <= 20
+
+
+def test_snapshot_reports_checkpoint_none_and_unavailable_distinctly(
+    tmp_path, monkeypatch
+):
+    """No committed checkpoint is `none`; a missing projection is
+    `unavailable` — absence of the record and absence of the measurement
+    must not be conflated."""
+    empty_projection = _projection_with_events(tmp_path, {})
+
+    with_projection = _orientation_snapshot_with_projection(
+        tmp_path, monkeypatch, (empty_projection, None)
+    )
+    without_projection = _orientation_snapshot_with_projection(
+        tmp_path, monkeypatch, (None, "fixture")
+    )
+
+    assert with_projection["checkpoint"] == {"state": "none"}
+    assert without_projection["checkpoint"] == {"state": "unavailable"}
+    assert "Checkpoint: none" in status.render_orientation_snapshot(with_projection)
+    assert "Checkpoint: unavailable" in status.render_orientation_snapshot(
+        without_projection
+    )
