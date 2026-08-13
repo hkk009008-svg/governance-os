@@ -125,7 +125,7 @@ def _extract(archive: bytes, destination: Path) -> None:
 def require_exact_head(repository: Path, reviewed_head: str) -> str:
     """Fail closed unless the repository HEAD is exactly ``reviewed_head``.
 
-    Repository-level gates (``ci_smoke.py``, ``cursor_land_gate.py``) need a
+    Repository-level gates (``governance_verify_all.py``, ``cursor_land_gate.py``) need a
     real ``.git`` history. Call this before those gates, or host them in a
     detached worktree checked out at ``reviewed_head``.
     """

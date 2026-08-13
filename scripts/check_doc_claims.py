@@ -1529,7 +1529,7 @@ SHA_DEFAULT_DOCS = [
 ]
 
 # Current checked baseline for historical SHA references carried from protocol
-# provenance docs. ci_smoke stays quiet when this reviewed set is unchanged, and
+# provenance docs. governance_verify_all stays quiet when this reviewed set is unchanged, and
 # any count or digest change becomes a hard new-drift signal.
 # 2026-07-13: digest refreshed after Task 8 trigger guidance shifted citation
 # line numbers in AGENTS.md and protocol director-operator docs; the citation

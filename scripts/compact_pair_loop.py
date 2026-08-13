@@ -359,7 +359,7 @@ def _require_path_references_resolve(
     Deliberately only at compose time, not in the shared parser. Of 581
     `path@commit` references across committed events, 23 no longer resolve
     because the history they named was rewritten. Those are frozen artifacts and
-    re-judging them would turn the historical-report gate in `ci_smoke` red for
+    re-judging them would turn the historical-report gate in `governance_verify_all` red for
     events nobody can now amend. New references are the ones an author can still
     get right, and this is where they are written.
 
