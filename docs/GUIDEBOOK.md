@@ -128,10 +128,8 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/compact_pair_loop.py \
    `--abuse-class "…"` bullet.
 3. Publish it as a `verify-request` event (section 6) and commit the staged
    event path.
-4. The assigned Operator reviews the exact committed range — in the Cursor
-   app, the pinned Operator chat runs `/review-next`, which resolves the
-   newest pending request, refuses same-model review, and materializes the
-   exact reviewed head in scratch.
+4. The assigned Operator reviews the exact committed range and independently
+   verifies the requested claims.
 5. The Operator publishes one `verification-report`: GO, NITS, or FAIL,
    bound to that request and range. Authors never review their own work.
 6. FAIL remediation is a new range and a new request with supersession or
@@ -157,9 +155,6 @@ coordination/bin/send-event <from> <to> <kind> <subject...>
 # Advance your own seat cursor (assigned pair seats only)
 coordination/bin/consume-events <seat>
 ```
-
-In the Cursor app the bound-seat wrappers are `coordination/bin/cursor-publish`
-(with `--body-file`) and `coordination/bin/cursor-consume`.
 
 Rules that surprise people: never write into `sent/` directly and never call
 `scripts/mailbox_writer.py` yourself — both are denied by policy;
@@ -197,9 +192,7 @@ memory stays advisory; current Git and committed event bodies outrank it.
 Push, merge, fetch/pull, lock claim/release, cursor consumption, provider
 launch, paid spend, live-data mutation: each needs separate exact authority
 for the executor, target, effect, and scope, at point of use. No role, GO
-verdict, mode, or schema ever grants one. In the Cursor app this surfaces
-as one in-app approval card per effect — that card is the authority for
-exactly that command, and nothing else is. Transport ambiguity (a push that
+verdict, mode, or schema ever grants one. Transport ambiguity (a push that
 may or may not have landed) is reported, never converted into success.
 
 ## 9. Landing work on main
@@ -207,9 +200,9 @@ may or may not have landed) is reported, never converted into success.
 Current practice is topic branches and pull requests:
 
 ```bash
-git switch -c cursor/<slug>          # from the current tip
+git switch -c codex/<slug>           # from the current tip
 git add <explicit paths> && git commit
-git push -u origin cursor/<slug>     # separate approved effect
+git push -u origin codex/<slug>      # separate approved effect
 gh pr create --title "…" --body "…"
 ```
 
@@ -223,31 +216,7 @@ compact-pair coverage of those commits. Documentation outside those
 prefixes lands without it. Green gates prove what they executed and grant
 no authority; merging is the owner's separate effect.
 
-## 10. Cursor Desktop seats — the daily runtime
-
-Condensed from `docs/protocol/cursor/continuation.md`, which is
-authoritative:
-
-- The standing pair is two pinned top-level chats: Director in the
-  `cursor-seat/director` linked worktree, Operator in `cursor-seat/operator`,
-  with different model families. Everything else is cold capacity.
-- Binding is automatic: the newest chat opened in a seat worktree registers
-  at `sessionStart` (user-local `~/.cursor/pipeline-app-seats.json`). No
-  init message. An older chat in the same worktree silently loses the seat.
-- Every other chat is a readiness bridge: it reads everything, writes
-  scratch freely, and gets one in-app approval per governed mutation. Native
-  file-tool edits are denied there — use approved shell commands instead;
-  this is the designed path, not an error.
-- Hard denies (no approval offered): direct mailbox/lock/runtime writes,
-  direct fixed-writer calls, switching a protected `cursor-seat/*` ref, seat
-  impersonation by subagents.
-- Do not switch branches on a dirty tree inside a seat chat; the app may
-  auto-commit a checkpoint of every dirty file. Branch surgery happens in a
-  terminal with explicit user authority.
-- The one manual handoff in the review loop is activating the Operator chat
-  and running `/review-next`.
-
-## 11. Memory, lessons, and skills
+## 10. Memory, lessons, and skills
 
 The learning plane is git-native and advisory
 (`docs/protocol/learning/contract.md` is the contract):
@@ -266,12 +235,10 @@ The learning plane is git-native and advisory
   `logs/learning/outcomes.jsonl` (schema:
   `docs/protocol/learning/skill-use.md`). Counts never bind lifecycle.
 
-## 12. When something refuses
+## 11. When something refuses
 
 | Symptom | Meaning | Do |
 |---|---|---|
-| File edit denied in chat | Readiness posture; only bound Directors edit natively | Use an approved shell mutation, or work from the bound seat chat |
-| `cursor-seat/*` switch denied | Protected ref; no approval path from an unbound session | Switch from the bound seat chat or your own terminal |
 | `send-event` refuses or is denied outright | Unassigned sender, unknown kind, malformed body — or readiness posture | Check seat assignment and `kinds.txt`; publication needs an assigned seat |
 | Snapshot `Gate: FAIL` | Structural coordination blocker | `scripts/check_coordination.py` names it; repair before other work |
 | Snapshot advisories about grandfathered history | Known immutable-history exceptions | Normal steady state; not yours to fix |
@@ -281,7 +248,7 @@ The learning plane is git-native and advisory
 Deeper: the troubleshooting table in `OPERATIONS.md` and the failure-model
 table in `docs/REPOSITORY-MANUAL.md`.
 
-## 13. Which document, when
+## 12. Which document, when
 
 | Genre | Document |
 |---|---|
@@ -295,4 +262,4 @@ table in `docs/REPOSITORY-MANUAL.md`.
 | Decision history | `DECISIONS.md` |
 | Work phases | `docs/protocol/work-modes.md` |
 | Desktop app setup | `docs/protocol/app-quickstart.md` |
-| Provider mechanics | `docs/protocol/{codex,claude,agy,cursor}/` |
+| Provider mechanics | `docs/protocol/{codex,claude}/` |

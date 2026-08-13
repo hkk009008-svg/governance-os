@@ -63,10 +63,6 @@ Load only the adapter for the harness you are in:
 
 - Claude: `CLAUDE.md`, then `docs/protocol/claude/continuation.md`.
 - Codex: `docs/protocol/codex/continuation.md`, then `.codex/agents/`.
-- AGY: `docs/protocol/agy/continuation.md`, then
-  `.agents/skills/antigravity-harness/` and `.agents/agents/`.
-- Cursor: `docs/protocol/cursor/continuation.md`, then `.cursor/rules/` and
-  `docs/protocol/cursor/roles/`.
 - Cross-provider: `docs/protocol/threeway/`.
 
 Target-repository routes (evidence-ledger and future destinations) resolve

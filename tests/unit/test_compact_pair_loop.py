@@ -981,7 +981,7 @@ def test_same_model_across_operator_seats_is_not_independent(tmp_path: Path) -> 
         ("gpt-5.6-sol", "gpt-5.6-terra"),
         ("gpt-5.6-terra", "codex-gpt-5.6-terra"),
         ("gpt-5.6-sol", "GPT-5 Codex"),
-        ("antigravity-gemini-3.6", "gemini-3.6-flash"),
+        ("google-gemini-3.6", "gemini-3.6-flash"),
         ("claude-opus-5", "claude-sonnet-5"),
         ("claude-opus-5", "anthropic-claude-sonnet-5"),
         ("gpt-5.6-sol", "openai-gpt-5.6-terra"),
@@ -1029,7 +1029,7 @@ def test_high_risk_control_rejects_same_family_reviewer(
     ("author_model", "reviewer_model"),
     (
         ("gpt-5.6-sol", "claude-opus-5"),
-        ("gpt-5.6-sol", "antigravity-gemini-3.6"),
+        ("gpt-5.6-sol", "google-gemini-3.6"),
         ("claude-opus-5", "gpt-5.6-terra"),
         ("grok-4.5", "gemini-3.1-pro-high"),
     ),

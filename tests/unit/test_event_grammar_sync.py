@@ -2,11 +2,10 @@
 
 Parser drift across the mailbox surfaces was a measured defect class: status
 accepted any ``\\w+`` sender, slope_metrics dropped the Z from the stamp and
-forbade digits in kinds, and the Cursor hook omitted coordinator2. The
-canonical grammar lives in scripts/protocol_mailbox.py; Python adopters must
-use it verbatim, and the two deliberately import-light literal copies
-(scripts/cursor_hook_policy.py and threeway/legacy_projector.py) must stay
-behaviorally identical to it.
+forbade digits in kinds. The canonical grammar lives in
+scripts/protocol_mailbox.py; Python adopters must use it verbatim, and the
+deliberately import-light literal copy in threeway/legacy_projector.py must
+stay behaviorally identical to it.
 """
 
 from __future__ import annotations
@@ -16,7 +15,6 @@ from pathlib import Path
 
 import bus_unread
 import check_coordination
-import cursor_hook_policy
 import learning_index
 import mailbox_monitor
 import mailbox_writer
@@ -77,9 +75,6 @@ def _grammar_corpus() -> list[str]:
 
 def test_literal_copies_stay_behaviorally_identical() -> None:
     copies = {
-        "cursor_hook_policy._MAILBOX_EVENT_NAME": (
-            cursor_hook_policy._MAILBOX_EVENT_NAME
-        ),
         "legacy_projector._EVENT_NAME_RE": legacy_projector._EVENT_NAME_RE,
     }
     for name in _grammar_corpus():

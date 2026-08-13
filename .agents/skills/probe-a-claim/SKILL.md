@@ -52,13 +52,6 @@ author's recall, because recall is the broken faculty.
    by design: its restraint is instruction, not enforcement. Either way, never
    include the code, the diff, or your reasoning — context is contamination.
 
-   **AGY-native delta:** When AGY runs the probe, the cross-family reader is
-   launched via the same `coordination/bin/probe-claim` wrapper. AGY subagents
-   spawned via `invoke_subagent` for claim investigation must not receive the
-   author's reasoning or diff context — only the claim sentence. A subagent
-   that reconstructs context from the repo is doing research, not probing;
-   label it as such.
-
 5. **Record, so the blank cells exist.**
    ```bash
    env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py record \

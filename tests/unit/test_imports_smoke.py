@@ -16,7 +16,6 @@ def test_scripts_modules_import_by_bare_name():
     import protocol_mailbox
     import status  # noqa: F401
     import check_no_ceremony  # noqa: F401
-    import agy_observer  # noqa: F401
     import sign_ci_result  # noqa: F401
     import run_merge_gate  # noqa: F401
     import bus_unread  # noqa: F401

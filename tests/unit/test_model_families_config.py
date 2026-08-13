@@ -87,12 +87,12 @@ def test_config_is_an_authority_surface_at_the_admission_gate() -> None:
 
 
 def test_this_pair_author_and_reviewer_ids_are_independent() -> None:
-    """cursor-grok-4.6-xhigh-fast (this run) vs claude-opus-5-thinking-high."""
+    """A vendor-decorated Grok model remains independent from Claude."""
 
-    assert model.model_family("cursor-grok-4.6-xhigh-fast") == "grok"
+    assert model.model_family("xai-grok-4.6-xhigh-fast") == "grok"
     assert model.model_family("claude-opus-5-thinking-high") == "claude"
     assert model.models_are_independent(
-        "cursor-grok-4.6-xhigh-fast", "claude-opus-5-thinking-high"
+        "xai-grok-4.6-xhigh-fast", "claude-opus-5-thinking-high"
     ) is True
     # Existing IDs keep their families; this addition does not re-family them.
     assert model.model_family("grok-4.5") == "grok"

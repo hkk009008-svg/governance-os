@@ -24,8 +24,8 @@ A change is material when it crosses a load-bearing boundary:
 - an accepted scientific or business conclusion;
 - externally visible or hard-to-reverse behavior;
 - repository-wide execution architecture (CI topology, test harness);
-- an instruction surface (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`,
-  skills, continuation docs): prose is executable on models — the 2026-07
+- an instruction surface (`AGENTS.md`, `CLAUDE.md`, skills, continuation
+  docs): prose is executable on models — the 2026-07
   field trial measured doctrine text shaping a 6.5 h session whose reviewed
   tools sat unused — so editing it changes behavior by the same standard as
   code.

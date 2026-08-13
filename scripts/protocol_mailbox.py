@@ -62,9 +62,8 @@ def seat_alternation(names: tuple[str, ...]) -> str:
 # roster above. Every Python parser imports EVENT_NAME_RE (or composes from
 # EVENT_NAME_PATTERN); parser drift was a measured defect class — status
 # accepted any sender, slope_metrics dropped the Z from the stamp and forbade
-# digits in kinds, and the Cursor hook omitted coordinator2. The two
-# import-light surfaces that keep literal copies (scripts/cursor_hook_policy.py
-# and threeway/legacy_projector.py) are bound to this grammar by
+# digits in kinds. The import-light literal copy in
+# threeway/legacy_projector.py is bound to this grammar by
 # tests/unit/test_event_grammar_sync.py.
 EVENT_STAMP_PATTERN = r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z"
 EVENT_NAME_PATTERN = (

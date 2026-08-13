@@ -39,7 +39,7 @@ NINE_MEASURED_FAILURES = (
     ),
     # The comment that outlived its mechanism: no instrument existed any more.
     (
-        "The emitted argv is checked against this set and verified against agy --help",
+        "The emitted argv is checked against this set and verified against provider --help",
         "instrument-cited",
     ),
     # The preflight gate nothing on the dispatch path invoked.

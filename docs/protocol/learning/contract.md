@@ -10,7 +10,7 @@
 
 Purpose: the learning lifecycle (observe → extract → candidate → evaluate →
 promote → distribute → measure → supersede) on the existing governance spine,
-provider-neutral across Claude, Codex, AGY, Cursor. Non-goals, binding on
+provider-neutral across Claude and Codex. Non-goals, binding on
 every stage: no autonomous canonical writes; no embeddings before FTS is
 measured insufficient; no new approval machinery where the compact pair
 already is one; no "most-sessions-should-update-something" bias — candidates

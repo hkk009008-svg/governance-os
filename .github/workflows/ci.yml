@@ -232,11 +232,7 @@ jobs:
             coordination/bin/send-event \
             coordination/bin/consume-events \
             coordination/bin/claim-lock \
-            coordination/bin/release-lock \
-            coordination/bin/cursor-publish \
-            coordination/bin/cursor-consume \
-            coordination/bin/cursor-seat \
-            .cursor/hooks/seat-policy || true
+            coordination/bin/release-lock || true
 
   # Risk-aware admission (audit P0): a PR range that touches an authority
   # surface (hook policy, fixed writers, launchers, CI itself — the list lives

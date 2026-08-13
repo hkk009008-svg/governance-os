@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified against base: 2026-08-13 @ 11a9cd6*
+*Last verified against base: 2026-08-13 @ 09fa755*
 
 ## 1. Purpose
 
@@ -17,8 +17,8 @@ Product behavior remains owned by the target repository.
 
 ## 2. Control flow
 
-One flow, shared by every provider side. Codex, Cursor, Claude, and AGY differ
-in runtime mechanics, never in policy.
+One flow, shared by both supported provider sides. Codex and Claude differ in
+runtime mechanics, never in policy.
 
 ```text
 user or parent task
@@ -45,35 +45,32 @@ canonical or external-effect scope. The mode itself grants no authority; see
 
 | Path | Current role |
 |---|---|
-| `scripts/` | Runtime validators, compact status, target guard, and provider adapters. |
+| `scripts/` | Runtime validators, compact status, target guard, and the Codex launcher. |
 | `coordination/mailbox/sent/` | Append-only human-readable task and review events. |
 | `coordination/mailbox/seen/` | Compatibility cursors for the four concrete pair seats only. |
 | `.agents/skills/` | On-demand role procedures. Skill presence grants no authority. |
 | `.codex/agents/` | Small reusable role deltas; no numbered pseudo-seat inventory. |
-| Repository lifecycle hooks | Absent on every side except `.cursor/hooks/seat-policy`, which gates enforceable shell/MCP approvals and denies unsupported file-tool asks. No side depends on a hook for orientation or durable state. |
+| Repository lifecycle hooks | Absent. Neither supported side depends on a repository hook for orientation or durable state. |
 | `threeway/` | Signed ref-bus substrate, dormant experimental capacity: the coordination transport is explicitly `mailbox` (`governance.toml`), so the active runtime never consults these refs; activation is a reviewed transport change plus live refs. Covered by its own unit tests while dormant. |
 | `governance.toml` | Registered product targets. Targets are selected per task, not fixed. |
-| `.claude/`, `.codex/`, `.cursor/`, `.agents/agents/`, `.agents/workflows/` | Provider discovery/adaptation surfaces. Each owns runtime mechanics only; policy comes from `scripts/codex_protocol_model.py`. |
+| `.claude/`, `.codex/` | Supported provider discovery/adaptation surfaces. Each owns runtime mechanics only; policy comes from `scripts/codex_protocol_model.py`. |
 
 ### Provider surfaces
 
 Each side maps the same policy onto its host. The differences below are forced
 by the host, not chosen, and each adapter states its own.
 
-| | Codex | Cursor | Claude | AGY |
-|---|---|---|---|---|
-| Runtime | host task tools | Agents Window chats | desktop app | native subagent mesh |
-| Adapter | `docs/protocol/codex/continuation.md` | `docs/protocol/cursor/continuation.md` | `docs/protocol/claude/continuation.md` | `docs/protocol/agy/continuation.md` |
-| Lifecycle hook | none | `seat-policy` | none | none |
-| Launcher | `codex-seat` | `cursor-seat` | none | `agy-seat` |
-| Seat roles | `.codex/agents/*.toml` | `/review-next` skill | `.claude/skills/seat-*` | explicit assignment + `.agents/skills/seat-*` |
-| Subagent advisors | `.codex/agents/*.toml` | `.cursor/agents/*.md` | `.claude/agents/*.md` | `.agents/agents/*.md` |
+| | Codex | Claude |
+|---|---|---|
+| Runtime | host task tools | desktop app |
+| Adapter | `docs/protocol/codex/continuation.md` | `docs/protocol/claude/continuation.md` |
+| Lifecycle hook | none | none |
+| Launcher | `codex-seat` | none |
+| Seat roles | `.codex/agents/*.toml` | `.claude/skills/seat-*` |
+| Subagent advisors | `.codex/agents/*.toml` | `.claude/agents/*.md` |
 
 Notable per-host constraints:
 
-- Cursor is the only side with a repository lifecycle hook. Shell and MCP
-  approval hooks are enforceable; `preToolUse` asks are not, so non-Director
-  native file edits deny instead of receiving a false approval.
 - Pipeline has no Claude launcher or governance-seat registry. Claude Desktop's
   host session registry, automatic worktrees, and peer relay are conveniences;
   they do not turn a session title or message into role authority.
@@ -90,10 +87,6 @@ Notable per-host constraints:
   `tests/skill_packs/` (ADR-068).
 - Codex carries the spawnable seat roles because host task tools dispatch them.
   Other sides carry only the read-only advisors.
-- AGY keeps a launcher because it selects a per-seat model. It carried a
-  per-seat service tier until 2026-07-26; the installed CLI exposes no such
-  option, so the setting selected nothing and was removed rather than left as
-  a control that appeared to work.
 
 ## 4. Executable seams
 
@@ -108,7 +101,7 @@ The table names stable symbols instead of volatile line numbers.
 | `parse_verify_request`, `validate_report` | `scripts/compact_pair_loop.py` | Bind formal review to one committed request and exact range. |
 | `RuntimeIdentity`, `work_profile_for`, `review_profile_for` | `scripts/codex_protocol_model.py` | Close runtime identity and select finite work-mode and review policies. |
 | `model_family`, `models_are_independent` | `scripts/codex_protocol_model.py` | Decide reviewer independence by model family, so a harness prefix or version suffix cannot buy it. |
-| `build_launch_spec` | `scripts/codex_seat_launcher.py`, `scripts/agy_seat_launcher.py` | Launch a named role in the caller-selected native worktree. Neither binds an index. |
+| `build_launch_spec` | `scripts/codex_seat_launcher.py` | Launch a named Codex role in the caller-selected native worktree without binding an index. |
 | `resolve_unread` | `scripts/bus_unread.py` | Answer unread from the proven authority, falling back to the canonical mailbox order so an absent bus never renders `0 unread`. |
 | `build_guard` | `scripts/ledger_start_guard.py` | Validate one ordinary Pipeline-first target start. |
 | `resolve_target` | `scripts/target_binding.py` | Resolve the selected product binding. |
@@ -129,8 +122,7 @@ The table names stable symbols instead of volatile line numbers.
   checkout but not `GIT_INDEX_FILE` or ambient provider policy variables; every
   worktree uses its native index. `index-<provider>-<seat>` is retired.
 - Session start grants nothing. Pipeline has no Claude governance-seat launcher
-  or registry, even though Claude Desktop has a host session registry and relay;
-  Cursor's registry exists to gate in-app effects, not to validate a verdict.
+  or registry, even though Claude Desktop has a host session registry and relay.
   Review identity is decided at publication by `scripts/compact_pair_loop.py`.
 - Repository hooks do not orient any side, mutate state, refresh doctrine, or
   maintain a second index.

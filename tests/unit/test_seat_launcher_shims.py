@@ -2,11 +2,10 @@
 
 Each shim used to `exec /usr/bin/env python3`, so a seat ran under whichever
 python3 the caller's PATH happened to offer. Locally that is the repo venv; in a
-stripped environment it is macOS system 3.9.6, where the `tomllib` the AGY and
-Codex launchers import does not exist. The seat then died on a
+stripped environment it is macOS system 3.9.6, where the `tomllib` the Codex
+launcher imports does not exist. The seat then died on a
 ModuleNotFoundError traceback instead of the launcher's own error contract --
-an interpreter chosen by ambient state, the same shape as the flags the AGY
-launcher was fixed for emitting.
+an interpreter chosen by ambient state rather than repository policy.
 """
 
 from __future__ import annotations
@@ -18,11 +17,9 @@ from pathlib import Path
 import pytest
 
 
-SHIMS = ("agy-seat", "codex-seat", "cursor-seat")
+SHIMS = ("codex-seat",)
 
-# Both launchers that parse TOML need `tomllib`, stdlib only since 3.11. The
-# floor is repo-wide rather than per-shim so a seat cannot run on an interpreter
-# its siblings refuse.
+# The launcher parses TOML and needs `tomllib`, stdlib only since 3.11.
 REQUIRED_PYTHON = (3, 11)
 
 
@@ -118,7 +115,7 @@ def test_shim_execs_the_venv_interpreter_and_never_the_ambient_one(
 def test_shim_survives_a_stripped_path(repo_root: Path, name: str) -> None:
     """The reproduction: a PATH without the venv must not yield a traceback.
 
-    Pre-fix, `agy-seat` and `codex-seat` printed
+    Pre-fix, `codex-seat` printed
     `ModuleNotFoundError: No module named 'tomllib'` here. Post-fix the shim
     either finds the repo venv or refuses in its own words; both are acceptable,
     a Python traceback is not.

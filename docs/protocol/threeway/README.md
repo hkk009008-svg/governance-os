@@ -13,7 +13,6 @@ use that coherence as the authority flip; there is no second marker.
 | Current deployment boundary and invariants | [`UNIFIED-OPERATING-DOCTRINE.md`](UNIFIED-OPERATING-DOCTRINE.md) |
 | Opt-in activation orientation | [`ONBOARDING.md`](ONBOARDING.md) |
 | Codex host delta | [`CODEX-ADOPTION.md`](CODEX-ADOPTION.md) |
-| AGY host delta | [`ANTIGRAVITY-ADOPTION.md`](ANTIGRAVITY-ADOPTION.md) |
 | Current topology | [`ARCHITECTURE-DIAGRAM.md`](ARCHITECTURE-DIAGRAM.md) |
 | Headless advisory review constraints | [`HEADLESS-REVIEW.md`](HEADLESS-REVIEW.md) |
 | Executable mechanism coverage | [`MECHANISM-LEDGER.md`](MECHANISM-LEDGER.md) |
@@ -47,7 +46,7 @@ protected-ref/runner enforcement, exact activation authority, and post-action
 state proof. The protected-main path is not claimed complete merely because the
 local test-ref path passes.
 
-Any supported provider may hold a formal mailbox role when explicitly
+Either supported provider may hold a formal mailbox role when explicitly
 assigned. That assignment does not make it a signed principal. Signer identity,
 key custody, CI attestation, merge-gate authority, provider launch, push, merge,
 cursor consumption, and spend remain separately bound and authorized.

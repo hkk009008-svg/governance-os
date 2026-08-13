@@ -41,7 +41,7 @@ name. They do not yet have the field grammar. That lives in
 it does not publish. A reader who drafts but never publishes has not
 created durable continuity.
 
-Provider adapters (`docs/protocol/{codex,claude,agy,cursor}/continuation.md`)
+Provider adapters (`docs/protocol/{codex,claude}/continuation.md`)
 repeat the same boundary trigger, draft tool, resume shape, and
 advisory-recall posture. `tests/unit/test_protocol_prompt_sync.py::
 test_checkpoint_contract_is_pinned_across_provider_surfaces` is the

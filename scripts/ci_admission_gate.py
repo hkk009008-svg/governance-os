@@ -47,19 +47,12 @@ import compact_pair_loop as pair  # noqa: E402
 # slash and match by prefix; file entries match exactly. Extending this list
 # is itself an authority-surface change, so the extension gets reviewed.
 AUTHORITY_SURFACES: tuple[str, ...] = (
-    ".agents/agents/",
     ".agents/skills/",
-    ".agents/workflows/",
     ".claude/agents/",
     ".claude/settings.json",
     ".claude/skills/",
     ".codex/agents/",
     ".codex/config.toml",
-    ".cursor/agents/",
-    ".cursor/hooks.json",
-    ".cursor/hooks/",
-    ".cursor/rules/",
-    ".cursor/skills/",
     ".github/workflows/",
     "config/",
     ":(glob)tests/**/conftest.py",
@@ -84,6 +77,7 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
     "scripts/",
     "setup.cfg",
     "sitecustomize.py",
+    "tests/unit/test_provider_surface_map.py",
     "tox.ini",
     "threeway/",
     "usercustomize.py",

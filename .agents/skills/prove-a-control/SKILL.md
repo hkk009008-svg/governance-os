@@ -45,9 +45,9 @@ A check that is correct and is handed nothing checks nothing.
 - Mutate by **deleting the call**, not by breaking the callee.
 - Pin the call site separately: the caller refused, the side effect did not
   happen, and the *real arguments* arrived.
-- Before writing "enforced on every X", `grep` for the caller. Once: the gate
-  lived in `harness_preflight.py` while `coordination/bin/agy-seat` execs the
-  launcher directly and nothing invoked preflight at all.
+- Before writing "enforced on every X", `grep` for the caller. Once: a gate
+  lived in a preflight helper while the launch front door executed its launcher
+  directly and nothing invoked the helper at all.
 
 ## Trap 2 — an enumeration standing in for a property
 A list of the cases you know about is exactly what a narrowing survives. Three

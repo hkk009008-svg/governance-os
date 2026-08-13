@@ -9,7 +9,7 @@ resync your mental model of the real contract.
 > **Attribution note.** This addresses the activation tooling that matches Codex's `director`/builder
 > role: `scripts/sign_ci_result.py`, `scripts/run_merge_gate.py`, `scripts/execute_threeway_cutover.sh`,
 > the `.github/workflows/ci.yml` `ci_result` step, the `coordination/threeway/keys/*.pub` provisioning,
-> and the `.gitignore`/doc edits. `scripts/agy_observer.py` is reviewed in the Antigravity doc. If any
+> and the `.gitignore`/doc edits. If any
 > attribution is off, the *technical* findings still stand against whichever turn produced the file.
 
 ---

@@ -145,7 +145,7 @@ def work_profile_for(work_mode: str) -> WorkModeProfile:
 # Harness/vendor decorations that describe where a model runs, not which model
 # it is. `codex-gpt-5.6-terra` and `gpt-5.6-terra` are one model behind two
 # labels; independence must not be satisfiable by the prefix alone.
-MODEL_HARNESS_PREFIXES = ("codex-", "antigravity-", "cursor-", "agy-", "claude-code-")
+MODEL_HARNESS_PREFIXES = ("codex-", "claude-code-")
 _MODEL_FAMILIES_CONFIG = (
     Path(__file__).resolve().parent.parent / "config" / "model-families.toml"
 )
