@@ -149,29 +149,24 @@ def _is_frozen_model_label_exception(root: Path, path: str, raw: bytes) -> bool:
         or hashlib.sha256(raw).hexdigest() != exception["sha256"]
     ):
         return False
-    introductions = _git(
-        root,
-        "log",
-        "--diff-filter=A",
-        "--format=%H",
-        "--",
-        path,
-    ).decode("ascii", errors="strict").splitlines()
+    # Reintroduction doctrine (protocol_mailbox): byte-identical restoration
+    # is not mutation. Every introduction of the path — the pinned one and
+    # any delete/revert reintroduction — must carry exactly the pinned
+    # bytes, or the exception stays refused.
+    try:
+        introductions = protocol_mailbox.path_introduction_commits(root, path)
+    except ValueError:
+        return False
     if exception["introduction"] not in introductions:
         return False
-    # A delete/revert cycle (the 2026-08-12 corpus restore) leaves the path
-    # with more than one introduction commit. Byte-identical restoration is
-    # not mutation (the check_coordination projection rule): every
-    # introduction other than the pinned one must carry exactly the pinned
-    # bytes, or the exception stays refused.
-    for reintroduction in introductions:
-        if reintroduction == exception["introduction"]:
-            continue
-        replayed = _git(root, "show", f"{reintroduction}:{path}")
-        if hashlib.sha256(replayed).hexdigest() != exception["sha256"]:
+    for commit in introductions:
+        replayed = protocol_mailbox.committed_blob_or_none(root, commit, path)
+        if (
+            replayed is None
+            or hashlib.sha256(replayed).hexdigest() != exception["sha256"]
+        ):
             return False
-    introduced = _git(root, "show", f"{exception['introduction']}:{path}")
-    return hashlib.sha256(introduced).hexdigest() == exception["sha256"]
+    return True
 
 
 def _full_commit(
@@ -1563,17 +1558,17 @@ def _is_frozen_verbose_request(
 def _is_frozen_verbose_report(root: Path, path: str, raw: bytes) -> bool:
     if _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) != raw:
         return False
-    latest = _git(root, "log", "-1", "--format=%H", "HEAD", "--", path).decode().strip()
-    if not SHA_RE.fullmatch(latest):
+    latest = protocol_mailbox.newest_commit_touching(root, path)
+    if latest is None:
         return False
     if _is_ancestor(root, latest, LEGACY_VERBOSE_CUTOFF):
         return True
-    # A delete/revert cycle (the 2026-08-12 corpus restore) leaves the newest
-    # commit touching the path outside the frozen cutoff's ancestry.
-    # Byte-identical restoration is not mutation: accept exactly when that
-    # commit still carries the frozen bytes; any post-cutoff touch that
+    # Reintroduction doctrine (protocol_mailbox): a delete/revert cycle puts
+    # the newest touching commit outside the frozen cutoff's ancestry.
+    # Byte-identical restoration is not mutation — accept exactly when that
+    # commit still carries the frozen bytes; a post-cutoff touch that
     # changed the bytes stays refused.
-    return _git_blob(root, latest, path) == raw
+    return protocol_mailbox.committed_blob_or_none(root, latest, path) == raw
 
 
 def _main(argv: list[str] | None = None) -> int:

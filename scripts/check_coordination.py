@@ -748,7 +748,10 @@ def _committed_mailbox_projection(
                 # exception manifest. Differing bytes on a review event or
                 # the manifest are adjudicated against the committed
                 # exception manifest after it is parsed below; conversational
-                # kinds were never byte-gated by this projection.
+                # kinds were never byte-gated by this projection. Doctrine
+                # home: the reintroduction section of protocol_mailbox.py;
+                # cross-consumer contract:
+                # tests/unit/test_reintroduction_doctrine.py.
                 _prior_commit, prior_blob = introductions[value]
                 if prior_blob != introduced_blob and (
                     _canonical_review_event(value)

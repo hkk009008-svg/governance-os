@@ -1081,6 +1081,49 @@ def committed_learning_candidate_ids(root: Path, commit: str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
+# Reintroduction doctrine (delete/revert cycles)
+#
+# One rule, shared by every consumer of committed-path introduction history:
+# byte-identical restoration of a committed mailbox artifact is not mutation
+# — the earliest introduction stays the immutable identity — while a
+# reintroduction with DIFFERENT bytes is the laundering vector and stays
+# refused. Consumers today: the committed-mailbox projection
+# (scripts/check_coordination.py, which keeps its own single-pass stream
+# walk for performance) and the frozen-history helpers in
+# scripts/compact_pair_loop.py, which call the primitives below.
+# tests/unit/test_reintroduction_doctrine.py is the cross-consumer
+# contract; a new consumer of these primitives belongs in that module.
+# ---------------------------------------------------------------------------
+
+
+def committed_blob_or_none(root: Path, commit: str, path: str) -> bytes | None:
+    """Exact committed blob bytes, or None when absent at that commit."""
+
+    try:
+        return _committed_blob(root, commit, path)
+    except ValueError:
+        return None
+
+
+def path_introduction_commits(root: Path, path: str) -> tuple[str, ...]:
+    """Every commit that ADDED the path in HEAD's history, newest-first."""
+
+    out = _git(root, "log", "--diff-filter=A", "--format=%H", "HEAD", "--", path)
+    commits = tuple(line for line in out.stdout.splitlines() if line)
+    if any(_FULL_SHA_RE.fullmatch(commit) is None for commit in commits):
+        raise ValueError("path introduction history is unreadable")
+    return commits
+
+
+def newest_commit_touching(root: Path, path: str) -> str | None:
+    """The newest commit in HEAD's history that touched the path, if any."""
+
+    out = _git(root, "log", "-1", "--format=%H", "HEAD", "--", path)
+    value = out.stdout.strip()
+    return value if _FULL_SHA_RE.fullmatch(value) else None
+
+
+# ---------------------------------------------------------------------------
 # Checkpoint statements (durable continuation records)
 # ---------------------------------------------------------------------------
 
