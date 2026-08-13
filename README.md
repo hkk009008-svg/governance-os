@@ -59,6 +59,7 @@ and grants no authority. See `docs/protocol/work-modes.md`.
 |---|---|
 | Agent contract (start here in a session) | [AGENTS.md](AGENTS.md) |
 | Comprehensive repository and process map | [docs/REPOSITORY-MANUAL.md](docs/REPOSITORY-MANUAL.md) |
+| Task-oriented walkthrough of the common paths | [docs/GUIDEBOOK.md](docs/GUIDEBOOK.md) |
 | Four desktop apps: setup, strengths, and communication | [docs/protocol/app-quickstart.md](docs/protocol/app-quickstart.md) |
 | Verified code and topology facts | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Operating commands and troubleshooting | [OPERATIONS.md](OPERATIONS.md) |
