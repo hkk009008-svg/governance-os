@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified against base: 2026-08-12 @ b2728b1*
+*Last verified against base: 2026-08-13 @ 11a9cd6*
 
 ## 1. Purpose
 
@@ -80,9 +80,8 @@ Notable per-host constraints:
 - Claude Code discovers skills only under `.claude/skills/`. Since ADR-067
   Stage 3, six `.claude` skills (create-regression-pin, probe-a-claim,
   prove-a-control, isolate-a-variable, chatgpt-pro-consultation,
-  writing-skills) are
-  reference stubs over their
-  canonical `.agents/skills/` bodies plus Claude-native deltas; the five
+  writing-skills) are reference stubs over their canonical
+  `.agents/skills/` bodies plus Claude-native deltas; the five
   seat-family pairs are declared provider-native adaptations (O2 ruling
   2026-07-31) whose protocol semantics resolve toward `.agents`. Only
   `seat-operator/verification-report-format.md` is asserted byte-identical,

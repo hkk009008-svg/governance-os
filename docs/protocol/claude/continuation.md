@@ -105,9 +105,10 @@ These are the only places Claude differs from the shared contract, and each is
 forced by the harness rather than chosen:
 
 - Claude Code discovers skills only under `.claude/skills/` — discovery is
-  scoped there, reading never was. Since ADR-067 Stage 3, five skills there
+  scoped there, reading never was. Since ADR-067 Stage 3, six skills there
   (create-regression-pin, probe-a-claim, prove-a-control,
-  isolate-a-variable, chatgpt-pro-consultation) are reference stubs:
+  isolate-a-variable, chatgpt-pro-consultation, writing-skills) are
+  reference stubs:
   frontmatter plus
   Claude-native deltas (`env -u GIT_INDEX_FILE`, `.venv/bin/python`, Claude
   tool names, `disable-model-invocation`) pointing at the canonical body in
