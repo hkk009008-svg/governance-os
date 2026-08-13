@@ -122,3 +122,32 @@ def test_workflow_keeps_parallel_verification_and_signer_dependencies() -> None:
         "vars.THREEWAY_BUS_LIVE == 'true' && github.ref == 'refs/heads/main'\n"
         in workflow
     )
+
+
+def test_same_kind_advisory_flood_prints_one_summary_line(
+    tmp_path, monkeypatch, capsys
+):
+    """More than three same-kind advisories collapse to one x-count line;
+    small groups stay itemized and FATALs are never grouped."""
+
+    import check_coordination as cc
+
+    flood = [
+        cc.CoordIssue(f"mailbox/sent/event-{index}.md", "grandfathered_review_history",
+                      "ADVISORY", "exception remains active")
+        for index in range(6)
+    ]
+    pair = [
+        cc.CoordIssue("mailbox/sent/one.md", "another_kind", "ADVISORY", "first"),
+        cc.CoordIssue("mailbox/sent/two.md", "another_kind", "ADVISORY", "second"),
+    ]
+    monkeypatch.setattr(cc, "run", lambda *args, **kwargs: flood + pair)
+
+    assert ci_smoke._coordination_gate(tmp_path) == 0
+    out = capsys.readouterr().out
+
+    assert out.count("grandfathered_review_history") == 1
+    assert "x6" in out
+    assert "itemize with" in out
+    assert out.count("another_kind") == 2
+    assert "first" in out and "second" in out

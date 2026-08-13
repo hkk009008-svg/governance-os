@@ -193,11 +193,27 @@ def _coordination_gate(repo_root: Path) -> int:
     )
     advisories = [issue for issue in issues if issue.severity == "ADVISORY"]
     fatals = [issue for issue in issues if issue.severity == "FATAL"]
+    # Same-kind advisory floods (six grandfathered immutable-history
+    # exceptions, today) print as one summary line so the completion gate's
+    # signal is not buried; the itemized list stays one command away.
+    # FATALs are never grouped.
+    advisories_by_kind: dict[str, list] = {}
     for issue in advisories:
-        print(
-            f"WARNING: coordination ADVISORY [{issue.kind}] "
-            f"{issue.path} — {issue.message}"
-        )
+        advisories_by_kind.setdefault(issue.kind, []).append(issue)
+    for kind in sorted(advisories_by_kind):
+        group = advisories_by_kind[kind]
+        if len(group) > 3:
+            print(
+                f"WARNING: coordination ADVISORY [{kind}] x{len(group)} "
+                f"(e.g. {group[0].path}) — itemize with: "
+                f".venv/bin/python scripts/check_coordination.py"
+            )
+        else:
+            for issue in group:
+                print(
+                    f"WARNING: coordination ADVISORY [{issue.kind}] "
+                    f"{issue.path} — {issue.message}"
+                )
     if not fatals:
         return 0
     for issue in fatals:
