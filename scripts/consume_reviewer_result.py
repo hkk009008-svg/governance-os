@@ -20,7 +20,7 @@ file, or stdin), it:
 The mailbox-level block stays OPTIONAL (an absent block is "nothing to consume", exit 0);
 only a PRESENT-but-invalid or PRESENT-but-fabricated block is a hard fail. The fabrication
 re-run only makes sense with the working tree AT the reviewed commit, so it lives in the
-on-demand CLI — `smoke_check()` (wired into ci_smoke) does schema-validation ONLY, never the
+on-demand CLI — `smoke_check()` (wired into governance_verify_all) does schema-validation ONLY, never the
 re-run (re-running a historical event's pins against today's HEAD would false-alarm).
 
 Severity map (ADR-032): critical->CRITICAL, important->MAJOR, minor->MEDIUM.
@@ -572,7 +572,7 @@ def iter_reviewer_results(repo_root) -> list[tuple[Path, dict]]:
 
 
 def smoke_check(repo_root) -> int:
-    """ci_smoke entry: schema-validate any present mailbox blocks. NEVER re-runs pytest.
+    """governance_verify_all entry: schema-validate any present mailbox blocks. NEVER re-runs pytest.
 
     Re-running a historical event's pins against today's HEAD would false-alarm (wrong
     tree), so the fabrication re-run lives in the on-demand CLI, not here. Zero blocks
