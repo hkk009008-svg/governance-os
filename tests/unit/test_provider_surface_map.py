@@ -1,8 +1,10 @@
 """Executable inventory for the supported host-provider surface.
 
-Pipeline supports exactly the Codex and Claude adapters.  The glob-based
-checks are deliberate: a retired adapter must not be able to return under a
-new filename without changing this high-risk-control test.
+Pipeline supports exactly the Codex and Claude adapters.  The retired-runtime
+checks cover provider-prefixed config, agent, skill, script, and launcher path
+families, including prefix-preserving renames.  They do not claim to identify
+arbitrarily renamed provider logic by content; executable readers still land
+under the separately reviewed authority surfaces.
 """
 
 from __future__ import annotations
@@ -38,6 +40,23 @@ PROVIDERS = {
     },
 }
 
+RETIRED_RUNTIME_GLOBS = (
+    ".agy*",
+    ".antigravity*",
+    ".cursor*",
+    ".agents/agents*",
+    ".agents/workflows*",
+    ".agents/skills/agy*",
+    ".agents/skills/antigravity*",
+    ".agents/skills/cursor*",
+    "scripts/agy*.py",
+    "scripts/antigravity*.py",
+    "scripts/cursor*.py",
+    "coordination/bin/agy*",
+    "coordination/bin/antigravity*",
+    "coordination/bin/cursor*",
+)
+
 
 def _assert_supported_adapter_inventory(root: Path) -> None:
     discovered = {
@@ -49,13 +68,9 @@ def _assert_supported_adapter_inventory(root: Path) -> None:
 
 
 def _assert_retired_runtime_surfaces_absent(root: Path) -> None:
-    assert not (root / ".cursor").exists()
-    assert not (root / ".agents/agents").exists()
-    assert not (root / ".agents/workflows").exists()
-    assert list((root / "scripts").glob("agy_*.py")) == []
-    assert list((root / "scripts").glob("cursor_*.py")) == []
-    assert list((root / "coordination/bin").glob("agy-*")) == []
-    assert list((root / "coordination/bin").glob("cursor-*")) == []
+    for pattern in RETIRED_RUNTIME_GLOBS:
+        matches = sorted(root.glob(pattern))
+        assert matches == [], f"retired runtime surface matched {pattern}: {matches}"
 
 
 def test_supported_provider_adapters_are_exactly_codex_and_claude() -> None:
@@ -105,6 +120,34 @@ def test_runtime_absence_control_rejects_a_reintroduced_side(
     tmp_path: Path,
 ) -> None:
     (tmp_path / ".cursor").mkdir()
+
+    with pytest.raises(AssertionError):
+        _assert_retired_runtime_surfaces_absent(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        ".cursor2/hooks.json",
+        ".agy2/settings.json",
+        ".antigravity-next/settings.json",
+        ".agents/agents-v2/reviewer.md",
+        ".agents/workflows2/start.md",
+        "scripts/cursorseat.py",
+        "scripts/agyseat.py",
+        "scripts/antigravity_adapter.py",
+        "coordination/bin/cursor_seat",
+        "coordination/bin/agy_seat",
+        "coordination/bin/antigravity-seat",
+    ),
+)
+def test_runtime_absence_control_rejects_prefix_preserving_renames(
+    tmp_path: Path,
+    relative_path: str,
+) -> None:
+    candidate = tmp_path / relative_path
+    candidate.parent.mkdir(parents=True, exist_ok=True)
+    candidate.write_text("retired provider runtime\n", encoding="utf-8")
 
     with pytest.raises(AssertionError):
         _assert_retired_runtime_surfaces_absent(tmp_path)
