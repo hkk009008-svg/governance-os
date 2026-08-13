@@ -10,7 +10,7 @@ wrapped an AI-cinema-pipeline repo: the harness config, the multi-seat governanc
 protocol (director / operator / coordinator), the git-native coordination layer
 (mailbox + signed event bus), the CI-enforced doctrine (`governance_verify_all.py`,
 `check_no_ceremony.py`), and the dual-runtime harness (`CLAUDE.md` for Claude,
-`AGENTS.md` for Codex / Cursor / Aider / etc.).
+`AGENTS.md` for Codex and other agentic hosts).
 
 Everything cinema-specific — the program code, its history, and its runtime state —
 was **left behind**. Everything reusable was **genericized** (cinema nouns/paths/
@@ -31,7 +31,7 @@ and structural element was preserved verbatim.
 | `.claude/hookify.*.local.md` | 6 guard rules (block force-push, block `git add -A`, warn no-verify, warn pytest-without-venv, etc.) |
 | `.claude/agents/{lane-v-verifier,money-gate-reviewer}.md` | Two reusable review-agent definitions |
 | `.codex/{config.toml,agents/*.toml}` | Codex adapter: six named role deltas; no project lifecycle hooks |
-| `.agents/skills/*` | Agent-agnostic skill mirrors (antigravity-harness + the seat skills) |
+| `.agents/skills/*` | Agent-agnostic protocol and seat skills |
 | `.github/workflows/ci.yml`, `.github/pull_request_template.md` | CI skeleton (governance gates wired; domain steps stubbed) |
 | `.env.example`, `.gitignore`, `pyproject.toml`, `requirements-governance.txt` | Slim, governance-only configs |
 
@@ -39,7 +39,7 @@ and structural element was preserved verbatim.
 | Path | What it is |
 |---|---|
 | `CLAUDE.md` | Claude-specific doctrine router (process layer) |
-| `AGENTS.md` | Agent-agnostic root (Cursor / Aider / Codex / Antigravity / …) |
+| `AGENTS.md` | Agent-agnostic root and Codex router |
 | `docs/protocol/claude/*` · `docs/protocol/agents/*` | The Rules #7–#23 governance bodies (core / director-operator / failure-modes / four-seat-extension / orchestration), in both Claude and agent-agnostic voice |
 | `docs/protocol/codex/continuation.md` | Codex continuation adapter |
 | `docs/protocol/threeway/*` | Signed-bus control-plane doctrine + onboarding + adoption guides |
@@ -51,7 +51,7 @@ and structural element was preserved verbatim.
 ### Tier 3 · Skills & agents (reusable subset)
 `four-seat-protocol`, `seat-coordinator`, `seat-director`, `seat-operator`,
 `wave-gate`, `create-regression-pin` — under both `.claude/skills/` and
-`.agents/skills/`; `antigravity-harness` — under `.agents/skills/` only. The two
+`.agents/skills/`. The two
 cinema skills (`ai-video-gen`, `comfyui-mastery`) were **excluded**.
 
 ### Tier 4 · Coordination tooling + control plane

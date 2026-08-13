@@ -21,9 +21,7 @@ the user selected an exact target and authorized activation design.
 Provider mechanics:
 
 - Codex: [`CODEX-ADOPTION.md`](CODEX-ADOPTION.md)
-- AGY: [`ANTIGRAVITY-ADOPTION.md`](ANTIGRAVITY-ADOPTION.md)
 - Claude: [`../claude/continuation.md`](../claude/continuation.md)
-- Cursor: [`../cursor/continuation.md`](../cursor/continuation.md)
 
 All providers start from their ordinary readiness/role adapter. Any supported
 provider may hold an explicitly assigned mailbox role; none becomes a signed

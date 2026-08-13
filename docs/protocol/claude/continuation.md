@@ -4,7 +4,7 @@ This file maps Pipeline policy to Claude Code mechanics. Canonical policy and
 validation live in `scripts/codex_protocol_model.py`; skills and agent files
 contain only their local deltas.
 
-For the four-app setup and capability comparison, see
+For the two-app setup and capability comparison, see
 `docs/protocol/app-quickstart.md`.
 
 ## Modes

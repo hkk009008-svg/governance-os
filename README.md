@@ -3,7 +3,7 @@
 Pipeline is the governance kernel for a multi-provider AI coding protocol.
 It keeps the minimum durable state needed to coordinate bounded work: mailbox
 events, exact-range review, and separately authorized external effects.
-Codex, Claude, Antigravity, and Cursor share one policy
+Codex and Claude share one policy
 (`scripts/codex_protocol_model.py`) and differ only in runtime mechanics.
 
 This repository is not the private product application. `evidence-ledger` is
@@ -37,10 +37,10 @@ env -u GIT_INDEX_FILE .venv/bin/python scripts/ledger_start_guard.py --seat dire
 ARCHITECTURE.md records verified governance-kernel truth. Executable code
 wins when prose drifts. Load-bearing runtime lives under `scripts/`,
 `coordination/`, `.agents/`, and the provider adapters (`.claude/`,
-`.codex/`, `.cursor/`).
+`.codex/`).
 
 - Seats publish durable events through `coordination/bin/send-event` into
-  `coordination/mailbox/sent/`. Bound Cursor seats use `cursor-publish`.
+  `coordination/mailbox/sent/`.
 - Formal review is one committed Compact Pair
   (`scripts/compact_pair_loop.py`) for an exact Git range. High-risk-control
   also needs a different model family and an abuse-class assessment.
@@ -62,7 +62,7 @@ and grants no authority. See `docs/protocol/work-modes.md`.
 | Agent contract (start here in a session) | [AGENTS.md](AGENTS.md) |
 | Comprehensive repository and process map | [docs/REPOSITORY-MANUAL.md](docs/REPOSITORY-MANUAL.md) |
 | Task-oriented walkthrough of the common paths | [docs/GUIDEBOOK.md](docs/GUIDEBOOK.md) |
-| Four desktop apps: setup, strengths, and communication | [docs/protocol/app-quickstart.md](docs/protocol/app-quickstart.md) |
+| Supported desktop apps: setup, strengths, and communication | [docs/protocol/app-quickstart.md](docs/protocol/app-quickstart.md) |
 | Verified code and topology facts | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Operating commands and troubleshooting | [OPERATIONS.md](OPERATIONS.md) |
 | User-principal intent for this kernel | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |
@@ -70,8 +70,6 @@ and grants no authority. See `docs/protocol/work-modes.md`.
 | Work modes | [docs/protocol/work-modes.md](docs/protocol/work-modes.md) |
 | Learning plane (advisory memory and skills) | [docs/protocol/learning/contract.md](docs/protocol/learning/contract.md) |
 | Codex ledger bridge | [docs/protocol/codex/ledger-cli-adoption.md](docs/protocol/codex/ledger-cli-adoption.md) |
-| Cursor Desktop app seats | [docs/protocol/cursor/continuation.md](docs/protocol/cursor/continuation.md) |
-| Cursor seat roles | [docs/protocol/cursor/roles/](docs/protocol/cursor/roles/) |
 | Protocol assembly map | [docs/protocol/protocol-assembly-map.md](docs/protocol/protocol-assembly-map.md) |
 
 ## Verification

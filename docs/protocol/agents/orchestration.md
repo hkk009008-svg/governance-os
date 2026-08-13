@@ -37,13 +37,13 @@ read-only investigations may run concurrently when they ask distinct questions.
 
 ## One mailbox across provider sides
 
-Seat names are provider-agnostic identities. Any side — Claude, Codex, AGY, or
-Cursor — may hold any seat, and the standing pair may span two different apps.
+Seat names are provider-agnostic identities. Either supported side — Claude or
+Codex — may hold any seat, and the standing pair may span the two apps.
 Work passes between seats, and therefore between providers, through the same
 durable surfaces on every side:
 
 - committed mailbox events through the fixed writer
-  (`coordination/bin/send-event`; Cursor app seats use their bound wrappers);
+  (`coordination/bin/send-event`);
 - ownership exchange through a durable accepted handoff
   (`scripts/draft_handoff.py` drafts one from live evidence);
 - the committed verify-request / verification-report Compact Pair for review.

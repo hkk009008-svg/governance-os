@@ -49,7 +49,7 @@ Codex deployment deltas live at
 
 ## Provider posture
 
-Codex, Claude, Cursor, and AGY may hold formal mailbox roles only after explicit
+Codex and Claude may hold formal mailbox roles only after explicit
 assignment through their normal adapters. Native helpers stay parent-scoped.
 Mailbox role identity and signed principal identity are separate facts: a
 target binds each signer, key, and runner explicitly.

@@ -28,19 +28,12 @@ EVIDENCE_PATH = (
 )
 
 SURFACE_PROBES = {
-    ".agents/agents/": ".agents/agents/readiness-bridge.md",
     ".agents/skills/": ".agents/skills/four-seat-protocol/SKILL.md",
-    ".agents/workflows/": ".agents/workflows/pipeline-start.md",
     ".claude/agents/": ".claude/agents/readiness-bridge.md",
     ".claude/settings.json": ".claude/settings.json",
     ".claude/skills/": ".claude/skills/four-seat-protocol/SKILL.md",
     ".codex/agents/": ".codex/agents/protocol-operator.toml",
     ".codex/config.toml": ".codex/config.toml",
-    ".cursor/agents/": ".cursor/agents/readiness-bridge.md",
-    ".cursor/hooks.json": ".cursor/hooks.json",
-    ".cursor/hooks/": ".cursor/hooks/seat-policy",
-    ".cursor/rules/": ".cursor/rules/cursor-seats.mdc",
-    ".cursor/skills/": ".cursor/skills/review-next/SKILL.md",
     ".github/workflows/": ".github/workflows/ci.yml",
     "config/": "config/model-families.toml",
     ":(glob)tests/**/conftest.py": "tests/conftest.py",
@@ -65,6 +58,7 @@ SURFACE_PROBES = {
     "scripts/": "scripts/ci_admission_gate.py",
     "setup.cfg": "setup.cfg",
     "sitecustomize.py": "sitecustomize.py",
+    "tests/unit/test_provider_surface_map.py": "tests/unit/test_provider_surface_map.py",
     "tox.ini": "tox.ini",
     "threeway/": "threeway/keys.py",
     "usercustomize.py": "usercustomize.py",
@@ -87,6 +81,7 @@ REQUIRED_ACTIVE_AUTHORITY_SURFACES = frozenset(
         "governance.toml",
         "scripts/",
         "sitecustomize.py",
+        "tests/unit/test_provider_surface_map.py",
         "threeway/",
     }
 )
@@ -304,7 +299,7 @@ def test_every_declared_trust_or_effect_surface_is_matched_non_vacuously(
 def test_authority_commit_without_report_is_blocked(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
     touched = _commit_file(
-        root, "scripts/cursor_hook_policy.py", "POLICY = 1\n", "feat: hook policy"
+        root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     head = _git(root, "rev-parse", "HEAD")
 
@@ -312,7 +307,7 @@ def test_authority_commit_without_report_is_blocked(tmp_path: Path) -> None:
 
     assert not outcome.admitted
     assert touched in outcome.uncovered
-    assert "scripts/cursor_hook_policy.py" in outcome.uncovered[touched]
+    assert "scripts/mailbox_writer.py" in outcome.uncovered[touched]
     assert "BLOCKED" in gate.render(outcome)
 
 
@@ -338,7 +333,7 @@ def test_merge_resolution_only_authority_change_is_detected(
     root, _ = _init_repo(tmp_path)
     base = _commit_file(
         root,
-        "scripts/cursor_hook_policy.py",
+        "scripts/mailbox_writer.py",
         "POLICY = 0\n",
         "test: establish protected policy",
     )
@@ -348,22 +343,22 @@ def test_merge_resolution_only_authority_change_is_detected(
     _commit_file(root, "side.txt", "side\n", "test: topic side")
     _git(root, "checkout", "-q", main_branch)
     _git(root, "merge", "--no-ff", "--no-commit", "side")
-    (root / "scripts" / "cursor_hook_policy.py").write_text(
+    (root / "scripts" / "mailbox_writer.py").write_text(
         "POLICY = 1\n", encoding="utf-8"
     )
-    _git(root, "add", "scripts/cursor_hook_policy.py")
+    _git(root, "add", "scripts/mailbox_writer.py")
     _git(root, "commit", "-q", "-m", "test: merge resolution changes policy")
     head = _git(root, "rev-parse", "HEAD")
 
     commits = gate.authority_commits(root, base, head)
 
-    assert commits[head] == ("scripts/cursor_hook_policy.py",)
+    assert commits[head] == ("scripts/mailbox_writer.py",)
 
 
 def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
-        root, "scripts/cursor_hook_policy.py", "POLICY = 1\n", "feat: hook policy"
+        root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     _land_pair(root, base, reviewed_head)
     head = _git(root, "rev-parse", "HEAD")
@@ -418,7 +413,7 @@ def test_same_family_high_risk_reviewer_is_rejected_by_canonical_validator(
 ) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
-        root, "scripts/cursor_hook_policy.py", "POLICY = 1\n", "feat: hook policy"
+        root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     _land_pair(root, base, reviewed_head, reviewer_model="gpt-5.6-terra")
     head = _git(root, "rev-parse", "HEAD")
@@ -440,7 +435,7 @@ def test_report_not_covering_the_authority_commit_does_not_admit(
     )
     _land_pair(root, base, reviewed_head)
     touched = _commit_file(
-        root, "scripts/cursor_hook_policy.py", "POLICY = 2\n", "feat: unreviewed policy"
+        root, "scripts/mailbox_writer.py", "POLICY = 2\n", "feat: unreviewed policy"
     )
     head = _git(root, "rev-parse", "HEAD")
 
@@ -452,7 +447,7 @@ def test_report_not_covering_the_authority_commit_does_not_admit(
 
 def test_empty_range_and_cli_exit_codes(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
-    _commit_file(root, "scripts/cursor_hook_policy.py", "POLICY = 1\n", "feat: policy")
+    _commit_file(root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: policy")
     head = _git(root, "rev-parse", "HEAD")
 
     assert gate.main(["--root", str(root), "--base", head, "--head", head]) == 0

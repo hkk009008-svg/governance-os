@@ -13,8 +13,7 @@ def test_retired_claude_cli_launcher_is_absent(repo_root: Path) -> None:
 
     Nothing replaced it, deliberately. Pipeline has no Claude launcher or
     governance-seat registry. Claude Desktop's host session registry and relay
-    are convenience surfaces, unlike Cursor's Pipeline registry that gates
-    in-app effects. Claude seat naming is convention; review identity is
+    are convenience surfaces, not authority gates. Claude seat naming is convention; review identity is
     decided at publication by `scripts/compact_pair_loop.py`.
     """
     assert not (repo_root / "scripts/claude_seat_launcher.py").exists()

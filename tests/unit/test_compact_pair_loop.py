@@ -31,13 +31,27 @@ REPORT_PATH = (
 )
 
 
+# Hermetic fixture-git environment: the ambient VM configuration (commit
+# signing via the exec-daemon shim, fsmonitor daemons) must not run inside
+# throwaway test repositories; see tests/unit/test_check_coordination.py.
+_GIT_ENV = {
+    "PATH": "/usr/bin:/bin",
+    "HOME": "/var/empty" if Path("/var/empty").is_dir() else "/nonexistent",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_COUNT": "1",
+    "GIT_CONFIG_KEY_0": "init.defaultBranch",
+    "GIT_CONFIG_VALUE_0": "main",
+}
+
+
 def _git(root: Path, *args: str) -> str:
     completed = subprocess.run(
-        ["env", "-u", "GIT_INDEX_FILE", "git", *args],
+        ["git", *args],
         cwd=root,
         check=True,
         capture_output=True,
         text=True,
+        env=_GIT_ENV,
     )
     return completed.stdout.strip()
 
@@ -967,7 +981,7 @@ def test_same_model_across_operator_seats_is_not_independent(tmp_path: Path) -> 
         ("gpt-5.6-sol", "gpt-5.6-terra"),
         ("gpt-5.6-terra", "codex-gpt-5.6-terra"),
         ("gpt-5.6-sol", "GPT-5 Codex"),
-        ("antigravity-gemini-3.6", "gemini-3.6-flash"),
+        ("google-gemini-3.6", "gemini-3.6-flash"),
         ("claude-opus-5", "claude-sonnet-5"),
         ("claude-opus-5", "anthropic-claude-sonnet-5"),
         ("gpt-5.6-sol", "openai-gpt-5.6-terra"),
@@ -1015,7 +1029,7 @@ def test_high_risk_control_rejects_same_family_reviewer(
     ("author_model", "reviewer_model"),
     (
         ("gpt-5.6-sol", "claude-opus-5"),
-        ("gpt-5.6-sol", "antigravity-gemini-3.6"),
+        ("gpt-5.6-sol", "google-gemini-3.6"),
         ("claude-opus-5", "gpt-5.6-terra"),
         ("grok-4.5", "gemini-3.1-pro-high"),
     ),

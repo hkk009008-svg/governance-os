@@ -271,8 +271,14 @@ def test_state_and_lock_symlinks_are_rejected_without_mutation(
     assert target.read_bytes() == b"preserve-this"
 
 
-@pytest.mark.parametrize("replacement", ("fifo", "wrong_mode", "same_mode_new_inode"))
-def test_state_replacement_between_lstat_and_open_is_rejected_before_read(
+def _open(real_open, path: object, flags: int, mode: int = 0o777, *, dir_fd: int | None = None) -> int:
+    if dir_fd is None:
+        return real_open(path, flags, mode)
+    return real_open(path, flags, mode, dir_fd=dir_fd)
+
+
+@pytest.mark.parametrize("replacement", ("fifo", "wrong_mode"))
+def test_state_unsafe_object_present_before_open_is_rejected_before_read(
     repo: Path, monkeypatch, replacement: str
 ):
     consult.reserve(repo, _raw(VALID))
@@ -280,33 +286,34 @@ def test_state_replacement_between_lstat_and_open_is_rejected_before_read(
     real_open = consult.os.open
     swapped = False
 
-    def swap_open(path: object, flags: int, mode: int = 0o777) -> int:
+    def swap_open(
+        path: object, flags: int, mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> int:
         nonlocal swapped
-        if Path(path) == state_path and not flags & os.O_CREAT:
+        if Path(path).name == consult.STATE_NAME and not flags & os.O_CREAT:
             assert flags & os.O_NONBLOCK, "state open must not block before fstat"
             state_path.unlink()
             if replacement == "fifo":
                 os.mkfifo(state_path, 0o600)
             else:
                 state_path.write_bytes(b"substituted")
-                state_path.chmod(0o600 if replacement == "same_mode_new_inode" else 0o644)
+                state_path.chmod(0o644)
             swapped = True
-        return real_open(path, flags, mode)
+        return _open(real_open, path, flags, mode, dir_fd=dir_fd)
 
     monkeypatch.setattr(consult.os, "open", swap_open)
     monkeypatch.setattr(
         consult.os,
         "fdopen",
-        lambda *_args, **_kwargs: pytest.fail("substituted state was opened for read"),
+        lambda *_args, **_kwargs: pytest.fail("unsafe state was opened for read"),
     )
-
     with pytest.raises(consult.ConsultError, match="^state_path_invalid$"):
         consult.reserve(repo, _raw(VALID))
     assert swapped is True
 
 
-@pytest.mark.parametrize("replacement", ("fifo", "wrong_mode", "same_mode_new_inode"))
-def test_lock_replacement_between_lstat_and_open_is_rejected_before_flock(
+@pytest.mark.parametrize("replacement", ("fifo", "wrong_mode"))
+def test_lock_unsafe_object_present_before_open_is_rejected_before_flock(
     repo: Path, monkeypatch, replacement: str
 ):
     consult.reserve(repo, _raw(VALID))
@@ -314,33 +321,130 @@ def test_lock_replacement_between_lstat_and_open_is_rejected_before_flock(
     real_open = consult.os.open
     swapped = False
 
-    def swap_open(path: object, flags: int, mode: int = 0o777) -> int:
+    def swap_open(
+        path: object, flags: int, mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> int:
         nonlocal swapped
-        if Path(path) == lock_path and flags & os.O_CREAT:
+        if Path(path).name == consult.LOCK_NAME and flags & os.O_CREAT:
             assert flags & os.O_NONBLOCK, "lock open must not block before fstat"
             lock_path.unlink()
             if replacement == "fifo":
                 os.mkfifo(lock_path, 0o600)
             else:
                 lock_path.write_bytes(b"substituted")
-                lock_path.chmod(0o600 if replacement == "same_mode_new_inode" else 0o644)
+                lock_path.chmod(0o644)
             swapped = True
-        return real_open(path, flags, mode)
+        return _open(real_open, path, flags, mode, dir_fd=dir_fd)
 
     monkeypatch.setattr(consult.os, "open", swap_open)
     monkeypatch.setattr(
         consult.fcntl,
         "flock",
-        lambda *_args, **_kwargs: pytest.fail("substituted lock reached flock"),
+        lambda *_args, **_kwargs: pytest.fail("unsafe lock reached flock"),
     )
-
     with pytest.raises(consult.ConsultError, match="^state_path_invalid$"):
         consult.reserve(repo, _raw(VALID))
     assert swapped is True
     if replacement != "fifo":
         assert lock_path.read_bytes() == b"substituted"
-        expected_mode = 0o600 if replacement == "same_mode_new_inode" else 0o644
-        assert stat.S_IMODE(lock_path.lstat().st_mode) == expected_mode
+        assert stat.S_IMODE(lock_path.lstat().st_mode) == 0o644
+
+
+@pytest.mark.parametrize("path_index", (0, 1), ids=("state", "lock"))
+def test_state_and_lock_are_opened_before_path_metadata(
+    repo: Path, monkeypatch, path_index: int
+):
+    consult.reserve(repo, _raw(VALID))
+    target = _paths(repo)[path_index]
+    target_name = (consult.STATE_NAME, consult.LOCK_NAME)[path_index]
+    real_open = consult.os.open
+    real_lstat = Path.lstat
+    target_opened = False
+
+    def track_open(
+        path: object, flags: int, mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> int:
+        nonlocal target_opened
+        fd = _open(real_open, path, flags, mode, dir_fd=dir_fd)
+        if Path(path).name == target_name:
+            target_opened = True
+        return fd
+
+    def reject_preopen_lstat(path: Path):
+        if path == target and not target_opened:
+            pytest.fail("target path metadata inspected before open")
+        return real_lstat(path)
+
+    monkeypatch.setattr(consult.os, "open", track_open)
+    monkeypatch.setattr(Path, "lstat", reject_preopen_lstat)
+    assert consult.reserve(repo, _raw(VALID))["created"] is False
+
+
+@pytest.mark.parametrize("path_index", (0, 1), ids=("state", "lock"))
+def test_same_mode_replacement_after_open_is_rejected_before_use(
+    repo: Path, monkeypatch, path_index: int
+):
+    consult.reserve(repo, _raw(VALID))
+    target = _paths(repo)[path_index]
+    target_name = (consult.STATE_NAME, consult.LOCK_NAME)[path_index]
+    real_open = consult.os.open
+    swapped = False
+
+    def swap_after_open(
+        path: object, flags: int, mode: int = 0o777, *, dir_fd: int | None = None
+    ) -> int:
+        nonlocal swapped
+        fd = _open(real_open, path, flags, mode, dir_fd=dir_fd)
+        if Path(path).name == target_name and not swapped:
+            target.unlink()
+            target.write_bytes(b"substituted")
+            target.chmod(0o600)
+            swapped = True
+        return fd
+
+    monkeypatch.setattr(consult.os, "open", swap_after_open)
+    if path_index == 0:
+        monkeypatch.setattr(
+            consult.os,
+            "fdopen",
+            lambda *_args, **_kwargs: pytest.fail("replacement reached state read"),
+        )
+    else:
+        monkeypatch.setattr(
+            consult.fcntl,
+            "flock",
+            lambda *_args, **_kwargs: pytest.fail("replacement reached flock"),
+        )
+    with pytest.raises(consult.ConsultError, match="^state_path_invalid$"):
+        consult.reserve(repo, _raw(VALID))
+    assert swapped is True
+
+
+def test_lock_replacement_while_waiting_is_rejected_before_state_read(
+    repo: Path, monkeypatch
+):
+    consult.reserve(repo, _raw(VALID))
+    _, lock_path = _paths(repo)
+    real_flock = consult.fcntl.flock
+    swapped = False
+
+    def swap_before_return(fd: int, operation: int) -> None:
+        nonlocal swapped
+        real_flock(fd, operation)
+        lock_path.unlink()
+        lock_path.write_bytes(b"substituted")
+        lock_path.chmod(0o600)
+        swapped = True
+
+    monkeypatch.setattr(consult.fcntl, "flock", swap_before_return)
+    monkeypatch.setattr(
+        consult,
+        "_read",
+        lambda *_args: pytest.fail("state read after lock replacement"),
+    )
+    with pytest.raises(consult.ConsultError, match="^state_path_invalid$"):
+        consult.reserve(repo, _raw(VALID))
+    assert swapped is True
 
 
 @pytest.mark.parametrize(
@@ -416,7 +520,13 @@ def test_finish_write_failure_leaves_reserved_terminal(repo: Path, monkeypatch):
     state_path, _ = _paths(repo)
     before = state_path.read_bytes()
 
-    def fail_replace(source: object, destination: object) -> None:
+    def fail_replace(
+        source: object,
+        destination: object,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
         raise OSError("simulated write failure")
 
     monkeypatch.setattr(consult.os, "replace", fail_replace)

@@ -36,12 +36,3 @@ def test_portability_cutover_does_not_rewrite_historical_artifacts(repo_root: Pa
     for relative, expected in HISTORICAL_SENTINELS.items():
         actual = hashlib.sha256((repo_root / relative).read_bytes()).hexdigest()
         assert actual == expected, relative
-
-
-def test_headless_cursor_status_uses_cursor_seat(repo_root: Path):
-    body = (repo_root / "docs/protocol/threeway/HEADLESS-REVIEW.md").read_text(
-        encoding="utf-8"
-    )
-    assert "coordination/bin/cursor-seat status" in body
-    status_lines = [line for line in body.splitlines() if "status" in line.lower()]
-    assert all("target_binding.py" not in line for line in status_lines)

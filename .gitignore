@@ -69,8 +69,8 @@ coordination/threeway/events/*
 
 # Per-seat git index files (created by D-a launcher; never committed)
 .git/index-codex-*
-.git/index-cursor-*
-.git/index-agy-*
+# Additional provider-local indexes are unsupported.
+# Native worktrees use their ordinary Git index.
 
 # Hook sync markers (regenerated each hook run)
 .claude/hooks/.last-index-sync-*
@@ -91,8 +91,8 @@ STATE.md
 .pytest_cache/
 .pytest-verify-tmp/
 
-# AGY runtime state
-.agy/runtime/
+# Provider runtime state belongs outside this repository.
+# Repository-local provider caches must remain untracked by their owners.
 
 # Subagent-driven-development scratch ledger (skill-owned, never committed)
 .superpowers/
@@ -116,21 +116,9 @@ STATE.md
 .codex/runtime/opus-review-receipts/
 .codex/runtime/lane-v-report-publications/
 
-# Cursor SDK seat bindings, dispatch ledger, locks, and review outbox.
-.cursor/runtime/
-
 # Retired Claude hook runtime state (the hook layer itself is gone; these linger
 # in existing checkouts and must never be committed)
 .claude/hooks/
-
-# AGY native-subagent workspaces. Scratch inputs for one run: they grant no
-# authority, are not a mailbox, and are not durable protocol state. Durable
-# inter-seat speech goes through coordination/bin/send-event like every other
-# side. Skills, host-discovered custom agents, and saved workflows are tracked.
-.agents/*/
-!.agents/skills/
-!.agents/agents/
-!.agents/workflows/
 
 # Learning-plane episodic index: derived, rebuildable, workspace-scope
 # projection with no authority (ADR-067); never committed.

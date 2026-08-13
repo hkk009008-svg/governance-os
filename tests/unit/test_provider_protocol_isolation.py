@@ -1,15 +1,14 @@
-"""Cross-provider environment containment regressions."""
+"""Codex environment containment regressions."""
 
 from __future__ import annotations
 
 import pytest
 
-import agy_protocol_model as agy
 import codex_protocol_model as codex
 
 
-FOREIGN_PREFIXES = ("AGY", "ANTIGRAVITY", "CLAUDE", "CURSOR")
-AGY_PROFILE_LABELS = ("director", "director2", "operator", "operator2", "coordinator")
+FOREIGN_PREFIXES = ("CLAUDE", "EXTERNAL")
+ROLE_LABELS = ("director", "director2", "operator", "operator2", "coordinator")
 FOREIGN_IDENTITY_VALUES = {
     "SEAT": "director",
     "AGENT_MODE": "live-seat",
@@ -36,7 +35,7 @@ def _codex_baseline() -> dict[str, str]:
 
 
 @pytest.mark.parametrize("prefix", FOREIGN_PREFIXES)
-@pytest.mark.parametrize("profile", AGY_PROFILE_LABELS)
+@pytest.mark.parametrize("profile", ROLE_LABELS)
 def test_foreign_profile_labels_never_select_a_codex_live_seat(
     prefix: str, profile: str
 ) -> None:
@@ -55,7 +54,6 @@ def test_every_foreign_identity_input_is_inert_to_every_codex_output(
     values = codex.infer_runtime_env(
         {f"{prefix}_{suffix}": FOREIGN_IDENTITY_VALUES[suffix]}
     )
-
     assert values == _codex_baseline()
 
 
@@ -67,30 +65,7 @@ def test_every_foreign_policy_input_is_inert_to_every_codex_output(
     values = codex.infer_runtime_env(
         {f"{prefix}_{suffix}": FOREIGN_POLICY_VALUES[suffix]}
     )
-
     assert values == _codex_baseline()
-
-
-@pytest.mark.parametrize("profile", AGY_PROFILE_LABELS)
-def test_all_agy_profile_runtime_labels_are_inert_to_codex(profile: str) -> None:
-    agy_runtime = agy.infer_runtime_env(
-        profile=profile,
-        mode=agy.SINGLE_MODEL_MODE,
-    )
-
-    assert set(agy_runtime) == {
-        "AGY_SEAT",
-        "AGY_AGENT_MODE",
-        "AGY_AGENT_ROLE",
-        "AGY_BEHAVIOR_SOURCE",
-    }
-    assert agy_runtime == {
-        "AGY_SEAT": f"agy-unit-{profile}",
-        "AGY_AGENT_MODE": agy.SINGLE_MODEL_MODE,
-        "AGY_AGENT_ROLE": f"agy-unit-{profile}",
-        "AGY_BEHAVIOR_SOURCE": f"agy-unit-{profile}",
-    }
-    assert codex.infer_runtime_env(agy_runtime) == _codex_baseline()
 
 
 def test_genuine_codex_identity_drives_only_derived_codex_contract() -> None:
@@ -150,6 +125,5 @@ def test_each_genuine_codex_identity_input_is_preserved(
     environ: dict[str, str], expected: dict[str, str]
 ) -> None:
     values = codex.infer_runtime_env(environ)
-
     for name, value in expected.items():
         assert values[name] == value

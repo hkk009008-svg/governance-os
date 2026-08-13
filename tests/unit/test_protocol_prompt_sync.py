@@ -569,8 +569,6 @@ def test_checkpoint_contract_is_pinned_across_provider_surfaces() -> None:
     for path in (
         "docs/protocol/codex/continuation.md",
         "docs/protocol/claude/continuation.md",
-        "docs/protocol/agy/continuation.md",
-        "docs/protocol/cursor/continuation.md",
     ):
         adapter = _compact(_read(path))
         for phrase in (
@@ -592,12 +590,8 @@ def test_checkpoint_contract_is_pinned_across_provider_surfaces() -> None:
     assert "newest campaign checkpoint" in modes
 
 
-def test_claude_and_agy_route_new_lessons_through_learning_candidates() -> None:
-    for path in (
-        "CLAUDE.md",
-        "docs/protocol/agy/continuation.md",
-        ".agents/skills/antigravity-harness/SKILL.md",
-    ):
+def test_claude_routes_new_lessons_through_learning_candidates() -> None:
+    for path in ("CLAUDE.md",):
         text = _compact(_read(path))
         for required in (
             "finish the scoped task",
@@ -632,12 +626,8 @@ def test_provider_routers_remain_discoverable() -> None:
     agents = _compact(_read("AGENTS.md"))
 
     for marker in (
-        "docs/protocol/agy/continuation.md",
-        ".agents/skills/antigravity-harness/",
-        ".agents/agents/",
-        "docs/protocol/cursor/continuation.md",
-        ".cursor/rules/",
-        "docs/protocol/cursor/roles/",
+        "docs/protocol/codex/continuation.md",
+        "docs/protocol/claude/continuation.md",
     ):
         assert marker in agents
 

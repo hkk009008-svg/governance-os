@@ -1,5 +1,4 @@
 """Unit tests for the three-way activation and unread scripts:
-- scripts/agy_observer.py
 - scripts/sign_ci_result.py
 - scripts/run_merge_gate.py
 - scripts/bus_unread.py
@@ -16,7 +15,6 @@ import subprocess
 
 import pytest
 
-import agy_observer
 from pathlib import Path
 
 import bus_unread
@@ -141,82 +139,6 @@ def temp_git_repo(tmp_path, monkeypatch):
         "base_sha": base_sha,
         "branch_sha": branch_sha,
     }
-
-
-def test_agy_observer_summarize(temp_git_repo):
-    repo_dir = temp_git_repo["repo_dir"]
-    store = RefEventStore(repo_dir)
-
-    # 1. Empty bus
-    res = agy_observer.summarize(store)
-    assert res["total_events"] == 0
-    assert res["briefs"] == {}
-    assert res["candidates"] == {}
-    assert res["ci_results"] == {}
-
-    # 2. One event of each summarized kind
-    overseer_priv = keys.load_private("overseer")
-    coord_priv = keys.load_private("coordinator")
-    store.append(
-        _ev("brief", signer="overseer:mech:s1", ev_id="brief-1",
-            payload={"brief_id": "b1", "assigned_tier": "T1",
-                     "allowed_paths": ["file1.txt"]}),
-        overseer_priv)
-    store.append(
-        _ev("candidate", signer="coordinator:claude:s1",
-            candidate_id="A:c1", subject_sha="fake_integ_sha",
-            payload=_cand_payload(temp_git_repo, "fake_integ_sha")),
-        coord_priv)
-    store.append(
-        _ev("attestation", signer="operator:claude:s1",
-            candidate_id="A:c1", subject_sha=temp_git_repo["branch_sha"],
-            payload={"kind": "preliminary", "verdict": "GO"}),
-        keys.load_private("operator"))
-    store.append(
-        _ev("release_requested", signer="coordinator:claude:s1",
-            candidate_id="A:c1", payload={"candidate_id": "A:c1"}),
-        coord_priv)
-    store.append(
-        _ev("release_order", signer="overseer:mech:s1",
-            candidate_id="A:c1", payload={"candidate_id": "A:c1"}),
-        overseer_priv)
-    store.append(
-        _ev("ci_result", signer="ci:mech:s1",
-            subject_sha="fake_integ_sha", payload={"result": "PASS"}),
-        keys.load_private("ci"))
-
-    # Verify parsing and count state mapping
-    res = agy_observer.summarize(store)
-    assert res["total_events"] == 6
-    assert "b1" in res["briefs"]
-    assert "A:c1" in res["candidates"]
-    c = res["candidates"]["A:c1"]
-    assert c["integration_sha"] == "fake_integ_sha"
-    assert c["attestations"] == 1
-    assert c["release_requested"] is True
-    assert c["release_order"] is True
-    assert res["ci_results"].get("fake_integ_sha") == "PASS"
-
-    # 3. A re-emitted candidate updates integration_sha/signer in place,
-    #    preserving accumulated attestation/release state.
-    store.append(
-        _ev("candidate", signer="coordinator:claude:s2",
-            candidate_id="A:c1", subject_sha="fake_integ_sha_v2",
-            payload=_cand_payload(temp_git_repo, "fake_integ_sha_v2")),
-        coord_priv)
-    res = agy_observer.summarize(store)
-    assert res["candidates"]["A:c1"]["integration_sha"] == "fake_integ_sha_v2"
-    assert res["candidates"]["A:c1"]["signer"] == "coordinator:claude:s2"
-    assert res["candidates"]["A:c1"]["attestations"] == 1  # preserved
-
-    # 4. Brief supersession pops the brief
-    store.append(
-        _ev("brief_superseded", signer="overseer:mech:s1",
-            payload={"supersedes_event_id": "brief-1"},
-            supersedes_event_id="brief-1"),
-        overseer_priv)
-    res = agy_observer.summarize(store)
-    assert "b1" not in res["briefs"]
 
 
 def test_sign_ci_result_script(temp_git_repo):

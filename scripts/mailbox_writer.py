@@ -424,7 +424,7 @@ def validate_event_candidate_bytes(
 
 def _read_candidate_snapshot(
     directory_fd: int, candidate_name: str
-) -> tuple[bytes, tuple[int, int]]:
+) -> tuple[bytes, tuple[int, int], int]:
     flags = (
         os.O_RDONLY
         | getattr(os, "O_CLOEXEC", 0)
@@ -457,9 +457,11 @@ def _read_candidate_snapshot(
             raise MailboxWriterError(
                 "send-event candidate is not one bounded text event"
             )
-        return raw, (observed.st_dev, observed.st_ino)
-    finally:
+        identity = (observed.st_dev, observed.st_ino)
+    except BaseException:
         os.close(candidate_fd)
+        raise
+    return raw, identity, candidate_fd
 
 
 def _open_writer_temp(directory_fd: int) -> tuple[str, int]:
@@ -614,10 +616,11 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
             directory_fd = os.open(sent, directory_flags)
         except OSError as exc:
             raise MailboxWriterError("send-event sent directory could not be pinned") from exc
+        candidate_fd = -1
         try:
             if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
                 raise MailboxWriterError("send-event sent path is not a directory")
-            raw, candidate_identity = _read_candidate_snapshot(
+            raw, candidate_identity, candidate_fd = _read_candidate_snapshot(
                 directory_fd, candidate.name
             )
             validate_event_candidate_bytes(root, raw, relative)
@@ -772,6 +775,8 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
             if stage_error is not None:
                 return False
         finally:
+            if candidate_fd >= 0:
+                os.close(candidate_fd)
             os.close(directory_fd)
     return True
 

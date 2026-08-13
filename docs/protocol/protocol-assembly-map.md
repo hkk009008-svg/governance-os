@@ -6,7 +6,7 @@ fact in the lowest surface that actually owns it and link instead of copying.
 ```mermaid
 flowchart TD
   Root["AGENTS.md / provider root routers"] --> Policy["docs/protocol/agents/"]
-  Policy --> Adapters["Codex / Claude / AGY / Cursor continuations"]
+  Policy --> Adapters["Codex / Claude continuations"]
   Policy --> Skills[".agents/skills/ canonical behavior"]
   Adapters --> Native["provider-native skills, agents, launchers, hooks"]
   Skills --> Kernel["scripts/ executable policy and writers"]
@@ -24,10 +24,7 @@ flowchart TD
 | Work phase | `docs/protocol/work-modes.md` | Independent from review risk and authority. |
 | Codex mechanics | `docs/protocol/codex/continuation.md`, `.codex/agents/` | Host task tools and native worktrees; evidence-ledger routes through `docs/protocol/codex/ledger-cli-adoption.md`. |
 | Claude mechanics | `docs/protocol/claude/`, `.claude/` | No lifecycle hook or startup binding. |
-| AGY mechanics | `docs/protocol/agy/`, `.agents/agents/`, `.agents/workflows/`, `scripts/agy_*` | Explicit roles; host-discovered helpers remain parent-scoped. |
-| Cursor mechanics | `docs/protocol/cursor/continuation.md`, `docs/protocol/cursor/roles/`, `.cursor/`, `scripts/cursor_*` | `scripts/cursor_app_binding.py`, `.cursor/skills/review-next/SKILL.md`, and `.cursor/hooks.json` own app binding and the only lifecycle hook plane. |
 | Canonical reusable skills | `.agents/skills/` | Provider copies are discovery/adaptation layers. |
-| AGY custom agents and saved workflows | `.agents/agents/`, `.agents/workflows/` | Host-native, parent-scoped helpers and repeatable prompts; neither grants a role. |
 | Identity, ownership, risk, effects | `scripts/codex_protocol_model.py` | Executable policy seam. |
 | Formal exact-range review | `scripts/compact_pair_loop.py` | Request/report grammar and binding. |
 | Event/cursor mutation | `scripts/mailbox_writer.py`, `coordination/bin/send-event`, `consume-events` | Validated serialized write sites; commit/effect remains separate. |
