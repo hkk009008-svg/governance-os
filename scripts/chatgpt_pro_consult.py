@@ -88,30 +88,39 @@ def _common(repo_root: Path | str) -> Path:
         return common
     except (OSError, subprocess.SubprocessError, UnicodeError, ValueError) as exc:
         raise ConsultError("repo_invalid") from exc
-def _fixed(path: Path):
+def _named(common_fd: int, name: str):
+    return os.stat(name, dir_fd=common_fd, follow_symlinks=False)
+def _open_error(common_fd: int, name: str, exc: OSError):
     try:
-        metadata = path.lstat()
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
+        metadata = _named(common_fd, name)
+    except OSError:
         raise ConsultError("io_failed") from exc
     if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o600:
-        raise ConsultError("state_path_invalid")
-    return metadata
-def _bound(fd, expected, path):
-    opened, current = os.fstat(fd), path.lstat()
+        raise ConsultError("state_path_invalid") from exc
+    raise ConsultError("io_failed") from exc
+def _bound(fd: int, common_fd: int, name: str) -> bool:
+    opened = os.fstat(fd)
+    try:
+        current = _named(common_fd, name)
+    except FileNotFoundError:
+        return False
     identity = opened.st_dev, opened.st_ino
     return (stat.S_ISREG(opened.st_mode) and stat.S_IMODE(opened.st_mode) == 0o600 and
-            identity == (current.st_dev, current.st_ino) and (expected is None or identity == (expected.st_dev, expected.st_ino)))
-def _read(path: Path) -> dict[str, dict[str, str]]:
-    expected = _fixed(path)
-    if expected is None:
-        return {}
+            identity == (current.st_dev, current.st_ino))
+def _read(common_fd: int) -> dict[str, dict[str, str]]:
+    fd = -1
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        if not _bound(fd, expected, path):
-            os.close(fd); raise ConsultError("state_path_invalid")
-        with os.fdopen(fd, "rb") as stream:
+        try:
+            fd = os.open(STATE_NAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=common_fd)
+        except FileNotFoundError:
+            return {}
+        except OSError as exc:
+            _open_error(common_fd, STATE_NAME, exc)
+        if not _bound(fd, common_fd, STATE_NAME):
+            raise ConsultError("state_path_invalid")
+        stream = os.fdopen(fd, "rb")
+        fd = -1
+        with stream:
             value = _loads(stream.read())
     except ConsultError as exc:
         if exc.code == "invalid_json":
@@ -119,6 +128,9 @@ def _read(path: Path) -> dict[str, dict[str, str]]:
         raise
     except OSError as exc:
         raise ConsultError("io_failed") from exc
+    finally:
+        if fd >= 0:
+            os.close(fd)
     if not isinstance(value, dict):
         raise ConsultError("state_corrupt")
     for key, record in value.items():
@@ -132,7 +144,27 @@ def _read(path: Path) -> dict[str, dict[str, str]]:
         if not isinstance(status_value, str) or status_value not in TERMINAL:
             raise ConsultError("state_corrupt")
     return value
-def _write(common: Path, state: dict[str, dict[str, str]]) -> None:
+def _open_lock(common_fd: int) -> int:
+    fd, flags = -1, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK
+    try:
+        try:
+            fd = os.open(LOCK_NAME, flags | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=common_fd)
+            os.fchmod(fd, 0o600)
+        except FileExistsError:
+            fd = os.open(LOCK_NAME, flags, dir_fd=common_fd)
+        if not _bound(fd, common_fd, LOCK_NAME):
+            raise ConsultError("state_path_invalid")
+        return fd
+    except ConsultError:
+        if fd >= 0:
+            os.close(fd)
+        raise
+    except OSError as exc:
+        if fd >= 0:
+            os.close(fd)
+        _open_error(common_fd, LOCK_NAME, exc)
+        raise ConsultError("io_failed") from exc
+def _write(common: Path, common_fd: int, state: dict[str, dict[str, str]]) -> None:
     payload = json.dumps(state, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n"
     fd, temporary = -1, ""
     try:
@@ -147,13 +179,9 @@ def _write(common: Path, state: dict[str, dict[str, str]]) -> None:
         os.fsync(fd)
         os.close(fd)
         fd = -1
-        os.replace(temporary, common / STATE_NAME)
+        os.replace(temporary, STATE_NAME, dst_dir_fd=common_fd)
         temporary = ""
-        directory_fd = os.open(common, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        os.fsync(common_fd)
     except OSError as exc:
         raise ConsultError("io_failed") from exc
     finally:
@@ -168,41 +196,34 @@ def _write(common: Path, state: dict[str, dict[str, str]]) -> None:
             except OSError:
                 pass
 def _locked(common: Path, action):
-    lock_path, lock_fd = common / LOCK_NAME, -1
-    expected = _fixed(lock_path)
+    common_fd = lock_fd = -1
     try:
-        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
-        if not _bound(lock_fd, expected, lock_path):
-            raise ConsultError("state_path_invalid")
-        os.fchmod(lock_fd, 0o600)
+        common_fd = os.open(common, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        lock_fd = _open_lock(common_fd)
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        if not _bound(lock_fd, common_fd, LOCK_NAME):
+            raise ConsultError("state_path_invalid")
+        return action(_read(common_fd), common_fd)
     except ConsultError:
-        if lock_fd >= 0:
-            os.close(lock_fd)
         raise
     except OSError as exc:
+        raise ConsultError("io_failed") from exc
+    finally:
         if lock_fd >= 0:
             os.close(lock_fd)
-        try:
-            _fixed(lock_path)
-        except ConsultError as invalid:
-            raise invalid from exc
-        raise ConsultError("io_failed") from exc
-    try:
-        return action(_read(common / STATE_NAME))
-    finally:
-        os.close(lock_fd)
+        if common_fd >= 0:
+            os.close(common_fd)
 def reserve(repo_root: Path | str, raw_payload: bytes) -> dict[str, object]:
     key, request_hash = _normalize(raw_payload)
     common = _common(repo_root)
-    def apply(state):
+    def apply(state, common_fd):
         existing = state.get(key)
         if existing:
             if existing["hash"] != request_hash:
                 raise ConsultError("key_conflict")
             return {"ok": True, "key": key, "hash": request_hash, "status": existing["status"], "created": False}
         state[key] = {"hash": request_hash, "status": "reserved"}
-        _write(common, state)
+        _write(common, common_fd, state)
         return {"ok": True, "key": key, "hash": request_hash, "status": "reserved", "created": True}
     return _locked(common, apply)
 def finish(repo_root: Path | str, key: str, request_hash: str, status: str) -> dict[str, object]:
@@ -212,12 +233,12 @@ def finish(repo_root: Path | str, key: str, request_hash: str, status: str) -> d
             or not isinstance(status, str) or status not in {"sent", "failed"}):
         raise ConsultError("finish_rejected")
     common = _common(repo_root)
-    def apply(state):
+    def apply(state, common_fd):
         existing = state.get(key)
         if not existing or existing["hash"] != request_hash or existing["status"] != "reserved":
             raise ConsultError("finish_rejected")
         state[key] = {"hash": request_hash, "status": status}
-        _write(common, state)
+        _write(common, common_fd, state)
         return {"ok": True, "key": key, "hash": request_hash, "status": status}
     return _locked(common, apply)
 class _Parser(argparse.ArgumentParser):

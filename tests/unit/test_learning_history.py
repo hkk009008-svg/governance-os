@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -13,11 +14,32 @@ import protocol_mailbox
 
 
 def _git(root: Path, *arguments: str) -> str:
+    home = root.parent / "git-home"
+    home.mkdir(exist_ok=True)
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(home),
+        "LANG": "C",
+        "LC_ALL": "C",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_COUNT": "3",
+        "GIT_CONFIG_KEY_0": "init.defaultBranch",
+        "GIT_CONFIG_VALUE_0": "main",
+        "GIT_CONFIG_KEY_1": "user.name",
+        "GIT_CONFIG_VALUE_1": "Learning History Test",
+        "GIT_CONFIG_KEY_2": "user.email",
+        "GIT_CONFIG_VALUE_2": "learning-history@example.invalid",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    ceiling = os.environ.get("GIT_CEILING_DIRECTORIES")
+    if ceiling:
+        env["GIT_CEILING_DIRECTORIES"] = ceiling
     return subprocess.run(
         ["/usr/bin/git", "-C", str(root), *arguments],
         check=True,
         capture_output=True,
         text=True,
+        env=env,
     ).stdout.strip()
 
 
@@ -69,7 +91,7 @@ def _repo(tmp_path: Path, monkeypatch) -> tuple[Path, str]:
         encoding="utf-8",
     )
     (root / "README.md").write_text("target v1\n", encoding="utf-8")
-    _git(root, "init", "-q")
+    _git(root, "init", "-q", "-b", "main")
     _commit(root, "pre-cutover baseline")
     (root / "learning-cutover.txt").write_text("reviewed\n", encoding="utf-8")
     cutover = _commit(root, "reviewed learning-history cutover")
@@ -585,7 +607,7 @@ def test_old_base_parallel_branch_introduction_is_not_grandfathered(
 ) -> None:
     root = tmp_path / "repo"
     root.mkdir()
-    _git(root, "init", "-q")
+    _git(root, "init", "-q", "-b", "main")
     (root / "seed.txt").write_text("seed\n", encoding="utf-8")
     base = _commit(root, "base")
 

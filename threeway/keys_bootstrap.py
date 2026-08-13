@@ -128,66 +128,86 @@ def _remove_created_file(created: CreatedFile) -> str | None:
     current pathname into a private same-filesystem directory lets us inspect
     the object actually removed from the namespace. A replacement is linked
     back without overwriting any concurrent path and is never deleted.
+
+    The created inode is pinned with a live FD before rename so a Linux
+    replacement cannot reuse ``(st_dev, st_ino)`` during the quarantine.
     """
 
     path, device, inode = created
+    pin_fd = -1
     try:
-        rollback_dir = Path(
-            tempfile.mkdtemp(prefix=f".{path.name}.rollback-", dir=path.parent)
-        )
-    except OSError as exc:
-        return f"cannot create rollback quarantine beside {path}: {exc}"
-    quarantine = rollback_dir / "entry"
-    try:
-        os.rename(path, quarantine)
-    except FileNotFoundError:
         try:
-            rollback_dir.rmdir()
+            pin_fd = os.open(
+                path,
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
+        except FileNotFoundError:
+            return None
         except OSError as exc:
-            return f"{path} was already absent, but rollback cleanup failed: {exc}"
-        return None
-    except OSError as exc:
+            return f"cannot pin {path} before rollback: {exc}"
         try:
-            rollback_dir.rmdir()
-        except OSError:
-            pass
-        return f"cannot quarantine {path}: {exc}"
+            rollback_dir = Path(
+                tempfile.mkdtemp(prefix=f".{path.name}.rollback-", dir=path.parent)
+            )
+        except OSError as exc:
+            return f"cannot create rollback quarantine beside {path}: {exc}"
+        quarantine = rollback_dir / "entry"
+        try:
+            os.rename(path, quarantine)
+        except FileNotFoundError:
+            try:
+                rollback_dir.rmdir()
+            except OSError as exc:
+                return f"{path} was already absent, but rollback cleanup failed: {exc}"
+            return None
+        except OSError as exc:
+            try:
+                rollback_dir.rmdir()
+            except OSError:
+                pass
+            return f"cannot quarantine {path}: {exc}"
 
-    try:
-        metadata = quarantine.lstat()
-    except OSError as exc:
-        return f"cannot inspect quarantined entry {quarantine}: {exc}"
-    created_inode = (
-        metadata.st_dev == device
-        and metadata.st_ino == inode
-        and stat.S_ISREG(metadata.st_mode)
-    )
-    if created_inode:
+        try:
+            metadata = quarantine.lstat()
+        except OSError as exc:
+            return f"cannot inspect quarantined entry {quarantine}: {exc}"
+        created_inode = (
+            metadata.st_dev == device
+            and metadata.st_ino == inode
+            and stat.S_ISREG(metadata.st_mode)
+        )
+        if created_inode:
+            try:
+                quarantine.unlink()
+                rollback_dir.rmdir()
+            except OSError as exc:
+                return f"cannot remove quarantined created file {quarantine}: {exc}"
+            return None
+
+        try:
+            os.link(quarantine, path, follow_symlinks=False)
+        except FileExistsError:
+            return (
+                f"refusing to remove replaced path {path}; another path appeared and "
+                f"the displaced entry is preserved at {quarantine}"
+            )
+        except OSError as exc:
+            return (
+                f"refusing to remove replaced or non-regular path {path}; could not "
+                f"restore it from {quarantine}: {exc}"
+            )
         try:
             quarantine.unlink()
             rollback_dir.rmdir()
         except OSError as exc:
-            return f"cannot remove quarantined created file {quarantine}: {exc}"
-        return None
-
-    try:
-        os.link(quarantine, path, follow_symlinks=False)
-    except FileExistsError:
-        return (
-            f"refusing to remove replaced path {path}; another path appeared and "
-            f"the displaced entry is preserved at {quarantine}"
-        )
-    except OSError as exc:
-        return (
-            f"refusing to remove replaced or non-regular path {path}; could not "
-            f"restore it from {quarantine}: {exc}"
-        )
-    try:
-        quarantine.unlink()
-        rollback_dir.rmdir()
-    except OSError as exc:
-        return f"replacement was restored at {path}, but quarantine cleanup failed: {exc}"
-    return f"refusing to remove replaced path {path}; replacement was restored"
+            return f"replacement was restored at {path}, but quarantine cleanup failed: {exc}"
+        return f"refusing to remove replaced path {path}; replacement was restored"
+    finally:
+        if pin_fd >= 0:
+            os.close(pin_fd)
 
 
 def _rollback_created_files(created: list[CreatedFile]) -> list[str]:
