@@ -21,6 +21,8 @@ Use the repo venv and the checkout's ordinary Git index:
 ```bash
 PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
 cd "$PIPELINE_ROOT"
+# First session in this checkout — every worktree needs its own venv:
+test -d .venv || (python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt)
 env -u GIT_INDEX_FILE .venv/bin/python scripts/status.py snapshot
 ```
 
