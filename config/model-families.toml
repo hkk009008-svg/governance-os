@@ -49,6 +49,7 @@ schema_version = 1
 "grok-4" = "grok"
 "grok-4.5" = "grok"
 "grok-4.6-xhigh-fast" = "grok"
+"grok-4.6" = "grok"
 "claude-opus-5-thinking-high" = "claude"
 
 [display_aliases]
