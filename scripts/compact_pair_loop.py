@@ -157,8 +157,19 @@ def _is_frozen_model_label_exception(root: Path, path: str, raw: bytes) -> bool:
         "--",
         path,
     ).decode("ascii", errors="strict").splitlines()
-    if introductions != [exception["introduction"]]:
+    if exception["introduction"] not in introductions:
         return False
+    # A delete/revert cycle (the 2026-08-12 corpus restore) leaves the path
+    # with more than one introduction commit. Byte-identical restoration is
+    # not mutation (the check_coordination projection rule): every
+    # introduction other than the pinned one must carry exactly the pinned
+    # bytes, or the exception stays refused.
+    for reintroduction in introductions:
+        if reintroduction == exception["introduction"]:
+            continue
+        replayed = _git(root, "show", f"{reintroduction}:{path}")
+        if hashlib.sha256(replayed).hexdigest() != exception["sha256"]:
+            return False
     introduced = _git(root, "show", f"{exception['introduction']}:{path}")
     return hashlib.sha256(introduced).hexdigest() == exception["sha256"]
 
@@ -1553,7 +1564,16 @@ def _is_frozen_verbose_report(root: Path, path: str, raw: bytes) -> bool:
     if _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) != raw:
         return False
     latest = _git(root, "log", "-1", "--format=%H", "HEAD", "--", path).decode().strip()
-    return bool(SHA_RE.fullmatch(latest) and _is_ancestor(root, latest, LEGACY_VERBOSE_CUTOFF))
+    if not SHA_RE.fullmatch(latest):
+        return False
+    if _is_ancestor(root, latest, LEGACY_VERBOSE_CUTOFF):
+        return True
+    # A delete/revert cycle (the 2026-08-12 corpus restore) leaves the newest
+    # commit touching the path outside the frozen cutoff's ancestry.
+    # Byte-identical restoration is not mutation: accept exactly when that
+    # commit still carries the frozen bytes; any post-cutoff touch that
+    # changed the bytes stays refused.
+    return _git_blob(root, latest, path) == raw
 
 
 def _main(argv: list[str] | None = None) -> int:

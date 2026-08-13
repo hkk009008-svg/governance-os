@@ -93,7 +93,6 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 import claim_check  # noqa: E402
-import protocol_mailbox  # noqa: E402
 import git_runner  # noqa: E402
 import protocol_mailbox  # noqa: E402
 

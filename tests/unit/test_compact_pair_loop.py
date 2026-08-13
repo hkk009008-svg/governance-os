@@ -1371,6 +1371,94 @@ def test_legacy_compatibility_does_not_accept_mutated_verbose_bytes(
         pair._parse_verification_report_bytes(repo_root, path, raw)
 
 
+def _clone_repository(tmp_path: Path, repo_root: Path) -> Path:
+    clone = tmp_path / "clone"
+    subprocess.run(
+        ["git", "clone", "-q", "--no-hardlinks", str(repo_root), str(clone)],
+        check=True,
+    )
+    _git(clone, "config", "user.name", "Compact Pair Test")
+    _git(clone, "config", "user.email", "compact-pair@example.invalid")
+    return clone
+
+
+def test_reintroduced_identical_verbose_report_keeps_legacy_compatibility(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    """Byte-identical delete/revert restoration is not mutation.
+
+    The 2026-08-12 corpus delete/revert left every mailbox event with a
+    post-cutoff touching commit; the frozen bytes did not change, so frozen
+    provenance must survive (the check_coordination projection rule)."""
+    clone = _clone_repository(tmp_path, repo_root)
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T13-17-10Z-operator-to-director-verification-report.md"
+    )
+    raw = (clone / path).read_bytes()
+    _git(clone, "rm", "-q", "--", path)
+    _git(clone, "commit", "-q", "-m", "test: remove historical report")
+    (clone / path).write_bytes(raw)
+    _git(clone, "add", "-f", "--", path)
+    _git(clone, "commit", "-q", "-m", "test: restore historical report byte-identically")
+
+    report = pair.parse_verification_report(clone, path)
+
+    assert report.finding_refs == ()
+    assert report.finding_dispositions == ()
+
+
+def test_reintroduced_changed_verbose_report_loses_legacy_compatibility(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    """Reintroduction with different bytes is the laundering vector.
+
+    The worktree copy is restored to the frozen bytes while the committed
+    tip carries a mutation; frozen provenance must stay refused."""
+    clone = _clone_repository(tmp_path, repo_root)
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T13-17-10Z-operator-to-director-verification-report.md"
+    )
+    raw = (clone / path).read_bytes()
+    _git(clone, "rm", "-q", "--", path)
+    _git(clone, "commit", "-q", "-m", "test: remove historical report")
+    (clone / path).write_bytes(raw.replace(b"VERDICT: GO", b"VERDICT: NITS"))
+    _git(clone, "add", "-f", "--", path)
+    _git(clone, "commit", "-q", "-m", "test: reintroduce mutated report")
+    (clone / path).write_bytes(raw)
+
+    with pytest.raises(pair.CompactPairError, match="historical provenance"):
+        pair.parse_verification_report(clone, path)
+
+
+def test_reintroduced_changed_model_label_report_loses_exception(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    """A mutated reintroduction of the pinned model-label report drops the exception."""
+    clone = _clone_repository(tmp_path, repo_root)
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-08-01T05-02-15Z-operator-to-director2-verification-report.md"
+    )
+    raw = (clone / path).read_bytes()
+    _git(clone, "rm", "-q", "--", path)
+    _git(clone, "commit", "-q", "-m", "test: remove model-label report")
+    (clone / path).write_bytes(
+        raw.replace(b"Reviewer model: antigravity", b"Reviewer model: forged")
+    )
+    _git(clone, "add", "-f", "--", path)
+    _git(clone, "commit", "-q", "-m", "test: reintroduce mutated model-label report")
+    (clone / path).write_bytes(raw)
+
+    report = pair.parse_verification_report(clone, path)
+
+    assert report.frozen_model_label_exception is False
+    assert "reviewer model shares the author model family" in pair.validate_report(
+        clone, report
+    )
+
+
 def test_real_verbose_request_retains_empty_ref_compatibility(repo_root: Path) -> None:
     path = (
         "coordination/mailbox/sent/"
