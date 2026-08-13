@@ -9,12 +9,26 @@ import pytest
 import cursor_app_binding as binding
 
 
+# Hermetic fixture-git environment: the ambient VM configuration (commit
+# signing via the exec-daemon shim, fsmonitor daemons) must not run inside
+# throwaway test repositories; see tests/unit/test_check_coordination.py.
+_GIT_ENV = {
+    "PATH": "/usr/bin:/bin",
+    "HOME": "/var/empty" if Path("/var/empty").is_dir() else "/nonexistent",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_COUNT": "1",
+    "GIT_CONFIG_KEY_0": "init.defaultBranch",
+    "GIT_CONFIG_VALUE_0": "main",
+}
+
+
 def _git(root: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", "-C", str(root), *args],
         text=True,
         capture_output=True,
         check=True,
+        env=_GIT_ENV,
     )
     return result.stdout.strip()
 
