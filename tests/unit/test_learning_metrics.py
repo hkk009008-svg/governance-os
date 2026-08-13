@@ -565,3 +565,64 @@ def test_missing_outcomes_file_reports_zero_skill_use(tmp_path: Path) -> None:
     assert metrics["outcome_rows"] is None
     assert metrics["skill_use_rows"] == 0
     assert metrics["skill_use_malformed"] == 0
+
+
+def test_metrics_ignore_ambient_git_retargeting(tmp_path: Path, monkeypatch) -> None:
+    """Ambient GIT_DIR/GIT_INDEX_FILE must not retarget which repo answers.
+
+    git resolves GIT_DIR ahead of ``-C <root>`` discovery, so an inherited
+    variable made the reporter describe the wrong repository before these
+    reads adopted git_runner's environment policy.
+    """
+
+    root = tmp_path / "repo"
+    root.mkdir()
+
+    def git(*arguments: str) -> str:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+        ).stdout.decode()
+
+    git("init", "-q")
+    git("config", "user.email", "probe@example.invalid")
+    git("config", "user.name", "probe")
+    sent = root / "coordination" / "mailbox" / "sent"
+    sent.mkdir(parents=True)
+    stamp = "2026-07-28T01-02-03Z"
+    (sent / f"{stamp}-director-to-operator-verify-request.md").write_text(
+        _event_text("director", "operator", stamp, "Event type: verify-request"),
+        encoding="utf-8",
+    )
+    git("add", "-A")
+    git("commit", "-q", "-m", "seed one request")
+    head = git("rev-parse", "HEAD").strip()
+
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+
+    def decoy_git(*arguments: str) -> None:
+        subprocess.run(
+            ["git", *arguments],
+            cwd=decoy,
+            check=True,
+            capture_output=True,
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+        )
+
+    decoy_git("init", "-q")
+    decoy_git("config", "user.email", "probe@example.invalid")
+    decoy_git("config", "user.name", "probe")
+    (decoy / "note.md").write_text("no mailbox here\n", encoding="utf-8")
+    decoy_git("add", "-A")
+    decoy_git("commit", "-q", "-m", "decoy")
+
+    monkeypatch.setenv("GIT_DIR", str(decoy / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(decoy / ".git" / "index"))
+
+    metrics = learning_metrics.collect_metrics(root)
+    assert metrics["commit"] == head, "reporter answered for GIT_DIR's repository"
+    assert metrics["review_friction"] == "0/1"

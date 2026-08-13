@@ -64,6 +64,7 @@ _SCRIPTS = _REPO_ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
+import git_runner  # noqa: E402
 import learning_index  # noqa: E402
 import protocol_mailbox  # noqa: E402
 
@@ -137,6 +138,7 @@ def _git(root: Path, *args: str) -> str:
         ["git", "-C", str(root), *args],
         capture_output=True,
         check=True,
+        env=git_runner.dashboard_env(root),
     ).stdout.decode("utf-8", "replace")
 
 
@@ -145,6 +147,7 @@ def _git_bytes(root: Path, *args: str) -> bytes:
         ["git", "-C", str(root), *args],
         capture_output=True,
         check=True,
+        env=git_runner.dashboard_env(root),
     ).stdout
 
 
@@ -285,6 +288,7 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
                  f"{resolved}:{c.target}"],
                 capture_output=True,
                 check=True,
+                env=git_runner.dashboard_env(root),
             ).stdout
         except subprocess.CalledProcessError:
             data = None

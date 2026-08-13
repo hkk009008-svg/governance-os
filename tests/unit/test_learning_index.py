@@ -242,3 +242,43 @@ def test_broken_schema_store_is_unavailable_not_a_query_error(
     connection.commit()
     connection.close()
     assert learning_index.query_index(root, "flaky", db_path=non_fts) is None
+
+
+def test_build_index_ignores_ambient_git_retargeting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ambient GIT_DIR/GIT_INDEX_FILE must not retarget which repo answers.
+
+    git resolves GIT_DIR ahead of ``-C <root>`` discovery, so an inherited
+    variable pointed every ingest read at the wrong repository before these
+    reads adopted git_runner's environment policy.
+    """
+
+    root = _throwaway_repo(tmp_path)
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+
+    def git(*arguments: str) -> None:
+        subprocess.run(
+            ["git", *arguments],
+            cwd=decoy,
+            check=True,
+            capture_output=True,
+            env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "probe@example.invalid")
+    git("config", "user.name", "probe")
+    (decoy / "note.md").write_text("no governance sources here\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "decoy")
+
+    monkeypatch.setenv("GIT_DIR", str(decoy / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(decoy / ".git" / "index"))
+
+    db = tmp_path / "index.sqlite"
+    learning_index.build_index(root, db_path=db)
+    rows = learning_index.query_index(root, "flaky", db_path=db)
+    assert rows, "index must ingest the requested repository, not GIT_DIR's"
+    assert f"coordination/mailbox/sent/{_EVENT_NAME}" in {row.path for row in rows}

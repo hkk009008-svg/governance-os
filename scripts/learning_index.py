@@ -55,6 +55,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:  # ADR-055 self-bootstrap (no PYTHONPATH)
     sys.path.insert(0, str(_REPO_ROOT))
 
+import git_runner  # noqa: E402
 import protocol_mailbox  # noqa: E402
 
 DB_RELATIVE = "coordination/learning/index.sqlite"
@@ -84,6 +85,7 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
         ["git", "-C", str(root), *args],
         capture_output=True,
         check=True,
+        env=git_runner.dashboard_env(root),
     )
 
 
@@ -187,6 +189,7 @@ def _blob_texts(root: Path, shas: list[str]) -> dict[str, str]:
         input=payload,
         capture_output=True,
         check=True,
+        env=git_runner.dashboard_env(root),
     )
     texts: dict[str, str] = {}
     view = memoryview(proc.stdout)
