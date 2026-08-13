@@ -57,6 +57,14 @@ triggered, preserve its complete committed Compact Pair binding.
 Host task tools own discovery, dispatch, and waiting. One trigger identifies one task;
 monitoring failure authorizes neither redispatch, role substitution, nor an effect.
 
+Use native host controls for the task lifecycle: list tasks, read older turns
+through pagination, wait on bounded snapshots, rename or pin active work,
+archive or unarchive completed work, and fork completed history into the same
+directory or an app-managed worktree. Use native review panels for presentation;
+never automate hard deletion, and create a persistent goal only on explicit user
+request. All task lifecycle state is transient host metadata: task metadata grants
+no role, review, or effect authority; it cannot replace the formal exact-range path.
+
 External effects remain separate from structural validation. Push, merge,
 locking, event consumption, paid spend, provider launch, and live-data mutation
 need exact authority for the executor, target, and scope.

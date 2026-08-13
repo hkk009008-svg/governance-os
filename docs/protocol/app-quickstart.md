@@ -60,6 +60,27 @@ asking the user to relay text between Codex tasks. Automations, remote work,
 plugins, browser actions, and connector mutations keep their own data, spend,
 and effect boundaries. Formal review state still goes through `send-event`.
 
+Use the app's native lifecycle controls for transient task organization:
+
+- Rename and pin active tasks so the owning objective stays visible, then
+  unpin them when the campaign is no longer active.
+- List tasks and read older turns with paginated history; use bounded waiting
+  for progress instead of polling or asking the user to relay status.
+- Archive completed tasks reversibly and unarchive them when work resumes.
+  Never automate hard deletion.
+- Fork only completed history. Use a same-directory fork for an alternate
+  read-only line of thought and a worktree fork when independent Git state is
+  required; inspect the resulting scope before continuing.
+- Open the native branch, staged, unstaged, or last-turn review panel for
+  ordinary visual diff inspection. It does not replace an exact-range formal
+  review when Pipeline policy requires one.
+
+Task titles, pins, sections, archives, forks, and review panels are app
+metadata and presentation, not Pipeline evidence or authority. Create a
+persistent desktop goal only when the user explicitly asks for one; it helps
+track a long-running objective but does not replace committed checkpoints,
+mailbox events, Git evidence, or an effect authorization.
+
 ## Cross-app communication
 
 | Need | Use |
@@ -76,12 +97,13 @@ cross-app state.
 
 ## Local installation snapshot
 
-Observed read-only on 2026-08-09; versions may drift.
+Observed read-only on 2026-08-09; the Codex row was refreshed on 2026-08-14;
+versions may drift.
 
 | Side | Desktop bundle | CLI |
 |---|---|---|
 | Claude | `com.anthropic.claudefordesktop` 1.26832.0 | Claude Code 2.1.220 |
-| Codex | `com.openai.codex` 26.803.41515 | `codex-cli` 0.146.0 |
+| Codex | `com.openai.codex` 26.803.61601 | `codex-cli` 0.147.0 |
 
 Claude Desktop was above the documented 1.2581.0 floor for the Code-tab
 layout. The standalone Claude Code CLI was below the 2.1.224 peer-messaging
