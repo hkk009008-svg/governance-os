@@ -385,10 +385,14 @@ def _load_sdk() -> tuple[type[Any], type[Any], type[Any]]:
     try:
         version = importlib.metadata.version("claude-agent-sdk")
     except importlib.metadata.PackageNotFoundError as exc:
-        raise ConnectorError("claude-agent-sdk is not installed") from exc
+        raise ConnectorError(
+            "claude-agent-sdk is not installed; run "
+            "coordination/bin/pipeline-python -m pip install -r requirements-connector.txt"
+        ) from exc
     if version != REQUIRED_SDK_VERSION:
         raise ConnectorError(
-            f"claude-agent-sdk {version} is installed; expected {REQUIRED_SDK_VERSION}"
+            f"claude-agent-sdk {version} is installed; expected {REQUIRED_SDK_VERSION}; "
+            "run coordination/bin/pipeline-python -m pip install -r requirements-connector.txt"
         )
     try:
         from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, HookMatcher
@@ -549,7 +553,16 @@ def _peer_event(origin: Mapping[str, Any], fallback: str, event_uuid: str | None
     text = origin.get("body") if isinstance(origin.get("body"), str) else fallback
     if not text:
         return None
-    _text(text, "inbound message", MAX_MESSAGE_BYTES)
+    try:
+        _text(text, "inbound message", MAX_MESSAGE_BYTES)
+    except ConnectorError as exc:
+        return {
+            "kind": "peer_message_rejected",
+            "error": str(exc),
+            "message_id": origin.get("msg_id"),
+            "sender": {"address": origin.get("from"), "name": origin.get("name")},
+            "uuid": event_uuid,
+        }
     return {
         "kind": "peer_message",
         "text": text,
@@ -571,7 +584,10 @@ def normalize_sdk_message(message: Any) -> dict[str, Any]:
     origin = getattr(message, "origin", None)
     event_uuid = getattr(message, "uuid", None)
     if name.endswith("UserMessage"):
-        text = _content_text(getattr(message, "content", ""))
+        try:
+            text = _content_text(getattr(message, "content", ""))
+        except ConnectorError as exc:
+            return {"kind": "message_rejected", "error": str(exc), "uuid": event_uuid}
         if _peer_origin(origin):
             return _peer_event(origin, text, event_uuid) or {"kind": "peer_message", "text": ""}
         return {"kind": "user", "text": text, "origin": _safe(origin), "uuid": event_uuid}
@@ -924,8 +940,8 @@ class BridgeRuntime:
                     "generation": self._events.generation,
                     "after_cursor": after,
                 }
-            self._gate.arm(request)
             try:
+                self._gate.arm(request)
                 self._schedule(message_id, prompt)
             except Exception as exc:
                 self._gate.complete(message_id)

@@ -45,7 +45,7 @@ provider. The first `claude_bridge_send` lazily starts the named peer; an
 explicit `claude_bridge_start` is available for diagnostics.
 
 The user's standing authority permits one bridge instance with a hard
-`$1.00` ceiling when Codex and Claude need to communicate. The bridge name,
+per-instance `$1.00` ceiling when Codex and Claude need to communicate. The bridge name,
 working directory, SDK version, model selection, and executable are not
 caller-substitutable. Stop the existing instance instead of starting a
 duplicate.

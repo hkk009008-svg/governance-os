@@ -464,6 +464,34 @@ def test_terminal_without_send_is_not_reported_as_delivery(tmp_path: Path) -> No
     runtime.stop()
 
 
+def test_in_flight_rejection_does_not_leak_or_poison_receipt(tmp_path: Path) -> None:
+    runtime, client = _runtime(tmp_path)
+    runtime.send(
+        *connector.build_relay(
+            target="pipeline-24 [abc123]",
+            target_prefix=None,
+            text="first",
+            message_id="relay-live",
+        )
+    )
+    assert client.query_started.wait(1)
+    retry = connector.build_relay(
+        target="pipeline-24 [abc123]",
+        target_prefix=None,
+        text="retry",
+        message_id="relay-retry",
+    )
+    with pytest.raises(connector.ConnectorError, match="still in flight"):
+        runtime.send(*retry)
+    with pytest.raises(connector.ConnectorError, match="unknown relay"):
+        runtime.status("relay-retry")
+
+    client.emit(FakeResultMessage())
+    _until(lambda: runtime.status("relay-live")["operation"]["state"] == "terminal")
+    assert runtime.send(*retry)["status"] == "queued"
+    runtime.stop()
+
+
 def test_stalled_query_does_not_block_status_and_quarantines_on_timeout(
     tmp_path: Path,
 ) -> None:
@@ -519,6 +547,44 @@ def test_peer_messages_are_attributed_deduplicated_and_conflicts_fail(
     )
     _until(lambda: runtime.status()["state"] == "error")
     assert "reused" in runtime.status()["last_error"]
+    runtime.stop()
+
+
+@pytest.mark.parametrize(
+    ("content", "body", "kind", "error"),
+    [
+        ("fallback", "hello\x1b[31m", "peer_message_rejected", "control character"),
+        (
+            "x" * (connector.MAX_MESSAGE_BYTES + 1),
+            "ignored",
+            "message_rejected",
+            "exceeds",
+        ),
+    ],
+)
+def test_malformed_inbound_message_is_rejected_without_stopping_bridge(
+    tmp_path: Path, content: str, body: str, kind: str, error: str
+) -> None:
+    runtime, client = _runtime(tmp_path)
+    client.emit(
+        FakeUserMessage(
+            content,
+            origin={
+                "kind": "peer",
+                "from": "uds:peer",
+                "name": "pipeline-24",
+                "msg_id": "bad-peer-message",
+                "body": body,
+            },
+        )
+    )
+    _until(lambda: runtime.status()["latest_cursor"] == 1)
+    assert runtime.status()["state"] == "running"
+    event = runtime.wait(
+        generation=runtime.status()["generation"], after=0, timeout_seconds=0
+    )["events"][0]
+    assert event["kind"] == kind
+    assert error in event["error"]
     runtime.stop()
 
 
