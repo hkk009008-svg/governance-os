@@ -85,7 +85,13 @@ def _build_event(a) -> Event:
     # Hard-bind the seat identity into the (unsigned) signer tail; --session is audit-only. Event is a
     # mutable dataclass and `signer` is outside the 14-field signed view, so this does not affect the sig.
     ev.signer = f"{a.seat}:{PROVIDER[a.seat]}:{a.session}"
-    assert ev.sender == a.seat, f"builder sender {ev.sender} != seat {a.seat}"   # authority-table invariant
+    if ev.sender != a.seat:                                                      # authority-table invariant
+        # Not an assert: `python -O` / PYTHONOPTIMIZE strips asserts, and the
+        # stripped form of this one CONTINUES and returns an event whose signer
+        # was hard-bound to a.seat while its sender says otherwise — the exact
+        # identity split this module exists to prevent. Refuse like every other
+        # failure in this builder.
+        raise ValueError(f"builder sender {ev.sender} != seat {a.seat}")
     return ev
 
 
