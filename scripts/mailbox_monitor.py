@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-import re
 import check_coordination
 import protocol_capacity
 import sys

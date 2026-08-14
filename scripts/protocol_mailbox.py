@@ -385,12 +385,13 @@ class CommittedObjectBatchReader(_CommittedEventBatchBackend):
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(
-            ["git", "--no-replace-objects", "-C", str(root), *args],
+        return git_runner.run_git(
+            root,
+            args,
+            mode="authority",
+            text=True,
             encoding="utf-8",
-            capture_output=True,
             check=True,
-            env=git_runner.authority_env(root),
         )
     except (OSError, subprocess.CalledProcessError, UnicodeError) as exc:
         raise ValueError("committed event reference is not readable") from exc
@@ -979,24 +980,12 @@ def validate_learning_candidate_unique(
 def _committed_blob(root: Path, commit: str, path: str) -> bytes:
     if isinstance(root, _CommittedEventBatchBackend):
         return root._protocol_load_committed_blob(commit, path)
-    clean_env = {
-        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
-    }
-    clean_env.update({"LANG": "C", "LC_ALL": "C"})
     try:
-        result = subprocess.run(
-            [
-                "/usr/bin/git",
-                "--no-replace-objects",
-                "-C",
-                str(root),
-                "cat-file",
-                "blob",
-                f"{commit}:{path}",
-            ],
-            capture_output=True,
+        result = git_runner.run_git(
+            root,
+            ("cat-file", "blob", f"{commit}:{path}"),
+            mode="authority",
             check=True,
-            env=clean_env,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise ValueError(f"target is absent at commit {commit}: {path}") from exc

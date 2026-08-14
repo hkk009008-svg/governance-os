@@ -9,7 +9,6 @@ import json
 import os
 import re
 import stat
-import subprocess
 import sys
 
 import git_runner
@@ -280,15 +279,8 @@ def scan_repository_reports(root: Path, directory: Path | None = None) -> list[R
 
 
 def _git_blob(root: Path, commit: str, path: str) -> bytes | None:
-    environment = {
-        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
-    }
-    completed = subprocess.run(
-        ["/usr/bin/git", "--no-replace-objects", "show", f"{commit}:{path}"],
-        cwd=root,
-        env=environment,
-        capture_output=True,
-        check=False,
+    completed = git_runner.run_git(
+        root, ("show", f"{commit}:{path}"), mode="authority"
     )
     return completed.stdout if completed.returncode == 0 else None
 
@@ -404,17 +396,10 @@ def _retired_report_violations(
                 # itself live. Without the pin, a retired shell directory
                 # inside a real checkout reports the enclosing repository
                 # and produces a false "reappeared" violation.
-                live = subprocess.run(
-                    [
-                        "/usr/bin/git",
-                        "--no-replace-objects",
-                        "rev-parse",
-                        "--show-toplevel",
-                    ],
-                    cwd=repository,
-                    env=git_runner.authority_env(repository),
-                    capture_output=True,
-                    check=False,
+                live = git_runner.run_git(
+                    repository,
+                    ("rev-parse", "--show-toplevel"),
+                    mode="authority",
                 )
                 if live.returncode == 0:
                     violations.append(

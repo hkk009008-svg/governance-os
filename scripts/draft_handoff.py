@@ -18,6 +18,7 @@ from pathlib import Path
 
 import protocol_mailbox
 import bus_unread  # de-degrade: real ref-bus events for migrated (scalar) cursors
+import git_runner
 from status import collect_mailbox
 
 SEATS = protocol_mailbox.RECEIVING_SEATS
@@ -69,6 +70,14 @@ def repo_root() -> Path:
     if code == 0 and out:
         return Path(out)
     return Path.cwd()
+
+
+def git(root: Path, *args: str) -> tuple[int, str, str]:
+    try:
+        result = git_runner.run_git(root, args, mode="dashboard", text=True)
+    except Exception as exc:
+        return 127, "", str(exc)
+    return result.returncode, result.stdout.strip(), result.stderr.strip()
 
 
 def now_local() -> str:
@@ -168,17 +177,19 @@ def collect_context(root: Path, seat: str, wave: int, smoke: bool = False) -> Ha
     unread = str(mailbox.get(f"mailbox_{seat}_unread", "(missing)"))
     events = _mailbox_events(root, seat, cursor)
 
-    _, head, _ = run(["git", "log", "-1", "--format=%h %s"], root)
-    _, branch, _ = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], root)
-    code, counts, err = run(["git", "rev-list", "--left-right", "--count", "origin/main...HEAD"], root)
+    _, head, _ = git(root, "log", "-1", "--format=%h %s")
+    _, branch, _ = git(root, "rev-parse", "--abbrev-ref", "HEAD")
+    code, counts, err = git(
+        root, "rev-list", "--left-right", "--count", "origin/main...HEAD"
+    )
     if code == 0 and counts:
         behind, ahead = (counts.split() + ["?", "?"])[:2]
         origin_relation = f"{ahead} ahead, {behind} behind"
     else:
         origin_relation = f"unavailable ({err or 'no upstream'})"
-    _, recent, _ = run(["git", "log", "--oneline", "-5"], root)
-    _, staged, _ = run(["git", "diff", "--cached", "--name-status"], root)
-    _, status, _ = run(["git", "status", "--short"], root)
+    _, recent, _ = git(root, "log", "--oneline", "-5")
+    _, staged, _ = git(root, "diff", "--cached", "--name-status")
+    _, status, _ = git(root, "status", "--short")
 
     py = str(root / ".venv" / "bin" / "python")
     if not Path(py).exists():

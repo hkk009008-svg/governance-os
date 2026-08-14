@@ -462,9 +462,8 @@ def _build_basename_index(repo_root: Path) -> "tuple[dict[str, list[str]], bool]
     (index, git_ok); git_ok=False when git is unavailable/errors (index empty).
     """
     try:
-        out = subprocess.run(
-            ["git", "-C", str(repo_root), "ls-files"],
-            capture_output=True, text=True, check=True,
+        out = git_runner.run_git(
+            repo_root, ("ls-files",), mode="dashboard", text=True, check=True
         ).stdout
     except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         return {}, False
@@ -1630,10 +1629,12 @@ def _collect_sha_citations(doc_paths: list[str], repo_root: Path) -> list[dict]:
 def _git_run(repo_root: Path, args: list[str], stdin: Optional[str] = None):
     """Run a git command; return CompletedProcess, or None if git is unavailable."""
     try:
-        return subprocess.run(
-            ["git", "-C", str(repo_root), *args],
-            capture_output=True, text=True, input=stdin,
-            env=git_runner.dashboard_env(repo_root),
+        return git_runner.run_git(
+            repo_root,
+            args,
+            mode="dashboard",
+            text=True,
+            input_data=stdin,
         )
     except OSError:
         return None

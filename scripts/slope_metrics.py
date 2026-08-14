@@ -191,12 +191,7 @@ class _FailChain:
 
 
 def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", "-C", str(root), *args],
-        capture_output=True,
-        check=check,
-        env=git_runner.dashboard_env(root),
-    )
+    return git_runner.run_git(root, args, mode="dashboard", check=check)
 
 
 def _stamp_to_epoch(stamp: str) -> float:
@@ -226,10 +221,11 @@ def _batch_blobs(root: Path, commit: str, paths: list[str]) -> dict[str, bytes]:
     if not paths:
         return {}
     requests = "".join(f"{commit}:{path}\n" for path in paths).encode("utf-8")
-    completed = subprocess.run(
-        ["git", "-C", str(root), "--no-replace-objects", "cat-file", "--batch"],
-        input=requests,
-        capture_output=True,
+    completed = git_runner.run_git(
+        root,
+        ("cat-file", "--batch"),
+        mode="dashboard",
+        input_data=requests,
         check=True,
     )
     blobs: dict[str, bytes] = {}

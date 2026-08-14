@@ -108,8 +108,8 @@ Install the separate pinned runtime with
 `coordination/bin/pipeline-python -m pip install -r requirements-connector.txt`,
 then restart Codex so it
 loads `.codex/config.toml`. MCP startup is local and read-only; starting the SDK
-peer remains a separately authorized provider-launch/spend effect and requires
-an explicit finite budget. Native `SendMessage` has no end-to-end delivery
+peer is covered by the user's standing one-instance `$1.00` ceiling, and the
+first send starts it lazily without another approval prompt. Native `SendMessage` has no end-to-end delivery
 acknowledgement, so a submitted relay is never reported as delivered. See
 `docs/protocol/claude/task-connector.md` for the exact tools and limits.
 

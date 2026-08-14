@@ -310,7 +310,7 @@ does not imply an authority grant.
 | File | Responsibility |
 |---|---|
 | `scripts/codex_seat_launcher.py` | Builds one Codex launch spec from per-seat model/tier config, sanitizes inherited state, and rejects forwarded execution-shape overrides. Trusted user/project config still owns effective sandbox/approval posture; the launcher does not attest it. |
-| `scripts/claude_task_connector.py` | Exposes a lazy MCP server and one bounded named Agent SDK peer for transient Codex/Claude relay; private Desktop RPC, `local_*` IDs, silent launch, and delivery claims fail closed. |
+| `scripts/claude_task_connector.py` | Exposes five MCP tools and one bounded named Agent SDK peer for transient Codex/Claude relay; sends lazily start the user-authorized `$1.00` bridge, while private Desktop RPC, `local_*` IDs, and delivery claims fail closed. |
 | `scripts/harness_preflight.py` | Checks whether the Codex review harness can execute its required path before dispatch; `--live` may launch a provider and incur spend, so it remains separately authorized. |
 | `scripts/seat_banner.py` | Renders the explicit objective/permission/scope/verification/done seat contract. |
 
@@ -759,7 +759,6 @@ active Pipeline checkout with the worktree's native Git index.
 | Consume pair-seat events | `coordination/bin/consume-events <seat>` | Writes/stages cursor; separately authorized; coordinators must not run it. |
 | Dry-run provider launch spec | `coordination/bin/codex-seat --dry-run <seat>` | Launch/provider access remains separately authorized. |
 | Inspect Claude connector support | `coordination/bin/claude-task-connector capabilities` | Read-only local capability report; no provider launch. |
-| Inspect Claude host inventory | `coordination/bin/claude-task-connector list-sessions` | Read-only `claude agents --json`; aliases are candidates only and grant no identity. Use bridge-side `ListAgents` before targeting. |
 | Signed-plane cutover | `scripts/execute_threeway_cutover.sh --yes` | Destructive/external control-plane effect; do not run as a diagnostic. |
 
 For a file-by-file inventory at any later commit, use `git ls-files`, not this

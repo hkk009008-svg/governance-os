@@ -134,21 +134,13 @@ def parse_skill_use_rows(path: Path) -> dict[str, object]:
 
 
 def _git(root: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(root), *args],
-        capture_output=True,
-        check=True,
-        env=git_runner.dashboard_env(root),
+    return git_runner.run_git(
+        root, args, mode="dashboard", check=True
     ).stdout.decode("utf-8", "replace")
 
 
 def _git_bytes(root: Path, *args: str) -> bytes:
-    return subprocess.run(
-        ["git", "-C", str(root), *args],
-        capture_output=True,
-        check=True,
-        env=git_runner.dashboard_env(root),
-    ).stdout
+    return git_runner.run_git(root, args, mode="dashboard", check=True).stdout
 
 
 def _sent_names(root: Path, commit: str) -> list[str]:
@@ -283,12 +275,11 @@ def collect_metrics(root: Path, *, commit: str = "HEAD") -> dict:
         if c.target is None:
             continue
         try:
-            data = subprocess.run(
-                ["git", "-C", str(root), "cat-file", "blob",
-                 f"{resolved}:{c.target}"],
-                capture_output=True,
+            data = git_runner.run_git(
+                root,
+                ("cat-file", "blob", f"{resolved}:{c.target}"),
+                mode="dashboard",
                 check=True,
-                env=git_runner.dashboard_env(root),
             ).stdout
         except subprocess.CalledProcessError:
             data = None

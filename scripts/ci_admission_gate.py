@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,6 +40,7 @@ for _path in (_REPO_ROOT, _SCRIPTS_DIR):
         sys.path.insert(0, _path)
 
 import compact_pair_loop as pair  # noqa: E402
+import git_runner  # noqa: E402
 
 # Authority surfaces: executable authority, side-effect gating, trust-granting
 # composition, and the integration gate itself. Directory entries end with a
@@ -119,17 +119,8 @@ class Outcome:
 
 
 def _git(root: Path, *args: str) -> str:
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith("GIT_") or key in ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM")
-    }
-    result = subprocess.run(
-        ["git", "--no-optional-locks", "-C", str(root), *args],
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
+    result = git_runner.run_git(
+        root, args, mode="authority", text=True
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()

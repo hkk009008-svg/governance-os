@@ -86,14 +86,13 @@ def test_claude_peer_relay_defaults_are_low_friction_but_machine_bounded() -> No
 def test_both_adapters_default_to_the_supported_transient_task_connector() -> None:
     contract = _read("docs/protocol/claude/task-connector.md")
     compact = " ".join(contract.split())
-    assert "claude agents --json" in contract
     assert "ListAgents" in contract
     assert "SendMessage" in contract
     assert "local_*" in contract
-    assert "queued_to_bridge" in contract
-    assert "claude_bridge_operation_status" in contract
-    assert "target_prefix" in contract
-    assert "cannot" in contract and "grant a permission" in compact
+    assert "claude_bridge_send" in contract
+    assert "claude_bridge_wait" in contract
+    assert "five-tool contract" in contract.lower()
+    assert "cannot" in contract and "grant authority" in compact
 
     for provider in ("claude", "codex"):
         adapter = _read(f"docs/protocol/{provider}/continuation.md")

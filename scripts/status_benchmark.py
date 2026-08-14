@@ -14,6 +14,7 @@ import sys
 import time
 from pathlib import Path
 
+import git_runner
 import status
 
 
@@ -22,27 +23,10 @@ MAX_REFLOG_SIGNAL_BYTES = 65_536
 
 
 def _git(root: Path, *arguments: str) -> bytes:
-    completed = subprocess.run(
-        [
-            "/usr/bin/git",
-            "--no-replace-objects",
-            "--literal-pathspecs",
-            "--no-optional-locks",
-            "-C",
-            str(root),
-            *arguments,
-        ],
-        capture_output=True,
-        check=False,
-        env={
-            "PATH": "/usr/bin:/bin",
-            "LANG": "C",
-            "LC_ALL": "C",
-            "HOME": "/var/empty",
-            "XDG_CONFIG_HOME": "/var/empty",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-        },
+    completed = git_runner.run_git(
+        root,
+        ("--literal-pathspecs", "--no-optional-locks", *arguments),
+        mode="authority",
     )
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()

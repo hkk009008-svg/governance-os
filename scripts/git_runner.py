@@ -58,6 +58,7 @@ CONFIG_GIT_VARS = (
     "GIT_CONFIG",
     "GIT_CONFIG_COUNT",
     "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_PARAMETERS",
     "GIT_CONFIG_SYSTEM",
 )
 
@@ -97,6 +98,7 @@ def dashboard_env(root: Path) -> dict[str, str]:
         key: value
         for key, value in os.environ.items()
         if key not in RETARGETING_GIT_VARS
+        and not key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
     }
     env.update(
         {
@@ -118,6 +120,8 @@ def run_git(
     check: bool = False,
     timeout: int = 120,
     text: bool = False,
+    input_data: str | bytes | None = None,
+    encoding: str | None = None,
 ) -> subprocess.CompletedProcess:
     """Run one git command rooted at ``root`` under the selected policy."""
 
@@ -134,4 +138,6 @@ def run_git(
         check=check,
         timeout=timeout,
         text=text,
+        input=input_data,
+        encoding=encoding,
     )

@@ -498,15 +498,14 @@ def validate_route_candidate_structure(path: Path, body: str) -> LineageRoute:
 
 
 def _git_output(root: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "--no-replace-objects", "-C", str(root), *args],
+    return git_runner.run_git(
+        root,
+        args,
+        mode="authority",
         text=True,
         encoding="utf-8",
-        capture_output=True,
         check=True,
-        env=git_runner.authority_env(root),
-    )
-    return result.stdout
+    ).stdout
 
 
 def _git(root: Path, *args: str) -> str:
@@ -757,11 +756,8 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
 
     def _run(self, *args: str) -> bytes:
         try:
-            return subprocess.run(
-                ["git", "--no-replace-objects", "-C", str(self.root), *args],
-                capture_output=True,
-                check=True,
-                env=git_runner.authority_env(self.root),
+            return git_runner.run_git(
+                self.root, args, mode="authority", check=True
             ).stdout
         except (OSError, subprocess.CalledProcessError) as exc:
             raise ValueError("batch route Git evidence is not readable") from exc

@@ -1873,10 +1873,6 @@ def _side_effect_executor_tokens(body: str) -> list[dict[str, str]]:
     return tokens
 
 
-def _shared_side_effect_directives(body: str) -> list[str]:
-    return sorted({request["label"] for request in _shared_side_effect_requests(body)})
-
-
 def _shared_side_effect_requests(body: str) -> list[dict[str, Any]]:
     requests: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str, tuple[str, ...]]] = set()

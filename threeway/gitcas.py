@@ -32,6 +32,7 @@ _RETARGETING_GIT_VARS = (
     "GIT_CONFIG",
     "GIT_CONFIG_COUNT",
     "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_PARAMETERS",
     "GIT_CONFIG_SYSTEM",
     "GIT_DIR",
     "GIT_DISCOVERY_ACROSS_FILESYSTEM",
@@ -46,6 +47,9 @@ def _env(extra: dict | None = None) -> dict:
     env = dict(os.environ)
     for name in _RETARGETING_GIT_VARS:
         env.pop(name, None)
+    for name in tuple(env):
+        if name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")):
+            env.pop(name)
     if extra:
         env.update(extra)
     return env

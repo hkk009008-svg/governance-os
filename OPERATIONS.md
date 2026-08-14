@@ -104,12 +104,11 @@ launching a provider:
 
 ```bash
 coordination/bin/claude-task-connector capabilities
-coordination/bin/claude-task-connector list-sessions
 ```
 
 Codex normally uses the same runtime through the project MCP configuration.
-Starting `pipeline-codex-bridge` requires exact provider-launch/spend authority
-and a finite budget; sending through it is also an external provider effect.
+The first send lazily starts `pipeline-codex-bridge` under the user's standing
+per-instance `$1.00` ceiling; do not start a duplicate.
 Claude replies with native `SendMessage` to that named peer. The transport has
 no delivery acknowledgement and grants no role or review authority. See
 `docs/protocol/claude/task-connector.md`.
@@ -129,7 +128,7 @@ outside the accepted target scope. See `AGENTS.md` for the canonical boundary.
 | Mailbox monitor shows unknown receipt | Cursor or ref-bus state cannot prove receipt | Treat delivery as unproved until a seat-specific status or mailbox body proves it. |
 | Capacity board reports active packets | A route is open | Work only inside the packet scope and send the next required mailbox artifact. |
 | Connector reports missing `claude-agent-sdk` | Optional runtime is absent from the selected Python | Install `requirements-connector.txt` into that environment; installation alone does not launch Claude. |
-| Claude target begins `local_` | Private Desktop task ID was supplied | Start the bridge, run `claude_bridge_list_peers`, and use an exact bridge-visible native address. |
-| Host inventory name is absent from bridge `ListAgents` | Peer aliases are scoped to the viewing bridge | Run `claude_bridge_list_peers`; select only its exact structured `PostToolUse` address, including `[ref]`. |
+| Claude target begins `local_` | Private Desktop task ID was supplied | Use an exact bridge-visible native address or a unique stable prefix; the relay resolves it through fresh `ListAgents`. |
+| A target prefix matches no live bridge peer | The Claude task is idle, stopped, or visible only in another plane | Wake the Claude task and retry with a new message ID after native `ListAgents` can see it. |
 | A second relay is rejected as pending | The earlier SDK turn has no terminal result yet | Read/wait from the current bridge cursor; do not replace or retry the armed relay. Stop only when its outcome can safely remain unknown. |
 | Relay is submitted but delivery is unknown | Native `SendMessage` has no end-to-end acknowledgement | Inspect bridge events and ask the target/reply path for confirmation; do not report delivered. |

@@ -26,9 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -147,6 +145,7 @@ _STATUS_ORDER = ["live", "wired", "stubbed", "parked", "dead"]
 # by the importing sibling/test); protocol_mailbox imports only pathlib.
 import protocol_mailbox  # noqa: E402
 import bus_unread  # noqa: E402  — de-degrade: real ref-bus unread for migrated (scalar) cursors
+import git_runner  # noqa: E402
 
 _MAILBOX_SEATS = protocol_mailbox.RECEIVING_SEATS
 _CURSOR_SEATS = protocol_mailbox.SEATS
@@ -305,15 +304,8 @@ def render(data: dict) -> str:
 
 def _run_git(repo_root: Path, args: list[str], timeout: int = 5) -> str:
     """Run a git command; return stdout stripped or raise."""
-    env = os.environ.copy()
-    env.pop("GIT_INDEX_FILE", None)
-    result = subprocess.run(
-        ["git"] + args,
-        cwd=repo_root,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
+    result = git_runner.run_git(
+        repo_root, args, mode="dashboard", text=True, timeout=timeout
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or f"git {args[0]} failed")

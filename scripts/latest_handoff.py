@@ -6,12 +6,12 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-import os
 from pathlib import Path
 import re
 import subprocess
 import sys
 
+import git_runner
 import protocol_mailbox
 
 
@@ -66,26 +66,14 @@ def _is_near_match(path: Path, seat: str, pattern: str) -> bool:
 
 
 def _git_text(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    child_env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    return subprocess.run(
-        ["/usr/bin/git", "--no-replace-objects", *args],
-        cwd=root,
-        env=child_env,
-        text=True,
-        capture_output=True,
-        check=False,
+    return git_runner.run_git(
+        root, args, mode="authority", text=True
     )
 
 
 def _git_bytes(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
-    child_env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    return subprocess.run(
-        ["/usr/bin/git", "--no-replace-objects", *args],
-        cwd=root,
-        env=child_env,
-        text=False,
-        capture_output=True,
-        check=False,
+    return git_runner.run_git(
+        root, args, mode="authority", text=False
     )
 
 

@@ -36,7 +36,6 @@ import argparse
 import hashlib
 import io
 import json
-import os
 import re
 import subprocess
 import sys
@@ -1656,15 +1655,17 @@ def _check_standalone_cursor_commits(git_root, n: int = 30) -> list[CoordIssue]:
     """
     issues: list[CoordIssue] = []
     try:
-        env = git_runner.dashboard_env(Path(git_root))
         # One `git log --name-only` instead of one diff-tree per commit: the
         # previous shape spent ~N subprocesses (N up to 30) on the coordination
         # gate's hot path. A NUL record marker prefixes each commit's short
         # sha; its changed files follow. Merge commits show no files here (as
         # with the old per-commit diff-tree) and are skipped in both.
-        log = subprocess.run(
-            ["git", "log", f"-{n}", "--format=%x00%h", "--name-only"],
-            cwd=str(git_root), capture_output=True, text=True, timeout=5, env=env,
+        log = git_runner.run_git(
+            Path(git_root),
+            ("log", f"-{n}", "--format=%x00%h", "--name-only"),
+            mode="dashboard",
+            text=True,
+            timeout=5,
         )
         if log.returncode != 0:
             return issues

@@ -36,10 +36,16 @@ def test_dashboard_env_keeps_credentials_and_strips_retargeting(
 ) -> None:
     monkeypatch.setenv("GIT_DIR", "/tmp/evil-git-dir")
     monkeypatch.setenv("GIT_WORK_TREE", "/tmp/evil-tree")
+    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "'alias.status=!false'")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "alias.status")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "!false")
     monkeypatch.setenv("SSH_AUTH_SOCK", "/tmp/agent.sock")
     env = git_runner.dashboard_env(tmp_path)
     assert "GIT_DIR" not in env
     assert "GIT_WORK_TREE" not in env
+    assert "GIT_CONFIG_PARAMETERS" not in env
+    assert "GIT_CONFIG_KEY_0" not in env
+    assert "GIT_CONFIG_VALUE_0" not in env
     assert env["SSH_AUTH_SOCK"] == "/tmp/agent.sock"
     assert env["GIT_CEILING_DIRECTORIES"] == str(tmp_path.resolve().parent)
 
@@ -74,14 +80,37 @@ def test_run_git_rejects_unknown_mode(tmp_path: Path) -> None:
         git_runner.run_git(tmp_path, ["status"], mode="casual")
 
 
+def test_run_git_supports_bounded_batch_input(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    blob = git_runner.run_git(
+        tmp_path,
+        ["hash-object", "-w", "--stdin"],
+        mode="authority",
+        check=True,
+        input_data=b"payload",
+    ).stdout.strip()
+    result = git_runner.run_git(
+        tmp_path,
+        ["cat-file", "--batch"],
+        mode="authority",
+        check=True,
+        input_data=blob + b"\n",
+    )
+    assert result.stdout.endswith(b"payload\n")
+
+
 def test_gitcas_env_strips_every_retargeting_variable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     for name in git_runner.RETARGETING_GIT_VARS:
         monkeypatch.setenv(name, "/tmp/evil")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "/tmp/evil-hooks")
     env = gitcas._env()
     for name in git_runner.RETARGETING_GIT_VARS:
         assert name not in env, name
+    assert "GIT_CONFIG_KEY_0" not in env
+    assert "GIT_CONFIG_VALUE_0" not in env
     # The mirrored list must not drift from the canonical one.
     assert set(gitcas._RETARGETING_GIT_VARS) == set(git_runner.RETARGETING_GIT_VARS)
 

@@ -64,6 +64,14 @@ inventory claims cite the command and result that prove them.
 
 ## Provider adapters
 
+For the supported Codex/Claude task connector, the user has granted standing
+authority for one named `pipeline-codex-bridge` instance with a hard `$1.00`
+ceiling whenever cross-app communication is needed. Use it directly without
+asking the user to relay or approve the launch again, reuse the existing
+instance, and stop it after the exchange. This narrow standing grant does not
+authorize duplicate bridges, higher spend, repository effects, or formal
+review publication.
+
 Load only the adapter for the harness you are in:
 
 - Claude: `CLAUDE.md`, then `docs/protocol/claude/continuation.md`.

@@ -37,6 +37,8 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+import git_runner
+
 ROOT = Path(__file__).resolve().parent.parent
 ARCH_FILE = ROOT / "ARCHITECTURE.md"
 
@@ -130,10 +132,10 @@ def _resolve_base() -> str | None:
     """Return the merge-base ref string, or None if git is unavailable."""
     for default_branch in ("origin/main", "main"):
         try:
-            result = subprocess.run(
-                ["git", "merge-base", "HEAD", default_branch],
-                cwd=str(ROOT),
-                capture_output=True,
+            result = git_runner.run_git(
+                ROOT,
+                ("merge-base", "HEAD", default_branch),
+                mode="authority",
                 check=True,
             )
             return result.stdout.strip().decode("utf-8", errors="replace")
@@ -145,10 +147,10 @@ def _resolve_base() -> str | None:
 def _arch_in_changeset(base: str) -> bool:
     """Return True if ARCHITECTURE.md appears in `git diff --name-only <base>`."""
     try:
-        result = subprocess.run(
-            ["git", "diff", "--name-only", base, "--", "ARCHITECTURE.md"],
-            cwd=str(ROOT),
-            capture_output=True,
+        result = git_runner.run_git(
+            ROOT,
+            ("diff", "--name-only", base, "--", "ARCHITECTURE.md"),
+            mode="authority",
             check=True,
         )
         return bool(result.stdout.strip())
@@ -159,10 +161,10 @@ def _arch_in_changeset(base: str) -> bool:
 def _show_at_base(base: str) -> str | None:
     """Return ARCHITECTURE.md content at `base`, or None if absent/unavailable."""
     try:
-        result = subprocess.run(
-            ["git", "show", f"{base}:ARCHITECTURE.md"],
-            cwd=str(ROOT),
-            capture_output=True,
+        result = git_runner.run_git(
+            ROOT,
+            ("show", f"{base}:ARCHITECTURE.md"),
+            mode="authority",
             check=True,
         )
         return result.stdout.decode("utf-8", errors="replace")
@@ -175,24 +177,20 @@ def _git_resolve_stamp(sha: str) -> tuple[bool, bool]:
 
     try:
         is_commit = (
-            subprocess.run(
-                ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
-                cwd=str(ROOT),
-                capture_output=True,
-                check=False,
-            ).returncode
-            == 0
+            git_runner.run_git(
+                ROOT,
+                ("cat-file", "-e", f"{sha}^{{commit}}"),
+                mode="authority",
+            ).returncode == 0
         )
         if not is_commit:
             return False, False
         is_ancestor = (
-            subprocess.run(
-                ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
-                cwd=str(ROOT),
-                capture_output=True,
-                check=False,
-            ).returncode
-            == 0
+            git_runner.run_git(
+                ROOT,
+                ("merge-base", "--is-ancestor", sha, "HEAD"),
+                mode="authority",
+            ).returncode == 0
         )
         return True, is_ancestor
     except FileNotFoundError:

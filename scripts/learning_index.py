@@ -81,12 +81,7 @@ class IndexRow:
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(
-        ["git", "-C", str(root), *args],
-        capture_output=True,
-        check=True,
-        env=git_runner.dashboard_env(root),
-    )
+    return git_runner.run_git(root, args, mode="dashboard", check=True)
 
 
 def _require_repository_scope(relative: str) -> str:
@@ -184,12 +179,12 @@ def _blob_texts(root: Path, shas: list[str]) -> dict[str, str]:
     if not shas:
         return {}
     payload = "\n".join(shas).encode("ascii") + b"\n"
-    proc = subprocess.run(
-        ["git", "-C", str(root), "cat-file", "--batch"],
-        input=payload,
-        capture_output=True,
+    proc = git_runner.run_git(
+        root,
+        ("cat-file", "--batch"),
+        mode="dashboard",
+        input_data=payload,
         check=True,
-        env=git_runner.dashboard_env(root),
     )
     texts: dict[str, str] = {}
     view = memoryview(proc.stdout)

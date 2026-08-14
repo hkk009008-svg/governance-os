@@ -63,10 +63,10 @@ review, or effect authority and cannot replace formal exact-range review.
 
 ## Claude task connector
 
-For transient Codex/Claude communication, default to MCP server
-`claude_task_connector`; its SDK peer is `pipeline-codex-bridge`. Launch/spend
-authority stays separate, a send is not a delivery ack, and private Desktop
-paths are rejected. Follow `docs/protocol/claude/task-connector.md`.
+For transient Codex/Claude communication, default to `claude_task_connector`;
+its first send starts `pipeline-codex-bridge` under the user's standing
+one-instance `$1.00` authority without another prompt. A send is not a delivery
+ack. Reject private Desktop paths; follow `docs/protocol/claude/task-connector.md`.
 
 External effects remain separate from structural validation. Push, merge,
 locking, event consumption, paid spend, provider launch, and live-data mutation

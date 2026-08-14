@@ -9,16 +9,7 @@ should run the focused checker that owns the touched boundary instead
 """
 from __future__ import annotations
 
-import os
-import sys
-
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-for _path in (_REPO_ROOT, _SCRIPTS_DIR):
-    if _path not in sys.path:
-        sys.path.insert(0, _path)
-
-from governance_verify_all import main  # noqa: E402,F401
+from governance_verify_all import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -2,8 +2,6 @@
 """Typed, read-only Git and mailbox state used during seat startup."""
 from __future__ import annotations
 
-import os
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,14 +43,7 @@ def _run_git(root: Path, args: list[str], label: str) -> tuple[bytes | None, str
     try:
         # dashboard_env pins discovery to ``root``: a non-repository root
         # answers "unavailable" instead of reporting an enclosing checkout.
-        completed = subprocess.run(
-            ["git", *args],
-            cwd=root,
-            env=git_runner.dashboard_env(root),
-            capture_output=True,
-            timeout=120,
-            check=False,
-        )
+        completed = git_runner.run_git(root, args, mode="dashboard")
     except Exception as exc:
         return None, f"{label} unavailable: {exc}"
     if completed.returncode != 0:

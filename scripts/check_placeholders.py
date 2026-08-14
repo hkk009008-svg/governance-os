@@ -76,12 +76,11 @@ def _enumerate_files(root: pathlib.Path) -> list[pathlib.Path]:
     try:
         # Ceiling-pinned so a non-repository root falls back to the walk
         # instead of enumerating an enclosing checkout's files.
-        result = subprocess.run(
-            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-            cwd=str(root),
-            capture_output=True,
+        result = git_runner.run_git(
+            root,
+            ("ls-files", "--cached", "--others", "--exclude-standard", "-z"),
+            mode="dashboard",
             check=True,
-            env=git_runner.dashboard_env(root),
         )
         raw = result.stdout
         paths = []

@@ -9,7 +9,6 @@ report, or runtime-environment projection.
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -52,15 +51,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    snapshot = status.collect_orientation_snapshot(ROOT, args.seat)
+    status_args = ["snapshot"]
+    if args.seat:
+        status_args.append(args.seat)
     if args.json:
-        print(json.dumps(snapshot, sort_keys=True))
-    else:
-        print(status.render_orientation_snapshot(snapshot), end="")
-
-    if args.smoke:
-        return _run_smoke(ROOT)
-    return 0
+        status_args.append("--json")
+    result = status.main(status_args)
+    return _run_smoke(ROOT) if result == 0 and args.smoke else result
 
 
 if __name__ == "__main__":

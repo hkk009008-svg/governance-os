@@ -1577,15 +1577,6 @@ def _git_blob(root: Path, commit: str, path: str) -> bytes | None:
     return completed.stdout if completed.returncode == 0 else None
 
 
-def _is_frozen_verbose_request(
-    root: Path, path: str, raw: bytes, trigger: str
-) -> bool:
-    return (
-        _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) == raw
-        and _is_ancestor(root, trigger, LEGACY_VERBOSE_CUTOFF)
-    )
-
-
 def _is_frozen_verbose_report(root: Path, path: str, raw: bytes) -> bool:
     if _git_blob(root, LEGACY_VERBOSE_CUTOFF, path) != raw:
         return False
