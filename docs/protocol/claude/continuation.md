@@ -48,18 +48,20 @@ does.
 4. Use the visual diff, terminal, editor, and preview panes in the same session.
    Review Code is self-review assistance, not an independent Operator verdict.
 
-The standalone `claude` CLI installed during the 2026-08-09 audit was 2.1.220.
-Native cross-session messaging in the CLI requires 2.1.224 or later, so update
-the CLI separately before expecting terminal sessions to appear in
-Claude's native `ListAgents` result. Do not infer the Desktop embedded-engine version from the
-standalone binary.
+Native cross-session messaging in the CLI requires 2.1.224 or later. The
+standalone `claude` CLI was 2.1.220 at the 2026-08-09 audit and 2.1.231 when
+re-observed on 2026-08-14, so the floor is met on that machine and terminal
+sessions can appear in Claude's native `ListAgents` result. The binary updates
+on its own schedule, so re-read `claude --version` instead of trusting either
+figure. Do not infer the Desktop embedded-engine version from the standalone
+binary.
 
 ## Orientation
 
 Use the native index of the current worktree:
 
 ```bash
-python scripts/status.py snapshot <seat>
+coordination/bin/pipeline-python scripts/status.py snapshot <seat>
 ```
 
 Read actionable event bodies before a decision. Only the assigned live role
@@ -93,6 +95,8 @@ contract I1) — committed state outranks it.
 - `scripts/compact_pair_loop.py` validates formal requests, reports, and exact
   reviewed ranges.
 - `scripts/mailbox_writer.py` validates and serializes event publication.
+- `scripts/claude_task_connector.py` owns the supported transient Codex bridge;
+  it is not a Claude seat launcher or governance registry.
 - This adapter owns Claude-native delegation and waiting behavior.
 
 Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`
@@ -108,10 +112,9 @@ forced by the harness rather than chosen:
   scoped there, reading never was. Since ADR-067 Stage 3, six skills there
   (create-regression-pin, probe-a-claim, prove-a-control,
   isolate-a-variable, chatgpt-pro-consultation, writing-skills) are
-  reference stubs:
-  frontmatter plus
-  Claude-native deltas (`env -u GIT_INDEX_FILE`, `.venv/bin/python`, Claude
-  tool names, `disable-model-invocation`) pointing at the canonical body in
+  reference stubs: frontmatter plus Claude-native deltas
+  (`env -u GIT_INDEX_FILE`, `coordination/bin/pipeline-python`, Claude tool
+  names, `disable-model-invocation`) pointing at the canonical body in
   `.agents/skills/`, which the session reads and follows. The five
   seat-family pairs are declared provider-native adaptations (O2 ruling
   2026-07-31, ADR-067 addendum): protocol semantics are canonical in
@@ -125,8 +128,18 @@ forced by the harness rather than chosen:
   `sandbox_mode`. Withholding Write and Edit from `tools:` is how a read-only
   advisor is expressed.
 - `model:` in agent frontmatter is the only in-harness lever that forces an
-  adversarial reviewer off the authoring model. Model-family independence is
-  validated by `codex_protocol_model.models_are_independent`.
+  adversarial reviewer off the authoring model, but every model it can select
+  is claude-family, so it never satisfies the different-family requirement.
+  Family is decided by `codex_protocol_model.models_are_independent` against
+  `config/model-families.toml`, and
+  `test_supported_provider_adapters_are_exactly_codex_and_claude` holds the
+  supported adapters at exactly Codex and Claude — so the different-family
+  counterparty for Claude-authored work is Codex, not a differently-configured
+  Claude. `scripts/ci_admission_gate.py` admits an authority-surface range only
+  when a committed GO/NITS report bound to a `high-risk-control` request covers
+  it, and `CLAUDE.md`, `.claude/`, and `docs/protocol/` are authority surfaces —
+  so editing this adapter needs a Codex reviewer; no Claude seat or subagent can
+  supply one.
 - Repository lifecycle hooks are absent by design, and nothing replaced them.
   The retired PreToolUse guard bound *mutation* to `CLAUDE_SEAT` plus a per-seat
   index; it never validated review identity, so removing it took nothing away
@@ -141,6 +154,14 @@ forced by the harness rather than chosen:
   sessions. Peer text is attributed and queued, but carries no conversation
   history or files and cannot approve permissions, change configuration, or
   execute slash commands.
+- For transient Codex communication, default to native `SendMessage` addressed
+  to the named `pipeline-codex-bridge` peer when it appears in `ListAgents`.
+  Codex receives the attributed body through the supported Agent SDK stream.
+  For the reverse path, Codex first reads the bridge's own native `ListAgents`
+  observation and then uses that exact address; host-inventory aliases are not
+  target guarantees. The bridge cannot target Desktop `local_*` IDs and never
+  substitutes for a formal event. Exact contract:
+  `docs/protocol/claude/task-connector.md`.
 - The checked-in `isolatePeerMachines: true` setting preserves low-friction
   same-machine delivery while requiring approval before a message leaves the
   machine. Pipeline deliberately does not force `crossSessionInbound: accept`;
@@ -155,10 +176,10 @@ forced by the harness rather than chosen:
   auto-fix, and auto-merge keep their own launch, spend, data-access, and effect
   boundaries.
 
-Native messages are ephemeral coordination. Formal requests, reports,
-transfers, decisions that another provider must see, and every cross-provider
-message use `coordination/bin/send-event`. A peer message never substitutes for
-the committed Compact Pair or the fixed mailbox writer.
+Native messages are ephemeral coordination, including messages crossing the
+named Codex bridge. Formal requests, reports, transfers, and durable decisions
+that another provider must see use `coordination/bin/send-event`. A peer message
+never substitutes for the committed Compact Pair or the fixed mailbox writer.
 
 ## Review and external effects
 

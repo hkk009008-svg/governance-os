@@ -99,6 +99,7 @@ class VerificationReport:
     filename_reviewer: str
     envelope_sender: str
     frozen_model_label_exception: bool
+    historical_model_family_compatibility: bool
 
 
 def _repo_path(root: Path, value: str | os.PathLike[str]) -> str:
@@ -167,6 +168,19 @@ def _is_frozen_model_label_exception(root: Path, path: str, raw: bytes) -> bool:
         ):
             return False
     return True
+
+
+def _is_historical_model_family_compatibility(
+    root: Path, path: str, raw: bytes
+) -> bool:
+    """Keep exact retirement-boundary reports readable without new authority."""
+
+    historical = protocol_mailbox.committed_blob_or_none(
+        root,
+        codex_protocol_model.CURRENT_REVIEW_FAMILY_CUTOVER,
+        path,
+    )
+    return historical is not None and historical == raw
 
 
 def _full_commit(
@@ -921,6 +935,7 @@ def _parse_verification_report_bytes(
     *,
     allow_legacy_missing_risk: bool = True,
     frozen_legacy: bool | None = None,
+    historical_model_family_compatibility: bool | None = None,
 ) -> VerificationReport:
     match = REPORT_RE.fullmatch(path)
     if match is None:
@@ -1000,6 +1015,11 @@ def _parse_verification_report_bytes(
         frozen_model_label_exception=_is_frozen_model_label_exception(
             root, path, raw
         ),
+        historical_model_family_compatibility=(
+            _is_historical_model_family_compatibility(root, path, raw)
+            if historical_model_family_compatibility is None
+            else historical_model_family_compatibility
+        ),
     )
 
 
@@ -1017,6 +1037,7 @@ def parse_verification_report_committed_bytes(
     raw: bytes,
     *,
     frozen_legacy: bool | None = None,
+    historical_model_family_compatibility: bool | None = None,
 ) -> VerificationReport:
     """Parse bytes from a caller's committed mailbox projection."""
 
@@ -1027,6 +1048,9 @@ def parse_verification_report_committed_bytes(
         path,
         raw,
         frozen_legacy=frozen_legacy,
+        historical_model_family_compatibility=(
+            historical_model_family_compatibility
+        ),
     )
 
 
@@ -1073,9 +1097,16 @@ def _report_structure_violations(
             # Artifacts that declare a risk class must clear model-family
             # independence: a harness prefix or version suffix is not a
             # different reviewer.
-            if not codex_protocol_model.models_are_independent(
-                request.author_model, report.reviewer_model
-            ) and not report.frozen_model_label_exception:
+            pair_is_admissible = (
+                codex_protocol_model.models_are_independent(
+                    request.author_model, report.reviewer_model
+                )
+                if report.historical_model_family_compatibility
+                else codex_protocol_model.models_are_current_review_pair(
+                    request.author_model, report.reviewer_model
+                )
+            )
+            if not pair_is_admissible and not report.frozen_model_label_exception:
                 violations.append("reviewer model shares the author model family")
         elif report.reviewer_model.casefold() == request.author_model.casefold():
             # Legacy artifacts predate the Risk class field and are graded on

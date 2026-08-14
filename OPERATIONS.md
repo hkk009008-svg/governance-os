@@ -12,6 +12,9 @@ governance-kernel truth.
 ## 1. Prerequisites
 
 - An activated Python environment satisfying `requirements-dev.txt`.
+- For direct Codex/Claude relay, install the separate optional
+  `requirements-connector.txt` lock into the Python environment selected by
+  `coordination/bin/claude-task-connector`.
 - A current Pipeline Git checkout.
 - Run mutating Codex work in a task-specific native Git worktree. Do not export
   a persistent per-seat `GIT_INDEX_FILE`.
@@ -96,6 +99,21 @@ guard resolves them.
 
 ## 6. Side-Effect Boundaries
 
+For transient Codex/Claude communication, inspect the connector without
+launching a provider:
+
+```bash
+coordination/bin/claude-task-connector capabilities
+coordination/bin/claude-task-connector list-sessions
+```
+
+Codex normally uses the same runtime through the project MCP configuration.
+Starting `pipeline-codex-bridge` requires exact provider-launch/spend authority
+and a finite budget; sending through it is also an external provider effect.
+Claude replies with native `SendMessage` to that named peer. The transport has
+no delivery acknowledgement and grants no role or review authority. See
+`docs/protocol/claude/task-connector.md`.
+
 Every external effect requires live exact authority for the executor, target,
 effect, and scope. A route or role alone is never sufficient. This includes
 push/force-push, merge, cursor consumption, lock mutation, provider launch,
@@ -110,3 +128,8 @@ outside the accepted target scope. See `AGENTS.md` for the canonical boundary.
 | Guard reports a route but target checkout looks stale | Active work is in a route worktree or base | Read the route body and inspect the named worktree before using normal target checkout. |
 | Mailbox monitor shows unknown receipt | Cursor or ref-bus state cannot prove receipt | Treat delivery as unproved until a seat-specific status or mailbox body proves it. |
 | Capacity board reports active packets | A route is open | Work only inside the packet scope and send the next required mailbox artifact. |
+| Connector reports missing `claude-agent-sdk` | Optional runtime is absent from the selected Python | Install `requirements-connector.txt` into that environment; installation alone does not launch Claude. |
+| Claude target begins `local_` | Private Desktop task ID was supplied | Start the bridge, run `claude_bridge_list_peers`, and use an exact bridge-visible native address. |
+| Host inventory name is absent from bridge `ListAgents` | Peer aliases are scoped to the viewing bridge | Run `claude_bridge_list_peers`; select only its exact structured `PostToolUse` address, including `[ref]`. |
+| A second relay is rejected as pending | The earlier SDK turn has no terminal result yet | Read/wait from the current bridge cursor; do not replace or retry the armed relay. Stop only when its outcome can safely remain unknown. |
+| Relay is submitted but delivery is unknown | Native `SendMessage` has no end-to-end acknowledgement | Inspect bridge events and ask the target/reply path for confirmation; do not report delivered. |

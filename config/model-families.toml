@@ -13,6 +13,13 @@
 #   - high-risk authority never derives from a model label.
 schema_version = 1
 
+[review_admission]
+# Current high-risk review authority is closed to the two supported runtime
+# providers. The wider registry below remains readable only for immutable
+# artifacts that existed byte-for-byte at this retirement boundary.
+active_families = ["claude", "gpt"]
+historical_cutover = "edc2cbe8528620ba22a5cb657bddbbf7c4820d4f"
+
 [provider_prefixes]
 "anthropic-" = "claude"
 "openai-" = "gpt"

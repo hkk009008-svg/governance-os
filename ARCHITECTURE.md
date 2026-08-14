@@ -3,7 +3,7 @@
 > This file records current repository facts. Executable code wins when prose
 > drifts, and the stale prose must be corrected in the same change.
 
-*Last verified against base: 2026-08-13 @ 09fa755*
+*Last verified against base: 2026-08-14 @ edc2cbe*
 
 ## 1. Purpose
 
@@ -45,7 +45,7 @@ canonical or external-effect scope. The mode itself grants no authority; see
 
 | Path | Current role |
 |---|---|
-| `scripts/` | Runtime validators, compact status, target guard, and the Codex launcher. |
+| `scripts/` | Runtime validators, compact status, target guard, provider launch adapters, and the supported Claude task connector. |
 | `coordination/mailbox/sent/` | Append-only human-readable task and review events. |
 | `coordination/mailbox/seen/` | Compatibility cursors for the four concrete pair seats only. |
 | `.agents/skills/` | On-demand role procedures. Skill presence grants no authority. |
@@ -68,12 +68,20 @@ by the host, not chosen, and each adapter states its own.
 | Launcher | `codex-seat` | none |
 | Seat roles | `.codex/agents/*.toml` | `.claude/skills/seat-*` |
 | Subagent advisors | `.codex/agents/*.toml` | `.claude/agents/*.md` |
+| Direct cross-app relay | Project MCP owns one named Claude Agent SDK peer | Native `ListAgents`/`SendMessage` reaches the same peer |
 
 Notable per-host constraints:
 
 - Pipeline has no Claude launcher or governance-seat registry. Claude Desktop's
   host session registry, automatic worktrees, and peer relay are conveniences;
   they do not turn a session title or message into role authority.
+- The Codex-owned `pipeline-codex-bridge` is a transient, named Agent SDK peer,
+  not a Claude seat launcher or second mailbox. MCP startup performs no
+  provider launch; starting the peer requires separate launch/spend authority
+  plus a finite budget. It uses only native `ListAgents` and `SendMessage`,
+  mechanically gates one exact `ListAgents`/`SendMessage` sequence with an SDK
+  `PreToolUse` hook, rejects Desktop `local_*` IDs/private RPC, and reports no
+  delivery ack.
 - Claude Code discovers skills only under `.claude/skills/`. Since ADR-067
   Stage 3, six `.claude` skills (create-regression-pin, probe-a-claim,
   prove-a-control, isolate-a-variable, chatgpt-pro-consultation,
@@ -102,6 +110,7 @@ The table names stable symbols instead of volatile line numbers.
 | `RuntimeIdentity`, `work_profile_for`, `review_profile_for` | `scripts/codex_protocol_model.py` | Close runtime identity and select finite work-mode and review policies. |
 | `model_family`, `models_are_independent` | `scripts/codex_protocol_model.py` | Decide reviewer independence by model family, so a harness prefix or version suffix cannot buy it. |
 | `build_launch_spec` | `scripts/codex_seat_launcher.py` | Launch a named Codex role in the caller-selected native worktree without binding an index. |
+| `BridgeRuntime`, `ConnectorMcpServer` | `scripts/claude_task_connector.py` | Own one bounded, fail-closed Agent SDK peer and expose transient Codex relay/read/wait tools without importing private Desktop APIs. |
 | `resolve_unread` | `scripts/bus_unread.py` | Answer unread from the proven authority, falling back to the canonical mailbox order so an absent bus never renders `0 unread`. |
 | `build_guard` | `scripts/ledger_start_guard.py` | Validate one ordinary Pipeline-first target start. |
 | `resolve_target` | `scripts/target_binding.py` | Resolve the selected product binding. |
@@ -124,6 +133,9 @@ The table names stable symbols instead of volatile line numbers.
 - Session start grants nothing. Pipeline has no Claude governance-seat launcher
   or registry, even though Claude Desktop has a host session registry and relay.
   Review identity is decided at publication by `scripts/compact_pair_loop.py`.
+- Cross-app peer traffic is transient routing only. Its native origin can route
+  a reply but cannot assign a role, validate a reviewer, grant an effect, or
+  replace the fixed mailbox. Queue overflow stops rather than silently drops.
 - Repository hooks do not orient any side, mutate state, refresh doctrine, or
   maintain a second index.
 - One compact snapshot is the normal orientation path. There is no fast-resume
@@ -187,6 +199,9 @@ python -m pytest tests -q
 python scripts/governance_verify_all.py
 python scripts/check_coordination.py
 ```
+
+The optional Codex/Claude connector runtime is separately hash-locked in
+`requirements-connector.txt`; installing it does not launch a provider.
 
 These commands use the worktree's normal Git environment. Smoke and tests prove
 only the behavior they execute; they do not commit, publish, consume, push,

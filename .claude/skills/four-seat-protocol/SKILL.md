@@ -14,7 +14,8 @@ subagent from the explicit task. Do not infer a role. For a governed decision,
 orient once:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/status.py snapshot <seat>
+unset GIT_INDEX_FILE
+coordination/bin/pipeline-python scripts/status.py snapshot <seat>
 ```
 
 Read actionable event bodies. Only an assigned receiving role consumes its
@@ -32,10 +33,11 @@ live role, publish role events or verdicts, consume cursors, lock, push, merge,
 launch providers, or spend. Use the native worktree index; external effects
 remain separately authorized.
 
-Use Claude's native peer messages for attributed, transient same-Claude
-findings or status so the user does not manually relay them. They grant no role
-or effect authority and are not durable protocol state. Formal, binding, or
-cross-provider speech still goes through `coordination/bin/send-event`.
+Use Claude's native peer messages for attributed, transient findings or status
+so the user does not manually relay them, including traffic crossing the named
+Codex bridge. They grant no role or effect authority and are not durable
+protocol state. Formal, binding, or durable speech still goes through
+`coordination/bin/send-event`.
 
 Optional ChatGPT Pro consultation is parent-only and advisory; follow the
 `chatgpt-pro-consultation` skill.

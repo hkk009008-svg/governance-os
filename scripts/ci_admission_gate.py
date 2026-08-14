@@ -73,6 +73,8 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
     "pyproject.toml",
     "pytest.ini",
     "requirements-dev.txt",
+    "requirements-connector.in",
+    "requirements-connector.txt",
     "requirements-governance.txt",
     "scripts/",
     "setup.cfg",

@@ -39,9 +39,7 @@ CORE_CODEX_AGENTS = {
 ACTIVE_INSTRUCTION_ROOTS = (
     "AGENTS.md",
     "CLAUDE.md",
-    ".agents/agents",
     ".agents/skills",
-    ".agents/workflows",
     ".claude/agents",
     ".claude/skills",
     ".codex/agents",

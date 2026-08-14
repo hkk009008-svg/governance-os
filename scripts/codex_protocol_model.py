@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import os
+import re
+import subprocess
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -197,9 +199,96 @@ def load_model_families(config_path: Path = _MODEL_FAMILIES_CONFIG) -> tuple[
     return prefixes, families, aliases
 
 
+def load_review_admission(
+    config_path: Path = _MODEL_FAMILIES_CONFIG,
+) -> tuple[frozenset[str], str]:
+    """Load the closed current-review families and immutable-history boundary."""
+
+    try:
+        payload = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise RuntimeError(
+            f"model-families configuration unavailable or unparsable: {exc}"
+        ) from exc
+    admission = payload.get("review_admission")
+    if not isinstance(admission, dict):
+        raise RuntimeError("model-families [review_admission] table is required")
+    active = admission.get("active_families")
+    cutover = admission.get("historical_cutover")
+    if (
+        not isinstance(active, list)
+        or not active
+        or not all(isinstance(family, str) and family for family in active)
+        or len(active) != len(set(active))
+    ):
+        raise RuntimeError(
+            "model-families review_admission.active_families must be a unique "
+            "nonempty string list"
+        )
+    prefixes = payload.get("provider_prefixes")
+    if not isinstance(prefixes, dict) or not set(active) <= set(prefixes.values()):
+        raise RuntimeError(
+            "model-families active review families must have provider prefixes"
+        )
+    if not isinstance(cutover, str) or re.fullmatch(r"[0-9a-f]{40}", cutover) is None:
+        raise RuntimeError(
+            "model-families review_admission.historical_cutover must be one full SHA"
+        )
+    repository_root = config_path.resolve().parent.parent
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+    try:
+        exists = subprocess.run(
+            [
+                "/usr/bin/git",
+                "--no-replace-objects",
+                "-C",
+                str(repository_root),
+                "cat-file",
+                "-e",
+                f"{cutover}^{{commit}}",
+            ],
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+        ancestor = subprocess.run(
+            [
+                "/usr/bin/git",
+                "--no-replace-objects",
+                "-C",
+                str(repository_root),
+                "merge-base",
+                "--is-ancestor",
+                cutover,
+                "HEAD",
+            ],
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(
+            "model-families historical_cutover could not be verified against Git"
+        ) from exc
+    if exists.returncode != 0 or ancestor.returncode != 0:
+        raise RuntimeError(
+            "model-families historical_cutover must resolve to an ancestor of HEAD"
+        )
+    return frozenset(active), cutover
+
+
 MODEL_PROVIDER_FAMILIES, MODEL_ID_REGISTRY, MODEL_DISPLAY_ALIASES = (
     load_model_families()
 )
+CURRENT_REVIEW_FAMILIES, CURRENT_REVIEW_FAMILY_CUTOVER = load_review_admission()
 
 
 def model_family(model_id: str) -> str | None:
@@ -249,6 +338,18 @@ def models_are_independent(author_model: str, reviewer_model: str) -> bool:
     return (
         author_family is not None
         and reviewer_family is not None
+        and author_family != reviewer_family
+    )
+
+
+def models_are_current_review_pair(author_model: str, reviewer_model: str) -> bool:
+    """Return whether a pair is independent within the live two-provider policy."""
+
+    author_family = model_family(author_model)
+    reviewer_family = model_family(reviewer_model)
+    return (
+        author_family in CURRENT_REVIEW_FAMILIES
+        and reviewer_family in CURRENT_REVIEW_FAMILIES
         and author_family != reviewer_family
     )
 
@@ -411,7 +512,7 @@ class RuntimeIdentity:
 
 
 CODEX_VERIFICATION_COMMANDS = (
-    "python -m pytest "
+    "coordination/bin/pipeline-python -m pytest "
     "tests/unit/test_imports_smoke.py "
     "tests/unit/test_protocol_mailbox.py "
     "tests/unit/test_status.py "
@@ -420,8 +521,15 @@ CODEX_VERIFICATION_COMMANDS = (
     "tests/unit/test_protocol_capacity.py "
     "tests/unit/test_protocol_doc_integrity.py "
     "tests/unit/test_protocol_prompt_sync.py "
+    "tests/unit/test_codex_protocol_model.py "
+    "tests/unit/test_model_families_config.py "
+    "tests/unit/test_compact_pair_loop.py "
+    "tests/unit/test_provider_surface_map.py "
+    "tests/unit/test_harness_preflight.py "
+    "tests/unit/test_codex_hook_lifecycle.py "
+    "tests/unit/test_claude_task_connector.py "
     "tests/unit/test_codex_ledger_bridge.py -q",
-    "python scripts/governance_verify_all.py",
+    "coordination/bin/pipeline-python scripts/governance_verify_all.py",
 )
 
 

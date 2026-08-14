@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+# Resolve the primary checkout's repository-native interpreter from either the
+# primary checkout or a linked worktree.  Worktrees intentionally do not carry
+# duplicate .venv directories.
+tool_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)
+common_dir=$(
+    /usr/bin/env -i PATH=/usr/bin:/bin LANG=C LC_ALL=C \
+        /usr/bin/git --no-replace-objects -C "$tool_root" \
+        rev-parse --path-format=absolute --git-common-dir
+)
+primary_root=$(/usr/bin/dirname -- "$common_dir")
+pipeline_python="$primary_root/.venv/bin/python"
+
+if [ ! -x "$pipeline_python" ]; then
+    echo "pipeline-python: primary Pipeline .venv is unavailable" >&2
+    exit 4
+fi
+
+exec "$pipeline_python" "$@"

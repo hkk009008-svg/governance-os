@@ -9,12 +9,15 @@ review, publish an event, or authorize an external effect.
 
 1. Open the exact checkout or app-owned worktree containing the work.
 2. Begin as readiness unless the task explicitly assigns Director, Operator,
-   or Coordinator. Run `python3 scripts/status.py snapshot` and add the exact
-   seat only when assigned.
+   or Coordinator. Run
+   `coordination/bin/pipeline-python scripts/status.py snapshot` and add the
+   exact seat only when assigned.
 3. Use native subagents, side questions, and peer messages for transient work.
-   Keep writers file-disjoint and isolate concurrent writers in worktrees.
+   When Codex and Claude must talk directly, use the supported named SDK bridge
+   in `docs/protocol/claude/task-connector.md`. Keep writers file-disjoint and
+   isolate concurrent writers in worktrees.
 4. Use `coordination/bin/send-event` for formal requests, reports, transfers,
-   and cross-provider decisions. It stages but does not commit or land. A
+   and durable cross-provider decisions. It stages but does not commit or land. A
    receiving checkout sees the event only after the containing commit lands
    and that checkout synchronizes to it.
 5. Push, merge, lock, cursor consumption, provider launch, paid execution, and
@@ -43,8 +46,8 @@ plus a first-class handoff between Local and an app-managed worktree.
 Use named peer messages for transient findings and status. Use `/btw` for a
 disposable question and a bounded advisor for focused read-only analysis. The
 receiving session's permissions still apply, and transient messages carry
-neither files nor role/effect authority. For durable or cross-app
-communication, use `send-event`.
+neither files nor role/effect authority. The supported bridge below carries
+transient cross-app traffic; use `send-event` for formal or durable speech.
 
 ## Codex desktop
 
@@ -58,7 +61,9 @@ communication, use `send-event`.
 Use task discovery, follow-up, waiting, interruption, and handoff instead of
 asking the user to relay text between Codex tasks. Automations, remote work,
 plugins, browser actions, and connector mutations keep their own data, spend,
-and effect boundaries. Formal review state still goes through `send-event`.
+and effect boundaries. For transient Claude communication, Codex defaults to
+the project MCP connector's named `pipeline-codex-bridge` peer. Formal review
+state still goes through `send-event`.
 
 Use the app's native lifecycle controls for transient task organization:
 
@@ -87,33 +92,46 @@ mailbox events, Git evidence, or an effect authorization.
 |---|---|
 | Disposable question to the same parent | Side question or parent-scoped subagent |
 | Status for another session in the same app | Native session/task message |
+| Transient Codex <-> Claude task message | Named Agent SDK peer through the project Claude task connector |
 | Formal request, report, or durable decision | `send-event`, then separately commit and land/synchronize |
-| Read current shared state | `python3 scripts/status.py snapshot [seat]`, then read named event bodies |
+| Read current shared state | `coordination/bin/pipeline-python scripts/status.py snapshot [seat]`, then read named event bodies |
 | Advance a role cursor | The assigned receiver through `coordination/bin/consume-events`, with separate authority |
 
-Do not add a relay daemon, chat scraper, GUI driver, or second mailbox. Native
-channels solve transient same-app coordination; the fixed writer owns durable
-cross-app state.
+The supported cross-app path is one named, persistent Claude Agent SDK peer
+owned by Codex. It uses only Claude's native `ListAgents` and `SendMessage` and
+exposes attributed replies through Codex MCP tools. Do not substitute a GUI
+driver, chat scraper, Claude Desktop private RPC/socket, preview channel
+injection, or second mailbox. The fixed writer still owns durable cross-app
+state.
+
+Install the separate pinned runtime with
+`coordination/bin/pipeline-python -m pip install -r requirements-connector.txt`,
+then restart Codex so it
+loads `.codex/config.toml`. MCP startup is local and read-only; starting the SDK
+peer remains a separately authorized provider-launch/spend effect and requires
+an explicit finite budget. Native `SendMessage` has no end-to-end delivery
+acknowledgement, so a submitted relay is never reported as delivered. See
+`docs/protocol/claude/task-connector.md` for the exact tools and limits.
 
 ## Local installation snapshot
 
-Observed read-only on 2026-08-09; the Codex row was refreshed on 2026-08-14;
-versions may drift.
+Observed read-only on 2026-08-14; versions may drift.
 
 | Side | Desktop bundle | CLI |
 |---|---|---|
-| Claude | `com.anthropic.claudefordesktop` 1.26832.0 | Claude Code 2.1.220 |
+| Claude | `com.anthropic.claudefordesktop` 1.26832.0; embedded Claude Code 2.1.227 | Standalone 2.1.231; pinned Agent SDK 0.2.137 bundles 2.1.229 |
 | Codex | `com.openai.codex` 26.803.61601 | `codex-cli` 0.147.0 |
 
-Claude Desktop was above the documented 1.2581.0 floor for the Code-tab
-layout. The standalone Claude Code CLI was below the 2.1.224 peer-messaging
-floor; any upgrade is a separate provider/network action. No application was
-updated by this record.
+The standalone Claude Code CLI, observed Desktop engine, and pinned SDK bundle
+are all above the 2.1.224 peer-messaging floor. The connector uses the pinned
+supported SDK bundle by default and never infers the Desktop engine version
+from the standalone binary.
 
 ## Primary vendor sources
 
 - Anthropic: [Desktop](https://code.claude.com/docs/en/desktop),
   [cross-session messaging](https://code.claude.com/docs/en/cross-session-messaging),
+  [Agent SDK for Python](https://code.claude.com/docs/en/agent-sdk/python),
   [settings](https://code.claude.com/docs/en/settings), and
   [agent teams](https://code.claude.com/docs/en/agent-teams).
 - OpenAI: [Codex app introduction](https://openai.com/index/introducing-the-codex-app/),

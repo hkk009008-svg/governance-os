@@ -1,1 +1,8 @@
 personality = "friendly"
+
+[mcp_servers.claude_task_connector]
+command = "coordination/bin/claude-task-connector"
+args = ["mcp"]
+cwd = "."
+startup_timeout_sec = 30
+tool_timeout_sec = 310

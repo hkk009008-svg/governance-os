@@ -20,7 +20,7 @@ SEATS = (
     "director", "operator", "coordinator",
     "director2", "operator2", "coordinator2",
     "overseer", "ci", "merge-gate",
-    "chief-gemini", "chief-chatgpt",
+    "chief-claude", "chief-codex",
 )
 
 

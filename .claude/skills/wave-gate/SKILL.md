@@ -17,7 +17,8 @@ truth for the hardening campaign.
 
 ## Run the gate
 ```
-env -u GIT_INDEX_FILE .venv/bin/python scripts/wave_gate_check.py <wave>
+unset GIT_INDEX_FILE
+coordination/bin/pipeline-python scripts/wave_gate_check.py <wave>
 ```
 The script reports whether every defect row assigned to `<wave>` is in a
 closed + verified state. A non-zero exit = the wave is NOT met; read which rows

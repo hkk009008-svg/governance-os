@@ -12,4 +12,5 @@ instead of turning it into an empty queue.
 
 Do not claim work, edit, publish events or verdicts, consume cursors, lock,
 commit, push, merge, launch providers, or spend. Return evidence to the parent.
-Use `env -u GIT_INDEX_FILE` for ordinary Git and pytest.
+Use `env -u GIT_INDEX_FILE` for ordinary Git. For pytest, first
+`unset GIT_INDEX_FILE`, then run `coordination/bin/pipeline-python -m pytest`.

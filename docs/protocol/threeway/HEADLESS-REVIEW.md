@@ -7,7 +7,7 @@ never grants launch, publication, commit, push, merge, or spend authority.
 ## Codex preflight
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/harness_preflight.py codex
+env -u GIT_INDEX_FILE coordination/bin/pipeline-python scripts/harness_preflight.py
 ```
 
 The preflight checks that the binary exists, that repository configuration

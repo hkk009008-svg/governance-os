@@ -29,7 +29,9 @@ same-seat handoff, current outcome, relevant mail bodies, and scoped Git state.
 Preflight is advisory. Assess abuse classes proportionally and preserve material
 findings.
 
-Use `env -u GIT_INDEX_FILE` for ordinary Git/pytest and explicit pathspecs.
+Use `env -u GIT_INDEX_FILE` for ordinary Git and explicit pathspecs. For
+pytest, first `unset GIT_INDEX_FILE`, then run
+`coordination/bin/pipeline-python -m pytest`.
 Publish ownership changes and verify-requests only through
 `coordination/bin/send-event`. At a transfer, interruption, or wrap boundary,
 publish one checkpoint `findings` event (`scripts/draft_checkpoint.py`); its

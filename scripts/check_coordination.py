@@ -47,6 +47,7 @@ from pathlib import Path, PurePosixPath
 
 import compact_pair_loop
 import check_go_schema
+import codex_protocol_model
 import git_commit_projection
 import git_runner
 import mailbox_writer
@@ -155,6 +156,7 @@ class CommittedMailboxProjection:
     introduction_events: dict[str, bytes]
     learning_cutover_events: dict[str, bytes]
     learning_cutover_ancestors: frozenset[str]
+    review_family_cutover_events: dict[str, bytes] | None
     kinds: frozenset[str]
     frozen_legacy_reports: frozenset[str]
     history_exceptions: dict[str, ImmutableHistoryException]
@@ -793,6 +795,7 @@ def _committed_mailbox_projection(
         return None, cutover_problem or "learning-history cutover projection unavailable"
     candidate_objects = {
         compact_pair_loop.LEGACY_VERBOSE_CUTOFF,
+        codex_protocol_model.CURRENT_REVIEW_FAMILY_CUTOVER,
         _LEARNING_HISTORY_CUTOVER_COMMIT,
         _ACTIVE_FAILURE_CUTOVER_COMMIT,
         _REVIEW_STATE_CUTOVER_COMMIT,
@@ -823,6 +826,34 @@ def _committed_mailbox_projection(
         )
     except git_commit_projection.CommitGraphProjectionError as exc:
         return None, f"commit projection unavailable: {exc}"
+    review_family_cutover_events: dict[str, bytes] | None = None
+    review_family_cutover = codex_protocol_model.CURRENT_REVIEW_FAMILY_CUTOVER
+    if (
+        commits.object_types.get(review_family_cutover) == "commit"
+        and commits.is_ancestor(review_family_cutover, pinned_head)
+    ):
+        review_archive = _projection_git(
+            repo_root,
+            "archive",
+            "--format=tar",
+            review_family_cutover,
+            "coordination/mailbox/sent",
+        )
+        if review_archive.returncode != 0:
+            detail = review_archive.stderr.decode(
+                "utf-8", errors="replace"
+            ).strip()
+            return None, detail or "review-family cutover archive unavailable"
+        review_files, review_problem = _parse_mailbox_archive(
+            review_archive.stdout
+        )
+        if review_problem is not None or review_files is None:
+            return None, review_problem or "review-family cutover archive invalid"
+        review_family_cutover_events = {
+            path: raw
+            for path, raw in review_files.items()
+            if path.startswith(_ARCHIVE_SENT_PREFIX) and path.endswith(".md")
+        }
     exception_raw = archive_files.get(_ARCHIVE_HISTORY_EXCEPTIONS)
     if exception_raw is None:
         return None, "committed immutable-history exception manifest is absent"
@@ -923,6 +954,7 @@ def _committed_mailbox_projection(
         introduction_events=introduction_events,
         learning_cutover_events=learning_cutover_events,
         learning_cutover_ancestors=learning_cutover_ancestors,
+        review_family_cutover_events=review_family_cutover_events,
         kinds=kinds,
         frozen_legacy_reports=frozen_legacy_reports,
         history_exceptions=history_exceptions,
@@ -1356,6 +1388,11 @@ def inspect_verify_review_state(
                 path,
                 raw,
                 frozen_legacy=path in projection.frozen_legacy_reports,
+                historical_model_family_compatibility=(
+                    True
+                    if projection.review_family_cutover_events is None
+                    else projection.review_family_cutover_events.get(path) == raw
+                ),
             )
         except (
             mailbox_writer.MailboxWriterError,

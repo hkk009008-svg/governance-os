@@ -15,6 +15,11 @@ events).
    unless behavior is materially ambiguous. Use smallest-sufficient
    verification, fresh, before claiming completion, and inspect the exact
    diff before committing.
+   Keep this proportionality inside formal work too: fix concrete findings
+   directly, use focused checks while iterating, and run one final review and
+   full verification pass. Do not turn a bounded stale instruction into a
+   generalized parser or a chain of intermediate review artifacts unless the
+   user explicitly asks for that system or the implementation truly needs it.
 2. Preserve unrelated work and stage explicit pathspecs. Use each worktree's
    native Git index; per-seat indexes are retired — do not create or share
    them. No destructive Git operations without explicit user authorization.

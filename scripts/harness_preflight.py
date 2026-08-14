@@ -13,12 +13,26 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 
-HARNESSES = ("codex",)
 CODEX_AMBIENT_KEYS = ("approval_policy", "sandbox_mode", "features")
+CODEX_MCP_SERVER = "claude_task_connector"
+CODEX_MCP_CONTRACT = {
+    "command": "coordination/bin/claude-task-connector",
+    "args": ["mcp"],
+    "cwd": ".",
+}
+CODEX_MCP_ALLOWED_KEYS = frozenset(
+    {
+        *CODEX_MCP_CONTRACT,
+        "startup_timeout_sec",
+        "tool_timeout_sec",
+        "features",
+    }
+)
 RUNBOOK = "docs/protocol/threeway/HEADLESS-REVIEW.md"
 
 
@@ -32,6 +46,20 @@ class Result:
 
 def _binary(name: str) -> str | None:
     return shutil.which(name)
+
+
+def _profile_authority_paths(payload: object, *, prefix: str = "profiles") -> list[str]:
+    """Return effective profile keys that could widen a later Codex invocation."""
+
+    if not isinstance(payload, dict):
+        return []
+    found: list[str] = []
+    for key, value in payload.items():
+        path = f"{prefix}.{key}"
+        if key in {*CODEX_AMBIENT_KEYS, "mcp_servers"}:
+            found.append(path)
+        found.extend(_profile_authority_paths(value, prefix=path))
+    return found
 
 
 def check_codex(root: Path) -> list[Result]:
@@ -49,19 +77,58 @@ def check_codex(root: Path) -> list[Result]:
 
     config = root / ".codex/config.toml"
     ambient: list[str] = []
-    if config.is_file():
-        text = config.read_text(encoding="utf-8")
-        ambient = [key for key in CODEX_AMBIENT_KEYS if key in text]
+    config_problem = ""
+    try:
+        payload = tomllib.loads(config.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        payload = {}
+        config_problem = f"project config is unavailable or invalid: {exc}"
+    if not config_problem:
+        ambient = sorted(set(payload) & set(CODEX_AMBIENT_KEYS))
+        profiles = payload.get("profiles")
+        if profiles is not None:
+            if not isinstance(profiles, dict):
+                config_problem = "project profiles must be a TOML table"
+            elif profile_authority := _profile_authority_paths(profiles):
+                config_problem = (
+                    "project profiles carry ambient authority: "
+                    + ", ".join(sorted(profile_authority))
+                )
+        servers = payload.get("mcp_servers")
+        if not config_problem and (
+            not isinstance(servers, dict) or set(servers) != {CODEX_MCP_SERVER}
+        ):
+            config_problem = (
+                "project MCP inventory must be exactly " + CODEX_MCP_SERVER
+            )
+        elif not config_problem:
+            server = servers[CODEX_MCP_SERVER]
+            if not isinstance(server, dict) or any(
+                server.get(key) != value for key, value in CODEX_MCP_CONTRACT.items()
+            ):
+                config_problem = (
+                    f"project MCP {CODEX_MCP_SERVER} command/args/cwd drifted"
+                )
+            elif unknown := sorted(set(server) - CODEX_MCP_ALLOWED_KEYS):
+                config_problem = (
+                    f"project MCP {CODEX_MCP_SERVER} carries unsupported keys: "
+                    + ", ".join(unknown)
+                )
+    problem = (
+        f"project config carries {', '.join(ambient)}"
+        if ambient
+        else config_problem
+    )
     results.append(
         Result(
             "codex",
-            not ambient,
-            "project config implies no ambient runtime authority"
-            if not ambient
-            else f"project config carries {', '.join(ambient)}",
-            ""
-            if not ambient
-            else "remove the keys and pin sandbox/approval per invocation",
+            not problem,
+            (
+                "project config has no ambient authority and exactly one supported MCP"
+                if not problem
+                else problem
+            ),
+            "" if not problem else "restore the closed project configuration",
         )
     )
     results.append(
@@ -127,7 +194,7 @@ def live_probe(root: Path, *, runner=subprocess.run) -> Result:
         "-C",
         str(root),
         "--sandbox",
-        "workspace-write",
+        "read-only",
         "-c",
         'approval_policy="never"',
         prompt,
@@ -166,7 +233,6 @@ def live_probe(root: Path, *, runner=subprocess.run) -> Result:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="harness_preflight.py")
-    parser.add_argument("harness", choices=(*HARNESSES, "all"))
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument(
         "--live",

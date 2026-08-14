@@ -15,9 +15,16 @@ mapping says, and run the reserve/finish commands from the repository root
 as:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/chatgpt_pro_consult.py reserve --repo-root .
+unset GIT_INDEX_FILE
+coordination/bin/pipeline-python scripts/chatgpt_pro_consult.py reserve --repo-root .
 ```
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/chatgpt_pro_consult.py finish --repo-root . --key KEY --hash SHA256 --status sent
+unset GIT_INDEX_FILE
+coordination/bin/pipeline-python scripts/chatgpt_pro_consult.py finish --repo-root . --key KEY --hash SHA256 --status sent
 ```
+
+Both take options, so they `unset GIT_INDEX_FILE` rather than prefix
+`env -u GIT_INDEX_FILE`: Claude's Bash tool refuses `env` once a dash-prefixed
+token follows the variable list, which would leave these unrunnable from the
+session that is supposed to run them.

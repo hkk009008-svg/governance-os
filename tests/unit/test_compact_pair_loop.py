@@ -1029,9 +1029,7 @@ def test_high_risk_control_rejects_same_family_reviewer(
     ("author_model", "reviewer_model"),
     (
         ("gpt-5.6-sol", "claude-opus-5"),
-        ("gpt-5.6-sol", "google-gemini-3.6"),
         ("claude-opus-5", "gpt-5.6-terra"),
-        ("grok-4.5", "gemini-3.1-pro-high"),
     ),
 )
 def test_high_risk_control_accepts_distinct_family_reviewer(
@@ -1070,6 +1068,91 @@ def test_high_risk_control_accepts_distinct_family_reviewer(
         for violation in pair.validate_report(root, report)
         if "model family" in violation
     ]
+
+
+@pytest.mark.parametrize(
+    ("author_model", "reviewer_model"),
+    (
+        ("gpt-5.6-sol", "google-gemini-3.6"),
+        ("gpt-5.6-sol", "xai-grok-4.5"),
+        ("grok-4.5", "claude-opus-5"),
+        ("gemini-3.1-pro-high", "grok-4.5"),
+    ),
+)
+def test_current_high_risk_control_rejects_retired_model_families(
+    tmp_path: Path, author_model: str, reviewer_model: str
+) -> None:
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        author_model=author_model,
+        assigned_operator="operator2",
+        risk_class="high-risk-control",
+        abuse_class_assessment=("retired families cannot grant current authority",),
+    )
+    report = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+            reviewer_model=reviewer_model,
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+        ),
+    )
+
+    assert "reviewer model shares the author model family" in pair.validate_report(
+        root, report
+    )
+
+
+def test_exact_cutover_report_keeps_historical_family_compatibility(
+    tmp_path: Path,
+) -> None:
+    request_path = REQUEST_PATH.replace("director-to-operator", "operator-to-operator2")
+    report_path = REPORT_PATH.replace("operator-to-all", "operator2-to-operator")
+    root, base, head, trigger = _repo(
+        tmp_path,
+        request_path=request_path,
+        author_seat="operator",
+        author_model="gpt-5.6-sol",
+        assigned_operator="operator2",
+        risk_class="high-risk-control",
+        abuse_class_assessment=("historical bytes remain readable",),
+    )
+    current = pair.parse_verification_report(
+        root,
+        _write_report(
+            root,
+            base,
+            head,
+            trigger,
+            report_path=report_path,
+            request_path=request_path,
+            reviewer_seat="operator2",
+            reviewer_model="gemini-3.6-flash-high",
+            risk_class="high-risk-control",
+            abuse_class_assessment_binding="bound-to-request",
+        ),
+    )
+    historical = replace(current, historical_model_family_compatibility=True)
+
+    assert "reviewer model shares the author model family" in pair.validate_report(
+        root, current
+    )
+    assert "reviewer model shares the author model family" not in (
+        pair.validate_report_structure_against_request(
+            root, historical, pair.parse_verify_request(root, request_path, trigger)
+        )
+    )
 
 
 def test_material_behavior_permits_same_model_for_non_author_reviewer(

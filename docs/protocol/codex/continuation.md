@@ -14,14 +14,13 @@ Runtime identity comes from the harness; variables, labels, and prompts grant no
 
 ## Orientation
 
-Use the native worktree index: `python scripts/status.py snapshot <seat>`.
+Use the native worktree index: `coordination/bin/pipeline-python scripts/status.py snapshot <seat>`.
 
-Read actionable event bodies before a decision. The mailbox is the
-configured coordination transport (`governance.toml` `[coordination]`); a
-signed-bus cutover is an explicit reviewed transport change; omission can
-never activate the bus, and a malformed declaration fails closed — transport
-ambiguity fails visibly. Only the assigned live role consumes its cursor, and coordinator has
-no cursor.
+Read actionable event bodies before a decision. The mailbox is the configured
+coordination transport (`governance.toml` `[coordination]`); a signed-bus cutover
+is an explicit reviewed transport change. Omission or a malformed declaration
+fails closed, so transport ambiguity fails visibly. Only the assigned live role
+consumes its cursor; coordinator has no cursor.
 
 Use `coordination/bin/send-event <sender> <recipient> <kind> <subject...>`
 (body on stdin) and `coordination/bin/consume-events <seat> [--to <timestamp>]`;
@@ -31,20 +30,19 @@ Refresh HEAD, relevant events, and scoped status before a write or gate. One
 fresh snapshot is the orientation path; there is no separate fast-resume
 classification or second doctrine dump.
 
-At a real long-horizon boundary — ownership transfer, interruption, wrap, or
-before context compaction — publish one checkpoint `findings` event (draft:
-`scripts/draft_checkpoint.py`; its `Lessons:` line routes lessons toward
-learning-candidates, and `none-considered` is always valid). Resume is one
-snapshot plus the newest campaign checkpoint plus the actionable bodies it
-names; unread backlog is not an orientation debt. Recall from the episodic
-index (`scripts/learning_index.py query`) is optional and advisory (learning
-contract I1) — committed state outranks it.
+At a long-horizon boundary — transfer, interruption, wrap, or compaction —
+publish one checkpoint `findings` event (draft: `scripts/draft_checkpoint.py`;
+its `Lessons:` line routes learning candidates, and `none-considered` is valid).
+Resume from one snapshot, the newest campaign checkpoint, and its actionable
+bodies; unread backlog is not an orientation debt. Episodic recall via
+`scripts/learning_index.py query` is advisory; committed state outranks it.
 
 ## Executable contracts
 
 - `scripts/codex_protocol_model.py`: identity, ownership, risk, and effect tokens.
 - `scripts/compact_pair_loop.py`: formal requests, reports, and exact ranges.
 - `scripts/mailbox_writer.py` validates and serializes event publication.
+- `scripts/claude_task_connector.py` owns the no-authority, lazy transient Claude bridge.
 - This adapter owns host task discovery, dispatch, and waiting behavior.
 
 Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`
@@ -57,13 +55,18 @@ triggered, preserve its complete committed Compact Pair binding.
 Host task tools own discovery, dispatch, and waiting. One trigger identifies one task;
 monitoring failure authorizes neither redispatch, role substitution, nor an effect.
 
-Use native host controls for the task lifecycle: list tasks, read older turns
-through pagination, wait on bounded snapshots, rename or pin active work,
-archive or unarchive completed work, and fork completed history into the same
-directory or an app-managed worktree. Use native review panels for presentation;
-never automate hard deletion, and create a persistent goal only on explicit user
-request. All task lifecycle state is transient host metadata: task metadata grants
-no role, review, or effect authority; it cannot replace the formal exact-range path.
+Use native host controls to list tasks, paginate turns, wait on bounded
+snapshots, rename or pin work, archive or unarchive it, and fork completed
+history. Review panels are presentation; never automate hard deletion or create
+a persistent goal without an explicit request. All task metadata grants no role,
+review, or effect authority and cannot replace formal exact-range review.
+
+## Claude task connector
+
+For transient Codex/Claude communication, default to MCP server
+`claude_task_connector`; its SDK peer is `pipeline-codex-bridge`. Launch/spend
+authority stays separate, a send is not a delivery ack, and private Desktop
+paths are rejected. Follow `docs/protocol/claude/task-connector.md`.
 
 External effects remain separate from structural validation. Push, merge,
 locking, event consumption, paid spend, provider launch, and live-data mutation
@@ -71,15 +74,12 @@ need exact authority for the executor, target, and scope.
 
 ## Review-state history boundary
 
-Review-state projection is bound to the committed history-boundary manifest
-`scripts/baselines/review_history_boundary.json` (consumed fail-closed by
-`scripts/check_coordination.py`) and to the frozen exception manifest it
-names. Both are one-way versioned baselines: never repaired or extended in
-place — a future boundary change ships a new schema version through its own
-reviewed high-risk-control change. An active FAIL clears only through a valid
-GO or NITS report bound to that exact request and explicitly superseding the
-FAIL; active failed reviews are repository-global blockers, and the cutover
-commit must resolve as an ancestor of HEAD or projection fails closed.
+Review-state projection is bound to
+`scripts/baselines/review_history_boundary.json` and its frozen exception
+manifest, consumed fail-closed by `scripts/check_coordination.py`. These one-way
+baselines change only through a new high-risk-reviewed schema. An active FAIL
+clears only through a valid GO/NITS report bound to and superseding it; active
+failures block repository-wide, and the cutover must be an ancestor of HEAD.
 
 ## Evidence-ledger bridge
 

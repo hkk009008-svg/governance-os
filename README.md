@@ -63,6 +63,7 @@ and grants no authority. See `docs/protocol/work-modes.md`.
 | Comprehensive repository and process map | [docs/REPOSITORY-MANUAL.md](docs/REPOSITORY-MANUAL.md) |
 | Task-oriented walkthrough of the common paths | [docs/GUIDEBOOK.md](docs/GUIDEBOOK.md) |
 | Supported desktop apps: setup, strengths, and communication | [docs/protocol/app-quickstart.md](docs/protocol/app-quickstart.md) |
+| Direct Codex/Claude transient task connector | [docs/protocol/claude/task-connector.md](docs/protocol/claude/task-connector.md) |
 | Verified code and topology facts | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Operating commands and troubleshooting | [OPERATIONS.md](OPERATIONS.md) |
 | User-principal intent for this kernel | [docs/PROGRAM-MANUAL.md](docs/PROGRAM-MANUAL.md) |

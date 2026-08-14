@@ -14,7 +14,6 @@ import protocol_doctor as doctor
 
 ROOT = Path(__file__).resolve().parents[2]
 STALE_SELECTORS = (
-    "tests/unit/test_codex_protocol_model.py",
     "tests/unit/test_codex_protocol_artifacts.py",
     "tests/unit/test_protocol_capacity_board.py",
     "tests/unit/test_coordination_bin.py",
@@ -29,6 +28,13 @@ CURRENT_PROTOCOL_TESTS = (
     "tests/unit/test_protocol_capacity.py",
     "tests/unit/test_protocol_doc_integrity.py",
     "tests/unit/test_protocol_prompt_sync.py",
+    "tests/unit/test_codex_protocol_model.py",
+    "tests/unit/test_model_families_config.py",
+    "tests/unit/test_compact_pair_loop.py",
+    "tests/unit/test_provider_surface_map.py",
+    "tests/unit/test_harness_preflight.py",
+    "tests/unit/test_codex_hook_lifecycle.py",
+    "tests/unit/test_claude_task_connector.py",
     "tests/unit/test_codex_ledger_bridge.py",
 )
 REQUIRED_LEDGER_DOC_PHRASES = (
