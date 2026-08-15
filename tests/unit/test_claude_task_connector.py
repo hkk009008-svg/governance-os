@@ -468,25 +468,33 @@ def test_read_is_atomic_under_a_forced_interleave(tmp_path: Path) -> None:
     injector = connector.EventBuffer(256, path)
 
     original = store._meta
-    injected = False
+    fired = False
 
     def interleave(key: str) -> str:
-        nonlocal injected
+        nonlocal fired
         value = original(key)
-        if key == "cursor" and not injected:
-            injected = True
+        if key == "cursor" and not fired:
+            fired = True
             injector.append({"kind": "injected"})
         return value
 
     store._meta = interleave  # type: ignore[method-assign]
     try:
         result = store.wait(0, 50, 0)
+        committed = injector.latest_cursor
     finally:
         store._meta = original  # type: ignore[method-assign]
         injector.close()
         store.close()
 
-    assert injected, "the interleave never fired; this run proves nothing"
+    # The postcondition is the WRITE, not the hook. An earlier version set a
+    # flag BEFORE calling append, so deleting the append left every assertion
+    # green -- even against the exact unguarded _read. A committed cursor of 2
+    # (seed plus injection) cannot be produced by a hook that wrote nothing.
+    assert committed == 2, (
+        f"injected write did not commit (cursor {committed}); run proves nothing"
+    )
+    assert fired, "the interleave never fired; run proves nothing"
     assert result["cursor"] <= result["latest_cursor"], (
         f"read saw cursor {result['cursor']} past "
         f"latest_cursor {result['latest_cursor']}"
