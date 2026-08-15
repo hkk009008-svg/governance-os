@@ -72,6 +72,10 @@ instance, and stop it after the exchange. This narrow standing grant does not
 authorize duplicate bridges, higher spend, repository effects, or formal
 review publication.
 
+An initial startup-time `No reachable agents` can be native registration lag,
+not absence. Confirm the one named process/socket, allow one bounded re-list,
+and only then report the exact refusal; never start a second bridge.
+
 Load only the adapter for the harness you are in:
 
 - Claude: `CLAUDE.md`, then `docs/protocol/claude/continuation.md`.

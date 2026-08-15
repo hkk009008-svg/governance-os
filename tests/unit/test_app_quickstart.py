@@ -100,6 +100,18 @@ def test_both_adapters_default_to_the_supported_transient_task_connector() -> No
         assert "pipeline-codex-bridge" in adapter
 
 
+def test_relay_registration_lag_is_not_reported_as_absence() -> None:
+    contract = _read("docs/protocol/claude/task-connector.md")
+    claude_adapter = _read("docs/protocol/claude/continuation.md")
+
+    for text in (contract, claude_adapter):
+        assert "registration lag" in text
+        assert "No reachable agents" in text
+        assert "second bridge" in text
+    assert "re-list once" in claude_adapter
+    assert "native message ID" in contract
+
+
 def test_active_guides_use_available_python_bootstrap_commands() -> None:
     for relative in (
         "docs/protocol/app-quickstart.md",

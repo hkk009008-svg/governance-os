@@ -162,6 +162,11 @@ forced by the harness rather than chosen:
   target guarantees. The bridge cannot target Desktop `local_*` IDs and never
   substitutes for a formal event. Exact contract:
   `docs/protocol/claude/task-connector.md`.
+- Native peer registration lag can outlast process and socket startup. If the
+  first startup-time `ListAgents` says `No reachable agents`, do not report the
+  bridge absent yet: confirm one named bridge process or bound socket, wait
+  briefly, and re-list once. If that bounded retry is still empty, report the
+  exact refusal; never start a second bridge.
 - The checked-in `isolatePeerMachines: true` setting preserves low-friction
   same-machine delivery while requiring approval before a message leaves the
   machine. Pipeline deliberately does not force `crossSessionInbound: accept`;

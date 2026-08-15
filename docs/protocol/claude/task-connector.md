@@ -18,12 +18,14 @@ The peer can use only `ListAgents` and `SendMessage`. An SDK `PreToolUse`
 hook allows one sequence:
 
 1. one empty `ListAgents`;
-2. one exact live address, or one prefix that resolves to exactly one live
+2. only when that result has no live peer rows, one registration-lag retry;
+3. one exact live address, or one prefix that resolves to exactly one live
    non-self peer;
-3. one `SendMessage` whose target, summary, and body match the armed request.
+4. one `SendMessage` whose target, summary, and body match the armed request.
 
 Everything else is denied. The target keeps its displayed `[ref]`; offline,
-ambiguous, missing, self, altered, repeated, and `local_*` targets fail closed.
+ambiguous, missing after the retry, self, altered, repeated, and `local_*`
+targets fail closed.
 `PostToolUse` records the native response before it is exposed to Codex.
 
 The connector is transport only. It cannot assign a seat, grant authority,
@@ -71,6 +73,13 @@ quarantines the bridge until `stop`, preventing late hooks from being
 attributed to a later message. Duplicate message IDs with identical payloads
 are idempotent; reuse with different bytes fails.
 
+A newly bound native socket can take several seconds to appear in another
+session's registry. Therefore an initial `No reachable agents` during startup
+means not-ready, not absent. Confirm that exactly one named bridge process or
+socket exists, allow the bounded second listing, and refuse only if that retry
+still cannot resolve the target. Never answer registration lag by starting a
+second bridge.
+
 Events live in a bounded ring. If a slow reader falls behind, `truncated=true`
 and `dropped_before_cursor` expose the gap without killing the relay. A restart
 creates a new generation and rejects old cursors.
@@ -83,6 +92,11 @@ Claude addresses the full native peer name shown by `ListAgents`, for example
 The SDK body and routing attribution are preserved but labeled routing-only,
 not governance identity. Repeated native message IDs are emitted once; reuse
 with different content stops the bridge.
+
+For an end-to-end test, the receiver echoes the sender's probe token and native
+message ID, and the sender returns an attributed acknowledgement. Display
+names and bracketed refs are routing hints that rotate on restart; the echoed
+native message ID is the cross-side evidence that the exact payload was read.
 
 For durable or formal work, use `coordination/bin/send-event`, commit the
 artifact, and follow the repository's review rules. The relay carries the

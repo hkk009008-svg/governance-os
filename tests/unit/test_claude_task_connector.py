@@ -310,6 +310,94 @@ def test_no_reachable_agents_sentinel_cannot_be_selected_as_an_exact_target() ->
     )
 
 
+def test_empty_first_listing_allows_one_registration_retry() -> None:
+    observed: list[dict[str, Any]] = []
+    gate = connector.RelayGate(observer=observed.append)
+    _prompt, request = connector.build_relay(
+        target="pipeline-24 [abc123]",
+        target_prefix=None,
+        text="hello",
+        message_id="registration-lag-1",
+    )
+    gate.arm(request)
+
+    assert _allowed(
+        asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l1", None))
+    )
+    asyncio.run(
+        gate.post_tool_use(
+            _post("ListAgents", {}, {"listing": "No reachable agents."}),
+            "l1",
+            None,
+        )
+    )
+    assert _allowed(
+        asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l2", None))
+    )
+    asyncio.run(
+        gate.post_tool_use(
+            _post("ListAgents", {}, {"listing": "pipeline-24 [abc123] · idle"}),
+            "l2",
+            None,
+        )
+    )
+    assert not _allowed(
+        asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l3", None))
+    )
+
+    send = {
+        "to": "pipeline-24 [abc123]",
+        "summary": request["summary"],
+        "message": request["message"],
+    }
+    assert _allowed(
+        asyncio.run(gate.pre_tool_use(_pre("SendMessage", send), "s1", None))
+    )
+    assert [event["name"] for event in observed] == ["ListAgents", "ListAgents"]
+
+
+def test_registration_retry_remains_bounded_and_empty_only() -> None:
+    for message_id, first_listing in (
+        ("nonempty-no-retry", "different-peer [z9] · idle"),
+        ("two-empty-max", "No reachable agents."),
+    ):
+        gate = connector.RelayGate()
+        _prompt, request = connector.build_relay(
+            target="pipeline-24 [abc123]",
+            target_prefix=None,
+            text="hello",
+            message_id=message_id,
+        )
+        gate.arm(request)
+        assert _allowed(
+            asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l1", None))
+        )
+        asyncio.run(
+            gate.post_tool_use(
+                _post("ListAgents", {}, {"listing": first_listing}), "l1", None
+            )
+        )
+
+        retry = asyncio.run(
+            gate.pre_tool_use(_pre("ListAgents", {}), "l2", None)
+        )
+        if first_listing != "No reachable agents.":
+            assert not _allowed(retry)
+            continue
+
+        assert _allowed(retry)
+        asyncio.run(
+            gate.post_tool_use(
+                _post("ListAgents", {}, {"listing": "No reachable agents."}),
+                "l2",
+                None,
+            )
+        )
+        assert not _allowed(
+            asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l3", None))
+        )
+
+
 @pytest.mark.parametrize(
     ("listing", "allowed"),
     [
