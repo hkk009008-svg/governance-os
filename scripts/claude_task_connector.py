@@ -576,14 +576,21 @@ class EventBuffer:
             # swallowed the second, leaving the connection wedged. Probed: with
             # COMMIT and ROLLBACK both denied, the next read failed.
             if self._db.in_transaction:
+                # BaseException, not Exception: a rollback interrupted by
+                # KeyboardInterrupt otherwise escaped and REPLACED the original
+                # error while leaving the transaction open.
                 try:
                     self._db.execute("ROLLBACK")
-                except Exception:
-                    # Rollback failed with a transaction still open, so this
-                    # connection cannot be reused. Close it: the next caller
-                    # gets a clear closed-database error instead of inheriting
-                    # a wedged transaction.
-                    self._db.close()
+                except BaseException:
+                    pass
+                # Re-checked AFTER the attempt. A rollback that completed and
+                # then reported an error has already cleared the transaction,
+                # and closing it there would destroy a usable connection.
+                if self._db.in_transaction:
+                    try:
+                        self._db.close()
+                    except BaseException:
+                        pass
             raise
         return {
             "generation": generation,

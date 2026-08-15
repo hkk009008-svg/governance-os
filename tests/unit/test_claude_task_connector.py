@@ -6,8 +6,6 @@ import asyncio
 import json
 import math
 import re
-import subprocess
-import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -449,56 +447,50 @@ def test_event_buffer_is_bounded_and_reports_truncation() -> None:
     assert result["timed_out"] is False
 
 
-_APPENDER = """
-import sys, time
-sys.path.insert(0, {scripts!r})
-import claude_task_connector as connector
-from pathlib import Path
-store = connector.EventBuffer(256, Path({path!r}))
-end = time.monotonic() + 2.0
-n = 0
-while time.monotonic() < end:
-    store.append({{"kind": "spam", "n": n}}); n += 1
-store.close()
-"""
+def test_read_is_atomic_under_a_forced_interleave(tmp_path: Path) -> None:
+    """Force the overlap instead of racing for it.
 
+    Two earlier versions of this control raced a subprocess and were both
+    vacuous: one passed when the writer never ran, the next passed when the
+    writer wrote once and exited BEFORE any read observed it. Asserting that a
+    write happened does not establish that it overlapped a read.
 
-def test_concurrent_read_never_reports_a_cursor_past_latest(tmp_path: Path) -> None:
-    """A read must see ONE snapshot or it reports an impossible pair.
-
-    Measured against the unguarded version: 28345 of 416748 reads returned
-    cursor > latest_cursor. This can only fail when the invariant is genuinely
-    broken -- a slow writer means fewer reads, never a false failure.
+    So the write is injected at the exact point that matters -- between _read's
+    cursor lookup and its events SELECT -- from a SECOND connection to the same
+    file. Unguarded, the events query then returns a row newer than the cursor
+    just read and the result is self-inconsistent, every run. Guarded, the
+    deferred snapshot excludes it.
     """
     path = tmp_path / "shared" / "events.sqlite3"
     path.parent.mkdir(parents=True)
     store = connector.EventBuffer(256, path)
     store.append({"kind": "seed"})
+    injector = connector.EventBuffer(256, path)
 
-    scripts = str(Path(connector.__file__).resolve().parent)
-    writer = subprocess.Popen(
-        [sys.executable, "-c", _APPENDER.format(scripts=scripts, path=str(path))]
-    )
-    observed = 0
+    original = store._meta
+    injected = False
+
+    def interleave(key: str) -> str:
+        nonlocal injected
+        value = original(key)
+        if key == "cursor" and not injected:
+            injected = True
+            injector.append({"kind": "injected"})
+        return value
+
+    store._meta = interleave  # type: ignore[method-assign]
     try:
-        after = 0
-        deadline = time.monotonic() + 2.0
-        while time.monotonic() < deadline:
-            result = store.wait(after, 50, 0)
-            assert result["cursor"] <= result["latest_cursor"], (
-                f"read saw cursor {result['cursor']} past "
-                f"latest_cursor {result['latest_cursor']}"
-            )
-            observed = max(observed, result["latest_cursor"])
-            after = result["cursor"]
+        result = store.wait(0, 50, 0)
     finally:
-        code = writer.wait(timeout=30)
+        store._meta = original  # type: ignore[method-assign]
+        injector.close()
         store.close()
-    # Both assertions exist because the invariant holds TRIVIALLY when nothing
-    # concurrent happens. Without them a writer that never ran left this green
-    # against the unguarded _read -- measured with a writer exiting 17.
-    assert code == 0, f"writer subprocess exited {code}; the run proves nothing"
-    assert observed > 1, "no concurrent write was observed; the run proves nothing"
+
+    assert injected, "the interleave never fired; this run proves nothing"
+    assert result["cursor"] <= result["latest_cursor"], (
+        f"read saw cursor {result['cursor']} past "
+        f"latest_cursor {result['latest_cursor']}"
+    )
 
 
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:
