@@ -440,6 +440,16 @@ def test_event_buffer_is_bounded_and_reports_truncation() -> None:
     assert result["timed_out"] is False
 
 
+def test_stopping_the_bridge_discards_the_shared_store(tmp_path: Path) -> None:
+    """ARCHITECTURE.md calls the bridge transient; its store must be too."""
+    runtime, _client = _runtime(tmp_path)
+    path = connector.shared_buffer_path(Path(tmp_path).resolve())
+    assert path.exists(), "starting a bridge should create the shared store"
+
+    runtime.stop()
+    assert not path.exists(), "stopping a bridge must not leave durable state"
+
+
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:
     runtime, client = _runtime(tmp_path)
     prompt, request = connector.build_relay(
