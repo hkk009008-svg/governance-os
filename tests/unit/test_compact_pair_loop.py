@@ -2423,10 +2423,17 @@ def test_remediation_head_must_descend_from_failed_report(tmp_path: Path) -> Non
     )
 
 
+# ("FAIL", "target", "GO or NITS") was removed here deliberately, not lost. It
+# asserted a remediation could not report FAIL, which combined with the
+# "must explicitly supersede" case below to leave a failed remediation with no
+# legal shape at all. Coverage moved to
+# test_a_failed_remediation_may_supersede_the_report_it_answers, which pins GO,
+# NITS and FAIL as legal supersession verdicts. Nothing is loosened about the
+# blocker: ci_admission_gate admits only GO and NITS, so a superseding FAIL
+# still refuses the range.
 @pytest.mark.parametrize(
     ("verdict", "supersedes", "expected"),
     (
-        ("FAIL", "target", "GO or NITS"),
         ("GO", None, "explicitly supersede"),
         ("GO", "wrong", "introduction commit"),
     ),
@@ -2647,3 +2654,61 @@ def test_supersession_requires_same_exact_request_binding(tmp_path: Path) -> Non
     violations = pair.validate_report_structure(root, report)
 
     assert any("same exact request" in violation for violation in violations)
+
+
+def test_a_failed_remediation_may_supersede_the_report_it_answers(
+    tmp_path: Path,
+) -> None:
+    """A remediation that did NOT work must have a legal shape.
+
+    A remediation report is REQUIRED to supersede the failed report it answers,
+    so restricting supersession to GO/NITS left a failed remediation with no
+    publishable form at all: without Supersedes the writer rejected it as an
+    unbound remediation, and with Supersedes it rejected the verdict. The only
+    publishable outcomes were the two that CLEAR the blocker, which pressures a
+    reviewer toward a verdict they do not hold. A reviewer hit exactly that and
+    refused rather than issue a false NITS.
+
+    Permitting FAIL cannot weaken admission, which is decided independently:
+    ci_admission_gate admits only GO and NITS, so a superseding FAIL retires the
+    older report and then fails to admit in its own right.
+
+    Scope stated honestly: this exercises the supersession rule directly, using
+    real parsed objects. It is not an end-to-end publish through the writer, so
+    it pins the rule rather than the whole route.
+    """
+    root, base, head, trigger = _repo(tmp_path, finding_refs=())
+    candidate = _write_report(root, base, head, trigger, finding_refs=(), dispositions=())
+    parsed = pair.parse_verification_report_candidate(root, str(candidate), REPORT_PATH)
+
+    failed_ref = (REPORT_PATH, "a" * 40)
+    superseded = replace(
+        parsed, verdict="FAIL", path=REPORT_PATH, request_path="old-request.md"
+    )
+    request = pair.VerifyRequest(
+        path="new-request.md",
+        trigger_commit=parsed.request_commit,
+        reviewed_repository=parsed.reviewed_repository,
+        reviewed_head=parsed.reviewed_head,
+        reviewed_base=failed_ref[1],
+        author_seat="director",
+        author_model="claude-opus-5",
+        assigned_operator=superseded.reviewer_seat,
+        risk_class=superseded.risk_class,
+        risk_class_explicit=True,
+        abuse_class_assessment=(),
+        outcome="remediate",
+        finding_refs=superseded.finding_refs,
+        remediates_failed_report=failed_ref,
+    )
+
+    for verdict in ("GO", "NITS", "FAIL"):
+        violations = pair.supersession_report_violations(
+            replace(parsed, verdict=verdict, supersedes=failed_ref),
+            superseded,
+            request=request,
+            superseded_commit=failed_ref[1],
+        )
+        assert not [
+            item for item in violations if "supersession verdict" in item
+        ], f"{verdict} must be a legal remediation supersession verdict"

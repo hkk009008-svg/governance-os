@@ -1335,7 +1335,7 @@ def test_different_request_fail_report_cannot_clear_active_fail(
         timestamp="2026-07-25T08-00-00Z",
         remediates_failed_report=failed_ref,
     )
-    _commit_report(
+    second_fail_path, second_fail_commit = _commit_report(
         root,
         fail_commit,
         remediation_head,
@@ -1348,11 +1348,16 @@ def test_different_request_fail_report_cannot_clear_active_fail(
 
     state = cc.inspect_verify_review_state(root, coord)
 
-    assert [(item.path, item.commit) for item in state.pending] == [
-        (request_path, request_commit)
-    ]
+    # The guarantee is unchanged: a FAIL still cannot clear an active blocker.
+    # Only the bookkeeping moved. This report used to be REJECTED outright, so
+    # the request stayed pending and the ORIGINAL fail stayed active -- which
+    # also meant a failed remediation could not be recorded at all. It is now
+    # publishable, so the request is answered and the active blocker becomes the
+    # report describing the current head. That is the more accurate record, and
+    # it still blocks.
+    assert state.pending == ()
     assert [(item.report_path, item.report_commit) for item in state.failed] == [
-        (fail_path, fail_commit)
+        (second_fail_path, second_fail_commit)
     ]
 
 
