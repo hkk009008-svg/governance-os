@@ -565,13 +565,25 @@ class EventBuffer:
             self._db.execute("COMMIT")
         except BaseException:
             # Never leave the read transaction open: it pins WAL checkpointing
-            # and wedges the next read. A failing COMMIT lands here too, which
-            # a `finally: COMMIT` could not handle. The rollback's own error is
-            # swallowed so it cannot mask the original failure.
-            try:
-                self._db.execute("ROLLBACK")
-            except Exception:
-                pass
+            # and the next read dies on "cannot start a transaction within a
+            # transaction". A failing COMMIT lands here too, which a
+            # `finally: COMMIT` could not handle.
+            #
+            # in_transaction is checked rather than suppressing every rollback
+            # error. Blanket suppression could not tell the harmless case
+            # ("cannot rollback - no transaction is active") from a rollback
+            # that genuinely failed with the transaction STILL open -- and it
+            # swallowed the second, leaving the connection wedged. Probed: with
+            # COMMIT and ROLLBACK both denied, the next read failed.
+            if self._db.in_transaction:
+                try:
+                    self._db.execute("ROLLBACK")
+                except Exception:
+                    # Rollback failed with a transaction still open, so this
+                    # connection cannot be reused. Close it: the next caller
+                    # gets a clear closed-database error instead of inheriting
+                    # a wedged transaction.
+                    self._db.close()
             raise
         return {
             "generation": generation,

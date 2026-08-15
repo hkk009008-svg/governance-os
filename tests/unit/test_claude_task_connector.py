@@ -479,6 +479,7 @@ def test_concurrent_read_never_reports_a_cursor_past_latest(tmp_path: Path) -> N
     writer = subprocess.Popen(
         [sys.executable, "-c", _APPENDER.format(scripts=scripts, path=str(path))]
     )
+    observed = 0
     try:
         after = 0
         deadline = time.monotonic() + 2.0
@@ -488,10 +489,16 @@ def test_concurrent_read_never_reports_a_cursor_past_latest(tmp_path: Path) -> N
                 f"read saw cursor {result['cursor']} past "
                 f"latest_cursor {result['latest_cursor']}"
             )
+            observed = max(observed, result["latest_cursor"])
             after = result["cursor"]
     finally:
-        writer.wait(timeout=30)
+        code = writer.wait(timeout=30)
         store.close()
+    # Both assertions exist because the invariant holds TRIVIALLY when nothing
+    # concurrent happens. Without them a writer that never ran left this green
+    # against the unguarded _read -- measured with a writer exiting 17.
+    assert code == 0, f"writer subprocess exited {code}; the run proves nothing"
+    assert observed > 1, "no concurrent write was observed; the run proves nothing"
 
 
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:
