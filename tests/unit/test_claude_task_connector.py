@@ -6,6 +6,8 @@ import asyncio
 import json
 import math
 import re
+import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -445,6 +447,51 @@ def test_event_buffer_is_bounded_and_reports_truncation() -> None:
     assert result["truncated"] is True
     assert result["dropped_before_cursor"] == 1
     assert result["timed_out"] is False
+
+
+_APPENDER = """
+import sys, time
+sys.path.insert(0, {scripts!r})
+import claude_task_connector as connector
+from pathlib import Path
+store = connector.EventBuffer(256, Path({path!r}))
+end = time.monotonic() + 2.0
+n = 0
+while time.monotonic() < end:
+    store.append({{"kind": "spam", "n": n}}); n += 1
+store.close()
+"""
+
+
+def test_concurrent_read_never_reports_a_cursor_past_latest(tmp_path: Path) -> None:
+    """A read must see ONE snapshot or it reports an impossible pair.
+
+    Measured against the unguarded version: 28345 of 416748 reads returned
+    cursor > latest_cursor. This can only fail when the invariant is genuinely
+    broken -- a slow writer means fewer reads, never a false failure.
+    """
+    path = tmp_path / "shared" / "events.sqlite3"
+    path.parent.mkdir(parents=True)
+    store = connector.EventBuffer(256, path)
+    store.append({"kind": "seed"})
+
+    scripts = str(Path(connector.__file__).resolve().parent)
+    writer = subprocess.Popen(
+        [sys.executable, "-c", _APPENDER.format(scripts=scripts, path=str(path))]
+    )
+    try:
+        after = 0
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            result = store.wait(after, 50, 0)
+            assert result["cursor"] <= result["latest_cursor"], (
+                f"read saw cursor {result['cursor']} past "
+                f"latest_cursor {result['latest_cursor']}"
+            )
+            after = result["cursor"]
+    finally:
+        writer.wait(timeout=30)
+        store.close()
 
 
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:
