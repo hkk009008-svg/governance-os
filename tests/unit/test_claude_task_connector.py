@@ -6,6 +6,8 @@ import asyncio
 import json
 import math
 import re
+import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -438,6 +440,62 @@ def test_event_buffer_is_bounded_and_reports_truncation() -> None:
     assert result["truncated"] is True
     assert result["dropped_before_cursor"] == 1
     assert result["timed_out"] is False
+
+
+_READER = """
+import json, sys
+sys.path.insert(0, {scripts!r})
+import claude_task_connector as connector
+from pathlib import Path
+store = connector.EventBuffer(256, Path({path!r}) if {path!r} else None)
+print(json.dumps(store.wait(0, 50, 0)))
+"""
+
+
+def _read_in_another_process(path: Path | None) -> dict[str, Any]:
+    scripts = str(Path(connector.__file__).resolve().parent)
+    result = subprocess.run(
+        [sys.executable, "-c", _READER.format(scripts=scripts, path=str(path or ""))],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_event_buffer_is_readable_from_another_process(tmp_path: Path) -> None:
+    """The point of the shared store, proved across a real process line.
+
+    No in-process assertion can show this: the previous deque behaved
+    identically inside one process and was invisible outside it, which is
+    exactly how a relay message was stranded in a buffer nobody polled.
+    """
+    path = tmp_path / "shared" / "events.sqlite3"
+    store = connector.EventBuffer(256, path)
+    store.append({"kind": "relay", "probe": "cross-process"})
+    store.append({"kind": "relay", "probe": "second"})
+
+    seen = _read_in_another_process(path)
+    assert [event["probe"] for event in seen["events"]] == ["cross-process", "second"]
+    # A reader must agree with the writer about WHICH bridge these belong to,
+    # or it cannot pass the generation check in BridgeRuntime.wait.
+    assert seen["generation"] == store.generation
+    assert seen["latest_cursor"] == 2
+    store.close()
+
+
+def test_in_memory_buffer_is_not_visible_to_another_process() -> None:
+    """Non-vacuity control: without it the test above proves nothing, because
+    a reader that could see events regardless would pass either way."""
+    store = connector.EventBuffer(256)
+    store.append({"kind": "relay", "probe": "private"})
+    assert store.latest_cursor == 1
+
+    seen = _read_in_another_process(None)
+    assert seen["events"] == []
+    assert seen["latest_cursor"] == 0
+    store.close()
 
 
 def test_stopping_the_bridge_discards_the_shared_store(tmp_path: Path) -> None:
