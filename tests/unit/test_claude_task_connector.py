@@ -447,6 +447,60 @@ def test_event_buffer_is_bounded_and_reports_truncation() -> None:
     assert result["timed_out"] is False
 
 
+def test_read_is_atomic_under_a_forced_interleave(tmp_path: Path) -> None:
+    """Force the overlap instead of racing for it.
+
+    Two earlier versions of this control raced a subprocess and were both
+    vacuous: one passed when the writer never ran, the next passed when the
+    writer wrote once and exited BEFORE any read observed it. Asserting that a
+    write happened does not establish that it overlapped a read.
+
+    So the write is injected at the exact point that matters -- between _read's
+    cursor lookup and its events SELECT -- from a SECOND connection to the same
+    file. Unguarded, the events query then returns a row newer than the cursor
+    just read and the result is self-inconsistent, every run. Guarded, the
+    deferred snapshot excludes it.
+    """
+    path = tmp_path / "shared" / "events.sqlite3"
+    path.parent.mkdir(parents=True)
+    store = connector.EventBuffer(256, path)
+    store.append({"kind": "seed"})
+    injector = connector.EventBuffer(256, path)
+
+    original = store._meta
+    fired = False
+
+    def interleave(key: str) -> str:
+        nonlocal fired
+        value = original(key)
+        if key == "cursor" and not fired:
+            fired = True
+            injector.append({"kind": "injected"})
+        return value
+
+    store._meta = interleave  # type: ignore[method-assign]
+    try:
+        result = store.wait(0, 50, 0)
+        committed = injector.latest_cursor
+    finally:
+        store._meta = original  # type: ignore[method-assign]
+        injector.close()
+        store.close()
+
+    # The postcondition is the WRITE, not the hook. An earlier version set a
+    # flag BEFORE calling append, so deleting the append left every assertion
+    # green -- even against the exact unguarded _read. A committed cursor of 2
+    # (seed plus injection) cannot be produced by a hook that wrote nothing.
+    assert committed == 2, (
+        f"injected write did not commit (cursor {committed}); run proves nothing"
+    )
+    assert fired, "the interleave never fired; run proves nothing"
+    assert result["cursor"] <= result["latest_cursor"], (
+        f"read saw cursor {result['cursor']} past "
+        f"latest_cursor {result['latest_cursor']}"
+    )
+
+
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:
     runtime, client = _runtime(tmp_path)
     prompt, request = connector.build_relay(
