@@ -14,7 +14,6 @@ from pathlib import Path
 import protocol_mailbox
 
 
-MODEL_SOURCE = "scripts/codex_protocol_model.py"
 CENTRAL_INVARIANT = "durable shared state beats chat memory"
 
 
@@ -624,33 +623,6 @@ def infer_runtime_env(environ: Mapping[str, str] | None = None) -> dict[str, str
         "CODEX_NEXT_ACTION_POLICY": next_action_defaults[mode],
         "CODEX_SIDE_EFFECT_POLICY": "user-consent-required",
     }
-
-
-def render_seat_contract(
-    environ: Mapping[str, str] | None = None,
-    *,
-    objective: str = "(unset)",
-    permissions: str = "(unset)",
-    scope: str = "(unset)",
-    verification: str = "(unset)",
-    done: str = "(unset)",
-) -> str:
-    """Return the six-field live-seat contract without touching durable state."""
-    values = infer_runtime_env(environ)
-    role_value = f"{values['CODEX_AGENT_MODE']} / {values['CODEX_AGENT_ROLE']}"
-    return "\n".join(
-        (
-            "Seat contract:",
-            f"S-ROLE: {role_value}",
-            f"S-OBJ: {objective}",
-            f"S-PERM: {permissions}",
-            f"S-SCOPE: {scope}",
-            f"S-VERIFY: {verification}",
-            f"S-DONE: {done}",
-            "source order: user > git > current durable events > defaults",
-            "side effects: push, merge, lock, paid API spend, and pod spend are separately gated and require user consent",
-        )
-    )
 
 
 @dataclass(frozen=True)

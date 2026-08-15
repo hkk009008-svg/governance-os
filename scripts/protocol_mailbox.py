@@ -1031,12 +1031,6 @@ def validate_learning_disposition(
     return disposition, candidate
 
 
-def load_learning_disposition_statement(
-    root: Path, value: str
-) -> LearningDispositionStatement:
-    return parse_learning_disposition_statement(load_committed_event_ref(root, value))
-
-
 def committed_learning_candidate_ids(root: Path, commit: str) -> dict[str, str]:
     """Map Candidate ID -> event path for parseable committed candidates.
 

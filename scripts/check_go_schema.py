@@ -19,7 +19,6 @@ import compact_pair_loop
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MAILBOX = ROOT / "coordination/mailbox/sent"
 DEFAULT_MANIFEST = ROOT / "scripts/baselines/lane_v_reports_pre_v3.json"
 DEFAULT_RETIRED_MANIFEST = ROOT / "scripts/baselines/retired_review_targets.json"
 MANIFEST_SCHEMA = "lane-v-report-pre-v3-baseline/v1"

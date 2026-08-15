@@ -1217,17 +1217,6 @@ class RouteBatchReader(protocol_mailbox._CommittedEventBatchBackend):
         )
 
 
-def validate_committed_route_effectiveness(root: Path, route_ref: str) -> LineageRoute:
-    """Load one exact route blob and validate its immutable ownership claims."""
-
-    event = protocol_mailbox.load_committed_event_ref(root, route_ref)
-    path = root / event.path
-    match = _ROUTE_NAME_RE.fullmatch(path.name)
-    if match is None or match.group("sender") not in protocol_mailbox.SEATS:
-        raise ValueError("committed autonomous route must be authored by a pair seat")
-    return _validate_committed_autonomous(root, event, frozenset({route_ref}))
-
-
 def load_route_paths(root: Path) -> list[Path]:
     """Discover all regular legacy or autonomous route events in the mailbox."""
 

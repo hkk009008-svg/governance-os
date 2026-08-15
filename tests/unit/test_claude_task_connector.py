@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import json
 import math
 import re
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from mcp import types
 
 import claude_task_connector as connector
 
@@ -116,8 +116,6 @@ class FakeFactory:
 def _config(tmp_path: Path, **overrides: Any) -> connector.BridgeConfig:
     values = {
         "cwd": tmp_path,
-        "max_budget_usd": 0.25,
-        "queue_limit": 16,
         "start_timeout_seconds": 1.0,
         "operation_timeout_seconds": 1.0,
     }
@@ -148,20 +146,18 @@ def _hook(client: FakeClient, phase: str):
 
 
 def _tool_call(
-    server: connector.ConnectorMcpServer,
+    server: Any,
     name: str,
     arguments: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bool]:
-    response = server.handle_request(
-        {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {"name": name, "arguments": arguments or {}},
-        }
+    request = types.CallToolRequest(
+        params=types.CallToolRequestParams(name=name, arguments=arguments or {})
     )
-    result = response["result"]
-    return json.loads(result["content"][0]["text"]), result["isError"]
+    result = asyncio.run(server.request_handlers[types.CallToolRequest](request)).root
+    if result.isError:
+        return {"error": result.content[0].text}, True
+    assert result.structuredContent is not None
+    return result.structuredContent, False
 
 
 def _pre(name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
@@ -310,41 +306,47 @@ def test_no_reachable_agents_sentinel_cannot_be_selected_as_an_exact_target() ->
     )
 
 
-def test_empty_first_listing_allows_one_registration_retry() -> None:
-    observed: list[dict[str, Any]] = []
-    gate = connector.RelayGate(observer=observed.append)
+@pytest.mark.parametrize(
+    ("first_listing", "second_listing", "retry_allowed", "send_allowed"),
+    [
+        ("different-peer [z9] · idle", None, False, False),
+        ("No reachable agents.", "No reachable agents.", True, False),
+        ("No reachable agents.", "pipeline-24 [abc123] · idle", True, True),
+    ],
+)
+def test_registration_retry_is_empty_only_and_bounded(
+    first_listing: str,
+    second_listing: str | None,
+    retry_allowed: bool,
+    send_allowed: bool,
+) -> None:
+    gate = connector.RelayGate()
     _prompt, request = connector.build_relay(
         target="pipeline-24 [abc123]",
         target_prefix=None,
         text="hello",
-        message_id="registration-lag-1",
+        message_id=f"retry-{retry_allowed}-{send_allowed}",
     )
     gate.arm(request)
-
-    assert _allowed(
-        asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l1", None))
-    )
+    assert _allowed(asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l1", None)))
     asyncio.run(
         gate.post_tool_use(
-            _post("ListAgents", {}, {"listing": "No reachable agents."}),
-            "l1",
-            None,
+            _post("ListAgents", {}, {"listing": first_listing}), "l1", None
         )
     )
-    assert _allowed(
-        asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l2", None))
-    )
+    retry = asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l2", None))
+    assert _allowed(retry) is retry_allowed
+    if not retry_allowed:
+        return
+
     asyncio.run(
         gate.post_tool_use(
-            _post("ListAgents", {}, {"listing": "pipeline-24 [abc123] · idle"}),
-            "l2",
-            None,
+            _post("ListAgents", {}, {"listing": second_listing}), "l2", None
         )
     )
     assert not _allowed(
         asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l3", None))
     )
-
     send = {
         "to": "pipeline-24 [abc123]",
         "summary": request["summary"],
@@ -352,50 +354,7 @@ def test_empty_first_listing_allows_one_registration_retry() -> None:
     }
     assert _allowed(
         asyncio.run(gate.pre_tool_use(_pre("SendMessage", send), "s1", None))
-    )
-    assert [event["name"] for event in observed] == ["ListAgents", "ListAgents"]
-
-
-def test_registration_retry_remains_bounded_and_empty_only() -> None:
-    for message_id, first_listing in (
-        ("nonempty-no-retry", "different-peer [z9] · idle"),
-        ("two-empty-max", "No reachable agents."),
-    ):
-        gate = connector.RelayGate()
-        _prompt, request = connector.build_relay(
-            target="pipeline-24 [abc123]",
-            target_prefix=None,
-            text="hello",
-            message_id=message_id,
-        )
-        gate.arm(request)
-        assert _allowed(
-            asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l1", None))
-        )
-        asyncio.run(
-            gate.post_tool_use(
-                _post("ListAgents", {}, {"listing": first_listing}), "l1", None
-            )
-        )
-
-        retry = asyncio.run(
-            gate.pre_tool_use(_pre("ListAgents", {}), "l2", None)
-        )
-        if first_listing != "No reachable agents.":
-            assert not _allowed(retry)
-            continue
-
-        assert _allowed(retry)
-        asyncio.run(
-            gate.post_tool_use(
-                _post("ListAgents", {}, {"listing": "No reachable agents."}),
-                "l2",
-                None,
-            )
-        )
-        assert not _allowed(
-            asyncio.run(gate.pre_tool_use(_pre("ListAgents", {}), "l3", None))
-        )
+    ) is send_allowed
 
 
 @pytest.mark.parametrize(
@@ -436,15 +395,12 @@ def test_prefix_must_resolve_to_one_live_nonself_peer(
     ) is allowed
 
 
-@pytest.mark.parametrize(
-    "budget",
-    [0, -1, 1.01, math.inf, math.nan, True, "1"],
-)
-def test_budget_is_finite_positive_and_hard_capped(
-    tmp_path: Path, budget: Any
+@pytest.mark.parametrize("timeout", [0, -1, math.inf, math.nan, True, "1"])
+def test_timeouts_are_finite_positive_and_bounded(
+    tmp_path: Path, timeout: Any
 ) -> None:
     with pytest.raises(connector.ConnectorError):
-        _config(tmp_path, max_budget_usd=budget)
+        _config(tmp_path, operation_timeout_seconds=timeout)
 
 
 def test_event_buffer_is_bounded_and_reports_truncation() -> None:
@@ -691,22 +647,16 @@ def test_mcp_surface_is_five_tools_and_send_lazily_starts(tmp_path: Path) -> Non
     runtime = connector.BridgeRuntime(
         client_factory=factory, options_cls=CapturingOptions
     )
-    server = connector.ConnectorMcpServer(runtime=runtime, default_cwd=tmp_path)
-    initialized = server.handle_request(
-        {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {"protocolVersion": "2025-06-18"},
-        }
-    )
-    assert initialized["result"]["capabilities"]["tools"] == {"listChanged": False}
+    tools_api = connector.ConnectorTools(runtime=runtime, default_cwd=tmp_path)
+    server = connector.build_mcp_server(tools_api)
+    assert server.name == "pipeline-claude-task-connector"
+    assert server.version == connector.SERVER_VERSION
     assert factory.clients == []
 
-    listed = server.handle_request(
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+    listed = asyncio.run(
+        server.request_handlers[types.ListToolsRequest](types.ListToolsRequest())
     )
-    tools = {tool["name"]: tool for tool in listed["result"]["tools"]}
+    tools = {tool.name: tool for tool in listed.root.tools}
     assert set(tools) == {
         "claude_bridge_start",
         "claude_bridge_status",
@@ -714,7 +664,7 @@ def test_mcp_surface_is_five_tools_and_send_lazily_starts(tmp_path: Path) -> Non
         "claude_bridge_wait",
         "claude_bridge_stop",
     }
-    assert "launch_authorized" not in tools["claude_bridge_start"]["inputSchema"]["properties"]
+    assert tools["claude_bridge_start"].inputSchema["properties"] == {}
     assert factory.clients == []
 
     invalid, is_error = _tool_call(
@@ -742,21 +692,22 @@ def test_mcp_surface_is_five_tools_and_send_lazily_starts(tmp_path: Path) -> Non
     runtime.stop()
 
 
-def test_mcp_rejects_budget_above_standing_ceiling_without_launch(
+def test_mcp_start_rejects_caller_tuning_without_launch(
     tmp_path: Path,
 ) -> None:
     factory = FakeFactory()
-    server = connector.ConnectorMcpServer(
+    tools_api = connector.ConnectorTools(
         runtime=connector.BridgeRuntime(
             client_factory=factory, options_cls=CapturingOptions
         ),
         default_cwd=tmp_path,
     )
+    server = connector.build_mcp_server(tools_api)
     result, is_error = _tool_call(
         server, "claude_bridge_start", {"max_budget_usd": 1.01}
     )
     assert is_error is True
-    assert "at most 1" in result["error"]
+    assert "Additional properties" in result["error"]
     assert factory.clients == []
 
 
@@ -765,25 +716,6 @@ def test_wait_rejects_stale_generation(tmp_path: Path) -> None:
     with pytest.raises(connector.ConnectorError, match="generation"):
         runtime.wait(generation="stale", timeout_seconds=0)
     runtime.stop()
-
-
-def test_stdio_survives_bad_json_and_lists_tools(tmp_path: Path) -> None:
-    runtime = connector.BridgeRuntime(
-        client_factory=FakeFactory(), options_cls=CapturingOptions
-    )
-    server = connector.ConnectorMcpServer(runtime=runtime, default_cwd=tmp_path)
-    stdin = io.StringIO(
-        "not-json\n"
-        + json.dumps(
-            {"jsonrpc": "2.0", "id": 7, "method": "tools/list", "params": {}}
-        )
-        + "\n"
-    )
-    stdout = io.StringIO()
-    connector.serve_stdio(server, stdin=stdin, stdout=stdout)
-    replies = [json.loads(line) for line in stdout.getvalue().splitlines()]
-    assert replies[0]["error"]["code"] == -32700
-    assert len(replies[1]["result"]["tools"]) == 5
 
 
 def test_capabilities_describe_only_the_supported_boundary() -> None:
@@ -808,6 +740,7 @@ def test_project_wrapper_config_and_dependency_pin_remain_present() -> None:
     assert "coordination/bin/claude-task-connector" in config
     assert wrapper.stat().st_mode & 0o111
     assert "claude-agent-sdk==0.2.137" in requirement
+    assert "mcp==1.29.0" in requirement
     assert "--constraint requirements-governance.txt" in connector_lock.splitlines()[1]
     for package in ("cffi", "cryptography"):
         pattern = re.compile(rf"^{package}==([^ \\\n]+)", re.MULTILINE)

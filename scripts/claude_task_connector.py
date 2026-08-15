@@ -24,7 +24,12 @@ from collections import deque
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
+
+import anyio
+from mcp import types
+from mcp.server.lowlevel import Server
+from mcp.server.stdio import stdio_server
 
 
 PROTOCOL_VERSION = "pipeline.claude-task-connector/v2"
@@ -33,7 +38,6 @@ REQUIRED_SDK_VERSION = "0.2.137"
 BRIDGE_NAME = "pipeline-codex-bridge"
 STANDING_BUDGET_USD = 1.0
 DEFAULT_QUEUE_LIMIT = 256
-MAX_QUEUE_LIMIT = 4096
 MAX_MESSAGE_BYTES = 64 * 1024
 MAX_EVENT_BYTES = 256 * 1024
 MAX_WAIT_SECONDS = 300.0
@@ -112,33 +116,15 @@ def _bounded_number(value: Any, field: str, maximum: float) -> float:
 
 @dataclasses.dataclass(frozen=True)
 class BridgeConfig:
-    name: str = BRIDGE_NAME
     cwd: Path = dataclasses.field(default_factory=Path.cwd)
-    max_budget_usd: float = STANDING_BUDGET_USD
-    queue_limit: int = DEFAULT_QUEUE_LIMIT
     start_timeout_seconds: float = 30.0
     operation_timeout_seconds: float = 120.0
 
     def __post_init__(self) -> None:
-        if not _NAME_RE.fullmatch(self.name):
-            raise ConnectorError("bridge name is invalid")
         cwd = Path(self.cwd).expanduser().resolve()
         if not cwd.is_dir():
             raise ConnectorError(f"bridge cwd is not a directory: {cwd}")
         object.__setattr__(self, "cwd", cwd)
-        object.__setattr__(
-            self,
-            "max_budget_usd",
-            _bounded_number(
-                self.max_budget_usd, "max_budget_usd", STANDING_BUDGET_USD
-            ),
-        )
-        if (
-            isinstance(self.queue_limit, bool)
-            or not isinstance(self.queue_limit, int)
-            or not 1 <= self.queue_limit <= MAX_QUEUE_LIMIT
-        ):
-            raise ConnectorError(f"queue_limit must be from 1 through {MAX_QUEUE_LIMIT}")
         for field in ("start_timeout_seconds", "operation_timeout_seconds"):
             object.__setattr__(
                 self,
@@ -183,12 +169,9 @@ class RelayGate:
                     "summary": request["summary"],
                     "message": request["message"],
                 },
-                "listed": False,
-                "list_done": False,
                 "list_attempts": 0,
                 "retry_allowed": False,
                 "sent": False,
-                "send_done": False,
             }
             self._list_id = self._send_id = None
 
@@ -209,7 +192,7 @@ class RelayGate:
             return {
                 "armed": True,
                 "operation_id": self._active["operation_id"],
-                "listed": self._active["listed"],
+                "listed": self._active["list_attempts"] > 0,
                 "list_attempts": self._active["list_attempts"],
                 "retry_allowed": self._active["retry_allowed"],
                 "resolved_target": self._active["resolved_target"],
@@ -235,26 +218,6 @@ class RelayGate:
                     and not address.casefold().startswith("no reachable agents")
                 ):
                     found.append(address)
-        if not found:
-            for key in ("peers", "agents", "sessions"):
-                peers = response.get(key)
-                if not isinstance(peers, list):
-                    continue
-                for peer in peers:
-                    if not isinstance(peer, Mapping):
-                        continue
-                    state = peer.get("state", peer.get("status"))
-                    if isinstance(state, str) and state.casefold() in {
-                        "offline",
-                        "disconnected",
-                        "stopped",
-                    }:
-                        continue
-                    for address_key in ("address", "display", "name", "sessionId", "session_id"):
-                        address = peer.get(address_key)
-                        if isinstance(address, str) and address:
-                            found.append(address)
-                            break
         return list(dict.fromkeys(found))
 
     def _resolve(self, response: Any) -> str | None:
@@ -343,8 +306,6 @@ class RelayGate:
                         False,
                         "ListAgents allows one empty lookup and one retry only after an empty result",
                     )
-                active["listed"] = True
-                active["list_done"] = False
                 active["list_attempts"] += 1
                 active["retry_allowed"] = False
                 active["resolved_target"] = None
@@ -381,24 +342,22 @@ class RelayGate:
             if active is None:
                 return {}
             name = data["tool_name"]
+            if name not in NATIVE_TOOLS:
+                return {}
             expected_id = self._list_id if name == "ListAgents" else self._send_id
             if expected_id is None or tool_use_id != expected_id:
                 return {}
             if name == "ListAgents":
-                if active["list_done"]:
-                    return {}
                 response = data.get("tool_response")
                 resolved = self._resolve(response)
                 active["resolved_target"] = resolved
                 active["send"]["to"] = resolved
-                active["list_done"] = True
                 active["retry_allowed"] = (
                     active["list_attempts"] == 1 and not self._addresses(response)
                 )
-            elif active["send_done"]:
-                return {}
+                self._list_id = None
             else:
-                active["send_done"] = True
+                self._send_id = None
             event = {
                 "kind": "tool",
                 "operation_id": active["operation_id"],
@@ -451,7 +410,7 @@ def build_sdk_options(
         options_cls, _client_cls, loaded_hook = _load_sdk()
         hook_cls = hook_cls or loaded_hook
     hook_cls = hook_cls or _HookSpec
-    gate = gate or RelayGate(bridge_name=config.name)
+    gate = gate or RelayGate()
     return options_cls(
         tools=list(NATIVE_TOOLS),
         allowed_tools=list(NATIVE_TOOLS),
@@ -459,7 +418,7 @@ def build_sdk_options(
         mcp_servers={},
         strict_mcp_config=True,
         permission_mode="dontAsk",
-        max_budget_usd=config.max_budget_usd,
+        max_budget_usd=STANDING_BUDGET_USD,
         cwd=str(config.cwd),
         settings=json.dumps(
             {"crossSessionInbound": "accept", "isolatePeerMachines": True},
@@ -468,7 +427,7 @@ def build_sdk_options(
         ),
         setting_sources=[],
         skills=[],
-        extra_args={"name": config.name},
+        extra_args={"name": BRIDGE_NAME},
         max_buffer_size=16 * 1024 * 1024,
         env={"CLAUDE_AGENT_SDK_CLIENT_APP": f"pipeline-claude-task-connector/{SERVER_VERSION}"},
         hooks={
@@ -756,8 +715,8 @@ class BridgeRuntime:
             if self._thread is not None and self._thread.is_alive():
                 raise ConnectorError("the previous bridge thread is still alive")
             options_cls, factory, hook_cls = self._sdk()
-            self._events = EventBuffer(config.queue_limit)
-            self._gate = RelayGate(observer=self._append, bridge_name=config.name)
+            self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
+            self._gate = RelayGate(observer=self._append)
             options = build_sdk_options(
                 config, options_cls=options_cls, hook_cls=hook_cls, gate=self._gate
             )
@@ -773,7 +732,7 @@ class BridgeRuntime:
             self._thread = threading.Thread(
                 target=self._thread_main,
                 args=(factory, options),
-                name=f"claude-bridge-{config.name}",
+                name=f"claude-bridge-{BRIDGE_NAME}",
                 daemon=True,
             )
             self._thread.start()
@@ -1043,9 +1002,9 @@ class BridgeRuntime:
             latest = next(reversed(self._receipts), None) if self._receipts else None
             result = {
                 "state": self._state,
-                "name": config.name if config else BRIDGE_NAME,
+                "name": BRIDGE_NAME,
                 "cwd": str(config.cwd) if config else None,
-                "max_budget_usd": config.max_budget_usd if config else STANDING_BUDGET_USD,
+                "max_budget_usd": STANDING_BUDGET_USD,
                 "generation": self._events.generation,
                 "latest_cursor": self._events.latest_cursor,
                 "dropped_before_cursor": self._events.dropped_before_cursor,
@@ -1146,15 +1105,8 @@ def _tool_definitions() -> list[dict[str, Any]]:
     return [
         {
             "name": "claude_bridge_start",
-            "description": "Start the named bridge under the standing USD 1.00 ceiling. Usually unnecessary because send starts it lazily.",
-            "inputSchema": _schema(
-                {
-                    "max_budget_usd": {"type": "number", "exclusiveMinimum": 0, "maximum": STANDING_BUDGET_USD},
-                    "queue_limit": {"type": "integer", "minimum": 1, "maximum": MAX_QUEUE_LIMIT},
-                    "start_timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": MAX_OPERATION_SECONDS},
-                    "operation_timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": MAX_OPERATION_SECONDS},
-                }
-            ),
+            "description": "Start the fixed named bridge. Usually unnecessary because send starts it lazily.",
+            "inputSchema": _schema({}),
         },
         {
             "name": "claude_bridge_status",
@@ -1198,7 +1150,7 @@ def _tool_definitions() -> list[dict[str, Any]]:
     ]
 
 
-class ConnectorMcpServer:
+class ConnectorTools:
     def __init__(
         self,
         *,
@@ -1208,52 +1160,19 @@ class ConnectorMcpServer:
         self.runtime = runtime or BridgeRuntime()
         self.default_cwd = (default_cwd or Path.cwd()).resolve()
 
-    @staticmethod
-    def _result(request_id: Any, result: Any) -> dict[str, Any]:
-        return {"jsonrpc": "2.0", "id": request_id, "result": result}
-
-    @staticmethod
-    def _error(request_id: Any, code: int, message: str) -> dict[str, Any]:
-        return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
-
-    @staticmethod
-    def _tool_result(value: Any, is_error: bool = False) -> dict[str, Any]:
-        return {
-            "content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)}],
-            "isError": is_error,
-        }
-
-    def _config(self, arguments: Mapping[str, Any]) -> BridgeConfig:
-        return BridgeConfig(
-            cwd=self.default_cwd,
-            max_budget_usd=arguments.get("max_budget_usd", STANDING_BUDGET_USD),
-            queue_limit=arguments.get("queue_limit", DEFAULT_QUEUE_LIMIT),
-            start_timeout_seconds=arguments.get("start_timeout_seconds", 30.0),
-            operation_timeout_seconds=arguments.get("operation_timeout_seconds", 120.0),
-        )
+    def _config(self) -> BridgeConfig:
+        return BridgeConfig(cwd=self.default_cwd)
 
     def _ensure_running(self) -> None:
         state = self.runtime.status()["state"]
         if state == "stopped":
-            self.runtime.start(self._config({}))
+            self.runtime.start(self._config())
         elif state != "running":
             raise ConnectorError(f"bridge is {state}; stop it before retrying")
 
-    def _call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
-        allowed = {
-            "claude_bridge_start": {"max_budget_usd", "queue_limit", "start_timeout_seconds", "operation_timeout_seconds"},
-            "claude_bridge_status": {"operation_id"},
-            "claude_bridge_send": {"target", "target_prefix", "text", "message_id", "correlation_id", "in_reply_to"},
-            "claude_bridge_wait": {"generation", "after", "limit", "timeout_seconds", "operation_id"},
-            "claude_bridge_stop": set(),
-        }
-        if name not in allowed:
-            raise ConnectorError(f"unknown tool: {name}")
-        unknown = set(arguments) - allowed[name]
-        if unknown:
-            raise ConnectorError(f"unknown argument(s): {', '.join(sorted(unknown))}")
+    def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name == "claude_bridge_start":
-            return self.runtime.start(self._config(arguments))
+            return self.runtime.start(self._config())
         if name == "claude_bridge_status":
             return self.runtime.status(arguments.get("operation_id"))
         if name == "claude_bridge_send":
@@ -1277,85 +1196,50 @@ class ConnectorMcpServer:
                 timeout_seconds=arguments.get("timeout_seconds", 30.0),
                 operation_id=arguments.get("operation_id"),
             )
-        return self.runtime.stop()
-
-    def handle_request(self, request: Any) -> dict[str, Any] | None:
-        if not isinstance(request, dict):
-            return self._error(None, -32600, "request must be an object")
-        request_id = request.get("id")
-        method = request.get("method")
-        if request.get("jsonrpc") != "2.0" or not isinstance(method, str):
-            return self._error(request_id, -32600, "invalid JSON-RPC request")
-        if method.startswith("notifications/"):
-            return None
-        if method == "initialize":
-            params = request.get("params")
-            version = params.get("protocolVersion", "2025-06-18") if isinstance(params, dict) else "2025-06-18"
-            return self._result(
-                request_id,
-                {
-                    "protocolVersion": version,
-                    "capabilities": {"tools": {"listChanged": False}},
-                    "serverInfo": {"name": "pipeline-claude-task-connector", "version": SERVER_VERSION},
-                    "instructions": "Transient native relay only; no seat, authority grant, durable evidence, or delivery acknowledgement.",
-                },
-            )
-        if method == "ping":
-            return self._result(request_id, {})
-        if method == "tools/list":
-            return self._result(request_id, {"tools": _tool_definitions()})
-        if method != "tools/call":
-            return self._error(request_id, -32601, f"method not found: {method}")
-        params = request.get("params")
-        if not isinstance(params, dict) or not isinstance(params.get("name"), str):
-            return self._error(request_id, -32602, "invalid tools/call params")
-        arguments = params.get("arguments", {})
-        if not isinstance(arguments, dict):
-            return self._error(request_id, -32602, "tool arguments must be an object")
-        try:
-            result = self._call_tool(params["name"], arguments)
-        except ConnectorError as exc:
-            result = self._tool_result({"error": str(exc)}, True)
-        except Exception as exc:
-            result = self._tool_result({"error": f"internal error: {type(exc).__name__}"}, True)
-        else:
-            result = self._tool_result(result)
-        return self._result(request_id, result)
+        if name == "claude_bridge_stop":
+            return self.runtime.stop()
+        raise ConnectorError(f"unknown tool: {name}")
 
 
-def serve_stdio(
-    server: ConnectorMcpServer,
-    *,
-    stdin: TextIO = sys.stdin,
-    stdout: TextIO = sys.stdout,
-) -> None:
+def build_mcp_server(tools: ConnectorTools) -> Server:
+    server = Server(
+        "pipeline-claude-task-connector",
+        version=SERVER_VERSION,
+        instructions=(
+            "Transient native relay only; no seat, authority grant, durable "
+            "evidence, or delivery acknowledgement."
+        ),
+    )
+
+    @server.list_tools()
+    async def list_tools() -> list[types.Tool]:
+        return [types.Tool(**definition) for definition in _tool_definitions()]
+
+    @server.call_tool()
+    async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        return tools.call(name, arguments)
+
+    return server
+
+
+async def _serve_stdio(server: Server) -> None:
+    async with stdio_server() as (reader, writer):
+        await server.run(reader, writer, server.create_initialization_options())
+
+
+def serve_stdio(tools: ConnectorTools) -> None:
     try:
-        for line in stdin:
-            if not line.strip():
-                continue
-            try:
-                request = json.loads(line)
-            except json.JSONDecodeError:
-                response = server._error(None, -32700, "parse error")
-            else:
-                response = server.handle_request(request)
-            if response is not None:
-                stdout.write(json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n")
-                stdout.flush()
+        anyio.run(_serve_stdio, build_mcp_server(tools))
     finally:
-        server.runtime.stop()
-
-
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("mcp", "capabilities"))
-    return parser
+        tools.runtime.stop()
 
 
 def main(argv: list[str] | None = None) -> int:
-    command = _parser().parse_args(argv).command
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("mcp", "capabilities"))
+    command = parser.parse_args(argv).command
     if command == "mcp":
-        serve_stdio(ConnectorMcpServer())
+        serve_stdio(ConnectorTools())
     else:
         print(json.dumps(capability_report(), indent=2, sort_keys=True))
     return 0

@@ -1464,51 +1464,6 @@ def audit_manifest(
     return results
 
 
-def check_manifest(
-    manifest_path: Union[str, Path],
-    repo_root: Path,
-) -> list[Drift]:
-    """Derive Drift objects from audit_manifest for every invalid component.
-
-    kind="manifest_missing_file"     — target file absent
-    kind="manifest_symbol_not_found" — file exists but symbol missing
-    """
-    components = audit_manifest(manifest_path, repo_root)
-    drifts: list[Drift] = []
-    for comp in components:
-        if comp["valid"]:
-            continue
-        anchor = comp.get("anchor") or ""
-        problem = comp.get("problem") or ""
-        cid = comp.get("id") or "unknown"
-
-        # Determine target_file and symbol from anchor (best-effort)
-        if anchor and ":" in anchor:
-            file_rel, symbol = anchor.rsplit(":", 1)
-        else:
-            file_rel = anchor
-            symbol = cid
-
-        # Determine kind
-        if "file not found" in problem:
-            kind = "manifest_missing_file"
-        else:
-            kind = "manifest_symbol_not_found"
-
-        drifts.append(Drift(
-            doc_path=str(manifest_path),
-            doc_line=0,
-            target_file=file_rel,
-            target_line=0,
-            kind=kind,
-            symbol=symbol if symbol else cid,
-            suggested_line=None,
-            fixable=False,
-            message=f"{cid}: {problem}",
-        ))
-    return drifts
-
-
 # ---------------------------------------------------------------------------
 # Commit-SHA reference checking (Tier 2: resolve + reachable + quoted-subject)
 # ---------------------------------------------------------------------------

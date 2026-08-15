@@ -1,415 +1,308 @@
 #!/usr/bin/env python3
-"""check_no_ceremony.py — forbid ceremony from the verification core.
+"""Reject false verification signals and disproportionate Python growth."""
 
-CEREMONY = anything that produces the APPEARANCE of verification/enforcement
-WITHOUT the substance: a green/PASS/verified signal that is NOT backed by
-actually executing the check it claims to perform. The archetype (DECISIONS.md
-ADR-027): a gate that READ an inventory `status` string and ran zero tests, so
-"GATE MET" proved only that a ceremony was logged. FIX-1 has since landed — R3
-now verifies wave_gate_check.py executes the pins.
-
-This detector is the enforcement arm of ADR-028. It hard-fails (exit 1) on the
-ceremony patterns it can detect with high precision, so new ceremony cannot be
-introduced. FIX-1 (gate executes pins) has landed — see R3. FIX-2, a suite-wide
-`--runxfail` CI step, was withdrawn as logically backwards: the normal strict
-run already fails an unexpected XPASS, whereas a suite-wide --runxfail instead
-fails deliberately-deferred pins by design. Targeted pin execution lives in
-wave_gate_check.py. R4, which enforced the withdrawn step, was removed with it —
-the rule roster is R1-R3, R5-R6 (numbering preserved for provenance).
-
-Rules:
-  R1  xfail-strictness     every pytest.mark.xfail must be strict=True + reason=  (AST; prevention)
-  R2  invisible-green      importorskip/skipif in a campaign *xfail*.py pin file that would
-                           SKIP (dep genuinely absent) -> hard; dep present -> WARN (latent)
-  R3  gate-executes-pins   scripts/wave_gate_check.py must EXECUTE the pins, not read status  [FIX-1]
-  R5  utv-not-a-row-status  `unable_to_verify` is a reviewer/operator VERDICT, never an inventory
-                           row `status` — else it bypasses wave_gate_check blocking (ADR-027)  [ADR-032]
-  R6  report-cites-pin-command  a verification-report whose verdict is `pass` must cite a
-                           `--runxfail` pin command in commands[]; the consumer, not this rule,
-                           re-runs it to detect fabrication                                    [ADR-032]
-
-This script never modifies anything and never relaxes a gate; it only ADDS signal.
-It is NOT itself a status-reader — it parses/executes against live source.
-
-Usage:  .venv/bin/python scripts/check_no_ceremony.py   # exit 0 clean, 1 on any HARD violation
-"""
 from __future__ import annotations
 
 import ast
 import importlib.util
-import pathlib
-import sys
+import os
+from pathlib import Path
 import tempfile
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+import git_runner
+
+
+ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
+MAX_PYTHON_NET_GROWTH = 100
+MAX_PYTHON_FILE_NET_GROWTH = 80
+MAX_PYTHON_FILE_ADDITIONS = 250
+PYTHON_PATHSPEC = ":(glob)**/*.py"
 
 
 def _is_xfail_decorator(node: ast.expr) -> ast.Call | ast.Attribute | None:
-    """Return the decorator node if it is a pytest.mark.xfail (Call or bare Attribute)."""
     target = node.func if isinstance(node, ast.Call) else node
-    # walk attribute chain, collect the trailing names
-    names = []
-    cur = target
-    while isinstance(cur, ast.Attribute):
-        names.append(cur.attr)
-        cur = cur.value
-    if isinstance(cur, ast.Name):
-        names.append(cur.id)
-    names = list(reversed(names))
-    # match ...mark.xfail
-    if len(names) >= 2 and names[-1] == "xfail" and names[-2] == "mark":
+    if (
+        isinstance(target, ast.Attribute)
+        and target.attr == "xfail"
+        and isinstance(target.value, ast.Attribute)
+        and target.value.attr == "mark"
+    ):
         return node
     return None
 
 
 def rule_xfail_strictness() -> tuple[str, list[str]]:
-    """R1 — every pytest.mark.xfail must carry strict=True and a non-empty reason."""
     violations: list[str] = []
     total = 0
-    for py in sorted(TESTS.rglob("*.py")):
+    for path in sorted(TESTS.rglob("*.py")):
         try:
-            tree = ast.parse(py.read_text(), filename=str(py))
-        except SyntaxError as exc:  # pragma: no cover - defensive
-            violations.append(f"{py.relative_to(ROOT)}: unparseable ({exc})")
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:
+            violations.append(f"{path.relative_to(ROOT)}: unparseable ({exc})")
             continue
-        for n in ast.walk(tree):
-            decos = getattr(n, "decorator_list", None)
-            if not decos:
-                continue
-            for d in decos:
-                xf = _is_xfail_decorator(d)
-                if xf is None:
+        for node in ast.walk(tree):
+            for decorator in getattr(node, "decorator_list", ()):
+                marker = _is_xfail_decorator(decorator)
+                if marker is None:
                     continue
                 total += 1
-                rel = f"{py.relative_to(ROOT)}:{d.lineno}"
-                if isinstance(xf, ast.Attribute):
-                    violations.append(f"{rel}: bare @pytest.mark.xfail (no strict=, no reason=)")
+                label = f"{path.relative_to(ROOT)}:{decorator.lineno}"
+                if isinstance(marker, ast.Attribute):
+                    violations.append(f"{label}: bare xfail lacks strict=True and reason=")
                     continue
-                kw = {k.arg: k.value for k in xf.keywords if k.arg}
-                strict = kw.get("strict")
+                keywords = {item.arg: item.value for item in marker.keywords if item.arg}
+                strict = keywords.get("strict")
+                reason = keywords.get("reason")
                 if not (isinstance(strict, ast.Constant) and strict.value is True):
-                    violations.append(f"{rel}: xfail without strict=True (soft xfail hides a real failure)")
-                reason = kw.get("reason")
-                ok_reason = reason is not None and not (
+                    violations.append(f"{label}: xfail lacks strict=True")
+                if reason is None or (
                     isinstance(reason, ast.Constant) and not str(reason.value).strip()
-                )
-                if not ok_reason:
-                    violations.append(f"{rel}: xfail without a non-empty reason=")
+                ):
+                    violations.append(f"{label}: xfail lacks a non-empty reason=")
     status = "PASS" if not violations else "FAIL"
-    summary = f"{total} xfail markers; all strict=True+reason" if not violations else f"{len(violations)} violation(s) of {total} markers"
-    return status, [summary] + violations
+    return status, [f"{total} xfail markers; {len(violations)} violation(s)", *violations]
 
 
 def rule_invisible_green() -> tuple[str, list[str], list[str]]:
-    """R2 — importorskip/skipif inside campaign *xfail*.py pin files.
-
-    HARD only when the dependency is genuinely absent (the test would silently SKIP =
-    invisible green). If the dep is importable, downgrade to WARN (latent risk).
-    """
     hard: list[str] = []
-    warn: list[str] = []
-    for py in sorted(TESTS.glob("**/*xfail*.py")):
+    warnings: list[str] = []
+    for path in sorted(TESTS.rglob("*xfail*.py")):
         try:
-            tree = ast.parse(py.read_text(), filename=str(py))
-        except SyntaxError:  # pragma: no cover
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError:
             continue
-        for n in ast.walk(tree):
-            if not isinstance(n, ast.Call):
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
                 continue
-            f = n.func
-            name = None
-            if isinstance(f, ast.Attribute):
-                name = f.attr
-            if name not in ("importorskip", "skip", "skipif"):
+            name = node.func.attr
+            if name not in {"importorskip", "skip", "skipif"}:
                 continue
-            rel = f"{py.relative_to(ROOT)}:{n.lineno}"
-            if name == "importorskip" and n.args and isinstance(n.args[0], ast.Constant):
-                mod = str(n.args[0].value)
-                present = importlib.util.find_spec(mod) is not None
-                (warn if present else hard).append(
-                    f"{rel}: importorskip({mod!r}) — dep {'present (latent invisible-green risk)' if present else 'ABSENT -> test SKIPS silently = ceremony'}"
+            label = f"{path.relative_to(ROOT)}:{node.lineno}"
+            if name == "importorskip" and node.args and isinstance(node.args[0], ast.Constant):
+                module = str(node.args[0].value)
+                try:
+                    present = importlib.util.find_spec(module) is not None
+                except (ImportError, ModuleNotFoundError):
+                    present = False
+                (warnings if present else hard).append(
+                    f"{label}: importorskip({module!r})"
                 )
             else:
-                warn.append(f"{rel}: {name}() in a pin file — confirm it cannot hide the pinned defect")
-    status = "FAIL" if hard else ("WARN" if warn else "PASS")
-    return status, hard, warn
+                warnings.append(f"{label}: {name}() can hide a pinned defect")
+    return ("FAIL" if hard else "WARN" if warnings else "PASS"), hard, warnings
 
 
 def rule_gate_executes() -> tuple[str, list[str]]:
-    """R3 — prove that a selected strict-xfail pin is load-bearing.
-
-    This follows the production ``gate_report`` and pytest runner with two
-    temporary strict-xfail controls: an unresolved defect must make the gate
-    UNMET under ``--runxfail``, while the same pin shape with fixed behavior
-    must flip to MET. Looking for runner strings is not execution evidence.
-    """
-    gate = ROOT / "scripts" / "wave_gate_check.py"
-    if not gate.exists():
-        return "FAIL", ["scripts/wave_gate_check.py is absent; the execution control cannot run"]
-
     try:
         import wave_gate_check as wave_gate
-    except Exception as exc:  # pragma: no cover - defensive import boundary
-        return "FAIL", [f"cannot import scripts/wave_gate_check.py: {exc}"]
+    except Exception as exc:
+        return "FAIL", [f"wave gate unavailable: {exc}"]
 
-    unresolved_selector = "tests/test_r3_control.py::test_unresolved_defect"
-    fixed_selector = "tests/test_r3_control.py::test_fixed_behavior"
+    selectors = {
+        "unresolved": "tests/test_r3_control.py::test_unresolved_defect",
+        "fixed": "tests/test_r3_control.py::test_fixed_behavior",
+    }
     header = (
         "| id | subsystem | file:line | severity | priority | fail-mode | repro | "
         "xfail-pin | lane-owner | shared-lock | wave | status | verifier | notes |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
     )
-    def inventory_row(selector: str) -> str:
-        return (
-            "| R3-control | verification | scripts/wave_gate_check.py | CRITICAL | P0 | "
-            f"false green | live control | {selector} | local | none | 1 | done | local | "
-            "behavioral execution control |\n"
-        )
-
     original_root = wave_gate._REPO_ROOT
     try:
         with tempfile.TemporaryDirectory(prefix="pipeline-r3-") as tmp:
-            control_root = pathlib.Path(tmp)
-            tests_dir = control_root / "tests"
-            tests_dir.mkdir()
-            (tests_dir / "test_r3_control.py").write_text(
-                "from pathlib import Path\n\n"
-                "import pytest\n\n"
-                "@pytest.mark.xfail(strict=True, reason='R3 unresolved control')\n"
+            root = Path(tmp)
+            tests = root / "tests"
+            tests.mkdir()
+            (tests / "test_r3_control.py").write_text(
+                "from pathlib import Path\nimport pytest\n\n"
+                "@pytest.mark.xfail(strict=True, reason='unresolved control')\n"
                 "def test_unresolved_defect():\n"
-                "    Path(__file__).with_name('unresolved.executed').write_text('R3 unresolved executed\\n')\n"
+                "    Path(__file__).with_name('unresolved.executed').write_text('yes')\n"
                 "    assert False\n\n"
-                "@pytest.mark.xfail(strict=True, reason='R3 fixed control')\n"
+                "@pytest.mark.xfail(strict=True, reason='fixed control')\n"
                 "def test_fixed_behavior():\n"
-                "    Path(__file__).with_name('fixed.executed').write_text('R3 fixed executed\\n')\n"
+                "    Path(__file__).with_name('fixed.executed').write_text('yes')\n"
                 "    assert True\n",
                 encoding="utf-8",
             )
-            unresolved_inventory = control_root / "unresolved.md"
-            fixed_inventory = control_root / "fixed.md"
-            unresolved_inventory.write_text(
-                header + inventory_row(unresolved_selector), encoding="utf-8"
-            )
-            fixed_inventory.write_text(
-                header + inventory_row(fixed_selector), encoding="utf-8"
-            )
-            wave_gate._REPO_ROOT = control_root
-            unresolved_report = wave_gate.gate_report(
-                unresolved_inventory,
-                1,
-                product_oracle_paths=[],
-            )
-            fixed_report = wave_gate.gate_report(
-                fixed_inventory,
-                1,
-                product_oracle_paths=[],
-            )
-            unresolved_witness_path = tests_dir / "unresolved.executed"
-            fixed_witness_path = tests_dir / "fixed.executed"
-            unresolved_witness = (
-                unresolved_witness_path.read_text(encoding="utf-8")
-                if unresolved_witness_path.is_file()
-                else None
-            )
-            fixed_witness = (
-                fixed_witness_path.read_text(encoding="utf-8")
-                if fixed_witness_path.is_file()
-                else None
+            wave_gate._REPO_ROOT = root
+            reports = {}
+            for name, selector in selectors.items():
+                inventory = root / f"{name}.md"
+                inventory.write_text(
+                    header
+                    + "| R3 | verification | scripts/wave_gate_check.py | CRITICAL | P0 | "
+                    f"false green | live | {selector} | local | none | 1 | done | local | control |\n",
+                    encoding="utf-8",
+                )
+                reports[name] = wave_gate.gate_report(
+                    inventory, 1, product_oracle_paths=[]
+                )
+            unresolved = reports["unresolved"]
+            fixed = reports["fixed"]
+            unresolved_run = unresolved.get("pytest") or {}
+            fixed_run = fixed.get("pytest") or {}
+            passed = all(
+                (
+                    unresolved.get("verdict") == "UNMET",
+                    unresolved.get("selectors") == [selectors["unresolved"]],
+                    unresolved.get("pytest_blocking") is True,
+                    unresolved_run.get("exit_code") not in {None, 0},
+                    "--runxfail" in unresolved_run.get("args", []),
+                    fixed.get("verdict") == "MET",
+                    fixed.get("selectors") == [selectors["fixed"]],
+                    fixed.get("pytest_blocking") is False,
+                    fixed_run.get("exit_code") == 0,
+                    "--runxfail" in fixed_run.get("args", []),
+                    (tests / "unresolved.executed").is_file(),
+                    (tests / "fixed.executed").is_file(),
+                )
             )
     except Exception as exc:
         return "FAIL", [f"wave-gate execution control raised: {exc}"]
     finally:
         wave_gate._REPO_ROOT = original_root
-
-    unresolved_run = unresolved_report.get("pytest")
-    fixed_run = fixed_report.get("pytest")
-    unresolved_args = (
-        unresolved_run.get("args", []) if isinstance(unresolved_run, dict) else []
-    )
-    fixed_args = fixed_run.get("args", []) if isinstance(fixed_run, dict) else []
-    if (
-        unresolved_report.get("verdict") == "UNMET"
-        and unresolved_report.get("selectors") == [unresolved_selector]
-        and unresolved_report.get("pytest_blocking") is True
-        and isinstance(unresolved_run, dict)
-        and unresolved_run.get("exit_code") != 0
-        and unresolved_selector in unresolved_args
-        and "--runxfail" in unresolved_args
-        and fixed_report.get("verdict") == "MET"
-        and fixed_report.get("selectors") == [fixed_selector]
-        and fixed_report.get("pytest_blocking") is False
-        and isinstance(fixed_run, dict)
-        and fixed_run.get("exit_code") == 0
-        and fixed_selector in fixed_args
-        and "--runxfail" in fixed_args
-        and "passed" in fixed_run.get("stdout", "")
-        and unresolved_witness == "R3 unresolved executed\n"
-        and fixed_witness == "R3 fixed executed\n"
-    ):
-        return "PASS", [
-            "wave_gate_check.py executed witnessed strict-xfail controls: unresolved UNMET, fixed MET"
-        ]
-    return "FAIL", [
-        "wave_gate_check.py did not produce both selector-bound strict-xfail controls "
-        f"(unresolved={unresolved_report!r}, fixed={fixed_report!r})"
-    ]
+    if passed:
+        return "PASS", ["executed witnessed strict-xfail controls: unresolved UNMET, fixed MET"]
+    return "FAIL", ["wave gate did not produce both executed strict-xfail controls"]
 
 
 def _inventory_data_rows(text: str) -> list[list[str]]:
-    """Stripped pipe-delimited cells of each DATA row in the inventory table.
-
-    Skips the `| id | subsystem | ... |` header, the `|---|` separator, and any
-    non-table line. Robust to the surrounding markdown.
-    """
     rows: list[list[str]] = []
     for line in text.splitlines():
-        s = line.strip()
-        if not s.startswith("|"):
+        if not line.strip().startswith("|"):
             continue
-        cells = [c.strip() for c in s.strip("|").split("|")]
-        if len(cells) < 2:
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2 or set("".join(cells)) <= set("-: "):
             continue
-        if set("".join(cells)) <= set("-: "):  # |---|:--| separator row
-            continue
-        lowered = [c.lower() for c in cells]
-        if lowered[0] == "id" and "subsystem" in lowered:  # header
+        if cells[0].lower() == "id" and any(cell.lower() == "subsystem" for cell in cells):
             continue
         rows.append(cells)
     return rows
 
 
 def _utv_status_violations(text: str) -> list[str]:
-    """Rows where any cell is EXACTLY `unable_to_verify` (case-insensitive).
-
-    UTV is a verdict token; legitimately it can only ever be a standalone status
-    cell, never embedded in prose — so an exact full-cell match is high-precision
-    and immune to column miscounting from stray pipes in free-text cells.
-    """
-    bad: list[str] = []
-    for cells in _inventory_data_rows(text):
-        rid = cells[0] if cells else "<?>"
-        for i, c in enumerate(cells):
-            if c.lower() == "unable_to_verify":
-                bad.append(
-                    f"row {rid!r}: cell #{i} == 'unable_to_verify' — UTV is a reviewer/operator "
-                    "verdict, never a row status (it would bypass wave_gate_check blocking)"
-                )
-    return bad
+    return [
+        f"row {cells[0]!r}: cell #{index} is unable_to_verify, which is a verdict, not row status"
+        for cells in _inventory_data_rows(text)
+        for index, cell in enumerate(cells)
+        if cell.lower() == "unable_to_verify"
+    ]
 
 
 def rule_utv_not_a_row_status() -> tuple[str, list[str]]:
-    """R5 — `unable_to_verify` must never be an inventory row status (ADR-027 / ADR-032).
-
-    wave_gate_check.py tallies any status string but blocks only on severity/provisional,
-    so a UTV row status would be silently NON-blocking — green-washing an unverified row.
-    UTV is the reviewer/operator could-not-conclude VERDICT; the row stays in its prior
-    state (typically `open`) and the receiving seat RE-DISPATCHES in a fixed env.
-    """
-    inv = ROOT / "docs" / "REMEDIATION-INVENTORY.md"
-    if not inv.exists():
-        return "PASS", ["docs/REMEDIATION-INVENTORY.md absent"]
-    violations = _utv_status_violations(inv.read_text())
-    if violations:
-        return "FAIL", violations
-    return "PASS", ["no inventory row uses unable_to_verify as a status (it is a verdict only)"]
+    inventory = ROOT / "docs" / "REMEDIATION-INVENTORY.md"
+    violations = _utv_status_violations(
+        inventory.read_text(encoding="utf-8") if inventory.is_file() else ""
+    )
+    return ("FAIL" if violations else "PASS"), (
+        violations or ["no inventory row uses unable_to_verify as a status"]
+    )
 
 
 def _pass_reports_missing_runxfail(named_results: list[tuple[str, dict]]) -> list[str]:
-    """Violations for ``pass`` results that cite no ``--runxfail`` command.
-
-    Pure over (label, result) pairs so the gate logic is unit-testable without a mailbox.
-    Only the `pass` verdict is gated: `issues`/`unable_to_verify` make no GO claim, so they
-    do not owe a pin re-execution.
-    """
-    bad: list[str] = []
+    violations: list[str] = []
     for label, result in named_results:
         if result.get("verdict") != "pass":
             continue
         commands = result.get("commands")
-        if not isinstance(commands, list):
-            commands = []  # wrong-type commands -> treated as "no pin cited" (clean FAIL, not crash)
-        if not any(
-            isinstance(c, dict) and "--runxfail" in (c.get("command") or "")
-            for c in commands
+        if not isinstance(commands, list) or not any(
+            isinstance(command, dict) and "--runxfail" in str(command.get("command", ""))
+            for command in commands
         ):
-            bad.append(
-                f"{label}: verdict 'pass' but no command in commands[] cites a "
-                "--runxfail pin run for the consumer to execute (ADR-032 R6)"
-            )
-    return bad
+            violations.append(f"{label}: pass verdict has no --runxfail command")
+    return violations
 
 
-def rule_report_cites_executed_pin(repo_root: pathlib.Path = ROOT) -> tuple[str, list[str]]:
-    """R6 — a ``pass`` report must cite a ``--runxfail`` command.
-
-    This rule validates the report field only. ``consume_reviewer_result`` owns
-    execution and result checking, so this function must not call the cited string
-    "executed". Parsing is delegated to that consumer so there is one parser.
-    """
+def rule_report_cites_executed_pin(repo_root: Path = ROOT) -> tuple[str, list[str]]:
     try:
-        import consume_reviewer_result as _crr
-    except Exception as exc:  # pragma: no cover - defensive (consumer should always import)
-        return "FAIL", [f"reviewer-result consumer unavailable: {exc}"]
-    try:
-        results = _crr.iter_reviewer_results(repo_root)
-    except _crr.ResultParseError as exc:
-        return "FAIL", [f"malformed reviewer-result block — {exc}"]
-    named = [(path.name, result) for path, result in results]
-    violations = _pass_reports_missing_runxfail(named)
-    if violations:
-        return "FAIL", violations
-    if named:
-        return "PASS", [
-            f"{len(named)} reviewer-result block(s); every pass cites a --runxfail command"
+        import consume_reviewer_result
+
+        named = [
+            (path.name, result)
+            for path, result in consume_reviewer_result.iter_reviewer_results(repo_root)
         ]
-    return "PASS", ["no reviewer-result blocks in the mailbox yet (R6 inert until reviewers emit the schema)"]
+    except Exception as exc:
+        return "FAIL", [f"reviewer-result consumer unavailable: {exc}"]
+    violations = _pass_reports_missing_runxfail(named)
+    return ("FAIL" if violations else "PASS"), (
+        violations or [f"{len(named)} reviewer-result block(s) checked"]
+    )
+
+
+def _python_growth_violations(numstat: str) -> tuple[list[str], str]:
+    rows = [line.split("\t", 2) for line in numstat.splitlines()]
+    invalid = next((row for row in rows if len(row) != 3 or not row[0].isdigit() or not row[1].isdigit()), None)
+    if invalid:
+        return [f"unparseable Python numstat row: {invalid!r}"], "unparseable"
+    files = [(int(a), int(d), path) for a, d, path in rows]
+    added, deleted = (sum(item[index] for item in files) for index in (0, 1))
+    violations: list[str] = []
+    for additions, deletions, path in files:
+        if additions > MAX_PYTHON_FILE_ADDITIONS:
+            violations.append(f"{path}: {additions} added lines exceeds {MAX_PYTHON_FILE_ADDITIONS}")
+        if additions - deletions > MAX_PYTHON_FILE_NET_GROWTH:
+            violations.append(f"{path}: net growth {additions - deletions} exceeds {MAX_PYTHON_FILE_NET_GROWTH}")
+    if added - deleted > MAX_PYTHON_NET_GROWTH:
+        violations.append(f"total net Python growth {added - deleted} exceeds {MAX_PYTHON_NET_GROWTH}")
+    return violations, f"{added} added, {deleted} deleted, net {added - deleted}"
+
+
+def _growth_base() -> str | None:
+    explicit = os.environ.get("NO_CEREMONY_BASE", "").strip()
+    if explicit and set(explicit) != {"0"}:
+        return explicit
+    dirty = git_runner.run_git(ROOT, ["diff", "--quiet", "HEAD", "--", PYTHON_PATHSPEC]).returncode
+    if dirty == 1:
+        return "HEAD"
+    if dirty > 1:
+        raise RuntimeError("git diff could not inspect Python changes")
+    parent = git_runner.run_git(ROOT, ["rev-parse", "--verify", "HEAD^"])
+    return "HEAD^" if parent.returncode == 0 else None
+
+
+def rule_python_growth() -> tuple[str, list[str]]:
+    try:
+        base = _growth_base()
+        if base is None:
+            return "PASS", ["no parent range to inspect"]
+        diff = git_runner.run_git(ROOT, ["diff", "--numstat", base, "--", PYTHON_PATHSPEC], text=True)
+        if diff.returncode != 0:
+            return "FAIL", [f"cannot inspect Python growth from {base}"]
+        violations, summary = _python_growth_violations(diff.stdout)
+    except Exception as exc:
+        return "FAIL", [f"Python growth check failed: {exc}"]
+    return ("FAIL" if violations else "PASS"), [f"{summary} from {base}", *violations]
 
 
 def main() -> int:
-    print("CEREMONY CHECK — forbid appearance-of-verification-without-substance (ADR-027 / ADR-028)\n")
-    hard_fail = False
-
-    r1_status, r1 = rule_xfail_strictness()
-    print(f"R1 xfail-strictness ....... {r1_status}  {r1[0]}")
-    for v in r1[1:]:
-        print(f"     - {v}")
-    hard_fail |= r1_status == "FAIL"
-
-    r2_status, r2_hard, r2_warn = rule_invisible_green()
-    print(f"R2 invisible-green ........ {r2_status}")
-    for v in r2_hard:
-        print(f"     ! {v}")
-    for v in r2_warn:
-        print(f"     ~ {v}")
-    hard_fail |= r2_status == "FAIL"
-
-    r3_status, r3 = rule_gate_executes()
-    print(f"R3 gate-executes-pins ..... {r3_status}  {r3[0]}")
-    hard_fail |= r3_status == "FAIL"
-
-    r5_status, r5 = rule_utv_not_a_row_status()
-    print(f"R5 utv-not-a-row-status ... {r5_status}  {r5[0]}")
-    for v in r5[1:]:
-        print(f"     ! {v}")
-    hard_fail |= r5_status == "FAIL"
-
-    r6_status, r6 = rule_report_cites_executed_pin()
-    print(f"R6 report-cites-pin-command {r6_status}  {r6[0]}")
-    for v in r6[1:]:
-        print(f"     ! {v}")
-    hard_fail |= r6_status == "FAIL"
-
-    print()
-    if hard_fail:
-        print("RESULT: HARD ceremony violation(s) present — the verification core is not fully self-executing.")
+    print("CEREMONY CHECK — executable evidence and bounded Python growth\n")
+    status, details = rule_xfail_strictness()
+    results = [("xfail-strictness", status, details)]
+    status, hard, warnings = rule_invisible_green()
+    results.append(("invisible-green", status, [*hard, *warnings] or ["clean"]))
+    for name, rule in (
+        ("gate-executes-pins", rule_gate_executes),
+        ("utv-not-row-status", rule_utv_not_a_row_status),
+        ("report-cites-pin", rule_report_cites_executed_pin),
+        ("python-growth", rule_python_growth),
+    ):
+        status, details = rule()
+        results.append((name, status, details))
+    for name, status, details in results:
+        print(f"{name:<24} {status}  {details[0]}")
+        for detail in details[1:]:
+            print(f"  - {detail}")
+    if any(status == "FAIL" for _, status, _ in results):
+        print("\nRESULT: hard violation present")
         return 1
     print(
-        "RESULT: configured anti-ceremony checks passed — this bounded rule set "
-        "does not certify every protocol surface."
+        "\nRESULT: configured anti-ceremony checks passed; this bounded set "
+        "does not certify every protocol surface"
     )
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

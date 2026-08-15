@@ -56,10 +56,8 @@ for the full discipline (Rules #7–#23).
 ## Readiness bridge
 
 Use `python scripts/status.py snapshot` for one compact non-seat orientation.
-`scripts/continuation_readiness.py` is a compatibility wrapper around that same
-snapshot. It reports current Git, authoritative unread transport, the current
-request or blocker, and the lawful next action without claiming a role or
-mutating state.
+It reports current Git, authoritative unread transport, the current request or
+blocker, and the lawful next action without claiming a role or mutating state.
 
 Use `python scripts/mailbox_monitor.py --once` for an active communication
 snapshot, or `python scripts/mailbox_monitor.py --watch --interval 5` while a

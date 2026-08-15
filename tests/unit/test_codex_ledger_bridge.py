@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import contextlib
-import io
 import shlex
 from pathlib import Path
 
 import pytest
 
 import codex_protocol_model as model
-import continuation_readiness
 import protocol_doctor as doctor
 
 
@@ -228,21 +225,6 @@ def test_readiness_and_coordinator_prompts_keep_mutation_boundaries():
     assert "does not claim work" in readiness
     assert "has no cursor" in coordinator
     assert "does not author behavior-changing production work" in coordinator
-
-
-def test_readiness_bridge_is_only_a_compact_snapshot_wrapper():
-    buffer = io.StringIO()
-    with contextlib.redirect_stdout(buffer):
-        rc = continuation_readiness.main(["--seat", "operator"])
-
-    rendered = buffer.getvalue().splitlines()
-    assert rc == 0
-    assert len(rendered) <= 20
-    assert rendered[0].startswith("Pipeline snapshot ")
-    assert any(line.startswith("Request:") for line in rendered)
-    assert not any("Runtime env contract" in line for line in rendered)
-    assert not any("Capacity Split Default" in line for line in rendered)
-    assert not any("Ledger Start Guard" in line for line in rendered)
 
 
 def test_ledger_start_guard_cli_rejects_content_kernel():

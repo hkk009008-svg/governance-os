@@ -214,3 +214,38 @@ def test_is_xfail_decorator_rejects_non_xfail_marker():
         "def test_x():\n    pass\n"
     )
     assert cnc._is_xfail_decorator(deco) is None
+
+
+def test_python_growth_rejects_large_total_and_per_file_growth():
+    violations, summary = cnc._python_growth_violations(
+        "120\t5\tscripts/large.py\n10\t0\ttests/test_large.py\n"
+    )
+
+    assert "net 125" in summary
+    assert any("scripts/large.py" in item for item in violations)
+    assert any("total net Python growth" in item for item in violations)
+
+
+def test_python_growth_accepts_deletion_first_refactor():
+    violations, summary = cnc._python_growth_violations(
+        "40\t100\tscripts/compact.py\n"
+    )
+
+    assert violations == []
+    assert "net -60" in summary
+
+
+def test_python_growth_cannot_be_hidden_by_deleting_another_file():
+    violations, summary = cnc._python_growth_violations(
+        "260\t250\tscripts/new_layer.py\n0\t100\tscripts/old_layer.py\n"
+    )
+
+    assert "net -90" in summary
+    assert any("scripts/new_layer.py" in item for item in violations)
+
+
+def test_main_wires_python_growth_as_a_hard_failure(monkeypatch):
+    monkeypatch.setattr(cnc, "rule_python_growth", lambda: ("FAIL", ["oversized"]))
+    with contextlib.redirect_stdout(io.StringIO()) as output:
+        assert cnc.main() == 1
+    assert "python-growth            FAIL  oversized" in output.getvalue()

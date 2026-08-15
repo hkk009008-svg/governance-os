@@ -89,10 +89,10 @@ CHECKER_REGISTRY = {
     },
     "anti_ceremony": {
         "entry": "scripts/check_no_ceremony.py",
-        "owned_paths": ("tests/", "docs/REMEDIATION-INVENTORY.md"),
-        "trigger": "xfail pins / remediation inventory / reviewer schema change",
+        "owned_paths": (".",),
+        "trigger": "Python growth / xfail pins / remediation inventory / reviewer schema change",
         "severity": "hard-fail",
-        "blocked_effect": "appearance-of-verification without substance (ADR-028)",
+        "blocked_effect": "verification theater or disproportionate Python growth",
     },
     "reviewer_result_schema": {
         "entry": "scripts/consume_reviewer_result.py",

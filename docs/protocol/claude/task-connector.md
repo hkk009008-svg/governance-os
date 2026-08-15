@@ -56,7 +56,7 @@ duplicate.
 
 | Tool | Purpose |
 |---|---|
-| `claude_bridge_start` | Start the named bridge explicitly; budget defaults to and cannot exceed `$1.00`. |
+| `claude_bridge_start` | Start the fixed named bridge explicitly. |
 | `claude_bridge_status` | Read bridge state and optionally one relay receipt. |
 | `claude_bridge_send` | Lazily start and queue one idempotent exact/prefix relay. |
 | `claude_bridge_wait` | Read or wait by generation/cursor and optionally include the relay receipt. |

@@ -279,8 +279,6 @@ does not imply an authority grant.
 |---|---|
 | `scripts/codex_protocol_model.py` | Canonical runtime identity, seat outcome, work/review profiles, model-family independence, ownership, and effect-shape policy. |
 | `scripts/status.py` | Compact read-only orientation snapshot plus a compatibility dashboard for Git, mailbox/unread authority, request state, ADR, docs, manifest, and optional environment status; only dashboard `--write` writes `STATUS.md`. |
-| `scripts/startup_snapshot.py` | Typed Git/mailbox state collectors used by orientation paths. |
-| `scripts/continuation_readiness.py` | Compatibility wrapper around the compact orientation snapshot. |
 | `scripts/git_commit_projection.py` | Pins one repository identity/HEAD and builds a bounded in-memory commit graph for type and ancestry checks. |
 | `scripts/protocol_mailbox.py` | Shared seat/kind vocabulary and parsers for ownership, routes, reviews, learning candidates, and dispositions. |
 | `scripts/route_lineage.py` | Resolves route ancestry and supersession from event contents rather than trusting filenames. |
@@ -312,7 +310,6 @@ does not imply an authority grant.
 | `scripts/codex_seat_launcher.py` | Builds one Codex launch spec from per-seat model/tier config, sanitizes inherited state, and rejects forwarded execution-shape overrides. Trusted user/project config still owns effective sandbox/approval posture; the launcher does not attest it. |
 | `scripts/claude_task_connector.py` | Exposes five MCP tools and one bounded named Agent SDK peer for transient Codex/Claude relay; sends lazily start the user-authorized `$1.00` bridge, while private Desktop RPC, `local_*` IDs, and delivery claims fail closed. |
 | `scripts/harness_preflight.py` | Checks whether the Codex review harness can execute its required path before dispatch; `--live` may launch a provider and incur spend, so it remains separately authorized. |
-| `scripts/seat_banner.py` | Renders the explicit objective/permission/scope/verification/done seat contract. |
 
 ### 6.4 CI, health, inventory, and anti-ceremony controls
 
@@ -322,7 +319,7 @@ does not imply an authority grant.
 | `scripts/ci_admission_gate.py` | Classifies a PR range against active authority/skill/config/baseline surfaces and requires structurally valid committed high-risk Compact Pair evidence when triggered. Declared reviewer fields are not runtime identity attestation. |
 | `scripts/check_doc_claims.py` | Checks line/symbol anchors, manifests, and optional historical commit-SHA citations; can classify reviewed baseline drift. |
 | `scripts/check_arch_freshness.py` | Rejects substantive `ARCHITECTURE.md` changes without a new resolvable verification stamp. |
-| `scripts/check_no_ceremony.py` | Runs behavioral and structural controls against verification theater; the candidate makes its wave-gate test execute a real selector. |
+| `scripts/check_no_ceremony.py` | Rejects verification theater and Python changes that grow past a small fixed budget. |
 | `scripts/check_placeholders.py` | Fail-closed placeholder scan with `scripts/placeholder_allowlist.txt` as the explicit baseline. |
 | `scripts/wave_gate_check.py` | Selects a campaign wave's strict-xfail pins, runs them under `--runxfail`, checks product oracles, and reports MET/UNMET; an empty wave is UNMET in the candidate. |
 | `scripts/pin_reconciler.py` | Finds inventory rows marked verified whose pins still behave as xfails. |
@@ -330,7 +327,6 @@ does not imply an authority grant.
 | `scripts/protocol_doctor.py` | Strict read-only bundle of protocol validation checks. |
 | `scripts/protocol_capacity.py` | Computes hard-gated capacity/route state from packets and current evidence. |
 | `scripts/protocol_capacity_board.py` | Renders or validates the capacity board. |
-| `scripts/status_benchmark.py` | Measures the direct orientation snapshot without converting timing into an authority gate. |
 | `scripts/threeway_mechanism_ledger.py` | Ensures every load-bearing signed event kind has a current emitter/support row and only cites tests that exist. |
 | `scripts/placeholder_allowlist.txt` | Data input to the placeholder checker, not an executable. |
 | `scripts/baselines/*.json` | Three current immutable-history/report compatibility inputs plus the currently unreferenced retained `lane_v_report_v1.json`. |
