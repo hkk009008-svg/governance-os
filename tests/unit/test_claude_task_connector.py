@@ -13,9 +13,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from mcp import types
 
-import claude_task_connector as connector
+# The connector runtime is OPTIONAL: ARCHITECTURE.md hash-locks it separately in
+# requirements-connector.txt, and CI installs only requirements-dev.txt. Without
+# this guard the module fails to COLLECT rather than skip, which ends the whole
+# run at exit 2 instead of skipping one file.
+pytest.importorskip("mcp", reason="optional connector runtime is not installed")
+
+from mcp import types  # noqa: E402
+
+import claude_task_connector as connector  # noqa: E402
 
 
 class CapturingOptions:
