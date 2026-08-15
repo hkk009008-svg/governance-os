@@ -208,6 +208,30 @@ def test_sdk_options_are_named_isolated_and_transport_only(tmp_path: Path) -> No
     assert set(options["hooks"]) == {"PreToolUse", "PostToolUse"}
 
 
+def test_bridge_prompt_agrees_with_the_unarmed_gate() -> None:
+    """The prompt must not direct an action the gate structurally forbids.
+
+    Measured rather than assumed: with no relay armed the gate denies every
+    native tool, so telling the bridge to "acknowledge" an inbound peer message
+    can only produce denied tool calls, which spend budget against the bridge
+    ceiling and achieve nothing. An unsolicited inbound message is already
+    recorded in the event buffer for Codex to read, so the correct behaviour is
+    to call no tool at all.
+
+    Both halves are pinned together deliberately: if the gate ever starts
+    allowing an unarmed tool, the first loop fails and the prompt wording is
+    reconsidered as one decision instead of drifting apart again.
+    """
+    gate = connector.RelayGate()
+    for tool in connector.NATIVE_TOOLS:
+        decision = asyncio.run(gate.pre_tool_use(_pre(tool, {}), f"u-{tool}", None))
+        assert not _allowed(decision), f"unarmed gate allowed {tool}"
+
+    prompt = connector.BRIDGE_SYSTEM_PROMPT
+    assert "Call no tool" in prompt
+    assert "acknowledgement short" not in prompt
+
+
 def test_gate_allows_only_one_confirmed_exact_relay() -> None:
     observed: list[dict[str, Any]] = []
     gate = connector.RelayGate(observer=observed.append)
