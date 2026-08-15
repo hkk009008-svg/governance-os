@@ -501,6 +501,51 @@ def test_read_is_atomic_under_a_forced_interleave(tmp_path: Path) -> None:
     )
 
 
+def test_stopping_the_bridge_discards_the_shared_store(tmp_path: Path) -> None:
+    """ARCHITECTURE.md calls the bridge transient; its store must be too."""
+    runtime, _client = _runtime(tmp_path)
+    path = connector.shared_buffer_path(Path(tmp_path).resolve())
+    assert path.exists(), "starting a bridge should create the shared store"
+
+    runtime.stop()
+    assert not path.exists(), "stopping a bridge must not leave durable state"
+
+
+def test_discard_surfaces_a_real_unlink_failure(tmp_path: Path) -> None:
+    """The happy path above is not enough, and once said so falsely.
+
+    discard caught bare OSError, so a store that could NOT be removed was
+    reported as removed: stop() returned `stopped`, the files survived, and the
+    next start resumed that generation and its stale cursor. Only a failing
+    unlink separates the two behaviours, so this forces one.
+    """
+    directory = tmp_path / "store"
+    directory.mkdir()
+    store = connector.EventBuffer(4, directory / "events.sqlite3")
+    store.append({"kind": "one"})
+    directory.chmod(0o500)  # unlink now fails with EACCES
+    try:
+        with pytest.raises(OSError):
+            store.discard()
+    finally:
+        directory.chmod(0o700)
+
+
+def test_symlinked_store_path_is_refused(tmp_path: Path) -> None:
+    """mkdir(exist_ok=True) follows a pre-created symlink, so whoever wins the
+    race to create the directory redirects the store. Probed: the database
+    landed in the attacker's directory."""
+    attacker = tmp_path / "attacker"
+    attacker.mkdir()
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "repo").symlink_to(attacker)
+
+    with pytest.raises(connector.ConnectorError, match="symlinked"):
+        connector.EventBuffer(4, root / "repo" / "events.sqlite3")
+    assert not list(attacker.iterdir()), "nothing may be written through the link"
+
+
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:
     runtime, client = _runtime(tmp_path)
     prompt, request = connector.build_relay(

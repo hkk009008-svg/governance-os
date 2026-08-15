@@ -20,6 +20,7 @@ import os
 import re
 import sqlite3
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -444,6 +445,45 @@ def build_sdk_options(
     )
 
 
+def shared_buffer_path(cwd: Path) -> Path:
+    """Event store for one repository's bridge: keyed by cwd so two connectors
+    agree, scoped by uid so two users never share, outside the repo so it is
+    never repository content."""
+
+    digest = hashlib.sha256(str(cwd).encode("utf-8", "surrogateescape")).hexdigest()
+    root = Path(tempfile.gettempdir()) / f"pipeline-codex-bridge-{os.getuid()}"
+    return root / digest[:16] / "events.sqlite3"
+
+
+def reject_symlinked_store(path: Path) -> None:
+    """Refuse a store path whose own directories are symlinks.
+
+    mkdir(exist_ok=True) FOLLOWS a pre-created symlink, so whoever wins the race
+    to create the uid root or the per-repo directory redirects the entire store
+    into space they control. Probed: the database landed in the attacker's
+    directory.
+    """
+
+    for part in (path, path.parent, path.parent.parent):
+        if part.is_symlink():
+            raise ConnectorError(f"refusing a symlinked event-store path: {part}")
+
+
+def discard_buffer_files(path: Path) -> None:
+    """Remove a store and its WAL sidecars. Absence is fine; nothing else is.
+
+    A blanket OSError catch let stop() report `stopped` while the database and
+    its sidecars survived, and the next start then resumed that generation and
+    its stale cursor instead of minting a fresh one. Probed.
+    """
+
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            Path(str(path) + suffix).unlink()
+        except FileNotFoundError:
+            pass
+
+
 class EventBuffer:
     """Bounded event ring with explicit truncation instead of bridge failure.
 
@@ -464,6 +504,7 @@ class EventBuffer:
         self.path = path
         self._lock = threading.Lock()
         if path is not None:
+            reject_symlinked_store(path)
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._db = sqlite3.connect(
             str(path) if path is not None else ":memory:",
@@ -513,6 +554,12 @@ class EventBuffer:
             self._db.close()
         except Exception:
             pass
+
+    def discard(self) -> None:
+        """Delete the store, keeping bridge state as transient as the bridge."""
+        self.close()
+        if self.path is not None:
+            discard_buffer_files(self.path)
 
     def append(self, event: Mapping[str, Any]) -> None:
         with self._lock:
@@ -834,8 +881,10 @@ class BridgeRuntime:
             # A fresh bridge is a fresh generation, so any store left behind by
             # a previous instance is removed rather than resumed -- a reader
             # must never be handed a dead bridge's cursor as if it were live.
+            store = shared_buffer_path(config.cwd)
+            discard_buffer_files(store)
             self._events.close()
-            self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
+            self._events = EventBuffer(DEFAULT_QUEUE_LIMIT, store)
             self._gate = RelayGate(observer=self._append)
             options = build_sdk_options(
                 config, options_cls=options_cls, hook_cls=hook_cls, gate=self._gate
@@ -1185,7 +1234,12 @@ class BridgeRuntime:
                 self._state = "stopped"
                 self._thread = None
         self._gate.complete()
-        return self.status()
+        # Status is read BEFORE discarding so the caller still gets the final
+        # generation and cursor, and the file does not outlive its bridge.
+        result = self.status()
+        self._events.discard()
+        self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
+        return result
 
 
 def capability_report() -> dict[str, Any]:
