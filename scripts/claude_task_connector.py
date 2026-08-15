@@ -16,11 +16,13 @@ import hashlib
 import importlib.metadata
 import json
 import math
+import os
 import re
+import sqlite3
 import sys
 import threading
+import time
 import uuid
-from collections import deque
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -443,53 +445,121 @@ def build_sdk_options(
 
 
 class EventBuffer:
-    """Bounded event ring with explicit truncation instead of bridge failure."""
+    """Bounded event ring with explicit truncation instead of bridge failure.
 
-    def __init__(self, limit: int) -> None:
+    SQLite-backed rather than an in-process deque, so a SECOND connector
+    process can read the same events; `path=None` uses an in-memory database,
+    the same code path with different storage. BEGIN IMMEDIATE on append stops
+    two processes both reading the cursor and colliding on the primary key, and
+    INSERT OR IGNORE attaches to an existing generation instead of minting one
+    so a reader agrees with the owner about which bridge these events describe.
+    """
+
+    _SCHEMA = (
+        "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS events (cursor INTEGER PRIMARY KEY, payload TEXT NOT NULL);"
+    )
+    def __init__(self, limit: int, path: Path | None = None) -> None:
         self.limit = limit
-        self.generation = str(uuid.uuid4())
-        self._events: deque[dict[str, Any]] = deque(maxlen=limit)
-        self._cursor = 0
-        self._dropped_before = 0
-        self._condition = threading.Condition()
+        self.path = path
+        self._lock = threading.Lock()
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._db = sqlite3.connect(
+            str(path) if path is not None else ":memory:",
+            check_same_thread=False, isolation_level=None, timeout=5.0,
+        )
+        self._db.execute("PRAGMA busy_timeout=5000")
+        if path is not None:
+            self._db.execute("PRAGMA journal_mode=WAL")
+            os.chmod(path, 0o600)
+        self._db.executescript(self._SCHEMA)
+        seed = (("generation", str(uuid.uuid4())), ("cursor", "0"), ("dropped", "0"))
+        for key, value in seed:
+            self._db.execute("INSERT OR IGNORE INTO meta VALUES (?, ?)", (key, value))
+
+    def _set(self, key: str, value: Any) -> None:
+        self._db.execute(
+            "INSERT INTO meta VALUES (?, ?)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, str(value)),
+        )
+
+    def _meta(self, key: str) -> str:
+        row = self._db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else "0"
+
+    @property
+    def generation(self) -> str:
+        with self._lock:
+            return self._meta("generation")
 
     @property
     def latest_cursor(self) -> int:
-        with self._condition:
-            return self._cursor
+        with self._lock:
+            return int(self._meta("cursor"))
 
     @property
     def dropped_before_cursor(self) -> int:
-        with self._condition:
-            return self._dropped_before
+        with self._lock:
+            return int(self._meta("dropped"))
+
+    def close(self) -> None:
+        with self._lock:
+            self._db.close()
+
+    def __del__(self) -> None:  # a replaced buffer must not leak its connection
+        try:
+            self._db.close()
+        except Exception:
+            pass
 
     def append(self, event: Mapping[str, Any]) -> None:
-        with self._condition:
-            record = dict(event)
-            record.update(cursor=self._cursor + 1, observed_at=_now())
-            if len(json.dumps(record, ensure_ascii=False, default=str).encode()) > MAX_EVENT_BYTES:
-                raise ConnectorError(f"event exceeds {MAX_EVENT_BYTES} bytes")
-            if len(self._events) == self.limit:
-                self._dropped_before = self._events[0]["cursor"]
-            self._cursor += 1
-            self._events.append(record)
-            self._condition.notify_all()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = int(self._meta("cursor")) + 1
+                record = dict(event)
+                record.update(cursor=cursor, observed_at=_now())
+                payload = json.dumps(record, ensure_ascii=False, default=str)
+                if len(payload.encode()) > MAX_EVENT_BYTES:
+                    raise ConnectorError(f"event exceeds {MAX_EVENT_BYTES} bytes")
+                if self._db.execute(
+                    "SELECT COUNT(*) FROM events"
+                ).fetchone()[0] >= self.limit:
+                    oldest = self._db.execute(
+                        "SELECT MIN(cursor) FROM events"
+                    ).fetchone()[0]
+                    self._set("dropped", oldest)
+                    self._db.execute("DELETE FROM events WHERE cursor = ?", (oldest,))
+                self._db.execute("INSERT INTO events VALUES (?, ?)", (cursor, payload))
+                self._set("cursor", cursor)
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
 
     def _read(self, after: int, limit: int) -> dict[str, Any]:
         if isinstance(after, bool) or not isinstance(after, int) or after < 0:
             raise ConnectorError("after must be a non-negative integer")
-        if after > self._cursor:
-            raise ConnectorError(f"after cursor {after} is newer than {self._cursor}")
+        latest = int(self._meta("cursor"))
+        if after > latest:
+            raise ConnectorError(f"after cursor {after} is newer than {latest}")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ConnectorError("limit must be from 1 through 1000")
-        events = [dict(event) for event in self._events if event["cursor"] > after][:limit]
+        rows = self._db.execute(
+            "SELECT payload FROM events WHERE cursor > ? ORDER BY cursor LIMIT ?",
+            (after, limit),
+        )
+        events = [json.loads(row[0]) for row in rows]
+        dropped = int(self._meta("dropped"))
         return {
-            "generation": self.generation,
+            "generation": self._meta("generation"),
             "cursor": events[-1]["cursor"] if events else after,
-            "latest_cursor": self._cursor,
+            "latest_cursor": latest,
             "events": events,
-            "truncated": after < self._dropped_before,
-            "dropped_before_cursor": self._dropped_before,
+            "truncated": after < dropped,
+            "dropped_before_cursor": dropped,
         }
 
     def wait(self, after: int, limit: int, timeout: float) -> dict[str, Any]:
@@ -498,16 +568,20 @@ class EventBuffer:
         timeout = float(timeout)
         if not math.isfinite(timeout) or not 0 <= timeout <= MAX_WAIT_SECONDS:
             raise ConnectorError(f"timeout_seconds must be from 0 through {MAX_WAIT_SECONDS:g}")
-        with self._condition:
-            initial = self._read(after, limit)
-            if not initial["events"] and not initial["truncated"] and timeout:
-                self._condition.wait_for(
-                    lambda: self._cursor > after or after < self._dropped_before,
-                    timeout=timeout,
-                )
-            result = self._read(after, limit)
-            result["timed_out"] = not result["events"] and not result["truncated"]
-            return result
+        # A threading.Condition cannot wake a different PROCESS, so a shared
+        # store is polled instead; 50ms stays responsive without spinning.
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._lock:
+                result = self._read(after, limit)
+            if result["events"] or result["truncated"] or timeout <= 0:
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(0.05, remaining))
+        result["timed_out"] = not result["events"] and not result["truncated"]
+        return result
 
 
 def _safe(value: Any, depth: int = 0) -> Any:
@@ -718,6 +792,10 @@ class BridgeRuntime:
             if self._thread is not None and self._thread.is_alive():
                 raise ConnectorError("the previous bridge thread is still alive")
             options_cls, factory, hook_cls = self._sdk()
+            # A fresh bridge is a fresh generation, so any store left behind by
+            # a previous instance is removed rather than resumed -- a reader
+            # must never be handed a dead bridge's cursor as if it were live.
+            self._events.close()
             self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
             self._gate = RelayGate(observer=self._append)
             options = build_sdk_options(
