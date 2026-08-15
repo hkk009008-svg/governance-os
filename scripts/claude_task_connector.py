@@ -569,19 +569,30 @@ class EventBuffer:
     def _read(self, after: int, limit: int) -> dict[str, Any]:
         if isinstance(after, bool) or not isinstance(after, int) or after < 0:
             raise ConnectorError("after must be a non-negative integer")
-        latest = int(self._meta("cursor"))
-        if after > latest:
-            raise ConnectorError(f"after cursor {after} is newer than {latest}")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
             raise ConnectorError("limit must be from 1 through 1000")
-        rows = self._db.execute(
-            "SELECT payload FROM events WHERE cursor > ? ORDER BY cursor LIMIT ?",
-            (after, limit),
-        )
-        events = [json.loads(row[0]) for row in rows]
-        dropped = int(self._meta("dropped"))
+        # ONE snapshot for all four reads. Under isolation_level=None each
+        # statement is its own implicit transaction, so a concurrent appender
+        # lands between the cursor read and the events SELECT and the result
+        # carries cursor > latest_cursor; a caller advancing with that value
+        # then makes the NEXT read raise. Measured at 28345 of 416748 reads.
+        # Unreachable while path=None, which is why 1/3 shipped without it.
+        self._db.execute("BEGIN DEFERRED")
+        try:
+            latest = int(self._meta("cursor"))
+            if after > latest:
+                raise ConnectorError(f"after cursor {after} is newer than {latest}")
+            rows = self._db.execute(
+                "SELECT payload FROM events WHERE cursor > ? ORDER BY cursor LIMIT ?",
+                (after, limit),
+            )
+            events = [json.loads(row[0]) for row in rows]
+            dropped = int(self._meta("dropped"))
+            generation = self._meta("generation")
+        finally:
+            self._db.execute("COMMIT")
         return {
-            "generation": self._meta("generation"),
+            "generation": generation,
             "cursor": events[-1]["cursor"] if events else after,
             "latest_cursor": latest,
             "events": events,
