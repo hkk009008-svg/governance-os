@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import tomllib
 from collections.abc import Iterable
 from pathlib import Path
@@ -56,17 +57,21 @@ def _compact(text: str) -> str:
     return " ".join(text.split())
 
 
-def _tracked_files(roots: Iterable[str], suffixes: set[str]) -> list[Path]:
+def _active_files(
+    roots: Iterable[str], suffixes: set[str], root: Path = ROOT
+) -> list[Path]:
     result = git_runner.run_git(
-        ROOT, ["ls-files", "-z", "--", *roots], mode="dashboard"
+        root,
+        ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", *roots],
+        mode="dashboard",
     )
     assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
     return [
-        ROOT / relative
+        root / relative
         for relative in result.stdout.decode("utf-8").split("\0")
         if relative
         and Path(relative).suffix in suffixes
-        and (ROOT / relative).is_file()
+        and (root / relative).is_file()
     ]
 
 
@@ -274,9 +279,17 @@ def test_reviewer_templates_and_claude_skill_stubs_stay_bound() -> None:
         assert field in template
 
 
-def test_active_surface_sweep_uses_nonempty_tracked_files_only() -> None:
-    instructions = _tracked_files(ACTIVE_INSTRUCTION_ROOTS, {".md", ".toml"})
-    protocol = _tracked_files(ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"})
+def test_active_surface_sweep_includes_untracked_files(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    untracked = tmp_path / ".claude/agents/new.md"
+    untracked.parent.mkdir(parents=True)
+    untracked.write_text("active\n", encoding="utf-8")
+    assert _active_files((".claude/agents",), {".md"}, tmp_path) == [untracked]
+
+
+def test_active_surface_sweep_uses_nonempty_repository_files_only() -> None:
+    instructions = _active_files(ACTIVE_INSTRUCTION_ROOTS, {".md", ".toml"})
+    protocol = _active_files(ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"})
     assert ROOT / "AGENTS.md" in instructions
     assert ROOT / "scripts/claude_task_connector.py" in protocol
 

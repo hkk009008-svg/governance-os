@@ -237,7 +237,7 @@ they do not become independent governance kernels.
 
 | Path | Contents and lifecycle |
 |---|---|
-| `scripts/` | 57 current top-level executables/data helpers in the candidate, grouped in section 6. Three JSON baselines feed current checks; `lane_v_report_v1.json` is retained but has no current reader. |
+| `scripts/` | 53 current top-level executables/data helpers in the candidate, grouped in section 6. Three JSON baselines feed current checks; `lane_v_report_v1.json` is retained but has no current reader. |
 | `coordination/README.md`, `coordination/mailbox/kinds.txt` | Coordination layout/authority orientation and the fixed writer's accepted event-kind registry. The kind registry is load-bearing data. |
 | `threeway/` | 20-module signed event/ref-bus package, grouped in section 7. |
 | `coordination/bin/` | Seven fixed shell front doors for Codex/Claude adapters, mailbox, locks, and claim probing. |

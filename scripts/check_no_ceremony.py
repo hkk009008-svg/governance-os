@@ -262,18 +262,46 @@ def _growth_base() -> str | None:
     return "HEAD^" if parent.returncode == 0 else None
 
 
+def _untracked_python_numstat() -> str:
+    result = git_runner.run_git(
+        ROOT,
+        ["ls-files", "--others", "--exclude-standard", "-z", "--", PYTHON_PATHSPEC],
+    )
+    if result.returncode != 0:
+        raise RuntimeError("git ls-files could not inspect untracked Python files")
+    rows = []
+    for raw_path in result.stdout.split(b"\0"):
+        if not raw_path:
+            continue
+        path = raw_path.decode("utf-8", "surrogateescape")
+        if "\t" in path or "\n" in path:
+            raise RuntimeError("untracked Python path contains a tab or newline")
+        rows.append(f"{len((ROOT / path).read_bytes().splitlines())}\t0\t{path}")
+    return "\n".join(rows)
+
+
 def rule_python_growth() -> tuple[str, list[str]]:
     try:
         base = _growth_base()
-        if base is None:
+        untracked = _untracked_python_numstat()
+        if base is None and not untracked:
             return "PASS", ["no parent range to inspect"]
-        diff = git_runner.run_git(ROOT, ["diff", "--numstat", base, "--", PYTHON_PATHSPEC], text=True)
-        if diff.returncode != 0:
-            return "FAIL", [f"cannot inspect Python growth from {base}"]
-        violations, summary = _python_growth_violations(diff.stdout)
+        tracked = ""
+        if base is not None:
+            diff = git_runner.run_git(ROOT, ["diff", "--numstat", base, "--", PYTHON_PATHSPEC], text=True)
+            if diff.returncode != 0:
+                return "FAIL", [f"cannot inspect Python growth from {base}"]
+            tracked = diff.stdout
+        numstat = "\n".join(
+            part.rstrip("\n") for part in (tracked, untracked) if part
+        )
+        violations, summary = _python_growth_violations(numstat)
     except Exception as exc:
         return "FAIL", [f"Python growth check failed: {exc}"]
-    return ("FAIL" if violations else "PASS"), [f"{summary} from {base}", *violations]
+    return ("FAIL" if violations else "PASS"), [
+        f"{summary} from {base or 'untracked files'}",
+        *violations,
+    ]
 
 
 def main() -> int:

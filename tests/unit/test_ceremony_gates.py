@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import io
+import subprocess
 import sys
 
 import check_no_ceremony as cnc
@@ -242,6 +243,31 @@ def test_python_growth_cannot_be_hidden_by_deleting_another_file():
 
     assert "net -90" in summary
     assert any("scripts/new_layer.py" in item for item in violations)
+
+
+def test_python_growth_checks_untracked_files_without_a_parent(tmp_path, monkeypatch):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    untracked = tmp_path / "scripts/new.py"
+    untracked.parent.mkdir()
+    untracked.write_text("value = 1\n" * 400, encoding="utf-8")
+    monkeypatch.setattr(cnc, "ROOT", tmp_path)
+    monkeypatch.setattr(cnc, "_growth_base", lambda: None)
+    status, details = cnc.rule_python_growth()
+    assert status == "FAIL"
+    assert any("scripts/new.py" in item for item in details)
+
+
+def test_python_growth_combines_tracked_and_untracked_numstat(monkeypatch):
+    monkeypatch.setattr(cnc, "_growth_base", lambda: "HEAD")
+    monkeypatch.setattr(cnc, "_untracked_python_numstat", lambda: "1\t0\tnew.py")
+    monkeypatch.setattr(
+        cnc.git_runner,
+        "run_git",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args, 0, "2\t0\ttracked.py\n", ""
+        ),
+    )
+    assert cnc.rule_python_growth() == ("PASS", ["3 added, 0 deleted, net 3 from HEAD"])
 
 
 def test_main_wires_python_growth_as_a_hard_failure(monkeypatch):
