@@ -1222,8 +1222,21 @@ def supersession_report_violations(
         superseded,
         superseded_commit,
     )
-    if report.verdict not in {"GO", "NITS"}:
-        violations.append("a remediation supersession verdict must be GO or NITS")
+    # FAIL belongs here, and its absence was a trap. A remediation report is
+    # REQUIRED to supersede the failed report it answers, so restricting
+    # supersession to GO/NITS made a failed remediation unpublishable: without
+    # Supersedes the writer rejected it as an unbound remediation, and with
+    # Supersedes it rejected the verdict. The only publishable outcomes were the
+    # two that CLEAR the blocker, which pressures a reviewer toward a verdict
+    # they do not hold. Reported by a reviewer who refused to issue it.
+    #
+    # Permitting FAIL cannot weaken admission, because admission is decided
+    # elsewhere and independently: ci_admission_gate._ADMITTING_VERDICTS is
+    # {GO, NITS}, so a superseding FAIL retires the older report and then fails
+    # to admit in its own right. The range stays blocked and the active blocker
+    # becomes the one describing the current head.
+    if report.verdict not in {"GO", "NITS", "FAIL"}:
+        violations.append("a remediation supersession verdict must be GO, NITS, or FAIL")
     return violations
 
 
