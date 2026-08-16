@@ -224,7 +224,7 @@ def test_python_growth_rejects_large_total_and_per_file_growth():
 
     assert "net 125" in summary
     assert any("scripts/large.py" in item for item in violations)
-    assert any("total net Python growth" in item for item in violations)
+    assert any("net production Python growth" in item for item in violations)
 
 
 def test_python_growth_accepts_deletion_first_refactor():
@@ -275,3 +275,53 @@ def test_main_wires_python_growth_as_a_hard_failure(monkeypatch):
     with contextlib.redirect_stdout(io.StringIO()) as output:
         assert cnc.main() == 1
     assert "python-growth            FAIL  oversized" in output.getvalue()
+
+
+def _numstat(rows):
+    return "\n".join(f"{added}\t{deleted}\t{path}" for added, deleted, path in rows)
+
+
+def test_an_introduced_file_is_not_growth() -> None:
+    """A file that did not exist at the base cannot have bloated.
+
+    The per-file cap exists to stop one file swelling over time. Applied to an
+    arrival it refused three harness tools for showing up with their fixtures.
+    """
+    violations, _ = cnc._python_growth_violations(
+        _numstat([(90, 0, "tools/new.py")]), frozenset({"tools/new.py"})
+    )
+
+    assert violations == []
+
+
+def test_an_existing_file_still_cannot_bloat() -> None:
+    """The half that must not change: same numbers, file present at the base."""
+    violations, _ = cnc._python_growth_violations(
+        _numstat([(90, 0, "scripts/old.py")])
+    )
+
+    assert violations == ["scripts/old.py: net growth 90 exceeds 80"]
+
+
+def test_tests_do_not_spend_the_production_budget() -> None:
+    """A reviewer-required control once pushed a branch to 102 and FAILed it.
+
+    Counting both in one number makes a control compete with the feature it
+    defends, so the ledgers are separate.
+    """
+    violations, _ = cnc._python_growth_violations(
+        _numstat([(95, 0, "tests/unit/t.py"), (60, 0, "scripts/old.py")]),
+        frozenset({"tests/unit/t.py"}),
+    )
+
+    assert violations == []
+
+
+def test_unexplained_production_growth_is_still_refused() -> None:
+    """The thing the gate is actually for, unchanged and still hard."""
+    violations, _ = cnc._python_growth_violations(
+        _numstat([(140, 0, "scripts/old.py")]), frozenset({"scripts/old.py"})
+    )
+
+    assert violations == ["net production Python growth 140 exceeds 100"]
+
