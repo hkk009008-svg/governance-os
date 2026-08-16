@@ -446,26 +446,27 @@ def build_sdk_options(
 
 def shared_buffer_path(cwd: Path) -> Path:
     """Event store for one repository's bridge: keyed by cwd so two connectors
-    agree, under this user's own home rather than the shared temp namespace,
-    and outside the repo so it is never repository content."""
+    agree, under this user's own home rather than a shared namespace, outside
+    the repo so it is never repo content, and one level deep so the path the
+    caller must prove is exactly home and the root."""
 
     digest = hashlib.sha256(str(cwd).encode("utf-8", "surrogateescape")).hexdigest()
-    root = Path.home() / ".local" / "state" / "pipeline-codex-bridge"
-    return root / digest[:16] / "events.sqlite3"
+    return Path.home() / ".pipeline-codex-bridge" / f"{digest[:16]}.sqlite3"
 
 
 def establish_private_store_root(root: Path) -> None:
-    """Refuse the home the store is built under rather than assume it: a shared
-    temp root let it be squatted, filled with chmod-surviving residue, or
-    swapped between validation and use -- all needing a writable parent."""
+    """Prove every component the store hangs from, each before the next exists.
 
-    home = Path.home()
-    info = home.lstat()
-    if home.is_symlink() or not home.is_dir() or info.st_uid != os.getuid():
-        raise ConnectorError(f"home is not this user's own directory: {home}")
-    if info.st_mode & 0o022:
-        raise ConnectorError(f"home is writable beyond this user: {home}")
-    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    parents=True created intermediates at the ambient umask -- 0o777 under
+    umask 000 -- letting a second principal rename the validated root."""
+
+    for directory in (Path.home(), root):
+        if directory is root:
+            root.mkdir(mode=0o700, exist_ok=True)
+        info = directory.lstat()
+        if (directory.is_symlink() or not directory.is_dir()
+                or info.st_uid != os.getuid() or info.st_mode & 0o022):
+            raise ConnectorError(f"store path is writable beyond this user: {directory}")
     root.chmod(0o700)
 
 
@@ -473,9 +474,8 @@ def discard_buffer_files(path: Path) -> None:
     """Remove a store and its WAL sidecars. Absence is fine; nothing else is.
 
     A blanket OSError catch let stop() report `stopped` while the database and
-    its sidecars survived, and the next start then resumed that generation and
-    its stale cursor instead of minting a fresh one. Probed.
-    """
+    its sidecars survived, so the next start resumed that generation and its
+    stale cursor instead of minting a fresh one. Probed."""
 
     for suffix in ("", "-wal", "-shm"):
         try:
@@ -491,9 +491,8 @@ class EventBuffer:
     process can read the same events; `path=None` uses an in-memory database,
     the same code path with different storage. BEGIN IMMEDIATE on append stops
     two processes both reading the cursor and colliding on the primary key, and
-    INSERT OR IGNORE attaches to an existing generation instead of minting one
-    so a reader agrees with the owner about which bridge these events describe.
-    """
+    INSERT OR IGNORE attaches to an existing generation instead of minting one,
+    so a reader and the owner agree on whose bridge these events describe."""
 
     _SCHEMA = (
         "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
@@ -503,8 +502,6 @@ class EventBuffer:
         self.limit = limit
         self.path = path
         self._lock = threading.Lock()
-        if path is not None:
-            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._db = sqlite3.connect(
             str(path) if path is not None else ":memory:",
             check_same_thread=False, isolation_level=None, timeout=5.0,
@@ -881,7 +878,7 @@ class BridgeRuntime:
             # a previous instance is removed rather than resumed -- a reader
             # must never be handed a dead bridge's cursor as if it were live.
             store = shared_buffer_path(config.cwd)
-            establish_private_store_root(store.parent.parent)
+            establish_private_store_root(store.parent)
             discard_buffer_files(store)
             self._events.close()
             self._events = EventBuffer(DEFAULT_QUEUE_LIMIT, store)

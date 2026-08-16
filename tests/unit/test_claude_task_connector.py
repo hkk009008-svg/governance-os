@@ -531,19 +531,23 @@ def test_discard_surfaces_a_real_unlink_failure(tmp_path: Path) -> None:
         directory.chmod(0o700)
 
 
-def test_start_keeps_the_store_out_of_a_shared_namespace(tmp_path, monkeypatch) -> None:
+def test_start_keeps_the_store_out_of_a_shared_namespace(tmp_path, monkeypatch, request) -> None:
     """A shared temp root let the store be squatted, filled with residue, or
-    swapped after validation. Asserted through start, not by calling in."""
+    swapped after validation; parents=True rebuilt that hole one level up, at
+    0o777 under umask 000. Run under that umask, which used to decide."""
     home = tmp_path / "home"
     home.mkdir(mode=0o750)
     monkeypatch.setenv("HOME", str(home))
+    previous = connector.os.umask(0)
+    request.addfinalizer(lambda: connector.os.umask(previous))
 
     _runtime(tmp_path)
     store = connector.shared_buffer_path(tmp_path)
-    assert home in store.parents, "the store must be built under this user's home"
+    assert store.parent == home / ".pipeline-codex-bridge", "one level under home"
+    assert all(p.stat().st_mode & 0o022 == 0 for p in (home, store.parent)), "private"
     home.chmod(0o770)
     with pytest.raises(connector.ConnectorError, match="writable beyond"):
-        connector.establish_private_store_root(store.parent.parent)
+        connector.establish_private_store_root(store.parent)
 
 
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:
