@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import ctypes
 import dataclasses
 import errno
@@ -530,6 +531,29 @@ def establish_private_store_root(root: Path, *, create: bool = True) -> None:
         root.chmod(0o700)
 
 
+@contextlib.contextmanager
+def cleanup_lock(store: Path, mode: int) -> Any:
+    """Serialize a peer's whole read against an owner's cleanup.
+
+    Checking the owner's lock once and then reading proved nothing: measured
+    through the public surface, an owner stopped and unlinked its store between
+    the check and the read, and claude_bridge_wait still returned that
+    generation and its event; another interleaving surfaced a raw SQLite disk
+    I/O error. A liveness answer describes only the instant it was taken.
+
+    So a reader holds this shared for the whole check-and-read, and start and
+    stop hold it exclusively across discard. Cleanup cannot begin while a read
+    is in flight, and a read cannot begin midway through a cleanup.
+    """
+
+    descriptor = os.open(f"{store}.read", os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(descriptor, mode)
+        yield
+    finally:
+        os.close(descriptor)
+
+
 def discard_buffer_files(path: Path) -> None:
     """Remove a store and its WAL sidecars. Absence is fine; nothing else is.
 
@@ -946,7 +970,8 @@ class BridgeRuntime:
             store = shared_buffer_path(config.cwd)
             establish_private_store_root(store.parent)
             self._claim_store(store)
-            discard_buffer_files(store)
+            with cleanup_lock(store, fcntl.LOCK_EX):
+                discard_buffer_files(store)
             self._events.close()
             self._events = EventBuffer(DEFAULT_QUEUE_LIMIT, store)
             self._gate = RelayGate(observer=self._append)
@@ -1281,6 +1306,14 @@ class BridgeRuntime:
         establish_private_store_root(store.parent, create=False)
         if not store.exists():
             raise ConnectorError("no bridge store exists for this repository")
+        with cleanup_lock(store, fcntl.LOCK_SH):
+            return self._read_locked(store, generation, after, limit, timeout)
+
+    def _read_locked(
+        self, store: Path, generation: str, after: int, limit: int, timeout: float
+    ) -> dict[str, Any]:
+        """Liveness and read together, under the caller's shared cleanup lock."""
+
         descriptor = os.open(f"{store}.owner", os.O_RDONLY)
         try:  # acquiring means nobody holds it, so the owner is gone
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1347,7 +1380,9 @@ class BridgeRuntime:
         # Status is read BEFORE discarding so the caller still gets the final
         # generation and cursor, and the file does not outlive its bridge.
         result = self.status()
-        self._events.discard()
+        store = self._events.path
+        with cleanup_lock(store, fcntl.LOCK_EX) if store else contextlib.nullcontext():
+            self._events.discard()
         self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
         if self._owned is not None:
             os.close(self._owned)  # closing releases the flock for the next owner
