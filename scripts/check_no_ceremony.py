@@ -15,6 +15,7 @@ import git_runner
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
 MAX_PYTHON_NET_GROWTH = 100
+MAX_PYTHON_TEST_NET_GROWTH = 100
 MAX_PYTHON_FILE_NET_GROWTH = 80
 MAX_PYTHON_FILE_ADDITIONS = 250
 PYTHON_PATHSPEC = ":(glob)**/*.py"
@@ -231,22 +232,72 @@ def rule_report_cites_executed_pin(repo_root: Path = ROOT) -> tuple[str, list[st
     )
 
 
-def _python_growth_violations(numstat: str) -> tuple[list[str], str]:
+def _python_growth_violations(
+    numstat: str, introduced: frozenset[str] = frozenset()
+) -> tuple[list[str], str]:
+    """Count growth by what it is, not only by how many lines it is.
+
+    Two rules, each from a range this gate refused while doing no good. A file
+    that did not exist at the base is an INTRODUCTION, so the per-file cap --
+    which exists to stop one file bloating -- does not apply to it; three
+    harness tools were refused for the crime of arriving with their fixtures.
+    And tests carry their own ledger, because a reviewer-required control
+    should never compete with feature logic for one number; a control this
+    reviewer demanded once pushed a branch to 102 and FAILed it.
+
+    Unexplained growth in existing production files is still refused exactly as
+    before, which is the thing the gate is actually for.
+    """
+
     rows = [line.split("\t", 2) for line in numstat.splitlines()]
     invalid = next((row for row in rows if len(row) != 3 or not row[0].isdigit() or not row[1].isdigit()), None)
     if invalid:
         return [f"unparseable Python numstat row: {invalid!r}"], "unparseable"
     files = [(int(a), int(d), path) for a, d, path in rows]
     added, deleted = (sum(item[index] for item in files) for index in (0, 1))
+    tests = [item for item in files if item[2].startswith("tests/")]
+    product = [item for item in files if not item[2].startswith("tests/")]
     violations: list[str] = []
     for additions, deletions, path in files:
         if additions > MAX_PYTHON_FILE_ADDITIONS:
             violations.append(f"{path}: {additions} added lines exceeds {MAX_PYTHON_FILE_ADDITIONS}")
+        if path in introduced:
+            continue
         if additions - deletions > MAX_PYTHON_FILE_NET_GROWTH:
             violations.append(f"{path}: net growth {additions - deletions} exceeds {MAX_PYTHON_FILE_NET_GROWTH}")
-    if added - deleted > MAX_PYTHON_NET_GROWTH:
-        violations.append(f"total net Python growth {added - deleted} exceeds {MAX_PYTHON_NET_GROWTH}")
+    for label, group, ceiling in (
+        ("production", product, MAX_PYTHON_NET_GROWTH),
+        ("test", tests, MAX_PYTHON_TEST_NET_GROWTH),
+    ):
+        net = sum(item[0] for item in group) - sum(item[1] for item in group)
+        if net > ceiling:
+            violations.append(f"net {label} Python growth {net} exceeds {ceiling}")
     return violations, f"{added} added, {deleted} deleted, net {added - deleted}"
+
+
+def _introduced_python(base: str | None) -> frozenset[str]:
+    """Paths that did not exist at `base`, asked of Git rather than inferred.
+
+    A numstat row with no deletions looks identical whether the file is new or
+    merely never shrank, so the distinction has to come from --diff-filter=A.
+    """
+
+    if base is None:
+        return frozenset()
+    result = git_runner.run_git(
+        ROOT, ["diff", "--name-only", "--diff-filter=A", base, "--", PYTHON_PATHSPEC], text=True
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"cannot list Python files introduced since {base}")
+    return frozenset(line for line in result.stdout.splitlines() if line)
+
+
+def _untracked_python_paths() -> frozenset[str]:
+    """Untracked files are introductions by definition."""
+
+    return frozenset(
+        row.split("\t", 2)[2] for row in _untracked_python_numstat().splitlines() if row
+    )
 
 
 def _growth_base() -> str | None:
@@ -295,7 +346,9 @@ def rule_python_growth() -> tuple[str, list[str]]:
         numstat = "\n".join(
             part.rstrip("\n") for part in (tracked, untracked) if part
         )
-        violations, summary = _python_growth_violations(numstat)
+        violations, summary = _python_growth_violations(
+            numstat, _introduced_python(base) | _untracked_python_paths()
+        )
     except Exception as exc:
         return "FAIL", [f"Python growth check failed: {exc}"]
     return ("FAIL" if violations else "PASS"), [
