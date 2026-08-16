@@ -373,6 +373,11 @@ class RelayGate:
                 "name": name,
                 "input": dict(data["tool_input"]),
                 "response": data.get("tool_response"),
+                # Codex sent twice, both "accepted" with terminal receipts and
+                # last_error null, and neither arrived. The native result was
+                # already in this event and nobody read it, so the distinction
+                # it carries gets its own field rather than staying buried.
+                "native_refusal": _native_refusal(data.get("tool_response")),
                 "resolved_target": active["resolved_target"],
                 "list_attempt": (
                     active["list_attempts"] if name == "ListAgents" else None
@@ -783,6 +788,25 @@ def _content_text(content: Any) -> str:
     return text
 
 
+def _native_refusal(response: Any) -> str | None:
+    """The native tool's own complaint, or None if it did not make one.
+
+    A send that the bridge accepts is not a send that arrived: two were
+    accepted with terminal receipts and null errors while nothing reached the
+    peer. This reads the tool result rather than the receipt, so a refusal
+    stops being invisible.
+    """
+
+    if isinstance(response, Mapping):
+        for key in ("error", "message"):
+            value = response.get(key)
+            if isinstance(value, str) and value and response.get("success") is False:
+                return value
+        if response.get("isError") is True:
+            return str(response.get("content") or "native tool reported an error")
+    return None
+
+
 def _peer_origin(origin: Any) -> bool:
     return isinstance(origin, Mapping) and (
         origin.get("kind") == "peer"
@@ -1037,12 +1061,14 @@ class BridgeRuntime:
         with self._lock:
             self._loop = asyncio.get_running_loop()
             self._client = client
+        started_at, observed_messages = time.monotonic(), 0
         try:
             await client.connect()
             with self._lock:
                 self._state = "running"
                 self._ready.set()
             async for message in client.receive_messages():
+                observed_messages += 1
                 event = normalize_sdk_message(message)
                 events: list[dict[str, Any]] = []
                 if event["kind"] == "peer_message":
@@ -1081,6 +1107,17 @@ class BridgeRuntime:
                 if self._state == "running":
                     self._state = "stopped"
                     self._release_owner()
+                    ended = "stream_end"
+                else:
+                    ended = "stopping" if self._stopping else self._state
+            self._append(
+                {
+                    "kind": "lifecycle",
+                    "reason": ended,
+                    "messages_observed": observed_messages,
+                    "seconds": round(time.monotonic() - started_at, 3),
+                }
+            )
         except BaseException as exc:
             with self._lock:
                 if self._stopping:
