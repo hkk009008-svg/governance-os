@@ -447,27 +447,30 @@ def build_sdk_options(
 
 def shared_buffer_path(cwd: Path) -> Path:
     """Event store for one repository's bridge: keyed by cwd so two connectors
-    agree, scoped by uid so two users never share -- which holds only on a
-    private or sticky temp root; mechanical refusal of shared unsticky roots is
-    the follow-up range -- outside the repo so it is never repository content."""
+    agree, scoped by uid so two users never share -- a root the caller
+    establishes rather than assumes -- outside the repo, never repo content."""
 
     digest = hashlib.sha256(str(cwd).encode("utf-8", "surrogateescape")).hexdigest()
     root = Path(tempfile.gettempdir()) / f"pipeline-codex-bridge-{os.getuid()}"
     return root / digest[:16] / "events.sqlite3"
 
 
-def reject_symlinked_store(path: Path) -> None:
-    """Refuse a store path whose own directories are symlinks.
+def establish_private_store_root(root: Path) -> None:
+    """Close down the uid root before anything beneath it is opened or unlinked.
 
-    mkdir(exist_ok=True) FOLLOWS a pre-created symlink, so whoever wins the race
-    to create the uid root or the per-repo directory redirects the entire store
-    into space they control. Probed: the database landed in the attacker's
-    directory.
+    parents=True created it at the default mode -- 0o755 in review and here --
+    and sticky protects occupancy, not names: tighten if owned, refuse if not.
     """
 
-    for part in (path, path.parent, path.parent.parent):
-        if part.is_symlink():
-            raise ConnectorError(f"refusing a symlinked event-store path: {part}")
+    try:
+        root.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    if root.is_symlink() or not root.is_dir():
+        raise ConnectorError(f"event-store root is not a real directory: {root}")
+    if root.lstat().st_uid != os.getuid():
+        raise ConnectorError(f"event-store root belongs to another user: {root}")
+    root.chmod(0o700)
 
 
 def discard_buffer_files(path: Path) -> None:
@@ -505,7 +508,6 @@ class EventBuffer:
         self.path = path
         self._lock = threading.Lock()
         if path is not None:
-            reject_symlinked_store(path)
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._db = sqlite3.connect(
             str(path) if path is not None else ":memory:",
@@ -883,6 +885,7 @@ class BridgeRuntime:
             # a previous instance is removed rather than resumed -- a reader
             # must never be handed a dead bridge's cursor as if it were live.
             store = shared_buffer_path(config.cwd)
+            establish_private_store_root(store.parent.parent)
             discard_buffer_files(store)
             self._events.close()
             self._events = EventBuffer(DEFAULT_QUEUE_LIMIT, store)

@@ -531,19 +531,16 @@ def test_discard_surfaces_a_real_unlink_failure(tmp_path: Path) -> None:
         directory.chmod(0o700)
 
 
-def test_symlinked_store_path_is_refused(tmp_path: Path) -> None:
-    """mkdir(exist_ok=True) follows a pre-created symlink, so whoever wins the
-    race to create the directory redirects the store. Probed: the database
-    landed in the attacker's directory."""
-    attacker = tmp_path / "attacker"
-    attacker.mkdir()
-    root = tmp_path / "root"
-    root.mkdir()
-    (root / "repo").symlink_to(attacker)
+def test_start_closes_a_reachable_store_root(tmp_path: Path, monkeypatch) -> None:
+    """parents=True created the uid root at the default mode -- 0o755 in review
+    and 0o755 here -- then start unlinked and opened beneath it, revalidated by
+    nothing. Asserted through start, so the guard cannot pass by never running."""
+    monkeypatch.setattr(connector.tempfile, "gettempdir", lambda: str(tmp_path))
+    root = connector.shared_buffer_path(tmp_path).parent.parent
+    root.mkdir(mode=0o755)
 
-    with pytest.raises(connector.ConnectorError, match="symlinked"):
-        connector.EventBuffer(4, root / "repo" / "events.sqlite3")
-    assert not list(attacker.iterdir()), "nothing may be written through the link"
+    _runtime(tmp_path)
+    assert root.stat().st_mode & 0o077 == 0, "start must close the root it uses"
 
 
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:
