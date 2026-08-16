@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import dataclasses
+import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -498,15 +499,25 @@ class EventBuffer:
         "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
         "CREATE TABLE IF NOT EXISTS events (cursor INTEGER PRIMARY KEY, payload TEXT NOT NULL);"
     )
-    def __init__(self, limit: int, path: Path | None = None) -> None:
+    def __init__(self, limit: int, path: Path | None = None, *, attach: bool = False) -> None:
+        """`attach` opens an owner's store to READ it and touches nothing else.
+
+        A reader that seeds, chmods, or creates is not a reader: it would mint a
+        generation into a live owner's store, or bring one into being where the
+        owner has none. mode=rw refuses to create, and the owner's schema and
+        generation are already there to be found.
+        """
+
         self.limit = limit
         self.path = path
         self._lock = threading.Lock()
         self._db = sqlite3.connect(
-            str(path) if path is not None else ":memory:",
-            check_same_thread=False, isolation_level=None, timeout=5.0,
+            f"file:{path}?mode=rw" if attach else str(path) if path is not None else ":memory:",
+            check_same_thread=False, isolation_level=None, timeout=5.0, uri=attach,
         )
         self._db.execute("PRAGMA busy_timeout=5000")
+        if attach:
+            return
         if path is not None:
             self._db.execute("PRAGMA journal_mode=WAL")
             os.chmod(path, 0o600)
@@ -837,6 +848,7 @@ class BridgeRuntime:
         self._state = "stopped"
         self._error: str | None = None
         self._config: BridgeConfig | None = None
+        self._owned: int | None = None
         self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
         self._gate = RelayGate()
         self._thread: threading.Thread | None = None
@@ -879,6 +891,7 @@ class BridgeRuntime:
             # must never be handed a dead bridge's cursor as if it were live.
             store = shared_buffer_path(config.cwd)
             establish_private_store_root(store.parent)
+            self._claim_store(store)
             discard_buffer_files(store)
             self._events.close()
             self._events = EventBuffer(DEFAULT_QUEUE_LIMIT, store)
@@ -1186,6 +1199,49 @@ class BridgeRuntime:
                 )
             return result
 
+    def _claim_store(self, store: Path) -> None:
+        """Refuse to replace a store a LIVE bridge still owns.
+
+        start discards before it opens, so a second start silently destroyed the
+        owner's generation and left it reading an unlinked file. flock is held
+        for this runtime's life and released by the kernel when the process
+        dies, which is exactly what separates a live owner from crash residue:
+        residue leaves the lock free and is still discarded as before.
+        """
+
+        descriptor = os.open(f"{store}.owner", os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(descriptor)
+            raise ConnectorError("another bridge already owns this repository's store")
+        self._owned = descriptor
+
+    def _read_as_peer(
+        self, generation: str, after: int, limit: int, timeout: float
+    ) -> dict[str, Any]:
+        """Serve a generation this runtime does not own, from the owner's store.
+
+        Without this the shared store was unreachable through the supported
+        surface: a second connector begins on an in-memory buffer, so wait
+        refused the owner's generation, and reaching the owner meant start,
+        which discards. Measured before this existed -- a raw EventBuffer on the
+        path shared the owner's generation while a second BridgeRuntime minted
+        its own. The peer never owns: it attaches, reads, and closes, so stop
+        cannot take the live owner's store with it.
+        """
+
+        store = shared_buffer_path(self._config.cwd if self._config else Path.cwd())
+        if not store.exists():
+            raise ConnectorError("no bridge store exists for this repository")
+        peer = EventBuffer(DEFAULT_QUEUE_LIMIT, store, attach=True)
+        try:
+            if generation != peer.generation:
+                raise ConnectorError("generation does not match the current bridge")
+            return peer.wait(after, limit, timeout)
+        finally:
+            peer.close()
+
     def wait(
         self,
         *,
@@ -1196,8 +1252,9 @@ class BridgeRuntime:
         operation_id: str | None = None,
     ) -> dict[str, Any]:
         if generation != self._events.generation:
-            raise ConnectorError("generation does not match the current bridge")
-        result = self._events.wait(after, limit, timeout_seconds)
+            result = self._read_as_peer(generation, after, limit, timeout_seconds)
+        else:
+            result = self._events.wait(after, limit, timeout_seconds)
         if operation_id is not None:
             with self._lock:
                 result["operation"] = self._receipt(
@@ -1236,6 +1293,9 @@ class BridgeRuntime:
         result = self.status()
         self._events.discard()
         self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
+        if self._owned is not None:
+            os.close(self._owned)  # closing releases the flock for the next owner
+            self._owned = None
         return result
 
 
