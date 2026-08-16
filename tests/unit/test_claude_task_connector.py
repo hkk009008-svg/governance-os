@@ -25,6 +25,10 @@ from mcp import types  # noqa: E402
 
 import claude_task_connector as connector  # noqa: E402
 
+pytestmark = pytest.mark.skipif(
+    connector.sys.platform != "darwin", reason="Darwin-only connector runtime"
+)
+
 
 class CapturingOptions:
     def __init__(self, **kwargs: Any) -> None:
@@ -551,7 +555,6 @@ def test_start_keeps_the_store_out_of_a_shared_namespace(tmp_path, monkeypatch, 
         connector.establish_private_store_root(store.parent)
 
 
-@pytest.mark.skipif(connector.sys.platform != "darwin", reason="Darwin ACL control")
 def test_start_refuses_an_extended_acl_allow(tmp_path, monkeypatch) -> None:
     home = tmp_path / "home"
     home.mkdir(mode=0o750)
@@ -575,7 +578,6 @@ def test_start_refuses_an_extended_acl_allow(tmp_path, monkeypatch) -> None:
         subprocess.run(["/bin/chmod", "-N", str(home.parent)], check=True)
 
 
-@pytest.mark.skipif(connector.sys.platform != "darwin", reason="Darwin ACL control")
 def test_start_accepts_a_deny_only_extended_acl(tmp_path, monkeypatch) -> None:
     home = tmp_path / "home"
     home.mkdir(mode=0o750)
