@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import re
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -925,3 +927,86 @@ def test_project_wrapper_config_and_dependency_pin_remain_present() -> None:
         assert pattern.search(connector_lock).group(1) == pattern.search(
             governance_lock
         ).group(1)
+
+
+_PEER = """
+import json, sys
+from pathlib import Path
+import claude_task_connector as c
+runtime = c.BridgeRuntime()
+runtime._events._set("generation", sys.argv[1])
+tools = c.ConnectorTools(runtime=runtime, default_cwd=Path(sys.argv[2]))
+print(json.dumps(tools.call("claude_bridge_wait", {
+    "generation": sys.argv[1], "timeout_seconds": 5.0})))
+"""
+
+
+def test_a_second_process_reads_the_owner_store_without_taking_it(tmp_path, monkeypatch):
+    """Public wait must honor its repository and leave the live WAL untouched."""
+    home = tmp_path / "home?reserved"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    owner_repo, decoy_repo = tmp_path / "owner", tmp_path / "decoy"
+    owner_repo.mkdir()
+    decoy_repo.mkdir()
+    runtime, client = _runtime(owner_repo)
+    origin = {"from": "uds:peer", "name": "pipeline-24", "msg_id": "m1", "body": "hi"}
+    client.emit(FakeUserMessage("fallback", origin=origin, uuid="u1"))
+    _until(lambda: runtime.status()["latest_cursor"] == 1)
+    generation = runtime.status()["generation"]
+    store = connector.shared_buffer_path(owner_repo)
+    decoy = connector.EventBuffer(256, connector.shared_buffer_path(decoy_repo))
+    decoy._set("generation", generation)
+    decoy.append({"kind": "message", "origin": {"name": "decoy"}})
+    paths = tuple(Path(f"{store}{suffix}") for suffix in ("", "-wal", "-shm"))
+    try:
+        before = {path: (path.read_bytes(), path.stat().st_ino) for path in paths}
+        assert len(before[paths[1]][0]) > 32, "owner event must be live in WAL"
+        peer = subprocess.run(
+            [sys.executable, "-c", _PEER, generation, str(owner_repo)],
+            capture_output=True, text=True, timeout=60, cwd=decoy_repo,
+            env={**os.environ, "HOME": str(home), "PYTHONPATH": str(Path("scripts").resolve())},
+        )
+        assert peer.returncode == 0, peer.stderr
+        read = json.loads(peer.stdout)
+        assert read["generation"] == generation
+        assert read["events"][0]["origin"]["name"] == "pipeline-24"
+        assert {path for path in paths if path.exists()} == set(paths)
+        for path, (content, inode) in before.items():
+            assert path.stat().st_ino == inode, f"peer replaced {path.name}"
+            if not path.name.endswith("-shm"):
+                assert path.read_bytes() == content, f"peer wrote {path.name}"
+        assert runtime.status()["generation"] == generation
+    finally:
+        decoy.discard()
+        runtime.stop()
+
+
+def test_the_peer_refuses_what_the_owner_side_walk_refuses(tmp_path, monkeypatch):
+    """Two composition failures, one control. The peer checked only that the
+    store existed, so a planted generation under a writable ancestor was
+    refused for start and served to claude_bridge_wait; and it never consulted
+    the lock, so a dead owner's cursor came back as live."""
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    runtime, _client = _runtime(tmp_path)
+    generation = runtime.status()["generation"]
+    store = connector.shared_buffer_path(tmp_path)
+    tools = connector.ConnectorTools(default_cwd=tmp_path)
+    before = {p: p.read_bytes() for p in store.parent.iterdir() if p.is_file()}
+
+    home.parent.chmod(0o777)
+    try:
+        with pytest.raises(connector.ConnectorError, match="writable beyond"):
+            tools.call("claude_bridge_wait", {"generation": generation})
+    finally:
+        home.parent.chmod(0o755)
+    assert {p: p.read_bytes() for p in store.parent.iterdir() if p.is_file()} == before
+
+    runtime.stop()
+    Path(f"{store}.owner").touch()
+    connector.EventBuffer(4, store).close()
+    with pytest.raises(connector.ConnectorError, match="residue"):
+        tools.call("claude_bridge_wait", {"generation": generation})
+
