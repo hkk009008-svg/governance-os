@@ -544,12 +544,12 @@ def discard_buffer_files(path: Path) -> None:
 class EventBuffer:
     """Bounded event ring with explicit truncation instead of bridge failure.
 
-    SQLite-backed rather than an in-process deque, so a SECOND connector
-    process can read the same events; `path=None` uses an in-memory database,
-    the same code path with different storage. BEGIN IMMEDIATE on append stops
-    two processes both reading the cursor and colliding on the primary key, and
-    INSERT OR IGNORE attaches to an existing generation instead of minting one,
-    so a reader and the owner agree on whose bridge these events describe."""
+    SQLite-backed rather than an in-process deque, so the store CAN be read by
+    a second process -- but nothing here reaches it; the supported peer read is
+    e91d07f9ff8172c2670d45be79dea393e0757913, stacked on this. `path=None` uses
+    an in-memory database. BEGIN IMMEDIATE stops two processes colliding on the
+    cursor, and INSERT OR IGNORE attaches to an existing generation, so reader
+    and owner agree whose events these are."""
 
     _SCHEMA = (
         "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
