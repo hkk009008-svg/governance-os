@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ctypes
 import dataclasses
+import errno
 import hashlib
 import importlib.metadata
 import json
@@ -453,12 +455,64 @@ def shared_buffer_path(cwd: Path) -> Path:
     return Path.home().resolve() / ".pipeline-codex-bridge" / f"{digest[:16]}.sqlite3"
 
 
+def _darwin_acl_has_allow(path: Path) -> bool:
+    """Read native ACL entry tags; deny-only ACLs do not grant authority."""
+    if sys.platform != "darwin":
+        raise ConnectorError("extended ACL validation is unavailable on this platform")
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.acl_get_file.argtypes = (ctypes.c_char_p, ctypes.c_int)
+    libc.acl_get_file.restype = ctypes.c_void_p
+    libc.acl_get_entry.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    libc.acl_get_entry.restype = ctypes.c_int
+    libc.acl_get_tag_type.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_int))
+    libc.acl_get_tag_type.restype = ctypes.c_int
+    libc.acl_free.argtypes = (ctypes.c_void_p,)
+    libc.acl_free.restype = ctypes.c_int
+    libc.acl_valid.argtypes = (ctypes.c_void_p,)
+    libc.acl_valid.restype = ctypes.c_int
+
+    ctypes.set_errno(0)
+    acl = libc.acl_get_file(os.fsencode(path), 0x100)  # ACL_TYPE_EXTENDED
+    if not acl:
+        error = ctypes.get_errno()
+        if error == errno.ENOENT:  # Darwin reports no extended ACL this way.
+            return False
+        raise ConnectorError(f"cannot inspect extended ACL for {path}: {os.strerror(error)}")
+    try:
+        if libc.acl_valid(acl) == -1:
+            raise ConnectorError(f"invalid extended ACL for {path}")
+        entry = ctypes.c_void_p()
+        entry_id = 0  # ACL_FIRST_ENTRY
+        while True:
+            ctypes.set_errno(0)
+            if libc.acl_get_entry(acl, entry_id, ctypes.byref(entry)) == -1:
+                error = ctypes.get_errno()
+                if error == errno.EINVAL:  # No entry remains.
+                    return False
+                raise ConnectorError(
+                    f"cannot read extended ACL for {path}: {os.strerror(error)}"
+                )
+            tag = ctypes.c_int()
+            if libc.acl_get_tag_type(entry, ctypes.byref(tag)) == -1:
+                error = ctypes.get_errno()
+                raise ConnectorError(
+                    f"cannot read extended ACL tag for {path}: {os.strerror(error)}"
+                )
+            if tag.value == 1:  # ACL_EXTENDED_ALLOW
+                return True
+            entry_id = -1  # ACL_NEXT_ENTRY
+    finally:
+        libc.acl_free(acl)
+
+
 def establish_private_store_root(root: Path) -> None:
-    """Prove the whole canonical chain -- a mode protects an object, only its
-    parent protects its NAME -- by ownership and mode bits, and by nothing
-    else. A macOS ACL can grant another uid write authority on a component
-    lstat still reports as 0o700; ACLs are NOT inspected here, so the guarantee
-    stops at mode. `/` and `/Users` are root's, so uid 0 is a trust anchor."""
+    """Accept a root-to-leaf owner/mode-safe chain with no Darwin ACL allows.
+    Only a parent protects a child's name; deny-only ACLs add no authority.
+    UID 0 owns the trusted system ancestors."""
 
     for directory in (*reversed(root.parents), root):
         if directory is root:
@@ -467,6 +521,8 @@ def establish_private_store_root(root: Path) -> None:
         if (directory.is_symlink() or not directory.is_dir()
                 or info.st_uid not in (0, os.getuid()) or info.st_mode & 0o022):
             raise ConnectorError(f"store path is writable beyond this user: {directory}")
+        if _darwin_acl_has_allow(directory):
+            raise ConnectorError(f"store path has an extended ACL allow: {directory}")
     root.chmod(0o700)
 
 
