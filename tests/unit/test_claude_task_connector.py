@@ -1010,3 +1010,52 @@ def test_the_peer_refuses_what_the_owner_side_walk_refuses(tmp_path, monkeypatch
     with pytest.raises(connector.ConnectorError, match="residue"):
         tools.call("claude_bridge_wait", {"generation": generation})
 
+
+def test_owner_cleanup_waits_for_a_read_already_in_flight(tmp_path, monkeypatch):
+    """A liveness answer describes the instant it was taken, and nothing after.
+
+    Measured before this coordination existed: an owner stopped and unlinked its
+    store between the peer's check and its read, and claude_bridge_wait still
+    returned that generation and event. This pauses inside the read, starts the
+    owner's stop, and requires the stop to wait rather than race.
+    """
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    runtime, client = _runtime(tmp_path)
+    origin = {"from": "uds:peer", "name": "pipeline-24", "msg_id": "m1", "body": "hi"}
+    client.emit(FakeUserMessage("fallback", origin=origin, uuid="u1"))
+    _until(lambda: runtime.status()["latest_cursor"] == 1)
+    generation = runtime.status()["generation"]
+    tools = connector.ConnectorTools(default_cwd=tmp_path)
+
+    reading, release, order = threading.Event(), threading.Event(), []
+    original = connector.EventBuffer.wait
+
+    def paused(self, after, limit, timeout):
+        if self.path is not None and not reading.is_set():
+            reading.set()
+            release.wait(5)
+            order.append("read")
+        return original(self, after, limit, timeout)
+
+    monkeypatch.setattr(connector.EventBuffer, "wait", paused)
+    seen = {}
+    peer = threading.Thread(
+        target=lambda: seen.update(
+            tools.call("claude_bridge_wait", {"generation": generation, "timeout_seconds": 2.0})
+        )
+    )
+    peer.start()
+    assert reading.wait(5), "the peer never reached its read"
+    stopper = threading.Thread(target=lambda: (runtime.stop(), order.append("stopped")))
+    stopper.start()
+    time.sleep(0.3)
+
+    assert order == [], "cleanup began while a read was in flight"
+    release.set()
+    peer.join(10)
+    stopper.join(10)
+    assert order == ["read", "stopped"], "the read must complete before cleanup"
+    assert seen["generation"] == generation
+
