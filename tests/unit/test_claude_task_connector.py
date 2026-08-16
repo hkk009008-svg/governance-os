@@ -27,6 +27,8 @@ from mcp import types  # noqa: E402
 
 import claude_task_connector as connector  # noqa: E402
 
+pytestmark = pytest.mark.skipif(connector.sys.platform != "darwin", reason="Darwin")
+
 
 class CapturingOptions:
     def __init__(self, **kwargs: Any) -> None:
@@ -551,6 +553,47 @@ def test_start_refuses_a_shared_namespace_before_it_destroys(tmp_path, monkeypat
     with pytest.raises(connector.ConnectorError, match="writable beyond"):
         _runtime(tmp_path)
     assert store.read_bytes() == b"sentinel", "refusal must precede cleanup"
+
+
+def test_start_refuses_an_extended_acl_allow(tmp_path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    subprocess.run(
+        [
+            "/bin/chmod",
+            "+a",
+            "everyone allow list,search,add_file,add_subdirectory,delete_child",
+            str(home.parent),
+        ],
+        check=True,
+    )
+    runtime = None
+    try:
+        with pytest.raises(connector.ConnectorError, match="extended ACL"):
+            runtime, _client = _runtime(tmp_path)
+    finally:
+        if runtime is not None:
+            runtime.stop()
+        subprocess.run(["/bin/chmod", "-N", str(home.parent)], check=True)
+
+
+def test_start_accepts_a_deny_only_extended_acl(tmp_path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    subprocess.run(
+        ["/bin/chmod", "+a", "group:everyone deny delete", str(home)],
+        check=True,
+    )
+    runtime = None
+    try:
+        runtime, _client = _runtime(tmp_path)
+        assert runtime.status()["state"] == "running"
+    finally:
+        if runtime is not None:
+            runtime.stop()
+        subprocess.run(["/bin/chmod", "-N", str(home)], check=True)
 
 
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:
