@@ -25,9 +25,7 @@ from mcp import types  # noqa: E402
 
 import claude_task_connector as connector  # noqa: E402
 
-pytestmark = pytest.mark.skipif(
-    connector.sys.platform != "darwin", reason="Darwin-only connector runtime"
-)
+pytestmark = pytest.mark.skipif(connector.sys.platform != "darwin", reason="Darwin")
 
 
 class CapturingOptions:
