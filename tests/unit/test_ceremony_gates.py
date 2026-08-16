@@ -224,7 +224,7 @@ def test_python_growth_rejects_large_total_and_per_file_growth():
 
     assert "net 125" in summary
     assert any("scripts/large.py" in item for item in violations)
-    assert any("net production Python growth" in item for item in violations)
+    assert any("total net Python growth" in item for item in violations)
 
 
 def test_python_growth_accepts_deletion_first_refactor():
@@ -303,25 +303,44 @@ def test_an_existing_file_still_cannot_bloat() -> None:
     assert violations == ["scripts/old.py: net growth 90 exceeds 80"]
 
 
-def test_tests_do_not_spend_the_production_budget() -> None:
-    """A reviewer-required control once pushed a branch to 102 and FAILed it.
-
-    Counting both in one number makes a control compete with the feature it
-    defends, so the ledgers are separate.
-    """
-    violations, _ = cnc._python_growth_violations(
-        _numstat([(95, 0, "tests/unit/t.py"), (60, 0, "scripts/old.py")]),
-        frozenset({"tests/unit/t.py"}),
-    )
-
-    assert violations == []
-
-
-def test_unexplained_production_growth_is_still_refused() -> None:
-    """The thing the gate is actually for, unchanged and still hard."""
+def test_unexplained_growth_is_still_refused() -> None:
+    """The thing the gate is actually for, on one ledger again."""
     violations, _ = cnc._python_growth_violations(
         _numstat([(140, 0, "scripts/old.py")]), frozenset({"scripts/old.py"})
     )
 
-    assert violations == ["net production Python growth 140 exceeds 100"]
+    assert violations == ["total net Python growth 140 exceeds 100"]
+
+
+def test_a_move_does_not_buy_the_introduction_exemption(tmp_path, monkeypatch) -> None:
+    """Built in a real repository, because numeric rows cannot express a move.
+
+    Measured on the reviewed gate: moving scripts/old.py to tools/new.py and
+    adding 100 lines fell under Git's default rename similarity, Git reported
+    delete-plus-add, and the bloating file was handed the introduction
+    exemption. The control that shipped constructed numstat rows by hand and
+    could never have seen it.
+    """
+    root = tmp_path / "repo"
+    (root / "scripts").mkdir(parents=True)
+    (root / "tools").mkdir()
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (root / "scripts" / "old.py").write_text("".join(f"line {n}\n" for n in range(80)))
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    (root / "scripts" / "old.py").unlink()
+    (root / "tools" / "new.py").write_text("".join(f"line {n}\n" for n in range(180)))
+    git("add", "-A")
+    git("commit", "-qm", "move and grow")
+
+    monkeypatch.setattr(cnc, "ROOT", root)
+    introduced = cnc._introduced_python("HEAD~1")
+
+    assert "tools/new.py" not in introduced, "a move must not read as an arrival"
 

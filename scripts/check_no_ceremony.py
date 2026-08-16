@@ -15,7 +15,6 @@ import git_runner
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
 MAX_PYTHON_NET_GROWTH = 100
-MAX_PYTHON_TEST_NET_GROWTH = 100
 MAX_PYTHON_FILE_NET_GROWTH = 80
 MAX_PYTHON_FILE_ADDITIONS = 250
 PYTHON_PATHSPEC = ":(glob)**/*.py"
@@ -237,16 +236,17 @@ def _python_growth_violations(
 ) -> tuple[list[str], str]:
     """Count growth by what it is, not only by how many lines it is.
 
-    Two rules, each from a range this gate refused while doing no good. A file
-    that did not exist at the base is an INTRODUCTION, so the per-file cap --
-    which exists to stop one file bloating -- does not apply to it; three
-    harness tools were refused for the crime of arriving with their fixtures.
-    And tests carry their own ledger, because a reviewer-required control
-    should never compete with feature logic for one number; a control this
-    reviewer demanded once pushed a branch to 102 and FAILed it.
+    One rule survives review. A file absent at the base is an INTRODUCTION, so
+    the per-file cap -- which exists to stop one file bloating -- does not apply
+    to it; three harness tools were refused for arriving with their fixtures.
 
-    Unexplained growth in existing production files is still refused exactly as
-    before, which is the thing the gate is actually for.
+    The separate test ledger is GONE, and its removal is the finding rather than
+    a simplification. `tests/` was a pathname convention promoted to an
+    enforcement boundary with nothing enforcing it: measured in a real
+    repository, one production line importing tests.runtime_payload let 100
+    lines of executed implementation live in tests/ and spend the other ledger,
+    and the gate returned PASS. A boundary that only a prefix defends is not a
+    boundary, so the ceiling is one number again.
     """
 
     rows = [line.split("\t", 2) for line in numstat.splitlines()]
@@ -255,8 +255,6 @@ def _python_growth_violations(
         return [f"unparseable Python numstat row: {invalid!r}"], "unparseable"
     files = [(int(a), int(d), path) for a, d, path in rows]
     added, deleted = (sum(item[index] for item in files) for index in (0, 1))
-    tests = [item for item in files if item[2].startswith("tests/")]
-    product = [item for item in files if not item[2].startswith("tests/")]
     violations: list[str] = []
     for additions, deletions, path in files:
         if additions > MAX_PYTHON_FILE_ADDITIONS:
@@ -265,27 +263,25 @@ def _python_growth_violations(
             continue
         if additions - deletions > MAX_PYTHON_FILE_NET_GROWTH:
             violations.append(f"{path}: net growth {additions - deletions} exceeds {MAX_PYTHON_FILE_NET_GROWTH}")
-    for label, group, ceiling in (
-        ("production", product, MAX_PYTHON_NET_GROWTH),
-        ("test", tests, MAX_PYTHON_TEST_NET_GROWTH),
-    ):
-        net = sum(item[0] for item in group) - sum(item[1] for item in group)
-        if net > ceiling:
-            violations.append(f"net {label} Python growth {net} exceeds {ceiling}")
+    if added - deleted > MAX_PYTHON_NET_GROWTH:
+        violations.append(f"total net Python growth {added - deleted} exceeds {MAX_PYTHON_NET_GROWTH}")
     return violations, f"{added} added, {deleted} deleted, net {added - deleted}"
 
 
 def _introduced_python(base: str | None) -> frozenset[str]:
     """Paths that did not exist at `base`, asked of Git rather than inferred.
 
-    A numstat row with no deletions looks identical whether the file is new or
-    merely never shrank, so the distinction has to come from --diff-filter=A.
+    --diff-filter=A alone answers "absent at the base", which is not the same
+    as "has no history": measured, moving scripts/old.py to tools/new.py and
+    adding 100 lines fell under Git's default rename similarity, was reported
+    as delete-plus-add, and handed a bloating file the introduction exemption.
+    -M5% makes Git call that a rename, so it is never mistaken for an arrival.
     """
 
     if base is None:
         return frozenset()
     result = git_runner.run_git(
-        ROOT, ["diff", "--name-only", "--diff-filter=A", base, "--", PYTHON_PATHSPEC], text=True
+        ROOT, ["diff", "--name-only", "--diff-filter=A", "-M5%", base, "--", PYTHON_PATHSPEC], text=True
     )
     if result.returncode != 0:
         raise RuntimeError(f"cannot list Python files introduced since {base}")
