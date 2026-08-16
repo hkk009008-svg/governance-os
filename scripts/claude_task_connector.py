@@ -500,23 +500,18 @@ class EventBuffer:
         "CREATE TABLE IF NOT EXISTS events (cursor INTEGER PRIMARY KEY, payload TEXT NOT NULL);"
     )
     def __init__(self, limit: int, path: Path | None = None, *, attach: bool = False) -> None:
-        """`attach` opens an owner's store to READ it and touches nothing else.
-
-        A reader that seeds, chmods, or creates is not a reader: it would mint a
-        generation into a live owner's store, or bring one into being where the
-        owner has none. mode=rw refuses to create, and the owner's schema and
-        generation are already there to be found.
-        """
+        """With attach, open the owner's store read-only; SQLite may use its SHM."""
 
         self.limit = limit
         self.path = path
         self._lock = threading.Lock()
         self._db = sqlite3.connect(
-            f"file:{path}?mode=rw" if attach else str(path) if path is not None else ":memory:",
+            f"{path.resolve().as_uri()}?mode=ro" if attach else str(path) if path is not None else ":memory:",
             check_same_thread=False, isolation_level=None, timeout=5.0, uri=attach,
         )
         self._db.execute("PRAGMA busy_timeout=5000")
         if attach:
+            self._db.execute("PRAGMA query_only=ON")
             return
         if path is not None:
             self._db.execute("PRAGMA journal_mode=WAL")
@@ -1200,14 +1195,7 @@ class BridgeRuntime:
             return result
 
     def _claim_store(self, store: Path) -> None:
-        """Refuse to replace a store a LIVE bridge still owns.
-
-        start discards before it opens, so a second start silently destroyed the
-        owner's generation and left it reading an unlinked file. flock is held
-        for this runtime's life and released by the kernel when the process
-        dies, which is exactly what separates a live owner from crash residue:
-        residue leaves the lock free and is still discarded as before.
-        """
+        """Hold a lifetime flock so start cannot replace a live owner's store."""
 
         descriptor = os.open(f"{store}.owner", os.O_CREAT | os.O_RDWR, 0o600)
         try:
@@ -1218,20 +1206,14 @@ class BridgeRuntime:
         self._owned = descriptor
 
     def _read_as_peer(
-        self, generation: str, after: int, limit: int, timeout: float
+        self, generation: str, after: int, limit: int, timeout: float, cwd: Path | None
     ) -> dict[str, Any]:
-        """Serve a generation this runtime does not own, from the owner's store.
+        """Read another runtime's generation without acquiring its ownership."""
 
-        Without this the shared store was unreachable through the supported
-        surface: a second connector begins on an in-memory buffer, so wait
-        refused the owner's generation, and reaching the owner meant start,
-        which discards. Measured before this existed -- a raw EventBuffer on the
-        path shared the owner's generation while a second BridgeRuntime minted
-        its own. The peer never owns: it attaches, reads, and closes, so stop
-        cannot take the live owner's store with it.
-        """
-
-        store = shared_buffer_path(self._config.cwd if self._config else Path.cwd())
+        repository = self._config.cwd if self._config else cwd
+        if repository is None:
+            raise ConnectorError("repository cwd is required to read another bridge")
+        store = shared_buffer_path(repository)
         if not store.exists():
             raise ConnectorError("no bridge store exists for this repository")
         peer = EventBuffer(DEFAULT_QUEUE_LIMIT, store, attach=True)
@@ -1250,9 +1232,10 @@ class BridgeRuntime:
         limit: int = 100,
         timeout_seconds: float = 30.0,
         operation_id: str | None = None,
+        cwd: Path | None = None,
     ) -> dict[str, Any]:
-        if generation != self._events.generation:
-            result = self._read_as_peer(generation, after, limit, timeout_seconds)
+        if (self._config is None and cwd is not None) or generation != self._events.generation:
+            result = self._read_as_peer(generation, after, limit, timeout_seconds, cwd)
         else:
             result = self._events.wait(after, limit, timeout_seconds)
         if operation_id is not None:
@@ -1426,6 +1409,7 @@ class ConnectorTools:
                 limit=arguments.get("limit", 100),
                 timeout_seconds=arguments.get("timeout_seconds", 30.0),
                 operation_id=arguments.get("operation_id"),
+                cwd=self.default_cwd,
             )
         if name == "claude_bridge_stop":
             return self.runtime.stop()

@@ -888,36 +888,52 @@ def test_project_wrapper_config_and_dependency_pin_remain_present() -> None:
 
 _PEER = """
 import json, sys
+from pathlib import Path
 import claude_task_connector as c
-print(json.dumps(c.BridgeRuntime().wait(generation=sys.argv[1], timeout_seconds=5.0)))
+runtime = c.BridgeRuntime()
+runtime._events._set("generation", sys.argv[1])
+tools = c.ConnectorTools(runtime=runtime, default_cwd=Path(sys.argv[2]))
+print(json.dumps(tools.call("claude_bridge_wait", {
+    "generation": sys.argv[1], "timeout_seconds": 5.0})))
 """
 
 
 def test_a_second_process_reads_the_owner_store_without_taking_it(tmp_path, monkeypatch):
-    """The store existed but nothing supported reached it: a second connector
-    began in memory, so wait refused the owner's generation, and reaching it
-    meant start, which discards. A real subprocess, because in-process proves
-    the plumbing rather than the product."""
-    home = tmp_path / "home"
+    """Public wait must honor its repository and leave the live WAL untouched."""
+    home = tmp_path / "home?reserved"
     home.mkdir(mode=0o750)
     monkeypatch.setenv("HOME", str(home))
-    runtime, client = _runtime(tmp_path)
+    owner_repo, decoy_repo = tmp_path / "owner", tmp_path / "decoy"
+    owner_repo.mkdir()
+    decoy_repo.mkdir()
+    runtime, client = _runtime(owner_repo)
     origin = {"from": "uds:peer", "name": "pipeline-24", "msg_id": "m1", "body": "hi"}
     client.emit(FakeUserMessage("fallback", origin=origin, uuid="u1"))
     _until(lambda: runtime.status()["latest_cursor"] == 1)
     generation = runtime.status()["generation"]
-    store = connector.shared_buffer_path(tmp_path)
-    owned = store.stat().st_ino
-
-    peer = subprocess.run(
-        [sys.executable, "-c", _PEER, generation],
-        capture_output=True, text=True, timeout=60, cwd=tmp_path,
-        env={**os.environ, "HOME": str(home), "PYTHONPATH": str(Path("scripts").resolve())},
-    )
-
-    assert peer.returncode == 0, peer.stderr
-    read = json.loads(peer.stdout)
-    assert read["generation"] == generation, "the peer must read the OWNER's generation"
-    assert read["events"][0]["origin"]["name"] == "pipeline-24"
-    assert store.stat().st_ino == owned, "the peer must not replace the owner's store"
-    assert runtime.status()["generation"] == generation, "nor disturb the owner"
+    store = connector.shared_buffer_path(owner_repo)
+    decoy = connector.EventBuffer(256, connector.shared_buffer_path(decoy_repo))
+    decoy._set("generation", generation)
+    decoy.append({"kind": "message", "origin": {"name": "decoy"}})
+    paths = tuple(Path(f"{store}{suffix}") for suffix in ("", "-wal", "-shm"))
+    try:
+        before = {path: (path.read_bytes(), path.stat().st_ino) for path in paths}
+        assert len(before[paths[1]][0]) > 32, "owner event must be live in WAL"
+        peer = subprocess.run(
+            [sys.executable, "-c", _PEER, generation, str(owner_repo)],
+            capture_output=True, text=True, timeout=60, cwd=decoy_repo,
+            env={**os.environ, "HOME": str(home), "PYTHONPATH": str(Path("scripts").resolve())},
+        )
+        assert peer.returncode == 0, peer.stderr
+        read = json.loads(peer.stdout)
+        assert read["generation"] == generation
+        assert read["events"][0]["origin"]["name"] == "pipeline-24"
+        assert {path for path in paths if path.exists()} == set(paths)
+        for path, (content, inode) in before.items():
+            assert path.stat().st_ino == inode, f"peer replaced {path.name}"
+            if not path.name.endswith("-shm"):
+                assert path.read_bytes() == content, f"peer wrote {path.name}"
+        assert runtime.status()["generation"] == generation
+    finally:
+        decoy.discard()
+        runtime.stop()
