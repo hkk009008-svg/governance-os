@@ -1086,3 +1086,32 @@ def test_a_finished_turn_leaves_the_bridge_relaunchable(tmp_path, monkeypatch):
     assert runtime.start(_config(tmp_path))["state"] == "running", "and again"
     runtime.stop()
 
+
+def test_a_native_refusal_is_visible_without_reading_the_payload() -> None:
+    """Two sends were accepted with terminal receipts and null errors, and
+    neither arrived. The native result carried the answer and nobody read it."""
+    assert connector._native_refusal({"success": False, "error": "no such peer"}) == "no such peer"
+    assert connector._native_refusal({"isError": True, "content": "unreachable"}) == "unreachable"
+    assert connector._native_refusal({"ok": True}) is None
+    assert connector._native_refusal(None) is None
+
+
+def test_a_run_records_why_it_ended(tmp_path, monkeypatch):
+    """The bridge vanished three times with no recorded reason, so the mechanism
+    stayed a guess. A run now says how it ended and how much it saw."""
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    factory = FakeFactory()
+    runtime, _client = _runtime(tmp_path, factory)
+
+    factory.clients[0].emit(_STOP)
+    _until(lambda: runtime.status()["state"] != "running", timeout=5)
+    events = runtime.wait(generation=runtime.status()["generation"], after=0, timeout_seconds=0)
+    lifecycle = [item for item in events["events"] if item.get("kind") == "lifecycle"]
+
+    assert lifecycle, "a run that ends must say so"
+    assert lifecycle[-1]["reason"] == "stream_end"
+    assert lifecycle[-1]["seconds"] >= 0
+    runtime.stop()
+
