@@ -454,11 +454,11 @@ def shared_buffer_path(cwd: Path) -> Path:
 
 
 def establish_private_store_root(root: Path) -> None:
-    """Prove the whole canonical chain: a mode protects an object, only its
-    parent protects its NAME. Each earlier round moved that hole one level up;
-    the chain ends at `/`, so proving all of it stops the regress. `/` and
-    `/Users` are root's, so root or this uid may own a component, but no one
-    else may write one."""
+    """Prove the whole canonical chain -- a mode protects an object, only its
+    parent protects its NAME -- by ownership and mode bits, and by nothing
+    else. A macOS ACL can grant another uid write authority on a component
+    lstat still reports as 0o700; ACLs are NOT inspected here, so the guarantee
+    stops at mode. `/` and `/Users` are root's, so uid 0 is a trust anchor."""
 
     for directory in (*reversed(root.parents), root):
         if directory is root:
