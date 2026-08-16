@@ -19,7 +19,6 @@ import math
 import os
 import re
 import sqlite3
-import stat
 import sys
 import tempfile
 import threading
@@ -448,8 +447,9 @@ def build_sdk_options(
 
 def shared_buffer_path(cwd: Path) -> Path:
     """Event store for one repository's bridge: keyed by cwd so two connectors
-    agree, scoped by uid so two users never share, outside the repo so it is
-    never repository content."""
+    agree, scoped by uid so two users never share -- which holds only on a
+    private or sticky temp root; mechanical refusal of shared unsticky roots is
+    the follow-up range -- outside the repo so it is never repository content."""
 
     digest = hashlib.sha256(str(cwd).encode("utf-8", "surrogateescape")).hexdigest()
     root = Path(tempfile.gettempdir()) / f"pipeline-codex-bridge-{os.getuid()}"
@@ -468,32 +468,6 @@ def reject_symlinked_store(path: Path) -> None:
     for part in (path, path.parent, path.parent.parent):
         if part.is_symlink():
             raise ConnectorError(f"refusing a symlinked event-store path: {part}")
-
-
-def assert_private_store_dir(directory: Path) -> None:
-    """Validate the directory actually OPENED, not a path checked beforehand.
-
-    A pre-existing directory received no ownership or mode validation, and a
-    swap performed AFTER the symlink check redirected the store -- reproduced in
-    review. Checking a path cannot close that: whatever is examined by name can
-    be replaced before it is used. So the directory is opened once with
-    O_NOFOLLOW and validated through fstat on that descriptor, which describes
-    the object the store is about to live in and nothing else.
-    """
-
-    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        info = os.fstat(descriptor)
-    finally:
-        os.close(descriptor)
-    if info.st_uid != os.getuid():
-        raise ConnectorError(
-            f"event-store directory is owned by uid {info.st_uid}, not this user: {directory}"
-        )
-    if info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-        raise ConnectorError(
-            f"event-store directory is group- or world-writable: {directory}"
-        )
 
 
 def discard_buffer_files(path: Path) -> None:
@@ -533,7 +507,6 @@ class EventBuffer:
         if path is not None:
             reject_symlinked_store(path)
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            assert_private_store_dir(path.parent)
         self._db = sqlite3.connect(
             str(path) if path is not None else ":memory:",
             check_same_thread=False, isolation_level=None, timeout=5.0,

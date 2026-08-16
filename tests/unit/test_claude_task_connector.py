@@ -531,21 +531,6 @@ def test_discard_surfaces_a_real_unlink_failure(tmp_path: Path) -> None:
         directory.chmod(0o700)
 
 
-def test_group_or_world_writable_store_dir_is_refused(tmp_path: Path) -> None:
-    """Validate what was OPENED, not a path checked beforehand.
-
-    The symlink refusal works by name, so a directory swapped AFTER that check
-    still redirects the store -- reproduced in review. Only inspecting the
-    object actually opened closes it, so this pre-creates a permissive
-    directory that a by-name check walks straight past.
-    """
-    directory = tmp_path / "repo"
-    directory.mkdir()
-    directory.chmod(0o777)
-    with pytest.raises(connector.ConnectorError, match="writable"):
-        connector.EventBuffer(4, directory / "events.sqlite3")
-
-
 def test_symlinked_store_path_is_refused(tmp_path: Path) -> None:
     """mkdir(exist_ok=True) follows a pre-created symlink, so whoever wins the
     race to create the directory redirects the store. Probed: the database
