@@ -980,3 +980,33 @@ def test_a_second_process_reads_the_owner_store_without_taking_it(tmp_path, monk
     finally:
         decoy.discard()
         runtime.stop()
+
+
+def test_the_peer_refuses_what_the_owner_side_walk_refuses(tmp_path, monkeypatch):
+    """Two composition failures, one control. The peer checked only that the
+    store existed, so a planted generation under a writable ancestor was
+    refused for start and served to claude_bridge_wait; and it never consulted
+    the lock, so a dead owner's cursor came back as live."""
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    runtime, _client = _runtime(tmp_path)
+    generation = runtime.status()["generation"]
+    store = connector.shared_buffer_path(tmp_path)
+    tools = connector.ConnectorTools(default_cwd=tmp_path)
+    before = {p: p.read_bytes() for p in store.parent.iterdir() if p.is_file()}
+
+    home.parent.chmod(0o777)
+    try:
+        with pytest.raises(connector.ConnectorError, match="writable beyond"):
+            tools.call("claude_bridge_wait", {"generation": generation})
+    finally:
+        home.parent.chmod(0o755)
+    assert {p: p.read_bytes() for p in store.parent.iterdir() if p.is_file()} == before
+
+    runtime.stop()
+    Path(f"{store}.owner").touch()
+    connector.EventBuffer(4, store).close()
+    with pytest.raises(connector.ConnectorError, match="residue"):
+        tools.call("claude_bridge_wait", {"generation": generation})
+

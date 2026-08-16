@@ -510,13 +510,15 @@ def _darwin_acl_has_allow(path: Path) -> bool:
         libc.acl_free(acl)
 
 
-def establish_private_store_root(root: Path) -> None:
+def establish_private_store_root(root: Path, *, create: bool = True) -> None:
     """Accept a root-to-leaf owner/mode-safe chain with no Darwin ACL allows.
     Only a parent protects a child's name; deny-only ACLs add no authority.
-    UID 0 owns the trusted system ancestors."""
+    UID 0 owns the trusted system ancestors. create=False is the peer's
+    validation: the same proof with no mkdir and no chmod, because a reader
+    that repairs a chain has accepted what it was asked to refuse."""
 
     for directory in (*reversed(root.parents), root):
-        if directory is root:
+        if directory is root and create:
             root.mkdir(mode=0o700, exist_ok=True)
         info = directory.lstat()
         if (directory.is_symlink() or not directory.is_dir()
@@ -524,7 +526,8 @@ def establish_private_store_root(root: Path) -> None:
             raise ConnectorError(f"store path is writable beyond this user: {directory}")
         if _darwin_acl_has_allow(directory):
             raise ConnectorError(f"store path has an extended ACL allow: {directory}")
-    root.chmod(0o700)
+    if create:
+        root.chmod(0o700)
 
 
 def discard_buffer_files(path: Path) -> None:
@@ -1264,14 +1267,28 @@ class BridgeRuntime:
     def _read_as_peer(
         self, generation: str, after: int, limit: int, timeout: float, cwd: Path | None
     ) -> dict[str, Any]:
-        """Read another runtime's generation without acquiring its ownership."""
+        """Read another runtime's generation without acquiring its ownership.
+
+        The chain is proved here too. Checking only that the store exists let
+        the peer read a store the owner-side walk refuses: measured, a planted
+        generation under a mode-0777 ancestor was refused for start and served
+        to claude_bridge_wait. A reader that skips the proof is the bypass."""
 
         repository = self._config.cwd if self._config else cwd
         if repository is None:
             raise ConnectorError("repository cwd is required to read another bridge")
         store = shared_buffer_path(repository)
+        establish_private_store_root(store.parent, create=False)
         if not store.exists():
             raise ConnectorError("no bridge store exists for this repository")
+        descriptor = os.open(f"{store}.owner", os.O_RDONLY)
+        try:  # acquiring means nobody holds it, so the owner is gone
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            raise ConnectorError("no live bridge owns this store; it is residue")
+        except BlockingIOError:
+            pass
+        finally:
+            os.close(descriptor)
         peer = EventBuffer(DEFAULT_QUEUE_LIMIT, store, attach=True)
         try:
             if generation != peer.generation:
