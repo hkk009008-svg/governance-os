@@ -531,16 +531,19 @@ def test_discard_surfaces_a_real_unlink_failure(tmp_path: Path) -> None:
         directory.chmod(0o700)
 
 
-def test_start_closes_a_reachable_store_root(tmp_path: Path, monkeypatch) -> None:
-    """parents=True created the uid root at the default mode -- 0o755 in review
-    and 0o755 here -- then start unlinked and opened beneath it, revalidated by
-    nothing. Asserted through start, so the guard cannot pass by never running."""
-    monkeypatch.setattr(connector.tempfile, "gettempdir", lambda: str(tmp_path))
-    root = connector.shared_buffer_path(tmp_path).parent.parent
-    root.mkdir(mode=0o755)
+def test_start_keeps_the_store_out_of_a_shared_namespace(tmp_path, monkeypatch) -> None:
+    """A shared temp root let the store be squatted, filled with residue, or
+    swapped after validation. Asserted through start, not by calling in."""
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
 
     _runtime(tmp_path)
-    assert root.stat().st_mode & 0o077 == 0, "start must close the root it uses"
+    store = connector.shared_buffer_path(tmp_path)
+    assert home in store.parents, "the store must be built under this user's home"
+    home.chmod(0o770)
+    with pytest.raises(connector.ConnectorError, match="writable beyond"):
+        connector.establish_private_store_root(store.parent.parent)
 
 
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:

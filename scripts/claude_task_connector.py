@@ -20,7 +20,6 @@ import os
 import re
 import sqlite3
 import sys
-import tempfile
 import threading
 import time
 import uuid
@@ -447,29 +446,26 @@ def build_sdk_options(
 
 def shared_buffer_path(cwd: Path) -> Path:
     """Event store for one repository's bridge: keyed by cwd so two connectors
-    agree, scoped by uid so two users never share -- a root the caller
-    establishes rather than assumes -- outside the repo, never repo content."""
+    agree, under this user's own home rather than the shared temp namespace,
+    and outside the repo so it is never repository content."""
 
     digest = hashlib.sha256(str(cwd).encode("utf-8", "surrogateescape")).hexdigest()
-    root = Path(tempfile.gettempdir()) / f"pipeline-codex-bridge-{os.getuid()}"
+    root = Path.home() / ".local" / "state" / "pipeline-codex-bridge"
     return root / digest[:16] / "events.sqlite3"
 
 
 def establish_private_store_root(root: Path) -> None:
-    """Close down the uid root before anything beneath it is opened or unlinked.
+    """Refuse the home the store is built under rather than assume it: a shared
+    temp root let it be squatted, filled with chmod-surviving residue, or
+    swapped between validation and use -- all needing a writable parent."""
 
-    parents=True created it at the default mode -- 0o755 in review and here --
-    and sticky protects occupancy, not names: tighten if owned, refuse if not.
-    """
-
-    try:
-        root.mkdir(mode=0o700)
-    except FileExistsError:
-        pass
-    if root.is_symlink() or not root.is_dir():
-        raise ConnectorError(f"event-store root is not a real directory: {root}")
-    if root.lstat().st_uid != os.getuid():
-        raise ConnectorError(f"event-store root belongs to another user: {root}")
+    home = Path.home()
+    info = home.lstat()
+    if home.is_symlink() or not home.is_dir() or info.st_uid != os.getuid():
+        raise ConnectorError(f"home is not this user's own directory: {home}")
+    if info.st_mode & 0o022:
+        raise ConnectorError(f"home is writable beyond this user: {home}")
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
     root.chmod(0o700)
 
 
