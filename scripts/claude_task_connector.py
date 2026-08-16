@@ -447,25 +447,25 @@ def build_sdk_options(
 def shared_buffer_path(cwd: Path) -> Path:
     """Event store for one repository's bridge: keyed by cwd so two connectors
     agree, under this user's own home rather than a shared namespace, outside
-    the repo so it is never repo content, and one level deep so the path the
-    caller must prove is exactly home and the root."""
+    the repo, and canonical so the chain proved is the chain later opened."""
 
     digest = hashlib.sha256(str(cwd).encode("utf-8", "surrogateescape")).hexdigest()
-    return Path.home() / ".pipeline-codex-bridge" / f"{digest[:16]}.sqlite3"
+    return Path.home().resolve() / ".pipeline-codex-bridge" / f"{digest[:16]}.sqlite3"
 
 
 def establish_private_store_root(root: Path) -> None:
-    """Prove every component the store hangs from, each before the next exists.
+    """Prove the whole canonical chain: a mode protects an object, only its
+    parent protects its NAME. Each earlier round moved that hole one level up;
+    the chain ends at `/`, so proving all of it stops the regress. `/` and
+    `/Users` are root's, so root or this uid may own a component, but no one
+    else may write one."""
 
-    parents=True created intermediates at the ambient umask -- 0o777 under
-    umask 000 -- letting a second principal rename the validated root."""
-
-    for directory in (Path.home(), root):
+    for directory in (*reversed(root.parents), root):
         if directory is root:
             root.mkdir(mode=0o700, exist_ok=True)
         info = directory.lstat()
         if (directory.is_symlink() or not directory.is_dir()
-                or info.st_uid != os.getuid() or info.st_mode & 0o022):
+                or info.st_uid not in (0, os.getuid()) or info.st_mode & 0o022):
             raise ConnectorError(f"store path is writable beyond this user: {directory}")
     root.chmod(0o700)
 

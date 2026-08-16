@@ -545,7 +545,7 @@ def test_start_keeps_the_store_out_of_a_shared_namespace(tmp_path, monkeypatch, 
     store = connector.shared_buffer_path(tmp_path)
     assert store.parent == home / ".pipeline-codex-bridge", "one level under home"
     assert all(p.stat().st_mode & 0o022 == 0 for p in (home, store.parent)), "private"
-    home.chmod(0o770)
+    home.parent.chmod(0o777)
     with pytest.raises(connector.ConnectorError, match="writable beyond"):
         connector.establish_private_store_root(store.parent)
 
