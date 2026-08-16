@@ -6,6 +6,7 @@ import asyncio
 import json
 import math
 import re
+import subprocess
 import threading
 import time
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ pytest.importorskip("mcp", reason="optional connector runtime is not installed")
 from mcp import types  # noqa: E402
 
 import claude_task_connector as connector  # noqa: E402
+
+pytestmark = pytest.mark.skipif(connector.sys.platform != "darwin", reason="Darwin")
 
 
 class CapturingOptions:
@@ -499,6 +502,96 @@ def test_read_is_atomic_under_a_forced_interleave(tmp_path: Path) -> None:
         f"read saw cursor {result['cursor']} past "
         f"latest_cursor {result['latest_cursor']}"
     )
+
+
+def test_stopping_the_bridge_discards_the_shared_store(tmp_path: Path) -> None:
+    """ARCHITECTURE.md calls the bridge transient; its store must be too."""
+    runtime, _client = _runtime(tmp_path)
+    path = connector.shared_buffer_path(Path(tmp_path).resolve())
+    assert path.exists(), "starting a bridge should create the shared store"
+
+    runtime.stop()
+    assert not path.exists(), "stopping a bridge must not leave durable state"
+
+
+def test_discard_surfaces_a_real_unlink_failure(tmp_path: Path) -> None:
+    """The happy path above is not enough, and once said so falsely.
+
+    discard caught bare OSError, so a store that could NOT be removed was
+    reported as removed: stop() returned `stopped`, the files survived, and the
+    next start resumed that generation and its stale cursor. Only a failing
+    unlink separates the two behaviours, so this forces one.
+    """
+    directory = tmp_path / "store"
+    directory.mkdir()
+    store = connector.EventBuffer(4, directory / "events.sqlite3")
+    store.append({"kind": "one"})
+    directory.chmod(0o500)  # unlink now fails with EACCES
+    try:
+        with pytest.raises(OSError):
+            store.discard()
+    finally:
+        directory.chmod(0o700)
+
+
+def test_start_refuses_a_shared_namespace_before_it_destroys(tmp_path, monkeypatch, request):
+    """A sentinel pins the ORDER, which calling the guard directly could not:
+    cleanup runs after validation, so moving or deleting the guard eats it."""
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    previous = connector.os.umask(0)
+    request.addfinalizer(lambda: connector.os.umask(previous))
+    store = connector.shared_buffer_path(tmp_path)
+    _runtime(tmp_path)
+    assert store.parent == home / ".pipeline-codex-bridge", "one level under home"
+    assert not store.parent.stat().st_mode & 0o077, "and private under umask 000"
+    store.write_bytes(b"sentinel")
+    home.parent.chmod(0o777)
+    with pytest.raises(connector.ConnectorError, match="writable beyond"):
+        _runtime(tmp_path)
+    assert store.read_bytes() == b"sentinel", "refusal must precede cleanup"
+
+
+def test_start_refuses_an_extended_acl_allow(tmp_path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    subprocess.run(
+        [
+            "/bin/chmod",
+            "+a",
+            "everyone allow list,search,add_file,add_subdirectory,delete_child",
+            str(home.parent),
+        ],
+        check=True,
+    )
+    runtime = None
+    try:
+        with pytest.raises(connector.ConnectorError, match="extended ACL"):
+            runtime, _client = _runtime(tmp_path)
+    finally:
+        if runtime is not None:
+            runtime.stop()
+        subprocess.run(["/bin/chmod", "-N", str(home.parent)], check=True)
+
+
+def test_start_accepts_a_deny_only_extended_acl(tmp_path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    subprocess.run(
+        ["/bin/chmod", "+a", "group:everyone deny delete", str(home)],
+        check=True,
+    )
+    runtime = None
+    try:
+        runtime, _client = _runtime(tmp_path)
+        assert runtime.status()["state"] == "running"
+    finally:
+        if runtime is not None:
+            runtime.stop()
+        subprocess.run(["/bin/chmod", "-N", str(home)], check=True)
 
 
 def test_runtime_relay_lifecycle_and_idempotency(tmp_path: Path) -> None:

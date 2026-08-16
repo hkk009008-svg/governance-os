@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ctypes
 import dataclasses
+import errno
 import hashlib
 import importlib.metadata
 import json
@@ -444,16 +446,109 @@ def build_sdk_options(
     )
 
 
+def shared_buffer_path(cwd: Path) -> Path:
+    """Event store for one repository's bridge: keyed by cwd so two connectors
+    agree, under this user's own home, outside the repo, canonical. Mode-only
+    proof below; ACL rejection is PR #34 at e9421a67b36689c3106a8eab55602c931cfbe0fa."""
+
+    digest = hashlib.sha256(str(cwd).encode("utf-8", "surrogateescape")).hexdigest()
+    return Path.home().resolve() / ".pipeline-codex-bridge" / f"{digest[:16]}.sqlite3"
+
+
+def _darwin_acl_has_allow(path: Path) -> bool:
+    """Read native ACL entry tags; deny-only ACLs do not grant authority."""
+    if sys.platform != "darwin":
+        raise ConnectorError("extended ACL validation is unavailable on this platform")
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.acl_get_file.argtypes = (ctypes.c_char_p, ctypes.c_int)
+    libc.acl_get_file.restype = ctypes.c_void_p
+    libc.acl_get_entry.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    libc.acl_get_entry.restype = ctypes.c_int
+    libc.acl_get_tag_type.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_int))
+    libc.acl_get_tag_type.restype = ctypes.c_int
+    libc.acl_free.argtypes = (ctypes.c_void_p,)
+    libc.acl_free.restype = ctypes.c_int
+    libc.acl_valid.argtypes = (ctypes.c_void_p,)
+    libc.acl_valid.restype = ctypes.c_int
+
+    ctypes.set_errno(0)
+    acl = libc.acl_get_file(os.fsencode(path), 0x100)  # ACL_TYPE_EXTENDED
+    if not acl:
+        error = ctypes.get_errno()
+        if error == errno.ENOENT:  # Darwin reports no extended ACL this way.
+            return False
+        raise ConnectorError(f"cannot inspect extended ACL for {path}: {os.strerror(error)}")
+    try:
+        if libc.acl_valid(acl) == -1:
+            raise ConnectorError(f"invalid extended ACL for {path}")
+        entry = ctypes.c_void_p()
+        entry_id = 0  # ACL_FIRST_ENTRY
+        while True:
+            ctypes.set_errno(0)
+            if libc.acl_get_entry(acl, entry_id, ctypes.byref(entry)) == -1:
+                error = ctypes.get_errno()
+                if error == errno.EINVAL:  # No entry remains.
+                    return False
+                raise ConnectorError(
+                    f"cannot read extended ACL for {path}: {os.strerror(error)}"
+                )
+            tag = ctypes.c_int()
+            if libc.acl_get_tag_type(entry, ctypes.byref(tag)) == -1:
+                error = ctypes.get_errno()
+                raise ConnectorError(
+                    f"cannot read extended ACL tag for {path}: {os.strerror(error)}"
+                )
+            if tag.value == 1:  # ACL_EXTENDED_ALLOW
+                return True
+            entry_id = -1  # ACL_NEXT_ENTRY
+    finally:
+        libc.acl_free(acl)
+
+
+def establish_private_store_root(root: Path) -> None:
+    """Accept a root-to-leaf owner/mode-safe chain with no Darwin ACL allows.
+    Only a parent protects a child's name; deny-only ACLs add no authority.
+    UID 0 owns the trusted system ancestors."""
+
+    for directory in (*reversed(root.parents), root):
+        if directory is root:
+            root.mkdir(mode=0o700, exist_ok=True)
+        info = directory.lstat()
+        if (directory.is_symlink() or not directory.is_dir()
+                or info.st_uid not in (0, os.getuid()) or info.st_mode & 0o022):
+            raise ConnectorError(f"store path is writable beyond this user: {directory}")
+        if _darwin_acl_has_allow(directory):
+            raise ConnectorError(f"store path has an extended ACL allow: {directory}")
+    root.chmod(0o700)
+
+
+def discard_buffer_files(path: Path) -> None:
+    """Remove a store and its WAL sidecars. Absence is fine; nothing else is.
+
+    A blanket OSError catch let stop() report `stopped` while the database and
+    its sidecars survived, so the next start resumed that generation and its
+    stale cursor instead of minting a fresh one. Probed."""
+
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            Path(str(path) + suffix).unlink()
+        except FileNotFoundError:
+            pass
+
+
 class EventBuffer:
     """Bounded event ring with explicit truncation instead of bridge failure.
 
-    SQLite-backed rather than an in-process deque, so a SECOND connector
-    process can read the same events; `path=None` uses an in-memory database,
-    the same code path with different storage. BEGIN IMMEDIATE on append stops
-    two processes both reading the cursor and colliding on the primary key, and
-    INSERT OR IGNORE attaches to an existing generation instead of minting one
-    so a reader agrees with the owner about which bridge these events describe.
-    """
+    SQLite-backed rather than an in-process deque, so the store CAN be read by
+    a second process -- but nothing here reaches it; the supported peer read is
+    e91d07f9ff8172c2670d45be79dea393e0757913, stacked on this. `path=None` uses
+    an in-memory database. BEGIN IMMEDIATE stops two processes colliding on the
+    cursor, and INSERT OR IGNORE attaches to an existing generation, so reader
+    and owner agree whose events these are."""
 
     _SCHEMA = (
         "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
@@ -463,8 +558,6 @@ class EventBuffer:
         self.limit = limit
         self.path = path
         self._lock = threading.Lock()
-        if path is not None:
-            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._db = sqlite3.connect(
             str(path) if path is not None else ":memory:",
             check_same_thread=False, isolation_level=None, timeout=5.0,
@@ -513,6 +606,12 @@ class EventBuffer:
             self._db.close()
         except Exception:
             pass
+
+    def discard(self) -> None:
+        """Delete the store, keeping bridge state as transient as the bridge."""
+        self.close()
+        if self.path is not None:
+            discard_buffer_files(self.path)
 
     def append(self, event: Mapping[str, Any]) -> None:
         with self._lock:
@@ -834,8 +933,11 @@ class BridgeRuntime:
             # A fresh bridge is a fresh generation, so any store left behind by
             # a previous instance is removed rather than resumed -- a reader
             # must never be handed a dead bridge's cursor as if it were live.
+            store = shared_buffer_path(config.cwd)
+            establish_private_store_root(store.parent)
+            discard_buffer_files(store)
             self._events.close()
-            self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
+            self._events = EventBuffer(DEFAULT_QUEUE_LIMIT, store)
             self._gate = RelayGate(observer=self._append)
             options = build_sdk_options(
                 config, options_cls=options_cls, hook_cls=hook_cls, gate=self._gate
@@ -1185,7 +1287,12 @@ class BridgeRuntime:
                 self._state = "stopped"
                 self._thread = None
         self._gate.complete()
-        return self.status()
+        # Status is read BEFORE discarding so the caller still gets the final
+        # generation and cursor, and the file does not outlive its bridge.
+        result = self.status()
+        self._events.discard()
+        self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
+        return result
 
 
 def capability_report() -> dict[str, Any]:
