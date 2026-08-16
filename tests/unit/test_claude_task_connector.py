@@ -1059,3 +1059,30 @@ def test_owner_cleanup_waits_for_a_read_already_in_flight(tmp_path, monkeypatch)
     assert order == ["read", "stopped"], "the read must complete before cleanup"
     assert seen["generation"] == generation
 
+
+def test_a_finished_turn_leaves_the_bridge_relaunchable(tmp_path, monkeypatch):
+    """Observed three times in one day: the bridge served one relay, then went
+    unreachable and every later send was refused until a manual stop.
+
+    Two causes, both here. A turn ending was recorded as `error`, and
+    _ensure_running refuses to relaunch from that state. And the owner flock was
+    released only by stop(), so even a corrected state could not start again.
+    """
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    factory = FakeFactory()
+    runtime, _client = _runtime(tmp_path, factory)
+
+    factory.clients[0].emit(_STOP)
+    _until(lambda: runtime.status()["state"] != "running", timeout=5)
+
+    assert runtime.status()["state"] == "stopped", "a finished turn is not a failure"
+    assert runtime.status()["last_error"] is None
+    assert runtime.start(_config(tmp_path))["state"] == "running", "must relaunch"
+
+    factory.clients[1].emit(_STOP)
+    _until(lambda: runtime.status()["state"] != "running", timeout=5)
+    assert runtime.start(_config(tmp_path))["state"] == "running", "and again"
+    runtime.stop()
+

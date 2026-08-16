@@ -1070,11 +1070,17 @@ class BridgeRuntime:
                 for observed in events:
                     self._append(observed)
             with self._lock:
-                if self._stopping:
+                # A turn ending is not a failure. Calling it one left the state
+                # at `error`, and _ensure_running refuses every later send in
+                # that state until someone stops the bridge by hand -- so the
+                # bridge served exactly one relay and then went unreachable,
+                # observed three times in one day. `stopped` is the honest
+                # description and the one the lazy relaunch already handles.
+                # A stream that ends by raising still reaches the error path
+                # below, so a real fault is still distinguished from a turn.
+                if self._state == "running":
                     self._state = "stopped"
-                elif self._state == "running":
-                    self._state = "error"
-                    self._error = "SDK receive stream ended"
+                    self._release_owner()
         except BaseException as exc:
             with self._lock:
                 if self._stopping:
@@ -1278,6 +1284,19 @@ class BridgeRuntime:
                 )
             return result
 
+    def _release_owner(self) -> None:
+        """Give the store back, so the next start is not refused by a dead bridge.
+
+        Only stop() used to do this, so a runtime whose turn ended kept the
+        flock and every relaunch failed with "another bridge already owns this
+        repository's store". Ownership must end when running does, however the
+        run ended.
+        """
+
+        if self._owned is not None:
+            os.close(self._owned)  # closing releases the flock for the next owner
+            self._owned = None
+
     def _claim_store(self, store: Path) -> None:
         """Hold a lifetime flock so start cannot replace a live owner's store."""
 
@@ -1384,9 +1403,7 @@ class BridgeRuntime:
         with cleanup_lock(store, fcntl.LOCK_EX) if store else contextlib.nullcontext():
             self._events.discard()
         self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
-        if self._owned is not None:
-            os.close(self._owned)  # closing releases the flock for the next owner
-            self._owned = None
+        self._release_owner()
         return result
 
 
