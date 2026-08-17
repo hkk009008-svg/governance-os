@@ -34,7 +34,7 @@ Window 2026-08-14 09:59 to 2026-08-17 09:27, on `main`:
 | FAIL | 12 |
 | NITS | 6 |
 | GO | 6 |
-| requests with no verdict | 6 |
+| requests open at the tail | 4 |
 
 Command, with the pattern calibrated against a known-matching and a
 known-non-matching line before use:
@@ -43,6 +43,21 @@ known-non-matching line before use:
 git log --oneline --since=2026-08-14 main --format='%s' \
   | grep -c '^mail(operator): FAIL'
 ```
+
+The last row was first written as "requests with no verdict: 6", derived
+by subtracting verdicts from requests. That subtraction is arithmetically
+correct and semantically wrong, and pairing the two streams
+chronologically shows why: requests supersede each other mid-iteration
+(`da4a5917` and `6741f5b8` were both replaced by `3afd20c1` before any
+ruling), and some verdicts answer no single request (`bb011fd5` follows
+`15757a7d` with no request between them). The difference between the two
+totals is therefore not a backlog. Four requests are genuinely open, and
+they are consecutive at the tail: `b6721b4a`, `a12d7ee5`, `25eb22e0`,
+`9bd06f32`.
+
+This correction is itself an instance of I1. The published number came
+from a count that could not distinguish "unanswered" from "superseded",
+and nothing in the sentence recorded which instrument produced it.
 
 The FAIL rate is 50 percent of published verdicts. Tier 1 gave four
 instruments that each refuse a specific wrong reading. It did not change
