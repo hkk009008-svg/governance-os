@@ -30,6 +30,25 @@ import claude_task_connector as connector  # noqa: E402
 pytestmark = pytest.mark.skipif(connector.sys.platform != "darwin", reason="Darwin")
 
 
+@pytest.fixture(autouse=True)
+def _private_home(tmp_path_factory, monkeypatch):
+    """No test may resolve Path.home() to the machine's real home.
+
+    Moving the store under $HOME closed a shared-namespace attack and, in the
+    same change, silently pointed every test that did not set HOME at the
+    developer's own: 707 files accumulated there unnoticed -- 333 owner locks,
+    100 read locks, 86 databases, 20 diagnostics -- across a day of suite runs.
+    Nine of seventeen runtime tests set HOME; the rest inherited it. Autouse
+    rather than per-test, because the eight that forgot are the evidence that
+    remembering is not a mechanism. A test that wants its own home still sets
+    it and wins, since this only moves the floor.
+    """
+
+    home = tmp_path_factory.mktemp("home")
+    home.chmod(0o750)
+    monkeypatch.setenv("HOME", str(home))
+
+
 class CapturingOptions:
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
