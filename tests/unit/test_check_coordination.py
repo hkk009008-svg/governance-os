@@ -946,6 +946,63 @@ def test_malformed_or_mismatched_report_does_not_clear_pending(
     assert snapshot["next_action"] == "operator reviews the exact committed request"
 
 
+def test_pending_request_projects_the_range_a_reviewer_must_know(
+    tmp_path: Path,
+) -> None:
+    """The projection said work was pending without saying what work.
+
+    A reviewer reading the snapshot learned that a request existed and who
+    owned it, then had to open the event to find the range. Asserting against
+    the fixture's own base and head -- which differ -- fails on an absent
+    field, on a hardcoded None, and on the two being swapped.
+    """
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert base != head, "a swapped range must be detectable"
+    pending = {item.path: item for item in state.pending}[request_path]
+    assert (pending.reviewed_base, pending.reviewed_head) == (base, head)
+    assert pending.reviewed_repository == str(root)
+
+    snapshot = status.collect_orientation_snapshot(root, "operator")
+    current = snapshot["current_request"]
+    assert (current["reviewed_base"], current["reviewed_head"]) == (base, head)
+    # Against str(root), not against `pending`. Comparing the two would compare
+    # a shared producer to itself: hardcoding None in both constructors, or a
+    # wrong literal in both, left every coordination test green.
+    assert current["reviewed_repository"] == str(root)
+
+
+def test_an_invalidated_remediation_request_still_carries_its_range(
+    tmp_path: Path,
+) -> None:
+    """The reconstruction branch had no test, so its fields were unexercised.
+
+    Deleting the range from the invalid-remediation path left the whole file
+    green. The production fix is dataclasses.replace, which cannot drop a
+    field; this asserts the branch is reached and the range survives it.
+    """
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, _ = _commit_request(
+        root,
+        base,
+        head,
+        remediates_failed_report=(
+            "coordination/mailbox/sent/2026-07-25T00-00-00Z-operator-to-"
+            "director-verification-report.md@" + "0" * 40
+        ),
+    )
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    pending = {item.path: item for item in state.pending}[request_path]
+    assert pending.valid is False, "the invalidation branch must be reached"
+    assert (pending.reviewed_base, pending.reviewed_head) == (base, head)
+    assert pending.reviewed_repository == str(root)
+
+
 def test_malformed_report_does_not_clear_pending(tmp_path: Path) -> None:
     root, coord, base, head = _review_repo(tmp_path)
     request_path, request_commit = _commit_request(root, base, head)
