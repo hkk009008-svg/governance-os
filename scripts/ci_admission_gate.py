@@ -404,18 +404,17 @@ def main(argv: list[str] | None = None) -> int:
             if args.governance_head
             else head
         )
-        # Before the empty-range return, not after: a supplied tip exited 0
-        # unvalidated while the range was empty, contradicting the refusal this
-        # range claims. evaluate validates too, so neither entry point depends
-        # on the other -- and the empty-range arm in the control is what keeps
-        # this call from rotting unnoticed, since evaluate is never reached.
-        _governance_commits(root, head, governance)
+        # Evaluate first, then present. An empty range used to return before
+        # evaluate, so a supplied governance tip exited 0 unvalidated -- and
+        # duplicating the check in main would leave two validators with neither
+        # individually covered. Routing the empty case through the same
+        # evaluation core keeps one validator and one seam.
+        outcome = evaluate(root, base, head, governance)
         if base == head:
             print(
                 "ADMISSION GATE — empty range (base equals head); nothing to admit"
             )
             return 0
-        outcome = evaluate(root, base, head, governance)
     except AdmissionError as exc:
         print(f"ADMISSION GATE — environment error: {exc}", file=sys.stderr)
         return 2

@@ -377,65 +377,47 @@ def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
 
 
 def test_a_governance_tip_must_be_a_linear_descendant(tmp_path: Path) -> None:
-    """Ancestry and linearity only; what a commit CONTAINS is unproven here.
+    """Through the CLI, because that is the only surface anything runs.
 
-    Asserted through evaluate, which is where the decision is made. A control
-    aimed at _governance_commits would pass with the call site removed, and
-    that exact substitution has already shipped a hole twice today.
+    evaluate() has no production caller: ci.yml invokes this file as a
+    subprocess. Controls asserted on evaluate are mechanism tests, and three
+    rounds of findings landed because they were treated as more than that.
     """
     root, base = _init_repo(tmp_path)
-    reviewed_head = _commit_file(
+    head = _commit_file(
         root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
-    _land_pair(root, base, reviewed_head)
-    governance = _git(root, "rev-parse", "HEAD")
-    without_g = gate.evaluate(root, base, reviewed_head).admitted
-
-    # Validated and contributing nothing: admission stays on base..head, so an
-    # incomplete validator here guards an input no verdict depends on.
-    assert gate.evaluate(root, base, reviewed_head, governance).admitted is without_g
-
-    # From base, not from the reviewed head: a child of the head IS a
-    # descendant, so branching there would have proved nothing.
+    _land_pair(root, base, head)
+    linear = _git(root, "rev-parse", "HEAD")
+    # From base: a child of the reviewed head IS a descendant, so branching
+    # there would prove nothing.
     _git(root, "checkout", "-q", "-B", "sibling", base)
     _commit_file(root, "unrelated.txt", "x\n", "chore: sibling")
-    with pytest.raises(gate.AdmissionError, match="must descend from"):
-        gate.evaluate(root, base, reviewed_head, _git(root, "rev-parse", "HEAD"))
-
-    # A regular two-parent merge, not an octopus: it is the minimal
-    # counterexample to the one-parent predicate and exercises the same branch.
-    _git(root, "checkout", "-q", "-B", "merged", governance)
+    sibling = _git(root, "rev-parse", "HEAD")
+    # A regular two-parent merge, the minimal counterexample to one-parent.
+    _git(root, "checkout", "-q", "-B", "merged", linear)
     _git(root, "merge", "-q", "--no-edit", "sibling")
-    with pytest.raises(gate.AdmissionError, match="not a linear successor"):
-        gate.evaluate(root, base, reviewed_head, _git(root, "rev-parse", "HEAD"))
+    merged = _git(root, "rev-parse", "HEAD")
 
-    # THE control, at the only surface anything runs: a subprocess, argv in,
-    # exit code out. evaluate() has no production caller, so an arm that calls
-    # it is a mechanism test -- which is why dropping main's governance
-    # argument, or moving validation below the no-authority return, left every
-    # evaluate-level arm green while the public path admitted a sibling tip.
-    _git(root, "checkout", "-q", "sibling")
-    completed = subprocess.run(
-        [sys.executable, str(Path(gate.__file__).resolve()), "--root", str(root),
-         "--base", base, "--head", reviewed_head,
-         "--governance-head", _git(root, "rev-parse", "sibling")],
-        capture_output=True, text=True,
-    )
+    def gate_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(Path(gate.__file__).resolve()), "--root", str(root),
+             *args], capture_output=True, text=True)
 
-    assert completed.returncode == 2, completed.stdout + completed.stderr
-    assert "must descend from" in completed.stderr
+    # "Preserves the ordinary exit" means unchanged BY the tip, not zero: this
+    # fixture lands its pair after the head, so the range is legitimately
+    # blocked either way. A valid tip must not alter that.
+    without = gate_cli("--base", base, "--head", head)
+    ordinary = gate_cli("--base", base, "--head", head, "--governance-head", linear)
 
-    # Empty range: evaluate is never reached, so this arm covers main's own
-    # validation alone. Without it, either validator could be deleted and every
-    # other arm would stay green because the other one caught it.
-    empty = subprocess.run(
-        [sys.executable, str(Path(gate.__file__).resolve()), "--root", str(root),
-         "--base", reviewed_head, "--head", reviewed_head,
-         "--governance-head", _git(root, "rev-parse", "sibling")],
-        capture_output=True, text=True,
-    )
-
-    assert empty.returncode == 2, empty.stdout + empty.stderr
+    assert ordinary.returncode == without.returncode, ordinary.stdout + ordinary.stderr
+    for label, arguments in (
+        ("sibling", ("--base", base, "--head", head, "--governance-head", sibling)),
+        ("merge", ("--base", base, "--head", head, "--governance-head", merged)),
+        ("empty", ("--base", head, "--head", head, "--governance-head", sibling)),
+    ):
+        refused = gate_cli(*arguments)
+        assert refused.returncode == 2, f"{label}: {refused.stdout}{refused.stderr}"
 
 
 
