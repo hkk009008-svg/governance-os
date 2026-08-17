@@ -108,6 +108,9 @@ class Coverage:
 class Outcome:
     base: str
     head: str
+    # Equal to `head` on the embedded path, where evidence rides the
+    # implementation branch. A distinct value is a separate governance tip.
+    governance_head: str = ""
     authority_commits: dict[str, tuple[str, ...]] = field(default_factory=dict)
     coverages: list[Coverage] = field(default_factory=list)
     skipped_reports: list[tuple[str, str]] = field(default_factory=list)
@@ -212,6 +215,55 @@ def _introduction_commit(root: Path, head: str, path: str) -> str:
     return commit
 
 
+def _governance_commits(root: Path, head: str, governance_head: str) -> list[str]:
+    """Prove `head..governance_head` is a chain of single-event commits.
+
+    A separate governance tip lets the record advance while the reviewed range
+    stays byte-stable, which is what makes an unattended handoff possible. It
+    also means the gate reads a ref the author controls, so the shape is
+    proved rather than assumed: linear, one parent, and exactly one added
+    mailbox event per commit. Anything else is refused rather than projected.
+
+    Read-only by construction. rev-list and diff-tree read objects; the
+    governance tip is never checked out and nothing on it is executed.
+    """
+
+    if governance_head == head:
+        return []
+    try:
+        _git(root, "merge-base", "--is-ancestor", head, governance_head)
+    except AdmissionError:
+        raise AdmissionError(
+            "governance head must descend from the reviewed head"
+        ) from None
+    commits = [
+        line.strip()
+        for line in _git(
+            root, "rev-list", "--reverse", f"{head}..{governance_head}"
+        ).splitlines()
+        if line.strip()
+    ]
+    for commit in commits:
+        if len(_git(root, "rev-list", "--parents", "-1", commit).split()) != 2:
+            raise AdmissionError(
+                f"governance commit {commit[:12]} is not a linear successor"
+            )
+        # name-status in one read, so "added" and "changed nothing else" are
+        # decided from the same observation rather than from two that could
+        # disagree between calls.
+        changed = _git(
+            root, "diff-tree", "--no-commit-id", "--name-status", "-r", commit
+        ).split()
+        if changed[:1] != ["A"] or len(changed) != 2 or not changed[1].startswith(
+            _MAILBOX_SENT
+        ):
+            raise AdmissionError(
+                f"governance commit {commit[:12]} must add exactly one sent event "
+                "and change nothing else"
+            )
+    return commits
+
+
 def _reviewed_commits(root: Path, report: pair.VerificationReport) -> frozenset[str]:
     try:
         output = _git(
@@ -226,15 +278,23 @@ def _reviewed_commits(root: Path, report: pair.VerificationReport) -> frozenset[
     return frozenset(line.strip() for line in output.splitlines() if line.strip())
 
 
-def evaluate(root: Path, base: str, head: str) -> Outcome:
-    outcome = Outcome(base=base, head=head)
+def evaluate(
+    root: Path, base: str, head: str, governance_head: str | None = None
+) -> Outcome:
+    governance = governance_head or head
+    outcome = Outcome(base=base, head=head, governance_head=governance)
+    # Authority is always computed from the reviewed range, never from the
+    # governance tip: evidence may advance, the range under review may not.
     outcome.authority_commits = authority_commits(root, base, head)
     if not outcome.authority_commits:
         return outcome
 
+    _governance_commits(root, head, governance)
+    evidence = (head, governance) if governance != head else (base, head)
+
     parsed: dict[str, pair.VerificationReport] = {}
-    for path in _reports_added_in_range(root, base, head):
-        raw = _git(root, "show", f"{head}:{path}").encode("utf-8")
+    for path in _reports_added_in_range(root, *evidence):
+        raw = _git(root, "show", f"{governance}:{path}").encode("utf-8")
         try:
             report = pair.parse_verification_report_committed_bytes(root, path, raw)
         except pair.CompactPairError as exc:
@@ -252,7 +312,7 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
         if report.supersedes is not None:
             superseded.add(report.supersedes)
     for path in parsed:
-        introductions[path] = _introduction_commit(root, head, path)
+        introductions[path] = _introduction_commit(root, governance, path)
 
     for path, report in sorted(parsed.items()):
         if (path, introductions[path]) in superseded:
@@ -298,6 +358,8 @@ def render(outcome: Outcome) -> str:
         "ADMISSION GATE — risk-aware integration check "
         f"({outcome.base[:12]}..{outcome.head[:12]})"
     ]
+    if outcome.governance_head and outcome.governance_head != outcome.head:
+        lines.append(f"  governance head: {outcome.governance_head[:12]}")
     if not outcome.authority_commits:
         lines.append(
             "  no authority-surface commits in range — admitted without review "
@@ -340,16 +402,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=Path(_REPO_ROOT))
     parser.add_argument("--base", help="admitted range base (default: merge-base with main)")
     parser.add_argument("--head", help="admitted range head (default: HEAD)")
+    parser.add_argument(
+        "--governance-head",
+        help="separate governance tip carrying the evidence (default: the head)",
+    )
     args = parser.parse_args(argv)
     root = args.root.resolve()
     try:
         base, head = resolve_range(root, args.base, args.head)
+        governance = (
+            _git(root, "rev-parse", args.governance_head + "^{commit}").strip()
+            if args.governance_head
+            else head
+        )
         if base == head:
             print(
                 "ADMISSION GATE — empty range (base equals head); nothing to admit"
             )
             return 0
-        outcome = evaluate(root, base, head)
+        outcome = evaluate(root, base, head, governance)
     except AdmissionError as exc:
         print(f"ADMISSION GATE — environment error: {exc}", file=sys.stderr)
         return 2

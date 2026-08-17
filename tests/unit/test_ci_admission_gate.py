@@ -11,6 +11,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import ci_admission_gate as gate
 
 
@@ -371,6 +373,33 @@ def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
 
     assert outcome.admitted, gate.render(outcome)
     assert [coverage.verdict for coverage in outcome.coverages] == ["GO"]
+
+
+def test_evidence_on_a_governance_tip_admits_a_frozen_reviewed_head(
+    tmp_path: Path,
+) -> None:
+    """Authority comes from B..H; evidence may come from H..G.
+
+    Measured 2026-08-17: committed evidence on a feature branch is durable and
+    undiscoverable, because the projection reads one HEAD and a peer on another
+    ref cannot find it. A separate governance tip is the answer, and it is only
+    safe if the tip carries evidence and nothing else.
+    """
+    root, base = _init_repo(tmp_path)
+    reviewed_head = _commit_file(
+        root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
+    )
+    _land_pair(root, base, reviewed_head)
+    governance = _git(root, "rev-parse", "HEAD")
+
+    outcome = gate.evaluate(root, base, reviewed_head, governance)
+
+    assert outcome.admitted, gate.render(outcome)
+    assert (outcome.head, outcome.governance_head) == (reviewed_head, governance)
+
+    _commit_file(root, "scripts/smuggled.py", "X = 1\n", "feat: smuggle code")
+    with pytest.raises(gate.AdmissionError, match="exactly one sent event"):
+        gate.evaluate(root, base, reviewed_head, _git(root, "rev-parse", "HEAD"))
 
 
 def test_fail_verdict_does_not_admit(tmp_path: Path) -> None:
