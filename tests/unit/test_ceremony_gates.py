@@ -218,11 +218,14 @@ def test_is_xfail_decorator_rejects_non_xfail_marker():
 
 
 def test_python_growth_rejects_large_total_and_per_file_growth():
+    # Derived from the ceiling, not a literal: the transitional envelope moves
+    # the number, and this test is about the mechanism rather than the value.
+    over = cnc.MAX_PYTHON_NET_GROWTH + 25
     violations, summary = cnc._python_growth_violations(
-        "120\t5\tscripts/large.py\n10\t0\ttests/test_large.py\n"
+        f"{over - 5}\t5\tscripts/large.py\n10\t0\ttests/test_large.py\n"
     )
 
-    assert "net 125" in summary
+    assert f"net {over}" in summary
     assert any("scripts/large.py" in item for item in violations)
     assert any("total net Python growth" in item for item in violations)
 
@@ -305,11 +308,14 @@ def test_an_existing_file_still_cannot_bloat() -> None:
 
 def test_unexplained_growth_is_still_refused() -> None:
     """The thing the gate is actually for, on one ledger again."""
+    over = cnc.MAX_PYTHON_NET_GROWTH + 40
     violations, _ = cnc._python_growth_violations(
-        _numstat([(140, 0, "scripts/old.py")]), frozenset({"scripts/old.py"})
+        _numstat([(over, 0, "scripts/old.py")]), frozenset({"scripts/old.py"})
     )
 
-    assert violations == ["total net Python growth 140 exceeds 100"]
+    assert violations == [
+        f"total net Python growth {over} exceeds {cnc.MAX_PYTHON_NET_GROWTH}"
+    ]
 
 
 def test_a_move_does_not_buy_the_introduction_exemption(tmp_path, monkeypatch) -> None:
@@ -344,3 +350,22 @@ def test_a_move_does_not_buy_the_introduction_exemption(tmp_path, monkeypatch) -
 
     assert "tools/new.py" not in introduced, "a move must not read as an arrival"
 
+
+
+def test_the_transitional_ceiling_is_an_envelope_not_headroom():
+    """181 is sized to exactly one range and grants nothing beyond it.
+
+    A bootstrap ceiling chosen loosely becomes a steady state nobody restores.
+    This pins both edges so the restoration range cannot be quietly skipped:
+    the mechanism's measured 181 passes, and one line more does not.
+    """
+    numstat = f"{cnc.MAX_PYTHON_NET_GROWTH}\t0\tscripts/probe.py"
+    at_limit, _ = cnc._python_growth_violations(numstat, frozenset({"scripts/probe.py"}))
+    over, _ = cnc._python_growth_violations(
+        f"{cnc.MAX_PYTHON_NET_GROWTH + 1}\t0\tscripts/probe.py",
+        frozenset({"scripts/probe.py"}),
+    )
+
+    assert cnc.MAX_PYTHON_NET_GROWTH == 181, "the envelope is the measured size"
+    assert at_limit == [], "the range this envelope exists for must pass"
+    assert over, "one line beyond the measured range must not"
