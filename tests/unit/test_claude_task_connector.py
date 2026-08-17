@@ -7,8 +7,10 @@ import json
 import math
 import os
 import re
+import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -762,13 +764,24 @@ def test_stalled_query_does_not_block_status_and_quarantines_on_timeout(
 
 
 def test_peer_messages_are_attributed_deduplicated_and_conflicts_fail(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch, request,
 ) -> None:
+    socket_dir = tempfile.TemporaryDirectory(prefix="ccs-", dir="/private/tmp")
+    request.addfinalizer(socket_dir.cleanup)
+    root = Path(socket_dir.name)
+    root.chmod(0o700)
+    monkeypatch.setattr(connector, "PEER_SOCKET_ROOT", root)
+    peer = socket.socket(socket.AF_UNIX)
+    request.addfinalizer(peer.close)
+    peer_path = root / f"{os.getpid()}.sock"
+    peer.bind(str(peer_path))
+    peer_path.chmod(0o600)
     runtime, client = _runtime(tmp_path)
     origin = {
         "kind": "peer",
-        "from": "uds:peer",
-        "name": "pipeline-24",
+        "from": f"uds:{peer_path}",
+        "name": "stale-display-name",
+        "verifiedPeerPid": os.getpid(),
         "fromSession": "session-1",
         "msg_id": "peer-message-1",
         "body": "from Claude",
@@ -781,6 +794,29 @@ def test_peer_messages_are_attributed_deduplicated_and_conflicts_fail(
     )
     assert len(events["events"]) == 1
     assert events["events"][0]["sender"]["identity_scope"] == "routing_only"
+    with monkeypatch.context() as invalid:
+        invalid.setattr(Path, "lstat", lambda _path: pytest.fail("unvalidated path probe"))
+        with pytest.raises(connector.ConnectorError, match="verified peer sender"):
+            connector._attributed_reply_address({"sender": {"verified_peer_pid": "../x"}})
+    root.chmod(0o755)
+    with pytest.raises(connector.ConnectorError, match="verified peer sender"):
+        connector._attributed_reply_address(events["events"][0])
+    root.chmod(0o700)
+    server = connector.build_mcp_server(
+        connector.ConnectorTools(runtime=runtime, default_cwd=tmp_path)
+    )
+    reply = {"reply_to_message_id": origin["msg_id"], "text": "ack", "message_id": "r1"}
+    assert _tool_call(server, "claude_bridge_send", dict(reply, target="wrong"))[1]
+    assert not _tool_call(server, "claude_bridge_send", reply)[1]
+    assert client.query_started.wait(1)
+    relay = json.loads(client.queries[0].split("\n", 1)[1])
+    assert (relay["target"], relay["route"], relay["in_reply_to"]) == (
+        f"uds:{peer_path}", "attributed_reply", origin["msg_id"]
+    )
+    send = {key: relay[key] for key in ("summary", "message")} | {"to": relay["target"]}
+    pre = _hook(client, "PreToolUse")
+    assert not _allowed(asyncio.run(pre(_pre("ListAgents", {}), "l1", None)))
+    assert _allowed(asyncio.run(pre(_pre("SendMessage", send), "s1", None)))
     client.emit(
         FakeUserMessage(
             "fallback",
@@ -1107,8 +1143,7 @@ def test_a_finished_turn_leaves_the_bridge_relaunchable(tmp_path, monkeypatch):
 
 
 def test_a_native_refusal_is_visible_without_reading_the_payload() -> None:
-    """Two sends were accepted with terminal receipts and null errors, and
-    neither arrived. The native result carried the answer and nobody read it."""
+    """A native refusal is evidence; native acceptance is still not delivery."""
     assert connector._native_refusal({"success": False, "error": "no such peer"}) == "no such peer"
     assert connector._native_refusal({"isError": True, "content": "unreachable"}) == "unreachable"
     assert connector._native_refusal({"ok": True}) is None
@@ -1192,4 +1227,3 @@ def test_stop_survives_a_store_directory_deleted_underneath_it(tmp_path, monkeyp
 
     assert result["state"] == "stopped", "a bridge must always be able to stop"
     assert json.loads(Path(f"{store}.diagnostic").read_text())["latest_cursor"] >= 1
-
