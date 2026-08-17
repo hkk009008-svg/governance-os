@@ -551,7 +551,16 @@ def cleanup_lock(store: Path, mode: int) -> Any:
     is in flight, and a read cannot begin midway through a cleanup.
     """
 
-    descriptor = os.open(f"{store}.read", os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        descriptor = os.open(f"{store}.read", os.O_CREAT | os.O_RDWR, 0o600)
+    except OSError:
+        # O_CREAT makes the file, not its directory. When the store's directory
+        # is gone there is nothing left to coordinate with and nothing left to
+        # protect, so stopping must still succeed -- found when the directory
+        # was deleted under a live bridge and stop() raised instead of stopping,
+        # destroying the diagnostic that would have explained the run.
+        yield
+        return
     try:
         fcntl.flock(descriptor, mode)
         yield
@@ -1369,6 +1378,7 @@ class BridgeRuntime:
         target = Path(f"{store}.diagnostic")
         staging = Path(f"{store}.diagnostic.partial")
         try:
+            staging.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             descriptor = os.open(staging, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
             with os.fdopen(descriptor, "w") as handle:
                 json.dump(summary, handle, default=str)

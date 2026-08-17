@@ -1165,3 +1165,31 @@ def test_a_stopped_run_leaves_diagnostics_but_no_readable_generation(tmp_path, m
     with pytest.raises(connector.ConnectorError):
         tools.call("claude_bridge_wait", {"generation": generation, "timeout_seconds": 0})
 
+
+def test_stop_survives_a_store_directory_deleted_underneath_it(tmp_path, monkeypatch):
+    """Exactly what I did to a live bridge, made a control.
+
+    The store directory was removed mid-run. cleanup_lock's O_CREAT makes a
+    file, not its parent, so stop() raised instead of stopping, and the
+    diagnostic that would have explained the run was never written. A bridge
+    must always be able to stop, and the record must survive the same accident
+    it exists to describe.
+    """
+    import shutil
+
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    runtime, client = _runtime(tmp_path)
+    origin = {"from": "uds:peer", "name": "pipeline-24", "msg_id": "m1", "body": "hi"}
+    client.emit(FakeUserMessage("fallback", origin=origin, uuid="u1"))
+    _until(lambda: runtime.status()["latest_cursor"] == 1)
+    store = connector.shared_buffer_path(tmp_path)
+
+    shutil.rmtree(store.parent)
+
+    result = runtime.stop()
+
+    assert result["state"] == "stopped", "a bridge must always be able to stop"
+    assert json.loads(Path(f"{store}.diagnostic").read_text())["latest_cursor"] >= 1
+
