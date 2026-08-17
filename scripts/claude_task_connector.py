@@ -788,6 +788,27 @@ def _content_text(content: Any) -> str:
     return text
 
 
+def _diagnostic_event(event: Mapping[str, Any]) -> dict[str, Any]:
+    """An event's shape without its content: bodies are hashed, never copied."""
+
+    body = event.get("text") or (event.get("input") or {}).get("message")
+    return {
+        "kind": event.get("kind"),
+        "cursor": event.get("cursor"),
+        "operation_id": event.get("operation_id"),
+        "name": event.get("name"),
+        "resolved_target": event.get("resolved_target"),
+        "native_refusal": event.get("native_refusal"),
+        "response": event.get("response"),
+        "reason": event.get("reason"),
+        "messages_observed": event.get("messages_observed"),
+        "body_sha256": (
+            hashlib.sha256(body.encode()).hexdigest()[:16]
+            if isinstance(body, str) else None
+        ),
+    }
+
+
 def _native_refusal(response: Any) -> str | None:
     """The native tool's own complaint, or None if it did not make one.
 
@@ -1321,6 +1342,40 @@ class BridgeRuntime:
                 )
             return result
 
+    def _write_diagnostic(self, store: Path) -> None:
+        """Leave a bounded record behind, because stop() destroys the evidence.
+
+        The store is discarded so a dead bridge's cursor can never read as live,
+        which is a property worth keeping. Its cost was paid today: a relay
+        failed, the shutdown deleted the events explaining why, and a scan after
+        the fact found nothing and was read as "the bridge records nothing". The
+        summary is not a store -- it is JSON beside one, so no peer read can
+        mistake it for a generation -- it holds only the newest run, and it
+        carries shapes rather than bodies.
+        """
+
+        try:
+            recent = self._events._read(0, 64)["events"][-12:]
+        except Exception:  # a diagnostic must never keep a bridge from stopping
+            recent = []
+        summary = {
+            "written_at": _now(),
+            "generation": self._events.generation,
+            "latest_cursor": self._events.latest_cursor,
+            "state": self._state,
+            "last_error": self._error,
+            "events": [_diagnostic_event(event) for event in recent],
+        }
+        target = Path(f"{store}.diagnostic")
+        staging = Path(f"{store}.diagnostic.partial")
+        try:
+            descriptor = os.open(staging, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+            with os.fdopen(descriptor, "w") as handle:
+                json.dump(summary, handle, default=str)
+            staging.replace(target)  # atomic, so a reader never sees half a run
+        except OSError:
+            staging.unlink(missing_ok=True)
+
     def _release_owner(self) -> None:
         """Give the store back, so the next start is not refused by a dead bridge.
 
@@ -1438,6 +1493,7 @@ class BridgeRuntime:
         result = self.status()
         store = self._events.path
         with cleanup_lock(store, fcntl.LOCK_EX) if store else contextlib.nullcontext():
+            self._write_diagnostic(store)
             self._events.discard()
         self._events = EventBuffer(DEFAULT_QUEUE_LIMIT)
         self._release_owner()
