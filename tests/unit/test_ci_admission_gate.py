@@ -9,6 +9,7 @@ proves a same-family high-risk reviewer is rejected by that delegation.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -401,10 +402,40 @@ def test_a_governance_tip_must_be_a_linear_descendant(tmp_path: Path) -> None:
     with pytest.raises(gate.AdmissionError, match="must descend from"):
         gate.evaluate(root, base, reviewed_head, _git(root, "rev-parse", "HEAD"))
 
-    _git(root, "checkout", "-q", "-B", "octopus", governance)
+    # A regular two-parent merge, not an octopus: it is the minimal
+    # counterexample to the one-parent predicate and exercises the same branch.
+    _git(root, "checkout", "-q", "-B", "merged", governance)
     _git(root, "merge", "-q", "--no-edit", "sibling")
     with pytest.raises(gate.AdmissionError, match="not a linear successor"):
         gate.evaluate(root, base, reviewed_head, _git(root, "rev-parse", "HEAD"))
+
+    # THE control, at the only surface anything runs: a subprocess, argv in,
+    # exit code out. evaluate() has no production caller, so an arm that calls
+    # it is a mechanism test -- which is why dropping main's governance
+    # argument, or moving validation below the no-authority return, left every
+    # evaluate-level arm green while the public path admitted a sibling tip.
+    _git(root, "checkout", "-q", "sibling")
+    completed = subprocess.run(
+        [sys.executable, str(Path(gate.__file__).resolve()), "--root", str(root),
+         "--base", base, "--head", reviewed_head,
+         "--governance-head", _git(root, "rev-parse", "sibling")],
+        capture_output=True, text=True,
+    )
+
+    assert completed.returncode == 2, completed.stdout + completed.stderr
+    assert "must descend from" in completed.stderr
+
+    # Empty range: evaluate is never reached, so this arm covers main's own
+    # validation alone. Without it, either validator could be deleted and every
+    # other arm would stay green because the other one caught it.
+    empty = subprocess.run(
+        [sys.executable, str(Path(gate.__file__).resolve()), "--root", str(root),
+         "--base", reviewed_head, "--head", reviewed_head,
+         "--governance-head", _git(root, "rev-parse", "sibling")],
+        capture_output=True, text=True,
+    )
+
+    assert empty.returncode == 2, empty.stdout + empty.stderr
 
 
 

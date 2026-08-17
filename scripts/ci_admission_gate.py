@@ -404,6 +404,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.governance_head
             else head
         )
+        # Before the empty-range return, not after: a supplied tip exited 0
+        # unvalidated while the range was empty, contradicting the refusal this
+        # range claims. evaluate validates too, so neither entry point depends
+        # on the other -- and the empty-range arm in the control is what keeps
+        # this call from rotting unnoticed, since evaluate is never reached.
+        _governance_commits(root, head, governance)
         if base == head:
             print(
                 "ADMISSION GATE — empty range (base equals head); nothing to admit"
