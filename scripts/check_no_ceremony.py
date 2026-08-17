@@ -8,6 +8,7 @@ import importlib.util
 import os
 from pathlib import Path
 import tempfile
+import tomllib
 
 import git_runner
 
@@ -24,6 +25,7 @@ MAX_PYTHON_NET_GROWTH = 181
 MAX_PYTHON_FILE_NET_GROWTH = 80
 MAX_PYTHON_FILE_ADDITIONS = 250
 PYTHON_PATHSPEC = ":(glob)**/*.py"
+GROWTH_EXCEPTIONS = Path("config/growth-exceptions.toml")
 
 
 def _is_xfail_decorator(node: ast.expr) -> ast.Call | ast.Attribute | None:
@@ -237,8 +239,67 @@ def rule_report_cites_executed_pin(repo_root: Path = ROOT) -> tuple[str, list[st
     )
 
 
+def _approved_growth_exception(root: Path, base: str | None, net: int) -> str | None:
+    """The rationale for an exception fitting this exact range, or None.
+
+    The aggregate ceiling judges arithmetic; a reviewer judges proportionality.
+    This makes the ceiling a trigger rather than a wall, and grants nothing: the
+    manifest lives under `config/`, an authority surface, so adding an entry is
+    a change `ci_admission_gate` refuses without a committed non-author,
+    different-model GO. Structural eligibility is returned here, never review.
+
+    An entry cannot key the final head, because writing a head into a commit
+    changes it. It names the CODE head instead, required to be an ancestor of
+    HEAD with no Python change after it -- which makes the measured
+    `base..HEAD` net identical to `base..code_head`, so the pinned number is
+    checked against the bytes the reviewer actually read. A rebase moves either
+    end, a later Python edit breaks the zero-diff condition, and the pin is
+    exact, so one more line needs a new review. All fail closed.
+
+    The committed conditions are not sufficient on their own. The total this is
+    asked about includes working-tree and untracked Python, which no comparison
+    between two commits can see: measured, a code head adding 100 committed
+    lines plus an untracked 15-line file matched a pin of 115 and PASSED. So
+    the tree must be clean of Python and free of untracked Python before an
+    exception is consulted at all, or unreviewed bytes ride the reviewed
+    arithmetic.
+    """
+
+    manifest = root / GROWTH_EXCEPTIONS
+    if base is None or not manifest.is_file():
+        return None
+    try:
+        entries = tomllib.loads(manifest.read_text(encoding="utf-8"))["exception"]
+    except (tomllib.TOMLDecodeError, KeyError, OSError, UnicodeError) as exc:
+        raise ValueError(f"unreadable growth exception manifest: {exc}") from None
+    matches = [entry for entry in entries if entry.get("base") == base]
+    if len(matches) != 1:
+        if matches:
+            raise ValueError(f"duplicate growth exception entries for base {base[:12]}")
+        return None
+    entry = matches[0]
+    code_head, pinned = entry.get("code_head"), entry.get("net")
+    rationale = entry.get("rationale")
+    if not isinstance(rationale, str) or not rationale.strip() or pinned != net:
+        return None
+    checks = (
+        ["merge-base", "--is-ancestor", code_head, "HEAD"],
+        ["diff", "--quiet", code_head, "HEAD", "--", PYTHON_PATHSPEC],
+        ["diff", "--quiet", "HEAD", "--", PYTHON_PATHSPEC],
+    )
+    untracked = git_runner.run_git(
+        root, ["ls-files", "--others", "--exclude-standard", "--", PYTHON_PATHSPEC],
+        text=True,
+    )
+    if any(git_runner.run_git(root, check).returncode for check in checks):
+        return None
+    if untracked.returncode != 0 or untracked.stdout.strip():
+        return None
+    return rationale.strip()
+
+
 def _python_growth_violations(
-    numstat: str, introduced: frozenset[str] = frozenset()
+    numstat: str, introduced: frozenset[str] = frozenset(), base: str | None = None
 ) -> tuple[list[str], str]:
     """Count growth by what it is, not only by how many lines it is.
 
@@ -269,9 +330,17 @@ def _python_growth_violations(
             continue
         if additions - deletions > MAX_PYTHON_FILE_NET_GROWTH:
             violations.append(f"{path}: net growth {additions - deletions} exceeds {MAX_PYTHON_FILE_NET_GROWTH}")
-    if added - deleted > MAX_PYTHON_NET_GROWTH:
-        violations.append(f"total net Python growth {added - deleted} exceeds {MAX_PYTHON_NET_GROWTH}")
-    return violations, f"{added} added, {deleted} deleted, net {added - deleted}"
+    total = added - deleted
+    summary = f"{added} added, {deleted} deleted, net {total}"
+    if total > MAX_PYTHON_NET_GROWTH:
+        # Only the aggregate is exceptable. The per-file caps above never
+        # consult this and cannot be waived.
+        rationale = _approved_growth_exception(ROOT, base, total)
+        if not rationale:
+            violations.append(f"total net Python growth {total} exceeds {MAX_PYTHON_NET_GROWTH}")
+        else:
+            summary += f"; eligible exception, review still required: {rationale}"
+    return violations, summary
 
 
 def _introduced_python(base: str | None) -> frozenset[str]:
@@ -349,7 +418,7 @@ def rule_python_growth() -> tuple[str, list[str]]:
             part.rstrip("\n") for part in (tracked, untracked) if part
         )
         violations, summary = _python_growth_violations(
-            numstat, _introduced_python(base) | _untracked_python_paths()
+            numstat, _introduced_python(base) | _untracked_python_paths(), base
         )
     except Exception as exc:
         return "FAIL", [f"Python growth check failed: {exc}"]

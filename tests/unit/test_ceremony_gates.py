@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import io
+import pytest
 import subprocess
 import sys
 
