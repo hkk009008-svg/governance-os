@@ -41,6 +41,7 @@ for _path in (_REPO_ROOT, _SCRIPTS_DIR):
 
 import compact_pair_loop as pair  # noqa: E402
 import git_runner  # noqa: E402
+import protocol_mailbox as mailbox  # noqa: E402
 
 # Authority surfaces: executable authority, side-effect gating, trust-granting
 # composition, and the integration gate itself. Directory entries end with a
@@ -216,16 +217,23 @@ def _introduction_commit(root: Path, head: str, path: str) -> str:
 
 
 def _governance_commits(root: Path, head: str, governance_head: str) -> list[str]:
-    """Prove `head..governance_head` is a chain of single-event commits.
+    """Refuse a governance tip whose commits are not shaped like single events.
 
-    A separate governance tip lets the record advance while the reviewed range
-    stays byte-stable, which is what makes an unattended handoff possible. It
-    also means the gate reads a ref the author controls, so the shape is
-    proved rather than assumed: linear, one parent, and exactly one added
-    mailbox event per commit. Anything else is refused rather than projected.
+    STRUCTURAL ONLY, and deliberately incomplete: this proves linearity, added
+    status, blob mode and a flat canonical name. It does NOT prove the bytes are
+    a canonical event -- the envelope, kind and body are unchecked here, and
+    `protocol_mailbox.load_committed_event_ref` is the reader that will judge
+    them in the successor range. Nothing consumes a governance tip for evidence
+    yet, so an incomplete validator guards an inert input; that stops being true
+    the moment evidence discovery moves, which is why the envelope check must
+    land first.
 
-    Read-only by construction. rev-list and diff-tree read objects; the
-    governance tip is never checked out and nothing on it is executed.
+    A path prefix was not even this much. `startswith` alone admitted a commit
+    adding `coordination/mailbox/sent/smuggled.py`, and a report introduced with
+    mode 100755.
+
+    Read-only: rev-list and diff-tree read objects, the tip is never checked
+    out, and nothing on it is executed.
     """
 
     if governance_head == head:
@@ -236,31 +244,28 @@ def _governance_commits(root: Path, head: str, governance_head: str) -> list[str
         raise AdmissionError(
             "governance head must descend from the reviewed head"
         ) from None
-    commits = [
-        line.strip()
-        for line in _git(
-            root, "rev-list", "--reverse", f"{head}..{governance_head}"
-        ).splitlines()
-        if line.strip()
-    ]
+    span = f"{head}..{governance_head}"
+    commits = _git(root, "rev-list", "--reverse", span).split()
     for commit in commits:
+        refusal = f"governance commit {commit[:12]} must add exactly one event"
         if len(_git(root, "rev-list", "--parents", "-1", commit).split()) != 2:
-            raise AdmissionError(
-                f"governance commit {commit[:12]} is not a linear successor"
-            )
-        # name-status in one read, so "added" and "changed nothing else" are
-        # decided from the same observation rather than from two that could
-        # disagree between calls.
-        changed = _git(
-            root, "diff-tree", "--no-commit-id", "--name-status", "-r", commit
-        ).split()
-        if changed[:1] != ["A"] or len(changed) != 2 or not changed[1].startswith(
-            _MAILBOX_SENT
+            raise AdmissionError(f"{refusal}: not a linear successor")
+        # One raw NUL-delimited read, so status, destination mode and path are
+        # decided from a single observation rather than from calls that could
+        # disagree. Raw emits ":<src> <dst> <ssha> <dsha> <status>\0<path>\0".
+        raw = _git(root, "diff-tree", "--no-commit-id", "-r", "--raw", "-z", commit)
+        fields = [field for field in raw.split("\0") if field]
+        if len(fields) != 2:
+            raise AdmissionError(refusal)
+        meta, path = fields[0].split(), fields[1]
+        directory, _, name = path.rpartition("/")
+        if (
+            meta[-1] != "A"
+            or meta[1] != "100644"
+            or f"{directory}/" != _MAILBOX_SENT
+            or not mailbox.EVENT_NAME_RE.match(name)
         ):
-            raise AdmissionError(
-                f"governance commit {commit[:12]} must add exactly one sent event "
-                "and change nothing else"
-            )
+            raise AdmissionError(refusal)
     return commits
 
 
@@ -283,18 +288,20 @@ def evaluate(
 ) -> Outcome:
     governance = governance_head or head
     outcome = Outcome(base=base, head=head, governance_head=governance)
+    # Before the early return, not after: a no-authority range that reported a
+    # successful governance head without ever looking at it was a reassuring
+    # reading of a tip that could have carried anything.
+    _governance_commits(root, head, governance)
     # Authority is always computed from the reviewed range, never from the
     # governance tip: evidence may advance, the range under review may not.
     outcome.authority_commits = authority_commits(root, base, head)
     if not outcome.authority_commits:
         return outcome
 
-    _governance_commits(root, head, governance)
-    evidence = (head, governance) if governance != head else (base, head)
 
     parsed: dict[str, pair.VerificationReport] = {}
-    for path in _reports_added_in_range(root, *evidence):
-        raw = _git(root, "show", f"{governance}:{path}").encode("utf-8")
+    for path in _reports_added_in_range(root, base, head):
+        raw = _git(root, "show", f"{head}:{path}").encode("utf-8")
         try:
             report = pair.parse_verification_report_committed_bytes(root, path, raw)
         except pair.CompactPairError as exc:
@@ -312,7 +319,7 @@ def evaluate(
         if report.supersedes is not None:
             superseded.add(report.supersedes)
     for path in parsed:
-        introductions[path] = _introduction_commit(root, governance, path)
+        introductions[path] = _introduction_commit(root, head, path)
 
     for path, report in sorted(parsed.items()):
         if (path, introductions[path]) in superseded:

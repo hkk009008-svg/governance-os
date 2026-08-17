@@ -375,31 +375,39 @@ def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
     assert [coverage.verdict for coverage in outcome.coverages] == ["GO"]
 
 
-def test_evidence_on_a_governance_tip_admits_a_frozen_reviewed_head(
-    tmp_path: Path,
-) -> None:
-    """Authority comes from B..H; evidence may come from H..G.
+def test_a_governance_tip_is_refused_unless_shaped_like_events(tmp_path: Path) -> None:
+    """A path prefix admitted `sent/smuggled.py` and a mode-100755 report.
 
-    Measured 2026-08-17: committed evidence on a feature branch is durable and
-    undiscoverable, because the projection reads one HEAD and a peer on another
-    ref cannot find it. A separate governance tip is the answer, and it is only
-    safe if the tip carries evidence and nothing else.
+    The mode case stands for 100755, 120000 and 160000 alike: all three fail
+    the one `meta[1] != "100644"` predicate. Structural only -- 1a does not
+    claim the bytes are a canonical event.
     """
+    sent = "coordination/mailbox/sent"
+    event = "2026-08-07T12-00-00Z-a-to-b-query.md"
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
         root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     _land_pair(root, base, reviewed_head)
     governance = _git(root, "rev-parse", "HEAD")
+    without_g = gate.evaluate(root, base, reviewed_head).admitted
 
-    outcome = gate.evaluate(root, base, reviewed_head, governance)
+    # Validated, and still contributing nothing: evidence and admission stay on
+    # B..H until the successor range moves them.
+    assert gate.evaluate(root, base, reviewed_head, governance).admitted is without_g
 
-    assert outcome.admitted, gate.render(outcome)
-    assert (outcome.head, outcome.governance_head) == (reviewed_head, governance)
-
-    _commit_file(root, "scripts/smuggled.py", "X = 1\n", "feat: smuggle code")
-    with pytest.raises(gate.AdmissionError, match="exactly one sent event"):
-        gate.evaluate(root, base, reviewed_head, _git(root, "rev-parse", "HEAD"))
+    for relative, chmod in (
+        (f"{sent}/smuggled.py", False), (f"{sent}/nested/{event}", False),
+        (f"{sent}/{event}", True),
+    ):
+        _git(root, "checkout", "-q", "-B", "probe", governance)
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        _commit_file(root, relative, "x\n", "governance: plant")
+        if chmod:
+            _git(root, "update-index", "--chmod=+x", "--", relative)
+            _git(root, "commit", "-q", "-m", "governance: mode")
+        with pytest.raises(gate.AdmissionError, match="exactly one event"):
+            gate.evaluate(root, base, reviewed_head, _git(root, "rev-parse", "HEAD"))
 
 
 def test_fail_verdict_does_not_admit(tmp_path: Path) -> None:
