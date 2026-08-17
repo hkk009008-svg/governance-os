@@ -15,7 +15,7 @@ socket injection.
 ## Boundary
 
 The peer can use only `ListAgents` and `SendMessage`. An SDK `PreToolUse`
-hook allows one sequence:
+hook allows one listed-peer sequence:
 
 1. one empty `ListAgents`;
 2. only when that result has no live peer rows, one registration-lag retry;
@@ -26,6 +26,11 @@ hook allows one sequence:
 Everything else is denied. The target keeps its displayed `[ref]`; offline,
 ambiguous, missing after the retry, self, altered, repeated, and `local_*`
 targets fail closed.
+For a reply, `reply_to_message_id` instead derives the exact UDS target from
+the stored provider-attributed sender, refuses an unverified or shared socket,
+and permits one matching `SendMessage` without consulting `ListAgents`.
+Socket existence is not a liveness proof; the receipt still reports no
+end-to-end acknowledgement.
 `PostToolUse` records the native response before it is exposed to Codex.
 
 The connector is transport only. It cannot assign a seat, grant authority,
@@ -58,7 +63,7 @@ duplicate.
 |---|---|
 | `claude_bridge_start` | Start the fixed named bridge explicitly. |
 | `claude_bridge_status` | Read bridge state and optionally one relay receipt. |
-| `claude_bridge_send` | Lazily start and queue one idempotent exact/prefix relay. |
+| `claude_bridge_send` | Queue one listed-peer relay, or reply to an attributed inbound message. |
 | `claude_bridge_wait` | Read or wait by generation/cursor and optionally include the relay receipt. |
 | `claude_bridge_stop` | Stop the locally owned bridge. |
 
@@ -86,8 +91,10 @@ creates a new generation and rejects old cursors.
 
 ## Reply convention
 
-Claude addresses the full native peer name shown by `ListAgents`, for example
-`pipeline-codex-bridge [ref]`. Inbound `origin.kind=peer` and
+Codex replies with `reply_to_message_id` so the connector uses the inbound
+sender attribution rather than guessing a rotating display name. A new
+conversation may still address the full native peer shown by `ListAgents`.
+Inbound `origin.kind=peer` and
 `task-notification` / `peer-send-message` shapes become `peer_message` events.
 The SDK body and routing attribution are preserved but labeled routing-only,
 not governance identity. Repeated native message IDs are emitted once; reuse
