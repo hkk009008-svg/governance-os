@@ -1115,3 +1115,34 @@ def test_a_run_records_why_it_ended(tmp_path, monkeypatch):
     assert lifecycle[-1]["seconds"] >= 0
     runtime.stop()
 
+
+def test_a_stopped_run_leaves_diagnostics_but_no_readable_generation(tmp_path, monkeypatch):
+    """stop() destroys the evidence for the failure that preceded it.
+
+    Measured today: a relay failed, the clean shutdown deleted the events that
+    explained it, and a scan afterwards found nothing and was read as "the
+    bridge records nothing". Both properties must hold at once -- the record
+    survives, and the dead generation is still refused.
+    """
+    home = tmp_path / "home"
+    home.mkdir(mode=0o750)
+    monkeypatch.setenv("HOME", str(home))
+    runtime, client = _runtime(tmp_path)
+    origin = {"from": "uds:peer", "name": "pipeline-24", "msg_id": "m1", "body": "hi"}
+    client.emit(FakeUserMessage("fallback", origin=origin, uuid="u1"))
+    _until(lambda: runtime.status()["latest_cursor"] == 1)
+    generation = runtime.status()["generation"]
+    store = connector.shared_buffer_path(tmp_path)
+    tools = connector.ConnectorTools(default_cwd=tmp_path)
+
+    runtime.stop()
+
+    assert not store.exists(), "the live store must still be transient"
+    record = json.loads(Path(f"{store}.diagnostic").read_text())
+    assert record["generation"] == generation
+    assert record["latest_cursor"] >= 1
+    assert Path(f"{store}.diagnostic").stat().st_mode & 0o077 == 0, "0600 only"
+    assert all("text" not in event for event in record["events"]), "shapes, not bodies"
+    with pytest.raises(connector.ConnectorError):
+        tools.call("claude_bridge_wait", {"generation": generation, "timeout_seconds": 0})
+
