@@ -946,6 +946,31 @@ def test_malformed_or_mismatched_report_does_not_clear_pending(
     assert snapshot["next_action"] == "operator reviews the exact committed request"
 
 
+def test_pending_request_projects_the_range_a_reviewer_must_know(
+    tmp_path: Path,
+) -> None:
+    """The projection said work was pending without saying what work.
+
+    A reviewer reading the snapshot learned that a request existed and who
+    owned it, then had to open the event to find the range. Asserting against
+    the fixture's own base and head -- which differ -- fails on an absent
+    field, on a hardcoded None, and on the two being swapped.
+    """
+    root, coord, base, head = _review_repo(tmp_path)
+    request_path, request_commit = _commit_request(root, base, head)
+
+    state = cc.inspect_verify_review_state(root, coord)
+
+    assert base != head, "a swapped range must be detectable"
+    pending = {item.path: item for item in state.pending}[request_path]
+    assert (pending.reviewed_base, pending.reviewed_head) == (base, head)
+
+    snapshot = status.collect_orientation_snapshot(root, "operator")
+    current = snapshot["current_request"]
+    assert (current["reviewed_base"], current["reviewed_head"]) == (base, head)
+    assert current["reviewed_repository"] == pending.reviewed_repository
+
+
 def test_malformed_report_does_not_clear_pending(tmp_path: Path) -> None:
     root, coord, base, head = _review_repo(tmp_path)
     request_path, request_commit = _commit_request(root, base, head)

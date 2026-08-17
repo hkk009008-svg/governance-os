@@ -117,6 +117,11 @@ class CurrentVerifyRequest:
     valid: bool
     problem: str | None
     grandfathered: bool = False
+    # The range is what a reviewer needs before deciding to pick the request
+    # up; without it the projection says work is pending and not what work.
+    reviewed_repository: str | None = None
+    reviewed_base: str | None = None
+    reviewed_head: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1357,6 +1362,11 @@ def inspect_verify_review_state(
             valid=problem is None,
             problem=problem,
             grandfathered=grandfathered,
+            reviewed_repository=(
+                request.reviewed_repository if request is not None else None
+            ),
+            reviewed_base=request.reviewed_base if request is not None else None,
+            reviewed_head=request.reviewed_head if request is not None else None,
         )
         if newest_paths[recipient] == path:
             requests[recipient] = current
@@ -1450,6 +1460,9 @@ def inspect_verify_review_state(
                 valid=False,
                 problem=problem,
                 grandfathered=current.grandfathered,
+                reviewed_repository=current.reviewed_repository,
+                reviewed_base=current.reviewed_base,
+                reviewed_head=current.reviewed_head,
             )
 
     preliminary_reports: list[

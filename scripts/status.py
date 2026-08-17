@@ -678,6 +678,9 @@ def collect_orientation_snapshot(
             "valid": current.valid,
             "grandfathered": current.grandfathered,
             "problem": current.problem,
+            "reviewed_repository": current.reviewed_repository,
+            "reviewed_base": current.reviewed_base,
+            "reviewed_head": current.reviewed_head,
         }
     failed_data = None
     if failed is not None:
