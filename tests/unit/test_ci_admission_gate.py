@@ -11,6 +11,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import ci_admission_gate as gate
 
 
@@ -371,6 +373,39 @@ def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
 
     assert outcome.admitted, gate.render(outcome)
     assert [coverage.verdict for coverage in outcome.coverages] == ["GO"]
+
+
+def test_a_governance_tip_must_be_a_linear_descendant(tmp_path: Path) -> None:
+    """Ancestry and linearity only; what a commit CONTAINS is unproven here.
+
+    Asserted through evaluate, which is where the decision is made. A control
+    aimed at _governance_commits would pass with the call site removed, and
+    that exact substitution has already shipped a hole twice today.
+    """
+    root, base = _init_repo(tmp_path)
+    reviewed_head = _commit_file(
+        root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
+    )
+    _land_pair(root, base, reviewed_head)
+    governance = _git(root, "rev-parse", "HEAD")
+    without_g = gate.evaluate(root, base, reviewed_head).admitted
+
+    # Validated and contributing nothing: admission stays on base..head, so an
+    # incomplete validator here guards an input no verdict depends on.
+    assert gate.evaluate(root, base, reviewed_head, governance).admitted is without_g
+
+    # From base, not from the reviewed head: a child of the head IS a
+    # descendant, so branching there would have proved nothing.
+    _git(root, "checkout", "-q", "-B", "sibling", base)
+    _commit_file(root, "unrelated.txt", "x\n", "chore: sibling")
+    with pytest.raises(gate.AdmissionError, match="must descend from"):
+        gate.evaluate(root, base, reviewed_head, _git(root, "rev-parse", "HEAD"))
+
+    _git(root, "checkout", "-q", "-B", "octopus", governance)
+    _git(root, "merge", "-q", "--no-edit", "sibling")
+    with pytest.raises(gate.AdmissionError, match="not a linear successor"):
+        gate.evaluate(root, base, reviewed_head, _git(root, "rev-parse", "HEAD"))
+
 
 
 def test_fail_verdict_does_not_admit(tmp_path: Path) -> None:
