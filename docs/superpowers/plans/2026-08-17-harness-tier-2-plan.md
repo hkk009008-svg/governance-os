@@ -205,16 +205,86 @@ further facts, kept from the draft because they hold:
 
 ### I5 — Dual-tip prototype
 
-The mechanism for I4: carry an implementation tip and a governance tip
-separately, so the range under review stays byte-stable while the record
-advances. Prototype on one range before proposing it as protocol.
+The mechanism for I4. **Design supplied by Codex 2026-08-17**, replacing
+the director's placeholder. Same repository, one range, two immutable
+OIDs:
 
-**Incomplete.** Codex requires this item to name the agreed event binding
-fields and to state how admission projects and consumes a separate
-governance tip. The director does not hold those field names and will not
-invent them; they are requested from Codex and this section is a
-placeholder until they arrive. Written down as a gap rather than filled
-with a guess.
+```
+B ... H                 implementation branch remains exactly H
+      \
+       R -- V           governance-only linear branch, G = V
+```
+
+`R` introduces the request, `V` introduces the report. Deterministic
+prototype ref `refs/heads/governance/reviews/<H>`. **The implementation
+ref never advances beyond H** — which is what removes the branch
+advancement and new authority debt named in I4.
+
+New common fields on request and report, and only these:
+
+```
+Review schema:       compact-pair-dual-tip/v1
+Work item:           <lowercase-slug>
+Subject repository:  <stable registry identity, not a machine-local path>
+Subject branch:      refs/heads/<branch>
+```
+
+`Subject branch` is routing metadata only; no authority decision resolves
+the moving ref. Everything else **reuses existing bindings rather than
+duplicating them**: exact subject base/head are `Reviewed base` /
+`Reviewed head`; actor and role are the fixed envelope plus Author/Reviewer
+seat and model, Assigned operator, Risk class; the report's semantic
+parent is `Verification request: <path>@<introduction-commit>`; lineage is
+`Remediates` and `Supersedes`.
+
+Codex's constraint, recorded because it is the load-bearing part: the
+agreed notions "parent event", "authority scope" and "content hash" do
+**not** justify three self-declared body fields. Physical lineage is the
+single-parent Git chain. Semantic lineage is the existing
+request/remediation/supersession refs. The canonical event ID is already
+`<event-path>@<introduction-commit>`, and the projection records and
+drift-checks the introduction blob OID — that *is* the content hash.
+**Authority cannot be manufactured by an event body.** A free-text
+"Authority scope" field would appear to prove itself. Once I3 creates a
+durable grant, bind `Publication grant: <immutable-event-ref>`; until
+then, authority binding is a stated dependency and the external
+publication grant remains required.
+
+Admission takes three explicit inputs, `--base B --head H
+--governance-head G`, and trusted gate code must:
+
+1. resolve B, H, G once to full OIDs and report both H and G in the outcome;
+2. require H ancestor-of G;
+3. require every commit in `H..G` to be a one-parent linear successor
+   adding exactly one canonical sent event and changing nothing else;
+4. project mailbox/history at pinned G **without checkout or execution of G**;
+5. load events introduced in `H..G` and validate exact introduction bytes,
+   ancestry, and schema/work-item/subject bindings;
+6. compute authority commits only from `B..H`;
+7. compute report coverage from existing `Reviewed base..Reviewed head`
+   and union admitting GO/NITS coverage as today;
+8. remain read-only — "consume" means project reports into coverage, never
+   advance a cursor or ref.
+
+This is a surgical split of `ci_admission_gate`: `authority_commits(B,H)`
+stays, evidence discovery moves from reports added in `B..H` to governance
+events in `H..G`, and the coverage union stays. The `pull_request_target`
+job explicitly fetches the deterministic governance ref, pins G, and lets
+trusted-base code object-read it. **Never execute code from G.**
+
+Publication must become compare-and-swap before promotion: the fixed
+writer accepts `expected_governance_tip`, creates the one-event commit,
+and does `update-ref <ref> <new> <expected-old>` under the common writer
+fence. The current publish-and-stage-then-commit sequence is not atomic
+and lets two publishers fork from the same G.
+
+Rollout is two stages: trusted-base parser and gate support through the
+current embedded-review path first; a later range exercises external G.
+A feature cannot depend on gate code that exists only on the candidate
+governance tip.
+
+For the controlled prototype a dedicated linked worktree on the governance
+ref is sufficient.
 
 ## 3. Added 2026-08-17
 
@@ -324,23 +394,96 @@ minimum honest delivery instrument, and remains unbuilt.
 
 ## 4. Restored from the 2026-08-16 agreement
 
-Codex identified these as agreed work the director's reconstruction
-dropped entirely. They are recorded with status rather than rebuilt,
-because several are partly landed. Status is Codex's characterisation; the
-director has not independently verified which parts exist.
+Agreed work the director's reconstruction dropped entirely. Breakdown
+supplied by Codex 2026-08-17. Every item is **extend what exists**, never
+build a parallel artifact — see section 7 for why that phrasing is load
+bearing.
 
-| item | status |
-|---|---|
-| public-path / threat-model formation | partly landed — needs gap analysis |
-| one coherent review plus a final cumulative review | proposed |
-| direct Git / ledger handoff | proposed |
-| current-state projection | partly landed |
-| policy consolidation | proposed |
-| growth / ceremony work | partly landed (PRs #38, #42) |
+### 4.1 Public-path / threat-model formation
 
-Each needs an existing / gap / proposed breakdown before it becomes a work
-item. That breakdown is not written yet and is the next thing owed on this
-document.
+- **Existing.** `claim_check` derives public-path, only-route,
+  real-argument, deletion-mutation, property and evasion premises.
+  High-risk requests already require abuse classes. `prove-a-control`
+  already requires a production path plus reversion and evasion.
+- **Gap.** These are opt-in, or arrive at review time. `VerifyRequest` has
+  no structured public entry point, principals, non-claims, resource
+  boundary, or failing public-surface scenario.
+- **Proposed.** Extend the existing claim ledger. For security, authority
+  or external-effect work, require one **pre-implementation** claim entry
+  naming public entry point, property/resource, principals, non-claims,
+  abuse classes and a failing public-path scenario; re-audit at closure.
+  No second formation card.
+
+### 4.2 One coherent review plus a final cumulative review
+
+- **Existing.** `AGENTS.md` already prescribes focused iteration then one
+  final review with full verification. Compact Pair binds exact ranges
+  plus remediation and supersession. Admission requires every authority
+  commit covered.
+- **Gap.** Admission unions any number of admitting report ranges, so
+  fragmented round reviews can admit without one composed-range judgment.
+- **Proposed.** Keep interim findings, but run one implementation review,
+  one batched remediation range, then require a final GO/NITS from PR base
+  through final implementation head whenever remediation lineage exists.
+  Admission requires that cumulative report **in addition to** union
+  coverage.
+
+### 4.3 Direct Git / ledger handoff
+
+- **Existing.** The fixed mailbox and Git projection are durable. `status`
+  discovers pending requests. Requests bind repository and base/head.
+- **Gap.** No end-to-end operation discovers a request, fetches and checks
+  out the subject, assigns a unique worktree, and prepares fixed-writer
+  publication. `status` omits reviewed repository/base/head from its
+  current-request projection. Connector failure still turns the user into
+  a relay — which happened repeatedly on 2026-08-17.
+- **Proposed.** One deterministic `next-review` path over the existing
+  mailbox: discover, validate and fetch subject, allocate an owned
+  worktree, prepare fixed-writer publication. Add only the missing fetch
+  and binding fields. Target: **zero user-mediated text relay** for
+  committed requests and reports.
+
+### 4.4 Current-state projection
+
+- **Existing.** The `status` snapshot pins Git and mailbox identity and
+  exposes unread, pending request, active FAIL, checkpoint, coordination
+  gate, blocker and next action in a bounded view.
+- **Gap.** No reviewed repository/base/head, no governance tip, no
+  verdict/remediation lineage, no merge or composition state, no admission
+  covered/uncovered projection. Its gate is coordination state, not
+  `ci_admission_gate`.
+- **Proposed.** Extend the existing snapshot JSON with those fields. Keep
+  the human view bounded, history queryable. **No mutable state file.**
+
+### 4.5 Policy consolidation
+
+- **Existing.** `protocol-assembly-map` names owning seams and says link
+  rather than copy. Core says executable seams outrank prose. `549f47f4`
+  removed duplicated and retired doctrine.
+- **Gap.** Some universal rules are still restated in adapters, intentional
+  provider deltas have no general drift classification, and runtime
+  docstrings carry successor PR/SHA pointers.
+- **Proposed.** Use the existing assembly map. Delete universal
+  restatements, replace runtime PR/SHA pointers with stable
+  contract/work-item IDs, mechanically sync only true stubs and
+  byte-identical artifacts, retain provider adapters as explicit deltas.
+
+### 4.6 Growth / ceremony
+
+- **Existing.** The gate enforces total net 100, existing-file net 80,
+  per-file additions 250, the introduced-file exemption, rename-aware
+  `-M5%`, and untracked counting. CI supplies the PR base. `549f47f4`
+  demonstrates subtraction.
+- **Gap.** An aggregate line count still acts as a hard design verdict;
+  reviewer-required controls compete with product code for the same
+  budget; there is no narrow reviewed-exception path and no advisory
+  conceptual, public-surface or policy-branch measure.
+- **Proposed.** Retain hard failure for contamination, rename escapes,
+  untracked growth and per-file bloat. Make the aggregate 100 a **design
+  trigger** requiring rationale plus a narrow reviewed exception. Add
+  advisory conceptual/public-surface/policy-branch reporting. Do not
+  recreate a `tests/` ledger unless that separation is enforceable — it
+  was not, which is why PR #42 collapsed it back into one.
 
 ## 5. Constraints
 
@@ -402,25 +545,64 @@ Three of the four are proposals to build or restate something the repo
 already had. The document argues that we forget what we already have, and
 demonstrated it four times in its own first draft.
 
-That suggests the Tier 2 list is missing an item, and that the missing
-item is not a control: **an inventory of what the harness already
-enforces, consulted before anything is proposed.** It is not added to the
-numbered list here, because adding it unreviewed would repeat the error
-this section describes.
+The director proposed the obvious response — an inventory of what the
+harness already enforces — and deliberately withheld it from the numbered
+list pending review. **Codex rejected it, and was right.** It is the same
+error a level up.
+
+The sources already exist, at different scopes:
+
+| source | scope |
+|---|---|
+| `governance_verify_all.CHECKER_REGISTRY` | which checker owns which boundary |
+| `ci_admission_gate.AUTHORITY_SURFACES` | which paths need a verdict |
+| `ARCHITECTURE.md` | factual topology |
+| `docs/protocol/protocol-assembly-map.md` | owning seams; link, do not copy |
+| provider and skill maps, with tests | adapter deltas |
+| `docs/REPOSITORY-MANUAL.md` | descriptive map, 58 KB |
+
+And the manual forecloses the proposal in its own text:
+
+```
+docs/REPOSITORY-MANUAL.md:760  For a file-by-file inventory at any later
+                               commit, use `git ls-files`, not this
+docs/REPOSITORY-MANUAL.md:762  not promote a descriptive table into an
+                               independent policy layer.
+```
+
+So the document the director would have duplicated contains a sentence
+forbidding the duplication. That is the fifth instance of the pattern in
+one document, and the most pointed.
+
+**The missing behaviour is discovery, not an artifact.** Before proposing
+mechanism: consult `REPOSITORY-MANUAL` or `ARCHITECTURE` to locate the
+owner, then the relevant executable registry or surface map, then inspect
+the current definition, its callers, its tests, and Git history — and
+**cite that lookup in the proposal**. A proposal without the lookup is
+incomplete on its face.
+
+If repeated misses later justify automation, add one **read-only derived
+view over the existing constants** — probably an option on
+`governance_verify_all` — never a stored union that can drift.
 
 ## 8. Open questions for Codex
 
-Round 1 (answered 2026-08-17): reconstruction accuracy, I1 authorship,
-I2 axis definition, I6 call-boundary concession. All four answered and
-folded into the text above.
+**Round 1**, answered 2026-08-17: reconstruction accuracy, I1 authorship,
+I2 axis definition, I6 call-boundary concession. Folded in above.
 
-Round 2, outstanding:
+**Round 2**, answered 2026-08-17: I5's dual-tip design and admission
+contract, section 4's existing/gap/proposed breakdown, and section 7's
+rejection of a maintained inventory. Folded in above. Codex stated that
+with these folded accurately it has no remaining substantive objection to
+the reconstruction.
 
-1. I5: the agreed event binding field names, and how admission projects
-   and consumes a separate governance tip. Requested, not guessed.
-2. Section 4: which parts of each restored item already exist, so the
-   existing/gap/proposed breakdown can be written from fact rather than
-   from Codex's one-word status.
-3. Section 7: is "an inventory of what the harness already enforces" the
-   right response to the four repeated errors, or is that itself another
-   artifact proposed where adoption is the actual gap?
+**Outstanding.** Nothing from Codex. What remains is the director's:
+
+1. Section 4's statuses are Codex's characterisations. Only two were
+   independently verified here — `CHECKER_REGISTRY`,
+   `REPOSITORY-MANUAL.md:760-762` — because section 7's own discipline
+   demands the lookup be cited. The other Existing claims are recorded on
+   Codex's authority and are marked as such rather than presented as
+   measured.
+2. Sequencing below is unreviewed by Codex.
+3. No PR opens for this countersign round, by Codex's explicit request.
