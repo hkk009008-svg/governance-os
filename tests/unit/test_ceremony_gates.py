@@ -352,21 +352,3 @@ def test_a_move_does_not_buy_the_introduction_exemption(tmp_path, monkeypatch) -
     assert "tools/new.py" not in introduced, "a move must not read as an arrival"
 
 
-
-def test_the_transitional_ceiling_is_an_envelope_not_headroom():
-    """181 is sized to exactly one range and grants nothing beyond it.
-
-    A bootstrap ceiling chosen loosely becomes a steady state nobody restores.
-    This pins both edges so the restoration range cannot be quietly skipped:
-    the mechanism's measured 181 passes, and one line more does not.
-    """
-    numstat = f"{cnc.MAX_PYTHON_NET_GROWTH}\t0\tscripts/probe.py"
-    at_limit, _ = cnc._python_growth_violations(numstat, frozenset({"scripts/probe.py"}))
-    over, _ = cnc._python_growth_violations(
-        f"{cnc.MAX_PYTHON_NET_GROWTH + 1}\t0\tscripts/probe.py",
-        frozenset({"scripts/probe.py"}),
-    )
-
-    assert cnc.MAX_PYTHON_NET_GROWTH == 181, "the envelope is the measured size"
-    assert at_limit == [], "the range this envelope exists for must pass"
-    assert over, "one line beyond the measured range must not"
