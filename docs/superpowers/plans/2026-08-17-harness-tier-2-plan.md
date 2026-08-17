@@ -275,7 +275,7 @@ trusted-base code object-read it. **Never execute code from G.**
 
 Publication must become compare-and-swap before promotion: the fixed
 writer accepts `expected_governance_tip`, creates the one-event commit,
-and does `update-ref <ref> <new> <expected-old>` under the common writer
+and does `update-ref <governance-ref> <new> <expected-old>` under the writer
 fence. The current publish-and-stage-then-commit sequence is not atomic
 and lets two publishers fork from the same G.
 
