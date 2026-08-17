@@ -377,24 +377,18 @@ def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
 
 
 def test_a_governance_tip_must_be_a_linear_descendant(tmp_path: Path) -> None:
-    """Through the CLI, because that is the only surface anything runs.
+    """Exercise the sole production consumer: the CLI subprocess."""
 
-    evaluate() has no production caller: ci.yml invokes this file as a
-    subprocess. Controls asserted on evaluate are mechanism tests, and three
-    rounds of findings landed because they were treated as more than that.
-    """
     root, base = _init_repo(tmp_path)
     head = _commit_file(
         root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     _land_pair(root, base, head)
     linear = _git(root, "rev-parse", "HEAD")
-    # From base: a child of the reviewed head IS a descendant, so branching
-    # there would prove nothing.
+    # From base: a child of the head IS a descendant.
     _git(root, "checkout", "-q", "-B", "sibling", base)
     _commit_file(root, "unrelated.txt", "x\n", "chore: sibling")
     sibling = _git(root, "rev-parse", "HEAD")
-    # A regular two-parent merge, the minimal counterexample to one-parent.
     _git(root, "checkout", "-q", "-B", "merged", linear)
     _git(root, "merge", "-q", "--no-edit", "sibling")
     merged = _git(root, "rev-parse", "HEAD")
@@ -404,9 +398,7 @@ def test_a_governance_tip_must_be_a_linear_descendant(tmp_path: Path) -> None:
             [sys.executable, str(Path(gate.__file__).resolve()), "--root", str(root),
              *args], capture_output=True, text=True)
 
-    # "Preserves the ordinary exit" means unchanged BY the tip, not zero: this
-    # fixture lands its pair after the head, so the range is legitimately
-    # blocked either way. A valid tip must not alter that.
+    # Unchanged BY the tip, not zero: this fixture is blocked either way.
     without = gate_cli("--base", base, "--head", head)
     ordinary = gate_cli("--base", base, "--head", head, "--governance-head", linear)
 

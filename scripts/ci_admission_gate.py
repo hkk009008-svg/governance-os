@@ -216,21 +216,12 @@ def _introduction_commit(root: Path, head: str, path: str) -> str:
 
 
 def _governance_commits(root: Path, head: str, governance_head: str) -> list[str]:
-    """Refuse a governance tip that is not a linear descendant of the head.
+    """Return a governance-only span proven descendant and one-parent linear.
 
-    ANCESTRY AND LINEARITY ONLY, and the incompleteness is the design. What a
-    commit CONTAINS is unproven here: a governance commit could carry code and
-    this would admit it. The content predicates arrive in the successor range,
-    and the envelope check after them.
-
-    That is safe only because nothing consumes a governance tip for evidence
-    yet -- admission still reads `base..head`, so this guards an inert input.
-    It stops being safe the moment evidence discovery moves, which is why both
-    successors must land before that switch, and why this range must not be
-    read as proving a tip trustworthy.
-
-    Read-only: rev-list reads objects, the tip is never checked out, and
-    nothing on it is executed.
+    This stage does not prove commit content or canonical-event completeness;
+    evidence still comes from `base..head`, so the tip remains inert until the
+    content and envelope successors land. Reads Git objects without checkout
+    or execution.
     """
 
     if governance_head == head:
@@ -270,9 +261,8 @@ def evaluate(
 ) -> Outcome:
     governance = governance_head or head
     outcome = Outcome(base=base, head=head, governance_head=governance)
-    # Before the early return, not after: a no-authority range that reported a
-    # successful governance head without ever looking at it was a reassuring
-    # reading of a tip that could have carried anything.
+    # Validate before the no-authority return; evidence still comes from
+    # base..head.
     _governance_commits(root, head, governance)
     # Authority is always computed from the reviewed range, never from the
     # governance tip: evidence may advance, the range under review may not.
@@ -404,11 +394,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.governance_head
             else head
         )
-        # Evaluate first, then present. An empty range used to return before
-        # evaluate, so a supplied governance tip exited 0 unvalidated -- and
-        # duplicating the check in main would leave two validators with neither
-        # individually covered. Routing the empty case through the same
-        # evaluation core keeps one validator and one seam.
+        # Route empty ranges through the same evaluation seam before
+        # presentation.
         outcome = evaluate(root, base, head, governance)
         if base == head:
             print(
