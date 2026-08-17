@@ -21,9 +21,10 @@ not part of it. **Codex reviewed this reconstruction on 2026-08-17 and
 declined to countersign the first draft**, accepting the themes of I1-I5
 while requiring the corrections now folded into the text. Each correction
 is marked at the point it applies. Section 4 restores agreed work the
-reconstruction dropped; section 7 records what the round cost. Round-2
-questions in section 8 are outstanding, so this document is still not
-countersigned.
+reconstruction dropped; section 7 records what the rounds cost.
+**Countersigned by Codex on 2026-08-17 after three review rounds**, at the
+commit this sentence lands in; see section 8 for what each round changed
+and which claims are reproduced here versus supplied by Codex.
 
 ## 1. What Tier 1 fixed, and what it did not (measured)
 
@@ -514,16 +515,28 @@ bearing.
 
 ## 6. Sequencing
 
-I7 is landed. Next: I4 and I5 together, since I5 is I4's mechanism and the
-review debt they address is accumulating now — four requests are open at
-the tail. Then I6's artifact-boundary half, mostly an extension of the
-guard already on `claude/finding-ref-resolvability-guard`. Then I1, which
-is now adoption work against `claim_check.py` rather than construction and
-is correspondingly cheaper than the draft assumed. Then I2, which changes
-how seats work rather than what the repo refuses and most needs a second
-opinion first. I3 waits on a user decision and can land at any point. The
-section 4 items need their existing/gap/proposed breakdown before they can
-be ordered at all.
+I7 is landed. What follows is a **dependency order**, not a priority list —
+supplied by Codex 2026-08-17, replacing a draft ordering that contradicted
+I5's own two-stage rollout.
+
+- **Effective immediately, for every Tier 2 proposal**: perform and cite
+  the existing-owner lookup from section 7. This is adoption, not a new
+  implementation item, and it has no place in the numbered list.
+- **I5 stage A** — land trusted-base parser and gate support through the
+  current embedded-review path.
+- **I5 stage B** — exercise one controlled dual-tip range; promote only
+  after compare-and-swap publication exists. **I4 is the problem statement
+  this mechanism answers, not a separate code range.**
+- **I6** — artifact-boundary automation.
+- **I1** — default claim-ledger enrollment.
+- **I2** — same-axis escalation.
+- **Section 4 follow-ons** — order only after their bounded designs are
+  sized.
+
+I3 remains a user decision and may happen at any time. But the durable
+`Publication grant` binding is a **dependency for promoting I5 beyond the
+externally granted prototype**. Provider, spend, merge and destructive
+authority stay separate throughout.
 
 ## 7. What this revision cost, and what it says
 
@@ -596,13 +609,28 @@ rejection of a maintained inventory. Folded in above. Codex stated that
 with these folded accurately it has no remaining substantive objection to
 the reconstruction.
 
-**Outstanding.** Nothing from Codex. What remains is the director's:
+**Round 3**, 2026-08-17: Codex inspected `e744d9d8` and its full diff from
+`a96d27d9`, confirmed the round-two substance was folded accurately, and
+raised two wording/sequencing nits — the section 6 dependency order above,
+and the provenance sentence below. With those folded, **Codex
+countersigned the reconstruction and plan direction.**
 
-1. Section 4's statuses are Codex's characterisations. Only two were
-   independently verified here — `CHECKER_REGISTRY`,
-   `REPOSITORY-MANUAL.md:760-762` — because section 7's own discipline
-   demands the lookup be cited. The other Existing claims are recorded on
-   Codex's authority and are marked as such rather than presented as
-   measured.
-2. Sequencing below is unreviewed by Codex.
-3. No PR opens for this countersign round, by Codex's explicit request.
+**Provenance of the section 4 Existing claims.** Two were independently
+reproduced here — `governance_verify_all.py:65 CHECKER_REGISTRY` and
+`REPOSITORY-MANUAL.md:760-762` — because section 7's discipline demands a
+cited lookup. The remainder were **supplied by Codex after source
+inspection, and not independently reproduced by the director.** The seams
+Codex reports checking are `claim_check` and Compact Pair formation,
+`AGENTS` final-review doctrine, admission's coverage union, `status`'s
+committed projection, `protocol-assembly-map`, and the current
+no-ceremony accounting.
+
+The earlier phrasing — "recorded on Codex's authority" — was wrong and is
+corrected at Codex's own insistence. **Authority does not make a factual
+claim true.** A reviewer here is an evidence source, not a truth grantor,
+and describing an unreproduced fact as resting on someone's authority
+laundered a citation into a permission. That distinction is the same one
+I5 enforces when it refuses a self-declared "Authority scope" body field.
+
+**Outstanding.** Nothing from Codex. No PR opens for this countersign
+round, by Codex's explicit request.
