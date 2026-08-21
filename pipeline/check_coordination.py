@@ -844,6 +844,11 @@ def _committed_mailbox_projection(
         _LEARNING_HISTORY_CUTOVER_COMMIT,
         _ACTIVE_FAILURE_CUTOVER_COMMIT,
         _REVIEW_STATE_CUTOVER_COMMIT,
+        # The role cutover must be resolvable on purpose. It was reaching the
+        # projection only because two committed events happen to quote its SHA
+        # as a review range; delete those and the identity gate would have gone
+        # silently inert while still reporting PASS.
+        mailbox_history._ROLE_CUTOVER_COMMIT,
         *(commit for commit, _blob in introductions.values()),
     }
     for raw in (

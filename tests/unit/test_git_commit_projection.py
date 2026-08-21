@@ -236,3 +236,32 @@ def test_projection_rejects_graph_output_over_byte_cap(
         projection_module.CommitGraphProjection.build(
             root, {candidate}, runner=runner
         )
+
+
+def test_a_case_different_spelling_of_the_root_is_the_same_repository(
+    tmp_path: Path,
+) -> None:
+    """Identity is a filesystem fact, not a string comparison.
+
+    On a case-insensitive volume `/Users/x/pipeline` and `/Users/x/Pipeline`
+    are ONE directory, and Path.resolve() does not normalize between them. A
+    caller entering by the lowercase spelling -- a declared working directory
+    of this machine's Claude harness -- got a fabricated FATAL on every
+    governance projection. Measured 2026-08-22 before the fix:
+
+        cd /Users/hyungkoookkim/pipeline && bin/pipeline check coordination
+        FATAL review_projection_unavailable -- repository root drifted:
+        expected /Users/hyungkoookkim/pipeline,
+        observed /Users/hyungkoookkim/Pipeline
+
+    Asserted against the helper directly so it also holds on case-SENSITIVE
+    systems, where the two spellings really are different directories and must
+    keep reporting as different.
+    """
+
+    assert projection_module._same_directory(tmp_path, tmp_path) is True
+
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    assert projection_module._same_directory(tmp_path, other) is False
+    assert projection_module._same_directory(tmp_path, tmp_path / "absent") is False

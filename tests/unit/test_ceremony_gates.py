@@ -347,7 +347,15 @@ def test_a_move_does_not_buy_the_introduction_exemption(tmp_path, monkeypatch) -
 
 
 def _repo_with_rename(tmp_path, base_lines: int, head_lines: int, monkeypatch):
-    """A real repo where old.py becomes newname.py with a rewritten body."""
+    """A real repo where old.py becomes newname.py, PAIRED as a rename at -M5%.
+
+    The shared prefix is load-bearing and was wrong. Keeping base//6 lines gave
+    13 of 280 -- 4.6%, under the 5% threshold -- so Git called the growing case
+    an ADDITION, the per-file cap the test claims to prove never applied to it,
+    and its assertions were satisfied by the additions cap instead. An evasion
+    control that convicts via a different rule is not a control. Half the base
+    is comfortably above the threshold in both directions.
+    """
 
     root = tmp_path / "repo"
     (root / "pipeline").mkdir(parents=True)
@@ -364,9 +372,10 @@ def _repo_with_rename(tmp_path, base_lines: int, head_lines: int, monkeypatch):
     git("add", "-A")
     git("commit", "-qm", "base")
     (root / "pipeline" / "old.py").unlink()
+    shared = min(base_lines, head_lines) // 2
     (root / "pipeline" / "newname.py").write_text(
-        "".join(f"original line {n}\n" for n in range(min(base_lines, head_lines) // 6))
-        + "".join(f"rewritten line {n}\n" for n in range(head_lines - min(base_lines, head_lines) // 6))
+        "".join(f"original line {n}\n" for n in range(shared))
+        + "".join(f"rewritten line {n}\n" for n in range(head_lines - shared))
     )
     git("add", "-A")
     git("commit", "-qm", "rename and rewrite")
@@ -397,11 +406,19 @@ def test_a_rename_that_really_grows_is_still_refused(tmp_path, monkeypatch) -> N
     """Evasion control: the loosened threshold must not buy a bloating rename.
 
     If -M5% let a rename escape the per-file cap, this is the change that would
-    walk through: same trick, but the file genuinely gains 200 lines.
+    walk through: same trick, but the file genuinely gains 160 lines. The
+    assertion names the PER-FILE violation explicitly, because an earlier
+    version passed on the additions cap while the rule it claimed to exercise
+    was never reached.
     """
-    _repo_with_rename(tmp_path, 80, 280, monkeypatch)
+    _repo_with_rename(tmp_path, 80, 240, monkeypatch)
 
     status, details = cnc.rule_python_growth()
 
     assert status == "FAIL", details
-    assert any("exceeds" in detail for detail in details[1:]), details
+    per_file = [
+        detail for detail in details[1:]
+        if "net growth" in detail and "exceeds 80" in detail
+    ]
+    assert per_file, f"the per-file cap must be what convicts: {details}"
+    assert "=> pipeline/newname.py" in per_file[0] or "newname.py" in per_file[0], per_file

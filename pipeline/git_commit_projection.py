@@ -96,11 +96,29 @@ def _identity(root: Path, runner: GitRunner) -> RepositoryIdentity:
         git_dir = Path(lines[1]).resolve(strict=True)
     except OSError as exc:
         raise CommitGraphProjectionError("repository identity path is unavailable") from exc
-    if reported_root != root:
+    # Ask the filesystem whether these are the same directory rather than
+    # comparing strings. On a case-insensitive volume `/Users/x/pipeline` and
+    # `/Users/x/Pipeline` are ONE directory that Path.resolve() does not
+    # normalize, so a caller entering by the lowercase spelling -- which is a
+    # declared working directory of this machine's Claude harness -- got a
+    # fabricated "root drifted" FATAL on every governance projection. Identity
+    # is a filesystem fact, and samefile is how you ask for it.
+    if reported_root != root and not _same_directory(reported_root, root):
         raise CommitGraphProjectionError(
             f"repository root drifted: expected {root}, observed {reported_root}"
         )
     return RepositoryIdentity(reported_root, git_dir, lines[2])
+
+
+def _same_directory(left: Path, right: Path) -> bool:
+    """True when two paths name one directory, case-insensitivity included."""
+
+    try:
+        return left.stat().st_ino == right.stat().st_ino and (
+            left.stat().st_dev == right.stat().st_dev
+        )
+    except OSError:
+        return False
 
 
 def capture_repository_identity(

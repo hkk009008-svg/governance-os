@@ -67,6 +67,16 @@ _SHELL_COMMANDS: dict[tuple[str, ...], tuple[str, str]] = {
 }
 
 
+# Targets that take no arguments and therefore cannot answer --help
+# themselves. Without this, `pipeline check --help` ran the whole governance
+# aggregate and exited 0 -- a help request that performs the action instead of
+# describing it, while the banner promised "every command accepts its own
+# --help".
+_ARGLESS = {
+    ("check",), ("check", "ceremony"), ("check", "placeholders"), ("check", "arch"),
+}
+
+
 def _usage() -> str:
     lines = ["pipeline — governance kernel for the Claude and Codex CLIs", "", "Commands:"]
     rows: list[tuple[str, str]] = []
@@ -80,8 +90,9 @@ def _usage() -> str:
         lines.append(f"  {name:<{width}}  {blurb}")
     lines += [
         "",
-        "Every command accepts its own --help. bin/pipeline resolves the",
-        "repository interpreter and clears GIT_INDEX_FILE before dispatch.",
+        "Most commands accept their own --help; the argument-less gates",
+        "describe themselves instead. bin/pipeline resolves the repository",
+        "interpreter and clears GIT_INDEX_FILE before dispatch.",
     ]
     return "\n".join(lines)
 
@@ -108,12 +119,31 @@ def main(argv: list[str] | None = None) -> int:
     if not argv or argv[0] in {"-h", "--help", "help"}:
         print(_usage())
         return 0
+    groups = {key[0] for key in (*_MODULE_COMMANDS, *_SHELL_COMMANDS) if len(key) == 2}
+    if len(argv) >= 2 and argv[0] in groups and not argv[1].startswith("-"):
+        known = tuple(argv[:2])
+        if known not in _MODULE_COMMANDS and known not in _SHELL_COMMANDS:
+            subs = sorted(
+                key[1] for key in (*_MODULE_COMMANDS, *_SHELL_COMMANDS)
+                if len(key) == 2 and key[0] == argv[0] and key[1]
+            )
+            print(
+                f"pipeline {argv[0]}: unknown subcommand {argv[1]!r}; "
+                f"expected one of {', '.join(subs)}",
+                file=sys.stderr,
+            )
+            return 2
     kind, spec, rest, key = _resolve(argv)
     if kind is None:
         print(f"pipeline: unknown command {' '.join(argv[:2])!r}\n", file=sys.stderr)
         print(_usage(), file=sys.stderr)
         return 2
     name = " ".join(key)
+    if key in _ARGLESS and rest and rest[0] in {"-h", "--help"}:
+        blurb = spec[2] if kind == "module" else spec[1]
+        print(f"pipeline {name} — {blurb}")
+        print("Takes no arguments; run it to perform the check.")
+        return 0
     if kind == "shell":
         relative, _blurb = spec
         target = _ROOT / relative

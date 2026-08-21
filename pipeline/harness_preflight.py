@@ -111,13 +111,61 @@ def check_codex(root: Path) -> list[Result]:
             "" if not problem else "restore the closed project configuration",
         )
     )
-    results.append(
-        Result(
-            "codex",
-            True,
-            "invocation contract: < /dev/null, --sandbox, explicit approval_policy",
+    results.extend(check_resolved_codex_config())
+    return results
+
+
+def _resolved_codex_config() -> Path:
+    """The config codex ACTUALLY reads: $CODEX_HOME/config.toml, else ~/.codex."""
+
+    home = os.environ.get("CODEX_HOME")
+    return (Path(home) if home else Path.home() / ".codex") / "config.toml"
+
+
+def check_resolved_codex_config() -> list[Result]:
+    """Report the MCP inventory codex will really load, not the repo's wish.
+
+    The project's .codex/config.toml is a repository declaration. It is not
+    what the CLI resolves: `codex doctor`, run inside this checkout on
+    2026-08-22, reported three MCP servers from the user config while the
+    project file declared none, and one of them pointed at a command this
+    repository had already deleted. A control that reads only the project file
+    is measuring a document, not the runtime.
+
+    This reports capability and never fails a checkout for a machine-local
+    file: absent config is simply "none", which is the CI case.
+    """
+
+    config = _resolved_codex_config()
+    try:
+        payload = tomllib.loads(config.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return [Result("codex", True, f"no user codex config at {config}; nothing to load")]
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return [Result("codex", False, f"user codex config unreadable: {exc}",
+                       "repair or remove it; codex reads this file, not the project one")]
+
+    servers = payload.get("mcp_servers")
+    if not isinstance(servers, dict) or not servers:
+        return [Result("codex", True, f"{config}: declares no MCP servers")]
+
+    results: list[Result] = []
+    for name in sorted(servers):
+        server = servers[name] if isinstance(servers[name], dict) else {}
+        if server.get("enabled") is False:
+            results.append(Result("codex", True, f"MCP {name}: disabled"))
+            continue
+        command = server.get("command")
+        resolved = bool(command) and (
+            Path(command).exists() or _binary(str(command)) is not None
         )
-    )
+        results.append(Result(
+            "codex",
+            resolved,
+            f"MCP {name}: command {command!r} "
+            + ("resolves" if resolved else "DOES NOT RESOLVE"),
+            "" if resolved else f"remove {name} from {config} or restore its command",
+        ))
     return results
 
 
