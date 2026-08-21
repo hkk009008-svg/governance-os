@@ -1,4 +1,4 @@
-"""Unit tests for scripts/check_placeholders.py — fail-closed adoption-placeholder scan.
+"""Unit tests for pipeline/check_placeholders.py — fail-closed adoption-placeholder scan.
 
 Hermetic: uses tmp_path to build isolated file trees; does NOT depend on live repo state.
 """

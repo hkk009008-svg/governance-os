@@ -1,4 +1,4 @@
-"""A parser corpus for scripts/check_doc_claims.py (2k lines, no dedicated test).
+"""A parser corpus for pipeline/check_doc_claims.py (2k lines, no dedicated test).
 
 Exercises the line-anchor engine end to end on a tiny synthetic repo: a
 correct citation, a line-drifted symbol, a missing target file, fenced-code

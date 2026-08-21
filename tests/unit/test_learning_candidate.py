@@ -1,7 +1,7 @@
 """Stage 2 gate tests for the learning-candidate lifecycle (ADR-067).
 
 Refusal tests here exercise READ-SIDE parsers: until the Stage 2b
-writer-side branch lands in scripts/mailbox_writer.py these refusals are
+writer-side branch lands in pipeline/mailbox_writer.py these refusals are
 advisory — a nonconforming event still publishes durably (contract I4). The
 tests pin the parser contract, not a publication gate.
 """
@@ -83,7 +83,7 @@ def _event(fields: dict[str, str | None], *, candidate_id: str | None = None,
 def _learning_offenders(source: str) -> list[str]:
     """The ONE collector both I1 tests exercise.
 
-    `from scripts import learning_x` binds learning_x through the alias
+    `from pipeline import learning_x` binds learning_x through the alias
     names, not node.module (round-one FAIL: recording only node.module let
     exactly that form evade the control). The evasion pin below calls THIS
     function — a retyped copy would let the real collector regress while the
@@ -110,7 +110,7 @@ def _learning_offenders(source: str) -> list[str]:
 def test_kernel_validators_import_no_learning_module() -> None:
     """Contract I1: the two validation kernels import no learning_* module."""
 
-    for kernel in ("scripts/mailbox_writer.py", "scripts/compact_pair_loop.py"):
+    for kernel in ("pipeline/mailbox_writer.py", "pipeline/compact_pair_loop.py"):
         offenders = _learning_offenders(
             (_REPO_ROOT / kernel).read_text(encoding="utf-8")
         )
@@ -121,10 +121,10 @@ def test_i1_collector_catches_the_evading_import_forms() -> None:
     """The SHARED collector is exercised against the forms that could evade."""
 
     for evading in (
-        "from scripts import learning_index\n",
-        "from scripts import learning_index as li\n",
+        "from pipeline import learning_index\n",
+        "from pipeline import learning_index as li\n",
         "import learning_index\n",
-        "import scripts.learning_index\n",
+        "import pipeline.learning_index\n",
     ):
         assert _learning_offenders(evading), f"must catch: {evading!r}"
     assert _learning_offenders("import os\nfrom pathlib import Path\n") == []
@@ -408,18 +408,18 @@ def test_dedup_scan_collapses_duplicate_ids_to_the_first_path(
 
 
 def test_parsers_work_under_isolated_cli_import_shape(tmp_path: Path) -> None:
-    """Flat ``import protocol_mailbox`` with only scripts/ on sys.path (the
-    ``python scripts/<tool>.py`` and ``python -E -s -S`` wrapper shape) must
+    """Flat ``import protocol_mailbox`` with only pipeline/ on sys.path (the
+    ``python pipeline/<tool>.py`` and ``python -E -s -S`` wrapper shape) must
     parse a candidate, including the lazy vocabulary imports. Package-style
-    ``from scripts import X`` is retired — one import convention, enforced by
+    ``from pipeline import X`` is retired — one import convention, enforced by
     tests/unit/test_import_identity.py."""
 
     script = tmp_path / "probe.py"
     script.write_text(
         "import sys\n"
         "sys.path = [p for p in sys.path"
-        " if not p.rstrip('/').endswith('scripts')]\n"
-        f"sys.path.insert(0, {str(_REPO_ROOT / 'scripts')!r})\n"
+        " if not p.rstrip('/').endswith('pipeline')]\n"
+        f"sys.path.insert(0, {str(_REPO_ROOT / 'pipeline')!r})\n"
         "import protocol_mailbox\n"
         "fields = {\n"
         "    'Category': 'procedure', 'Scope': 'repository',\n"

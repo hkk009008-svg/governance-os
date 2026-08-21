@@ -87,7 +87,7 @@ def test_admission_uses_trusted_base_code_and_never_executes_candidate(repo_root
     assert "path: trusted" in admission
     assert "path: candidate" in admission
     assert "test \"$(git -C candidate rev-parse HEAD)\" = \"$HEAD_SHA\"" in admission
-    assert "python trusted/scripts/ci_admission_gate.py --root trusted" in admission
+    assert "python trusted/pipeline/ci_admission_gate.py --root trusted" in admission
     assert "python candidate/" not in admission
     assert "persist-credentials: true" not in admission
 

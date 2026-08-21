@@ -216,7 +216,7 @@ def _seed_coordination(
     seen.mkdir(parents=True)
     for seat in cc.ROLES:
         (seen / f"{seat}.txt").write_text("0", encoding="utf-8")
-    baselines = tmp_path / "scripts/baselines"
+    baselines = tmp_path / "pipeline/baselines"
     baselines.mkdir(parents=True)
     (baselines / "lane_v_reports_pre_v3.json").write_text(
         json.dumps(
@@ -1825,9 +1825,9 @@ def _history_exception_entry(
         "accepted_current_blob": accepted_current_blob,
         "accepted_current_sha256": accepted_current_sha256,
         "digest_authority": (
-            "scripts/baselines/lane_v_reports_pre_v3.json"
+            "pipeline/baselines/lane_v_reports_pre_v3.json"
             if is_report
-            else "scripts/baselines/immutable_review_history_exceptions.json"
+            else "pipeline/baselines/immutable_review_history_exceptions.json"
         ),
         "reason": "measured pre-enforcement fixture repair",
     }
@@ -1846,7 +1846,7 @@ def _commit_history_exception(
         _git(root, "rev-parse", f"HEAD:{path}"),
         hashlib.sha256(raw).hexdigest(),
     )
-    baselines = root / "scripts/baselines"
+    baselines = root / "pipeline/baselines"
     if path.endswith("-verification-report.md"):
         (baselines / "lane_v_reports_pre_v3.json").write_text(
             json.dumps(
@@ -1865,7 +1865,7 @@ def _commit_history_exception(
         ),
         encoding="utf-8",
     )
-    _git(root, "add", "scripts/baselines")
+    _git(root, "add", "pipeline/baselines")
     _git(root, "commit", "-q", "-m", "bind exact history exception")
     return entry
 
@@ -1876,7 +1876,7 @@ def test_frozen_history_manifest_refuses_committed_lifecycle_mutation(
 ) -> None:
     root, coord, base, head = _review_repo(tmp_path)
     _commit_request(root, base, head)
-    relative = "scripts/baselines/immutable_review_history_exceptions.json"
+    relative = "pipeline/baselines/immutable_review_history_exceptions.json"
     manifest = root / relative
     original = manifest.read_bytes()
     if mutation == "delete":
@@ -1916,7 +1916,7 @@ def test_replace_ref_and_ambient_git_env_cannot_hide_manifest_mutation(
 ) -> None:
     root, coord, base, head = _review_repo(tmp_path)
     _commit_request(root, base, head)
-    relative = "scripts/baselines/immutable_review_history_exceptions.json"
+    relative = "pipeline/baselines/immutable_review_history_exceptions.json"
     manifest = root / relative
     introduced = manifest.read_bytes()
     manifest.write_bytes(introduced + b"\n")
@@ -2002,7 +2002,7 @@ def _rewrite_exception_and_companion_for_current_report(
     raw = (root / report_path).read_bytes()
     entry["accepted_current_blob"] = _git(root, "hash-object", report_path)
     entry["accepted_current_sha256"] = hashlib.sha256(raw).hexdigest()
-    baselines = root / "scripts/baselines"
+    baselines = root / "pipeline/baselines"
     (baselines / "lane_v_reports_pre_v3.json").write_text(
         json.dumps(
             {
@@ -2051,9 +2051,9 @@ def test_frozen_exception_authority_refuses_event_and_companion_co_update(
     _git(root, "add", report_path)
     if rewrite_manifest:
         _rewrite_exception_and_companion_for_current_report(root, entry)
-        _git(root, "add", "scripts/baselines")
+        _git(root, "add", "pipeline/baselines")
     else:
-        lane = root / "scripts/baselines/lane_v_reports_pre_v3.json"
+        lane = root / "pipeline/baselines/lane_v_reports_pre_v3.json"
         companion = json.loads(lane.read_text(encoding="utf-8"))
         companion["reports"][0]["sha256"] = hashlib.sha256(
             report.read_bytes()
@@ -2090,7 +2090,7 @@ def test_frozen_six_refuse_active_fail_go_plus_seventh_exception(
     )
     _git(clone, "add", report_path)
     raw = report.read_bytes()
-    manifest_path = clone / "scripts/baselines/immutable_review_history_exceptions.json"
+    manifest_path = clone / "pipeline/baselines/immutable_review_history_exceptions.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["entries"].append(
         _history_exception_entry(
@@ -2102,13 +2102,13 @@ def test_frozen_six_refuse_active_fail_go_plus_seventh_exception(
         )
     )
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-    lane_path = clone / "scripts/baselines/lane_v_reports_pre_v3.json"
+    lane_path = clone / "pipeline/baselines/lane_v_reports_pre_v3.json"
     lane = json.loads(lane_path.read_text(encoding="utf-8"))
     lane["reports"].append(
         {"path": report_path, "sha256": hashlib.sha256(raw).hexdigest()}
     )
     lane_path.write_text(json.dumps(lane), encoding="utf-8")
-    _git(clone, "add", "scripts/baselines")
+    _git(clone, "add", "pipeline/baselines")
     _git(clone, "commit", "-q", "-m", "attempt seventh exception")
 
     state = cc.inspect_verify_review_state(clone)
@@ -2143,7 +2143,7 @@ def test_history_exception_refuses_binding_corruption(
         entry["accepted_current_sha256"] = "0" * 64
     else:
         entry["introduction_blob"] = "0" * 40
-    manifest = root / "scripts/baselines/immutable_review_history_exceptions.json"
+    manifest = root / "pipeline/baselines/immutable_review_history_exceptions.json"
     manifest.write_text(
         json.dumps(
             {"schema_version": "immutable-review-history-exceptions/v1", "entries": [entry]}

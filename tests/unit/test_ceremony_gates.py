@@ -1,4 +1,4 @@
-"""Unit tests for scripts/check_no_ceremony.py — the anti-ceremony detector.
+"""Unit tests for pipeline/check_no_ceremony.py — the anti-ceremony detector.
 
 Covers the pure, mailbox-free helpers (R6 `_pass_reports_missing_runxfail`,
 R5 `_utv_status_violations`, the `_is_xfail_decorator` AST classifier) plus the
@@ -219,17 +219,17 @@ def test_is_xfail_decorator_rejects_non_xfail_marker():
 
 def test_python_growth_rejects_large_total_and_per_file_growth():
     violations, summary = cnc._python_growth_violations(
-        "120\t5\tscripts/large.py\n10\t0\ttests/test_large.py\n"
+        "120\t5\tpipeline/large.py\n10\t0\ttests/test_large.py\n"
     )
 
     assert "net 125" in summary
-    assert any("scripts/large.py" in item for item in violations)
+    assert any("pipeline/large.py" in item for item in violations)
     assert any("total net Python growth" in item for item in violations)
 
 
 def test_python_growth_accepts_deletion_first_refactor():
     violations, summary = cnc._python_growth_violations(
-        "40\t100\tscripts/compact.py\n"
+        "40\t100\tpipeline/compact.py\n"
     )
 
     assert violations == []
@@ -238,23 +238,23 @@ def test_python_growth_accepts_deletion_first_refactor():
 
 def test_python_growth_cannot_be_hidden_by_deleting_another_file():
     violations, summary = cnc._python_growth_violations(
-        "260\t250\tscripts/new_layer.py\n0\t100\tscripts/old_layer.py\n"
+        "260\t250\tpipeline/new_layer.py\n0\t100\tpipeline/old_layer.py\n"
     )
 
     assert "net -90" in summary
-    assert any("scripts/new_layer.py" in item for item in violations)
+    assert any("pipeline/new_layer.py" in item for item in violations)
 
 
 def test_python_growth_checks_untracked_files_without_a_parent(tmp_path, monkeypatch):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    untracked = tmp_path / "scripts/new.py"
+    untracked = tmp_path / "pipeline/new.py"
     untracked.parent.mkdir()
     untracked.write_text("value = 1\n" * 400, encoding="utf-8")
     monkeypatch.setattr(cnc, "ROOT", tmp_path)
     monkeypatch.setattr(cnc, "_growth_base", lambda: None)
     status, details = cnc.rule_python_growth()
     assert status == "FAIL"
-    assert any("scripts/new.py" in item for item in details)
+    assert any("pipeline/new.py" in item for item in details)
 
 
 def test_python_growth_combines_tracked_and_untracked_numstat(monkeypatch):
@@ -297,16 +297,16 @@ def test_an_introduced_file_is_not_growth() -> None:
 def test_an_existing_file_still_cannot_bloat() -> None:
     """The half that must not change: same numbers, file present at the base."""
     violations, _ = cnc._python_growth_violations(
-        _numstat([(90, 0, "scripts/old.py")])
+        _numstat([(90, 0, "pipeline/old.py")])
     )
 
-    assert violations == ["scripts/old.py: net growth 90 exceeds 80"]
+    assert violations == ["pipeline/old.py: net growth 90 exceeds 80"]
 
 
 def test_unexplained_growth_is_still_refused() -> None:
     """The thing the gate is actually for, on one ledger again."""
     violations, _ = cnc._python_growth_violations(
-        _numstat([(140, 0, "scripts/old.py")]), frozenset({"scripts/old.py"})
+        _numstat([(140, 0, "pipeline/old.py")]), frozenset({"pipeline/old.py"})
     )
 
     assert violations == ["total net Python growth 140 exceeds 100"]
@@ -315,14 +315,14 @@ def test_unexplained_growth_is_still_refused() -> None:
 def test_a_move_does_not_buy_the_introduction_exemption(tmp_path, monkeypatch) -> None:
     """Built in a real repository, because numeric rows cannot express a move.
 
-    Measured on the reviewed gate: moving scripts/old.py to tools/new.py and
+    Measured on the reviewed gate: moving pipeline/old.py to tools/new.py and
     adding 100 lines fell under Git's default rename similarity, Git reported
     delete-plus-add, and the bloating file was handed the introduction
     exemption. The control that shipped constructed numstat rows by hand and
     could never have seen it.
     """
     root = tmp_path / "repo"
-    (root / "scripts").mkdir(parents=True)
+    (root / "pipeline").mkdir(parents=True)
     (root / "tools").mkdir()
 
     def git(*args):
@@ -331,10 +331,10 @@ def test_a_move_does_not_buy_the_introduction_exemption(tmp_path, monkeypatch) -
     git("init", "-q", "-b", "main")
     git("config", "user.email", "t@t")
     git("config", "user.name", "t")
-    (root / "scripts" / "old.py").write_text("".join(f"line {n}\n" for n in range(80)))
+    (root / "pipeline" / "old.py").write_text("".join(f"line {n}\n" for n in range(80)))
     git("add", "-A")
     git("commit", "-qm", "base")
-    (root / "scripts" / "old.py").unlink()
+    (root / "pipeline" / "old.py").unlink()
     (root / "tools" / "new.py").write_text("".join(f"line {n}\n" for n in range(180)))
     git("add", "-A")
     git("commit", "-qm", "move and grow")
@@ -344,3 +344,64 @@ def test_a_move_does_not_buy_the_introduction_exemption(tmp_path, monkeypatch) -
 
     assert "tools/new.py" not in introduced, "a move must not read as an arrival"
 
+
+
+def _repo_with_rename(tmp_path, base_lines: int, head_lines: int, monkeypatch):
+    """A real repo where old.py becomes newname.py with a rewritten body."""
+
+    root = tmp_path / "repo"
+    (root / "pipeline").mkdir(parents=True)
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (root / "pipeline" / "old.py").write_text(
+        "".join(f"original line {n}\n" for n in range(base_lines))
+    )
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    (root / "pipeline" / "old.py").unlink()
+    (root / "pipeline" / "newname.py").write_text(
+        "".join(f"original line {n}\n" for n in range(min(base_lines, head_lines) // 6))
+        + "".join(f"rewritten line {n}\n" for n in range(head_lines - min(base_lines, head_lines) // 6))
+    )
+    git("add", "-A")
+    git("commit", "-qm", "rename and rewrite")
+    monkeypatch.setattr(cnc, "ROOT", root)
+    monkeypatch.setenv("NO_CEREMONY_BASE", "HEAD~1")
+    return root
+
+
+def test_a_rename_that_shrinks_is_not_reported_as_growth(tmp_path, monkeypatch) -> None:
+    """Both halves of the rule must agree on what a file IS.
+
+    Measured on scripts/bus_unread.py -> pipeline/bus_unread.py, 334 -> 147
+    lines: Git's DEFAULT rename similarity called it delete-plus-add, so the
+    numstat half read "+147/-0" and the per-file cap convicted a file that had
+    lost 187 lines -- while _introduced_python, asking with -M5%, called the
+    same change a rename and correctly withheld the arrival exemption. One
+    change, two identities, and the disagreement always convicts.
+    """
+    _repo_with_rename(tmp_path, 334, 147, monkeypatch)
+
+    status, details = cnc.rule_python_growth()
+
+    assert status == "PASS", details
+    assert "net -187" in details[0], details
+
+
+def test_a_rename_that_really_grows_is_still_refused(tmp_path, monkeypatch) -> None:
+    """Evasion control: the loosened threshold must not buy a bloating rename.
+
+    If -M5% let a rename escape the per-file cap, this is the change that would
+    walk through: same trick, but the file genuinely gains 200 lines.
+    """
+    _repo_with_rename(tmp_path, 80, 280, monkeypatch)
+
+    status, details = cnc.rule_python_growth()
+
+    assert status == "FAIL", details
+    assert any("exceeds" in detail for detail in details[1:]), details

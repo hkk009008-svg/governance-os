@@ -1,0 +1,14 @@
+{
+  "name": "connected-tool-stub-routing",
+  "comment": "Frozen Claude routing case for the connected-tool router. Grown, never edited in place — supersede a case by adding a new pack file.",
+  "kind": "stub-routing",
+  "cases": [
+    {
+      "id": "route-connected-tools-stub",
+      "skill": "route-connected-tools",
+      "trigger": "route an evidence workflow among Google Drive, Zotero, Codex Security, Computer History, and the Claude connector",
+      "expect_canonical": ".agents/skills/route-connected-tools/SKILL.md",
+      "expect_stub": ".claude/skills/route-connected-tools/SKILL.md"
+    }
+  ]
+}

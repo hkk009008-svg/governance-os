@@ -1,5 +1,5 @@
 """Import smoke: every governance module imports cleanly under pytest's
-warnings-as-errors config, and the two pythonpath roots (repo root + scripts/)
+warnings-as-errors config, and the two pythonpath roots (repo root + pipeline/)
 both resolve by bare name."""
 from __future__ import annotations
 

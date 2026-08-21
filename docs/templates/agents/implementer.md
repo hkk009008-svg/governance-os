@@ -19,7 +19,7 @@
   without explicit instruction. Read-only git such as show, log, diff, grep,
   rev-parse, and ls-tree is allowed when relevant.
 - For Lane V trigger authority, rely on the committed compact-pair verify-request
-  (`scripts/compact_pair_loop.py`) — there is
+  (`pipeline/compact_pair_loop.py`) — there is
   no scope descriptor and no shipping trailer to emit; never invent trigger authority.
 
 ## Prompt template (for Lane B implementers)

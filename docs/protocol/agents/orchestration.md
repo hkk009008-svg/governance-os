@@ -1,6 +1,6 @@
 # Orchestration - agent neutral
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
+Autonomous Seat Outcome Contract: pipeline/codex_protocol_model.py
 
 Delegation is an owner-chosen capacity tool, not a task-count, line-count, or
 provider mandate. The owner may work directly, use one bounded helper, split
@@ -45,7 +45,7 @@ durable surfaces on every side:
 - committed mailbox events through the fixed writer
   (`coordination/bin/send-event`);
 - ownership exchange through a durable accepted handoff
-  (`scripts/draft_handoff.py` drafts one from live evidence);
+  (`pipeline/draft_handoff.py` drafts one from live evidence);
 - the committed verify-request / verification-report Compact Pair for review.
 
 The receiving seat needs no knowledge of which app authored an event; the

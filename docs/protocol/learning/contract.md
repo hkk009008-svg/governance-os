@@ -26,15 +26,15 @@ is itself a contract violation.
   results, skills, and candidates never bind a decision. Mechanized core —
   landed with Stage 2 as the named check
   `tests/unit/test_learning_candidate.py::test_kernel_validators_import_no_learning_module`
-  — asserting `scripts/mailbox_writer.py` and `scripts/compact_pair_loop.py`
+  — asserting `pipeline/mailbox_writer.py` and `pipeline/compact_pair_loop.py`
   import no `learning_*` module. Everything else in I1 is doctrine: any
   future import of a learning module into those two files is a contract
   change and reviews as one. Live task state is read from durable shared
   state — Git, mailbox, status — never from the index
-  (`scripts/codex_protocol_model.py:17`, CENTRAL_INVARIANT).
+  (`pipeline/codex_protocol_model.py:17`, CENTRAL_INVARIANT).
 - **I2 — no learning artifact grants authority.** Doctrine, held by a
   reviewed absence: the fixed writer and compact-pair validators consume no
-  candidate authority field (`scripts/mailbox_writer.py:165-209`), and any
+  candidate authority field (`pipeline/mailbox_writer.py:165-209`), and any
   change that adds one reviews as a contract change. No executable check
   asserts the absence — a text classifier over agent prose is exactly what
   guard admission forbids
@@ -46,7 +46,7 @@ is itself a contract violation.
   every pair. Autonomous learning produces immutable candidates only; there
   is no second approval object.
 - **I4 — fail-closed disposition is mechanized at publication.**
-  `scripts/mailbox_writer.py:validate_event_candidate` enforces the refusal
+  `pipeline/mailbox_writer.py:validate_event_candidate` enforces the refusal
   set through the production finalizer, covered by
   `tests/unit/test_learning_promotion.py`. The
   target-base-hash CAS compares bytes at the disposition event's own commit,
@@ -57,12 +57,12 @@ is itself a contract violation.
   verify-request (`AGENTS.md` Universal contract item 5 — authority and security work needs
   distinct non-author, different-model actual-diff review) — not by
   candidate machinery, because `_finding_refs` is a shape-only regex
-  (`scripts/compact_pair_loop.py:250-266`).
+  (`pipeline/compact_pair_loop.py:250-266`).
 - **I6 — trusted mutation needs fail-closed backup.** Doctrine, scoped as a
   non-build constraint: nothing in the learning plane performs archival or
   destructive maintenance. Where such a change is eventually filed
   (standalone, per plan §5 Stage 6), backup failure must block and recovery
-  must be explicit. `scripts/archive_handoffs.py` now fails closed when its
+  must be explicit. `pipeline/archive_handoffs.py` now fails closed when its
   history-preserving `git mv` cannot complete; that narrow behavior is a
   precedent, not a general backup or rollback mechanism.
 - **I7 — every proposed guard passes guard admission.** Doctrine applied as
@@ -82,7 +82,7 @@ Storage classes. The mechanical source for a scope label is tree membership
 at the build commit, NOT `.gitignore` — the ignore file cannot serve as the
 labeler because `.gitignore:51` (`coordination/mailbox/sent/*`) ignores the
 entire mailbox corpus that the fixed writer force-adds past it
-(`scripts/mailbox_writer.py` `_stage(root, relative, force=True)`):
+(`pipeline/mailbox_writer.py` `_stage(root, relative, force=True)`):
 
 - **Committed shared knowledge** (repository scope): any path tracked in the
   committed tree at the build commit — `docs/**`,
@@ -102,9 +102,9 @@ entire mailbox corpus that the fixed writer force-adds past it
 One mailbox event of kind `learning-candidate` (registry kind:
 `coordination/mailbox/kinds.txt`; the writer and `send-event` accept registry
 kinds with zero code change, `coordination/bin/send-event:95`,
-`scripts/mailbox_writer.py:120-122`), typed at read time by a statement
+`pipeline/mailbox_writer.py:120-122`), typed at read time by a statement
 parser following the ownership-record pattern
-(`scripts/protocol_mailbox.py:283-369`). Body fields, one `Label:` line each
+(`pipeline/protocol_mailbox.py:283-369`). Body fields, one `Label:` line each
 (`_single_body_field` discipline):
 
     Candidate ID: sha256 of the normalized payload (identity / dedup key)
@@ -116,13 +116,13 @@ parser following the ownership-record pattern
     Target base hash: sha256 of the target's canonical bytes AT THE
       DISPOSITION EVENT'S COMMIT (never a live worktree)
     Source refs: immutable `<sent-path>@<40-hex>` or `sha256:<64-hex>`
-      (`scripts/protocol_mailbox.py:253-263`)
+      (`pipeline/protocol_mailbox.py:253-263`)
     Evidence provenance: MEASURED | RELAYED | REMEMBERED | INFERRED | ASSUMED
       (claim_check's ladder imported, not re-declared,
-      `scripts/claim_check.py:59`); ASSUMED means the producer recorded a
+      `pipeline/claim_check.py:59`); ASSUMED means the producer recorded a
       blank cell, and its disposition may not be `accepted`
     Applicability / Exclusions: required
-    Risk class: from the closed set (`scripts/codex_protocol_model.py:33-70`)
+    Risk class: from the closed set (`pipeline/codex_protocol_model.py:33-70`)
     Supersedes: optional `<learning-candidate path>@<commit>` (ADR-066
       re-issue idiom: never patch in place, name what is replaced)
     Producer seat / Producer model (Producer seat must equal the envelope
@@ -178,16 +178,16 @@ resolves in-tree.
 Checkpoints are not a learning kind. They reuse mailbox kind `findings`
 so the writer allowlist does not grow. A body that carries checkpoint
 intent (`Checkpoint:` slug plus `Next action:`) is validated at
-publication (`scripts/mailbox_writer.py`); ordinary findings prose
+publication (`pipeline/mailbox_writer.py`); ordinary findings prose
 without intent still publishes. Drafting is scratch-only
-(`scripts/draft_checkpoint.py`, O4). `Lessons:` is required and
+(`pipeline/draft_checkpoint.py`, O4). `Lessons:` is required and
 `none-considered` always publishes — there is no quota (sediment
 threat, contract §4). Resume reads one snapshot plus the newest
 campaign checkpoint; recalled state stays advisory (I1).
 
 Skill-use rows in `logs/learning/outcomes.jsonl` (schema:
 `docs/protocol/learning/skill-use.md`) are seat wrap judgments.
-`scripts/learning_metrics.py` reports them. They never bind accept /
+`pipeline/learning_metrics.py` reports them. They never bind accept /
 decline / expire / edit / prune. That absence in the two validation
 kernels is the same I1 check that already forbids `learning_*` imports;
 skill-use counters additionally must not appear in

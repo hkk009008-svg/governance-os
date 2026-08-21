@@ -3,7 +3,7 @@
 Parser drift across the mailbox surfaces was a measured defect class: status
 accepted any ``\\w+`` sender, slope_metrics dropped the Z from the stamp and
 forbade digits in kinds. The canonical grammar lives in
-scripts/protocol_mailbox.py and Python adopters must use it verbatim.
+pipeline/protocol_mailbox.py and Python adopters must use it verbatim.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from pathlib import Path
 import bus_unread
 import check_coordination
 import learning_index
-import mailbox_monitor
 import mailbox_writer
 import protocol_mailbox
 import slope_metrics
@@ -30,7 +29,6 @@ def test_python_adopters_share_the_canonical_pattern() -> None:
         "mailbox_writer._EVENT_RE": mailbox_writer._EVENT_RE,
         "status._EVENT_RE": status._EVENT_RE,
         "check_coordination._EVENT_NAME_RE": check_coordination._EVENT_NAME_RE,
-        "mailbox_monitor._EVENT_RE": mailbox_monitor._EVENT_RE,
         "bus_unread._EVENT_NAME_RE": bus_unread._EVENT_NAME_RE,
         "slope_metrics._EVENT_NAME_RE": slope_metrics._EVENT_NAME_RE,
         "learning_index._EVENT_NAME_RE": learning_index._EVENT_NAME_RE,

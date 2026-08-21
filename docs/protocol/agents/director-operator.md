@@ -23,7 +23,7 @@ Before an assigned role makes a mailbox-dependent decision, run one current
 projection:
 
 ```bash
-python scripts/status.py snapshot <seat>
+python pipeline/status.py snapshot <seat>
 ```
 
 Use the active development Python documented by the provider continuation.
@@ -69,8 +69,8 @@ Review is proportional:
 - `external-effect`: separate live authorization; review never executes it.
 
 The grammar and acceptance logic live in
-[`scripts/compact_pair_loop.py`](../../../scripts/compact_pair_loop.py) and
-[`scripts/codex_protocol_model.py`](../../../scripts/codex_protocol_model.py).
+[`pipeline/compact_pair_loop.py`](../../../pipeline/compact_pair_loop.py) and
+[`pipeline/codex_protocol_model.py`](../../../pipeline/codex_protocol_model.py).
 Do not replace them with prose conventions.
 
 ## Findings and completion

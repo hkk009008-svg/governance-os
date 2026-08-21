@@ -1,10 +1,10 @@
 # CI for the governance OS (Python-only). Two verification jobs run in parallel
 # on push/PR; both must pass for the workflow to succeed.
 #
-# Single source of truth for the smoke invariants: scripts/governance_verify_all.py — if the
+# Single source of truth for the smoke invariants: pipeline/governance_verify_all.py — if the
 # invariants change, update that script + ARCHITECTURE.md (§5 Runtime invariants) together.
 #
-# Gates run by `python scripts/governance_verify_all.py` (smoke job):
+# Gates run by `python pipeline/governance_verify_all.py` (smoke job):
 #   - Doc-anchor drift (check_doc_claims on ARCHITECTURE.md; fatal kinds hard-fail
 #     local + CI, advisory kinds warn)
 #   - Coordination-state (check_coordination; FATAL hard-fails local + CI,
@@ -82,7 +82,7 @@ jobs:
         run: pip install --require-hashes -r requirements-dev.txt
 
       - name: Run ci_smoke (single source of truth for runtime invariants)
-        run: python scripts/governance_verify_all.py
+        run: python pipeline/governance_verify_all.py
 
   pytest:
     name: pytest tests (Python ${{ matrix.python-version }})
@@ -119,13 +119,13 @@ jobs:
         run: python -m pytest tests --tb=short -q
 
       - name: Run no-ceremony detector (ADR-028)
-        run: python scripts/check_no_ceremony.py
+        run: python pipeline/check_no_ceremony.py
 
   pytest-linux-hermetic:
     # One Linux leg with an IN-REPO basetemp. Two things the macOS matrix does
     # not: (1) it surfaces the Unix-FHS assumptions (/usr/bin/git, /var/empty)
     # that only bite off-macOS, and (2) it runs scratch dirs inside the
-    # worktree, so the git-discovery ceiling (scripts/git_runner.py,
+    # worktree, so the git-discovery ceiling (pipeline/git_runner.py,
     # tests/conftest.py) is proven — without it, a non-repo scratch root would
     # find the enclosing checkout instead of answering "unavailable".
     name: pytest (ubuntu, in-repo scratch)
@@ -183,10 +183,10 @@ jobs:
         run: pip install ruff mypy
 
       - name: ruff (advisory)
-        run: ruff check scripts tests tools || true
+        run: ruff check pipeline tests tools || true
 
       - name: mypy (advisory)
-        run: mypy --ignore-missing-imports scripts/git_runner.py scripts/protocol_mailbox.py || true
+        run: mypy --ignore-missing-imports pipeline/git_runner.py pipeline/protocol_mailbox.py || true
 
       - name: shellcheck (advisory)
         run: |
@@ -199,7 +199,7 @@ jobs:
 
   # Risk-aware admission (audit P0): a PR range that touches an authority
   # surface (hook policy, fixed writers, launchers, CI itself — the list lives
-  # in scripts/ci_admission_gate.py) must carry a committed GO/NITS
+  # in pipeline/ci_admission_gate.py) must carry a committed GO/NITS
   # high-risk-control verification-report covering those commits, validated by
   # the existing compact_pair_loop machinery. Ranges that touch no authority
   # surface are admitted without any new requirement. Stdlib-only: no pip
@@ -247,4 +247,4 @@ jobs:
           test "$(git -C trusted rev-parse HEAD)" = "$BASE_SHA"
           test "$(git -C candidate rev-parse HEAD)" = "$HEAD_SHA"
           git -C trusted fetch --no-tags --no-write-fetch-head "$GITHUB_WORKSPACE/candidate/.git" "$HEAD_SHA"
-          python trusted/scripts/ci_admission_gate.py --root trusted --base "$BASE_SHA" --head "$HEAD_SHA"
+          python trusted/pipeline/ci_admission_gate.py --root trusted --base "$BASE_SHA" --head "$HEAD_SHA"

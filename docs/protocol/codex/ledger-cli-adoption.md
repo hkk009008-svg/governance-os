@@ -14,8 +14,8 @@ Use one compact Pipeline snapshot, then the ordinary target guard:
 ```bash
 PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
 cd "$PIPELINE_ROOT"
-coordination/bin/pipeline-python scripts/status.py snapshot <seat>
-coordination/bin/pipeline-python scripts/ledger_start_guard.py --seat <seat> --wave 2
+coordination/bin/pipeline-python pipeline/status.py snapshot <seat>
+coordination/bin/pipeline-python pipeline/ledger_start_guard.py --seat <seat> --wave 2
 ```
 
 The guard resolves the registered target and current committed route, validates
@@ -63,7 +63,7 @@ git -C /absolute/route/worktree log --oneline -5
 Otherwise inspect the registered target checkout:
 
 ```bash
-TARGET_ROOT="$(coordination/bin/pipeline-python scripts/target_binding.py --target evidence-ledger --print-path)"
+TARGET_ROOT="$(coordination/bin/pipeline-python pipeline/target_binding.py --target evidence-ledger --print-path)"
 git -C "$TARGET_ROOT" status --short --branch
 git -C "$TARGET_ROOT" log --oneline -5
 ```
@@ -94,7 +94,7 @@ using the smallest focused tests and one completion gate:
 
 ```bash
 coordination/bin/pipeline-python -m pytest tests/unit/test_codex_ledger_bridge.py -q
-coordination/bin/pipeline-python scripts/governance_verify_all.py
+coordination/bin/pipeline-python pipeline/governance_verify_all.py
 ```
 
 Use evidence-ledger's own verification commands for product changes. Formal

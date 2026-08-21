@@ -388,9 +388,9 @@ def test_protocol_doctor_base_commands_include_binding_check():
     import protocol_doctor
 
     commands = protocol_doctor.base_commands(python_executable="PY", wave=2)
-    assert ["PY", "scripts/target_binding.py", "--check"] in commands
-    assert ["PY", "scripts/check_coordination.py"] in commands
-    assert ["PY", "scripts/protocol_capacity_board.py", "--wave", "2"] in commands
+    assert ["PY", "pipeline/target_binding.py", "--check"] in commands
+    assert ["PY", "pipeline/check_coordination.py"] in commands
+    assert ["PY", "pipeline/route_lineage.py", "--check"] in commands
 
 
 # --- autonomous route conflict enforcement ----------------------------------

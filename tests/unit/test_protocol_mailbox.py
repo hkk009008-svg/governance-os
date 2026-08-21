@@ -1,4 +1,4 @@
-"""Unit tests for scripts/protocol_mailbox.py — the shared mailbox vocabulary.
+"""Unit tests for pipeline/protocol_mailbox.py — the shared mailbox vocabulary.
 
 Covers the seat/recipient rosters and the kinds.txt-backed KNOWN_KINDS set.
 Hermetic: reads only the committed kinds.txt for module-level constants, and

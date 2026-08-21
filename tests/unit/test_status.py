@@ -1,10 +1,10 @@
-"""Unit tests for scripts/status.py helpers and bounded Git collection.
+"""Unit tests for pipeline/status.py helpers and bounded Git collection.
 
 Focus: count_unread — the never-crashing unread-count helper that the mailbox
 collector (and the `mailbox-unread` subcommand) drives — plus bounded real-Git
 coverage for `collect_git` repository and index isolation.
 
-Behavior pinned (read from scripts/status.py, the source of truth):
+Behavior pinned (read from pipeline/status.py, the source of truth):
   * count_unread(cursor_ts, event_filenames, seat) returns the number of events
     addressed to *seat* whose embedded timestamp is STRICTLY GREATER THAN the
     (ISO) cursor.
@@ -57,7 +57,7 @@ def _init_clean_repo(tmp_path):
 def test_invalid_manifest_is_rendered_as_unavailable_not_absent(
     tmp_path, monkeypatch
 ):
-    scripts = tmp_path / "scripts"
+    scripts = tmp_path / "pipeline"
     scripts.mkdir()
     docs = tmp_path / "docs"
     docs.mkdir()

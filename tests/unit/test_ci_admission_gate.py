@@ -53,7 +53,7 @@ SURFACE_PROBES = {
     "pyproject.toml": "pyproject.toml",
     "pytest.ini": "pytest.ini",
     "requirements-dev.txt": "requirements-dev.txt",
-    "scripts/": "scripts/ci_admission_gate.py",
+    "pipeline/": "pipeline/ci_admission_gate.py",
     "setup.cfg": "setup.cfg",
     "sitecustomize.py": "sitecustomize.py",
     "tests/unit/test_provider_surface_map.py": "tests/unit/test_provider_surface_map.py",
@@ -76,7 +76,7 @@ REQUIRED_ACTIVE_AUTHORITY_SURFACES = frozenset(
         "docs/PROGRAM-MANUAL.md",
         "docs/protocol/",
         "governance.toml",
-        "scripts/",
+        "pipeline/",
         "sitecustomize.py",
         "tests/unit/test_provider_surface_map.py",
     }
@@ -191,8 +191,8 @@ Cursor at send: 0
 
 def _init_repo(tmp_path: Path) -> tuple[Path, str]:
     root = tmp_path / "repo"
-    (root / "scripts").mkdir(parents=True)
-    (root / "scripts/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (root / "pipeline").mkdir(parents=True)
+    (root / "pipeline/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(root, "init", "-q")
     _git(root, "config", "user.name", "Admission Gate Test")
     _git(root, "config", "user.email", "admission-gate@example.invalid")
@@ -295,7 +295,7 @@ def test_every_declared_trust_or_effect_surface_is_matched_non_vacuously(
 def test_authority_commit_without_report_is_blocked(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
     touched = _commit_file(
-        root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     head = _git(root, "rev-parse", "HEAD")
 
@@ -303,7 +303,7 @@ def test_authority_commit_without_report_is_blocked(tmp_path: Path) -> None:
 
     assert not outcome.admitted
     assert touched in outcome.uncovered
-    assert "scripts/mailbox_writer.py" in outcome.uncovered[touched]
+    assert "pipeline/mailbox_writer.py" in outcome.uncovered[touched]
     assert "BLOCKED" in gate.render(outcome)
 
 
@@ -313,14 +313,14 @@ def test_new_script_cannot_shadow_the_gate_outside_admission(
     root, base = _init_repo(tmp_path)
     touched = _commit_file(
         root,
-        "scripts/subprocess.py",
+        "pipeline/subprocess.py",
         "raise SystemExit('shadowed')\n",
         "test: add import shadow",
     )
 
     commits = gate.authority_commits(root, base, touched)
 
-    assert commits == {touched: ("scripts/subprocess.py",)}
+    assert commits == {touched: ("pipeline/subprocess.py",)}
 
 
 def test_merge_resolution_only_authority_change_is_detected(
@@ -329,7 +329,7 @@ def test_merge_resolution_only_authority_change_is_detected(
     root, _ = _init_repo(tmp_path)
     base = _commit_file(
         root,
-        "scripts/mailbox_writer.py",
+        "pipeline/mailbox_writer.py",
         "POLICY = 0\n",
         "test: establish protected policy",
     )
@@ -339,22 +339,22 @@ def test_merge_resolution_only_authority_change_is_detected(
     _commit_file(root, "side.txt", "side\n", "test: topic side")
     _git(root, "checkout", "-q", main_branch)
     _git(root, "merge", "--no-ff", "--no-commit", "side")
-    (root / "scripts" / "mailbox_writer.py").write_text(
+    (root / "pipeline" / "mailbox_writer.py").write_text(
         "POLICY = 1\n", encoding="utf-8"
     )
-    _git(root, "add", "scripts/mailbox_writer.py")
+    _git(root, "add", "pipeline/mailbox_writer.py")
     _git(root, "commit", "-q", "-m", "test: merge resolution changes policy")
     head = _git(root, "rev-parse", "HEAD")
 
     commits = gate.authority_commits(root, base, head)
 
-    assert commits[head] == ("scripts/mailbox_writer.py",)
+    assert commits[head] == ("pipeline/mailbox_writer.py",)
 
 
 def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
-        root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     _land_pair(root, base, reviewed_head)
     head = _git(root, "rev-parse", "HEAD")
@@ -368,7 +368,7 @@ def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
 def test_fail_verdict_does_not_admit(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
-        root, "scripts/mailbox_writer.py", "WRITER = 1\n", "feat: writer"
+        root, "pipeline/mailbox_writer.py", "WRITER = 1\n", "feat: writer"
     )
     _land_pair(root, base, reviewed_head, verdict="FAIL")
     head = _git(root, "rev-parse", "HEAD")
@@ -409,7 +409,7 @@ def test_same_family_high_risk_reviewer_is_rejected_by_canonical_validator(
 ) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
-        root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
+        root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: writer policy"
     )
     _land_pair(root, base, reviewed_head, reviewer_model="gpt-5.6-terra")
     head = _git(root, "rev-parse", "HEAD")
@@ -427,11 +427,11 @@ def test_report_not_covering_the_authority_commit_does_not_admit(
 ) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
-        root, "scripts/feature.py", "VALUE = 2\n", "feat: ordinary reviewed work"
+        root, "pipeline/feature.py", "VALUE = 2\n", "feat: ordinary reviewed work"
     )
     _land_pair(root, base, reviewed_head)
     touched = _commit_file(
-        root, "scripts/mailbox_writer.py", "POLICY = 2\n", "feat: unreviewed policy"
+        root, "pipeline/mailbox_writer.py", "POLICY = 2\n", "feat: unreviewed policy"
     )
     head = _git(root, "rev-parse", "HEAD")
 
@@ -443,7 +443,7 @@ def test_report_not_covering_the_authority_commit_does_not_admit(
 
 def test_empty_range_and_cli_exit_codes(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
-    _commit_file(root, "scripts/mailbox_writer.py", "POLICY = 1\n", "feat: policy")
+    _commit_file(root, "pipeline/mailbox_writer.py", "POLICY = 1\n", "feat: policy")
     head = _git(root, "rev-parse", "HEAD")
 
     assert gate.main(["--root", str(root), "--base", head, "--head", head]) == 0

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_default_wave2_inventory_exists_for_gate():
     """The default Wave 2 gate must not fail from a missing inventory file."""
     proc = subprocess.run(
-        [sys.executable, "scripts/wave_gate_check.py", "2"],
+        [sys.executable, "pipeline/wave_gate_check.py", "2"],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -57,7 +57,7 @@ def test_ordinary_passing_test_cannot_impersonate_strict_xfail_pin(
         "| id | subsystem | file:line | severity | priority | fail-mode | repro | "
         "xfail-pin | lane-owner | shared-lock | wave | status | verifier | notes |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
-        "| P1 | gate | scripts/wave_gate_check.py | MAJOR | P1 | false green | "
+        "| P1 | gate | pipeline/wave_gate_check.py | MAJOR | P1 | false green | "
         "control | tests/test_false_green.py::test_ordinary_pass | local | none | "
         "1 | done | local | ordinary pass must not clear gate |\n",
         encoding="utf-8",
@@ -90,7 +90,7 @@ def test_disabled_xfail_marker_cannot_clear_wave_gate(
         "| id | subsystem | file:line | severity | priority | fail-mode | repro | "
         "xfail-pin | lane-owner | shared-lock | wave | status | verifier | notes |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
-        "| P1 | gate | scripts/wave_gate_check.py | MAJOR | P1 | false green | "
+        "| P1 | gate | pipeline/wave_gate_check.py | MAJOR | P1 | false green | "
         "control | tests/test_disabled_pin.py::test_disabled_pin | local | none | "
         "1 | done | local | disabled marker must not clear gate |\n",
         encoding="utf-8",
@@ -141,7 +141,7 @@ def test_runtime_marker_or_skip_evasion_cannot_clear_wave_gate(
         "| id | subsystem | file:line | severity | priority | fail-mode | repro | "
         "xfail-pin | lane-owner | shared-lock | wave | status | verifier | notes |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
-        "| P1 | gate | scripts/wave_gate_check.py | MAJOR | P1 | false green | "
+        "| P1 | gate | pipeline/wave_gate_check.py | MAJOR | P1 | false green | "
         "control | tests/test_runtime_pin.py::test_pin | local | none | "
         "1 | done | local | runtime control |\n",
         encoding="utf-8",

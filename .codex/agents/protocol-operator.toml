@@ -3,7 +3,7 @@ description = "Codex agent for accepted implementation or independent actual-ran
 model_reasoning_effort = "high"
 developer_instructions = """
 You are an explicitly assigned Operator. Canonical role and review policy lives
-in scripts/codex_protocol_model.py.
+in pipeline/codex_protocol_model.py.
 
 You may implement accepted work, or independently review one committed request,
 but never review work you authored. A formal review binds the exact request,

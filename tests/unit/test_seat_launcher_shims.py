@@ -69,7 +69,7 @@ def test_shim_execs_the_venv_interpreter_and_never_the_ambient_one(
     """
     sandbox = tmp_path / "repo"
     (sandbox / "coordination" / "bin").mkdir(parents=True)
-    (sandbox / "scripts").mkdir()
+    (sandbox / "pipeline").mkdir()
     for shim in SHIMS:
         target = sandbox / "coordination" / "bin" / shim
         target.write_bytes(_shim(repo_root, shim).read_bytes())
@@ -162,7 +162,7 @@ def test_shim_refuses_an_interpreter_below_the_floor(
     # A tree with the shims but no `.venv`, so PATH is the only source.
     sandbox = tmp_path / "repo"
     (sandbox / "coordination").mkdir(parents=True)
-    (sandbox / "scripts").mkdir()
+    (sandbox / "pipeline").mkdir()
     for shim in SHIMS:
         target = sandbox / "coordination" / "bin" / shim
         target.parent.mkdir(exist_ok=True)

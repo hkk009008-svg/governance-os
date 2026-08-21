@@ -206,8 +206,8 @@ def _repo(
 ) -> tuple[Path, str, str, str]:
     root = tmp_path / "repo"
     root.mkdir()
-    (root / "scripts").mkdir()
-    (root / "scripts/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (root / "pipeline").mkdir()
+    (root / "pipeline/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(root, "init", "-q")
     _git(root, "config", "user.name", "Compact Pair Test")
     _git(root, "config", "user.email", "compact-pair@example.invalid")
@@ -215,8 +215,8 @@ def _repo(
     _git(root, "commit", "-q", "-m", "chore: base")
     base = _git(root, "rev-parse", "HEAD")
 
-    (root / "scripts/feature.py").write_text("VALUE = 2\n", encoding="utf-8")
-    _git(root, "add", "scripts/feature.py")
+    (root / "pipeline/feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _git(root, "add", "pipeline/feature.py")
     _git(root, "commit", "-q", "-m", "feat: candidate")
     head = _git(root, "rev-parse", "HEAD")
 
@@ -2131,8 +2131,8 @@ def _remediation_fixture(
             ),
         ),
     )
-    (root / "scripts/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
-    _git(root, "add", "scripts/feature.py")
+    (root / "pipeline/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
+    _git(root, "add", "pipeline/feature.py")
     _git(root, "commit", "-q", "-m", "fix: remediate failed review")
     remediation_head = (
         _git(root, "rev-parse", "HEAD") if use_descendant_head else base
@@ -2555,8 +2555,8 @@ def test_superseded_commit_must_introduce_the_report(tmp_path: Path) -> None:
     root, base, head, trigger = _repo(tmp_path, mint_finding_ref=True)
     minted = _minted_repo_ref(root)
     orphan_path, _ = _commit_report(root, base, head, trigger)
-    (root / "scripts/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
-    _git(root, "add", "scripts/feature.py")
+    (root / "pipeline/feature.py").write_text("VALUE = 3\n", encoding="utf-8")
+    _git(root, "add", "pipeline/feature.py")
     _git(root, "commit", "-q", "-m", "feat: unrelated later work")
     wrong_commit = _git(root, "rev-parse", "HEAD")
     candidate = _write_report(

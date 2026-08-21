@@ -1,7 +1,7 @@
 # Risk classes — classification criteria
 
 The executable profiles (review requirements per class) live in
-`scripts/codex_protocol_model.py` `RISK_BASED_REVIEW_PROFILES`; this document
+`pipeline/codex_protocol_model.py` `RISK_BASED_REVIEW_PROFILES`; this document
 owns the membership question the profiles deliberately do not answer: which
 changes belong to which class. The author declares the class on the
 verify-request and the assigned Operator's risk-class judgment is the
@@ -48,7 +48,7 @@ live-data mutation. Not a review depth: live human authorization for the
 exact executor, target, effect, and scope — regardless of model capability
 or any green gate.
 
-The path-prefix list in `scripts/ci_admission_gate.py` (`AUTHORITY_SURFACES`)
+The path-prefix list in `pipeline/ci_admission_gate.py` (`AUTHORITY_SURFACES`)
 is the conservative executable approximation of the high-risk boundary at the
 integration gate; extending or narrowing it is itself an authority-surface
 change and reviews as one.

@@ -1,6 +1,6 @@
 # Codex continuation adapter
 
-This maps Pipeline policy to Codex mechanics; canonical validation lives in `scripts/codex_protocol_model.py`.
+This maps Pipeline policy to Codex mechanics; canonical validation lives in `pipeline/codex_protocol_model.py`.
 Role prompts and skills contain local deltas. Desktop guide: `docs/protocol/app-quickstart.md`.
 
 ## Modes
@@ -14,7 +14,7 @@ Runtime identity comes from the harness; variables, labels, and prompts grant no
 
 ## Orientation
 
-Use the native worktree index: `coordination/bin/pipeline-python scripts/status.py snapshot <seat>`.
+Use the native worktree index: `coordination/bin/pipeline-python pipeline/status.py snapshot <seat>`.
 
 Read actionable event bodies before a decision. The mailbox is the configured
 coordination transport (`governance.toml` `[coordination]`); a signed-bus cutover
@@ -31,18 +31,18 @@ fresh snapshot is the orientation path; there is no separate fast-resume
 classification or second doctrine dump.
 
 At a long-horizon boundary — transfer, interruption, wrap, or compaction —
-publish one checkpoint `findings` event (draft: `scripts/draft_checkpoint.py`;
+publish one checkpoint `findings` event (draft: `pipeline/draft_checkpoint.py`;
 its `Lessons:` line routes learning candidates, and `none-considered` is valid).
 Resume from one snapshot, the newest campaign checkpoint, and its actionable
 bodies; unread backlog is not an orientation debt. Episodic recall via
-`scripts/learning_index.py query` is advisory; committed state outranks it.
+`pipeline/learning_index.py query` is advisory; committed state outranks it.
 
 ## Executable contracts
 
-- `scripts/codex_protocol_model.py`: identity, ownership, risk, and effect tokens.
-- `scripts/compact_pair_loop.py`: formal requests, reports, and exact ranges.
-- `scripts/mailbox_writer.py` validates and serializes event publication.
-- `scripts/claude_task_connector.py` owns the no-authority, lazy transient Claude bridge.
+- `pipeline/codex_protocol_model.py`: identity, ownership, risk, and effect tokens.
+- `pipeline/compact_pair_loop.py`: formal requests, reports, and exact ranges.
+- `pipeline/mailbox_writer.py` validates and serializes event publication.
+- `pipeline/claude_task_connector.py` owns the no-authority, lazy transient Claude bridge.
 - This adapter owns host task discovery, dispatch, and waiting behavior.
 
 Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`
@@ -75,8 +75,8 @@ need exact authority for the executor, target, and scope.
 ## Review-state history boundary
 
 Review-state projection is bound to
-`scripts/baselines/review_history_boundary.json` and its frozen exception
-manifest, consumed fail-closed by `scripts/check_coordination.py`. These one-way
+`pipeline/baselines/review_history_boundary.json` and its frozen exception
+manifest, consumed fail-closed by `pipeline/check_coordination.py`. These one-way
 baselines change only through a new high-risk-reviewed schema. An active FAIL
 clears only through a valid GO/NITS report bound to and superseding it; active
 failures block repository-wide, and the cutover must be an ancestor of HEAD.

@@ -9,7 +9,7 @@ flowchart TD
   Policy --> Adapters["Codex / Claude continuations"]
   Policy --> Skills[".agents/skills/ canonical behavior"]
   Adapters --> Native["provider-native skills, agents, launchers, hooks"]
-  Skills --> Kernel["scripts/ executable policy and writers"]
+  Skills --> Kernel["pipeline/ executable policy and writers"]
   Native --> Kernel
   Kernel --> Mailbox["committed mailbox and cursors"]
   Kernel --> Bus["optional refs/threeway signed plane"]
@@ -25,17 +25,17 @@ flowchart TD
 | Codex mechanics | `docs/protocol/codex/continuation.md`, `.codex/agents/` | Host task tools and native worktrees; evidence-ledger routes through `docs/protocol/codex/ledger-cli-adoption.md`. |
 | Claude mechanics | `docs/protocol/claude/`, `.claude/` | No lifecycle hook or startup binding. |
 | Canonical reusable skills | `.agents/skills/` | Provider copies are discovery/adaptation layers. |
-| Identity, ownership, risk, effects | `scripts/codex_protocol_model.py` | Executable policy seam. |
-| Formal exact-range review | `scripts/compact_pair_loop.py` | Request/report grammar and binding. |
-| Event/cursor mutation | `scripts/mailbox_writer.py`, `coordination/bin/send-event`, `consume-events` | Validated serialized write sites; commit/effect remains separate. |
-| Current orientation | `scripts/status.py snapshot` | Projection only, not authority. |
+| Identity, ownership, risk, effects | `pipeline/codex_protocol_model.py` | Executable policy seam. |
+| Formal exact-range review | `pipeline/compact_pair_loop.py` | Request/report grammar and binding. |
+| Event/cursor mutation | `pipeline/mailbox_writer.py`, `coordination/bin/send-event`, `consume-events` | Validated serialized write sites; commit/effect remains separate. |
+| Current orientation | `pipeline/status.py snapshot` | Projection only, not authority. |
 | Mailbox events | `coordination/mailbox/sent/` | Current committed protocol state until signed bus is coherently live. |
 | Mailbox cursors | `coordination/mailbox/seen/` | Compatibility read state; coordinators are cursorless. |
 | Optional signed plane | `threeway/`, `refs/threeway/*`, `docs/protocol/threeway/` | Deployment requires explicit activation proof. |
 | Shared-file locks | `coordination/locks/`, `coordination/bin/{claim-lock,release-lock}` | Temporary, holder-bound, separately authorized remote effect. |
-| Learning lifecycle | `docs/protocol/learning/contract.md`, `scripts/learning_*` | Advisory projection/candidates; governed promotion. |
-| Product target binding | `scripts/target_binding.py`, provider target bridge | Pipeline owns governance; target repo owns product truth. |
-| Executable checks | `scripts/` | A green check proves only its call path. |
+| Learning lifecycle | `docs/protocol/learning/contract.md`, `pipeline/learning_*` | Advisory projection/candidates; governed promotion. |
+| Product target binding | `pipeline/target_binding.py`, provider target bridge | Pipeline owns governance; target repo owns product truth. |
+| Executable checks | `pipeline/` | A green check proves only its call path. |
 | Contract tests | `tests/` | CI runs unit and integration suites. |
 | Historical provenance | `DECISIONS.md`, handoffs, capacity packets, `logs/`, `docs/superpowers/`, `docs/protocol/threeway/reviews/` | Preserve; do not treat as current instruction. |
 
@@ -45,13 +45,13 @@ flowchart TD
 Universal rule?             -> docs/protocol/agents/
 Provider-only mechanic?     -> docs/protocol/<provider>/ and its native adapter
 Reusable behavior?          -> .agents/skills/
-Identity/risk/effect rule?  -> scripts/codex_protocol_model.py
-Formal review grammar?      -> scripts/compact_pair_loop.py
-Event/cursor write?         -> scripts/mailbox_writer.py + fixed wrapper
+Identity/risk/effect rule?  -> pipeline/codex_protocol_model.py
+Formal review grammar?      -> pipeline/compact_pair_loop.py
+Event/cursor write?         -> pipeline/mailbox_writer.py + fixed wrapper
 Current protocol event?     -> coordination/mailbox/sent/
 Optional signed fact?       -> threeway/ + refs/threeway/*
 Target-local product fact?  -> target repository
-Executable proof?           -> scripts/ and tests/
+Executable proof?           -> pipeline/ and tests/
 Historical evidence?        -> existing provenance corpus, clearly labeled
 ```
 

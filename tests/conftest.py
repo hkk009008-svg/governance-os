@@ -1,9 +1,9 @@
 """Shared fixtures for the governance-OS unit suite.
 
-Importability (flat ``import <scripts-module>``) comes from
-``[tool.pytest.ini_options] pythonpath = [".", "scripts"]`` in pyproject.toml,
+Importability (flat ``import <pipeline-module>``) comes from
+``[tool.pytest.ini_options] pythonpath = [".", "pipeline"]`` in pyproject.toml,
 so test modules import directly without sys.path shims.
-Flat form is the one convention for scripts/ modules — see
+Flat form is the one convention for pipeline/ modules — see
 tests/unit/test_import_identity.py.
 """
 from __future__ import annotations

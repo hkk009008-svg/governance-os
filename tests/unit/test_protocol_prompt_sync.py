@@ -41,7 +41,7 @@ ACTIVE_PROTOCOL_ROOTS = (
     ".claude",
     ".codex",
     "docs/protocol",
-    "scripts",
+    "pipeline",
 )
 MANDATORY_SUPERPOWERS_RE = re.compile(
     r"\bsuperpowers:[a-z0-9][a-z0-9-]*\b", re.IGNORECASE
@@ -93,7 +93,7 @@ def test_codex_entry_surfaces_are_compact_executable_and_native() -> None:
     for path in CODEX_ENTRY_SURFACES:
         text = _read(path)
         compact = _compact(text.replace("`", ""))
-        assert "scripts/codex_protocol_model.py" in compact
+        assert "pipeline/codex_protocol_model.py" in compact
         assert "render_" not in compact
         assert "native" in text.casefold()
         assert "GIT_INDEX_FILE" not in text
@@ -167,7 +167,7 @@ def test_transport_role_and_execution_boundaries_stay_explicit() -> None:
 def test_checkpoint_contract_is_shared_without_becoming_startup_ceremony() -> None:
     agents = _compact(_read("AGENTS.md"))
     for phrase in (
-        "scripts/draft_checkpoint.py",
+        "pipeline/draft_checkpoint.py",
         "none-considered",
         "Durable shared state beats chat memory",
         "newest campaign checkpoint",
@@ -180,7 +180,7 @@ def test_checkpoint_contract_is_shared_without_becoming_startup_ceremony() -> No
     ):
         adapter = _compact(_read(path))
         for phrase in (
-            "scripts/draft_checkpoint.py",
+            "pipeline/draft_checkpoint.py",
             "none-considered",
             "newest campaign checkpoint",
             "unread backlog is not an orientation debt",
@@ -288,7 +288,7 @@ def test_active_surface_sweep_uses_nonempty_repository_files_only() -> None:
     instructions = _active_files(ACTIVE_INSTRUCTION_ROOTS, {".md", ".toml"})
     protocol = _active_files(ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"})
     assert ROOT / "AGENTS.md" in instructions
-    assert ROOT / "scripts/codex_protocol_model.py" in protocol
+    assert ROOT / "pipeline/codex_protocol_model.py" in protocol
 
     superpowers = {
         path.relative_to(ROOT).as_posix(): sorted(

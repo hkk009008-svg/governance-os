@@ -21,12 +21,12 @@ Ledger-routed Claude seats start from the current Pipeline checkout, then run
 unset GIT_INDEX_FILE
 PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
 cd "$PIPELINE_ROOT"
-coordination/bin/pipeline-python scripts/ledger_start_guard.py --seat <seat> --wave 2
+coordination/bin/pipeline-python pipeline/ledger_start_guard.py --seat <seat> --wave 2
 ```
 
 before entering evidence-ledger. Claude seats read this bridge, not the Codex
 copy. If guard output contains older adapter paths, the current Claude
-continuation and `scripts/status.py` win.
+continuation and `pipeline/status.py` win.
 
 Every `coordination/bin/pipeline-python` block opens with its own
 `unset GIT_INDEX_FILE` line instead of prefixing the command with
@@ -55,7 +55,7 @@ Orientation or named role:
 
 ```bash
 unset GIT_INDEX_FILE
-coordination/bin/pipeline-python scripts/status.py snapshot <seat>
+coordination/bin/pipeline-python pipeline/status.py snapshot <seat>
 ```
 
 Read relevant Pipeline mailbox bodies before protocol decisions. Counts alone
@@ -70,7 +70,7 @@ Phase 1, in the Pipeline checkout — resolve and validate the target path:
 
 ```bash
 unset GIT_INDEX_FILE
-coordination/bin/pipeline-python scripts/target_binding.py --target evidence-ledger --print-path
+coordination/bin/pipeline-python pipeline/target_binding.py --target evidence-ledger --print-path
 ```
 
 Phase 2, in a separate Claude task rooted at the path Phase 1 printed — read
@@ -139,7 +139,7 @@ Use current Pipeline protocol checks:
 ```bash
 unset GIT_INDEX_FILE
 coordination/bin/pipeline-python -m pytest tests -q
-coordination/bin/pipeline-python scripts/governance_verify_all.py
+coordination/bin/pipeline-python pipeline/governance_verify_all.py
 ```
 
 Use evidence-ledger's own verification commands for product changes after

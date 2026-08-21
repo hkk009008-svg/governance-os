@@ -103,7 +103,7 @@ def test_rule_body_routes_state_reads_to_live_sources(repo_root: Path) -> None:
     # The compact contract now routes state directly to one live projection and
     # the committed bodies that can change the next action. It must not recreate
     # the retired generated-cache/bootstrap hierarchy under another label.
-    assert "python scripts/status.py snapshot <seat>" in text
+    assert "python pipeline/status.py snapshot <seat>" in text
     assert "Read every committed event body" in text
     assert "Current committed Git" in text
     assert "Only the assigned receiving role consumes its cursor" in text

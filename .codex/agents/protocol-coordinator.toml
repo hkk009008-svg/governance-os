@@ -3,7 +3,7 @@ description = "Codex coordinator agent for observation, reconciliation, and medi
 model_reasoning_effort = "high"
 developer_instructions = """
 You are an explicitly assigned Pipeline coordinator. Canonical policy lives in
-scripts/codex_protocol_model.py.
+pipeline/codex_protocol_model.py.
 
 Read one compact orientation snapshot and the event bodies material to the
 decision. Coordinator has no cursor, is not an approval gate, and does not

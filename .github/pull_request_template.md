@@ -5,7 +5,7 @@
 <!-- Motivation. Link the governing issue, route, ADR, or handoff if applicable. -->
 
 ## Test plan
-- [ ] `.venv/bin/python scripts/governance_verify_all.py` passes locally
+- [ ] `.venv/bin/python pipeline/governance_verify_all.py` passes locally
 - [ ] `.venv/bin/python -m pytest tests/ -q` clean — paste the literal summary line under Verification output
 - [ ] CI (`.github/workflows/ci.yml`) is green on this PR
 - [ ] ARCHITECTURE.md updated if a documented governance or protocol subsystem was touched

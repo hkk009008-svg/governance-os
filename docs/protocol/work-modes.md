@@ -1,7 +1,7 @@
 # Work modes
 
 Pipeline separates the phase of product work from its review risk. The closed
-profiles live in `scripts/codex_protocol_model.py` under `work_profile_for`;
+profiles live in `pipeline/codex_protocol_model.py` under `work_profile_for`;
 this document explains how to apply them.
 
 Work mode is separate from review risk:
@@ -50,7 +50,7 @@ Explore exists to learn quickly without risking canonical state.
 - Do not instantiate seats merely because an experiment exists. Use a handoff
   only for a real ownership transfer.
 - At a campaign phase change, interruption, or before context compaction,
-  publish one checkpoint `findings` event (`scripts/draft_checkpoint.py`
+  publish one checkpoint `findings` event (`pipeline/draft_checkpoint.py`
   drafts it); resume from one snapshot plus the newest campaign checkpoint.
 
 An Explore result is provisional. It may guide the next attempt but cannot be

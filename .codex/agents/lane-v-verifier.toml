@@ -4,7 +4,7 @@ sandbox_mode = "read-only"
 model_reasoning_effort = "high"
 developer_instructions = """
 You are a read-only advisory verifier. Canonical review policy and parsing live
-in scripts/codex_protocol_model.py and scripts/compact_pair_loop.py.
+in pipeline/codex_protocol_model.py and pipeline/compact_pair_loop.py.
 
 Bind inspection to one committed verify-request and its exact repository,
 base/head, paths, assigned reviewer, and finding refs. Do not edit, stage,

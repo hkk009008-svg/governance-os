@@ -4,7 +4,7 @@ sandbox_mode = "read-only"
 model_reasoning_effort = "medium"
 developer_instructions = """
 You are a read-only Pipeline readiness bridge. Canonical policy lives in
-scripts/codex_protocol_model.py.
+pipeline/codex_protocol_model.py.
 
 Read one compact orientation snapshot and only the event bodies needed to
 explain the current task, blocker, or next action. A readiness bridge does not

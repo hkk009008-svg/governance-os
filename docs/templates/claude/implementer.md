@@ -84,7 +84,7 @@ If <X happens>, report BLOCKED with what you tried.
   without explicit instruction). Read-only git (show/log/diff A..B/grep/
   rev-parse/ls-tree) plus the prefix is always safe.
 - For Lane V trigger authority, rely on the committed compact-pair verify-request
-  (Canonical Compact Pair Invariant, `scripts/codex_protocol_model.py`) — there is
+  (Canonical Compact Pair Invariant, `pipeline/codex_protocol_model.py`) — there is
   no scope descriptor and no shipping trailer to emit; never invent trigger authority.
 
 A **bad** implementer prompt is "implement task A1" — they'll burn context

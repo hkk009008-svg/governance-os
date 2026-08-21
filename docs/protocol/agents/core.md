@@ -17,15 +17,15 @@ Use the source that owns the claim:
 
 The canonical executable seams are:
 
-- [`scripts/codex_protocol_model.py`](../../../scripts/codex_protocol_model.py):
+- [`pipeline/codex_protocol_model.py`](../../../pipeline/codex_protocol_model.py):
   identity, ownership, work modes, review risk, and effect shape.
-- [`scripts/compact_pair_loop.py`](../../../scripts/compact_pair_loop.py): formal
+- [`pipeline/compact_pair_loop.py`](../../../pipeline/compact_pair_loop.py): formal
   request/report parsing and exact-range review binding.
-- [`scripts/mailbox_writer.py`](../../../scripts/mailbox_writer.py), reached
+- [`pipeline/mailbox_writer.py`](../../../pipeline/mailbox_writer.py), reached
   through [`coordination/bin/send-event`](../../../coordination/bin/send-event)
   and [`coordination/bin/consume-events`](../../../coordination/bin/consume-events):
   validated, serialized event and cursor writes with staging.
-- [`scripts/status.py`](../../../scripts/status.py): read-only current-state
+- [`pipeline/status.py`](../../../pipeline/status.py): read-only current-state
   projection.
 
 When prose and an executable seam disagree, follow the seam for runtime facts,

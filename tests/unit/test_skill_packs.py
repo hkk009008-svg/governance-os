@@ -133,11 +133,11 @@ def test_usage_counts_are_not_consumed_by_lifecycle_kernels() -> None:
 
     needles = ("skill-use", "skill_use", "skill_use_helped")
     for relative in (
-        "scripts/mailbox_writer.py",
-        "scripts/compact_pair_loop.py",
-        "scripts/learning_extract.py",
-        "scripts/learning_index.py",
-        "scripts/protocol_mailbox.py",
+        "pipeline/mailbox_writer.py",
+        "pipeline/compact_pair_loop.py",
+        "pipeline/learning_extract.py",
+        "pipeline/learning_index.py",
+        "pipeline/protocol_mailbox.py",
     ):
         text = (_REPO_ROOT / relative).read_text(encoding="utf-8")
         for needle in needles:

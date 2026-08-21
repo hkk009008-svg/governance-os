@@ -36,7 +36,7 @@ Three independent classifications shape a run:
 |---|---|---|
 | How much repository context is needed? | `AGENTS.md` tier 0 through tier 3 | Controls orientation depth. |
 | What phase is the product work in? | `explore`, `validate`, `promote` in `docs/protocol/work-modes.md` | Controls iteration and candidate freezing. |
-| How risky is the change or claim? | `ordinary-local`, `material-behavior`, `high-risk-control`, `external-effect` in `scripts/codex_protocol_model.py` | Controls evidence, independence, and authority requirements. |
+| How risky is the change or claim? | `ordinary-local`, `material-behavior`, `high-risk-control`, `external-effect` in `pipeline/codex_protocol_model.py` | Controls evidence, independence, and authority requirements. |
 
 Work mode never grants a role or an effect. A role never grants an external
 effect. A passing test proves only the path it executed.
@@ -87,7 +87,7 @@ Top-level distribution at the same base:
 | `docs/` | 165 | Active protocol docs, 93 historical Superpowers artifacts, and handoffs. |
 | `logs/` | 107 | Capability experiments and acceptance evidence. |
 | `tests/` | 78 | Unit, integration, and learning-pack contracts. |
-| `scripts/` | 68 | Executables plus four baseline data files. |
+| `pipeline/` | 68 | Executables plus four baseline data files. |
 | `.claude/` | 24 | Claude discovery/adaptation surfaces at the base. |
 | `threeway/` | 20 | Signed event-plane package. |
 | `.agents/` | 14 | Canonical reusable skills. |
@@ -98,7 +98,7 @@ Top-level distribution at the same base:
 
 The candidate removes retired Claude hookify files, a duplicated Claude
 `seat_status.py`, and the always-successful duplicate
-`scripts/system_health_check.py`; it also adds focused regression modules. Counts in
+`pipeline/system_health_check.py`; it also adds focused regression modules. Counts in
 this section intentionally remain bound to the stated base instead of silently
 changing with the worktree.
 
@@ -120,13 +120,13 @@ PYTHONDONTWRITEBYTECODE=1 env -u GIT_INDEX_FILE .venv/bin/python \
 ```
 
 The failures included an integration test that still expected an older ChatGPT
-Pro reservation contract. `scripts/governance_verify_all.py` is a separate
+Pro reservation contract. `pipeline/governance_verify_all.py` is a separate
 invariant bundle and did not run the full suite; the workflow's pytest job
 covered only `tests/unit` at the base. The candidate repairs the integration
 drift and makes that job run the complete `tests` tree.
 
 Frozen candidate verification completed with `1,889 passed in 174.69s`.
-`scripts/governance_verify_all.py` returned zero with no fatal findings and six explicitly
+`pipeline/governance_verify_all.py` returned zero with no fatal findings and six explicitly
 grandfathered immutable-history advisories. The focused high-risk slice added
 `356 passed`; structural parsing, shell syntax, relative documentation targets,
 and diff whitespace were also clean.
@@ -156,10 +156,10 @@ Use the narrowest source that owns the question:
 | Current verified system facts | `ARCHITECTURE.md`, checked against code | Executable behavior wins if prose drifts. |
 | User-principal product intent | `docs/PROGRAM-MANUAL.md` | Intent, not runtime implementation. |
 | Work phase | `docs/protocol/work-modes.md` plus `work_profile_for` | Phase is independent of risk and authority. |
-| Runtime identity, ownership, review risk, effect shape | `scripts/codex_protocol_model.py` | Closed executable policy seam. |
-| Formal request/report grammar and exact range | `scripts/compact_pair_loop.py` | A committed binding; authors cannot self-approve. |
+| Runtime identity, ownership, review risk, effect shape | `pipeline/codex_protocol_model.py` | Closed executable policy seam. |
+| Formal request/report grammar and exact range | `pipeline/compact_pair_loop.py` | A committed binding; authors cannot self-approve. |
 | Current governed task state | Current committed route/event bodies and Git state | Newer concrete evidence outranks handoffs and packets. |
-| Mailbox publication or cursor mutation | `scripts/mailbox_writer.py` through fixed wrappers | Editing, staging, committing, and consuming are separate. |
+| Mailbox publication or cursor mutation | `pipeline/mailbox_writer.py` through fixed wrappers | Editing, staging, committing, and consuming are separate. |
 | Signed-bus state | `refs/threeway/*` only when the event ref and addressed cursor ref are both coherent | Partial or absent bus must not become an empty queue. |
 | Provider mechanics | Provider continuation and native adapter | Provider surfaces may adapt mechanics, not policy. |
 | Product behavior | Selected target repository | Pipeline does not own product-local truth. |
@@ -237,7 +237,7 @@ they do not become independent governance kernels.
 
 | Path | Contents and lifecycle |
 |---|---|
-| `scripts/` | 53 current top-level executables/data helpers in the candidate, grouped in section 6. Three JSON baselines feed current checks; `lane_v_report_v1.json` is retained but has no current reader. |
+| `pipeline/` | 53 current top-level executables/data helpers in the candidate, grouped in section 6. Three JSON baselines feed current checks; `lane_v_report_v1.json` is retained but has no current reader. |
 | `coordination/README.md`, `coordination/mailbox/kinds.txt` | Coordination layout/authority orientation and the fixed writer's accepted event-kind registry. The kind registry is load-bearing data. |
 | `threeway/` | 20-module signed event/ref-bus package, grouped in section 7. |
 | `coordination/bin/` | Seven fixed shell front doors for Codex/Claude adapters, mailbox, locks, and claim probing. |
@@ -269,7 +269,7 @@ they do not become independent governance kernels.
 
 ## 6. Executable inventory: scripts and fixed front doors
 
-This section accounts for every current top-level file in `scripts/` and every
+This section accounts for every current top-level file in `pipeline/` and every
 fixed shell front door. Files are grouped by the mechanism they serve; a group
 does not imply an authority grant.
 
@@ -277,61 +277,61 @@ does not imply an authority grant.
 
 | File | Responsibility |
 |---|---|
-| `scripts/codex_protocol_model.py` | Canonical runtime identity, seat outcome, work/review profiles, model-family independence, ownership, and effect-shape policy. |
-| `scripts/status.py` | Compact read-only orientation snapshot plus a compatibility dashboard for Git, mailbox/unread authority, request state, ADR, docs, manifest, and optional environment status; only dashboard `--write` writes `STATUS.md`. |
-| `scripts/git_commit_projection.py` | Pins one repository identity/HEAD and builds a bounded in-memory commit graph for type and ancestry checks. |
-| `scripts/protocol_mailbox.py` | Shared seat/kind vocabulary and parsers for ownership, routes, reviews, learning candidates, and dispositions. |
-| `scripts/route_lineage.py` | Resolves route ancestry and supersession from event contents rather than trusting filenames. |
-| `scripts/packet_state.py` | Derives packet state from legacy capacity-packet fields without turning packets into authority. |
-| `scripts/bus_unread.py` | Chooses coherent signed-bus unread state or truthful mailbox fallback; ambiguity is unavailable, not zero. |
-| `scripts/target_binding.py` | Parses `governance.toml`, selects a registered target, expands its local path, and exposes forbidden roots. |
-| `scripts/ledger_start_guard.py` | Pipeline-first preflight for an explicitly selected ledger-routed target/seat/wave. |
+| `pipeline/codex_protocol_model.py` | Canonical runtime identity, seat outcome, work/review profiles, model-family independence, ownership, and effect-shape policy. |
+| `pipeline/status.py` | Compact read-only orientation snapshot plus a compatibility dashboard for Git, mailbox/unread authority, request state, ADR, docs, manifest, and optional environment status; only dashboard `--write` writes `STATUS.md`. |
+| `pipeline/git_commit_projection.py` | Pins one repository identity/HEAD and builds a bounded in-memory commit graph for type and ancestry checks. |
+| `pipeline/protocol_mailbox.py` | Shared seat/kind vocabulary and parsers for ownership, routes, reviews, learning candidates, and dispositions. |
+| `pipeline/route_lineage.py` | Resolves route ancestry and supersession from event contents rather than trusting filenames. |
+| `pipeline/packet_state.py` | Derives packet state from legacy capacity-packet fields without turning packets into authority. |
+| `pipeline/bus_unread.py` | Chooses coherent signed-bus unread state or truthful mailbox fallback; ambiguity is unavailable, not zero. |
+| `pipeline/target_binding.py` | Parses `governance.toml`, selects a registered target, expands its local path, and exposes forbidden roots. |
+| `pipeline/ledger_start_guard.py` | Pipeline-first preflight for an explicitly selected ledger-routed target/seat/wave. |
 
 ### 6.2 Mailbox, review, handoff, and claim evidence
 
 | File | Responsibility |
 |---|---|
-| `scripts/mailbox_writer.py` | Fixed fail-closed event/cursor candidate validation, writer fencing, atomic finalization, and explicit staging. |
-| `scripts/compact_pair_loop.py` | Composes/parses committed verify-requests and verification-reports; binds identities, risk, abuse analysis, repository, paths, ancestry, exact range, and supersession. |
-| `scripts/check_coordination.py` | Lints committed mailbox/cursor/history state and inspects current verify-request/report closure. |
-| `scripts/mailbox_monitor.py` | Read-only one-shot or watch view of unread events, broadcasts, receipt ambiguity, and heartbeat hints. |
-| `scripts/draft_handoff.py` | Drafts a handoff from live protocol evidence without publishing it. |
-| `scripts/latest_handoff.py` | Selects the newest durable handoff for a concrete seat with path/time validation. |
-| `scripts/archive_handoffs.py` | Transactionally stages history-preserving `git mv` archival and a cumulative daily index; it rejects unmatched keep names and symlinked archive targets, and reverses this invocation on failure/interruption. |
-| `scripts/check_go_schema.py` | Validates frozen historical report bytes and current compact report structure. |
-| `scripts/consume_reviewer_result.py` | Parses `reviewer-result/1`, validates schema, safely reruns cited pytest commands, detects fabrication, and proposes inventory transitions. |
-| `scripts/claim_check.py` | Derives claim premises from sentence shape and prepares reduced-context challenge probes. |
-| `scripts/chatgpt_pro_consult.py` | Content-free repository-scoped reservation/finalization state for one manual ChatGPT Pro consultation; it stores no prompt or answer. |
+| `pipeline/mailbox_writer.py` | Fixed fail-closed event/cursor candidate validation, writer fencing, atomic finalization, and explicit staging. |
+| `pipeline/compact_pair_loop.py` | Composes/parses committed verify-requests and verification-reports; binds identities, risk, abuse analysis, repository, paths, ancestry, exact range, and supersession. |
+| `pipeline/check_coordination.py` | Lints committed mailbox/cursor/history state and inspects current verify-request/report closure. |
+| `pipeline/mailbox_monitor.py` | Read-only one-shot or watch view of unread events, broadcasts, receipt ambiguity, and heartbeat hints. |
+| `pipeline/draft_handoff.py` | Drafts a handoff from live protocol evidence without publishing it. |
+| `pipeline/latest_handoff.py` | Selects the newest durable handoff for a concrete seat with path/time validation. |
+| `pipeline/archive_handoffs.py` | Transactionally stages history-preserving `git mv` archival and a cumulative daily index; it rejects unmatched keep names and symlinked archive targets, and reverses this invocation on failure/interruption. |
+| `pipeline/check_go_schema.py` | Validates frozen historical report bytes and current compact report structure. |
+| `pipeline/consume_reviewer_result.py` | Parses `reviewer-result/1`, validates schema, safely reruns cited pytest commands, detects fabrication, and proposes inventory transitions. |
+| `pipeline/claim_check.py` | Derives claim premises from sentence shape and prepares reduced-context challenge probes. |
+| `pipeline/chatgpt_pro_consult.py` | Content-free repository-scoped reservation/finalization state for one manual ChatGPT Pro consultation; it stores no prompt or answer. |
 
 ### 6.3 Provider adapters
 
 | File | Responsibility |
 |---|---|
-| `scripts/codex_seat_launcher.py` | Builds one Codex launch spec from per-seat model/tier config, sanitizes inherited state, and rejects forwarded execution-shape overrides. Trusted user/project config still owns effective sandbox/approval posture; the launcher does not attest it. |
-| `scripts/claude_task_connector.py` | Exposes five MCP tools and one bounded named Agent SDK peer for transient Codex/Claude relay; sends lazily start the user-authorized `$1.00` bridge, while private Desktop RPC, `local_*` IDs, and delivery claims fail closed. |
-| `scripts/harness_preflight.py` | Checks whether the Codex review harness can execute its required path before dispatch; `--live` may launch a provider and incur spend, so it remains separately authorized. |
+| `pipeline/codex_seat_launcher.py` | Builds one Codex launch spec from per-seat model/tier config, sanitizes inherited state, and rejects forwarded execution-shape overrides. Trusted user/project config still owns effective sandbox/approval posture; the launcher does not attest it. |
+| `pipeline/claude_task_connector.py` | Exposes five MCP tools and one bounded named Agent SDK peer for transient Codex/Claude relay; sends lazily start the user-authorized `$1.00` bridge, while private Desktop RPC, `local_*` IDs, and delivery claims fail closed. |
+| `pipeline/harness_preflight.py` | Checks whether the Codex review harness can execute its required path before dispatch; `--live` may launch a provider and incur spend, so it remains separately authorized. |
 
 ### 6.4 CI, health, inventory, and anti-ceremony controls
 
 | File | Responsibility |
 |---|---|
-| `scripts/governance_verify_all.py` | Completion bundle for architecture/doc, coordination, no-ceremony, schema, placeholder, and runtime invariants. |
-| `scripts/ci_admission_gate.py` | Classifies a PR range against active authority/skill/config/baseline surfaces and requires structurally valid committed high-risk Compact Pair evidence when triggered. Declared reviewer fields are not runtime identity attestation. |
-| `scripts/check_doc_claims.py` | Checks line/symbol anchors, manifests, and optional historical commit-SHA citations; can classify reviewed baseline drift. |
-| `scripts/check_arch_freshness.py` | Rejects substantive `ARCHITECTURE.md` changes without a new resolvable verification stamp. |
-| `scripts/check_no_ceremony.py` | Rejects verification theater and Python changes that grow past a small fixed budget. |
-| `scripts/check_placeholders.py` | Fail-closed placeholder scan with `scripts/placeholder_allowlist.txt` as the explicit baseline. |
-| `scripts/wave_gate_check.py` | Selects a campaign wave's strict-xfail pins, runs them under `--runxfail`, checks product oracles, and reports MET/UNMET; an empty wave is UNMET in the candidate. |
-| `scripts/pin_reconciler.py` | Finds inventory rows marked verified whose pins still behave as xfails. |
-| `scripts/seed_inventory.py` | Enumerates pytest xfail pins into candidate inventory rows; candidate parse/dynamic-metadata ambiguity fails visibly. |
-| `scripts/protocol_doctor.py` | Strict read-only bundle of protocol validation checks. |
-| `scripts/protocol_capacity.py` | Computes hard-gated capacity/route state from packets and current evidence. |
-| `scripts/protocol_capacity_board.py` | Renders or validates the capacity board. |
-| `scripts/threeway_mechanism_ledger.py` | Ensures every load-bearing signed event kind has a current emitter/support row and only cites tests that exist. |
-| `scripts/placeholder_allowlist.txt` | Data input to the placeholder checker, not an executable. |
-| `scripts/baselines/*.json` | Three current immutable-history/report compatibility inputs plus the currently unreferenced retained `lane_v_report_v1.json`. |
+| `pipeline/governance_verify_all.py` | Completion bundle for architecture/doc, coordination, no-ceremony, schema, placeholder, and runtime invariants. |
+| `pipeline/ci_admission_gate.py` | Classifies a PR range against active authority/skill/config/baseline surfaces and requires structurally valid committed high-risk Compact Pair evidence when triggered. Declared reviewer fields are not runtime identity attestation. |
+| `pipeline/check_doc_claims.py` | Checks line/symbol anchors, manifests, and optional historical commit-SHA citations; can classify reviewed baseline drift. |
+| `pipeline/check_arch_freshness.py` | Rejects substantive `ARCHITECTURE.md` changes without a new resolvable verification stamp. |
+| `pipeline/check_no_ceremony.py` | Rejects verification theater and Python changes that grow past a small fixed budget. |
+| `pipeline/check_placeholders.py` | Fail-closed placeholder scan with `pipeline/placeholder_allowlist.txt` as the explicit baseline. |
+| `pipeline/wave_gate_check.py` | Selects a campaign wave's strict-xfail pins, runs them under `--runxfail`, checks product oracles, and reports MET/UNMET; an empty wave is UNMET in the candidate. |
+| `pipeline/pin_reconciler.py` | Finds inventory rows marked verified whose pins still behave as xfails. |
+| `pipeline/seed_inventory.py` | Enumerates pytest xfail pins into candidate inventory rows; candidate parse/dynamic-metadata ambiguity fails visibly. |
+| `pipeline/protocol_doctor.py` | Strict read-only bundle of protocol validation checks. |
+| `pipeline/protocol_capacity.py` | Computes hard-gated capacity/route state from packets and current evidence. |
+| `pipeline/protocol_capacity_board.py` | Renders or validates the capacity board. |
+| `pipeline/threeway_mechanism_ledger.py` | Ensures every load-bearing signed event kind has a current emitter/support row and only cites tests that exist. |
+| `pipeline/placeholder_allowlist.txt` | Data input to the placeholder checker, not an executable. |
+| `pipeline/baselines/*.json` | Three current immutable-history/report compatibility inputs plus the currently unreferenced retained `lane_v_report_v1.json`. |
 
-The candidate deletes `scripts/system_health_check.py`: it duplicated existing
+The candidate deletes `pipeline/system_health_check.py`: it duplicated existing
 checks and returned success even when it printed failures, so its presence
 increased apparent surface without increasing protection.
 
@@ -339,23 +339,23 @@ increased apparent surface without increasing protection.
 
 | File | Responsibility |
 |---|---|
-| `scripts/learning_index.py` | Builds/queries a local rebuildable index from a pinned committed tree; unavailable remains distinct from zero results. |
-| `scripts/learning_extract.py` | Drafts one evidence-triggered learning candidate into scratch; it does not publish or mutate Git. |
-| `scripts/learning_metrics.py` | Reports read-only candidate/disposition/promotion lifecycle metrics and advisory linkage warnings. |
+| `pipeline/learning_index.py` | Builds/queries a local rebuildable index from a pinned committed tree; unavailable remains distinct from zero results. |
+| `pipeline/learning_extract.py` | Drafts one evidence-triggered learning candidate into scratch; it does not publish or mutate Git. |
+| `pipeline/learning_metrics.py` | Reports read-only candidate/disposition/promotion lifecycle metrics and advisory linkage warnings. |
 
 ### 6.6 Optional signed-plane commands
 
 | File | Responsibility |
 |---|---|
-| `scripts/overseer_emit.py` | Emits overseer-signed brief, assignment, cycle, release, roster, challenge, supersession, and revocation facts. |
-| `scripts/overseer_plan.py` | Converts one chief decision record and effective state into emittable/owed overseer commands; useful only when that operating path is active. |
-| `scripts/chief_emit.py` | Emits roster-bound chief human approval or revokes that chief's own prior fact. |
-| `scripts/seat_emit.py` | Emits an interactive seat's own signed control-plane fact after authority/state checks. |
-| `scripts/sign_ci_result.py` | Emits the CI seat's signed result for an exact integration SHA. |
-| `scripts/consume_bus.py` | Reads addressed events and advances only a production/review seat cursor; filtered reads require `--no-advance` in the candidate. |
-| `scripts/run_merge_gate.py` | Polls the signed plane, evaluates candidates, and calls the mechanical gate; candidate `--run-once` errors return nonzero. |
-| `scripts/run_merge_gate.sh` | Fixed daemon wrapper targeting the protected test ref, never production `main`. |
-| `scripts/execute_threeway_cutover.sh` | Explicit double-confirmed key/bootstrap and legacy-to-signed-plane cutover driver. |
+| `pipeline/overseer_emit.py` | Emits overseer-signed brief, assignment, cycle, release, roster, challenge, supersession, and revocation facts. |
+| `pipeline/overseer_plan.py` | Converts one chief decision record and effective state into emittable/owed overseer commands; useful only when that operating path is active. |
+| `pipeline/chief_emit.py` | Emits roster-bound chief human approval or revokes that chief's own prior fact. |
+| `pipeline/seat_emit.py` | Emits an interactive seat's own signed control-plane fact after authority/state checks. |
+| `pipeline/sign_ci_result.py` | Emits the CI seat's signed result for an exact integration SHA. |
+| `pipeline/consume_bus.py` | Reads addressed events and advances only a production/review seat cursor; filtered reads require `--no-advance` in the candidate. |
+| `pipeline/run_merge_gate.py` | Polls the signed plane, evaluates candidates, and calls the mechanical gate; candidate `--run-once` errors return nonzero. |
+| `pipeline/run_merge_gate.sh` | Fixed daemon wrapper targeting the protected test ref, never production `main`. |
+| `pipeline/execute_threeway_cutover.sh` | Explicit double-confirmed key/bootstrap and legacy-to-signed-plane cutover driver. |
 
 ### 6.7 Fixed shell front doors
 
@@ -451,7 +451,7 @@ required merely because a local edit exists.
 
 1. The user or parent explicitly assigns a role; a readiness bridge or helper
    does not infer one.
-2. The assigned seat runs `python scripts/status.py snapshot <seat>` and reads
+2. The assigned seat runs `python pipeline/status.py snapshot <seat>` and reads
    each relevant committed event body.
 3. The author works in the selected native worktree and records focused evidence.
 4. When the risk profile requires formal review, the author commits the exact
@@ -561,7 +561,7 @@ a known assurance boundary, not evidence those environments are compatible.
 
 | Class | Examples | How to use it |
 |---|---|---|
-| Active routing and executable truth | `AGENTS.md`, active continuation docs, `scripts/`, current tests | Follow the owning seam; correct drift in the same change. |
+| Active routing and executable truth | `AGENTS.md`, active continuation docs, `pipeline/`, current tests | Follow the owning seam; correct drift in the same change. |
 | Current durable protocol state | Current committed route/task/verify events and exact Git range | Read full bodies and bind to their commit; do not infer from filename alone. |
 | Compatibility state | `mailbox/seen`, legacy formats, frozen report exceptions, transfer-era schemas | Preserve only while readers/tests require it; it grants no new authority. |
 | Diagnostic campaign state | Capacity packets, boards, presence hints, handoffs | Use to reconstruct or monitor, never as sole task/effect authority. |
@@ -738,24 +738,24 @@ active Pipeline checkout with the worktree's native Git index.
 | Need | Command | Effect boundary |
 |---|---|---|
 | Confirm repository and state | `git rev-parse --show-toplevel && git status --short --branch` | Read-only. |
-| Compact orientation | `python scripts/status.py snapshot` | Read-only readiness bridge. |
-| Explicit assigned pair-seat orientation | `python scripts/status.py snapshot director` | Read-only; role must already be assigned. |
-| Validate target registry | `python scripts/target_binding.py --check` | Read-only. |
-| Ledger-routed preflight | `python scripts/ledger_start_guard.py --seat director --wave 2` | Read-only guard; does not grant target mutation. |
-| Coordination lint | `python scripts/check_coordination.py` | Read-only. |
-| Mailbox monitor once | `python scripts/mailbox_monitor.py --once` | Read-only. |
+| Compact orientation | `python pipeline/status.py snapshot` | Read-only readiness bridge. |
+| Explicit assigned pair-seat orientation | `python pipeline/status.py snapshot director` | Read-only; role must already be assigned. |
+| Validate target registry | `python pipeline/target_binding.py --check` | Read-only. |
+| Ledger-routed preflight | `python pipeline/ledger_start_guard.py --seat director --wave 2` | Read-only guard; does not grant target mutation. |
+| Coordination lint | `python pipeline/check_coordination.py` | Read-only. |
+| Mailbox monitor once | `python pipeline/mailbox_monitor.py --once` | Read-only. |
 | Full tests | `PYTHONDONTWRITEBYTECODE=1 env -u GIT_INDEX_FILE .venv/bin/python -m pytest -q -p no:cacheprovider` | Local execution only. |
-| Completion smoke | `PYTHONDONTWRITEBYTECODE=1 env -u GIT_INDEX_FILE .venv/bin/python scripts/governance_verify_all.py` | Local execution only. |
-| Doc claims | `python scripts/check_doc_claims.py` | Read-only. |
-| Historical SHA citations | `python scripts/check_doc_claims.py --sha-refs` | Read-only Pipeline-local validation; references to another repository must be repository-qualified. |
-| Anti-ceremony controls | `python scripts/check_no_ceremony.py` | Runs local controls, including pytest. |
-| Signed mechanism ledger | `python scripts/threeway_mechanism_ledger.py --check` | Read-only. |
-| Draft a handoff | `python scripts/draft_handoff.py --help` | Draft/local output only; publication is separate. |
+| Completion smoke | `PYTHONDONTWRITEBYTECODE=1 env -u GIT_INDEX_FILE .venv/bin/python pipeline/governance_verify_all.py` | Local execution only. |
+| Doc claims | `python pipeline/check_doc_claims.py` | Read-only. |
+| Historical SHA citations | `python pipeline/check_doc_claims.py --sha-refs` | Read-only Pipeline-local validation; references to another repository must be repository-qualified. |
+| Anti-ceremony controls | `python pipeline/check_no_ceremony.py` | Runs local controls, including pytest. |
+| Signed mechanism ledger | `python pipeline/threeway_mechanism_ledger.py --check` | Read-only. |
+| Draft a handoff | `python pipeline/draft_handoff.py --help` | Draft/local output only; publication is separate. |
 | Publish an event | `coordination/bin/send-event <from> <to> <kind> <subject>` | Writes and stages one event; requires assigned sender and publication authority; never commits. |
 | Consume pair-seat events | `coordination/bin/consume-events <seat>` | Writes/stages cursor; separately authorized; coordinators must not run it. |
 | Dry-run provider launch spec | `coordination/bin/codex-seat --dry-run <seat>` | Launch/provider access remains separately authorized. |
 | Inspect Claude connector support | `coordination/bin/claude-task-connector capabilities` | Read-only local capability report; no provider launch. |
-| Signed-plane cutover | `scripts/execute_threeway_cutover.sh --yes` | Destructive/external control-plane effect; do not run as a diagnostic. |
+| Signed-plane cutover | `pipeline/execute_threeway_cutover.sh --yes` | Destructive/external control-plane effect; do not run as a diagnostic. |
 
 For a file-by-file inventory at any later commit, use `git ls-files`, not this
 manual's frozen counts. For behavior, trace the owning symbol and its tests; do

@@ -1,7 +1,7 @@
 # Skill-use outcome rows — advisory schema
 
 > Appended by seats at wrap to `logs/learning/outcomes.jsonl`.
-> Reported by `scripts/learning_metrics.py`. Advisory under contract I1/I2:
+> Reported by `pipeline/learning_metrics.py`. Advisory under contract I1/I2:
 > these counts bind no lifecycle decision and grant no authority. The
 > reporter writes nothing. Wiring any total here into accept / decline /
 > expire / edit / prune is a contract change and reviews as one (I7).
@@ -42,12 +42,12 @@ other outcome types; the reporter ignores them for these counters.
 - **Seats** append at wrap when a named skill was loaded, or skip with a
   one-line reason in the checkpoint `Lessons:` / handoff. There is no
   quota and no penalty for `none`.
-- **`scripts/learning_metrics.py`** reports `skill_use_rows` split by
+- **`pipeline/learning_metrics.py`** reports `skill_use_rows` split by
   outcome, plus per-skill totals. Malformed `skill-use` lines are counted
   as `skill_use_malformed` and never coerced into helped/hindered/neutral.
-- **`scripts/mailbox_writer.py`**, **`scripts/compact_pair_loop.py`**,
-  **`scripts/learning_extract.py`**, **`scripts/learning_index.py`**, and
-  **`scripts/protocol_mailbox.py`** must not read this file or these
+- **`pipeline/mailbox_writer.py`**, **`pipeline/compact_pair_loop.py`**,
+  **`pipeline/learning_extract.py`**, **`pipeline/learning_index.py`**, and
+  **`pipeline/protocol_mailbox.py`** must not read this file or these
   counters. That absence is the recorded rejection of
   usage-counts-as-lifecycle-evidence.
 

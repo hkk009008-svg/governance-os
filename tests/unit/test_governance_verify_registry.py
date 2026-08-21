@@ -30,7 +30,7 @@ def test_registry_covers_every_rendered_gate() -> None:
     Keyed on the aggregate's own output vocabulary so adding a gate without a
     registry row fails here rather than silently widening the unmapped set.
     """
-    source = (_REPO_ROOT / "scripts/governance_verify_all.py").read_text(
+    source = (_REPO_ROOT / "pipeline/governance_verify_all.py").read_text(
         encoding="utf-8"
     )
     rendered_gates = {

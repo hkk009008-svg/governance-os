@@ -29,12 +29,12 @@ def test_every_provider_entrypoint_points_to_the_canonical_policy_model():
     """One executable policy source, named by every side's adapter.
 
     Providers differ in runtime mechanics, not in policy. Each adapter must
-    name `scripts/codex_protocol_model.py` as the canonical source rather than
+    name `pipeline/codex_protocol_model.py` as the canonical source rather than
     restating identity, ownership, risk, or external-effect rules in prose that
     can drift. The assertion is on the pointer target, not on one sentence, so
     an adapter may word its own hand-off naturally.
     """
-    pointer = "scripts/codex_protocol_model.py"
+    pointer = "pipeline/codex_protocol_model.py"
     for path in (
         "AGENTS.md",
         ".agents/skills/four-seat-protocol/SKILL.md",
@@ -48,7 +48,7 @@ def test_every_provider_entrypoint_points_to_the_canonical_policy_model():
 def test_work_mode_docs_point_to_the_executable_profiles_and_keep_explore_light():
     work_modes = _compact(_read("docs/protocol/work-modes.md"))
 
-    assert "scripts/codex_protocol_model.py" in work_modes
+    assert "pipeline/codex_protocol_model.py" in work_modes
     assert "work_profile_for" in work_modes
     assert "work mode is separate from review risk" in work_modes.lower()
     assert "one campaign brief" in work_modes.lower()

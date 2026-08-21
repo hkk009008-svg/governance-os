@@ -69,7 +69,7 @@ Successful run output:
 - For coordination: a task/route event only when ownership, evidence, or a
   hard boundary materially changes; no no-op artifact is required.
 
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+Canonical Compact Pair Invariant: `pipeline/codex_protocol_model.py`. This
 manual intentionally does not restate its lifecycle grammar.
 
 Known failure modes:

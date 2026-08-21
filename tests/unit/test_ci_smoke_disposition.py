@@ -28,7 +28,7 @@ def _drift(kind: str) -> check_doc_claims.Drift:
     return check_doc_claims.Drift(
         doc_path=str(ROOT / "ARCHITECTURE.md"),
         doc_line=10,
-        target_file="scripts/fixture.py",
+        target_file="pipeline/fixture.py",
         target_line=20,
         kind=kind,
         symbol="fixture",

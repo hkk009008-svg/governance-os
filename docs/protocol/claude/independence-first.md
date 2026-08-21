@@ -1,6 +1,6 @@
 # Proportional independence (R-INDEPENDENCE)
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
+Autonomous Seat Outcome Contract: pipeline/codex_protocol_model.py
 
 This rule applies when work composes parseable/executable input, enforces an
 authority or security boundary, gates a side effect, or validates a schema whose
@@ -40,4 +40,4 @@ execution authority.
 - distinct-seat Operator report with explicit dispositions and, for
   `high-risk-control`, a different model family plus abuse-class assessment.
 
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
+Canonical Compact Pair Invariant: pipeline/codex_protocol_model.py

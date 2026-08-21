@@ -15,6 +15,7 @@ STALE_SELECTORS = (
     "tests/unit/test_protocol_capacity_board.py",
     "tests/unit/test_coordination_bin.py",
     "tests/unit/test_check_coordination.py",
+    "tests/unit/test_protocol_capacity.py",
     "tests/unit/test_claude_task_connector.py",
 )
 CURRENT_PROTOCOL_TESTS = (
@@ -23,7 +24,6 @@ CURRENT_PROTOCOL_TESTS = (
     "tests/unit/test_status.py",
     "tests/unit/test_coordination_tooling.py",
     "tests/unit/test_ceremony_gates.py",
-    "tests/unit/test_protocol_capacity.py",
     "tests/unit/test_protocol_doc_integrity.py",
     "tests/unit/test_protocol_prompt_sync.py",
     "tests/unit/test_codex_protocol_model.py",
@@ -39,8 +39,8 @@ REQUIRED_LEDGER_DOC_PHRASES = (
     "registered `evidence-ledger` target",
     "Do not start ledger work",
     "user Content checkout",
-    "scripts/target_binding.py --target evidence-ledger --print-path",
-    "scripts/ledger_start_guard.py --seat <seat> --wave 2",
+    "pipeline/target_binding.py --target evidence-ledger --print-path",
+    "pipeline/ledger_start_guard.py --seat <seat> --wave 2",
     "native Git index",
     "Read the route body and the target repository's `CLAUDE.md` and `AGENTS.md`",
     "Coordinator may reconcile ledger work from durable evidence",
@@ -48,7 +48,7 @@ REQUIRED_LEDGER_DOC_PHRASES = (
     "Record both repository heads only when ownership or context actually transfers",
 )
 # AGENTS.md deliberately absent: the universal router names no product
-# target; per-task routes resolve through scripts/target_binding.py
+# target; per-task routes resolve through pipeline/target_binding.py
 # (context-pruning PR 2).
 DOC_SURFACES = (
     "docs/protocol/codex/continuation.md",
@@ -157,7 +157,9 @@ def test_protocol_doctor_derives_verification_commands_from_model():
         assert selector not in flattened
 
 
-def test_protocol_doctor_final_claim_requires_packets_without_duplicate_route_gate(monkeypatch):
+def test_protocol_doctor_runs_one_unconditional_read_only_set(monkeypatch):
+    """The doctor is a fixed read-only bundle: no capacity board, no flags."""
+
     commands: list[list[str]] = []
 
     def fake_run_command(cmd, cwd, timeout=120):
@@ -166,32 +168,13 @@ def test_protocol_doctor_final_claim_requires_packets_without_duplicate_route_ga
 
     monkeypatch.setattr(doctor, "run_command", fake_run_command)
 
-    assert doctor.main(["--wave", "2", "--final-claim"]) == 0
-    final_claim_commands = [
-        command
-        for command in commands
-        if "scripts/protocol_capacity_board.py" in command and "--require-packets" in command
-    ]
-    assert len(final_claim_commands) == 1
-    assert "--validate-route" not in final_claim_commands[0]
-
-    commands.clear()
-
-    assert doctor.main(
-        [
-            "--wave",
-            "2",
-            "--route",
-            "coordination/mailbox/sent/route.md",
-            "--final-claim",
-        ]
-    ) == 0
-    route_require_commands = [
-        command
-        for command in commands
-        if "scripts/protocol_capacity_board.py" in command and "--require-packets" in command
-    ]
-    assert len(route_require_commands) == 1
+    assert doctor.main([]) == 0
+    rendered = [" ".join(command) for command in commands]
+    assert any("check_coordination.py" in line for line in rendered)
+    assert any("target_binding.py --check" in line for line in rendered)
+    assert any("route_lineage.py --check" in line for line in rendered)
+    assert not any("capacity" in line for line in rendered)
+    assert not any("--require-packets" in line for line in rendered)
 
 
 def test_ledger_bridge_doc_exists_and_names_required_boundaries():
@@ -212,8 +195,8 @@ def test_core_codex_role_prompts_are_thin_deltas_with_ledger_pointer():
     for path in CORE_CODEX_ROLE_PROMPTS:
         text = _read(path)
         assert "docs/protocol/codex/ledger-cli-adoption.md" in text
-        assert "scripts/codex_protocol_model.py" in text
-        assert "scripts/ledger_start_guard.py --seat" not in text
+        assert "pipeline/codex_protocol_model.py" in text
+        assert "pipeline/ledger_start_guard.py --seat" not in text
         assert "env -u GIT_INDEX_FILE" not in text
         assert len(text.splitlines()) <= 30, path
 

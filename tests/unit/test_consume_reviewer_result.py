@@ -1,4 +1,4 @@
-"""Adversarial-surface tests for scripts/consume_reviewer_result.py (ADR-027/028/032).
+"""Adversarial-surface tests for pipeline/consume_reviewer_result.py (ADR-027/028/032).
 
 This module is the anti-fabrication reviewer-result consumer: it parses a
 `reviewer-result/1` block out of an UNTRUSTED mailbox event and re-executes the
@@ -279,7 +279,7 @@ def test_valid_unable_to_verify_passes() -> None:
 # ---------------------------------------------------------------------------
 
 def test_smoke_check_clean_on_current_repo(repo_root: Path) -> None:
-    # This is exactly what scripts/ci_smoke.py invokes; the live mailbox must be clean.
+    # This is exactly what pipeline/ci_smoke.py invokes; the live mailbox must be clean.
     assert crr.smoke_check(repo_root) == 0
 
 

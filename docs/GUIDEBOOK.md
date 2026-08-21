@@ -33,7 +33,7 @@ python3 -m venv .venv
 Then orient. One command is the whole startup ritual:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/status.py snapshot
+env -u GIT_INDEX_FILE .venv/bin/python pipeline/status.py snapshot
 ```
 
 Reading the snapshot:
@@ -51,13 +51,13 @@ Reading the snapshot:
 - `Next:` — the one suggested next action.
 
 Deeper diagnostics when something looks wrong:
-`.venv/bin/python scripts/check_coordination.py`.
+`.venv/bin/python pipeline/check_coordination.py`.
 
 ## 3. Sixty seconds of classification before you start
 
 Three independent questions shape every task (the closed decision surfaces
 live in `AGENTS.md`, `docs/protocol/work-modes.md`, and
-`scripts/codex_protocol_model.py`):
+`pipeline/codex_protocol_model.py`):
 
 | You are about to… | Walk | Ceremony required |
 |---|---|---|
@@ -83,7 +83,7 @@ The default path for direct, reversible, repository-local work:
 git status --short --branch && git log --oneline -5
 
 # 2. Inspect before editing: definitions, callers, siblings
-rg -n "the_symbol_you_are_changing" scripts/ tests/
+rg -n "the_symbol_you_are_changing" pipeline/ tests/
 
 # 3. Behavior change? Write the failing test first
 env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_the_area.py -q
@@ -93,13 +93,13 @@ env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_the_area.py -q
 
 # 5. Inspect the exact diff before committing; stage explicit paths
 git diff
-git add scripts/the_file.py tests/unit/test_the_area.py
+git add pipeline/the_file.py tests/unit/test_the_area.py
 git commit -m "fix(area): what and why"
 ```
 
-Docs-only changes: run `.venv/bin/python scripts/check_doc_claims.py` and
-`.venv/bin/python scripts/check_placeholders.py` instead of pytest. Run the
-completion aggregate `.venv/bin/python scripts/governance_verify_all.py`
+Docs-only changes: run `.venv/bin/python pipeline/check_doc_claims.py` and
+`.venv/bin/python pipeline/check_placeholders.py` instead of pytest. Run the
+completion aggregate `.venv/bin/python pipeline/governance_verify_all.py`
 only when the change touches governance/runtime topology or an
 `ARCHITECTURE.md` invariant — it is not a per-edit ritual.
 
@@ -118,7 +118,7 @@ Classification criteria: `docs/protocol/agents/risk-classes.md`.
 2. Compose the request body (validates identities, range, and risk):
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/compact_pair_loop.py \
+env -u GIT_INDEX_FILE .venv/bin/python pipeline/compact_pair_loop.py \
   compose-request --repo-root . --author director --author-model <model-id> \
   --operator operator --risk-class material-behavior \
   --base <base-rev> --head HEAD <<< "One-paragraph outcome statement."
@@ -157,7 +157,7 @@ coordination/bin/consume-events <seat>
 ```
 
 Rules that surprise people: never write into `sent/` directly and never call
-`scripts/mailbox_writer.py` yourself — both are denied by policy;
+`pipeline/mailbox_writer.py` yourself — both are denied by policy;
 publication requires an assigned sender (a readiness session cannot lawfully
 publish, and even asking `send-event` for its help text is denied there —
 read the script header for usage); coordinators observe without consuming;
@@ -170,7 +170,7 @@ state does. At a real boundary — ownership transfer, interruption,
 pre-compaction, campaign wrap — publish one checkpoint:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python scripts/draft_checkpoint.py \
+env -u GIT_INDEX_FILE .venv/bin/python pipeline/draft_checkpoint.py \
   --scratch .pytest-verify-tmp/ckpt --checkpoint <campaign-slug> \
   --boundary wrap --objective "…" --accepted-scope "…" --owner <seat> \
   --base <40-hex-base> --verification-status "what ran, fresh" \
@@ -209,7 +209,7 @@ gh pr create --title "…" --body "…"
 CI runs smoke (`governance_verify_all.py`), the full pytest matrix on
 Python 3.11–3.13, a hermetic Linux job, advisory lint, and — only when the
 range touches an authority surface (`AUTHORITY_SURFACES` in
-`scripts/ci_admission_gate.py`: broad prefixes including `scripts/`,
+`pipeline/ci_admission_gate.py`: broad prefixes including `pipeline/`,
 `docs/protocol/`, the skill trees, CI itself, `AGENTS.md`, `README.md`) —
 a risk-aware admission job that requires committed GO/NITS high-risk
 compact-pair coverage of those commits. Documentation outside those
@@ -221,7 +221,7 @@ no authority; merging is the owner's separate effect.
 The learning plane is git-native and advisory
 (`docs/protocol/learning/contract.md` is the contract):
 
-- A lesson becomes a draft via `scripts/learning_extract.py` (scratch-only,
+- A lesson becomes a draft via `pipeline/learning_extract.py` (scratch-only,
   evidence triggers only — user correction, contradiction, recurrence,
   measured improvement), then a `learning-candidate` mailbox event, then a
   non-producer disposition (`accepted`/`declined`/`expired`).
@@ -240,7 +240,7 @@ The learning plane is git-native and advisory
 | Symptom | Meaning | Do |
 |---|---|---|
 | `send-event` refuses or is denied outright | Unassigned sender, unknown kind, malformed body — or readiness posture | Check seat assignment and `kinds.txt`; publication needs an assigned seat |
-| Snapshot `Gate: FAIL` | Structural coordination blocker | `scripts/check_coordination.py` names it; repair before other work |
+| Snapshot `Gate: FAIL` | Structural coordination blocker | `pipeline/check_coordination.py` names it; repair before other work |
 | Snapshot advisories about grandfathered history | Known immutable-history exceptions | Normal steady state; not yours to fix |
 | Admission gate red on a PR | Range touches an authority-surface prefix | Attach compact-pair review coverage, or the owner decides at merge |
 | A gate is green but the claim feels unproved | Gates prove only what they execute | Say what was not proved; see `probe-a-claim` skill before writing "verified" |

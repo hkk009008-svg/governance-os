@@ -1,7 +1,7 @@
 # Claude continuation adapter
 
 This file maps Pipeline policy to Claude Code mechanics. Canonical policy and
-validation live in `scripts/codex_protocol_model.py`; skills and agent files
+validation live in `pipeline/codex_protocol_model.py`; skills and agent files
 contain only their local deltas.
 
 For the two-app setup and capability comparison, see
@@ -27,7 +27,7 @@ convenience surfaces, not Pipeline identity: naming or messaging a session
 does not assign a role, publish a durable event, or validate a verdict.
 
 Identity is enforced where it decides something — at publication, by
-`scripts/compact_pair_loop.py`, which binds a verdict to reviewer seat not equal
+`pipeline/compact_pair_loop.py`, which binds a verdict to reviewer seat not equal
 to author seat, reviewer equal to the request's assigned operator, reviewer
 matching its own envelope and filename, distinct model families for
 `high-risk-control`, and repository/base/head equal to the committed request.
@@ -61,7 +61,7 @@ binary.
 Use the native index of the current worktree:
 
 ```bash
-coordination/bin/pipeline-python scripts/status.py snapshot <seat>
+coordination/bin/pipeline-python pipeline/status.py snapshot <seat>
 ```
 
 Read actionable event bodies before a decision. Only the assigned live role
@@ -80,22 +80,22 @@ classification or second doctrine dump.
 
 At a real long-horizon boundary — ownership transfer, interruption, wrap, or
 before context compaction — publish one checkpoint `findings` event (draft:
-`scripts/draft_checkpoint.py`; its `Lessons:` line routes lessons toward
+`pipeline/draft_checkpoint.py`; its `Lessons:` line routes lessons toward
 learning-candidates, and `none-considered` is always valid). Resume is one
 snapshot plus the newest campaign checkpoint plus the actionable bodies it
 names; unread backlog is not an orientation debt. Recall from the episodic
-index (`scripts/learning_index.py query`) is optional and advisory (learning
+index (`pipeline/learning_index.py query`) is optional and advisory (learning
 contract I1) — committed state outranks it.
 
 ## Executable contracts
 
-- `scripts/codex_protocol_model.py` validates runtime identity, ownership
+- `pipeline/codex_protocol_model.py` validates runtime identity, ownership
   lineage, work modes, risk profiles, model-family independence, and
   external-effect token shape.
-- `scripts/compact_pair_loop.py` validates formal requests, reports, and exact
+- `pipeline/compact_pair_loop.py` validates formal requests, reports, and exact
   reviewed ranges.
-- `scripts/mailbox_writer.py` validates and serializes event publication.
-- `scripts/claude_task_connector.py` owns the supported transient Codex bridge;
+- `pipeline/mailbox_writer.py` validates and serializes event publication.
+- `pipeline/claude_task_connector.py` owns the supported transient Codex bridge;
   it is not a Claude seat launcher or governance registry.
 - This adapter owns Claude-native delegation and waiting behavior.
 
@@ -135,7 +135,7 @@ forced by the harness rather than chosen:
   `test_supported_provider_adapters_are_exactly_codex_and_claude` holds the
   supported adapters at exactly Codex and Claude — so the different-family
   counterparty for Claude-authored work is Codex, not a differently-configured
-  Claude. `scripts/ci_admission_gate.py` admits an authority-surface range only
+  Claude. `pipeline/ci_admission_gate.py` admits an authority-surface range only
   when a committed GO/NITS report bound to a `high-risk-control` request covers
   it, and `CLAUDE.md`, `.claude/`, and `docs/protocol/` are authority surfaces —
   so editing this adapter needs a Codex reviewer; no Claude seat or subagent can
@@ -204,6 +204,6 @@ need exact authority for the executor, target, and scope.
 ## Target bridge
 
 Targets are selected per task, not fixed. Resolve the active binding through
-`scripts/target_binding.py`, then read the target repository's own
+`pipeline/target_binding.py`, then read the target repository's own
 instructions. Start from Pipeline; do not infer product authority from a
 bridge. For `evidence-ledger`, read `docs/protocol/claude/ledger-cli-adoption.md`.

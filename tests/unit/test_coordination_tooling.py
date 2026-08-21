@@ -52,10 +52,10 @@ def _init_repo(repo: Path, repo_root: Path) -> None:
     venv = repo / ".venv/bin"
     venv.mkdir(parents=True)
     (venv / "python").symlink_to(sys.executable)
-    scripts = repo / "scripts"
+    scripts = repo / "pipeline"
     scripts.mkdir()
     (scripts / "mailbox_writer.py").write_bytes(
-        (repo_root / "scripts/mailbox_writer.py").read_bytes()
+        (repo_root / "pipeline/mailbox_writer.py").read_bytes()
     )
     mailbox = repo / "coordination/mailbox"
     (mailbox / "sent").mkdir(parents=True)
@@ -92,8 +92,8 @@ def _prepare_verify_request(
 ) -> tuple[str, str, str, str]:
     base = _git(repo, "rev-parse", "HEAD")
     finding_ref = _finding_ref(repo)
-    (repo / "scripts/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
-    _git(repo, "add", "scripts/feature.py")
+    (repo / "pipeline/feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "pipeline/feature.py")
     _git(repo, "commit", "-q", "-m", "feat: candidate")
     head = _git(repo, "rev-parse", "HEAD")
     if reviewed_range is not None:

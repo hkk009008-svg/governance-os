@@ -543,7 +543,7 @@ def test_sweep_ignores_hash_inside_python_strings_and_reads_toml_prose(
 # the source table so coverage is derived — which made deleting a
 # (fragment, witness) pair silent again, since the witness vanishes with the
 # alternative it was pinning. This copy is the anchor the source cannot take
-# with it: an alternative deleted or added in scripts/claim_check.py without a
+# with it: an alternative deleted or added in pipeline/claim_check.py without a
 # matching, deliberate edit here is a red test, not a quiet narrowing. That is
 # the same two-file-change rule the nine-failure fixture already applies to
 # premises.

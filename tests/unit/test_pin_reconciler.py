@@ -1,4 +1,4 @@
-"""Tests for the regression-pin reconcile gate (scripts/pin_reconciler.py).
+"""Tests for the regression-pin reconcile gate (pipeline/pin_reconciler.py).
 
 Pins the two seams that feed pin-discipline decisions:
 
@@ -35,7 +35,7 @@ def _row(
     wave: str = "2",
     status: str = "verified",
 ) -> str:
-    cells = (row_id, "kernel", "scripts/x.py:1", "MAJOR", "P1", "crash",
+    cells = (row_id, "kernel", "pipeline/x.py:1", "MAJOR", "P1", "crash",
              "run it", pin, "lane-a", "none", wave, status, "operator", "-")
     return "| " + " | ".join(cells) + " |"
 

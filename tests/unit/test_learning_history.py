@@ -63,7 +63,7 @@ def _repo(tmp_path: Path, monkeypatch) -> tuple[Path, str]:
     root = tmp_path / "repo"
     sent = root / "coordination/mailbox/sent"
     seen = root / "coordination/mailbox/seen"
-    baselines = root / "scripts/baselines"
+    baselines = root / "pipeline/baselines"
     sent.mkdir(parents=True)
     seen.mkdir()
     baselines.mkdir(parents=True)
@@ -626,7 +626,7 @@ def test_old_base_parallel_branch_introduction_is_not_grandfathered(
     _git(root, "checkout", "-q", "main")
     sent = root / "coordination/mailbox/sent"
     seen = root / "coordination/mailbox/seen"
-    baselines = root / "scripts/baselines"
+    baselines = root / "pipeline/baselines"
     sent.mkdir(parents=True)
     seen.mkdir()
     baselines.mkdir(parents=True)

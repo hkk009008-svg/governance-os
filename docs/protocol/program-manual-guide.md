@@ -42,7 +42,7 @@ the operational contract, and seat guidance. It is a compact intent layer
 - **On any factual conflict, verify against current source and
   `ARCHITECTURE.md`, which win** — the manual loses.
 - The manual intentionally does not restate the Compact Pair lifecycle
-  grammar; `scripts/codex_protocol_model.py` owns it.
+  grammar; `pipeline/codex_protocol_model.py` owns it.
 
 -----
 
@@ -65,9 +65,9 @@ the operational contract, and seat guidance. It is a compact intent layer
 
 ### 2.2 Make drift fail loud
 
-- `scripts/check_doc_claims.py` covers `docs/PROGRAM-MANUAL.md`; smoke runs
+- `pipeline/check_doc_claims.py` covers `docs/PROGRAM-MANUAL.md`; smoke runs
   an advisory anchor-drift WARN on it. Run
-  `python scripts/check_doc_claims.py docs/PROGRAM-MANUAL.md` after edits
+  `python pipeline/check_doc_claims.py docs/PROGRAM-MANUAL.md` after edits
   that touch anchors.
 - Treat unresolved anchors as a gate, not a report: silent staleness is the
   enemy; a noisy drift report is the fix.

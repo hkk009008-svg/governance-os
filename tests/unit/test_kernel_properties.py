@@ -10,7 +10,6 @@ import copy
 
 from hypothesis import HealthCheck, given, settings, strategies as st
 
-import packet_state
 import route_lineage
 
 settings.register_profile("ci", settings(derandomize=True, max_examples=200,
@@ -43,41 +42,3 @@ def test_resolve_authoritative_order_independent(routes):
     _r.Random(0).shuffle(shuffled)
     assert route_lineage.resolve_authoritative(routes).winner == \
            route_lineage.resolve_authoritative(shuffled).winner
-
-
-# ---- packet_state.derive_* ----
-_status = st.one_of(st.sampled_from(["ready", "active", "blocked", "done", "excepted", "", "paused"]),
-                    st.text(max_size=8))
-_ptype = st.one_of(st.sampled_from(sorted(packet_state.NON_VERIFIED_TYPES) +
-                                   ["director-implementation", "operator-verification"]),
-                   st.text(max_size=10))
-_packet = st.fixed_dictionaries({
-    "status": _status, "packet_type": _ptype,
-    "done_evidence": st.lists(st.text(max_size=20), max_size=4),
-})
-
-
-@given(_packet)
-def test_derive_work_state_in_vocab_and_no_crash(pkt):
-    assert packet_state.derive_work_state(pkt) in packet_state.WORK_STATES
-
-
-@given(_packet)
-def test_derive_verification_state_in_vocab(pkt):
-    assert packet_state.derive_verification_state(pkt) in packet_state.VERIFICATION_STATES
-
-
-@given(_packet)
-def test_derive_does_not_mutate(pkt):
-    snap = copy.deepcopy(pkt)
-    packet_state.derive_work_state(pkt)
-    packet_state.derive_verification_state(pkt)
-    assert pkt == snap
-
-
-@given(_packet)
-def test_blocked_with_evidence_always_completed(pkt):
-    ev = [e for e in pkt["done_evidence"] if e.strip()]
-    if pkt["status"] == "blocked":
-        expected = "completed" if ev else "blocked"
-        assert packet_state.derive_work_state(pkt) == expected
