@@ -35,7 +35,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from peer_backends import AGY_ROLES, BACKENDS, PeerError, Spec, build, reported_result
-from peer_receipt import RECEIPTS, next_seq, receipt_path, validate_task, write_receipt
+from peer_receipt import RECEIPTS, validate_task, write_receipt
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_TIMEOUT_S = 900
@@ -75,10 +75,19 @@ def _read_last_message(message: Path) -> tuple[str, str | None]:
     except OSError as exc:
         return "", f"refusing to read the last-message path ({exc}); no result"
     try:
-        with os.fdopen(handle, "r", encoding="utf-8") as opened:
-            return opened.read(), None
+        with os.fdopen(handle, "rb") as opened:
+            raw = opened.read()
     finally:
         message.unlink(missing_ok=True)
+    try:
+        return raw.decode("utf-8"), None
+    except UnicodeDecodeError:
+        # An undecodable answer is still a fact worth a receipt. Raising here
+        # lost the paid result and wrote no record at all.
+        return (
+            raw.decode("utf-8", errors="replace"),
+            "last-message file was not valid UTF-8; undecodable bytes replaced",
+        )
 
 
 def run(spec: Spec, prompt: str, *, runner=None) -> Outcome:
@@ -89,7 +98,6 @@ def run(spec: Spec, prompt: str, *, runner=None) -> Outcome:
     if spec.invocation_id == "0":
         spec = replace(spec, invocation_id=uuid.uuid4().hex)
     invocation = build(spec)
-    started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     began = time.monotonic()
     try:
         completed = runner(
@@ -135,7 +143,9 @@ def _read_prompt(args) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="pipeline peer", description=__doc__.splitlines()[0])
+    # __doc__ is None under `python -OO`, which strips docstrings.
+    summary = (__doc__ or "invoke one peer CLI once").splitlines()[0]
+    parser = argparse.ArgumentParser(prog="pipeline peer", description=summary)
     sub = parser.add_subparsers(dest="command", required=True)
 
     ask = sub.add_parser("ask", help="invoke one peer once and record a receipt")
@@ -170,11 +180,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"no peer receipts under {base.relative_to(ROOT)}")
             return 0
         for path in sorted(base.rglob("*.json")):
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            print(
-                f"{path.relative_to(ROOT)}  {payload['side']:<6} {payload['role']:<10} "
-                f"exit={payload['exit_code']} model={payload['model_reported']}"
-            )
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(payload, dict) or payload.get("schema") != "peer-receipt/1":
+                    raise ValueError("not a peer receipt")
+                row = (
+                    f"{payload['side']:<6} {payload['role']:<10} "
+                    f"exit={payload['exit_code']} model={payload['model_reported']}"
+                )
+            except (OSError, ValueError, KeyError) as exc:
+                # A listing that dies on one malformed file hides every good
+                # one behind it, which is the opposite of what a listing is for.
+                row = f"unreadable ({exc})"
+            print(f"{path.relative_to(ROOT)}  {row}")
         return 0
 
     try:
@@ -182,10 +200,21 @@ def main(argv: list[str] | None = None) -> int:
     except PeerError as exc:
         print(f"pipeline peer: {exc}", file=sys.stderr)
         return 2
+    # --cwd becomes the peer's working root. Unconstrained, one flag handed the
+    # peer the whole filesystem, and with --write that is an unsandboxed writer
+    # pointed anywhere.
+    cwd = Path(args.cwd).resolve()
+    if cwd != ROOT and ROOT not in cwd.parents:
+        print(
+            f"pipeline peer: --cwd {cwd} is outside {ROOT}; a peer is given a "
+            "working root inside the repository, not the filesystem",
+            file=sys.stderr,
+        )
+        return 2
     scratch = Path(os.environ.get("TMPDIR", "/tmp"))
     spec = Spec(
         side=args.side, role=args.role, task=args.task,
-        cwd=Path(args.cwd).resolve(), scratch=scratch, model=args.model,
+        cwd=cwd, scratch=scratch, model=args.model,
         read_only=not args.write, max_usd=args.max_usd, timeout_s=args.timeout,
         # Settled here, before build() and before the argv is printed, so the
         # proposed invocation and the executed one are the same bytes.
@@ -202,10 +231,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     outcome = run(spec, _read_prompt(args))
-    path = write_receipt(ROOT, outcome, started)
-    print(f"receipt: {path.relative_to(ROOT)}", file=sys.stderr)
+    # Print the answer BEFORE recording it. Writing the receipt first meant a
+    # write failure destroyed a paid result: neither printed nor recorded.
     if outcome.result:
         print(outcome.result)
+    try:
+        path = write_receipt(ROOT, outcome, started)
+        print(f"receipt: {path.relative_to(ROOT)}", file=sys.stderr)
+    except (PeerError, OSError) as exc:
+        print(f"pipeline peer: RECEIPT NOT WRITTEN: {exc}", file=sys.stderr)
+        print("pipeline peer: the run above is unrecorded", file=sys.stderr)
     for note in outcome.notes:
         print(f"note: {note}", file=sys.stderr)
     return 0 if outcome.exit_code == 0 else 1

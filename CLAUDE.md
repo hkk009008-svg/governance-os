@@ -36,8 +36,9 @@ and every item here is forced by the harness rather than chosen.
 - Every model this harness can select is claude-family, so Claude cannot
   supply its own different-family reviewer. That counterparty is Codex,
   reached with `pipeline peer ask codex`.
-- External effects (push, merge, locks, cursor consumption, peer invocation,
-  paid spend) each need separate explicit authority.
+- External effects (merge, locks, cursor consumption, peer invocation, paid
+  spend) each need separate explicit authority. Push is deliberately not on
+  that list; see `AGENTS.md` item 6 for why the claim was dropped.
 
 ## Lessons route through candidates
 

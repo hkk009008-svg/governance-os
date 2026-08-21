@@ -12,7 +12,9 @@ import pytest
 import codex_seat_launcher as launcher
 
 
-SEATS = ("director", "director2", "operator", "operator2", "coordinator")
+# Derived, not retyped: a hardcoded roster is how this file went stale when
+# the seats collapsed, and it is the launcher's own roster that matters.
+SEATS = launcher.LAUNCH_SEATS
 
 
 def _write_config(path: Path, overrides: dict[str, tuple[str, str]] | None = None) -> None:
@@ -32,11 +34,8 @@ def _write_config(path: Path, overrides: dict[str, tuple[str, str]] | None = Non
 @pytest.mark.parametrize(
     ("seat", "mode", "role", "behavior_source"),
     [
-        ("director", "live-seat", "director", "director"),
-        ("director2", "live-seat", "director2", "director"),
-        ("operator", "live-seat", "operator", "operator2"),
-        ("operator2", "live-seat", "operator2", "operator2"),
-        ("coordinator", "coordinator", "coordinator", None),
+        ("author", "live-seat", "author", "director"),
+        ("reviewer", "live-seat", "reviewer", "operator2"),
     ],
 )
 def test_build_launch_spec_sets_exact_seat_identity(
@@ -106,15 +105,15 @@ def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
     _write_config(
         config_path,
         {
-            "director": ("gpt-director", "fast"),
-            "director2": ("gpt-director2", "default"),
+            "author": ("gpt-author", "fast"),
+            "reviewer": ("gpt-reviewer", "default"),
         },
     )
     settings = launcher.load_seat_settings(config_path)
 
     first = launcher.build_launch_spec(
         tmp_path,
-        "director",
+        "author",
         settings,
         {},
         "codex",
@@ -122,7 +121,7 @@ def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
     )
     second = launcher.build_launch_spec(
         tmp_path,
-        "director2",
+        "reviewer",
         settings,
         {},
         "codex",
@@ -132,14 +131,14 @@ def test_each_seat_uses_only_its_own_model_and_tier(tmp_path: Path) -> None:
     assert first.argv[:5] == (
         "codex",
         "--model",
-        "gpt-director",
+        "gpt-author",
         "--config",
         'service_tier="fast"',
     )
     assert second.argv[:5] == (
         "codex",
         "--model",
-        "gpt-director2",
+        "gpt-reviewer",
         "--config",
         'service_tier="default"',
     )
@@ -151,7 +150,7 @@ def test_launch_spec_uses_caller_checkout_native_index(tmp_path: Path) -> None:
 
     spec = launcher.build_launch_spec(
         tmp_path,
-        "director",
+        "author",
         launcher.load_seat_settings(config_path),
         {"GIT_INDEX_FILE": "/ambient/index"},
         "codex",
@@ -172,7 +171,7 @@ def test_forwarded_codex_arguments_remain_literal(tmp_path: Path) -> None:
 
     spec = launcher.build_launch_spec(
         tmp_path,
-        "operator",
+        "reviewer",
         launcher.load_seat_settings(config_path),
         {},
         "codex",
@@ -227,7 +226,7 @@ def test_forwarded_launcher_owned_or_security_flags_are_rejected(
     with pytest.raises(launcher.LaunchError, match="may not override"):
         launcher.build_launch_spec(
             tmp_path,
-            "operator",
+            "reviewer",
             launcher.load_seat_settings(config_path),
             {},
             "codex",
@@ -242,7 +241,7 @@ def test_forwarded_terminator_cannot_hide_a_security_override(tmp_path: Path) ->
     with pytest.raises(launcher.LaunchError, match="may not override"):
         launcher.build_launch_spec(
             tmp_path,
-            "operator",
+            "reviewer",
             launcher.load_seat_settings(config_path),
             {},
             "codex",
@@ -253,7 +252,7 @@ def test_forwarded_terminator_cannot_hide_a_security_override(tmp_path: Path) ->
 @pytest.mark.parametrize(
     "body",
     [
-        "[seats.director]\nmodel='gpt'\nservice_tier='default'\n",
+        "[seats.author]\nmodel='gpt'\nservice_tier='default'\n",
         "".join(
             f"[seats.{seat}]\nmodel='gpt'\nservice_tier='turbo'\n"
             for seat in SEATS
@@ -263,7 +262,7 @@ def test_forwarded_terminator_cannot_hide_a_security_override(tmp_path: Path) ->
             for seat in SEATS
         ),
         "".join(
-            f"[seats.{seat}]\nmodel={1 if seat == 'director' else repr('gpt')}\n"
+            f"[seats.{seat}]\nmodel={1 if seat == 'author' else repr('gpt')}\n"
             "service_tier='default'\n"
             for seat in SEATS
         ),
@@ -303,7 +302,7 @@ def test_dry_run_uses_cwd_without_creating_index_or_starting_codex(
             "--dry-run",
             "--config",
             str(config_path),
-            "director",
+            "author",
             "--",
             "unchanged start input",
         ],

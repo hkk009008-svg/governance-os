@@ -139,8 +139,10 @@ Notable per-host constraints:
 - Protocol doctors and metrics are optional diagnostics. They never grant task,
   review, or effect authority.
 - Editing, staging, committing, publishing an event, consuming a cursor,
-  pushing, merging, locking, invoking a peer, spending, and mutating live data
-  are distinct actions.
+  merging, locking, invoking a peer, spending, and mutating live data are
+  distinct actions. Push is not among the gated effects: the claim that it was
+  outlived any mechanism enforcing it, and was dropped rather than kept as
+  prose (`AGENTS.md` item 6).
 
 ## 6. Queue and publication authority
 

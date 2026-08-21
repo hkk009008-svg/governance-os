@@ -91,6 +91,20 @@ def build_agy(spec) -> Invocation:
 
     if spec.role not in AGY_ROLES:
         raise PeerError(f"agy role must be one of {', '.join(AGY_ROLES)}; got {spec.role!r}")
+    # The wrapper has no read-only flag and no spend ceiling of its own, so
+    # --write and --max-usd cannot be honoured here. Silently accepting them
+    # was the defect: a caller believed a containment they did not have. The
+    # only writing role is `implement`, and it must be asked for explicitly.
+    if spec.read_only and spec.role == "implement":
+        raise PeerError(
+            "agy role 'implement' writes files; pass --write to ask for that "
+            "explicitly. The other agy roles are advisory and read-only."
+        )
+    if not spec.read_only and spec.role != "implement":
+        raise PeerError(
+            f"--write has no meaning for agy role {spec.role!r}: the wrapper "
+            "runs advisory roles in plan mode and takes no write flag"
+        )
     preferred = os.environ.get("PIPELINE_SIDE", "claude")
     order = ["claude-agy", "codex-agy"] if preferred == "claude" else ["codex-agy", "claude-agy"]
     wrapper = next((name for name in order if shutil.which(name)), None)
@@ -142,11 +156,49 @@ def reported_result(side: str, stdout: str) -> tuple[str | None, float | None, s
         except json.JSONDecodeError:
             notes.append("claude output was not one JSON object; model unreported")
             return None, None, stdout, notes
+        if not isinstance(payload, dict):
+            # Valid JSON that is not an object (a bare list, string or number).
+            # Raising here aborted run(), losing a paid result and writing no
+            # receipt at all.
+            notes.append("claude output was JSON but not an object; model unreported")
+            return None, None, stdout, notes
+
         model = payload.get("model")
-        if model is None and isinstance(payload.get("modelUsage"), dict):
-            model = next(iter(payload["modelUsage"]), None)
+        if not (isinstance(model, str) and model.strip()):
+            model = None
+        usage = payload.get("modelUsage")
+        if model is None and isinstance(usage, dict) and usage:
+            if len(usage) == 1:
+                only = next(iter(usage))
+                model = only if isinstance(only, str) and only.strip() else None
+            else:
+                # More than one model did work. Naming the first key would put
+                # a model in the receipt that may not have done the reviewing,
+                # which is the receipt asserting a fact it does not have.
+                notes.append(
+                    "claude reported multiple models "
+                    f"({', '.join(sorted(str(key) for key in usage))}); model unreported"
+                )
+        if model is None:
+            notes.append("claude output carried no usable model field; model unreported")
+
+        raw_result = payload.get("result")
+        if isinstance(raw_result, str):
+            result = raw_result
+        else:
+            # str(None) is the four characters "None", which was being printed
+            # to the operator as the peer's answer and hashed into the receipt.
+            result = ""
+            if raw_result is not None:
+                notes.append(f"claude result field was {type(raw_result).__name__}, not a string")
+
         cost = payload.get("total_cost_usd")
-        return model, (float(cost) if isinstance(cost, (int, float)) else None), str(payload.get("result", "")), notes
+        return (
+            model,
+            float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None,
+            result,
+            notes,
+        )
     if side == "codex":
         model, result = None, ""
         for line in stdout.splitlines():

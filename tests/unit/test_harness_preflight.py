@@ -89,42 +89,6 @@ def test_codex_check_rejects_profile_ambient_authority(
     assert "profiles.loose.sandbox_mode" in result.detail
 
 
-def test_live_probe_requires_exact_positive_artifact(
-    tmp_path: Path, monkeypatch
-) -> None:
-    expected = f"{tmp_path.resolve()}\nabc1234\n"
-    monkeypatch.setattr(preflight, "_git_identity", lambda _root: expected)
-
-    def runner(argv, **kwargs):
-        assert argv == [
-            "codex", "exec", "-C", str(tmp_path.resolve()),
-            "--sandbox", "read-only", "-c", 'approval_policy="never"',
-            'Run exactly this command once in the supplied repository and reply with ONLY stdout: "git rev-parse --show-toplevel --short HEAD"',
-        ]
-        assert kwargs["stdin"] is subprocess.DEVNULL
-        assert all(not key.startswith("GIT_") for key in kwargs["env"])
-        return SimpleNamespace(returncode=0, stdout=expected, stderr="")
-
-    assert preflight.live_probe(tmp_path, runner=runner).ok is True
-
-
-def test_live_probe_rejects_exit_zero_with_noncanonical_output(
-    tmp_path: Path, monkeypatch
-) -> None:
-    expected = f"{tmp_path.resolve()}\nabc1234\n"
-    monkeypatch.setattr(preflight, "_git_identity", lambda _root: expected)
-
-    result = preflight.live_probe(
-        tmp_path,
-        runner=lambda *args, **kwargs: SimpleNamespace(
-            returncode=0, stdout=expected.rstrip(), stderr=""
-        ),
-    )
-
-    assert result.ok is False
-    assert "no exact positive artifact" in result.detail
-
-
 def test_main_fails_when_any_capability_check_fails(
     tmp_path: Path, monkeypatch
 ) -> None:

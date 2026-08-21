@@ -4,8 +4,11 @@
 Both participants are terminal programs: the ``claude`` CLI and the ``codex``
 CLI.  This check answers whether a peer invocation *could* run — binaries on
 PATH, no ambient authority in the project config — and nothing else.  It
-reports capability only.  It neither launches a provider unless ``--live`` is
-explicitly selected nor grants authority for any later action.
+reports capability only.  It launches no provider and grants no authority for
+any later action.  A live round trip is `pipeline peer ask`, which builds one
+argv, applies the spend ceiling, and commits a receipt -- this module used to
+carry a second, hand-rolled codex argv behind ``--live`` that spent real money
+and recorded nothing.
 """
 
 from __future__ import annotations
@@ -219,71 +222,9 @@ def _git_identity(root: Path) -> str:
     return output
 
 
-def live_probe(root: Path, *, runner=subprocess.run) -> Result:
-    """Spend one Codex prompt and require the exact positive Git artifact."""
-
-    root = root.resolve()
-    try:
-        expected = _git_identity(root)
-    except ValueError as exc:
-        return Result("codex", False, str(exc), f"see {RUNBOOK}")
-
-    command = "git rev-parse --show-toplevel --short HEAD"
-    prompt = (
-        "Run exactly this command once in the supplied repository and reply with "
-        f"ONLY stdout: {json.dumps(command)}"
-    )
-    argv = [
-        "codex",
-        "exec",
-        "-C",
-        str(root),
-        "--sandbox",
-        "read-only",
-        "-c",
-        'approval_policy="never"',
-        prompt,
-    ]
-    environment = {
-        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
-    }
-    try:
-        completed = runner(
-            argv,
-            cwd=root,
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=600,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return Result("codex", False, f"probe failed to run: {exc}", f"see {RUNBOOK}")
-
-    hit = completed.returncode == 0 and completed.stdout == expected
-    return Result(
-        "codex",
-        hit,
-        "live probe returned exact positive artifact"
-        if hit
-        else (
-            "live probe produced no exact positive artifact "
-            f"(exit {completed.returncode}, stdout {len(completed.stdout or '')} bytes, "
-            f"stderr {len(completed.stderr or '')} bytes)"
-        ),
-        "" if hit else f"exit code is not evidence; see {RUNBOOK}",
-    )
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="harness_preflight.py")
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
-    parser.add_argument(
-        "--live",
-        action="store_true",
-        help="launch one separately authorized positive-artifact probe",
-    )
     args = parser.parse_args(argv)
 
     root = args.repo_root.resolve()
@@ -293,8 +234,6 @@ def main(argv: list[str] | None = None) -> int:
         result for result in check_codex(root)
         if not result.detail.startswith("binary ")
     ]
-    if args.live:
-        results.append(live_probe(root))
     for result in results:
         marker = "PASS" if result.ok else "FAIL"
         print(f"{marker} {result.harness}: {result.detail}")

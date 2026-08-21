@@ -27,11 +27,13 @@ LEGACY_SEATS = (
     "director", "director2", "operator", "operator2", "coordinator", "coordinator2",
 )
 SEATS = ("director", "director2", "operator", "operator2")
-# Oversight-inclusive receiving roster: the 4 pair seats + both coordinators.
-# `all` is a broadcast TARGET only (kept in RECIPIENTS), never a real seat, so it
-# is NOT in RECEIVING_SEATS. Every independent Python roster copy imports THIS as
-# its source of truth (Slice 2.5 D1 consolidation); the 4 shell whitelists are
-# hand-synced and guarded by the token-extraction test (spec §8 clause #2).
+# The receiving roster is two tiers: the two live ROLES, which are the only
+# identities the fixed writer accepts for a new event, and the six LEGACY_SEATS,
+# which remain readable because 967 committed events carry them. `all` is a
+# broadcast TARGET only (kept in RECIPIENTS), never a receiving identity. Every
+# independent Python roster copy imports THIS as its source of truth; the
+# coordination/bin/send-event whitelists are hand-synced to it and are checked
+# by tests/unit/test_send_event_roster.py.
 RECEIVING_SEATS = (*ROLES, *LEGACY_SEATS)
 SENDERS = (*ROLES, *LEGACY_SEATS)
 RECIPIENTS = (*RECEIVING_SEATS, "all")
@@ -41,7 +43,12 @@ RECIPIENTS = (*RECEIVING_SEATS, "all")
 # until the standing topology explicitly warms it. This is the single
 # declaration of that split; launchers, guards, and app-surface rosters
 # import or are test-bound to it.
-LAUNCHABLE_SEATS = (*SEATS, "coordinator")
+# What a launcher may start: the two live roles, and nothing else. A launcher
+# exists to start a process that can do governed work, and a retired seat can
+# publish nothing -- launching one produces a process with no lawful action
+# available to it. The retired names keep PARSING in committed history; they
+# are simply not startable.
+LAUNCHABLE_SEATS = ROLES
 # Identities that may OWN a task or PRODUCE an artifact: the two live roles,
 # plus the retired pair seats that committed artifacts still name. New writes
 # are narrowed to ROLES by mailbox_writer.NEW_WRITE_SENDERS; this wider set is

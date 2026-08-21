@@ -74,7 +74,7 @@ def test_ledger_start_guard_cli_rejects_obsolete_resume_flag(capsys):
         ledger_start_guard.main(
             [
                 "--seat",
-                "director",
+                "author",
                 "--resume-from",
                 "coordination/mailbox/sent/route.md@" + "a" * 40,
             ]
@@ -216,7 +216,7 @@ def test_ledger_start_guard_cli_rejects_content_kernel():
 
     forbidden = target_binding.forbidden_roots()[0]
     result = ledger_start_guard.build_guard(
-        seat="operator2",
+        seat="reviewer",
         root=forbidden,
         kernel=ledger_start_guard.PIPELINE_KERNEL,
     )
@@ -250,7 +250,7 @@ def test_ledger_start_guard_cli_prints_route_and_first_commands(tmp_path, capsys
             "--kernel",
             str(tmp_path),
             "--seat",
-            "operator2",
+            "reviewer",
             "--wave",
             "2",
         ]
@@ -288,7 +288,7 @@ def test_ledger_start_guard_surfaces_route_base_and_worktree_before_normal_check
             "--kernel",
             str(tmp_path),
             "--seat",
-            "director",
+            "author",
             "--wave",
             "2",
         ]

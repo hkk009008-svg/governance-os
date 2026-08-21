@@ -90,9 +90,10 @@ or unknown bindings fail closed with a corrective message.
 
 Every external effect requires live exact authority for the executor, target,
 effect, and scope. A route or role alone is never sufficient. This includes
-push/force-push, merge, cursor consumption, lock mutation, **peer invocation**,
-paid API spend, live-data mutation, target checkout refresh, and edits outside
-the accepted target scope. See `AGENTS.md` for the canonical boundary.
+merge, cursor consumption, lock mutation, **peer invocation**, paid API spend,
+live-data mutation, target checkout refresh, and edits outside the accepted
+target scope. Push is deliberately excluded — see `AGENTS.md` item 6 for why
+an unenforced claim was dropped instead of restated.
 
 ## 7. Troubleshooting
 

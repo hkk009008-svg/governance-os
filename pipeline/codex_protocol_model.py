@@ -415,7 +415,14 @@ class RuntimeIdentityError(ValueError):
 _RUNTIME_ROLE_SPECS = {
     "readiness-bridge": ("readiness-bridge", None, None),
     "subagent": ("subagent", None, None),
-    **{seat: ("live-seat", seat, behavior_source_for_seat(seat)) for seat in SEATS},
+    # Built from SEAT_BEHAVIOR_SOURCE, not from SEATS: the collapse added
+    # author and reviewer there but left this derived from the four retired
+    # pair seats, so the runtime could not express the only two identities the
+    # fixed writer accepts.
+    **{
+        seat: ("live-seat", seat, behavior_source_for_seat(seat))
+        for seat in SEAT_BEHAVIOR_SOURCE
+    },
     **{seat: ("coordinator", seat, None) for seat in COORDINATOR_SEATS},
     **{role: ("subagent", None, None) for role in SPAWNED_ROLE_AGENT_ROLES},
 }
@@ -450,7 +457,7 @@ class RuntimeIdentity:
     @classmethod
     def for_seat(cls, seat: str, *, model: str | None = None) -> RuntimeIdentity:
         """Derive one canonical live-seat or coordinator identity."""
-        if seat not in (*SEATS, *COORDINATOR_SEATS):
+        if seat not in (*SEAT_BEHAVIOR_SOURCE, *COORDINATOR_SEATS):
             raise RuntimeIdentityError(f"unsupported Codex seat: {seat}")
         return cls._for_role(seat, model=model)
 

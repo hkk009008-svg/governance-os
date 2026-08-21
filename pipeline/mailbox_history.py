@@ -97,8 +97,13 @@ def _check_post_cutover_identities(
             "the identity boundary cannot be checked and is not assumed to hold",
         )]
 
-    at_cutover = _tree_blobs(run_git, repo_root, _ROLE_CUTOVER_COMMIT, sent_prefix)
-    at_head = _tree_blobs(run_git, repo_root, "HEAD", sent_prefix)
+    # Both trees are read at the MAILBOX root, not at sent/ alone: an event
+    # published under a retired identity and then moved to archive/ in a
+    # follow-up commit left HEAD's sent/ tree and took the FATAL with it, while
+    # the event stayed in committed history.
+    mailbox_root = sent_prefix.rstrip("/").rsplit("/", 1)[0]
+    at_cutover = _tree_blobs(run_git, repo_root, _ROLE_CUTOVER_COMMIT, mailbox_root)
+    at_head = _tree_blobs(run_git, repo_root, "HEAD", mailbox_root)
     if at_cutover is None or at_head is None:
         return [issue_factory(
             "mailbox/sent/",
@@ -108,10 +113,9 @@ def _check_post_cutover_identities(
             "identity boundary cannot be checked and is not assumed to hold",
         )]
 
+    introductions = getattr(projection, "introductions", {}) or {}
     issues: list = []
-    for path in sorted(projection.events):
-        if not path.startswith(sent_prefix):
-            continue
+    for path in sorted(set(at_head) | set(projection.events)):
         match = protocol_mailbox.EVENT_NAME_RE.fullmatch(Path(path).name)
         if match is None:
             continue
@@ -122,10 +126,26 @@ def _check_post_cutover_identities(
         current = at_head.get(path)
         if original is not None and current is not None and original == current:
             continue  # the bytes it had at the boundary: historical, and lawful
-        reason = (
-            "was not present at" if original is None
-            else "carries different bytes than it had at"
-        )
+        if original is None:
+            # Absent at the boundary. That is a new publication ONLY if it was
+            # introduced after it. An event authored before the cutover on a
+            # branch that never contained the boundary commit is also absent
+            # there, and refusing it would make such a branch unmergeable while
+            # deleting the event is itself forbidden -- a deadlock with no
+            # lawful remedy. Ancestry separates the two.
+            introduced_at = (introductions.get(path) or (None, None))[0]
+            if (
+                introduced_at is not None
+                and commits.object_types.get(introduced_at) == "commit"
+                and commits.is_ancestor(introduced_at, _ROLE_CUTOVER_COMMIT)
+            ):
+                continue  # authored before the boundary, merged after: lawful
+            # No usable introduction record is not evidence of innocence. An
+            # event absent at the boundary that cannot be shown to predate it
+            # is refused, because the alternative is a silent skip.
+            reason = "was not present at"
+        else:
+            reason = "carries different bytes than it had at"
         issues.append(issue_factory(
             f"mailbox/sent/{Path(path).name}",
             "post_cutover_retired_identity",

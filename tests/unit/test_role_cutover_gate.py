@@ -37,17 +37,32 @@ _HYBRID = "coordination/mailbox/sent/2026-09-02T00-00-00Z-author-to-operator-fin
 _LAWFUL = "coordination/mailbox/sent/2026-09-03T00-00-00Z-author-to-reviewer-findings.md"
 
 
-def _gate(events, at_cutover, at_head, *, boundary=True):
+_PRE = "a" * 40    # a commit that precedes the cutover
+_POST = "b" * 40   # a commit that does not
+
+
+def _gate(events, at_cutover, at_head, *, boundary=True, introductions=None):
     class _Commits:
         object_types = (
-            {mailbox_history._ROLE_CUTOVER_COMMIT: "commit"} if boundary else {}
+            {
+                mailbox_history._ROLE_CUTOVER_COMMIT: "commit",
+                _PRE: "commit",
+                _POST: "commit",
+            }
+            if boundary
+            else {}
         )
+
+        @staticmethod
+        def is_ancestor(candidate, target):
+            return candidate == _PRE
 
     class _Projection:
         commits = _Commits()
 
     projection = _Projection()
     projection.events = events
+    projection.introductions = introductions or {}
 
     def run_git(repo_root, *args):
         tree = at_head if "HEAD" in args else at_cutover
@@ -74,8 +89,9 @@ def test_a_retired_identity_must_carry_its_cutover_bytes() -> None:
 
     issues = _gate(
         [_HISTORICAL, _FRESH, _HYBRID, _LAWFUL],
-        at_cutover={_HISTORICAL: "a" * 40, _FRESH: "c" * 40},
-        at_head={_HISTORICAL: "a" * 40, _FRESH: "d" * 40, _HYBRID: "e" * 40, _LAWFUL: "f" * 40},
+        at_cutover={_HISTORICAL: "1" * 40, _FRESH: "2" * 40},
+        at_head={_HISTORICAL: "1" * 40, _FRESH: "3" * 40, _HYBRID: "4" * 40, _LAWFUL: "5" * 40},
+        introductions={_HYBRID: (_POST, "4" * 40)},
     )
 
     flagged = {issue.path: issue.message for issue in issues}
@@ -97,9 +113,58 @@ def test_unchanged_history_is_never_flagged() -> None:
 
     assert _gate(
         [_HISTORICAL],
-        at_cutover={_HISTORICAL: "a" * 40},
-        at_head={_HISTORICAL: "a" * 40},
+        at_cutover={_HISTORICAL: "1" * 40},
+        at_head={_HISTORICAL: "1" * 40},
     ) == []
+
+
+def test_a_pre_boundary_event_merged_later_is_lawful() -> None:
+    """A branch that predates the cutover must stay mergeable.
+
+    A legacy verify-request authored before the boundary but living on a branch
+    that never contained the boundary commit is absent from the cutover tree.
+    Refusing it made the branch unmergeable while deleting the event is itself
+    forbidden -- a deadlock with no lawful remedy. Ancestry of the INTRODUCTION
+    separates "authored earlier, merged later" from "published after".
+    """
+
+    assert _gate(
+        [_FRESH],
+        at_cutover={},
+        at_head={_FRESH: "9" * 40},
+        introductions={_FRESH: (_PRE, "9" * 40)},
+    ) == []
+
+
+def test_an_event_that_cannot_be_shown_to_predate_the_boundary_is_refused() -> None:
+    """No usable introduction record is not evidence of innocence."""
+
+    issues = _gate(
+        [_FRESH],
+        at_cutover={},
+        at_head={_FRESH: "9" * 40},
+        introductions={},
+    )
+
+    assert [issue.kind for issue in issues] == ["post_cutover_retired_identity"]
+
+
+def test_an_event_moved_to_archive_keeps_its_verdict() -> None:
+    """Publishing under a retired identity then moving it must not clear it.
+
+    The gate read HEAD's sent/ tree, so a follow-up commit moving the event to
+    archive/ took the FATAL with it while the event stayed in history.
+    """
+
+    archived = _FRESH.replace("/sent/", "/archive/2026/")
+    issues = _gate(
+        [],
+        at_cutover={},
+        at_head={archived: "9" * 40},
+        introductions={archived: (_POST, "9" * 40)},
+    )
+
+    assert [issue.kind for issue in issues] == ["post_cutover_retired_identity"]
 
 
 def test_a_lost_boundary_with_post_cutover_state_fails_closed() -> None:

@@ -61,11 +61,17 @@ Each verb accepts its own `--help`. `pipeline <verb> --help` is the answer to
    different-model actual-diff review plus explicit abuse-class analysis.
    Classification criteria: `docs/protocol/agents/risk-classes.md`. Tests
    prove only what they execute; a green gate grants no authority.
-6. External effects — push, merge, lock, cursor consumption, **peer
-   invocation**, paid spend, live-data mutation — each need separate exact
-   authority for the executor, target, effect, and scope. Structural protocol
-   data never grants it. Transport ambiguity is reported, never converted
-   into an empty queue.
+6. External effects — merge, lock, cursor consumption, **peer invocation**,
+   paid spend, live-data mutation — each need separate exact authority for the
+   executor, target, effect, and scope. Structural protocol data never grants
+   it. Transport ambiguity is reported, never converted into an empty queue.
+   **Push is deliberately not on that list.** It was, in five documents, while
+   the harness on this machine allowed `git push` without prompting — a control
+   asserted in prose and absent from the mechanism. This repository's own
+   doctrine is that a document is not a gate, so the claim was dropped rather
+   than left standing as decoration. Push is an ordinary operation here.
+   Restoring the obligation means restoring a permission rule that enforces
+   it, not a sentence that describes it.
 7. At a long-horizon checkpoint (transfer, interruption, compaction, wrap),
    preserve: objective, accepted scope, owner, policy revision, base/head,
    evidence refs, verification status, unresolved blockers, and the next
