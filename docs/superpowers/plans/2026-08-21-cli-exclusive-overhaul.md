@@ -1,7 +1,7 @@
 # CLI-exclusive overhaul — Claude CLI + Codex CLI as one unit
 
-**Status:** executed 2026-08-21, five commits on `claude/cli-exclusive-overhaul`.
-Awaiting the different-family (Codex) review the admission gate requires.
+**Status:** executed, reviewed FAIL by Codex, remediated. Ten commits on
+`claude/cli-exclusive-overhaul`. Awaiting re-review.
 **Owner:** user-principal directive; executed from the Claude Code CLI.
 **Base:** `fec89e52` on `claude/tier2-record-ceiling-finding` (main = `86146d1f`).
 `docs/superpowers/plans/` is not an authority surface; this file confers nothing.
@@ -283,3 +283,52 @@ which is a grammar change with its own review.
 - **No provider launched.** The peer argv this repository builds is tested;
   the shape a live `claude` or `codex` emits is parsed defensively but
   unconfirmed. One authorized round trip per side would settle it.
+
+
+## 8. The review, and what it cost me to be wrong
+
+Codex (`gpt-5.6-sol`) reviewed `86146d1f..4c4371fd` through `pipeline peer ask
+codex` — exit 0, 1942s, receipt `coordination/peer/cli-exclusive-overhaul/0001-codex.json`
+— and returned **FAIL with eight blocking findings**. Every one reproduced.
+
+The first landed on my own verification claim, and it is the one worth
+remembering. `git add -A` swept two untracked skill packs into the range while
+the skill directories they reference stayed untracked, so **"1206 passed"
+described my working tree and not the commit**; an exact-head clone gave
+`2 failed, 1204 passed`. I had run the suite the way CI runs it in every
+respect except the one that mattered — I never ran it against the bytes I was
+asking someone to review. Then I made the same mistake a second time while
+fixing the first, which is why the repair is `.gitignore` plus a test that
+asks Git for its corpus rather than a resolution to be careful.
+
+The other seven, each now closed with the reviewer's own attack as a control:
+
+| # | Defect | Why it mattered |
+|---|---|---|
+| F3 | `NEW_WRITE_SENDERS` restricted only the sender | A hybrid `author → operator` event published; a retired-seat report reached committed state via `git add -f` |
+| F4 | One fixed `codex-last-message.txt` | A run that wrote nothing inherited the previous run's answer and hashed it into a fresh receipt |
+| F5 | `_find_key` read `"model"` at any depth | Echoed output could back-fill the requested model, making the receipt agree with its author by construction |
+| F6 | `--task` unsanitized; `next_seq` counted files | `../mailbox/sent` escaped the receipts root; a sequence gap overwrote a receipt |
+| F7 | The strict xfail set `reviewer` on both sides | It constructed no misassignment and went red only because a *valid* report succeeded |
+| F8 | Both adapters still prescribed Desktop | The canonical entry docs contradicted the contract the range exists to establish |
+| F2 | The reviewer-visibility fix sat outside the reviewed range | Already fixed at `5c75834a`; the next request must name a range containing it |
+
+Two things Codex confirmed survived attack, which is worth as much as the
+findings: the growth-rule accounting (`a rename that genuinely adds 200 lines
+remained refused`) and the manifest matrix (`absent=0 and both=2; symlink and
+traversal rejected`). It also confirmed no code path treats a peer receipt as
+authority.
+
+**Verification now, from a clean clone of the committed bytes** — the standard
+I should have held the first time:
+
+    git clone … && git checkout 782cb724     # 0 untracked
+    pytest tests -q        1223 passed, exit 0
+    pipeline check         OK, exit 0
+    python-growth          2038 added, 19668 deleted, net -17630
+
+One more instrument lesson came out of that clone: it first reported
+`gate-executes-pins FAIL`, which was not the wave gate at all — the clone had
+no `.venv`, `bin/pipeline` silently fell back to a python without pytest, and
+the gate blamed its subject for a missing environment. The fallback now names
+itself.
