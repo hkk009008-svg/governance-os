@@ -18,7 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 import protocol_mailbox
-import bus_unread  # de-degrade: real ref-bus unread for migrated (scalar) cursors
+import bus_unread  # legacy scalar cursors read against the mailbox projection
 
 SEATS = protocol_mailbox.SEATS
 MODE = "read-only-no-consume"
@@ -97,23 +97,6 @@ def _unread_events(
     events: list[dict], cursor: str, seat: str, root: Path | None = None
 ) -> list[dict] | None:
     if bus_unread.is_migrated_cursor(cursor):
-        authority = (
-            bus_unread.bus_authority_state(root, seat)
-            if root is not None
-            else None
-        )
-        if authority is not None and authority.state == "live":
-            evs = bus_unread.bus_unread_events(root, seat)
-            if evs is None:
-                return None
-            return [
-                {
-                    "to": ev.recipient,
-                    "ts": str(ev.seq),
-                    "filename": bus_unread.format_unread(ev),
-                }
-                for ev in evs
-            ]
         try:
             remaining = set(
                 bus_unread.mailbox_events_after_scalar(
@@ -210,13 +193,7 @@ def collect_monitor_state(
         cursor = _read_cursor(root, seat)
         unread = _unread_events(events, cursor, seat, root=root)
         if bus_unread.is_migrated_cursor(cursor):
-            authority = bus_unread.bus_authority_state(root, seat)
-            if unread is None:
-                unread_source = "unavailable"
-            elif authority.state == "live":
-                unread_source = "ref-bus"
-            else:
-                unread_source = "mailbox-fallback"
+            unread_source = "unavailable" if unread is None else "mailbox-fallback"
         elif _parse_iso(cursor) is None:
             unread_source = "unavailable"
         else:

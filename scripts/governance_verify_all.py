@@ -65,7 +65,7 @@ for _p in (_REPO_ROOT, _SCRIPTS_DIR):
 CHECKER_REGISTRY = {
     "project_smoke": {
         "entry": "scripts/governance_verify_all.py",
-        "owned_paths": ("threeway/", "scripts/", "coordination/mailbox/kinds.txt"),
+        "owned_paths": ("scripts/", "coordination/mailbox/kinds.txt"),
         "trigger": "governance/runtime topology change",
         "severity": "hard-fail",
         "blocked_effect": "landing a broken governance-OS runtime invariant",
@@ -115,13 +115,6 @@ CHECKER_REGISTRY = {
         "severity": "hard-fail",
         "blocked_effect": "malformed GO evidence admitted as review",
     },
-    "mechanism_ledger": {
-        "entry": "scripts/threeway_mechanism_ledger.py",
-        "owned_paths": ("threeway/", "docs/protocol/threeway/MECHANISM-LEDGER.md"),
-        "trigger": "threeway mechanism or ledger change",
-        "severity": "hard-fail",
-        "blocked_effect": "ledger drifting from executable mechanisms",
-    },
     "arch_freshness": {
         "entry": "scripts/check_arch_freshness.py",
         "owned_paths": ("ARCHITECTURE.md",),
@@ -143,26 +136,7 @@ def _project_smoke() -> int:
     """
     failures: list[str] = []
 
-    # 1. Coordination transport is explicitly configured and fails closed.
-    #    The dormant signed-bus package is exercised here only when it is the
-    #    configured transport; its own unit tests keep covering the package.
-    try:
-        import bus_unread as _bus
-        _transport = _bus.coordination_transport(Path(_REPO_ROOT))
-        if _transport == "signed-bus":
-            import threeway
-            from threeway.canon import canonicalize
-            from threeway import envelope, keys, reducer, gate  # noqa: F401 — import-cleanliness
-            if canonicalize({"b": 1, "a": 2}) != canonicalize({"a": 2, "b": 1}):
-                failures.append("canonicalize is not key-order-stable (RFC-8785 broken)")
-            if not (threeway.LOAD_BEARING_KINDS <= threeway.THREEWAY_KINDS):
-                failures.append("LOAD_BEARING_KINDS is not a subset of THREEWAY_KINDS")
-            if "merge_completed" not in threeway.LOAD_BEARING_KINDS:
-                failures.append("merge_completed missing from LOAD_BEARING_KINDS")
-    except Exception as e:  # surface the real config/import error
-        failures.append(f"coordination transport smoke failed: {e!r}")
-
-    # 2. Seat roster (single source of truth) + mailbox kind registry are stable.
+    # 1. Seat roster (single source of truth) + mailbox kind registry are stable.
     try:
         import protocol_mailbox as _pm
         if not set(_pm.SEATS) >= {"director", "director2", "operator", "operator2"}:
@@ -430,25 +404,6 @@ def main(argv: list[str] | None = None) -> int:
             "GO-SCHEMA CHECK — PASS "
             f"({len(_go_reports)} verification-report(s) validated; zero violations)."
         )
-
-    # Threeway mechanism ledger: the committed MECHANISM-LEDGER.md must match the
-    # generator, and every cited test/emitter file must exist (anti-fabrication —
-    # the 2026-07-18 audit found citations to test files that never existed).
-    import threeway_mechanism_ledger as _tml
-
-    try:
-        _tml_text = _tml.render_markdown(_tml.collect_mechanisms())
-    except AssertionError as _tml_error:
-        print(f"MECHANISM-LEDGER CHECK — FAIL: {_tml_error}")
-        return 1
-    _tml_path = _repo_root / "docs/protocol/threeway/MECHANISM-LEDGER.md"
-    if (_tml_path.read_text(encoding="utf-8") if _tml_path.exists() else "") != _tml_text:
-        print(
-            "MECHANISM-LEDGER CHECK — FAIL: docs/protocol/threeway/MECHANISM-LEDGER.md "
-            "is stale; rerender with scripts/threeway_mechanism_ledger.py"
-        )
-        return 1
-    print("MECHANISM-LEDGER CHECK — PASS (rendered ledger matches; cited files exist).")
 
     # ARCHITECTURE Last-verified gate (check_arch_freshness). Inert unless
     # ARCHITECTURE.md changed vs merge-base; self-degrades if git/base unavailable.

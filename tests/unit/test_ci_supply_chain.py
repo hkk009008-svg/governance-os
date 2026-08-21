@@ -29,12 +29,13 @@ def test_actions_are_full_sha_pinned_with_version_annotations(repo_root):
         workflow,
         re.MULTILINE,
     )
-    # 7 checkout / 6 setup-python across smoke, pytest, pytest-linux-hermetic,
-    # lint-advisory, admission-gate, and the signer. The two advisory jobs
-    # (Linux hermeticity leg + non-gating lint) reuse the same pinned SHAs.
-    assert uses.count((f"actions/checkout@{CHECKOUT_SHA}", "v6.1.0")) == 7
-    assert uses.count((f"actions/setup-python@{SETUP_PYTHON_SHA}", "v6.3.0")) == 6
-    assert len(uses) == 13
+    # 6 checkout / 5 setup-python across smoke, pytest, pytest-linux-hermetic,
+    # lint-advisory, and admission-gate (which checks out twice). The two
+    # advisory jobs (Linux hermeticity leg + non-gating lint) reuse the same
+    # pinned SHAs.
+    assert uses.count((f"actions/checkout@{CHECKOUT_SHA}", "v6.1.0")) == 6
+    assert uses.count((f"actions/setup-python@{SETUP_PYTHON_SHA}", "v6.3.0")) == 5
+    assert len(uses) == 11
 
 
 def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):
@@ -43,49 +44,43 @@ def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):
 
     smoke = _job(workflow, "smoke", "pytest")
     pytest_job = _job(workflow, "pytest", "admission-gate")
-    admission = _job(workflow, "admission-gate", "threeway-ci-result")
-    signer = _job(workflow, "threeway-ci-result", None)
+    admission = _job(workflow, "admission-gate", None)
     for job in (smoke, pytest_job, admission):
         assert "persist-credentials: false" in job
         assert "contents: write" not in job
-    assert "permissions:\n      contents: write" in signer
-    assert "persist-credentials: true" in signer
+    # No job in a CLI-exclusive repo writes to the repository from CI.
+    assert "contents: write" not in workflow
+    assert "persist-credentials: true" not in workflow
 
 
 def test_python_matrix_and_job_versions_are_explicit(repo_root):
     workflow = _workflow(repo_root)
     smoke = _job(workflow, "smoke", "pytest")
     pytest_job = _job(workflow, "pytest", "admission-gate")
-    signer = _job(workflow, "threeway-ci-result", None)
     assert "python-version: '3.13'" in smoke
     assert re.search(
         r"matrix:\n\s+python-version: \['3\.11', '3\.12', '3\.13'\]",
         pytest_job,
     )
     assert "python-version: ${{ matrix.python-version }}" in pytest_job
-    assert "python-version: '3.13'" in signer
 
 
-def test_ci_installs_hash_locked_and_signer_uses_minimal_lock(repo_root):
+def test_ci_installs_hash_locked_dependencies_only(repo_root):
     workflow = _workflow(repo_root)
     smoke = _job(workflow, "smoke", "pytest")
     pytest_job = _job(workflow, "pytest", "admission-gate")
-    admission = _job(workflow, "admission-gate", "threeway-ci-result")
-    signer = _job(workflow, "threeway-ci-result", None)
+    admission = _job(workflow, "admission-gate", None)
     for job in (smoke, pytest_job):
         assert "pip install --require-hashes -r requirements-dev.txt" in job
         assert "cache-dependency-path: requirements-dev.txt" in job
     # The admission gate is stdlib-only by design: no dependency install
     # means no third-party code runs before the authority-surface check.
     assert "pip install" not in admission
-    assert "pip install --require-hashes -r requirements-governance.txt" in signer
-    assert "cache-dependency-path: requirements-governance.txt" in signer
-    assert "requirements-dev.txt" not in signer
 
 
 def test_admission_uses_trusted_base_code_and_never_executes_candidate(repo_root):
     workflow = _workflow(repo_root)
-    admission = _job(workflow, "admission-gate", "threeway-ci-result")
+    admission = _job(workflow, "admission-gate", None)
 
     assert "pull_request_target:" in workflow
     assert "if: github.event_name == 'pull_request_target'" in admission
@@ -155,12 +150,7 @@ def test_ci_execution_guard_rejects_an_all_skipped_suite(
 
 def test_requirement_inputs_and_locks_are_pinned_and_hash_locked(repo_root):
     expected_inputs = {
-        "requirements-governance.in": {"cryptography==50.0.0", "rfc8785==0.1.4"},
-        "requirements-dev.in": {
-            "-r requirements-governance.in",
-            "pytest==9.1.1",
-            "hypothesis==6.165.0",
-        },
+        "requirements-dev.in": {"pytest==9.1.1", "hypothesis==6.165.0"},
     }
     for name, expected in expected_inputs.items():
         lines = {
@@ -170,7 +160,7 @@ def test_requirement_inputs_and_locks_are_pinned_and_hash_locked(repo_root):
         }
         assert lines == expected
 
-    for name in ("requirements-governance.txt", "requirements-dev.txt"):
+    for name in ("requirements-dev.txt",):
         body = (repo_root / name).read_text(encoding="utf-8")
         assert "pip-compile 7.6.0" in body
         assert "--generate-hashes" in body
@@ -180,15 +170,3 @@ def test_requirement_inputs_and_locks_are_pinned_and_hash_locked(repo_root):
             line.startswith(("#", "--", "-r ")) or "==" in line
             for line in requirement_lines
         )
-
-
-def test_signer_hardens_private_key_permissions_cross_platform(repo_root):
-    signer = _job(_workflow(repo_root), "threeway-ci-result", None)
-    assert "umask 077" in signer
-    assert 'chmod 700 "$THREEWAY_KEYSTORE"' in signer
-    assert 'chmod 600 "$THREEWAY_KEYSTORE/ci.ed25519"' in signer
-    assert 'case "$(uname -s)"' in signer
-    assert "Darwin)" in signer and "Linux)" in signer
-    assert "stat -f '%Lp'" in signer
-    assert "stat -c '%a'" in signer
-    assert 'test "$KEY_MODE" = "600"' in signer

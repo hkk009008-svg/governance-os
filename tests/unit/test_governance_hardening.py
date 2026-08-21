@@ -26,15 +26,13 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _make_unread_event(seat: str) -> SimpleNamespace:
-    return SimpleNamespace(
-        candidate_id=None,
-        brief_id=None,
-        seq=1,
-        kind="coordination",
-        sender="coordinator",
-        recipient=seat,
-    )
+def _make_unread_event(seat: str) -> dict:
+    """One unread row in the shape the monitor consumes (mapping, not object)."""
+    return {
+        "to": seat,
+        "ts": "2026-07-08T00:00:00Z",
+        "filename": f"2026-07-08T00-00-00Z-coordinator-to-{seat}-coordination.md",
+    }
 
 
 def _collect_closed_cycle_snapshot(
@@ -47,15 +45,10 @@ def _collect_closed_cycle_snapshot(
 ) -> tuple[dict, str]:
     unread_events_by_seat = unread_events_by_seat or {}
 
-    def fake_unread_events(root, seat):
+    def fake_unread_events(events, cursor, seat, root=None):
         return unread_events_by_seat.get(seat, [])
 
-    monkeypatch.setattr(mailbox_monitor.bus_unread, "bus_unread_events", fake_unread_events)
-    monkeypatch.setattr(
-        mailbox_monitor.bus_unread,
-        "bus_authority_state",
-        lambda root, seat: SimpleNamespace(state="live"),
-    )
+    monkeypatch.setattr(mailbox_monitor, "_unread_events", fake_unread_events)
     _write(
         tmp_path
         / "coordination/mailbox/sent/2026-07-08T00-00-00Z-coordinator-to-all-coordination.md",
@@ -170,11 +163,8 @@ def test_ci_smoke_is_quiet_for_reviewed_sha_ref_baseline():
 def test_mailbox_monitor_alerts_when_latest_broadcast_receipt_is_unknown(
     tmp_path: Path, monkeypatch
 ):
-    monkeypatch.setattr(mailbox_monitor.bus_unread, "bus_unread_events", lambda root, seat: [])
     monkeypatch.setattr(
-        mailbox_monitor.bus_unread,
-        "bus_authority_state",
-        lambda root, seat: SimpleNamespace(state="live"),
+        mailbox_monitor, "_unread_events", lambda events, cursor, seat, root=None: []
     )
     _write(
         tmp_path

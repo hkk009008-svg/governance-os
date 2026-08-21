@@ -33,8 +33,6 @@ doctors, wave gates, and smoke are optional evidence, never authority.
 Commit, event publication, cursor consumption, push, merge, lock action,
 provider launch, spend, and live-data mutation remain separate authorities.
 
-Optional ChatGPT Pro consultation is parent-only and advisory: follow
-`.agents/skills/chatgpt-pro-consultation/SKILL.md`.
 ## Rule maintenance
 Observed failure: coordinator authoring a checkpoint (Owner must equal
 the envelope sender, a pair seat).

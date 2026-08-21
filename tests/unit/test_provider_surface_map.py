@@ -14,7 +14,6 @@ from pathlib import Path
 import pytest
 
 import codex_protocol_model as protocol_model
-from threeway import keys_bootstrap
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -162,19 +161,6 @@ def test_retired_harness_labels_cannot_grant_current_model_identity() -> None:
         "cursor-xai-grok-4.6",
     ):
         assert protocol_model.model_family(model_id) is None, model_id
-
-
-def test_consultation_skill_names_only_supported_sides() -> None:
-    text = (
-        ROOT / ".agents/skills/chatgpt-pro-consultation/SKILL.md"
-    ).read_text(encoding="utf-8")
-    for side in ("Codex", "Claude"):
-        assert side in text, f"consultation skill dropped the {side} mapping"
-
-
-def test_signed_plane_provider_chiefs_are_exactly_claude_and_codex() -> None:
-    chiefs = {seat for seat in keys_bootstrap.SEATS if seat.startswith("chief-")}
-    assert chiefs == {"chief-claude", "chief-codex"}
 
 
 def test_cross_provider_mailbox_contract_is_stated_once() -> None:

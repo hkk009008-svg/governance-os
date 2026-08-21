@@ -33,8 +33,6 @@ explicit paths only when separately authorized. Commit, event publication,
 cursor consumption, push, merge, lock action, provider launch, spend, and
 live-data mutation remain separate authorities.
 
-Optional ChatGPT Pro consultation is parent-only and advisory: follow
-`.agents/skills/chatgpt-pro-consultation/SKILL.md`.
 ## Rule maintenance
 Observed failure: director wrap without a checkpoint, so lessons and next
 action lived only in chat.

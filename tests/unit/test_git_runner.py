@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 import git_runner
-from threeway import gitcas
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -97,22 +96,6 @@ def test_run_git_supports_bounded_batch_input(tmp_path: Path) -> None:
         input_data=blob + b"\n",
     )
     assert result.stdout.endswith(b"payload\n")
-
-
-def test_gitcas_env_strips_every_retargeting_variable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    for name in git_runner.RETARGETING_GIT_VARS:
-        monkeypatch.setenv(name, "/tmp/evil")
-    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
-    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "/tmp/evil-hooks")
-    env = gitcas._env()
-    for name in git_runner.RETARGETING_GIT_VARS:
-        assert name not in env, name
-    assert "GIT_CONFIG_KEY_0" not in env
-    assert "GIT_CONFIG_VALUE_0" not in env
-    # The mirrored list must not drift from the canonical one.
-    assert set(gitcas._RETARGETING_GIT_VARS) == set(git_runner.RETARGETING_GIT_VARS)
 
 
 @pytest.mark.parametrize(

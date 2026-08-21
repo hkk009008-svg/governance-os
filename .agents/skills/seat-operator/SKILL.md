@@ -27,8 +27,6 @@ Use the current worktree's native Git index. Commit, event publication, cursor
 consumption, push, merge, lock action, provider launch, spend, and live-data
 mutation remain separate authorities.
 
-Optional ChatGPT Pro consultation is parent-only and advisory: follow
-`.agents/skills/chatgpt-pro-consultation/SKILL.md`.
 ## Rule maintenance
 Observed failure: operator review of authored work; wrap without routing
 lessons. Mode/risk: assigned operator work.

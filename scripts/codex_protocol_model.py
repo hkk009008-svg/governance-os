@@ -526,7 +526,6 @@ CODEX_VERIFICATION_COMMANDS = (
     "tests/unit/test_provider_surface_map.py "
     "tests/unit/test_harness_preflight.py "
     "tests/unit/test_codex_hook_lifecycle.py "
-    "tests/unit/test_claude_task_connector.py "
     "tests/unit/test_codex_ledger_bridge.py -q",
     "coordination/bin/pipeline-python scripts/governance_verify_all.py",
 )

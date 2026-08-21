@@ -36,7 +36,6 @@ def test_registry_covers_every_rendered_gate() -> None:
     rendered_gates = {
         "PLACEHOLDER CHECK": "placeholders",
         "GO-SCHEMA CHECK": "go_schema",
-        "MECHANISM-LEDGER CHECK": "mechanism_ledger",
         "ARCH-FRESHNESS CHECK": "arch_freshness",
         "PROJECT SMOKE": "project_smoke",
     }
@@ -45,7 +44,8 @@ def test_registry_covers_every_rendered_gate() -> None:
         assert registry_key in governance_verify_all.CHECKER_REGISTRY, registry_key
 
 
-def test_deprecated_alias_forwards_to_canonical_main() -> None:
-    import ci_smoke
+def test_no_deprecated_alias_survives() -> None:
+    """The ci_smoke alias is gone; one aggregate has one name."""
+    import importlib.util
 
-    assert ci_smoke.main is governance_verify_all.main
+    assert importlib.util.find_spec("ci_smoke") is None

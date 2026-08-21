@@ -87,4 +87,3 @@ For the registered `evidence-ledger` target, read
 `docs/protocol/codex/ledger-cli-adoption.md`, then the target repo's instructions.
 Start from Pipeline; do not infer product authority from the bridge.
 
-Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.

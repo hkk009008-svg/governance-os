@@ -15,6 +15,7 @@ STALE_SELECTORS = (
     "tests/unit/test_protocol_capacity_board.py",
     "tests/unit/test_coordination_bin.py",
     "tests/unit/test_check_coordination.py",
+    "tests/unit/test_claude_task_connector.py",
 )
 CURRENT_PROTOCOL_TESTS = (
     "tests/unit/test_imports_smoke.py",
@@ -31,7 +32,6 @@ CURRENT_PROTOCOL_TESTS = (
     "tests/unit/test_provider_surface_map.py",
     "tests/unit/test_harness_preflight.py",
     "tests/unit/test_codex_hook_lifecycle.py",
-    "tests/unit/test_claude_task_connector.py",
     "tests/unit/test_codex_ledger_bridge.py",
 )
 REQUIRED_LEDGER_DOC_PHRASES = (

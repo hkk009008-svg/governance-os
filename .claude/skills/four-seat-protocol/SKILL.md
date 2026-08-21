@@ -39,5 +39,3 @@ Codex bridge. They grant no role or effect authority and are not durable
 protocol state. Formal, binding, or durable speech still goes through
 `coordination/bin/send-event`.
 
-Optional ChatGPT Pro consultation is parent-only and advisory; follow the
-`chatgpt-pro-consultation` skill.

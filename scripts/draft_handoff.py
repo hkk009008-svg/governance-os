@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import protocol_mailbox
-import bus_unread  # de-degrade: real ref-bus events for migrated (scalar) cursors
+import bus_unread  # legacy scalar cursors read against the mailbox projection
 import git_runner
 from status import collect_mailbox
 
@@ -106,12 +106,6 @@ def _mailbox_events(root: Path, seat: str, cursor: str = "", limit: int = 12) ->
         return ["(cursorless coordinator; inspect recent coordination mail read-only)"]
     all_names = sorted(path.name for path in sent.glob("*.md"))
     if bus_unread.is_migrated_cursor(cursor):
-        authority = bus_unread.bus_authority_state(root, seat)
-        if authority.state == "live":
-            evs = bus_unread.bus_unread_events(root, seat)
-            if evs is None:
-                return ["(unavailable: live ref-bus read failed)"]
-            return [bus_unread.format_unread(ev) for ev in evs][-limit:]
         try:
             remaining = bus_unread.mailbox_events_after_scalar(cursor, all_names)
         except (TypeError, ValueError) as exc:

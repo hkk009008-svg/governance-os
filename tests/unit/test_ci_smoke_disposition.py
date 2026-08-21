@@ -110,18 +110,15 @@ def test_architecture_advisory_warns_but_is_exit_neutral(
     assert "WARNING: ARCHITECTURE advisory" in capsys.readouterr().out
 
 
-def test_workflow_keeps_parallel_verification_and_signer_dependencies() -> None:
+def test_workflow_keeps_parallel_verification_jobs() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "  smoke:\n" in workflow
     assert "  pytest:\n" in workflow
-    assert "  threeway-ci-result:\n" in workflow
-    assert "    needs: [smoke, pytest]\n" in workflow
-    assert (
-        "    if: github.event_name == 'workflow_dispatch' && "
-        "vars.THREEWAY_BUS_LIVE == 'true' && github.ref == 'refs/heads/main'\n"
-        in workflow
-    )
+    assert "  admission-gate:\n" in workflow
+    # No CI job writes to the repository, so none depends on the others in a
+    # way that could publish state after a green run.
+    assert "needs:" not in workflow
 
 
 def test_same_kind_advisory_flood_prints_one_summary_line(

@@ -239,7 +239,7 @@ def test_collect_mailbox_scalar_without_live_bus_uses_mailbox_projection(
 
     assert data["mailbox_operator_unread"] == 2
     assert data["mailbox_operator_source"] == "mailbox-fallback"
-    assert data["mailbox_operator_transport"] == "absent"
+    assert data["mailbox_operator_transport"] == "mailbox"
     assert data["mailbox_coordinator_cursor"] == "(cursorless)"
     assert data["mailbox_coordinator_source"] == "broadcast-read-only"
 

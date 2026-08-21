@@ -820,19 +820,8 @@ def _consume_events_finalize(root: Path, role: str, target: str | None) -> str:
         if current_raw.count(b"\n") != 1 or not current_raw.endswith(b"\n"):
             raise MailboxWriterError("consume-events cursor is not one canonical line")
         current = current_raw[:-1].decode("ascii", "strict")
-        scalar_fallback = False
-        if current.isdigit():
-            authority = bus_unread.bus_authority_state(root, role)
-            if authority.state == "live":
-                raise MailboxWriterError(
-                    f"{role} has a live signed ref-bus; use its cursor consumer"
-                )
-            if authority.state == "incoherent":
-                raise MailboxWriterError(
-                    f"{role} transport is incoherent: {authority.detail}"
-                )
-            scalar_fallback = True
-        elif not _valid_colon_iso(current):
+        scalar_fallback = current.isdigit()
+        if not scalar_fallback and not _valid_colon_iso(current):
             raise MailboxWriterError("consume-events current cursor is not colon ISO")
         event_names = [
             path.name

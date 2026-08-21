@@ -46,7 +46,6 @@ SURFACE_PROBES = {
     "conftest.py": "conftest.py",
     "coordination/bin/": "coordination/bin/send-event",
     "coordination/mailbox/kinds.txt": "coordination/mailbox/kinds.txt",
-    "coordination/threeway/keys/": "coordination/threeway/keys/README.md",
     "docs/PROGRAM-MANUAL.md": "docs/PROGRAM-MANUAL.md",
     "docs/REMEDIATION-INVENTORY.md": "docs/REMEDIATION-INVENTORY.md",
     "docs/protocol/": "docs/protocol/agents/core.md",
@@ -54,15 +53,11 @@ SURFACE_PROBES = {
     "pyproject.toml": "pyproject.toml",
     "pytest.ini": "pytest.ini",
     "requirements-dev.txt": "requirements-dev.txt",
-    "requirements-connector.in": "requirements-connector.in",
-    "requirements-connector.txt": "requirements-connector.txt",
-    "requirements-governance.txt": "requirements-governance.txt",
     "scripts/": "scripts/ci_admission_gate.py",
     "setup.cfg": "setup.cfg",
     "sitecustomize.py": "sitecustomize.py",
     "tests/unit/test_provider_surface_map.py": "tests/unit/test_provider_surface_map.py",
     "tox.ini": "tox.ini",
-    "threeway/": "threeway/keys.py",
     "usercustomize.py": "usercustomize.py",
 }
 
@@ -81,12 +76,9 @@ REQUIRED_ACTIVE_AUTHORITY_SURFACES = frozenset(
         "docs/PROGRAM-MANUAL.md",
         "docs/protocol/",
         "governance.toml",
-        "requirements-connector.in",
-        "requirements-connector.txt",
         "scripts/",
         "sitecustomize.py",
         "tests/unit/test_provider_surface_map.py",
-        "threeway/",
     }
 )
 

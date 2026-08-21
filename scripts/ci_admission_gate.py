@@ -65,7 +65,6 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
     "conftest.py",
     "coordination/bin/",
     "coordination/mailbox/kinds.txt",
-    "coordination/threeway/keys/",
     "docs/PROGRAM-MANUAL.md",
     "docs/REMEDIATION-INVENTORY.md",
     "docs/protocol/",
@@ -73,15 +72,11 @@ AUTHORITY_SURFACES: tuple[str, ...] = (
     "pyproject.toml",
     "pytest.ini",
     "requirements-dev.txt",
-    "requirements-connector.in",
-    "requirements-connector.txt",
-    "requirements-governance.txt",
     "scripts/",
     "setup.cfg",
     "sitecustomize.py",
     "tests/unit/test_provider_surface_map.py",
     "tox.ini",
-    "threeway/",
     "usercustomize.py",
 )
 

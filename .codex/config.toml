@@ -1,8 +1,8 @@
+# Codex project configuration.
+#
+# A CLI-exclusive repository declares no MCP servers and no ambient authority:
+# the peer on the other side is invoked as a child process with explicit argv
+# (see docs/protocol/peer.md), never registered as a server a later session
+# inherits without asking. scripts/harness_preflight.py fails closed if either
+# an mcp_servers table or an ambient approval/sandbox key reappears here.
 personality = "friendly"
-
-[mcp_servers.claude_task_connector]
-command = "coordination/bin/claude-task-connector"
-args = ["mcp"]
-cwd = "."
-startup_timeout_sec = 30
-tool_timeout_sec = 310

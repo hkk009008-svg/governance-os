@@ -226,17 +226,14 @@ def test_provider_config_and_optional_consultation_do_not_grant_authority() -> N
         assert marker in agents
     assert "ChatGPT" not in agents
 
-    pointer = (
-        "Optional ChatGPT Pro consultation is parent-only and advisory: follow "
-        ".agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol "
-        "or side-effect authority."
-    )
-    assert (ROOT / ".agents/skills/chatgpt-pro-consultation/SKILL.md").is_file()
+    # The browser-based ChatGPT Pro consultation lane is gone: a CLI-exclusive
+    # repo reaches a second opinion by invoking a peer CLI, not a browser.
+    assert not (ROOT / ".agents/skills/chatgpt-pro-consultation").exists()
     for path in (
         "docs/protocol/codex/continuation.md",
         ".agents/skills/four-seat-protocol/SKILL.md",
     ):
-        assert _read(path).count(pointer) == 1, path
+        assert "chatgpt-pro-consultation" not in _read(path), path
 
 
 def test_reviewer_templates_and_claude_skill_stubs_stay_bound() -> None:
@@ -260,7 +257,7 @@ def test_reviewer_templates_and_claude_skill_stubs_stay_bound() -> None:
         target = ROOT / ".agents/skills" / skill.parent.name / "SKILL.md"
         assert target.is_file(), target
         assert f".agents/skills/{skill.parent.name}/SKILL.md" in text
-    assert stubs >= 6
+    assert stubs >= 5
 
     canonical = ROOT / ".agents/skills/seat-operator/verification-report-format.md"
     claude = ROOT / ".claude/skills/seat-operator/verification-report-format.md"
@@ -291,7 +288,7 @@ def test_active_surface_sweep_uses_nonempty_repository_files_only() -> None:
     instructions = _active_files(ACTIVE_INSTRUCTION_ROOTS, {".md", ".toml"})
     protocol = _active_files(ACTIVE_PROTOCOL_ROOTS, {".md", ".toml", ".py"})
     assert ROOT / "AGENTS.md" in instructions
-    assert ROOT / "scripts/claude_task_connector.py" in protocol
+    assert ROOT / "scripts/codex_protocol_model.py" in protocol
 
     superpowers = {
         path.relative_to(ROOT).as_posix(): sorted(

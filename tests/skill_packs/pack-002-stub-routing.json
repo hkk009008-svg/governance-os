@@ -37,13 +37,6 @@
       "trigger": "works in setup X and fails in setup Y",
       "expect_canonical": ".agents/skills/isolate-a-variable/SKILL.md",
       "expect_stub": ".claude/skills/isolate-a-variable/SKILL.md"
-    },
-    {
-      "id": "chatgpt-pro-consultation-stub",
-      "skill": "chatgpt-pro-consultation",
-      "trigger": "optional parent-owned ChatGPT Pro consultation",
-      "expect_canonical": ".agents/skills/chatgpt-pro-consultation/SKILL.md",
-      "expect_stub": ".claude/skills/chatgpt-pro-consultation/SKILL.md"
     }
   ]
 }

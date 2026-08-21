@@ -126,34 +126,6 @@ def test_incident_log_exists_for_emergency_protocol():
     assert "Emergency protocol requires" in text
 
 
-def test_threeway_docs_do_not_claim_local_cutover_when_refs_absent():
-    docs = {
-        path: _read(path)
-        for path in (
-            "docs/protocol/threeway/CODEX-ADOPTION.md",
-            "docs/protocol/threeway/README.md",
-            "docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md",
-        )
-    }
-
-    for text in docs.values():
-        compact = _compact(text)
-        assert "git for-each-ref refs/threeway/" in compact
-        assert "legacy mailbox remains authoritative for local work" in compact
-        assert "CUT OVER (2026-06-22)" not in text
-        assert "cutover WAS executed" not in text
-
-
-def test_threeway_truth_links_resolve_to_existing_files():
-    readme = _read("docs/protocol/threeway/README.md")
-    doctrine = _read("docs/protocol/threeway/UNIFIED-OPERATING-DOCTRINE.md")
-
-    assert "docs/superpowers/specs/2026-06-19-cross-provider-seat-topology-design.md" not in readme
-    assert "docs/superpowers/plans/2026-06-20-cross-provider-seat-topology-slice2.5-legacy-bus-migration.md" not in readme
-    assert "docs/protocol/threeway/CODEX-ADOPTION.md" in readme
-    assert "docs/protocol/threeway/CODEX-ADOPTION.md" in doctrine
-
-
 def test_task24_capacity_packets_reflect_operator_go_and_pair_b_preflight():
     operator_packet = json.loads(
         _read("coordination/capacity/packets/2026-07-08-ledger-phase2-task24-operator-lanev.json")

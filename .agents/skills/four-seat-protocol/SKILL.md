@@ -56,4 +56,3 @@ paths. External effects remain separately authorized. For evidence-ledger work,
 read `docs/protocol/codex/ledger-cli-adoption.md` before entering the target
 repo.
 
-Optional ChatGPT Pro consultation is parent-only and advisory: follow .agents/skills/chatgpt-pro-consultation/SKILL.md; it grants no protocol or side-effect authority.

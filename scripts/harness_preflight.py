@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Fail-closed capability preflight for the supported headless Codex path.
+"""Fail-closed capability preflight for the two supported CLI peers.
 
-The check reports capability only.  It neither launches a provider unless
-``--live`` is explicitly selected nor grants authority for any later action.
+Both participants are terminal programs: the ``claude`` CLI and the ``codex``
+CLI.  This check answers whether a peer invocation *could* run — binaries on
+PATH, no ambient authority in the project config — and nothing else.  It
+reports capability only.  It neither launches a provider unless ``--live`` is
+explicitly selected nor grants authority for any later action.
 """
 
 from __future__ import annotations
@@ -19,21 +22,11 @@ from pathlib import Path
 
 
 CODEX_AMBIENT_KEYS = ("approval_policy", "sandbox_mode", "features")
-CODEX_MCP_SERVER = "claude_task_connector"
-CODEX_MCP_CONTRACT = {
-    "command": "coordination/bin/claude-task-connector",
-    "args": ["mcp"],
-    "cwd": ".",
-}
-CODEX_MCP_ALLOWED_KEYS = frozenset(
-    {
-        *CODEX_MCP_CONTRACT,
-        "startup_timeout_sec",
-        "tool_timeout_sec",
-        "features",
-    }
-)
-RUNBOOK = "docs/protocol/threeway/HEADLESS-REVIEW.md"
+# A CLI-exclusive repo declares no project MCP servers: a peer is invoked as a
+# child process with explicit argv, never registered as an ambient server that
+# a later session inherits without asking.
+PEER_BINARIES = ("claude", "codex")
+RUNBOOK = "docs/protocol/peer.md"
 
 
 @dataclass(frozen=True)
@@ -95,25 +88,12 @@ def check_codex(root: Path) -> list[Result]:
                     + ", ".join(sorted(profile_authority))
                 )
         servers = payload.get("mcp_servers")
-        if not config_problem and (
-            not isinstance(servers, dict) or set(servers) != {CODEX_MCP_SERVER}
-        ):
+        if not config_problem and servers:
             config_problem = (
-                "project MCP inventory must be exactly " + CODEX_MCP_SERVER
+                "project config declares MCP servers: "
+                + ", ".join(sorted(servers))
+                + " — peers are invoked as child processes, not registered servers"
             )
-        elif not config_problem:
-            server = servers[CODEX_MCP_SERVER]
-            if not isinstance(server, dict) or any(
-                server.get(key) != value for key, value in CODEX_MCP_CONTRACT.items()
-            ):
-                config_problem = (
-                    f"project MCP {CODEX_MCP_SERVER} command/args/cwd drifted"
-                )
-            elif unknown := sorted(set(server) - CODEX_MCP_ALLOWED_KEYS):
-                config_problem = (
-                    f"project MCP {CODEX_MCP_SERVER} carries unsupported keys: "
-                    + ", ".join(unknown)
-                )
     problem = (
         f"project config carries {', '.join(ambient)}"
         if ambient
@@ -124,7 +104,7 @@ def check_codex(root: Path) -> list[Result]:
             "codex",
             not problem,
             (
-                "project config has no ambient authority and exactly one supported MCP"
+                "project config carries no ambient authority and no MCP servers"
                 if not problem
                 else problem
             ),
@@ -138,6 +118,23 @@ def check_codex(root: Path) -> list[Result]:
             "invocation contract: < /dev/null, --sandbox, explicit approval_policy",
         )
     )
+    return results
+
+
+def check_peers() -> list[Result]:
+    """Both CLI peers must be on PATH before any peer invocation is possible."""
+
+    results = []
+    for name in PEER_BINARIES:
+        binary = _binary(name)
+        results.append(
+            Result(
+                name,
+                bool(binary),
+                f"binary {binary or 'NOT FOUND on PATH'}",
+                "" if binary else f"install the {name} CLI",
+            )
+        )
     return results
 
 
@@ -242,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = args.repo_root.resolve()
-    results = check_codex(root)
+    results = check_peers() + check_codex(root)
     if args.live:
         results.append(live_probe(root))
     for result in results:
