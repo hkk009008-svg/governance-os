@@ -1249,11 +1249,19 @@ def _single_field(raw: bytes, prefix: str) -> str | None:
     return values[0] if len(values) == 1 else None
 
 
+# Reviewing identities this projection recognises: the live `reviewer` role
+# and the two retired operator seats that committed history still names. A
+# request assigned to an identity outside this set is invisible to the
+# projection -- which is how the first request published under the collapsed
+# identity read as "Request: none" until this set was widened.
+_REVIEWING_IDENTITIES = ("reviewer", "operator", "operator2")
+
+
 def _mapped_request_operator(
     request_operators: dict[str, str], request_ref: str,
 ) -> tuple[str | None, str | None]:
     operator = request_operators.get(request_ref)
-    if operator not in {"operator", "operator2"}:
+    if operator not in set(_REVIEWING_IDENTITIES):
         return None, f"active report has no mapped request operator: {request_ref}"
     return operator, None
 
@@ -1363,7 +1371,7 @@ def inspect_verify_review_state(
         if path <= _REVIEW_STATE_CUTOVER_PATH:
             continue
         name = Path(path).name
-        for operator in ("operator", "operator2"):
+        for operator in _REVIEWING_IDENTITIES:
             if name.endswith(f"-to-{operator}-verify-request.md"):
                 candidate_paths.append((operator, path))
                 previous = newest_paths.get(operator)

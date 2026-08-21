@@ -354,10 +354,14 @@ def models_are_current_review_pair(author_model: str, reviewer_model: str) -> bo
 
 
 SEATS = protocol_mailbox.SEATS
-DIRECTOR_SEATS = ("director", "director2")
-OPERATOR_SEATS = ("operator", "operator2")
+# Live positions first, retired seat names after: both resolve, only the
+# former may publish (mailbox_writer.NEW_WRITE_SENDERS).
+DIRECTOR_SEATS = ("author", "director", "director2")
+OPERATOR_SEATS = ("reviewer", "operator", "operator2")
 COORDINATOR_SEATS = ("coordinator", "coordinator2")
 SEAT_BEHAVIOR_SOURCE = {
+    "author": "director",
+    "reviewer": "operator2",
     "director": "director",
     "director2": "director",
     "operator": "operator2",

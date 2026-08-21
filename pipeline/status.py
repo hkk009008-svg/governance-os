@@ -599,7 +599,7 @@ def collect_orientation_snapshot(
     # they are repository-global governance blockers, with their assigned seat
     # retained in the structured record for routing.
     failed_reviews = list(review_state.failed)
-    if seat in {"operator", "operator2"}:
+    if seat in set(check_coordination._REVIEWING_IDENTITIES):
         requests = [
             request for request in requests
             if request.assigned_operator == seat
@@ -732,7 +732,12 @@ def render_orientation_snapshot(snapshot: dict) -> str:
     lines = [
         f"Pipeline snapshot {snapshot['generated_at']}",
         f"Git: {git['sha']} branch={git['branch']} dirty={git['dirty']}",
-        "Unread:",
+        # These four cursors belong to RETIRED identities. They can neither
+        # send nor receive a new event, so their counts are a fact about
+        # history, not a queue anyone is expected to drain. Labelling them is
+        # the point: an unlabelled "564 unread" beside a cursor reading 0 is
+        # an instrument that reads alarming while measuring nothing live.
+        "Unread (retired seat cursors, historical):",
     ]
     for role, unread in snapshot["unread"].items():
         lines.append(
