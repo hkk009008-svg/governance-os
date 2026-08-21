@@ -1,6 +1,7 @@
 # CLI-exclusive overhaul — Claude CLI + Codex CLI as one unit
 
-**Status:** in progress, started 2026-08-21.
+**Status:** executed 2026-08-21, five commits on `claude/cli-exclusive-overhaul`.
+Awaiting the different-family (Codex) review the admission gate requires.
 **Owner:** user-principal directive; executed from the Claude Code CLI.
 **Base:** `fec89e52` on `claude/tier2-record-ceiling-finding` (main = `86146d1f`).
 `docs/superpowers/plans/` is not an authority surface; this file confers nothing.
@@ -218,3 +219,67 @@ stage leaves the tree green.
     pipeline peer review --base <base> --head HEAD --to codex
 
 Report failures with their output; name skips as skips.
+
+
+## 7. Outcome
+
+Five commits, `86146d1f..5c75834a`, **249 files changed, +2,772 / −22,660**.
+
+| # | Commit | What landed |
+|---|---|---|
+| 1 | `ac0ac341` | Non-CLI subtraction: MCP connector, dormant threeway bus, browser lane |
+| 2 | `f7f1c2ad` | `scripts/` → `pipeline/`, `bin/pipeline`, four-seat scheduler removed |
+| 3 | `d2fe72b1` | `pipeline peer` + AGY backend; AGENTS/CLAUDE/ARCHITECTURE/README/OPERATIONS rewritten |
+| 4 | `4c4371fd` | Six seats → author/reviewer, enforced at the writer and the wrapper |
+| 5 | `5c75834a` | The projection must SEE a request assigned to the reviewer |
+
+Verification at head, measured the way CI measures it:
+
+    NO_CEREMONY_BASE=$(git merge-base main HEAD) pytest tests -q
+      1206 passed, 1 xfailed, exit 0        (base was 1713 passed)
+    NO_CEREMONY_BASE=$(git merge-base main HEAD) pipeline check
+      OK, exit 0
+
+The 507-test drop is the deleted subjects' own tests. No surviving test was
+weakened to make the range pass; where a premise died with its subject the
+test was removed, and where a premise changed the test was rewritten to assert
+the new invariant.
+
+### Three findings the work produced
+
+1. **The growth gate's two halves disagreed about file identity.**
+   `_introduced_python` asked Git with `-M5%`, the numstat that measures growth
+   asked with the default 50%, so a rename-plus-rewrite was an arrival to one
+   half and a rename to the other. `bus_unread.py`, which shrank 334 → 147
+   lines, was convicted of "net growth 147". One threshold constant now serves
+   both halves; two controls pin that it removes only false positives.
+
+2. **A compatibility shim turned a fatal control fail-open, and the existing
+   controls caught it.** Resolving frozen manifests through a pre-rename twin
+   first accepted "absent under both prefixes" as "nothing to check" — which is
+   how a deleted manifest passes. Now exactly one match is required.
+
+3. **The collapse reached the writer before it reached the reader.** The first
+   request published as `author → reviewer` was parsed, committed, valid, and
+   invisible to `pipeline status`, because the review projection still matched
+   only `{operator, operator2}`. Found by publishing the range's own review
+   request rather than by reading the diff.
+
+### Cost recorded rather than hidden
+
+Collapsing to two roles makes `reviewer_seat != assigned_operator` true by
+construction, so that control can no longer fail. It is a strict xfail
+carrying its own reasoning, not a deletion. Restoring expressiveness means
+carrying the side in the identity (`reviewer@codex` vs `reviewer@claude`),
+which is a grammar change with its own review.
+
+### Deliberately not done
+
+- **Mailbox not archived.** The archive proposal's activation criterion is
+  collector latency, not event count. `check_coordination` measured 0.75s over
+  967 events; the criterion is not met.
+- **58 merged branches not deleted.** Destructive; needs explicit authority.
+  49 unmerged branches carry unlanded work and must not be touched.
+- **No provider launched.** The peer argv this repository builds is tested;
+  the shape a live `claude` or `codex` emits is parsed defensively but
+  unconfirmed. One authorized round trip per side would settle it.
