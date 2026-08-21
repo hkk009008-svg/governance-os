@@ -342,6 +342,11 @@ def validate_event_candidate(
 # the two roles, which is what "collapse the seats" means in enforceable terms.
 # A rule that only documentation states is not a collapse.
 NEW_WRITE_SENDERS = frozenset(protocol_mailbox.ROLES)
+# Restricting only the SENDER left a hybrid `author -> operator` envelope
+# publishable: half the identity crossed the cutover and half did not, and the
+# finalizer staged it. Both ends of a new event are live identities, with
+# `all` still lawful as a broadcast target.
+NEW_WRITE_RECIPIENTS = frozenset(protocol_mailbox.ROLES) | {"all"}
 NEW_WRITE_KINDS = frozenset(
     {
         "decision",
@@ -373,6 +378,12 @@ def validate_event_candidate_bytes(
             "review has two positions, "
             f"{' and '.join(sorted(NEW_WRITE_SENDERS))}; historical seat names "
             "keep parsing read-only"
+        )
+    if match.group("recipient") not in NEW_WRITE_RECIPIENTS:
+        raise MailboxWriterError(
+            f"recipient {match.group('recipient')!r} is retired for new "
+            "writes: an event addressed to an identity that cannot answer is "
+            "half a cutover; historical seat names keep parsing read-only"
         )
     if match.group("kind") not in NEW_WRITE_KINDS:
         raise MailboxWriterError(

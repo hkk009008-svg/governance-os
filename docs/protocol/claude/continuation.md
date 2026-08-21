@@ -4,8 +4,7 @@ This file maps Pipeline policy to Claude Code mechanics. Canonical policy and
 validation live in `pipeline/codex_protocol_model.py`; skills and agent files
 contain only their local deltas.
 
-For the two-app setup and capability comparison, see
-`docs/protocol/app-quickstart.md`.
+For how the two CLIs reach each other, see `docs/protocol/peer.md`.
 
 ## Modes
 
@@ -20,11 +19,9 @@ default for reversible sandbox iteration and does not create seat ceremony;
 Validate freezes one candidate; Promote carries the reviewed candidate toward
 a separately authorized canonical or external effect.
 
-**Pipeline has no Claude governance-seat launcher, registry, or session-start
-binding, and does not need one.** Claude Desktop does have a host session
-registry, automatic worktrees, and native peer messaging. Those are useful
-convenience surfaces, not Pipeline identity: naming or messaging a session
-does not assign a role, publish a durable event, or validate a verdict.
+**Pipeline has no Claude launcher, registry, or session-start binding, and
+does not need one.** Naming a terminal, a worktree, or a session does not
+assign a role, publish a durable event, or validate a verdict.
 
 Identity is enforced where it decides something — at publication, by
 `pipeline/compact_pair_loop.py`, which binds a verdict to reviewer seat not equal
@@ -34,27 +31,17 @@ matching its own envelope and filename, distinct model families for
 Session-start binding never prevented a bad GO; publication-time validation
 does.
 
-## Desktop-first start
+## CLI start
 
-1. Open Claude Desktop's Code tab, choose **Local**, and select the exact
-   Pipeline checkout that owns the work. Start in Manual or Plan mode.
-2. For new independent work, create and rename a session; Desktop gives each
-   Git session an isolated worktree. For an existing uncommitted candidate,
-   resume its owning session/worktree instead — a fresh automatic worktree does
-   not contain another checkout's uncommitted bytes.
+1. Open a terminal in the exact Pipeline checkout that owns the work, or in a
+   native Git worktree of it. `bin/pipeline` resolves the primary checkout's
+   interpreter from a linked worktree too, so a worktree needs no venv.
+2. For new independent work, create a worktree with a name that says what the
+   work is. For an existing uncommitted candidate, return to the worktree that
+   holds it -- a fresh one does not contain another checkout's bytes.
 3. Confirm the repository root, HEAD, and scoped status, then run the compact
-   snapshot below. An explicit role still has to come from the task; a session
-   title is not an assignment.
-4. Use the visual diff, terminal, editor, and preview panes in the same session.
-   Review Code is self-review assistance, not an independent Operator verdict.
-
-Native cross-session messaging in the CLI requires 2.1.224 or later. The
-standalone `claude` CLI was 2.1.220 at the 2026-08-09 audit and 2.1.231 when
-re-observed on 2026-08-14, so the floor is met on that machine and terminal
-sessions can appear in Claude's native `ListAgents` result. The binary updates
-on its own schedule, so re-read `claude --version` instead of trusting either
-figure. Do not infer the Desktop embedded-engine version from the standalone
-binary.
+   snapshot below. An explicit role still has to come from the task; a
+   directory name is not an assignment.
 
 ## Orientation
 
@@ -95,8 +82,8 @@ contract I1) — committed state outranks it.
 - `pipeline/compact_pair_loop.py` validates formal requests, reports, and exact
   reviewed ranges.
 - `pipeline/mailbox_writer.py` validates and serializes event publication.
-- `pipeline/claude_task_connector.py` owns the supported transient Codex bridge;
-  it is not a Claude seat launcher or governance registry.
+- `pipeline/peer.py` runs the Codex CLI once as a child process and commits a
+  receipt. It is not a launcher, a registry, or an authority source.
 - This adapter owns Claude-native delegation and waiting behavior.
 
 Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`
@@ -148,43 +135,33 @@ forced by the harness rather than chosen:
 
 ### Native session and helper communication
 
-- Use native session listing and peer messaging for transient same-Claude
-  findings, status, or a bounded question. Ask Claude to tell the named session;
-  the host discovers and delivers it, so the user does not copy-paste between
-  sessions. Peer text is attributed and queued, but carries no conversation
-  history or files and cannot approve permissions, change configuration, or
-  execute slash commands.
-- For transient Codex communication, default to native `SendMessage` addressed
-  to the named `pipeline-codex-bridge` peer when it appears in `ListAgents`.
-  Codex receives the attributed body through the supported Agent SDK stream.
-  For the reverse path, Codex first reads the bridge's own native `ListAgents`
-  observation and then uses that exact address; host-inventory aliases are not
-  target guarantees. The bridge cannot target Desktop `local_*` IDs and never
-  substitutes for a formal event. Exact contract:
-  `docs/protocol/claude/task-connector.md`.
-- Native peer registration lag can outlast process and socket startup. If the
-  first startup-time `ListAgents` says `No reachable agents`, do not report the
-  bridge absent yet: confirm one named bridge process or bound socket, wait
-  briefly, and re-list once. If that bounded retry is still empty, report the
-  exact refusal; never start a second bridge.
-- The checked-in `isolatePeerMachines: true` setting preserves low-friction
-  same-machine delivery while requiring approval before a message leaves the
-  machine. Pipeline deliberately does not force `crossSessionInbound: accept`;
-  the receiving session's native permission-class checks remain in force.
-- Use `/btw` for a disposable side question. For one bounded advisor, ask
-  Claude to delegate to the named project agent. A small dynamic workflow is
-  appropriate only when several
-  independent, file-disjoint questions justify the coordination cost;
-  `workflowSizeGuideline: small` is guidance, not an authority or hard cap.
-- Agent teams are CLI-only and experimental. Do not enable them for the normal
-  Desktop path. Cloud, Dispatch, scheduled tasks, connectors, computer use, PR
-  auto-fix, and auto-merge keep their own launch, spend, data-access, and effect
-  boundaries.
+- For transient Codex communication, run the other CLI once:
+  `pipeline peer ask codex --task <id> --prompt-file <f>`. The child's exit
+  code is the delivery acknowledgement -- there is no send whose delivery can
+  stay unknown -- and the receipt under `coordination/peer/<task>/` records
+  what actually ran, including the model the peer's own output reported.
+  `--dry-run` prints the exact argv and launches nothing. Exact contract:
+  `docs/protocol/peer.md`.
+- Launching a peer is a provider launch and paid spend. It needs its own exact
+  authority; a task id is not one.
+- Use native session listing and peer messaging for transient SAME-Claude
+  findings between your own terminals. That text is attributed and queued, but
+  carries no conversation history or files and cannot approve permissions,
+  change configuration, or execute slash commands. It is convenience, not
+  protocol: it crosses no provider boundary and leaves no receipt.
+- For one bounded advisor, delegate to a named project agent. A small dynamic
+  workflow is appropriate only when several independent, file-disjoint
+  questions justify the coordination cost; `workflowSizeGuideline: small` is
+  guidance, not an authority or a hard cap.
+- Cloud, scheduled tasks, computer use, PR auto-fix, and auto-merge keep their
+  own launch, spend, data-access, and effect boundaries and none of them is
+  part of this protocol.
 
-Native messages are ephemeral coordination, including messages crossing the
-named Codex bridge. Formal requests, reports, transfers, and durable decisions
-that another provider must see use `coordination/bin/send-event`. A peer message
-never substitutes for the committed Compact Pair or the fixed mailbox writer.
+Peer output and native messages are both ephemeral coordination. Formal
+requests, reports, transfers, and durable decisions that the other side must
+see use `coordination/bin/send-event`. Neither substitutes for the committed
+Compact Pair or the fixed mailbox writer, and a receipt is evidence rather
+than attestation.
 
 ## Review and external effects
 

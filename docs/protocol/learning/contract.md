@@ -62,7 +62,7 @@ is itself a contract violation.
   non-build constraint: nothing in the learning plane performs archival or
   destructive maintenance. Where such a change is eventually filed
   (standalone, per plan §5 Stage 6), backup failure must block and recovery
-  must be explicit. `pipeline/archive_handoffs.py` now fails closed when its
+  must be explicit. The retired handoff archiver failed closed when its
   history-preserving `git mv` cannot complete; that narrow behavior is a
   precedent, not a general backup or rollback mechanism.
 - **I7 — every proposed guard passes guard admission.** Doctrine applied as

@@ -10,13 +10,41 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _PACK_DIR = _REPO_ROOT / "tests" / "skill_packs"
-_PACKS = sorted(_PACK_DIR.glob("pack-*.json"))
+
+
+def _tracked_packs() -> list[Path]:
+    """Only packs Git actually tracks.
+
+    A glob over the working tree made this suite depend on files a clone does
+    not have: two untracked packs referencing untracked skills passed here and
+    failed for anyone who cloned the same commit, so a green run described a
+    developer's directory rather than the repository. Asking Git narrows the
+    corpus to committed bytes; if Git is unavailable the glob still answers,
+    because a missing Git is not a reason to silently test nothing.
+    """
+
+    result = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "ls-files", "-z", "--", "tests/skill_packs"],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return sorted(_PACK_DIR.glob("pack-*.json"))
+    return sorted(
+        _REPO_ROOT / name
+        for name in result.stdout.decode().split("\0")
+        if name.endswith(".json") and Path(name).name.startswith("pack-")
+    )
+
+
+_PACKS = _tracked_packs()
 _SKILLS_DIR = _REPO_ROOT / ".agents" / "skills"
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _FRONTMATTER_RE = re.compile(
@@ -125,7 +153,24 @@ def test_stub_routing_falsifier_reaches_canonical_body() -> None:
                 f"{case['id']}: canonical description does not share tokens "
                 f"with trigger {case['trigger']!r}"
             )
-    assert seen >= 6, "the ADR-067 stub-routing falsifier must cover every stub"
+    # Count the stubs Git tracks, not the ones this directory happens to hold.
+    # A frozen number (">= 6") plus a working-tree glob was the same
+    # unreproducibility defect the pack corpus had: it counted an untracked
+    # stub and demanded a case for it that no clone could satisfy.
+    tracked_stubs = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "ls-files", "--", ".claude/skills/*/SKILL.md"],
+        capture_output=True, text=True, check=False,
+    )
+    expected = sum(
+        1
+        for name in tracked_stubs.stdout.splitlines()
+        if "canonical body of this skill is"
+        in (_REPO_ROOT / name).read_text(encoding="utf-8").casefold()
+    )
+    assert seen == expected, (
+        f"the ADR-067 stub-routing falsifier covers {seen} stubs; "
+        f"{expected} are tracked"
+    )
 
 
 def test_usage_counts_are_not_consumed_by_lifecycle_kernels() -> None:
@@ -153,3 +198,20 @@ def test_r_skill_names_this_repo_inventory() -> None:
     assert "writing-skills" in text
     assert "add this project's domain-skill triggers" not in text
     assert "There is no domain-graph skill in this repository." in text
+
+
+def test_the_pack_corpus_comes_from_committed_bytes() -> None:
+    """The corpus this suite validates must exist for anyone who clones it.
+
+    Reversion control for the defect that made a green suite unreproducible:
+    an untracked pack in the working tree must not enter _PACKS.
+    """
+
+    assert _PACKS, "no tracked packs found; the suite would prove nothing"
+    tracked = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "ls-files", "--error-unmatch", "--",
+         *[str(pack.relative_to(_REPO_ROOT)) for pack in _PACKS]],
+        capture_output=True,
+        check=False,
+    )
+    assert tracked.returncode == 0, tracked.stderr.decode()

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import compact_pair_loop
 import mailbox_writer
 
 
@@ -514,58 +515,59 @@ def test_cross_repository_verification_report_uses_fixed_finalizer(
     assert staged.endswith("-reviewer-to-all-verification-report.md")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "VACUOUS UNDER THE TWO-ROLE COLLAPSE, recorded rather than deleted. "
-        "validate_report refuses a report whose reviewer_seat differs from the "
-        "request's assigned operator. That discriminated while six seat names "
-        "existed: a report from operator2 could answer a request assigned to "
-        "operator. With exactly one reviewer name the comparison is true by "
-        "construction and can no longer fail. The surviving discriminator is "
-        "the reviewer's MODEL FAMILY, which compact_pair_loop already validates "
-        "for high-risk-control, plus the side recorded in a peer receipt. "
-        "Restoring seat-level expressiveness means carrying the side in the "
-        "identity (reviewer@codex vs reviewer@claude), which is a grammar "
-        "change with its own review. When that lands this pin xpasses and must "
-        "be removed."
-    ),
-)
-def test_misassigned_verification_report_fails_before_finalization(
+def test_misassignment_is_still_refused_where_it_can_still_be_expressed(
     tmp_path: Path, repo_root: Path
 ) -> None:
+    """The reviewer/assignment binding, tested where it discriminates.
+
+    A previous version of this test marked the invariant VACUOUS and pinned it
+    as a strict xfail. The reviewer was right that the pin was wrong: it set
+    `reviewer` on BOTH sides, so it constructed no misassignment at all and
+    went red under --runxfail only because a VALID report succeeded. A pin that
+    passes for the opposite of its stated reason is worse than no pin.
+
+    The invariant is not vacuous, either -- it is vacuous only for NEW events,
+    where one reviewer name makes the comparison true by construction. It still
+    binds the 211 committed reports that carry six identities, and that is
+    where it is exercised here: an operator2 report answering a request
+    assigned to operator, validated directly rather than through the wrapper
+    (the wrapper now refuses retired senders one step earlier).
+
+    For new events the surviving discriminators are the reviewer's model family
+    and the side observed in a peer receipt. Carrying the side in the identity
+    (reviewer@codex vs reviewer@claude) would restore seat-level
+    expressiveness; that is a grammar change with its own review and is
+    deliberately not smuggled in here.
+    """
+
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo, repo_root)
     base, head, request_path, trigger = _prepare_verify_request(repo)
 
-    result = _run(
-        [
-            repo_root / "coordination/bin/send-event",
-            "reviewer",
-            "all",
-            "verification-report",
-            "misassigned",
-        ],
-        repo,
-        input_text=_report_body(
-            base,
-            head,
-            request_path,
-            trigger,
-            verdict="FAIL",
-            finding_ref=_finding_ref(repo),
-            reviewer_seat="reviewer",
-        ),
+    body = _report_body(
+        base, head, request_path, trigger,
+        verdict="FAIL",
+        finding_ref=_finding_ref(repo),
+        reviewer_seat="operator2",
+    )
+    relative = (
+        "coordination/mailbox/sent/"
+        "2026-07-17T09-00-00Z-operator2-to-all-verification-report.md"
+    )
+    raw = (
+        "# Operator2 → All: misassigned report\n\n"
+        "**When:** 2026-07-17T09:00:00Z · **From:** operator2 (online)\n\n"
+        + body
+        + "\nCursor at send: 0\n"
     )
 
-    assert result.returncode != 0
-    assert "assigned Operator" in result.stderr
-    assert not list((repo / "coordination/mailbox/sent").glob("*verification-report.md"))
-    assert _git(repo, "diff", "--cached", "--name-only") == ""
-    source = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
-    assert source.index("validate-candidate") < source.index("send-event-finalize")
+    report = compact_pair_loop._parse_verification_report_bytes(
+        repo, relative, raw.encode("utf-8")
+    )
+    violations = compact_pair_loop.validate_report(repo, report)
 
+    assert any("assigned Operator" in violation for violation in violations), violations
 
 def test_go_with_bare_evidence_markers_fails_before_staging(
     tmp_path: Path, repo_root: Path

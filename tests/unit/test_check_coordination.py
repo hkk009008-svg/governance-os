@@ -10,6 +10,7 @@ import tarfile
 import pytest
 
 import check_coordination as cc
+import mailbox_history
 import status
 
 
@@ -2536,3 +2537,71 @@ def test_post_cutover_fail_for_pre_cutover_request_survives_newer_request(
         )
         for item in state.failed
     }
+
+
+def test_a_post_cutover_retired_identity_is_fatal(monkeypatch) -> None:
+    """The committed gate behind the writer, proven non-vacuous.
+
+    Codex found that restricting only the fixed writer left two open routes to
+    publication: a hand-authored file plus `git add -f`, and (before the
+    recipient rule) a hybrid `author -> operator` envelope. This gate reads
+    committed bytes, so neither route goes around it.
+
+    The control is the pair: an event introduced BEFORE the cutover keeps its
+    historical identity and must stay lawful, and the same identity introduced
+    AFTER it must be FATAL. Without the first half this would be a gate that
+    convicts all 967 historical events; without the second it would be a gate
+    that convicts nothing.
+    """
+
+    class _Commits:
+        object_types = {"a" * 40: "commit", "b" * 40: "commit",
+                        mailbox_history._ROLE_CUTOVER_COMMIT: "commit"}
+
+        @staticmethod
+        def is_ancestor(candidate, target):
+            return candidate == "a" * 40  # only the "old" commit precedes the cutover
+
+    class _Projection:
+        commits = _Commits()
+        introductions = {
+            "coordination/mailbox/sent/2026-07-01T00-00-00Z-director-to-operator-findings.md":
+                ("a" * 40, "0" * 40),
+            "coordination/mailbox/sent/2026-09-01T00-00-00Z-director-to-operator-findings.md":
+                ("b" * 40, "1" * 40),
+            "coordination/mailbox/sent/2026-09-02T00-00-00Z-author-to-reviewer-findings.md":
+                ("b" * 40, "2" * 40),
+        }
+
+    issues = mailbox_history._check_post_cutover_identities(
+        _Projection(), cc.CoordIssue, cc._ARCHIVE_SENT_PREFIX
+    )
+
+    kinds = {issue.kind for issue in issues}
+    assert kinds == {"post_cutover_retired_identity"}, kinds
+    assert len(issues) == 1, [issue.message for issue in issues]
+    assert all(issue.severity == "FATAL" for issue in issues)
+    assert "2026-09-01" in issues[0].path, issues[0].path
+    assert "director" in issues[0].message and "operator" in issues[0].message
+
+
+def test_the_cutover_gate_is_inert_where_the_boundary_is_absent() -> None:
+    """A history without the cutover commit binds nothing, rather than everything."""
+
+    class _Commits:
+        object_types: dict[str, str] = {}
+
+        @staticmethod
+        def is_ancestor(candidate, target):  # pragma: no cover - must not run
+            raise AssertionError("ancestry must not be consulted without a boundary")
+
+    class _Projection:
+        commits = _Commits()
+        introductions = {
+            "coordination/mailbox/sent/2026-09-01T00-00-00Z-director-to-operator-findings.md":
+                ("b" * 40, "1" * 40),
+        }
+
+    assert mailbox_history._check_post_cutover_identities(
+        _Projection(), cc.CoordIssue, cc._ARCHIVE_SENT_PREFIX
+    ) == []

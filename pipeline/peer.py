@@ -30,13 +30,14 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+import uuid
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from peer_backends import AGY_ROLES, BACKENDS, PeerError, Spec, build, reported_result
+from peer_receipt import RECEIPTS, next_seq, receipt_path, validate_task, write_receipt
 
 ROOT = Path(__file__).resolve().parent.parent
-RECEIPTS = "coordination/peer"
 DEFAULT_TIMEOUT_S = 900
 DEFAULT_MAX_USD = 1.00
 
@@ -57,42 +58,9 @@ class Outcome:
     notes: list[str] = field(default_factory=list)
 
 
-def receipt_path(repo_root: Path, task: str, seq: int, side: str) -> Path:
-    return repo_root / RECEIPTS / task / f"{seq:04d}-{side}.json"
-
-
-def next_seq(repo_root: Path, task: str) -> int:
-    directory = repo_root / RECEIPTS / task
-    if not directory.is_dir():
-        return 1
-    return 1 + sum(1 for path in directory.glob("*.json"))
-
-
-def write_receipt(repo_root: Path, outcome: Outcome, started: str) -> Path:
-    path = receipt_path(repo_root, outcome.task, next_seq(repo_root, outcome.task), outcome.side)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schema": "peer-receipt/1",
-        "task": outcome.task,
-        "side": outcome.side,
-        "role": outcome.role,
-        "advisory": outcome.advisory,
-        "started": started,
-        "duration_s": round(outcome.duration_s, 2),
-        "exit_code": outcome.exit_code,
-        "argv_sha256": hashlib.sha256("\x00".join(outcome.argv).encode()).hexdigest(),
-        "argv_binary": outcome.argv[0] if outcome.argv else None,
-        "prompt_sha256": outcome.prompt_sha256,
-        "result_sha256": hashlib.sha256(outcome.result.encode()).hexdigest(),
-        "model_reported": outcome.model_reported,
-        "cost_usd": outcome.cost_usd,
-        "notes": outcome.notes,
-    }
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return path
-
-
 def run(spec: Spec, prompt: str, *, runner=subprocess.run) -> Outcome:
+    if spec.invocation_id == "0":
+        spec = replace(spec, invocation_id=uuid.uuid4().hex)
     invocation = build(spec)
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     began = time.monotonic()
@@ -120,8 +88,14 @@ def run(spec: Spec, prompt: str, *, runner=subprocess.run) -> Outcome:
         message = Path(invocation.last_message_file)
         if message.is_file():
             result = message.read_text(encoding="utf-8")
+            message.unlink(missing_ok=True)
         else:
-            notes.append("codex wrote no last-message file")
+            # A previous run's text presented as this run's answer is forged
+            # evidence, so absence stays absence.
+            result = ""
+            notes.append(
+                "codex wrote no last-message file; this run produced no result"
+            )
     if completed.returncode != 0 and completed.stderr:
         notes.append(f"stderr: {completed.stderr.strip()[:400]}")
     return Outcome(
@@ -164,7 +138,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     if args.command == "receipts":
-        base = ROOT / RECEIPTS / args.task if args.task else ROOT / RECEIPTS
+        try:
+            base = (
+                ROOT / RECEIPTS / validate_task(args.task)
+                if args.task
+                else ROOT / RECEIPTS
+            )
+        except PeerError as exc:
+            print(f"pipeline peer: {exc}", file=sys.stderr)
+            return 2
         if not base.exists():
             print(f"no peer receipts under {base.relative_to(ROOT)}")
             return 0
@@ -176,6 +158,11 @@ def main(argv: list[str] | None = None) -> int:
             )
         return 0
 
+    try:
+        validate_task(args.task)
+    except PeerError as exc:
+        print(f"pipeline peer: {exc}", file=sys.stderr)
+        return 2
     scratch = Path(os.environ.get("TMPDIR", "/tmp"))
     spec = Spec(
         side=args.side, role=args.role, task=args.task,

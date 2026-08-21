@@ -25,6 +25,7 @@ def _spec(tmp_path: Path, side: str, **overrides) -> peer_backends.Spec:
     fields = dict(
         side=side, role="peer", task="t1", cwd=tmp_path, scratch=tmp_path,
         model=None, read_only=True, max_usd=1.0, timeout_s=30,
+        invocation_id="0",
     )
     fields.update(overrides)
     return peer_backends.Spec(**fields)

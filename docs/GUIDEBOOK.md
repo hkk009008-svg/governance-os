@@ -261,5 +261,5 @@ table in `docs/REPOSITORY-MANUAL.md`.
 | User-principal intent | `docs/PROGRAM-MANUAL.md` |
 | Decision history | `DECISIONS.md` |
 | Work phases | `docs/protocol/work-modes.md` |
-| Desktop app setup | `docs/protocol/app-quickstart.md` |
+| Reaching the other CLI | `docs/protocol/peer.md` |
 | Provider mechanics | `docs/protocol/{codex,claude}/` |

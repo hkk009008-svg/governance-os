@@ -75,7 +75,6 @@ These are the places that need *your code/doctrine*, not just a name swap:
 | `pipeline/wave_gate_check.py` | your product-oracle metric field names (two metric blocks) |
 | `.github/workflows/ci.yml` | any model-weight / asset cache steps + your pytest/test job |
 | `CLAUDE.md` · `AGENTS.md` (R-SKILL) | your domain-skill load triggers |
-| `docs/protocol/claude/four-seat-extension.md` | the Pair-A / Pair-B domain split for your project |
 | `docs/protocol/{claude,agents}/core.md` | your domain subsystem's caching behaviour example |
 | `.claude/skills/seat-director/{SKILL,r-brief-template}.md` | your domain-specialist reviewer targets |
 | `.claude/agents/money-gate-reviewer.md` | the phases your cost/budget precheck could miss (delete this agent if you have no budget gate) |

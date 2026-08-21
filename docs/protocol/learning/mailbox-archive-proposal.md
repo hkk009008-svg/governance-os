@@ -18,7 +18,7 @@ curator was struck, and the archive was filed here.
 1. History-preserving `git mv` of aged events from
    `coordination/mailbox/sent/` to
    `coordination/mailbox/archive/<YYYY>/`, mirroring
-   `pipeline/archive_handoffs.py` (clean worktree, `git mv` only, restore
+   the retired handoff archiver (clean worktree, `git mv` only, restore
    earlier moves on later failure).
 2. **I6:** backup failure blocks. Before the first `git mv`, take a
    fail-closed copy of the sent tree (a git archive or a second

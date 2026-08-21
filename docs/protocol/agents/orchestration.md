@@ -45,7 +45,7 @@ durable surfaces on every side:
 - committed mailbox events through the fixed writer
   (`coordination/bin/send-event`);
 - ownership exchange through a durable accepted handoff
-  (`pipeline/draft_handoff.py` drafts one from live evidence);
+  (`pipeline checkpoint` drafts one into scratch from live evidence);
 - the committed verify-request / verification-report Compact Pair for review.
 
 The receiving seat needs no knowledge of which app authored an event; the

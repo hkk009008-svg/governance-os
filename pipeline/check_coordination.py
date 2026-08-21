@@ -51,6 +51,12 @@ import git_commit_projection
 import git_runner
 import mailbox_writer
 import protocol_mailbox
+import mailbox_history  # noqa: E402
+from mailbox_history import (  # noqa: E402
+    _REVIEWING_IDENTITIES,
+    _legacy_twin,
+    _normalize_archive_name,
+)
 from protocol_mailbox import KNOWN_KINDS, SEATS
 import bus_unread
 
@@ -544,44 +550,6 @@ _ARCHIVE_HISTORY_EXCEPTIONS = (
 )
 _HISTORY_EXCEPTION_SCHEMA = "immutable-review-history-exceptions/v1"
 
-# The kernel's Python moved scripts/ -> pipeline/ when the repository became
-# CLI-exclusive. Every constant above names the CURRENT path, but this module
-# projects COMMITTED history, and a commit from before the move has its
-# manifests under the old prefix. Asking git archive for a path that does not
-# exist at that commit is a hard `fatal: pathspec ... did not match any
-# files`, which surfaced as "projection unavailable" rather than as the
-# rename it was. Each baseline therefore carries its twin; the archive is
-# asked only for the paths that actually exist at the commit, and members are
-# normalized back to the current name so every downstream key is stable.
-_LEGACY_PREFIX = "scripts/"
-_CURRENT_PREFIX = "pipeline/"
-
-
-def _legacy_twin(path: str) -> str:
-    return path.replace(_CURRENT_PREFIX, _LEGACY_PREFIX, 1)
-
-
-def _normalize_archive_name(name: str) -> str:
-    if name.startswith(_LEGACY_PREFIX):
-        return _CURRENT_PREFIX + name[len(_LEGACY_PREFIX):]
-    return name
-
-
-def _paths_present_at(repo_root, commit: str, candidates: tuple[str, ...]):
-    """The subset of *candidates* that exists at *commit*, asked of Git."""
-
-    listed = _projection_git(
-        repo_root, "ls-tree", "-r", "--name-only", "-z", commit, "--", *candidates
-    )
-    if listed.returncode != 0:
-        return None
-    return tuple(
-        name.decode("utf-8", errors="replace")
-        for name in listed.stdout.split(b"\0")
-        if name
-    )
-
-
 def _canonical_archive_path(name: str) -> bool:
     if not name or name.startswith("/") or "\\" in name:
         return False
@@ -824,7 +792,7 @@ def _committed_mailbox_projection(
         for path, (_commit, blob) in introductions.items()
     }
 
-    manifest_paths = _paths_present_at(
+    manifest_paths = mailbox_history._paths_present_at(
         repo_root,
         pinned_head,
         (
@@ -833,6 +801,7 @@ def _committed_mailbox_projection(
             _legacy_twin(_ARCHIVE_REPORT_BASELINE),
             _legacy_twin(_ARCHIVE_HISTORY_EXCEPTIONS),
         ),
+        _projection_git,
     )
     if manifest_paths is None:
         return None, "committed manifest paths unavailable"
@@ -1254,9 +1223,6 @@ def _single_field(raw: bytes, prefix: str) -> str | None:
 # request assigned to an identity outside this set is invisible to the
 # projection -- which is how the first request published under the collapsed
 # identity read as "Request: none" until this set was widened.
-_REVIEWING_IDENTITIES = ("reviewer", "operator", "operator2")
-
-
 def _mapped_request_operator(
     request_operators: dict[str, str], request_ref: str,
 ) -> tuple[str | None, str | None]:
@@ -1852,6 +1818,9 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
             )
         else:
             issues += _check_committed_learning_history(bus_repo_root, projection)
+            issues += mailbox_history._check_post_cutover_identities(
+                projection, CoordIssue, _ARCHIVE_SENT_PREFIX
+            )
     if git_root is not None:
         issues += _check_standalone_cursor_commits(git_root)
     issues += _check_coordinator_handoff_theater(docs_root)

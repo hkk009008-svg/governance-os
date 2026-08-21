@@ -1,7 +1,8 @@
 # Codex continuation adapter
 
 This maps Pipeline policy to Codex mechanics; canonical validation lives in `pipeline/codex_protocol_model.py`.
-Role prompts and skills contain local deltas. Desktop guide: `docs/protocol/app-quickstart.md`.
+Role prompts and skills contain local deltas. Reaching the other CLI:
+`docs/protocol/peer.md`.
 
 ## Modes
 
@@ -9,8 +10,6 @@ Role prompts and skills contain local deltas. Desktop guide: `docs/protocol/app-
 - Live role: only when a concrete Director or Operator role is assigned.
 - Coordinator: only for explicit observation, reconciliation, or mediation.
 - Subagent: bounded by its parent and never inherits live-role authority.
-
-Runtime identity comes from the harness; variables, labels, and prompts grant no authority.
 
 ## Orientation
 
@@ -42,7 +41,8 @@ bodies; unread backlog is not an orientation debt. Episodic recall via
 - `pipeline/codex_protocol_model.py`: identity, ownership, risk, and effect tokens.
 - `pipeline/compact_pair_loop.py`: formal requests, reports, and exact ranges.
 - `pipeline/mailbox_writer.py` validates and serializes event publication.
-- `pipeline/claude_task_connector.py` owns the no-authority, lazy transient Claude bridge.
+- `pipeline/peer.py` runs the Claude CLI once as a child process and
+  commits a receipt. It grants no authority and holds nothing open.
 - This adapter owns host task discovery, dispatch, and waiting behavior.
 
 Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`
@@ -61,16 +61,15 @@ history. Review panels are presentation; never automate hard deletion or create
 a persistent goal without an explicit request. All task metadata grants no role,
 review, or effect authority and cannot replace formal exact-range review.
 
-## Claude task connector
+## Reaching the Claude CLI
 
-For transient Codex/Claude communication, default to `claude_task_connector`;
-its first send starts `pipeline-codex-bridge` under the user's standing
-one-instance `$1.00` authority without another prompt. A send is not a delivery
-ack. Reject private Desktop paths; follow `docs/protocol/claude/task-connector.md`.
-
-External effects remain separate from structural validation. Push, merge,
-locking, event consumption, paid spend, provider launch, and live-data mutation
-need exact authority for the executor, target, and scope.
+`pipeline peer ask claude --task <id> --prompt-file <f>` runs it once as a
+child process; `--dry-run` prints the argv and launches nothing. The exit code
+is the delivery acknowledgement and the receipt under `coordination/peer/`
+records what ran. A receipt is evidence, not attestation, and no verdict path
+accepts one. Launching a peer is paid spend needing its own exact authority,
+and never replaces the committed Compact Pair. Contract:
+`docs/protocol/peer.md`.
 
 ## Review-state history boundary
 

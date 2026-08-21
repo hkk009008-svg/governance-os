@@ -62,7 +62,12 @@ def build_claude(spec) -> Invocation:
 
 
 def build_codex(spec) -> Invocation:
-    last = str(spec.scratch / "codex-last-message.txt")
+    # A FIXED path let a run that produced nothing read the PREVIOUS run's
+    # text, print it, and hash it into a fresh receipt with no warning --
+    # forged evidence assembled by the mechanism that exists to prevent it.
+    # The name is unique per invocation and peer.run() refuses to read a file
+    # this child did not create.
+    last = str(spec.scratch / f"codex-last-message-{spec.invocation_id}.txt")
     argv = [
         _binary("codex"), "exec",
         "--json",
@@ -115,6 +120,8 @@ class Spec:
     read_only: bool = True
     max_usd: float = DEFAULT_MAX_USD
     timeout_s: int = DEFAULT_TIMEOUT_S
+    # Distinguishes this invocation's scratch artifacts from every other's.
+    invocation_id: str = "0"
 
 
 def build(spec: Spec) -> Invocation:
@@ -150,8 +157,8 @@ def reported_result(side: str, stdout: str) -> tuple[str | None, float | None, s
                 event = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            found = _find_key(event, "model")
-            if isinstance(found, str) and model is None:
+            found = _event_model(event)
+            if found is not None and model is None:
                 model = found
         if model is None:
             notes.append("no codex event carried a model field; model unreported")
@@ -160,12 +167,32 @@ def reported_result(side: str, stdout: str) -> tuple[str | None, float | None, s
     return None, None, stdout, notes
 
 
-def _find_key(payload, key: str):
-    if isinstance(payload, dict):
-        if key in payload and isinstance(payload[key], str):
-            return payload[key]
-        for value in payload.values():
-            found = _find_key(value, key)
-            if found is not None:
-                return found
+# Exactly where a codex event is allowed to state its model. An unrestricted
+# recursive search read "model" from ANY nesting depth, so an unrelated tool
+# argument that happened to echo the requested model back made the receipt
+# agree with its author -- the one thing a receipt must never do by
+# construction. Widen this tuple only with a real observed event shape.
+_MODEL_PATHS: tuple[tuple[str, ...], ...] = (
+    ("model",),
+    ("session", "model"),
+    ("turn", "model"),
+    ("msg", "model"),
+    ("payload", "model"),
+)
+
+
+def _event_model(event) -> str | None:
+    """The model an event STATES about itself, at a declared position only."""
+
+    if not isinstance(event, dict):
+        return None
+    for path in _MODEL_PATHS:
+        cursor = event
+        for step in path:
+            if not isinstance(cursor, dict) or step not in cursor:
+                cursor = None
+                break
+            cursor = cursor[step]
+        if isinstance(cursor, str) and cursor.strip():
+            return cursor
     return None
