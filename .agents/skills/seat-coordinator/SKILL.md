@@ -8,7 +8,7 @@ description: Use for explicit coordinator observation, facilitation, reconciliat
 Load the four-seat skill first. This role exists only when the user or parent
 explicitly assigns coordinator work.
 
-Read one `python scripts/status.py snapshot coordinator` result, the relevant
+Read one `python pipeline/status.py snapshot coordinator` result, the relevant
 event bodies, and scoped Git state. Coordinator is cursorless: never run
 `consume-events coordinator` or invent coordinator receipt.
 

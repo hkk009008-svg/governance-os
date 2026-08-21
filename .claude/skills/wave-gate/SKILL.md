@@ -18,7 +18,7 @@ truth for the hardening campaign.
 ## Run the gate
 ```
 unset GIT_INDEX_FILE
-coordination/bin/pipeline-python scripts/wave_gate_check.py <wave>
+coordination/bin/pipeline-python pipeline/wave_gate_check.py <wave>
 ```
 The script reports whether every defect row assigned to `<wave>` is in a
 closed + verified state. A non-zero exit = the wave is NOT met; read which rows
@@ -45,11 +45,11 @@ The gate reads the inventory; the inventory drifts. Before declaring a wave MET:
 - Surface the milestone: `git rev-list --count origin/main..HEAD` to confirm
   nothing MET is left unpushed.
 - A gate closure is a checkpoint boundary: the owning seat publishes one
-  checkpoint `findings` event (`scripts/draft_checkpoint.py`) whose
+  checkpoint `findings` event (`pipeline/draft_checkpoint.py`) whose
   `Lessons:` line carries candidate refs or `none-considered`.
 
 ## Notes
-- `scripts/wave_gate_check.py` is the committed instrument (R-MEASURE); cite its
+- `pipeline/wave_gate_check.py` is the committed instrument (R-MEASURE); cite its
   output next to any GATE-MET claim.
 - The coordinator is on-demand (spawned at multi-pair-wrap boundaries), never an
   in-lane fixer.

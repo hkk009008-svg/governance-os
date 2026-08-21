@@ -13,7 +13,7 @@ change.
 
 Load the Claude four-seat skill first.
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
+Autonomous Seat Outcome Contract: pipeline/codex_protocol_model.py
 Own the routed outcome and choose the method. Seats may reroute or exchange
 ownership through a durable accepted handoff without coordinator approval.
 Preflight is advisory. Preserve material findings and require non-author
@@ -34,7 +34,7 @@ dispositions through `coordination/bin/send-event`.
 Preflight is advisory. A preference or missing checklist is not itself FAIL.
 Use `env -u GIT_INDEX_FILE` and stay read-only while reviewing.
 
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
+Canonical Compact Pair Invariant: pipeline/codex_protocol_model.py
 
 Helpers provide evidence but never issue the seat verdict. Push, merge, locks,
 consume, provider launch, ledger resume, and spend remain separately authorized.

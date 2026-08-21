@@ -22,7 +22,7 @@ author's recall, because recall is the broken faculty.
 
 1. **Premises from shape, not memory.**
    ```bash
-   env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py premises "<claim>"
+   env -u GIT_INDEX_FILE .venv/bin/python pipeline/claim_check.py premises "<claim>"
    ```
    The grammar (enforced / measured / reference / complete / absence /
    semantics) supplies the terms. You can forget a premise; you cannot forget
@@ -54,7 +54,7 @@ author's recall, because recall is the broken faculty.
 
 5. **Record, so the blank cells exist.**
    ```bash
-   env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py record \
+   env -u GIT_INDEX_FILE .venv/bin/python pipeline/claim_check.py record \
      --claim "..." \
      --premise invoked-on-path MEASURED '$ grep -n caller → main:12' \
      --kill "deleted the call site; test failed"
@@ -69,7 +69,7 @@ author's recall, because recall is the broken faculty.
 
 6. **Sweep the range — an optional lens, not a publication step.**
    ```bash
-   env -u GIT_INDEX_FILE .venv/bin/python scripts/claim_check.py sweep --base <base> --head <head>
+   env -u GIT_INDEX_FILE .venv/bin/python pipeline/claim_check.py sweep --base <base> --head <head>
    ```
    Flags overclaim vocabulary with no citation on the same line. Scoped to
    where claims live — prose files whole-line, code and extensionless files on

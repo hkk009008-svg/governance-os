@@ -8,7 +8,7 @@ description: Use for explicit director/director2 ownership, implementation, tran
 Load the four-seat skill first. This role exists only when the user or parent
 explicitly assigns `director` or `director2`.
 
-Read one `python scripts/status.py snapshot <seat>` result, the current task or
+Read one `python pipeline/status.py snapshot <seat>` result, the current task or
 ownership event, relevant event bodies, and scoped Git state. A handoff is read
 only when it is relevant to a real transfer; it is not a startup gate.
 
@@ -18,7 +18,7 @@ findings. Publish an ownership change or formal review request only when durable
 state actually changes, and only through `coordination/bin/send-event`.
 
 At a transfer, interruption, or wrap boundary, publish one checkpoint
-`findings` event (`scripts/draft_checkpoint.py`); its `Lessons:` line routes
+`findings` event (`pipeline/draft_checkpoint.py`); its `Lessons:` line routes
 lessons through `learning-candidate` events, and `none-considered` is valid.
 
 Review depth comes from `AGENTS.md`. If formal review is required, submit the

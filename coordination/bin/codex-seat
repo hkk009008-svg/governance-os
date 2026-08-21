@@ -33,4 +33,4 @@ if ! "$PYTHON" -c 'import sys, tomllib; raise SystemExit(0 if sys.version_info >
   exit 2
 fi
 
-exec "$PYTHON" "$ROOT/scripts/codex_seat_launcher.py" "$@"
+exec "$PYTHON" "$ROOT/pipeline/codex_seat_launcher.py" "$@"

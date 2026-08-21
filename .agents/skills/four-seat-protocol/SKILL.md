@@ -10,17 +10,17 @@ subagent from the explicit prompt. Do not infer a live role.
 
 Use the executable seam that owns the claim:
 
-- `scripts/codex_protocol_model.py` for identity, ownership, work mode, risk
+- `pipeline/codex_protocol_model.py` for identity, ownership, work mode, risk
   profile, and external-effect shape.
-- `scripts/compact_pair_loop.py` for formal exact-range review.
-- `scripts/mailbox_writer.py` through `coordination/bin/send-event` for
+- `pipeline/compact_pair_loop.py` for formal exact-range review.
+- `pipeline/mailbox_writer.py` through `coordination/bin/send-event` for
   publication.
 - `docs/protocol/codex/continuation.md` for host task routing.
 
 For an assigned role, orient once from current evidence:
 
 ```bash
-python scripts/status.py snapshot <seat>
+python pipeline/status.py snapshot <seat>
 ```
 
 Read relevant event bodies before deciding. The mailbox is the configured

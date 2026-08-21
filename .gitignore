@@ -44,7 +44,7 @@ htmlcov/
 # Seat read-cursors (seen/<seat>.txt = scalar seq) are TRACKED, not ignored:
 # cursor advances are part of the durable record (the check_coordination
 # "standalone_cursor_commit" advisory exists because they get committed).
-# Seeded at 0 for the default roster; adjust it in scripts/protocol_mailbox.py
+# Seeded at 0 for the default roster; adjust it in pipeline/protocol_mailbox.py
 # (SEATS / RECEIVING_SEATS).
 
 # Outgoing mailbox messages (runtime-generated; committed selectively per protocol)

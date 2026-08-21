@@ -8,7 +8,7 @@ description: Use for explicit operator/operator2 implementation or independent r
 Load the four-seat skill first. This role exists only when the user or parent
 explicitly assigns `operator` or `operator2`.
 
-Read one `python scripts/status.py snapshot <seat>` result, the relevant event
+Read one `python pipeline/status.py snapshot <seat>` result, the relevant event
 bodies, and scoped Git state. An Operator may own and implement accepted work,
 but never reviews anything it authored.
 

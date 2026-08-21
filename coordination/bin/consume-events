@@ -16,7 +16,7 @@ PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
 TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
 SCRIPT_DIR=$(/usr/bin/dirname "${BASH_SOURCE[0]:-$0}")
 TOOL_ROOT=$(cd "$SCRIPT_DIR/../.." && /bin/pwd -P)
-MAILBOX_WRITER="$TOOL_ROOT/scripts/mailbox_writer.py"
+MAILBOX_WRITER="$TOOL_ROOT/pipeline/mailbox_writer.py"
 
 if [ ! -x "$TRUSTED_PYTHON" ] || [ ! -f "$MAILBOX_WRITER" ]; then
   echo "consume-events: trusted Pipeline mailbox writer unavailable" >&2

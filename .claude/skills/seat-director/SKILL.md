@@ -13,7 +13,7 @@ change.
 
 Load the Claude four-seat skill first.
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
+Autonomous Seat Outcome Contract: pipeline/codex_protocol_model.py
 Own the routed outcome and choose the method. Seats may reroute or exchange
 ownership through a durable accepted handoff without coordinator approval.
 Preflight is advisory. Preserve material findings and require non-author
@@ -34,11 +34,11 @@ pytest, first `unset GIT_INDEX_FILE`, then run
 `coordination/bin/pipeline-python -m pytest`.
 Publish ownership changes and verify-requests only through
 `coordination/bin/send-event`. At a transfer, interruption, or wrap boundary,
-publish one checkpoint `findings` event (`scripts/draft_checkpoint.py`); its
+publish one checkpoint `findings` event (`pipeline/draft_checkpoint.py`); its
 `Lessons:` line routes lessons through `learning-candidate` events, and
 `none-considered` is valid.
 
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
+Canonical Compact Pair Invariant: pipeline/codex_protocol_model.py
 
 Only the assigned distinct-seat non-author Operator issues the verdict; the
 executable risk profile decides whether model diversity is also required. The

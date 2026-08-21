@@ -15,7 +15,7 @@ orient once:
 
 ```bash
 unset GIT_INDEX_FILE
-coordination/bin/pipeline-python scripts/status.py snapshot <seat>
+coordination/bin/pipeline-python pipeline/status.py snapshot <seat>
 ```
 
 Read actionable event bodies. Only an assigned receiving role consumes its

@@ -72,8 +72,8 @@ PRIMARY_ROOT=$(/usr/bin/dirname "$COMMON")
 TRUSTED_PYTHON="$PRIMARY_ROOT/.venv/bin/python"
 SCRIPT_DIR=$(/usr/bin/dirname "${BASH_SOURCE[0]:-$0}")
 TOOL_ROOT=$(cd "$SCRIPT_DIR/../.." && /bin/pwd -P)
-MAILBOX_WRITER="$TOOL_ROOT/scripts/mailbox_writer.py"
-COMPACT_VALIDATOR="$TOOL_ROOT/scripts/compact_pair_loop.py"
+MAILBOX_WRITER="$TOOL_ROOT/pipeline/mailbox_writer.py"
+COMPACT_VALIDATOR="$TOOL_ROOT/pipeline/compact_pair_loop.py"
 if [ ! -x "$TRUSTED_PYTHON" ]; then
   echo "send-event: trusted Pipeline Python unavailable" >&2
   exit 4

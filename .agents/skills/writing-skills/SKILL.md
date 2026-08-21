@@ -83,7 +83,7 @@ falsifier for committed stubs.
 
 ## Promotion and revision
 
-1. Draft a `learning-candidate` (`scripts/learning_extract.py`, scratch
+1. Draft a `learning-candidate` (`pipeline/learning_extract.py`, scratch
    only) whose Target is the canonical skill path. Category `procedure`
    unless the change is a `governance-rule`.
 2. Publish only with publication authority. Disposition and promotion
@@ -100,7 +100,7 @@ falsifier for committed stubs.
 
 At wrap, append one `skill-use` row if this skill (or the skill just
 authored) was loaded, or skip with a one-line reason. Then consider a
-checkpoint `Lessons:` line (`scripts/draft_checkpoint.py`);
+checkpoint `Lessons:` line (`pipeline/draft_checkpoint.py`);
 `none-considered` remains valid.
 
 ## Rule maintenance

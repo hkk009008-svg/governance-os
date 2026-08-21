@@ -14,7 +14,7 @@ change.
 Coordinator is unpinned, never consumes a cursor, and does not author
 behavior-changing production work.
 
-Autonomous Seat Outcome Contract: scripts/codex_protocol_model.py
+Autonomous Seat Outcome Contract: pipeline/codex_protocol_model.py
 Own the routed outcome and choose the method. Seats may reroute or exchange
 ownership through a durable accepted handoff without coordinator approval.
 Preflight is advisory. Preserve material findings and require non-author
@@ -44,7 +44,7 @@ immutable artifacts. Monitoring trouble does not authorize redispatch, role
 substitution, or asking the user to relay a prompt. Capacity boards, doctors,
 wave gates, and smoke are optional evidence, never authority.
 
-Canonical Compact Pair Invariant: scripts/codex_protocol_model.py
+Canonical Compact Pair Invariant: pipeline/codex_protocol_model.py
 
 Push, merge, locks, consume, provider launch, ledger resume, and spend remain
 separately authorized. Structural tokens do not grant authority.

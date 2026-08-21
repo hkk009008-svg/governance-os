@@ -4,7 +4,7 @@
 # editing Python constants. evidence-ledger remains the DEFAULT target
 # (ADR-008 continuity); additional works register a [targets.<name>] table.
 #
-# Active-target resolution order (scripts/target_binding.py):
+# Active-target resolution order (pipeline/target_binding.py):
 #   CLI --target  >  GOVERNANCE_TARGET env  >  [binding].default_target
 # Local-checkout override for the selected target: GOVERNANCE_TARGET_PATH env.
 # Missing/unknown/ambiguous binding fails closed with a corrective message.

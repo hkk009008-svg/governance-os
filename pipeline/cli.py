@@ -44,7 +44,7 @@ _MODULE_COMMANDS: dict[tuple[str, ...], tuple[str, str, str]] = {
     ("check", "admission"): ("ci_admission_gate", "main", "authority-surface admission for a range"),
     ("review", "validate"): ("compact_pair_loop", "_main", "validate a request/report pair"),
     ("review", "consume"): ("consume_reviewer_result", "main", "consume a reviewer-result block"),
-    ("peer", None): ("peer", "main", "invoke the other CLI and record a receipt"),
+    ("peer", None): ("peer", "main", "invoke a peer CLI once and record a receipt"),
     ("learn", "index"): ("learning_index", "main", "query the derived episodic index"),
     ("learn", "metrics"): ("learning_metrics", "main", "learning-lifecycle metrics"),
     ("learn", "draft"): ("learning_extract", "main", "draft one learning candidate into scratch"),

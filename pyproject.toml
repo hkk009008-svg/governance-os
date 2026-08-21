@@ -6,9 +6,9 @@ requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Root packages (threeway/) and the scripts/ modules are importable by bare name
-# in tests (mirrors how governance_verify_all.py runs: scripts/ on sys.path[0] + repo root).
-pythonpath = [".", "scripts"]
+# Root packages (threeway/) and the pipeline/ modules are importable by bare name
+# in tests (mirrors how governance_verify_all.py runs: pipeline/ on sys.path[0] + repo root).
+pythonpath = [".", "pipeline"]
 
 filterwarnings = [
     # Surface all warnings during test runs so silent degradations are caught early

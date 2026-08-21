@@ -64,7 +64,7 @@ cinema skills (`ai-video-gen`, `comfyui-mastery`) were **excluded**.
 | `coordination/threeway/keys/README.md` | Trust-root layout (public keys; regenerate per deployment) |
 | `coordination/workflows/discovery-bughunt.js` | A reusable discovery-bughunt coordination workflow |
 | `threeway/*.py` (20 modules) | The Ed25519-signed event-bus control plane (envelope, canon, gate, reducer, refstore, keys, …) |
-| `scripts/*.py` + `*.sh` (37 files) + `placeholder_allowlist.txt` | Governance scripts: `governance_verify_all` (alias `ci_smoke`), `check_{coordination,doc_claims,no_ceremony}`, the three fail-closed adoption gates `check_{placeholders,go_schema,arch_freshness}` (+ their allowlist), `wave_gate_check`, the `*_emit`/`consume_bus`/`run_merge_gate` bus tools, `draft_handoff`, `protocol_*`, etc. |
+| `pipeline/*.py` + `*.sh` (37 files) + `placeholder_allowlist.txt` | Governance scripts: `governance_verify_all` (alias `ci_smoke`), `check_{coordination,doc_claims,no_ceremony}`, the three fail-closed adoption gates `check_{placeholders,go_schema,arch_freshness}` (+ their allowlist), `wave_gate_check`, the `*_emit`/`consume_bus`/`run_merge_gate` bus tools, `draft_handoff`, `protocol_*`, etc. |
 | `tests/` (`conftest.py` + 22 unit modules) | The pytest regression suite — gate scripts, threeway control plane (canon/envelope/keys/reducer), mailbox protocol, activation scripts, and protocol doc-integrity checks |
 
 ---
@@ -79,7 +79,7 @@ cinema skills (`ai-video-gen`, `comfyui-mastery`) were **excluded**.
   (replaced here with empty-but-structured skeletons).
 - **Runtime state** — 780 mailbox `sent/` payloads, the per-seat `seen` cursors and
   presence files, capacity packets, the signed-bus event blobs.
-- **Domain scripts** — all `scripts/_*` measurement/probe scripts, `setup_runpod.sh`,
+- **Domain scripts** — all `pipeline/_*` measurement/probe scripts, `setup_runpod.sh`,
   `run_max_harness.py`, the cinema-measurement tooling.
 - **Build/env & session runtime state** — `node_modules/`, `.venv/`,
   `.superpowers/` (gitignored skill-runtime scratch), `logs/`, `projects/`,
@@ -103,13 +103,13 @@ Since then, governance-hardening Track A grew the bundle 164 → **186** tracked
 files (the `tests/` suite, the `check_{placeholders,go_schema,arch_freshness}`
 gates + `placeholder_allowlist.txt`, `RUNBOOK-DAILY.md`), and `_project_smoke()`
 is **no longer a stub** — it asserts the governance OS's own runtime invariants
-(filled in commit `0708c59`; see `scripts/governance_verify_all.py`).
+(filled in commit `0708c59`; see `pipeline/governance_verify_all.py`).
 
 **Verified at generation time (commands + results):**
 - Zero residual cinema tokens — `grep -rIlE '<35-token cinema regex>' .` → **0 / 162 files**.
 - Python compiles — `ast.parse` over all `.py` → **53 / 53 OK, 0 failures**.
 - Shell valid — `bash -n` over hooks + `bin/` → **0 failures**.
-- **Governance OS boots turn-key** — `python scripts/governance_verify_all.py` → `OK`, **exit 0**
+- **Governance OS boots turn-key** — `python pipeline/governance_verify_all.py` → `OK`, **exit 0**
   (the `_project_smoke()` stub runs, the doc-anchor gate passes on the skeleton
   `ARCHITECTURE.md`, the coordination gate passes on the seeded cursors, and the
   anti-ceremony gate passes all five checks — R1–R3, R5–R6; R4 was removed with

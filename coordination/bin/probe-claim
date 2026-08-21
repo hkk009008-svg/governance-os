@@ -28,7 +28,7 @@ if [ -z "$PYTHON" ]; then
 fi
 
 echo "== premises (from claim shape, not memory) =="
-env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/scripts/claim_check.py" premises "$1"
+env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/pipeline/claim_check.py" premises "$1"
 echo
 echo "== amnesiac probe (cross-family, reduced-context) =="
-env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/scripts/claim_check.py" probe --execute "$1"
+env -u GIT_INDEX_FILE "$PYTHON" "$ROOT/pipeline/claim_check.py" probe --execute "$1"

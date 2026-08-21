@@ -17,7 +17,7 @@ Use only the branch of this loop that the task needs.
 6. Compare the final diff with the requested scope and report remaining
    unknowns truthfully.
 
-Run `scripts/status.py snapshot <seat>` only when current protocol state matters
+Run `pipeline/status.py snapshot <seat>` only when current protocol state matters
 and only after explicit role assignment. Mailbox events, handoffs, full smoke,
 and coordination checks are triggered tools, not daily rituals. Historical
 capacity packets are not a live scheduler.
@@ -25,6 +25,6 @@ capacity packets are not a live scheduler.
 `GO` accepts its bound range; it never authorizes push or another effect.
 Classify documentation and tests by actual behavior/risk, not filename.
 
-The policy kernel is `scripts/codex_protocol_model.py`; formal exact-range
-review is `scripts/compact_pair_loop.py`; validated serialized event/cursor
-writes are `scripts/mailbox_writer.py` through the fixed wrappers.
+The policy kernel is `pipeline/codex_protocol_model.py`; formal exact-range
+review is `pipeline/compact_pair_loop.py`; validated serialized event/cursor
+writes are `pipeline/mailbox_writer.py` through the fixed wrappers.

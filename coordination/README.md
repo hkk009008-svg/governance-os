@@ -35,12 +35,12 @@ for the full discipline (Rules #7–#23).
   resolution, retraction, findings) stays a `sent/` event file; a bare "received"
   ACK that adds nothing beyond the cursor should be a cursor advance only.
 - `mailbox/kinds.txt` — canonical mailbox kind vocabulary, one kind per line.
-  `bin/send-event` and `scripts/check_coordination.py` load this registry through
-  `scripts/protocol_mailbox.py` (`wc -l coordination/mailbox/kinds.txt` → 25,
+  `bin/send-event` and `pipeline/check_coordination.py` load this registry through
+  `pipeline/protocol_mailbox.py` (`wc -l coordination/mailbox/kinds.txt` → 25,
   2026-06-18).
-- `scripts/check_coordination.py` (repo root) — lints all of the above (cursor
+- `pipeline/check_coordination.py` (repo root) — lints all of the above (cursor
   parseable/non-future/non-orphan, filename convention, envelope, registered
-  kind, unread report). Wired into `scripts/governance_verify_all.py`: FATAL hard-fails
+  kind, unread report). Wired into `pipeline/governance_verify_all.py`: FATAL hard-fails
   locally and in CI; ADVISORY warns; INFO silent.
 - `mailbox/archive/` — Old events moved out of `sent/` for log hygiene (manual
   move by operator).
@@ -55,19 +55,19 @@ for the full discipline (Rules #7–#23).
 
 ## Readiness bridge
 
-Use `python scripts/status.py snapshot` for one compact non-seat orientation.
+Use `python pipeline/status.py snapshot` for one compact non-seat orientation.
 It reports current Git, authoritative unread transport, the current request or
 blocker, and the lawful next action without claiming a role or mutating state.
 
-Use `python scripts/mailbox_monitor.py --once` for an active communication
-snapshot, or `python scripts/mailbox_monitor.py --watch --interval 5` while a
+Use `python pipeline/mailbox_monitor.py --once` for an active communication
+snapshot, or `python pipeline/mailbox_monitor.py --watch --interval 5` while a
 bridge/coordinator needs to notice mailbox or heartbeat changes. The monitor is
 read-only: it reports unread counts, latest unread events, coordinator broadcast
 receipt splits, and heartbeat freshness, but it never consumes cursors, sends
 mailbox events, claims live-seat authority, or proves assigned work complete.
 
 For an explicitly assigned Codex pair role, use
-`python scripts/status.py snapshot <seat>` and read the actionable event bodies.
+`python pipeline/status.py snapshot <seat>` and read the actionable event bodies.
 Cursor consumption is a separate action; run
 `coordination/bin/consume-events <seat>` only when that role is authorized to
 advance its own read state. Coordinator is unpinned: read relevant coordinator
@@ -197,13 +197,13 @@ Cursor at send: 2026-06-11T09:00:00Z
 ```
 
 The `**When:**` timestamp must match the filename timestamp (linted by
-`scripts/check_coordination.py`). The filename carries the registered kind;
+`pipeline/check_coordination.py`). The filename carries the registered kind;
 an authority-bearing verify-request also carries the exact in-body event type
 and fields below. The current accepted vocabulary is
 `coordination/mailbox/kinds.txt`.
 
 For compact-pair verification, the filename kind alone is not authority.
-Canonical Compact Pair Invariant: `scripts/codex_protocol_model.py`. This
+Canonical Compact Pair Invariant: `pipeline/codex_protocol_model.py`. This
 surface intentionally does not restate its lifecycle grammar. The fixed mailbox
 writer publishes the event only after `coordination/bin/send-event` validates
 the committed request/report binding and Operator-only verdict authority.
@@ -221,10 +221,10 @@ the committed request/report binding and Operator-only verdict authority.
   via a `decision` event carrying `Candidate:` and `Disposition:`. Replaces
   `memory-candidate`, retired in the same change with zero committed
   instances (ADR-067 baseline). Read-side typing is
-  `scripts/protocol_mailbox.py` (`parse_learning_candidate_statement`,
+  `pipeline/protocol_mailbox.py` (`parse_learning_candidate_statement`,
   `parse_learning_disposition_statement`); the Stage 2b writer-side branch
   landed, so the contract I4 refusals bind at publication
-  (`scripts/mailbox_writer.py`, `tests/unit/test_learning_promotion.py`).
+  (`pipeline/mailbox_writer.py`, `tests/unit/test_learning_promotion.py`).
   Grants no memory write authority.
 - **Observed-in-practice additions:** `acknowledgement` | `convergence` |
   `coordination` | `discussion` | `fyi` | `measurement-report` | `proposal` |
@@ -243,7 +243,7 @@ deferred to v2 if it becomes painful.
 
 ## Claude-only STATE.md model
 
-Retired. No STATE.md is generated, and nothing under `scripts/`,
+Retired. No STATE.md is generated, and nothing under `pipeline/`,
 `coordination/bin/`, or `.claude/` writes one.
 
 A per-clone lifecycle hook used to regenerate it on each HEAD move and to
@@ -259,8 +259,8 @@ cache.
 filename-timestamp is strictly newer than the cursor's **content** timestamp,
 not its mtime, and not counting the role's own sends — the pre-Rule-#20
 `find -newer <cursor-mtime>` form got both wrong and produced the observed
-`director=4`-vs-1. Use `python scripts/status.py mailbox-unread <seat>`, which
-encapsulates that comparison, or `python scripts/mailbox_monitor.py --once`.
+`director=4`-vs-1. Use `python pipeline/status.py mailbox-unread <seat>`, which
+encapsulates that comparison, or `python pipeline/mailbox_monitor.py --once`.
 The Rule #8 awareness gate recomputes live; there is no cached field to fall
 back to.
 
@@ -278,7 +278,7 @@ Read current state from Git, which is authoritative:
 
 ```bash
 env -u GIT_INDEX_FILE git rev-parse HEAD
-env -u GIT_INDEX_FILE .venv/bin/python scripts/status.py snapshot <seat>
+env -u GIT_INDEX_FILE .venv/bin/python pipeline/status.py snapshot <seat>
 ```
 
 ## Claude-only seat launch
@@ -289,7 +289,7 @@ checkout and let the app create an isolated worktree for new independent work;
 resume the owning session/worktree for an existing uncommitted candidate.
 Claude's host session registry and peer relay reduce app-to-app copying, but a
 session name remains convention, not authority. Review identity is decided at
-publication by `scripts/compact_pair_loop.py`, which binds a verdict to reviewer
+publication by `pipeline/compact_pair_loop.py`, which binds a verdict to reviewer
 seat not equal to author seat, reviewer equal to the request's assigned
 operator, and distinct model families for `high-risk-control`.
 

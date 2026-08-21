@@ -1,6 +1,6 @@
 # verification-report — outcome evidence reference
 
-Formal review validation: `scripts/compact_pair_loop.py`. Only the
+Formal review validation: `pipeline/compact_pair_loop.py`. Only the
 assigned non-author Operator emits GO, NITS, or FAIL. The fixed mailbox writer
 supplies the H1, timestamp/from envelope, and cursor footer.
 

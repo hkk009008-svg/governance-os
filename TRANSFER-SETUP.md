@@ -34,7 +34,7 @@ by hand — in particular make sure the merged `.gitignore` still ignores
 `.venv/` and `.superpowers/` (the bundle's does; yours may not).
 
 The layout already mirrors a repo root: `.claude/`, `.codex/`, `.agents/`,
-`.github/`, `coordination/`, `docs/`, `scripts/`, `threeway/`, and the root
+`.github/`, `coordination/`, `docs/`, `pipeline/`, `threeway/`, and the root
 `CLAUDE.md` / `AGENTS.md` / `ARCHITECTURE.md` / … land where the doctrine expects them.
 
 ## 2. Install the governance deps (Python ≥ 3.11)
@@ -48,7 +48,7 @@ python3 -m venv .venv    # any Python >= 3.11 (floor per DECISIONS.md ADR-004)
 ## 3. Run the smoke to confirm it boots
 
 ```bash
-.venv/bin/python scripts/governance_verify_all.py     # expect: ... OK  (exit 0)
+.venv/bin/python pipeline/governance_verify_all.py     # expect: ... OK  (exit 0)
 ```
 
 This is also the SessionStart hook — it runs automatically at the top of every
@@ -71,8 +71,8 @@ These are the places that need *your code/doctrine*, not just a name swap:
 
 | File | What to supply |
 |---|---|
-| `scripts/governance_verify_all.py` (`_project_smoke()`) | your runtime smoke invariants (imports succeed, singletons stable, settings plumb through) |
-| `scripts/wave_gate_check.py` | your product-oracle metric field names (two metric blocks) |
+| `pipeline/governance_verify_all.py` (`_project_smoke()`) | your runtime smoke invariants (imports succeed, singletons stable, settings plumb through) |
+| `pipeline/wave_gate_check.py` | your product-oracle metric field names (two metric blocks) |
 | `.github/workflows/ci.yml` | any model-weight / asset cache steps + your pytest/test job |
 | `CLAUDE.md` · `AGENTS.md` (R-SKILL) | your domain-skill load triggers |
 | `docs/protocol/claude/four-seat-extension.md` | the Pair-A / Pair-B domain split for your project |
@@ -110,7 +110,7 @@ lock primitives in `coordination/bin/` work without it.
 
 The default receiving roster has four pair roles plus two cursorless
 coordinator aliases. To change it, edit `SEATS` / `RECEIVING_SEATS` in
-`scripts/protocol_mailbox.py`. Create read cursors only for roles that can
+`pipeline/protocol_mailbox.py`. Create read cursors only for roles that can
 lawfully consume events; do not create coordinator cursors.
 
 ## 9. Configure concurrent runtimes
@@ -126,20 +126,20 @@ authority.
 ## Acceptance check
 
 ```bash
-python scripts/governance_verify_all.py                  # OK, exit 0
-python scripts/check_coordination.py        # no FATALs
-python scripts/check_placeholders.py        # exit 0 when all skeletons are filled
+python pipeline/governance_verify_all.py                  # OK, exit 0
+python pipeline/check_coordination.py        # no FATALs
+python pipeline/check_placeholders.py        # exit 0 when all skeletons are filled
 ```
 
 **Non-empty target: re-baseline the allowlist first.** The scanner walks every
 tracked file, so a merged repo's own pre-existing files can trip it when they
 happen to contain a literal token (`<PROJECT>`, `<ref>`, `<fill-in>`, …). On the
 first run in a non-empty target, add any such pre-existing paths to
-`scripts/placeholder_allowlist.txt` — they are your baseline, not unfilled
-skeletons — then re-run `scripts/check_placeholders.py` until the scan is clean.
+`pipeline/placeholder_allowlist.txt` — they are your baseline, not unfilled
+skeletons — then re-run `pipeline/check_placeholders.py` until the scan is clean.
 
 **Adoption workflow for placeholders:** Filling a skeleton means removing its path
-from `scripts/placeholder_allowlist.txt`. Run `scripts/check_placeholders.py` after
+from `pipeline/placeholder_allowlist.txt`. Run `pipeline/check_placeholders.py` after
 each removal to confirm the file no longer contains unresolved tokens. When the
 allowlist is empty and the scan is clean, the repo is **fully bound** — no skeleton
 placeholders remain. (The gate is enforced by CI; a non-empty allowlist with clean
