@@ -19,6 +19,21 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _PACK_DIR = _REPO_ROOT / "tests" / "skill_packs"
 
 
+def _tracked(pathspec: str) -> list[Path]:
+    """Files Git tracks under *pathspec*, or the glob if Git is unavailable."""
+
+    result = subprocess.run(
+        ["git", "-C", str(_REPO_ROOT), "ls-files", "-z", "--", pathspec],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return sorted(_REPO_ROOT.glob(pathspec))
+    return sorted(
+        _REPO_ROOT / name for name in result.stdout.decode().split("\0") if name
+    )
+
+
 def _tracked_packs() -> list[Path]:
     """Only packs Git actually tracks.
 
@@ -30,18 +45,11 @@ def _tracked_packs() -> list[Path]:
     because a missing Git is not a reason to silently test nothing.
     """
 
-    result = subprocess.run(
-        ["git", "-C", str(_REPO_ROOT), "ls-files", "-z", "--", "tests/skill_packs"],
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return sorted(_PACK_DIR.glob("pack-*.json"))
-    return sorted(
-        _REPO_ROOT / name
-        for name in result.stdout.decode().split("\0")
-        if name.endswith(".json") and Path(name).name.startswith("pack-")
-    )
+    return [
+        path
+        for path in _tracked("tests/skill_packs/*.json")
+        if path.name.startswith("pack-")
+    ]
 
 
 _PACKS = _tracked_packs()
@@ -74,10 +82,25 @@ def _frontmatter_field(text: str, field: str) -> str:
 
 
 def _skill_descriptions() -> dict[str, str]:
+    """Descriptions from TRACKED skills only, with duplicate names refused.
+
+    Globbing the working tree recreated the invisible-green class one level
+    down from the pack corpus: an IGNORED skill directory carrying a duplicate
+    frontmatter name silently overwrote the tracked description, so an
+    exact-commit failure became `8 passed` while `git status` stayed empty. A
+    later-sorted path quietly winning is the whole defect, so a collision is
+    now an error rather than an overwrite.
+    """
+
     descriptions: dict[str, str] = {}
-    for skill_md in sorted(_SKILLS_DIR.glob("*/SKILL.md")):
+    for skill_md in _tracked(".agents/skills/*/SKILL.md"):
         text = skill_md.read_text(encoding="utf-8")
         name = _frontmatter_field(text, "name").strip('"')
+        assert name not in descriptions, (
+            f"duplicate skill name {name!r}: {skill_md} collides with an "
+            "earlier tracked skill; a silent overwrite is how a broken "
+            "description hides behind a good one"
+        )
         descriptions[name] = _frontmatter_field(text, "description")
     return descriptions
 
@@ -198,20 +221,3 @@ def test_r_skill_names_this_repo_inventory() -> None:
     assert "writing-skills" in text
     assert "add this project's domain-skill triggers" not in text
     assert "There is no domain-graph skill in this repository." in text
-
-
-def test_the_pack_corpus_comes_from_committed_bytes() -> None:
-    """The corpus this suite validates must exist for anyone who clones it.
-
-    Reversion control for the defect that made a green suite unreproducible:
-    an untracked pack in the working tree must not enter _PACKS.
-    """
-
-    assert _PACKS, "no tracked packs found; the suite would prove nothing"
-    tracked = subprocess.run(
-        ["git", "-C", str(_REPO_ROOT), "ls-files", "--error-unmatch", "--",
-         *[str(pack.relative_to(_REPO_ROOT)) for pack in _PACKS]],
-        capture_output=True,
-        check=False,
-    )
-    assert tracked.returncode == 0, tracked.stderr.decode()

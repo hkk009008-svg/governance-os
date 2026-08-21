@@ -1819,7 +1819,8 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
         else:
             issues += _check_committed_learning_history(bus_repo_root, projection)
             issues += mailbox_history._check_post_cutover_identities(
-                projection, CoordIssue, _ARCHIVE_SENT_PREFIX
+                projection, CoordIssue, _ARCHIVE_SENT_PREFIX,
+                _projection_git, bus_repo_root,
             )
     if git_root is not None:
         issues += _check_standalone_cursor_commits(git_root)

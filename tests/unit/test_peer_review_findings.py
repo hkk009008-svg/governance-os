@@ -124,24 +124,58 @@ def test_a_gap_in_the_sequence_does_not_reuse_a_number(tmp_path: Path) -> None:
     assert peer_receipt.next_seq(tmp_path, "t1") == 4
 
 
-def test_a_receipt_never_overwrites_an_existing_one(tmp_path: Path, monkeypatch) -> None:
-    """Defence in depth behind next_seq: losing a race must fail loudly.
+def test_a_symlinked_last_message_is_refused_not_read(tmp_path: Path) -> None:
+    """Codex finding: is_file() and read_text() both follow symlinks.
 
-    next_seq no longer returns a used number, so this forces the collision it
-    used to reach naturally. A receipt records something that happened; a
-    silent replacement destroys evidence.
+    A unique name stopped ordinary stale reuse; it did not stop the class.
+    Pointing the generated path at a prior answer made that answer this run's
+    result.
     """
 
-    def ok(argv, **kwargs):
-        return subprocess.CompletedProcess(argv, 0, json.dumps({"result": "done"}), "")
+    prior = tmp_path / "someone-elses-answer.txt"
+    prior.write_text("a previous run's answer", encoding="utf-8")
 
-    outcome = peer.run(_spec(tmp_path, "claude"), "prompt", runner=ok)
-    first = peer.write_receipt(tmp_path, outcome, "2026-08-22T00:00:00Z")
-    prior = first.read_text(encoding="utf-8")
+    spec = _spec(tmp_path, "codex", invocation_id="fixed")
+    target = Path(peer_backends.build(spec).last_message_file)
+    target.symlink_to(prior)
 
-    # the receipt module owns next_seq now; patching peer would miss it
-    monkeypatch.setattr(peer_receipt, "next_seq", lambda repo_root, task: 1)
-    with pytest.raises(peer_backends.PeerError, match="refusing to overwrite"):
-        peer.write_receipt(tmp_path, outcome, "2026-08-22T00:00:01Z")
+    def wrote_nothing(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 0, "", "")
 
-    assert first.read_text(encoding="utf-8") == prior
+    outcome = peer.run(spec, "prompt", runner=wrote_nothing)
+
+    assert outcome.result == ""
+    assert any("refusing to read" in note for note in outcome.notes), outcome.notes
+    assert prior.read_text(encoding="utf-8") == "a previous run's answer"
+
+
+def test_the_argv_shown_is_the_argv_launched(tmp_path: Path, monkeypatch, capsys) -> None:
+    """Codex finding, and the sharpest one: --dry-run advertised a different run.
+
+    The invocation id was randomized inside run(), AFTER main() had printed the
+    argv, so the proposed path was codex-last-message-0.txt and the executed
+    one carried a uuid. A --dry-run whose output differs from the invocation is
+    worse than no --dry-run, because it is the artifact the spend is approved
+    against.
+    """
+
+    launched: list[list[str]] = []
+
+    def capture(argv, **kwargs):
+        launched.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"result": "x"}), "")
+
+    monkeypatch.setattr(peer.subprocess, "run", capture)
+    monkeypatch.setattr(peer, "ROOT", tmp_path)
+    monkeypatch.setattr(peer_receipt, "RECEIPTS", "coordination/peer")
+
+    peer.main(["ask", "codex", "--task", "argvcheck", "--prompt", "hi", "--cwd", str(tmp_path)])
+    printed = [
+        line[2:] for line in capsys.readouterr().err.splitlines() if line.startswith("$ ")
+    ]
+
+    assert printed, "main must print the argv it is about to run"
+    assert launched, "the runner must have been reached"
+    assert printed[0].split() == launched[0], (
+        "the advertised argv and the executed argv must be identical"
+    )

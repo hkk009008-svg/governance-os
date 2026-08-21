@@ -55,4 +55,3 @@ Use the worktree's native Git index, preserve peer work, and stage explicit
 paths. External effects remain separately authorized. For evidence-ledger work,
 read `docs/protocol/codex/ledger-cli-adoption.md` before entering the target
 repo.
-

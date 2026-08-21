@@ -35,8 +35,33 @@ def validate_task(task: str) -> str:
     return task
 
 
+_SEQUENCE_ATTEMPTS = 8
+
+
+def _confined_task_dir(repo_root: Path, task: str) -> Path:
+    """The task directory, proven to be inside the receipt root.
+
+    validate_task() constrains the NAME. It cannot constrain what the name
+    already points at: a lexically valid task that is a symlink to somewhere
+    else wrote receipts outside coordination/peer/ entirely. Resolve both ends
+    and compare, and create the directory only when it is genuinely absent.
+    """
+
+    root = (repo_root / RECEIPTS).resolve()
+    directory = repo_root / RECEIPTS / validate_task(task)
+    if directory.is_symlink():
+        raise PeerError(f"receipt task directory is a symlink: {directory}")
+    directory.mkdir(parents=True, exist_ok=True)
+    resolved = directory.resolve()
+    if resolved != root and root not in resolved.parents:
+        raise PeerError(
+            f"receipt task directory resolves outside {root}: {resolved}"
+        )
+    return resolved
+
+
 def receipt_path(repo_root: Path, task: str, seq: int, side: str) -> Path:
-    return repo_root / RECEIPTS / validate_task(task) / f"{seq:04d}-{side}.json"
+    return _confined_task_dir(repo_root, task) / f"{seq:04d}-{side}.json"
 
 
 def next_seq(repo_root: Path, task: str) -> int:
@@ -58,10 +83,7 @@ def next_seq(repo_root: Path, task: str) -> int:
 
 
 def write_receipt(repo_root: Path, outcome: Outcome, started: str) -> Path:
-    path = receipt_path(repo_root, outcome.task, next_seq(repo_root, outcome.task), outcome.side)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        raise PeerError(f"refusing to overwrite an existing receipt: {path}")
+    directory = _confined_task_dir(repo_root, outcome.task)
     payload = {
         "schema": "peer-receipt/1",
         "task": outcome.task,
@@ -79,11 +101,23 @@ def write_receipt(repo_root: Path, outcome: Outcome, started: str) -> Path:
         "cost_usd": outcome.cost_usd,
         "notes": outcome.notes,
     }
-    # Exclusive create: losing a race must fail loudly, not replace a record.
-    with os.fdopen(
-        os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644), "w", encoding="utf-8"
-    ) as handle:
-        handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    return path
-
-
+    # Exclusive create, and a lost race takes the NEXT number rather than
+    # losing the record. O_EXCL alone made concurrent writers safe from
+    # overwrite and unsafe from silence: one provider run had already happened
+    # and ended with no receipt at all.
+    body = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    seq = next_seq(repo_root, outcome.task)
+    for _attempt in range(_SEQUENCE_ATTEMPTS):
+        path = directory / f"{seq:04d}-{outcome.side}.json"
+        try:
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        except FileExistsError:
+            seq += 1
+            continue
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(body)
+        return path
+    raise PeerError(
+        f"could not claim a receipt sequence for {outcome.task} after "
+        f"{_SEQUENCE_ATTEMPTS} attempts; a run happened and is unrecorded"
+    )

@@ -30,14 +30,49 @@ _ROLE_CUTOVER_COMMIT = "4c4371fd953d68a986e46cd71c168a7f0b4e6382"
 _LIVE_IDENTITIES = frozenset(protocol_mailbox.ROLES) | {"all"}
 
 
-def _check_post_cutover_identities(projection, issue_factory, sent_prefix) -> list:
-    """Refuse a retired seat name on an event introduced after the cutover."""
+def _check_post_cutover_identities(
+    projection, issue_factory, sent_prefix, run_git, repo_root
+) -> list:
+    """Refuse a retired seat name on an event that was not there at the cutover.
+
+    The first version asked when a path was INTRODUCED, using the projection's
+    introduction map. That map deliberately keeps the EARLIEST introduction --
+    the reintroduction doctrine needs it to -- so deleting a pre-cutover event
+    and re-committing it with changed bytes after the boundary carried the old
+    introduction commit with it and passed.
+
+    Presence answers the question the boundary actually asks, and answers it
+    for both attacks at once: an event bearing a retired identity is lawful
+    only if it EXISTED AT the cutover commit. A fresh publication did not. A
+    delete-and-reintroduce did not either, whatever its bookkeeping says. And
+    an event authored on a branch that never contained the boundary did not,
+    which is correct -- merging it is a post-cutover publication.
+    """
 
     commits = projection.commits
     if commits.object_types.get(_ROLE_CUTOVER_COMMIT) != "commit":
         return []  # the boundary is not in this history yet; nothing to bind
+
+    listed = run_git(
+        repo_root, "ls-tree", "-r", "--name-only", "-z",
+        _ROLE_CUTOVER_COMMIT, "--", sent_prefix.rstrip("/"),
+    )
+    if listed.returncode != 0:
+        return [issue_factory(
+            "mailbox/sent/",
+            "post_cutover_identity_unavailable",
+            "FATAL",
+            "cannot list the mailbox at the role cutover commit; the identity "
+            "boundary cannot be checked and is not assumed to hold",
+        )]
+    at_cutover = {
+        name.decode("utf-8", errors="replace")
+        for name in listed.stdout.split(b"\0")
+        if name
+    }
+
     issues: list = []
-    for path, (introduced_at, _blob) in sorted(projection.introductions.items()):
+    for path in sorted(projection.events):
         if not path.startswith(sent_prefix):
             continue
         match = protocol_mailbox.EVENT_NAME_RE.fullmatch(Path(path).name)
@@ -46,18 +81,15 @@ def _check_post_cutover_identities(projection, issue_factory, sent_prefix) -> li
         retired = {match.group("sender"), match.group("recipient")} - _LIVE_IDENTITIES
         if not retired:
             continue
-        if commits.object_types.get(introduced_at) != "commit":
-            continue
-        if commits.is_ancestor(introduced_at, _ROLE_CUTOVER_COMMIT):
-            continue  # introduced before the boundary: historical, and lawful
+        if path in at_cutover:
+            continue  # present at the boundary: historical, and lawful forever
         issues.append(issue_factory(
             f"mailbox/sent/{Path(path).name}",
             "post_cutover_retired_identity",
             "FATAL",
-            "event introduced after the role cutover uses retired identity "
-            f"{sorted(retired)}: new events use "
-            f"{' and '.join(sorted(protocol_mailbox.ROLES))} (introduced at "
-            f"{introduced_at})",
+            f"event carries retired identity {sorted(retired)} but was not "
+            f"present at the role cutover {_ROLE_CUTOVER_COMMIT[:8]}: new "
+            f"events use {' and '.join(sorted(protocol_mailbox.ROLES))}",
         ))
     return issues
 
@@ -104,5 +136,3 @@ def _paths_present_at(repo_root, commit: str, candidates: tuple[str, ...], run_g
         for name in listed.stdout.split(b"\0")
         if name
     )
-
-

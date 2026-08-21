@@ -85,4 +85,3 @@ failures block repository-wide, and the cutover must be an ancestor of HEAD.
 For the registered `evidence-ledger` target, read
 `docs/protocol/codex/ledger-cli-adoption.md`, then the target repo's instructions.
 Start from Pipeline; do not infer product authority from the bridge.
-

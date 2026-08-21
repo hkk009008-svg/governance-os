@@ -38,4 +38,3 @@ so the user does not manually relay them, including traffic crossing the named
 Codex bridge. They grant no role or effect authority and are not durable
 protocol state. Formal, binding, or durable speech still goes through
 `coordination/bin/send-event`.
-

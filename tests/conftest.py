@@ -64,4 +64,3 @@ def pytest_sessionfinish(session, exitstatus) -> None:
 def repo_root() -> Path:
     """Absolute path to the repository root (parent of tests/)."""
     return Path(__file__).resolve().parent.parent
-

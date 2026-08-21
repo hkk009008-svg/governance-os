@@ -58,7 +58,34 @@ class Outcome:
     notes: list[str] = field(default_factory=list)
 
 
-def run(spec: Spec, prompt: str, *, runner=subprocess.run) -> Outcome:
+def _read_last_message(message: Path) -> tuple[str, str | None]:
+    """Read only a regular file this child created, never through a symlink.
+
+    A unique name stopped the ordinary stale-reuse case. It did not stop the
+    class: `is_file()` and `read_text()` both follow symlinks, so pointing the
+    generated path at a prior answer made that answer this run's result. Open
+    with O_NOFOLLOW so the kernel refuses the indirection, and treat every
+    refusal as absence rather than as content.
+    """
+
+    try:
+        handle = os.open(message, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return "", "codex wrote no last-message file; this run produced no result"
+    except OSError as exc:
+        return "", f"refusing to read the last-message path ({exc}); no result"
+    try:
+        with os.fdopen(handle, "r", encoding="utf-8") as opened:
+            return opened.read(), None
+    finally:
+        message.unlink(missing_ok=True)
+
+
+def run(spec: Spec, prompt: str, *, runner=None) -> Outcome:
+    runner = runner if runner is not None else subprocess.run
+    # The id is settled by the caller BEFORE the argv is built and shown. A
+    # default is filled here only for direct library callers who never printed
+    # anything; main() always supplies one, so what it prints is what runs.
     if spec.invocation_id == "0":
         spec = replace(spec, invocation_id=uuid.uuid4().hex)
     invocation = build(spec)
@@ -85,17 +112,9 @@ def run(spec: Spec, prompt: str, *, runner=subprocess.run) -> Outcome:
     stdout = completed.stdout or ""
     model, cost, result, notes = reported_result(spec.side, stdout)
     if invocation.last_message_file:
-        message = Path(invocation.last_message_file)
-        if message.is_file():
-            result = message.read_text(encoding="utf-8")
-            message.unlink(missing_ok=True)
-        else:
-            # A previous run's text presented as this run's answer is forged
-            # evidence, so absence stays absence.
-            result = ""
-            notes.append(
-                "codex wrote no last-message file; this run produced no result"
-            )
+        result, message_note = _read_last_message(Path(invocation.last_message_file))
+        if message_note:
+            notes.append(message_note)
     if completed.returncode != 0 and completed.stderr:
         notes.append(f"stderr: {completed.stderr.strip()[:400]}")
     return Outcome(
@@ -168,6 +187,9 @@ def main(argv: list[str] | None = None) -> int:
         side=args.side, role=args.role, task=args.task,
         cwd=Path(args.cwd).resolve(), scratch=scratch, model=args.model,
         read_only=not args.write, max_usd=args.max_usd, timeout_s=args.timeout,
+        # Settled here, before build() and before the argv is printed, so the
+        # proposed invocation and the executed one are the same bytes.
+        invocation_id=uuid.uuid4().hex,
     )
     try:
         invocation = build(spec)
