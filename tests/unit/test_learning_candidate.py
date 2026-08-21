@@ -203,7 +203,7 @@ def test_closed_vocabularies_are_enforced() -> None:
         ({"Scope": "global"}, "Scope must be"),
         ({"Evidence provenance": "GUESSED"}, "claim_check ladder"),
         ({"Risk class": "casual"}, "closed set"),
-        ({"Producer seat": "coordinator"}, "pair seat"),
+        ({"Producer seat": "coordinator"}, "review role"),
     ):
         with pytest.raises(ValueError, match=message):
             protocol_mailbox.parse_learning_candidate_statement(
@@ -305,7 +305,7 @@ def test_dedup_scan_reads_committed_events_at_the_pinned_commit(
     }
 
 
-def test_send_event_wrapper_refuses_non_pair_learning_candidate_sender(
+def test_send_event_wrapper_refuses_a_retired_learning_candidate_sender(
     tmp_path: Path,
 ) -> None:
     """The wrapper-side sender gate refuses, and nothing is written.
@@ -352,7 +352,12 @@ def test_send_event_wrapper_refuses_non_pair_learning_candidate_sender(
         cwd=root,
     )
     assert result.returncode == 2
-    assert b"only pair seats may publish learning-candidate" in result.stderr
+    # The refusal moved one step earlier and got stricter: a retired seat is
+    # no longer a lawful sender for ANY new event, so it never reaches the
+    # per-kind rule. The property -- only a review role may publish a
+    # learning-candidate -- holds more broadly than the message it used to
+    # produce.
+    assert b"bad <from>: coordinator" in result.stderr
     assert list((mailbox / "sent").iterdir()) == [], "refusal must write nothing"
     status = subprocess.run(
         ["git", "status", "--porcelain"],

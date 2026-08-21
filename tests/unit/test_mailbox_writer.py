@@ -66,13 +66,13 @@ def _send_fixture(root: Path) -> tuple[Path, str, Path, bytes]:
     )
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T01-02-03Z-director-to-operator-findings.md"
+        "2026-07-17T01-02-03Z-author-to-reviewer-findings.md"
     )
-    candidate = sent / ".2026-07-17T01-02-03Z-director-to-operator-findings.fixture.tmp"
+    candidate = sent / ".2026-07-17T01-02-03Z-author-to-reviewer-findings.fixture.tmp"
     raw = (
-        "# Director → Operator: snapshot\n\n"
-        "**When:** 2026-07-17T01:02:03Z · **From:** director (online)\n\n"
-        "body\n\nCursor at send: 0\n"
+        "# Author → Reviewer: snapshot\n\n"
+        "**When:** 2026-07-17T01:02:03Z · **From:** author (online)\n\n"
+        "body\n\nCursor at send: cursorless\n"
     ).encode("utf-8")
     candidate.write_bytes(raw)
     candidate.chmod(0o600)
@@ -150,13 +150,13 @@ def test_send_event_finalizer_rejects_filename_envelope_identity_mismatch(
     kinds.write_text("findings\n", encoding="utf-8")
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T01-02-03Z-director-to-operator-findings.md"
+        "2026-07-17T01-02-03Z-author-to-reviewer-findings.md"
     )
-    candidate = sent / ".2026-07-17T01-02-03Z-director-to-operator-findings.fixture.tmp"
+    candidate = sent / ".2026-07-17T01-02-03Z-author-to-reviewer-findings.fixture.tmp"
     candidate.write_text(
-        "# Operator → Director: spoofed identity\n\n"
-        "**When:** 2026-07-17T01:02:03Z · **From:** operator (online)\n\n"
-        "body\n\nCursor at send: 0\n",
+        "# Reviewer → Author: spoofed identity\n\n"
+        "**When:** 2026-07-17T01:02:03Z · **From:** reviewer (online)\n\n"
+        "body\n\nCursor at send: cursorless\n",
         encoding="utf-8",
     )
     candidate.chmod(0o600)
@@ -188,9 +188,9 @@ def test_send_event_finalizer_rejects_duplicate_envelope_or_footer(
     )
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T01-02-03Z-director-to-operator-findings.md"
+        "2026-07-17T01-02-03Z-author-to-reviewer-findings.md"
     )
-    candidate = sent / ".2026-07-17T01-02-03Z-director-to-operator-findings.fixture.tmp"
+    candidate = sent / ".2026-07-17T01-02-03Z-author-to-reviewer-findings.fixture.tmp"
     candidate.write_text(
         "# Director → Operator: repeated\n\n"
         "**When:** 2026-07-17T01:02:03Z · **From:** director (online)\n\n"
@@ -242,7 +242,13 @@ def test_send_event_finalizer_rejects_coordinator_verify_request(
     )
     candidate.chmod(0o600)
 
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="verify-request"):
+    # The refusal moved earlier and got stricter: a retired seat cannot
+    # publish ANY new event, so its malformed verify-request never reaches the
+    # request parser. The property under test -- a non-review identity cannot
+    # open a formal pair -- holds more broadly than before.
+    with pytest.raises(
+        mailbox_writer.MailboxWriterError, match="retired for new writes"
+    ):
         mailbox_writer._send_event_finalize(root, candidate, relative)
 
     assert candidate.exists()

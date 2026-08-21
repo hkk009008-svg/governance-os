@@ -105,20 +105,20 @@ def _prepare_verify_request(
     )
     request_path = (
         "coordination/mailbox/sent/"
-        "2026-07-17T08-00-00Z-director-to-operator-verify-request.md"
+        "2026-07-17T08-00-00Z-author-to-reviewer-verify-request.md"
     )
     (repo / request_path).write_text(
         f"""\
-# Director → Operator: verify compact pair candidate
+# Author → Reviewer: verify compact pair candidate
 
-**When:** 2026-07-17T08:00:00Z · **From:** director (online)
+**When:** 2026-07-17T08:00:00Z · **From:** author (online)
 
 Event type: verify-request
 {repository_line}Reviewed head: {head}
 Reviewed base: {base}
-Author seat: director
+Author seat: author
 Author model: gpt-5.6-sol
-Assigned operator: operator
+Assigned operator: reviewer
 Risk class: material-behavior
 
 ## Outcome
@@ -134,7 +134,7 @@ Cursor at send: 0
         encoding="utf-8",
     )
     _git(repo, "add", request_path)
-    _git(repo, "commit", "-q", "-m", "coord(director): request verification")
+    _git(repo, "commit", "-q", "-m", "coord(author): request verification")
     return base, head, request_path, _git(repo, "rev-parse", "HEAD")
 
 
@@ -146,7 +146,7 @@ def _report_body(
     *,
     verdict: str,
     finding_ref: str,
-    reviewer_seat: str = "operator",
+    reviewer_seat: str = "reviewer",
     reviewed_repository: str | None = None,
 ) -> str:
     evidence = ""
@@ -193,8 +193,8 @@ def _request_body(
     head: str,
     *,
     finding_ref: str,
-    author: str = "director",
-    assigned: str = "operator",
+    author: str = "author",
+    assigned: str = "reviewer",
 ) -> str:
     return f"""\
 Event type: verify-request
@@ -223,20 +223,22 @@ def test_send_event_stages_ordinary_event_through_fixed_finalizer(
     _init_repo(repo, repo_root)
 
     result = _run(
-        [repo_root / "coordination/bin/send-event", "director", "operator", "findings", "hello"],
+        [repo_root / "coordination/bin/send-event", "author", "reviewer", "findings", "hello"],
         repo,
         input_text="body\n",
     )
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith("-director-to-operator-findings.md")
+    assert staged.endswith("-author-to-reviewer-findings.md")
 
 
-@pytest.mark.parametrize("coordinator", ("coordinator", "coordinator2"))
-def test_coordinator_sender_uses_explicit_cursorless_marker(
-    tmp_path: Path, repo_root: Path, coordinator: str
+@pytest.mark.parametrize("role", ("author", "reviewer"))
+def test_every_review_role_uses_the_explicit_cursorless_marker(
+    tmp_path: Path, repo_root: Path, role: str
 ) -> None:
+    """A cursor belonged to a standing chat; neither role outlives its task."""
+
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo, repo_root)
@@ -244,8 +246,8 @@ def test_coordinator_sender_uses_explicit_cursorless_marker(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            coordinator,
-            "director",
+            role,
+            "all",
             "findings",
             "cursorless sender",
         ],
@@ -255,7 +257,7 @@ def test_coordinator_sender_uses_explicit_cursorless_marker(
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith(f"-{coordinator}-to-director-findings.md")
+    assert staged.endswith(f"-{role}-to-all-findings.md")
     event = repo / staged
     assert event.read_text(encoding="utf-8").endswith(
         "Cursor at send: cursorless\n"
@@ -273,8 +275,8 @@ def test_valid_verify_request_is_validated_before_finalization(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "director",
-            "operator",
+            "author",
+            "reviewer",
             "verify-request",
             "validate candidate",
         ],
@@ -284,7 +286,7 @@ def test_valid_verify_request_is_validated_before_finalization(
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith("-director-to-operator-verify-request.md")
+    assert staged.endswith("-author-to-reviewer-verify-request.md")
     source = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
     assert source.index("validate-candidate") < source.index("send-event-finalize")
 
@@ -300,8 +302,8 @@ def test_verify_request_without_formal_risk_class_fails_before_finalization(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "director",
-            "operator",
+            "author",
+            "reviewer",
             "verify-request",
             "missing risk class",
         ],
@@ -319,7 +321,7 @@ def test_verify_request_without_formal_risk_class_fails_before_finalization(
     assert len(list((repo / "coordination/mailbox/sent").glob("*verify-request.md"))) == 1
 
 
-def test_coordinator_verify_request_fails_before_finalization(
+def test_a_retired_seat_cannot_open_a_verify_request(
     tmp_path: Path, repo_root: Path
 ) -> None:
     repo = tmp_path / "repo"
@@ -331,7 +333,7 @@ def test_coordinator_verify_request_fails_before_finalization(
         [
             repo_root / "coordination/bin/send-event",
             "coordinator",
-            "operator",
+            "reviewer",
             "verify-request",
             "invalid author",
         ],
@@ -346,7 +348,7 @@ def test_coordinator_verify_request_fails_before_finalization(
     )
 
     assert result.returncode != 0
-    assert "only pair seats may publish verify-request" in result.stderr
+    assert "bad <from>: coordinator" in result.stderr
     assert _git(repo, "diff", "--cached", "--name-only") == ""
 
 
@@ -360,8 +362,8 @@ def test_duplicate_cursor_footer_fails_before_publication(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "director",
-            "operator",
+            "author",
+            "reviewer",
             "findings",
             "duplicate footer",
         ],
@@ -387,7 +389,7 @@ def test_valid_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "operator",
+            "reviewer",
             "all",
             "verification-report",
             subject,
@@ -405,7 +407,7 @@ def test_valid_verification_report_uses_same_fixed_finalizer_as_ordinary_events(
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith("-operator-to-all-verification-report.md")
+    assert staged.endswith("-reviewer-to-all-verification-report.md")
     source = (repo_root / "coordination/bin/send-event").read_text(encoding="utf-8")
     assert source.count("send-event-finalize") == 1
     assert "verification_report_gate" not in source
@@ -422,15 +424,15 @@ def test_fixed_finalizer_revalidates_report_changed_after_prevalidation(
     base, head, request_path, trigger = _prepare_verify_request(repo)
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T08-10-00Z-operator-to-all-verification-report.md"
+        "2026-07-17T08-10-00Z-reviewer-to-all-verification-report.md"
     )
     candidate = repo / (
         "coordination/mailbox/sent/"
-        ".2026-07-17T08-10-00Z-operator-to-all-verification-report.race.tmp"
+        ".2026-07-17T08-10-00Z-reviewer-to-all-verification-report.race.tmp"
     )
     valid = (
-        "# Operator → All: prevalidated report\n\n"
-        "**When:** 2026-07-17T08:10:00Z · **From:** operator (online)\n\n"
+        "# Reviewer → All: prevalidated report\n\n"
+        "**When:** 2026-07-17T08:10:00Z · **From:** reviewer (online)\n\n"
         + _report_body(
             base,
             head,
@@ -439,7 +441,7 @@ def test_fixed_finalizer_revalidates_report_changed_after_prevalidation(
             verdict="FAIL",
             finding_ref=_finding_ref(repo),
         )
-        + "\nCursor at send: 0\n"
+        + "\nCursor at send: cursorless\n"
     )
     candidate.write_text(valid, encoding="utf-8")
     candidate.chmod(0o600)
@@ -490,7 +492,7 @@ def test_cross_repository_verification_report_uses_fixed_finalizer(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "operator",
+            "reviewer",
             "all",
             "verification-report",
             f"truthful GO target commit `{head}`",
@@ -509,9 +511,26 @@ def test_cross_repository_verification_report_uses_fixed_finalizer(
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith("-operator-to-all-verification-report.md")
+    assert staged.endswith("-reviewer-to-all-verification-report.md")
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "VACUOUS UNDER THE TWO-ROLE COLLAPSE, recorded rather than deleted. "
+        "validate_report refuses a report whose reviewer_seat differs from the "
+        "request's assigned operator. That discriminated while six seat names "
+        "existed: a report from operator2 could answer a request assigned to "
+        "operator. With exactly one reviewer name the comparison is true by "
+        "construction and can no longer fail. The surviving discriminator is "
+        "the reviewer's MODEL FAMILY, which compact_pair_loop already validates "
+        "for high-risk-control, plus the side recorded in a peer receipt. "
+        "Restoring seat-level expressiveness means carrying the side in the "
+        "identity (reviewer@codex vs reviewer@claude), which is a grammar "
+        "change with its own review. When that lands this pin xpasses and must "
+        "be removed."
+    ),
+)
 def test_misassigned_verification_report_fails_before_finalization(
     tmp_path: Path, repo_root: Path
 ) -> None:
@@ -523,7 +542,7 @@ def test_misassigned_verification_report_fails_before_finalization(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "operator",
+            "reviewer",
             "all",
             "verification-report",
             "misassigned",
@@ -536,7 +555,7 @@ def test_misassigned_verification_report_fails_before_finalization(
             trigger,
             verdict="FAIL",
             finding_ref=_finding_ref(repo),
-            reviewer_seat="operator2",
+            reviewer_seat="reviewer",
         ),
     )
 
@@ -571,7 +590,7 @@ def test_go_with_bare_evidence_markers_fails_before_staging(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "operator",
+            "reviewer",
             "all",
             "verification-report",
             f"bare evidence commit `{head}`",
@@ -585,10 +604,18 @@ def test_go_with_bare_evidence_markers_fails_before_staging(
     assert _git(repo, "diff", "--cached", "--name-only") == ""
 
 
-@pytest.mark.parametrize("sender", ("director", "director2", "coordinator"))
-def test_non_operator_fails_before_verification_report_publication(
+@pytest.mark.parametrize("sender", ("author", "director", "director2", "coordinator"))
+def test_only_the_reviewer_may_publish_a_verification_report(
     tmp_path: Path, repo_root: Path, sender: str
 ) -> None:
+    """Two refusals, one property: nobody but the reviewer publishes a verdict.
+
+    `author` is refused for the reason that survived the collapse -- it is the
+    other position in the pair. The three retired seat names are refused one
+    step earlier, as senders that no longer exist, which is strictly stronger
+    than the per-kind rule they used to trip.
+    """
+
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo, repo_root)
@@ -606,7 +633,12 @@ def test_non_operator_fails_before_verification_report_publication(
     )
 
     assert result.returncode == 2
-    assert "only operator seats" in result.stderr
+    expected = (
+        "only the reviewer may publish verification-report"
+        if sender == "author"
+        else "bad <from>"
+    )
+    assert expected in result.stderr
     assert not list((repo / "coordination/mailbox/sent").glob("*verification-report.md"))
     assert not list((repo / "coordination/mailbox/sent").glob(".*.tmp"))
     assert _git(repo, "diff", "--cached", "--name-only") == ""
@@ -623,7 +655,7 @@ def test_send_event_keeps_final_event_but_fails_when_index_is_locked(
     lock.write_text("locked\n", encoding="utf-8")
     try:
         result = _run(
-            [repo_root / "coordination/bin/send-event", "operator", "all", "verification-report", "blocked index"],
+            [repo_root / "coordination/bin/send-event", "reviewer", "all", "verification-report", "blocked index"],
             repo,
             input_text=_report_body(
                 base,

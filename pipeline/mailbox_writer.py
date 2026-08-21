@@ -25,8 +25,10 @@ _LOCK_NAME = "protocol-kernel-writer.lock"
 _EVENT_RE = protocol_mailbox.EVENT_NAME_RE
 _COLON_ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _DASH_ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z")
-# Only the four concrete pair seats own consumable compatibility cursors.
+# Only the four concrete pair seats own consumable compatibility cursors, and
+# they exist only in committed history now.
 _ROLES = frozenset(protocol_mailbox.SEATS)
+_CURSORED_SENDERS = frozenset(protocol_mailbox.SEATS)
 _GIT_ENV = {
     "PATH": "/usr/bin:/bin",
     "LANG": "C",
@@ -153,14 +155,18 @@ def validate_event_envelope_bytes(
     if len(cursor_lines) != 1:
         raise MailboxWriterError("send-event candidate has missing or duplicate cursor footer")
     cursor_value = cursor_lines[0].removeprefix("Cursor at send: ")
-    if sender in {"coordinator", "coordinator2"}:
-        if cursor_value != "cursorless":
+    # A cursor belonged to a standing chat. Neither review role outlives the
+    # task it was assigned for, so both are cursorless -- as coordinators
+    # always were. Only the four legacy pair seats, which appear in committed
+    # history, are required to carry a real cursor value.
+    if sender in _CURSORED_SENDERS:
+        if cursor_value == "cursorless":
             raise MailboxWriterError(
-                "coordinator send-event candidate must use the cursorless marker"
+                "pair-seat send-event candidate cannot use the cursorless marker"
             )
-    elif cursor_value == "cursorless":
+    elif cursor_value != "cursorless":
         raise MailboxWriterError(
-            "pair-seat send-event candidate cannot use the cursorless marker"
+            f"{sender} send-event candidate must use the cursorless marker"
         )
     if (
         match.group("kind") not in kinds
@@ -331,6 +337,11 @@ def validate_event_candidate(
 # fold-notice, convergence, verify-readiness, verify-readiness-converged)
 # stay transient chat or derived projections. Extending this allowlist is a
 # reviewed policy change on the fixed writer, not a config edit.
+# Who may publish a NEW event. Reading stays open to every historical seat --
+# the grammar in protocol_mailbox still parses them -- but writing is closed to
+# the two roles, which is what "collapse the seats" means in enforceable terms.
+# A rule that only documentation states is not a collapse.
+NEW_WRITE_SENDERS = frozenset(protocol_mailbox.ROLES)
 NEW_WRITE_KINDS = frozenset(
     {
         "decision",
@@ -356,6 +367,13 @@ def validate_event_candidate_bytes(
 
     root = root.resolve()
     match = validate_event_envelope_bytes(root, raw, relative)
+    if match.group("sender") not in NEW_WRITE_SENDERS:
+        raise MailboxWriterError(
+            f"sender {match.group('sender')!r} is retired for new writes: a "
+            "review has two positions, "
+            f"{' and '.join(sorted(NEW_WRITE_SENDERS))}; historical seat names "
+            "keep parsing read-only"
+        )
     if match.group("kind") not in NEW_WRITE_KINDS:
         raise MailboxWriterError(
             f"kind {match.group('kind')!r} is frozen for new writes: durable "

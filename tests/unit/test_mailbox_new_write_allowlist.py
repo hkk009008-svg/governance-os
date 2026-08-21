@@ -41,18 +41,37 @@ _FROZEN = (
 )
 
 
-def _candidate(kind: str) -> tuple[bytes, str]:
-    name = f"2026-08-10T00-00-00Z-director-to-operator-{kind}.md"
+def _candidate(kind: str, sender: str = "author") -> tuple[bytes, str]:
+    name = f"2026-08-10T00-00-00Z-{sender}-to-reviewer-{kind}.md"
     body = (
-        "# Director → Operator: probe\n"
+        f"# {sender.capitalize()} → Reviewer: probe\n"
         "\n"
-        "**When:** 2026-08-10T00:00:00Z · **From:** director (online)\n"
+        f"**When:** 2026-08-10T00:00:00Z · **From:** {sender} (online)\n"
         "\n"
         "Body line.\n"
         "\n"
-        "Cursor at send: 0\n"
+        # Legacy pair seats are the only senders still required to carry a
+        # real cursor value; the roles are cursorless.
+        f"Cursor at send: {'0' if sender in protocol_mailbox.SEATS else 'cursorless'}\n"
     )
     return body.encode("utf-8"), f"coordination/mailbox/sent/{name}"
+
+
+def test_a_retired_seat_name_cannot_publish_a_new_event() -> None:
+    """The collapse is enforced at the writer, not merely documented.
+
+    Reading history keeps working -- the grammar still parses every seat that
+    ever appeared -- but a NEW event from one of them is refused here.
+    """
+
+    raw, relative = _candidate("findings", sender="director")
+
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="retired for new writes"):
+        mailbox_writer.validate_event_candidate_bytes(_REPO_ROOT, raw, relative)
+
+    assert protocol_mailbox.EVENT_NAME_RE.fullmatch(
+        relative.rsplit("/", 1)[1]
+    ), "a retired sender must still PARSE; refusing to read history is a rewrite"
 
 
 def test_allowlist_is_a_subset_of_the_registry_and_partitions_it() -> None:

@@ -24,12 +24,14 @@ SHA_RE = re.compile(r"[0-9a-f]{40}")
 REQUEST_RE = re.compile(
     r"coordination/mailbox/sent/"
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
-    r"(?P<author>director2?|operator2?)-to-(?P<operator>operator2?)-verify-request\.md"
+    r"(?P<author>author|director2?|operator2?)-to-"
+    r"(?P<operator>reviewer|operator2?)-verify-request\.md"
 )
 REPORT_RE = re.compile(
     r"coordination/mailbox/sent/"
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
-    r"(?P<reviewer>operator2?)-to-(?:director2?|operator2?|coordinator2?|all)-"
+    r"(?P<reviewer>reviewer|operator2?)-to-"
+    r"(?:author|director2?|operator2?|coordinator2?|all)-"
     r"verification-report\.md"
 )
 MAX_EVENT_BYTES = 262_144
@@ -42,8 +44,11 @@ _FROZEN_MODEL_LABEL_EXCEPTION = {
     "introduction": "8471c6d6c35daa74dd24cc24d6ece3eea48f3f22",
     "sha256": "90586eb9d2399ed69a2f1bc0af7bb7c43ba9187e61fedc734e58fc32ce21f48c",
 }
-PAIR_SEATS = frozenset(protocol_mailbox.SEATS)
-OPERATOR_SEATS = frozenset({"operator", "operator2"})
+# Reading accepts every identity that ever authored a committed pair; writing
+# is narrowed to the two roles by mailbox_writer.NEW_WRITE_SENDERS. This set
+# stays wide so 211 committed reports keep validating.
+PAIR_SEATS = frozenset(protocol_mailbox.SEATS) | {"author", "reviewer"}
+OPERATOR_SEATS = frozenset({"operator", "operator2", "reviewer"})
 MATERIAL_BEHAVIOR_RISK = codex_protocol_model.review_profile_for(
     "material-behavior"
 ).risk_class

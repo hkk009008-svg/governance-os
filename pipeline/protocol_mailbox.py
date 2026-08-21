@@ -15,14 +15,25 @@ import git_runner
 
 ROOT = Path(__file__).resolve().parent.parent
 KIND_FILE = ROOT / "coordination" / "mailbox" / "kinds.txt"
+# Two roles, not six seats. A review has exactly two positions -- the one who
+# wrote the range and the one who did not -- and which CLI fills each is
+# decided per task, not by a standing chat. These are the identities NEW
+# events use; the writer refuses any other sender.
+ROLES = ("author", "reviewer")
+# The pre-collapse seat names stay lawful for READING committed history: 967
+# events carry them, and rewriting those filenames would be a history rewrite.
+# They are compatibility identities, not positions anyone occupies.
+LEGACY_SEATS = (
+    "director", "director2", "operator", "operator2", "coordinator", "coordinator2",
+)
 SEATS = ("director", "director2", "operator", "operator2")
 # Oversight-inclusive receiving roster: the 4 pair seats + both coordinators.
 # `all` is a broadcast TARGET only (kept in RECIPIENTS), never a real seat, so it
 # is NOT in RECEIVING_SEATS. Every independent Python roster copy imports THIS as
 # its source of truth (Slice 2.5 D1 consolidation); the 4 shell whitelists are
 # hand-synced and guarded by the token-extraction test (spec §8 clause #2).
-RECEIVING_SEATS = (*SEATS, "coordinator", "coordinator2")
-SENDERS = (*SEATS, "coordinator", "coordinator2")
+RECEIVING_SEATS = (*ROLES, *LEGACY_SEATS)
+SENDERS = (*ROLES, *LEGACY_SEATS)
 RECIPIENTS = (*RECEIVING_SEATS, "all")
 # The seats a provider launcher or app binding may start. coordinator2 is
 # cold capacity: a lawful mailbox identity (it can send, receive, and appear
@@ -31,6 +42,11 @@ RECIPIENTS = (*RECEIVING_SEATS, "all")
 # declaration of that split; launchers, guards, and app-surface rosters
 # import or are test-bound to it.
 LAUNCHABLE_SEATS = (*SEATS, "coordinator")
+# Identities that may OWN a task or PRODUCE an artifact: the two live roles,
+# plus the retired pair seats that committed artifacts still name. New writes
+# are narrowed to ROLES by mailbox_writer.NEW_WRITE_SENDERS; this wider set is
+# what keeps historical owners parseable.
+OWNING_IDENTITIES = frozenset((*ROLES, *SEATS))
 
 
 def load_known_kinds(root: Path | None = None) -> frozenset[str]:
@@ -62,8 +78,7 @@ def seat_alternation(names: tuple[str, ...]) -> str:
 # roster above. Every Python parser imports EVENT_NAME_RE (or composes from
 # EVENT_NAME_PATTERN); parser drift was a measured defect class — status
 # accepted any sender, slope_metrics dropped the Z from the stamp and forbade
-# digits in kinds. The import-light literal copy in
-# threeway/legacy_projector.py is bound to this grammar by
+# digits in kinds. Every Python adopter is bound to this one pattern by
 # tests/unit/test_event_grammar_sync.py.
 EVENT_STAMP_PATTERN = r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z"
 EVENT_NAME_PATTERN = (
@@ -600,8 +615,8 @@ def parse_takeover_confirmation_statement(
 ) -> TakeoverConfirmationStatement:
     _require_kind(event, "acknowledgement")
     proposed_owner = _single_body_field(event, "Proposed owner")
-    if proposed_owner not in SEATS:
-        raise ValueError("takeover confirmation proposed owner must be a pair seat")
+    if proposed_owner not in OWNING_IDENTITIES:
+        raise ValueError("takeover confirmation proposed owner must be a review role")
     takeover_claim_ref = _single_body_field(event, "Takeover claim ref")
     if not immutable_reference_is_canonical(takeover_claim_ref):
         raise ValueError("takeover confirmation requires an immutable claim ref")
@@ -837,8 +852,8 @@ def parse_learning_candidate_statement(
         if match is None or match.group("kind") != "learning-candidate":
             raise ValueError("Supersedes must name a learning-candidate event")
     producer_seat = _single_body_field(event, "Producer seat")
-    if producer_seat not in SEATS:
-        raise ValueError("Producer seat must be a pair seat")
+    if producer_seat not in OWNING_IDENTITIES:
+        raise ValueError("Producer seat must be a review role")
     if producer_seat != event.sender:
         # A self-declared producer that differs from the envelope sender
         # would pre-defeat the Stage 2b self-approval refusal: publish under
@@ -1161,8 +1176,8 @@ def parse_checkpoint_statement(event: CommittedEventRef) -> CheckpointStatement:
     objective = _single_body_field(event, "Objective")
     accepted_scope = _single_body_field(event, "Accepted scope")
     owner = _single_body_field(event, "Owner")
-    if owner not in SEATS:
-        raise ValueError("Owner must be a pair seat")
+    if owner not in OWNING_IDENTITIES:
+        raise ValueError("Owner must be a review role")
     if owner != event.sender:
         # A checkpoint claiming another seat's ownership would launder a
         # transfer that never happened; the binding is exact, mirroring the

@@ -37,7 +37,10 @@ def test_receiving_seats_superset_of_seats_plus_coordinators():
     assert "coordinator2" in receiving
     # `all` is a broadcast target only — never a receiving seat.
     assert "all" not in receiving
-    assert receiving == seats | {"coordinator", "coordinator2"}
+    # The two review roles receive too; the roster is exactly the roles plus
+    # the retired seats that committed history still names.
+    assert receiving == set(protocol_mailbox.ROLES) | set(protocol_mailbox.LEGACY_SEATS)
+    assert set(protocol_mailbox.ROLES) == {"author", "reviewer"}
 
 
 def test_senders_roster():

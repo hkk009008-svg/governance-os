@@ -65,7 +65,7 @@ def _event_text(sender: str, recipient: str, title: str, stamp: str, body: str) 
         f"# {sender.capitalize()} → {recipient.capitalize()}: {title}\n\n"
         f"**When:** {colon} · **From:** {sender} (online)\n\n"
         f"{body}\n\n"
-        "Cursor at send: 0\n"
+        "Cursor at send: cursorless\n"
     )
 
 
@@ -104,7 +104,7 @@ def _refuse(
 
 def _source_ref(root: Path) -> str:
     relative = _publish(
-        root, "operator", "director", "findings",
+        root, "reviewer", "author", "findings",
         "2026-07-30T00-00-01Z", "observed the failure mode",
     )
     commit = _commit(root, "mailbox: source event")
@@ -125,7 +125,7 @@ def _candidate_fields(source_ref: str, **overrides: str | None) -> dict[str, str
         "Exclusions": "scratch worktrees",
         "Risk class": "material-behavior",
         "Supersedes": None,
-        "Producer seat": "operator",
+        "Producer seat": "reviewer",
         "Producer model": "gpt-5.6-sol",
     }
     fields.update(overrides)
@@ -146,7 +146,7 @@ def _published_candidate_ref(
     root: Path, fields: dict[str, str | None], stamp: str = "2026-07-30T00-00-02Z"
 ) -> str:
     relative = _publish(
-        root, "operator", "director", "learning-candidate", stamp,
+        root, "reviewer", "author", "learning-candidate", stamp,
         _candidate_body(fields),
     )
     commit = _commit(root, "mailbox: learning candidate")
@@ -157,7 +157,7 @@ def test_happy_path_candidate_then_disposition(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     ref = _published_candidate_ref(root, _candidate_fields(_source_ref(root)))
     _publish(
-        root, "director", "all", "decision", "2026-07-30T00-00-03Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-03Z",
         f"Candidate: {ref}\nDisposition: accepted",
     )
 
@@ -168,7 +168,7 @@ def test_malformed_candidate_payload_is_refused_at_publication(
     root = _repo(tmp_path)
     fields = _candidate_fields(_source_ref(root), Category="vibe")
     _refuse(
-        root, "operator", "director", "learning-candidate",
+        root, "reviewer", "author", "learning-candidate",
         "2026-07-30T00-00-02Z", _candidate_body(fields),
         match="learning-candidate candidate is invalid",
     )
@@ -179,10 +179,10 @@ def test_unresolvable_source_ref_is_refused(tmp_path: Path) -> None:
     _source_ref(root)  # commit real history so only the ref is bad
     phantom = (
         "coordination/mailbox/sent/"
-        "2026-07-29T00-00-00Z-operator-to-director-status.md@" + "e" * 40
+        "2026-07-29T00-00-00Z-reviewer-to-author-status.md@" + "e" * 40
     )
     _refuse(
-        root, "operator", "director", "learning-candidate",
+        root, "reviewer", "author", "learning-candidate",
         "2026-07-30T00-00-02Z",
         _candidate_body(_candidate_fields(phantom)),
         match="source ref does not resolve",
@@ -194,7 +194,7 @@ def test_duplicate_candidate_id_is_refused(tmp_path: Path) -> None:
     fields = _candidate_fields(_source_ref(root))
     _published_candidate_ref(root, fields)
     _refuse(
-        root, "operator", "director", "learning-candidate",
+        root, "reviewer", "author", "learning-candidate",
         "2026-07-30T00-00-09Z", _candidate_body(fields),
         match="duplicates committed candidate",
     )
@@ -205,7 +205,7 @@ def test_self_approval_is_refused(tmp_path: Path) -> None:
     ref = _published_candidate_ref(root, _candidate_fields(_source_ref(root)))
     # Producer seat is operator; the operator disposing it is self-approval.
     _refuse(
-        root, "operator", "all", "decision", "2026-07-30T00-00-03Z",
+        root, "reviewer", "all", "decision", "2026-07-30T00-00-03Z",
         f"Candidate: {ref}\nDisposition: accepted",
         match="self-approval",
     )
@@ -218,11 +218,11 @@ def test_unresolvable_candidate_ref_in_decision_is_refused(
     _source_ref(root)
     phantom = (
         "coordination/mailbox/sent/"
-        "2026-07-29T00-00-00Z-operator-to-director-learning-candidate.md@"
+        "2026-07-29T00-00-00Z-reviewer-to-author-learning-candidate.md@"
         + "e" * 40
     )
     _refuse(
-        root, "director", "all", "decision", "2026-07-30T00-00-03Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-03Z",
         f"Candidate: {phantom}\nDisposition: accepted",
         match="does not resolve to a committed",
     )
@@ -239,12 +239,12 @@ def test_assumed_provenance_cannot_be_accepted_but_can_be_declined(
         ),
     )
     _refuse(
-        root, "director", "all", "decision", "2026-07-30T00-00-03Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-03Z",
         f"Candidate: {ref}\nDisposition: accepted",
         match="ASSUMED-provenance",
     )
     _publish(
-        root, "director", "all", "decision", "2026-07-30T00-00-04Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-04Z",
         f"Candidate: {ref}\nDisposition: declined",
     )
 
@@ -260,7 +260,7 @@ def test_governance_rule_below_floor_cannot_be_accepted(tmp_path: Path) -> None:
         ),
     )
     _refuse(
-        root, "director", "all", "decision", "2026-07-30T00-00-03Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-03Z",
         f"Candidate: {ref}\nDisposition: accepted",
         match="high-risk-control floor",
     )
@@ -282,7 +282,7 @@ def test_stale_target_base_hash_is_refused_by_cas(tmp_path: Path) -> None:
     )
     # Fresh target: acceptance passes the CAS.
     _publish(
-        root, "director", "all", "decision", "2026-07-30T00-00-03Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-03Z",
         f"Candidate: {ref}\nDisposition: accepted",
     )
     _commit(root, "mailbox: fresh acceptance")
@@ -291,7 +291,7 @@ def test_stale_target_base_hash_is_refused_by_cas(tmp_path: Path) -> None:
     _git(root, "add", "README.md")
     _commit(root, "docs: move the target")
     _refuse(
-        root, "director2", "all", "decision", "2026-07-30T00-00-05Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-05Z",
         f"Candidate: {ref}\nDisposition: accepted",
         match="stale at the publication commit",
     )
@@ -302,7 +302,7 @@ def test_ordinary_decision_without_candidate_field_still_publishes(
 ) -> None:
     root = _repo(tmp_path)
     _publish(
-        root, "director", "all", "decision", "2026-07-30T00-00-03Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-03Z",
         "Ruling: adopt the defaults for every open item.",
     )
 
@@ -315,7 +315,7 @@ def test_prose_candidate_lines_do_not_trigger_disposition_validation(
     root = _repo(tmp_path)
     # A hiring-style note: Candidate + Disposition lines, neither machine-shaped.
     _publish(
-        root, "director", "all", "decision", "2026-07-30T00-00-03Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-03Z",
         "Candidate: Jane Doe for the ops role\n"
         "Disposition: hired, starts Monday",
     )
@@ -323,11 +323,11 @@ def test_prose_candidate_lines_do_not_trigger_disposition_validation(
     # is prose to readers and must publish.
     quoted = (
         "coordination/mailbox/sent/"
-        "2026-07-29T00-00-00Z-operator-to-director-learning-candidate.md@"
+        "2026-07-29T00-00-00Z-reviewer-to-author-learning-candidate.md@"
         + "b" * 40
     )
     _publish(
-        root, "director", "all", "decision", "2026-07-30T00-00-04Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-04Z",
         f"Discussing Candidate: {quoted} before any ruling.",
     )
 
@@ -338,11 +338,11 @@ def test_machine_shaped_disposition_still_validates(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     phantom = (
         "coordination/mailbox/sent/"
-        "2026-07-29T00-00-00Z-operator-to-director-learning-candidate.md@"
+        "2026-07-29T00-00-00Z-reviewer-to-author-learning-candidate.md@"
         + "e" * 40
     )
     _refuse(
-        root, "director", "all", "decision", "2026-07-30T00-00-05Z",
+        root, "author", "all", "decision", "2026-07-30T00-00-05Z",
         f"Candidate: {phantom}\nDisposition: accepted",
         match="does not resolve to a committed",
     )

@@ -104,7 +104,7 @@ def _event_text(sender: str, recipient: str, stamp: str, body: str) -> str:
     return (
         f"# {sender.capitalize()} → {recipient.capitalize()}: Fixture\n\n"
         f"**When:** {when} · **From:** {sender} (online)\n\n"
-        f"{body}\n\nCursor at send: 0\n"
+        f"{body}\n\nCursor at send: cursorless\n"
     )
 
 
@@ -130,8 +130,8 @@ def _write_event(
 def _source_ref(root: Path, stamp: str = "2026-08-03T00-00-01Z") -> str:
     path = _write_event(
         root,
-        sender="director",
-        recipient="operator",
+        sender="author",
+        recipient="reviewer",
         kind="status",
         stamp=stamp,
         body="Source evidence.",
@@ -156,7 +156,7 @@ def _candidate_fields(
         "Exclusions": "pre-cutover introductions",
         "Risk class": "material-behavior",
         "Supersedes": None,
-        "Producer seat": "operator",
+        "Producer seat": "reviewer",
         "Producer model": "fixture-model",
     }
     fields.update(overrides)
@@ -184,8 +184,8 @@ def _candidate(
     fields = _candidate_fields(source_ref, **overrides)
     path = _write_event(
         root,
-        sender="operator",
-        recipient="director",
+        sender="reviewer",
+        recipient="author",
         kind="learning-candidate",
         stamp=stamp,
         body=_candidate_body(fields, candidate_id=candidate_id),
@@ -203,7 +203,7 @@ def _disposition(
     root: Path,
     candidate_ref: str,
     *,
-    sender: str = "director",
+    sender: str = "author",
     disposition: str = "accepted",
     stamp: str = "2026-08-03T00-00-03Z",
 ) -> str:
@@ -248,7 +248,7 @@ def test_unresolvable_candidate_refs_are_fatal(
     phantom_kind = "status" if broken == "source" else "learning-candidate"
     phantom = (
         "coordination/mailbox/sent/"
-        f"2026-08-02T00-00-00Z-director-to-operator-{phantom_kind}.md@"
+        f"2026-08-02T00-00-00Z-author-to-reviewer-{phantom_kind}.md@"
         + "e" * 40
     )
     overrides = {"Source refs": phantom} if broken == "source" else {"Supersedes": phantom}
@@ -265,7 +265,7 @@ def test_candidate_source_ref_rejects_historical_symlink(
     root, _cutover = _repo(tmp_path, monkeypatch)
     path = (
         "coordination/mailbox/sent/"
-        "2026-08-03T00-00-01Z-director-to-operator-status.md"
+        "2026-08-03T00-00-01Z-author-to-reviewer-status.md"
     )
     (root / path).symlink_to("../kinds.txt")
     source_commit = _commit(root, "historical symlink-shaped event")
@@ -292,8 +292,8 @@ def test_duplicate_candidate_ids_in_one_commit_are_fatal(
 @pytest.mark.parametrize(
     ("candidate_overrides", "sender", "expected"),
     [
-        ({}, "operator", "self-approval"),
-        ({"Evidence provenance": "ASSUMED"}, "director", "ASSUMED"),
+        ({}, "reviewer", "self-approval"),
+        ({"Evidence provenance": "ASSUMED"}, "author", "ASSUMED"),
         (
             {"Category": "governance-rule", "Risk class": "material-behavior"},
             "director",
@@ -320,7 +320,7 @@ def test_disposition_candidate_must_resolve(tmp_path: Path, monkeypatch) -> None
     root, _cutover = _repo(tmp_path, monkeypatch)
     phantom = (
         "coordination/mailbox/sent/"
-        "2026-08-02T00-00-00Z-operator-to-director-learning-candidate.md@"
+        "2026-08-02T00-00-00Z-reviewer-to-author-learning-candidate.md@"
         + "e" * 40
     )
     _disposition(root, phantom)
@@ -429,8 +429,8 @@ def test_extinct_pre_cutover_candidate_id_can_be_reissued(
 
     new_path = _write_event(
         root,
-        sender="operator",
-        recipient="director",
+        sender="reviewer",
+        recipient="author",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-04Z",
         body=_candidate_body(fields),
@@ -456,8 +456,8 @@ def test_cutover_present_candidate_id_still_blocks_reissue(
 
     new_path = _write_event(
         root,
-        sender="operator",
-        recipient="director",
+        sender="reviewer",
+        recipient="author",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-04Z",
         body=_candidate_body(fields),
@@ -481,8 +481,8 @@ def test_cutover_modified_candidate_bytes_still_block_duplicate_reissue(
     fields_b = _candidate_fields(source, Statement="Candidate B at cutover.")
     (root / old_path).write_text(
         _event_text(
-            "operator",
-            "director",
+            "reviewer",
+            "author",
             "2026-08-03T00-00-02Z",
             _candidate_body(fields_b),
         ),
@@ -493,8 +493,8 @@ def test_cutover_modified_candidate_bytes_still_block_duplicate_reissue(
 
     new_path = _write_event(
         root,
-        sender="operator",
-        recipient="director",
+        sender="reviewer",
+        recipient="author",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-04Z",
         body=_candidate_body(fields_b),
@@ -615,8 +615,8 @@ def test_old_base_parallel_branch_introduction_is_not_grandfathered(
     (root / "coordination/mailbox/sent").mkdir(parents=True)
     parallel_path = _write_event(
         root,
-        sender="operator",
-        recipient="director",
+        sender="reviewer",
+        recipient="author",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-01Z",
         body="malformed parallel candidate",
@@ -653,8 +653,8 @@ def test_old_base_parallel_branch_introduction_is_not_grandfathered(
 
     _write_event(
         root,
-        sender="operator",
-        recipient="director",
+        sender="reviewer",
+        recipient="author",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-02Z",
         body="malformed descendant candidate",
@@ -673,8 +673,8 @@ def test_old_base_branch_add_delete_merged_after_cutover_is_fatal(
     (root / "coordination/mailbox/sent").mkdir(parents=True, exist_ok=True)
     path = _write_event(
         root,
-        sender="operator",
-        recipient="director",
+        sender="reviewer",
+        recipient="author",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-09Z",
         body="malformed extinct parallel candidate",
@@ -766,7 +766,7 @@ def test_prose_decision_is_not_machine_disposition(tmp_path: Path, monkeypatch) 
     root, _cutover = _repo(tmp_path, monkeypatch)
     _write_event(
         root,
-        sender="director",
+        sender="author",
         recipient="all",
         kind="decision",
         stamp="2026-08-03T00-00-03Z",

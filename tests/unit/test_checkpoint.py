@@ -79,7 +79,7 @@ def _event_text(sender: str, recipient: str, stamp: str, body: str) -> str:
         f"# {sender.capitalize()} → {recipient.capitalize()}: probe\n\n"
         f"**When:** {colon} · **From:** {sender} (online)\n\n"
         f"{body}\n\n"
-        "Cursor at send: 0\n"
+        "Cursor at send: cursorless\n"
     )
 
 
@@ -116,7 +116,7 @@ def _refuse(
 
 def _evidence_ref(root: Path) -> str:
     relative = _publish(
-        root, "operator", "director", "findings",
+        root, "reviewer", "author", "findings",
         "2026-08-12T00-00-01Z", "observed evidence for the checkpoint",
     )
     _git(root, "add", relative)
@@ -131,7 +131,7 @@ def _checkpoint_fields(root: Path, **overrides: str) -> dict[str, str]:
         "Boundary": "compaction",
         "Objective": "land the durable checkpoint mechanism",
         "Accepted scope": "scripts, tests, and protocol docs on this branch",
-        "Owner": "director",
+        "Owner": "author",
         "Policy revision": head,
         "Base": head,
         "Head": head,
@@ -154,7 +154,7 @@ def test_checkpoint_round_trips_through_production_finalizer(tmp_path: Path) -> 
     evidence = _evidence_ref(root)
     fields = _checkpoint_fields(root, **{"Evidence refs": evidence})
     relative = _publish(
-        root, "director", "all", "findings",
+        root, "author", "all", "findings",
         "2026-08-12T00-10-00Z", _body(fields),
     )
     _git(root, "add", relative)
@@ -166,7 +166,7 @@ def test_checkpoint_round_trips_through_production_finalizer(tmp_path: Path) -> 
 
     assert statement.checkpoint == "memory-skill-evolution"
     assert statement.boundary == "compaction"
-    assert statement.owner == "director"
+    assert statement.owner == "author"
     assert statement.evidence_refs == (evidence,)
     assert statement.lessons == ()
     assert statement.next_action.startswith("publish the checkpoint")
@@ -178,7 +178,7 @@ def test_checkpoint_round_trips_through_production_finalizer(tmp_path: Path) -> 
 def test_ordinary_findings_publish_untouched(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     relative = _publish(
-        root, "operator", "director", "findings",
+        root, "reviewer", "author", "findings",
         "2026-08-12T00-11-00Z",
         "Checkpoint: reached the third milestone of the plan today.\n"
         "No structured payload here.",
@@ -191,9 +191,9 @@ def test_ordinary_findings_publish_untouched(tmp_path: Path) -> None:
 
 def test_owner_must_match_envelope_sender(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    fields = _checkpoint_fields(root, Owner="operator")
+    fields = _checkpoint_fields(root, Owner="reviewer")
     _refuse(
-        root, "director", "all", "findings",
+        root, "author", "all", "findings",
         "2026-08-12T00-12-00Z", _body(fields),
         match="Owner must match the envelope sender",
     )
@@ -203,7 +203,7 @@ def test_boundary_vocabulary_is_closed(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     fields = _checkpoint_fields(root, Boundary="sometimes")
     _refuse(
-        root, "director", "all", "findings",
+        root, "author", "all", "findings",
         "2026-08-12T00-13-00Z", _body(fields),
         match="Boundary must be transfer",
     )
@@ -213,7 +213,7 @@ def test_range_fields_must_be_full_shas(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     fields = _checkpoint_fields(root, Base="HEAD")
     _refuse(
-        root, "director", "all", "findings",
+        root, "author", "all", "findings",
         "2026-08-12T00-14-00Z", _body(fields),
         match="Base must be a 40-hex commit SHA",
     )
@@ -225,11 +225,11 @@ def test_unresolvable_evidence_ref_is_refused_at_publication(
     root = _repo(tmp_path)
     ghost = (
         "coordination/mailbox/sent/"
-        "2026-08-01T00-00-00Z-operator-to-director-findings.md@" + "b" * 40
+        "2026-08-01T00-00-00Z-reviewer-to-author-findings.md@" + "b" * 40
     )
     fields = _checkpoint_fields(root, **{"Evidence refs": ghost})
     _refuse(
-        root, "director", "all", "findings",
+        root, "author", "all", "findings",
         "2026-08-12T00-15-00Z", _body(fields),
         match="checkpoint ref does not resolve",
     )
@@ -242,7 +242,7 @@ def test_lessons_must_name_learning_candidates_or_none_considered(
     not_a_candidate = _evidence_ref(root)
     fields = _checkpoint_fields(root, Lessons=not_a_candidate)
     _refuse(
-        root, "director", "all", "findings",
+        root, "author", "all", "findings",
         "2026-08-12T00-16-00Z", _body(fields),
         match="Lessons refs must name learning-candidate events",
     )
@@ -262,7 +262,7 @@ def test_no_quota_exists_none_considered_always_publishes(tmp_path: Path) -> Non
             root, Checkpoint=f"quiet-campaign-{index}"
         )
         relative = _publish(
-            root, "director", "all", "findings",
+            root, "author", "all", "findings",
             f"2026-08-12T00-2{index}-00Z", _body(fields),
         )
         assert (root / relative).exists()
@@ -281,7 +281,7 @@ def test_draft_tool_writes_scratch_only_and_output_parses(tmp_path: Path) -> Non
         boundary="wrap",
         objective="wrap the campaign",
         accepted_scope="this branch",
-        owner="director",
+        owner="author",
         base=head,
         head=None,
         policy_revision=None,
@@ -299,7 +299,7 @@ def test_draft_tool_writes_scratch_only_and_output_parses(tmp_path: Path) -> Non
     assert "Lessons: none-considered" in body
 
     relative = _publish(
-        root, "director", "all", "findings",
+        root, "author", "all", "findings",
         "2026-08-12T00-30-00Z", body.rstrip("\n"),
     )
     assert (root / relative).exists()
@@ -316,7 +316,7 @@ def test_draft_tool_refuses_bad_slug(tmp_path: Path) -> None:
             boundary="wrap",
             objective="x",
             accepted_scope="x",
-            owner="director",
+            owner="author",
             base=head,
             head=None,
             policy_revision=None,

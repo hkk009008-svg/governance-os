@@ -50,17 +50,21 @@ KIND=$3
 shift 3
 SUBJECT="$*"
 
+# A review has two positions. The pre-collapse seat names still PARSE in
+# committed history, but the fixed writer refuses them for a new event
+# (mailbox_writer.NEW_WRITE_SENDERS), so this wrapper refuses them here too
+# rather than composing a candidate the writer will reject.
 case "$FROM" in
-  director|director2|operator|operator2|coordinator|coordinator2) ;;
+  author|reviewer) ;;
   *)
-    echo "send-event: bad <from>: $FROM (director|director2|operator|operator2|coordinator|coordinator2)" >&2
+    echo "send-event: bad <from>: $FROM (author|reviewer)" >&2
     exit 2
     ;;
 esac
 case "$TO" in
-  director|director2|operator|operator2|coordinator|coordinator2|all) ;;
+  author|reviewer|all) ;;
   *)
-    echo "send-event: bad <to>: $TO (director|director2|operator|operator2|coordinator|coordinator2|all)" >&2
+    echo "send-event: bad <to>: $TO (author|reviewer|all)" >&2
     exit 2
     ;;
 esac
@@ -98,18 +102,9 @@ if ! /usr/bin/grep -Fxq -- "$KIND" "$KIND_FILE"; then
 fi
 if [ "$KIND" = "verification-report" ]; then
   case "$FROM" in
-    operator|operator2) ;;
+    reviewer) ;;
     *)
-      echo "send-event: only operator seats may publish verification-report" >&2
-      exit 2
-      ;;
-  esac
-fi
-if [ "$KIND" = "verify-request" ]; then
-  case "$FROM" in
-    director|director2|operator|operator2) ;;
-    *)
-      echo "send-event: only pair seats may publish verify-request" >&2
+      echo "send-event: only the reviewer may publish verification-report" >&2
       exit 2
       ;;
   esac
@@ -119,9 +114,9 @@ fi
 # non-compact-pair kinds are.
 if [ "$KIND" = "learning-candidate" ]; then
   case "$FROM" in
-    director|director2|operator|operator2) ;;
+    author|reviewer) ;;
     *)
-      echo "send-event: only pair seats may publish learning-candidate" >&2
+      echo "send-event: only a review role may publish learning-candidate" >&2
       exit 2
       ;;
   esac
@@ -149,10 +144,9 @@ fi
 TS_COLON="${TS_DASH:0:11}$(printf '%s' "${TS_DASH:11:8}" | /usr/bin/tr '-' ':')Z"
 FROM_TITLE="$(printf '%s' "${FROM:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${FROM:1}"
 TO_TITLE="$(printf '%s' "${TO:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${TO:1}"
-case "$FROM" in
-  coordinator|coordinator2) CURSOR="cursorless" ;;
-  *) CURSOR=$(/usr/bin/head -1 "$ROOT/coordination/mailbox/seen/$FROM.txt" 2>/dev/null || echo "unknown") ;;
-esac
+# Roles hold no cursor: a per-seat pointer belonged to a standing chat, and
+# neither position outlives the task it was assigned for.
+CURSOR="cursorless"
 BODY=$(/bin/cat)
 
 TMP=$(/usr/bin/mktemp "$ROOT/coordination/mailbox/sent/.${TS_DASH}-${FROM}-to-${TO}-${KIND}.XXXXXX.tmp")
