@@ -3,13 +3,12 @@
 This question has been asked wrong twice and each wrong answer was a real
 bypass, so the controls live together with the reasoning.
 
-  Introduction date  -- lost to delete-and-reintroduce, because the projection
-                        keeps the EARLIEST introduction by design.
-  Path presence      -- lost to LAUNDERING: the path is still present, so
-                        re-committing arbitrary new content at it republished
-                        that content under a retired identity.
-  Blob identity      -- what the gate asks now. Presence is inheritable;
-                        content is not.
+  Introduction date  -- lost to delete-and-reintroduce: the projection keeps
+                        the EARLIEST introduction by design.
+  Path presence      -- lost to LAUNDERING: the path survives, so re-committing
+                        new content at it republished under a retired identity.
+  Introduction ancestry -- lost to Git: topology cannot decide a temporal
+                        question, in either direction.
 """
 from __future__ import annotations
 
@@ -125,33 +124,19 @@ def test_unchanged_history_is_never_flagged() -> None:
 def test_absence_at_the_boundary_is_refused_even_with_a_pre_boundary_introduction() -> None:
     """The ancestry escape hatch is gone, and its removal is the control.
 
-    v6 excused an event absent from the cutover tree when its INTRODUCTION
-    commit was an ancestor of the boundary, to keep a branch that predates the
-    cutover mergeable. Three defects, one root:
+    v6 excused an event absent from the cutover tree when its INTRODUCTION was
+    an ancestor of the boundary, to keep an older branch mergeable. Ancestry is
+    topological; the boundary is temporal; no direction of that test decides
+    this question. Forward, a branch forked before the cutover is a SIBLING of
+    it, so the deadlock was never dissolved. Mirrored, it is forgeable by
+    branching from any old commit. And it compared no bytes: 11 real paths here
+    were introduced under the cutover's own ancestry and deleted before it,
+    each a live key. Measured -- re-committing one
+    (2026-07-22T04-03-49Z-coordinator-to-all-coordination.md) with forged
+    content on HEAD returns 0 issues pre-fix and 1 issue now.
 
-      backwards   -- a branch forked before the cutover and merged after has an
-                     introduction that is a SIBLING of the boundary, not an
-                     ancestor, so the deadlock it was written to dissolve was
-                     never actually dissolved;
-      manufacturable -- and the mirrored test (`not is_ancestor(cutover, x)`)
-                     is worse: fork from any pre-boundary commit, author a new
-                     event today, merge. Ancestry is topological. The boundary
-                     is temporal. No direction of a topological test decides a
-                     temporal question;
-      byte-blind  -- the hatch compared no bytes at all, so a pre-cutover event
-                     deleted and re-committed post-cutover with NEW content
-                     inherited its own earliest introduction and passed. Not
-                     hypothetical: 11 real paths in this history were both
-                     introduced under the cutover's own ancestry and deleted
-                     before it, so each was a live key to the hatch. Measured
-                     by re-committing one of them
-                     (2026-07-22T04-03-49Z-coordinator-to-all-coordination.md)
-                     with forged content on top of HEAD in a scratch clone --
-                     the pre-fix gate returned 0 issues, this one returns 1.
-
-    A lock that can be manufactured by branching from an old commit is worse
-    than no lock, because it reads as one. The remedy for a genuinely stuck
-    branch is a committed exception, not a hatch every author can open.
+    A lock that anyone can manufacture is worse than no lock, because it reads
+    as one. A stuck branch takes a committed exception, which is reviewed.
     """
 
     issues = _gate(
@@ -169,15 +154,13 @@ def test_a_lawful_archive_move_is_not_a_republication() -> None:
     """Log hygiene must not read as a new publication.
 
     `coordination/README.md` sanctions moving old events out of `sent/` into
-    `archive/` by hand -- no tool does it. Keyed by full path, that one move
-    looked like a delete plus a create: the sent path lost its blob (laundered)
-    and the archive path had never existed at the boundary (republished). Two
-    FATALs, both false, on an operation the doctrine invites, against a corpus
-    where ~900 events carry a retired identity.
-
-    The event's NAME is its protocol identity -- `EVENT_NAME_RE` reads the
-    sender and recipient from it -- so the gate keys by name and the location
-    stops being evidence of anything.
+    `archive/` by hand -- no tool does it. Keyed by full path, that move looked
+    like a delete plus a create: the sent path lost its blob (laundered) and
+    the archive path never existed at the boundary (republished). False FATALs
+    on an operation the doctrine invites, across the 519 retired-identity
+    events the immutable-review projection does not pin.
+    The event's NAME is its protocol identity -- EVENT_NAME_RE reads the sender
+    and recipient from it -- so location stops being evidence of anything.
     """
 
     archived = _HISTORICAL.replace("/sent/", "/archive/2026/")
@@ -193,10 +176,9 @@ def test_a_second_copy_under_another_path_cannot_launder_bytes() -> None:
     """Keying by name must collapse to a SET, or it becomes the next bypass.
 
     One blob per name would let a laundered copy hide behind a lawful one:
-    leave `sent/X.md` at its cutover bytes, commit new content as
-    `archive/2026/X.md`, and whichever the dict wrote last decides. The gate
-    asks instead that EVERY blob the name carries at HEAD is one it carried at
-    the boundary, so an extra copy is judged on its own bytes.
+    leave `sent/X.md` at its cutover bytes and commit new content as
+    `archive/2026/X.md`. Every blob a name carries at HEAD must be one it
+    carried at the boundary.
     """
 
     archived = _HISTORICAL.replace("/sent/", "/archive/2026/")
