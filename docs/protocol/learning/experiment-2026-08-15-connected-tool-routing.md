@@ -1,3 +1,10 @@
+> **HISTORICAL RECORD — the artifacts this experiment measured are gone.**
+> `route-connected-tools` (both the canonical skill and its Claude stub) and
+> the two frozen packs it was scored against were deleted on 2026-08-22 as
+> unlanded work, by user decision. The finding below — that fresh-session
+> discovery was structurally checked but never operationally verified — is kept
+> because it outlived its subject; the paths it names no longer resolve.
+
 # Experiment record — connected-tool skill discovery (2026-08-15)
 
 > **Historical record of UNLANDED work — not reproducible from a clone.**

@@ -123,15 +123,3 @@ STATE.md
 # Learning-plane episodic index: derived, rebuildable, workspace-scope
 # projection with no authority (ADR-067); never committed.
 coordination/learning/
-
-# Unlanded work from an earlier session: two skill packs whose skill
-# directories (.agents/skills/route-connected-tools/, and its .claude stub)
-# are themselves untracked. Committing the packs WITHOUT the skills is how a
-# green suite became unreproducible from a clone -- twice, both times via
-# `git add -A`. Ignoring them makes that impossible rather than remembered.
-# Landing that work means committing the skills and these packs together, and
-# deleting this block in the same change.
-tests/skill_packs/pack-003-connected-tool-routing.json
-tests/skill_packs/pack-004-connected-tool-stub-routing.json
-.agents/skills/route-connected-tools/
-.claude/skills/route-connected-tools/
