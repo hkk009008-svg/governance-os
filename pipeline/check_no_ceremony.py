@@ -281,7 +281,7 @@ def _python_growth_violations(
     return violations, f"{added} added, {deleted} deleted, net {added - deleted}"
 
 
-def _introduced_python(base: str | None) -> frozenset[str]:
+def _introduced_python(base: str | None, head: str | None = None) -> frozenset[str]:
     """Paths that did not exist at `base`, asked of Git rather than inferred.
 
     --diff-filter=A alone answers "absent at the base", which is not the same
@@ -295,7 +295,8 @@ def _introduced_python(base: str | None) -> frozenset[str]:
         return frozenset()
     result = git_runner.run_git(
         ROOT,
-        ["diff", "--name-only", "--diff-filter=A", _RENAME_THRESHOLD, base, "--", PYTHON_PATHSPEC],
+        ["diff", "--name-only", "--diff-filter=A", _RENAME_THRESHOLD, base,
+         *( [head] if head else [] ), "--", PYTHON_PATHSPEC],
         text=True,
     )
     if result.returncode != 0:
@@ -342,6 +343,36 @@ def _untracked_python_numstat() -> str:
     return "\n".join(rows)
 
 
+def _committed_range_violations(base: str | None) -> list[str]:
+    """Also measure the range CI will see, when it is not the working tree.
+
+    The working-tree measurement is the conservative one for uncommitted
+    ADDITIONS and silently excuses uncommitted DELETIONS. Measured 2026-08-22:
+    a test file committed at 268 additions and trimmed to 250 in the working
+    tree reported PASS here while the committed range still violated -- a green
+    reading from the gate whose whole purpose is to refuse green readings that
+    are not what CI will measure. Both numbers were true; only one was the one
+    that binds.
+    """
+
+    if base is None:
+        return []
+    dirty = git_runner.run_git(ROOT, ["diff", "--quiet", "HEAD", "--", PYTHON_PATHSPEC])
+    if dirty.returncode == 0:
+        return []
+    diff = git_runner.run_git(
+        ROOT,
+        ["diff", "--numstat", _RENAME_THRESHOLD, base, "HEAD", "--", PYTHON_PATHSPEC],
+        text=True,
+    )
+    if diff.returncode != 0:
+        return [f"cannot inspect the committed range {base}..HEAD"]
+    violations, _summary = _python_growth_violations(
+        diff.stdout, _introduced_python(base, "HEAD")
+    )
+    return [f"committed range {base}..HEAD: {item}" for item in violations]
+
+
 def rule_python_growth() -> tuple[str, list[str]]:
     try:
         base = _growth_base()
@@ -364,6 +395,7 @@ def rule_python_growth() -> tuple[str, list[str]]:
         violations, summary = _python_growth_violations(
             numstat, _introduced_python(base) | _untracked_python_paths()
         )
+        violations += _committed_range_violations(base)
     except Exception as exc:
         return "FAIL", [f"Python growth check failed: {exc}"]
     return ("FAIL" if violations else "PASS"), [

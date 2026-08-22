@@ -18,7 +18,8 @@ shared protocol machinery honest and executable.
 ```bash
 PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
 cd "$PIPELINE_ROOT"
-# First session in this checkout — every worktree needs its own venv:
+# Once, in the PRIMARY checkout only — bin/pipeline resolves this interpreter
+# from linked worktrees too, so a worktree needs no venv of its own:
 test -d .venv || (python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt)
 
 bin/pipeline --help      # every verb
