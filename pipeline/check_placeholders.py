@@ -8,7 +8,7 @@ Adoption note: filling a skeleton doc means REMOVING its path from
 `pipeline/placeholder_allowlist.txt`. When the allowlist is empty and this scan
 is clean, the repo is fully bound (no skeleton placeholders remain).
 
-Usage:  .venv/bin/python pipeline/check_placeholders.py   # exit 0 clean, 1 on any violation
+Usage:  pipeline check placeholders   # exit 0 clean, 1 on any violation
 """
 from __future__ import annotations
 

@@ -2013,7 +2013,7 @@ def main(argv=None) -> int:
         fixable_count = sum(1 for d in fatal if d.fixable)
         if fixable_count:
             print(f"\n{fixable_count} fixable def_drift(s). Run: "
-                  f".venv/bin/python pipeline/check_doc_claims.py --fix")
+                  f"pipeline check docs --fix")
         unfixable = [d for d in fatal if not d.fixable]
         if unfixable:
             print(f"{len(unfixable)} drift(s) require manual intervention.")

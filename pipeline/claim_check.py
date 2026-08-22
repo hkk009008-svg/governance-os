@@ -693,7 +693,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if findings else 0
     if args.command == "lottery":
         for claim in lottery(args.ledger, args.count):
-            print(f'probe: .venv/bin/python pipeline/claim_check.py probe --execute "{claim}"')
+            print(f'probe: pipeline claim probe --execute "{claim}"')
         return 0
     return 2
 

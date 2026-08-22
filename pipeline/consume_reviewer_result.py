@@ -26,8 +26,8 @@ re-run (re-running a historical event's pins against today's HEAD would false-al
 Severity map (ADR-032): critical->CRITICAL, important->MAJOR, minor->MEDIUM.
 
 Usage:
-    .venv/bin/python pipeline/consume_reviewer_result.py <event.md>     # consume a file (re-runs pins)
-    .venv/bin/python pipeline/consume_reviewer_result.py --stdin        # consume from stdin
+    pipeline review consume <event.md>     # consume a file (re-runs pins)
+    pipeline review consume --stdin        # consume from stdin
 Exit codes:
     0 — no block to consume, OR block present + schema-valid + summaries honest
     1 — block present and a schema invariant is violated OR a fabricated summary was detected

@@ -15,7 +15,7 @@ an ancestor of (or equal to) HEAD.
 The gate is INERT unless ARCHITECTURE.md is actually in the changeset — the
 unbound bundle's placeholder stamp never triggers a spurious failure.
 
-Usage:  .venv/bin/python pipeline/check_arch_freshness.py [--base REF]
+Usage:  pipeline check arch [--base REF]
 
         --base REF     Git ref to diff against (default: merge-base of HEAD and
                        origin/main or main; falls back gracefully if git is

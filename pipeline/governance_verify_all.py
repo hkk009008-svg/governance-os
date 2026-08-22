@@ -37,7 +37,7 @@ Two halves run in sequence:
       ARCHITECTURE.md changed vs merge-base; hard-fail when it fires).
 
 Usage:
-    .venv/bin/python pipeline/governance_verify_all.py    # local
+    pipeline check    # local
     python pipeline/governance_verify_all.py              # CI (after pip install)
 
 Exit codes:
@@ -180,7 +180,7 @@ def _coordination_gate(repo_root: Path) -> int:
             print(
                 f"WARNING: coordination ADVISORY [{kind}] x{len(group)} "
                 f"(e.g. {group[0].path}) — itemize with: "
-                f".venv/bin/python pipeline/check_coordination.py"
+                f"pipeline check coordination"
             )
         else:
             for issue in group:
@@ -192,7 +192,7 @@ def _coordination_gate(repo_root: Path) -> int:
         return 0
     for issue in fatals:
         print(f"COORDINATION FATAL [{issue.kind}] {issue.path} — {issue.message}")
-    print("\nRun: .venv/bin/python pipeline/check_coordination.py")
+    print("\nRun: pipeline check coordination")
     return 1
 
 
@@ -215,13 +215,21 @@ def _architecture_gate(repo_root: Path) -> int:
         hint = f"  → suggested line {drift.suggested_line}" if drift.suggested_line else ""
         print(f"  [{drift.kind}] {drift.target_file}:{drift.target_line}{hint}")
         print(f"    {drift.message}")
-    print("\nRun: .venv/bin/python pipeline/check_doc_claims.py --fix")
+    print("\nRun: pipeline check docs --fix")
     return 1
 
 
 def main(argv: list[str] | None = None) -> int:
     fast_mode = False
     args = argv if argv is not None else sys.argv[1:]
+    if "-h" in args or "--help" in args:
+        # `_ARGLESS` used to answer this by printing "Takes no arguments",
+        # which denied --fast existed. The gate answers for itself instead.
+        print("usage: pipeline check [--fast]\n")
+        print("Run every governance gate (the completion gate).\n")
+        print("  --fast  essential coordination, ceremony and placeholder")
+        print("          checks only; skips the full aggregate.")
+        return 0
     if "--fast" in args:
         fast_mode = True
 
@@ -304,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("SHA-REF BASELINE CHECK — FAIL")
                 print(_sha_status.warning_line)
                 print(
-                    "Run: .venv/bin/python pipeline/check_doc_claims.py --sha-refs "
+                    "Run: pipeline check docs --sha-refs "
                     "and update the reviewed baseline only after a bounded cleanup "
                     "or explicit owner decision."
                 )

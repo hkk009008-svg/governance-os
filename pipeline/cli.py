@@ -76,9 +76,11 @@ _SHELL_COMMANDS: dict[tuple[str | None, ...], tuple[str, str]] = {
 # aggregate and exited 0 -- a help request that performs the action instead of
 # describing it, while the banner promised "every command accepts its own
 # --help".
-_ARGLESS = {
-    ("check",), ("check", "ceremony"), ("check", "placeholders"), ("check", "arch"),
-}
+# Two entries were wrong and each hid a working flag: `check` takes --fast and
+# `check arch` takes --base REF, and both printed "Takes no arguments" instead.
+# `check arch` answers --help through argparse once it stops being intercepted;
+# `check` had no --help of its own, so governance_verify_all grew one.
+_ARGLESS = {("check", "ceremony"), ("check", "placeholders")}
 
 
 def _usage() -> str:
