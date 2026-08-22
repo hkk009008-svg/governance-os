@@ -55,7 +55,11 @@ def _gate(events, at_cutover, at_head, *, boundary=True, introductions=None):
 
         @staticmethod
         def is_ancestor(candidate, target):
-            return candidate == _PRE
+            raise AssertionError(
+                "the gate must not consult ancestry: Git ancestry is "
+                "topological, not temporal, so it cannot separate 'authored "
+                "before the boundary' from 'authored today on a stale branch'"
+            )
 
     class _Projection:
         commits = _Commits()
@@ -118,22 +122,92 @@ def test_unchanged_history_is_never_flagged() -> None:
     ) == []
 
 
-def test_a_pre_boundary_event_merged_later_is_lawful() -> None:
-    """A branch that predates the cutover must stay mergeable.
+def test_absence_at_the_boundary_is_refused_even_with_a_pre_boundary_introduction() -> None:
+    """The ancestry escape hatch is gone, and its removal is the control.
 
-    A legacy verify-request authored before the boundary but living on a branch
-    that never contained the boundary commit is absent from the cutover tree.
-    Refusing it made the branch unmergeable while deleting the event is itself
-    forbidden -- a deadlock with no lawful remedy. Ancestry of the INTRODUCTION
-    separates "authored earlier, merged later" from "published after".
+    v6 excused an event absent from the cutover tree when its INTRODUCTION
+    commit was an ancestor of the boundary, to keep a branch that predates the
+    cutover mergeable. Three defects, one root:
+
+      backwards   -- a branch forked before the cutover and merged after has an
+                     introduction that is a SIBLING of the boundary, not an
+                     ancestor, so the deadlock it was written to dissolve was
+                     never actually dissolved;
+      manufacturable -- and the mirrored test (`not is_ancestor(cutover, x)`)
+                     is worse: fork from any pre-boundary commit, author a new
+                     event today, merge. Ancestry is topological. The boundary
+                     is temporal. No direction of a topological test decides a
+                     temporal question;
+      byte-blind  -- the hatch compared no bytes at all, so a pre-cutover event
+                     deleted and re-committed post-cutover with NEW content
+                     inherited its own earliest introduction and passed. Not
+                     hypothetical: 11 real paths in this history were both
+                     introduced under the cutover's own ancestry and deleted
+                     before it, so each was a live key to the hatch. Measured
+                     by re-committing one of them
+                     (2026-07-22T04-03-49Z-coordinator-to-all-coordination.md)
+                     with forged content on top of HEAD in a scratch clone --
+                     the pre-fix gate returned 0 issues, this one returns 1.
+
+    A lock that can be manufactured by branching from an old commit is worse
+    than no lock, because it reads as one. The remedy for a genuinely stuck
+    branch is a committed exception, not a hatch every author can open.
     """
 
-    assert _gate(
+    issues = _gate(
         [_FRESH],
         at_cutover={},
         at_head={_FRESH: "9" * 40},
         introductions={_FRESH: (_PRE, "9" * 40)},
+    )
+
+    assert [issue.kind for issue in issues] == ["post_cutover_retired_identity"]
+    assert "not present at" in issues[0].message
+
+
+def test_a_lawful_archive_move_is_not_a_republication() -> None:
+    """Log hygiene must not read as a new publication.
+
+    `coordination/README.md` sanctions moving old events out of `sent/` into
+    `archive/` by hand -- no tool does it. Keyed by full path, that one move
+    looked like a delete plus a create: the sent path lost its blob (laundered)
+    and the archive path had never existed at the boundary (republished). Two
+    FATALs, both false, on an operation the doctrine invites, against a corpus
+    where ~900 events carry a retired identity.
+
+    The event's NAME is its protocol identity -- `EVENT_NAME_RE` reads the
+    sender and recipient from it -- so the gate keys by name and the location
+    stops being evidence of anything.
+    """
+
+    archived = _HISTORICAL.replace("/sent/", "/archive/2026/")
+
+    assert _gate(
+        [_HISTORICAL],
+        at_cutover={_HISTORICAL: "1" * 40},
+        at_head={archived: "1" * 40},
     ) == []
+
+
+def test_a_second_copy_under_another_path_cannot_launder_bytes() -> None:
+    """Keying by name must collapse to a SET, or it becomes the next bypass.
+
+    One blob per name would let a laundered copy hide behind a lawful one:
+    leave `sent/X.md` at its cutover bytes, commit new content as
+    `archive/2026/X.md`, and whichever the dict wrote last decides. The gate
+    asks instead that EVERY blob the name carries at HEAD is one it carried at
+    the boundary, so an extra copy is judged on its own bytes.
+    """
+
+    archived = _HISTORICAL.replace("/sent/", "/archive/2026/")
+    issues = _gate(
+        [_HISTORICAL],
+        at_cutover={_HISTORICAL: "1" * 40},
+        at_head={_HISTORICAL: "1" * 40, archived: "7" * 40},
+    )
+
+    assert [issue.kind for issue in issues] == ["post_cutover_retired_identity"]
+    assert "different bytes" in issues[0].message
 
 
 def test_an_event_that_cannot_be_shown_to_predate_the_boundary_is_refused() -> None:

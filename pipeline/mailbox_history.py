@@ -30,22 +30,34 @@ _ROLE_CUTOVER_COMMIT = "4c4371fd953d68a986e46cd71c168a7f0b4e6382"
 _LIVE_IDENTITIES = frozenset(protocol_mailbox.ROLES) | {"all"}
 
 
-def _tree_blobs(run_git, repo_root, commit: str, prefix: str):
-    """path -> blob id at *commit*, or None if the tree cannot be listed."""
+def _tree_event_blobs(run_git, repo_root, commit: str, prefix: str):
+    """event name -> every blob committed under that name at *commit*.
+
+    Keyed by NAME, not by path, because the name is the protocol identity:
+    EVENT_NAME_RE reads the sender and the recipient out of it, and
+    `coordination/README.md` sanctions moving an event from `sent/` into
+    `archive/` by hand for log hygiene. Keyed by path, that one lawful move
+    read as a delete plus a create -- two FATALs for one tidy-up, against the
+    519 retired-identity events the immutable-review projection does not pin.
+
+    The value is a SET so the move stays free without making a second copy
+    free: every blob a name carries has to answer for itself.
+    """
 
     listed = run_git(
         repo_root, "ls-tree", "-r", "-z", commit, "--", prefix.rstrip("/")
     )
     if listed.returncode != 0:
         return None
-    blobs: dict[str, str] = {}
+    blobs: dict[str, set[str]] = {}
     for entry in listed.stdout.split(b"\0"):
         if not entry:
             continue
         meta, _, name = entry.partition(b"\t")
         fields = meta.split()
         if len(fields) >= 3:
-            blobs[name.decode("utf-8", errors="replace")] = fields[2].decode("ascii")
+            path = name.decode("utf-8", errors="replace")
+            blobs.setdefault(Path(path).name, set()).add(fields[2].decode("ascii"))
     return blobs
 
 
@@ -54,23 +66,34 @@ def _check_post_cutover_identities(
 ) -> list:
     """A retired identity is lawful only with the BYTES it had at the cutover.
 
-    This question has been asked wrong twice, and each wrong answer was a real
+    This has been asked wrong three times and each wrong answer was a real
     bypass.
 
-    Asking when a path was INTRODUCED failed because the projection keeps the
-    EARLIEST introduction by design: delete a pre-cutover event, re-commit it
-    after the boundary, and the old introduction commit came along with it.
+    Introduction DATE lost to delete-and-reintroduce: the projection keeps the
+    EARLIEST introduction by design, so re-committing an event after the
+    boundary brought its old introduction commit along with the new content.
 
-    Asking whether the path was PRESENT at the cutover failed for a subtler
-    reason: the path is still present, so re-committing arbitrary NEW CONTENT
-    at that same path published post-cutover bytes under a retired identity
-    and passed. Presence is inherited; content is not.
+    Path PRESENCE lost to laundering: the path survives a rewrite, so
+    re-committing arbitrary content at a path that already existed published
+    post-cutover bytes under a retired name and passed. Presence is inherited;
+    content is not.
 
-    So the comparison is blob identity. An event bearing a retired sender or
-    recipient must carry, at HEAD, the exact object it carried at the cutover
-    commit. Absent there is a new publication. Different there is a laundered
-    one. Both are refused, and the historical corpus -- which is byte-identical
-    to itself -- is untouched.
+    Introduction ANCESTRY lost to Git. It was added to keep a branch older
+    than the boundary mergeable, and it answered a temporal question with a
+    topological test, which no direction of that test can do. A branch forked
+    before the cutover is a SIBLING of it, not an ancestor, so the deadlock it
+    was written to dissolve was never dissolved; and the mirrored form is
+    forgeable by branching from any pre-boundary commit. It also compared no
+    bytes, so a pre-cutover event deleted and re-committed with new content
+    inherited its own earliest introduction and passed. It is gone with no
+    replacement: a branch genuinely stuck behind the boundary takes a
+    committed exception, which someone reviews, and a hatch is not reviewed.
+
+    One question remains. Every blob an event name carries at HEAD must be a
+    blob that name carried at the cutover commit. Absent there is a new
+    publication; different there is a laundered one; a move between `sent/`
+    and `archive/` is neither, so log hygiene stays free and the historical
+    corpus -- byte-identical to itself -- is untouched.
     """
 
     commits = projection.commits
@@ -102,8 +125,8 @@ def _check_post_cutover_identities(
     # follow-up commit left HEAD's sent/ tree and took the FATAL with it, while
     # the event stayed in committed history.
     mailbox_root = sent_prefix.rstrip("/").rsplit("/", 1)[0]
-    at_cutover = _tree_blobs(run_git, repo_root, _ROLE_CUTOVER_COMMIT, mailbox_root)
-    at_head = _tree_blobs(run_git, repo_root, "HEAD", mailbox_root)
+    at_cutover = _tree_event_blobs(run_git, repo_root, _ROLE_CUTOVER_COMMIT, mailbox_root)
+    at_head = _tree_event_blobs(run_git, repo_root, "HEAD", mailbox_root)
     if at_cutover is None or at_head is None:
         return [issue_factory(
             "mailbox/sent/",
@@ -113,41 +136,28 @@ def _check_post_cutover_identities(
             "identity boundary cannot be checked and is not assumed to hold",
         )]
 
-    introductions = getattr(projection, "introductions", {}) or {}
     issues: list = []
-    for path in sorted(set(at_head) | set(projection.events)):
-        match = protocol_mailbox.EVENT_NAME_RE.fullmatch(Path(path).name)
+    names = set(at_head) | {Path(path).name for path in projection.events}
+    for name in sorted(names):
+        match = protocol_mailbox.EVENT_NAME_RE.fullmatch(name)
         if match is None:
             continue
         retired = {match.group("sender"), match.group("recipient")} - _LIVE_IDENTITIES
         if not retired:
             continue
-        original = at_cutover.get(path)
-        current = at_head.get(path)
-        if original is not None and current is not None and original == current:
-            continue  # the bytes it had at the boundary: historical, and lawful
-        if original is None:
-            # Absent at the boundary. That is a new publication ONLY if it was
-            # introduced after it. An event authored before the cutover on a
-            # branch that never contained the boundary commit is also absent
-            # there, and refusing it would make such a branch unmergeable while
-            # deleting the event is itself forbidden -- a deadlock with no
-            # lawful remedy. Ancestry separates the two.
-            introduced_at = (introductions.get(path) or (None, None))[0]
-            if (
-                introduced_at is not None
-                and commits.object_types.get(introduced_at) == "commit"
-                and commits.is_ancestor(introduced_at, _ROLE_CUTOVER_COMMIT)
-            ):
-                continue  # authored before the boundary, merged after: lawful
-            # No usable introduction record is not evidence of innocence. An
-            # event absent at the boundary that cannot be shown to predate it
-            # is refused, because the alternative is a silent skip.
-            reason = "was not present at"
-        else:
-            reason = "carries different bytes than it had at"
+        original = at_cutover.get(name, set())
+        current = at_head.get(name, set())
+        if current <= original:
+            # Every blob it carries now is one it carried at the boundary.
+            # Carrying none is a deletion, which this gate does not own: the
+            # immutable-review projection refuses that for the events it pins.
+            continue
+        reason = (
+            "carries different bytes than it had at" if original
+            else "was not present at"
+        )
         issues.append(issue_factory(
-            f"mailbox/sent/{Path(path).name}",
+            f"mailbox/sent/{name}",
             "post_cutover_retired_identity",
             "FATAL",
             f"event carries retired identity {sorted(retired)} and {reason} "
