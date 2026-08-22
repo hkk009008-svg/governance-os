@@ -15,7 +15,7 @@ defect that ships.
 
 PRIORITY: CRITICAL | MAJOR | MEDIUM        LANE: A (<domain-A>) | B (<domain-B>)
 CROSS-CUTTING: yes/no   (auto_approve.py · <PROJECT>/context.py · core.py · <entrypoint>.py)
-  → if yes: LOCK held? <claim-lock output, exit 0=WON>   CO-SIGN: Tier-A/B? (CRITICAL x-cut ⇒ Tier-A BEFORE DISPATCH)
+  → if yes: LOCK held? <`pipeline lock claim` output, exit 0=WON>   CO-SIGN: Tier-A/B? (CRITICAL x-cut ⇒ Tier-A BEFORE DISPATCH)
 
 ## The defect (file:line + observable symptom)
 <where it is, what goes wrong at runtime, and the failure the user/gate sees>
@@ -42,7 +42,7 @@ MIRROR: <existing helper/endpoint at file:line> — its FULL shape:
 ## The fix (what changes, bounded)
 <the intended change + the ~LoC delta + the files touched — scope the implementer must not exceed>
 
-## Verification the operator/CI will run
+## Verification the reviewer/CI will run
 <the test/pin that must flip, the command + expected result; for a deferred defect, the strict-xfail pin>
 REVERSION CONTROL: <restore the defect → which pins fail, and that they fail for the right reason>
 EVASION CONTROL: <guard left intact → the closest you got to the forbidden outcome anyway, or why no route exists>
@@ -69,7 +69,7 @@ EVASION CONTROL: <guard left intact → the closest you got to the forbidden out
 
 **Name the right specialist reviewer** when the lane has one — these are real dispatch targets:
 - **Money / cost-gate fix** (the cost/budget gate accumulator, per-item veto, budget pre-check) → the **`money-gate-reviewer`** agent (hunts gate-source-mismatch + silent-gate-degradation).
-- **Post-commit independent verification** is your operator's job, who dispatches the **`lane-v-verifier`** agent (you do NOT verify your own pair's fix).
+- **Post-commit independent verification** is the reviewer's job, who dispatches the **`lane-v-verifier`** agent (you do NOT verify work you authored).
 - **Domain-specific subsystem or pipeline-design content** → load the matching `<domain-skill>` BEFORE authoring or judging the code (R-SKILL).
 <!-- TODO(<PROJECT>): add project-specific specialist reviewer targets here -->
 

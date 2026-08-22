@@ -81,7 +81,12 @@ Bounds that are enforced rather than advised:
 - `--max-usd` defaults to `1.00` and maps to `claude --max-budget-usd`.
 - `--timeout` defaults to 900s; exceeding it records exit 124 with no result,
   never a partial answer presented as a whole one.
-- Read-only is the default. `--write` widens exactly one flag per side.
+- Read-only is the default. For `claude` and `codex`, `--write` widens exactly
+  one flag — `--permission-mode` and `--sandbox` respectively. The AGY wrapper
+  has no read-only flag and no ceiling of its own, so `--write` cannot widen
+  anything there: `peer_backends.build_agy` refuses `--write` for every
+  advisory role and requires it for `implement`, the one role that writes.
+  Accepting it silently was a caller believing in containment it did not have.
 
 ## Receipts
 
@@ -92,10 +97,14 @@ Bounds that are enforced rather than advised:
       "task": "...", "side": "codex", "role": "reviewer",
       "advisory": false,
       "started": "...", "duration_s": 93.4, "exit_code": 0,
-      "argv_sha256": "...", "prompt_sha256": "...", "result_sha256": "...",
+      "argv_sha256": "...", "argv_binary": "/path/to/codex",
+      "prompt_sha256": "...", "result_sha256": "...",
       "model_reported": "gpt-5-codex", "cost_usd": null,
       "notes": []
     }
+
+The file name is `<seq>-<side>.json` with `seq` zero-padded to four digits and
+taken from one past the highest already present, never from a count.
 
 `notes` is where the mechanism admits what it does not know: an unparseable
 result, a missing model field, a peer's stderr, a timeout. An empty `notes`
@@ -106,9 +115,13 @@ with a `null` model is not possible — absence is always narrated.
 `tests/unit/test_peer.py` covers argv construction for all three backends,
 fail-closed on a missing binary, the closed AGY role set, output parsing for
 both result shapes, receipt sequencing and hashing, timeout handling, and the
-control that a receipt never reports the requested model. Nothing in that
-suite launches a provider: `shutil.which` is monkeypatched and `run()` takes
-an injected runner.
+control that a receipt never reports the requested model.
+`tests/unit/test_peer_review_findings.py` holds the review-driven controls,
+including `test_an_absent_model_is_always_narrated`, which is what keeps the
+"absence is always narrated" sentence above from being prose: a claude payload
+with no model and no `modelUsage` returned an empty `notes` until that test
+existed. Nothing in either suite launches a provider: `shutil.which` is
+monkeypatched and `run()` takes an injected runner.
 
 That means the argv this repository *builds* is verified, and the shape of
 what a real `claude` or `codex` *emits* is parsed defensively but not

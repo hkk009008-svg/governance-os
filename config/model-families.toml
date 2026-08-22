@@ -3,7 +3,7 @@
 # TRUST-GRANTING SCHEMA INPUT: this data feeds
 # codex_protocol_model.models_are_independent, which gates high-risk-control
 # review acceptance. Edits carry high-risk-control review class (the file is
-# an authority surface in scripts/ci_admission_gate.py); the loader fails
+# an authority surface in pipeline/ci_admission_gate.py); the loader fails
 # closed on malformed content; unknown model IDs stay family-None and can
 # never satisfy a different-family claim. Semantics:
 #   - unknown model IDs may perform ordinary local work;

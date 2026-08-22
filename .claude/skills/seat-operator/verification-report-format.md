@@ -1,11 +1,11 @@
 # verification-report — outcome evidence reference
 
 Formal review validation: `pipeline/compact_pair_loop.py`. Only the
-assigned non-author Operator emits GO, NITS, or FAIL. The fixed mailbox writer
+assigned non-author reviewer emits GO, NITS, or FAIL. The fixed mailbox writer
 supplies the H1, timestamp/from envelope, and cursor footer.
 
 ```bash
-coordination/bin/send-event <operator|operator2> <recipient> verification-report "<subject>" <<'EOF'
+pipeline mail send reviewer <recipient> verification-report "<subject>" <<'EOF'
 <body>
 EOF
 ```
@@ -19,7 +19,7 @@ Verification request: coordination/mailbox/sent/<request>.md@<40-lowercase-reque
 Reviewed repository: <absolute canonical Git worktree root; omit only for Pipeline-local review>
 Reviewed head: <40-lowercase-hex>
 Reviewed base: <40-lowercase-hex>
-Reviewer seat: operator | operator2
+Reviewer seat: reviewer
 Reviewer model: <system-visible model; different family from Author model for high-risk-control>
 Risk class: material-behavior | high-risk-control
 <high-risk-control only: add `Abuse Class Assessment: bound-to-request` here>
@@ -80,7 +80,7 @@ while the reviewer runs another is a launcher defect to fix, not a verdict to
 void. Report the identifier the running model reports for itself, so the string
 records which model did the work rather than which one was requested.
 
-The Operator judges the actual committed outcome and applicable hard
+The reviewer judges the actual committed outcome and applicable hard
 boundaries. Request-listed paths, commands, free-form harness names, and
 context labels do not prove compliance or independence.
 

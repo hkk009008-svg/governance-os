@@ -1,21 +1,39 @@
-# Director and Operator Protocol
+# Author and Reviewer Protocol
 
-This is the current universal collaboration boundary. It does not require four
+(Filename kept: `director-operator.md` is cited by committed events, by
+`pipeline/check_doc_claims.py`, and by `coordination/README.md`.)
+
+This is the current universal collaboration boundary. It does not require
 always-on sessions, fixed provider pairings, a plan ceremony, or formal review
 for ordinary local work. The previous expanded rule body is historical
 provenance in Git and is not an additional active policy layer.
 
 ## Roles
 
-- A **Director** owns an explicitly accepted outcome and implementation range.
-- An **Operator** independently reviews a foreign-authored exact range and
+A review has exactly two positions — the identity that wrote the range and the
+identity that did not. `pipeline/protocol_mailbox.py` names them `ROLES =
+("author", "reviewer")`, and `pipeline/mailbox_writer.py` admits only those two
+as the sender of a new event (`NEW_WRITE_SENDERS`).
+
+- An **author** owns an explicitly accepted outcome and implementation range.
+- A **reviewer** independently reviews a foreign-authored exact range and
   reports evidence-backed `GO`, `NITS`, or `FAIL`.
-- A **Coordinator** observes, reconciles, and routes; it owns no implementation
-  lane, verdict, or cursor.
 - A readiness bridge or parent-scoped helper has no live-role authority.
 
-Role assignment controls protocol speech. It never grants push, merge, spend,
-provider launch, cursor, lock, or live-data authority.
+Role assignment controls protocol speech. It never grants merge, spend, peer
+invocation, cursor, lock, or live-data authority.
+
+### Compatibility seat names
+
+`director`, `director2`, `operator`, `operator2`, `coordinator`, and
+`coordinator2` still PARSE, because the committed events that carry them must
+stay readable and renaming those files would be a history rewrite. They are
+identities in history, not positions anyone occupies: no new event may name
+them as sender or recipient. Both live roles are cursorless, and
+`consume-events` accepts only the four pair seats — `director`, `director2`,
+`operator`, `operator2` — so no coordinator cursor is consumable. Where older
+prose below or in committed events says "Director" read *author*, and where it
+says "Operator" read *reviewer*.
 
 ## Live orientation
 
@@ -23,19 +41,22 @@ Before an assigned role makes a mailbox-dependent decision, run one current
 projection:
 
 ```bash
-python pipeline/status.py snapshot <seat>
+bin/pipeline status snapshot <role>
 ```
 
-Use the active development Python documented by the provider continuation.
-Read every committed event body
+`bin/pipeline` clears `GIT_INDEX_FILE` and resolves the repository interpreter
+itself. The equivalent long form is `python pipeline/status.py snapshot <seat>`
+run under the active development Python documented by the provider
+continuation. Read every committed event body
 that can change the lawful next action. Refresh HEAD and scoped worktree state
 before a write or gate decision; Current committed Git is the state source.
 Ordinary conversation, read-only analysis, and
 local mutation do not acquire a mailbox startup gate merely because the
 protocol exists.
 
-Only the assigned receiving role consumes its cursor. Coordinators and helpers
-do not. Use the fixed wrappers; never edit event or cursor files directly.
+Only the assigned receiving role consumes its cursor, and the live roles have
+none to consume. Use the fixed wrappers (`bin/pipeline mail send`,
+`bin/pipeline mail consume`); never edit event or cursor files directly.
 
 ## Outcome and ownership
 
@@ -50,19 +71,19 @@ later work refreshes and narrows. Use native indexes and explicit pathspecs.
 
 ## Implementation and formal review
 
-The Director establishes behavior/root cause, implements the accepted scope,
+The author establishes behavior/root cause, implements the accepted scope,
 runs fresh focused verification, classifies the actual diff, and publishes a
 committed verify-request bound to the exact range only when formal review is
 required.
 
-The Operator starts formal review only from an addressed committed request
+The reviewer starts formal review only from an addressed committed request
 bound to the actual range. It verifies authorship, risk, request/report binding,
 and the actual diff. A summary, branch name, bare commit, or implicit polling is
 not a formal trigger.
 
 Review is proportional:
 
-- `ordinary-local`: focused verification; no Operator verdict required.
+- `ordinary-local`: focused verification; no reviewer verdict required.
 - `material-behavior`: non-author exact-range review.
 - `high-risk-control`: non-author exact-range review by a different model
   family plus explicit abuse-class assessment.

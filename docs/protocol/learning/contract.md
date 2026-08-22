@@ -34,7 +34,9 @@ is itself a contract violation.
   (`pipeline/codex_protocol_model.py:17`, CENTRAL_INVARIANT).
 - **I2 — no learning artifact grants authority.** Doctrine, held by a
   reviewed absence: the fixed writer and compact-pair validators consume no
-  candidate authority field (`pipeline/mailbox_writer.py:165-209`), and any
+  candidate authority field — the only place candidate bodies are read at
+  publication is `_validate_learning_candidate_payload`
+  (`pipeline/mailbox_writer.py:206-244`), and it reads none. Any
   change that adds one reviews as a contract change. No executable check
   asserts the absence — a text classifier over agent prose is exactly what
   guard admission forbids
@@ -57,7 +59,7 @@ is itself a contract violation.
   verify-request (`AGENTS.md` Universal contract item 5 — authority and security work needs
   distinct non-author, different-model actual-diff review) — not by
   candidate machinery, because `_finding_refs` is a shape-only regex
-  (`pipeline/compact_pair_loop.py:250-266`).
+  (`pipeline/compact_pair_loop.py:415-431`).
 - **I6 — trusted mutation needs fail-closed backup.** Doctrine, scoped as a
   non-build constraint: nothing in the learning plane performs archival or
   destructive maintenance. Where such a change is eventually filed
@@ -81,8 +83,10 @@ in semantic memory (I1); `governance-rule` is never auto-promoted (I5).
 Storage classes. The mechanical source for a scope label is tree membership
 at the build commit, NOT `.gitignore` — the ignore file cannot serve as the
 labeler because `.gitignore:51` (`coordination/mailbox/sent/*`) ignores the
-entire mailbox corpus that the fixed writer force-adds past it
-(`pipeline/mailbox_writer.py` `_stage(root, relative, force=True)`):
+entire mailbox corpus that the fixed writer stages past it: publication goes
+through `_stage_event_snapshot` (`pipeline/mailbox_writer.py:542-550`), which
+writes the blob with `git update-index --add --cacheinfo` and so never consults
+an ignore rule at all:
 
 - **Committed shared knowledge** (repository scope): any path tracked in the
   committed tree at the build commit — `docs/**`,
@@ -101,10 +105,14 @@ entire mailbox corpus that the fixed writer force-adds past it
 
 One mailbox event of kind `learning-candidate` (registry kind:
 `coordination/mailbox/kinds.txt`; the writer and `send-event` accept registry
-kinds with zero code change, `coordination/bin/send-event:95`,
-`pipeline/mailbox_writer.py:120-122`), typed at read time by a statement
-parser following the ownership-record pattern
-(`pipeline/protocol_mailbox.py:283-369`). Body fields, one `Label:` line each
+kinds with zero code change, `coordination/bin/send-event:94-102`,
+`pipeline/mailbox_writer.py:120-122`), typed at read time by
+`parse_learning_candidate_statement` in `pipeline/protocol_mailbox.py`,
+following the ownership-record pattern of
+`parse_ownership_proposal_statement` in the same module. (Symbol names, not
+line numbers: that module's line numbers moved twice while this paragraph was
+being corrected, which is how the previous anchors rotted.) Body fields, one
+`Label:` line each
 (`_single_body_field` discipline):
 
     Candidate ID: sha256 of the normalized payload (identity / dedup key)
@@ -115,8 +123,9 @@ parser following the ownership-record pattern
     Target: canonical path the candidate would change, when applicable
     Target base hash: sha256 of the target's canonical bytes AT THE
       DISPOSITION EVENT'S COMMIT (never a live worktree)
-    Source refs: immutable `<sent-path>@<40-hex>` or `sha256:<64-hex>`
-      (`pipeline/protocol_mailbox.py:253-263`)
+    Source refs: immutable `<sent-path>@<40-hex>` or `sha256:<64-hex>`, both
+      admitted by `immutable_reference_is_canonical`
+      (`pipeline/protocol_mailbox.py`)
     Evidence provenance: MEASURED | RELAYED | REMEMBERED | INFERRED | ASSUMED
       (claim_check's ladder imported, not re-declared,
       `pipeline/claim_check.py:59`); ASSUMED means the producer recorded a
@@ -137,8 +146,9 @@ carries no new information: the writer refuses it naming the committed
 original, and Supersedes is the replacement route.
 
 Disposition is a `decision` event carrying `Candidate: path@commit` and
-`Disposition: accepted | declined | expired` (director-side authoring
-convention: `coordination/README.md:318-322`). The refusals — stale target
+`Disposition: accepted | declined | expired` (authoring convention: the
+`learning-candidate` entry under `## Event format` in
+`coordination/README.md`). The refusals — stale target
 base hash, self-approval (disposer == producer), changed-content replay,
 unresolvable source ref, governance-rule-below-floor, duplicate ID — bind at
 writer publication (I4).
@@ -161,7 +171,7 @@ resolves in-tree.
   scope; drift-prone facts are rechecked against source before use.
 - **Sediment** (Hermes `background_review.py:181` "most sessions produce a
   skill update"; tool-loop counter `turn_finalizer.py:634`): evidence
-  triggers only; `test_no_trigger_no_candidate` (lands with Stage 4);
+  triggers only; `tests/unit/test_learning_extract.py::test_no_trigger_no_candidate`;
   acceptance rate watched in Stage 5 metrics.
 - **Foreground bypass** (Hermes guards bind only the background path,
   `skill_manager_tool.py:310`): canonical writes go through review regardless

@@ -53,7 +53,7 @@ filename.
   pair is a declared provider-native adaptation (O2: the five seat-family
   skills). A stub keeps frontmatter plus `disable-model-invocation: true`,
   points at the canonical path, and names only Claude-native deltas
-  (`env -u GIT_INDEX_FILE`, `.venv/bin/python`).
+  (`env -u GIT_INDEX_FILE`, `coordination/bin/pipeline-python`).
 - Do not add a third skill tree, a materializer, or a manifest.
 
 ## Probe before landing
@@ -62,7 +62,7 @@ A new or revised instruction surface is not landed on author-context
 alone. Run the existing reduced-context lane:
 
 ```
-coordination/bin/probe-claim "<one-sentence claim the skill must survive>"
+pipeline probe "<one-sentence claim the skill must survive>"
 ```
 
 That is a real provider launch and stays separately authorized. The
@@ -83,8 +83,8 @@ falsifier for committed stubs.
 
 ## Promotion and revision
 
-1. Draft a `learning-candidate` (`pipeline/learning_extract.py`, scratch
-   only) whose Target is the canonical skill path. Category `procedure`
+1. Draft a `learning-candidate` (`pipeline learn draft --scratch <dir>`,
+   scratch only) whose Target is the canonical skill path. Category `procedure`
    unless the change is a `governance-rule`.
 2. Publish only with publication authority. Disposition and promotion
    are the compact pair at the change's risk class (skill-path edits
@@ -100,7 +100,7 @@ falsifier for committed stubs.
 
 At wrap, append one `skill-use` row if this skill (or the skill just
 authored) was loaded, or skip with a one-line reason. Then consider a
-checkpoint `Lessons:` line (`pipeline/draft_checkpoint.py`);
+checkpoint `Lessons:` line (`pipeline checkpoint`);
 `none-considered` remains valid.
 
 ## Rule maintenance

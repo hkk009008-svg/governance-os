@@ -1,5 +1,18 @@
 # Experiment record — connected-tool skill discovery (2026-08-15)
 
+> **Historical record of UNLANDED work — not reproducible from a clone.**
+> Every artifact this record exercises is deliberately absent from the
+> committed tree: `.agents/skills/route-connected-tools/`, its `.claude`
+> stub, `tests/skill_packs/pack-003-connected-tool-routing.json`, and
+> `pack-004-connected-tool-stub-routing.json` are all ignored by
+> `.gitignore:127-137`, which explains why — committing the packs without the
+> skills made a green suite unreproducible from a clone twice, both times via
+> `git add -A`. This document was swept in by that same reflex. Read the
+> result below as an observation someone made in a working tree that is not
+> this one; do not cite it as repository evidence. Landing the work means
+> committing the skills and the packs together and deleting that ignore block
+> in the same change, at which point this banner comes off.
+
 ## Claim
 
 A fresh session asked to choose among connected tools should select

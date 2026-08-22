@@ -66,12 +66,10 @@ Each verb accepts its own `--help`. `pipeline <verb> --help` is the answer to
    executor, target, effect, and scope. Structural protocol data never grants
    it. Transport ambiguity is reported, never converted into an empty queue.
    **Push is deliberately not on that list.** It was, in five documents, while
-   the harness on this machine allowed `git push` without prompting — a control
-   asserted in prose and absent from the mechanism. This repository's own
-   doctrine is that a document is not a gate, so the claim was dropped rather
-   than left standing as decoration. Push is an ordinary operation here.
-   Restoring the obligation means restoring a permission rule that enforces
-   it, not a sentence that describes it.
+   the harness allowed `git push` without prompting — a control asserted in
+   prose and absent from the mechanism. A document is not a gate, so the claim
+   was dropped rather than kept as decoration. Restoring the obligation means
+   restoring a permission rule, not a sentence.
 7. At a long-horizon checkpoint (transfer, interruption, compaction, wrap),
    preserve: objective, accepted scope, owner, policy revision, base/head,
    evidence refs, verification status, unresolved blockers, and the next

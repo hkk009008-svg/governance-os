@@ -1,6 +1,6 @@
 ---
 name: isolate-a-variable
-description: Find which difference actually causes a works-here-fails-there failure, before spending anything on a fix — enumerate every difference, calibrate the reads against a known-positive, and measure the matrix instead of patching the likeliest suspect. Use when a mechanism works in one setup and fails in another, when a metric reads zero, or when a documented precedent makes one suspect obvious.
+description: Decide what to measure when a mechanism works in setup X and fails in setup Y — a trigger and threshold for batching candidate differences into one run instead of serializing guesses, the reads that make a matrix readable, and why a zero is a claim needing its own known-positive. Use on works-here-fails-there failures, on any measurement that reads zero or unchanged, and when a documented precedent makes one suspect obvious.
 disable-model-invocation: true
 ---
 
@@ -8,12 +8,12 @@ disable-model-invocation: true
 
 The canonical body of this skill is `.agents/skills/isolate-a-variable/SKILL.md`
 (repo-relative). Read that file now and follow it exactly as if its content
-were written here.
+were written here. It carries the threshold that decides between one batched
+matrix and one cheap direct test; do not assume either answer before reading
+it.
 
 Claude-native deltas when executing it: prefix git with `env -u GIT_INDEX_FILE`,
-run Python and pytest as `coordination/bin/pipeline-python` after a preceding
-`unset GIT_INDEX_FILE` line (not behind an `env -u` prefix, which Claude's Bash
-tool refuses once the command takes options), and build the matrix as ONE run
-of an instrument that writes a citable `logs/` or report artifact — a matrix
-assembled by eye across several sessions is the thing this skill exists to
-replace.
+and run Python and pytest as `coordination/bin/pipeline-python` after a
+preceding `unset GIT_INDEX_FILE` line — not behind an `env -u` prefix, which
+Claude's Bash tool refuses once the command takes options. `bin/pipeline`
+needs neither prefix; it clears the variable itself.

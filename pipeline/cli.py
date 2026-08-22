@@ -24,6 +24,7 @@ import importlib
 import os
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 _ROOT = Path(__file__).resolve().parent.parent
 for _path in (str(_ROOT), str(_ROOT / "pipeline")):
@@ -32,7 +33,10 @@ for _path in (str(_ROOT), str(_ROOT / "pipeline")):
 
 # (module, entrypoint, one-line help). Entrypoint is the callable name so a
 # module that never adopted `main` (compact_pair_loop) still routes here.
-_MODULE_COMMANDS: dict[tuple[str, ...], tuple[str, str, str]] = {
+# A `None` leaf means the MODULE owns every subcommand under that verb, so the
+# key type admits it. Declaring tuple[str, ...] made that a type error the
+# runtime happily ignored.
+_MODULE_COMMANDS: dict[tuple[str | None, ...], tuple[str, str, str]] = {
     ("status",): ("status", "main", "compact current-state snapshot"),
     ("check",): ("governance_verify_all", "main", "full governance aggregate (the completion gate)"),
     ("check", "coordination"): ("check_coordination", "main", "durable coordination state"),
@@ -58,7 +62,7 @@ _MODULE_COMMANDS: dict[tuple[str, ...], tuple[str, str, str]] = {
 
 # Commands whose implementation is a hardened shell front door. Routing them
 # through here keeps one surface without re-implementing the writer fence.
-_SHELL_COMMANDS: dict[tuple[str, ...], tuple[str, str]] = {
+_SHELL_COMMANDS: dict[tuple[str | None, ...], tuple[str, str]] = {
     ("mail", "send"): ("coordination/bin/send-event", "publish one durable event (body on stdin)"),
     ("mail", "consume"): ("coordination/bin/consume-events", "advance a legacy seat cursor"),
     ("lock", "claim"): ("coordination/bin/claim-lock", "claim a shared lock"),
@@ -80,11 +84,11 @@ _ARGLESS = {
 def _usage() -> str:
     lines = ["pipeline — governance kernel for the Claude and Codex CLIs", "", "Commands:"]
     rows: list[tuple[str, str]] = []
-    for key, (_module, _entry, blurb) in _MODULE_COMMANDS.items():
+    for key, (_, _, blurb) in _MODULE_COMMANDS.items():
         name = " ".join(part for part in key if part)
         rows.append((name + (" <sub>" if key[-1] is None else ""), blurb))
-    for key, (_path, blurb) in _SHELL_COMMANDS.items():
-        rows.append((" ".join(key), blurb))
+    for key, (_, blurb) in _SHELL_COMMANDS.items():
+        rows.append((" ".join(part for part in key if part), blurb))
     width = max(len(name) for name, _ in rows)
     for name, blurb in sorted(rows):
         lines.append(f"  {name:<{width}}  {blurb}")
@@ -97,21 +101,40 @@ def _usage() -> str:
     return "\n".join(lines)
 
 
-def _resolve(argv: list[str]):
+class Resolved(NamedTuple):
+    """One dispatch decision. Returning four bare Optionals made every member
+    unnarrowable at the call site, so a real type error hid among the noise."""
+
+    kind: str            # "module" | "shell"
+    module: str          # module name, or repo-relative script path
+    entry: str           # callable name for a module; "" for a shell target
+    blurb: str
+    rest: list[str]
+    name: str            # the verb as the user typed it, for messages
+
+
+def _resolve(argv: list[str]) -> Resolved | None:
     """Longest-prefix match, so `check coordination` beats bare `check`."""
+
+    def module(key, rest: list[str], name: tuple) -> Resolved:
+        target, entry, blurb = _MODULE_COMMANDS[key]
+        return Resolved("module", target, entry, blurb, rest,
+                        " ".join(part for part in name if part))
 
     for width in (2, 1):
         key = tuple(argv[:width])
         if key in _SHELL_COMMANDS:
-            return "shell", _SHELL_COMMANDS[key], argv[width:], key
+            path, blurb = _SHELL_COMMANDS[key]
+            return Resolved("shell", path, "", blurb, argv[width:],
+                            " ".join(part for part in key if part))
         if key in _MODULE_COMMANDS:
-            return "module", _MODULE_COMMANDS[key], argv[width:], key
+            return module(key, argv[width:], key)
         # A group declared with a None leaf owns every subcommand under it.
         if width == 2 and (key[0], None) in _MODULE_COMMANDS:
-            return "module", _MODULE_COMMANDS[(key[0], None)], argv[1:], (key[0],)
+            return module((key[0], None), argv[1:], (key[0],))
     if len(argv) == 1 and (argv[0], None) in _MODULE_COMMANDS:
-        return "module", _MODULE_COMMANDS[(argv[0], None)], [], (argv[0],)
-    return None, None, None, None
+        return module((argv[0], None), [], (argv[0],))
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -119,7 +142,17 @@ def main(argv: list[str] | None = None) -> int:
     if not argv or argv[0] in {"-h", "--help", "help"}:
         print(_usage())
         return 0
-    groups = {key[0] for key in (*_MODULE_COMMANDS, *_SHELL_COMMANDS) if len(key) == 2}
+    # Groups whose subcommands this dispatcher enumerates. A key of
+    # ("peer", None) declares that the MODULE owns every subcommand under it,
+    # so `peer` must not be treated as an enumerated group -- doing so made
+    # `pipeline peer ask` unreachable, refused against an empty expected-set.
+    # Five independent readers hit that within minutes of it landing.
+    delegated = {key[0] for key in _MODULE_COMMANDS if len(key) == 2 and key[1] is None}
+    groups = {
+        key[0]
+        for key in (*_MODULE_COMMANDS, *_SHELL_COMMANDS)
+        if len(key) == 2 and key[1] is not None
+    } - delegated
     if len(argv) >= 2 and argv[0] in groups and not argv[1].startswith("-"):
         known = tuple(argv[:2])
         if known not in _MODULE_COMMANDS and known not in _SHELL_COMMANDS:
@@ -133,32 +166,29 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-    kind, spec, rest, key = _resolve(argv)
-    if kind is None:
+    resolved = _resolve(argv)
+    if resolved is None:
         print(f"pipeline: unknown command {' '.join(argv[:2])!r}\n", file=sys.stderr)
         print(_usage(), file=sys.stderr)
         return 2
-    name = " ".join(key)
-    if key in _ARGLESS and rest and rest[0] in {"-h", "--help"}:
-        blurb = spec[2] if kind == "module" else spec[1]
-        print(f"pipeline {name} — {blurb}")
+    name = resolved.name
+    if tuple(name.split()) in _ARGLESS and resolved.rest and resolved.rest[0] in {"-h", "--help"}:
+        print(f"pipeline {name} — {resolved.blurb}")
         print("Takes no arguments; run it to perform the check.")
         return 0
-    if kind == "shell":
-        relative, _blurb = spec
-        target = _ROOT / relative
+    if resolved.kind == "shell":
+        target = _ROOT / resolved.module
         if not os.access(target, os.X_OK):
-            print(f"pipeline {name}: {relative} is not executable", file=sys.stderr)
+            print(f"pipeline {name}: {resolved.module} is not executable", file=sys.stderr)
             return 4
-        os.execv(str(target), [str(target), *rest])
-    module_name, entry, _blurb = spec
+        os.execv(str(target), [str(target), *resolved.rest])
     try:
-        module = importlib.import_module(module_name)
+        module = importlib.import_module(resolved.module)
     except ModuleNotFoundError as exc:
         print(f"pipeline {name}: {exc}", file=sys.stderr)
         return 4
-    sys.argv = [f"pipeline {name}", *rest]
-    return int(getattr(module, entry)() or 0)
+    sys.argv = [f"pipeline {name}", *resolved.rest]
+    return int(getattr(module, resolved.entry)() or 0)
 
 
 if __name__ == "__main__":

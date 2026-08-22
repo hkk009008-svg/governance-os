@@ -9,7 +9,7 @@ description: "Author a strict-xfail regression pin for a confirmed-but-deferred 
 R-VERIFY-TIER(B): an agent-confirmed defect you are NOT fixing this session
 must ship a `pytest.mark.xfail(strict=True, reason=...)` pin in the same
 session — so CI, not the next session's agents, re-verifies it. (Or label it
-`test-infeasible` with a one-line reason in the handoff.)
+`test-infeasible` with a one-line reason in the task evidence.)
 
 Codex has no skill-level equivalent of Claude's `disable-model-invocation`;
 use this as procedural guidance in the active session, not as a delegation
@@ -39,17 +39,19 @@ passing as xfail forever. Match the assertion to the fix's contract:
 The cross-cutting lock for a shared file is one per **module across all waves**
 (e.g. `W2-<entrypoint>.py.lock` — the `W2` is just the column name; it does NOT
 mean "wave 2 only"). Claim / release by module, not by wave. See
-`coordination/bin/claim-lock` and `coordination/bin/release-lock`. For a
-same-commit-as-GO release, `git rm` the lock manually in the GO commit
-(`release-lock` makes a SEPARATE unlock commit).
+`pipeline lock claim <wave> <module> <seat> <defect-id>` and
+`pipeline lock release <wave> <module> <seat>` — the tool's `<seat>` slot takes
+the claiming role, `author` or `reviewer`. For a same-commit-as-GO release,
+`git rm` the lock manually in the GO commit (`pipeline lock release` makes a
+SEPARATE unlock commit).
 
 ## Trap 3 — prove the pin is non-vacuous
 A pin that never actually exercises the defect is invisible-green theater.
 Before you trust it:
-- Run `python -m pytest <file> --runxfail -q` from the active development
-  environment and selected native worktree, and confirm it goes **RED**
-  against the current (unfixed) code — that proves the assertion really
-  catches the defect.
+- Run `coordination/bin/pipeline-python -m pytest <file> --runxfail -q` from
+  the active development environment and selected native worktree, and confirm
+  it goes **RED** against the current (unfixed) code — that proves the
+  assertion really catches the defect.
 - Confirm the failure reason is the defect, not a setup error / import skip /
   `importorskip` swallow.
 - Confirm it would flip to XPASS once the fix lands (the assertion is the
@@ -70,7 +72,7 @@ Before you trust it:
 ## When a pin is infeasible
 If the defect cannot be expressed as a runtime test (needs a live GPU compute pod / paid
 external API / non-deterministic output), label it `test-infeasible` with a one-line
-reason in the handoff instead of forcing a vacuous pin.
+reason in the task evidence instead of forcing a vacuous pin.
 ## Rule maintenance
 Observed failure: deferred defects shipping without a strict-xfail pin, or
 pins whose assertion never flips (vacuous xfail).

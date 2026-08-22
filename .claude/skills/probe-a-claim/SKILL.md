@@ -14,6 +14,6 @@ Claude-native deltas when executing it: prefix git with `env -u GIT_INDEX_FILE`,
 run Python and pytest as `coordination/bin/pipeline-python` after a preceding
 `unset GIT_INDEX_FILE` line (not behind an `env -u` prefix, which Claude's Bash
 tool refuses once the command takes options), and when the
-`coordination/bin/probe-claim` cross-family lane is unavailable, the
+`pipeline probe` cross-family lane is unavailable, the
 same-family fallback is the `amnesiac-prober` agent given ONLY the claim
 sentence (weaker by design; label it as such).

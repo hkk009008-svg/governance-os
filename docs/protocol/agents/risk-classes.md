@@ -4,7 +4,7 @@ The executable profiles (review requirements per class) live in
 `pipeline/codex_protocol_model.py` `RISK_BASED_REVIEW_PROFILES`; this document
 owns the membership question the profiles deliberately do not answer: which
 changes belong to which class. The author declares the class on the
-verify-request and the assigned Operator's risk-class judgment is the
+verify-request and the assigned reviewer's risk-class judgment is the
 governance floor (ADR-067 I5). When in doubt between two classes, take the
 higher one.
 
@@ -43,10 +43,14 @@ review plus an explicit abuse-class assessment.
 
 ## external-effect
 
-Push, merge, lock, cursor consumption, provider launch, paid spend, and
-live-data mutation. Not a review depth: live human authorization for the
-exact executor, target, effect, and scope — regardless of model capability
-or any green gate.
+Merge, lock, cursor consumption, peer invocation, paid spend, and live-data
+mutation — the list in `AGENTS.md` item 6. Not a review depth: live human
+authorization for the exact executor, target, effect, and scope, regardless of
+model capability or any green gate.
+
+Push is deliberately absent. It sat in this list while nothing in the harness
+blocked `git push`, which is a control asserted in prose and missing from the
+mechanism; it was dropped rather than kept. Do not re-add it.
 
 The path-prefix list in `pipeline/ci_admission_gate.py` (`AUTHORITY_SURFACES`)
 is the conservative executable approximation of the high-risk boundary at the

@@ -113,10 +113,15 @@ def test_pr_template_matches_current_governance_repo_surfaces():
 def test_pipeline_docs_do_not_launch_live_seats_from_content():
     text = _read("coordination/README.md")
 
+    # The property is that the root is DERIVED and then entered, never typed as
+    # a literal path that could point at another checkout. Two spellings of the
+    # derivation satisfy it; pinning one exact string rejected the stricter
+    # form (`env -u GIT_INDEX_FILE git rev-parse ...`) for being better.
     assert "/Users/" not in text
     assert "absolute/path/to/Content" not in text
-    assert 'PIPELINE_ROOT="$(git rev-parse --show-toplevel)"' in text
-    assert 'cd "$PIPELINE_ROOT"' in text
+    assert 'rev-parse --show-toplevel)"' in text, "the root must be derived, not typed"
+    assert 'PIPELINE_ROOT="$(' in text
+    assert '"$PIPELINE_ROOT"' in text, "the derived root must actually be used"
 
 
 def test_incident_log_exists_for_emergency_protocol():

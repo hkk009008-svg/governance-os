@@ -81,15 +81,16 @@ must not grow a write path to manufacture its own inputs.
   drawing a conclusion.
 - Severity is not modeled. A control that fires rarely can still carry its
   cost many times over on one prevented irreversible effect; precision and
-  cost counts from this report must not vote on irreversible-effect gates
-  (push, merge, spend, live-data mutation).
+  cost counts from this report must not vote on separately authorized
+  effects (merge, lock, cursor consumption, peer invocation, paid spend,
+  live-data mutation).
 
 ## Route into the learning plane
 
 A session proposing to add or retire ceremony cites the slope report in a
 `learning-candidate`: `Evidence provenance: MEASURED`, with the producing
-command (for example `python pipeline/slope_metrics.py --windows 6
---window-days 14 --json` at the named commit) in the evidence cell.
+command (for example `bin/pipeline metrics --windows 6 --window-days 14
+--json` at the named commit) in the evidence cell.
 Promotion of any resulting rule change stays a separately reviewed compact
 pair (contract I3); the report is evidence for that decision, not authority
 to make it.

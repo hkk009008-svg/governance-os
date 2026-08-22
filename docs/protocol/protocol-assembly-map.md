@@ -26,10 +26,11 @@ flowchart TD
 | Canonical reusable skills | `.agents/skills/` | Provider copies are discovery/adaptation layers. |
 | Identity, ownership, risk, effects | `pipeline/codex_protocol_model.py` | Executable policy seam. |
 | Formal exact-range review | `pipeline/compact_pair_loop.py` | Request/report grammar and binding. |
-| Event/cursor mutation | `pipeline/mailbox_writer.py`, `coordination/bin/send-event`, `consume-events` | Validated serialized write sites; commit/effect remains separate. |
-| Current orientation | `pipeline/status.py snapshot` | Projection only, not authority. |
-| Mailbox events | `coordination/mailbox/sent/` | Current committed protocol state until signed bus is coherently live. |
-| Mailbox cursors | `coordination/mailbox/seen/` | Compatibility read state; coordinators are cursorless. |
+| Event/cursor mutation | `pipeline/mailbox_writer.py`, fronted by `bin/pipeline mail send` / `mail consume` (`coordination/bin/send-event`, `consume-events`) | Validated serialized write sites; commit/effect remains separate. |
+| Current orientation | `bin/pipeline status snapshot` | Projection only, not authority. |
+| Mailbox events | `coordination/mailbox/sent/` | The only coordination transport. New events carry `author` or `reviewer`; the six seat names parse read-only. |
+| Mailbox cursors | `coordination/mailbox/seen/` | Compatibility read state for the four legacy pair seats; both live roles are cursorless. |
+| Reaching the other CLI | `docs/protocol/peer.md`, `pipeline/peer.py`, `coordination/peer/` | One-shot child process plus a receipt. Evidence, not attestation; never a verdict. |
 | Shared-file locks | `coordination/locks/`, `coordination/bin/{claim-lock,release-lock}` | Temporary, holder-bound, separately authorized remote effect. |
 | Learning lifecycle | `docs/protocol/learning/contract.md`, `pipeline/learning_*` | Advisory projection/candidates; governed promotion. |
 | Product target binding | `pipeline/target_binding.py`, provider target bridge | Pipeline owns governance; target repo owns product truth. |
@@ -46,6 +47,7 @@ Reusable behavior?          -> .agents/skills/
 Identity/risk/effect rule?  -> pipeline/codex_protocol_model.py
 Formal review grammar?      -> pipeline/compact_pair_loop.py
 Event/cursor write?         -> pipeline/mailbox_writer.py + fixed wrapper
+Reach the other CLI?        -> pipeline peer ask (docs/protocol/peer.md)
 Current protocol event?     -> coordination/mailbox/sent/
 Target-local product fact?  -> target repository
 Executable proof?           -> pipeline/ and tests/

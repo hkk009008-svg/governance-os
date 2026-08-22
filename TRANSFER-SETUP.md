@@ -1,9 +1,11 @@
 # Transfer setup — historical generation snapshot
 
 > This setup recipe describes the original transfer bundle and is not a current
-> installation path. It may name retired hooks, counts, and startup rituals.
-> Use `AGENTS.md`, `ARCHITECTURE.md`, and `docs/REPOSITORY-MANUAL.md` for the
-> current repository.
+> installation path. It is kept as provenance; do not follow it. Several steps
+> below name files and modules this repository no longer contains, and they are
+> marked inline. Use `AGENTS.md`, `ARCHITECTURE.md`, and
+> `docs/REPOSITORY-MANUAL.md` for the current repository, and `bin/pipeline`
+> for every command.
 
 Ordered steps to adopt this bundle. See [TRANSFER-MANIFEST.md](TRANSFER-MANIFEST.md)
 for what each piece is. The bundle already **boots green** (`governance_verify_all.py` → exit 0)
@@ -36,6 +38,8 @@ by hand — in particular make sure the merged `.gitignore` still ignores
 The layout already mirrors a repo root: `.claude/`, `.codex/`, `.agents/`,
 `.github/`, `coordination/`, `docs/`, `pipeline/`, `threeway/`, and the root
 `CLAUDE.md` / `AGENTS.md` / `ARCHITECTURE.md` / … land where the doctrine expects them.
+*(Historical: the signed-bus `threeway/` tree is gone —
+`git ls-files threeway | wc -l` → 0. `scripts/` was later renamed `pipeline/`.)*
 
 ## 2. Install the governance deps (Python ≥ 3.11)
 
@@ -45,14 +49,21 @@ python3 -m venv .venv    # any Python >= 3.11 (floor per DECISIONS.md ADR-004)
 # then append your own project deps to requirements / pyproject
 ```
 
+*(Historical: `requirements-governance.txt` no longer exists — the current
+dependency file is `requirements-dev.txt`, and the venv lives in the primary
+checkout only.)*
+
 ## 3. Run the smoke to confirm it boots
 
 ```bash
 .venv/bin/python pipeline/governance_verify_all.py     # expect: ... OK  (exit 0)
 ```
 
-This is also the SessionStart hook — it runs automatically at the top of every
-Claude/Codex session.
+*(Current form: `bin/pipeline check`. There is no SessionStart hook and no
+other repository lifecycle hook — an earlier revision of this step claimed the
+smoke ran automatically at the top of every session, which the current contract
+forbids: see `.claude/settings.json`, "Repository lifecycle hooks are absent by
+design", and `ARCHITECTURE.md` section 5.)*
 
 ## 4. Replace the global placeholders
 
@@ -75,7 +86,7 @@ These are the places that need *your code/doctrine*, not just a name swap:
 | `pipeline/wave_gate_check.py` | your product-oracle metric field names (two metric blocks) |
 | `.github/workflows/ci.yml` | any model-weight / asset cache steps + your pytest/test job |
 | `CLAUDE.md` · `AGENTS.md` (R-SKILL) | your domain-skill load triggers |
-| `docs/protocol/{claude,agents}/core.md` | your domain subsystem's caching behaviour example |
+| `docs/protocol/{claude,agents}/core.md` | your domain subsystem's caching behaviour example *(historical: only `docs/protocol/agents/core.md` survives; the Claude-side copy is gone)* |
 | `.claude/skills/seat-director/{SKILL,r-brief-template}.md` | your domain-specialist reviewer targets |
 | `.claude/agents/money-gate-reviewer.md` | the phases your cost/budget precheck could miss (delete this agent if you have no budget gate) |
 | `coordination/workflows/discovery-bughunt.js` | your high-risk subsystem keys/probes |
@@ -93,8 +104,12 @@ ship as **empty-but-structured skeletons** — fill them as the new program take
 
 ## 7. Generate the signing trust-root (if you use the threeway signed bus)
 
-The `threeway/` control plane verifies every load-bearing fact against Ed25519 keys.
-The bundle ships **only public-key layout docs** — generate fresh keys for your deployment:
+**Historical only — this step is unrunnable.** The dormant signed bus was
+deleted: `threeway/`, `docs/protocol/threeway/`, and `coordination/threeway/`
+carry no tracked files, and `python -m threeway.keys_bootstrap` exits 1 with
+"No module named threeway.keys_bootstrap". The mailbox and lock primitives in
+`coordination/bin/` were always independent of it and still work. The original
+step read:
 
 ```bash
 python -m threeway.keys_bootstrap                  # writes per-seat keypairs
@@ -102,15 +117,15 @@ python -m threeway.keys_bootstrap                  # writes per-seat keypairs
 # commit the regenerated <seat>.pub files to coordination/threeway/keys/
 ```
 
-If you don't need cryptographic merge-gating yet, you can defer this — the mailbox +
-lock primitives in `coordination/bin/` work without it.
-
 ## 8. Adjust the seat roster (optional)
 
-The default receiving roster has four pair roles plus two cursorless
+The default receiving roster has four pair seats plus two cursorless
 coordinator aliases. To change it, edit `SEATS` / `RECEIVING_SEATS` in
-`pipeline/protocol_mailbox.py`. Create read cursors only for roles that can
-lawfully consume events; do not create coordinator cursors.
+`pipeline/protocol_mailbox.py`. Create read cursors only for identities that
+can lawfully consume events. *(Current: `protocol_mailbox.ROLES` is
+`('author', 'reviewer')` and only those two may send or receive a new event;
+the six seat names above remain readable in committed history and are
+cursorless or retired.)*
 
 ## 9. Configure concurrent runtimes
 
@@ -125,9 +140,9 @@ authority.
 ## Acceptance check
 
 ```bash
-python pipeline/governance_verify_all.py                  # OK, exit 0
-python pipeline/check_coordination.py        # no FATALs
-python pipeline/check_placeholders.py        # exit 0 when all skeletons are filled
+bin/pipeline check                # OK, exit 0  (pipeline/governance_verify_all.py)
+bin/pipeline check coordination   # no FATALs
+bin/pipeline check placeholders   # exit 0 when all skeletons are filled
 ```
 
 **Non-empty target: re-baseline the allowlist first.** The scanner walks every
@@ -135,11 +150,11 @@ tracked file, so a merged repo's own pre-existing files can trip it when they
 happen to contain a literal token (`<PROJECT>`, `<ref>`, `<fill-in>`, …). On the
 first run in a non-empty target, add any such pre-existing paths to
 `pipeline/placeholder_allowlist.txt` — they are your baseline, not unfilled
-skeletons — then re-run `pipeline/check_placeholders.py` until the scan is clean.
+skeletons — then re-run `pipeline check placeholders` until the scan is clean.
 
 **Adoption workflow for placeholders:** Filling a skeleton means removing its path
-from `pipeline/placeholder_allowlist.txt`. Run `pipeline/check_placeholders.py` after
-each removal to confirm the file no longer contains unresolved tokens. When the
+from `pipeline/placeholder_allowlist.txt`. Run `pipeline check placeholders`
+after each removal to confirm the file no longer contains unresolved tokens. When the
 allowlist is empty and the scan is clean, the repo is **fully bound** — no skeleton
 placeholders remain. (The gate is enforced by CI; a non-empty allowlist with clean
 scan simply means the corresponding skeletons are still unfilled.)

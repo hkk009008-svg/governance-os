@@ -47,11 +47,11 @@ Explore exists to learn quickly without risking canonical state.
   not a retroactive rewrite.
 - Keep canonical assets, accepted evidence, live data, and external effects
   outside the sandbox.
-- Do not instantiate seats merely because an experiment exists. Use a handoff
-  only for a real ownership transfer.
+- Do not claim a live role merely because an experiment exists. Publish an
+  ownership event only for a real ownership transfer.
 - At a campaign phase change, interruption, or before context compaction,
-  publish one checkpoint `findings` event (`pipeline/draft_checkpoint.py`
-  drafts it); resume from one snapshot plus the newest campaign checkpoint.
+  publish one checkpoint `findings` event (`bin/pipeline checkpoint` drafts
+  it); resume from one snapshot plus the newest campaign checkpoint.
 
 An Explore result is provisional. It may guide the next attempt but cannot be
 used as an accepted scientific or production claim.
@@ -94,8 +94,8 @@ cleanup.
   conclusion.
 - In `promote`, retain the full claim evidence and the independent review.
 
-`coordination/bin/probe-claim` is a real provider launch. Provider launch
-remains separately authorized in every mode.
+`bin/pipeline probe` (the `coordination/bin/probe-claim` front door) is a real
+provider launch. Provider launch remains separately authorized in every mode.
 
 ## Rule maintenance
 

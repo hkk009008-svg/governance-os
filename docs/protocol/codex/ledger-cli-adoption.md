@@ -14,9 +14,13 @@ Use one compact Pipeline snapshot, then the ordinary target guard:
 ```bash
 PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
 cd "$PIPELINE_ROOT"
-coordination/bin/pipeline-python pipeline/status.py snapshot <seat>
+bin/pipeline status snapshot <role>
 coordination/bin/pipeline-python pipeline/ledger_start_guard.py --seat <seat> --wave 2
 ```
+
+`<seat>` and `<role>` are the same thing and the guard accepts exactly two
+values, `author` and `reviewer` (`ledger_start_guard.py --help`). The six
+pre-collapse seat names are rejected there.
 
 The guard resolves the registered target and current committed route, validates
 that startup began in Pipeline, and prints only the route-bound next evidence.
@@ -80,9 +84,10 @@ generic start command will safely resume only missing services.
 
 Starting, stopping, acquiring, reconfiguring, or cleaning services needs exact
 authorization for the executor, target, action, and restoration scope. The
-same separation applies to push, merge, cursor consumption, locks, paid spend,
-provider launch, and live-data mutation. A route or successful guard does not
-authorize any of them.
+same separation applies to merge, cursor consumption, locks, peer invocation,
+paid spend, and live-data mutation — the list in `AGENTS.md` item 6, which
+deliberately excludes push. A route or successful guard does not authorize any
+of them.
 
 ## Transfer and verification
 
@@ -94,9 +99,9 @@ using the smallest focused tests and one completion gate:
 
 ```bash
 coordination/bin/pipeline-python -m pytest tests/unit/test_codex_ledger_bridge.py -q
-coordination/bin/pipeline-python pipeline/governance_verify_all.py
+bin/pipeline check
 ```
 
 Use evidence-ledger's own verification commands for product changes. Formal
-review follows the risk profile in `AGENTS.md`; a green guard or smoke run is
-evidence, not an Operator verdict.
+review follows the risk profile in `AGENTS.md`; a green guard or gate run is
+evidence, not a reviewer verdict.

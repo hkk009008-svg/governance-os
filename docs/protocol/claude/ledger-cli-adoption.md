@@ -7,8 +7,11 @@ kernel. It is the Claude-native analog of
 sessions and emits `.agents/...` paths — do not follow that copy from a
 Claude seat).
 
-Pipeline remains the four-seat governance kernel. Evidence-ledger remains the
-product repo and owns product-local truth.
+Pipeline remains the governance kernel, with two live roles — `author` and
+`reviewer`. Evidence-ledger remains the product repo and owns product-local
+truth. (The Codex copy of this bridge still says "four-seat"; that wording is
+frozen by `tests/unit/test_codex_ledger_bridge.py` and has to be corrected
+there first.)
 
 Use this bridge only when the user or parent prompt routes work to that target.
 
@@ -21,7 +24,7 @@ Ledger-routed Claude seats start from the current Pipeline checkout, then run
 unset GIT_INDEX_FILE
 PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
 cd "$PIPELINE_ROOT"
-coordination/bin/pipeline-python pipeline/ledger_start_guard.py --seat <seat> --wave 2
+coordination/bin/pipeline-python pipeline/ledger_start_guard.py --seat <author|reviewer> --wave 2
 ```
 
 before entering evidence-ledger. Claude seats read this bridge, not the Codex
@@ -37,13 +40,15 @@ a command grows an option, and this bridge's entire audience is Claude
 sessions. The rule is uniform rather than conditional on whether a given
 command currently takes options, because that condition changes without anyone
 noticing. Ordinary Git keeps the `env -u GIT_INDEX_FILE` prefix, which is
-verified to run.
+verified to run. `bin/pipeline` needs neither form: it unsets the variable
+itself before dispatching.
 
 ## Authority Boundary
 
 - Orientation mode: may inspect and report. It must not mutate evidence-ledger.
-- Named live seat: may work on evidence-ledger only inside the explicit route.
-- Coordinator: may reconcile ledger work from durable evidence but must not
+- Named live role (`author` or `reviewer`): may work on evidence-ledger only
+  inside the explicit accepted scope.
+- Reconciliation from durable evidence is read-and-report work; it must not
   author behavior-changing product fixes.
 - Subagent: receives only the parent prompt, allowed paths, acceptance
   evidence, forbidden side effects, and git hygiene. It does not inherit
@@ -54,8 +59,7 @@ verified to run.
 Orientation or named role:
 
 ```bash
-unset GIT_INDEX_FILE
-coordination/bin/pipeline-python pipeline/status.py snapshot <seat>
+bin/pipeline status snapshot <role>
 ```
 
 Read relevant Pipeline mailbox bodies before protocol decisions. Counts alone
@@ -69,8 +73,7 @@ different working directories. Do not try to fuse them into one block.
 Phase 1, in the Pipeline checkout — resolve and validate the target path:
 
 ```bash
-unset GIT_INDEX_FILE
-coordination/bin/pipeline-python pipeline/target_binding.py --target evidence-ledger --print-path
+bin/pipeline target --target evidence-ledger --print-path
 ```
 
 Phase 2, in a separate Claude task rooted at the path Phase 1 printed — read
@@ -121,8 +124,8 @@ Pipeline HEAD: paste output from `env -u GIT_INDEX_FILE git log -1 --oneline`, r
 Evidence-ledger HEAD: paste output from `git log -1 --oneline`, run in the target-rooted task
 Pipeline status: paste output from `env -u GIT_INDEX_FILE git status --short`, run in Pipeline, or write `clean`
 Evidence-ledger status: paste output from `git status --short`, run in the target-rooted task, or write `clean`
-Seat: write one of `director`, `director2`, `operator`, `operator2`, or `coordinator`
-Authority used: write one of `orientation report`, `live-seat route`, `operator verification`, or `coordinator reconciliation`
+Role: write `author` or `reviewer`
+Authority used: write one of `orientation report`, `author implementation`, or `reviewer verification`
 Evidence run: paste commands and results
 Side effects not taken: push, lock, cursor consume, mailbox event, spend
 Exact next trigger: paste the next prompt or seat event
@@ -139,7 +142,7 @@ Use current Pipeline protocol checks:
 ```bash
 unset GIT_INDEX_FILE
 coordination/bin/pipeline-python -m pytest tests -q
-coordination/bin/pipeline-python pipeline/governance_verify_all.py
+bin/pipeline check
 ```
 
 Use evidence-ledger's own verification commands for product changes after

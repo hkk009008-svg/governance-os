@@ -22,11 +22,14 @@ The canonical executable seams are:
 - [`pipeline/compact_pair_loop.py`](../../../pipeline/compact_pair_loop.py): formal
   request/report parsing and exact-range review binding.
 - [`pipeline/mailbox_writer.py`](../../../pipeline/mailbox_writer.py), reached
-  through [`coordination/bin/send-event`](../../../coordination/bin/send-event)
+  through `bin/pipeline mail send` / `bin/pipeline mail consume`, which front
+  [`coordination/bin/send-event`](../../../coordination/bin/send-event)
   and [`coordination/bin/consume-events`](../../../coordination/bin/consume-events):
-  validated, serialized event and cursor writes with staging.
-- [`pipeline/status.py`](../../../pipeline/status.py): read-only current-state
-  projection.
+  validated, serialized event and cursor writes with staging. A new event may
+  name only `author` or `reviewer`; the six pre-collapse seat names parse
+  read-only so committed history stays readable.
+- [`pipeline/status.py`](../../../pipeline/status.py), reached through
+  `bin/pipeline status`: read-only current-state projection.
 
 When prose and an executable seam disagree, follow the seam for runtime facts,
 preserve the user authority boundary, and repair the owning prose.
@@ -38,7 +41,7 @@ preserve the user authority boundary, and repair the owning prose.
 | `tier-0-conversational` | Supplied context is sufficient | Do not orient the repository. |
 | `tier-1-read-only` | Inspect or report | Read only evidence needed for the claim. |
 | `tier-2-local-mutation` | Reversible scoped edits | Confirm the checkout; refresh scoped status and affected-path history. |
-| `tier-3-governed-side-effect` | Publication, cursor consumption, provider launch, push, merge, spend, or live-data mutation | Refresh exact live authority, executor, target, scope, and external state immediately before acting. |
+| `tier-3-governed-side-effect` | Publication, cursor consumption, peer invocation, merge, lock, spend, or live-data mutation | Refresh exact live authority, executor, target, scope, and external state immediately before acting. |
 
 Full smoke is a completion check when a change affects runtime/governance
 topology or relies on an architecture invariant. It is not a session-start
@@ -102,8 +105,11 @@ an external effect.
 - Transport ambiguity remains visible and fails closed; it is not an empty
   queue or implicit approval.
 - Formal events and cursors use the fixed writers. Do not edit them directly.
-- Editing, staging, committing, publishing, consuming, locking, pushing,
-  merging, launching, spending, and live-data mutation are separate actions.
+- Editing, staging, committing, publishing, consuming, locking, merging,
+  invoking a peer, spending, and live-data mutation are separate actions.
+  Push is deliberately not among the gated effects: it was claimed as one in
+  prose while no mechanism enforced it, so it was dropped rather than kept
+  (`AGENTS.md` item 6). Do not re-add it to this list.
 - Use the worktree's native Git index; do not create shared or per-seat indexes.
 
 ## Collaboration without ceremony

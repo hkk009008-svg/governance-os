@@ -24,14 +24,14 @@ One JSON object per line. Required keys:
 | `task_ref` | string | Immutable `<sent-path>@<40-hex>`, or `none` |
 | `outcome` | string | `helped` \| `hindered` \| `neutral` |
 | `evidence_ref` | string | `<path>@<40-hex>`, `sha256:<64-hex>`, or `none` |
-| `seat` | string | Envelope seat that loaded the skill, or `none` |
+| `seat` | string | Envelope identity that loaded the skill (`author`, `reviewer`, or a legacy seat name in older rows), or `none` |
 
 Optional: `note` (one line, no authority claim).
 
 Example (not a live measurement):
 
 ```json
-{"ts": "2026-08-12T22:00:00Z", "event": "skill-use", "skill": "create-regression-pin", "task_ref": "none", "outcome": "helped", "evidence_ref": "none", "seat": "operator", "note": "pin authored; --runxfail went red"}
+{"ts": "2026-08-12T22:00:00Z", "event": "skill-use", "skill": "create-regression-pin", "task_ref": "none", "outcome": "helped", "evidence_ref": "none", "seat": "reviewer", "note": "pin authored; --runxfail went red"}
 ```
 
 Non-`skill-use` events in the same file (the Stage 5 baseline row) are
@@ -39,8 +39,8 @@ other outcome types; the reporter ignores them for these counters.
 
 ## Who writes, who reads
 
-- **Seats** append at wrap when a named skill was loaded, or skip with a
-  one-line reason in the checkpoint `Lessons:` / handoff. There is no
+- **The live role** appends at wrap when a named skill was loaded, or skips
+  with a one-line reason in the checkpoint `Lessons:` line. There is no
   quota and no penalty for `none`.
 - **`pipeline/learning_metrics.py`** reports `skill_use_rows` split by
   outcome, plus per-skill totals. Malformed `skill-use` lines are counted

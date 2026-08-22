@@ -795,7 +795,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "seat",
         nargs="?",
         default=None,
-        help="seat for 'mailbox-unread': director | director2 | operator | operator2",
+        help="retired seat whose historical cursor to read: director | director2 | operator | operator2",
     )
     parser.add_argument(
         "--write",

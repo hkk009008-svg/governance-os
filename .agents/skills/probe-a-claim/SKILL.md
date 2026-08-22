@@ -22,7 +22,7 @@ author's recall, because recall is the broken faculty.
 
 1. **Premises from shape, not memory.**
    ```bash
-   env -u GIT_INDEX_FILE .venv/bin/python pipeline/claim_check.py premises "<claim>"
+   pipeline claim premises "<claim>"
    ```
    The grammar (enforced / measured / reference / complete / absence /
    semantics) supplies the terms. You can forget a premise; you cannot forget
@@ -41,7 +41,7 @@ author's recall, because recall is the broken faculty.
    against the current lane — and a real provider launch, so the spend is
    authorized like any provider launch, not implied by this skill:
    ```bash
-   coordination/bin/probe-claim "<claim>"
+   pipeline probe "<claim>"
    ```
    The primary probe launches from an empty directory with a minimal
    environment and the lane's user config skipped (`--ignore-user-config` —
@@ -54,7 +54,7 @@ author's recall, because recall is the broken faculty.
 
 5. **Record, so the blank cells exist.**
    ```bash
-   env -u GIT_INDEX_FILE .venv/bin/python pipeline/claim_check.py record \
+   pipeline claim record \
      --claim "..." \
      --premise invoked-on-path MEASURED '$ grep -n caller → main:12' \
      --kill "deleted the call site; test failed"
@@ -69,7 +69,7 @@ author's recall, because recall is the broken faculty.
 
 6. **Sweep the range — an optional lens, not a publication step.**
    ```bash
-   env -u GIT_INDEX_FILE .venv/bin/python pipeline/claim_check.py sweep --base <base> --head <head>
+   pipeline claim sweep --base <base> --head <head>
    ```
    Flags overclaim vocabulary with no citation on the same line. Scoped to
    where claims live — prose files whole-line, code and extensionless files on
@@ -121,7 +121,7 @@ shipped.
 ## Rule maintenance
 Observed failure: nine 2026-07-26/27 defects where the author verified the
 property they were thinking about, not the property the claim rested on.
-Mode/risk: claim formation in every mode; `probe-claim` is a separately
+Mode/risk: claim formation in every mode; `pipeline probe` is a separately
 authorized provider launch. Cost: premises command plus one embarrassing
 command; the probe is optional and billed.
 Owner: the claim's author. Re-evaluate: if a load-bearing claim lands with

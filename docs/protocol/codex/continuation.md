@@ -7,69 +7,71 @@ Role prompts and skills contain local deltas. Reaching the other CLI:
 ## Modes
 
 - Readiness bridge: read-only orientation; no role claim or durable mutation.
-- Live role: only when a concrete Director or Operator role is assigned.
-- Coordinator: only for explicit observation, reconciliation, or mediation.
+- Live role: only when a task assigns `author` or `reviewer`. The six seat
+  names in committed history are compatibility identities, not positions.
 - Subagent: bounded by its parent and never inherits live-role authority.
 
 ## Orientation
 
-Use the native worktree index: `coordination/bin/pipeline-python pipeline/status.py snapshot <seat>`.
+Use the native worktree index: `bin/pipeline status snapshot <role>`.
 
 Read actionable event bodies before a decision. The mailbox is the configured
-coordination transport (`governance.toml` `[coordination]`); a signed-bus cutover
-is an explicit reviewed transport change. Omission or a malformed declaration
-fails closed, so transport ambiguity fails visibly. Only the assigned live role
-consumes its cursor; coordinator has no cursor.
+coordination transport in name only: nothing configures it, because it is the
+only one — the signed ref-bus is gone and `governance.toml` carries no
+transport table (ARCHITECTURE.md §6). A second transport would be an explicit
+reviewed transport change. Cursor resolution still fails closed, so transport
+ambiguity fails visibly. Both live roles are cursorless; coordinator has no
+cursor, and only a legacy pair seat still resolves one.
 
-Use `coordination/bin/send-event <sender> <recipient> <kind> <subject...>`
-(body on stdin) and `coordination/bin/consume-events <seat> [--to <timestamp>]`;
-never raw event or cursor edits.
+Publish with `pipeline mail send <sender> <recipient> <kind> <subject...>`
+(body on stdin) and advance a legacy cursor with `pipeline mail consume <seat>`;
+these front `coordination/bin/send-event` and `coordination/bin/consume-events`,
+and never raw event or cursor edits.
 
 Refresh HEAD, relevant events, and scoped status before a write or gate. One
 fresh snapshot is the orientation path; there is no separate fast-resume
 classification or second doctrine dump.
 
 At a long-horizon boundary — transfer, interruption, wrap, or compaction —
-publish one checkpoint `findings` event (draft: `pipeline/draft_checkpoint.py`;
-its `Lessons:` line routes learning candidates, and `none-considered` is valid).
+publish one checkpoint `findings` event (draft: `bin/pipeline checkpoint`,
+which runs `pipeline/draft_checkpoint.py`; its `Lessons:` line routes learning
+candidates, and `none-considered` is valid).
 Resume from one snapshot, the newest campaign checkpoint, and its actionable
 bodies; unread backlog is not an orientation debt. Episodic recall via
-`pipeline/learning_index.py query` is advisory; committed state outranks it.
+`bin/pipeline learn index query` is advisory; committed state outranks it.
 
 ## Executable contracts
 
 - `pipeline/codex_protocol_model.py`: identity, ownership, risk, and effect tokens.
 - `pipeline/compact_pair_loop.py`: formal requests, reports, and exact ranges.
 - `pipeline/mailbox_writer.py` validates and serializes event publication.
-- `pipeline/peer.py` runs the Claude CLI once as a child process and
-  commits a receipt. It grants no authority and holds nothing open.
+- `pipeline/peer.py` runs the Claude CLI once, commits a receipt, grants no
+  authority, and holds nothing open.
 - This adapter owns host task discovery, dispatch, and waiting behavior.
 
-Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`
-and its role skills. Subagents return bounded evidence and never publish a
-formal verdict or live-role event.
+Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`;
+subagents return bounded evidence and never publish a formal verdict or
+live-role event.
 
 Review depth follows `AGENTS.md` and the executable model. Once formal review is
 triggered, preserve its complete committed Compact Pair binding.
 
-Host task tools own discovery, dispatch, and waiting. One trigger identifies one task;
-monitoring failure authorizes neither redispatch, role substitution, nor an effect.
-
-Use native host controls to list tasks, paginate turns, wait on bounded
-snapshots, rename or pin work, archive or unarchive it, and fork completed
-history. Review panels are presentation; never automate hard deletion or create
-a persistent goal without an explicit request. All task metadata grants no role,
-review, or effect authority and cannot replace formal exact-range review.
+One trigger identifies one task; monitoring failure authorizes neither
+redispatch, role substitution, nor an effect. Use native host controls to list
+tasks, paginate turns, wait on bounded snapshots, rename or pin work, archive
+or unarchive it, and fork completed history. Review panels are presentation;
+never automate hard deletion or create a persistent goal without an explicit
+request. All task metadata grants no role, review, or effect authority and
+cannot replace formal exact-range review.
 
 ## Reaching the Claude CLI
 
-`pipeline peer ask claude --task <id> --prompt-file <f>` runs it once as a
-child process; `--dry-run` prints the argv and launches nothing. The exit code
-is the delivery acknowledgement and the receipt under `coordination/peer/`
-records what ran. A receipt is evidence, not attestation, and no verdict path
-accepts one. Launching a peer is paid spend needing its own exact authority,
-and never replaces the committed Compact Pair. Contract:
-`docs/protocol/peer.md`.
+`pipeline peer ask claude --task <id> --prompt-file <f>` runs it once as a child
+process; `--dry-run` prints the argv and launches nothing. The exit code is the
+delivery acknowledgement and the receipt under `coordination/peer/` records what
+ran. A receipt is evidence, not attestation, and no verdict path accepts one.
+Launching a peer is paid spend needing its own exact authority, and never
+replaces the committed Compact Pair. Contract: `docs/protocol/peer.md`.
 
 ## Review-state history boundary
 

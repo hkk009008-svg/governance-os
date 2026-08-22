@@ -46,6 +46,13 @@ git history begins 2026-06-30 @ `18cf325`; events dated before that (e.g. the
 2026-06-09 v5.6 retro cited below) are inherited documentation carried in the
 transfer bundle, not activity in this clone.
 
+**Citations in the table below no longer resolve at HEAD, and are kept as the
+record of what was read on 2026-07-07.** `docs/protocol/claude/core.md`,
+`failure-modes.md`, `orchestration.md`, and `four-seat-extension.md` were
+deleted in `23669fd7`, and `docs/protocol/claude/director-operator.md` in
+`0ed3622d` as a duplicate of the agent-neutral copy. Read them with
+`git show <commit>:<path>`; do not treat the line numbers as live anchors.
+
 | Rule | Trigger evidence at review | Verdict |
 |---|---|---|
 | Rule #17 | Trigger FIRED and already discharged: v5.6 dogfood retro 2026-06-09, "C4 DISCHARGED" at docs/protocol/claude/director-operator.md:1160; ~17–18 distinct `wf_*` run IDs cited at director-operator.md:1166-1170; retro verdict "net-positive and retained as-is" (director-operator.md:1192-1193). Further post-retro runs recorded at docs/PROTOCOL-RULES-LOG.md:589,729,736-737,743 and pipeline/check_coordination.py:74,222. N today ≥ 18 (was N=0). | Keep fully active; **DELISTED** from this parking list (graduated — no longer thin-evidence, N≥18) |

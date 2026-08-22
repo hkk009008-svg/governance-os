@@ -22,8 +22,10 @@ effect, or landing work on `main`. Each has a section below.
 
 ## 2. First session in a fresh checkout
 
-Each checkout (the main clone and every linked seat worktree) needs its own
-virtual environment — `.venv/` is gitignored and does not travel:
+The virtual environment lives in the **primary checkout only**. `.venv/` is
+gitignored and does not travel, and linked worktrees deliberately carry no
+duplicate — `bin/pipeline` resolves the primary checkout's interpreter from a
+worktree too:
 
 ```bash
 python3 -m venv .venv
@@ -33,14 +35,20 @@ python3 -m venv .venv
 Then orient. One command is the whole startup ritual:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python pipeline/status.py snapshot
+bin/pipeline status snapshot
 ```
+
+`bin/pipeline` is the single entry point; `bin/pipeline --help` lists every
+verb. It clears `GIT_INDEX_FILE` and resolves the interpreter itself, so no
+`env -u GIT_INDEX_FILE .venv/bin/python …` prefix is needed anywhere below.
 
 Reading the snapshot:
 
 - `Git:` — commit, branch, dirty count. Confirm you are where you think.
-- `Unread:` — per-seat unread mailbox counts. A large number is normal
-  history, not orientation debt; nothing obliges you to drain it.
+- `Unread:` — the retired per-seat cursor counts, printed under the header
+  `Unread (retired seat cursors, historical)`. A large number is normal
+  history, not orientation debt; nothing obliges you to drain it. The two live
+  roles, `author` and `reviewer`, are cursorless.
 - `Request:` — the newest pending verify-request, if any, and its assigned
   reviewer.
 - `Checkpoint:` — the newest committed campaign checkpoint (`none` when no
@@ -51,7 +59,7 @@ Reading the snapshot:
 - `Next:` — the one suggested next action.
 
 Deeper diagnostics when something looks wrong:
-`.venv/bin/python pipeline/check_coordination.py`.
+`bin/pipeline check coordination`.
 
 ## 3. Sixty seconds of classification before you start
 
@@ -65,14 +73,14 @@ live in `AGENTS.md`, `docs/protocol/work-modes.md`, and
 | Fix docs, tests, or local behavior reversibly | section 4 | None — no seat, no mode, no mailbox event. |
 | Change behavior somebody relies on | section 4, then 5 | Failing test first; non-author review of the exact range if material. |
 | Touch hook policy, fixed writers, launchers, skills, CI, review machinery | section 5 | High-risk compact pair: different model family plus abuse-class analysis. |
-| Publish or consume mailbox state | section 6 | Assigned sender and publication authority. |
+| Publish or consume mailbox state | section 6 | Sender must be `author` or `reviewer`; publication authority. |
 | Start, pause, or resume a multi-session campaign | section 7 | `explore` mode at the boundary; checkpoint events. |
-| Push, merge, lock, consume a cursor, launch a provider, spend money | section 8 | One separate exact approval per effect, every time. |
+| Merge, lock, consume a cursor, invoke a peer CLI, spend money | section 8 | One separate exact approval per effect, every time. |
 
 Two rules that prevent most over-ceremony: ordinary work declares no work
-mode (a mode object exists only at a campaign boundary), and no seat is
+mode (a mode object exists only at a campaign boundary), and no role is
 needed merely because an edit exists. Roles exist only on explicit
-assignment.
+assignment, and there are exactly two: `author` and `reviewer`.
 
 ## 4. The ordinary change walk
 
@@ -86,10 +94,10 @@ git status --short --branch && git log --oneline -5
 rg -n "the_symbol_you_are_changing" pipeline/ tests/
 
 # 3. Behavior change? Write the failing test first
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_the_area.py -q
+coordination/bin/pipeline-python -m pytest tests/unit/test_the_area.py -q
 
 # 4. Implement the smallest change, then focused verification, fresh
-env -u GIT_INDEX_FILE .venv/bin/python -m pytest tests/unit/test_the_area.py -q
+coordination/bin/pipeline-python -m pytest tests/unit/test_the_area.py -q
 
 # 5. Inspect the exact diff before committing; stage explicit paths
 git diff
@@ -97,11 +105,11 @@ git add pipeline/the_file.py tests/unit/test_the_area.py
 git commit -m "fix(area): what and why"
 ```
 
-Docs-only changes: run `.venv/bin/python pipeline/check_doc_claims.py` and
-`.venv/bin/python pipeline/check_placeholders.py` instead of pytest. Run the
-completion aggregate `.venv/bin/python pipeline/governance_verify_all.py`
-only when the change touches governance/runtime topology or an
-`ARCHITECTURE.md` invariant — it is not a per-edit ritual.
+Docs-only changes: run `bin/pipeline check docs` and
+`bin/pipeline check placeholders` instead of pytest. Run the completion
+aggregate `bin/pipeline check` only when the change touches
+governance/runtime topology or an `ARCHITECTURE.md` invariant — it is not a
+per-edit ritual.
 
 Stop here for ordinary work. Committing locally is the end of the walk;
 landing on `main` is section 9.
@@ -118,25 +126,31 @@ Classification criteria: `docs/protocol/agents/risk-classes.md`.
 2. Compose the request body (validates identities, range, and risk):
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python pipeline/compact_pair_loop.py \
-  compose-request --repo-root . --author director --author-model <model-id> \
-  --operator operator --risk-class material-behavior \
+bin/pipeline review validate compose-request --repo-root . \
+  --author author --author-model <model-id> \
+  --operator reviewer --risk-class material-behavior \
   --base <base-rev> --head HEAD <<< "One-paragraph outcome statement."
 ```
+
+   The flag is still spelled `--operator`; its value must be `reviewer`,
+   because the writer admits exactly two senders and two recipients
+   (`author`, `reviewer`, plus `all` as a broadcast target). Composing with a
+   retired seat name succeeds and then fails at publication, which is the
+   worst place to find out.
 
    High-risk adds `--risk-class high-risk-control` and at least one
    `--abuse-class "…"` bullet.
 3. Publish it as a `verify-request` event (section 6) and commit the staged
    event path.
-4. The assigned Operator reviews the exact committed range and independently
+4. The assigned reviewer reviews the exact committed range and independently
    verifies the requested claims.
-5. The Operator publishes one `verification-report`: GO, NITS, or FAIL,
+5. The reviewer publishes one `verification-report`: GO, NITS, or FAIL,
    bound to that request and range. Authors never review their own work.
 6. FAIL remediation is a new range and a new request with supersession or
    remediation binding — the old report is never rewritten.
 
-A GO accepts the bound range and nothing else. It does not authorize push,
-merge, or any other effect.
+A GO accepts the bound range and nothing else. It does not authorize merge
+or any other external effect.
 
 ## 6. The mailbox
 
@@ -150,18 +164,24 @@ Writing goes through fixed front doors only:
 
 ```bash
 # Publish (body on stdin; stages the event, never commits — you commit it)
-coordination/bin/send-event <from> <to> <kind> <subject...>
+bin/pipeline mail send <from> <to> <kind> <subject...>
 
-# Advance your own seat cursor (assigned pair seats only)
-coordination/bin/consume-events <seat>
+# Advance a retired seat cursor (historical seats only; roles are cursorless)
+bin/pipeline mail consume <seat>
 ```
 
 Rules that surprise people: never write into `sent/` directly and never call
 `pipeline/mailbox_writer.py` yourself — both are denied by policy;
-publication requires an assigned sender (a readiness session cannot lawfully
-publish, and even asking `send-event` for its help text is denied there —
-read the script header for usage); coordinators observe without consuming;
-the writer stages but the commit is your separate, deliberate act.
+publication requires an assigned sender, and a **new** event may only be sent
+by `author` or `reviewer` and addressed to `author`, `reviewer`, or `all`
+(the six retired seat names still parse, so committed history stays
+readable, but they cannot be written); a new event's kind must be one of the
+eight the writer admits (`decision`, `dispatch-claim`, `findings`,
+`learning-candidate`, `measurement-report`, `verification-report`,
+`verify-addendum`, `verify-request`) — conversation goes through peer
+invocation (`docs/protocol/peer.md`) instead, which leaves a receipt rather
+than an event; the writer stages but the commit is your separate, deliberate
+act.
 
 ## 7. Long-horizon campaigns: checkpoints and resume
 
@@ -170,16 +190,17 @@ state does. At a real boundary — ownership transfer, interruption,
 pre-compaction, campaign wrap — publish one checkpoint:
 
 ```bash
-env -u GIT_INDEX_FILE .venv/bin/python pipeline/draft_checkpoint.py \
+bin/pipeline checkpoint \
   --scratch .pytest-verify-tmp/ckpt --checkpoint <campaign-slug> \
-  --boundary wrap --objective "…" --accepted-scope "…" --owner <seat> \
+  --boundary wrap --objective "…" --accepted-scope "…" --owner <role> \
   --base <40-hex-base> --verification-status "what ran, fresh" \
   --blockers none --next-action "the one next executable action"
 ```
 
-The tool drafts to scratch and never publishes; review the draft, then
-publish it as a `findings` event via `send-event` (section 6). A malformed
-checkpoint is refused at publication. The required `Lessons:` field routes
+`--owner` must equal the sender that will publish it, so it is `author` or
+`reviewer`. The tool drafts to scratch and never publishes; review the draft,
+then publish it as a `findings` event via `bin/pipeline mail send`
+(section 6). A malformed checkpoint is refused at publication. The required `Lessons:` field routes
 lessons toward learning-candidates; `none-considered` is always a valid
 answer after actually considering it — there is no quota.
 
@@ -189,11 +210,16 @@ memory stays advisory; current Git and committed event bodies outrank it.
 
 ## 8. External effects
 
-Push, merge, fetch/pull, lock claim/release, cursor consumption, provider
-launch, paid spend, live-data mutation: each needs separate exact authority
-for the executor, target, effect, and scope, at point of use. No role, GO
-verdict, mode, or schema ever grants one. Transport ambiguity (a push that
-may or may not have landed) is reported, never converted into success.
+Merge, fetch/pull, lock claim/release, cursor consumption, peer invocation
+(`docs/protocol/peer.md` — running the other CLI is a provider launch and
+paid spend), paid spend generally, live-data mutation: each needs separate
+exact authority for the executor, target, effect, and scope, at point of use.
+No role, GO verdict, mode, or schema ever grants one. Transport ambiguity is
+reported, never converted into success.
+
+Push is deliberately **not** on that list — see `AGENTS.md` item 6, which
+records why the obligation was dropped rather than left standing as prose the
+harness never enforced.
 
 ## 9. Landing work on main
 
@@ -202,7 +228,7 @@ Current practice is topic branches and pull requests:
 ```bash
 git switch -c codex/<slug>           # from the current tip
 git add <explicit paths> && git commit
-git push -u origin codex/<slug>      # separate approved effect
+git push -u origin codex/<slug>
 gh pr create --title "…" --body "…"
 ```
 
@@ -221,7 +247,7 @@ no authority; merging is the owner's separate effect.
 The learning plane is git-native and advisory
 (`docs/protocol/learning/contract.md` is the contract):
 
-- A lesson becomes a draft via `pipeline/learning_extract.py` (scratch-only,
+- A lesson becomes a draft via `bin/pipeline learn draft` (scratch-only,
   evidence triggers only — user correction, contradiction, recurrence,
   measured improvement), then a `learning-candidate` mailbox event, then a
   non-producer disposition (`accepted`/`declined`/`expired`).
@@ -239,8 +265,8 @@ The learning plane is git-native and advisory
 
 | Symptom | Meaning | Do |
 |---|---|---|
-| `send-event` refuses or is denied outright | Unassigned sender, unknown kind, malformed body — or readiness posture | Check seat assignment and `kinds.txt`; publication needs an assigned seat |
-| Snapshot `Gate: FAIL` | Structural coordination blocker | `pipeline/check_coordination.py` names it; repair before other work |
+| `mail send` refuses | Retired sender or recipient, frozen kind, malformed body — or no assignment | The sender and recipient must be `author`/`reviewer` (`all` may receive); check the kind against the eight in section 6 |
+| Snapshot `Gate: FAIL` | Structural coordination blocker | `bin/pipeline check coordination` names it; repair before other work |
 | Snapshot advisories about grandfathered history | Known immutable-history exceptions | Normal steady state; not yours to fix |
 | Admission gate red on a PR | Range touches an authority-surface prefix | Attach compact-pair review coverage, or the owner decides at merge |
 | A gate is green but the claim feels unproved | Gates prove only what they execute | Say what was not proved; see `probe-a-claim` skill before writing "verified" |

@@ -9,8 +9,11 @@ For how the two CLIs reach each other, see `docs/protocol/peer.md`.
 ## Modes
 
 - Readiness bridge: read-only orientation; no role claim or durable mutation.
-- Live role: only when a concrete Director or Operator role is assigned.
-- Coordinator: only for explicit observation, reconciliation, or mediation.
+- Live role: only when a task assigns `author` or `reviewer`. Those are the
+  two positions a review has, and the only senders `pipeline/mailbox_writer.py`
+  admits for a new event (`NEW_WRITE_SENDERS`). The six pre-collapse seat names
+  still parse so committed history stays readable; they are compatibility
+  identities, not positions anyone occupies.
 - Subagent: bounded by its parent and never inherits live-role authority.
 
 These runtime identities are separate from product-work modes. Select Explore,
@@ -48,17 +51,17 @@ does.
 Use the native index of the current worktree:
 
 ```bash
-coordination/bin/pipeline-python pipeline/status.py snapshot <seat>
+bin/pipeline status snapshot <role>
 ```
 
-Read actionable event bodies before a decision. Only the assigned live role
-consumes its cursor, and coordinator has no cursor.
+Read actionable event bodies before a decision. Both live roles are cursorless;
+only a legacy pair seat still resolves a cursor, and the snapshot says so.
 
 Use the fixed interfaces, never raw event or cursor edits:
 
 ```bash
-coordination/bin/send-event <sender> <recipient> <kind> <subject...>  # body on stdin
-coordination/bin/consume-events <seat> [--to <timestamp>]
+bin/pipeline mail send <sender> <recipient> <kind> <subject...>  # body on stdin
+bin/pipeline mail consume <legacy-seat> [--to <timestamp>]
 ```
 
 Refresh HEAD, relevant events, and scoped status before a write or gate. One
@@ -71,8 +74,8 @@ before context compaction — publish one checkpoint `findings` event (draft:
 learning-candidates, and `none-considered` is always valid). Resume is one
 snapshot plus the newest campaign checkpoint plus the actionable bodies it
 names; unread backlog is not an orientation debt. Recall from the episodic
-index (`pipeline/learning_index.py query`) is optional and advisory (learning
-contract I1) — committed state outranks it.
+index (`bin/pipeline learn index query`, i.e. `pipeline/learning_index.py`) is
+optional and advisory (learning contract I1) — committed state outranks it.
 
 ## Executable contracts
 
@@ -108,9 +111,9 @@ forced by the harness rather than chosen:
   `.agents`, and semantic divergence resolves toward `.agents` in the same
   change — divergence beyond the declared deltas is still drift, and review
   still catches it. Only `seat-operator/verification-report-format.md` is
-  asserted byte-identical, by
-  `test_verification_report_templates_remain_identical`; stub targets are
-  asserted to exist by `test_claude_stub_targets_exist`.
+  asserted byte-identical, and every stub's `.agents` target is asserted to
+  exist, by
+  `tests/unit/test_protocol_prompt_sync.py::test_reviewer_templates_and_claude_skill_stubs_stay_bound`.
 - Agent definitions are Markdown with a `tools:` list, not TOML with
   `sandbox_mode`. Withholding Write and Edit from `tools:` is how a read-only
   advisor is expressed.
@@ -166,8 +169,8 @@ than attestation.
 ## Review and external effects
 
 Review depth is risk-based as defined by `AGENTS.md` and the executable model.
-Ordinary local edits do not need a mailbox event, role ceremony, capacity
-packet, handoff, or independent review.
+Ordinary local edits do not need a mailbox event, role ceremony, ownership
+transfer, or independent review.
 
 When formal review is triggered, preserve the complete committed Compact Pair
 binding; do not weaken it because a lower-risk task would not have required it.
@@ -181,6 +184,6 @@ need exact authority for the executor, target, and scope.
 ## Target bridge
 
 Targets are selected per task, not fixed. Resolve the active binding through
-`pipeline/target_binding.py`, then read the target repository's own
+`bin/pipeline target`, then read the target repository's own
 instructions. Start from Pipeline; do not infer product authority from a
 bridge. For `evidence-ledger`, read `docs/protocol/claude/ledger-cli-adoption.md`.

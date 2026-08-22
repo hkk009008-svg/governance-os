@@ -51,6 +51,22 @@ def test_a_known_subcommand_still_dispatches() -> None:
     """Reversion control: the refusal must not swallow real subcommands."""
 
     for key in (("check", "arch"), ("check", "coordination"), ("peer", "receipts")):
-        kind, spec, _rest, resolved = cli._resolve(list(key))
-        assert kind is not None, key
-        assert resolved[0] == key[0]
+        resolved = cli._resolve(list(key))
+        assert resolved is not None, key
+        assert resolved.name.split()[0] == key[0]
+        assert resolved.module, key
+
+
+def test_a_delegated_group_reaches_its_module(capsys) -> None:
+    """Regression: `pipeline peer ask` was refused against an empty expected-set.
+
+    ("peer", None) declares that the MODULE owns every subcommand under `peer`.
+    Treating `peer` as an enumerated group made every real subcommand unknown --
+    five independent readers hit it within minutes of it landing.
+    """
+
+    for sub in ("ask", "receipts"):
+        resolved = cli._resolve(["peer", sub])
+        assert resolved is not None, sub
+        assert resolved.module == "peer"
+        assert resolved.rest[0] == sub, "the subcommand must reach the module"
