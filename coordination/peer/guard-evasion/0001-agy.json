@@ -1,0 +1,19 @@
+{
+  "advisory": true,
+  "argv_binary": "/Users/hyungkoookkim/.local/bin/claude-agy",
+  "argv_sha256": "dca770d737844054adcf770b719f95fa8570b89e2ae24ad09e7336df4c044694",
+  "cost_usd": null,
+  "duration_s": 45.63,
+  "exit_code": 2,
+  "model_reported": null,
+  "notes": [
+    "agy receipts are advisory; the wrapper owns its own receipt"
+  ],
+  "prompt_sha256": "6a83d07678c22ffdefca869fda5b7a04910049c8e571ecdead04cb28bf2bea49",
+  "result_sha256": "4de1ad73d827fcde28ec948a39e0cd439882b18f3fc9e815cb1225c1ee42bf23",
+  "role": "evasion",
+  "schema": "peer-receipt/1",
+  "side": "agy",
+  "started": "2026-08-22T03:01:47Z",
+  "task": "guard-evasion"
+}
