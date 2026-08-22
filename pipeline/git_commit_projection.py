@@ -110,6 +110,17 @@ def _identity(root: Path, runner: GitRunner) -> RepositoryIdentity:
     return RepositoryIdentity(reported_root, git_dir, lines[2])
 
 
+def _same_root(left: Path, right: Path) -> bool:
+    """The one question every root comparison in this module has to ask.
+
+    Three sites compared roots; the case-insensitivity fix reached one. Naming
+    the comparison makes the next site use it by default instead of
+    rediscovering `==`.
+    """
+
+    return left == right or _same_directory(left, right)
+
+
 def _same_directory(left: Path, right: Path) -> bool:
     """True when two paths name one directory, case-insensitivity included."""
 
@@ -153,7 +164,12 @@ class CommitGraphProjection:
         root = Path(repo_root).resolve(strict=True)
         observed = _identity(root, runner)
         if expected_identity is not None:
-            if expected_identity.root != root or observed != expected_identity:
+            # Filesystem identity, for the reason _identity() gives above, and
+            # because that fix was applied there ONLY. This comparison sat one
+            # function away with a plain `!=`, so entering by the lowercase
+            # spelling kept fabricating a FATAL -- just with a different
+            # message, which read as a different bug.
+            if not _same_root(expected_identity.root, root) or observed != expected_identity:
                 raise CommitGraphProjectionError(
                     "repository identity changed before commit graph projection"
                 )
@@ -259,7 +275,7 @@ class CommitGraphProjection:
 
     def matches_root(self, repo_root: Path | str) -> bool:
         try:
-            return Path(repo_root).resolve(strict=True) == self.identity.root
+            return _same_root(Path(repo_root).resolve(strict=True), self.identity.root)
         except OSError:
             return False
 
