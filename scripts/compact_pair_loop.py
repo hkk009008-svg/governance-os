@@ -24,12 +24,14 @@ SHA_RE = re.compile(r"[0-9a-f]{40}")
 REQUEST_RE = re.compile(
     r"coordination/mailbox/sent/"
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
-    r"(?P<author>director2?|operator2?)-to-(?P<operator>operator2?)-verify-request\.md"
+    r"(?P<author>author|director2?|operator2?)-to-"
+    r"(?P<operator>reviewer|operator2?)-verify-request\.md"
 )
 REPORT_RE = re.compile(
     r"coordination/mailbox/sent/"
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
-    r"(?P<reviewer>operator2?)-to-(?:director2?|operator2?|coordinator2?|all)-"
+    r"(?P<reviewer>reviewer|operator2?)-to-"
+    r"(?P<recipient>author|director2?|operator2?|coordinator2?|all)-"
     r"verification-report\.md"
 )
 MAX_EVENT_BYTES = 262_144
@@ -44,6 +46,9 @@ _FROZEN_MODEL_LABEL_EXCEPTION = {
 }
 PAIR_SEATS = frozenset(protocol_mailbox.SEATS)
 OPERATOR_SEATS = frozenset({"operator", "operator2"})
+# Reader-only compatibility for current formal-review responsibility labels.
+_READ_PAIR_SEATS = PAIR_SEATS | {"author"}
+_READ_OPERATOR_SEATS = OPERATOR_SEATS | {"reviewer"}
 MATERIAL_BEHAVIOR_RISK = codex_protocol_model.review_profile_for(
     "material-behavior"
 ).risk_class
@@ -58,6 +63,20 @@ FINDING_DISPOSITIONS = frozenset(
 
 class CompactPairError(ValueError):
     """A current pair artifact is malformed or lacks structural authority."""
+
+
+def _immutable_review_reference_is_canonical(value: str) -> bool:
+    """Accept legacy mailbox refs plus exact current review-artifact refs."""
+
+    if protocol_mailbox.immutable_reference_is_canonical(value):
+        return True
+    if not isinstance(value, str) or "@" not in value:
+        return False
+    path, commit = value.rsplit("@", 1)
+    return bool(
+        SHA_RE.fullmatch(commit)
+        and (REQUEST_RE.fullmatch(path) or REPORT_RE.fullmatch(path))
+    )
 
 
 @dataclass(frozen=True)
@@ -418,7 +437,7 @@ def _finding_refs(lines: list[str], *, required: bool) -> tuple[str, ...]:
         if not line.startswith("- "):
             raise CompactPairError("Finding Refs must contain only '- reference' entries")
         value = line[2:]
-        if not protocol_mailbox.immutable_reference_is_canonical(value):
+        if not _immutable_review_reference_is_canonical(value):
             raise CompactPairError("finding refs must use immutable full-SHA paths or digests")
         values.append(value)
     if len(values) != len(set(values)):
@@ -498,6 +517,10 @@ def _parse_verify_request_bytes(
     match = REQUEST_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verify-request path is not canonical")
+    if (match.group("author") == "author") != (
+        match.group("operator") == "reviewer"
+    ):
+        raise CompactPairError("verify-request cannot mix current and legacy roles")
     text = _decode(raw, "verify-request")
     lines = text.splitlines()
     if _one(lines, "Event type: ", "Event type") != "verify-request":
@@ -513,7 +536,7 @@ def _parse_verify_request_bytes(
         raise CompactPairError("Reviewed base/head must be full lowercase commit SHAs")
     author = _one(lines, "Author seat: ", "Author seat")
     assigned = _one(lines, "Assigned operator: ", "Assigned operator")
-    if author not in PAIR_SEATS or assigned not in OPERATOR_SEATS:
+    if author not in _READ_PAIR_SEATS or assigned not in _READ_OPERATOR_SEATS:
         raise CompactPairError("request author or assigned reviewer is not a pair seat")
     if author != match.group("author") or _envelope_sender(text) != author:
         raise CompactPairError("Author seat does not match verify-request envelope/path")
@@ -878,7 +901,7 @@ def compose_request(
         )
     references = [entry.strip() for entry in finding_refs if entry.strip()]
     for reference in references:
-        if not protocol_mailbox.immutable_reference_is_canonical(reference):
+        if not _immutable_review_reference_is_canonical(reference):
             raise CompactPairError(
                 f"finding refs must use immutable full-SHA paths or digests: {reference}"
             )
@@ -940,6 +963,10 @@ def _parse_verification_report_bytes(
     match = REPORT_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verification-report path is not canonical Operator output")
+    if (match.group("reviewer") == "reviewer") != (
+        match.group("recipient") == "author"
+    ):
+        raise CompactPairError("verification-report cannot mix current and legacy roles")
     text = _decode(raw, "verification-report")
     lines = text.splitlines()
     if _one(lines, "Event type: ", "Event type") != "verification-report":
@@ -1410,7 +1437,7 @@ def _finding_dispositions(
         reference, separator, disposition = line[2:].rpartition(": ")
         if (
             not separator
-            or not protocol_mailbox.immutable_reference_is_canonical(reference)
+            or not _immutable_review_reference_is_canonical(reference)
             or disposition not in FINDING_DISPOSITIONS
         ):
             raise CompactPairError("invalid finding disposition")

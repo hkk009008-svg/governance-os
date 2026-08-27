@@ -16,16 +16,17 @@ import ci_admission_gate as gate
 
 REQUEST_PATH = (
     "coordination/mailbox/sent/"
-    "2026-08-07T12-00-00Z-director-to-operator-verify-request.md"
+    "2026-08-07T12-00-00Z-author-to-reviewer-verify-request.md"
 )
 REPORT_PATH = (
     "coordination/mailbox/sent/"
-    "2026-08-07T12-10-00Z-operator-to-all-verification-report.md"
+    "2026-08-07T12-10-00Z-reviewer-to-author-verification-report.md"
 )
 EVIDENCE_PATH = (
     "coordination/mailbox/sent/"
-    "2026-08-07T11-55-00Z-operator-to-director-findings.md"
+    "2026-08-07T11-55-00Z-reviewer-to-author-verification-report.md"
 )
+PRIOR_REQUEST_PATH = REQUEST_PATH.replace("12-00-00Z", "11-50-00Z")
 
 SURFACE_PROBES = {
     ".agents/skills/": ".agents/skills/four-seat-protocol/SKILL.md",
@@ -128,16 +129,16 @@ def _request_text(
         )
     )
     return f"""\
-# Pair seat -> Operator: verify outcome
+# Author -> Reviewer: verify outcome
 
-**When:** 2026-08-07T12:00:00Z · **From:** director (online)
+**When:** 2026-08-07T12:00:00Z · **From:** author (online)
 
 Event type: verify-request
 Reviewed head: {head}
 Reviewed base: {base}
-Author seat: director
+Author seat: author
 Author model: gpt-5.6-sol
-Assigned operator: operator
+Assigned operator: reviewer
 Risk class: {risk_class}
 
 ## Outcome
@@ -167,16 +168,16 @@ def _report_text(
     )
     dispositions = tuple(f"{ref}: addressed" for ref in finding_refs)
     return f"""\
-# Operator -> Pair seat: outcome verification
+# Reviewer -> Author: outcome verification
 
-**When:** 2026-08-07T12:10:00Z · **From:** operator (online)
+**When:** 2026-08-07T12:10:00Z · **From:** reviewer (online)
 
 Event type: verification-report
 VERDICT: {verdict}
 Verification request: {REQUEST_PATH}@{trigger}
 Reviewed head: {head}
 Reviewed base: {base}
-Reviewer seat: operator
+Reviewer seat: reviewer
 Reviewer model: {reviewer_model}
 Risk class: {risk_class}
 {abuse_binding}
@@ -219,12 +220,30 @@ def _commit_file(root: Path, relative: str, content: str, message: str) -> str:
     return _git(root, "rev-parse", "HEAD")
 
 
-def _mint_evidence(root: Path) -> str:
+def _mint_evidence(root: Path, base: str, head: str) -> str:
+    digest = "sha256:" + "a" * 64
+    _commit_file(
+        root,
+        PRIOR_REQUEST_PATH,
+        _request_text(
+            base, head, risk_class="high-risk-control", finding_refs=(digest,)
+        ),
+        "review: prior cumulative request",
+    )
+    trigger = _git(root, "rev-parse", "HEAD")
     commit = _commit_file(
         root,
         EVIDENCE_PATH,
-        "Event type: findings\nNo blocking findings.\n",
-        "coord: cited evidence",
+        _report_text(
+            base,
+            head,
+            trigger,
+            verdict="FAIL",
+            risk_class="high-risk-control",
+            reviewer_model="claude-opus-4-7",
+            finding_refs=(digest,),
+        ).replace(f"{REQUEST_PATH}@", f"{PRIOR_REQUEST_PATH}@"),
+        "review: prior cumulative report",
     )
     return f"{EVIDENCE_PATH}@{commit}"
 
@@ -236,9 +255,9 @@ def _land_pair(
     *,
     verdict: str = "GO",
     risk_class: str = "high-risk-control",
-    reviewer_model: str = "claude-opus-5",
+    reviewer_model: str = "claude-opus-4-7",
 ) -> None:
-    refs = (_mint_evidence(root),)
+    refs = (_mint_evidence(root, reviewed_base, reviewed_head),)
     _commit_file(
         root,
         REQUEST_PATH,
