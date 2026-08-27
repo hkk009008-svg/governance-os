@@ -132,6 +132,7 @@ def render_orientation_snapshot(snapshot: dict) -> str:
             f"{gate['advisory']} advisory, "
             f"{gate.get('failed_review', 0)} failed)"
         )
-    if len(lines) > 20:
+    rendered = "\n".join(lines) + "\n"
+    if len(rendered.splitlines()) > 20:
         raise ValueError("orientation snapshot exceeded the 20-line contract")
-    return "\n".join(lines) + "\n"
+    return rendered

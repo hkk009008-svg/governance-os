@@ -5,6 +5,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import check_coordination as cc
 import codex_protocol_model as protocol_model
 import status
@@ -222,3 +224,17 @@ def test_json_cli_emits_machine_readable_snapshot(monkeypatch, capsys) -> None:
 
     assert status.main(["--json"]) == 0
     assert json.loads(capsys.readouterr().out)["git"]["sha"] == "abc1234"
+
+
+def test_compact_render_counts_embedded_lines_in_external_details() -> None:
+    snapshot = {
+        "generated_at": "2026-07-25T00:00:00Z",
+        "git": {"sha": "abc1234", "branch": "main", "dirty": 0},
+        "desktop": {"state": "unavailable", "detail": "\n".join(
+            f"detail-{index}" for index in range(21)
+        )},
+        "team_transport": _absent_team_transport(),
+    }
+
+    with pytest.raises(ValueError, match="exceeded the 20-line contract"):
+        status.render_orientation_snapshot(snapshot)

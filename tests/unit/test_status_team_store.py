@@ -5,6 +5,7 @@ import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -219,7 +220,7 @@ def test_status_refuses_a_hard_linked_database(tmp_path: Path) -> None:
     assert "one filesystem name" in observed["detail"]
 
 
-def test_status_refuses_store_owned_by_another_user(
+def test_status_refuses_git_common_directory_owned_by_another_user(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = _init_repo(tmp_path)
@@ -232,7 +233,10 @@ def test_status_refuses_store_owned_by_another_user(
     observed = status.collect_team_transport(repo)
 
     assert observed["state"] == "unavailable"
-    assert "owned by the current user" in observed["detail"]
+    assert (
+        observed["detail"]
+        == "Git common directory is not owned by the current user"
+    )
 
 
 @pytest.mark.parametrize("suffix", ("-wal", "-shm"))
@@ -259,3 +263,71 @@ def test_status_refuses_unsafe_sqlite_sidecars(
         else "one filesystem name"
     )
     assert expected in observed["detail"]
+
+
+@pytest.mark.parametrize("suffix", ("-wal", "-shm"))
+def test_status_refuses_symlinked_sqlite_sidecars(
+    tmp_path: Path, suffix: str,
+) -> None:
+    repo = _init_repo(tmp_path)
+    team.Team(repo, "codex")
+    sidecar = Path(f"{_store(repo)}{suffix}")
+    target = tmp_path / f"target{suffix}"
+    target.write_bytes(b"")
+    sidecar.symlink_to(target)
+
+    observed = status.collect_team_transport(repo)
+
+    assert observed["state"] == "unavailable"
+    assert "not one regular file" in observed["detail"]
+
+
+@pytest.mark.parametrize("suffix", ("-wal", "-shm"))
+def test_status_refuses_sqlite_sidecars_owned_by_another_user(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str,
+) -> None:
+    repo = _init_repo(tmp_path)
+    team.Team(repo, "codex")
+    store = _store(repo)
+    sidecar = Path(f"{store}{suffix}")
+    sidecar.write_bytes(b"")
+    sidecar.chmod(0o600)
+    real_lstat = Path.lstat
+
+    def lstat_with_foreign_sidecar(path: Path):
+        observed = real_lstat(path)
+        if path == sidecar:
+            return SimpleNamespace(
+                st_mode=observed.st_mode,
+                st_uid=os.geteuid() + 1,
+                st_nlink=observed.st_nlink,
+            )
+        return observed
+
+    monkeypatch.setattr(Path, "lstat", lstat_with_foreign_sidecar)
+
+    observed = status_team_store._secure_existing_store(store)
+
+    assert observed == (
+        f"team store {suffix[1:]} sidecar is not owned by the current user"
+    )
+
+
+def test_status_refuses_a_store_bound_to_another_repository(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    team.Team(repo, "codex")
+    store = _store(repo)
+    connection = sqlite3.connect(store)
+    try:
+        connection.execute(
+            "UPDATE metadata SET value=? WHERE key='git_common_dir'",
+            (str(tmp_path / "another-repository/.git"),),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    observed = status.collect_team_transport(repo)
+
+    assert observed["state"] == "unavailable"
+    assert "repository identity is missing or mismatched" in observed["detail"]
