@@ -225,7 +225,7 @@ def _commit_file(root: Path, relative: str, content: str, message: str) -> str:
     return _git(root, "rev-parse", "HEAD")
 
 
-def test_default_range_prefers_local_main_over_a_stale_remote_ref(
+def test_default_range_prefers_the_remote_integration_target(
     tmp_path: Path,
 ) -> None:
     root, stale_remote = _init_repo(tmp_path)
@@ -235,7 +235,8 @@ def test_default_range_prefers_local_main_over_a_stale_remote_ref(
     _git(root, "checkout", "-q", "-b", "topic")
     head = _commit_file(root, "topic.txt", "topic\n", "test: topic")
 
-    assert gate.resolve_range(root, None, None) == (local_main, head)
+    assert local_main != stale_remote
+    assert gate.resolve_range(root, None, None) == (stale_remote, head)
 
 
 def _mint_evidence(root: Path) -> str:

@@ -8,7 +8,8 @@ two at the integration boundary: a pull request that rewrites an authority
 surface (fixed writers, app adapters, dispatchers, CI itself) could merge with no
 committed review at all. This gate closes exactly that gap and nothing more:
 
-  1. Resolve the admitted range (default: merge-base with main .. HEAD).
+  1. Resolve the admitted range (default: merge-base with origin/main .. HEAD,
+     falling back to local main when no remote-tracking main exists).
   2. List the commits in that range that touch an authority surface.
   3. If there are none, admit silently — ordinary and material work keeps its
      existing proportionate verification; this gate adds no ceremony to it.
@@ -132,10 +133,10 @@ def resolve_range(root: Path, base: str | None, head: str | None) -> tuple[str, 
     if base:
         resolved_base = _git(root, "rev-parse", base + "^{commit}").strip()
         return resolved_base, resolved_head
-    # Local use should compare a topic with the branch it was actually cut
-    # from. CI supplies immutable base/head SHAs explicitly, so a stale
-    # remote-tracking ref must not widen the local range ahead of `main`.
-    for candidate in ("main", "origin/main"):
+    # Model the integration target when it exists. CI supplies immutable
+    # base/head SHAs explicitly; repositories without a remote fall back to
+    # their local main branch.
+    for candidate in ("origin/main", "main"):
         try:
             resolved_base = _git(
                 root, "merge-base", candidate, resolved_head
@@ -377,7 +378,10 @@ def render(outcome: Outcome) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(_REPO_ROOT))
-    parser.add_argument("--base", help="admitted range base (default: merge-base with main)")
+    parser.add_argument(
+        "--base",
+        help="admitted range base (default: origin/main, then local main)",
+    )
     parser.add_argument("--head", help="admitted range head (default: HEAD)")
     args = parser.parse_args(argv)
     root = args.root.resolve()
