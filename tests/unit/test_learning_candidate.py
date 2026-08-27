@@ -1,9 +1,8 @@
-"""Stage 2 gate tests for the learning-candidate lifecycle (ADR-067).
+"""Read-side learning-candidate lifecycle tests (ADR-067).
 
-Refusal tests here exercise READ-SIDE parsers: until the Stage 2b
-writer-side branch lands in pipeline/mailbox_writer.py these refusals are
-advisory — a nonconforming event still publishes durably (contract I4). The
-tests pin the parser contract, not a publication gate.
+The fixed mailbox writer reuses these parsers and adds repository-dependent
+checks before publication. These tests pin the parser defense in depth; writer
+binding and rollback behavior are covered by test_mailbox_writer.py.
 """
 
 from __future__ import annotations
@@ -49,18 +48,23 @@ def _candidate_fields(**overrides: str | None) -> dict[str, str | None]:
     return fields
 
 
-def _event_text(fields: dict[str, str | None], *, candidate_id: str | None = None) -> str:
+def _event_text(
+    fields: dict[str, str | None],
+    *,
+    candidate_id: str | None = None,
+    sender: str = "director2",
+    recipient: str = "operator",
+    cursor: str = "0",
+) -> str:
     body_id = (
         candidate_id
         if candidate_id is not None
         else protocol_mailbox.compute_learning_candidate_id(fields)
     )
     lines = [
-        "# Director2 → Operator: candidate",
+        f"# {sender.capitalize()} → {recipient.capitalize()}: candidate",
         "",
-        "**When:** 2026-07-30T02-03-04Z · **From:** director2 (online)".replace(
-            "02-03-04", "02:03:04"
-        ),
+        f"**When:** 2026-07-30T02:03:04Z · **From:** {sender} (online)",
         "",
         f"Candidate ID: {body_id}",
     ]
@@ -68,15 +72,32 @@ def _event_text(fields: dict[str, str | None], *, candidate_id: str | None = Non
         if value is not None:
             lines.append(f"{label}: {value}")
     lines.append("")
-    lines.append("Cursor at send: 0")
+    lines.append(f"Cursor at send: {cursor}")
     return "\n".join(lines) + "\n"
 
 
-def _event(fields: dict[str, str | None], *, candidate_id: str | None = None,
-           kind: str = "learning-candidate") -> protocol_mailbox.CommittedEventRef:
-    path = f"coordination/mailbox/sent/2026-07-30T02-03-04Z-director2-to-operator-{kind}.md"
+def _event(
+    fields: dict[str, str | None],
+    *,
+    candidate_id: str | None = None,
+    kind: str = "learning-candidate",
+    sender: str = "director2",
+    recipient: str = "operator",
+    cursor: str = "0",
+) -> protocol_mailbox.CommittedEventRef:
+    path = (
+        "coordination/mailbox/sent/"
+        f"2026-07-30T02-03-04Z-{sender}-to-{recipient}-{kind}.md"
+    )
     return protocol_mailbox.parse_committed_event_text(
-        f"{path}@{'d' * 40}", _event_text(fields, candidate_id=candidate_id)
+        f"{path}@{'d' * 40}",
+        _event_text(
+            fields,
+            candidate_id=candidate_id,
+            sender=sender,
+            recipient=recipient,
+            cursor=cursor,
+        ),
     )
 
 
@@ -155,6 +176,19 @@ def test_candidate_round_trip() -> None:
     )
 
 
+def test_app_member_candidate_round_trip() -> None:
+    """New durable candidates carry the producing desktop app identity."""
+
+    fields = _candidate_fields(**{"Producer seat": "codex"})
+    event = _event(
+        fields, sender="codex", recipient="claude", cursor="cursorless"
+    )
+    statement = protocol_mailbox.parse_learning_candidate_statement(event)
+    assert statement.producer_seat == "codex"
+    assert statement.event.sender == "codex"
+    assert statement.event.recipient == "claude"
+
+
 def test_candidate_id_must_match_normalized_payload() -> None:
     with pytest.raises(ValueError, match="normalized payload"):
         protocol_mailbox.parse_learning_candidate_statement(
@@ -203,7 +237,7 @@ def test_closed_vocabularies_are_enforced() -> None:
         ({"Scope": "global"}, "Scope must be"),
         ({"Evidence provenance": "GUESSED"}, "claim_check ladder"),
         ({"Risk class": "casual"}, "closed set"),
-        ({"Producer seat": "coordinator"}, "review role"),
+        ({"Producer seat": "coordinator"}, "recognized producer identity"),
     ):
         with pytest.raises(ValueError, match=message):
             protocol_mailbox.parse_learning_candidate_statement(
@@ -352,11 +386,8 @@ def test_send_event_wrapper_refuses_a_retired_learning_candidate_sender(
         cwd=root,
     )
     assert result.returncode == 2
-    # The refusal moved one step earlier and got stricter: a retired seat is
-    # no longer a lawful sender for ANY new event, so it never reaches the
-    # per-kind rule. The property -- only a review role may publish a
-    # learning-candidate -- holds more broadly than the message it used to
-    # produce.
+    # The refusal moves one step earlier: a retired seat is not a lawful sender
+    # for any new event, so it never reaches the app-member per-kind rule.
     assert b"bad <from>: coordinator" in result.stderr
     assert list((mailbox / "sent").iterdir()) == [], "refusal must write nothing"
     status = subprocess.run(

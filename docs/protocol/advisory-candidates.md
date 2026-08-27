@@ -1,10 +1,17 @@
 # Advisory candidates — thin-evidence rules flagged for later principal review
 
-**Status: audit-only list. NO rule status is changed by this file or by the
-CLAUDE.md/AGENTS.md operative-split migration that created it.** This is a parking
-list for a *separate, later* advisory-review phase in which the user-principal
-decides whether any of these rules should move active → advisory (or be revised),
-*with intent*. Until then every rule below remains fully active.
+> **Historical audit evidence.** This dated parking list records the doctrine
+> that was evaluated at the time; it is not current authority. Use `AGENTS.md`,
+> executable policy, and the current protocol map for present behavior. In
+> particular, the standing four-seat/coordinator system described below is
+> retired; do not reactivate it from this record.
+
+**Status at the time of the record: audit-only list. NO rule status was changed
+by this file or by the CLAUDE.md/AGENTS.md operative-split migration that created
+it.** This was a parking list for a *separate, later* advisory-review phase in
+which the user-principal would decide whether any of these rules should move
+active → advisory (or be revised), *with intent*. At that time every rule below
+remained fully active.
 
 ## What "thin evidence" means here
 

@@ -5,7 +5,7 @@ The repository classifies review depth by risk (`review_profile_for`), binds
 formal review to committed Compact Pair artifacts (`compact_pair_loop`), and
 already validates those artifacts in smoke. What no gate did was connect the
 two at the integration boundary: a pull request that rewrites an authority
-surface (hook policy, fixed writers, launchers, CI itself) could merge with no
+surface (fixed writers, app adapters, dispatchers, CI itself) could merge with no
 committed review at all. This gate closes exactly that gap and nothing more:
 
   1. Resolve the admitted range (default: merge-base with main .. HEAD).
@@ -41,23 +41,27 @@ for _path in (_REPO_ROOT, _SCRIPTS_DIR):
 
 import compact_pair_loop as pair  # noqa: E402
 import git_runner  # noqa: E402
+import mailbox_writer  # noqa: E402
 
 # Authority surfaces: executable authority, side-effect gating, trust-granting
 # composition, and the integration gate itself. Directory entries end with a
 # slash and match by prefix; file entries match exactly. Extending this list
 # is itself an authority-surface change, so the extension gets reviewed.
 AUTHORITY_SURFACES: tuple[str, ...] = (
+    ".agents/plugins/",
     ".agents/skills/",
     ".claude/agents/",
     ".claude/settings.json",
     ".claude/skills/",
     ".codex/agents/",
     ".codex/config.toml",
+    ".mcp.json",
     ".github/workflows/",
     "config/",
     ":(glob)tests/**/conftest.py",
     "AGENTS.md",
     "ARCHITECTURE.md",
+    "bin/pipeline",
     "CLAUDE.md",
     "OPERATIONS.md",
     "README.md",
@@ -181,7 +185,7 @@ def authority_commits(root: Path, base: str, head: str) -> dict[str, tuple[str, 
     }
 
 
-def _reports_added_in_range(root: Path, base: str, head: str) -> list[str]:
+def _events_added_in_range(root: Path, base: str, head: str) -> list[str]:
     output = _git(
         root,
         "diff",
@@ -194,8 +198,40 @@ def _reports_added_in_range(root: Path, base: str, head: str) -> list[str]:
     return sorted(
         line.strip()
         for line in output.splitlines()
-        if line.strip().endswith(_REPORT_SUFFIX)
+        if line.strip()
     )
+
+
+def _known_kinds_at(root: Path, head: str) -> frozenset[str]:
+    """Read the candidate commit's kind registry, never checkout bytes."""
+
+    text = _git(root, "show", f"{head}:coordination/mailbox/kinds.txt")
+    kinds = frozenset(
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+    required = {"verify-request", "verification-report"}
+    if not required <= kinds:
+        raise AdmissionError(
+            "candidate mailbox kind registry lacks formal review kinds"
+        )
+    return kinds
+
+
+def _validate_current_envelope(
+    root: Path, raw: bytes, path: str, kinds: frozenset[str]
+) -> None:
+    envelope = mailbox_writer.validate_event_envelope_bytes(
+        root, raw, path, kinds=kinds
+    )
+    problem = mailbox_writer.new_write_envelope_problem(
+        envelope.group("kind"),
+        envelope.group("sender"),
+        envelope.group("recipient"),
+    )
+    if problem is not None:
+        raise pair.CompactPairError(problem)
 
 
 def _introduction_commit(root: Path, head: str, path: str) -> str:
@@ -227,12 +263,17 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
     if not outcome.authority_commits:
         return outcome
 
+    kinds = _known_kinds_at(root, head)
+    added_events = _events_added_in_range(root, base, head)
     parsed: dict[str, pair.VerificationReport] = {}
-    for path in _reports_added_in_range(root, base, head):
+    for path in (
+        item for item in added_events if item.endswith(_REPORT_SUFFIX)
+    ):
         raw = _git(root, "show", f"{head}:{path}").encode("utf-8")
         try:
+            _validate_current_envelope(root, raw, path, kinds)
             report = pair.parse_verification_report_committed_bytes(root, path, raw)
-        except pair.CompactPairError as exc:
+        except (mailbox_writer.MailboxWriterError, pair.CompactPairError) as exc:
             outcome.skipped_reports.append((path, f"unparseable: {exc}"))
             continue
         violations = pair.validate_report(root, report)

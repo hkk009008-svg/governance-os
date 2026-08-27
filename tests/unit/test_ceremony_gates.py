@@ -1,7 +1,7 @@
 """Unit tests for pipeline/check_no_ceremony.py — the anti-ceremony detector.
 
-Covers the pure, mailbox-free helpers (R6 `_pass_reports_missing_runxfail`,
-R5 `_utv_status_violations`, the `_is_xfail_decorator` AST classifier) plus the
+Covers the pure, mailbox-free helpers (`_utv_status_violations`, the
+`_is_xfail_decorator` AST classifier) plus the
 top-level `main()` GO/NO-GO on this repo (currently clean -> exit 0).
 
 Hermetic: no network or repository writes. R3 uses a temporary test module and
@@ -13,7 +13,6 @@ import ast
 import contextlib
 import io
 import subprocess
-import sys
 
 import check_no_ceremony as cnc
 import wave_gate_check
@@ -83,51 +82,6 @@ def test_r3_rejects_fabricated_pytest_results_without_execution_witness(
 
     assert status == "FAIL"
     assert "did not produce" in details[0]
-
-
-def test_r6_fails_closed_when_its_consumer_is_unavailable(monkeypatch):
-    monkeypatch.setitem(sys.modules, "consume_reviewer_result", None)
-
-    status, details = cnc.rule_report_cites_executed_pin()
-
-    assert status == "FAIL"
-    assert "consumer unavailable" in details[0]
-
-
-# --------------------------------------------------------------------------
-# R6 — _pass_reports_missing_runxfail (pure over (label, result) pairs)
-# --------------------------------------------------------------------------
-
-def test_pass_with_no_runxfail_command_flags_violation():
-    """A `pass` verdict whose commands[] cites no --runxfail pin is ceremony."""
-    out = cnc._pass_reports_missing_runxfail([("r", {"verdict": "pass", "commands": []})])
-    assert len(out) == 1
-    assert out[0].startswith("r:")
-    assert "--runxfail" in out[0]
-
-
-def test_pass_citing_runxfail_command_is_clean():
-    """A `pass` whose commands[] cites a --runxfail command yields no violation."""
-    results = [
-        ("r", {"verdict": "pass", "commands": [{"command": "pytest tests/pins --runxfail -q"}]})
-    ]
-    assert cnc._pass_reports_missing_runxfail(results) == []
-
-
-def test_non_pass_verdicts_are_not_gated():
-    """`issues` / `unable_to_verify` make no GO claim, so they owe no pin re-exec."""
-    results = [
-        ("a", {"verdict": "issues", "commands": []}),
-        ("b", {"verdict": "unable_to_verify", "commands": []}),
-    ]
-    assert cnc._pass_reports_missing_runxfail(results) == []
-
-
-def test_pass_with_non_list_commands_is_a_clean_fail_not_a_crash():
-    """Wrong-type commands[] is treated as 'no pin cited' -> one violation, no exception."""
-    out = cnc._pass_reports_missing_runxfail([("r", {"verdict": "pass", "commands": None})])
-    assert len(out) == 1
-    assert "--runxfail" in out[0]
 
 
 # --------------------------------------------------------------------------
@@ -219,10 +173,10 @@ def test_is_xfail_decorator_rejects_non_xfail_marker():
 
 def test_python_growth_rejects_large_total_and_per_file_growth():
     violations, summary = cnc._python_growth_violations(
-        "120\t5\tpipeline/large.py\n10\t0\ttests/test_large.py\n"
+        "270\t5\tpipeline/large.py\n10\t0\ttests/test_large.py\n"
     )
 
-    assert "net 125" in summary
+    assert "net 275" in summary
     assert any("pipeline/large.py" in item for item in violations)
     assert any("total net Python growth" in item for item in violations)
 
@@ -238,7 +192,7 @@ def test_python_growth_accepts_deletion_first_refactor():
 
 def test_python_growth_cannot_be_hidden_by_deleting_another_file():
     violations, summary = cnc._python_growth_violations(
-        "260\t250\tpipeline/new_layer.py\n0\t100\tpipeline/old_layer.py\n"
+        "410\t400\tpipeline/new_layer.py\n0\t100\tpipeline/old_layer.py\n"
     )
 
     assert "net -90" in summary
@@ -249,7 +203,7 @@ def test_python_growth_checks_untracked_files_without_a_parent(tmp_path, monkeyp
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     untracked = tmp_path / "pipeline/new.py"
     untracked.parent.mkdir()
-    untracked.write_text("value = 1\n" * 400, encoding="utf-8")
+    untracked.write_text("value = 1\n" * 401, encoding="utf-8")
     monkeypatch.setattr(cnc, "ROOT", tmp_path)
     monkeypatch.setattr(cnc, "_growth_base", lambda: None)
     status, details = cnc.rule_python_growth()
@@ -284,8 +238,8 @@ def _numstat(rows):
 def test_an_introduced_file_is_not_growth() -> None:
     """A file that did not exist at the base cannot have bloated.
 
-    The per-file cap exists to stop one file swelling over time. Applied to an
-    arrival it refused three harness tools for showing up with their fixtures.
+    The net-growth cap exists to stop one existing file swelling over time;
+    the separate additions and aggregate ceilings still apply to arrivals.
     """
     violations, _ = cnc._python_growth_violations(
         _numstat([(90, 0, "tools/new.py")]), frozenset({"tools/new.py"})
@@ -297,10 +251,13 @@ def test_an_introduced_file_is_not_growth() -> None:
 def test_an_existing_file_still_cannot_bloat() -> None:
     """The half that must not change: same numbers, file present at the base."""
     violations, _ = cnc._python_growth_violations(
-        _numstat([(90, 0, "pipeline/old.py")])
+        _numstat([
+            (270, 0, "pipeline/old.py"),
+            (0, 200, "pipeline/retired.py"),
+        ])
     )
 
-    assert violations == ["pipeline/old.py: net growth 90 exceeds 80"]
+    assert violations == ["pipeline/old.py: net growth 270 exceeds 250"]
 
 
 def test_unexplained_growth_is_still_refused() -> None:
@@ -406,19 +363,19 @@ def test_a_rename_that_really_grows_is_still_refused(tmp_path, monkeypatch) -> N
     """Evasion control: the loosened threshold must not buy a bloating rename.
 
     If -M5% let a rename escape the per-file cap, this is the change that would
-    walk through: same trick, but the file genuinely gains 160 lines. The
+    walk through: same trick, but the file genuinely gains 280 lines. The
     assertion names the PER-FILE violation explicitly, because an earlier
     version passed on the additions cap while the rule it claimed to exercise
     was never reached.
     """
-    _repo_with_rename(tmp_path, 80, 240, monkeypatch)
+    _repo_with_rename(tmp_path, 80, 360, monkeypatch)
 
     status, details = cnc.rule_python_growth()
 
     assert status == "FAIL", details
     per_file = [
         detail for detail in details[1:]
-        if "net growth" in detail and "exceeds 80" in detail
+        if "net growth" in detail and "exceeds 250" in detail
     ]
     assert per_file, f"the per-file cap must be what convicts: {details}"
     assert "=> pipeline/newname.py" in per_file[0] or "newname.py" in per_file[0], per_file

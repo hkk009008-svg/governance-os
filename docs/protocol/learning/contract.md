@@ -10,11 +10,16 @@
 
 Purpose: the learning lifecycle (observe → extract → candidate → evaluate →
 promote → distribute → measure → supersede) on the existing governance spine,
-provider-neutral across Claude and Codex. Non-goals, binding on
+shared across Codex, Claude, and AGY. Non-goals, binding on
 every stage: no autonomous canonical writes; no embeddings before FTS is
 measured insufficient; no new approval machinery where the compact pair
 already is one; no "most-sessions-should-update-something" bias — candidates
 come from evidence triggers only.
+
+This governed learning-candidate/disposition lifecycle is the fixed mailbox
+writer's third active durable use, alongside risk-required formal artifacts and
+real checkpoints. It is durable advisory evidence, never routine team chat or
+an authority source.
 
 ## 1. Authority model — where enforcement binds
 
@@ -29,8 +34,8 @@ is itself a contract violation.
   — asserting `pipeline/mailbox_writer.py` and `pipeline/compact_pair_loop.py`
   import no `learning_*` module. Everything else in I1 is doctrine: any
   future import of a learning module into those two files is a contract
-  change and reviews as one. Live task state is read from durable shared
-  state — Git, mailbox, status — never from the index
+  change and reviews as one. Live task state is read from Git, desktop task
+  history, and the team transport — never from the index
   (`pipeline/codex_protocol_model.py:17`, CENTRAL_INVARIANT).
 - **I2 — no learning artifact grants authority.** Doctrine, held by a
   reviewed absence: the fixed writer and compact-pair validators consume no
@@ -53,9 +58,9 @@ is itself a contract violation.
   `tests/unit/test_learning_promotion.py`. The
   target-base-hash CAS compares bytes at the disposition event's own commit,
   never a live worktree — promotion changes worktree bytes by design.
-- **I5 — the governance floor lives in operator judgment.** Doctrine: a
+- **I5 — the governance floor lives in reviewer judgment.** Doctrine: a
   `governance-rule` candidate carries a `high-risk-control` review floor,
-  enforced by the assigned operator's risk-class judgment on the promoting
+  enforced by the assigned reviewer's risk-class judgment on the promoting
   verify-request (`AGENTS.md` Universal contract item 5 — authority and security work needs
   distinct non-author, different-model actual-diff review) — not by
   candidate machinery, because `_finding_refs` is a shape-only regex
@@ -97,16 +102,15 @@ an ignore rule at all:
   episodic index must not ingest it — absolute paths, `~` expansions, and
   parent escapes are refused at the ingest boundary.
 - **Scoped episodic index** (workspace scope): derived, rebuildable,
-  local-only, a projection with no authority (alongside the git-common-dir
-  ref-bus, presence heartbeats, locks). Never committed; the
+  local-only, a projection with no authority. Never committed; the
   `coordination/learning/` ignore rule lands with Stage 1.
 
 ## 3. The candidate record
 
 One mailbox event of kind `learning-candidate` (registry kind:
-`coordination/mailbox/kinds.txt`; the writer and `send-event` accept registry
-kinds with zero code change, `coordination/bin/send-event:94-102`,
-`pipeline/mailbox_writer.py:120-122`), typed at read time by
+`coordination/mailbox/kinds.txt`; the registry remains the read-side vocabulary,
+while the fixed writer admits only its explicit new-write allowlist in
+`pipeline/mailbox_writer.py` and `coordination/bin/send-event`), typed at read time by
 `parse_learning_candidate_statement` in `pipeline/protocol_mailbox.py`,
 following the ownership-record pattern of
 `parse_ownership_proposal_statement` in the same module. (Symbol names, not
@@ -134,10 +138,12 @@ being corrected, which is how the previous anchors rotted.) Body fields, one
     Risk class: from the closed set (`pipeline/codex_protocol_model.py:33-70`)
     Supersedes: optional `<learning-candidate path>@<commit>` (ADR-066
       re-issue idiom: never patch in place, name what is replaced)
-    Producer seat / Producer model (Producer seat must equal the envelope
-      sender — no relay allowance exists; a mismatch is refused at parse,
-      because a false producer label would pre-defeat the self-approval
-      refusal below)
+    Producer seat / Producer model (`Producer seat` is a compatibility field
+      label; for a new candidate its value is the actual desktop app member
+      `codex`, `claude`, or `agy`). It must equal the envelope sender — no relay
+      allowance exists; a mismatch is refused at parse, because a false
+      producer label would pre-defeat the self-approval refusal below. Legacy
+      role and seat values remain readable in committed history.
 
 Dedup derives from committed `coordination/mailbox/sent/` events at the
 pinned commit — never from the local index, which gives checkout-dependent
@@ -189,14 +195,15 @@ Checkpoints are not a learning kind. They reuse mailbox kind `findings`
 so the writer allowlist does not grow. A body that carries checkpoint
 intent (`Checkpoint:` slug plus `Next action:`) is validated at
 publication (`pipeline/mailbox_writer.py`); ordinary findings prose
-without intent still publishes. Drafting is scratch-only
+without checkpoint intent remains readable as history but cannot be newly
+published. Drafting is scratch-only
 (`pipeline/draft_checkpoint.py`, O4). `Lessons:` is required and
 `none-considered` always publishes — there is no quota (sediment
 threat, contract §4). Resume reads one snapshot plus the newest
 campaign checkpoint; recalled state stays advisory (I1).
 
 Skill-use rows in `logs/learning/outcomes.jsonl` (schema:
-`docs/protocol/learning/skill-use.md`) are seat wrap judgments.
+`docs/protocol/learning/skill-use.md`) are desktop-member wrap judgments.
 `pipeline/learning_metrics.py` reports them. They never bind accept /
 decline / expire / edit / prune. That absence in the two validation
 kernels is the same I1 check that already forbids `learning_*` imports;

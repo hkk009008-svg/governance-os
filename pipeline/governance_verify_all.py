@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
 """governance_verify_all — the full governance verification aggregate.
 
-Formerly pipeline/ci_smoke.py (a thin deprecated alias remains at that path:
-CI job vocabulary and historical commands keep resolving). The rename states
-what this is: the FULL aggregate, run in CI, before a release or
-high-risk-control acceptance, or when work changes governance/runtime
-topology — not a cheap session-start preflight. For ordinary changes run the
-focused checker that owns the touched boundary (see CHECKER_REGISTRY).
+This is the FULL aggregate, run in CI, before a release or high-risk-control
+acceptance, or when work changes governance/runtime topology — not a cheap
+session-start preflight. For ordinary changes run the focused checker that owns
+the touched boundary (see CHECKER_REGISTRY).
 
 Two halves run in sequence:
 
   HALF A — Project runtime smoke (_project_smoke):
-    This repo's product IS the governance OS, so the runtime smoke asserts the
-    OS's own load-bearing invariants: the signed-bus package imports cleanly,
-    the RFC-8785 canonicalizer is key-order-stable, the load-bearing kind set
-    is a subset of the full vocabulary, and the seat roster + mailbox kind
-    registry parse. Projects seeded from the transfer bundle replace the body
-    with invariants for their own stack. See _project_smoke() below.
+    Assert that the three desktop-app members import, their checked-in project
+    MCP configs bind configured member labels, the formal-review family gate remains
+    Claude+GPT only, and the durable mailbox kind registry parses.
 
   HALF B — Governance gates (always active):
     These are fully portable and run unchanged in any project seeded from this
@@ -29,7 +24,6 @@ Two halves run in sequence:
     - Coordination-state gate: check_coordination (FATAL hard-fails locally
       and in CI; ADVISORY warns everywhere).
     - Anti-ceremony gate: check_no_ceremony (hard-fail local + CI — ADR-028).
-    - Reviewer-result schema validation: consume_reviewer_result smoke_check
       (schema-validation only; never re-runs pytest — ADR-032).
     - Adoption-placeholder gate: check_placeholders (hard-fail local + CI — ADR-002).
     - Lane V report corpus + GO evidence validator: check_go_schema (hard-fail local + CI).
@@ -37,7 +31,7 @@ Two halves run in sequence:
       ARCHITECTURE.md changed vs merge-base; hard-fail when it fires).
 
 Usage:
-    pipeline check    # local
+    bin/pipeline check    # local
     python pipeline/governance_verify_all.py              # CI (after pip install)
 
 Exit codes:
@@ -65,7 +59,15 @@ for _p in (_REPO_ROOT, _SCRIPTS_DIR):
 CHECKER_REGISTRY = {
     "project_smoke": {
         "entry": "pipeline/governance_verify_all.py",
-        "owned_paths": ("pipeline/", "coordination/mailbox/kinds.txt"),
+        "owned_paths": (
+            "pipeline/",
+            "coordination/mailbox/kinds.txt",
+            ".codex/config.toml",
+            ".mcp.json",
+            ".agents/plugins/pipeline-team/plugin.json",
+            ".agents/plugins/pipeline-team/mcp_config.json",
+            "config/model-families.toml",
+        ),
         "trigger": "governance/runtime topology change",
         "severity": "hard-fail",
         "blocked_effect": "landing a broken governance-OS runtime invariant",
@@ -74,7 +76,6 @@ CHECKER_REGISTRY = {
         "entry": "pipeline/check_doc_claims.py",
         "owned_paths": (
             "ARCHITECTURE.md", "CLAUDE.md", "AGENTS.md", "DECISIONS.md",
-            "docs/protocol/agents/director-operator.md",
         ),
         "trigger": "editing SHA-citing truth docs",
         "severity": "hard-fail (fatal kinds) / warn (advisory kinds)",
@@ -93,13 +94,6 @@ CHECKER_REGISTRY = {
         "trigger": "Python growth / xfail pins / remediation inventory / reviewer schema change",
         "severity": "hard-fail",
         "blocked_effect": "verification theater or disproportionate Python growth",
-    },
-    "reviewer_result_schema": {
-        "entry": "pipeline/consume_reviewer_result.py",
-        "owned_paths": ("coordination/mailbox/",),
-        "trigger": "reviewer-result blocks in mailbox events",
-        "severity": "hard-fail",
-        "blocked_effect": "malformed reviewer results consumed as verdicts",
     },
     "placeholders": {
         "entry": "pipeline/check_placeholders.py",
@@ -125,35 +119,53 @@ CHECKER_REGISTRY = {
 }
 
 def _project_smoke() -> int:
-    """Project-runtime smoke: the governance OS's own load-bearing invariants.
-
-    This repo's product IS the governance OS, so the runtime smoke asserts the
-    OS's own code imports cleanly and its core singletons/vocabularies are stable:
-      - the signed-bus package + its RFC-8785 canonicalizer import and round-trip,
-      - the load-bearing kind set is a subset of the full kind vocabulary,
-      - the seat roster (single source of truth) has the expected shape and the
-        markdown mailbox kind registry parses from coordination/mailbox/kinds.txt.
-    """
+    """Check the desktop-team adapters and independent governance boundaries."""
     failures: list[str] = []
 
-    # 1. Seat roster (single source of truth) + mailbox kind registry are stable.
+    try:
+        import team as _team
+
+        if tuple(_team.MEMBERS) != ("codex", "claude", "agy"):
+            failures.append(f"desktop team members are not fixed: {_team.MEMBERS!r}")
+        if set(_team.RECIPIENTS) != {*_team.MEMBERS, "all"}:
+            failures.append(f"desktop team recipients are invalid: {_team.RECIPIENTS!r}")
+    except Exception as e:
+        failures.append(f"desktop team import failed: {e!r}")
+
+    try:
+        import harness_preflight as _preflight
+
+        for result in _preflight.check_team_configs(Path(_REPO_ROOT)):
+            if not result.ok:
+                failures.append(result.detail)
+    except Exception as e:
+        failures.append(f"desktop app config check failed: {e!r}")
+
+    try:
+        import codex_protocol_model as _model
+
+        if _model.CURRENT_REVIEW_FAMILIES != frozenset({"claude", "gpt"}):
+            failures.append(
+                "formal review families must remain exactly claude+gpt: "
+                f"{sorted(_model.CURRENT_REVIEW_FAMILIES)!r}"
+            )
+    except Exception as e:
+        failures.append(f"model-family admission check failed: {e!r}")
+
     try:
         import protocol_mailbox as _pm
-        if not set(_pm.SEATS) >= {"director", "director2", "operator", "operator2"}:
-            failures.append(f"SEATS roster missing expected members: {_pm.SEATS!r}")
-        if not set(_pm.RECEIVING_SEATS) >= set(_pm.SEATS):
-            failures.append("RECEIVING_SEATS does not contain every SEAT")
+
         if not _pm.KNOWN_KINDS:
             failures.append("KNOWN_KINDS empty — coordination/mailbox/kinds.txt did not parse")
     except Exception as e:
-        failures.append(f"protocol_mailbox roster failed: {e!r}")
+        failures.append(f"protocol_mailbox kind registry failed: {e!r}")
 
     if failures:
-        print("PROJECT SMOKE — governance-OS runtime invariants")
+        print("PROJECT SMOKE — desktop team and governance invariants")
         for _f in failures:
             print(f"  ✗ {_f}")
         return 1
-    print("PROJECT SMOKE — governance-OS runtime invariants ... OK")
+    print("PROJECT SMOKE — desktop team and governance invariants ... OK")
     return 0
 
 
@@ -180,7 +192,7 @@ def _coordination_gate(repo_root: Path) -> int:
             print(
                 f"WARNING: coordination ADVISORY [{kind}] x{len(group)} "
                 f"(e.g. {group[0].path}) — itemize with: "
-                f"pipeline check coordination"
+                f"bin/pipeline check coordination"
             )
         else:
             for issue in group:
@@ -192,7 +204,7 @@ def _coordination_gate(repo_root: Path) -> int:
         return 0
     for issue in fatals:
         print(f"COORDINATION FATAL [{issue.kind}] {issue.path} — {issue.message}")
-    print("\nRun: pipeline check coordination")
+    print("\nRun: bin/pipeline check coordination")
     return 1
 
 
@@ -215,7 +227,7 @@ def _architecture_gate(repo_root: Path) -> int:
         hint = f"  → suggested line {drift.suggested_line}" if drift.suggested_line else ""
         print(f"  [{drift.kind}] {drift.target_file}:{drift.target_line}{hint}")
         print(f"    {drift.message}")
-    print("\nRun: pipeline check docs --fix")
+    print("\nRun: bin/pipeline check docs --fix")
     return 1
 
 
@@ -225,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     if "-h" in args or "--help" in args:
         # `_ARGLESS` used to answer this by printing "Takes no arguments",
         # which denied --fast existed. The gate answers for itself instead.
-        print("usage: pipeline check [--fast]\n")
+        print("usage: bin/pipeline check [--fast]\n")
         print("Run every governance gate (the completion gate).\n")
         print("  --fast  essential coordination, ceremony and placeholder")
         print("          checks only; skips the full aggregate.")
@@ -312,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("SHA-REF BASELINE CHECK — FAIL")
                 print(_sha_status.warning_line)
                 print(
-                    "Run: pipeline check docs --sha-refs "
+                    "Run: bin/pipeline check docs --sha-refs "
                     "and update the reviewed baseline only after a bounded cleanup "
                     "or explicit owner decision."
                 )
@@ -338,19 +350,8 @@ def main(argv: list[str] | None = None) -> int:
     if _ceremony_exit:
         return _ceremony_exit
 
-    # ADR-032: consume any reviewer-result/1 blocks present in the mailbox. This is the
-    # SCHEMA-VALIDATION half only — it never re-runs pytest (re-running a historical
-    # event's pins against today's HEAD would false-alarm; the fabrication re-run is the
-    # on-demand `consume_reviewer_result.py <event>` CLI). Zero blocks (today) -> silent 0;
-    # a present-but-invalid block hard-fails. Mirrors the check_no_ceremony invocation above.
-    import consume_reviewer_result as _crr
-
-    _consume_exit = _crr.smoke_check(_repo_root)
-    if _consume_exit:
-        return _consume_exit
-
     # ADR-002: adoption-placeholder gate (check_placeholders). Hard-fail local + CI.
-    # Calls run() directly — NOT main() — to avoid mis-parsing ci_smoke's own argv.
+    # Calls run() directly — NOT main() — to avoid mis-parsing the aggregate's argv.
     import check_placeholders as _cp
 
     _ph_violations = _cp.run(_repo_root)

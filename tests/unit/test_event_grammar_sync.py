@@ -1,7 +1,7 @@
 """One event-filename grammar, everywhere.
 
 Parser drift across the mailbox surfaces was a measured defect class: status
-accepted any ``\\w+`` sender, slope_metrics dropped the Z from the stamp and
+accepted any ``\\w+`` sender, while a retired metrics reader dropped the Z from the stamp and
 forbade digits in kinds. The canonical grammar lives in
 pipeline/protocol_mailbox.py and Python adopters must use it verbatim.
 """
@@ -16,8 +16,6 @@ import check_coordination
 import learning_index
 import mailbox_writer
 import protocol_mailbox
-import slope_metrics
-import status
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -27,10 +25,8 @@ CANONICAL = protocol_mailbox.EVENT_NAME_RE
 def test_python_adopters_share_the_canonical_pattern() -> None:
     adopters = {
         "mailbox_writer._EVENT_RE": mailbox_writer._EVENT_RE,
-        "status._EVENT_RE": status._EVENT_RE,
         "check_coordination._EVENT_NAME_RE": check_coordination._EVENT_NAME_RE,
         "bus_unread._EVENT_NAME_RE": bus_unread._EVENT_NAME_RE,
-        "slope_metrics._EVENT_NAME_RE": slope_metrics._EVENT_NAME_RE,
         "learning_index._EVENT_NAME_RE": learning_index._EVENT_NAME_RE,
     }
     for name, pattern in adopters.items():

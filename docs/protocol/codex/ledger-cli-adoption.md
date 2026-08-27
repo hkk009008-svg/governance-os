@@ -1,107 +1,65 @@
-# Evidence-ledger bridge for Codex
+# Evidence-ledger bridge for Codex desktop
 
-Use this bridge only when a user or parent task routes work from Pipeline to
-the registered `evidence-ledger` target.
+Use this adapter only when the current task routes work from Pipeline to the
+registered `evidence-ledger` target. Pipeline owns the shared engineering and
+review boundary; evidence-ledger owns product truth. Do not work on the user
+Content checkout by mistake.
 
-Pipeline remains the Codex four-seat governance kernel. Evidence-ledger remains
-the product repository and owns product-local truth. Do not start ledger work
-from the user Content checkout.
+## Enter the target
 
-## Start
-
-Use one compact Pipeline snapshot, then the ordinary target guard:
+Start with current state and resolve the registered checkout:
 
 ```bash
-PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
-cd "$PIPELINE_ROOT"
-bin/pipeline status snapshot <role>
-coordination/bin/pipeline-python pipeline/ledger_start_guard.py --seat <seat> --wave 2
+bin/pipeline status
+bin/pipeline target --target evidence-ledger --print-path
 ```
 
-`<seat>` and `<role>` are the same thing and the guard accepts exactly two
-values, `author` and `reviewer` (`ledger_start_guard.py --help`). The six
-pre-collapse seat names are rejected there.
+If the task is bound to an existing committed Pipeline route, validate that
+route before entering the target:
 
-The guard resolves the registered target and current committed route, validates
-that startup began in Pipeline, and prints only the route-bound next evidence.
-There is no fast-resume mode or second seat-status pass.
-
-Read the route body and the target repository's `CLAUDE.md` and `AGENTS.md`
-before product edits. If instructions disagree, user instructions win first;
-evidence-ledger controls product behavior and Pipeline controls the protocol
-boundary.
-
-## Identity and scope
-
-- Readiness bridge may inspect and report but does not mutate evidence-ledger.
-- A named role works only inside the explicit route and allowed paths.
-- Coordinator may reconcile ledger work from durable evidence but must not
-  author behavior-changing product fixes.
-- A subagent remains parent-scoped and inherits no role, mailbox, cursor,
-  verdict, lock, push, or spending authority.
-
-The target route may bind:
-
-```text
-Target worktree: /absolute/path
-Accepted target HEAD: <full lowercase SHA>
-
-## Target Allowed Paths
-- relative/path
+```bash
+coordination/bin/pipeline-python pipeline/ledger_start_guard.py --seat <author|reviewer> --wave 2
 ```
 
-Historical field aliases remain parseable only for committed compatibility.
-The guard rejects unsafe paths, conflicting routes, and divergent exact heads.
+The `--seat` spelling is a compatibility field for the route schema; it means
+the temporary formal responsibility, not a standing app identity. Ordinary
+direct target work does not invent a role or route. Read the selected route
+body when one exists, then read evidence-ledger's `AGENTS.md` and `CLAUDE.md`.
+User instructions win first, evidence-ledger controls product behavior, and
+Pipeline controls the cross-repository review boundary.
 
-## Git and environment
+## Work and scope
 
-Codex uses each caller-selected worktree's native Git index. The launcher strips
-an inherited `GIT_INDEX_FILE`; do not create or share a Pipeline seat index.
-Inspect the exact route worktree when one is named:
+Codex remains member `codex` of the desktop team. A readiness helper may
+inspect only. Any implementation stays inside the accepted target and allowed
+paths. At a formal boundary, `author` owns the candidate and `reviewer` is a
+non-author Codex or Claude member for that exact range. AGY may co-direct,
+implement in isolation, and challenge evidence, but is not the sole formal
+accepting verdict.
+
+Use each worktree's native Git index. Preserve unrelated dirty work and stage
+explicit pathspecs. When a route names a worktree, inspect that exact worktree;
+the registered checkout may be stale:
 
 ```bash
 git -C /absolute/route/worktree status --short --branch
 git -C /absolute/route/worktree log --oneline -5
 ```
 
-Otherwise inspect the registered target checkout:
+Otherwise run the same commands in the path printed by `bin/pipeline target`.
+Subagents remain parent-scoped and inherit no task, review, push, merge,
+release, spend, lock, or live-data authority.
 
-```bash
-TARGET_ROOT="$(coordination/bin/pipeline-python pipeline/target_binding.py --target evidence-ledger --print-path)"
-git -C "$TARGET_ROOT" status --short --branch
-git -C "$TARGET_ROOT" log --oneline -5
-```
+## Effects, transfer, and verification
 
-Preserve unrelated dirty work and use explicit pathspecs for separately
-authorized staging or commits. A normal checkout can be stale relative to a
-route worktree; the exact route wins.
+Starting or stopping local services, push, merge, release, lock acquisition,
+paid spend, destructive operations, and live-data mutation each require exact
+current authority for the executor, target, effect, and scope. A route, team
+message, role label, or green guard does not supply it.
 
-## Local services and external effects
-
-Before a local Supabase lifecycle action, inspect the installed version and
-actual container/service state. A partially running stack does not prove that a
-generic start command will safely resume only missing services.
-
-Starting, stopping, acquiring, reconfiguring, or cleaning services needs exact
-authorization for the executor, target, action, and restoration scope. The
-same separation applies to merge, cursor consumption, locks, peer invocation,
-paid spend, and live-data mutation — the list in `AGENTS.md` item 6, which
-deliberately excludes push. A route or successful guard does not authorize any
-of them.
-
-## Transfer and verification
-
-Record both repository heads only when ownership or context actually transfers
-across repositories. A routine local continuation does not require a handoff.
-
-With the development environment activated, verify Pipeline protocol changes
-using the smallest focused tests and one completion gate:
-
-```bash
-coordination/bin/pipeline-python -m pytest tests/unit/test_codex_ledger_bridge.py -q
-bin/pipeline check
-```
-
-Use evidence-ledger's own verification commands for product changes. Formal
-review follows the risk profile in `AGENTS.md`; a green guard or gate run is
-evidence, not a reviewer verdict.
+Record both repository heads only when ownership or context really transfers
+across repositories. Routine continuation needs no handoff. Verify Pipeline
+changes with focused tests and one proportionate completion gate; verify
+evidence-ledger changes with that repository's own commands. Formal review
+follows the current risk profile in `AGENTS.md` and always inspects the actual
+committed range.

@@ -1,43 +1,26 @@
 ---
 name: seat-operator
-description: Use for explicit reviewer-role (formerly operator/operator2) implementation or independent review and GO/NITS/FAIL.
+description: Use when explicitly assigned the temporary independent reviewer responsibility for an exact committed range and a GO, NITS, or FAIL decision.
 ---
 
-# Reviewer role delta
+# Temporary independent reviewer responsibility
 
-Load the four-seat skill first. This role exists only when the user or parent
-explicitly assigns `reviewer`. The `operator`/`operator2` names this file is
-still filed under are retired: committed events keep parsing them, and the
-fixed writer refuses them as the sender of a new one.
+Load `four-seat-protocol` first. This responsibility exists for one committed
+range; `operator` is a legacy filename, not a standing team position. A member
+may implement other work, but never reviews a range it authored.
 
-Read one `pipeline status` snapshot, the relevant event bodies, and scoped Git
-state. A reviewer may own and implement accepted work, but never reviews
-anything it authored.
+Bind the exact repository, request, base, head, paths, author/model identity,
+reviewer/model identity, risk class, and carried findings before inspecting the
+diff. Test the behavior and attack the stated abuse classes rather than
+reviewing only the request prose. A high-risk reviewer must use a currently
+admitted Codex or Claude model whose family differs from the author model;
+AGY findings remain advisory and cannot issue the accepting verdict.
 
-For an assigned formal review, bind the committed verify-request and exact
-base/head before testing. Confirm outcome, author identity, assigned reviewer,
-allowed paths, and immutable finding refs. Select evidence from the risk
-profile in `AGENTS.md`; high-risk-control review additionally requires a
-different model family and explicit abuse-class assessment, and every model a
-single CLI can select is one family — so that counterparty is the other CLI.
-Disposition every carried finding and issue GO/NITS/FAIL only for the actual
-range. The report's shape is `verification-report-format.md` beside this file.
+Return one evidence-backed GO/NITS/FAIL and disposition every carried finding.
+The report shape is `verification-report-format.md`. Use `team_send` for
+questions or interim evidence; a team message is not the verdict. Publish a
+formal report through `bin/pipeline mail send` only when the risk policy requires
+the durable artifact. Stay read-only for the reviewed range.
 
-At a wrap boundary, confirm the owning role's checkpoint `findings` event
-exists and note a gap as a finding. Never author that checkpoint yourself: a
-checkpoint's Owner must equal its envelope sender.
-
-Publish a formal report only through `pipeline mail send`. Subagents may
-gather evidence but cannot issue the role verdict. Do not edit while acting as
-reviewer.
-
-Use the current worktree's native Git index. Commit, event publication, cursor
-consumption, merge, lock action, provider launch, spend, and live-data
-mutation remain separate authorities.
-
-## Rule maintenance
-Observed failure: review of authored work; wrap without routing lessons.
-Mode/risk: assigned reviewer work.
-Cost: bind the request and exact range; confirm the owner's checkpoint exists.
-Owner: the assigned reviewer.
-Re-evaluate: if a reviewer issues GO/NITS/FAIL on a range they authored.
+Push, merge, release, spend, destructive operations, and live-data mutation
+remain separately authorized effects.

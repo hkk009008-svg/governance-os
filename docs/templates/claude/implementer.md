@@ -78,12 +78,12 @@ If <X happens>, report BLOCKED with what you tried.
 ### Git hygiene (include verbatim in EVERY dispatched prompt)
 
 - Prefix EVERY git invocation with `env -u GIT_INDEX_FILE ` as a defense
-  against stale ambient state from retired tooling. No current seat owns a
-  per-seat index; the unset form uses the native index of the current worktree.
+  against stale ambient state from retired tooling. No current workflow owns a
+  separate role index; the unset form uses the native index of the current worktree.
 - Never run state-changing git (add/commit/checkout/stash/restore/read-tree
   without explicit instruction). Read-only git (show/log/diff A..B/grep/
   rev-parse/ls-tree) plus the prefix is always safe.
-- For Lane V trigger authority, rely on the committed compact-pair verify-request
+- For formal-review trigger authority, rely on the committed compact-pair verify-request
   (Canonical Compact Pair Invariant, `pipeline/codex_protocol_model.py`) — there is
   no scope descriptor and no shipping trailer to emit; never invent trigger authority.
 
@@ -100,7 +100,7 @@ template, do NOT trim these:
 - **Item 4 (brief-pattern adherence)** — S13 implementer interpreted the
   brief's `_mutate_shot` pattern reference as "use `mutate_project`"
   without inheriting the route shape (pid-scoping, single-project
-  mutation). Operator-seat's Lane V caught **F1 CRITICAL** post-commit:
+  mutation). Independent post-commit review caught **F1 CRITICAL**:
   multi-project `shot_id` collision via the `list_projects()`-scan
   fallback. Fix shipped at `9e24323` (`fix(web): address S13 Lane V F1
   (CRITICAL) + F2 — pid-scoped reject route + monotonic-run dedup`). The
@@ -109,8 +109,8 @@ template, do NOT trim these:
   endpoint — that's the inspection step item 4 codifies.
 - **Item 5 (pid-scope check)** — same F1 CRITICAL root cause, codified
   as a standing project convention so the next implementer catches the
-  failure mode at design time, not via Lane V post-commit. Cost
-  comparison: design-time check is ~1 grep; post-commit Lane V catch
+  failure mode at design time, not via post-commit review. Cost
+  comparison: design-time check is ~1 grep; post-commit review catch
   cost ~234k tokens (cycle-6 dispatch) + the F1 fix commit's
   developer-time. Front-load is cheap.
 - **Commit SHA capture** — historical context: cycle-5 dispatch surfaced

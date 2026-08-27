@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Formation-time claim discipline: premises from shape, probes from amnesia.
+"""Formation-time claim discipline: premises from shape, prompts from amnesia.
 
 Nine defects in one session (2026-07-26/27) shared a single mechanism: a claim
 was verified on the property its author was thinking about, while the property
@@ -28,8 +28,8 @@ commands, not prose.
 Scope, honestly. `premises` names what must be true; it does not check it.
 `sweep` flags overclaim *vocabulary*, which is a property of prose and is
 pattern-matched as prose — it judges no code and models no parser. `probe`
-builds and optionally runs one cross-family question; the answer is advisory.
-`record`/`audit` are self-reported bookkeeping whose value is that an
+prints one reduced-context prompt; it never starts a model or sends a team
+message. `record`/`audit` are self-reported bookkeeping whose value is that an
 unverified premise becomes a visible ASSUMED row instead of an absent thought.
 Everything here is an instrument for the author, upstream of the compact-pair
 gates, and substitutes for none of them.
@@ -42,10 +42,8 @@ import json
 import os
 import random
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -335,64 +333,6 @@ def build_probe_prompt(claim: str) -> str:
     return AMNESIAC_PROMPT.format(claim=claim.strip())
 
 
-def _run_probe(claim: str, timeout: int) -> int:
-    """Launch the reader from an empty directory with repo pointers scrubbed.
-
-    The first shipped version claimed a context-free reader while launching it
-    in the author's cwd with the author's environment — the child sat inside
-    the repository whose absence was the claimed property. Now it starts in an
-    empty scratch directory with an environment reduced to PATH, HOME and TERM:
-    no PWD, no GIT_*, no session variables, nothing that hands it the repo.
-
-    Stated as what it is: reduced pointers, not absence of them. HOME survives
-    because the lane's credentials live there — and HOME is itself a pointer,
-    as is the resolved binary path; the lane's own user config additionally
-    carried repository paths, so it is skipped via --ignore-user-config. What
-    is enforced and tested at the subprocess boundary: empty cwd that is not
-    ours, an environment of PATH/HOME/TERM only, no PWD, no GIT_*, and the
-    config-skipping flag present. A reader determined to find the repository
-    still can; one merely defaulting to inherited context cannot.
-    """
-    prompt = build_probe_prompt(claim)
-    codex = shutil.which("codex")
-    if codex is None:
-        print(
-            "probe: codex CLI not found; run the printed prompt through any "
-            "reader given only the claim",
-            file=sys.stderr,
-        )
-        print(prompt)
-        return 2
-    scratch = Path(tempfile.mkdtemp(prefix="amnesiac-probe-"))
-    environment = {
-        "PATH": "/usr/bin:/bin",
-        "HOME": os.environ.get("HOME", str(scratch)),
-        "TERM": os.environ.get("TERM", "dumb"),
-    }
-    try:
-        completed = subprocess.run(
-            [
-                codex, "exec", "-s", "read-only", "--skip-git-repo-check",
-                "--ignore-user-config", "-",
-            ],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=environment,
-            cwd=scratch,
-        )
-    except subprocess.SubprocessError as exc:
-        print(f"probe: could not run codex: {exc}", file=sys.stderr)
-        return 2
-    finally:
-        shutil.rmtree(scratch, ignore_errors=True)
-    sys.stdout.write(completed.stdout)
-    if completed.returncode != 0:
-        sys.stderr.write(completed.stderr)
-    return completed.returncode
-
-
 def record_entry(payload: dict, ledger: Path) -> dict:
     """Normalize one claim entry and append it to the ledger.
 
@@ -614,10 +554,15 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("premises", help="derive a claim's premises from its shape")
     p.add_argument("claim")
 
-    p = sub.add_parser("probe", help="build (and with --execute run) an amnesiac probe")
+    p = sub.add_parser(
+        "probe",
+        help="print a prompt for a native reduced-context subagent",
+        description=(
+            "Print a prompt for a native reduced-context subagent; "
+            "this command starts no model."
+        ),
+    )
     p.add_argument("claim")
-    p.add_argument("--execute", action="store_true")
-    p.add_argument("--timeout", type=int, default=180)
 
     p = sub.add_parser(
         "record",
@@ -649,8 +594,6 @@ def main(argv: list[str] | None = None) -> int:
         _print_premises(args.claim)
         return 0
     if args.command == "probe":
-        if args.execute:
-            return _run_probe(args.claim, args.timeout)
         print(build_probe_prompt(args.claim))
         return 0
     if args.command == "record":
@@ -693,7 +636,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if findings else 0
     if args.command == "lottery":
         for claim in lottery(args.ledger, args.count):
-            print(f'probe: pipeline claim probe --execute "{claim}"')
+            print(f'probe: bin/pipeline claim probe "{claim}"')
         return 0
     return 2
 

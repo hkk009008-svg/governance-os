@@ -1,66 +1,58 @@
-# Orchestration - agent neutral
+# Desktop-team orchestration
 
-Autonomous Seat Outcome Contract: pipeline/codex_protocol_model.py
+Pipeline has no standing coordinator. The user objective is controlling; the
+three app members co-direct through explicit proposals, evidence, and scoped
+ownership. For a concrete implementation, one member owns integration while
+the other members contribute bounded work.
 
-Delegation is an owner-chosen capacity tool, not a task-count, line-count, or
-provider mandate. The owner may work directly, use one bounded helper, split
-independently reviewable write sets, or exchange ownership through a durable
-accepted event. No third party approves that choice.
+## Split work only when useful
 
-Choose delegation when it adds fresh context, independent signal, or genuinely
-parallel capacity. Stay direct for tightly coupled, authority-sensitive, or
-small changes. Never run concurrent implementers on shared files or behind the
-same collision-prone lock.
+Parallel work is appropriate when tasks are independently answerable or touch
+nonoverlapping files. Good examples are repository mapping, independent premise
+attacks, distinct platform checks, and separate implementation modules with a
+clear integration owner.
 
-A helper receives the exact outcome, allowed paths, useful evidence bar,
-applicable hard boundaries, immutable finding refs, and forbidden external
-effects. It uses `env -u GIT_INDEX_FILE` for ordinary Git, runs kernel tools
-through `bin/pipeline` (which clears that variable itself), and preserves
-peer/user edits.
+Serialize work when members would edit the same file, mutate the same resource,
+depend on one unresolved design choice, or compete for an exclusive external
+lane. One member completes or hands off the shared write before another begins.
 
-Helpers do not inherit role authority. They do not consume cursors, send
-mailbox events, issue GO/NITS/FAIL, claim locks, merge, invoke a peer, spend,
-or authorize external effects. Their output is evidence for the owning role.
+## Assignments
 
-Preflight is advisory. Preserve a material finding, but do not require CLEAR
-before implementation. The owner synthesizes the actual result and submits the
-committed range. Behavior-changing acceptance requires non-author reviewer
-review of the actual range. A different model family and abuse-class assessment
-are additionally required for `high-risk-control`. A reviewer cannot verify
-anything it authored.
+A bounded request states:
 
-Ownership changes bind the exact task, immutable parent/revision, previous and
-new owners, and finding refs through recipient-authored durable acceptance.
-No observer is a route-approval or convergence gate.
+- objective and expected output;
+- owned paths or read-only scope;
+- relevant repository/task context;
+- verification expected;
+- whether the requester can continue without the answer.
 
-Use sequential implementation for overlapping write sets. Independent
-read-only investigations may run concurrently when they ask distinct questions.
+Assignments are task coordination, not authority grants. A member must not
+expand into push, merge, release, spend, live mutation, or destruction without
+exact current user/task authority.
 
-## One mailbox across provider sides
+## Communication loop
 
-`author` and `reviewer` are provider-agnostic identities. Either supported
-side — Claude or Codex — may hold either role, and one review may span the two
-CLIs. Work passes between roles, and therefore between providers, through the
-same durable surfaces on every side:
+1. Call `team_status` for current activity and pending state.
+2. Send the smallest useful request with `team_send`.
+3. Continue independent work when possible.
+4. At a natural dependency boundary, call `team_wait` using the last handled
+   cursor.
+5. Inspect the content of any reply; queue, acknowledgement, and reply metadata are not
+   a substantive answer.
+6. Integrate through the named owner and run the combined tests once.
 
-- committed mailbox events through the fixed writer, reached by
-  `bin/pipeline mail send` (`coordination/bin/send-event`);
-- ownership exchange as a durable accepted event of a writable kind —
-  `decision`, or `dispatch-claim` for takeover evidence. The older
-  `proposal` / `proposal-reply` ownership pair still parses in committed
-  history but is no longer publishable (`mailbox_writer.NEW_WRITE_KINDS`);
-- a continuity checkpoint (`bin/pipeline checkpoint` drafts one into scratch
-  from live evidence) preserves state across a boundary; it is a `findings`
-  event and transfers nothing by itself;
-- the committed verify-request / verification-report Compact Pair for review.
+Use broadcast only for information all members need. Prefer one clear owner to
+several overlapping directives. Do not create task boards, role rotations,
+packets, or handoff chains for work that fits in the app task and Git diff.
 
-The receiving role needs no knowledge of which app authored an event; the
-committed body and Git state carry everything load-bearing. Cross-provider
-review is first-class: an author hosted on one side may assign its
-verify-request to a reviewer hosted on another, and the different-model
-independence requirement is in practice only satisfiable that way — every
-model a Claude session can select is claude-family.
+## Capability pairing
 
-Communication never launches anything. Passing work is publishing an event,
-not spawning a process; provider launch stays a separately authorized external
-effect on every side.
+Codex commonly anchors sustained workspace integration, Claude large-context
+reasoning or independent review, and AGY fast mapping, browser/artifact work,
+or adversarial challenge. These are defaults, not constraints: every member
+may direct and implement.
+
+At a formal review boundary, orchestration yields to the temporary
+author/reviewer contract. AGY remains fully heard as an engineering member but
+cannot be the sole independent formal verdict. When the review ends, so do the
+temporary responsibilities.

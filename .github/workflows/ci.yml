@@ -10,7 +10,6 @@
 #   - Coordination-state (check_coordination; FATAL hard-fails local + CI,
 #     ADVISORY warns)
 #   - Anti-ceremony (check_no_ceremony; hard-fail local + CI)
-#   - Reviewer-result schema (consume_reviewer_result smoke_check)
 #   - Adoption-placeholder (check_placeholders; hard-fail local + CI — ADR-002)
 #   - Frozen historical report bytes + current compact-pair reports (check_go_schema; hard-fail local + CI)
 #   - ARCHITECTURE Last-verified (check_arch_freshness; inert unless ARCHITECTURE.md
@@ -192,13 +191,10 @@ jobs:
         run: |
           shellcheck --severity=warning \
             coordination/bin/send-event \
-            coordination/bin/consume-events \
-            coordination/bin/claim-lock \
-            coordination/bin/release-lock \
             bin/pipeline || true
 
   # Risk-aware admission (audit P0): a PR range that touches an authority
-  # surface (hook policy, fixed writers, launchers, CI itself — the list lives
+  # surface (fixed writers, app adapters, dispatchers, CI itself — the list lives
   # in pipeline/ci_admission_gate.py) must carry a committed GO/NITS
   # high-risk-control verification-report covering those commits, validated by
   # the existing compact_pair_loop machinery. Ranges that touch no authority

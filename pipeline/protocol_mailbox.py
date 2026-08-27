@@ -15,10 +15,10 @@ import git_runner
 
 ROOT = Path(__file__).resolve().parent.parent
 KIND_FILE = ROOT / "coordination" / "mailbox" / "kinds.txt"
-# Two roles, not six seats. A review has exactly two positions -- the one who
-# wrote the range and the one who did not -- and which CLI fills each is
-# decided per task, not by a standing chat. These are the identities NEW
-# events use; the writer refuses any other sender.
+# The desktop apps are the stable identities for ordinary durable records.
+# Temporary review artifacts use author/reviewer because those names describe
+# responsibility for one exact range, not another persistent member roster.
+APP_MEMBERS = ("codex", "claude", "agy")
 ROLES = ("author", "reviewer")
 # The pre-collapse seat names stay lawful for READING committed history: 967
 # events carry them, and rewriting those filenames would be a history rewrite.
@@ -27,33 +27,18 @@ LEGACY_SEATS = (
     "director", "director2", "operator", "operator2", "coordinator", "coordinator2",
 )
 SEATS = ("director", "director2", "operator", "operator2")
-# The receiving roster is two tiers: the two live ROLES, which are the only
-# identities the fixed writer accepts for a new event, and the six LEGACY_SEATS,
-# which remain readable because 967 committed events carry them. `all` is a
-# broadcast TARGET only (kept in RECIPIENTS), never a receiving identity. Every
-# independent Python roster copy imports THIS as its source of truth; the
-# coordination/bin/send-event whitelists are hand-synced to it and are checked
-# by tests/unit/test_send_event_roster.py.
+# RECEIVING_SEATS remains the compatibility roster used by legacy cursor and
+# authority readers. App members have no mailbox cursor. The event grammar is
+# wider: it reads app members, temporary review roles, and every historical
+# seat. `all` is a broadcast target only, never a sender.
 RECEIVING_SEATS = (*ROLES, *LEGACY_SEATS)
-SENDERS = (*ROLES, *LEGACY_SEATS)
-RECIPIENTS = (*RECEIVING_SEATS, "all")
-# The seats a provider launcher or app binding may start. coordinator2 is
-# cold capacity: a lawful mailbox identity (it can send, receive, and appear
-# in committed history) that is not launchable and holds no app-seat binding
-# until the standing topology explicitly warms it. This is the single
-# declaration of that split; launchers, guards, and app-surface rosters
-# import or are test-bound to it.
-# What a launcher may start: the two live roles, and nothing else. A launcher
-# exists to start a process that can do governed work, and a retired seat can
-# publish nothing -- launching one produces a process with no lawful action
-# available to it. The retired names keep PARSING in committed history; they
-# are simply not startable.
-LAUNCHABLE_SEATS = ROLES
-# Identities that may OWN a task or PRODUCE an artifact: the two live roles,
-# plus the retired pair seats that committed artifacts still name. New writes
-# are narrowed to ROLES by mailbox_writer.NEW_WRITE_SENDERS; this wider set is
-# what keeps historical owners parseable.
-OWNING_IDENTITIES = frozenset((*ROLES, *SEATS))
+EVENT_IDENTITIES = (*APP_MEMBERS, *ROLES, *LEGACY_SEATS)
+SENDERS = EVENT_IDENTITIES
+RECIPIENTS = (*EVENT_IDENTITIES, "all")
+# App members own new checkpoints and produce new learning candidates. Review
+# roles and retired pair seats remain accepted only so committed history keeps
+# parsing; mailbox_writer applies the new-write kind/identity split.
+OWNING_IDENTITIES = frozenset((*APP_MEMBERS, *ROLES, *SEATS))
 
 
 def load_known_kinds(root: Path | None = None) -> frozenset[str]:
@@ -84,7 +69,7 @@ def seat_alternation(names: tuple[str, ...]) -> str:
 # One canonical grammar for committed event filenames, derived from the seat
 # roster above. Every Python parser imports EVENT_NAME_RE (or composes from
 # EVENT_NAME_PATTERN); parser drift was a measured defect class — status
-# accepted any sender, slope_metrics dropped the Z from the stamp and forbade
+# accepted any sender, while an older metrics reader dropped the Z from the stamp and forbade
 # digits in kinds. Every Python adopter is bound to this one pattern by
 # tests/unit/test_event_grammar_sync.py.
 EVENT_STAMP_PATTERN = r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z"
@@ -669,11 +654,10 @@ def committed_event_is_strict_ancestor(
 # ---------------------------------------------------------------------------
 # Learning-candidate lifecycle (read side) — ADR-067, contract §3.
 #
-# These parsers are typed readers over committed events; nothing here refuses
-# a publication. Until the Stage 2b writer-side branch lands in
-# pipeline/mailbox_writer.py, a malformed or self-approved candidate/decision
-# publishes durably and is caught only when a reader runs these functions
-# (contract I4 states this; do not describe these checks as binding).
+# These parsers validate committed events and remain defense in depth for
+# historical or out-of-band writes. The fixed writer in mailbox_writer.py
+# reuses them before publication and adds reference, deduplication, and
+# self-approval checks, so new learning events fail before becoming durable.
 # ---------------------------------------------------------------------------
 
 LEARNING_CATEGORIES = (
@@ -860,7 +844,7 @@ def parse_learning_candidate_statement(
             raise ValueError("Supersedes must name a learning-candidate event")
     producer_seat = _single_body_field(event, "Producer seat")
     if producer_seat not in OWNING_IDENTITIES:
-        raise ValueError("Producer seat must be a review role")
+        raise ValueError("Producer seat must be a recognized producer identity")
     if producer_seat != event.sender:
         # A self-declared producer that differs from the envelope sender
         # would pre-defeat the Stage 2b self-approval refusal: publish under
@@ -1184,7 +1168,7 @@ def parse_checkpoint_statement(event: CommittedEventRef) -> CheckpointStatement:
     accepted_scope = _single_body_field(event, "Accepted scope")
     owner = _single_body_field(event, "Owner")
     if owner not in OWNING_IDENTITIES:
-        raise ValueError("Owner must be a review role")
+        raise ValueError("Owner must be a recognized owning identity")
     if owner != event.sender:
         # A checkpoint claiming another seat's ownership would launder a
         # transfer that never happened; the binding is exact, mirroring the

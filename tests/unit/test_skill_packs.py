@@ -146,6 +146,12 @@ def test_selection_trigger_picks_expected_skill_over_decoys() -> None:
                 )
 
 
+def test_formal_protocol_description_does_not_claim_routine_team_chat() -> None:
+    description = _skill_descriptions()["four-seat-protocol"]
+    routine = "check team status and ask Claude a routine implementation question"
+    assert _tokens(description).isdisjoint(_tokens(routine))
+
+
 def test_stub_routing_falsifier_reaches_canonical_body() -> None:
     """ADR-067: a committed Claude stub must point at a live .agents body."""
 

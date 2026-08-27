@@ -1,6 +1,6 @@
 # Proportional independence (R-INDEPENDENCE)
 
-Autonomous Seat Outcome Contract: pipeline/codex_protocol_model.py
+Executable policy: `pipeline/codex_protocol_model.py`
 
 This rule applies when work composes parseable/executable input, enforces an
 authority or security boundary, gates a side effect, or validates a schema whose
@@ -17,15 +17,14 @@ preflight CLEAR. A FINDING is not BLOCKED unless it identifies an
 unresolved hard-boundary violation.
 
 Behavior-changing acceptance requires a non-author reviewer from a distinct
-identity to review the actual commit or range. High-risk control additionally
-requires a reviewer from a distinct seat and different system-visible model
-family, plus explicit abuse-class assessment. That
-reviewer cannot verify authored work and issues GO/NITS/FAIL through the fixed mailbox writer.
+desktop member to review the actual commit or range. High-risk control also
+requires a different system-visible model family plus explicit abuse-class
+assessment. That reviewer cannot verify authored work and issues GO/NITS/FAIL
+through the fixed mailbox writer.
 
-The two live identities are `author` and `reviewer` (`pipeline/protocol_mailbox.py`
-`ROLES`); the six pre-collapse seat names remain readable in committed history
-and are not positions anyone occupies. "Distinct seat" above means an identity
-that is not the author's.
+The temporary formal identities are `author` and `reviewer`
+(`pipeline/protocol_mailbox.py` `ROLES`); the six pre-collapse seat names remain
+readable in committed history and are not positions anyone occupies.
 Review depth is proportional; actual-range binding, finding
 preservation, and non-authorship remain strict once review is triggered.
 
@@ -34,7 +33,7 @@ must disposition every carried finding ref; changing owners or reviewers cannot
 erase material evidence.
 
 External effects remain separately user-authorized for the exact
-effect/executor/target/scope. A structural seat-authored token never grants
+effect/executor/target/scope. A structural role-authored token never grants
 execution authority.
 
 ## Evidence

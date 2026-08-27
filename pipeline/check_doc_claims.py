@@ -1377,8 +1377,9 @@ def audit_manifest(
         id, title, status, anchor, note,
         valid (bool), current_line (int|None), problem (str|None).
 
-    Returns [] when the file doesn't exist.
-    Never raises; malformed entries produce valid=False entries.
+    Returns [] when the file doesn't exist. Malformed entries produce
+    ``valid=False`` rows; malformed TOML raises visibly so callers cannot
+    render a present-but-unreadable manifest as absent.
     """
     p = Path(manifest_path)
     if not p.exists():
@@ -1387,9 +1388,8 @@ def audit_manifest(
     try:
         with open(p, "rb") as f:
             data = tomllib.load(f)
-    except Exception as e:
-        # Unparseable TOML — treat as zero components
-        return []
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError(f"invalid pipeline status manifest: {exc}") from exc
 
     results: list[dict] = []
     for entry in data.get("component", []):
@@ -2013,7 +2013,7 @@ def main(argv=None) -> int:
         fixable_count = sum(1 for d in fatal if d.fixable)
         if fixable_count:
             print(f"\n{fixable_count} fixable def_drift(s). Run: "
-                  f"pipeline check docs --fix")
+                  f"bin/pipeline check docs --fix")
         unfixable = [d for d in fatal if not d.fixable]
         if unfixable:
             print(f"{len(unfixable)} drift(s) require manual intervention.")

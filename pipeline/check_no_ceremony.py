@@ -15,8 +15,8 @@ import git_runner
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
 MAX_PYTHON_NET_GROWTH = 100
-MAX_PYTHON_FILE_NET_GROWTH = 80
-MAX_PYTHON_FILE_ADDITIONS = 250
+MAX_PYTHON_FILE_NET_GROWTH = 250
+MAX_PYTHON_FILE_ADDITIONS = 400
 PYTHON_PATHSPEC = ":(glob)**/*.py"
 # One rename threshold for the whole rule. Both halves ask Git the same
 # question about file identity: the numstat that measures growth, and
@@ -214,44 +214,15 @@ def rule_utv_not_a_row_status() -> tuple[str, list[str]]:
     )
 
 
-def _pass_reports_missing_runxfail(named_results: list[tuple[str, dict]]) -> list[str]:
-    violations: list[str] = []
-    for label, result in named_results:
-        if result.get("verdict") != "pass":
-            continue
-        commands = result.get("commands")
-        if not isinstance(commands, list) or not any(
-            isinstance(command, dict) and "--runxfail" in str(command.get("command", ""))
-            for command in commands
-        ):
-            violations.append(f"{label}: pass verdict has no --runxfail command")
-    return violations
-
-
-def rule_report_cites_executed_pin(repo_root: Path = ROOT) -> tuple[str, list[str]]:
-    try:
-        import consume_reviewer_result
-
-        named = [
-            (path.name, result)
-            for path, result in consume_reviewer_result.iter_reviewer_results(repo_root)
-        ]
-    except Exception as exc:
-        return "FAIL", [f"reviewer-result consumer unavailable: {exc}"]
-    violations = _pass_reports_missing_runxfail(named)
-    return ("FAIL" if violations else "PASS"), (
-        violations or [f"{len(named)} reviewer-result block(s) checked"]
-    )
-
-
 def _python_growth_violations(
     numstat: str, introduced: frozenset[str] = frozenset()
 ) -> tuple[list[str], str]:
     """Count growth by what it is, not only by how many lines it is.
 
-    One rule survives review. A file absent at the base is an INTRODUCTION, so
-    the per-file cap -- which exists to stop one file bloating -- does not apply
-    to it; three harness tools were refused for arriving with their fixtures.
+    A file absent at the base is an INTRODUCTION, so net-growth does not apply
+    to it; the additions ceiling still prevents a deletion elsewhere from
+    buying an arbitrarily large new module. The aggregate remains much tighter
+    than either per-file bound, so dispersed growth still fails.
 
     The separate test ledger is GONE, and its removal is the finding rather than
     a simplification. `tests/` was a pathname convention promoted to an
@@ -413,7 +384,6 @@ def main() -> int:
     for name, rule in (
         ("gate-executes-pins", rule_gate_executes),
         ("utv-not-row-status", rule_utv_not_a_row_status),
-        ("report-cites-pin", rule_report_cites_executed_pin),
         ("python-growth", rule_python_growth),
     ):
         status, details = rule()

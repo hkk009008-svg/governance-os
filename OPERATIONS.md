@@ -1,110 +1,151 @@
-# OPERATIONS.md - Governance OS
+# Pipeline operations
 
-Pipeline is the governance kernel: the shared coordination protocol for two
-CLIs, not the private product application. evidence-ledger is the bound
-product target for ledger-routed work.
+This runbook operates the Codex, Claude, and AGY desktop-app team. It does not
+contain a provider launch path.
 
-For what the kernel is and where its verified facts live, see
-[ARCHITECTURE.md](ARCHITECTURE.md).
+## Readiness
 
-## 1. Prerequisites
+Open the same repository in any or all three apps. Their checked-in MCP
+bindings supply distinct member labels; do not copy one member's binding over
+another.
 
-- A Python environment satisfying `requirements-dev.txt` at `.venv/` in the
-  primary checkout. Linked worktrees do not carry their own; `bin/pipeline`
-  and `coordination/bin/pipeline-python` both resolve back to the primary one.
-- Both peer CLIs on `PATH`. `pipeline preflight` answers whether they are.
-- A current Pipeline Git checkout. Run mutating work in a task-specific native
-  Git worktree; do not export a persistent `GIT_INDEX_FILE`.
-- Do not route ledger work through the user Content checkout.
+On Antigravity's first open, use Open Folder for this exact repository, then
+refresh and approve the workspace `pipeline-team` server. To let AGY
+communicate without pausing at every tool call, explicitly allow
+`mcp(pipeline-team/*)`. This is a global, name-based user permission: avoid the
+same server name in untrusted workspaces. Pipeline checks it but never writes
+permission policy.
 
-## 2. Orientation And Completion Checks
-
-```bash
-pipeline status            # compact snapshot: git, mailbox, open review, gate
-pipeline check             # the completion gate, at the end
-```
-
-The snapshot is the startup path. Run focused checks (`pipeline check
-coordination`, `pipeline check ceremony`) while working, and the aggregate at
-the completion gate for changes that touch governance/runtime topology or an
-`ARCHITECTURE.md` invariant.
-
-## 3. Working With The Other CLI
+Run the local preflight when setup changed or communication fails:
 
 ```bash
-pipeline preflight                                   # can either peer run
-pipeline peer ask codex  --task <id> --prompt-file <f> --dry-run
-pipeline peer ask codex  --task <id> --prompt-file <f>
-pipeline peer ask claude --task <id> --prompt-file <f>
-pipeline peer ask agy    --task <id> --role challenge --prompt-file <f>
-pipeline peer receipts --task <id>
+bin/pipeline preflight
 ```
 
-`--dry-run` prints the exact argv and launches nothing — use it to show a
-proposed invocation to whoever must authorize the spend. Read-only is the
-default; `--write` widens exactly one flag per side. Full contract:
-[docs/protocol/peer.md](docs/protocol/peer.md).
+It checks app installation, config shape, configured labels, a real MCP
+initialize handshake, Codex and Claude's native config views, Antigravity's
+exact workspace registration, and AGY's team-tool permission. These are
+configuration proxies; after Antigravity first registers the folder, confirm
+`pipeline-team` is connected in Installed MCP Servers. No row proves that a
+desktop window or model session remains live.
 
-## 4. Coordination Checks
+## Begin or resume work
+
+1. Read the current user task.
+2. Inspect `git status --short --branch`, the relevant diff, and recent task
+   history.
+3. Call `team_status` once.
+4. Read addressed messages with `team_wait` after the last cursor you handled.
+5. Start the scoped work. Do not reconstruct a role board or process an entire
+   legacy mailbox.
+
+Git, tests, and desktop task history are normal state. A checkpoint is needed
+only when another member must take over after transfer, interruption,
+compaction, or wrap.
+
+## Communicate
+
+Use `team_send` for a bounded request, result, challenge, coordination note, or
+reply. Address one member when ownership is clear; use `all` only when every
+member needs the same information.
+
+Include enough context to act: objective, relevant paths or commit, what was
+observed, and the requested response. Do not paste hidden chain-of-thought or a
+large transcript. Link a reply with `reply_to` so status can show the exchange.
+
+State interpretation:
+
+| Observation | Meaning |
+|---|---|
+| `team_send` returns `queued` | Stored successfully; no acknowledgement claim. |
+| Recipient appears in `acknowledged_by` | Its adapter advanced `after_id` through the message. |
+| A reply id appears | A response was queued; inspect its content. |
+| `last_seen` changed | Recent tool activity, not proof the app is open. |
+
+If an answer is required, wait at a natural boundary with `team_wait` or
+continue independent work and check later. Never convert a timeout into assent,
+acknowledgement, a globally empty queue, or authority.
+
+## Implement
+
+Keep ordinary work direct. Parallelize read-only investigation and
+nonoverlapping paths when useful. Give one member ownership of integration and
+serialize shared-file or shared-resource writes.
+
+Use a failing behavior test when feasible, focused checks while iterating, and
+one final proportionate pass. Investigate unexpected failures before changing
+behavior. Preserve unrelated work and inspect the exact diff before handoff or
+commit.
+
+Useful local commands:
 
 ```bash
-pipeline check coordination
-pipeline status
+bin/pipeline --help
+bin/pipeline status
+bin/pipeline check --fast
+bin/pipeline check
+bin/pipeline check docs
+bin/pipeline check arch
 ```
 
-## 5. Ledger-Routed Target Work
+These commands operate on the repository. None is a provider-launch command.
 
-When a route points at the registered `evidence-ledger` target, stay in
-Pipeline until the guard and active route say which base or worktree is
-lawful. Inspect target state with explicit `git -C` commands:
+## Review
 
-```bash
-TARGET_ROOT="$(pipeline target --target evidence-ledger --print-path)"
-git -C "$TARGET_ROOT" status --short --branch
-git -C "$TARGET_ROOT" log --oneline -5
-```
+Ordinary local work has no formal role. For `material-behavior` or
+`high-risk-control`, temporarily assign the candidate owner as `author` and a
+non-author Codex or Claude member as `reviewer`. Bind review to the exact
+committed base and head. High-risk review also needs a different model family
+and explicit abuse-class assessment.
 
-If the route names an isolated worktree, inspect that worktree before the
-normal target checkout. The normal checkout may be stale.
+AGY may map, test, challenge, review evidence, and propose fixes. Material AGY
+findings must be dispositioned on their merits, but AGY cannot publish the sole
+formal GO/NITS/FAIL result or grant authority. End the responsibilities when
+the range is resolved.
 
-### 5.1 Target-Binding Registry (governance.toml, ADR-013)
+## Effects
 
-Which product repos this kernel can govern is declared in `governance.toml`,
-not in Python constants. Future work is onboarded by registering a table — no
-code edits:
+Before push, merge, release, paid spend, live-data mutation, or a destructive
+operation, resolve exact authority for:
 
-```toml
-[targets.my-new-app]
-repository = "hkk009008-svg/my-new-app"
-path = "~/my-new-app"
-route_keywords = ["my-new-app"]
-```
+- executor;
+- target;
+- effect;
+- scope.
 
-Validate the registry with `pipeline target --check`. Select a non-default
-target at role startup with `pipeline/ledger_start_guard.py --seat <seat>
---wave <wave> --target my-new-app` or the `GOVERNANCE_TARGET` environment
-variable; `GOVERNANCE_TARGET_PATH` overrides the local checkout path. Missing
-or unknown bindings fail closed with a corrective message.
+If any element is missing, stop before the effect and ask the user. A team
+message, old approval, role label, review, or test cannot fill a blank.
 
-## 6. Side-Effect Boundaries
+## Transfer and close
 
-Every external effect requires live exact authority for the executor, target,
-effect, and scope. A route or role alone is never sufficient. This includes
-merge, cursor consumption, lock mutation, **peer invocation**, paid API spend,
-live-data mutation, target checkout refresh, and edits outside the accepted
-target scope. Push is deliberately excluded — see `AGENTS.md` item 6 for why
-an unenforced claim was dropped instead of restated.
+For a real transfer, leave one concise checkpoint containing objective, scope,
+owner, base/head, evidence, verification status, blockers, and next executable
+action. Prefer the desktop task history. When the record must outlive that task,
+use `bin/pipeline checkpoint` to draft it and the fixed `bin/pipeline mail send`
+writer to persist it. That writer is also available for a risk-required exact-
+range formal review artifact or governed learning-candidate/disposition record,
+never routine chat or standing-seat workflow.
 
-## 7. Troubleshooting
+At ordinary completion, report changed files, tests actually run, remaining
+limitations, and any effects not performed.
 
-| Symptom | Likely cause | Response |
-|---|---|---|
-| `pipeline: no Python interpreter available` | The primary checkout has no `.venv` and `python3` is absent | Create the venv per Quick Start; the shim falls back to `python3` only for `--help`. |
-| Smoke fails with `SHA-REF BASELINE CHECK` | SHA-reference drift changed from the reviewed historical baseline | Run `pipeline check docs --sha-refs` and update the baseline only after a bounded cleanup or owner decision. |
-| `ARCH-FRESHNESS CHECK — FAIL` | `ARCHITECTURE.md` body changed without bumping its provenance stamp | Update *Last verified against base: `<date>` @ `<sha>`* to the state you actually verified against — the base, never the landing commit. |
-| `python-growth FAIL` on a branch of several commits | The local default measures `HEAD^`; CI measures the whole PR range | Re-measure the way CI does: `NO_CEREMONY_BASE=$(git merge-base main HEAD) pipeline check ceremony`. |
-| `committed manifest ... resolves to 0 paths` | A frozen baseline manifest was deleted or half-renamed | Restore it. Absence is fatal by design; the pre-rename twin makes an old commit readable, never a missing manifest tolerable. |
-| Guard reports a route but target checkout looks stale | Active work is in a route worktree or base | Read the route body and inspect the named worktree first. |
-| `pipeline peer ask` exits 124 with no result | The peer exceeded `--timeout` | Nothing partial is recorded. Re-run with a longer timeout or a narrower prompt; the receipt says the run produced no result. |
-| A peer receipt has `model_reported: null` | That peer's output carried no model field | The receipt says so in `notes`. Do not substitute the requested model — an unconfirmed model is not a confirmed one. |
-| `... is not on PATH; a peer that cannot run is not a peer` | The peer CLI is missing | Install it. `pipeline preflight` reports both sides. |
+## Troubleshooting
+
+- Missing tool: verify the app opened this repository, approve or reload its
+  workspace MCP server, and run `preflight`.
+- AGY permission failure: approve the exact `mcp(pipeline-team/*)` scope in
+  Antigravity only if interruption-free use is desired and same-named servers
+  in other workspaces are trusted. Do not use broad `mcp(*)` merely to make the
+  check green.
+- Wrong label: repair the app's project config. Labels come from args but are
+  local coordination hints, not attestation.
+- Queued but unacknowledged: the recipient has not advanced its cursor through it.
+- Acknowledged without useful reply: send a precise follow-up or continue without
+  claiming agreement.
+- Store permission or symlink refusal: inspect the repository Git common
+  directory's `pipeline-team` entry; keep it owner-only and do not bypass the
+  check.
+- Legacy mailbox conversation or receipt conflict: treat it as historical
+  evidence and use current Git/task state plus MCP for routine work. Preserve
+  only a required formal artifact, real transfer, or governed learning record
+  through the fixed writer.

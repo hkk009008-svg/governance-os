@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""pipeline — the one command surface for a CLI-exclusive kernel.
+"""Internal command surface used by the desktop-app harness and local checks.
 
 Before this file the shortest governed invocation was three concepts deep:
 
@@ -10,7 +10,7 @@ an environment scrub, an interpreter resolver, and a file path, all in front
 of the verb.  ``bin/pipeline`` does the scrub and the resolution; this module
 turns the remaining file path into a verb:
 
-    pipeline status
+    bin/pipeline status
 
 Dispatch is deliberately thin.  Each command names an existing module and
 calls its ``main`` with ``sys.argv`` already rewritten, so a module keeps
@@ -46,33 +46,31 @@ _MODULE_COMMANDS: dict[tuple[str | None, ...], tuple[str, str, str]] = {
     ("check", "arch"): ("check_arch_freshness", "main", "ARCHITECTURE.md provenance freshness"),
     ("check", "ceremony"): ("check_no_ceremony", "main", "false verification signals and Python growth"),
     ("check", "admission"): ("ci_admission_gate", "main", "authority-surface admission for a range"),
-    ("review", "validate"): ("compact_pair_loop", "_main", "validate a request/report pair"),
-    ("review", "consume"): ("consume_reviewer_result", "main", "consume a reviewer-result block"),
-    ("peer", None): ("peer", "main", "invoke a peer CLI once and record a receipt"),
+    ("review", "validate"): ("compact_pair_loop", "review_validate_main", "validate a request/report candidate"),
+    ("team", None): ("team", "main", "desktop-app team MCP adapter"),
     ("learn", "index"): ("learning_index", "main", "query the derived episodic index"),
     ("learn", "metrics"): ("learning_metrics", "main", "learning-lifecycle metrics"),
     ("learn", "draft"): ("learning_extract", "main", "draft one learning candidate into scratch"),
     ("checkpoint",): ("draft_checkpoint", "main", "draft one continuity checkpoint into scratch"),
     ("claim",): ("claim_check", "main", "derive the premises a claim's shape demands"),
     ("doctor",): ("protocol_doctor", "main", "read-only protocol validation bundle"),
-    ("preflight",): ("harness_preflight", "main", "peer CLI capability preflight"),
+    ("preflight",): ("harness_preflight", "main", "desktop-app integration preflight"),
     ("target",): ("target_binding", "main", "resolve or check the product target binding"),
-    ("metrics",): ("slope_metrics", "main", "execution-health slope over durable events"),
 }
 
 # Commands whose implementation is a hardened shell front door. Routing them
 # through here keeps one surface without re-implementing the writer fence.
 _SHELL_COMMANDS: dict[tuple[str | None, ...], tuple[str, str]] = {
     ("mail", "send"): ("coordination/bin/send-event", "publish one durable event (body on stdin)"),
-    ("mail", "consume"): ("coordination/bin/consume-events", "advance a legacy seat cursor"),
-    ("lock", "claim"): ("coordination/bin/claim-lock", "claim a shared lock"),
-    ("lock", "release"): ("coordination/bin/release-lock", "release a shared lock"),
-    ("probe",): ("coordination/bin/probe-claim", "reduced-context attack on one claim"),
+    ("probe",): (
+        "coordination/bin/probe-claim",
+        "print claim premises and a native reduced-context subagent prompt",
+    ),
 }
 
 
 # Targets that take no arguments and therefore cannot answer --help
-# themselves. Without this, `pipeline check --help` ran the whole governance
+# themselves. Without this, `bin/pipeline check --help` ran the whole governance
 # aggregate and exited 0 -- a help request that performs the action instead of
 # describing it, while the banner promised "every command accepts its own
 # --help".
@@ -84,7 +82,7 @@ _ARGLESS = {("check", "ceremony"), ("check", "placeholders")}
 
 
 def _usage() -> str:
-    lines = ["pipeline — governance kernel for the Claude and Codex CLIs", "", "Commands:"]
+    lines = ["bin/pipeline — engineering harness for the Codex, Claude, and Antigravity apps", "", "Commands:"]
     rows: list[tuple[str, str]] = []
     for key, (_, _, blurb) in _MODULE_COMMANDS.items():
         name = " ".join(part for part in key if part)
@@ -144,11 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     if not argv or argv[0] in {"-h", "--help", "help"}:
         print(_usage())
         return 0
-    # Groups whose subcommands this dispatcher enumerates. A key of
-    # ("peer", None) declares that the MODULE owns every subcommand under it,
-    # so `peer` must not be treated as an enumerated group -- doing so made
-    # `pipeline peer ask` unreachable, refused against an empty expected-set.
-    # Five independent readers hit that within minutes of it landing.
+    # Groups whose subcommands this dispatcher enumerates. A key ending in
+    # None declares that the module owns every subcommand under that verb.
     delegated = {key[0] for key in _MODULE_COMMANDS if len(key) == 2 and key[1] is None}
     groups = {
         key[0]
@@ -163,33 +158,33 @@ def main(argv: list[str] | None = None) -> int:
                 if len(key) == 2 and key[0] == argv[0] and key[1]
             )
             print(
-                f"pipeline {argv[0]}: unknown subcommand {argv[1]!r}; "
+                f"bin/pipeline {argv[0]}: unknown subcommand {argv[1]!r}; "
                 f"expected one of {', '.join(subs)}",
                 file=sys.stderr,
             )
             return 2
     resolved = _resolve(argv)
     if resolved is None:
-        print(f"pipeline: unknown command {' '.join(argv[:2])!r}\n", file=sys.stderr)
+        print(f"bin/pipeline: unknown command {' '.join(argv[:2])!r}\n", file=sys.stderr)
         print(_usage(), file=sys.stderr)
         return 2
     name = resolved.name
     if tuple(name.split()) in _ARGLESS and resolved.rest and resolved.rest[0] in {"-h", "--help"}:
-        print(f"pipeline {name} — {resolved.blurb}")
+        print(f"bin/pipeline {name} — {resolved.blurb}")
         print("Takes no arguments; run it to perform the check.")
         return 0
     if resolved.kind == "shell":
         target = _ROOT / resolved.module
         if not os.access(target, os.X_OK):
-            print(f"pipeline {name}: {resolved.module} is not executable", file=sys.stderr)
+            print(f"bin/pipeline {name}: {resolved.module} is not executable", file=sys.stderr)
             return 4
         os.execv(str(target), [str(target), *resolved.rest])
     try:
         module = importlib.import_module(resolved.module)
     except ModuleNotFoundError as exc:
-        print(f"pipeline {name}: {exc}", file=sys.stderr)
+        print(f"bin/pipeline {name}: {exc}", file=sys.stderr)
         return 4
-    sys.argv = [f"pipeline {name}", *resolved.rest]
+    sys.argv = [f"bin/pipeline {name}", *resolved.rest]
     return int(getattr(module, resolved.entry)() or 0)
 
 

@@ -19,7 +19,6 @@ CORE_CODEX_AGENTS = {
     "amnesiac-prober",
     "lane-v-verifier",
     "money-gate-reviewer",
-    "protocol-coordinator",
     "protocol-director",
     "protocol-operator",
     "readiness-bridge",
@@ -121,26 +120,24 @@ def test_codex_agent_catalog_contains_only_named_role_deltas() -> None:
 def test_transport_role_and_execution_boundaries_stay_explicit() -> None:
     continuation = _compact(_read("docs/protocol/codex/continuation.md"))
     for phrase in (
-        "mailbox is the configured coordination transport",
-        "governance.toml",
-        "explicit reviewed transport change",
-        "fails closed",
-        "transport ambiguity fails visibly",
-        "coordination/bin/send-event",
-        "coordination/bin/consume-events",
-        "never raw event or cursor edits",
-        "coordinator has no cursor",
+        ".codex/config.toml",
+        "team_status",
+        "team_wait",
+        "team_send",
+        "Queue success is not acknowledgement",
+        "Messages grant no role, review, permission, or external-effect authority",
+        "Do not launch Claude, AGY, or another Codex provider from a terminal",
     ):
         assert phrase.casefold() in continuation.casefold(), phrase
 
     skill = _compact(_read(".agents/skills/four-seat-protocol/SKILL.md"))
     for phrase in (
-        "Do not infer a live role",
-        "never reviews authored work",
-        "without becoming a production author or approval gate",
-        "reports state without claiming work",
-        "do not publish live-role events or verdicts",
-        "External effects remain separately authorized",
+        "Only a risk boundary creates temporary responsibilities",
+        "author",
+        "reviewer",
+        "AGY may co-direct",
+        "not the independent formal verdict source",
+        "Push, merge, release, spend",
     ):
         assert phrase.casefold() in skill.casefold(), phrase
 
@@ -149,29 +146,27 @@ def test_transport_role_and_execution_boundaries_stay_explicit() -> None:
         "accepted exact task",
         "failing behavior test",
         "root cause",
-        "smallest-sufficient verification",
+        "simplest sufficient path",
         "strict xfail pin",
-        "Delegation is optional and owner-chosen",
+        "Parallelize read-only investigation",
         "ordinary reversible local work",
-        "material behavior changes",
-        "different-model actual-diff review",
+        "Material behavior needs non-author review",
+        "different-model-family review",
         "abuse-class analysis",
         "non-author review",
-        "separate exact authority",
+        "exact current user/task authority",
     ):
         assert phrase.casefold() in agents.casefold(), phrase
-    assert "skill presence alone is not a trigger" in agents
     assert "task-count or line-count mandate" not in agents
 
 
 def test_checkpoint_contract_is_shared_without_becoming_startup_ceremony() -> None:
     agents = _compact(_read("AGENTS.md"))
     for phrase in (
-        "pipeline/draft_checkpoint.py",
-        "none-considered",
-        "Durable shared state beats chat memory",
-        "newest campaign checkpoint",
-        "recalled state is advisory",
+        "Git state, test evidence, and the desktop task history are the normal record",
+        "real ownership transfer, interruption, compaction, or wrap",
+        "Do not create checkpoint chains",
+        "Never use it for routine team chat",
     ):
         assert phrase in agents
     for path in (
@@ -180,38 +175,70 @@ def test_checkpoint_contract_is_shared_without_becoming_startup_ceremony() -> No
     ):
         adapter = _compact(_read(path))
         for phrase in (
-            "pipeline/draft_checkpoint.py",
-            "none-considered",
-            "newest campaign checkpoint",
-            "unread backlog is not an orientation debt",
-            "committed state outranks it",
+                "Git",
+                "task history",
+                "real transfer",
+                "routine chat",
         ):
             assert phrase in adapter, (path, phrase)
-        assert "must query the index" not in adapter
         assert "mandatory checkpoint" not in adapter
 
 
-def test_claude_learning_boundary_remains_small_and_explicit() -> None:
+def test_desktop_team_send_and_fixed_writer_doctrine_match_the_mechanisms() -> None:
+    for path in (
+        "AGENTS.md",
+        "ARCHITECTURE.md",
+        "coordination/README.md",
+        "docs/protocol/peer.md",
+    ):
+        compact = _compact(_read(path))
+        assert "idempotency_key" in compact, path
+        assert "non-empty sender-scoped" in compact, path
+        assert "learning-candidate/disposition lifecycle" in compact, path
+
+    contract = _compact(_read("docs/protocol/learning/contract.md"))
+    assert "third active durable use" in contract
+    assert "formal artifacts" in contract
+    assert "real checkpoints" in contract
+
+    wrapper = _read("coordination/bin/send-event")
+    assert "until the Stage 2b" not in wrapper
+    assert "trusted finalizer independently validates" in wrapper
+
+    for path in (
+        "CLAUDE.md",
+        "README.md",
+        "docs/GUIDEBOOK.md",
+        "docs/PROGRAM-MANUAL.md",
+        "docs/protocol/claude/continuation.md",
+        "docs/protocol/codex/continuation.md",
+    ):
+        compact = _compact(_read(path))
+        for phrase in (
+            "formal review artifact",
+            "real transfer/checkpoint `findings` event",
+            "learning-candidate/disposition lifecycle",
+        ):
+            assert phrase in compact, (path, phrase)
+
+    readme = _read("README.md")
+    assert ".agents/plugins/pipeline-team/plugin.json" in readme
+    assert ".agents/plugins/pipeline-team/mcp_config.json" in readme
+
+
+def test_claude_desktop_boundary_remains_small_and_explicit() -> None:
     text = _compact(_read("CLAUDE.md"))
     for phrase in (
-        "finish the scoped task",
-        "learning-candidate",
-        "truthful provider scope",
-        "no canonical skill creation or edit solely because a lesson arose",
-        "separately accepted, risk-classed Compact Pair",
-        "stop relying on it",
-        "record the conflict",
-        "current accepted task authorizes",
-        "review completes",
-        "current code and higher-priority instructions remain controlling",
+        "team_status",
+        "team_wait",
+        "team_send",
+        "current diff",
+        "executed tests",
+        "Do not launch Codex, AGY, or another Claude model through a terminal",
+        "require exact current user/task authority",
+        "real transfer, interruption, compaction, or wrap",
     ):
         assert phrase.casefold() in text.casefold(), phrase
-    for retired in (
-        "then write the skill",
-        "write the skill in the same session",
-        "correct that file in the same session",
-    ):
-        assert retired.casefold() not in text.casefold(), retired
 
 
 def test_provider_config_and_optional_consultation_do_not_grant_authority() -> None:
@@ -226,8 +253,8 @@ def test_provider_config_and_optional_consultation_do_not_grant_authority() -> N
         assert marker in agents
     assert "ChatGPT" not in agents
 
-    # The browser-based ChatGPT Pro consultation lane is gone: a CLI-exclusive
-    # repo reaches a second opinion by invoking a peer CLI, not a browser.
+    # The old browser consultation lane is gone; routine cross-app
+    # communication uses the checked-in desktop-team adapter.
     assert not (ROOT / ".agents/skills/chatgpt-pro-consultation").exists()
     for path in (
         "docs/protocol/codex/continuation.md",
@@ -239,14 +266,15 @@ def test_provider_config_and_optional_consultation_do_not_grant_authority() -> N
 def test_reviewer_templates_and_claude_skill_stubs_stay_bound() -> None:
     reviewer = _read("docs/templates/agents/reviewer.md")
     for field in (
-        "schema_version",
-        "reviewer-result/1",
-        "reviewed_head != reviewed_commit",
-        "working_tree_clean=false",
+        "findings first",
+        "actual diff",
+        "exact commands",
+        "unable_to_verify",
         "never invent trigger",
         "authority",
     ):
         assert field in reviewer
+    assert "reviewer-result/1" not in reviewer
 
     stubs = 0
     for skill in sorted((ROOT / ".claude/skills").glob("*/SKILL.md")):

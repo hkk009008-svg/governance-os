@@ -1,211 +1,173 @@
-# ARCHITECTURE.md - Pipeline governance kernel
+# Pipeline desktop-team architecture
 
 > This file records current repository facts. Executable code wins when prose
-> drifts, and the stale prose must be corrected in the same change.
+> drifts, and stale prose must be corrected with the implementation.
 
-*Last verified against base: 2026-08-21 @ 86146d1f*
+*Last verified against working tree based on: 2026-08-27 @ b1390a24*
 
-## 1. Purpose
+## Purpose
 
-Pipeline preserves the minimum durable state needed to coordinate bounded AI
-coding work: task events, ownership, exact-range review, and separately
-authorized external effects.
+Pipeline lets the Codex, Claude, and AGY desktop apps collaborate as one
+software-engineering team in a shared Git repository. All three can reason,
+direct, implement, test, and challenge. The harness adds a small communication
+transport and proportional governance; it does not replace each app's native
+workspace, task, browser, or artifact capabilities.
 
-It is **CLI-exclusive**. Exactly two participants are supported — the `claude`
-CLI and the `codex` CLI — and every path is a terminal path. No desktop app,
-no MCP server, no persistent agent peer, no browser. Surfaces that assumed one
-of those were removed rather than deprecated.
+The supported interactive boundary is app-exclusive. Pipeline does not launch
+model providers from a shell, invoke another app as a headless child, or use a
+human relay. Shell processes serve local MCP and run reproducible repository
+commands only.
 
-`evidence-ledger` is the default registered target for ledger-routed work.
-Product behavior remains owned by the target repository.
-
-## 2. Control flow
-
-One flow, shared by both CLIs. They differ in runtime mechanics, never in
-policy.
+## Runtime flow
 
 ```text
-user or parent task
-  -> optional explicit role
-  -> one compact current-state snapshot          (pipeline status)
-  -> Explore, Validate, or Promote work mode
-  -> scoped work in a native Git worktree
-  -> risk classification and focused verification (pipeline check)
-  -> exact committed request/report only when formal review is required
-  -> separately authorized external effect, if any
+user task
+  -> Codex / Claude / AGY desktop app
+  -> configured project MCP member label
+  -> team_status, team_send, team_wait
+  -> direct or delegated repository work
+  -> focused tests and exact diff inspection
+  -> temporary author/reviewer only if risk requires formal review
+  -> separately authorized external effect, if requested
 ```
 
-Read-only questions do not enter this flow. Ordinary local edits do not need a
-mailbox event, role ceremony, handoff, or independent review unless their
-actual risk or transfer boundary requires one.
+Routine work does not declare a seat, publish an event, or create a handoff.
+Read-only and nonoverlapping work may run in parallel. Writes to the same path
+or mutable resource are serialized through one owner.
 
-Work mode is orthogonal to review risk and grants no authority; see
-`docs/protocol/work-modes.md`.
+## App and transport topology
 
-## 3. Repository topology
-
-| Path | Current role |
+| Surface | Current responsibility |
 |---|---|
-| `bin/pipeline` | The single entry point. Clears `GIT_INDEX_FILE`, resolves the primary checkout's interpreter (including from a linked worktree), dispatches a verb. |
-| `pipeline/` | The kernel's Python. Flat modules, imported by bare name (`pythonpath = [".", "pipeline"]`); `pipeline/cli.py` maps verbs onto them. Formerly `scripts/`. |
-| `pipeline/peer.py`, `pipeline/peer_backends.py` | One-shot invocation of the other CLI, with a committed receipt. |
-| `coordination/mailbox/sent/` | Append-only human-readable task and review events. |
-| `coordination/mailbox/seen/` | Compatibility cursors for the four concrete pair seats only. |
-| `coordination/peer/` | Peer-invocation receipts, grouped by task. |
-| `coordination/bin/` | Hardened shell front doors: `send-event`, `consume-events`, the lock pair, `probe-claim`, `pipeline-python`, `codex-seat`. |
-| `.agents/skills/` | On-demand role procedures. Skill presence grants no authority. |
-| `.codex/agents/` | Small reusable role deltas; no numbered pseudo-seat inventory. |
-| `.codex/config.toml` | Declares no MCP servers and no ambient authority; `harness_preflight` fails closed if either reappears. |
-| Repository lifecycle hooks | Absent. Neither side depends on a repository hook for orientation or durable state. |
-| `governance.toml` | Registered product targets. Targets are selected per task, not fixed. |
-| `.claude/`, `.codex/` | CLI discovery/adaptation surfaces. Each owns runtime mechanics only; policy comes from `pipeline/codex_protocol_model.py`. |
+| `.codex/config.toml` | Binds the Codex app to `pipeline-team` as member `codex`. |
+| `.mcp.json` | Binds the Claude app to `pipeline-team` as member `claude`. |
+| `.agents/plugins/pipeline-team/plugin.json`, `mcp_config.json` | Register the AGY workspace plugin and bind `pipeline-team` as member `agy`. |
+| `bin/pipeline` and `pipeline/cli.py` | Resolve the repository interpreter and dispatch local harness commands. |
+| `pipeline/team.py` | Stable desktop-team entry point; serves one configured member-label adapter. |
+| `pipeline/team_mcp.py` | Minimal MCP/JSON-RPC surface exposing the three team tools. |
+| `pipeline/team_messages.py` | Validates send, wait, reply, status, cursor, and idempotency behavior. |
+| `pipeline/team_store.py` | Secures and initializes the repository-scoped SQLite store. |
+| `pipeline/harness_preflight.py` | Checks app bundles, project bindings, and real adapter initialization without launching a model. |
+| `pipeline/native_app_readiness.py` | Checks Codex/Claude native config views, Antigravity workspace registration, and AGY's explicit team-tool permission. |
+| `pipeline/codex_protocol_model.py` | Defines closed risk profiles, model-family diversity, and external-effect token shape. |
+| `pipeline/compact_pair_loop.py` | Binds formal author/reviewer results to an exact committed range. |
+| Git, tests, app task history | Normal implementation and continuation state. |
+| `coordination/mailbox/` | Historical conversation/cursors plus the fixed durable carrier for required formal-review artifacts, real transfer checkpoints, and the governed learning-candidate/disposition lifecycle. |
+| `coordination/peer/` | Compatibility-only peer-launch receipts; never current transport. |
 
-### Provider surfaces
+Each app config supplies its normal member label, and the tool schema exposes
+no sender argument. This is routing convenience, not provenance: any process
+running as the repository owner can launch an adapter under another label or
+edit local state. The store is under the repository's Git common directory at
+`pipeline-team/messages.sqlite3`, so linked worktrees share one conversation
+without tracking message data in commits. Its directory and database are
+owner-only, real filesystem objects; symlinks and group/world access are
+rejected, as are hardlinks and replacement inodes. The owner-only boundary
+protects against other OS users, not the same local account.
 
-| | Codex | Claude |
-|---|---|---|
-| Runtime | `codex` CLI | `claude` CLI |
-| Adapter | `docs/protocol/codex/continuation.md` | `docs/protocol/claude/continuation.md` |
-| Lifecycle hook | none | none |
-| Launcher | `codex-seat` | none |
-| Seat roles | `.codex/agents/*.toml` | `.claude/skills/seat-*` |
-| Subagent advisors | `.codex/agents/*.toml` | `.claude/agents/*.md` |
-| Reaching the other side | `pipeline peer ask claude` | `pipeline peer ask codex` |
+## The three tools
 
-Notable per-host constraints:
+`team_status` reports the adapter's configured label, declared capabilities,
+pending counts, sent-message acknowledgement/reply state, and recent activity. A
+`last_seen` value is activity evidence only, not app liveness or authority.
 
-- Claude Code discovers skills only under `.claude/skills/`. Five `.claude`
-  skills (create-regression-pin, probe-a-claim, prove-a-control,
-  isolate-a-variable, writing-skills) are reference stubs over their canonical
-  `.agents/skills/` bodies plus Claude-native deltas; the seat-family pairs are
-  declared provider-native adaptations (O2 ruling 2026-07-31) whose protocol
-  semantics resolve toward `.agents`. Only
-  `seat-operator/verification-report-format.md` is asserted byte-identical, and
-  no test asserts `SKILL.md` parity. Review, not a gate, catches divergence.
-  Frozen selection and stub-routing cases live under `tests/skill_packs/`
-  (ADR-068).
-- Every model the Claude harness can select is claude-family, so a Claude
-  session cannot supply its own different-family reviewer. That counterparty is
-  Codex.
-- Codex carries the spawnable seat roles because host task tools dispatch them.
+`team_send` appends one validated message to another member or `all`. Every
+call requires a non-empty sender-scoped `idempotency_key`, reusable only for
+the identical recipient, body, and `reply_to`; `reply_to` itself is optional.
+A successful call means the message is queued.
 
-## 4. Executable seams
+`team_wait` reads messages after an explicit cursor, optionally waiting for a
+bounded interval. The same `after_id` replays the same log slice; advancing the
+cursor records acknowledgement of addressed messages through that id. This
+client-driven cursor survives process loss between response flush and client
+processing without a lease or worker-election layer. Consumers deduplicate by
+the stable message id.
 
-| Symbol | Source | Responsibility |
-|---|---|---|
-| `main`, `_resolve` | `pipeline/cli.py` | Map one verb (longest prefix wins) onto an existing module's entrypoint with `sys.argv` rewritten. |
-| `collect_orientation_snapshot`, `render_orientation_snapshot` | `pipeline/status.py` | Produce the bounded current-state view. |
-| `inspect_current_verify_requests` | `pipeline/check_coordination.py` | Find and validate current committed review requests. |
-| `_committed_mailbox_projection`, `_normalize_archive_name` | `pipeline/check_coordination.py` | Project immutable committed mailbox bytes, resolving pre-rename manifest paths without tolerating a missing manifest. |
-| `CommitGraphProjection` | `pipeline/git_commit_projection.py` | Pin one repository identity and HEAD and answer committed-range ancestry from one bounded in-memory graph. |
-| `validate_event_candidate`, `writer_fence` | `pipeline/mailbox_writer.py` | Validate and serialize event/cursor publication. |
-| `parse_verify_request`, `validate_report` | `pipeline/compact_pair_loop.py` | Bind formal review to one committed request and exact range. |
-| `RuntimeIdentity`, `work_profile_for`, `review_profile_for` | `pipeline/codex_protocol_model.py` | Close runtime identity and select finite work-mode and review policies. |
-| `model_family`, `models_are_independent` | `pipeline/codex_protocol_model.py` | Decide reviewer independence by model family, so a harness prefix or version suffix cannot buy it. |
-| `build`, `reported_result` | `pipeline/peer_backends.py` | Build one peer's argv; read the model and result from that peer's own output, recording absence rather than inferring it. |
-| `run`, `write_receipt` | `pipeline/peer.py` | Run one peer once under a timeout and commit a receipt of what actually ran. |
-| `check_peers`, `check_codex` | `pipeline/harness_preflight.py` | Report whether both CLI peers could run, and refuse ambient authority or any declared MCP server. |
-| `build_launch_spec` | `pipeline/codex_seat_launcher.py` | Launch a named Codex role in the caller-selected native worktree without binding an index. |
-| `resolve_unread` | `pipeline/bus_unread.py` | Answer unread from the canonical mailbox order, so a legacy scalar cursor can never render `0 unread`. |
-| `build_guard` | `pipeline/ledger_start_guard.py` | Validate one ordinary Pipeline-first target start. |
-| `resolve_target` | `pipeline/target_binding.py` | Resolve the selected product binding. |
-| `build_index`, `query_index` | `pipeline/learning_index.py` | Build and query the derived episodic index; unavailable is `None`, never a silent zero. |
-| `parse_learning_candidate_statement`, `committed_learning_candidate_ids` | `pipeline/protocol_mailbox.py` | Type learning candidates and dispositions from committed events. |
-| `draft_candidate` | `pipeline/learning_extract.py` | Draft one evidence-triggered candidate into scratch; never publishes. |
-| `parse_checkpoint_statement`, `checkpoint_intent` | `pipeline/protocol_mailbox.py` | Type a continuity checkpoint from a findings body. |
-| `draft_checkpoint` | `pipeline/draft_checkpoint.py` | Draft one checkpoint findings event into scratch; never publishes. |
-| `_python_growth_violations`, `_RENAME_THRESHOLD` | `pipeline/check_no_ceremony.py` | Bound Python growth, asking Git one question about file identity in both halves of the rule. |
+These states are deliberately separate:
 
-## 5. Runtime invariants
-
-- Every side begins without a live role. A user or parent must explicitly assign
-  a concrete role.
-- Runtime identity is closed: mode, role, seat, behavior source, and model must
-  agree. Ambient policy variables cannot widen it.
-- No side binds a per-seat Git index. A launched process inherits the selected
-  checkout but not `GIT_INDEX_FILE` or ambient provider policy variables.
-- Session start grants nothing. Review identity is decided at publication by
-  `pipeline/compact_pair_loop.py`.
-- Peer traffic is transient routing only. A peer's output can carry a finding
-  or an opinion; it cannot assign a role, validate a reviewer, grant an effect,
-  or replace the fixed mailbox. A peer receipt is evidence, not attestation.
-- Repository hooks do not orient any side, mutate state, refresh doctrine, or
-  maintain a second index.
-- One compact snapshot is the normal orientation path.
-- Current Git state and committed event bodies outrank summaries and
-  historical prose.
-- Coordinators are cursorless observers. Only `director`, `director2`,
-  `operator`, and `operator2` own consumable compatibility cursors.
-- Protocol doctors and metrics are optional diagnostics. They never grant task,
-  review, or effect authority.
-- Editing, staging, committing, publishing an event, consuming a cursor,
-  merging, locking, invoking a peer, spending, and mutating live data are
-  distinct actions. Push is not among the gated effects: the claim that it was
-  outlived any mechanism enforcing it, and was dropped rather than kept as
-  prose (`AGENTS.md` item 6).
-
-## 6. Queue and publication authority
-
-The mailbox is the only coordination transport. The signed ref-bus that this
-kernel once hedged against is gone: it was dormant on two independent axes
-(`governance.toml` declared `transport = "mailbox"`, and `refs/threeway/*`
-held zero refs while `refs/heads` held 110), so every probe of it was already
-short-circuited. With one transport there is no authority to prove and no
-"unconsulted bus mistaken for an empty one" failure mode to defend against.
-A legacy scalar cursor still resolves against the canonical ordered mailbox
-projection; an invalid cursor resolves to unavailable, never to zero.
-
-All new events pass through `coordination/bin/send-event` and the fixed writer,
-which rejects malformed envelopes, invalid sender/kind combinations, and
-invalid review-request structure before publication. Historical event files
-remain immutable evidence; a grandfathered malformed artifact is reported as
-invalid and grants no authority.
-
-## 7. Review and external effects
-
-| Profile | Required evidence |
-|---|---|
-| `ordinary-local` | Focused verification. |
-| `material-behavior` | Non-author review of the exact committed range. |
-| `high-risk-control` | Distinct non-author Operator, different model **family**, exact range, and abuse-class assessment. |
-| `external-effect` | Live authorization for the exact executor, target, effect, and scope. |
-
-Once formal review is required, the committed Compact Pair binding remains
-strict. An author cannot approve authored work, a generic subagent verdict is
-advisory, and a green script cannot substitute for the assigned review.
-External-effect authorization is never inferred from a route, task dispatch,
-schema, token, review result, or peer receipt.
-
-Because the supported adapters are exactly Claude and Codex, and every model a
-Claude harness selects is claude-family, the different-family counterparty for
-Claude-authored work is Codex — reached with `pipeline peer ask codex`, whose
-receipt records the model that side's own output reported.
-
-## 8. Verification
-
-```bash
-pipeline check                                  # the completion-gate aggregate
-coordination/bin/pipeline-python -m pytest tests -q
-pipeline check coordination
+```text
+queued row
+  != returned by team_wait
+  != acknowledged by a later cursor advance
+  != linked reply
+  != substantive answer
 ```
 
-`ci.yml` sets `NO_CEREMONY_BASE` to the pull-request base, so the growth
-budget is measured across the whole range rather than one commit. Reproduce
-that locally with
-`NO_CEREMONY_BASE=$(git merge-base main HEAD) pipeline check ceremony`.
+Only an adapter operating under the recipient label can create its acknowledgement
+record; that label is not attested against the same local account. A reply link proves that a
+response was queued, not that it answered the question; content determines
+substance. When work depends on an answer, the sender waits for it or reports
+the precise missing state. Every payload explicitly reports that it grants no
+authority.
 
-Smoke and tests prove only the behavior they execute; they do not commit,
-publish, consume, push, merge, invoke a peer, or issue a formal verdict.
+The transport does not carry files, task history, permission approval, review
+admission, or effect authority. Members cite repository paths, commits, tests,
+and task context rather than assuming a message transferred hidden state.
 
-## 9. Compatibility boundaries
+## Capability routing
 
-- The four concrete seat names remain mailbox/review compatibility identities;
-  they are not a requirement to allocate four agents to every task.
-- Historical events, capacity packets, and SHA citations remain evidence and may
-  contain superseded process language, including paths under the pre-rename
-  `scripts/` prefix. The committed-mailbox projection normalizes those
-  references rather than rewriting frozen provenance.
-- A configured model name is runtime evidence, not cryptographic provider
-  attestation. A peer receipt narrows the gap without closing it.
-- A normal target checkout may be stale relative to an explicitly routed
-  target worktree; the route's exact target and base win.
+The store advertises current strengths, not exclusive jobs:
+
+| Member | Useful emphasis |
+|---|---|
+| Codex | parallel task orchestration, isolated worktrees, long-running goals, workspace implementation, tests and integrations |
+| Claude | large-context reasoning, independent diff review, workspace implementation, tests and visual review |
+| AGY | fast mapping and debugging, premise/evasion challenge, isolated implementation, browser/artifact work, multi-model advice |
+
+Any member may lead or implement. Pair capabilities to reduce weakness: ground
+long analysis in executable evidence, validate fast advice locally, and put a
+different model family over high-risk authored work. Material AGY findings are
+answered on their merits, but AGY cannot be the independent formal accepting
+verdict or an authority source.
+
+## Governance boundary
+
+`pipeline/codex_protocol_model.py` keeps four closed review profiles:
+
+- `ordinary-local`: focused verification; no formal reviewer.
+- `material-behavior`: focused verification plus non-author exact-range review.
+- `high-risk-control`: the material requirements plus a different model family
+  and an explicit abuse-class assessment.
+- `external-effect`: exact live user/task authorization for the effect; a
+  structural review does not grant execution.
+
+There are no standing roles. Formal review temporarily names the candidate
+owner `author` and a non-author Codex or Claude member `reviewer` for one exact
+range. AGY can inspect, challenge, test, and propose remediation, but cannot be
+the sole formal reviewer. The responsibility ends with the review.
+
+Push, merge, release, paid spend, live-data mutation, and destructive
+operations are separate effects. Each requires exact authority naming executor,
+target, effect, and scope. Team traffic, local config, tests, and review results
+cannot manufacture that authority.
+
+## State and compatibility boundary
+
+Current truth is the user task plus fresh Git state, executed tests, current
+app task history, and any accepted formal exact-range report. A concise
+checkpoint is created only when ownership or context really transfers; it is
+not a startup ritual or a second task log.
+
+Old mailbox conversations and cursors, capacity packets, peer-launch receipts,
+four-seat names, and older handoffs remain historical evidence. Readers and
+validators may keep compatibility support for them. The fixed mailbox writer
+has exactly three active durable uses: a risk-required exact-range artifact, a
+real ownership-transfer checkpoint, or the governed
+learning-candidate/disposition lifecycle. It never carries routine team chat,
+and no artifact written there creates a live role or authority.
+
+## Readiness and verification
+
+`bin/pipeline preflight` checks all three application bundles, the checked-in
+MCP bindings, an initialize handshake for each configured label in a temporary
+Git repository, Codex/Claude native config views, Antigravity's exact workspace
+registration, and AGY's team-tool permission. These are configuration proxies,
+not proof that a desktop window or Antigravity's server connection is live.
+The check neither opens an app nor launches a model provider. AGY's optional
+interruption-free permission is global and server-name-scoped, not bound to
+this repository.
+
+Focused tests are used during implementation. `bin/pipeline check` is the final
+repository aggregate when the changed surface warrants it. A green result
+proves only the code paths it executed; app liveness, user intent, message
+substance, and external authority remain separate claims.

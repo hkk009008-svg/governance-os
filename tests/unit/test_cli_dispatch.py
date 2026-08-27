@@ -8,6 +8,7 @@ asked to describe.
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 import cli
 
@@ -78,23 +79,46 @@ def test_the_banner_does_not_overclaim_help_coverage() -> None:
 def test_a_known_subcommand_still_dispatches() -> None:
     """Reversion control: the refusal must not swallow real subcommands."""
 
-    for key in (("check", "arch"), ("check", "coordination"), ("peer", "receipts")):
+    for key in (("check", "arch"), ("check", "coordination"), ("team", "serve")):
         resolved = cli._resolve(list(key))
         assert resolved is not None, key
         assert resolved.name.split()[0] == key[0]
         assert resolved.module, key
 
 
-def test_a_delegated_group_reaches_its_module(capsys) -> None:
-    """Regression: `pipeline peer ask` was refused against an empty expected-set.
+def test_review_validate_exposes_candidate_flags_directly() -> None:
+    root = Path(cli.__file__).resolve().parent.parent
+    result = subprocess.run(
+        [root / "bin/pipeline", "review", "validate", "--help"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert "--candidate" in result.stdout
+    assert "--final-relative" in result.stdout
+    assert "{validate-candidate,compose-request}" not in result.stdout
 
-    ("peer", None) declares that the MODULE owns every subcommand under `peer`.
-    Treating `peer` as an enumerated group made every real subcommand unknown --
-    five independent readers hit it within minutes of it landing.
+
+def test_retired_cursor_and_git_lock_mutators_are_not_on_the_primary_surface() -> None:
+    usage = cli._usage()
+
+    for command in (("mail", "consume"), ("lock", "claim"), ("lock", "release")):
+        assert cli._resolve(list(command)) is None
+        assert " ".join(command) not in usage
+
+    assert cli._resolve(["mail", "send"]) is not None
+
+
+def test_a_delegated_group_reaches_its_module(capsys) -> None:
+    """The module-owned team subcommand must reach the MCP adapter.
+
+    ("team", None) declares that the module owns every subcommand under
+    `team`; the dispatcher must not pre-empt its own parser.
     """
 
-    for sub in ("ask", "receipts"):
-        resolved = cli._resolve(["peer", sub])
-        assert resolved is not None, sub
-        assert resolved.module == "peer"
-        assert resolved.rest[0] == sub, "the subcommand must reach the module"
+    resolved = cli._resolve(["team", "serve"])
+    assert resolved is not None
+    assert resolved.module == "team"
+    assert resolved.rest[0] == "serve", "the subcommand must reach the module"

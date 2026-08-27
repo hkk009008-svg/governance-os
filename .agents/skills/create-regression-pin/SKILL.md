@@ -1,6 +1,6 @@
 ---
 name: "create-regression-pin"
-description: "Author a strict-xfail regression pin for a confirmed-but-deferred defect (R-VERIFY-TIER B), with the three recurring traps \u2014 assertion-shape, lock-column, non-vacuous flip \u2014 as built-in checks. Use when an agent-confirmed code defect is being left unfixed this session."
+description: "Author a strict-xfail regression pin for a confirmed-but-deferred defect (R-VERIFY-TIER B), with the two recurring traps \u2014 assertion-shape and non-vacuous flip \u2014 as built-in checks. Use when an agent-confirmed code defect is being left unfixed this session."
 ---
 
 # Create a Regression Pin (strict-xfail)
@@ -35,17 +35,7 @@ passing as xfail forever. Match the assertion to the fix's contract:
 - fix = "coerce non-finite -> 0.0 + WARN, keep gate alive" -> assert the coerced
   value AND that the gate still runs (not that it blocks)
 
-## Trap 2 — the lock column is the MODULE, not the wave number
-The cross-cutting lock for a shared file is one per **module across all waves**
-(e.g. `W2-<entrypoint>.py.lock` — the `W2` is just the column name; it does NOT
-mean "wave 2 only"). Claim / release by module, not by wave. See
-`pipeline lock claim <wave> <module> <seat> <defect-id>` and
-`pipeline lock release <wave> <module> <seat>` — the tool's `<seat>` slot takes
-the claiming role, `author` or `reviewer`. For a same-commit-as-GO release,
-`git rm` the lock manually in the GO commit (`pipeline lock release` makes a
-SEPARATE unlock commit).
-
-## Trap 3 — prove the pin is non-vacuous
+## Trap 2 — prove the pin is non-vacuous
 A pin that never actually exercises the defect is invisible-green theater.
 Before you trust it:
 - Run `coordination/bin/pipeline-python -m pytest <file> --runxfail -q` from
@@ -61,7 +51,7 @@ Before you trust it:
 1. Locate the defect row in `docs/REMEDIATION-INVENTORY.md`; get its id + severity.
 2. Write the test asserting post-fix behavior (Trap 1).
 3. Add the `xfail(strict=True, reason=…)` decorator citing the defect id.
-4. Run `--runxfail` and confirm RED + correct reason (Trap 3).
+4. Run `--runxfail` and confirm RED + correct reason (Trap 2).
 5. Run the normal suite slice and confirm it reports `xfailed` (not `xpassed`,
    not `error`).
 6. Update the inventory row to note the pin (`file::test_name`).
@@ -78,6 +68,6 @@ Observed failure: deferred defects shipping without a strict-xfail pin, or
 pins whose assertion never flips (vacuous xfail).
 Mode/risk: ordinary local when pinning; the deferred defect's risk class is
 unchanged. Cost: one xfail test plus a `--runxfail` red proof.
-Owner: the seat deferring the defect. Re-evaluate: if two consecutive
+Owner: the app member deferring the defect. Re-evaluate: if two consecutive
 deferred defects ship without a pin or with a pin that stays xfail after
 the fix.

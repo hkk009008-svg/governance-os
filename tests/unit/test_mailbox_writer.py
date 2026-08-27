@@ -64,15 +64,29 @@ def _send_fixture(root: Path) -> tuple[Path, str, Path, bytes]:
     (root / "coordination/mailbox/kinds.txt").write_text(
         "findings\n", encoding="utf-8"
     )
+    head = _git(root, "rev-parse", "HEAD")
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-17T01-02-03Z-author-to-reviewer-findings.md"
+        "2026-07-17T01-02-03Z-codex-to-claude-findings.md"
     )
-    candidate = sent / ".2026-07-17T01-02-03Z-author-to-reviewer-findings.fixture.tmp"
+    candidate = sent / ".2026-07-17T01-02-03Z-codex-to-claude-findings.fixture.tmp"
     raw = (
-        "# Author → Reviewer: snapshot\n\n"
-        "**When:** 2026-07-17T01:02:03Z · **From:** author (online)\n\n"
-        "body\n\nCursor at send: cursorless\n"
+        "# Codex → Claude: snapshot\n\n"
+        "**When:** 2026-07-17T01:02:03Z · **From:** codex (online)\n\n"
+        "Checkpoint: writer-publication-mechanics\n"
+        "Boundary: compaction\n"
+        "Objective: exercise the fixed writer publication mechanics\n"
+        "Accepted scope: the throwaway writer fixture repository\n"
+        "Owner: codex\n"
+        f"Policy revision: {head}\n"
+        f"Base: {head}\n"
+        f"Head: {head}\n"
+        "Evidence refs: none\n"
+        "Verification status: fixture payload is structurally valid\n"
+        "Blockers: none\n"
+        "Next action: exercise the publication mechanism under test\n"
+        "Lessons: none-considered\n\n"
+        "Cursor at send: cursorless\n"
     ).encode("utf-8")
     candidate.write_bytes(raw)
     candidate.chmod(0o600)
@@ -242,12 +256,11 @@ def test_send_event_finalizer_rejects_coordinator_verify_request(
     )
     candidate.chmod(0o600)
 
-    # The refusal moved earlier and got stricter: a retired seat cannot
-    # publish ANY new event, so its malformed verify-request never reaches the
-    # request parser. The property under test -- a non-review identity cannot
-    # open a formal pair -- holds more broadly than before.
+    # The identity lane rejects a legacy seat before its malformed request can
+    # reach the payload parser: only a temporary formal-review role may open
+    # the exact-range review pair.
     with pytest.raises(
-        mailbox_writer.MailboxWriterError, match="retired for new writes"
+        mailbox_writer.MailboxWriterError, match="formal review role"
     ):
         mailbox_writer._send_event_finalize(root, candidate, relative)
 
@@ -693,140 +706,3 @@ def test_send_event_finalizer_reports_incomplete_rollback_after_directory_fsync_
     assert candidate.exists()
     assert _index_bytes(root, relative) is None
     assert _writer_temps(sent) == []
-
-
-def test_consume_scalar_cursor_falls_back_to_mailbox_and_converts_to_iso(
-    tmp_path: Path,
-) -> None:
-    root = _repo(tmp_path)
-    sent = root / "coordination/mailbox/sent"
-    seen = root / "coordination/mailbox/seen"
-    sent.mkdir(parents=True)
-    seen.mkdir()
-    cursor = seen / "director.txt"
-    cursor.write_text("0\n", encoding="ascii")
-    event = "2026-07-17T01-02-03Z-operator-to-director-status.md"
-    (sent / event).write_text("fixture\n", encoding="utf-8")
-
-    output = mailbox_writer._consume_events_finalize(root, "director", None)
-
-    assert "mailbox fallback" in output
-    assert cursor.read_text(encoding="ascii") == "2026-07-17T01:02:03Z\n"
-    assert _git(root, "diff", "--cached", "--name-only") == (
-        "coordination/mailbox/seen/director.txt"
-    )
-
-
-def test_consume_scalar_cursor_rejects_position_beyond_mailbox_corpus(
-    tmp_path: Path,
-) -> None:
-    root = _repo(tmp_path)
-    sent = root / "coordination/mailbox/sent"
-    seen = root / "coordination/mailbox/seen"
-    sent.mkdir(parents=True)
-    seen.mkdir()
-    cursor = seen / "director.txt"
-    cursor.write_text("2\n", encoding="ascii")
-    (sent / "2026-07-17T01-02-03Z-operator-to-director-status.md").write_text(
-        "fixture\n", encoding="utf-8"
-    )
-
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="beyond mailbox"):
-        mailbox_writer._consume_events_finalize(root, "director", None)
-
-    assert cursor.read_text(encoding="ascii") == "2\n"
-    assert _git(root, "diff", "--cached", "--name-only") == ""
-
-
-def _consume_fixture(root: Path) -> Path:
-    sent = root / "coordination/mailbox/sent"
-    seen = root / "coordination/mailbox/seen"
-    sent.mkdir(parents=True)
-    seen.mkdir()
-    cursor = seen / "director.txt"
-    cursor.write_text("2026-07-17T00:00:00Z\n", encoding="ascii")
-    (sent / "2026-07-17T01-02-03Z-operator-to-director-status.md").write_text(
-        "fixture\n", encoding="utf-8"
-    )
-    return cursor
-
-
-def test_consume_directory_pin_failure_leaves_cursor_unadvanced(
-    tmp_path: Path, monkeypatch
-) -> None:
-    # The seen/ directory handle is pinned before os.replace advances the
-    # cursor. If that pin fails after the advance instead, the cursor is
-    # left half-advanced on disk with nothing staged and no rollback.
-    root = _repo(tmp_path)
-    cursor = _consume_fixture(root)
-    seen = cursor.parent
-    real_open = os.open
-
-    def fail_directory_open(path, flags, *args, **kwargs):
-        if flags & getattr(os, "O_DIRECTORY", 0) and Path(path) == seen:
-            raise OSError("injected directory pin failure")
-        return real_open(path, flags, *args, **kwargs)
-
-    monkeypatch.setattr(mailbox_writer.os, "open", fail_directory_open)
-
-    with pytest.raises(OSError, match="injected directory pin failure"):
-        mailbox_writer._consume_events_finalize(root, "director", None)
-
-    assert cursor.read_text(encoding="ascii") == "2026-07-17T00:00:00Z\n"
-    assert list(seen.glob(".director.*")) == []
-    assert _git(root, "diff", "--cached", "--name-only") == ""
-
-
-def test_consume_stage_failure_rolls_back_cursor_bytes(
-    tmp_path: Path, monkeypatch
-) -> None:
-    root = _repo(tmp_path)
-    cursor = _consume_fixture(root)
-
-    def fail_stage(*args, **kwargs):
-        raise OSError("injected stage failure")
-
-    monkeypatch.setattr(mailbox_writer, "_stage", fail_stage)
-
-    with pytest.raises(OSError, match="injected stage failure"):
-        mailbox_writer._consume_events_finalize(root, "director", None)
-
-    assert cursor.read_text(encoding="ascii") == "2026-07-17T00:00:00Z\n"
-    assert _git(root, "diff", "--cached", "--name-only") == ""
-
-
-def test_consume_rejects_coordinator_before_cursor_access(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="role is invalid"):
-        mailbox_writer._consume_events_finalize(root, "coordinator", None)
-
-
-@pytest.mark.parametrize(
-    ("current", "target"),
-    [
-        ("not-a-time", None),
-        ("2026-99-99T99:99:99Z", None),
-        ("2026-07-17T01:00:00Z", "2026-07-17T01:02-03Z"),
-        ("2026-07-17T01:00:00Z", "2026-99-99T99:99:99Z"),
-    ],
-)
-def test_consume_finalizer_rejects_malformed_or_mixed_cursor_formats_before_mutation(
-    tmp_path: Path, current: str, target: str | None
-) -> None:
-    root = _repo(tmp_path)
-    sent = root / "coordination/mailbox/sent"
-    seen = root / "coordination/mailbox/seen"
-    sent.mkdir(parents=True)
-    seen.mkdir()
-    cursor = seen / "director.txt"
-    cursor.write_text(current + "\n", encoding="ascii")
-    (sent / "2026-07-17T01-02-03Z-operator-to-director-status.md").write_text(
-        "fixture\n", encoding="utf-8"
-    )
-
-    with pytest.raises(mailbox_writer.MailboxWriterError):
-        mailbox_writer._consume_events_finalize(root, "director", target)
-
-    assert cursor.read_text(encoding="ascii") == current + "\n"
-    assert _git(root, "diff", "--cached", "--name-only") == ""

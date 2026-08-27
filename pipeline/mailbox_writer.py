@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fixed, fail-closed mailbox event and cursor writer."""
+"""Fixed, fail-closed durable mailbox event writer."""
 
 from __future__ import annotations
 
@@ -12,22 +12,17 @@ import secrets
 import stat
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Collection, Iterator
 
 
-import bus_unread
 import compact_pair_loop
 import protocol_mailbox
 
 _LOCK_NAME = "protocol-kernel-writer.lock"
 _EVENT_RE = protocol_mailbox.EVENT_NAME_RE
-_COLON_ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
-_DASH_ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z")
-# Only the four concrete pair seats own consumable compatibility cursors, and
-# they exist only in committed history now.
-_ROLES = frozenset(protocol_mailbox.SEATS)
+# The four concrete pair seats carried compatibility cursor values in committed
+# history. Their cursor files are read-only evidence now.
 _CURSORED_SENDERS = frozenset(protocol_mailbox.SEATS)
 _GIT_ENV = {
     "PATH": "/usr/bin:/bin",
@@ -88,13 +83,6 @@ def writer_fence(repo_root: Path | str) -> Iterator[None]:
         yield
     finally:
         os.close(fd)
-
-
-def _stage(root: Path, relative: str, *, force: bool = False) -> None:
-    arguments = ["add"]
-    if force:
-        arguments.append("-f")
-    _git(root, *arguments, "--", relative)
 
 
 def validate_event_envelope(
@@ -249,16 +237,10 @@ def _validate_learning_disposition_payload(
 ) -> None:
     """Stage 2b: disposition refusals bind at publication.
 
-    A ``decision`` event is a learning disposition exactly when it names a
-    canonical learning-candidate ref on a ``Candidate:`` line AND carries a
-    ``Disposition:`` line — the same fields the read-side parser grants
-    meaning to. Every other decision publishes exactly as before: free prose
-    that merely contains ``Candidate:`` (a hiring note, a list item) never
-    enters disposition parsing (round-one FAIL: the earlier any-line sniff
-    refused such events — an availability regression on a historical kind).
-    An event that quotes a real ref without a Disposition line is prose to
-    readers too, so it publishes; one that quotes both is exactly what a
-    reader would parse as a disposition, so validating it is correct.
+    New ``decision`` events exist only for the governed learning lifecycle, so
+    they must name a canonical learning-candidate ref on a ``Candidate:`` line
+    and carry a ``Disposition:`` line. Generic decisions remain readable in
+    committed history but cannot enter the fixed writer.
     Self-approval (disposer == producer) is refused for every disposition,
     strictest reading of the contract — a producer replaces its own candidate
     via Supersedes, it does not dispose it. The acceptance-only refusals
@@ -270,7 +252,10 @@ def _validate_learning_disposition_payload(
     """
 
     if not protocol_mailbox.learning_disposition_intent(raw.decode("utf-8")):
-        return
+        raise MailboxWriterError(
+            "decision candidate is invalid: durable decision must be a fully "
+            "typed learning disposition"
+        )
     try:
         protocol_mailbox.validate_learning_disposition(
             root,
@@ -289,19 +274,20 @@ def _validate_checkpoint_payload(
 ) -> None:
     """Checkpoint refusals bind at publication.
 
-    A ``findings`` event is a checkpoint exactly when it carries a
-    slug-shaped ``Checkpoint:`` field and a ``Next action:`` field — the
-    same fields the read-side parser grants meaning to
-    (``protocol_mailbox.checkpoint_intent``). Every other findings event
-    publishes exactly as before: free prose that merely mentions
-    ``Checkpoint:`` never enters checkpoint parsing, matching the
-    learning-disposition intent discipline. A checkpoint that publishes is
-    still advisory recall (learning contract I1/I2); this validation
-    refuses malformed durable-continuation records, it grants nothing.
+    New ``findings`` events exist only for durable continuation, so they must
+    carry the typed checkpoint fields recognized by
+    ``protocol_mailbox.checkpoint_intent``. Generic findings remain readable
+    in committed history but cannot enter the fixed writer. A checkpoint that
+    publishes is still advisory recall (learning contract I1/I2); this
+    validation refuses malformed durable-continuation records, it grants
+    nothing.
     """
 
     if not protocol_mailbox.checkpoint_intent(raw.decode("utf-8")):
-        return
+        raise MailboxWriterError(
+            "findings candidate is invalid: durable findings must be a fully "
+            "typed real checkpoint"
+        )
     try:
         statement = protocol_mailbox.parse_checkpoint_statement(
             _typed_candidate_event(raw, relative)
@@ -331,34 +317,55 @@ def validate_event_candidate(
 # New durable writes are state transitions, not conversation (context-pruning
 # PR 3). The registry in coordination/mailbox/kinds.txt remains the read-side
 # vocabulary — every historical kind keeps parsing — but the fixed writer
-# only publishes kinds that change durable state. Conversational kinds
-# (status, fyi, reply, query, discussion, wrap, acknowledgement, coordination,
-# doc-sync-notice, proposal, proposal-reply, scout-request, scout-report,
-# fold-notice, convergence, verify-readiness, verify-readiness-converged)
-# stay transient chat or derived projections. Extending this allowlist is a
-# reviewed policy change on the fixed writer, not a config edit.
-# Who may publish a NEW event. Reading stays open to every historical seat --
-# the grammar in protocol_mailbox still parses them -- but writing is closed to
-# the two roles, which is what "collapse the seats" means in enforceable terms.
-# A rule that only documentation states is not a collapse.
-NEW_WRITE_SENDERS = frozenset(protocol_mailbox.ROLES)
-# Restricting only the SENDER left a hybrid `author -> operator` envelope
-# publishable: half the identity crossed the cutover and half did not, and the
-# finalizer staged it. Both ends of a new event are live identities, with
-# `all` still lawful as a broadcast target.
-NEW_WRITE_RECIPIENTS = frozenset(protocol_mailbox.ROLES) | {"all"}
-NEW_WRITE_KINDS = frozenset(
-    {
-        "decision",
-        "dispatch-claim",
-        "findings",
-        "learning-candidate",
-        "measurement-report",
-        "verification-report",
-        "verify-addendum",
-        "verify-request",
-    }
-)
+# only publishes the three governed durable surfaces: exact-range review
+# artifacts, fully typed checkpoints, and the typed learning lifecycle.
+# Everything else stays transient chat, derived projection, or read-only
+# history. Extending this allowlist is a reviewed policy change on the fixed
+# writer, not a config edit.
+FORMAL_REVIEW_KINDS = frozenset({"verification-report", "verify-request"})
+APP_DURABLE_KINDS = frozenset({"decision", "findings", "learning-candidate"})
+NEW_WRITE_KINDS = FORMAL_REVIEW_KINDS | APP_DURABLE_KINDS
+FORMAL_REVIEW_SENDERS = frozenset(protocol_mailbox.ROLES)
+FORMAL_REVIEW_RECIPIENTS = FORMAL_REVIEW_SENDERS | {"all"}
+APP_DURABLE_SENDERS = frozenset(protocol_mailbox.APP_MEMBERS)
+APP_DURABLE_RECIPIENTS = APP_DURABLE_SENDERS | {"all"}
+# Broad introspection aliases; actual admission is selected by kind below.
+NEW_WRITE_SENDERS = FORMAL_REVIEW_SENDERS | APP_DURABLE_SENDERS
+NEW_WRITE_RECIPIENTS = FORMAL_REVIEW_RECIPIENTS | APP_DURABLE_RECIPIENTS
+
+
+def new_write_envelope_problem(
+    kind: str, sender: str, recipient: str
+) -> str | None:
+    """Return the exact new-write lane violation, or ``None`` when admitted."""
+
+    if kind not in NEW_WRITE_KINDS:
+        return (
+            f"kind {kind!r} is frozen for new writes: durable events persist "
+            "state transitions, not conversation (new-write allowlist: "
+            f"{', '.join(sorted(NEW_WRITE_KINDS))}); historical events keep "
+            "parsing read-only"
+        )
+    if kind == "verify-request":
+        if (sender, recipient) != ("author", "reviewer"):
+            return (
+                "verify-request formal review role route must be author to reviewer"
+            )
+        return None
+    if kind == "verification-report":
+        if sender != "reviewer" or recipient not in {"author", "all"}:
+            return (
+                "verification-report formal review role route must be reviewer "
+                "to author or all"
+            )
+        return None
+    if sender not in APP_DURABLE_SENDERS:
+        return f"{kind} sender must be a desktop app member"
+    if recipient not in APP_DURABLE_RECIPIENTS:
+        return f"{kind} recipient must be a desktop app member or 'all'"
+    if sender == recipient:
+        return f"{kind} cannot be self-addressed"
+    return None
 
 
 def validate_event_candidate_bytes(
@@ -372,27 +379,13 @@ def validate_event_candidate_bytes(
 
     root = root.resolve()
     match = validate_event_envelope_bytes(root, raw, relative)
-    if match.group("sender") not in NEW_WRITE_SENDERS:
-        raise MailboxWriterError(
-            f"sender {match.group('sender')!r} is retired for new writes: a "
-            "review has two positions, "
-            f"{' and '.join(sorted(NEW_WRITE_SENDERS))}; historical seat names "
-            "keep parsing read-only"
-        )
-    if match.group("recipient") not in NEW_WRITE_RECIPIENTS:
-        raise MailboxWriterError(
-            f"recipient {match.group('recipient')!r} is retired for new "
-            "writes: an event addressed to an identity that cannot answer is "
-            "half a cutover; historical seat names keep parsing read-only"
-        )
-    if match.group("kind") not in NEW_WRITE_KINDS:
-        raise MailboxWriterError(
-            f"kind {match.group('kind')!r} is frozen for new writes: durable "
-            "events persist state transitions, not conversation "
-            f"(new-write allowlist: {', '.join(sorted(NEW_WRITE_KINDS))}); "
-            "historical events keep parsing read-only"
-        )
-    if match.group("kind") == "verify-request":
+    kind = match.group("kind")
+    envelope_problem = new_write_envelope_problem(
+        kind, match.group("sender"), match.group("recipient")
+    )
+    if envelope_problem is not None:
+        raise MailboxWriterError(envelope_problem)
+    if kind == "verify-request":
         try:
             request = compact_pair_loop._parse_verify_request_bytes(
                 root,
@@ -415,7 +408,7 @@ def validate_event_candidate_bytes(
             raise MailboxWriterError(
                 "verify-request candidate is invalid: " + "; ".join(violations)
             )
-    elif match.group("kind") == "verification-report":
+    elif kind == "verification-report":
         try:
             report = compact_pair_loop._parse_verification_report_bytes(
                 root,
@@ -443,11 +436,11 @@ def validate_event_candidate_bytes(
                 "verification-report candidate is invalid: "
                 + "; ".join(violations)
             )
-    elif match.group("kind") == "learning-candidate":
+    elif kind == "learning-candidate":
         _validate_learning_candidate_payload(root, raw, relative)
-    elif match.group("kind") == "decision":
+    elif kind == "decision":
         _validate_learning_disposition_payload(root, raw, relative)
-    elif match.group("kind") == "findings":
+    elif kind == "findings":
         _validate_checkpoint_payload(root, raw, relative)
 
 
@@ -810,147 +803,8 @@ def _send_event_finalize(root: Path, candidate: Path, relative: str) -> bool:
     return True
 
 
-def _dash(value: str) -> str:
-    return value[:11] + value[11:19].replace(":", "-") + "Z"
-
-
 def _colon(value: str) -> str:
     return value[:11] + value[11:19].replace("-", ":") + "Z"
-
-
-def _valid_colon_iso(value: str) -> bool:
-    if _COLON_ISO_RE.fullmatch(value) is None:
-        return False
-    try:
-        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
-    except ValueError:
-        return False
-    return True
-
-
-def _valid_dash_iso(value: str) -> bool:
-    if _DASH_ISO_RE.fullmatch(value) is None:
-        return False
-    try:
-        datetime.strptime(value, "%Y-%m-%dT%H-%M-%SZ")
-    except ValueError:
-        return False
-    return True
-
-
-def _consume_events_finalize(root: Path, role: str, target: str | None) -> str:
-    if role not in _ROLES:
-        raise MailboxWriterError("consume-events role is invalid")
-    sent = root / "coordination" / "mailbox" / "sent"
-    seen = root / "coordination" / "mailbox" / "seen"
-    cursor = seen / f"{role}.txt"
-    with writer_fence(root):
-        current_raw = cursor.read_bytes()
-        if current_raw.count(b"\n") != 1 or not current_raw.endswith(b"\n"):
-            raise MailboxWriterError("consume-events cursor is not one canonical line")
-        current = current_raw[:-1].decode("ascii", "strict")
-        scalar_fallback = current.isdigit()
-        if not scalar_fallback and not _valid_colon_iso(current):
-            raise MailboxWriterError("consume-events current cursor is not colon ISO")
-        event_names = [
-            path.name
-            for path in sent.iterdir()
-            if path.is_file() and path.name.endswith(".md")
-        ]
-        try:
-            canonical = bus_unread.ordered_mailbox_events(event_names)
-        except ValueError as exc:
-            raise MailboxWriterError(f"mailbox event order is invalid: {exc}") from exc
-        if scalar_fallback:
-            try:
-                remaining = bus_unread.mailbox_events_after_scalar(
-                    current, canonical
-                )
-            except ValueError as exc:
-                raise MailboxWriterError(str(exc)) from exc
-            addressed = [
-                name
-                for name in remaining
-                if (
-                    (match := _EVENT_RE.fullmatch(name)) is not None
-                    and match.group("recipient") in {role, "all"}
-                )
-            ]
-            current_dash = None
-        else:
-            current_dash = _dash(current)
-            addressed = [
-                name
-                for name in canonical
-                if (
-                    (match := _EVENT_RE.fullmatch(name)) is not None
-                    and match.group("recipient") in {role, "all"}
-                )
-            ]
-        if target is None:
-            if not addressed:
-                suffix = " via mailbox fallback" if scalar_fallback else ""
-                return f"cursor {role}: no addressed events{suffix} (no-op)"
-            target_dash = addressed[-1][:20]
-        else:
-            if not (
-                _valid_colon_iso(target) or _valid_dash_iso(target)
-            ):
-                raise MailboxWriterError("consume-events target is not an ISO timestamp")
-            target_dash = _dash(target)
-            if not any(name.startswith(target_dash + "-") for name in addressed):
-                raise MailboxWriterError("consume-events target names no addressed event")
-        if current_dash is not None and target_dash == current_dash:
-            return f"cursor {role}: already at {_colon(target_dash)} (no-op)"
-        if current_dash is not None and target_dash < current_dash:
-            raise MailboxWriterError("consume-events refuses cursor regression")
-        updated = (_colon(target_dash) + "\n").encode("ascii")
-        temporary = seen / f".{role}.{os.getpid()}.tmp"
-        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
-        fd = os.open(temporary, flags, 0o600)
-        try:
-            try:
-                _write_all(fd, updated)
-                os.fsync(fd)
-            finally:
-                os.close(fd)
-        except Exception:
-            try:
-                os.unlink(temporary)
-            except OSError:
-                pass
-            raise
-        # Pin the directory handle before advancing the cursor: every step
-        # that can fail after os.replace must be covered by the rollback, so
-        # a consume can never strand a half-advanced, unstaged cursor.
-        try:
-            directory_fd = os.open(seen, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-        except OSError:
-            try:
-                os.unlink(temporary)
-            except OSError:
-                pass
-            raise
-        try:
-            os.replace(temporary, cursor)
-            try:
-                os.fsync(directory_fd)
-                _stage(root, f"coordination/mailbox/seen/{role}.txt")
-            except Exception:
-                rollback = seen / f".{role}.{os.getpid()}.rollback"
-                rollback.write_bytes(current_raw)
-                rollback.chmod(0o600)
-                os.replace(rollback, cursor)
-                os.fsync(directory_fd)
-                raise
-        finally:
-            os.close(directory_fd)
-        unread = sum(name[:20] > target_dash for name in addressed)
-        mode = "mailbox fallback; " if scalar_fallback else ""
-        return (
-            f"cursor {role}: {current} -> {_colon(target_dash)}; unread now: "
-            f"{unread} ({mode}staged)"
-        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -960,20 +814,13 @@ def main(argv: list[str] | None = None) -> int:
     send.add_argument("--repo-root", required=True)
     send.add_argument("--candidate", required=True)
     send.add_argument("--final-relative", required=True)
-    consume = commands.add_parser("consume-events", prog="consume-events")
-    consume.add_argument("--repo-root", required=True)
-    consume.add_argument("role", choices=sorted(_ROLES))
-    consume.add_argument("--to")
     arguments = parser.parse_args(argv)
     try:
         root = Path(arguments.repo_root).resolve(strict=True)
-        if arguments.command == "send-event-finalize":
-            staged = _send_event_finalize(
-                root, Path(arguments.candidate), arguments.final_relative
-            )
-            output = ("staged:" if staged else "unstaged:") + arguments.final_relative
-        else:
-            output = _consume_events_finalize(root, arguments.role, arguments.to)
+        staged = _send_event_finalize(
+            root, Path(arguments.candidate), arguments.final_relative
+        )
+        output = ("staged:" if staged else "unstaged:") + arguments.final_relative
     except (MailboxWriterError, OSError, UnicodeError) as exc:
         print(f"mailbox-writer: {exc}", file=sys.stderr)
         return 4

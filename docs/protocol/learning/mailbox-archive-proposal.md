@@ -30,7 +30,7 @@ curator was struck, and the archive was filed here.
 3. Projections keep reading the archive. `pipeline/check_coordination.py`
    committed-mailbox projection, `pipeline/protocol_mailbox.py`
    candidate/checkpoint loaders, `pipeline/learning_metrics.py`,
-   `pipeline/slope_metrics.py`, `pipeline/learning_index.py`, and
+   `pipeline/learning_index.py`, and
    `pipeline/bus_unread.py` must treat
    `coordination/mailbox/archive/<YYYY>/*.md` as the same evidence
    class as `sent/`. An archive that drops events from the projection
@@ -53,10 +53,10 @@ parent of this proposal) is large, and the
 path, but `pipeline/learning_metrics.py` still returns in ~0.4 s on
 that corpus.
 
-Activate when a **named live collector** that operators actually run
+Activate when a **named live collector** that members actually run
 — `pipeline/check_coordination.py` live snapshot, or the committed-
 mailbox projection it uses — is measured at a pinned commit to exceed
-a recorded budget that a seat cites as blocking orientation. Record
+a recorded budget that a member cites as blocking orientation. Record
 that measurement in the activating change (command, commit, seconds).
 Until then, keep the corpus in `sent/`.
 

@@ -1,12 +1,12 @@
 [project]
 name = "governance-os"
 version = "0.1.0"
-description = "Four-seat governance OS: coordination protocol, threeway ref-bus, and CI harness"
+description = "Desktop engineering harness for Codex, Claude, and AGY with governance checks"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Root packages (threeway/) and the pipeline/ modules are importable by bare name
+# Root packages and the pipeline/ modules are importable by bare name
 # in tests (mirrors how governance_verify_all.py runs: pipeline/ on sys.path[0] + repo root).
 pythonpath = [".", "pipeline"]
 

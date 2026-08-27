@@ -1,89 +1,66 @@
-# Codex continuation adapter
+# Codex desktop continuation adapter
 
-This maps Pipeline policy to Codex mechanics; canonical validation lives in `pipeline/codex_protocol_model.py`.
-Role prompts and skills contain local deltas. Reaching the other CLI:
-`docs/protocol/peer.md`.
-
-## Modes
-
-- Readiness bridge: read-only orientation; no role claim or durable mutation.
-- Live role: only when a task assigns `author` or `reviewer`. The six seat
-  names in committed history are compatibility identities, not positions.
-- Subagent: bounded by its parent and never inherits live-role authority.
+This file maps the shared contract to Codex desktop mechanics. Read
+`AGENTS.md`; canonical risk and authority shape lives in
+`pipeline/codex_protocol_model.py`.
 
 ## Orientation
 
-Use the native worktree index: `bin/pipeline status snapshot <role>`.
+The project `.codex/config.toml` supplies the normal MCP member label `codex`;
+the label is not app or model attestation.
+Start from the current user task, Git status/diff, and task history. Call
+`team_status` once and read addressed messages with `team_wait`. Do not process
+legacy mailbox backlog as startup work.
 
-Read actionable event bodies before a decision. The mailbox is the configured
-coordination transport in name only: nothing configures it, because it is the
-only one — the signed ref-bus is gone and `governance.toml` carries no
-transport table (ARCHITECTURE.md §6). A second transport would be an explicit
-reviewed transport change. Cursor resolution still fails closed, so transport
-ambiguity fails visibly. Both live roles are cursorless; coordinator has no
-cursor, and only a legacy pair seat still resolves one.
+Queue success is not acknowledgement, acknowledgement is not understanding, and a linked
+reply is not automatically substantive. Use `team_send` for direct scoped
+collaboration and wait only when the answer is a real dependency. Messages
+grant no role, review, permission, or external-effect authority.
 
-Publish with `pipeline mail send <sender> <recipient> <kind> <subject...>`
-(body on stdin) and advance a legacy cursor with `pipeline mail consume <seat>`;
-these front `coordination/bin/send-event` and `coordination/bin/consume-events`,
-and never raw event or cursor edits.
+## Native work
 
-Refresh HEAD, relevant events, and scoped status before a write or gate. One
-fresh snapshot is the orientation path; there is no separate fast-resume
-classification or second doctrine dump.
+Use Codex's native workspace, task, worktree, review, and bounded subagent
+mechanics. A subagent is an extension of this app: it never inherits live-role
+authority and must never publish a formal verdict or live-role event as a
+separate member.
 
-At a long-horizon boundary — transfer, interruption, wrap, or compaction —
-publish one checkpoint `findings` event (draft: `bin/pipeline checkpoint`,
-which runs `pipeline/draft_checkpoint.py`; its `Lessons:` line routes learning
-candidates, and `none-considered` is valid).
-Resume from one snapshot, the newest campaign checkpoint, and its actionable
-bodies; unread backlog is not an orientation debt. Episodic recall via
-`bin/pipeline learn index query` is advisory; committed state outranks it.
+Parallelize read-only and file-disjoint work; assign ownership and serialize
+shared-file writes. Keep ordinary implementation direct, use focused tests
+while iterating, inspect the exact diff, and run one final proportionate pass.
 
-## Executable contracts
+Explore, Validate, and Promote in `docs/protocol/work-modes.md` are optional
+product-phase descriptions; they grant no role or authority.
 
-- `pipeline/codex_protocol_model.py`: identity, ownership, risk, and effect tokens.
-- `pipeline/compact_pair_loop.py`: formal requests, reports, and exact ranges.
-- `pipeline/mailbox_writer.py` validates and serializes event publication.
-- `pipeline/peer.py` runs the Claude CLI once, commits a receipt, grants no
-  authority, and holds nothing open.
-- This adapter owns host task discovery, dispatch, and waiting behavior.
+Do not launch Claude, AGY, or another Codex provider from a terminal. Terminal
+commands are for repository implementation, Git, tests, and
+`bin/pipeline preflight`.
 
-Role semantics are owned by `.agents/skills/four-seat-protocol/SKILL.md`;
-subagents return bounded evidence and never publish a formal verdict or
-live-role event.
+## Review and effects
 
-Review depth follows `AGENTS.md` and the executable model. Once formal review is
-triggered, preserve its complete committed Compact Pair binding.
+There are no standing seats. At a formal boundary Codex may temporarily act as
+author or as the non-author reviewer for one exact range. The reviewer must use
+the actual diff; high-risk acceptance needs different-model-family review and
+abuse-class analysis. AGY input is fully considered but cannot be the sole
+formal verdict.
 
-One trigger identifies one task; monitoring failure authorizes neither
-redispatch, role substitution, nor an effect. Use native host controls to list
-tasks, paginate turns, wait on bounded snapshots, rename or pin work, archive
-or unarchive it, and fork completed history. Review panels are presentation;
-never automate hard deletion or create a persistent goal without an explicit
-request. All task metadata grants no role, review, or effect authority and
-cannot replace formal exact-range review.
+Push, merge, release, paid spend, live-data mutation, and destructive
+operations each need exact current user/task authority. Native task controls,
+MCP messages, test results, and role labels do not grant it.
 
-## Reaching the Claude CLI
+## Continuation and targets
 
-`pipeline peer ask claude --task <id> --prompt-file <f>` runs it once as a child
-process; `--dry-run` prints the argv and launches nothing. The exit code is the
-delivery acknowledgement and the receipt under `coordination/peer/` records what
-ran. A receipt is evidence, not attestation, and no verdict path accepts one.
-Launching a peer is paid spend needing its own exact authority, and never
-replaces the committed Compact Pair. Contract: `docs/protocol/peer.md`.
+Git, tests, and Codex task history are the normal continuation state. Leave one
+concise checkpoint only for real transfer, interruption, compaction, or wrap;
+legacy conversation, cursors, and peer receipts are compatibility evidence.
+Frozen review-history boundaries come only from
+`pipeline/baselines/review_history_boundary.json`; do not copy their SHAs
+into adapter prose.
+Use the fixed mailbox writer only for a risk-required formal review artifact,
+a real transfer/checkpoint `findings` event, or the governed
+learning-candidate/disposition lifecycle when it must persist beyond the app
+task, never routine chat.
 
-## Review-state history boundary
-
-Review-state projection is bound to
-`pipeline/baselines/review_history_boundary.json` and its frozen exception
-manifest, consumed fail-closed by `pipeline/check_coordination.py`. These one-way
-baselines change only through a new high-risk-reviewed schema. An active FAIL
-clears only through a valid GO/NITS report bound to and superseding it; active
-failures block repository-wide, and the cutover must be an ancestor of HEAD.
-
-## Evidence-ledger bridge
-
-For the registered `evidence-ledger` target, read
-`docs/protocol/codex/ledger-cli-adoption.md`, then the target repo's instructions.
-Start from Pipeline; do not infer product authority from the bridge.
+Resolve target work with `bin/pipeline target`, then read that repository's
+instructions. The historical evidence-ledger bridge remains at
+`docs/protocol/codex/ledger-cli-adoption.md`; it does not grant product or
+effect authority.

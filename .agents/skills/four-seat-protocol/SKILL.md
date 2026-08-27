@@ -1,56 +1,36 @@
 ---
 name: four-seat-protocol
-description: Use for an explicit Pipeline seat, mailbox, handoff, wave, continuation, or protocol decision.
+description: Reserved for explicit formal review of an exact committed range, temporary author or reviewer responsibility, durable ownership transfer or continuation, or inspection of a legacy mailbox handoff.
 ---
 
-# Pipeline role protocol
+# Pipeline formal-review boundary
 
-A review has two positions, `author` and `reviewer`, and they are the only
-identities a new durable event may come from. Take one only when the user or
-parent explicitly assigns it. Do not infer a live role. The six retired seat
-names (director, director2, operator, operator2, coordinator, coordinator2)
-still parse so committed history stays readable; the fixed writer refuses them
-as the sender or the recipient of anything new.
+Codex, Claude, and AGY are one desktop engineering team. Routine planning,
+implementation, challenges, and handoffs use `team_status`, `team_send`, and
+`team_wait`; they instantiate no seat and no durable mailbox artifact. Queueing
+is not acknowledgement, acknowledgement is not a substantive reply, and transport attribution
+is not an attestation or grant of authority.
 
-Use the executable seam that owns the claim:
+Only a risk boundary creates temporary responsibilities:
 
-- `pipeline/codex_protocol_model.py` for identity, ownership, work mode, risk
-  profile, and external-effect shape.
-- `pipeline/compact_pair_loop.py` for formal exact-range review.
-- `pipeline/mailbox_writer.py` behind `pipeline mail send` for publication.
-- `docs/protocol/peer.md` for reaching the other CLI.
+- `author` owns the accepted change and its evidence.
+- `reviewer` independently inspects a range it did not author and may issue
+  GO/NITS/FAIL when formal review is required.
+- AGY may co-direct, implement in isolation, map, debug, challenge, and propose
+  findings, but it is not the independent formal verdict source.
 
-For an assigned role, orient once from current evidence:
+Use `pipeline/codex_protocol_model.py` for risk/effect shape and
+`pipeline/compact_pair_loop.py` for exact-range binding. `bin/pipeline mail send`
+is retained only for a required formal review artifact, real durable transfer,
+or governed learning-candidate/disposition record; never use it for
+conversation. Legacy seat names and cursor files are read-only history.
 
-```bash
-pipeline status
-```
+Review depth stays proportional: focused verification for ordinary reversible
+work, one non-author actual-diff review for material behavior, and a
+different-family Codex/Claude review plus explicit abuse classes for high-risk
+controls. Subagents and team messages supply evidence but no verdict.
 
-Read relevant event bodies before deciding. `pipeline mail send` is the only
-write path into the durable mailbox and fails closed on a retired sender, a
-retired recipient, or a conversational kind. Both roles are cursorless, and
-nobody edits a raw event or cursor file.
-
-Select the product-work phase through `docs/protocol/work-modes.md` separately
-from the review risk. Ordinary Explore work instantiates no role and no formal
-review artifact; a real transfer, a frozen Validate candidate, a Promote
-boundary, or an explicit assignment activates only what that boundary needs.
-Work mode grants no role or external-effect authority.
-
-Role deltas:
-
-- Author owns accepted implementation and submits the actual committed range.
-- Reviewer may implement or independently review, but never reviews authored
-  work; only the assigned reviewer issues GO/NITS/FAIL.
-- A readiness-bridge session reports state without claiming work.
-- An advisory peer — `pipeline peer ask`, AGY included — supplies evidence
-  without becoming a production author or approval gate.
-- Subagents return bounded evidence to their parent. They do not publish
-  live-role events or verdicts, consume cursors, claim locks, merge, launch
-  providers, or spend.
-
-Apply the risk-based review policy in `AGENTS.md`; when formal review is
-triggered, keep the complete committed Compact Pair binding. Use the worktree's
-native Git index, preserve peer work, and stage explicit paths. External
-effects remain separately authorized. For evidence-ledger work, read
-`docs/protocol/codex/ledger-cli-adoption.md` before entering the target repo.
+Use the native worktree index, serialize overlapping writes, and stage explicit
+paths. Push, merge, release, spend, destructive operations, and live-data
+mutation require separate exact user/task authority. Write a concise checkpoint
+only at a real transfer, interruption, or compaction boundary.

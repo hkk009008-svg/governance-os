@@ -1,179 +1,345 @@
 from __future__ import annotations
 
-import subprocess
+import json
+import os
+import plistlib
 from pathlib import Path
-from types import SimpleNamespace
+
+import pytest
 
 import harness_preflight as preflight
 
 
-def test_codex_check_runs_config_controls_when_binary_is_absent(
-    tmp_path: Path, monkeypatch
+def _project_configs(
+    root: Path, *, extra_servers: bool = False, broad_claude_approval: bool = False,
 ) -> None:
-    """A missing binary must not stop the config controls from running.
-
-    Asserted on meaning rather than position: an earlier version pinned the
-    exact row list, so adding a control broke it for the wrong reason.
-    """
-
-    monkeypatch.setattr(preflight, "_binary", lambda _name: None)
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "absent"))
-    config = tmp_path / ".codex/config.toml"
-    config.parent.mkdir()
-    config.write_text('sandbox_mode = "danger-full-access"\n', encoding="utf-8")
-
-    results = preflight.check_codex(tmp_path)
-    failures = [result.detail for result in results if not result.ok]
-
-    assert any("NOT FOUND on PATH" in detail for detail in failures), failures
-    assert any("sandbox_mode" in detail for detail in failures), failures
-
-
-def test_codex_check_accepts_capability_neutral_project_config(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.setattr(preflight, "_binary", lambda _name: "/bin/codex")
-    config = tmp_path / ".codex/config.toml"
-    config.parent.mkdir()
-    config.write_text('model = "gpt-5.6-sol"\n', encoding="utf-8")
-
-    assert all(result.ok for result in preflight.check_codex(tmp_path))
-
-
-def test_codex_check_rejects_decoded_ambient_key(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.setattr(preflight, "_binary", lambda _name: "/bin/codex")
-    config = tmp_path / ".codex/config.toml"
-    config.parent.mkdir()
-    config.write_text('"approval\\u005fpolicy" = "never"\n', encoding="utf-8")
-
-    result = preflight.check_codex(tmp_path)[1]
-    assert result.ok is False
-    assert "approval_policy" in result.detail
-
-
-def test_codex_check_rejects_any_declared_mcp_server(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """A CLI-exclusive repo invokes peers as child processes, never as servers."""
-
-    monkeypatch.setattr(preflight, "_binary", lambda _name: "/bin/codex")
-    config = tmp_path / ".codex/config.toml"
-    config.parent.mkdir()
-    config.write_text(
-        '[mcp_servers.anything]\ncommand = "whatever"\n', encoding="utf-8"
+    (root / "bin").mkdir(parents=True)
+    (root / "bin/pipeline").write_text("#!/bin/sh\n", encoding="utf-8")
+    codex = root / ".codex/config.toml"
+    codex.parent.mkdir()
+    codex.write_text(
+        '[mcp_servers.pipeline-team]\ncommand = "./bin/pipeline"\n'
+        'args = ["team", "serve", "--member", "codex"]\n'
+        + (
+            '\n[mcp_servers.unreviewed]\ncommand = "/tmp/unreviewed"\n'
+            if extra_servers else ""
+        ),
+        encoding="utf-8",
     )
-
-    result = preflight.check_codex(tmp_path)[1]
-    assert result.ok is False
-    assert "declares MCP servers: anything" in result.detail
-
-
-def test_codex_check_rejects_profile_ambient_authority(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.setattr(preflight, "_binary", lambda _name: "/bin/codex")
-    config = tmp_path / ".codex/config.toml"
-    config.parent.mkdir()
-    config.write_text(
-        '[profiles.loose]\n'
-        'approval_policy = "never"\n'
-        'sandbox_mode = "danger-full-access"\n',
+    servers = {
+        "pipeline-team": {
+            "type": "stdio",
+            "command": "${CLAUDE_PROJECT_DIR:-.}/bin/pipeline",
+            "args": ["team", "serve", "--member", "claude"],
+        }
+    }
+    if extra_servers:
+        servers["unreviewed"] = {"command": "/tmp/unreviewed"}
+    (root / ".mcp.json").write_text(
+        json.dumps({"mcpServers": servers}), encoding="utf-8"
+    )
+    claude = root / ".claude"
+    claude.mkdir()
+    (claude / "settings.json").write_text(
+        json.dumps({
+            "enabledMcpjsonServers": ["pipeline-team"],
+            "enableAllProjectMcpServers": broad_claude_approval,
+        }),
+        encoding="utf-8",
+    )
+    plugin = root / ".agents/plugins/pipeline-team"
+    plugin.mkdir(parents=True)
+    (plugin / "plugin.json").write_text(
+        '{"name":"pipeline-team"}\n', encoding="utf-8"
+    )
+    (plugin / "mcp_config.json").write_text(
+        json.dumps({"mcpServers": {"pipeline-team": {
+            "command": "./bin/pipeline",
+            "args": ["team", "serve", "--member", "agy"],
+            "cwd": ".",
+        }}}),
         encoding="utf-8",
     )
 
-    result = preflight.check_codex(tmp_path)[1]
-    assert result.ok is False
-    assert "profiles.loose.approval_policy" in result.detail
-    assert "profiles.loose.sandbox_mode" in result.detail
+
+def _app(applications: Path, name: str, version: str = "1.0") -> None:
+    contents = applications / f"{name}.app" / "Contents"
+    executable, bundle_id = {
+        "ChatGPT": ("ChatGPT", "com.openai.codex"),
+        "Codex": ("Codex", "com.openai.codex"),
+        "Claude": ("Claude", "com.anthropic.claudefordesktop"),
+        "Antigravity": ("Antigravity", "com.google.antigravity"),
+        "Antigravity IDE": ("Electron", "com.google.antigravity-ide"),
+    }[name]
+    binary = contents / "MacOS" / executable
+    binary.parent.mkdir(parents=True)
+    binary.write_text("fixture\n", encoding="utf-8")
+    os.chmod(binary, 0o755)
+    with (contents / "Info.plist").open("wb") as handle:
+        plistlib.dump({
+            "CFBundleShortVersionString": version,
+            "CFBundleIdentifier": bundle_id,
+            "CFBundleExecutable": executable,
+        }, handle)
 
 
-def test_main_fails_when_any_capability_check_fails(
-    tmp_path: Path, monkeypatch
+def test_desktop_preflight_requires_all_three_apps(tmp_path: Path) -> None:
+    applications = tmp_path / "Applications"
+    _app(applications, "ChatGPT")
+    _app(applications, "Claude")
+
+    results = preflight.check_apps(applications)
+    by_member = {result.harness: result for result in results}
+
+    assert by_member["codex"].ok
+    assert by_member["claude"].ok
+    assert by_member["agy"].ok is False
+    assert "Antigravity" in by_member["agy"].remedy
+
+
+def test_antigravity_ide_bundle_is_a_supported_app_name(tmp_path: Path) -> None:
+    applications = tmp_path / "Applications"
+    _app(applications, "ChatGPT")
+    _app(applications, "Claude")
+    _app(applications, "Antigravity IDE", "2.0")
+
+    results = preflight.check_apps(applications)
+
+    assert all(result.ok for result in results)
+    assert any("2.0" in result.detail for result in results if result.harness == "agy")
+
+
+def test_same_named_directory_with_wrong_bundle_identity_is_rejected(
+    tmp_path: Path,
+) -> None:
+    applications = tmp_path / "Applications"
+    _app(applications, "ChatGPT")
+    plist = applications / "ChatGPT.app/Contents/Info.plist"
+    with plist.open("wb") as handle:
+        plistlib.dump({
+            "CFBundleShortVersionString": "1.0",
+            "CFBundleIdentifier": "example.impostor",
+            "CFBundleExecutable": "ChatGPT",
+        }, handle)
+
+    result = {row.harness: row for row in preflight.check_apps(applications)}[
+        "codex"
+    ]
+
+    assert not result.ok
+    assert "identity" in result.detail
+
+
+def test_project_configs_bind_each_configured_label(repo_root: Path) -> None:
+    results = preflight.check_team_configs(repo_root)
+
+    assert all(result.ok for result in results), [result.detail for result in results]
+    assert {result.harness for result in results} == {"codex", "claude", "agy"}
+
+
+def test_project_config_rejects_unreviewed_executable_servers(
+    tmp_path: Path,
+) -> None:
+    _project_configs(tmp_path, extra_servers=True)
+
+    rows = {row.harness: row for row in preflight.check_team_configs(tmp_path)}
+
+    assert not rows["codex"].ok
+    assert not rows["claude"].ok
+    assert rows["agy"].ok
+    assert "exactly pipeline-team" in rows["codex"].detail
+    assert "exactly pipeline-team" in rows["claude"].detail
+
+
+def test_codex_profile_cannot_hide_an_alternate_mcp_server(tmp_path: Path) -> None:
+    _project_configs(tmp_path)
+    config = tmp_path / ".codex/config.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + '\n[profiles.evasion.mcp_servers.unreviewed]\ncommand = "/tmp/unreviewed"\n',
+        encoding="utf-8",
+    )
+
+    rows = {row.harness: row for row in preflight.check_team_configs(tmp_path)}
+
+    assert not rows["codex"].ok
+    assert rows["claude"].ok
+    assert rows["agy"].ok
+    assert "only the mcp_servers table" in rows["codex"].detail
+
+
+@pytest.mark.parametrize(
+    "member,key,value",
+    (
+        ("codex", "approval_policy", '"never"'),
+        ("codex", "sandbox_mode", '"danger-full-access"'),
+        ("claude", "permissions", {"allow": ["Bash(*)"]}),
+    ),
+)
+def test_project_configs_reject_personal_or_authority_settings(
+    tmp_path: Path, member: str, key: str, value: object,
+) -> None:
+    _project_configs(tmp_path)
+    if member == "codex":
+        config = tmp_path / ".codex/config.toml"
+        config.write_text(
+            f"{key} = {value}\n" + config.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    else:
+        settings = tmp_path / ".claude/settings.json"
+        payload = json.loads(settings.read_text(encoding="utf-8"))
+        payload[key] = value
+        settings.write_text(json.dumps(payload), encoding="utf-8")
+
+    rows = {row.harness: row for row in preflight.check_team_configs(tmp_path)}
+
+    assert not rows[member].ok
+    assert rows[{"codex": "claude", "claude": "codex"}[member]].ok
+    assert rows["agy"].ok
+
+
+@pytest.mark.parametrize("broad_value", (True, 1, "true", [], {}))
+def test_claude_broad_project_mcp_approval_is_rejected(
+    tmp_path: Path, broad_value: object,
+) -> None:
+    _project_configs(tmp_path)
+    settings = tmp_path / ".claude/settings.json"
+    settings.write_text(
+        json.dumps({
+            "enabledMcpjsonServers": ["pipeline-team"],
+            "enableAllProjectMcpServers": broad_value,
+        }),
+        encoding="utf-8",
+    )
+
+    rows = {row.harness: row for row in preflight.check_team_configs(tmp_path)}
+
+    assert rows["codex"].ok
+    assert not rows["claude"].ok
+    assert rows["agy"].ok
+    assert "broadly approve" in rows["claude"].detail
+
+
+def test_missing_or_spoofable_config_fails(tmp_path: Path) -> None:
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex/config.toml").write_text(
+        '[mcp_servers.pipeline-team]\ncommand = "./bin/pipeline"\n'
+        'args = ["team", "serve", "--member", "claude"]\n',
+        encoding="utf-8",
+    )
+    (tmp_path / ".mcp.json").write_text('{"mcpServers": {}}\n', encoding="utf-8")
+
+    results = preflight.check_team_configs(tmp_path)
+
+    assert not all(result.ok for result in results)
+    details = "\n".join(result.detail for result in results if not result.ok)
+    assert "codex" in details and "claude" in details and "agy" in details
+
+
+def test_malformed_config_is_visible_not_treated_as_absent(tmp_path: Path) -> None:
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex/config.toml").write_text("broken = [", encoding="utf-8")
+    (tmp_path / ".mcp.json").write_text("{broken", encoding="utf-8")
+    (tmp_path / ".agents/plugins/pipeline-team").mkdir(parents=True)
+    (tmp_path / ".agents/plugins/pipeline-team/plugin.json").write_text(
+        '{"name":"pipeline-team"}\n', encoding="utf-8"
+    )
+    (tmp_path / ".agents/plugins/pipeline-team/mcp_config.json").write_text(
+        "[]", encoding="utf-8"
+    )
+
+    results = preflight.check_team_configs(tmp_path)
+
+    assert all(not result.ok for result in results)
+    assert all("invalid" in result.detail for result in results)
+
+
+def test_missing_or_malformed_agy_plugin_manifest_fails(tmp_path: Path) -> None:
+    plugin = tmp_path / ".agents/plugins/pipeline-team"
+    plugin.mkdir(parents=True)
+    (plugin / "mcp_config.json").write_text(
+        json.dumps({"mcpServers": {"pipeline-team": {
+            "command": "./bin/pipeline",
+            "args": ["team", "serve", "--member", "agy"],
+            "cwd": ".",
+        }}}),
+        encoding="utf-8",
+    )
+
+    missing = {row.harness: row for row in preflight.check_team_configs(tmp_path)}
+    assert not missing["agy"].ok
+    assert preflight.AGY_PLUGIN_MANIFEST in missing["agy"].remedy
+
+    (plugin / "plugin.json").write_text(
+        '{"name":"not-pipeline"}\n', encoding="utf-8"
+    )
+    malformed = {row.harness: row for row in preflight.check_team_configs(tmp_path)}
+    assert not malformed["agy"].ok
+    assert "manifest name" in malformed["agy"].detail
+
+
+def test_main_fails_when_any_required_app_check_fails(
+    repo_root: Path, monkeypatch, capsys
 ) -> None:
     monkeypatch.setattr(
         preflight,
-        "check_codex",
-        lambda _root: [preflight.Result("codex", False, "missing")],
+        "check_apps",
+        lambda *_a: [preflight.Result("agy", False, "missing")],
+    )
+    monkeypatch.setattr(preflight, "check_team_configs", lambda *_a: [])
+    monkeypatch.setattr(preflight, "check_team_handshakes", lambda *_a: [])
+    monkeypatch.setattr(preflight, "check_native_discovery", lambda *_a: [])
+    monkeypatch.setattr(
+        preflight,
+        "check_agy_permission",
+        lambda *_a: preflight.Result("agy-permission", True, "fixture"),
     )
 
-    assert preflight.main(["--repo-root", str(tmp_path)]) == 1
+    assert preflight.main(["--repo-root", str(repo_root)]) == 1
+    assert "FAIL agy" in capsys.readouterr().out
 
 
-def test_peer_check_requires_both_cli_binaries(monkeypatch) -> None:
-    """Neither peer can be invoked if its binary is missing from PATH."""
-
-    monkeypatch.setattr(preflight, "_binary", lambda name: None if name == "codex" else "/bin/claude")
-    results = {result.harness: result for result in preflight.check_peers()}
-
-    assert set(results) == {"claude", "codex"}
-    assert results["claude"].ok is True
-    assert results["codex"].ok is False
-    assert "NOT FOUND on PATH" in results["codex"].detail
-    assert results["codex"].remedy == "install the codex CLI"
-
-
-def test_preflight_reads_the_config_codex_actually_resolves(tmp_path, monkeypatch) -> None:
-    """The project's .codex/config.toml is a declaration, not the runtime.
-
-    Measured 2026-08-22: `codex doctor`, run inside this checkout, reported
-    three MCP servers loaded from the USER config while the project file
-    declared none — and one of them pointed at a command this repository had
-    already deleted. A control that reads only the project file measures a
-    document. This one reads what the CLI resolves.
-    """
-
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    (tmp_path / "config.toml").write_text(
-        '[mcp_servers.dead]\ncommand = "/nonexistent/binary"\n', encoding="utf-8"
+def test_main_requires_native_discovery_and_agy_permission(
+    repo_root: Path, monkeypatch, capsys,
+) -> None:
+    green = preflight.Result("fixture", True, "green")
+    monkeypatch.setattr(preflight, "check_apps", lambda *_a: [green])
+    monkeypatch.setattr(preflight, "check_team_configs", lambda *_a: [green])
+    monkeypatch.setattr(preflight, "check_team_handshakes", lambda *_a: [green])
+    monkeypatch.setattr(
+        preflight,
+        "check_native_discovery",
+        lambda *_a: [preflight.Result("agy-native-mcp", False, "not discovered")],
     )
-
-    results = {result.detail: result for result in preflight.check_resolved_codex_config()}
-    unresolved = [result for result in results.values() if not result.ok]
-
-    assert unresolved, "an unresolvable MCP command must fail"
-    assert "DOES NOT RESOLVE" in unresolved[0].detail
-    assert "dead" in unresolved[0].detail
-
-
-def test_a_disabled_server_is_not_a_failure(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path))
-    (tmp_path / "config.toml").write_text(
-        '[mcp_servers.off]\ncommand = "/nonexistent"\nenabled = false\n', encoding="utf-8"
+    monkeypatch.setattr(
+        preflight,
+        "check_agy_permission",
+        lambda *_a: preflight.Result("agy-cli-permission", True, "green"),
     )
+    assert preflight.main(["--repo-root", str(repo_root)]) == 1
+    assert "FAIL agy-native-mcp" in capsys.readouterr().out
 
-    results = preflight.check_resolved_codex_config()
-
-    assert all(result.ok for result in results), [r.detail for r in results]
-    assert any("disabled" in result.detail for result in results)
-
-
-def test_an_absent_user_config_is_capability_not_failure(tmp_path, monkeypatch) -> None:
-    """CI has no ~/.codex. A machine-local file must never fail a checkout."""
-
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "missing"))
-
-    results = preflight.check_resolved_codex_config()
-
-    assert all(result.ok for result in results)
-    assert any("nothing to load" in result.detail for result in results)
+    monkeypatch.setattr(preflight, "check_native_discovery", lambda *_a: [green])
+    monkeypatch.setattr(
+        preflight,
+        "check_agy_permission",
+        lambda *_a: preflight.Result("agy-cli-permission", False, "ask mode"),
+    )
+    assert preflight.main(["--repo-root", str(repo_root)]) == 1
+    assert "FAIL agy-cli-permission" in capsys.readouterr().out
 
 
-def test_no_preflight_row_is_unconditionally_true(tmp_path, monkeypatch) -> None:
-    """Reversion control for a green row that could not fail.
+def test_every_green_row_has_a_measured_failure_mode(
+    tmp_path: Path, repo_root: Path
+) -> None:
+    missing_apps = preflight.check_apps(tmp_path / "none")
+    assert any(not row.ok for row in missing_apps)
 
-    A hardcoded `Result("codex", True, "invocation contract: ...")` passed with
-    no codex binary and no config file, and asserted a contract the shipped
-    peer argv does not implement. Every row must depend on something.
-    """
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    config_rows = preflight.check_team_configs(broken)
+    assert all(not row.ok for row in config_rows)
 
-    monkeypatch.setattr(preflight, "_binary", lambda name: None)
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "absent"))
-
-    rows = preflight.check_peers() + preflight.check_codex(tmp_path)
-
-    assert any(not row.ok for row in rows), "a stripped environment must fail something"
-    assert not any(
-        "invocation contract" in row.detail for row in rows
-    ), "the unfalsifiable contract row must stay gone"
+    # Reversion control: the real checked-in rows are independently green.
+    assert all(row.ok for row in preflight.check_team_configs(repo_root))

@@ -156,7 +156,7 @@ def _candidate_fields(
         "Exclusions": "pre-cutover introductions",
         "Risk class": "material-behavior",
         "Supersedes": None,
-        "Producer seat": "reviewer",
+        "Producer seat": "claude",
         "Producer model": "fixture-model",
     }
     fields.update(overrides)
@@ -184,8 +184,8 @@ def _candidate(
     fields = _candidate_fields(source_ref, **overrides)
     path = _write_event(
         root,
-        sender="reviewer",
-        recipient="author",
+        sender="claude",
+        recipient="codex",
         kind="learning-candidate",
         stamp=stamp,
         body=_candidate_body(fields, candidate_id=candidate_id),
@@ -203,7 +203,7 @@ def _disposition(
     root: Path,
     candidate_ref: str,
     *,
-    sender: str = "author",
+    sender: str = "codex",
     disposition: str = "accepted",
     stamp: str = "2026-08-03T00-00-03Z",
 ) -> str:
@@ -292,11 +292,11 @@ def test_duplicate_candidate_ids_in_one_commit_are_fatal(
 @pytest.mark.parametrize(
     ("candidate_overrides", "sender", "expected"),
     [
-        ({}, "reviewer", "self-approval"),
-        ({"Evidence provenance": "ASSUMED"}, "author", "ASSUMED"),
+        ({}, "claude", "self-approval"),
+        ({"Evidence provenance": "ASSUMED"}, "codex", "ASSUMED"),
         (
             {"Category": "governance-rule", "Risk class": "material-behavior"},
-            "director",
+            "agy",
             "high-risk-control floor",
         ),
     ],
@@ -429,8 +429,8 @@ def test_extinct_pre_cutover_candidate_id_can_be_reissued(
 
     new_path = _write_event(
         root,
-        sender="reviewer",
-        recipient="author",
+        sender="claude",
+        recipient="codex",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-04Z",
         body=_candidate_body(fields),
@@ -456,8 +456,8 @@ def test_cutover_present_candidate_id_still_blocks_reissue(
 
     new_path = _write_event(
         root,
-        sender="reviewer",
-        recipient="author",
+        sender="claude",
+        recipient="codex",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-04Z",
         body=_candidate_body(fields),
@@ -481,8 +481,8 @@ def test_cutover_modified_candidate_bytes_still_block_duplicate_reissue(
     fields_b = _candidate_fields(source, Statement="Candidate B at cutover.")
     (root / old_path).write_text(
         _event_text(
-            "reviewer",
-            "author",
+            "claude",
+            "codex",
             "2026-08-03T00-00-02Z",
             _candidate_body(fields_b),
         ),
@@ -493,8 +493,8 @@ def test_cutover_modified_candidate_bytes_still_block_duplicate_reissue(
 
     new_path = _write_event(
         root,
-        sender="reviewer",
-        recipient="author",
+        sender="claude",
+        recipient="codex",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-04Z",
         body=_candidate_body(fields_b),
@@ -615,8 +615,8 @@ def test_old_base_parallel_branch_introduction_is_not_grandfathered(
     (root / "coordination/mailbox/sent").mkdir(parents=True)
     parallel_path = _write_event(
         root,
-        sender="reviewer",
-        recipient="author",
+        sender="claude",
+        recipient="codex",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-01Z",
         body="malformed parallel candidate",
@@ -653,8 +653,8 @@ def test_old_base_parallel_branch_introduction_is_not_grandfathered(
 
     _write_event(
         root,
-        sender="reviewer",
-        recipient="author",
+        sender="claude",
+        recipient="codex",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-02Z",
         body="malformed descendant candidate",
@@ -673,8 +673,8 @@ def test_old_base_branch_add_delete_merged_after_cutover_is_fatal(
     (root / "coordination/mailbox/sent").mkdir(parents=True, exist_ok=True)
     path = _write_event(
         root,
-        sender="reviewer",
-        recipient="author",
+        sender="claude",
+        recipient="codex",
         kind="learning-candidate",
         stamp="2026-08-03T00-00-09Z",
         body="malformed extinct parallel candidate",

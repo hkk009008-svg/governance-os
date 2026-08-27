@@ -36,6 +36,8 @@ REPORT_RE = re.compile(
 )
 MAX_EVENT_BYTES = 262_144
 LEGACY_VERBOSE_CUTOFF = "ab7fd77081448008f1de30c17a8aaf156a9506c5"
+# Last request published under the old same-repository-only base convention.
+REMEDIATION_BASE_CUTOFF = "c04935f44c00e3146f429931c2a51637df4a3c1b"
 _FROZEN_MODEL_LABEL_EXCEPTION = {
     "path": (
         "coordination/mailbox/sent/"
@@ -81,6 +83,7 @@ class VerifyRequest:
     outcome: str
     finding_refs: tuple[str, ...]
     remediates_failed_report: tuple[str, str] | None
+    historical_remediation_base_compatibility: bool = False
 
 
 @dataclass(frozen=True)
@@ -495,6 +498,7 @@ def _parse_verify_request_bytes(
     *,
     trigger_commit: str,
     allow_frozen_legacy: bool,
+    historical_remediation_base_compatibility: bool | None = None,
     commit_projection: git_commit_projection.CommitGraphProjection | None = None,
     allow_git_fallback: bool = True,
 ) -> VerifyRequest:
@@ -573,6 +577,11 @@ def _parse_verify_request_bytes(
         outcome=outcome,
         finding_refs=_finding_refs(lines, required=False),
         remediates_failed_report=_remediates_failed_report(root, lines),
+        historical_remediation_base_compatibility=(
+            _git_blob(root, REMEDIATION_BASE_CUTOFF, path) == raw
+            if historical_remediation_base_compatibility is None
+            else historical_remediation_base_compatibility
+        ),
     )
 
 
@@ -613,6 +622,7 @@ def parse_verify_request_committed_bytes(
     raw: bytes,
     *,
     allow_frozen_legacy: bool = True,
+    historical_remediation_base_compatibility: bool | None = None,
     commit_projection: git_commit_projection.CommitGraphProjection | None = None,
     allow_git_fallback: bool = True,
 ) -> VerifyRequest:
@@ -628,6 +638,9 @@ def parse_verify_request_committed_bytes(
         raw,
         trigger_commit=trigger_commit,
         allow_frozen_legacy=allow_frozen_legacy,
+        historical_remediation_base_compatibility=(
+            historical_remediation_base_compatibility
+        ),
         commit_projection=commit_projection,
         allow_git_fallback=allow_git_fallback,
     )
@@ -752,6 +765,7 @@ def parse_verify_request_candidate(
         _read_regular(root, candidate),
         trigger_commit="",
         allow_frozen_legacy=False,
+        historical_remediation_base_compatibility=False,
     )
     # Publication-time resolvability. The compose hook alone left the route
     # the defect actually travels: a hand-written body through send-event
@@ -771,6 +785,11 @@ def parse_verify_request_candidate(
 def validate_request_candidate(root: Path, request: VerifyRequest) -> list[str]:
     """Validate a candidate's reviewed range before it can be finalized."""
 
+    if not codex_protocol_model.model_is_current_author(request.author_model):
+        return [
+            "Author model must resolve to a currently admitted author model "
+            "for a new verify-request"
+        ]
     try:
         reviewed_root = _reviewed_root(root.resolve(), request.reviewed_repository)
         base = _full_commit(reviewed_root, request.reviewed_base, "Reviewed base")
@@ -803,7 +822,7 @@ def _compose_self_check(
     candidate = (
         f"# Compose: verify-request self-check\n\n"
         f"**When:** {when} · **From:** {author_seat} (online)\n\n"
-        f"{body}\n\nCursor at send: 0\n"
+        f"{body}\n\nCursor at send: cursorless\n"
     ).encode("utf-8")
     if len(candidate) > MAX_EVENT_BYTES:
         raise CompactPairError("composed request exceeds the event size limit")
@@ -813,6 +832,7 @@ def _compose_self_check(
         candidate,
         trigger_commit="",
         allow_frozen_legacy=False,
+        historical_remediation_base_compatibility=False,
     )
     violations = validate_request_candidate(root, request)
     if violations:
@@ -842,20 +862,11 @@ def compose_request(
     author supplies the judgement — seats, risk class, outcome — and everything
     git already knows is resolved here instead of transcribed by hand.
     """
-    if author_seat not in PAIR_SEATS:
-        raise CompactPairError(f"Author seat must be one of {sorted(PAIR_SEATS)}")
-    if assigned_operator not in OPERATOR_SEATS:
+    if author_seat != "author":
+        raise CompactPairError("Author seat must be the live task responsibility 'author'")
+    if assigned_operator != "reviewer":
         raise CompactPairError(
-            f"Assigned operator must be one of {sorted(OPERATOR_SEATS)}"
-        )
-    if author_seat == assigned_operator:
-        # `coordination/bin/send-event` refuses a self-addressed event before it
-        # builds a candidate, so the simulated self-check never sees that
-        # boundary. Composing this routing would report success for a body the
-        # writer cannot publish and no non-author review could accept.
-        raise CompactPairError(
-            "Author seat and Assigned operator must differ; a self-addressed "
-            "event is refused by the mailbox writer and cannot be non-author reviewed"
+            "Assigned operator must be the live task responsibility 'reviewer'"
         )
     try:
         profile = codex_protocol_model.review_profile_for(risk_class)
@@ -872,6 +883,11 @@ def compose_request(
         )
 
     author_model = _identity(author_model, "Author model")
+    if not codex_protocol_model.model_is_current_author(author_model):
+        raise CompactPairError(
+            "Author model must resolve to a currently admitted author model "
+            "for a new verify-request"
+        )
     outcome = outcome.strip()
     if not outcome:
         raise CompactPairError("Outcome must be nonempty")
@@ -1097,6 +1113,17 @@ def _report_structure_violations(
     if report.reviewer_seat == request.author_seat:
         violations.append("reviewer seat equals author seat")
     profile = codex_protocol_model.review_profile_for(request.risk_class)
+    if (
+        report.risk_class_explicit
+        and not report.historical_model_family_compatibility
+        and not report.frozen_model_label_exception
+        and not codex_protocol_model.model_is_current_reviewer(
+            report.reviewer_model
+        )
+    ):
+        violations.append(
+            "reviewer model must resolve to a currently admitted reviewer model"
+        )
     if profile.requires_different_model:
         if request.risk_class_explicit:
             # Artifacts that declare a risk class must clear model-family
@@ -1142,11 +1169,13 @@ def _report_structure_violations(
         or not any(line.startswith("→ ") and line[2:].strip() for line in report.evidence)
     ):
         violations.append("GO requires evidence")
-    if report.verdict == "GO" and any(
+    if report.verdict in {"GO", "NITS"} and any(
         disposition == "unresolved-hard-boundary"
         for _, disposition in report.finding_dispositions
     ):
-        violations.append("GO cannot carry unresolved hard-boundary findings")
+        violations.append(
+            f"{report.verdict} cannot carry unresolved hard-boundary findings"
+        )
     return violations
 
 
@@ -1264,9 +1293,14 @@ def remediation_request_violations(
         violations.append("remediation repository does not match failed report")
     if request.risk_class != failed_report.risk_class:
         violations.append("remediation Risk class does not match failed report")
-    if request.reviewed_base != failed_report_commit:
+    expected_base = (
+        failed_report_commit
+        if request.historical_remediation_base_compatibility
+        else failed_report.reviewed_head
+    )
+    if request.reviewed_base != expected_base:
         violations.append(
-            "remediation Reviewed base must equal the failed report introduction commit"
+            "remediation Reviewed base must equal the failed report Reviewed head"
         )
     missing_refs = tuple(
         reference
@@ -1676,6 +1710,13 @@ def _main(argv: list[str] | None = None) -> int:
         return 1
     print("compact-pair validation passed")
     return 0
+
+
+def review_validate_main(argv: list[str] | None = None) -> int:
+    """Expose candidate validation without the internal redundant subcommand."""
+
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    return _main(["validate-candidate", *arguments])
 
 
 if __name__ == "__main__":

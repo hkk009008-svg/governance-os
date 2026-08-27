@@ -7,7 +7,6 @@ import os
 import re
 import subprocess
 import tomllib
-from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -200,8 +199,8 @@ def load_model_families(config_path: Path = _MODEL_FAMILIES_CONFIG) -> tuple[
 
 def load_review_admission(
     config_path: Path = _MODEL_FAMILIES_CONFIG,
-) -> tuple[frozenset[str], str]:
-    """Load the closed current-review families and immutable-history boundary."""
+) -> tuple[frozenset[str], frozenset[str], frozenset[str], str]:
+    """Load current author/reviewer models, reviewer families, and history boundary."""
 
     try:
         payload = tomllib.loads(config_path.read_text(encoding="utf-8"))
@@ -213,6 +212,8 @@ def load_review_admission(
     if not isinstance(admission, dict):
         raise RuntimeError("model-families [review_admission] table is required")
     active = admission.get("active_families")
+    author_models = admission.get("active_author_models")
+    reviewer_models = admission.get("active_reviewer_models")
     cutover = admission.get("historical_cutover")
     if (
         not isinstance(active, list)
@@ -228,6 +229,40 @@ def load_review_admission(
     if not isinstance(prefixes, dict) or not set(active) <= set(prefixes.values()):
         raise RuntimeError(
             "model-families active review families must have provider prefixes"
+        )
+    families = payload.get("families")
+    if (
+        not isinstance(author_models, list)
+        or not author_models
+        or not all(isinstance(model, str) and model for model in author_models)
+        or len(author_models) != len(set(author_models))
+    ):
+        raise RuntimeError(
+            "model-families active_author_models must be a unique "
+            "nonempty string list"
+        )
+    if not isinstance(families, dict) or not set(author_models) <= set(families):
+        raise RuntimeError(
+            "model-families active author models must be canonical registered model IDs"
+        )
+    if (
+        not isinstance(reviewer_models, list)
+        or not reviewer_models
+        or not all(isinstance(model, str) and model for model in reviewer_models)
+        or len(reviewer_models) != len(set(reviewer_models))
+    ):
+        raise RuntimeError(
+            "model-families active_reviewer_models must be a unique "
+            "nonempty string list"
+        )
+    if not set(reviewer_models) <= set(author_models):
+        raise RuntimeError(
+            "model-families active reviewer models must also be active author models"
+        )
+    admitted_families = {families[model] for model in reviewer_models}
+    if admitted_families != set(active):
+        raise RuntimeError(
+            "model-families active reviewer models must cover exactly the active families"
         )
     if not isinstance(cutover, str) or re.fullmatch(r"[0-9a-f]{40}", cutover) is None:
         raise RuntimeError(
@@ -281,28 +316,26 @@ def load_review_admission(
         raise RuntimeError(
             "model-families historical_cutover must resolve to an ancestor of HEAD"
         )
-    return frozenset(active), cutover
+    return (
+        frozenset(active), frozenset(author_models),
+        frozenset(reviewer_models), cutover,
+    )
 
 
 MODEL_PROVIDER_FAMILIES, MODEL_ID_REGISTRY, MODEL_DISPLAY_ALIASES = (
     load_model_families()
 )
-CURRENT_REVIEW_FAMILIES, CURRENT_REVIEW_FAMILY_CUTOVER = load_review_admission()
+(
+    CURRENT_REVIEW_FAMILIES,
+    CURRENT_AUTHOR_MODEL_IDS,
+    CURRENT_REVIEWER_MODEL_IDS,
+    CURRENT_REVIEW_FAMILY_CUTOVER,
+) = load_review_admission()
 
 
-def model_family(model_id: str) -> str | None:
-    """Collapse one system-visible model ID to its provider family.
+def _model_record(model_id: str) -> tuple[str, str] | None:
+    """Return a canonical model ID and family for one system-visible label."""
 
-    Independence is a property of the underlying model, not of the label a
-    harness prints. The observed corpus pairs `gpt-5.6-sol` authors with
-    `gpt-5.6-terra` reviewers; those are the same family and a plain string
-    inequality accepts them. This normalizer exists so the acceptance rule can
-    ask the question it actually means.
-
-    Only the closed model-ID registry is recognized. Unknown or malformed
-    labels return ``None`` so they cannot buy independence from any other
-    label; adding a future model is an explicit policy update.
-    """
     if not model_id or model_id != model_id.strip():
         return None
     token = MODEL_DISPLAY_ALIASES.get(model_id, model_id.casefold())
@@ -323,11 +356,28 @@ def model_family(model_id: str) -> str | None:
             break
 
     family = MODEL_ID_REGISTRY.get(token)
-    if family is None:
+    if family is None or (
+        provider_family is not None and provider_family != family
+    ):
         return None
-    if provider_family is not None and provider_family != family:
-        return None
-    return family
+    return token, family
+
+
+def model_family(model_id: str) -> str | None:
+    """Collapse one system-visible model ID to its provider family.
+
+    Independence is a property of the underlying model, not of the label a
+    harness prints. The observed corpus pairs `gpt-5.6-sol` authors with
+    `gpt-5.6-terra` reviewers; those are the same family and a plain string
+    inequality accepts them. This normalizer exists so the acceptance rule can
+    ask the question it actually means.
+
+    Only the closed model-ID registry is recognized. Unknown or malformed
+    labels return ``None`` so they cannot buy independence from any other
+    label; adding a future model is an explicit policy update.
+    """
+    record = _model_record(model_id)
+    return None if record is None else record[1]
 
 
 def models_are_independent(author_model: str, reviewer_model: str) -> bool:
@@ -341,184 +391,33 @@ def models_are_independent(author_model: str, reviewer_model: str) -> bool:
     )
 
 
+def model_is_current_author(model_id: str) -> bool:
+    """Return whether one system-visible ID may author a new review request."""
+
+    record = _model_record(model_id)
+    return record is not None and record[0] in CURRENT_AUTHOR_MODEL_IDS
+
+
+def model_is_current_reviewer(model_id: str) -> bool:
+    """Return whether one system-visible ID may issue a new formal verdict."""
+
+    record = _model_record(model_id)
+    return record is not None and record[0] in CURRENT_REVIEWER_MODEL_IDS
+
+
 def models_are_current_review_pair(author_model: str, reviewer_model: str) -> bool:
-    """Return whether a pair is independent within the live two-provider policy."""
+    """Return whether two currently admitted IDs form a cross-family pair."""
 
-    author_family = model_family(author_model)
-    reviewer_family = model_family(reviewer_model)
+    author = _model_record(author_model)
+    reviewer = _model_record(reviewer_model)
     return (
-        author_family in CURRENT_REVIEW_FAMILIES
-        and reviewer_family in CURRENT_REVIEW_FAMILIES
-        and author_family != reviewer_family
+        author is not None
+        and reviewer is not None
+        and author[0] in CURRENT_AUTHOR_MODEL_IDS
+        and reviewer[0] in CURRENT_REVIEWER_MODEL_IDS
+        and reviewer[1] in CURRENT_REVIEW_FAMILIES
+        and author[1] != reviewer[1]
     )
-
-
-SEATS = protocol_mailbox.SEATS
-# Live positions first, retired seat names after: both resolve, only the
-# former may publish (mailbox_writer.NEW_WRITE_SENDERS).
-DIRECTOR_SEATS = ("author", "director", "director2")
-OPERATOR_SEATS = ("reviewer", "operator", "operator2")
-COORDINATOR_SEATS = ("coordinator", "coordinator2")
-SEAT_BEHAVIOR_SOURCE = {
-    "author": "director",
-    "reviewer": "operator2",
-    "director": "director",
-    "director2": "director",
-    "operator": "operator2",
-    "operator2": "operator2",
-}
-
-
-def behavior_source_for_seat(seat: str) -> str | None:
-    """Return the canonical behavior source for a concrete live seat."""
-    return SEAT_BEHAVIOR_SOURCE.get(seat)
-
-
-READ_ONLY_VERIFIER_ROLES = ("lane-v-verifier", "money-gate-reviewer")
-SPAWNED_ROLE_AGENT_ROLES = (
-    "protocol-coordinator",
-    "protocol-director",
-    "protocol-operator",
-    *READ_ONLY_VERIFIER_ROLES,
-)
-RUNTIME_MODES = ("readiness-bridge", "live-seat", "coordinator", "subagent")
-RUNTIME_IDENTITY_ENV_KEYS = (
-    "CODEX_AGENT_MODE",
-    "CODEX_AGENT_ROLE",
-    "CODEX_SEAT",
-    "CODEX_BEHAVIOR_SOURCE",
-)
-RUNTIME_DERIVED_POLICY_ENV_KEYS = (
-    "CODEX_CAPABILITY_MODE",
-    "CODEX_MUTATION_SCOPE",
-    "CODEX_AUTHORITY_SCOPE",
-    "CODEX_MAILBOX_POLICY",
-    "CODEX_GIT_POLICY",
-    "CODEX_VERIFICATION_POLICY",
-    "CODEX_CONTEXT_SOURCES",
-    "CODEX_OUTPUT_CONTRACT",
-    "CODEX_DECISION_BOUNDARY",
-    "CODEX_NEXT_ACTION_POLICY",
-    "CODEX_SIDE_EFFECT_POLICY",
-)
-RUNTIME_SCRUB_ENV_KEYS = (
-    *RUNTIME_IDENTITY_ENV_KEYS,
-    *RUNTIME_DERIVED_POLICY_ENV_KEYS,
-    "GIT_INDEX_FILE",
-)
-
-
-class RuntimeIdentityError(ValueError):
-    """Raised when explicit Codex identity inputs do not form one closed identity."""
-
-
-_RUNTIME_ROLE_SPECS = {
-    "readiness-bridge": ("readiness-bridge", None, None),
-    "subagent": ("subagent", None, None),
-    # Built from SEAT_BEHAVIOR_SOURCE, not from SEATS: the collapse added
-    # author and reviewer there but left this derived from the four retired
-    # pair seats, so the runtime could not express the only two identities the
-    # fixed writer accepts.
-    **{
-        seat: ("live-seat", seat, behavior_source_for_seat(seat))
-        for seat in SEAT_BEHAVIOR_SOURCE
-    },
-    **{seat: ("coordinator", seat, None) for seat in COORDINATOR_SEATS},
-    **{role: ("subagent", None, None) for role in SPAWNED_ROLE_AGENT_ROLES},
-}
-
-
-@dataclass(frozen=True)
-class RuntimeIdentity:
-    """Validated process identity; policy and authority are derived elsewhere."""
-
-    mode: str
-    seat: str | None
-    role: str
-    behavior_source: str | None
-    model: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.model is not None and (
-            not self.model
-            or self.model.strip() != self.model
-            or any(character.isspace() or ord(character) < 32 for character in self.model)
-        ):
-            raise RuntimeIdentityError("model must be a non-empty model name")
-        expected = _RUNTIME_ROLE_SPECS.get(self.role)
-        actual = (self.mode, self.seat, self.behavior_source)
-        if expected is None or actual != expected:
-            raise RuntimeIdentityError(
-                "contradictory Codex runtime identity: "
-                f"mode={self.mode!r}, seat={self.seat!r}, role={self.role!r}, "
-                f"behavior_source={self.behavior_source!r}"
-            )
-
-    @classmethod
-    def for_seat(cls, seat: str, *, model: str | None = None) -> RuntimeIdentity:
-        """Derive one canonical live-seat or coordinator identity."""
-        if seat not in (*SEAT_BEHAVIOR_SOURCE, *COORDINATOR_SEATS):
-            raise RuntimeIdentityError(f"unsupported Codex seat: {seat}")
-        return cls._for_role(seat, model=model)
-
-    @classmethod
-    def _for_role(cls, role: str, *, model: str | None = None) -> RuntimeIdentity:
-        try:
-            mode, seat, behavior_source = _RUNTIME_ROLE_SPECS[role]
-        except KeyError as exc:
-            raise RuntimeIdentityError(f"unsupported Codex runtime role: {role}") from exc
-        return cls(mode, seat, role, behavior_source, model)
-
-    @classmethod
-    def from_environ(
-        cls,
-        environ: Mapping[str, str] | None = None,
-        *,
-        model: str | None = None,
-    ) -> RuntimeIdentity:
-        """Parse only identity inputs and reject unknown or contradictory values."""
-        source = environ or {}
-        explicit_mode = source.get("CODEX_AGENT_MODE", "")
-        explicit_role = source.get("CODEX_AGENT_ROLE", "")
-        explicit_seat = source.get("CODEX_SEAT", "")
-        explicit_behavior = source.get("CODEX_BEHAVIOR_SOURCE", "")
-        if explicit_seat:
-            identity = cls.for_seat(explicit_seat, model=model)
-        elif explicit_role:
-            identity = cls._for_role(explicit_role, model=model)
-        elif explicit_mode in ("", "readiness-bridge", "subagent"):
-            identity = cls._for_role(explicit_mode or "readiness-bridge", model=model)
-        elif explicit_mode in RUNTIME_MODES:
-            raise RuntimeIdentityError(
-                f"{explicit_mode} mode requires a concrete matching seat or role"
-            )
-        else:
-            raise RuntimeIdentityError(f"unsupported Codex runtime mode: {explicit_mode}")
-        explicit = {
-            "mode": explicit_mode,
-            "role": explicit_role,
-            "behavior source": explicit_behavior,
-        }
-        expected = {
-            "mode": identity.mode,
-            "role": identity.role,
-            "behavior source": identity.behavior_source or "(none)",
-        }
-        for field, value in explicit.items():
-            if value and value != expected[field]:
-                raise RuntimeIdentityError(
-                    f"{field} {value!r} contradicts {expected[field]!r} identity"
-                )
-        return identity
-
-    def as_env(self) -> dict[str, str]:
-        """Return the minimal identity environment, excluding policy authority."""
-        values = {"CODEX_AGENT_MODE": self.mode, "CODEX_AGENT_ROLE": self.role}
-        if self.seat is not None:
-            values["CODEX_SEAT"] = self.seat
-        if self.behavior_source is not None:
-            values["CODEX_BEHAVIOR_SOURCE"] = self.behavior_source
-        return values
 
 
 CODEX_VERIFICATION_COMMANDS = (
@@ -535,103 +434,15 @@ CODEX_VERIFICATION_COMMANDS = (
     "tests/unit/test_compact_pair_loop.py "
     "tests/unit/test_provider_surface_map.py "
     "tests/unit/test_harness_preflight.py "
+    "tests/unit/test_app_integration.py "
+    "tests/unit/test_team_mcp.py "
+    "tests/unit/test_team_messages.py "
+    "tests/unit/test_team_security.py "
+    "tests/unit/test_claude_hook_isolation.py "
     "tests/unit/test_codex_hook_lifecycle.py "
     "tests/unit/test_codex_ledger_bridge.py -q",
     "coordination/bin/pipeline-python pipeline/governance_verify_all.py",
 )
-
-
-def infer_runtime_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Return closed identity plus policy derived solely from that identity."""
-    identity = RuntimeIdentity.from_environ(environ)
-    mode = identity.mode
-    role = identity.role
-    capability_defaults = {
-        "readiness-bridge": "read-only",
-        "live-seat": "seat-local",
-        "coordinator": "capacity-max",
-        "subagent": "parent-scoped",
-    }
-    mutation_defaults = {
-        "readiness-bridge": "none",
-        "live-seat": "seat-owned",
-        "coordinator": "coordination-only",
-        "subagent": "parent-scoped",
-        "lane-v-verifier": "read-only-verification",
-        "money-gate-reviewer": "read-only-verification",
-    }
-    authority_defaults = {
-        "readiness-bridge": "report-only",
-        "live-seat": "seat-owned",
-        "coordinator": "all-scope-reconcile",
-        "subagent": "parent-scoped",
-    }
-    mailbox_defaults = {
-        "readiness-bridge": "read-only-no-consume",
-        "live-seat": "seat-read-consume-intentional",
-        "coordinator": "all-scope-read-no-consume",
-        "subagent": "parent-scoped",
-    }
-    git_defaults = {
-        "readiness-bridge": "native-worktree-index-read-only",
-        "live-seat": "native-worktree-index",
-        "coordinator": "native-worktree-index",
-        "subagent": "native-worktree-index-parent-scoped",
-    }
-    verification_defaults = {
-        "readiness-bridge": "report-evidence-only",
-        "coordinator": "reconcile-operator-go-only",
-        "subagent": "parent-scoped-no-go",
-    }
-    context_defaults = {
-        "readiness-bridge": "repo-docs-mailbox-gates-readonly",
-        "live-seat": "seat-mailbox-owned-files-gate-evidence",
-        "coordinator": "all-scope-mailbox-inventory-locks-gates",
-        "subagent": "parent-prompt-plus-allowed-artifacts",
-    }
-    output_defaults = {
-        "readiness-bridge": "readiness-report-and-blockers",
-        "live-seat": "seat-artifact-or-operator-request",
-        "coordinator": "capacity-board-or-single-route",
-        "subagent": "bounded-findings-to-parent",
-    }
-    decision_defaults = {
-        "readiness-bridge": "no-seat-authority",
-        "live-seat": "lane-owned-seat",
-        "coordinator": "all-scope-routing-no-production-fixes",
-        "subagent": "parent-scoped-no-seat-authority",
-    }
-    next_action_defaults = {
-        "readiness-bridge": "report-then-stop-or-request-role",
-        "live-seat": "read-mail-then-act-or-report-idle",
-        "coordinator": "build-board-reconcile-once",
-        "subagent": "return-evidence-then-stop",
-    }
-    if role in DIRECTOR_SEATS:
-        verification_default = "request-operator-go"
-    elif role in OPERATOR_SEATS:
-        verification_default = "independent-go-nits-fail"
-    elif role in READ_ONLY_VERIFIER_ROLES:
-        verification_default = "read-only-review-no-go"
-    else:
-        verification_default = verification_defaults.get(mode, "parent-scoped-no-go")
-    return {
-        "CODEX_AGENT_MODE": mode,
-        "CODEX_AGENT_ROLE": role,
-        "CODEX_SEAT": identity.seat or "(unset)",
-        "CODEX_BEHAVIOR_SOURCE": identity.behavior_source or "(none)",
-        "CODEX_CAPABILITY_MODE": capability_defaults[mode],
-        "CODEX_MUTATION_SCOPE": mutation_defaults.get(role, mutation_defaults[mode]),
-        "CODEX_AUTHORITY_SCOPE": authority_defaults[mode],
-        "CODEX_MAILBOX_POLICY": mailbox_defaults[mode],
-        "CODEX_GIT_POLICY": git_defaults[mode],
-        "CODEX_VERIFICATION_POLICY": verification_default,
-        "CODEX_CONTEXT_SOURCES": context_defaults[mode],
-        "CODEX_OUTPUT_CONTRACT": output_defaults[mode],
-        "CODEX_DECISION_BOUNDARY": decision_defaults[mode],
-        "CODEX_NEXT_ACTION_POLICY": next_action_defaults[mode],
-        "CODEX_SIDE_EFFECT_POLICY": "user-consent-required",
-    }
 
 
 @dataclass(frozen=True)
@@ -824,7 +635,8 @@ def _abandoned_takeover_is_effective(
         and evidence.parent_ref == contract.contract_ref and evidence.revision == change.revision
         and evidence.finding_refs == contract.finding_refs
         and evidence.fresh_work_state.casefold() == "no fresh work"
-        and evidence.lock_state.casefold() == "no active lock" and corroborator in SEATS
+        and evidence.lock_state.casefold() == "no active lock"
+        and corroborator in protocol_mailbox.SEATS
         and corroborator != claimant and confirmation.event.recipient == claimant
         and confirmation.task_id == contract.task_id and confirmation.parent_ref == contract.contract_ref
         and confirmation.revision == change.revision and confirmation.proposed_owner == claimant
@@ -876,7 +688,7 @@ def external_effect_token_is_complete(token: ExternalEffectToken) -> ExternalEff
     issues = []
     if not _nonblank(token.effect):
         issues.append("effect")
-    if token.executor not in protocol_mailbox.RECEIVING_SEATS:
+    if token.executor not in protocol_mailbox.APP_MEMBERS:
         issues.append("executor")
     if not _nonblank(token.target) or token.target.strip() in {"*", "all"}:
         issues.append("target")

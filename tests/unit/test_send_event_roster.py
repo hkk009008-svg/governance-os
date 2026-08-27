@@ -17,22 +17,45 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SEND_EVENT = _REPO_ROOT / "coordination/bin/send-event"
 
 
-def _case_alternatives(marker: str) -> set[str]:
+def _case_alternatives(marker: str, case_expression: str | None = None) -> set[str]:
     """The bare-word alternatives of the first `case` arm after *marker*."""
 
     text = _SEND_EVENT.read_text(encoding="utf-8")
     start = text.index(marker)
+    if case_expression is not None:
+        start = text.index(case_expression, start)
     arm = re.search(r"\n\s*([a-z0-9|]+)\)\s*;;", text[start:])
     assert arm, f"no case arm found after {marker!r}"
     return set(arm.group(1).split("|"))
 
 
-def test_the_sender_whitelist_is_exactly_the_live_roles() -> None:
-    assert _case_alternatives('case "$FROM" in') == set(protocol_mailbox.ROLES)
+def test_the_sender_whitelist_is_exactly_the_live_identities() -> None:
+    assert _case_alternatives('case "$FROM" in') == (
+        set(protocol_mailbox.ROLES) | set(protocol_mailbox.APP_MEMBERS)
+    )
 
 
-def test_the_recipient_whitelist_is_the_live_roles_plus_broadcast() -> None:
-    assert _case_alternatives('case "$TO" in') == set(protocol_mailbox.ROLES) | {"all"}
+def test_the_recipient_whitelist_is_the_live_identities_plus_broadcast() -> None:
+    assert _case_alternatives('case "$TO" in') == (
+        set(protocol_mailbox.ROLES) | set(protocol_mailbox.APP_MEMBERS) | {"all"}
+    )
+
+
+def test_kind_specific_identity_gates_match_the_two_capability_lanes() -> None:
+    formal = "# Formal review identity gate."
+    durable = "# Desktop durable-record identity gate."
+    assert _case_alternatives(formal, 'case "$FROM" in') == set(
+        protocol_mailbox.ROLES
+    )
+    assert _case_alternatives(formal, 'case "$TO" in') == set(
+        protocol_mailbox.ROLES
+    ) | {"all"}
+    assert _case_alternatives(durable, 'case "$FROM" in') == set(
+        protocol_mailbox.APP_MEMBERS
+    )
+    assert _case_alternatives(durable, 'case "$TO" in') == set(
+        protocol_mailbox.APP_MEMBERS
+    ) | {"all"}
 
 
 def test_no_retired_seat_name_survives_in_a_send_event_whitelist() -> None:
@@ -55,4 +78,4 @@ def test_the_extractor_would_notice_a_drifted_whitelist() -> None:
 
     senders = _case_alternatives('case "$FROM" in')
     assert senders, "the extractor found no alternatives; it is not reading the script"
-    assert "author" in senders and "reviewer" in senders
+    assert {"author", "reviewer", "codex", "claude", "agy"} <= senders

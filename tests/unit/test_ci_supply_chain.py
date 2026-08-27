@@ -48,7 +48,7 @@ def test_workflow_permissions_and_checkout_credentials_are_minimal(repo_root):
     for job in (smoke, pytest_job, admission):
         assert "persist-credentials: false" in job
         assert "contents: write" not in job
-    # No job in a CLI-exclusive repo writes to the repository from CI.
+    # No job in this desktop-app harness writes to the repository from CI.
     assert "contents: write" not in workflow
     assert "persist-credentials: true" not in workflow
 

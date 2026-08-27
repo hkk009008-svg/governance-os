@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce Pipeline-first startup for Codex seats working on evidence-ledger."""
+"""Validate an existing Pipeline route before target-repository work."""
 
 from __future__ import annotations
 
@@ -16,7 +16,9 @@ import target_binding
 # roots come from the governance.toml binding registry (ADR-013), so future
 # works register a [targets.<name>] table instead of editing constants here.
 PIPELINE_KERNEL = Path(__file__).resolve().parent.parent
-VALID_SEATS = tuple(sorted(protocol_mailbox.LAUNCHABLE_SEATS))
+# ``--seat`` is a retained route-schema spelling. It accepts only the two
+# task-local formal responsibilities; it is not a launcher or standing seat.
+VALID_SEATS = tuple(sorted(protocol_mailbox.ROLES))
 
 
 @dataclass(frozen=True)
@@ -262,7 +264,7 @@ def parse_route_guidance_body(body: str) -> RouteGuidance:
 
 
 def route_guidance(route: Path) -> RouteGuidance:
-    """Extract optional route base/worktree hints from a coordinator route."""
+    """Extract optional route base/worktree hints from one committed route."""
     body = _validated_route_guidance_body(route)
     try:
         guidance = parse_route_guidance_body(body)
@@ -309,10 +311,6 @@ def _first_commands_from_guidance(
     else:
         commands.append(
             f"git -C {_display(target.path)} status --short --branch"
-        )
-    if seat == "coordinator":
-        commands.append(
-            "coordinator may reconcile ledger evidence only; no evidence-ledger product fixes"
         )
     return tuple(commands)
 
@@ -462,7 +460,7 @@ def _validated_route_guidance_body(route: Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Validate Pipeline-first startup for a ledger-routed Codex seat.",
+        description="Validate an existing Pipeline route for target-repository work.",
     )
     parser.add_argument("--seat", choices=VALID_SEATS, required=True)
     parser.add_argument("--wave", type=int, default=2)

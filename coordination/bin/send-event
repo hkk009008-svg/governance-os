@@ -2,6 +2,8 @@
 PATH=/usr/bin:/bin
 export PATH
 # send-event — compose one mailbox event and hand every kind to the fixed writer.
+# The trusted finalizer independently validates the envelope, identity lane,
+# and typed payload before staging.
 set -euo pipefail
 
 TMP=""
@@ -50,21 +52,19 @@ KIND=$3
 shift 3
 SUBJECT="$*"
 
-# A review has two positions. The pre-collapse seat names still PARSE in
-# committed history, but the fixed writer refuses them for a new event
-# (mailbox_writer.NEW_WRITE_SENDERS), so this wrapper refuses them here too
-# rather than composing a candidate the writer will reject.
+# App members publish ordinary durable records; temporary roles publish formal
+# review artifacts. Legacy seat names still parse but cannot write.
 case "$FROM" in
-  author|reviewer) ;;
+  author|reviewer|codex|claude|agy) ;;
   *)
-    echo "send-event: bad <from>: $FROM (author|reviewer)" >&2
+    echo "send-event: bad <from>: $FROM (author|reviewer|codex|claude|agy)" >&2
     exit 2
     ;;
 esac
 case "$TO" in
-  author|reviewer|all) ;;
+  author|reviewer|codex|claude|agy|all) ;;
   *)
-    echo "send-event: bad <to>: $TO (author|reviewer|all)" >&2
+    echo "send-event: bad <to>: $TO (author|reviewer|codex|claude|agy|all)" >&2
     exit 2
     ;;
 esac
@@ -100,6 +100,44 @@ if ! /usr/bin/grep -Fxq -- "$KIND" "$KIND_FILE"; then
   echo "send-event: unknown kind '$KIND' (see $KIND_FILE)" >&2
   exit 2
 fi
+
+case "$KIND" in
+  verify-request|verification-report)
+    # Formal review identity gate.
+    case "$FROM" in
+      author|reviewer) ;;
+      *)
+        echo "send-event: $KIND requires an author/reviewer sender" >&2
+        exit 2
+        ;;
+    esac
+    case "$TO" in
+      author|reviewer|all) ;;
+      *)
+        echo "send-event: $KIND requires an author/reviewer/all recipient" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  findings|learning-candidate|decision)
+    # Desktop durable-record identity gate.
+    case "$FROM" in
+      codex|claude|agy) ;;
+      *)
+        echo "send-event: $KIND requires a codex/claude/agy sender" >&2
+        exit 2
+        ;;
+    esac
+    case "$TO" in
+      codex|claude|agy|all) ;;
+      *)
+        echo "send-event: $KIND requires a codex/claude/agy/all recipient" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+esac
+
 if [ "$KIND" = "verification-report" ]; then
   case "$FROM" in
     reviewer) ;;
@@ -109,19 +147,6 @@ if [ "$KIND" = "verification-report" ]; then
       ;;
   esac
 fi
-# Wrapper-side gate only: bypassable by hand-authoring until the Stage 2b
-# writer-side branch lands (ADR-067, contract I4), exactly as today's
-# non-compact-pair kinds are.
-if [ "$KIND" = "learning-candidate" ]; then
-  case "$FROM" in
-    author|reviewer) ;;
-    *)
-      echo "send-event: only a review role may publish learning-candidate" >&2
-      exit 2
-      ;;
-  esac
-fi
-
 # The mailbox filename is the protocol identity and is parsed by one canonical
 # grammar everywhere; it carries no uniqueness suffix. Two events with the same
 # (from, to, kind) in the same UTC second would collide on the same path and
@@ -144,8 +169,8 @@ fi
 TS_COLON="${TS_DASH:0:11}$(printf '%s' "${TS_DASH:11:8}" | /usr/bin/tr '-' ':')Z"
 FROM_TITLE="$(printf '%s' "${FROM:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${FROM:1}"
 TO_TITLE="$(printf '%s' "${TO:0:1}" | /usr/bin/tr '[:lower:]' '[:upper:]')${TO:1}"
-# Roles hold no cursor: a per-seat pointer belonged to a standing chat, and
-# neither position outlives the task it was assigned for.
+# Current identities hold no cursor: a per-seat pointer belonged to a standing
+# chat, and no app member or temporary responsibility owns such a pointer.
 CURSOR="cursorless"
 BODY=$(/bin/cat)
 

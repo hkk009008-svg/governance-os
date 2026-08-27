@@ -1,149 +1,61 @@
-# Ledger CLI Adoption Bridge — Claude Code
+# Evidence-ledger bridge for Claude desktop
 
-This bridge is for Claude Code sessions working on the registered
-`evidence-ledger` target while Pipeline remains the governance
-kernel. It is the Claude-native analog of
-`docs/protocol/codex/ledger-cli-adoption.md` (which scopes itself to Codex
-sessions and emits `.agents/...` paths — do not follow that copy from a
-Claude seat).
+Use this adapter only when the current task routes work from Pipeline to the
+registered `evidence-ledger` target. Pipeline owns the shared engineering and
+review boundary; evidence-ledger owns product truth. Do not work on the user
+Content checkout by mistake.
 
-Pipeline remains the governance kernel, with two live roles — `author` and
-`reviewer`. Evidence-ledger remains the product repo and owns product-local
-truth. (The Codex copy of this bridge still says "four-seat"; that wording is
-frozen by `tests/unit/test_codex_ledger_bridge.py` and has to be corrected
-there first.)
+## Enter the target
 
-Use this bridge only when the user or parent prompt routes work to that target.
-
-Canonical path: `docs/protocol/claude/ledger-cli-adoption.md`.
-
-Do not start ledger work from the user Content checkout.
-Ledger-routed Claude seats start from the current Pipeline checkout, then run
+In the Pipeline task, inspect current state and resolve the target:
 
 ```bash
-unset GIT_INDEX_FILE
-PIPELINE_ROOT="$(git rev-parse --show-toplevel)"
-cd "$PIPELINE_ROOT"
-coordination/bin/pipeline-python pipeline/ledger_start_guard.py --seat <author|reviewer> --wave 2
-```
-
-before entering evidence-ledger. Claude seats read this bridge, not the Codex
-copy. If guard output contains older adapter paths, the current Claude
-continuation and `pipeline/status.py` win.
-
-Every `coordination/bin/pipeline-python` block opens with its own
-`unset GIT_INDEX_FILE` line instead of prefixing the command with
-`env -u GIT_INDEX_FILE`. The isolation is identical, but Claude's Bash tool
-refuses `env` as soon as a dash-prefixed token follows the variable list — it
-cannot verify what `env` wraps — so the prefixed form stops working the moment
-a command grows an option, and this bridge's entire audience is Claude
-sessions. The rule is uniform rather than conditional on whether a given
-command currently takes options, because that condition changes without anyone
-noticing. Ordinary Git keeps the `env -u GIT_INDEX_FILE` prefix, which is
-verified to run. `bin/pipeline` needs neither form: it unsets the variable
-itself before dispatching.
-
-## Authority Boundary
-
-- Orientation mode: may inspect and report. It must not mutate evidence-ledger.
-- Named live role (`author` or `reviewer`): may work on evidence-ledger only
-  inside the explicit accepted scope.
-- Reconciliation from durable evidence is read-and-report work; it must not
-  author behavior-changing product fixes.
-- Subagent: receives only the parent prompt, allowed paths, acceptance
-  evidence, forbidden side effects, and git hygiene. It does not inherit
-  mailbox, cursor, GO, route, lock, push, or spend authority.
-
-## Start From Pipeline
-
-Orientation or named role:
-
-```bash
-bin/pipeline status snapshot <role>
-```
-
-Read relevant Pipeline mailbox bodies before protocol decisions. Counts alone
-are not enough.
-
-## Enter Evidence-Ledger
-
-Inspecting the target repo before product edits takes two phases, in two
-different working directories. Do not try to fuse them into one block.
-
-Phase 1, in the Pipeline checkout — resolve and validate the target path:
-
-```bash
+bin/pipeline status
 bin/pipeline target --target evidence-ledger --print-path
 ```
 
-Phase 2, in a separate Claude task rooted at the path Phase 1 printed — read
-the target's state with plain commands:
+If the task is bound to an existing committed Pipeline route, validate it
+before entering the target:
 
 ```bash
-unset GIT_INDEX_FILE
-git status --short
-git log --oneline -5
+coordination/bin/pipeline-python pipeline/ledger_start_guard.py --seat <author|reviewer> --wave 2
 ```
 
-The phases are split because both fusions fail. `TARGET_ROOT="$(…)"` cannot run
-from a Claude session isolated in a linked worktree, and neither can `git -C`
-against another repository; both are refused by the Bash tool. That refusal is
-correct rather than an obstacle — cross-repo work does not belong in a task
-worktree — so the second phase gets its own task rooted in the target, where
-the commands need no `-C` and no captured variable.
+The `--seat` spelling is retained for route-schema compatibility; it denotes a
+temporary formal responsibility, not a standing Claude identity. Ordinary
+direct target work creates neither a role nor a route.
 
-Read evidence-ledger `CLAUDE.md` (and `AGENTS.md`) before product edits. If
-those files disagree with Pipeline, user instructions win first;
-evidence-ledger controls product behavior, and Pipeline controls seat
-mechanics.
+Open the printed target as its own Claude desktop task when the app will not
+permit cross-repository commands from the Pipeline worktree. Read the selected
+route body when one exists, then read evidence-ledger's `CLAUDE.md` and
+`AGENTS.md`. User instructions win first, evidence-ledger controls product
+behavior, and Pipeline controls the cross-repository review boundary.
 
-## Cross-Repo Git Hygiene
+## Work and scope
 
-- Prefix every ordinary cross-repo Git command with `env -u GIT_INDEX_FILE`.
-  In Pipeline, run pytest only after `unset GIT_INDEX_FILE` and through
-  `coordination/bin/pipeline-python -m pytest`; in the target-rooted task,
-  follow that repository's own test command.
-- Do not let a Pipeline seat index follow `cd` into evidence-ledger (the
-  exported `GIT_INDEX_FILE` follows `cd` — 2026-07-07 it made
-  evidence-ledger look object-corrupt).
-- Do not stage or commit evidence-ledger files from a Pipeline seat index.
-- Use explicit pathspecs for any parent-authorized staging or commit.
-- Preserve unrelated evidence-ledger dirty work.
+Claude remains member `claude` of the desktop team. A readiness helper may
+inspect only. Implementation stays inside the accepted target and allowed
+paths. At a formal boundary, `author` owns the candidate and `reviewer` is a
+non-author Codex or Claude member for that exact range. AGY may co-direct,
+implement in isolation, and challenge evidence, but is not the sole formal
+accepting verdict.
 
-## Handoffs
+Use each task worktree's native Git index. Preserve unrelated dirty work and
+stage explicit pathspecs. If a committed route names another worktree, open or
+inspect that exact path; the registered checkout may be stale. Subagents are
+parent-scoped and inherit no task, review, push, merge, release, spend, lock,
+or live-data authority.
 
-Cross-repo handoffs record both repo heads. Collect each side's two lines in
-the task rooted at that side — the Pipeline fields in the Pipeline checkout,
-the evidence-ledger fields in the Phase 2 task rooted at the target — then
-paste the outputs you already have into one body. Neither side needs
-`TARGET_ROOT` or `git -C`, because each task is already standing in its own
-repository:
+## Effects, transfer, and verification
 
-```text
-Pipeline HEAD: paste output from `env -u GIT_INDEX_FILE git log -1 --oneline`, run in Pipeline
-Evidence-ledger HEAD: paste output from `git log -1 --oneline`, run in the target-rooted task
-Pipeline status: paste output from `env -u GIT_INDEX_FILE git status --short`, run in Pipeline, or write `clean`
-Evidence-ledger status: paste output from `git status --short`, run in the target-rooted task, or write `clean`
-Role: write `author` or `reviewer`
-Authority used: write one of `orientation report`, `author implementation`, or `reviewer verification`
-Evidence run: paste commands and results
-Side effects not taken: push, lock, cursor consume, mailbox event, spend
-Exact next trigger: paste the next prompt or seat event
-```
+Starting or stopping local services, push, merge, release, lock acquisition,
+paid spend, destructive operations, and live-data mutation each require exact
+current authority for the executor, target, effect, and scope. A route, team
+message, role label, or green guard does not supply it.
 
-Replace every field value with concrete command output or one of the listed
-values before committing a real handoff. Do not commit this example body
-as-is.
-
-## Verification
-
-Use current Pipeline protocol checks:
-
-```bash
-unset GIT_INDEX_FILE
-coordination/bin/pipeline-python -m pytest tests -q
-bin/pipeline check
-```
-
-Use evidence-ledger's own verification commands for product changes after
-reading that repo's local docs.
+Record both repository heads only when ownership or context really transfers
+across repositories. Routine continuation needs no handoff. Verify Pipeline
+changes with focused tests and one proportionate completion gate; verify
+evidence-ledger changes with that repository's own commands. Formal review
+follows the current risk profile in `AGENTS.md` and always inspects the actual
+committed range.

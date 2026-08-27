@@ -5,7 +5,7 @@ assigned non-author reviewer emits GO, NITS, or FAIL. The fixed mailbox writer
 supplies the H1, timestamp/from envelope, and cursor footer.
 
 ```bash
-pipeline mail send reviewer <recipient> verification-report "<subject>" <<'EOF'
+bin/pipeline mail send reviewer <recipient> verification-report "<subject>" <<'EOF'
 <body>
 EOF
 ```
@@ -24,7 +24,7 @@ Reviewer model: <system-visible model; different family from Author model for hi
 Risk class: material-behavior | high-risk-control
 <high-risk-control only: add `Abuse Class Assessment: bound-to-request` here>
 <same-request re-issue: add `Supersedes: coordination/mailbox/sent/<superseded-report>.md@<its-introduction-commit>` — a seat supersedes only its own verdicts for that exact request>
-<different-request remediation only: the request must contain the matching `Remediates failed report:` ref and the GO/NITS report must `Supersedes:` that exact active FAIL>
+<different-request remediation only: the request must contain the matching `Remediates failed report:` ref and the report must `Supersedes:` that exact active FAIL>
 Verification harness: <optional evidence note; not authority>
 Verification context: <optional evidence note; not identity proof>
 
@@ -66,19 +66,18 @@ FAIL remain publishable without successful evidence, but still preserve every
 binding.
 
 A different-request remediation is narrower than an ordinary re-issue. The
-request's reviewed base is the failed report introduction commit, its head is a
-strict descendant, and it preserves the failed report's repository, risk
-class, assigned reviewer seat, and finding refs. The new GO or NITS report
-dispositions those refs and supersedes the exact active FAIL. Missing, inactive,
-wrong-seat, unrelated, non-descendant, and FAIL-shaped replacements do not
-clear the blocker.
+request's reviewed base is the failed report's `Reviewed head`, its head is a
+strict descendant in that reviewed repository, and it preserves the failed
+report's repository, risk class, assigned reviewer seat, and finding refs. The
+new GO, NITS, or FAIL report dispositions those refs and supersedes the exact
+active FAIL. Only GO or NITS clears the blocker; a superseding FAIL records the
+current reviewed head and remains blocking. Missing, inactive, wrong-seat,
+unrelated, and non-descendant replacements are invalid.
 
-`Reviewer model:` is the model that actually performed the review, as the
-reviewer reports it at review time. A launcher or seat-config pin is a request,
-not a guarantee, and never overrides the report — a config pinning one model
-while the reviewer runs another is a launcher defect to fix, not a verdict to
-void. Report the identifier the running model reports for itself, so the string
-records which model did the work rather than which one was requested.
+`Reviewer model:` is the current system-visible model in the assigned Codex or
+Claude desktop app when it performs the review. There is no provider launcher
+or seat-config model pin. Report the identifier the app exposes; the configured
+team-member label is routing convenience and does not attest model identity.
 
 The reviewer judges the actual committed outcome and applicable hard
 boundaries. Request-listed paths, commands, free-form harness names, and

@@ -43,6 +43,11 @@ def test_receiving_seats_superset_of_seats_plus_coordinators():
     assert set(protocol_mailbox.ROLES) == {"author", "reviewer"}
 
 
+def test_app_members_are_the_three_desktop_identities():
+    assert set(protocol_mailbox.APP_MEMBERS) == {"codex", "claude", "agy"}
+    assert len(protocol_mailbox.APP_MEMBERS) == len(set(protocol_mailbox.APP_MEMBERS))
+
+
 def test_senders_roster():
     senders = set(protocol_mailbox.SENDERS)
     assert set(protocol_mailbox.SEATS) <= senders
@@ -50,8 +55,9 @@ def test_senders_roster():
     assert "coordinator2" in senders
     # `all` is not a sender.
     assert "all" not in senders
-    # Senders mirror the receiving roster (every receiver can also send).
-    assert senders == set(protocol_mailbox.RECEIVING_SEATS)
+    assert senders == (
+        set(protocol_mailbox.RECEIVING_SEATS) | set(protocol_mailbox.APP_MEMBERS)
+    )
 
 
 def test_recipients_includes_all_but_all_is_not_a_seat():
@@ -61,7 +67,28 @@ def test_recipients_includes_all_but_all_is_not_a_seat():
     # Every receiving seat is also a valid recipient target.
     assert set(protocol_mailbox.RECEIVING_SEATS) <= recipients
     # RECIPIENTS is exactly the receiving roster plus the broadcast target.
-    assert recipients == set(protocol_mailbox.RECEIVING_SEATS) | {"all"}
+    assert recipients == set(protocol_mailbox.SENDERS) | {"all"}
+
+
+@pytest.mark.parametrize("sender,recipient", (("codex", "claude"), ("agy", "all")))
+def test_event_grammar_and_read_parser_accept_desktop_members(
+    sender: str, recipient: str
+) -> None:
+    stamp = "2026-08-27T00-00-00Z"
+    path = (
+        "coordination/mailbox/sent/"
+        f"{stamp}-{sender}-to-{recipient}-findings.md"
+    )
+    text = (
+        f"# {sender.capitalize()} → {recipient.capitalize()}: checkpoint\n\n"
+        f"**When:** 2026-08-27T00:00:00Z · **From:** {sender} (online)\n\n"
+        "historical parser probe\n\nCursor at send: cursorless\n"
+    )
+    event = protocol_mailbox.parse_committed_event_text(
+        f"{path}@{'a' * 40}", text
+    )
+    assert event.sender == sender
+    assert event.recipient == recipient
 
 
 # --- KNOWN_KINDS loaded from coordination/mailbox/kinds.txt --------------------

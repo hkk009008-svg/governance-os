@@ -1,6 +1,6 @@
 ---
 name: probe-a-claim
-description: Formation-time discipline for load-bearing claims — derive the premises from the claim's shape, cite each with the command that measured it, attack it with a reduced-context reader, and record the blank cells. Use BEFORE writing "verified", "enforced", "complete", "never", "measured", or citing a reference as provenance; prove-a-control is for the mechanism, this is for the belief.
+description: Formation-time discipline for load-bearing claims — derive the premises from the claim's shape, cite each with the command that measured it, attack only the claim sentence with a native reduced-context desktop subagent, and record the blank cells. Use BEFORE writing "verified", "enforced", "complete", "never", "measured", or citing a reference as provenance; prove-a-control is for the mechanism, this is for the belief.
 ---
 
 # Probe a Claim
@@ -22,7 +22,7 @@ author's recall, because recall is the broken faculty.
 
 1. **Premises from shape, not memory.**
    ```bash
-   pipeline claim premises "<claim>"
+   bin/pipeline claim premises "<claim>"
    ```
    The grammar (enforced / measured / reference / complete / absence /
    semantics) supplies the terms. You can forget a premise; you cannot forget
@@ -37,24 +37,21 @@ author's recall, because recall is the broken faculty.
    "what single command would most embarrass this?" and run it. Every failure
    this skill encodes was one command away.
 
-4. **Probe with an amnesiac.** Cross-family, one to four minutes measured
-   against the current lane — and a real provider launch, so the spend is
-   authorized like any provider launch, not implied by this skill:
+4. **Probe with a native amnesiac subagent.** Build the local prompt:
    ```bash
-   pipeline probe "<claim>"
+   bin/pipeline probe "<claim>"
    ```
-   The primary probe launches from an empty directory with a minimal
-   environment and the lane's user config skipped (`--ignore-user-config` —
-   it carried repository paths), pinned by a subprocess-boundary test.
-   Reduced-context, not context-free: HOME and the binary path remain
-   pointers, and the limits section says so. The
-   same-family fallback (`amnesiac-prober`, ONLY the claim sentence) is weaker
-   by design: its restraint is instruction, not enforcement. Either way, never
-   include the code, the diff, or your reasoning — context is contamination.
+   This command prints premises and a prompt; it never starts a model or sends
+   a team message. Give only that prompt to the current desktop app's native
+   `amnesiac-prober` subagent. The read is same-family and reduced-context by
+   instruction, not by a process boundary, so label it weaker than independent
+   review. Never include the code, diff, repository path, or your reasoning —
+   context is contamination. If the app cannot create a native subagent, record
+   that blank rather than substituting a terminal provider command.
 
 5. **Record, so the blank cells exist.**
    ```bash
-   pipeline claim record \
+   bin/pipeline claim record \
      --claim "..." \
      --premise invoked-on-path MEASURED '$ grep -n caller → main:12' \
      --kill "deleted the call site; test failed"
@@ -69,7 +66,7 @@ author's recall, because recall is the broken faculty.
 
 6. **Sweep the range — an optional lens, not a publication step.**
    ```bash
-   pipeline claim sweep --base <base> --head <head>
+   bin/pipeline claim sweep --base <base> --head <head>
    ```
    Flags overclaim vocabulary with no citation on the same line. Scoped to
    where claims live — prose files whole-line, code and extensionless files on
@@ -109,20 +106,30 @@ shipped.
 - The sweep is a vocabulary heuristic over prose, scoped to comment and
   document lines; docstring prose inside code is missed here, and code
   semantics are `prove-a-control` trap 3's business.
-- The probe is reduced-context, not context-free: cwd is empty, env is
-  PATH/HOME/TERM, the lane's user config is skipped — but HOME and the binary
-  path remain pointers a determined reader could follow. What the boundary
-  test enforces is that nothing *defaults* it into our context.
+- The native subagent is reduced-context by instruction, not isolated by a
+  process boundary. It remains same-family and may share model blind spots.
+  A different-family formal review, when risk requires one, is a separate
+  desktop-team responsibility over the exact committed range.
 - The ledger is self-reported. Its audit catches what you wrote down, not what
   you didn't; the lottery plus probes exist to attack exactly that gap.
 - The premise keys were authored by the same mind whose blind spots they
-  guard against. The amnesiac probe is the counterweight — it is the one step
-  sourced from outside, so skipping it collapses the loop back to one party.
+  guard against. A native amnesiac subagent adds another context window, not
+  another model family; skipping it collapses the loop back to one context.
+
+## Desktop migration evidence (2026-08-27)
+
+The frozen three-case discovery pack is
+`tests/skill_packs/pack-004-desktop-claim-probe.json`; focused tests cover the
+local prompt-only command and reject the retired execution flag. No live
+cross-family probe was run for this revision because the desktop-exclusive
+harness has no terminal provider-launch lane. Residual risk: same-family
+instruction isolation may miss a shared model blind spot, so it cannot replace
+risk-required independent review.
+
 ## Rule maintenance
 Observed failure: nine 2026-07-26/27 defects where the author verified the
 property they were thinking about, not the property the claim rested on.
-Mode/risk: claim formation in every mode; `pipeline probe` is a separately
-authorized provider launch. Cost: premises command plus one embarrassing
-command; the probe is optional and billed.
+Mode/risk: claim formation in every mode. Cost: premises command, one
+embarrassing command, and an optional native same-family subagent read.
 Owner: the claim's author. Re-evaluate: if a load-bearing claim lands with
 blank cells and no recorded kill.

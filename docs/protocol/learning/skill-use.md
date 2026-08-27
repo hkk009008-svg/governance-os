@@ -1,6 +1,6 @@
 # Skill-use outcome rows — advisory schema
 
-> Appended by seats at wrap to `logs/learning/outcomes.jsonl`.
+> Appended by desktop members at wrap to `logs/learning/outcomes.jsonl`.
 > Reported by `pipeline/learning_metrics.py`. Advisory under contract I1/I2:
 > these counts bind no lifecycle decision and grant no authority. The
 > reporter writes nothing. Wiring any total here into accept / decline /
@@ -24,14 +24,14 @@ One JSON object per line. Required keys:
 | `task_ref` | string | Immutable `<sent-path>@<40-hex>`, or `none` |
 | `outcome` | string | `helped` \| `hindered` \| `neutral` |
 | `evidence_ref` | string | `<path>@<40-hex>`, `sha256:<64-hex>`, or `none` |
-| `seat` | string | Envelope identity that loaded the skill (`author`, `reviewer`, or a legacy seat name in older rows), or `none` |
+| `seat` | string | Compatibility field: desktop member that loaded the skill (`codex`, `claude`, or `agy`); older rows may contain a formal or legacy identity; or `none` |
 
 Optional: `note` (one line, no authority claim).
 
 Example (not a live measurement):
 
 ```json
-{"ts": "2026-08-12T22:00:00Z", "event": "skill-use", "skill": "create-regression-pin", "task_ref": "none", "outcome": "helped", "evidence_ref": "none", "seat": "reviewer", "note": "pin authored; --runxfail went red"}
+{"ts": "2026-08-12T22:00:00Z", "event": "skill-use", "skill": "create-regression-pin", "task_ref": "none", "outcome": "helped", "evidence_ref": "none", "seat": "codex", "note": "pin authored; --runxfail went red"}
 ```
 
 Non-`skill-use` events in the same file (the Stage 5 baseline row) are
@@ -39,7 +39,7 @@ other outcome types; the reporter ignores them for these counters.
 
 ## Who writes, who reads
 
-- **The live role** appends at wrap when a named skill was loaded, or skips
+- **The current desktop member** appends at wrap when a named skill was loaded, or skips
   with a one-line reason in the checkpoint `Lessons:` line. There is no
   quota and no penalty for `none`.
 - **`pipeline/learning_metrics.py`** reports `skill_use_rows` split by
@@ -53,8 +53,8 @@ other outcome types; the reporter ignores them for these counters.
 
 ## Interpretation
 
-Helped/hindered/neutral is the seat's wrap judgment, not a measurement.
-A high helped count can mean the skill is useful or that seats only log
+Helped/hindered/neutral is the member's wrap judgment, not a measurement.
+A high helped count can mean the skill is useful or that members only log
 successes. Treat the slope as a pointer: hindered rows with an
 `evidence_ref` are the input to a `procedure` candidate, not a vote to
 edit the skill in place.

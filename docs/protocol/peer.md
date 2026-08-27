@@ -1,130 +1,105 @@
-# Peer invocation — how the two CLIs work as one unit
+# Desktop-team communication contract
 
-Pipeline has exactly two participants: the `claude` CLI and the `codex` CLI.
-Neither is a service the other talks to. Each is a program the other can run.
+The filename is retained for stable links. Current communication is the
+repository-scoped MCP team transport, not one-shot CLI peer invocation.
 
-## The mechanism
+## Members and binding
 
-    pipeline peer ask <claude|codex|agy> --task <id> --prompt-file <f> [options]
-    pipeline peer receipts [--task <id>]
+The only interactive members are `codex`, `claude`, and `agy`. Each desktop
+app loads one project config that supplies its normal member label:
 
-One verb, three backends, one receipt format. The direction is whichever
-terminal you are sitting in: from a Claude session you `ask codex`, from a
-Codex session you `ask claude`, and the machinery is identical because the two
-CLIs are symmetric where it matters.
+- Codex: `.codex/config.toml`
+- Claude: `.mcp.json`
+- AGY: workspace plugin manifest and binding under
+  `.agents/plugins/pipeline-team/{plugin.json,mcp_config.json}`
 
-| Capability | `claude` | `codex` |
-|---|---|---|
-| Headless | `--print` | `exec` |
-| Machine-readable output | `--output-format json` | `--json` (JSONL) |
-| Prompt | stdin | stdin (`-`) |
-| Working root | `--add-dir` | `--cd` |
-| Containment | `--permission-mode` | `--sandbox` |
-| Spend ceiling | `--max-budget-usd` | none — bounded by `--timeout` |
-| Final message | `.result` in the JSON | `--output-last-message <file>` |
+The label comes from adapter args, never from a tool argument. It is not app or
+model attestation: the same local account can launch another label or edit the
+database. Each adapter serves the same local `pipeline-team` MCP server over
+stdio. The server launches no model provider and holds no provider credential.
 
-`pipeline/peer_backends.py` owns the two places they are *not* symmetric.
-`pipeline/peer.py` owns the runner, the receipt, and the verb.
+## Tools
 
-## Why this replaces the bridge
+### `team_status`
 
-The previous mechanism was a persistent Agent-SDK peer (`pipeline-codex-bridge`)
-started over MCP and addressed through Claude Desktop's cross-session plane.
-Its own contract said it "reports no delivery ack", and `OPERATIONS.md` carried
-a troubleshooting row for exactly that: *relay is submitted but delivery is
-unknown*. That row is now unreachable.
+Returns the caller's configured member label, capabilities, activity
+timestamps, pending counts, and recent sent-message acknowledgement/reply state.
+Activity is not liveness. The result grants no authority.
 
-1. **Delivery is acknowledged.** The child's exit code and captured output are
-   the acknowledgement. A peer that did not run cannot look like one that did.
-2. **One process, one budget, terminates.** No long-lived peer to leak, no
-   duplicate-bridge failure mode, no registration-lag ambiguity.
-3. **The model is observed, not declared.** `model_reported` comes from the
-   peer's own output. Where the peer reports nothing, the receipt records
-   `null` and says so — it is never back-filled from the `--model` request.
-   A receipt that echoed the request would agree with its author by
-   construction, which is the one thing it must not do.
-4. **No host assumption.** Two terminals, any machine, no desktop app.
+### `team_send`
 
-A receipt is evidence, not attestation: whoever can write the file can forge
-it. It is strictly better than prose the author typed, and strictly weaker
-than a signature. Do not describe it as proof of who reviewed.
+Queues UTF-8 text to another member or `all`. Every call must provide a
+non-empty sender-scoped `idempotency_key`; retrying the identical recipient,
+body, and `reply_to` reuses it safely, while different content must use a new
+key. The sender may link a reply to a message addressed to it, but cannot
+address itself, select another label through this tool, or reply to an
+unrelated message.
 
-## AGY is a backend, not a side
+Success means only that the row is queued in the repository-scoped store.
 
-`pipeline peer ask agy --role <map|challenge|evasion|debug|implement|review>`
-dispatches to the parent-owned `~/.local/bin/claude-agy` or `codex-agy`
-wrapper — whichever matches `PIPELINE_SIDE` (default `claude`). Those wrappers
-take the shared `~/.codex/agy-desktop-user-inflight.lock`, so the lane still
-serialises no matter which side calls it.
+### `team_wait`
 
-AGY is **advisory in both directions**. Its receipts carry `"advisory": true`.
-It is never a seat, never a mailbox participant, never a reviewer, and never a
-GO/NITS/FAIL source. `config/model-families.toml` keeps
-`active_families = ["claude", "gpt"]`, so a gemini-family opinion cannot
-satisfy the different-family requirement that `compact_pair_loop.py` validates
-at publication. Promoting AGY to a verdict-bearing side would be a
-trust-granting schema change with its own high-risk-control review.
+Returns messages after an explicit cursor. The same `after_id` replays them;
+advancing `after_id` acknowledges addressed messages through that cursor. The
+wait is bounded. An empty result means only that this call observed no later
+matching message. It is not global absence, refusal, agreement, or authority.
+Consumers deduplicate by the stable message id. Cursor acknowledgement is not
+a lease or worker election.
 
-## Authority
+## State model
 
-Running a peer is a **provider launch and paid spend**. Per `AGENTS.md` that
-needs live, exact authority for the executor, target, effect, and scope — the
-command does not grant it, and neither does a task id.
+```text
+queued
+  -> returned by team_wait
+  -> acknowledged by a later cursor advance
+  -> optional linked reply
+  -> human/model judgement that the reply is substantive
+```
 
-The command prints the exact argv to stderr before launching. `--dry-run`
-prints it and exits without launching, which is the right way to show a
-proposed invocation to whoever must authorize it.
+The arrows are not automatic equivalences. Queue success does not prove
+acknowledgement. Acknowledgement does not prove reading or understanding. A reply id does not
+prove the question was answered. If a task depends on a response, the sender
+must inspect the reply or report the precise missing state.
 
-Bounds that are enforced rather than advised:
+Broadcast acknowledgement is tracked separately for each recipient. `last_seen` is a
+tool-activity observation and cannot prove an app remains open.
 
-- `--task` is required, so every launch is attributable to a work unit.
-- `--max-usd` defaults to `1.00` and maps to `claude --max-budget-usd`.
-- `--timeout` defaults to 900s; exceeding it records exit 124 with no result,
-  never a partial answer presented as a whole one.
-- Read-only is the default. For `claude` and `codex`, `--write` widens exactly
-  one flag — `--permission-mode` and `--sandbox` respectively. The AGY wrapper
-  has no read-only flag and no ceiling of its own, so `--write` cannot widen
-  anything there: `peer_backends.build_agy` refuses `--write` for every
-  advisory role and requires it for `implement`, the one role that writes.
-  Accepting it silently was a caller believing in containment it did not have.
+## Content contract
 
-## Receipts
+Keep messages bounded and actionable. Name the objective, repository evidence
+or paths, what response is requested, and whether independent work can continue.
+Do not assume the transport includes files, task history, terminal output, or
+permission context; cite them explicitly.
 
-`coordination/peer/<task>/<seq>-<side>.json`, schema `peer-receipt/1`:
+All three members may propose direction, implementation, tests, review
+findings, and next steps. Material AGY findings are considered and answered on
+their merits. AGY remains ineligible to be the sole independent formal verdict
+or an authority source.
 
-    {
-      "schema": "peer-receipt/1",
-      "task": "...", "side": "codex", "role": "reviewer",
-      "advisory": false,
-      "started": "...", "duration_s": 93.4, "exit_code": 0,
-      "argv_sha256": "...", "argv_binary": "/path/to/codex",
-      "prompt_sha256": "...", "result_sha256": "...",
-      "model_reported": "gpt-5-codex", "cost_usd": null,
-      "notes": []
-    }
+No message may grant or imply:
 
-The file name is `<seq>-<side>.json` with `seq` zero-padded to four digits and
-taken from one past the highest already present, never from a count.
+- user intent or scope not already present in the task;
+- formal author or reviewer acceptance;
+- push, merge, release, spend, live mutation, or destructive authority;
+- acknowledgement, understanding, or assent that the recorded state does not show.
 
-`notes` is where the mechanism admits what it does not know: an unparseable
-result, a missing model field, a peer's stderr, a timeout. An empty `notes`
-with a `null` model is not possible — absence is always narrated.
+Routine task-scoped communication is allowed without a new approval and should
+not be relayed through the user. Effects named above still require exact
+current user/task authority.
 
-## Verification
+## Storage and recovery
 
-`tests/unit/test_peer.py` covers argv construction for all three backends,
-fail-closed on a missing binary, the closed AGY role set, output parsing for
-both result shapes, receipt sequencing and hashing, timeout handling, and the
-control that a receipt never reports the requested model.
-`tests/unit/test_peer_review_findings.py` holds the review-driven controls,
-including `test_an_absent_model_is_always_narrated`, which is what keeps the
-"absence is always narrated" sentence above from being prose: a claude payload
-with no model and no `modelUsage` returned an empty `notes` until that test
-existed. Nothing in either suite launches a provider: `shutil.which` is
-monkeypatched and `run()` takes an injected runner.
+`pipeline/team_store.py` places the SQLite database under the Git common
+directory, outside tracked files, so linked worktrees share it. The directory
+and file must be real, owner-only, single-link objects; permissive modes,
+symlinks, and replacement inodes fail closed. This protects against other OS
+users and accidental replacement, not the repository owner's account. Messages
+are local coordination state, not signatures or attestations.
 
-That means the argv this repository *builds* is verified, and the shape of
-what a real `claude` or `codex` *emits* is parsed defensively but not
-confirmed against a live run. One authorized round trip per side would settle
-it; until then the parsers' behaviour on absence — record `null`, add a note —
-is what keeps an unconfirmed shape from becoming a false fact.
+If configuration or handshake fails, run `bin/pipeline preflight`. If a message
+is queued but unacknowledged, continue independent work or wait at a natural
+boundary; do not launch a headless provider as a fallback. Legacy files under
+`coordination/mailbox/` and `coordination/peer/` remain historical evidence and
+are not a fallback conversation transport. The mailbox fixed writer remains
+available only for three durable uses: a risk-required formal artifact, a real
+checkpoint, or the governed learning-candidate/disposition lifecycle.

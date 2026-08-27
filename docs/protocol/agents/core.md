@@ -1,125 +1,75 @@
-# Universal Protocol Core
+# Desktop-team core contract
 
-This is the small provider-neutral policy layer. Provider adapters translate it
-into host mechanics; they do not redefine authority.
+## Membership
 
-## Sources of truth
+Codex, Claude, and AGY desktop apps are the complete interactive team. All may
+reason, direct, implement, test, and challenge. Native helpers are scoped
+extensions of the app that created them, not new members and not independent
+authority holders.
 
-Use the source that owns the claim:
+No supported path launches a model provider from a shell. Use terminals for
+Git, builds, tests, deterministic tools, and adapter preflight.
 
-1. The user or authorized parent decides permission and task scope.
-2. Executable code and current Git decide runtime facts and enforcement.
-3. [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) records verified topology.
-4. This directory records universal policy; provider continuations record only
-   host-specific mechanics.
-5. Plans, handoffs, reviews, dashboards, and chat are evidence or history, not
-   authority.
+## Direct work
 
-The canonical executable seams are:
+Read the accepted task and fresh repository state, then choose the simplest
+sufficient action. Ordinary reversible work needs no role declaration, work
+mode, event, packet, or independent review. Planning is useful only when the
+behavior, ownership, or authority boundary is materially unclear.
 
-- [`pipeline/codex_protocol_model.py`](../../../pipeline/codex_protocol_model.py):
-  identity, ownership, work modes, review risk, and effect shape.
-- [`pipeline/compact_pair_loop.py`](../../../pipeline/compact_pair_loop.py): formal
-  request/report parsing and exact-range review binding.
-- [`pipeline/mailbox_writer.py`](../../../pipeline/mailbox_writer.py), reached
-  through `bin/pipeline mail send` / `bin/pipeline mail consume`, which front
-  [`coordination/bin/send-event`](../../../coordination/bin/send-event)
-  and [`coordination/bin/consume-events`](../../../coordination/bin/consume-events):
-  validated, serialized event and cursor writes with staging. A new event may
-  name only `author` or `reviewer`; the six pre-collapse seat names parse
-  read-only so committed history stays readable.
-- [`pipeline/status.py`](../../../pipeline/status.py), reached through
-  `bin/pipeline status`: read-only current-state projection.
+Preserve unrelated changes. Parallelize read-only investigation and
+nonoverlapping implementation when it helps; assign path ownership and
+serialize shared-file or shared-resource writes through one integrator.
 
-When prose and an executable seam disagree, follow the seam for runtime facts,
-preserve the user authority boundary, and repair the owning prose.
+Use focused tests while iterating, inspect the exact diff, and run one
+proportionate final verification pass. A test proves only what it executes.
 
-## Proportional startup
+## Communication
 
-| Tier | Intended work | Minimum orientation |
-|---|---|---|
-| `tier-0-conversational` | Supplied context is sufficient | Do not orient the repository. |
-| `tier-1-read-only` | Inspect or report | Read only evidence needed for the claim. |
-| `tier-2-local-mutation` | Reversible scoped edits | Confirm the checkout; refresh scoped status and affected-path history. |
-| `tier-3-governed-side-effect` | Publication, cursor consumption, peer invocation, merge, lock, spend, or live-data mutation | Refresh exact live authority, executor, target, scope, and external state immediately before acting. |
+Use `team_status`, `team_send`, and `team_wait` through the app's fixed MCP
+identity. Communicate freely inside the accepted task; never ask the user to
+serve as relay.
 
-Full smoke is a completion check when a change affects runtime/governance
-topology or relies on an architecture invariant. It is not a session-start
-ritual.
+Queued, returned, acknowledged, replied, and substantively answered are different states.
+Wait for the state the work actually needs. Activity is not liveness. No
+message or transport field grants role, review, permission, or effect
+authority.
 
-## Evidence and implementation
+## Capability use
 
-- Measure factual inventory claims at the scope claimed. A focused command
-  proves only its focused scope.
-- Before changing a symbol, find its definition, writes, callers, imports,
-  string references, and relevant siblings.
-- For behavior change, begin with a failing behavior test when feasible;
-  otherwise retain characterization evidence or a `test-infeasible` reason.
-- Establish root cause before changing behavior after an unexpected failure.
-- A confirmed defect deliberately deferred gets a strict-xfail pin or a
-  specific `test-infeasible` reason.
-- Run fresh, smallest-sufficient verification. A green check proves only the
-  path it executed.
-- Gate-controlling numbers come from a committed, citable instrument.
+Route work toward the best available strength while keeping every member free
+to co-direct and implement:
 
-No plan, handoff, status file, broad smoke run, or commit is required merely to
-make a small reversible edit. Create an artifact only when it preserves state
-that Git, tests, and committed event bodies do not already carry.
+- Codex: orchestration, worktrees, integration, sustained execution.
+- Claude: large-context architecture, independent diff review, visual work.
+- AGY: rapid mapping/debugging, premise/evasion challenges, browser/artifacts,
+  isolated experiments, multi-model advice.
 
-## Guard admission
+Reduce weakness with evidence: tie analysis to current code, verify rapid
+advice locally, and use genuine model-family diversity for high-risk review.
+Do not discard an AGY finding because it is advisory; answer material findings.
+AGY cannot be the sole independent formal verdict or authority source.
 
-A new blocking guard is accepted only when it names the decision or effect it
-protects, sits on the production call path, and has both a reversion control and
-an evasion or bypass control. Missing or ambiguous evidence stays non-success.
-A source-code marker, duplicated checker, or descriptive test name is not an
-enforced control. Prefer strengthening the existing owning seam over adding a
-parallel approval object or startup ritual.
+## Governance
 
-## Work mode is not review risk
+There are no standing seats. At a risk-triggered formal boundary, temporarily
+name the candidate owner `author` and a non-author Codex or Claude member
+`reviewer` for one exact range. End both responsibilities with the review.
 
-[`docs/protocol/work-modes.md`](../work-modes.md) controls iteration phase:
+Risk is defined in `docs/protocol/agents/risk-classes.md` and executable shape
+in `pipeline/codex_protocol_model.py`. Formal binding remains in
+`pipeline/compact_pair_loop.py`.
 
-- `explore`: cheap reversible learning; no canonical mutation.
-- `validate`: reproduce one frozen candidate and its evidence.
-- `promote`: move a reviewed candidate toward canonical state with a rollback
-  point and separate effect authority.
+Push, merge, release, paid spend, live-data mutation, and destructive
+operations require exact current user/task authority for executor, target,
+effect, and scope. Structural validation never supplies effect authority.
 
-Review depth is classified independently by `review_profile_for()`:
+## State
 
-| Risk | Required evidence |
-|---|---|
-| `ordinary-local` | Focused verification. |
-| `material-behavior` | Non-author review of the exact committed range. |
-| `high-risk-control` | Non-author exact-range review by a different model family, plus abuse-class assessment. |
-| `external-effect` | Live authorization for the exact executor, target, effect, and scope. |
-
-Different-model-family review is not a universal tax. A verdict never grants
-an external effect.
-
-## Authority and durable state
-
-- A role, route, task structure, event schema, capability label, green test, or
-  commit cannot widen user or parent authority.
-- Current committed Git and committed event bodies outrank summaries and chat
-  recollection for the facts they own.
-- Transport ambiguity remains visible and fails closed; it is not an empty
-  queue or implicit approval.
-- Formal events and cursors use the fixed writers. Do not edit them directly.
-- Editing, staging, committing, publishing, consuming, locking, merging,
-  invoking a peer, spending, and live-data mutation are separate actions.
-  Push is deliberately not among the gated effects: it was claimed as one in
-  prose while no mechanism enforced it, so it was dropped rather than kept
-  (`AGENTS.md` item 6). Do not re-add it to this list.
-- Use the worktree's native Git index; do not create shared or per-seat indexes.
-
-## Collaboration without ceremony
-
-Delegate bounded independent work when it reduces latency or context load.
-Give each implementer explicit ownership and never run concurrent implementers
-on shared files. Helpers inherit task scope only: no live role, publication,
-cursor, verdict, lock, or effect authority.
-
-Material behavior receives non-author actual-diff review. Reviews, handoffs,
-and status reports are produced at real decision or transfer boundaries, not
-after every local step. Provider entrypoints and ownership are mapped in
-[`protocol-assembly-map.md`](../protocol-assembly-map.md).
+Git, tests, and desktop task history are the normal shared record. Create one
+concise checkpoint only for a real ownership transfer, interruption,
+compaction, or wrap. Legacy mailbox conversation, cursors, four-seat state,
+capacity, and peer receipts are compatibility evidence. The fixed mailbox
+writer is reserved for a risk-required formal artifact, a real transfer
+checkpoint, or a governed learning-candidate/disposition record, never routine
+chat or authority.

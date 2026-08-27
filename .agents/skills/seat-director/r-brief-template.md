@@ -15,7 +15,7 @@ defect that ships.
 
 PRIORITY: CRITICAL | MAJOR | MEDIUM        LANE: A (<domain-A>) | B (<domain-B>)
 CROSS-CUTTING: yes/no   (auto_approve.py · <PROJECT>/context.py · core.py · <entrypoint>.py)
-  → if yes: LOCK held? <`pipeline lock claim` output, exit 0=WON>   CO-SIGN: Tier-A/B? (CRITICAL x-cut ⇒ Tier-A BEFORE DISPATCH)
+  → if yes: ONE OWNER: <app/member responsible for shared files>   CO-SIGN: Tier-A/B? (CRITICAL x-cut ⇒ Tier-A BEFORE DISPATCH)
 
 ## The defect (file:line + observable symptom)
 <where it is, what goes wrong at runtime, and the failure the user/gate sees>
@@ -52,8 +52,8 @@ EVASION CONTROL: <guard left intact → the closest you got to the forbidden out
 
 - **Rule #12 slot has real grep OUTPUT** under the target symbol — not "I'll grep later," not the type declaration. Without it, label the symbol *type-level claim* explicitly so the implementer knows.
 - **Rule #13 slot names the siblings actually checked** and states fold-or-defer for each under-defended one; audit-completeness is not audit-disposition, so state the disposition for each sibling as mirror / defer / document / exempt.
-- **Cross-cutting?** Name the overlap and preserve peer work. Claim a lock only
-  when the user or active route separately authorizes that exact lock action.
+- **Cross-cutting?** Name the overlap, preserve peer work, and serialize shared
+  files through one explicit owner; do not run concurrent implementers there.
   High-risk control work receives the required actual-range review; there is no
   universal pre-implementation review ceremony.
 - **Pattern refs are full-shape**, not just a function name. For canonical sites, verify the named symbol exists at the cited SHA and verify the cited SHA exhibits the named sub-pattern.

@@ -14,37 +14,21 @@ if str(_REPO_ROOT) not in sys.path:
 import mailbox_writer  # noqa: E402
 import protocol_mailbox  # noqa: E402
 
-_STRUCTURE_FREE_ALLOWED = (
-    "findings",
-    "dispatch-claim",
-    "measurement-report",
-    "verify-addendum",
-)
 _FROZEN = (
-    "acknowledgement",
-    "convergence",
-    "coordination",
-    "discussion",
-    "doc-sync-notice",
-    "fold-notice",
-    "fyi",
-    "proposal",
-    "proposal-reply",
-    "query",
-    "reply",
-    "scout-report",
-    "scout-request",
-    "status",
-    "verify-readiness",
-    "verify-readiness-converged",
-    "wrap",
+    "acknowledgement", "convergence", "coordination", "dispatch-claim",
+    "discussion", "doc-sync-notice", "fold-notice", "fyi",
+    "measurement-report", "proposal", "proposal-reply", "query", "reply",
+    "scout-report", "scout-request", "status", "verify-addendum",
+    "verify-readiness", "verify-readiness-converged", "wrap",
 )
 
 
-def _candidate(kind: str, sender: str = "author") -> tuple[bytes, str]:
-    name = f"2026-08-10T00-00-00Z-{sender}-to-reviewer-{kind}.md"
+def _candidate(
+    kind: str, sender: str = "codex", recipient: str = "claude"
+) -> tuple[bytes, str]:
+    name = f"2026-08-10T00-00-00Z-{sender}-to-{recipient}-{kind}.md"
     body = (
-        f"# {sender.capitalize()} → Reviewer: probe\n"
+        f"# {sender.capitalize()} → {recipient.capitalize()}: probe\n"
         "\n"
         f"**When:** 2026-08-10T00:00:00Z · **From:** {sender} (online)\n"
         "\n"
@@ -66,7 +50,7 @@ def test_a_retired_seat_name_cannot_publish_a_new_event() -> None:
 
     raw, relative = _candidate("findings", sender="director")
 
-    with pytest.raises(mailbox_writer.MailboxWriterError, match="retired for new writes"):
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="desktop app member"):
         mailbox_writer.validate_event_candidate_bytes(_REPO_ROOT, raw, relative)
 
     assert protocol_mailbox.EVENT_NAME_RE.fullmatch(
@@ -80,6 +64,54 @@ def test_allowlist_is_a_subset_of_the_registry_and_partitions_it() -> None:
     assert set(_FROZEN) == registry - mailbox_writer.NEW_WRITE_KINDS, (
         "every registry kind must be explicitly allowed or explicitly frozen"
     )
+    assert mailbox_writer.FORMAL_REVIEW_KINDS == {
+        "verification-report",
+        "verify-request",
+    }
+    assert mailbox_writer.APP_DURABLE_KINDS == {
+        "decision",
+        "findings",
+        "learning-candidate",
+    }
+    assert not mailbox_writer.FORMAL_REVIEW_KINDS & mailbox_writer.APP_DURABLE_KINDS
+
+
+@pytest.mark.parametrize(
+    "kind,sender,recipient",
+    (
+        ("verify-request", "author", "reviewer"),
+        ("verification-report", "reviewer", "author"),
+        ("verification-report", "reviewer", "all"),
+        ("findings", "codex", "claude"),
+        ("learning-candidate", "agy", "all"),
+        ("decision", "claude", "codex"),
+    ),
+)
+def test_new_write_envelope_rule_accepts_only_exact_capability_lanes(
+    kind: str, sender: str, recipient: str
+) -> None:
+    assert mailbox_writer.new_write_envelope_problem(
+        kind, sender, recipient
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "kind,sender,recipient",
+    (
+        ("status", "codex", "claude"),
+        ("verify-request", "codex", "reviewer"),
+        ("verify-request", "author", "all"),
+        ("verification-report", "author", "reviewer"),
+        ("verification-report", "reviewer", "reviewer"),
+        ("findings", "author", "reviewer"),
+        ("decision", "codex", "reviewer"),
+        ("learning-candidate", "agy", "agy"),
+    ),
+)
+def test_new_write_envelope_rule_rejects_frozen_cross_lane_or_self_routes(
+    kind: str, sender: str, recipient: str
+) -> None:
+    assert mailbox_writer.new_write_envelope_problem(kind, sender, recipient)
 
 
 @pytest.mark.parametrize("kind", _FROZEN)
@@ -93,12 +125,49 @@ def test_frozen_kinds_are_refused_for_new_writes(kind: str) -> None:
     assert "new-write allowlist" in str(excinfo.value)
 
 
-@pytest.mark.parametrize("kind", _STRUCTURE_FREE_ALLOWED)
-def test_state_transition_kinds_still_publish(kind: str) -> None:
+@pytest.mark.parametrize("kind", ("decision", "findings"))
+def test_typed_only_kinds_refuse_generic_payloads(kind: str) -> None:
     raw, relative = _candidate(kind)
-    mailbox_writer.validate_event_candidate_bytes(
-        _REPO_ROOT, raw, relative, validate_range=False
-    )
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="fully typed"):
+        mailbox_writer.validate_event_candidate_bytes(
+            _REPO_ROOT, raw, relative, validate_range=False
+        )
+
+
+@pytest.mark.parametrize("kind", ("verify-request", "verification-report"))
+def test_formal_review_kinds_reject_app_member_identities(kind: str) -> None:
+    raw, relative = _candidate(kind)
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="formal review role"):
+        mailbox_writer.validate_event_candidate_bytes(
+            _REPO_ROOT, raw, relative, validate_range=False
+        )
+
+
+@pytest.mark.parametrize("kind", ("verify-request", "verification-report"))
+def test_formal_review_kinds_reject_app_member_recipients(kind: str) -> None:
+    raw, relative = _candidate(kind, sender="author", recipient="codex")
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="formal review role"):
+        mailbox_writer.validate_event_candidate_bytes(
+            _REPO_ROOT, raw, relative, validate_range=False
+        )
+
+
+@pytest.mark.parametrize("kind", ("decision", "findings", "learning-candidate"))
+def test_durable_record_kinds_reject_temporary_review_identities(kind: str) -> None:
+    raw, relative = _candidate(kind, sender="author", recipient="reviewer")
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="desktop app member"):
+        mailbox_writer.validate_event_candidate_bytes(
+            _REPO_ROOT, raw, relative, validate_range=False
+        )
+
+
+@pytest.mark.parametrize("kind", ("decision", "findings", "learning-candidate"))
+def test_durable_record_kinds_reject_temporary_review_recipients(kind: str) -> None:
+    raw, relative = _candidate(kind, sender="codex", recipient="reviewer")
+    with pytest.raises(mailbox_writer.MailboxWriterError, match="desktop app member"):
+        mailbox_writer.validate_event_candidate_bytes(
+            _REPO_ROOT, raw, relative, validate_range=False
+        )
 
 
 def test_historical_conversational_events_keep_parsing_read_only() -> None:
@@ -111,3 +180,10 @@ def test_historical_conversational_events_keep_parsing_read_only() -> None:
         _REPO_ROOT, sample, f"coordination/mailbox/sent/{sample.name}"
     )
     assert match.group("kind") in {"status", "fyi"}
+
+    for kind in ("decision", "findings", "verify-addendum"):
+        raw, relative = _candidate(kind)
+        historical_match = mailbox_writer.validate_event_envelope_bytes(
+            _REPO_ROOT, raw, relative
+        )
+        assert historical_match.group("kind") == kind

@@ -31,21 +31,26 @@ CURRENT_PROTOCOL_TESTS = (
     "tests/unit/test_compact_pair_loop.py",
     "tests/unit/test_provider_surface_map.py",
     "tests/unit/test_harness_preflight.py",
+    "tests/unit/test_app_integration.py",
+    "tests/unit/test_team_mcp.py",
+    "tests/unit/test_team_messages.py",
+    "tests/unit/test_team_security.py",
+    "tests/unit/test_claude_hook_isolation.py",
     "tests/unit/test_codex_hook_lifecycle.py",
     "tests/unit/test_codex_ledger_bridge.py",
 )
 REQUIRED_LEDGER_DOC_PHRASES = (
-    "Pipeline remains the Codex four-seat governance kernel.",
+    "Pipeline owns the shared engineering and review boundary",
     "registered `evidence-ledger` target",
-    "Do not start ledger work",
+    "Do not work",
     "user Content checkout",
-    "pipeline/target_binding.py --target evidence-ledger --print-path",
-    "pipeline/ledger_start_guard.py --seat <seat> --wave 2",
+    "bin/pipeline target --target evidence-ledger --print-path",
+    "pipeline/ledger_start_guard.py --seat <author|reviewer> --wave 2",
     "native Git index",
-    "Read the route body and the target repository's `CLAUDE.md` and `AGENTS.md`",
-    "Coordinator may reconcile ledger work from durable evidence",
-    "author behavior-changing product fixes",
-    "Record both repository heads only when ownership or context actually transfers",
+    "temporary formal responsibility",
+    "AGY may co-direct",
+    "push, merge, release",
+    "Record both repository heads only when ownership or context really transfers",
 )
 # AGENTS.md deliberately absent: the universal router names no product
 # target; per-task routes resolve through pipeline/target_binding.py
@@ -53,13 +58,11 @@ REQUIRED_LEDGER_DOC_PHRASES = (
 DOC_SURFACES = (
     "docs/protocol/codex/continuation.md",
     "docs/protocol/protocol-assembly-map.md",
-    ".agents/skills/four-seat-protocol/SKILL.md",
 )
 CORE_CODEX_ROLE_PROMPTS = (
     ".codex/agents/readiness-bridge.toml",
     ".codex/agents/protocol-director.toml",
     ".codex/agents/protocol-operator.toml",
-    ".codex/agents/protocol-coordinator.toml",
 )
 
 
@@ -178,7 +181,9 @@ def test_protocol_doctor_runs_one_unconditional_read_only_set(monkeypatch):
 
 
 def test_ledger_bridge_doc_exists_and_names_required_boundaries():
-    text = _read("docs/protocol/codex/ledger-cli-adoption.md")
+    text = " ".join(
+        _read("docs/protocol/codex/ledger-cli-adoption.md").split()
+    )
     for phrase in REQUIRED_LEDGER_DOC_PHRASES:
         assert phrase in text
 
@@ -189,6 +194,9 @@ def test_doc_surfaces_route_to_ledger_bridge_without_stale_selectors():
         assert "docs/protocol/codex/ledger-cli-adoption.md" in text
         for selector in STALE_SELECTORS:
             assert selector not in text
+    assert "evidence-ledger" not in _read(
+        ".agents/skills/four-seat-protocol/SKILL.md"
+    )
 
 
 def test_core_codex_role_prompts_are_thin_deltas_with_ledger_pointer():
@@ -201,13 +209,11 @@ def test_core_codex_role_prompts_are_thin_deltas_with_ledger_pointer():
         assert len(text.splitlines()) <= 30, path
 
 
-def test_readiness_and_coordinator_prompts_keep_mutation_boundaries():
+def test_readiness_prompt_keeps_mutation_boundary_and_coordinator_is_retired():
     readiness = " ".join(_read(".codex/agents/readiness-bridge.toml").split())
-    coordinator = " ".join(_read(".codex/agents/protocol-coordinator.toml").split())
     assert "read-only" in readiness
-    assert "does not claim work" in readiness
-    assert "has no cursor" in coordinator
-    assert "does not author behavior-changing production work" in coordinator
+    assert "Do not claim work" in readiness
+    assert not (ROOT / ".codex/agents/protocol-coordinator.toml").exists()
 
 
 def test_ledger_start_guard_cli_rejects_content_kernel():

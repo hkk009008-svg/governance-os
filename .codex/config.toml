@@ -1,16 +1,8 @@
-# Codex project configuration — a repository DECLARATION, not a runtime control.
-#
-# The Codex CLI does not read this file. It resolves $CODEX_HOME/config.toml
-# (~/.codex/config.toml by default): `codex doctor`, run inside this checkout,
-# reports `config.toml  ~/.codex/config.toml`. What this file states is the
-# shape a CLI-exclusive repository keeps — no MCP servers and no ambient
-# authority — because the peer on the other side is invoked as a child process
-# with explicit argv (see docs/protocol/peer.md), never registered as a server
-# a later session inherits without asking. The key below records the declared
-# preference; it takes effect only where a session is pointed at this file.
-#
-# `pipeline preflight` (pipeline/harness_preflight.py) is what enforces the
-# declaration: it FAILs, and exits 1, if an mcp_servers table or an
-# approval_policy / sandbox_mode / features key reappears here, and separately
-# reports the MCP inventory the CLI will really load from the resolved config.
-personality = "friendly"
+# Project-scoped Codex app configuration.  The app and CLI share this project
+# config in a trusted checkout; Pipeline contributes only the team transport.
+# Personal model, personality, sandbox, approval, and credentials stay in user
+# configuration.
+
+[mcp_servers.pipeline-team]
+command = "./bin/pipeline"
+args = ["team", "serve", "--member", "codex"]

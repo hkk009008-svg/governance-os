@@ -48,7 +48,7 @@ The gate reads the inventory; the inventory drifts. Before declaring a wave MET:
 - Surface the milestone: `git rev-list --count origin/main..HEAD` to confirm
   nothing MET is left unmerged upstream.
 - A gate closure is a checkpoint boundary: the owning role publishes one
-  checkpoint `findings` event (draft it with `pipeline checkpoint`) whose
+  checkpoint `findings` event (draft it with `bin/pipeline checkpoint`) whose
   `Lessons:` line carries candidate refs or `none-considered`.
 
 ## Notes

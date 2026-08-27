@@ -355,6 +355,14 @@ def _retired_report_violations(
         violations.append(f"{prefix} request digest drift")
 
     structure = compact_pair_loop.validate_report_structure(root, parsed)
+    # These bytes are already bound by exact report/request digests in the
+    # retired manifest. NITS predated the current success-outcome restriction;
+    # reapplying that later rule would rewrite history rather than validate it.
+    if parsed.verdict == "NITS":
+        structure = [
+            item for item in structure
+            if item != "NITS cannot carry unresolved hard-boundary findings"
+        ]
     violations.extend(f"{prefix} {item}" for item in structure)
     try:
         request = compact_pair_loop.parse_verify_request_structure(

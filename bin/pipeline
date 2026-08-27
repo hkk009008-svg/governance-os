@@ -4,7 +4,7 @@
 # Resolves the primary checkout's interpreter from either the primary checkout
 # or a linked worktree (worktrees intentionally carry no duplicate .venv), and
 # clears GIT_INDEX_FILE so no caller has to remember either. Falls back to
-# python3 when the venv is absent so `pipeline --help` still answers.
+# python3 when the venv is absent so `bin/pipeline --help` still answers.
 set -eu
 
 unset GIT_INDEX_FILE
@@ -23,7 +23,7 @@ fi
 
 pipeline_python="$primary_root/.venv/bin/python"
 if [ ! -x "$pipeline_python" ]; then
-    # Fall back so `pipeline --help` still answers in a fresh checkout, but say
+    # Fall back so `bin/pipeline --help` still answers in a fresh checkout, but say
     # so. Silently using an interpreter without this repo's dependencies made a
     # clean clone report "wave gate did not produce both executed strict-xfail
     # controls" -- a gate failure that was really a missing pytest, blaming the

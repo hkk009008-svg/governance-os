@@ -85,6 +85,25 @@ def _finding_ref(repo: Path) -> str:
     return f"{_FINDING_PATH}@{introductions[0]}"
 
 
+def _checkpoint_body(repo: Path, owner: str) -> str:
+    head = _git(repo, "rev-parse", "HEAD")
+    return f"""\
+Checkpoint: send-event-finalizer
+Boundary: compaction
+Objective: exercise send-event through the fixed writer
+Accepted scope: the throwaway coordination-tooling fixture
+Owner: {owner}
+Policy revision: {head}
+Base: {head}
+Head: {head}
+Evidence refs: none
+Verification status: the fixture payload is structurally valid
+Blockers: none
+Next action: inspect the staged checkpoint
+Lessons: none-considered
+"""
+
+
 def _prepare_verify_request(
     repo: Path,
     *,
@@ -216,7 +235,7 @@ The committed change satisfies the routed maintenance outcome.
 """
 
 
-def test_send_event_stages_ordinary_event_through_fixed_finalizer(
+def test_send_event_stages_checkpoint_through_fixed_finalizer(
     tmp_path: Path, repo_root: Path
 ) -> None:
     repo = tmp_path / "repo"
@@ -224,21 +243,21 @@ def test_send_event_stages_ordinary_event_through_fixed_finalizer(
     _init_repo(repo, repo_root)
 
     result = _run(
-        [repo_root / "coordination/bin/send-event", "author", "reviewer", "findings", "hello"],
+        [repo_root / "coordination/bin/send-event", "codex", "claude", "findings", "hello"],
         repo,
-        input_text="body\n",
+        input_text=_checkpoint_body(repo, "codex"),
     )
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith("-author-to-reviewer-findings.md")
+    assert staged.endswith("-codex-to-claude-findings.md")
 
 
-@pytest.mark.parametrize("role", ("author", "reviewer"))
-def test_every_review_role_uses_the_explicit_cursorless_marker(
-    tmp_path: Path, repo_root: Path, role: str
+@pytest.mark.parametrize("member", ("codex", "claude", "agy"))
+def test_every_desktop_member_uses_the_explicit_cursorless_marker(
+    tmp_path: Path, repo_root: Path, member: str
 ) -> None:
-    """A cursor belonged to a standing chat; neither role outlives its task."""
+    """A cursor belonged to a standing chat, not a desktop app member."""
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -247,18 +266,18 @@ def test_every_review_role_uses_the_explicit_cursorless_marker(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            role,
+            member,
             "all",
             "findings",
             "cursorless sender",
         ],
         repo,
-        input_text="body\n",
+        input_text=_checkpoint_body(repo, member),
     )
 
     assert result.returncode == 0, result.stderr
     staged = _git(repo, "diff", "--cached", "--name-only")
-    assert staged.endswith(f"-{role}-to-all-findings.md")
+    assert staged.endswith(f"-{member}-to-all-findings.md")
     event = repo / staged
     assert event.read_text(encoding="utf-8").endswith(
         "Cursor at send: cursorless\n"
@@ -363,8 +382,8 @@ def test_duplicate_cursor_footer_fails_before_publication(
     result = _run(
         [
             repo_root / "coordination/bin/send-event",
-            "author",
-            "reviewer",
+            "codex",
+            "claude",
             "findings",
             "duplicate footer",
         ],

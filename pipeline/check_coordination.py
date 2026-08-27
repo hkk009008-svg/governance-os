@@ -49,6 +49,7 @@ import check_go_schema
 import codex_protocol_model
 import git_commit_projection
 import git_runner
+import mailbox_admission
 import mailbox_writer
 import protocol_mailbox
 import mailbox_history  # noqa: E402
@@ -840,15 +841,12 @@ def _committed_mailbox_projection(
         return None, cutover_problem or "learning-history cutover projection unavailable"
     candidate_objects = {
         compact_pair_loop.LEGACY_VERBOSE_CUTOFF,
+        compact_pair_loop.REMEDIATION_BASE_CUTOFF,
         codex_protocol_model.CURRENT_REVIEW_FAMILY_CUTOVER,
+        mailbox_admission.DESKTOP_WRITE_CUTOVER_COMMIT,
         _LEARNING_HISTORY_CUTOVER_COMMIT,
         _ACTIVE_FAILURE_CUTOVER_COMMIT,
         _REVIEW_STATE_CUTOVER_COMMIT,
-        # The role cutover must be resolvable on purpose. It was reaching the
-        # projection only because two committed events happen to quote its SHA
-        # as a review range; delete those and the identity gate would have gone
-        # silently inert while still reporting PASS.
-        mailbox_history._ROLE_CUTOVER_COMMIT,
         *(commit for commit, _blob in introductions.values()),
     }
     for raw in (
@@ -1373,9 +1371,31 @@ def inspect_verify_review_state(
                 commit,
                 raw,
                 allow_frozen_legacy=False,
+                historical_remediation_base_compatibility=(
+                    projection.commits.object_types.get(
+                        compact_pair_loop.REMEDIATION_BASE_CUTOFF
+                    ) == "commit"
+                    and projection.commits.is_ancestor(
+                        commit, compact_pair_loop.REMEDIATION_BASE_CUTOFF
+                    )
+                ),
                 commit_projection=projection.commits,
-                allow_git_fallback=False,
+                allow_git_fallback=True,
             )
+            is_current_model_policy = (
+                projection.review_family_cutover_events is not None
+                and projection.review_family_cutover_events.get(path) != raw
+            )
+            if (
+                is_current_model_policy
+                and not codex_protocol_model.model_is_current_author(
+                    request.author_model
+                )
+            ):
+                raise mailbox_writer.MailboxWriterError(
+                    "Author model must resolve to a currently admitted author "
+                    "model for a new verify-request"
+                )
             if request.assigned_operator != recipient:
                 raise mailbox_writer.MailboxWriterError(
                     "request recipient does not match assigned Operator"
@@ -1384,7 +1404,7 @@ def inspect_verify_review_state(
                 root,
                 request,
                 commit_projection=projection.commits,
-                allow_git_fallback=False,
+                allow_git_fallback=True,
             )
             if range_violations:
                 raise compact_pair_loop.CompactPairError(
@@ -1823,7 +1843,7 @@ def run(coord_root: Path | str, since: str = "2026-06-11",
             )
         else:
             issues += _check_committed_learning_history(bus_repo_root, projection)
-            issues += mailbox_history._check_post_cutover_identities(
+            issues += mailbox_admission.check_post_cutover_event_admission(
                 projection, CoordIssue, _ARCHIVE_SENT_PREFIX,
                 _projection_git, bus_repo_root,
             )
