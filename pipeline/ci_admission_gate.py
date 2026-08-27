@@ -132,7 +132,10 @@ def resolve_range(root: Path, base: str | None, head: str | None) -> tuple[str, 
     if base:
         resolved_base = _git(root, "rev-parse", base + "^{commit}").strip()
         return resolved_base, resolved_head
-    for candidate in ("origin/main", "main"):
+    # Local use should compare a topic with the branch it was actually cut
+    # from. CI supplies immutable base/head SHAs explicitly, so a stale
+    # remote-tracking ref must not widen the local range ahead of `main`.
+    for candidate in ("main", "origin/main"):
         try:
             resolved_base = _git(
                 root, "merge-base", candidate, resolved_head
