@@ -136,5 +136,5 @@ bin/pipeline check
 adapter handshakes. It does not launch a provider, send a team message, spend,
 or grant authority. Each verb's `--help` is the source for its arguments.
 
-Provider adapters: `docs/protocol/codex/continuation.md` and `docs/protocol/claude/continuation.md`.
+Provider adapters: `docs/protocol/codex/continuation.md`, `docs/protocol/claude/continuation.md`, and `docs/protocol/agy/continuation.md`.
 Resolve targets with `bin/pipeline target`, then follow their own instructions.

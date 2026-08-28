@@ -51,6 +51,7 @@ def test_every_provider_entrypoint_points_to_the_canonical_policy_model():
         ".agents/skills/four-seat-protocol/SKILL.md",
         "docs/protocol/codex/continuation.md",
         "docs/protocol/claude/continuation.md",
+        "docs/protocol/agy/continuation.md",
     ):
         compact = _compact(_read(path).replace("`", ""))
         assert pointer in compact, path
@@ -72,6 +73,7 @@ def test_work_mode_docs_point_to_the_executable_profiles_and_keep_explore_light(
         "CLAUDE.md",
         "docs/protocol/codex/continuation.md",
         "docs/protocol/claude/continuation.md",
+        "docs/protocol/agy/continuation.md",
     ):
         text = _compact(_read(path))
         assert "docs/protocol/work-modes.md" in text, path
