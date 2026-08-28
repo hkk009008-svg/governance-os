@@ -39,7 +39,10 @@ _MIGRATION_SNAPSHOT = {
 _CURRENT_DESKTOP_MODELS = {
     "gpt": set("gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna gpt-5.5 gpt-5.4 "
                "gpt-5.4-mini gpt-5.3-codex-spark gpt-oss-120b-medium".split()),
-    "claude": {"claude-opus-4-7", "claude-sonnet-4-6", "claude-opus-4-6-thinking"},
+    "claude": {
+        "claude-opus-4-7", "claude-sonnet-5", "claude-sonnet-4-6",
+        "claude-opus-4-6-thinking",
+    },
     "gemini": set(
         "gemini-3.7-flash-high gemini-3.7-flash-medium gemini-3.7-flash-low "
         "gemini-3.6-flash-high gemini-3.6-flash-medium gemini-3.6-flash-low "
