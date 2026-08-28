@@ -256,7 +256,7 @@ def _land_pair(
     *,
     verdict: str = "GO",
     risk_class: str = "high-risk-control",
-    reviewer_model: str = "claude-opus-4-6-thinking",
+    reviewer_model: str = "claude-opus-4-7",
     disposition: str = "addressed",
 ) -> None:
     refs = (_mint_evidence(root),)

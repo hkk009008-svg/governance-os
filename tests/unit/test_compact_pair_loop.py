@@ -30,8 +30,6 @@ REPORT_PATH = (
     "coordination/mailbox/sent/"
     "2026-07-18T08-10-00Z-operator-to-all-verification-report.md"
 )
-
-
 # Hermetic fixture-git environment: the ambient VM configuration (commit
 # signing via the exec-daemon shim, fsmonitor daemons) must not run inside
 # throwaway test repositories; see tests/unit/test_check_coordination.py.
@@ -440,6 +438,24 @@ def test_verify_request_candidate_rejects_non_pair_author_path(
 
     with pytest.raises(pair.CompactPairError, match="path is not canonical"):
         pair.parse_verify_request_candidate(root, candidate, coordinator_path)
+
+
+def test_readers_reject_mixed_current_and_legacy_routes(tmp_path: Path) -> None:
+    prefix = "coordination/mailbox/sent/2026-07-18T08-20-00Z-"
+    for route in ("author-to-operator", "director-to-reviewer"):
+        with pytest.raises(pair.CompactPairError, match="cannot mix current and legacy"):
+            pair._parse_verify_request_bytes(
+                tmp_path,
+                f"{prefix}{route}-verify-request.md",
+                b"",
+                trigger_commit="a" * 40,
+                allow_frozen_legacy=False,
+            )
+    for route in ("reviewer-to-director", "operator-to-author"):
+        with pytest.raises(pair.CompactPairError, match="cannot mix current and legacy"):
+            pair._parse_verification_report_bytes(
+                tmp_path, f"{prefix}{route}-verification-report.md", b""
+            )
 
 
 _DEFAULT_REPOSITORY = object()
@@ -1911,7 +1927,7 @@ def test_compose_refuses_a_finding_ref_whose_object_does_not_exist(
     root, _, _ = _compose_repo(tmp_path)
     relative = (
         "coordination/mailbox/sent/"
-        "2026-07-26T00-00-00Z-operator-to-director-verification-report.md"
+        "2026-07-26T00-00-00Z-reviewer-to-author-verification-report.md"
     )
     real_commit = _commit_an_event(root, relative)
     arguments: dict[str, object] = {

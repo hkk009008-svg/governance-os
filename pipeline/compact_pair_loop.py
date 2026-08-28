@@ -31,7 +31,7 @@ REPORT_RE = re.compile(
     r"coordination/mailbox/sent/"
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z-"
     r"(?P<reviewer>reviewer|operator2?)-to-"
-    r"(?:author|director2?|operator2?|coordinator2?|all)-"
+    r"(?P<recipient>author|director2?|operator2?|coordinator2?|all)-"
     r"verification-report\.md"
 )
 MAX_EVENT_BYTES = 262_144
@@ -46,11 +46,11 @@ _FROZEN_MODEL_LABEL_EXCEPTION = {
     "introduction": "8471c6d6c35daa74dd24cc24d6ece3eea48f3f22",
     "sha256": "90586eb9d2399ed69a2f1bc0af7bb7c43ba9187e61fedc734e58fc32ce21f48c",
 }
-# Reading accepts every identity that ever authored a committed pair; writing
-# is narrowed to the two roles by mailbox_writer.NEW_WRITE_SENDERS. This set
-# stays wide so 211 committed reports keep validating.
-PAIR_SEATS = frozenset(protocol_mailbox.SEATS) | {"author", "reviewer"}
-OPERATOR_SEATS = frozenset({"operator", "operator2", "reviewer"})
+PAIR_SEATS = frozenset(protocol_mailbox.SEATS)
+OPERATOR_SEATS = frozenset({"operator", "operator2"})
+# Reader-only compatibility for current formal-review responsibility labels.
+_READ_PAIR_SEATS = PAIR_SEATS | {"author"}
+_READ_OPERATOR_SEATS = OPERATOR_SEATS | {"reviewer"}
 MATERIAL_BEHAVIOR_RISK = codex_protocol_model.review_profile_for(
     "material-behavior"
 ).risk_class
@@ -507,6 +507,10 @@ def _parse_verify_request_bytes(
     match = REQUEST_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verify-request path is not canonical")
+    if (match.group("author") == "author") != (
+        match.group("operator") == "reviewer"
+    ):
+        raise CompactPairError("verify-request cannot mix current and legacy roles")
     text = _decode(raw, "verify-request")
     lines = text.splitlines()
     if _one(lines, "Event type: ", "Event type") != "verify-request":
@@ -522,7 +526,7 @@ def _parse_verify_request_bytes(
         raise CompactPairError("Reviewed base/head must be full lowercase commit SHAs")
     author = _one(lines, "Author seat: ", "Author seat")
     assigned = _one(lines, "Assigned operator: ", "Assigned operator")
-    if author not in PAIR_SEATS or assigned not in OPERATOR_SEATS:
+    if author not in _READ_PAIR_SEATS or assigned not in _READ_OPERATOR_SEATS:
         raise CompactPairError("request author or assigned reviewer is not a pair seat")
     if author != match.group("author") or _envelope_sender(text) != author:
         raise CompactPairError("Author seat does not match verify-request envelope/path")
@@ -961,6 +965,11 @@ def _parse_verification_report_bytes(
     match = REPORT_RE.fullmatch(path)
     if match is None:
         raise CompactPairError("verification-report path is not canonical Operator output")
+    if match.group("recipient") != "all" and (
+        (match.group("reviewer") == "reviewer")
+        != (match.group("recipient") == "author")
+    ):
+        raise CompactPairError("verification-report cannot mix current and legacy roles")
     text = _decode(raw, "verification-report")
     lines = text.splitlines()
     if _one(lines, "Event type: ", "Event type") != "verification-report":
