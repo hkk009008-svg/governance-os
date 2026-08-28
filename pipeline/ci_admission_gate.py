@@ -42,6 +42,7 @@ for _path in (_REPO_ROOT, _SCRIPTS_DIR):
 
 import compact_pair_loop as pair  # noqa: E402
 import git_runner  # noqa: E402
+import mailbox_review_admission  # noqa: E402
 import mailbox_writer  # noqa: E402
 
 # Authority surfaces: executable authority, side-effect gating, trust-granting
@@ -224,7 +225,11 @@ def _known_kinds_at(root: Path, head: str) -> frozenset[str]:
 
 
 def _validate_current_envelope(
-    root: Path, raw: bytes, path: str, kinds: frozenset[str]
+    root: Path,
+    raw: bytes,
+    path: str,
+    kinds: frozenset[str],
+    introduction_commit: str,
 ) -> None:
     envelope = mailbox_writer.validate_event_envelope_bytes(
         root, raw, path, kinds=kinds
@@ -234,7 +239,15 @@ def _validate_current_envelope(
         envelope.group("sender"),
         envelope.group("recipient"),
     )
-    if problem is not None:
+    frozen_forward_reader = mailbox_review_admission._is_exact_frozen_forward_reader_route(
+        envelope.group("kind"),
+        envelope.group("sender"),
+        envelope.group("recipient"),
+        path,
+        introduction_commit,
+        raw,
+    )
+    if problem is not None and not frozen_forward_reader:
         raise pair.CompactPairError(problem)
 
 
@@ -275,7 +288,9 @@ def evaluate(root: Path, base: str, head: str) -> Outcome:
     ):
         raw = _git(root, "show", f"{head}:{path}").encode("utf-8")
         try:
-            _validate_current_envelope(root, raw, path, kinds)
+            _validate_current_envelope(
+                root, raw, path, kinds, _introduction_commit(root, head, path)
+            )
             report = pair.parse_verification_report_committed_bytes(root, path, raw)
         except (mailbox_writer.MailboxWriterError, pair.CompactPairError) as exc:
             outcome.skipped_reports.append((path, f"unparseable: {exc}"))

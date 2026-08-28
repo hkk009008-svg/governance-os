@@ -11,8 +11,11 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import ci_admission_gate as gate
 import protocol_mailbox
+from mailbox_admission_test_support import event
 
 
 REQUEST_PATH = (
@@ -296,6 +299,35 @@ def test_range_without_authority_surfaces_is_admitted(tmp_path: Path) -> None:
     assert outcome.admitted
     assert outcome.authority_commits == {}
     assert "admitted without review requirement" in gate.render(outcome)
+
+
+def test_gate_wires_the_exact_frozen_forward_reader_route(
+    monkeypatch, repo_root: Path
+) -> None:
+    path = (
+        "coordination/mailbox/sent/"
+        "2026-08-28T02-43-08Z-operator-to-director-verification-report.md"
+    )
+    raw = event(path).replace(b"Cursor at send: cursorless", b"Cursor at send: 0")
+    commit, calls = "3" * 40, []
+    monkeypatch.setattr(
+        gate.mailbox_review_admission,
+        "_is_exact_frozen_forward_reader_route",
+        lambda *args: calls.append(args) or True,
+    )
+    gate._validate_current_envelope(
+        repo_root, raw, path, protocol_mailbox.KNOWN_KINDS, commit
+    )
+    assert calls == [("verification-report", "operator", "director", path, commit, raw)]
+    monkeypatch.setattr(
+        gate.mailbox_review_admission,
+        "_is_exact_frozen_forward_reader_route",
+        lambda *_args: False,
+    )
+    with pytest.raises(gate.pair.CompactPairError, match="formal review role route"):
+        gate._validate_current_envelope(
+            repo_root, raw, path, protocol_mailbox.KNOWN_KINDS, commit
+        )
 
 
 def test_every_declared_trust_or_effect_surface_is_matched_non_vacuously(

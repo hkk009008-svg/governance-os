@@ -24,6 +24,21 @@ def _is_exact_frozen_forward_reader_artifact(path: str, introduction_commit: str
     )
 
 
+def _is_exact_frozen_forward_reader_route(
+    kind: str,
+    sender: str,
+    recipient: str,
+    path: str,
+    introduction_commit: str,
+    raw: bytes,
+) -> bool:
+    return (
+        kind in mailbox_writer.FORMAL_REVIEW_KINDS
+        and (sender in protocol_mailbox.LEGACY_SEATS or recipient in protocol_mailbox.LEGACY_SEATS)
+        and _is_exact_frozen_forward_reader_artifact(path, introduction_commit, raw)
+    )
+
+
 def projected_request(
     projection, repo_root: Path, path: str, commit: str, *, current_policy: bool
 ):
@@ -191,13 +206,13 @@ def validate_committed_new_event(
         repo_root, raw, path, kinds=projection.kinds
     )
     kind = match.group("kind")
-    frozen_forward_reader = (
-        kind in mailbox_writer.FORMAL_REVIEW_KINDS
-        and (
-            match.group("sender") in protocol_mailbox.LEGACY_SEATS
-            or match.group("recipient") in protocol_mailbox.LEGACY_SEATS
-        )
-        and _is_exact_frozen_forward_reader_artifact(path, introduction_commit, raw)
+    frozen_forward_reader = _is_exact_frozen_forward_reader_route(
+        kind,
+        match.group("sender"),
+        match.group("recipient"),
+        path,
+        introduction_commit,
+        raw,
     )
     problem = mailbox_writer.new_write_envelope_problem(
         kind, match.group("sender"), match.group("recipient")
