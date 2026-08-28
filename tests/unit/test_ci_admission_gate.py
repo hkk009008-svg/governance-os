@@ -413,6 +413,93 @@ def test_merge_resolution_only_authority_change_is_detected(
     assert commits[head] == ("pipeline/mailbox_writer.py",)
 
 
+def test_tree_identical_merge_is_detected_from_its_feature_parent(
+    tmp_path: Path,
+) -> None:
+    root, _ = _init_repo(tmp_path)
+    main_branch = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "feature")
+    feature = _commit_file(
+        root,
+        "pipeline/mailbox_writer.py",
+        "POLICY = 1\n",
+        "feat: writer policy",
+    )
+    _git(root, "checkout", "-q", main_branch)
+    _git(root, "merge", "--no-ff", "-q", "-m", "merge: feature", "feature")
+    merge = _git(root, "rev-parse", "HEAD")
+
+    assert _git(root, "rev-parse", f"{merge}^2") == feature
+    assert _git(root, "rev-list", f"{feature}..{merge}") == merge
+    assert _git(root, "rev-parse", f"{feature}^{{tree}}") == _git(
+        root, "rev-parse", f"{merge}^{{tree}}"
+    )
+    assert _git(root, "diff", "--name-only", f"{merge}^1", merge) == (
+        "pipeline/mailbox_writer.py"
+    )
+    assert _git(root, "diff", "--name-only", feature, merge) == ""
+    commits = gate.authority_commits(root, feature, merge)
+
+    assert commits == {merge: ("pipeline/mailbox_writer.py",)}
+
+
+def test_tree_identical_merge_with_only_ordinary_changes_is_not_authority(
+    tmp_path: Path,
+) -> None:
+    root, _ = _init_repo(tmp_path)
+    main_branch = _git(root, "branch", "--show-current")
+    _git(root, "checkout", "-q", "-b", "feature")
+    feature = _commit_file(root, "src/ordinary.py", "VALUE = 1\n", "feat: ordinary")
+    _git(root, "checkout", "-q", main_branch)
+    _git(root, "merge", "--no-ff", "-q", "-m", "merge: feature", "feature")
+    merge = _git(root, "rev-parse", "HEAD")
+
+    assert _git(root, "rev-parse", f"{feature}^{{tree}}") == _git(
+        root, "rev-parse", f"{merge}^{{tree}}"
+    )
+    assert gate.authority_commits(root, feature, merge) == {}
+
+
+def test_authority_changes_on_a_treesame_merged_side_are_not_pruned(
+    tmp_path: Path,
+) -> None:
+    root, _ = _init_repo(tmp_path)
+    base = _commit_file(
+        root,
+        "pipeline/mailbox_writer.py",
+        "POLICY = 0\n",
+        "test: establish protected policy",
+    )
+    main_branch = _git(root, "branch", "--show-current")
+    _commit_file(root, "main.txt", "main\n", "test: main side")
+    _git(root, "checkout", "-q", "-b", "feature", base)
+    changed = _commit_file(
+        root,
+        "pipeline/mailbox_writer.py",
+        "POLICY = 1\n",
+        "test: change protected policy",
+    )
+    reverted = _commit_file(
+        root,
+        "pipeline/mailbox_writer.py",
+        "POLICY = 0\n",
+        "test: revert protected policy",
+    )
+    _git(root, "checkout", "-q", main_branch)
+    _git(root, "merge", "--no-ff", "-q", "-m", "merge: feature", "feature")
+    merge = _git(root, "rev-parse", "HEAD")
+
+    assert _git(root, "rev-parse", f"{merge}^{{tree}}") == _git(
+        root, "rev-parse", f"{merge}^1^{{tree}}"
+    )
+    commits = gate.authority_commits(root, base, merge)
+
+    assert commits == {
+        changed: ("pipeline/mailbox_writer.py",),
+        reverted: ("pipeline/mailbox_writer.py",),
+    }
+
+
 def test_valid_high_risk_go_report_admits_range(tmp_path: Path) -> None:
     root, base = _init_repo(tmp_path)
     reviewed_head = _commit_file(
