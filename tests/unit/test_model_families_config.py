@@ -57,6 +57,8 @@ def test_unknown_model_ids_never_satisfy_a_different_family_claim() -> None:
     assert model.models_are_independent("gpt-5.6-sol", "gemini-3.6-flash-high") is True
     assert model.models_are_independent("gpt-5.6-sol", "gpt-5") is False
     assert model.models_are_current_review_pair("gpt-5.6-sol", "claude-opus-5")
+    assert model.model_family("claude-opus-4-7") == "claude"
+    assert model.models_are_current_review_pair("gpt-5.6-sol", "claude-opus-4-7")
     assert not model.models_are_current_review_pair(
         "gpt-5.6-sol", "gemini-3.6-flash-high"
     )
