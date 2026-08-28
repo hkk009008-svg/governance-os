@@ -40,6 +40,7 @@ _CURRENT_DESKTOP_MODELS = {
     "gpt": set("gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna gpt-5.5 gpt-5.4 "
                "gpt-5.4-mini gpt-5.3-codex-spark gpt-oss-120b-medium".split()),
     "claude": {
+        "claude-opus-5", "claude-fable-5",
         "claude-opus-4-7", "claude-sonnet-5", "claude-sonnet-4-6",
         "claude-opus-4-6-thinking",
     },
@@ -112,11 +113,20 @@ def test_current_desktop_model_surface_is_parseable_without_widening_review() ->
 def test_current_author_and_reviewer_admission_are_explicit() -> None:
     assert tuple(map(model.model_is_current_author, (
         "gpt-5.6-sol", "Gemini 3.7 Flash (High)",
-        "claude-opus-5", "some-future-frontier-model",
+        "claude-opus-5-thinking-high", "some-future-frontier-model",
     ))) == (True, True, False, False)
     assert tuple(map(model.model_is_current_reviewer, (
-        "gpt-5.6-terra", "opus[1m]", "Gemini 3.7 Flash (High)", "claude-opus-5",
+        "gpt-5.6-terra", "opus[1m]", "Gemini 3.7 Flash (High)",
+        "claude-opus-5-thinking-high",
     ))) == (True, True, False, False)
+    # The two primary current Claude desktop models are admitted for both
+    # responsibilities; a retired sibling ID next to them is not.
+    assert tuple(map(model.model_is_current_author, (
+        "claude-opus-5", "claude-fable-5",
+    ))) == (True, True)
+    assert tuple(map(model.model_is_current_reviewer, (
+        "claude-opus-5", "claude-fable-5",
+    ))) == (True, True)
 
 
 def test_unknown_model_ids_never_satisfy_a_different_family_claim() -> None:
@@ -126,8 +136,9 @@ def test_unknown_model_ids_never_satisfy_a_different_family_claim() -> None:
     assert model.models_are_independent("gpt-5.6-sol", "gemini-3.6-flash-high") is True
     assert model.models_are_independent("gpt-5.6-sol", "gpt-5") is False
     assert not model.models_are_current_review_pair(
-        "gpt-5.6-sol", "claude-opus-5"
+        "gpt-5.6-sol", "claude-opus-5-thinking-high"
     )
+    assert model.models_are_current_review_pair("gpt-5.6-sol", "claude-opus-5")
     assert model.model_family("claude-opus-4-7") == "claude"
     assert model.models_are_current_review_pair("gpt-5.6-sol", "claude-opus-4-7")
     assert not model.models_are_current_review_pair(

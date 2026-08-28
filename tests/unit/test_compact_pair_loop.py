@@ -1797,7 +1797,9 @@ def test_new_request_requires_an_explicitly_current_author_model(
         pair.compose_request(
             root,
             author_seat="author",
-            author_model="claude-opus-5",
+            # Registered in [families] but deliberately not in active_author_models,
+            # so the control still exercises a real refusal.
+            author_model="claude-opus-5-thinking-high",
             assigned_operator="reviewer",
             risk_class="material-behavior",
             base_rev="HEAD~1",
